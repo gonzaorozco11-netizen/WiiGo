@@ -5,6 +5,7 @@
   --foreground: #171717;
   --accent: #2563eb;
   --accent-dark: #1d4ed8;
+  --accent-tint: #eff6ff;
 }
 
 @theme inline {
@@ -12,6 +13,7 @@
   --color-foreground: var(--foreground);
   --color-accent: var(--accent);
   --color-accent-dark: var(--accent-dark);
+  --color-accent-tint: var(--accent-tint);
 }
 
 body {

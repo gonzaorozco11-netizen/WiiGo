@@ -16,7 +16,7 @@ import RecepcionModal from "@/components/RecepcionModal";
 
 export type FilaVariante = { variante: VarianteProducto; producto: Producto; marca: Marca | undefined };
 
-const ESTADO_ESTILO: Record<string, string> = {
+export const ESTADO_ESTILO: Record<string, string> = {
   PENDIENTE: "bg-amber-50 text-amber-700",
   RECIBIDA: "bg-emerald-50 text-emerald-700",
   RECIBIDA_CON_DIFERENCIAS: "bg-red-50 text-red-700",
@@ -43,6 +43,7 @@ export default function ReposicionApp({
 }) {
   const [nuevaOrdenOpen, setNuevaOrdenOpen] = useState(false);
   const [ordenAbierta, setOrdenAbierta] = useState<OrdenReposicion | null>(null);
+  const [tab, setTab] = useState<"TODAS" | "PENDIENTE" | "RECIBIDA_CON_DIFERENCIAS" | "RECIBIDA">("TODAS");
 
   const marcaPorId = useMemo(() => new Map(marcas.map((m) => [m.id_marca, m])), [marcas]);
   const localPorId = useMemo(() => new Map(locales.map((l) => [l.id_local, l])), [locales]);
@@ -85,6 +86,21 @@ export default function ReposicionApp({
     return map;
   }, [detalle]);
 
+  const conteos = useMemo(
+    () => ({
+      TODAS: ordenes.length,
+      PENDIENTE: ordenes.filter((o) => o.estado === "PENDIENTE").length,
+      RECIBIDA_CON_DIFERENCIAS: ordenes.filter((o) => o.estado === "RECIBIDA_CON_DIFERENCIAS").length,
+      RECIBIDA: ordenes.filter((o) => o.estado === "RECIBIDA").length,
+    }),
+    [ordenes]
+  );
+
+  const ordenesFiltradas = useMemo(
+    () => (tab === "TODAS" ? ordenes : ordenes.filter((o) => o.estado === tab)),
+    [ordenes, tab]
+  );
+
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
@@ -114,11 +130,28 @@ export default function ReposicionApp({
         </div>
       )}
 
-      {ordenes.length === 0 ? (
-        <p className="text-sm text-neutral-500 py-12 text-center">Todavía no generaste ninguna orden.</p>
+      <div className="flex flex-wrap gap-2 mb-4">
+        <TabButton activo={tab === "TODAS"} onClick={() => setTab("TODAS")}>
+          Todas ({conteos.TODAS})
+        </TabButton>
+        <TabButton activo={tab === "PENDIENTE"} onClick={() => setTab("PENDIENTE")}>
+          Pendientes de recepcionar ({conteos.PENDIENTE})
+        </TabButton>
+        <TabButton activo={tab === "RECIBIDA_CON_DIFERENCIAS"} onClick={() => setTab("RECIBIDA_CON_DIFERENCIAS")}>
+          Con diferencias ({conteos.RECIBIDA_CON_DIFERENCIAS})
+        </TabButton>
+        <TabButton activo={tab === "RECIBIDA"} onClick={() => setTab("RECIBIDA")}>
+          Recibidas OK ({conteos.RECIBIDA})
+        </TabButton>
+      </div>
+
+      {ordenesFiltradas.length === 0 ? (
+        <p className="text-sm text-neutral-500 py-12 text-center">
+          {ordenes.length === 0 ? "Todavía no generaste ninguna orden." : "No hay órdenes en esta categoría."}
+        </p>
       ) : (
         <ul className="space-y-2">
-          {ordenes.map((o) => (
+          {ordenesFiltradas.map((o) => (
             <li
               key={o.id_orden}
               className="bg-white border border-neutral-200 rounded-xl px-4 py-3 flex items-center justify-between gap-3"
@@ -126,6 +159,7 @@ export default function ReposicionApp({
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className="font-medium text-neutral-900">{marcaPorId.get(o.id_marca)?.nombre ?? "—"}</p>
+                  <span className="text-xs font-mono text-neutral-400">#{o.id_orden.slice(0, 8).toUpperCase()}</span>
                   <span className={`text-xs rounded-full px-2 py-0.5 ${ESTADO_ESTILO[o.estado] ?? "bg-neutral-100 text-neutral-600"}`}>
                     {o.estado.replaceAll("_", " ")}
                   </span>
@@ -164,5 +198,26 @@ export default function ReposicionApp({
         />
       )}
     </div>
+  );
+}
+
+function TabButton({
+  activo,
+  onClick,
+  children,
+}: {
+  activo: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`text-sm rounded-full px-3 py-1.5 border ${
+        activo ? "bg-accent text-white border-accent" : "bg-white text-neutral-600 border-neutral-300"
+      }`}
+    >
+      {children}
+    </button>
   );
 }

@@ -27,6 +27,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               <Link href="/reposicion" className="text-sm text-neutral-600 hover:text-neutral-900">
                 Abastecimiento
               </Link>
+              <Link href="/cobros-efectivo" className="text-sm text-neutral-600 hover:text-neutral-900">
+                Cobros en efectivo
+              </Link>
               <Link href="/locales" className="text-sm text-neutral-600 hover:text-neutral-900">
                 Locales
               </Link>

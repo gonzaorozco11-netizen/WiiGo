@@ -165,6 +165,82 @@ export type DetalleRecepcion = {
   observaciones: string | null;
 };
 
+export type Cliente = {
+  id_cliente: string;
+  nombre: string;
+  apellido: string | null;
+  dni: string | null;
+  email: string | null;
+  telefono: string | null;
+  fecha_nacimiento: string | null;
+  qr: string | null;
+  puntos: number;
+  estado: string;
+  fecha_alta: string;
+};
+
+export type Venta = {
+  id_venta: string;
+  numero: number;
+  fecha: string;
+  canal: string | null;
+  id_cliente: string | null;
+  id_local: string | null;
+  subtotal: number | null;
+  descuento: number | null;
+  total: number | null;
+  estado: string;
+  medio_pago: string | null;
+  id_pago: string | null;
+  id_liquidacion: string | null;
+  usuario: string | null;
+  terminal: string | null;
+  descuento_puntos: number;
+  puntos_canjeados: number;
+  total_cobrado: number | null;
+  motivo_cancelacion: string | null;
+  fecha_cancelacion: string | null;
+};
+
+export type Pago = {
+  id_pago: string;
+  id_venta: string;
+  medio: string;
+  monto: number;
+  monto_recibido: number | null;
+  vuelto: number | null;
+  usuario: string | null;
+  mp_payment_id: string | null;
+  fecha: string;
+};
+
+export type DetalleVenta = {
+  id_detalle: string;
+  id_venta: string;
+  id_variante: string;
+  id_marca: string | null;
+  cantidad: number;
+  precio_unitario: number;
+  descuento: number;
+  subtotal: number | null;
+  puntos_generados: number;
+};
+
+export type CodigoProfesional = {
+  id_codigo: string;
+  id_profesional: string;
+  codigo: string;
+  tipo_beneficio_cliente: string | null;
+  valor_beneficio_cliente: number | null;
+  tipo_recompensa_profesional: string | null;
+  valor_recompensa_profesional: number | null;
+  fecha_desde: string | null;
+  fecha_hasta: string | null;
+  estado: string;
+  limite_usos: number | null;
+  usos: number;
+};
+
 export type Objetivo = {
   id_objetivo: string;
   nombre: string;
