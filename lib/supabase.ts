@@ -124,6 +124,47 @@ export type MovimientoStock = {
   observaciones: string | null;
 };
 
+export type OrdenReposicion = {
+  id_orden: string;
+  id_marca: string;
+  id_local: string;
+  fecha: string;
+  estado: string;
+  total_unidades: number;
+  observaciones: string | null;
+};
+
+export type DetalleReposicion = {
+  id_detalle: string;
+  id_orden: string;
+  id_variante: string;
+  cantidad_solicitada: number;
+  cantidad_recibida: number;
+  observaciones: string | null;
+};
+
+export type Recepcion = {
+  id_recepcion: string;
+  id_orden: string;
+  id_marca: string | null;
+  id_local: string | null;
+  fecha: string;
+  usuario: string | null;
+  observaciones: string | null;
+};
+
+export type DetalleRecepcion = {
+  id_detalle_recepcion: string;
+  id_recepcion: string;
+  id_orden: string | null;
+  id_variante: string;
+  cantidad_solicitada: number | null;
+  cantidad_recibida: number | null;
+  estado_control: string | null;
+  diferencia: number | null;
+  observaciones: string | null;
+};
+
 export type Objetivo = {
   id_objetivo: string;
   nombre: string;

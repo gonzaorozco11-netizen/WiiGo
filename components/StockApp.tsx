@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { Local, Producto, Marca, VarianteProducto, Stock } from "@/lib/supabase";
+import type { Local, Producto, Marca, VarianteProducto, Stock, MovimientoStock } from "@/lib/supabase";
 import AjusteStockModal from "@/components/AjusteStockModal";
 import TransferenciaStockModal from "@/components/TransferenciaStockModal";
 
@@ -11,23 +11,33 @@ type Fila = {
   marca: Marca | undefined;
 };
 
+const TIPO_LABEL: Record<string, string> = {
+  AJUSTE: "Ajuste manual",
+  TRANSFERENCIA_SALIDA: "Transferencia (salida)",
+  TRANSFERENCIA_ENTRADA: "Transferencia (entrada)",
+  RECEPCION: "Recepción de mercadería",
+};
+
 export default function StockApp({
   locales,
   variantes,
   productos,
   marcas,
   stock,
+  movimientos,
 }: {
   locales: Local[];
   variantes: VarianteProducto[];
   productos: Producto[];
   marcas: Marca[];
   stock: Stock[];
+  movimientos: MovimientoStock[];
 }) {
   const [idLocal, setIdLocal] = useState(locales[0]?.id_local ?? "");
   const [search, setSearch] = useState("");
   const [ajuste, setAjuste] = useState<Fila | null>(null);
   const [transferenciaOpen, setTransferenciaOpen] = useState(false);
+  const [historialAbierto, setHistorialAbierto] = useState(false);
 
   const productoPorId = useMemo(() => new Map(productos.map((p) => [p.id_producto, p])), [productos]);
   const marcaPorId = useMemo(() => new Map(marcas.map((m) => [m.id_marca, m])), [marcas]);
@@ -58,6 +68,22 @@ export default function StockApp({
         .some((v) => v!.toLowerCase().includes(q))
     );
   }, [filas, search]);
+
+  const nombrePorVariante = useMemo(() => {
+    const map = new Map<string, string>();
+    filas.forEach((f) => {
+      map.set(
+        f.variante.id_variante,
+        `${f.producto.nombre}${f.variante.nombre !== "Único" ? ` — ${f.variante.nombre}` : ""}`
+      );
+    });
+    return map;
+  }, [filas]);
+
+  const movimientosDelLocal = useMemo(
+    () => movimientos.filter((m) => m.id_local === idLocal),
+    [movimientos, idLocal]
+  );
 
   return (
     <div>
@@ -157,6 +183,56 @@ export default function StockApp({
           </table>
         </div>
       )}
+
+      <div className="mt-6">
+        <button
+          onClick={() => setHistorialAbierto((v) => !v)}
+          className="text-sm text-neutral-500 hover:text-neutral-900"
+        >
+          {historialAbierto ? "Ocultar" : "Ver"} historial de movimientos de este local ▾
+        </button>
+
+        {historialAbierto && (
+          <div className="bg-white border border-neutral-200 rounded-xl overflow-x-auto mt-3">
+            {movimientosDelLocal.length === 0 ? (
+              <p className="text-sm text-neutral-500 p-4 text-center">
+                Todavía no hay movimientos registrados en este local.
+              </p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-neutral-200 text-left text-xs text-neutral-500">
+                    <th className="p-3">Fecha</th>
+                    <th className="p-3">Producto</th>
+                    <th className="p-3">Tipo</th>
+                    <th className="p-3">Cantidad</th>
+                    <th className="p-3">Motivo</th>
+                    <th className="p-3">Usuario</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {movimientosDelLocal.map((m) => (
+                    <tr key={m.id_movimiento} className="border-b border-neutral-100 last:border-0">
+                      <td className="p-3 text-neutral-500 whitespace-nowrap">
+                        {new Date(m.fecha).toLocaleString("es-AR")}
+                      </td>
+                      <td className="p-3 text-neutral-900">
+                        {nombrePorVariante.get(m.id_variante) ?? "—"}
+                      </td>
+                      <td className="p-3 text-neutral-500">{TIPO_LABEL[m.tipo] ?? m.tipo}</td>
+                      <td className={`p-3 font-semibold ${m.cantidad < 0 ? "text-red-600" : "text-emerald-700"}`}>
+                        {m.cantidad > 0 ? `+${m.cantidad}` : m.cantidad}
+                      </td>
+                      <td className="p-3 text-neutral-500">{m.motivo ?? "—"}</td>
+                      <td className="p-3 text-neutral-500">{m.usuario ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+      </div>
 
       {ajuste && (
         <AjusteStockModal

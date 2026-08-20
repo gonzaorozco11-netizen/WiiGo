@@ -11,10 +11,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div className="min-h-screen bg-neutral-50">
       <header className="border-b border-neutral-200 bg-white">
-        <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-6">
+        <div className="max-w-6xl mx-auto px-4 py-4 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
             <span className="text-lg font-semibold text-neutral-900">WiiGo</span>
-            <nav className="flex items-center gap-4">
+            <nav className="flex flex-wrap items-center gap-x-4 gap-y-2">
               <Link href="/marcas" className="text-sm text-neutral-600 hover:text-neutral-900">
                 Marcas
               </Link>
@@ -23,6 +23,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               </Link>
               <Link href="/stock" className="text-sm text-neutral-600 hover:text-neutral-900">
                 Stock
+              </Link>
+              <Link href="/reposicion" className="text-sm text-neutral-600 hover:text-neutral-900">
+                Abastecimiento
               </Link>
               <Link href="/locales" className="text-sm text-neutral-600 hover:text-neutral-900">
                 Locales
@@ -50,7 +53,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </div>
         </div>
       </header>
-      <main className="max-w-5xl mx-auto px-4 py-6">{children}</main>
+      <main className="max-w-6xl mx-auto px-4 py-6">{children}</main>
     </div>
   );
 }
