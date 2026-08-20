@@ -21,11 +21,15 @@ export async function login(_prevState: { error?: string } | undefined, formData
   }
 
   const supabase = getSupabaseServerClient();
-  const { data: usuario } = await supabase
+  const { data } = await supabase
     .from("usuarios")
     .select("id_usuario, nombre, rol, estado, password_hash")
     .eq("email", email)
-    .maybeSingle<Pick<Usuario, "id_usuario" | "nombre" | "rol" | "estado" | "password_hash">>();
+    .maybeSingle();
+  const usuario = data as Pick<
+    Usuario,
+    "id_usuario" | "nombre" | "rol" | "estado" | "password_hash"
+  > | null;
 
   if (!usuario || usuario.estado !== "ACTIVO") {
     return { error: "Email o contraseña incorrectos." };
