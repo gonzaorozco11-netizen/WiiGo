@@ -202,16 +202,33 @@ export type Venta = {
   fecha_cancelacion: string | null;
 };
 
+// Tabla original del esquema (pensada para liquidaciones: comisión, IVA,
+// SIRCREB, conciliación con Mercado Pago, etc.) — no crear otra, reusar
+// estos campos. Para Efectivo no hay comisión ni conciliación externa, así
+// que esos campos quedan en null y neto_acreditado = importe_bruto.
 export type Pago = {
   id_pago: string;
   id_venta: string;
-  medio: string;
-  monto: number;
-  monto_recibido: number | null;
-  vuelto: number | null;
-  usuario: string | null;
-  mp_payment_id: string | null;
-  fecha: string;
+  medio: string | null;
+  proveedor_pago: string | null;
+  importe_bruto: number | null;
+  comision_porcentaje: number | null;
+  comision_importe: number | null;
+  iva_comision: number | null;
+  sircreb: number | null;
+  imp_creditos: number | null;
+  otras_retenciones: number | null;
+  otros_costos: number | null;
+  total_descuentos_cobro: number | null;
+  neto_acreditado: number | null;
+  forma_pago_cliente: string | null;
+  id_pago_externo: string | null;
+  id_operacion_externa: string | null;
+  fecha_pago: string | null;
+  fecha_acreditacion: string | null;
+  estado: string;
+  estado_conciliacion: string | null;
+  observaciones: string | null;
 };
 
 export type DetalleVenta = {

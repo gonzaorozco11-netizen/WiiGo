@@ -31,15 +31,22 @@ export async function confirmarCobro(idVenta: string, montoRecibido: number) {
   const usuario = await usuarioActual();
   const vuelto = montoRecibido - total;
 
+  // El efectivo no tiene comisión ni conciliación externa: neto = bruto,
+  // y queda acreditado en el momento (a diferencia de una liquidación de
+  // Mercado Pago, que se concilia después).
   const { data: pago, error: errorPago } = await supabase
     .from("pagos")
     .insert({
       id_venta: idVenta,
       medio: "EFECTIVO",
-      monto: total,
-      monto_recibido: montoRecibido,
-      vuelto,
-      usuario,
+      forma_pago_cliente: "EFECTIVO",
+      importe_bruto: total,
+      neto_acreditado: total,
+      fecha_pago: new Date().toISOString(),
+      fecha_acreditacion: new Date().toISOString(),
+      estado: "ACREDITADO",
+      estado_conciliacion: "CONCILIADO",
+      observaciones: `Confirmado por ${usuario ?? "personal"} · Pagó con $${montoRecibido} · Vuelto $${vuelto}`,
     })
     .select("id_pago")
     .single();
