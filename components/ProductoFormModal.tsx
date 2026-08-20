@@ -1,18 +1,28 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import type { Producto, Marca, Subcategoria } from "@/lib/supabase";
+import type { Producto, Marca, Subcategoria, FichaProducto, Objetivo, FiltroProducto } from "@/lib/supabase";
 import { createProducto, updateProducto } from "@/app/(app)/productos/actions";
 
 export default function ProductoFormModal({
   producto,
   marcas,
   subcategorias,
+  objetivosGlobales = [],
+  filtrosGlobales = [],
+  ficha = null,
+  objetivosAsignados = [],
+  filtrosAsignados = [],
   onClose,
 }: {
   producto: Producto | null;
   marcas: Marca[];
   subcategorias: Subcategoria[];
+  objetivosGlobales?: Objetivo[];
+  filtrosGlobales?: FiltroProducto[];
+  ficha?: FichaProducto | null;
+  objetivosAsignados?: string[];
+  filtrosAsignados?: string[];
   onClose: () => void;
 }) {
   const [isPending, startTransition] = useTransition();
@@ -44,7 +54,7 @@ export default function ProductoFormModal({
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
-      <div className="bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl p-6 max-h-[90vh] overflow-y-auto">
+      <div className="bg-white w-full sm:max-w-2xl rounded-t-2xl sm:rounded-2xl p-6 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-neutral-900">
             {isEditing ? "Editar producto" : "Nuevo producto"}
@@ -113,10 +123,17 @@ export default function ProductoFormModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="SKU" name="sku" defaultValue={producto?.sku ?? ""} />
-            <Field label="Código de barras" name="codigo_barras" defaultValue={producto?.codigo_barras ?? ""} />
-          </div>
+          {isEditing ? (
+            <div className="grid grid-cols-2 gap-3">
+              <ReadOnlyField label="SKU" valor={producto?.sku} />
+              <ReadOnlyField label="Código de barras" valor={producto?.codigo_barras} />
+            </div>
+          ) : (
+            <p className="text-xs text-neutral-500 bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2">
+              El SKU y el código de barras se generan automáticamente al guardar, y quedan fijos para
+              siempre (el mismo código sirve en todos los locales).
+            </p>
+          )}
 
           <div>
             <label className="block text-sm font-medium text-neutral-700 mb-1">Descripción</label>
@@ -160,6 +177,10 @@ export default function ProductoFormModal({
             />
             <Field label="Puntos" name="puntos" defaultValue={producto?.puntos ?? 0} type="number" />
           </div>
+          <p className="text-xs text-neutral-500 -mt-2">
+            Por ahora se cargan a mano. Cuando tengamos Stock y Ventas funcionando, WiiGo te va a
+            sugerir un óptimo según cómo rota el producto.
+          </p>
 
           <Field label="Imagen (URL)" name="imagen" defaultValue={producto?.imagen ?? ""} />
 
@@ -177,6 +198,26 @@ export default function ProductoFormModal({
               <option value="INACTIVO">INACTIVO</option>
             </select>
           </div>
+
+          <FichaSection ficha={ficha} />
+
+          <CheckboxSection
+            titulo="🎯 Objetivos"
+            descripcion="El producto podrá aparecer en varios objetivos al mismo tiempo."
+            name="objetivos"
+            opciones={objetivosGlobales.map((o) => ({ id: o.id_objetivo, nombre: o.nombre }))}
+            seleccionados={objetivosAsignados}
+            vacio="Todavía no cargaste objetivos. Andá a Catálogo asesor para crear alguno."
+          />
+
+          <CheckboxSection
+            titulo="⚡ Filtros rápidos"
+            descripcion="Restricciones o características que el cliente puede usar sobre el catálogo."
+            name="filtros"
+            opciones={filtrosGlobales.map((f) => ({ id: f.id_filtro, nombre: f.nombre }))}
+            seleccionados={filtrosAsignados}
+            vacio="Todavía no cargaste filtros. Andá a Catálogo asesor para crear alguno."
+          />
 
           {error && (
             <p className="text-sm text-red-600" role="alert">
@@ -235,6 +276,188 @@ function Field({
         required={required}
         className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
       />
+    </div>
+  );
+}
+
+function ReadOnlyField({ label, valor }: { label: string; valor: string | null | undefined }) {
+  return (
+    <div>
+      <label className="block text-sm font-medium text-neutral-700 mb-1">{label}</label>
+      <div className="w-full rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-600 font-mono">
+        {valor || "—"}
+      </div>
+    </div>
+  );
+}
+
+function FichaSection({ ficha }: { ficha: FichaProducto | null }) {
+  return (
+    <div className="border border-neutral-200 rounded-xl p-4">
+      <h3 className="text-sm font-semibold text-neutral-900">🖥️ Ficha para Pantallas Asesoras</h3>
+      <p className="text-xs text-neutral-500 mb-4">
+        Esta información será visible para el cliente en las pantallas interactivas del local.
+      </p>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Origen" name="ficha_origen" defaultValue={ficha?.origen ?? ""} />
+        <Field label="Porción" name="ficha_porcion" defaultValue={ficha?.porcion ?? ""} />
+
+        <div className="col-span-2">
+          <label className="block text-sm font-medium text-neutral-700 mb-1">Ingredientes</label>
+          <textarea
+            name="ficha_ingredientes"
+            defaultValue={ficha?.ingredientes ?? ""}
+            rows={2}
+            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+          />
+        </div>
+
+        <Field label="Kcal / 100 g" name="ficha_kcal" defaultValue={ficha?.kcal_100g ?? ""} type="number" />
+        <Field
+          label="Proteínas / 100 g"
+          name="ficha_proteinas"
+          defaultValue={ficha?.proteinas ?? ""}
+          type="number"
+          step="0.01"
+        />
+        <Field
+          label="Carbohidratos / 100 g"
+          name="ficha_carbohidratos"
+          defaultValue={ficha?.carbohidratos ?? ""}
+          type="number"
+          step="0.01"
+        />
+        <Field
+          label="Grasas / 100 g"
+          name="ficha_grasas"
+          defaultValue={ficha?.grasas ?? ""}
+          type="number"
+          step="0.01"
+        />
+        <Field
+          label="Fibra / 100 g"
+          name="ficha_fibra"
+          defaultValue={ficha?.fibra ?? ""}
+          type="number"
+          step="0.01"
+        />
+        <Field
+          label="Sodio / 100 g"
+          name="ficha_sodio"
+          defaultValue={ficha?.sodio ?? ""}
+          type="number"
+          step="0.01"
+        />
+
+        <div className="col-span-2">
+          <label className="block text-sm font-medium text-neutral-700 mb-1">Micronutrientes</label>
+          <textarea
+            name="ficha_micronutrientes"
+            defaultValue={ficha?.micronutrientes ?? ""}
+            rows={2}
+            placeholder="Ej: hierro, calcio, magnesio, vitamina B12..."
+            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="ficha_clasificacion">
+            Clasificación
+          </label>
+          <select
+            id="ficha_clasificacion"
+            name="ficha_clasificacion"
+            defaultValue={ficha?.clasificacion ?? ""}
+            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+          >
+            <option value="">Sin definir</option>
+            <option value="NATURAL">NATURAL</option>
+            <option value="PROCESADO">PROCESADO</option>
+            <option value="ULTRAPROCESADO">ULTRAPROCESADO</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="ficha_estado">
+            Estado ficha pública
+          </label>
+          <select
+            id="ficha_estado"
+            name="ficha_estado"
+            defaultValue={ficha?.estado ?? "ACTIVO"}
+            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+          >
+            <option value="ACTIVO">ACTIVO</option>
+            <option value="INACTIVO">INACTIVO</option>
+          </select>
+        </div>
+
+        <div className="col-span-2">
+          <label className="block text-sm font-medium text-neutral-700 mb-1">Descripción pública</label>
+          <textarea
+            name="ficha_descripcion_publica"
+            defaultValue={ficha?.descripcion_publica ?? ""}
+            rows={2}
+            placeholder="Texto comercial e informativo que verá el cliente."
+            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+          />
+        </div>
+
+        <Field
+          label="Imagen principal (URL)"
+          name="ficha_imagen_principal"
+          defaultValue={ficha?.imagen_principal ?? ""}
+        />
+        <Field label="Video (URL)" name="ficha_video" defaultValue={ficha?.video ?? ""} />
+      </div>
+    </div>
+  );
+}
+
+function CheckboxSection({
+  titulo,
+  descripcion,
+  name,
+  opciones,
+  seleccionados,
+  vacio,
+}: {
+  titulo: string;
+  descripcion: string;
+  name: string;
+  opciones: { id: string; nombre: string }[];
+  seleccionados: string[];
+  vacio: string;
+}) {
+  return (
+    <div className="border border-neutral-200 rounded-xl p-4">
+      <h3 className="text-sm font-semibold text-neutral-900">{titulo}</h3>
+      <p className="text-xs text-neutral-500 mb-3">{descripcion}</p>
+
+      {opciones.length === 0 ? (
+        <p className="text-xs text-neutral-500 border border-dashed border-neutral-300 rounded-lg p-3">
+          {vacio}
+        </p>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {opciones.map((o) => (
+            <label
+              key={o.id}
+              className="flex items-center gap-2 border border-neutral-200 rounded-lg px-3 py-2 text-sm cursor-pointer hover:bg-neutral-50"
+            >
+              <input
+                type="checkbox"
+                name={name}
+                value={o.id}
+                defaultChecked={seleccionados.includes(o.id)}
+                className="rounded border-neutral-300 text-accent focus:ring-accent"
+              />
+              <span className="font-medium">{o.nombre}</span>
+            </label>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

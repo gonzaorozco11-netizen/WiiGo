@@ -1,4 +1,5 @@
 import { getSupabaseServerClient, type Producto, type Marca, type Subcategoria } from "@/lib/supabase";
+import { fetchContenidoAsesor } from "@/lib/contenidoAsesor";
 import ProductosApp from "@/components/ProductosApp";
 
 export const dynamic = "force-dynamic";
@@ -6,10 +7,11 @@ export const dynamic = "force-dynamic";
 export default async function ProductosPage() {
   const supabase = getSupabaseServerClient();
 
-  const [productosRes, marcasRes, subcategoriasRes] = await Promise.all([
+  const [productosRes, marcasRes, subcategoriasRes, contenidoAsesor] = await Promise.all([
     supabase.from("productos").select("*").order("nombre", { ascending: true }),
-    supabase.from("marcas").select("*").eq("estado", "ACTIVO").order("nombre", { ascending: true }),
+    supabase.from("marcas").select("*").eq("estado", "ACTIVA").order("nombre", { ascending: true }),
     supabase.from("subcategorias").select("*").order("nombre", { ascending: true }),
+    fetchContenidoAsesor(supabase),
   ]);
 
   const error = productosRes.error || marcasRes.error || subcategoriasRes.error;
@@ -38,6 +40,11 @@ export default async function ProductosPage() {
       initialProductos={(productosRes.data ?? []) as Producto[]}
       marcas={(marcasRes.data ?? []) as Marca[]}
       subcategorias={(subcategoriasRes.data ?? []) as Subcategoria[]}
+      objetivosGlobales={contenidoAsesor.objetivosGlobales}
+      filtrosGlobales={contenidoAsesor.filtrosGlobales}
+      fichaPorProducto={contenidoAsesor.fichaPorProducto}
+      objetivosPorProducto={contenidoAsesor.objetivosPorProducto}
+      filtrosPorProducto={contenidoAsesor.filtrosPorProducto}
     />
   );
 }

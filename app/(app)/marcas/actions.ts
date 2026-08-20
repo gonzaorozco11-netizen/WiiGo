@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase";
+import { friendlyDbError } from "@/lib/errors";
 
 function text(formData: FormData, name: string) {
   const s = String(formData.get(name) ?? "").trim();
@@ -30,7 +31,7 @@ function marcaFromForm(formData: FormData) {
     fee_ingreso: number(formData, "fee_ingreso"),
     royalty_porcentaje: number(formData, "royalty_porcentaje"),
     fecha_ingreso: text(formData, "fecha_ingreso"),
-    estado: text(formData, "estado") ?? "ACTIVO",
+    estado: text(formData, "estado") ?? "ACTIVA",
     observaciones: text(formData, "observaciones"),
     iva_royalty_porcentaje: number(formData, "iva_royalty_porcentaje"),
     trasladar_comision_cobro: bool(formData, "trasladar_comision_cobro"),
@@ -63,11 +64,46 @@ export async function updateMarca(id: string, formData: FormData) {
   const { error } = await supabase.from("marcas").update(data).eq("id_marca", id);
   if (error) throw new Error(error.message);
   revalidatePath("/marcas");
+  revalidatePath(`/marcas/${id}`);
 }
 
 export async function deleteMarca(id: string) {
   const supabase = getSupabaseServerClient();
   const { error } = await supabase.from("marcas").delete().eq("id_marca", id);
-  if (error) throw new Error(error.message);
+  if (error) throw new Error(friendlyDbError(error));
   revalidatePath("/marcas");
+}
+
+function subcategoriaFromForm(formData: FormData) {
+  return {
+    nombre: text(formData, "nombre"),
+    estado: text(formData, "estado") ?? "ACTIVA",
+  };
+}
+
+export async function createSubcategoria(idMarca: string, formData: FormData) {
+  const data = subcategoriaFromForm(formData);
+  if (!data.nombre) throw new Error("El nombre es obligatorio");
+
+  const supabase = getSupabaseServerClient();
+  const { error } = await supabase.from("subcategorias").insert({ id_marca: idMarca, ...data });
+  if (error) throw new Error(friendlyDbError(error));
+  revalidatePath(`/marcas/${idMarca}`);
+}
+
+export async function updateSubcategoria(id: string, idMarca: string, formData: FormData) {
+  const data = subcategoriaFromForm(formData);
+  if (!data.nombre) throw new Error("El nombre es obligatorio");
+
+  const supabase = getSupabaseServerClient();
+  const { error } = await supabase.from("subcategorias").update(data).eq("id_subcategoria", id);
+  if (error) throw new Error(friendlyDbError(error));
+  revalidatePath(`/marcas/${idMarca}`);
+}
+
+export async function deleteSubcategoria(id: string, idMarca: string) {
+  const supabase = getSupabaseServerClient();
+  const { error } = await supabase.from("subcategorias").delete().eq("id_subcategoria", id);
+  if (error) throw new Error(friendlyDbError(error));
+  revalidatePath(`/marcas/${idMarca}`);
 }

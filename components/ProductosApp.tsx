@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import type { Producto, Marca, Subcategoria } from "@/lib/supabase";
+import type { Producto, Marca, Subcategoria, FichaProducto, Objetivo, FiltroProducto } from "@/lib/supabase";
 import { deleteProducto } from "@/app/(app)/productos/actions";
 import ProductoFormModal from "@/components/ProductoFormModal";
 
@@ -9,10 +9,20 @@ export default function ProductosApp({
   initialProductos,
   marcas,
   subcategorias,
+  objetivosGlobales,
+  filtrosGlobales,
+  fichaPorProducto,
+  objetivosPorProducto,
+  filtrosPorProducto,
 }: {
   initialProductos: Producto[];
   marcas: Marca[];
   subcategorias: Subcategoria[];
+  objetivosGlobales: Objetivo[];
+  filtrosGlobales: FiltroProducto[];
+  fichaPorProducto: Record<string, FichaProducto>;
+  objetivosPorProducto: Record<string, string[]>;
+  filtrosPorProducto: Record<string, string[]>;
 }) {
   const [search, setSearch] = useState("");
   const [idMarcaFiltro, setIdMarcaFiltro] = useState<string | null>(null);
@@ -42,8 +52,14 @@ export default function ProductosApp({
   }
 
   function handleDelete(producto: Producto) {
-    if (!confirm(`¿Borrar "${producto.nombre}"? Esto puede fallar si ya tiene ventas o stock cargado.`)) return;
-    startTransition(() => deleteProducto(producto.id_producto));
+    if (!confirm(`¿Borrar "${producto.nombre}"?`)) return;
+    startTransition(async () => {
+      try {
+        await deleteProducto(producto.id_producto);
+      } catch (e) {
+        alert(e instanceof Error ? e.message : "Algo salió mal");
+      }
+    });
   }
 
   return (
@@ -140,6 +156,11 @@ export default function ProductosApp({
           producto={editing}
           marcas={marcas}
           subcategorias={subcategorias}
+          objetivosGlobales={objetivosGlobales}
+          filtrosGlobales={filtrosGlobales}
+          ficha={editing ? fichaPorProducto[editing.id_producto] ?? null : null}
+          objetivosAsignados={editing ? objetivosPorProducto[editing.id_producto] ?? [] : []}
+          filtrosAsignados={editing ? filtrosPorProducto[editing.id_producto] ?? [] : []}
           onClose={() => setModalOpen(false)}
         />
       )}

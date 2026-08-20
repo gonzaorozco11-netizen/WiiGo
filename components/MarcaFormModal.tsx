@@ -60,8 +60,8 @@ export default function MarcaFormModal({
             <SelectField
               label="Estado"
               name="estado"
-              defaultValue={marca?.estado ?? "ACTIVO"}
-              options={["ACTIVO", "INACTIVO"]}
+              defaultValue={marca?.estado ?? "ACTIVA"}
+              options={["ACTIVA", "INACTIVA"]}
             />
             <div className="sm:col-span-2">
               <label className="block text-sm font-medium text-neutral-700 mb-1">Observaciones</label>

@@ -79,3 +79,40 @@ export type Producto = {
   fecha_alta: string;
   fecha_actualizacion: string;
 };
+
+export type Objetivo = {
+  id_objetivo: string;
+  nombre: string;
+  descripcion: string | null;
+  imagen: string | null;
+  orden: number | null;
+  estado: string;
+};
+
+export type FiltroProducto = {
+  id_filtro: string;
+  nombre: string;
+  tipo: string | null;
+  orden: number | null;
+  estado: string;
+};
+
+export type FichaProducto = {
+  id_ficha: string;
+  id_producto: string;
+  origen: string | null;
+  ingredientes: string | null;
+  porcion: string | null;
+  kcal_100g: number | null;
+  proteinas: number | null;
+  carbohidratos: number | null;
+  grasas: number | null;
+  fibra: number | null;
+  sodio: number | null;
+  micronutrientes: string | null;
+  clasificacion: string | null;
+  descripcion_publica: string | null;
+  imagen_principal: string | null;
+  video: string | null;
+  estado: string;
+};

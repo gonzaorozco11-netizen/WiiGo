@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import Link from "next/link";
 import type { Marca } from "@/lib/supabase";
 import { deleteMarca } from "@/app/(app)/marcas/actions";
 import MarcaFormModal from "@/components/MarcaFormModal";
@@ -30,8 +31,14 @@ export default function MarcasApp({ initialMarcas }: { initialMarcas: Marca[] })
   }
 
   function handleDelete(marca: Marca) {
-    if (!confirm(`¿Borrar la marca "${marca.nombre}"? Esto puede fallar si ya tiene productos cargados.`)) return;
-    startTransition(() => deleteMarca(marca.id_marca));
+    if (!confirm(`¿Borrar la marca "${marca.nombre}"?`)) return;
+    startTransition(async () => {
+      try {
+        await deleteMarca(marca.id_marca);
+      } catch (e) {
+        alert(e instanceof Error ? e.message : "Algo salió mal");
+      }
+    });
   }
 
   return (
@@ -74,7 +81,7 @@ export default function MarcasApp({ initialMarcas }: { initialMarcas: Marca[] })
                   <p className="font-medium text-neutral-900">{m.nombre}</p>
                   <span
                     className={`text-xs rounded-full px-2 py-0.5 ${
-                      m.estado === "ACTIVO"
+                      m.estado === "ACTIVA"
                         ? "bg-emerald-50 text-emerald-700"
                         : "bg-neutral-100 text-neutral-600"
                     }`}
@@ -90,6 +97,12 @@ export default function MarcasApp({ initialMarcas }: { initialMarcas: Marca[] })
                 </div>
               </div>
               <div className="flex gap-3 shrink-0">
+                <Link
+                  href={`/marcas/${m.id_marca}`}
+                  className="text-sm text-neutral-500 hover:text-neutral-900"
+                >
+                  Ver
+                </Link>
                 <button
                   onClick={() => openEdit(m)}
                   className="text-sm text-neutral-500 hover:text-neutral-900"
