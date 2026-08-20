@@ -3,6 +3,7 @@ import {
   type Local,
   type Producto,
   type Marca,
+  type Subcategoria,
   type VarianteProducto,
   type Stock,
   type MovimientoStock,
@@ -14,17 +15,25 @@ export const dynamic = "force-dynamic";
 export default async function StockPage() {
   const supabase = getSupabaseServerClient();
 
-  const [localesRes, variantesRes, productosRes, marcasRes, stockRes, movimientosRes] = await Promise.all([
-    supabase.from("locales").select("*").eq("estado", "ACTIVO").order("nombre", { ascending: true }),
-    supabase.from("variantes_producto").select("*").eq("estado", "ACTIVO"),
-    supabase.from("productos").select("*").eq("estado", "ACTIVO"),
-    supabase.from("marcas").select("*"),
-    supabase.from("stock").select("*"),
-    supabase.from("movimientos_stock").select("*").order("fecha", { ascending: false }).limit(50),
-  ]);
+  const [localesRes, variantesRes, productosRes, marcasRes, subcategoriasRes, stockRes, movimientosRes] =
+    await Promise.all([
+      supabase.from("locales").select("*").eq("estado", "ACTIVO").order("nombre", { ascending: true }),
+      supabase.from("variantes_producto").select("*").eq("estado", "ACTIVO"),
+      supabase.from("productos").select("*").eq("estado", "ACTIVO"),
+      supabase.from("marcas").select("*"),
+      supabase.from("subcategorias").select("*"),
+      supabase.from("stock").select("*"),
+      supabase.from("movimientos_stock").select("*").order("fecha", { ascending: false }).limit(50),
+    ]);
 
   const error =
-    localesRes.error || variantesRes.error || productosRes.error || marcasRes.error || stockRes.error || movimientosRes.error;
+    localesRes.error ||
+    variantesRes.error ||
+    productosRes.error ||
+    marcasRes.error ||
+    subcategoriasRes.error ||
+    stockRes.error ||
+    movimientosRes.error;
   if (error) {
     return (
       <div className="max-w-md mx-auto text-center py-12">
@@ -51,6 +60,7 @@ export default async function StockPage() {
       variantes={(variantesRes.data ?? []) as VarianteProducto[]}
       productos={(productosRes.data ?? []) as Producto[]}
       marcas={(marcasRes.data ?? []) as Marca[]}
+      subcategorias={(subcategoriasRes.data ?? []) as Subcategoria[]}
       stock={(stockRes.data ?? []) as Stock[]}
       movimientos={(movimientosRes.data ?? []) as MovimientoStock[]}
     />

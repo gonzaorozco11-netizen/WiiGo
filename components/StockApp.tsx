@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { Local, Producto, Marca, VarianteProducto, Stock, MovimientoStock } from "@/lib/supabase";
+import type { Local, Producto, Marca, Subcategoria, VarianteProducto, Stock, MovimientoStock } from "@/lib/supabase";
 import AjusteStockModal from "@/components/AjusteStockModal";
 import TransferenciaStockModal from "@/components/TransferenciaStockModal";
 
@@ -10,6 +10,8 @@ type Fila = {
   producto: Producto;
   marca: Marca | undefined;
 };
+
+type Orden = "nombre" | "mayor" | "menor";
 
 const TIPO_LABEL: Record<string, string> = {
   AJUSTE: "Ajuste manual",
@@ -23,6 +25,7 @@ export default function StockApp({
   variantes,
   productos,
   marcas,
+  subcategorias,
   stock,
   movimientos,
 }: {
@@ -30,11 +33,15 @@ export default function StockApp({
   variantes: VarianteProducto[];
   productos: Producto[];
   marcas: Marca[];
+  subcategorias: Subcategoria[];
   stock: Stock[];
   movimientos: MovimientoStock[];
 }) {
   const [idLocal, setIdLocal] = useState(locales[0]?.id_local ?? "");
   const [search, setSearch] = useState("");
+  const [idMarcaFiltro, setIdMarcaFiltro] = useState("");
+  const [idSubcategoriaFiltro, setIdSubcategoriaFiltro] = useState("");
+  const [orden, setOrden] = useState<Orden>("nombre");
   const [ajuste, setAjuste] = useState<Fila | null>(null);
   const [transferenciaOpen, setTransferenciaOpen] = useState(false);
   const [historialAbierto, setHistorialAbierto] = useState(false);
@@ -55,19 +62,32 @@ export default function StockApp({
         if (!producto) return null;
         return { variante, producto, marca: marcaPorId.get(producto.id_marca) };
       })
-      .filter((f): f is Fila => f !== null)
-      .sort((a, b) => a.producto.nombre.localeCompare(b.producto.nombre));
+      .filter((f): f is Fila => f !== null);
   }, [variantes, productoPorId, marcaPorId]);
+
+  const subcategoriasDeMarca = useMemo(
+    () => (idMarcaFiltro ? subcategorias.filter((s) => s.id_marca === idMarcaFiltro) : []),
+    [subcategorias, idMarcaFiltro]
+  );
 
   const filtradas = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return filas;
-    return filas.filter((f) =>
-      [f.producto.nombre, f.variante.nombre, f.marca?.nombre, f.variante.sku]
+
+    const resultado = filas.filter((f) => {
+      if (idMarcaFiltro && f.marca?.id_marca !== idMarcaFiltro) return false;
+      if (idSubcategoriaFiltro && f.producto.id_subcategoria !== idSubcategoriaFiltro) return false;
+      if (!q) return true;
+      return [f.producto.nombre, f.variante.nombre, f.marca?.nombre, f.variante.sku]
         .filter(Boolean)
-        .some((v) => v!.toLowerCase().includes(q))
-    );
-  }, [filas, search]);
+        .some((v) => v!.toLowerCase().includes(q));
+    });
+
+    if (orden === "nombre") {
+      return resultado.sort((a, b) => a.producto.nombre.localeCompare(b.producto.nombre));
+    }
+    const cant = (f: Fila) => cantidadPorClave.get(`${f.variante.id_variante}_${idLocal}`) ?? 0;
+    return resultado.sort((a, b) => (orden === "mayor" ? cant(b) - cant(a) : cant(a) - cant(b)));
+  }, [filas, search, idMarcaFiltro, idSubcategoriaFiltro, orden, cantidadPorClave, idLocal]);
 
   const nombrePorVariante = useMemo(() => {
     const map = new Map<string, string>();
@@ -97,7 +117,7 @@ export default function StockApp({
         </button>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-3 mb-4">
+      <div className="flex flex-col sm:flex-row gap-3 mb-3">
         <input
           type="search"
           placeholder="Buscar producto, variante, marca o SKU..."
@@ -118,11 +138,53 @@ export default function StockApp({
         </select>
       </div>
 
+      <div className="flex flex-wrap gap-3 mb-4">
+        <select
+          value={idMarcaFiltro}
+          onChange={(e) => {
+            setIdMarcaFiltro(e.target.value);
+            setIdSubcategoriaFiltro("");
+          }}
+          className="rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+        >
+          <option value="">Todas las marcas</option>
+          {marcas.map((m) => (
+            <option key={m.id_marca} value={m.id_marca}>
+              {m.nombre}
+            </option>
+          ))}
+        </select>
+
+        <select
+          value={idSubcategoriaFiltro}
+          onChange={(e) => setIdSubcategoriaFiltro(e.target.value)}
+          disabled={!idMarcaFiltro}
+          className="rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50"
+        >
+          <option value="">Todas las subcategorías</option>
+          {subcategoriasDeMarca.map((s) => (
+            <option key={s.id_subcategoria} value={s.id_subcategoria}>
+              {s.nombre}
+            </option>
+          ))}
+        </select>
+
+        <select
+          value={orden}
+          onChange={(e) => setOrden(e.target.value as Orden)}
+          className="rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+        >
+          <option value="nombre">Ordenar por nombre</option>
+          <option value="mayor">Mayor stock primero</option>
+          <option value="menor">Menor stock primero</option>
+        </select>
+      </div>
+
       {filtradas.length === 0 ? (
         <p className="text-sm text-neutral-500 py-12 text-center">
           {variantes.length === 0
             ? "Todavía no hay productos cargados."
-            : "No hay resultados para la búsqueda."}
+            : "No hay resultados para la búsqueda o los filtros."}
         </p>
       ) : (
         <div className="bg-white border border-neutral-200 rounded-xl overflow-x-auto">
