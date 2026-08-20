@@ -3,8 +3,7 @@ import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 
 export const config = {
   // /self-checkout queda público (lo usan los clientes en el local, sin login).
-  // /setup-admin es temporal, para el primer login — se saca después.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|self-checkout|login|setup-admin).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|self-checkout|login).*)"],
 };
 
 export async function proxy(req: NextRequest) {
