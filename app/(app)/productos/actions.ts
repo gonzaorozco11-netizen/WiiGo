@@ -17,11 +17,33 @@ function number(formData: FormData, name: string) {
   return Number.isFinite(n) ? n : null;
 }
 
-// Si se escribió el nombre de una subcategoría nueva, la crea y devuelve su
-// id. Si no, usa la que ya estaba seleccionada (puede ser null).
+// Compara nombres ignorando mayúsculas/minúsculas, tildes y espacios de
+// sobra (mismo criterio que prefijoDesdeNombre, más abajo, para el SKU).
+function normalizarNombre(s: string) {
+  return s
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .trim();
+}
+
+// Si se escribió el nombre de una subcategoría nueva, reutiliza la que ya
+// exista con ese nombre para la marca en vez de crear una duplicada (la
+// comparación ignora may/min y tildes: "Proteínas" y "Proteinas" son la
+// misma subcategoría). Si no existe, recién ahí la crea. Si no se escribió
+// nada, usa la que ya estaba seleccionada (puede ser null).
 async function resolveSubcategoria(supabase: SupabaseClient, formData: FormData, idMarca: string) {
   const nueva = text(formData, "nueva_subcategoria");
   if (!nueva) return text(formData, "id_subcategoria");
+
+  const { data: existentes, error: errorBusqueda } = await supabase
+    .from("subcategorias")
+    .select("id_subcategoria, nombre")
+    .eq("id_marca", idMarca);
+  if (errorBusqueda) throw new Error(errorBusqueda.message);
+  const nuevaNormalizada = normalizarNombre(nueva);
+  const existente = (existentes ?? []).find((s) => normalizarNombre(s.nombre) === nuevaNormalizada);
+  if (existente) return existente.id_subcategoria as string;
 
   const { data, error } = await supabase
     .from("subcategorias")
