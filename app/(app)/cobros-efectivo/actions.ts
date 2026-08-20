@@ -5,12 +5,31 @@ import { cookies } from "next/headers";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 async function usuarioActual() {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
   const session = await readSessionToken(token, process.env.AUTH_SECRET ?? "");
   return session?.nombre ?? null;
+}
+
+// Los puntos WiiGo Club no son por producto: son una regla general
+// configurable en /configuracion ("N puntos cada $X gastados"), ver
+// ConfiguracionApp.tsx — misma fórmula acá.
+async function calcularPuntos(supabase: SupabaseClient, total: number) {
+  const { data } = await supabase
+    .from("configuracion")
+    .select("parametro, valor")
+    .in("parametro", ["PUNTOS_ACTIVO", "PUNTOS_CADA_MONTO", "PUNTOS_OTORGADOS"]);
+  const config = Object.fromEntries((data ?? []).map((r) => [r.parametro, r.valor]));
+  if (config.PUNTOS_ACTIVO !== "true") return 0;
+
+  const cadaMonto = Number(config.PUNTOS_CADA_MONTO ?? 0);
+  const otorgados = Number(config.PUNTOS_OTORGADOS ?? 0);
+  if (!cadaMonto || cadaMonto <= 0) return 0;
+
+  return Math.floor((total / cadaMonto) * otorgados);
 }
 
 export async function confirmarCobro(idVenta: string, montoRecibido: number) {
@@ -64,24 +83,7 @@ export async function confirmarCobro(idVenta: string, montoRecibido: number) {
     .eq("id_venta", idVenta);
   if (errorDetalle) throw new Error(friendlyDbError(errorDetalle));
 
-  let puntosGenerados = 0;
-
   for (const linea of detalle ?? []) {
-    const { data: variante } = await supabase
-      .from("variantes_producto")
-      .select("id_producto")
-      .eq("id_variante", linea.id_variante)
-      .maybeSingle();
-    const { data: producto } = variante
-      ? await supabase.from("productos").select("puntos").eq("id_producto", variante.id_producto).maybeSingle()
-      : { data: null };
-    const puntosLinea = (producto?.puntos ?? 0) * linea.cantidad;
-    puntosGenerados += puntosLinea;
-
-    if (puntosLinea > 0) {
-      await supabase.from("detalle_ventas").update({ puntos_generados: puntosLinea }).eq("id_detalle", linea.id_detalle);
-    }
-
     const { data: stockActual } = await supabase
       .from("stock")
       .select("cantidad")
@@ -113,6 +115,8 @@ export async function confirmarCobro(idVenta: string, montoRecibido: number) {
       usuario,
     });
   }
+
+  const puntosGenerados = await calcularPuntos(supabase, total);
 
   if (venta.id_cliente && puntosGenerados > 0) {
     const { data: cliente } = await supabase
