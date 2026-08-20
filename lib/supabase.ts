@@ -65,19 +65,31 @@ export type Producto = {
   id_producto: string;
   id_marca: string;
   id_subcategoria: string | null;
-  sku: string | null;
-  codigo_barras: string | null;
   nombre: string;
   descripcion: string | null;
   costo_informado: number | null;
   precio_venta: number | null;
-  stock_minimo: number;
-  stock_objetivo: number;
   puntos: number;
   imagen: string | null;
   estado: string;
   fecha_alta: string;
   fecha_actualizacion: string;
+};
+
+// El SKU, código de barras y stock viven en la variante (sabor, tamaño...),
+// no en el producto. Todo producto tiene al menos una (aunque no tenga
+// variaciones reales, en cuyo caso queda una sola llamada "Único").
+export type VarianteProducto = {
+  id_variante: string;
+  id_producto: string;
+  nombre: string;
+  sku: string | null;
+  codigo_barras: string | null;
+  precio_venta: number | null;
+  stock_minimo: number;
+  stock_objetivo: number;
+  orden: number | null;
+  estado: string;
 };
 
 export type Objetivo = {

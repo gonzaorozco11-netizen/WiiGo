@@ -1,7 +1,15 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import type { Producto, Marca, Subcategoria, FichaProducto, Objetivo, FiltroProducto } from "@/lib/supabase";
+import type {
+  Producto,
+  Marca,
+  Subcategoria,
+  FichaProducto,
+  Objetivo,
+  FiltroProducto,
+  VarianteProducto,
+} from "@/lib/supabase";
 import { deleteProducto } from "@/app/(app)/productos/actions";
 import ProductoFormModal from "@/components/ProductoFormModal";
 
@@ -14,6 +22,7 @@ export default function ProductosApp({
   fichaPorProducto,
   objetivosPorProducto,
   filtrosPorProducto,
+  variantesPorProducto,
 }: {
   initialProductos: Producto[];
   marcas: Marca[];
@@ -23,6 +32,7 @@ export default function ProductosApp({
   fichaPorProducto: Record<string, FichaProducto>;
   objetivosPorProducto: Record<string, string[]>;
   filtrosPorProducto: Record<string, string[]>;
+  variantesPorProducto: Record<string, VarianteProducto[]>;
 }) {
   const [search, setSearch] = useState("");
   const [idMarcaFiltro, setIdMarcaFiltro] = useState<string | null>(null);
@@ -37,9 +47,12 @@ export default function ProductosApp({
     return initialProductos.filter((p) => {
       if (idMarcaFiltro && p.id_marca !== idMarcaFiltro) return false;
       if (!q) return true;
-      return [p.nombre, p.sku, p.codigo_barras].filter(Boolean).some((f) => f!.toLowerCase().includes(q));
+      const variantes = variantesPorProducto[p.id_producto] ?? [];
+      return [p.nombre, ...variantes.map((v) => v.sku), ...variantes.map((v) => v.codigo_barras)]
+        .filter(Boolean)
+        .some((f) => f!.toLowerCase().includes(q));
     });
-  }, [initialProductos, search, idMarcaFiltro]);
+  }, [initialProductos, search, idMarcaFiltro, variantesPorProducto]);
 
   function openNew() {
     setEditing(null);
@@ -126,9 +139,11 @@ export default function ProductosApp({
                   </span>
                 </div>
                 <div className="text-sm text-neutral-500 flex flex-wrap gap-x-3">
-                  {p.sku && <span>SKU {p.sku}</span>}
                   {p.precio_venta !== null && <span>${p.precio_venta}</span>}
-                  <span>Stock mín. {p.stock_minimo}</span>
+                  <span>
+                    {(variantesPorProducto[p.id_producto] ?? []).length}{" "}
+                    {(variantesPorProducto[p.id_producto] ?? []).length === 1 ? "variante" : "variantes"}
+                  </span>
                 </div>
               </div>
               <div className="flex gap-3 shrink-0">
@@ -161,6 +176,7 @@ export default function ProductosApp({
           ficha={editing ? fichaPorProducto[editing.id_producto] ?? null : null}
           objetivosAsignados={editing ? objetivosPorProducto[editing.id_producto] ?? [] : []}
           filtrosAsignados={editing ? filtrosPorProducto[editing.id_producto] ?? [] : []}
+          variantesIniciales={editing ? variantesPorProducto[editing.id_producto] ?? [] : []}
           onClose={() => setModalOpen(false)}
         />
       )}

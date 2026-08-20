@@ -17,11 +17,6 @@ function number(formData: FormData, name: string) {
   return Number.isFinite(n) ? n : null;
 }
 
-function intOrZero(formData: FormData, name: string) {
-  const n = number(formData, name);
-  return n === null ? 0 : Math.trunc(n);
-}
-
 // Si se escribió el nombre de una subcategoría nueva, la crea y devuelve su
 // id. Si no, usa la que ya estaba seleccionada (puede ser null).
 async function resolveSubcategoria(supabase: SupabaseClient, formData: FormData, idMarca: string) {
@@ -37,9 +32,8 @@ async function resolveSubcategoria(supabase: SupabaseClient, formData: FormData,
   return data.id_subcategoria as string;
 }
 
-// SKU y código de barras NO se piden por formulario: se generan una sola
-// vez al crear el producto y quedan fijos para siempre (mismo código en
-// todos los locales), así nunca hay que volver a cargarlos a mano.
+// El producto es la "familia" (nombre, ficha, objetivos, filtros). El SKU,
+// código de barras y stock viven en sus variantes (ver sincronizarVariantes).
 function productoFromForm(formData: FormData, idMarca: string, idSubcategoria: string | null) {
   return {
     id_marca: idMarca,
@@ -48,9 +42,7 @@ function productoFromForm(formData: FormData, idMarca: string, idSubcategoria: s
     descripcion: text(formData, "descripcion"),
     costo_informado: number(formData, "costo_informado"),
     precio_venta: number(formData, "precio_venta"),
-    stock_minimo: intOrZero(formData, "stock_minimo"),
-    stock_objetivo: intOrZero(formData, "stock_objetivo"),
-    puntos: intOrZero(formData, "puntos"),
+    puntos: Math.trunc(number(formData, "puntos") ?? 0),
     imagen: text(formData, "imagen"),
     estado: text(formData, "estado") ?? "ACTIVO",
     fecha_actualizacion: new Date().toISOString(),
@@ -68,7 +60,7 @@ function prefijoDesdeNombre(nombre: string) {
   return soloLetras.slice(0, 3) || "PRD";
 }
 
-async function generarSku(supabase: SupabaseClient, idMarca: string) {
+async function generarSkuVariante(supabase: SupabaseClient, idMarca: string) {
   const { data: marca } = await supabase
     .from("marcas")
     .select("nombre")
@@ -76,17 +68,24 @@ async function generarSku(supabase: SupabaseClient, idMarca: string) {
     .maybeSingle();
   const prefijo = prefijoDesdeNombre(marca?.nombre ?? "PRD");
 
-  const { data: existentes } = await supabase
+  const { data: productosDeLaMarca } = await supabase
     .from("productos")
-    .select("sku")
-    .eq("id_marca", idMarca)
-    .like("sku", `${prefijo}-%`);
+    .select("id_producto")
+    .eq("id_marca", idMarca);
+  const idsProductos = (productosDeLaMarca ?? []).map((p: { id_producto: string }) => p.id_producto);
 
   let mayor = 0;
-  (existentes ?? []).forEach((row: { sku: string | null }) => {
-    const m = row.sku?.match(new RegExp(`^${prefijo}-(\\d+)$`));
-    if (m) mayor = Math.max(mayor, parseInt(m[1], 10));
-  });
+  if (idsProductos.length > 0) {
+    const { data: existentes } = await supabase
+      .from("variantes_producto")
+      .select("sku")
+      .in("id_producto", idsProductos)
+      .like("sku", `${prefijo}-%`);
+    (existentes ?? []).forEach((row: { sku: string | null }) => {
+      const m = row.sku?.match(new RegExp(`^${prefijo}-(\\d+)$`));
+      if (m) mayor = Math.max(mayor, parseInt(m[1], 10));
+    });
+  }
 
   return `${prefijo}-${String(mayor + 1).padStart(4, "0")}`;
 }
@@ -94,9 +93,9 @@ async function generarSku(supabase: SupabaseClient, idMarca: string) {
 // Código interno de 11 dígitos empezando en "20...", el rango que el
 // estándar EAN reserva para uso interno/en tienda (no es un código
 // registrado globalmente, pero sirve igual para escanear en Self Checkout).
-async function generarCodigoBarras(supabase: SupabaseClient) {
+async function generarCodigoBarrasVariante(supabase: SupabaseClient) {
   const BASE = 20000000000;
-  const { data: existentes } = await supabase.from("productos").select("codigo_barras");
+  const { data: existentes } = await supabase.from("variantes_producto").select("codigo_barras");
 
   let mayor = BASE;
   (existentes ?? []).forEach((row: { codigo_barras: string | null }) => {
@@ -105,6 +104,67 @@ async function generarCodigoBarras(supabase: SupabaseClient) {
   });
 
   return String(mayor + 1);
+}
+
+// Sincroniza las variantes del producto con lo que llegó del formulario:
+// renombra las que ya existían, crea las nuevas (con SKU/código
+// automáticos) y borra las que se sacaron de la lista. Si no queda
+// ninguna, crea una por defecto llamada "Único" — todo producto necesita
+// al menos una variante para tener stock.
+async function sincronizarVariantes(
+  supabase: SupabaseClient,
+  idProducto: string,
+  idMarca: string,
+  formData: FormData
+) {
+  const ids = formData.getAll("variante_id").map(String);
+  const nombres = formData.getAll("variante_nombre").map(String);
+
+  const { data: existentes } = await supabase
+    .from("variantes_producto")
+    .select("id_variante")
+    .eq("id_producto", idProducto);
+  const idsExistentes = new Set((existentes ?? []).map((v: { id_variante: string }) => v.id_variante));
+  const idsEnviados = new Set(ids.filter(Boolean));
+
+  for (const idExistente of idsExistentes) {
+    if (!idsEnviados.has(idExistente)) {
+      const { error } = await supabase.from("variantes_producto").delete().eq("id_variante", idExistente);
+      if (error) throw new Error(friendlyDbError(error));
+    }
+  }
+
+  for (let i = 0; i < nombres.length; i++) {
+    const nombre = nombres[i].trim();
+    if (!nombre) continue;
+    const id = ids[i];
+
+    if (id) {
+      const { error } = await supabase.from("variantes_producto").update({ nombre }).eq("id_variante", id);
+      if (error) throw new Error(friendlyDbError(error));
+    } else {
+      const sku = await generarSkuVariante(supabase, idMarca);
+      const codigoBarras = await generarCodigoBarrasVariante(supabase);
+      const { error } = await supabase
+        .from("variantes_producto")
+        .insert({ id_producto: idProducto, nombre, sku, codigo_barras: codigoBarras });
+      if (error) throw new Error(friendlyDbError(error));
+    }
+  }
+
+  const { count } = await supabase
+    .from("variantes_producto")
+    .select("id_variante", { count: "exact", head: true })
+    .eq("id_producto", idProducto);
+
+  if (!count) {
+    const sku = await generarSkuVariante(supabase, idMarca);
+    const codigoBarras = await generarCodigoBarrasVariante(supabase);
+    const { error } = await supabase
+      .from("variantes_producto")
+      .insert({ id_producto: idProducto, nombre: "Único", sku, codigo_barras: codigoBarras });
+    if (error) throw new Error(friendlyDbError(error));
+  }
 }
 
 function fichaFromForm(formData: FormData) {
@@ -179,13 +239,7 @@ export async function createProducto(formData: FormData) {
 
   const supabase = getSupabaseServerClient();
   const idSubcategoria = await resolveSubcategoria(supabase, formData, idMarca);
-  const sku = await generarSku(supabase, idMarca);
-  const codigoBarras = await generarCodigoBarras(supabase);
-  const data = {
-    ...productoFromForm(formData, idMarca, idSubcategoria),
-    sku,
-    codigo_barras: codigoBarras,
-  };
+  const data = productoFromForm(formData, idMarca, idSubcategoria);
 
   const { data: inserted, error } = await supabase
     .from("productos")
@@ -194,6 +248,7 @@ export async function createProducto(formData: FormData) {
     .single();
   if (error) throw new Error(friendlyDbError(error));
 
+  await sincronizarVariantes(supabase, inserted.id_producto, idMarca, formData);
   await guardarContenidoAsesor(supabase, inserted.id_producto, formData);
 
   revalidatePath("/productos");
@@ -212,6 +267,7 @@ export async function updateProducto(id: string, formData: FormData) {
   const { error } = await supabase.from("productos").update(data).eq("id_producto", id);
   if (error) throw new Error(friendlyDbError(error));
 
+  await sincronizarVariantes(supabase, id, idMarca, formData);
   await guardarContenidoAsesor(supabase, id, formData);
 
   revalidatePath("/productos");

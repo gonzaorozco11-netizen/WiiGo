@@ -9,6 +9,7 @@ import type {
   FichaProducto,
   Objetivo,
   FiltroProducto,
+  VarianteProducto,
 } from "@/lib/supabase";
 import { deleteSubcategoria } from "@/app/(app)/marcas/actions";
 import { deleteProducto } from "@/app/(app)/productos/actions";
@@ -25,6 +26,7 @@ export default function MarcaDetail({
   fichaPorProducto,
   objetivosPorProducto,
   filtrosPorProducto,
+  variantesPorProducto,
 }: {
   marca: Marca;
   subcategorias: Subcategoria[];
@@ -34,6 +36,7 @@ export default function MarcaDetail({
   fichaPorProducto: Record<string, FichaProducto>;
   objetivosPorProducto: Record<string, string[]>;
   filtrosPorProducto: Record<string, string[]>;
+  variantesPorProducto: Record<string, VarianteProducto[]>;
 }) {
   const [isPending, startTransition] = useTransition();
   const [editMarcaOpen, setEditMarcaOpen] = useState(false);
@@ -58,12 +61,18 @@ export default function MarcaDetail({
   const productosFiltrados = useMemo(() => {
     const q = searchProd.trim().toLowerCase();
     if (!q) return productos;
-    return productos.filter((p) =>
-      [p.nombre, p.sku, p.codigo_barras, nombreSubcategoria(p.id_subcategoria)]
+    return productos.filter((p) => {
+      const variantes = variantesPorProducto[p.id_producto] ?? [];
+      return [
+        p.nombre,
+        nombreSubcategoria(p.id_subcategoria),
+        ...variantes.map((v) => v.sku),
+        ...variantes.map((v) => v.codigo_barras),
+      ]
         .filter(Boolean)
-        .some((f) => f!.toLowerCase().includes(q))
-    );
-  }, [productos, searchProd, nombreSubcategoria]);
+        .some((f) => f!.toLowerCase().includes(q));
+    });
+  }, [productos, searchProd, nombreSubcategoria, variantesPorProducto]);
 
   function handleDeleteSub(sub: Subcategoria) {
     if (!confirm(`¿Borrar la subcategoría "${sub.nombre}"?`)) return;
@@ -254,8 +263,11 @@ export default function MarcaDetail({
                     </span>
                   </div>
                   <div className="text-sm text-neutral-500 flex flex-wrap gap-x-3">
-                    {p.sku && <span>SKU {p.sku}</span>}
                     {p.precio_venta !== null && <span>${p.precio_venta}</span>}
+                    <span>
+                      {(variantesPorProducto[p.id_producto] ?? []).length}{" "}
+                      {(variantesPorProducto[p.id_producto] ?? []).length === 1 ? "variante" : "variantes"}
+                    </span>
                   </div>
                 </div>
                 <div className="flex gap-3 shrink-0">
@@ -302,6 +314,7 @@ export default function MarcaDetail({
           ficha={editingProd ? fichaPorProducto[editingProd.id_producto] ?? null : null}
           objetivosAsignados={editingProd ? objetivosPorProducto[editingProd.id_producto] ?? [] : []}
           filtrosAsignados={editingProd ? filtrosPorProducto[editingProd.id_producto] ?? [] : []}
+          variantesIniciales={editingProd ? variantesPorProducto[editingProd.id_producto] ?? [] : []}
           onClose={() => setProdModalOpen(false)}
         />
       )}

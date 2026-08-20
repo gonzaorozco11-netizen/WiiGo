@@ -1,8 +1,18 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import type { Producto, Marca, Subcategoria, FichaProducto, Objetivo, FiltroProducto } from "@/lib/supabase";
+import type {
+  Producto,
+  Marca,
+  Subcategoria,
+  FichaProducto,
+  Objetivo,
+  FiltroProducto,
+  VarianteProducto,
+} from "@/lib/supabase";
 import { createProducto, updateProducto } from "@/app/(app)/productos/actions";
+
+type VarianteForm = { id: string; nombre: string; sku: string | null };
 
 export default function ProductoFormModal({
   producto,
@@ -13,6 +23,7 @@ export default function ProductoFormModal({
   ficha = null,
   objetivosAsignados = [],
   filtrosAsignados = [],
+  variantesIniciales = [],
   onClose,
 }: {
   producto: Producto | null;
@@ -23,12 +34,18 @@ export default function ProductoFormModal({
   ficha?: FichaProducto | null;
   objetivosAsignados?: string[];
   filtrosAsignados?: string[];
+  variantesIniciales?: VarianteProducto[];
   onClose: () => void;
 }) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [idMarca, setIdMarca] = useState(producto?.id_marca ?? marcas[0]?.id_marca ?? "");
   const [nuevaSubcategoria, setNuevaSubcategoria] = useState(false);
+  const [variantes, setVariantes] = useState<VarianteForm[]>(
+    variantesIniciales.length > 0
+      ? variantesIniciales.map((v) => ({ id: v.id_variante, nombre: v.nombre, sku: v.sku }))
+      : [{ id: "", nombre: "", sku: null }]
+  );
   const isEditing = Boolean(producto);
 
   const subcategoriasDeMarca = useMemo(
@@ -123,17 +140,7 @@ export default function ProductoFormModal({
             </div>
           </div>
 
-          {isEditing ? (
-            <div className="grid grid-cols-2 gap-3">
-              <ReadOnlyField label="SKU" valor={producto?.sku} />
-              <ReadOnlyField label="Código de barras" valor={producto?.codigo_barras} />
-            </div>
-          ) : (
-            <p className="text-xs text-neutral-500 bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2">
-              El SKU y el código de barras se generan automáticamente al guardar, y quedan fijos para
-              siempre (el mismo código sirve en todos los locales).
-            </p>
-          )}
+          <VariantesSection variantes={variantes} setVariantes={setVariantes} />
 
           <div>
             <label className="block text-sm font-medium text-neutral-700 mb-1">Descripción</label>
@@ -162,25 +169,7 @@ export default function ProductoFormModal({
             />
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
-            <Field
-              label="Stock mínimo"
-              name="stock_minimo"
-              defaultValue={producto?.stock_minimo ?? 0}
-              type="number"
-            />
-            <Field
-              label="Stock objetivo"
-              name="stock_objetivo"
-              defaultValue={producto?.stock_objetivo ?? 0}
-              type="number"
-            />
-            <Field label="Puntos" name="puntos" defaultValue={producto?.puntos ?? 0} type="number" />
-          </div>
-          <p className="text-xs text-neutral-500 -mt-2">
-            Por ahora se cargan a mano. Cuando tengamos Stock y Ventas funcionando, WiiGo te va a
-            sugerir un óptimo según cómo rota el producto.
-          </p>
+          <Field label="Puntos" name="puntos" defaultValue={producto?.puntos ?? 0} type="number" />
 
           <Field label="Imagen (URL)" name="imagen" defaultValue={producto?.imagen ?? ""} />
 
@@ -280,12 +269,58 @@ function Field({
   );
 }
 
-function ReadOnlyField({ label, valor }: { label: string; valor: string | null | undefined }) {
+function VariantesSection({
+  variantes,
+  setVariantes,
+}: {
+  variantes: VarianteForm[];
+  setVariantes: React.Dispatch<React.SetStateAction<VarianteForm[]>>;
+}) {
   return (
-    <div>
-      <label className="block text-sm font-medium text-neutral-700 mb-1">{label}</label>
-      <div className="w-full rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-600 font-mono">
-        {valor || "—"}
+    <div className="border border-neutral-200 rounded-xl p-4">
+      <div className="flex items-center justify-between mb-1">
+        <h3 className="text-sm font-semibold text-neutral-900">Variantes</h3>
+        <button
+          type="button"
+          onClick={() => setVariantes((prev) => [...prev, { id: "", nombre: "", sku: null }])}
+          className="text-xs text-accent"
+        >
+          + Agregar variante
+        </button>
+      </div>
+      <p className="text-xs text-neutral-500 mb-3">
+        Sabores, tamaños, etc. Cada variante tiene su propio SKU, código de barras y stock (se
+        generan solos). Si el producto no tiene variaciones, dejá una sola fila — se va a llamar
+        "Único".
+      </p>
+
+      <div className="space-y-2">
+        {variantes.map((v, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <input type="hidden" name="variante_id" value={v.id} />
+            <input
+              name="variante_nombre"
+              value={v.nombre}
+              onChange={(e) =>
+                setVariantes((prev) => prev.map((x, j) => (j === i ? { ...x, nombre: e.target.value } : x)))
+              }
+              placeholder="Único"
+              className="flex-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+            {v.sku && (
+              <span className="text-xs font-mono text-neutral-400 whitespace-nowrap hidden sm:inline">
+                {v.sku}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => setVariantes((prev) => prev.filter((_, j) => j !== i))}
+              className="text-sm text-red-500 shrink-0"
+            >
+              Borrar
+            </button>
+          </div>
+        ))}
       </div>
     </div>
   );

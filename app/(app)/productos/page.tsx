@@ -1,5 +1,6 @@
 import { getSupabaseServerClient, type Producto, type Marca, type Subcategoria } from "@/lib/supabase";
 import { fetchContenidoAsesor } from "@/lib/contenidoAsesor";
+import { fetchVariantesPorProducto } from "@/lib/variantes";
 import ProductosApp from "@/components/ProductosApp";
 
 export const dynamic = "force-dynamic";
@@ -7,11 +8,12 @@ export const dynamic = "force-dynamic";
 export default async function ProductosPage() {
   const supabase = getSupabaseServerClient();
 
-  const [productosRes, marcasRes, subcategoriasRes, contenidoAsesor] = await Promise.all([
+  const [productosRes, marcasRes, subcategoriasRes, contenidoAsesor, variantesPorProducto] = await Promise.all([
     supabase.from("productos").select("*").order("nombre", { ascending: true }),
     supabase.from("marcas").select("*").eq("estado", "ACTIVA").order("nombre", { ascending: true }),
     supabase.from("subcategorias").select("*").order("nombre", { ascending: true }),
     fetchContenidoAsesor(supabase),
+    fetchVariantesPorProducto(supabase),
   ]);
 
   const error = productosRes.error || marcasRes.error || subcategoriasRes.error;
@@ -45,6 +47,7 @@ export default async function ProductosPage() {
       fichaPorProducto={contenidoAsesor.fichaPorProducto}
       objetivosPorProducto={contenidoAsesor.objetivosPorProducto}
       filtrosPorProducto={contenidoAsesor.filtrosPorProducto}
+      variantesPorProducto={variantesPorProducto}
     />
   );
 }
