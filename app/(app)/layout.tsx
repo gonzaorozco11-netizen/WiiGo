@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
-import Link from "next/link";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 import { logout } from "@/app/login/actions";
+import AppNav from "@/components/AppNav";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const cookieStore = await cookies();
@@ -14,38 +14,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <div className="max-w-6xl mx-auto px-4 py-4 flex flex-wrap items-center justify-between gap-4">
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
             <span className="text-lg font-semibold text-neutral-900">WiiGo</span>
-            <nav className="flex flex-wrap items-center gap-x-4 gap-y-2">
-              <Link href="/marcas" className="text-sm text-neutral-600 hover:text-neutral-900">
-                Marcas
-              </Link>
-              <Link href="/productos" className="text-sm text-neutral-600 hover:text-neutral-900">
-                Productos
-              </Link>
-              <Link href="/stock" className="text-sm text-neutral-600 hover:text-neutral-900">
-                Stock
-              </Link>
-              <Link href="/reposicion" className="text-sm text-neutral-600 hover:text-neutral-900">
-                Abastecimiento
-              </Link>
-              <Link href="/cobros-efectivo" className="text-sm text-neutral-600 hover:text-neutral-900">
-                Cobros en efectivo
-              </Link>
-              <Link href="/pos" className="text-sm font-semibold text-accent hover:text-accent-dark">
-                Vender
-              </Link>
-              <Link href="/clientes" className="text-sm text-neutral-600 hover:text-neutral-900">
-                Clientes
-              </Link>
-              <Link href="/locales" className="text-sm text-neutral-600 hover:text-neutral-900">
-                Locales
-              </Link>
-              <Link href="/catalogo-asesor" className="text-sm text-neutral-600 hover:text-neutral-900">
-                Catálogo asesor
-              </Link>
-              <Link href="/configuracion" className="text-sm text-neutral-600 hover:text-neutral-900">
-                Configuración
-              </Link>
-            </nav>
+            <AppNav />
           </div>
           <div className="flex items-center gap-3">
             {session && (

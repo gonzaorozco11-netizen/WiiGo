@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Local, Marca, Producto, VarianteProducto, Stock } from "@/lib/supabase";
-import { venderPos } from "@/app/(app)/pos/actions";
+import { venderPos, buscarClientePorDni } from "@/app/(app)/pos/actions";
 
 type Item = {
   variante: VarianteProducto;
@@ -50,6 +50,25 @@ export default function PosApp({
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resultado, setResultado] = useState<{ numero: number; total: number; vuelto: number } | null>(null);
+  const [clienteEncontrado, setClienteEncontrado] = useState<{ nombre: string; apellido: string | null; puntos: number } | null>(null);
+  const [buscandoCliente, setBuscandoCliente] = useState(false);
+
+  // Autocompletar nombre al escribir el DNI, con una pequeña pausa para
+  // no consultar en cada tecla.
+  useEffect(() => {
+    const dniLimpio = dni.trim();
+    if (dniLimpio.length < 6) {
+      setClienteEncontrado(null);
+      return;
+    }
+    setBuscandoCliente(true);
+    const timeout = setTimeout(() => {
+      buscarClientePorDni(dniLimpio)
+        .then((c) => setClienteEncontrado(c))
+        .finally(() => setBuscandoCliente(false));
+    }, 400);
+    return () => clearTimeout(timeout);
+  }, [dni]);
 
   const productoPorId = useMemo(() => new Map(productos.map((p) => [p.id_producto, p])), [productos]);
   const marcaPorId = useMemo(() => new Map(marcas.map((m) => [m.id_marca, m])), [marcas]);
@@ -131,6 +150,7 @@ export default function PosApp({
     setMontoRecibido("");
     setResultado(null);
     setError(null);
+    setClienteEncontrado(null);
   }
 
   function handleCobrar() {
@@ -271,6 +291,15 @@ export default function PosApp({
           placeholder="DNI"
           className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm mt-2"
         />
+        {buscandoCliente && <p className="text-xs text-neutral-400 mt-1.5">Buscando...</p>}
+        {!buscandoCliente && clienteEncontrado && (
+          <p className="text-xs text-emerald-600 font-semibold mt-1.5">
+            ✓ {clienteEncontrado.nombre} {clienteEncontrado.apellido ?? ""} · {clienteEncontrado.puntos} puntos
+          </p>
+        )}
+        {!buscandoCliente && !clienteEncontrado && dni.trim().length >= 6 && (
+          <p className="text-xs text-neutral-400 mt-1.5">Cliente nuevo — se va a crear con este DNI.</p>
+        )}
       </div>
 
       <div className="bg-white border border-neutral-200 rounded-xl p-4 mb-4">

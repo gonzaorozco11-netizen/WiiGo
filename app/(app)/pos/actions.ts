@@ -15,6 +15,22 @@ async function usuarioActual() {
 
 type ItemCarrito = { idVariante: string; idMarca: string | null; cantidad: number; precioUnitario: number };
 
+// Autocompletar nombre al escribir el DNI, para que el empleado vea a
+// quién le está cargando la venta antes de cobrar.
+export async function buscarClientePorDni(dni: string) {
+  const dniLimpio = dni.trim();
+  if (!dniLimpio) return null;
+
+  const supabase = getSupabaseServerClient();
+  const { data } = await supabase
+    .from("clientes")
+    .select("nombre, apellido, puntos")
+    .eq("dni", dniLimpio)
+    .maybeSingle();
+
+  return data ?? null;
+}
+
 // Venta mostrador: a diferencia del Self Checkout, acá el mismo empleado
 // arma el pedido y cobra en el momento — no queda pendiente esperando a
 // nadie. Sirve tanto como venta asistida normal como respaldo si se cae
