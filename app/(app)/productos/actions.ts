@@ -42,6 +42,7 @@ function productoFromForm(formData: FormData, idMarca: string, idSubcategoria: s
     descripcion: text(formData, "descripcion"),
     costo_informado: number(formData, "costo_informado"),
     precio_venta: number(formData, "precio_venta"),
+    descuento_porcentaje: number(formData, "descuento_porcentaje"),
     puntos: Math.trunc(number(formData, "puntos") ?? 0),
     imagen: text(formData, "imagen"),
     estado: text(formData, "estado") ?? "ACTIVO",

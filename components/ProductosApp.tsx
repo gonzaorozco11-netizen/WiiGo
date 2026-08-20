@@ -137,6 +137,11 @@ export default function ProductosApp({
                   >
                     {p.estado}
                   </span>
+                  {p.descuento_porcentaje !== null && p.descuento_porcentaje > 0 && (
+                    <span className="text-xs bg-amber-50 text-amber-700 rounded-full px-2 py-0.5 font-medium">
+                      -{p.descuento_porcentaje}%
+                    </span>
+                  )}
                 </div>
                 <div className="text-sm text-neutral-500 flex flex-wrap gap-x-3">
                   {p.precio_venta !== null && <span>${p.precio_venta}</span>}

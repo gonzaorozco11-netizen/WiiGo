@@ -69,6 +69,7 @@ export type Producto = {
   descripcion: string | null;
   costo_informado: number | null;
   precio_venta: number | null;
+  descuento_porcentaje: number | null;
   puntos: number;
   imagen: string | null;
   estado: string;

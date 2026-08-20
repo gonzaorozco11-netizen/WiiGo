@@ -152,7 +152,7 @@ export default function ProductoFormModal({
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <Field
               label="Costo"
               name="costo_informado"
@@ -164,6 +164,13 @@ export default function ProductoFormModal({
               label="Precio de venta"
               name="precio_venta"
               defaultValue={producto?.precio_venta ?? ""}
+              type="number"
+              step="0.01"
+            />
+            <Field
+              label="Descuento %"
+              name="descuento_porcentaje"
+              defaultValue={producto?.descuento_porcentaje ?? ""}
               type="number"
               step="0.01"
             />

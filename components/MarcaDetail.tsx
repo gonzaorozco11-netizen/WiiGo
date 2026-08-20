@@ -115,12 +115,20 @@ export default function MarcaDetail({
             {marca.estado}
           </span>
         </div>
-        <button
-          onClick={() => setEditMarcaOpen(true)}
-          className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700"
-        >
-          Editar marca
-        </button>
+        <div className="flex gap-2">
+          <Link
+            href={`/marcas/${marca.id_marca}/importar`}
+            className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700"
+          >
+            Importar precios
+          </Link>
+          <button
+            onClick={() => setEditMarcaOpen(true)}
+            className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700"
+          >
+            Editar marca
+          </button>
+        </div>
       </div>
 
       <div className="bg-white border border-neutral-200 rounded-xl p-4 grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
@@ -261,6 +269,11 @@ export default function MarcaDetail({
                     >
                       {p.estado}
                     </span>
+                    {p.descuento_porcentaje !== null && p.descuento_porcentaje > 0 && (
+                      <span className="text-xs bg-amber-50 text-amber-700 rounded-full px-2 py-0.5 font-medium">
+                        -{p.descuento_porcentaje}%
+                      </span>
+                    )}
                   </div>
                   <div className="text-sm text-neutral-500 flex flex-wrap gap-x-3">
                     {p.precio_venta !== null && <span>${p.precio_venta}</span>}
