@@ -6,6 +6,7 @@ import type {
   Local,
   Producto,
   VarianteProducto,
+  Stock,
   OrdenReposicion,
   DetalleReposicion,
   DetalleRecepcion,
@@ -26,6 +27,7 @@ export default function ReposicionApp({
   locales,
   productos,
   variantes,
+  stock,
   ordenes,
   detalle,
   reclamos,
@@ -34,6 +36,7 @@ export default function ReposicionApp({
   locales: Local[];
   productos: Producto[];
   variantes: VarianteProducto[];
+  stock: Stock[];
   ordenes: OrdenReposicion[];
   detalle: DetalleReposicion[];
   reclamos: DetalleRecepcion[];
@@ -54,6 +57,12 @@ export default function ReposicionApp({
       })
       .filter((f): f is FilaVariante => f !== null);
   }, [variantes, productoPorId, marcaPorId]);
+
+  const cantidadPorClave = useMemo(() => {
+    const map = new Map<string, number>();
+    stock.forEach((s) => map.set(`${s.id_variante}_${s.id_local}`, s.cantidad));
+    return map;
+  }, [stock]);
 
   const nombrePorVariante = useMemo(() => {
     const map = new Map<string, string>();
@@ -139,6 +148,7 @@ export default function ReposicionApp({
           marcas={marcas}
           locales={locales}
           filas={filas}
+          cantidadPorClave={cantidadPorClave}
           onClose={() => setNuevaOrdenOpen(false)}
         />
       )}

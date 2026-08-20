@@ -1,21 +1,23 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import type { Marca, Local } from "@/lib/supabase";
 import type { FilaVariante } from "@/components/ReposicionApp";
 import { crearOrden } from "@/app/(app)/reposicion/actions";
 
-type Linea = { idVariante: string; cantidad: number };
+type Linea = { idVariante: string; cantidad: number; sugerida: boolean };
 
 export default function NuevaOrdenModal({
   marcas,
   locales,
   filas,
+  cantidadPorClave,
   onClose,
 }: {
   marcas: Marca[];
   locales: Local[];
   filas: FilaVariante[];
+  cantidadPorClave: Map<string, number>;
   onClose: () => void;
 }) {
   const [isPending, startTransition] = useTransition();
@@ -23,26 +25,51 @@ export default function NuevaOrdenModal({
   const [idMarca, setIdMarca] = useState(marcas[0]?.id_marca ?? "");
   const [idLocal, setIdLocal] = useState(locales[0]?.id_local ?? "");
   const [observaciones, setObservaciones] = useState("");
+  const [lineas, setLineas] = useState<Linea[]>([]);
+  const [agregarSeleccion, setAgregarSeleccion] = useState("");
 
   const variantesDeMarca = useMemo(
     () => filas.filter((f) => f.marca?.id_marca === idMarca),
     [filas, idMarca]
   );
 
-  const [lineas, setLineas] = useState<Linea[]>([]);
+  // Sugiere automáticamente lo que está por debajo del mínimo en el local
+  // elegido, con la cantidad necesaria para llegar al objetivo.
+  useEffect(() => {
+    const sugeridos = variantesDeMarca
+      .map((f) => {
+        const cantidadActual = cantidadPorClave.get(`${f.variante.id_variante}_${idLocal}`) ?? 0;
+        if (cantidadActual >= f.variante.stock_minimo) return null;
+        const cantidad = Math.max(f.variante.stock_objetivo - cantidadActual, 1);
+        return { idVariante: f.variante.id_variante, cantidad, sugerida: true };
+      })
+      .filter((l): l is Linea => l !== null);
+    setLineas(sugeridos);
+  }, [idMarca, idLocal, variantesDeMarca, cantidadPorClave]);
 
-  function agregarLinea() {
-    const primera = variantesDeMarca.find((f) => !lineas.some((l) => l.idVariante === f.variante.id_variante));
-    if (!primera) return;
-    setLineas((prev) => [...prev, { idVariante: primera.variante.id_variante, cantidad: 1 }]);
+  const nombreVariante = (idVariante: string) => {
+    const f = variantesDeMarca.find((x) => x.variante.id_variante === idVariante);
+    if (!f) return "—";
+    return `${f.producto.nombre}${f.variante.nombre !== "Único" ? ` — ${f.variante.nombre}` : ""}`;
+  };
+
+  const disponiblesParaAgregar = variantesDeMarca.filter(
+    (f) => !lineas.some((l) => l.idVariante === f.variante.id_variante)
+  );
+
+  function agregarProducto() {
+    const idVariante = agregarSeleccion || disponiblesParaAgregar[0]?.variante.id_variante;
+    if (!idVariante) return;
+    setLineas((prev) => [...prev, { idVariante, cantidad: 1, sugerida: false }]);
+    setAgregarSeleccion("");
   }
 
-  function actualizarLinea(i: number, campo: keyof Linea, valor: string | number) {
-    setLineas((prev) => prev.map((l, j) => (j === i ? { ...l, [campo]: valor } : l)));
+  function actualizarCantidad(idVariante: string, cantidad: number) {
+    setLineas((prev) => prev.map((l) => (l.idVariante === idVariante ? { ...l, cantidad } : l)));
   }
 
-  function quitarLinea(i: number) {
-    setLineas((prev) => prev.filter((_, j) => j !== i));
+  function quitarLinea(idVariante: string) {
+    setLineas((prev) => prev.filter((l) => l.idVariante !== idVariante));
   }
 
   function handleSubmit() {
@@ -78,10 +105,7 @@ export default function NuevaOrdenModal({
               <label className="block text-sm font-medium text-neutral-700 mb-1">Marca</label>
               <select
                 value={idMarca}
-                onChange={(e) => {
-                  setIdMarca(e.target.value);
-                  setLineas([]);
-                }}
+                onChange={(e) => setIdMarca(e.target.value)}
                 className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
               >
                 {marcas.map((m) => (
@@ -108,12 +132,11 @@ export default function NuevaOrdenModal({
           </div>
 
           <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="block text-sm font-medium text-neutral-700">Productos a pedir</label>
-              <button type="button" onClick={agregarLinea} className="text-xs text-accent">
-                + Agregar producto
-              </button>
-            </div>
+            <label className="block text-sm font-medium text-neutral-700 mb-1">Productos a pedir</label>
+            <p className="text-xs text-neutral-500 mb-2">
+              Se sugieren solos los que están por debajo del mínimo en este local, con la cantidad
+              necesaria para llegar al objetivo. Podés sacar alguno o agregar otro a mano.
+            </p>
 
             {variantesDeMarca.length === 0 ? (
               <p className="text-xs text-neutral-500 border border-dashed border-neutral-300 rounded-lg p-3">
@@ -121,40 +144,62 @@ export default function NuevaOrdenModal({
               </p>
             ) : lineas.length === 0 ? (
               <p className="text-xs text-neutral-500 border border-dashed border-neutral-300 rounded-lg p-3">
-                Todavía no agregaste ningún producto.
+                Nada está por debajo del mínimo en este local. Agregá algo a mano si igual querés pedir.
               </p>
             ) : (
               <div className="space-y-2">
-                {lineas.map((linea, i) => (
-                  <div key={i} className="flex items-center gap-2">
-                    <select
-                      value={linea.idVariante}
-                      onChange={(e) => actualizarLinea(i, "idVariante", e.target.value)}
-                      className="flex-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-                    >
-                      {variantesDeMarca.map((f) => (
-                        <option key={f.variante.id_variante} value={f.variante.id_variante}>
-                          {f.producto.nombre}
-                          {f.variante.nombre !== "Único" ? ` — ${f.variante.nombre}` : ""}
-                        </option>
-                      ))}
-                    </select>
+                {lineas.map((linea) => (
+                  <div key={linea.idVariante} className="flex items-center gap-2">
+                    <div className="flex-1 min-w-0">
+                      <span className="text-sm text-neutral-900">{nombreVariante(linea.idVariante)}</span>
+                      {linea.sugerida && (
+                        <span className="ml-2 text-xs bg-amber-50 text-amber-700 rounded-full px-2 py-0.5">
+                          sugerido
+                        </span>
+                      )}
+                    </div>
                     <input
                       type="number"
                       min={1}
                       value={linea.cantidad}
-                      onChange={(e) => actualizarLinea(i, "cantidad", Number(e.target.value))}
+                      onChange={(e) => actualizarCantidad(linea.idVariante, Number(e.target.value))}
                       className="w-20 rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
                     />
                     <button
                       type="button"
-                      onClick={() => quitarLinea(i)}
+                      onClick={() => quitarLinea(linea.idVariante)}
                       className="text-sm text-red-500 shrink-0"
                     >
-                      Borrar
+                      Sacar
                     </button>
                   </div>
                 ))}
+              </div>
+            )}
+
+            {disponiblesParaAgregar.length > 0 && (
+              <div className="flex items-center gap-2 mt-3">
+                <select
+                  value={agregarSeleccion}
+                  onChange={(e) => setAgregarSeleccion(e.target.value)}
+                  className="flex-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                >
+                  <option value="">Agregar otro producto...</option>
+                  {disponiblesParaAgregar.map((f) => (
+                    <option key={f.variante.id_variante} value={f.variante.id_variante}>
+                      {f.producto.nombre}
+                      {f.variante.nombre !== "Único" ? ` — ${f.variante.nombre}` : ""}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={agregarProducto}
+                  disabled={!agregarSeleccion}
+                  className="rounded-lg border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-700 disabled:opacity-50"
+                >
+                  Agregar
+                </button>
               </div>
             )}
           </div>

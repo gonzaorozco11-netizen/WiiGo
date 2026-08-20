@@ -4,6 +4,7 @@ import {
   type Local,
   type Producto,
   type VarianteProducto,
+  type Stock,
   type OrdenReposicion,
   type DetalleReposicion,
   type DetalleRecepcion,
@@ -15,12 +16,13 @@ export const dynamic = "force-dynamic";
 export default async function ReposicionPage() {
   const supabase = getSupabaseServerClient();
 
-  const [marcasRes, localesRes, productosRes, variantesRes, ordenesRes, detalleRes, detalleRecepcionRes] =
+  const [marcasRes, localesRes, productosRes, variantesRes, stockRes, ordenesRes, detalleRes, detalleRecepcionRes] =
     await Promise.all([
       supabase.from("marcas").select("*").eq("estado", "ACTIVA").order("nombre", { ascending: true }),
       supabase.from("locales").select("*").eq("estado", "ACTIVO").order("nombre", { ascending: true }),
       supabase.from("productos").select("*").eq("estado", "ACTIVO"),
       supabase.from("variantes_producto").select("*").eq("estado", "ACTIVO"),
+      supabase.from("stock").select("*"),
       supabase.from("ordenes_reposicion").select("*").order("fecha", { ascending: false }),
       supabase.from("detalle_reposicion").select("*"),
       supabase.from("detalle_recepciones").select("*").neq("estado_control", "COMPLETA"),
@@ -31,6 +33,7 @@ export default async function ReposicionPage() {
     localesRes.error ||
     productosRes.error ||
     variantesRes.error ||
+    stockRes.error ||
     ordenesRes.error ||
     detalleRes.error ||
     detalleRecepcionRes.error;
@@ -61,6 +64,7 @@ export default async function ReposicionPage() {
       locales={(localesRes.data ?? []) as Local[]}
       productos={(productosRes.data ?? []) as Producto[]}
       variantes={(variantesRes.data ?? []) as VarianteProducto[]}
+      stock={(stockRes.data ?? []) as Stock[]}
       ordenes={(ordenesRes.data ?? []) as OrdenReposicion[]}
       detalle={(detalleRes.data ?? []) as DetalleReposicion[]}
       reclamos={(detalleRecepcionRes.data ?? []) as DetalleRecepcion[]}
