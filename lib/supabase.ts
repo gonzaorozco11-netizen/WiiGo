@@ -93,6 +93,37 @@ export type VarianteProducto = {
   estado: string;
 };
 
+export type Local = {
+  id_local: string;
+  nombre: string;
+  direccion: string | null;
+  telefono: string | null;
+  estado: string;
+  fecha_alta: string;
+  observaciones: string | null;
+};
+
+export type Stock = {
+  id_stock: string;
+  id_variante: string;
+  id_local: string;
+  cantidad: number;
+  fecha_actualizacion: string;
+};
+
+export type MovimientoStock = {
+  id_movimiento: string;
+  id_variante: string;
+  id_local: string;
+  tipo: string;
+  cantidad: number;
+  motivo: string | null;
+  id_referencia: string | null;
+  fecha: string;
+  usuario: string | null;
+  observaciones: string | null;
+};
+
 export type Objetivo = {
   id_objetivo: string;
   nombre: string;
