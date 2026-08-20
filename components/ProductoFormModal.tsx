@@ -176,8 +176,6 @@ export default function ProductoFormModal({
             />
           </div>
 
-          <Field label="Puntos" name="puntos" defaultValue={producto?.puntos ?? 0} type="number" />
-
           <Field label="Imagen (URL)" name="imagen" defaultValue={producto?.imagen ?? ""} />
 
           <div>

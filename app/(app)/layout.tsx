@@ -24,6 +24,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               <Link href="/catalogo-asesor" className="text-sm text-neutral-600 hover:text-neutral-900">
                 Catálogo asesor
               </Link>
+              <Link href="/configuracion" className="text-sm text-neutral-600 hover:text-neutral-900">
+                Configuración
+              </Link>
             </nav>
           </div>
           <div className="flex items-center gap-3">
