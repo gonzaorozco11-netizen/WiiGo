@@ -119,6 +119,8 @@ async function sincronizarVariantes(
 ) {
   const ids = formData.getAll("variante_id").map(String);
   const nombres = formData.getAll("variante_nombre").map(String);
+  const stocksMinimos = formData.getAll("variante_stock_minimo").map(Number);
+  const stocksObjetivo = formData.getAll("variante_stock_objetivo").map(Number);
 
   const { data: existentes } = await supabase
     .from("variantes_producto")
@@ -138,16 +140,26 @@ async function sincronizarVariantes(
     const nombre = nombres[i].trim();
     if (!nombre) continue;
     const id = ids[i];
+    const stockMinimo = Number.isFinite(stocksMinimos[i]) ? stocksMinimos[i] : 0;
+    const stockObjetivo = Number.isFinite(stocksObjetivo[i]) ? stocksObjetivo[i] : 0;
 
     if (id) {
-      const { error } = await supabase.from("variantes_producto").update({ nombre }).eq("id_variante", id);
+      const { error } = await supabase
+        .from("variantes_producto")
+        .update({ nombre, stock_minimo: stockMinimo, stock_objetivo: stockObjetivo })
+        .eq("id_variante", id);
       if (error) throw new Error(friendlyDbError(error));
     } else {
       const sku = await generarSkuVariante(supabase, idMarca);
       const codigoBarras = await generarCodigoBarrasVariante(supabase);
-      const { error } = await supabase
-        .from("variantes_producto")
-        .insert({ id_producto: idProducto, nombre, sku, codigo_barras: codigoBarras });
+      const { error } = await supabase.from("variantes_producto").insert({
+        id_producto: idProducto,
+        nombre,
+        sku,
+        codigo_barras: codigoBarras,
+        stock_minimo: stockMinimo,
+        stock_objetivo: stockObjetivo,
+      });
       if (error) throw new Error(friendlyDbError(error));
     }
   }

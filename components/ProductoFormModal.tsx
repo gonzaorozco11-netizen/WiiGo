@@ -12,7 +12,13 @@ import type {
 } from "@/lib/supabase";
 import { createProducto, updateProducto } from "@/app/(app)/productos/actions";
 
-type VarianteForm = { id: string; nombre: string; sku: string | null };
+type VarianteForm = {
+  id: string;
+  nombre: string;
+  sku: string | null;
+  stockMinimo: number;
+  stockObjetivo: number;
+};
 
 export default function ProductoFormModal({
   producto,
@@ -43,8 +49,14 @@ export default function ProductoFormModal({
   const [nuevaSubcategoria, setNuevaSubcategoria] = useState(false);
   const [variantes, setVariantes] = useState<VarianteForm[]>(
     variantesIniciales.length > 0
-      ? variantesIniciales.map((v) => ({ id: v.id_variante, nombre: v.nombre, sku: v.sku }))
-      : [{ id: "", nombre: "", sku: null }]
+      ? variantesIniciales.map((v) => ({
+          id: v.id_variante,
+          nombre: v.nombre,
+          sku: v.sku,
+          stockMinimo: v.stock_minimo,
+          stockObjetivo: v.stock_objetivo,
+        }))
+      : [{ id: "", nombre: "", sku: null, stockMinimo: 0, stockObjetivo: 0 }]
   );
   const isEditing = Boolean(producto);
 
@@ -287,21 +299,23 @@ function VariantesSection({
         <h3 className="text-sm font-semibold text-neutral-900">Variantes</h3>
         <button
           type="button"
-          onClick={() => setVariantes((prev) => [...prev, { id: "", nombre: "", sku: null }])}
+          onClick={() =>
+            setVariantes((prev) => [...prev, { id: "", nombre: "", sku: null, stockMinimo: 0, stockObjetivo: 0 }])
+          }
           className="text-xs text-accent"
         >
           + Agregar variante
         </button>
       </div>
       <p className="text-xs text-neutral-500 mb-3">
-        Sabores, tamaños, etc. Cada variante tiene su propio SKU, código de barras y stock (se
-        generan solos). Si el producto no tiene variaciones, dejá una sola fila — se va a llamar
-        "Único".
+        Sabores, tamaños, etc. Cada variante tiene su propio SKU, código de barras y stock (el
+        código se genera solo). Si el producto no tiene variaciones, dejá una sola fila — se va a
+        llamar "Único".
       </p>
 
       <div className="space-y-2">
         {variantes.map((v, i) => (
-          <div key={i} className="flex items-center gap-2">
+          <div key={i} className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
             <input type="hidden" name="variante_id" value={v.id} />
             <input
               name="variante_nombre"
@@ -310,10 +324,46 @@ function VariantesSection({
                 setVariantes((prev) => prev.map((x, j) => (j === i ? { ...x, nombre: e.target.value } : x)))
               }
               placeholder="Único"
-              className="flex-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+              className="flex-1 min-w-[120px] rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
             />
+            <div className="flex items-center gap-1 shrink-0">
+              <label className="text-xs text-neutral-500" htmlFor={`variante_stock_minimo_${i}`}>
+                Mín.
+              </label>
+              <input
+                id={`variante_stock_minimo_${i}`}
+                name="variante_stock_minimo"
+                type="number"
+                min={0}
+                value={v.stockMinimo}
+                onChange={(e) =>
+                  setVariantes((prev) =>
+                    prev.map((x, j) => (j === i ? { ...x, stockMinimo: Number(e.target.value) } : x))
+                  )
+                }
+                className="w-16 rounded-lg border border-neutral-300 px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+              />
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <label className="text-xs text-neutral-500" htmlFor={`variante_stock_objetivo_${i}`}>
+                Obj.
+              </label>
+              <input
+                id={`variante_stock_objetivo_${i}`}
+                name="variante_stock_objetivo"
+                type="number"
+                min={0}
+                value={v.stockObjetivo}
+                onChange={(e) =>
+                  setVariantes((prev) =>
+                    prev.map((x, j) => (j === i ? { ...x, stockObjetivo: Number(e.target.value) } : x))
+                  )
+                }
+                className="w-16 rounded-lg border border-neutral-300 px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+              />
+            </div>
             {v.sku && (
-              <span className="text-xs font-mono text-neutral-400 whitespace-nowrap hidden sm:inline">
+              <span className="text-xs font-mono text-neutral-400 whitespace-nowrap hidden lg:inline">
                 {v.sku}
               </span>
             )}
