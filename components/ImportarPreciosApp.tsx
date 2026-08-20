@@ -68,12 +68,18 @@ export default function ImportarPreciosApp({ marca }: { marca: Marca }) {
       </Link>
 
       <h1 className="text-lg font-semibold text-neutral-900 mt-4 mb-1">Importar precios</h1>
-      <p className="text-sm text-neutral-500 mb-6">
+      <p className="text-sm text-neutral-500 mb-4">
         Subí el Excel que te manda {marca.nombre} con las variaciones de costo, precio y descuento.
-        La primera fila tiene que tener los títulos: <strong>Producto</strong>, <strong>Costo</strong>,{" "}
-        <strong>Precio</strong> y <strong>Descuento %</strong>. Vamos a buscar cada producto por
-        nombre — antes de aplicar nada, te muestro qué encontró y qué no.
+        Vamos a buscar cada producto por nombre — antes de aplicar nada, te muestro qué encontró y
+        qué no.
       </p>
+
+      <a
+        href={`/marcas/${marca.id_marca}/importar/plantilla`}
+        className="inline-block text-sm text-accent hover:underline mb-6"
+      >
+        ⬇ Descargar plantilla con los productos actuales de {marca.nombre}
+      </a>
 
       {!preview && (
         <form action={handlePrevisualizar} className="bg-white border border-neutral-200 rounded-xl p-4 flex flex-col sm:flex-row gap-3 items-start sm:items-center">
