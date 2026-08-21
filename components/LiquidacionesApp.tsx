@@ -27,7 +27,11 @@ function formatearMonto(valor: number) {
 }
 
 function formatearFecha(fechaISO: string) {
-  return new Date(fechaISO).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" });
+  // Un string tipo "2026-08-01" (sin hora) lo interpreta como UTC y lo
+  // muestra un día antes en horarios negativos como Argentina — forzamos
+  // que se lea como hora local agregando la hora si falta.
+  const fecha = fechaISO.includes("T") ? new Date(fechaISO) : new Date(`${fechaISO}T00:00:00`);
+  return fecha.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
 function inicioDeMes() {
