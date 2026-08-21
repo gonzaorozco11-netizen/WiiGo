@@ -16,6 +16,9 @@ export default async function ConfiguracionPage() {
       "IMP_CREDITOS_PORCENTAJE",
       "SIRCREB_PORCENTAJE",
       "MP_COMISION_PORCENTAJE",
+      "IMP_DEBITOS_PORCENTAJE",
+      "IVA_GENERAL_PORCENTAJE",
+      "IIBB_PORCENTAJE",
     ]);
 
   const valores = new Map((data ?? []).map((c) => [c.parametro, c.valor]));
@@ -28,6 +31,9 @@ export default async function ConfiguracionPage() {
       impCreditosPorcentaje={Number(valores.get("IMP_CREDITOS_PORCENTAJE") ?? 0.6)}
       sircrebPorcentaje={Number(valores.get("SIRCREB_PORCENTAJE") ?? 5)}
       mpComisionPorcentaje={Number(valores.get("MP_COMISION_PORCENTAJE") ?? 0)}
+      impDebitosPorcentaje={Number(valores.get("IMP_DEBITOS_PORCENTAJE") ?? 0.6)}
+      ivaGeneralPorcentaje={Number(valores.get("IVA_GENERAL_PORCENTAJE") ?? 21)}
+      iibbPorcentaje={Number(valores.get("IIBB_PORCENTAJE") ?? 0)}
     />
   );
 }

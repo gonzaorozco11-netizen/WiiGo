@@ -49,6 +49,7 @@ export async function guardarConfigLiquidaciones(formData: FormData) {
   const impCreditos = Number(formData.get("imp_creditos_porcentaje") ?? 0);
   const sircreb = Number(formData.get("sircreb_porcentaje") ?? 0);
   const mpComision = Number(formData.get("mp_comision_porcentaje") ?? 0);
+  const impDebitos = Number(formData.get("imp_debitos_porcentaje") ?? 0);
 
   const supabase = getSupabaseServerClient();
 
@@ -69,6 +70,38 @@ export async function guardarConfigLiquidaciones(formData: FormData) {
     "MP_COMISION_PORCENTAJE",
     String(mpComision),
     "Liquidaciones: comisión de Mercado Pago mientras no esté conectada la API real (estimada, a mano)"
+  );
+  await guardarParametro(
+    supabase,
+    "IMP_DEBITOS_PORCENTAJE",
+    String(impDebitos),
+    "Liquidaciones: Impuesto a los Débitos (Ley 25.413) que cobra el banco al transferir — lo absorbe WiiGo, solo informativo/proyección"
+  );
+
+  revalidatePath("/configuracion");
+}
+
+// Tasas para calcular la rentabilidad real de los productos de marca
+// propia (WiiGo Dietética) — el IVA se saca de la facturación (débito
+// fiscal se compensa con crédito fiscal, no es un costo) y se suma el
+// costo impositivo directo de Ingresos Brutos.
+export async function guardarConfigRentabilidad(formData: FormData) {
+  const ivaGeneral = Number(formData.get("iva_general_porcentaje") ?? 21);
+  const iibb = Number(formData.get("iibb_porcentaje") ?? 0);
+
+  const supabase = getSupabaseServerClient();
+
+  await guardarParametro(
+    supabase,
+    "IVA_GENERAL_PORCENTAJE",
+    String(ivaGeneral),
+    "Rentabilidad: IVA incluido en el precio de venta de los productos propios, para sacar la facturación neta"
+  );
+  await guardarParametro(
+    supabase,
+    "IIBB_PORCENTAJE",
+    String(iibb),
+    "Rentabilidad: alícuota de Ingresos Brutos sobre la facturación neta de productos propios"
   );
 
   revalidatePath("/configuracion");

@@ -11,6 +11,7 @@ const ITEMS = [
   { href: "/cobros-efectivo", label: "Cobros en efectivo" },
   { href: "/ventas", label: "Ventas" },
   { href: "/liquidaciones", label: "Liquidaciones" },
+  { href: "/rentabilidad", label: "Rentabilidad" },
   { href: "/pos", label: "Vender" },
   { href: "/clientes", label: "Clientes" },
   { href: "/locales", label: "Locales" },

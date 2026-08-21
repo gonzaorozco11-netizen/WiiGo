@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { guardarConfigPuntos, guardarConfigLiquidaciones } from "@/app/(app)/configuracion/actions";
+import { guardarConfigPuntos, guardarConfigLiquidaciones, guardarConfigRentabilidad } from "@/app/(app)/configuracion/actions";
 
 export default function ConfiguracionApp({
   puntosActivo,
@@ -10,6 +10,9 @@ export default function ConfiguracionApp({
   impCreditosPorcentaje,
   sircrebPorcentaje,
   mpComisionPorcentaje,
+  impDebitosPorcentaje,
+  ivaGeneralPorcentaje,
+  iibbPorcentaje,
 }: {
   puntosActivo: boolean;
   puntosCadaMonto: number;
@@ -17,6 +20,9 @@ export default function ConfiguracionApp({
   impCreditosPorcentaje: number;
   sircrebPorcentaje: number;
   mpComisionPorcentaje: number;
+  impDebitosPorcentaje: number;
+  ivaGeneralPorcentaje: number;
+  iibbPorcentaje: number;
 }) {
   const [isPending, startTransition] = useTransition();
   const [guardado, setGuardado] = useState(false);
@@ -30,6 +36,12 @@ export default function ConfiguracionApp({
   const [impCreditos, setImpCreditos] = useState(impCreditosPorcentaje);
   const [sircreb, setSircreb] = useState(sircrebPorcentaje);
   const [mpComision, setMpComision] = useState(mpComisionPorcentaje);
+  const [impDebitos, setImpDebitos] = useState(impDebitosPorcentaje);
+
+  const [isPendingRent, startTransitionRent] = useTransition();
+  const [guardadoRent, setGuardadoRent] = useState(false);
+  const [ivaGeneral, setIvaGeneral] = useState(ivaGeneralPorcentaje);
+  const [iibb, setIibb] = useState(iibbPorcentaje);
 
   const puntosCalculados = useMemo(() => {
     if (!cadaMonto || cadaMonto <= 0) return 0;
@@ -49,6 +61,14 @@ export default function ConfiguracionApp({
     startTransitionLiq(async () => {
       await guardarConfigLiquidaciones(formData);
       setGuardadoLiq(true);
+    });
+  }
+
+  function handleSubmitRent(formData: FormData) {
+    setGuardadoRent(false);
+    startTransitionRent(async () => {
+      await guardarConfigRentabilidad(formData);
+      setGuardadoRent(true);
     });
   }
 
@@ -156,7 +176,7 @@ export default function ConfiguracionApp({
           se cargan en la ficha de cada una, no acá.
         </p>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
           <div>
             <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="imp_creditos_porcentaje">
               Imp. a los Créditos (%)
@@ -202,6 +222,21 @@ export default function ConfiguracionApp({
             />
             <p className="text-xs text-neutral-400 mt-1">Estimada a mano hasta conectar la API real de Mercado Pago.</p>
           </div>
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="imp_debitos_porcentaje">
+              Imp. a los Débitos (%)
+            </label>
+            <input
+              id="imp_debitos_porcentaje"
+              name="imp_debitos_porcentaje"
+              type="number"
+              step="0.01"
+              value={impDebitos}
+              onChange={(e) => setImpDebitos(Number(e.target.value))}
+              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+            <p className="text-xs text-neutral-400 mt-1">Lo cobra el banco al transferir — lo absorbe WiiGo, solo proyección.</p>
+          </div>
         </div>
 
         {guardadoLiq && (
@@ -216,6 +251,60 @@ export default function ConfiguracionApp({
           className="w-full rounded-lg bg-accent hover:bg-accent-dark text-white py-2 text-sm font-medium disabled:opacity-50"
         >
           {isPendingLiq ? "Guardando..." : "Guardar tasas"}
+        </button>
+      </form>
+
+      <form action={handleSubmitRent} className="bg-white border border-neutral-200 rounded-xl p-5 mt-5">
+        <h2 className="text-base font-semibold text-neutral-900 mb-1">📈 Rentabilidad — Marca Propia</h2>
+        <p className="text-sm text-neutral-500 mb-4">
+          Para calcular la contribución marginal real de los productos de WiiGo Dietética.
+        </p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="iva_general_porcentaje">
+              IVA incluido en el precio (%)
+            </label>
+            <input
+              id="iva_general_porcentaje"
+              name="iva_general_porcentaje"
+              type="number"
+              step="0.01"
+              value={ivaGeneral}
+              onChange={(e) => setIvaGeneral(Number(e.target.value))}
+              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+            <p className="text-xs text-neutral-400 mt-1">Se saca de la venta para calcular la facturación neta — el IVA no es un costo.</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="iibb_porcentaje">
+              Ingresos Brutos (%)
+            </label>
+            <input
+              id="iibb_porcentaje"
+              name="iibb_porcentaje"
+              type="number"
+              step="0.01"
+              value={iibb}
+              onChange={(e) => setIibb(Number(e.target.value))}
+              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+            <p className="text-xs text-neutral-400 mt-1">Alícuota sobre la facturación neta.</p>
+          </div>
+        </div>
+
+        {guardadoRent && (
+          <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 mb-4">
+            Configuración guardada.
+          </p>
+        )}
+
+        <button
+          type="submit"
+          disabled={isPendingRent}
+          className="w-full rounded-lg bg-accent hover:bg-accent-dark text-white py-2 text-sm font-medium disabled:opacity-50"
+        >
+          {isPendingRent ? "Guardando..." : "Guardar tasas"}
         </button>
       </form>
     </div>
