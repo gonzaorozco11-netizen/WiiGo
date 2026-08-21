@@ -94,6 +94,7 @@ export default function MarcaFormModal({
           </Section>
 
           {tipoComercializacion === "CONSIGNACION" && (
+          <>
           <Section title="Condiciones comerciales">
             <Field
               label="Fee de ingreso"
@@ -168,6 +169,7 @@ export default function MarcaFormModal({
               defaultChecked={marca?.trasladar_imp_debitos}
             />
           </Section>
+          </>
           )}
 
           {error && (
