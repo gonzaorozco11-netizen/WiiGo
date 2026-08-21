@@ -49,21 +49,34 @@ export async function abrirTurno(idLocal: string, montoInicial: number) {
 
 // Solo cuenta ventas ya PAGADAS — una pendiente de Self Checkout que
 // todavía no confirmó nadie no estampa turno ni entra en el arqueo.
+// El vuelto se registra como salida aparte: total_cobrado es lo que el
+// cliente entregó en mano (bruto), total es lo que realmente queda en la
+// venta (neto) — la diferencia es el vuelto que salió de la caja.
 async function resumenTurno(supabase: SupabaseClient, idTurno: string) {
   const { data: ventas, error } = await supabase
     .from("ventas")
-    .select("total, medio_pago")
+    .select("total, total_cobrado, medio_pago")
     .eq("id_turno", idTurno)
     .eq("estado", "PAGADA");
   if (error) throw new Error(friendlyDbError(error));
 
   let totalEfectivo = 0;
+  let totalRecibidoEfectivo = 0;
   let totalMercadoPago = 0;
   for (const v of ventas ?? []) {
-    if (v.medio_pago === "EFECTIVO") totalEfectivo += v.total ?? 0;
-    else totalMercadoPago += v.total ?? 0;
+    if (v.medio_pago === "EFECTIVO") {
+      totalEfectivo += v.total ?? 0;
+      totalRecibidoEfectivo += v.total_cobrado ?? v.total ?? 0;
+    } else {
+      totalMercadoPago += v.total ?? 0;
+    }
   }
-  return { totalEfectivo, totalMercadoPago, cantidadVentas: (ventas ?? []).length };
+  return {
+    totalEfectivo,
+    totalMercadoPago,
+    totalVueltoEntregado: totalRecibidoEfectivo - totalEfectivo,
+    cantidadVentas: (ventas ?? []).length,
+  };
 }
 
 export async function resumenTurnoAbierto(idTurno: string) {
@@ -111,6 +124,7 @@ export async function cerrarTurno(idTurno: string, efectivoContado: number, obse
       efectivo_contado: efectivoContado,
       diferencia_efectivo: efectivoContado - efectivoEsperado,
       total_mercado_pago: resumen.totalMercadoPago,
+      total_vuelto_entregado: resumen.totalVueltoEntregado,
       cantidad_ventas: resumen.cantidadVentas,
       observaciones: observaciones || null,
     })

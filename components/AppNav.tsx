@@ -17,6 +17,7 @@ const ITEMS = [
   { href: "/clientes", label: "Clientes" },
   { href: "/locales", label: "Locales" },
   { href: "/catalogo-asesor", label: "Catálogo asesor" },
+  { href: "/usuarios", label: "Usuarios" },
   { href: "/configuracion", label: "Configuración" },
 ];
 

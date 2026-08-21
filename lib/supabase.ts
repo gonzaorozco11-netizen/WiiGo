@@ -227,6 +227,7 @@ export type Turno = {
   efectivo_contado: number | null;
   diferencia_efectivo: number | null;
   total_mercado_pago: number | null;
+  total_vuelto_entregado: number | null;
   cantidad_ventas: number | null;
   observaciones: string | null;
 };
