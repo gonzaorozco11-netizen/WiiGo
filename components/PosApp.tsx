@@ -28,6 +28,16 @@ function precioFinal(producto: Producto, variante: VarianteProducto) {
   return descuento > 0 ? Math.round(base * (1 - descuento / 100)) : base;
 }
 
+type MedioPago = "EFECTIVO" | "MERCADO_PAGO";
+
+const FORMAS_PAGO_MP: { valor: string; etiqueta: string }[] = [
+  { valor: "DINERO_CUENTA", etiqueta: "Dinero en cuenta MP" },
+  { valor: "DEBITO", etiqueta: "Tarjeta de débito" },
+  { valor: "CUOTAS_SIN_INTERES", etiqueta: "Cuotas sin interés" },
+  { valor: "PREPAGA", etiqueta: "Tarjeta prepaga" },
+  { valor: "CREDITO", etiqueta: "Tarjeta de crédito" },
+];
+
 export default function PosApp({
   locales,
   productos,
@@ -47,6 +57,8 @@ export default function PosApp({
   const [dni, setDni] = useState("");
   const [codigoProfesional, setCodigoProfesional] = useState("");
   const [montoRecibido, setMontoRecibido] = useState("");
+  const [medioPago, setMedioPago] = useState<MedioPago>("EFECTIVO");
+  const [formaPagoMp, setFormaPagoMp] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resultado, setResultado] = useState<{ numero: number; total: number; vuelto: number; puntosGenerados: number } | null>(
@@ -150,10 +162,14 @@ export default function PosApp({
     setDni("");
     setCodigoProfesional("");
     setMontoRecibido("");
+    setMedioPago("EFECTIVO");
+    setFormaPagoMp("");
     setResultado(null);
     setError(null);
     setClienteEncontrado(null);
   }
+
+  const esMercadoPago = medioPago === "MERCADO_PAGO";
 
   function handleCobrar() {
     setError(null);
@@ -168,7 +184,9 @@ export default function PosApp({
       })),
       dni,
       codigoProfesional,
-      montoNum
+      montoNum,
+      medioPago,
+      esMercadoPago ? formaPagoMp : undefined
     )
       .then((r) => setResultado(r))
       .catch((e) => setError(e instanceof Error ? e.message : "No se pudo registrar la venta"))
@@ -322,15 +340,24 @@ export default function PosApp({
       </div>
 
       <div className="grid grid-cols-2 gap-2 mb-4">
-        <div className="flex flex-col items-center gap-1 py-3 rounded-xl border-2 border-accent bg-accent-tint">
+        <button
+          onClick={() => setMedioPago("EFECTIVO")}
+          className={`flex flex-col items-center gap-1 py-3 rounded-xl border-2 ${
+            medioPago === "EFECTIVO" ? "border-accent bg-accent-tint" : "border-neutral-200 bg-white"
+          }`}
+        >
           <span>💵</span>
           <span className="font-bold text-sm">Efectivo</span>
-        </div>
-        <div className="flex flex-col items-center gap-1 py-3 rounded-xl border-2 border-dashed border-neutral-200 bg-neutral-50 text-neutral-400">
-          <span className="opacity-40">📱</span>
+        </button>
+        <button
+          onClick={() => setMedioPago("MERCADO_PAGO")}
+          className={`flex flex-col items-center gap-1 py-3 rounded-xl border-2 ${
+            medioPago === "MERCADO_PAGO" ? "border-accent bg-accent-tint" : "border-neutral-200 bg-white"
+          }`}
+        >
+          <span>📱</span>
           <span className="font-bold text-sm">Mercado Pago</span>
-          <span className="text-[10px]">Próximamente</span>
-        </div>
+        </button>
       </div>
 
       <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-4 mb-4">
@@ -338,21 +365,41 @@ export default function PosApp({
           <span>Total</span>
           <span>${formatearMonto(subtotal)}</span>
         </div>
-        <div className="flex justify-between items-center text-sm mb-2">
-          <label className="text-neutral-500">Pagó con</label>
-          <input
-            value={montoRecibido}
-            onChange={(e) => setMontoRecibido(e.target.value)}
-            placeholder="$0"
-            className="w-32 text-right border border-neutral-300 rounded-lg px-2.5 py-1.5"
-          />
-        </div>
-        <div className="flex justify-between items-center text-sm">
-          <label className="text-neutral-500">Vuelto</label>
-          <span className={`font-bold ${vueltoPrevio < 0 ? "text-red-600" : "text-emerald-600"}`}>
-            ${formatearMonto(Math.max(vueltoPrevio, 0))}
-          </span>
-        </div>
+        {esMercadoPago ? (
+          <div>
+            <label className="block text-sm text-neutral-500 mb-1">¿Cómo pagó el cliente?</label>
+            <select
+              value={formaPagoMp}
+              onChange={(e) => setFormaPagoMp(e.target.value)}
+              className="w-full border border-neutral-300 rounded-lg px-2.5 py-1.5 text-sm bg-white"
+            >
+              <option value="">Elegí una opción...</option>
+              {FORMAS_PAGO_MP.map((f) => (
+                <option key={f.valor} value={f.valor}>
+                  {f.etiqueta}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <>
+            <div className="flex justify-between items-center text-sm mb-2">
+              <label className="text-neutral-500">Pagó con</label>
+              <input
+                value={montoRecibido}
+                onChange={(e) => setMontoRecibido(e.target.value)}
+                placeholder="$0"
+                className="w-32 text-right border border-neutral-300 rounded-lg px-2.5 py-1.5"
+              />
+            </div>
+            <div className="flex justify-between items-center text-sm">
+              <label className="text-neutral-500">Vuelto</label>
+              <span className={`font-bold ${vueltoPrevio < 0 ? "text-red-600" : "text-emerald-600"}`}>
+                ${formatearMonto(Math.max(vueltoPrevio, 0))}
+              </span>
+            </div>
+          </>
+        )}
       </div>
 
       {error && (
@@ -363,7 +410,7 @@ export default function PosApp({
 
       <button
         onClick={handleCobrar}
-        disabled={enviando || itemsCarrito.length === 0 || montoNum < subtotal}
+        disabled={enviando || itemsCarrito.length === 0 || (esMercadoPago ? !formaPagoMp : montoNum < subtotal)}
         className="w-full bg-accent hover:bg-accent-dark disabled:opacity-40 text-white font-bold py-4 rounded-xl mb-8"
       >
         {enviando ? "Registrando..." : `Cobrar · $${formatearMonto(subtotal)}`}

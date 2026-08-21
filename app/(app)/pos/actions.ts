@@ -34,6 +34,28 @@ async function calcularPuntos(supabase: SupabaseClient, total: number) {
 
 type ItemCarrito = { idVariante: string; idMarca: string | null; cantidad: number; precioUnitario: number };
 
+// Coincide con las tasas de Configuración → Comisión de Mercado Pago y con
+// `pagos.forma_pago_cliente` (ver cobros-efectivo/actions.ts) — no hay una
+// sola comisión de MP, varía según cómo pagó el cliente.
+const FORMAS_PAGO_MP: Record<string, string> = {
+  DINERO_CUENTA: "MP_COMISION_DINERO_CUENTA",
+  DEBITO: "MP_COMISION_DEBITO",
+  CUOTAS_SIN_INTERES: "MP_COMISION_CUOTAS_SIN_INTERES",
+  PREPAGA: "MP_COMISION_PREPAGA",
+  CREDITO: "MP_COMISION_CREDITO",
+};
+
+async function tasaComisionMp(supabase: SupabaseClient, formaPago: string) {
+  const clave = FORMAS_PAGO_MP[formaPago];
+  if (!clave) return { base: 0, ivaGeneral: 21 };
+  const { data } = await supabase
+    .from("configuracion")
+    .select("parametro, valor")
+    .in("parametro", [clave, "IVA_GENERAL_PORCENTAJE"]);
+  const cfg = Object.fromEntries((data ?? []).map((r) => [r.parametro, Number(r.valor ?? 0)]));
+  return { base: cfg[clave] ?? 0, ivaGeneral: cfg.IVA_GENERAL_PORCENTAJE ?? 21 };
+}
+
 // Autocompletar nombre al escribir el DNI, para que el empleado vea a
 // quién le está cargando la venta antes de cobrar.
 export async function buscarClientePorDni(dni: string) {
@@ -59,7 +81,9 @@ export async function venderPos(
   items: ItemCarrito[],
   dni: string,
   codigoProfesional: string,
-  montoRecibido: number
+  montoRecibido: number,
+  medioPago: "EFECTIVO" | "MERCADO_PAGO" = "EFECTIVO",
+  formaPagoMp?: string
 ) {
   if (items.length === 0) throw new Error("El carrito está vacío");
 
@@ -114,8 +138,13 @@ export async function venderPos(
   }
 
   const total = Math.max(subtotal - descuentoBeneficio, 0);
-  if (montoRecibido < total) throw new Error("El monto recibido es menor al total de la venta");
-  const vuelto = montoRecibido - total;
+  const esMercadoPago = medioPago === "MERCADO_PAGO";
+  if (esMercadoPago && (!formaPagoMp || !FORMAS_PAGO_MP[formaPagoMp])) {
+    throw new Error("Elegí cómo pagó el cliente por Mercado Pago");
+  }
+  const montoFinal = esMercadoPago ? total : montoRecibido;
+  if (montoFinal < total) throw new Error("El monto recibido es menor al total de la venta");
+  const vuelto = montoFinal - total;
 
   // La venta se crea primero: pagos.id_venta no admite null, así que no
   // se puede insertar el pago hasta tener el id de la venta.
@@ -129,8 +158,8 @@ export async function venderPos(
       descuento: descuentoBeneficio,
       total,
       estado: "PAGADA",
-      medio_pago: "EFECTIVO",
-      total_cobrado: montoRecibido,
+      medio_pago: medioPago,
+      total_cobrado: montoFinal,
       usuario,
       terminal: "POS",
     })
@@ -138,9 +167,30 @@ export async function venderPos(
     .single();
   if (errorVenta) throw new Error(friendlyDbError(errorVenta));
 
-  const { data: pago, error: errorPago } = await supabase
-    .from("pagos")
-    .insert({
+  let pagoInsert: Record<string, unknown>;
+  if (esMercadoPago) {
+    const { base: tasa, ivaGeneral } = await tasaComisionMp(supabase, formaPagoMp as string);
+    // Mercado Pago cobra la comisión + IVA sobre esa comisión — la tasa
+    // cargada en Configuración es la base, sin IVA.
+    const comisionImporte = Math.round(total * (tasa / 100));
+    const ivaComisionImporte = Math.round(comisionImporte * (ivaGeneral / 100));
+    pagoInsert = {
+      id_venta: venta.id_venta,
+      medio: "MERCADO_PAGO",
+      forma_pago_cliente: formaPagoMp,
+      importe_bruto: total,
+      comision_porcentaje: tasa,
+      comision_importe: comisionImporte,
+      iva_comision: ivaComisionImporte,
+      neto_acreditado: total - comisionImporte - ivaComisionImporte,
+      fecha_pago: new Date().toISOString(),
+      fecha_acreditacion: new Date().toISOString(),
+      estado: "ACREDITADO",
+      estado_conciliacion: "CONCILIADO",
+      observaciones: `Venta mostrador · ${usuario ?? "personal"} · Mercado Pago (${formaPagoMp}) · comisión ${tasa}% + IVA`,
+    };
+  } else {
+    pagoInsert = {
       id_venta: venta.id_venta,
       medio: "EFECTIVO",
       forma_pago_cliente: "EFECTIVO",
@@ -150,10 +200,11 @@ export async function venderPos(
       fecha_acreditacion: new Date().toISOString(),
       estado: "ACREDITADO",
       estado_conciliacion: "CONCILIADO",
-      observaciones: `Venta mostrador · ${usuario ?? "personal"} · Pagó con $${montoRecibido} · Vuelto $${vuelto}`,
-    })
-    .select("id_pago")
-    .single();
+      observaciones: `Venta mostrador · ${usuario ?? "personal"} · Pagó con $${montoFinal} · Vuelto $${vuelto}`,
+    };
+  }
+
+  const { data: pago, error: errorPago } = await supabase.from("pagos").insert(pagoInsert).select("id_pago").single();
   if (errorPago) throw new Error(friendlyDbError(errorPago));
 
   await supabase.from("ventas").update({ id_pago: pago.id_pago }).eq("id_venta", venta.id_venta);
