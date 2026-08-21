@@ -24,6 +24,7 @@ export default async function ConfiguracionPage() {
       "MP_COMISION_CUOTAS_SIN_INTERES",
       "MP_COMISION_PREPAGA",
       "MP_COMISION_CREDITO",
+      "GASTOS_TOPE_SIN_AUTORIZACION",
     ]);
 
   const valores = new Map((data ?? []).map((c) => [c.parametro, c.valor]));
@@ -44,6 +45,7 @@ export default async function ConfiguracionPage() {
       mpComisionCuotasSinInteres={Number(valores.get("MP_COMISION_CUOTAS_SIN_INTERES") ?? 1.38)}
       mpComisionPrepaga={Number(valores.get("MP_COMISION_PREPAGA") ?? 3.85)}
       mpComisionCredito={Number(valores.get("MP_COMISION_CREDITO") ?? 6.15)}
+      gastosTopeSinAutorizacion={Number(valores.get("GASTOS_TOPE_SIN_AUTORIZACION") ?? 10000)}
     />
   );
 }

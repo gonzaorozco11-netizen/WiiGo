@@ -129,3 +129,20 @@ export async function guardarConfigRentabilidad(formData: FormData) {
 
   revalidatePath("/configuracion");
 }
+
+// Tope a partir del cual un gasto necesita la contraseña de un
+// administrador para confirmarse (ver crearGasto en app/(app)/gastos/actions.ts).
+export async function guardarConfigGastos(formData: FormData) {
+  const tope = Number(formData.get("gastos_tope_sin_autorizacion") ?? 10000);
+
+  const supabase = getSupabaseServerClient();
+
+  await guardarParametro(
+    supabase,
+    "GASTOS_TOPE_SIN_AUTORIZACION",
+    String(tope),
+    "Gastos: por encima de este monto, un operativo necesita la contraseña de un administrador para confirmarlo"
+  );
+
+  revalidatePath("/configuracion");
+}

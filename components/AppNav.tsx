@@ -9,6 +9,7 @@ const ITEMS = [
   { href: "/stock", label: "Stock" },
   { href: "/reposicion", label: "Abastecimiento" },
   { href: "/turnos", label: "Turnos" },
+  { href: "/gastos", label: "Gastos" },
   { href: "/cobros-efectivo", label: "Cobros en efectivo" },
   { href: "/ventas", label: "Ventas" },
   { href: "/liquidaciones", label: "Liquidaciones" },

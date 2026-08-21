@@ -27,6 +27,7 @@ export type Usuario = {
   estado: string;
   fecha_alta: string;
   password_hash: string;
+  sueldo_base: number | null;
 };
 
 export type Marca = {
@@ -115,6 +116,76 @@ export type Stock = {
   id_local: string;
   cantidad: number;
   fecha_actualizacion: string;
+};
+
+export type CategoriaGasto = {
+  id_categoria: string;
+  nombre: string;
+  tipo_default: string;
+  estado: string;
+  fecha_alta: string;
+};
+
+export type SubcategoriaGasto = {
+  id_subcategoria: string;
+  id_categoria: string;
+  nombre: string;
+  estado: string;
+};
+
+// Cada egreso queda categorizado y, si salió de la caja física de un
+// turno abierto, vinculado a ese turno para que el arqueo lo descuente
+// solo (ver resumenTurno en app/(app)/turnos/actions.ts).
+export type Gasto = {
+  id_gasto: string;
+  id_local: string | null;
+  id_turno: string | null;
+  id_categoria: string;
+  id_subcategoria: string | null;
+  tipo: string;
+  medio_pago: string;
+  monto: number;
+  descripcion: string | null;
+  comprobante_path: string | null;
+  pendiente_factura: boolean;
+  requirio_autorizacion: boolean;
+  autorizado_por: string | null;
+  id_usuario_adelanto: string | null;
+  usuario: string | null;
+  fecha: string;
+};
+
+// Libro de solo efectivo físico que administración maneja a mano — se
+// nutre solo de lo que se cuenta al cerrar cada turno (ver cerrarTurno).
+// Mercado Pago/transferencia nunca entra acá, ya cae directo al banco.
+export type MovimientoCajaAdmin = {
+  id_movimiento: string;
+  tipo: string;
+  monto: number;
+  id_turno: string | null;
+  id_gasto: string | null;
+  descripcion: string | null;
+  usuario: string | null;
+  fecha: string;
+};
+
+export type PresupuestoGasto = {
+  id_presupuesto: string;
+  id_categoria: string;
+  monto_mensual: number;
+  fecha_actualizacion: string;
+};
+
+export type GastoRecurrente = {
+  id_recurrente: string;
+  id_categoria: string;
+  id_subcategoria: string | null;
+  id_local: string | null;
+  descripcion: string;
+  monto_estimado: number;
+  dia_mes: number;
+  activo: boolean;
+  ultimo_mes_cargado: string | null;
 };
 
 export type MovimientoStock = {
@@ -228,6 +299,7 @@ export type Turno = {
   diferencia_efectivo: number | null;
   total_mercado_pago: number | null;
   total_vuelto_entregado: number | null;
+  total_gastos_efectivo: number | null;
   cantidad_ventas: number | null;
   observaciones: string | null;
 };

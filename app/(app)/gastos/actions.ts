@@ -1,0 +1,484 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
+import { getSupabaseServerClient } from "@/lib/supabase";
+import { friendlyDbError } from "@/lib/errors";
+import { verifyPassword } from "@/lib/auth";
+import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
+import { turnoAbiertoDeLocal } from "@/app/(app)/turnos/actions";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Gasto } from "@/lib/supabase";
+
+async function sesionActual() {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(SESSION_COOKIE)?.value;
+  return readSessionToken(token, process.env.AUTH_SECRET ?? "");
+}
+
+function text(formData: FormData, name: string) {
+  const s = String(formData.get(name) ?? "").trim();
+  return s.length ? s : null;
+}
+
+function number(formData: FormData, name: string) {
+  const raw = formData.get(name);
+  if (raw === null || raw === "") return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
+function normalizarNombre(s: string) {
+  return s
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .trim();
+}
+
+// Mismo criterio que las subcategorías de Productos: si se escribió el
+// nombre de una categoría nueva, reutiliza la que ya exista con ese
+// nombre (ignorando may/min y tildes) en vez de crear una duplicada.
+async function resolveCategoria(supabase: SupabaseClient, formData: FormData) {
+  const nueva = text(formData, "nueva_categoria");
+  if (!nueva) return text(formData, "id_categoria");
+
+  const { data: existentes, error: errorBusqueda } = await supabase
+    .from("categorias_gasto")
+    .select("id_categoria, nombre");
+  if (errorBusqueda) throw new Error(friendlyDbError(errorBusqueda));
+  const normalizada = normalizarNombre(nueva);
+  const existente = (existentes ?? []).find((c) => normalizarNombre(c.nombre) === normalizada);
+  if (existente) return existente.id_categoria as string;
+
+  const { data, error } = await supabase
+    .from("categorias_gasto")
+    .insert({ nombre: nueva, tipo_default: text(formData, "tipo") ?? "VARIABLE", estado: "ACTIVA" })
+    .select("id_categoria")
+    .single();
+  if (error) throw new Error(friendlyDbError(error));
+  return data.id_categoria as string;
+}
+
+async function resolveSubcategoria(supabase: SupabaseClient, formData: FormData, idCategoria: string) {
+  const nueva = text(formData, "nueva_subcategoria_gasto");
+  if (!nueva) return text(formData, "id_subcategoria");
+
+  const { data: existentes, error: errorBusqueda } = await supabase
+    .from("subcategorias_gasto")
+    .select("id_subcategoria, nombre")
+    .eq("id_categoria", idCategoria);
+  if (errorBusqueda) throw new Error(friendlyDbError(errorBusqueda));
+  const normalizada = normalizarNombre(nueva);
+  const existente = (existentes ?? []).find((s) => normalizarNombre(s.nombre) === normalizada);
+  if (existente) return existente.id_subcategoria as string;
+
+  const { data, error } = await supabase
+    .from("subcategorias_gasto")
+    .insert({ id_categoria: idCategoria, nombre: nueva, estado: "ACTIVA" })
+    .select("id_subcategoria")
+    .single();
+  if (error) throw new Error(friendlyDbError(error));
+  return data.id_subcategoria as string;
+}
+
+async function topeAutorizacion(supabase: SupabaseClient) {
+  const { data } = await supabase
+    .from("configuracion")
+    .select("valor")
+    .eq("parametro", "GASTOS_TOPE_SIN_AUTORIZACION")
+    .maybeSingle();
+  return Number(data?.valor ?? 10000);
+}
+
+export async function listarCategorias() {
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase.from("categorias_gasto").select("*").eq("estado", "ACTIVA").order("nombre");
+  if (error) throw new Error(friendlyDbError(error));
+  return data ?? [];
+}
+
+export async function listarSubcategorias() {
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase.from("subcategorias_gasto").select("*").eq("estado", "ACTIVA").order("nombre");
+  if (error) throw new Error(friendlyDbError(error));
+  return data ?? [];
+}
+
+// El egreso en efectivo de un turno abierto descuenta del arqueo (ver
+// resumenTurno en turnos/actions.ts); el de Caja Administración se anota
+// como salida en ese libro; transferencia y tarjeta/MP no tocan ninguna
+// caja física — quedan solo para el reporte de gastos.
+export async function crearGasto(formData: FormData) {
+  const supabase = getSupabaseServerClient();
+  const sesion = await sesionActual();
+  const usuario = sesion?.nombre ?? null;
+
+  const idCategoria = await resolveCategoria(supabase, formData);
+  if (!idCategoria) throw new Error("Elegí o creá una categoría");
+  const idSubcategoria = await resolveSubcategoria(supabase, formData, idCategoria);
+
+  const monto = number(formData, "monto");
+  if (!monto || monto <= 0) throw new Error("El monto tiene que ser mayor a 0");
+
+  const medioPago = text(formData, "medio_pago") ?? "TRANSFERENCIA";
+  const tipo = text(formData, "tipo") ?? "VARIABLE";
+  const descripcion = text(formData, "descripcion");
+  const pendienteFactura = formData.get("pendiente_factura") === "on";
+  const idUsuarioAdelanto = text(formData, "id_usuario_adelanto");
+  const idLocal = text(formData, "id_local");
+
+  let idTurno: string | null = null;
+  if (medioPago === "EFECTIVO_TURNO") {
+    if (!idLocal) throw new Error("Elegí el local para descontar del turno abierto");
+    idTurno = await turnoAbiertoDeLocal(supabase, idLocal);
+    if (!idTurno) throw new Error("No hay un turno de caja abierto en ese local — no se puede descontar de ahí.");
+  }
+
+  // Si quien carga no es admin y el monto supera el tope, hace falta la
+  // contraseña de un administrador para autorizarlo en el momento.
+  const tope = await topeAutorizacion(supabase);
+  let requirioAutorizacion = false;
+  let autorizadoPor: string | null = null;
+  if (sesion?.rol !== "admin" && monto > tope) {
+    requirioAutorizacion = true;
+    const claveAdmin = String(formData.get("clave_admin") ?? "");
+    if (!claveAdmin) {
+      throw new Error(`Este gasto supera el tope de $${tope} — hace falta la contraseña de un administrador.`);
+    }
+    const { data: admins } = await supabase
+      .from("usuarios")
+      .select("nombre, password_hash")
+      .eq("rol", "admin")
+      .eq("estado", "ACTIVO");
+    let admin: { nombre: string } | null = null;
+    for (const a of admins ?? []) {
+      if (await verifyPassword(claveAdmin, a.password_hash)) {
+        admin = a;
+        break;
+      }
+    }
+    if (!admin) throw new Error("Contraseña de administrador incorrecta");
+    autorizadoPor = admin.nombre;
+  }
+
+  const { data: gasto, error } = await supabase
+    .from("gastos")
+    .insert({
+      id_local: idLocal,
+      id_turno: idTurno,
+      id_categoria: idCategoria,
+      id_subcategoria: idSubcategoria,
+      tipo,
+      medio_pago: medioPago,
+      monto,
+      descripcion,
+      pendiente_factura: pendienteFactura,
+      requirio_autorizacion: requirioAutorizacion,
+      autorizado_por: autorizadoPor,
+      id_usuario_adelanto: idUsuarioAdelanto,
+      usuario,
+    })
+    .select("id_gasto")
+    .single();
+  if (error) throw new Error(friendlyDbError(error));
+
+  const comprobante = formData.get("comprobante") as File | null;
+  if (comprobante && comprobante.size > 0) {
+    const extension = comprobante.name.split(".").pop() ?? "jpg";
+    const path = `${gasto.id_gasto}.${extension}`;
+    const { error: errorUpload } = await supabase.storage
+      .from("comprobantes-gasto")
+      .upload(path, comprobante, { upsert: true, contentType: comprobante.type || undefined });
+    // No bloquea el gasto si falla la subida — la plata ya se movió, el
+    // comprobante se puede volver a intentar después.
+    if (!errorUpload) {
+      await supabase.from("gastos").update({ comprobante_path: path }).eq("id_gasto", gasto.id_gasto);
+    }
+  }
+
+  if (medioPago === "EFECTIVO_ADMIN") {
+    await supabase.from("movimientos_caja_admin").insert({
+      tipo: "EGRESO_GASTO",
+      monto: -monto,
+      id_gasto: gasto.id_gasto,
+      descripcion: descripcion ?? "Gasto pagado desde Caja Administración",
+      usuario,
+    });
+  }
+
+  revalidatePath("/gastos");
+  revalidatePath("/turnos");
+}
+
+export async function obtenerUrlComprobanteGasto(path: string) {
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase.storage.from("comprobantes-gasto").createSignedUrl(path, 60 * 10);
+  if (error) throw new Error(error.message);
+  return data.signedUrl;
+}
+
+export type FiltrosGastos = { idLocal?: string; idCategoria?: string; desde: string; hasta: string };
+
+export async function listarGastos(filtros: FiltrosGastos) {
+  const supabase = getSupabaseServerClient();
+  let query = supabase
+    .from("gastos")
+    .select("*")
+    .gte("fecha", `${filtros.desde}T00:00:00`)
+    .lte("fecha", `${filtros.hasta}T23:59:59`)
+    .order("fecha", { ascending: false });
+  if (filtros.idLocal) query = query.eq("id_local", filtros.idLocal);
+  if (filtros.idCategoria) query = query.eq("id_categoria", filtros.idCategoria);
+  const { data, error } = await query;
+  if (error) throw new Error(friendlyDbError(error));
+  return (data ?? []) as Gasto[];
+}
+
+export async function resumenGastos(filtros: { idLocal?: string; desde: string; hasta: string }) {
+  const supabase = getSupabaseServerClient();
+  let query = supabase
+    .from("gastos")
+    .select("id_categoria, monto, tipo, pendiente_factura")
+    .gte("fecha", `${filtros.desde}T00:00:00`)
+    .lte("fecha", `${filtros.hasta}T23:59:59`);
+  if (filtros.idLocal) query = query.eq("id_local", filtros.idLocal);
+  const { data: gastos, error } = await query;
+  if (error) throw new Error(friendlyDbError(error));
+
+  const { data: categorias } = await supabase.from("categorias_gasto").select("id_categoria, nombre").eq("estado", "ACTIVA");
+  const { data: presupuestos } = await supabase.from("presupuestos_gasto").select("id_categoria, monto_mensual");
+  const presupuestoPorCategoria = new Map((presupuestos ?? []).map((p) => [p.id_categoria, p.monto_mensual]));
+
+  let total = 0;
+  let totalFijos = 0;
+  let totalVariables = 0;
+  let pendientesFactura = 0;
+  const totalesPorCategoria = new Map<string, number>();
+  for (const g of gastos ?? []) {
+    total += g.monto ?? 0;
+    if (g.tipo === "FIJO") totalFijos += g.monto ?? 0;
+    else totalVariables += g.monto ?? 0;
+    if (g.pendiente_factura) pendientesFactura++;
+    totalesPorCategoria.set(g.id_categoria, (totalesPorCategoria.get(g.id_categoria) ?? 0) + (g.monto ?? 0));
+  }
+
+  const porCategoria = (categorias ?? [])
+    .map((c) => {
+      const gastado = totalesPorCategoria.get(c.id_categoria) ?? 0;
+      const presupuesto = presupuestoPorCategoria.get(c.id_categoria) ?? null;
+      return {
+        idCategoria: c.id_categoria as string,
+        nombre: c.nombre as string,
+        gastado,
+        pct: total > 0 ? (gastado / total) * 100 : 0,
+        presupuesto,
+        pctPresupuesto: presupuesto ? (gastado / presupuesto) * 100 : null,
+      };
+    })
+    .filter((c) => c.gastado > 0)
+    .sort((a, b) => b.gastado - a.gastado);
+
+  return { total, totalFijos, totalVariables, pendientesFactura, porCategoria };
+}
+
+export async function guardarPresupuesto(idCategoria: string, montoMensual: number) {
+  const supabase = getSupabaseServerClient();
+  const { error } = await supabase
+    .from("presupuestos_gasto")
+    .upsert(
+      { id_categoria: idCategoria, monto_mensual: montoMensual, fecha_actualizacion: new Date().toISOString() },
+      { onConflict: "id_categoria" }
+    );
+  if (error) throw new Error(friendlyDbError(error));
+  revalidatePath("/gastos");
+}
+
+export async function listarPresupuestos() {
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase.from("presupuestos_gasto").select("*");
+  if (error) throw new Error(friendlyDbError(error));
+  return data ?? [];
+}
+
+// Semi-automático a propósito: el sistema recuerda qué falta cargar este
+// mes, pero un humano confirma el monto (puede variar) antes de que
+// impacte en la caja — nunca se crea un gasto sin que alguien lo mire.
+export async function listarRecurrentes() {
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase.from("gastos_recurrentes").select("*").eq("activo", true).order("dia_mes");
+  if (error) throw new Error(friendlyDbError(error));
+  return data ?? [];
+}
+
+export async function crearRecurrente(formData: FormData) {
+  const supabase = getSupabaseServerClient();
+  const idCategoria = await resolveCategoria(supabase, formData);
+  if (!idCategoria) throw new Error("Elegí o creá una categoría");
+  const idSubcategoria = await resolveSubcategoria(supabase, formData, idCategoria);
+  const descripcion = text(formData, "descripcion");
+  if (!descripcion) throw new Error("La descripción es obligatoria");
+  const montoEstimado = number(formData, "monto_estimado") ?? 0;
+  const diaMes = Number(formData.get("dia_mes") ?? 1);
+  const idLocal = text(formData, "id_local");
+
+  const { error } = await supabase.from("gastos_recurrentes").insert({
+    id_categoria: idCategoria,
+    id_subcategoria: idSubcategoria,
+    descripcion,
+    monto_estimado: montoEstimado,
+    dia_mes: diaMes,
+    id_local: idLocal,
+    activo: true,
+  });
+  if (error) throw new Error(friendlyDbError(error));
+  revalidatePath("/gastos");
+}
+
+// Convierte un recurrente en un Gasto real del mes actual — el monto se
+// puede ajustar acá si varió (ej. la luz nunca es exactamente igual).
+export async function cargarRecurrente(idRecurrente: string, montoConfirmado: number, medioPago: string) {
+  const supabase = getSupabaseServerClient();
+  const sesion = await sesionActual();
+  const { data: recurrente, error: errorRec } = await supabase
+    .from("gastos_recurrentes")
+    .select("*")
+    .eq("id_recurrente", idRecurrente)
+    .maybeSingle();
+  if (errorRec) throw new Error(friendlyDbError(errorRec));
+  if (!recurrente) throw new Error("No se encontró el gasto recurrente");
+
+  const mesActual = new Date().toISOString().slice(0, 7);
+  const { data: gasto, error } = await supabase
+    .from("gastos")
+    .insert({
+      id_local: recurrente.id_local,
+      id_categoria: recurrente.id_categoria,
+      id_subcategoria: recurrente.id_subcategoria,
+      tipo: "FIJO",
+      medio_pago: medioPago,
+      monto: montoConfirmado,
+      descripcion: recurrente.descripcion,
+      usuario: sesion?.nombre ?? null,
+    })
+    .select("id_gasto")
+    .single();
+  if (error) throw new Error(friendlyDbError(error));
+
+  if (medioPago === "EFECTIVO_ADMIN") {
+    await supabase.from("movimientos_caja_admin").insert({
+      tipo: "EGRESO_GASTO",
+      monto: -montoConfirmado,
+      id_gasto: gasto.id_gasto,
+      descripcion: recurrente.descripcion,
+      usuario: sesion?.nombre ?? null,
+    });
+  }
+
+  await supabase.from("gastos_recurrentes").update({ ultimo_mes_cargado: mesActual }).eq("id_recurrente", idRecurrente);
+  revalidatePath("/gastos");
+}
+
+// Nómina simplificada: sueldo base (en usuarios.sueldo_base) menos la
+// suma de los gastos cargados como adelanto para ese empleado en el mes.
+export async function resumenNomina(mes: string) {
+  const supabase = getSupabaseServerClient();
+  const { data: usuarios, error } = await supabase
+    .from("usuarios")
+    .select("id_usuario, nombre, sueldo_base")
+    .eq("estado", "ACTIVO")
+    .order("nombre");
+  if (error) throw new Error(friendlyDbError(error));
+
+  const { data: adelantos } = await supabase
+    .from("gastos")
+    .select("id_usuario_adelanto, monto")
+    .not("id_usuario_adelanto", "is", null)
+    .gte("fecha", `${mes}-01T00:00:00`)
+    .lt("fecha", `${mes}-32T00:00:00`);
+
+  const adelantosPorUsuario = new Map<string, number>();
+  for (const a of adelantos ?? []) {
+    if (!a.id_usuario_adelanto) continue;
+    adelantosPorUsuario.set(a.id_usuario_adelanto, (adelantosPorUsuario.get(a.id_usuario_adelanto) ?? 0) + (a.monto ?? 0));
+  }
+
+  return (usuarios ?? []).map((u) => {
+    const adelantado = adelantosPorUsuario.get(u.id_usuario) ?? 0;
+    const sueldoBase = u.sueldo_base ?? 0;
+    return {
+      idUsuario: u.id_usuario as string,
+      nombre: u.nombre as string,
+      sueldoBase,
+      adelantado,
+      aPagar: sueldoBase - adelantado,
+    };
+  });
+}
+
+// Caja Administración — solo efectivo físico. Mercado Pago/transferencia
+// nunca entra acá, ya cae directo al banco (ver totalCobradoPorBanco).
+export async function resumenCajaAdmin() {
+  const supabase = getSupabaseServerClient();
+  const { data: movimientos, error } = await supabase.from("movimientos_caja_admin").select("tipo, monto, fecha");
+  if (error) throw new Error(friendlyDbError(error));
+
+  const saldo = (movimientos ?? []).reduce((acc, m) => acc + (m.monto ?? 0), 0);
+
+  const hace7dias = new Date();
+  hace7dias.setDate(hace7dias.getDate() - 7);
+  let ingresadoSemana = 0;
+  let gastadoSemana = 0;
+  for (const m of movimientos ?? []) {
+    if (new Date(m.fecha) < hace7dias) continue;
+    if ((m.monto ?? 0) > 0) ingresadoSemana += m.monto;
+    else gastadoSemana += Math.abs(m.monto ?? 0);
+  }
+
+  return { saldo, ingresadoSemana, gastadoSemana };
+}
+
+export async function movimientosCajaAdmin() {
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("movimientos_caja_admin")
+    .select("*")
+    .order("fecha", { ascending: true })
+    .limit(500);
+  if (error) throw new Error(friendlyDbError(error));
+
+  let saldo = 0;
+  const conSaldo = (data ?? []).map((m) => {
+    saldo += m.monto ?? 0;
+    return { ...m, saldoAcumulado: saldo };
+  });
+  return conSaldo.reverse();
+}
+
+export async function registrarMovimientoCajaAdmin(tipo: "RETIRO_MANUAL" | "DEPOSITO_MANUAL", monto: number, descripcion: string) {
+  if (!monto || monto <= 0) throw new Error("El monto tiene que ser mayor a 0");
+  const supabase = getSupabaseServerClient();
+  const sesion = await sesionActual();
+  const { error } = await supabase.from("movimientos_caja_admin").insert({
+    tipo,
+    monto: tipo === "RETIRO_MANUAL" ? -monto : monto,
+    descripcion: descripcion || null,
+    usuario: sesion?.nombre ?? null,
+  });
+  if (error) throw new Error(friendlyDbError(error));
+  revalidatePath("/gastos");
+}
+
+// Informativo — no se maneja en Caja Administración, ya está seguro en
+// el banco. Solo para tener la foto completa de liquidez.
+export async function totalCobradoPorBanco(desde: string, hasta: string) {
+  const supabase = getSupabaseServerClient();
+  const { data } = await supabase
+    .from("ventas")
+    .select("total")
+    .eq("estado", "PAGADA")
+    .eq("medio_pago", "MERCADO_PAGO")
+    .gte("fecha", `${desde}T00:00:00`)
+    .lte("fecha", `${hasta}T23:59:59`);
+  return (data ?? []).reduce((acc, v) => acc + (v.total ?? 0), 0);
+}

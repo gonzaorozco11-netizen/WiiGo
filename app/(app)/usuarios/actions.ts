@@ -50,3 +50,13 @@ export async function cambiarPasswordUsuario(id: string, password: string) {
   if (error) throw new Error(friendlyDbError(error));
   revalidatePath("/usuarios");
 }
+
+// Usado desde la pestaña Nómina de Gastos para calcular sueldo base −
+// adelantos del mes.
+export async function actualizarSueldoBase(id: string, sueldoBase: number) {
+  if (sueldoBase < 0) throw new Error("El sueldo no puede ser negativo");
+  const supabase = getSupabaseServerClient();
+  const { error } = await supabase.from("usuarios").update({ sueldo_base: sueldoBase }).eq("id_usuario", id);
+  if (error) throw new Error(friendlyDbError(error));
+  revalidatePath("/gastos");
+}

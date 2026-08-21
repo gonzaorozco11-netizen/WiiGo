@@ -71,10 +71,22 @@ async function resumenTurno(supabase: SupabaseClient, idTurno: string) {
       totalMercadoPago += v.total ?? 0;
     }
   }
+
+  // Solo los gastos pagados con el efectivo de este turno tocan el
+  // arqueo — los pagados por transferencia, tarjeta o desde Caja
+  // Administración no salen de esta caja física.
+  const { data: gastos } = await supabase
+    .from("gastos")
+    .select("monto")
+    .eq("id_turno", idTurno)
+    .eq("medio_pago", "EFECTIVO_TURNO");
+  const totalGastosEfectivo = (gastos ?? []).reduce((acc, g) => acc + (g.monto ?? 0), 0);
+
   return {
     totalEfectivo,
     totalMercadoPago,
     totalVueltoEntregado: totalRecibidoEfectivo - totalEfectivo,
+    totalGastosEfectivo,
     cantidadVentas: (ventas ?? []).length,
   };
 }
@@ -93,7 +105,7 @@ export async function resumenTurnoAbierto(idTurno: string) {
   return {
     ...resumen,
     montoInicial: turno.monto_inicial_efectivo,
-    efectivoEsperado: turno.monto_inicial_efectivo + resumen.totalEfectivo,
+    efectivoEsperado: turno.monto_inicial_efectivo + resumen.totalEfectivo - resumen.totalGastosEfectivo,
   };
 }
 
@@ -103,7 +115,7 @@ export async function cerrarTurno(idTurno: string, efectivoContado: number, obse
   const supabase = getSupabaseServerClient();
   const { data: turno, error: errorTurno } = await supabase
     .from("turnos")
-    .select("estado, monto_inicial_efectivo")
+    .select("estado, monto_inicial_efectivo, id_local")
     .eq("id_turno", idTurno)
     .maybeSingle();
   if (errorTurno) throw new Error(friendlyDbError(errorTurno));
@@ -111,7 +123,7 @@ export async function cerrarTurno(idTurno: string, efectivoContado: number, obse
   if (turno.estado !== "ABIERTO") throw new Error("Este turno ya está cerrado");
 
   const resumen = await resumenTurno(supabase, idTurno);
-  const efectivoEsperado = turno.monto_inicial_efectivo + resumen.totalEfectivo;
+  const efectivoEsperado = turno.monto_inicial_efectivo + resumen.totalEfectivo - resumen.totalGastosEfectivo;
   const usuario = await usuarioActual();
 
   const { error } = await supabase
@@ -125,13 +137,27 @@ export async function cerrarTurno(idTurno: string, efectivoContado: number, obse
       diferencia_efectivo: efectivoContado - efectivoEsperado,
       total_mercado_pago: resumen.totalMercadoPago,
       total_vuelto_entregado: resumen.totalVueltoEntregado,
+      total_gastos_efectivo: resumen.totalGastosEfectivo,
       cantidad_ventas: resumen.cantidadVentas,
       observaciones: observaciones || null,
     })
     .eq("id_turno", idTurno);
   if (error) throw new Error(friendlyDbError(error));
 
+  // El efectivo contado entra solo a la Caja Administración — es el
+  // único lugar donde se junta la plata de todos los cierres de todos
+  // los turnos, para que administración sepa cuánto tiene sin sumar a mano.
+  const { data: local } = await supabase.from("locales").select("nombre").eq("id_local", turno.id_local).maybeSingle();
+  await supabase.from("movimientos_caja_admin").insert({
+    tipo: "INGRESO_TURNO",
+    monto: efectivoContado,
+    id_turno: idTurno,
+    descripcion: `Cierre de turno — ${local?.nombre ?? "Local"} — ${usuario ?? "—"}`,
+    usuario,
+  });
+
   revalidatePath("/turnos");
+  revalidatePath("/gastos");
 }
 
 export async function historialTurnos(idLocal: string) {

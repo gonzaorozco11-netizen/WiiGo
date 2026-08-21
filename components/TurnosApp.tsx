@@ -8,6 +8,7 @@ type Resumen = {
   totalEfectivo: number;
   totalMercadoPago: number;
   totalVueltoEntregado: number;
+  totalGastosEfectivo: number;
   cantidadVentas: number;
   montoInicial: number;
   efectivoEsperado: number;
@@ -224,16 +225,20 @@ export default function TurnosApp({ locales, turnosAbiertos }: { locales: Local[
               <StatCard
                 color="danger"
                 icono="⬆"
-                etiqueta="Vuelto entregado"
-                valor={resumen.totalVueltoEntregado > 0 ? `-$${formatearMonto(resumen.totalVueltoEntregado)}` : "$0"}
-                nota="Salida de caja"
+                etiqueta="Salidas de caja"
+                valor={
+                  resumen.totalVueltoEntregado + resumen.totalGastosEfectivo > 0
+                    ? `-$${formatearMonto(resumen.totalVueltoEntregado + resumen.totalGastosEfectivo)}`
+                    : "$0"
+                }
+                nota={`Vuelto $${formatearMonto(resumen.totalVueltoEntregado)} · Gastos $${formatearMonto(resumen.totalGastosEfectivo)}`}
               />
               <StatCard
                 color="accent"
                 icono="📊"
                 etiqueta="Efectivo esperado"
                 valor={`$${formatearMonto(resumen.efectivoEsperado)}`}
-                nota="Fondo + recibido − vuelto"
+                nota="Fondo + recibido − vuelto − gastos"
               />
             </div>
           )}
@@ -334,7 +339,7 @@ export default function TurnosApp({ locales, turnosAbiertos }: { locales: Local[
                   <th className="p-3 text-right">Esperado</th>
                   <th className="p-3 text-right">Contado</th>
                   <th className="p-3 text-right">Diferencia</th>
-                  <th className="p-3 text-right">Vuelto</th>
+                  <th className="p-3 text-right">Salidas</th>
                   <th className="p-3 text-right">Mercado Pago</th>
                   <th className="p-3 text-right">Ventas</th>
                 </tr>
@@ -371,7 +376,9 @@ export default function TurnosApp({ locales, turnosAbiertos }: { locales: Local[
                           {diff === 0 ? "$0" : `${diff > 0 ? "+" : "-"}$${formatearMonto(Math.abs(diff))}`}
                         </td>
                         <td className="p-3 text-right tabular-nums text-neutral-500">
-                          {t.total_vuelto_entregado ? `-$${formatearMonto(t.total_vuelto_entregado)}` : "—"}
+                          {(t.total_vuelto_entregado ?? 0) + (t.total_gastos_efectivo ?? 0) > 0
+                            ? `-$${formatearMonto((t.total_vuelto_entregado ?? 0) + (t.total_gastos_efectivo ?? 0))}`
+                            : "—"}
                         </td>
                         <td className="p-3 text-right tabular-nums">${formatearMonto(t.total_mercado_pago ?? 0)}</td>
                         <td className="p-3 text-right tabular-nums">{t.cantidad_ventas ?? 0}</td>

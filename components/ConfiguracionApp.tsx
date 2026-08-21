@@ -6,6 +6,7 @@ import {
   guardarConfigLiquidaciones,
   guardarConfigRentabilidad,
   guardarConfigMercadoPago,
+  guardarConfigGastos,
 } from "@/app/(app)/configuracion/actions";
 
 export default function ConfiguracionApp({
@@ -23,6 +24,7 @@ export default function ConfiguracionApp({
   mpComisionCuotasSinInteres,
   mpComisionPrepaga,
   mpComisionCredito,
+  gastosTopeSinAutorizacion,
 }: {
   puntosActivo: boolean;
   puntosCadaMonto: number;
@@ -38,6 +40,7 @@ export default function ConfiguracionApp({
   mpComisionCuotasSinInteres: number;
   mpComisionPrepaga: number;
   mpComisionCredito: number;
+  gastosTopeSinAutorizacion: number;
 }) {
   const [isPending, startTransition] = useTransition();
   const [guardado, setGuardado] = useState(false);
@@ -65,6 +68,10 @@ export default function ConfiguracionApp({
   const [mpCuotas, setMpCuotas] = useState(mpComisionCuotasSinInteres);
   const [mpPrepaga, setMpPrepaga] = useState(mpComisionPrepaga);
   const [mpCredito, setMpCredito] = useState(mpComisionCredito);
+
+  const [isPendingGastos, startTransitionGastos] = useTransition();
+  const [guardadoGastos, setGuardadoGastos] = useState(false);
+  const [topeGastos, setTopeGastos] = useState(gastosTopeSinAutorizacion);
 
   const puntosCalculados = useMemo(() => {
     if (!cadaMonto || cadaMonto <= 0) return 0;
@@ -100,6 +107,14 @@ export default function ConfiguracionApp({
     startTransitionMp(async () => {
       await guardarConfigMercadoPago(formData);
       setGuardadoMp(true);
+    });
+  }
+
+  function handleSubmitGastos(formData: FormData) {
+    setGuardadoGastos(false);
+    startTransitionGastos(async () => {
+      await guardarConfigGastos(formData);
+      setGuardadoGastos(true);
     });
   }
 
@@ -437,6 +452,43 @@ export default function ConfiguracionApp({
           className="w-full rounded-lg bg-accent hover:bg-accent-dark text-white py-2 text-sm font-medium disabled:opacity-50"
         >
           {isPendingRent ? "Guardando..." : "Guardar tasas"}
+        </button>
+      </form>
+
+      <form action={handleSubmitGastos} className="bg-white border border-neutral-200 rounded-xl p-5 mt-5">
+        <h2 className="text-base font-semibold text-neutral-900 mb-1">🧾 Gastos — autorización</h2>
+        <p className="text-sm text-neutral-500 mb-4">
+          Por encima de este monto, un usuario operativo necesita la contraseña de un administrador para confirmar
+          el gasto. Los administradores nunca necesitan autorización.
+        </p>
+
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="gastos_tope_sin_autorizacion">
+            Tope sin autorización ($)
+          </label>
+          <input
+            id="gastos_tope_sin_autorizacion"
+            name="gastos_tope_sin_autorizacion"
+            type="number"
+            step="1"
+            value={topeGastos}
+            onChange={(e) => setTopeGastos(Number(e.target.value))}
+            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+          />
+        </div>
+
+        {guardadoGastos && (
+          <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 mb-4">
+            Configuración guardada.
+          </p>
+        )}
+
+        <button
+          type="submit"
+          disabled={isPendingGastos}
+          className="w-full rounded-lg bg-accent hover:bg-accent-dark text-white py-2 text-sm font-medium disabled:opacity-50"
+        >
+          {isPendingGastos ? "Guardando..." : "Guardar tope"}
         </button>
       </form>
     </div>
