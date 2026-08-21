@@ -308,11 +308,9 @@ function Ayuda({ texto }: { texto: string }) {
   );
 }
 
-type ModoPrecio = "PRECIO" | "MARKUP" | "MARGEN";
-
-// Costo + uno de los tres (Precio, Markup o Margen) alcanza para derivar
-// los otros dos. El usuario elige cuál de los tres quiere completar a
-// mano — los otros dos se calculan solos.
+// Costo + cualquiera de los tres (Precio, Markup o Margen) alcanza para
+// derivar los otros dos. Los tres campos están siempre editables — el que
+// se toca recalcula los otros dos en el momento, no hay que elegir modo.
 function PrecioCalculadora({
   costoInicial,
   precioInicial,
@@ -327,36 +325,46 @@ function PrecioCalculadora({
   margenMinimo: number;
 }) {
   const [costo, setCosto] = useState(costoInicial ?? 0);
-  const [modo, setModo] = useState<ModoPrecio>("PRECIO");
-  const [valorPrecio, setValorPrecio] = useState(precioInicial ?? 0);
-  const [valorMarkup, setValorMarkup] = useState(() =>
+  const [precio, setPrecio] = useState(precioInicial ?? 0);
+  const [markup, setMarkup] = useState(() =>
     costoInicial && precioInicial && costoInicial > 0 ? ((precioInicial - costoInicial) / costoInicial) * 100 : 0
   );
-  const [valorMargen, setValorMargen] = useState(() =>
+  const [margen, setMargen] = useState(() =>
     precioInicial && costoInicial !== null && precioInicial > 0
       ? ((precioInicial - costoInicial) / precioInicial) * 100
       : 0
   );
   const [descuento, setDescuento] = useState(descuentoInicial ?? 0);
 
-  const { precio, markup, margen } = useMemo(() => {
-    if (modo === "PRECIO") {
-      const p = valorPrecio;
-      return {
-        precio: p,
-        markup: costo > 0 ? ((p - costo) / costo) * 100 : 0,
-        margen: p > 0 ? ((p - costo) / p) * 100 : 0,
-      };
-    }
-    if (modo === "MARKUP") {
-      const p = costo * (1 + valorMarkup / 100);
-      return { precio: p, markup: valorMarkup, margen: p > 0 ? ((p - costo) / p) * 100 : 0 };
-    }
-    // MARGEN — un margen de 100% o más implicaría precio infinito, no tiene sentido.
-    const g = Math.min(valorMargen, 99);
-    const p = g < 100 ? costo / (1 - g / 100) : 0;
-    return { precio: p, markup: costo > 0 ? ((p - costo) / costo) * 100 : 0, margen: valorMargen };
-  }, [modo, costo, valorPrecio, valorMarkup, valorMargen]);
+  function recalcularDesdeCosto(nuevoCosto: number) {
+    setCosto(nuevoCosto);
+    // El precio se deja fijo — lo que cambia es cuánto margen/markup deja
+    // ese precio con el costo nuevo.
+    setMarkup(nuevoCosto > 0 ? ((precio - nuevoCosto) / nuevoCosto) * 100 : 0);
+    setMargen(precio > 0 ? ((precio - nuevoCosto) / precio) * 100 : 0);
+  }
+
+  function recalcularDesdePrecio(nuevoPrecio: number) {
+    setPrecio(nuevoPrecio);
+    setMarkup(costo > 0 ? ((nuevoPrecio - costo) / costo) * 100 : 0);
+    setMargen(nuevoPrecio > 0 ? ((nuevoPrecio - costo) / nuevoPrecio) * 100 : 0);
+  }
+
+  function recalcularDesdeMarkup(nuevoMarkup: number) {
+    setMarkup(nuevoMarkup);
+    const nuevoPrecio = costo * (1 + nuevoMarkup / 100);
+    setPrecio(Math.round(nuevoPrecio * 100) / 100);
+    setMargen(nuevoPrecio > 0 ? ((nuevoPrecio - costo) / nuevoPrecio) * 100 : 0);
+  }
+
+  function recalcularDesdeMargen(nuevoMargen: number) {
+    setMargen(nuevoMargen);
+    // Un margen de 100% o más implicaría precio infinito, no tiene sentido.
+    const g = Math.min(nuevoMargen, 99);
+    const nuevoPrecio = g < 100 ? costo / (1 - g / 100) : 0;
+    setPrecio(Math.round(nuevoPrecio * 100) / 100);
+    setMarkup(costo > 0 ? ((nuevoPrecio - costo) / costo) * 100 : 0);
+  }
 
   const precioRedondeado = Math.round(precio * 100) / 100;
   const margenBajo = precioRedondeado > 0 && margen < margenMinimo;
@@ -364,6 +372,9 @@ function PrecioCalculadora({
   return (
     <div className="border border-neutral-200 rounded-xl p-4 space-y-3">
       <h3 className="text-sm font-semibold text-neutral-900">💲 Precio y rentabilidad</h3>
+      <p className="text-xs text-neutral-500 -mt-2">
+        Completá cualquiera de los tres de abajo (Precio, Markup o Margen) — los otros dos se recalculan solos.
+      </p>
 
       <div className="grid grid-cols-2 gap-3">
         <div>
@@ -376,7 +387,7 @@ function PrecioCalculadora({
             type="number"
             step="0.01"
             value={costo || ""}
-            onChange={(e) => setCosto(Number(e.target.value) || 0)}
+            onChange={(e) => recalcularDesdeCosto(Number(e.target.value) || 0)}
             className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
@@ -396,47 +407,19 @@ function PrecioCalculadora({
         </div>
       </div>
 
-      <div>
-        <p className="text-xs font-medium text-neutral-500 mb-1.5">¿Qué querés completar?</p>
-        <div className="flex gap-1.5">
-          {([
-            ["PRECIO", "Precio"],
-            ["MARKUP", "Markup"],
-            ["MARGEN", "Margen"],
-          ] as [ModoPrecio, string][]).map(([m, etiqueta]) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => setModo(m)}
-              className={`text-xs font-semibold px-3 py-1.5 rounded-full border ${
-                modo === m ? "bg-accent border-accent text-white" : "bg-white border-neutral-300 text-neutral-600"
-              }`}
-            >
-              {etiqueta}
-            </button>
-          ))}
-        </div>
-      </div>
-
       <div className="grid grid-cols-3 gap-3">
         <div>
-          <label className="block text-sm font-medium text-neutral-700 mb-1">
+          <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="precio_venta_visible">
             Precio de venta
-            {modo !== "PRECIO" && <span className="text-neutral-400 font-normal text-xs"> (calculado)</span>}
           </label>
-          {modo === "PRECIO" ? (
-            <input
-              type="number"
-              step="0.01"
-              value={valorPrecio || ""}
-              onChange={(e) => setValorPrecio(Number(e.target.value) || 0)}
-              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-            />
-          ) : (
-            <div className="w-full rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm font-semibold text-neutral-900">
-              ${precioRedondeado.toFixed(2)}
-            </div>
-          )}
+          <input
+            id="precio_venta_visible"
+            type="number"
+            step="0.01"
+            value={precio || ""}
+            onChange={(e) => recalcularDesdePrecio(Number(e.target.value) || 0)}
+            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+          />
           <input type="hidden" name="precio_venta" value={precioRedondeado || 0} />
         </div>
 
@@ -444,42 +427,28 @@ function PrecioCalculadora({
           <label className="block text-sm font-medium text-neutral-700 mb-1">
             Markup
             <Ayuda texto="Cuánto le sumás al costo para llegar al precio. Markup = (Precio − Costo) / Costo × 100. Ej: costo $100, precio $150 → markup 50%." />
-            {modo !== "MARKUP" && <span className="text-neutral-400 font-normal text-xs"> (calculado)</span>}
           </label>
-          {modo === "MARKUP" ? (
-            <input
-              type="number"
-              step="0.01"
-              value={valorMarkup || ""}
-              onChange={(e) => setValorMarkup(Number(e.target.value) || 0)}
-              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-            />
-          ) : (
-            <div className="w-full rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm font-semibold text-neutral-900">
-              {markup.toFixed(1)}%
-            </div>
-          )}
+          <input
+            type="number"
+            step="0.01"
+            value={Math.round(markup * 10) / 10 || ""}
+            onChange={(e) => recalcularDesdeMarkup(Number(e.target.value) || 0)}
+            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+          />
         </div>
 
         <div>
           <label className="block text-sm font-medium text-neutral-700 mb-1">
             Margen
             <Ayuda texto="De todo lo que factura ese producto, qué % es ganancia real. Margen = (Precio − Costo) / Precio × 100. Sirve para analizar rentabilidad." />
-            {modo !== "MARGEN" && <span className="text-neutral-400 font-normal text-xs"> (calculado)</span>}
           </label>
-          {modo === "MARGEN" ? (
-            <input
-              type="number"
-              step="0.01"
-              value={valorMargen || ""}
-              onChange={(e) => setValorMargen(Number(e.target.value) || 0)}
-              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-            />
-          ) : (
-            <div className="w-full rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm font-semibold text-neutral-900">
-              {margen.toFixed(1)}%
-            </div>
-          )}
+          <input
+            type="number"
+            step="0.01"
+            value={Math.round(margen * 10) / 10 || ""}
+            onChange={(e) => recalcularDesdeMargen(Number(e.target.value) || 0)}
+            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+          />
         </div>
       </div>
 
