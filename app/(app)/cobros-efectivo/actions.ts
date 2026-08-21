@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
+import { turnoAbiertoDeLocal } from "@/app/(app)/turnos/actions";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 async function usuarioActual() {
@@ -68,6 +69,10 @@ export async function confirmarCobro(idVenta: string, montoRecibido: number, for
 
   const total = venta.total ?? 0;
   if (montoRecibido < total) throw new Error("El monto recibido es menor al total del pedido");
+  if (!venta.id_local) throw new Error("Este pedido no tiene local asignado");
+
+  const idTurno = await turnoAbiertoDeLocal(supabase, venta.id_local);
+  if (!idTurno) throw new Error("No hay un turno de caja abierto en este local — abrilo en Turnos antes de confirmar cobros.");
 
   const usuario = await usuarioActual();
   const esMercadoPago = venta.medio_pago === "MERCADO_PAGO";
@@ -119,7 +124,7 @@ export async function confirmarCobro(idVenta: string, montoRecibido: number, for
 
   const { error: errorVentaUpdate } = await supabase
     .from("ventas")
-    .update({ estado: "PAGADA", id_pago: pago.id_pago, total_cobrado: montoRecibido })
+    .update({ estado: "PAGADA", id_pago: pago.id_pago, total_cobrado: montoRecibido, id_turno: idTurno })
     .eq("id_venta", idVenta);
   if (errorVentaUpdate) throw new Error(friendlyDbError(errorVentaUpdate));
 

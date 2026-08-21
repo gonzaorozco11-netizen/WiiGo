@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
+import { turnoAbiertoDeLocal } from "@/app/(app)/turnos/actions";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 async function usuarioActual() {
@@ -146,6 +147,9 @@ export async function venderPos(
   if (montoFinal < total) throw new Error("El monto recibido es menor al total de la venta");
   const vuelto = montoFinal - total;
 
+  const idTurno = await turnoAbiertoDeLocal(supabase, idLocal);
+  if (!idTurno) throw new Error("No hay un turno de caja abierto en este local — abrilo en Turnos antes de vender.");
+
   // La venta se crea primero: pagos.id_venta no admite null, así que no
   // se puede insertar el pago hasta tener el id de la venta.
   const { data: venta, error: errorVenta } = await supabase
@@ -162,6 +166,7 @@ export async function venderPos(
       total_cobrado: montoFinal,
       usuario,
       terminal: "POS",
+      id_turno: idTurno,
     })
     .select("id_venta, numero")
     .single();

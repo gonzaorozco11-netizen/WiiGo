@@ -207,6 +207,28 @@ export type Venta = {
   total_cobrado: number | null;
   motivo_cancelacion: string | null;
   fecha_cancelacion: string | null;
+  id_turno: string | null;
+};
+
+// Turno de caja: abre un empleado con un fondo inicial de efectivo, todas
+// las ventas cobradas en ese local mientras está ABIERTO quedan
+// estampadas con este id, y al cerrar se hace el arqueo (efectivo
+// contado vs. esperado).
+export type Turno = {
+  id_turno: string;
+  id_local: string;
+  usuario_apertura: string | null;
+  fecha_apertura: string;
+  monto_inicial_efectivo: number;
+  usuario_cierre: string | null;
+  fecha_cierre: string | null;
+  estado: string;
+  efectivo_esperado: number | null;
+  efectivo_contado: number | null;
+  diferencia_efectivo: number | null;
+  total_mercado_pago: number | null;
+  cantidad_ventas: number | null;
+  observaciones: string | null;
 };
 
 // Tabla original del esquema (ya pensada para el detalle completo de una
