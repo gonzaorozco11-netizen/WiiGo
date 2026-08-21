@@ -49,7 +49,7 @@ export default function MarcaFormModal({
             <legend className="text-sm font-semibold text-neutral-900 mb-1">Tipo de comercialización</legend>
             <p className="text-xs text-neutral-500 mb-3">
               Consignación: la mercadería es de la marca, WiiGo retiene su comisión y le rinde el resto (define las
-              condiciones comerciales de abajo). Propia: es WiiGo Dietética — sin rendición a terceros, se calcula
+              condiciones comerciales de abajo). Marca Propia: es WiiGo Dietética — sin rendición a terceros, se calcula
               rentabilidad real con el costo de cada producto.
             </p>
             <select
@@ -59,7 +59,7 @@ export default function MarcaFormModal({
               className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
             >
               <option value="CONSIGNACION">Consignación (marca externa)</option>
-              <option value="PROPIA">Propia (WiiGo Dietética)</option>
+              <option value="PROPIA">Marca Propia</option>
             </select>
           </fieldset>
 

@@ -144,7 +144,7 @@ export default function ProductosApp({
                   )}
                   {marcaPorId.get(p.id_marca)?.tipo_comercializacion === "PROPIA" && (
                     <span className="text-xs bg-accent-tint text-accent-dark rounded-full px-2 py-0.5 font-medium">
-                      Propia
+                      Marca Propia
                     </span>
                   )}
                 </div>
