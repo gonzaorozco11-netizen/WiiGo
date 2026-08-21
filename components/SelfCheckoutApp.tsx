@@ -53,6 +53,7 @@ export default function SelfCheckoutApp({
   const [codigoProfesional, setCodigoProfesional] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [medioPagoElegido, setMedioPagoElegido] = useState<MedioPago>("EFECTIVO");
 
   const [pedido, setPedido] = useState<{ idVenta: string; numero: number; total: number; descuento: number } | null>(
     null
@@ -487,15 +488,24 @@ export default function SelfCheckoutApp({
             </div>
 
             <div className="grid grid-cols-2 gap-2 mb-1">
-              <button className="flex flex-col items-center gap-1.5 py-4 rounded-2xl border-2 border-accent bg-accent-tint">
+              <button
+                onClick={() => setMedioPagoElegido("EFECTIVO")}
+                className={`flex flex-col items-center gap-1.5 py-4 rounded-2xl border-2 ${
+                  medioPagoElegido === "EFECTIVO" ? "border-accent bg-accent-tint" : "border-neutral-200 bg-white"
+                }`}
+              >
                 <span className="text-xl">💵</span>
                 <span className="font-bold text-sm text-neutral-900">Efectivo</span>
               </button>
-              <div className="flex flex-col items-center gap-1.5 py-4 rounded-2xl border-2 border-dashed border-neutral-200 bg-neutral-50 text-neutral-400">
-                <span className="text-xl opacity-40">📱</span>
-                <span className="font-bold text-sm">Mercado Pago</span>
-                <span className="text-[10px]">Próximamente</span>
-              </div>
+              <button
+                onClick={() => setMedioPagoElegido("MERCADO_PAGO")}
+                className={`flex flex-col items-center gap-1.5 py-4 rounded-2xl border-2 ${
+                  medioPagoElegido === "MERCADO_PAGO" ? "border-accent bg-accent-tint" : "border-neutral-200 bg-white"
+                }`}
+              >
+                <span className="text-xl">📱</span>
+                <span className="font-bold text-sm text-neutral-900">Mercado Pago</span>
+              </button>
               <div className="col-span-2 flex flex-col items-center gap-1.5 py-4 rounded-2xl border-2 border-dashed border-neutral-200 bg-neutral-50 text-neutral-400">
                 <span className="text-xl opacity-40">💳</span>
                 <span className="font-bold text-sm">Débito / Crédito</span>
@@ -503,7 +513,9 @@ export default function SelfCheckoutApp({
               </div>
             </div>
             <p className="text-[11px] text-neutral-400 -mt-1 mb-2.5">
-              💵 Efectivo: avisás al personal para abonar
+              {medioPagoElegido === "EFECTIVO"
+                ? "💵 Efectivo: avisás al personal para abonar"
+                : "📱 Mercado Pago: pagá con tu celular y avisale al personal para que lo confirme"}
             </p>
 
             <div className="flex justify-between items-center font-extrabold text-lg text-neutral-900 my-2">
@@ -525,7 +537,7 @@ export default function SelfCheckoutApp({
                 ← Seguir
               </button>
               <button
-                onClick={() => handleConfirmar("EFECTIVO")}
+                onClick={() => handleConfirmar(medioPagoElegido)}
                 disabled={enviando}
                 className="flex-1 bg-accent hover:bg-accent-dark disabled:opacity-50 text-white font-bold py-3.5 rounded-2xl text-sm"
               >
