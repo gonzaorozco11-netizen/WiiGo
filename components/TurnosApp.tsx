@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import type { Local, Turno } from "@/lib/supabase";
-import { abrirTurno, cerrarTurno, historialTurnos, resumenTurnoAbierto } from "@/app/(app)/turnos/actions";
+import { abrirTurno, cerrarTurno, historialTurnos, resumenTurnoAbierto, ventasDeTurno } from "@/app/(app)/turnos/actions";
 
 type Resumen = {
   totalEfectivo: number;
@@ -11,6 +11,17 @@ type Resumen = {
   cantidadVentas: number;
   montoInicial: number;
   efectivoEsperado: number;
+};
+
+type VentaTurno = {
+  idVenta: string;
+  numero: number;
+  fecha: string;
+  medioPago: string | null;
+  total: number;
+  totalCobrado: number | null;
+  usuario: string | null;
+  productos: string;
 };
 
 function formatearMonto(valor: number) {
@@ -26,6 +37,14 @@ function formatearFechaHora(fechaISO: string) {
   });
 }
 
+function formatearHora(fechaISO: string) {
+  return new Date(fechaISO).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
+}
+
+function formatearPedido(numero: number) {
+  return `VTA-${String(numero).padStart(4, "0")}`;
+}
+
 export default function TurnosApp({ locales, turnosAbiertos }: { locales: Local[]; turnosAbiertos: Turno[] }) {
   const [idLocal, setIdLocal] = useState(locales[0]?.id_local ?? "");
   const [montoInicial, setMontoInicial] = useState("");
@@ -39,7 +58,10 @@ export default function TurnosApp({ locales, turnosAbiertos }: { locales: Local[
   const [observaciones, setObservaciones] = useState("");
 
   const [historial, setHistorial] = useState<Turno[]>([]);
-  const [verHistorial, setVerHistorial] = useState(false);
+  const [cargandoHistorial, setCargandoHistorial] = useState(false);
+  const [idTurnoExpandido, setIdTurnoExpandido] = useState<string | null>(null);
+  const [ventasPorTurno, setVentasPorTurno] = useState<Record<string, VentaTurno[]>>({});
+  const [cargandoVentasDe, setCargandoVentasDe] = useState<string | null>(null);
 
   const turnoAbierto = turnosAbiertos.find((t) => t.id_local === idLocal) ?? null;
 
@@ -48,9 +70,33 @@ export default function TurnosApp({ locales, turnosAbiertos }: { locales: Local[
     setCerrando(false);
     setEfectivoContado("");
     setObservaciones("");
-    setVerHistorial(false);
     setResumen(null);
+    setIdTurnoExpandido(null);
   }, [idLocal]);
+
+  // El historial se muestra siempre — no hace falta ir a buscarlo con un
+  // botón aparte, así se ve de entrada qué turnos cerraron con diferencia.
+  useEffect(() => {
+    if (!idLocal) return;
+    setCargandoHistorial(true);
+    historialTurnos(idLocal)
+      .then(setHistorial)
+      .finally(() => setCargandoHistorial(false));
+  }, [idLocal, turnoAbierto]);
+
+  function toggleExpandirTurno(idTurno: string) {
+    if (idTurnoExpandido === idTurno) {
+      setIdTurnoExpandido(null);
+      return;
+    }
+    setIdTurnoExpandido(idTurno);
+    if (!ventasPorTurno[idTurno]) {
+      setCargandoVentasDe(idTurno);
+      ventasDeTurno(idTurno)
+        .then((v) => setVentasPorTurno((prev) => ({ ...prev, [idTurno]: v })))
+        .finally(() => setCargandoVentasDe(null));
+    }
+  }
 
   useEffect(() => {
     if (!turnoAbierto) return;
@@ -79,13 +125,6 @@ export default function TurnosApp({ locales, turnosAbiertos }: { locales: Local[
       .then(() => window.location.reload())
       .catch((e) => setError(e instanceof Error ? e.message : "No se pudo cerrar el turno"))
       .finally(() => setProcesando(false));
-  }
-
-  function handleVerHistorial() {
-    setVerHistorial((v) => !v);
-    if (!verHistorial) {
-      historialTurnos(idLocal).then(setHistorial);
-    }
   }
 
   const contadoNum = Number(efectivoContado.replace(/[^\d.-]/g, "")) || 0;
@@ -237,39 +276,47 @@ export default function TurnosApp({ locales, turnosAbiertos }: { locales: Local[
         </div>
       )}
 
-      <div className="mt-5">
-        <button onClick={handleVerHistorial} className="text-sm text-accent font-medium">
-          {verHistorial ? "Ocultar historial ▴" : "Ver historial de turnos ▾"}
-        </button>
+      <div className="mt-6">
+        <h2 className="text-sm font-bold text-neutral-900 mb-2">Historial de turnos</h2>
+        <p className="text-xs text-neutral-400 mb-3">Del más reciente al más viejo. Tocá una fila para ver las ventas de ese turno.</p>
 
-        {verHistorial && (
-          <div className="bg-white border border-neutral-200 rounded-xl overflow-hidden mt-3">
-            {historial.length === 0 ? (
-              <p className="text-sm text-neutral-400 text-center py-8">Todavía no hay turnos cerrados en este local.</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-neutral-200 text-left text-xs text-neutral-500">
-                      <th className="p-3">Apertura</th>
-                      <th className="p-3">Cierre</th>
-                      <th className="p-3 text-right">Fondo inicial</th>
-                      <th className="p-3 text-right">Esperado</th>
-                      <th className="p-3 text-right">Contado</th>
-                      <th className="p-3 text-right">Diferencia</th>
-                      <th className="p-3 text-right">Vuelto</th>
-                      <th className="p-3 text-right">Mercado Pago</th>
-                      <th className="p-3 text-right">Ventas</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {historial.map((t) => {
-                      const diff = t.diferencia_efectivo ?? 0;
-                      return (
-                        <tr key={t.id_turno} className="border-b border-neutral-100 last:border-0">
+        <div className="bg-white border border-neutral-200 rounded-xl overflow-hidden">
+          {cargandoHistorial ? (
+            <p className="text-sm text-neutral-400 text-center py-8">Cargando...</p>
+          ) : historial.length === 0 ? (
+            <p className="text-sm text-neutral-400 text-center py-8">Todavía no hay turnos cerrados en este local.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-neutral-200 text-left text-xs text-neutral-500">
+                    <th className="p-3">Apertura</th>
+                    <th className="p-3">Cierre</th>
+                    <th className="p-3 text-right">Fondo inicial</th>
+                    <th className="p-3 text-right">Esperado</th>
+                    <th className="p-3 text-right">Contado</th>
+                    <th className="p-3 text-right">Diferencia</th>
+                    <th className="p-3 text-right">Vuelto</th>
+                    <th className="p-3 text-right">Mercado Pago</th>
+                    <th className="p-3 text-right">Ventas</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {historial.map((t) => {
+                    const diff = t.diferencia_efectivo ?? 0;
+                    const expandido = idTurnoExpandido === t.id_turno;
+                    return (
+                      <Fragment key={t.id_turno}>
+                        <tr
+                          onClick={() => toggleExpandirTurno(t.id_turno)}
+                          className={`border-b border-neutral-100 last:border-0 cursor-pointer hover:bg-neutral-50 ${
+                            expandido ? "bg-neutral-50" : ""
+                          }`}
+                        >
                           <td className="p-3 whitespace-nowrap">
+                            <span className="text-neutral-400 mr-1">{expandido ? "▾" : "▸"}</span>
                             {formatearFechaHora(t.fecha_apertura)}
-                            <div className="text-xs text-neutral-400">{t.usuario_apertura ?? "—"}</div>
+                            <div className="text-xs text-neutral-400 pl-3.5">{t.usuario_apertura ?? "—"}</div>
                           </td>
                           <td className="p-3 whitespace-nowrap">
                             {t.fecha_cierre ? formatearFechaHora(t.fecha_cierre) : "—"}
@@ -291,14 +338,64 @@ export default function TurnosApp({ locales, turnosAbiertos }: { locales: Local[
                           <td className="p-3 text-right tabular-nums">${formatearMonto(t.total_mercado_pago ?? 0)}</td>
                           <td className="p-3 text-right tabular-nums">{t.cantidad_ventas ?? 0}</td>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
+                        {expandido && (
+                          <tr key={`${t.id_turno}-detalle`} className="border-b border-neutral-100 last:border-0">
+                            <td colSpan={9} className="bg-neutral-50 p-0">
+                              {cargandoVentasDe === t.id_turno ? (
+                                <p className="text-sm text-neutral-400 text-center py-4">Cargando ventas...</p>
+                              ) : (ventasPorTurno[t.id_turno] ?? []).length === 0 ? (
+                                <p className="text-sm text-neutral-400 text-center py-4">
+                                  Este turno no tuvo ninguna venta.
+                                </p>
+                              ) : (
+                                <table className="w-full text-xs">
+                                  <thead>
+                                    <tr className="text-left text-neutral-400 border-b border-neutral-200">
+                                      <th className="p-2.5 pl-8">Hora</th>
+                                      <th className="p-2.5">Pedido</th>
+                                      <th className="p-2.5">Productos</th>
+                                      <th className="p-2.5">Pago</th>
+                                      <th className="p-2.5 text-right">Total</th>
+                                      <th className="p-2.5 text-right">Pagó con</th>
+                                      <th className="p-2.5 text-right">Vuelto</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {(ventasPorTurno[t.id_turno] ?? []).map((v) => (
+                                      <tr key={v.idVenta} className="border-b border-neutral-100 last:border-0">
+                                        <td className="p-2.5 pl-8 whitespace-nowrap">{formatearHora(v.fecha)}</td>
+                                        <td className="p-2.5 whitespace-nowrap">{formatearPedido(v.numero)}</td>
+                                        <td className="p-2.5">{v.productos || "—"}</td>
+                                        <td className="p-2.5 text-neutral-500">
+                                          {v.medioPago === "MERCADO_PAGO" ? "Mercado Pago" : v.medioPago === "EFECTIVO" ? "Efectivo" : "—"}
+                                        </td>
+                                        <td className="p-2.5 text-right tabular-nums">${formatearMonto(v.total)}</td>
+                                        <td className="p-2.5 text-right tabular-nums">
+                                          {v.medioPago === "EFECTIVO" && v.totalCobrado != null
+                                            ? `$${formatearMonto(v.totalCobrado)}`
+                                            : "—"}
+                                        </td>
+                                        <td className="p-2.5 text-right tabular-nums">
+                                          {v.medioPago === "EFECTIVO" && v.totalCobrado != null && v.totalCobrado > v.total
+                                            ? `$${formatearMonto(v.totalCobrado - v.total)}`
+                                            : "—"}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              )}
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

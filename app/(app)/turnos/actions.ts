@@ -146,3 +146,58 @@ export async function historialTurnos(idLocal: string) {
   if (error) throw new Error(friendlyDbError(error));
   return data ?? [];
 }
+
+// Detalle de un turno para poder auditar rápido dónde está una diferencia
+// de arqueo: cada venta con hora, medio de pago y qué productos incluía.
+export async function ventasDeTurno(idTurno: string) {
+  const supabase = getSupabaseServerClient();
+  const { data: ventas, error } = await supabase
+    .from("ventas")
+    .select("id_venta, numero, fecha, medio_pago, total, total_cobrado, usuario")
+    .eq("id_turno", idTurno)
+    .eq("estado", "PAGADA")
+    .order("fecha", { ascending: true });
+  if (error) throw new Error(friendlyDbError(error));
+
+  const idsVenta = (ventas ?? []).map((v) => v.id_venta);
+  const { data: detalle } = await supabase
+    .from("detalle_ventas")
+    .select("id_venta, id_variante, cantidad")
+    .in("id_venta", idsVenta.length > 0 ? idsVenta : ["00000000-0000-0000-0000-000000000000"]);
+
+  const idsVariante = [...new Set((detalle ?? []).map((d) => d.id_variante))];
+  const { data: variantes } = await supabase
+    .from("variantes_producto")
+    .select("id_variante, id_producto, nombre")
+    .in("id_variante", idsVariante.length > 0 ? idsVariante : ["00000000-0000-0000-0000-000000000000"]);
+  const variantePorId = new Map((variantes ?? []).map((v) => [v.id_variante, v]));
+  const idsProducto = [...new Set((variantes ?? []).map((v) => v.id_producto))];
+  const { data: productos } = await supabase
+    .from("productos")
+    .select("id_producto, nombre")
+    .in("id_producto", idsProducto.length > 0 ? idsProducto : ["00000000-0000-0000-0000-000000000000"]);
+  const productoPorId = new Map((productos ?? []).map((p) => [p.id_producto, p]));
+
+  const detallePorVenta = new Map<string, string[]>();
+  for (const d of detalle ?? []) {
+    const variante = variantePorId.get(d.id_variante);
+    const producto = variante ? productoPorId.get(variante.id_producto) : undefined;
+    const nombre = `${producto?.nombre ?? "Producto"}${
+      variante && variante.nombre !== "Único" ? ` — ${variante.nombre}` : ""
+    }`;
+    const arr = detallePorVenta.get(d.id_venta) ?? [];
+    arr.push(`${nombre} x${d.cantidad}`);
+    detallePorVenta.set(d.id_venta, arr);
+  }
+
+  return (ventas ?? []).map((v) => ({
+    idVenta: v.id_venta,
+    numero: v.numero,
+    fecha: v.fecha,
+    medioPago: v.medio_pago,
+    total: v.total ?? 0,
+    totalCobrado: v.total_cobrado,
+    usuario: v.usuario,
+    productos: (detallePorVenta.get(v.id_venta) ?? []).join(", "),
+  }));
+}
