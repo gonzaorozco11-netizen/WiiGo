@@ -5,17 +5,35 @@ import { friendlyDbError } from "@/lib/errors";
 import { calcularRendicion } from "@/app/(app)/liquidaciones/actions";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+// Coincide con `pagos.forma_pago_cliente` (ver cobros-efectivo/actions.ts)
+// y con Configuración → Comisión de Mercado Pago — no hay una sola
+// comisión de MP, varía según cómo pagó el cliente.
+const CLAVE_COMISION_MP: Record<string, string> = {
+  DINERO_CUENTA: "MP_COMISION_DINERO_CUENTA",
+  DEBITO: "MP_COMISION_DEBITO",
+  CUOTAS_SIN_INTERES: "MP_COMISION_CUOTAS_SIN_INTERES",
+  PREPAGA: "MP_COMISION_PREPAGA",
+  CREDITO: "MP_COMISION_CREDITO",
+};
+
 async function tasasRentabilidad(supabase: SupabaseClient) {
   const { data } = await supabase
     .from("configuracion")
     .select("parametro, valor")
-    .in("parametro", ["IVA_GENERAL_PORCENTAJE", "IIBB_PORCENTAJE", "IMP_CREDITOS_PORCENTAJE", "MP_COMISION_PORCENTAJE"]);
+    .in("parametro", [
+      "IVA_GENERAL_PORCENTAJE",
+      "IIBB_PORCENTAJE",
+      "IMP_CREDITOS_PORCENTAJE",
+      ...Object.values(CLAVE_COMISION_MP),
+    ]);
   const cfg = Object.fromEntries((data ?? []).map((r) => [r.parametro, Number(r.valor ?? 0)]));
   return {
     ivaGeneral: cfg.IVA_GENERAL_PORCENTAJE ?? 21,
     iibb: cfg.IIBB_PORCENTAJE ?? 0,
     impCreditos: cfg.IMP_CREDITOS_PORCENTAJE ?? 0,
-    mpComision: cfg.MP_COMISION_PORCENTAJE ?? 0,
+    mpComisionPorFormaPago: Object.fromEntries(
+      Object.entries(CLAVE_COMISION_MP).map(([forma, clave]) => [forma, cfg[clave] ?? 0])
+    ) as Record<string, number>,
   };
 }
 
@@ -73,7 +91,7 @@ export async function calcularRentabilidad(idMarca: string, desde: string, hasta
   const idsVenta = [...new Set((detalle ?? []).map((d) => d.id_venta))];
   const { data: ventas, error: errorVentas } = await supabase
     .from("ventas")
-    .select("id_venta, fecha, medio_pago, estado")
+    .select("id_venta, fecha, medio_pago, estado, id_pago")
     .in("id_venta", idsVenta.length > 0 ? idsVenta : ["00000000-0000-0000-0000-000000000000"])
     .eq("estado", "PAGADA")
     .gte("fecha", `${desde}T00:00:00`)
@@ -81,9 +99,16 @@ export async function calcularRentabilidad(idMarca: string, desde: string, hasta
   if (errorVentas) throw new Error(friendlyDbError(errorVentas));
   const ventaPorId = new Map((ventas ?? []).map((v) => [v.id_venta, v]));
 
+  const idsPago = [...new Set((ventas ?? []).map((v) => v.id_pago).filter((id): id is string => Boolean(id)))];
+  const { data: pagos } = await supabase
+    .from("pagos")
+    .select("id_pago, forma_pago_cliente")
+    .in("id_pago", idsPago.length > 0 ? idsPago : ["00000000-0000-0000-0000-000000000000"]);
+  const formaPagoPorIdPago = new Map((pagos ?? []).map((p) => [p.id_pago, p.forma_pago_cliente]));
+
   const porProducto = new Map<
     string,
-    { nombre: string; unidades: number; facturacionBruta: number; cmv: number; gastosFinancieros: number }
+    { nombre: string; unidades: number; facturacionBruta: number; cmv: number; gastosFinancieros: number; costoImpositivo: number }
   >();
 
   for (const linea of detalle ?? []) {
@@ -96,7 +121,13 @@ export async function calcularRentabilidad(idMarca: string, desde: string, hasta
     const ventaBruta = linea.subtotal ?? 0;
     const esEfectivo = venta.medio_pago === "EFECTIVO";
     const impCreditosLinea = esEfectivo ? 0 : ventaBruta * (tasas.impCreditos / 100);
-    const feeMpLinea = !esEfectivo && venta.medio_pago === "MERCADO_PAGO" ? ventaBruta * (tasas.mpComision / 100) : 0;
+    const formaPagoMp = venta.id_pago ? formaPagoPorIdPago.get(venta.id_pago) ?? null : null;
+    const tasaMp = formaPagoMp ? tasas.mpComisionPorFormaPago[formaPagoMp] ?? 0 : 0;
+    const feeMpLinea = !esEfectivo && venta.medio_pago === "MERCADO_PAGO" ? ventaBruta * (tasaMp / 100) : 0;
+    // IIBB solo se percibe/expone sobre lo que pasa por el banco — en
+    // efectivo no hay retención ni rastro bancario, así que no corresponde.
+    const facturacionNetaLinea = ventaBruta / (1 + tasas.ivaGeneral / 100);
+    const costoImpositivoLinea = esEfectivo ? 0 : facturacionNetaLinea * (tasas.iibb / 100);
 
     const acc = porProducto.get(idProducto) ?? {
       nombre: producto?.nombre ?? "Producto",
@@ -104,18 +135,20 @@ export async function calcularRentabilidad(idMarca: string, desde: string, hasta
       facturacionBruta: 0,
       cmv: 0,
       gastosFinancieros: 0,
+      costoImpositivo: 0,
     };
     acc.unidades += linea.cantidad;
     acc.facturacionBruta += ventaBruta;
     acc.cmv += (producto?.costo_informado ?? 0) * linea.cantidad;
     acc.gastosFinancieros += impCreditosLinea + feeMpLinea;
+    acc.costoImpositivo += costoImpositivoLinea;
     porProducto.set(idProducto, acc);
   }
 
   const filas: FilaRentabilidad[] = [...porProducto.entries()]
     .map(([idProducto, p]) => {
       const facturacionNeta = p.facturacionBruta / (1 + tasas.ivaGeneral / 100);
-      const costoImpositivo = facturacionNeta * (tasas.iibb / 100);
+      const costoImpositivo = Math.round(p.costoImpositivo);
       const gastosFinancieros = Math.round(p.gastosFinancieros);
       const contribucionNeta = Math.round(facturacionNeta - p.cmv - gastosFinancieros - costoImpositivo);
       return {
@@ -126,7 +159,7 @@ export async function calcularRentabilidad(idMarca: string, desde: string, hasta
         facturacionNeta: Math.round(facturacionNeta),
         cmv: Math.round(p.cmv),
         gastosFinancieros,
-        costoImpositivo: Math.round(costoImpositivo),
+        costoImpositivo,
         contribucionNeta,
         contribucionPorcentaje: facturacionNeta > 0 ? (contribucionNeta / facturacionNeta) * 100 : 0,
       };

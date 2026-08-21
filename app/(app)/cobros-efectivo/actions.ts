@@ -32,12 +32,30 @@ async function calcularPuntos(supabase: SupabaseClient, total: number) {
   return Math.floor((total / cadaMonto) * otorgados);
 }
 
-export async function confirmarCobro(idVenta: string, montoRecibido: number) {
+// Coincide con las tasas que se cargan en Configuración → Comisión de
+// Mercado Pago (ver guardarConfigMercadoPago) — cada forma de pago del
+// cliente tiene su propia comisión, no hay una tasa única de MP.
+const FORMAS_PAGO_MP: Record<string, string> = {
+  DINERO_CUENTA: "MP_COMISION_DINERO_CUENTA",
+  DEBITO: "MP_COMISION_DEBITO",
+  CUOTAS_SIN_INTERES: "MP_COMISION_CUOTAS_SIN_INTERES",
+  PREPAGA: "MP_COMISION_PREPAGA",
+  CREDITO: "MP_COMISION_CREDITO",
+};
+
+async function tasaComisionMp(supabase: SupabaseClient, formaPago: string) {
+  const clave = FORMAS_PAGO_MP[formaPago];
+  if (!clave) return 0;
+  const { data } = await supabase.from("configuracion").select("valor").eq("parametro", clave).maybeSingle();
+  return Number(data?.valor ?? 0);
+}
+
+export async function confirmarCobro(idVenta: string, montoRecibido: number, formaPagoMp?: string) {
   const supabase = getSupabaseServerClient();
 
   const { data: venta, error: errorVenta } = await supabase
     .from("ventas")
-    .select("id_venta, id_cliente, id_local, total, estado")
+    .select("id_venta, id_cliente, id_local, total, estado, medio_pago")
     .eq("id_venta", idVenta)
     .maybeSingle();
   if (errorVenta) throw new Error(friendlyDbError(errorVenta));
@@ -48,14 +66,33 @@ export async function confirmarCobro(idVenta: string, montoRecibido: number) {
   if (montoRecibido < total) throw new Error("El monto recibido es menor al total del pedido");
 
   const usuario = await usuarioActual();
-  const vuelto = montoRecibido - total;
+  const esMercadoPago = venta.medio_pago === "MERCADO_PAGO";
 
-  // El efectivo no tiene comisión ni conciliación externa: neto = bruto,
-  // y queda acreditado en el momento (a diferencia de una liquidación de
-  // Mercado Pago, que se concilia después).
-  const { data: pago, error: errorPago } = await supabase
-    .from("pagos")
-    .insert({
+  let pagoInsert: Record<string, unknown>;
+  if (esMercadoPago) {
+    if (!formaPagoMp || !FORMAS_PAGO_MP[formaPagoMp]) throw new Error("Elegí cómo pagó el cliente por Mercado Pago");
+    const tasa = await tasaComisionMp(supabase, formaPagoMp);
+    const comisionImporte = Math.round(total * (tasa / 100));
+    pagoInsert = {
+      id_venta: idVenta,
+      medio: "MERCADO_PAGO",
+      forma_pago_cliente: formaPagoMp,
+      importe_bruto: total,
+      comision_porcentaje: tasa,
+      comision_importe: comisionImporte,
+      neto_acreditado: total - comisionImporte,
+      fecha_pago: new Date().toISOString(),
+      fecha_acreditacion: new Date().toISOString(),
+      estado: "ACREDITADO",
+      estado_conciliacion: "CONCILIADO",
+      observaciones: `Confirmado por ${usuario ?? "personal"} · Mercado Pago (${formaPagoMp}) · comisión ${tasa}%`,
+    };
+  } else {
+    const vuelto = montoRecibido - total;
+    // El efectivo no tiene comisión ni conciliación externa: neto = bruto,
+    // y queda acreditado en el momento (a diferencia de una liquidación de
+    // Mercado Pago, que se concilia después).
+    pagoInsert = {
       id_venta: idVenta,
       medio: "EFECTIVO",
       forma_pago_cliente: "EFECTIVO",
@@ -66,9 +103,10 @@ export async function confirmarCobro(idVenta: string, montoRecibido: number) {
       estado: "ACREDITADO",
       estado_conciliacion: "CONCILIADO",
       observaciones: `Confirmado por ${usuario ?? "personal"} · Pagó con $${montoRecibido} · Vuelto $${vuelto}`,
-    })
-    .select("id_pago")
-    .single();
+    };
+  }
+
+  const { data: pago, error: errorPago } = await supabase.from("pagos").insert(pagoInsert).select("id_pago").single();
   if (errorPago) throw new Error(friendlyDbError(errorPago));
 
   const { error: errorVentaUpdate } = await supabase

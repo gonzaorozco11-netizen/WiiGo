@@ -14,15 +14,28 @@ async function usuarioActual() {
   return session?.nombre ?? null;
 }
 
+// Coincide con `pagos.forma_pago_cliente` (ver cobros-efectivo/actions.ts)
+// y con las tasas cargadas en Configuración → Comisión de Mercado Pago —
+// no hay una sola comisión de MP, varía según cómo pagó el cliente.
+const CLAVE_COMISION_MP: Record<string, string> = {
+  DINERO_CUENTA: "MP_COMISION_DINERO_CUENTA",
+  DEBITO: "MP_COMISION_DEBITO",
+  CUOTAS_SIN_INTERES: "MP_COMISION_CUOTAS_SIN_INTERES",
+  PREPAGA: "MP_COMISION_PREPAGA",
+  CREDITO: "MP_COMISION_CREDITO",
+};
+
 async function tasasGenerales(supabase: SupabaseClient) {
   const { data } = await supabase
     .from("configuracion")
     .select("parametro, valor")
-    .in("parametro", ["IMP_CREDITOS_PORCENTAJE", "MP_COMISION_PORCENTAJE"]);
+    .in("parametro", ["IMP_CREDITOS_PORCENTAJE", ...Object.values(CLAVE_COMISION_MP)]);
   const cfg = Object.fromEntries((data ?? []).map((r) => [r.parametro, Number(r.valor ?? 0)]));
   return {
     impCreditos: cfg.IMP_CREDITOS_PORCENTAJE ?? 0,
-    mpComision: cfg.MP_COMISION_PORCENTAJE ?? 0,
+    mpComisionPorFormaPago: Object.fromEntries(
+      Object.entries(CLAVE_COMISION_MP).map(([forma, clave]) => [forma, cfg[clave] ?? 0])
+    ) as Record<string, number>,
   };
 }
 
@@ -33,6 +46,7 @@ export type LineaRendicion = {
   producto: string;
   cantidad: number;
   medioPago: string | null;
+  formaPagoMp: string | null;
   ventaBruta: number;
   comisionWiigo: number;
   ivaComision: number;
@@ -54,7 +68,13 @@ function vacioResumen() {
   };
 }
 
-type VentaMinima = { id_venta: string; numero: number; fecha: string; medio_pago: string | null };
+type VentaMinima = {
+  id_venta: string;
+  numero: number;
+  fecha: string;
+  medio_pago: string | null;
+  id_pago: string | null;
+};
 
 // Motor de cálculo compartido: dada una marca y un conjunto ya filtrado de
 // ventas (pendientes de rendir, o las de una liquidación ya cerrada),
@@ -97,6 +117,17 @@ async function construirLineas(supabase: SupabaseClient, idMarca: string, ventas
     .in("id_producto", idsProducto.length > 0 ? idsProducto : ["00000000-0000-0000-0000-000000000000"]);
   const productoPorId = new Map((productos ?? []).map((p) => [p.id_producto, p]));
 
+  // La comisión real de Mercado Pago depende de con qué pagó el cliente
+  // (débito, crédito, cuotas, etc.) — eso queda en pagos.forma_pago_cliente
+  // al confirmar el cobro (ver cobros-efectivo/actions.ts), no es una tasa
+  // única aplicable a toda venta por Mercado Pago.
+  const idsPago = [...new Set((ventasFiltradas ?? []).map((v) => v.id_pago).filter((id): id is string => Boolean(id)))];
+  const { data: pagos } = await supabase
+    .from("pagos")
+    .select("id_pago, forma_pago_cliente")
+    .in("id_pago", idsPago.length > 0 ? idsPago : ["00000000-0000-0000-0000-000000000000"]);
+  const formaPagoPorIdPago = new Map((pagos ?? []).map((p) => [p.id_pago, p.forma_pago_cliente]));
+
   const lineas: LineaRendicion[] = [];
 
   for (const linea of detalle ?? []) {
@@ -110,16 +141,19 @@ async function construirLineas(supabase: SupabaseClient, idMarca: string, ventas
       : "Producto";
 
     const esEfectivo = venta.medio_pago === "EFECTIVO";
+    const formaPagoMp = venta.id_pago ? formaPagoPorIdPago.get(venta.id_pago) ?? null : null;
     const ventaBruta = linea.subtotal ?? linea.precio_unitario * linea.cantidad;
     const comisionWiigo = Math.round(ventaBruta * (royalty / 100));
     const ivaComision = Math.round(comisionWiigo * (ivaRoyalty / 100));
     // El Impuesto a los Créditos es bancario: no corresponde si se le va a
     // entregar el efectivo en mano, sin pasar por una cuenta. Lo mismo la
-    // comisión de Mercado Pago, que solo existe si cobró por esa vía.
+    // comisión de Mercado Pago, que solo existe si cobró por esa vía — y
+    // varía según la forma de pago real del cliente (ver arriba).
     const impCreditosLinea = esEfectivo ? 0 : Math.round(ventaBruta * (tasas.impCreditos / 100));
+    const tasaMp = formaPagoMp ? tasas.mpComisionPorFormaPago[formaPagoMp] ?? 0 : 0;
     const feeMp =
       !esEfectivo && marca.trasladar_comision_cobro && venta.medio_pago === "MERCADO_PAGO"
-        ? Math.round(ventaBruta * (tasas.mpComision / 100))
+        ? Math.round(ventaBruta * (tasaMp / 100))
         : 0;
     const netoARendir = ventaBruta - comisionWiigo - ivaComision - impCreditosLinea - feeMp;
 
@@ -130,6 +164,7 @@ async function construirLineas(supabase: SupabaseClient, idMarca: string, ventas
       producto: nombreProducto,
       cantidad: linea.cantidad,
       medioPago: venta.medio_pago,
+      formaPagoMp,
       ventaBruta,
       comisionWiigo,
       ivaComision,
@@ -177,7 +212,7 @@ export async function calcularRendicion(idMarca: string, desde: string, hasta: s
 
   const { data: ventas, error: errorVentas } = await supabase
     .from("ventas")
-    .select("id_venta, numero, fecha, medio_pago")
+    .select("id_venta, numero, fecha, medio_pago, id_pago")
     .in("id_venta", idsVenta)
     .eq("estado", "PAGADA")
     .is("id_liquidacion", null)
@@ -204,7 +239,7 @@ export async function detalleLiquidacion(idLiquidacion: string) {
 
   const { data: ventas, error: errorVentas } = await supabase
     .from("ventas")
-    .select("id_venta, numero, fecha, medio_pago")
+    .select("id_venta, numero, fecha, medio_pago, id_pago")
     .eq("id_liquidacion", idLiquidacion);
   if (errorVentas) throw new Error(friendlyDbError(errorVentas));
 

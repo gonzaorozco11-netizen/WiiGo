@@ -24,6 +24,23 @@ function formatearFecha(fechaISO: string) {
   return fecha.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
+const ETIQUETA_FORMA_PAGO_MP: Record<string, string> = {
+  DINERO_CUENTA: "Dinero en cuenta",
+  DEBITO: "Débito",
+  CUOTAS_SIN_INTERES: "Cuotas s/interés",
+  PREPAGA: "Prepaga",
+  CREDITO: "Crédito",
+};
+
+function formatearMedioPago(medioPago: string | null, formaPagoMp: string | null) {
+  if (medioPago === "EFECTIVO") return "Efectivo";
+  if (medioPago === "MERCADO_PAGO") {
+    const forma = formaPagoMp ? ETIQUETA_FORMA_PAGO_MP[formaPagoMp] : null;
+    return forma ? `Mercado Pago (${forma})` : "Mercado Pago";
+  }
+  return "—";
+}
+
 export default function ComprobanteLiquidacion({
   liquidacion,
   marca,
@@ -103,8 +120,8 @@ export default function ComprobanteLiquidacion({
                 </td>
                 <td className="py-1.5 pr-2">{l.producto}</td>
                 <td className="py-1.5 pr-2">{l.cantidad}</td>
-                <td className="py-1.5 pr-2 text-neutral-500">
-                  {l.medioPago === "MERCADO_PAGO" ? "Mercado Pago" : l.medioPago === "EFECTIVO" ? "Efectivo" : "—"}
+                <td className="py-1.5 pr-2 text-neutral-500 whitespace-nowrap">
+                  {formatearMedioPago(l.medioPago, l.formaPagoMp)}
                 </td>
                 <td className="py-1.5 pr-2 text-right tabular-nums">${formatearMonto(l.ventaBruta)}</td>
                 <td className="py-1.5 pr-2 text-right tabular-nums">-${formatearMonto(l.comisionWiigo)}</td>

@@ -19,6 +19,14 @@ function formatearHora(fechaISO: string) {
   return new Date(fechaISO).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
 }
 
+const FORMAS_PAGO_MP: { valor: string; etiqueta: string }[] = [
+  { valor: "DINERO_CUENTA", etiqueta: "Dinero en cuenta MP" },
+  { valor: "DEBITO", etiqueta: "Tarjeta de débito" },
+  { valor: "CUOTAS_SIN_INTERES", etiqueta: "Cuotas sin interés" },
+  { valor: "PREPAGA", etiqueta: "Tarjeta prepaga" },
+  { valor: "CREDITO", etiqueta: "Tarjeta de crédito" },
+];
+
 function mismoDia(a: Date, b: Date) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
@@ -65,6 +73,7 @@ export default function CobrosEfectivoApp({
   const [rangoHasta, setRangoHasta] = useState(hoyISO());
   const [idVentaSeleccionada, setIdVentaSeleccionada] = useState<string | null>(null);
   const [montoRecibido, setMontoRecibido] = useState("");
+  const [formaPagoMp, setFormaPagoMp] = useState("");
   const [cancelando, setCancelando] = useState(false);
   const [motivoCancelacion, setMotivoCancelacion] = useState("");
   const [procesando, setProcesando] = useState(false);
@@ -94,10 +103,7 @@ export default function CobrosEfectivoApp({
 
   const ventasDelLocal = useMemo(() => ventas.filter((v) => v.id_local === idLocal), [ventas, idLocal]);
 
-  const pendientes = useMemo(
-    () => ventasDelLocal.filter((v) => v.estado === "PENDIENTE_PAGO" && v.medio_pago === "EFECTIVO"),
-    [ventasDelLocal]
-  );
+  const pendientes = useMemo(() => ventasDelLocal.filter((v) => v.estado === "PENDIENTE_PAGO"), [ventasDelLocal]);
   const completos = useMemo(
     () =>
       ventasDelLocal
@@ -125,6 +131,7 @@ export default function CobrosEfectivoApp({
   function seleccionar(idVenta: string) {
     setIdVentaSeleccionada(idVenta);
     setMontoRecibido("");
+    setFormaPagoMp("");
     setCancelando(false);
     setMotivoCancelacion("");
     setError(null);
@@ -137,14 +144,15 @@ export default function CobrosEfectivoApp({
     setError(null);
   }
 
-  const montoNum = Number(montoRecibido.replace(/[^\d.-]/g, "")) || 0;
+  const esMercadoPago = ventaSeleccionada?.medio_pago === "MERCADO_PAGO";
+  const montoNum = esMercadoPago ? ventaSeleccionada?.total ?? 0 : Number(montoRecibido.replace(/[^\d.-]/g, "")) || 0;
   const vuelto = ventaSeleccionada ? montoNum - (ventaSeleccionada.total ?? 0) : 0;
 
   function handleConfirmarCobro() {
     if (!ventaSeleccionada) return;
     setError(null);
     setProcesando(true);
-    confirmarCobro(ventaSeleccionada.id_venta, montoNum)
+    confirmarCobro(ventaSeleccionada.id_venta, montoNum, esMercadoPago ? formaPagoMp : undefined)
       .then(() => setIdVentaSeleccionada(null))
       .catch((e) => setError(e instanceof Error ? e.message : "No se pudo confirmar el cobro"))
       .finally(() => setProcesando(false));
@@ -252,6 +260,11 @@ export default function CobrosEfectivoApp({
                   {(detallePorVenta.get(v.id_venta) ?? []).length === 1 ? "" : "s"}
                 </div>
                 <div className="font-bold text-sm text-neutral-900 mt-0.5">${formatearMonto(v.total ?? 0)}</div>
+                {tab === "PENDIENTE" && (
+                  <div className="text-xs text-neutral-400 mt-1.5">
+                    {v.medio_pago === "MERCADO_PAGO" ? "📱 Mercado Pago" : "💵 Efectivo"}
+                  </div>
+                )}
                 {tab === "COMPLETOS" && (
                   <div className="text-xs text-neutral-400 mt-1.5">
                     {v.medio_pago === "MERCADO_PAGO" ? "📱 Mercado Pago" : "💵 Efectivo"} · {formatearHora(v.fecha)}
@@ -272,9 +285,14 @@ export default function CobrosEfectivoApp({
                 <div className="flex items-baseline justify-between mb-3.5">
                   <h3 className="font-bold text-neutral-900">{formatearPedido(ventaSeleccionada.numero)}</h3>
                   {tab === "PENDIENTE" && (
-                    <button onClick={() => setIdVentaSeleccionada(null)} className="text-xs text-neutral-400">
-                      Cerrar
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-accent-tint text-accent">
+                        {esMercadoPago ? "📱 Mercado Pago" : "💵 Efectivo"}
+                      </span>
+                      <button onClick={() => setIdVentaSeleccionada(null)} className="text-xs text-neutral-400">
+                        Cerrar
+                      </button>
+                    </div>
                   )}
                   {tab === "COMPLETOS" && (
                     <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700">
@@ -326,21 +344,45 @@ export default function CobrosEfectivoApp({
                       <span>A cobrar</span>
                       <span>${formatearMonto(ventaSeleccionada.total ?? 0)}</span>
                     </div>
-                    <div className="flex justify-between items-center text-sm mb-2">
-                      <label className="text-neutral-500">Pagó con</label>
-                      <input
-                        value={montoRecibido}
-                        onChange={(e) => setMontoRecibido(e.target.value)}
-                        placeholder="$0"
-                        className="w-32 text-right border border-neutral-300 rounded-lg px-2.5 py-1.5"
-                      />
-                    </div>
-                    <div className="flex justify-between items-center text-sm">
-                      <label className="text-neutral-500">Vuelto</label>
-                      <span className={`font-bold ${vuelto < 0 ? "text-red-600" : "text-emerald-600"}`}>
-                        ${formatearMonto(Math.max(vuelto, 0))}
-                      </span>
-                    </div>
+                    {esMercadoPago ? (
+                      <div>
+                        <label className="block text-sm text-neutral-500 mb-1">¿Cómo pagó el cliente?</label>
+                        <select
+                          value={formaPagoMp}
+                          onChange={(e) => setFormaPagoMp(e.target.value)}
+                          className="w-full border border-neutral-300 rounded-lg px-2.5 py-1.5 text-sm bg-white"
+                        >
+                          <option value="">Elegí una opción...</option>
+                          {FORMAS_PAGO_MP.map((f) => (
+                            <option key={f.valor} value={f.valor}>
+                              {f.etiqueta}
+                            </option>
+                          ))}
+                        </select>
+                        <p className="text-xs text-neutral-400 mt-1">
+                          Se ve en el detalle del cobro de Mercado Pago — de esto depende la comisión real que se
+                          descuenta en Liquidaciones y Rentabilidad.
+                        </p>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex justify-between items-center text-sm mb-2">
+                          <label className="text-neutral-500">Pagó con</label>
+                          <input
+                            value={montoRecibido}
+                            onChange={(e) => setMontoRecibido(e.target.value)}
+                            placeholder="$0"
+                            className="w-32 text-right border border-neutral-300 rounded-lg px-2.5 py-1.5"
+                          />
+                        </div>
+                        <div className="flex justify-between items-center text-sm">
+                          <label className="text-neutral-500">Vuelto</label>
+                          <span className={`font-bold ${vuelto < 0 ? "text-red-600" : "text-emerald-600"}`}>
+                            ${formatearMonto(Math.max(vuelto, 0))}
+                          </span>
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
 
@@ -360,7 +402,7 @@ export default function CobrosEfectivoApp({
                     </button>
                     <button
                       onClick={handleConfirmarCobro}
-                      disabled={procesando || montoNum < (ventaSeleccionada.total ?? 0)}
+                      disabled={procesando || (esMercadoPago ? !formaPagoMp : montoNum < (ventaSeleccionada.total ?? 0))}
                       className="flex-1 bg-accent hover:bg-accent-dark disabled:opacity-40 text-white font-bold py-2.5 rounded-xl text-sm"
                     >
                       {procesando ? "Confirmando..." : `Confirmar cobro · $${formatearMonto(ventaSeleccionada.total ?? 0)}`}

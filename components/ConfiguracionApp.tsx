@@ -1,7 +1,12 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { guardarConfigPuntos, guardarConfigLiquidaciones, guardarConfigRentabilidad } from "@/app/(app)/configuracion/actions";
+import {
+  guardarConfigPuntos,
+  guardarConfigLiquidaciones,
+  guardarConfigRentabilidad,
+  guardarConfigMercadoPago,
+} from "@/app/(app)/configuracion/actions";
 
 export default function ConfiguracionApp({
   puntosActivo,
@@ -9,20 +14,28 @@ export default function ConfiguracionApp({
   puntosOtorgados,
   impCreditosPorcentaje,
   sircrebPorcentaje,
-  mpComisionPorcentaje,
   impDebitosPorcentaje,
   ivaGeneralPorcentaje,
   iibbPorcentaje,
+  mpComisionDineroCuenta,
+  mpComisionDebito,
+  mpComisionCuotasSinInteres,
+  mpComisionPrepaga,
+  mpComisionCredito,
 }: {
   puntosActivo: boolean;
   puntosCadaMonto: number;
   puntosOtorgados: number;
   impCreditosPorcentaje: number;
   sircrebPorcentaje: number;
-  mpComisionPorcentaje: number;
   impDebitosPorcentaje: number;
   ivaGeneralPorcentaje: number;
   iibbPorcentaje: number;
+  mpComisionDineroCuenta: number;
+  mpComisionDebito: number;
+  mpComisionCuotasSinInteres: number;
+  mpComisionPrepaga: number;
+  mpComisionCredito: number;
 }) {
   const [isPending, startTransition] = useTransition();
   const [guardado, setGuardado] = useState(false);
@@ -35,13 +48,20 @@ export default function ConfiguracionApp({
   const [guardadoLiq, setGuardadoLiq] = useState(false);
   const [impCreditos, setImpCreditos] = useState(impCreditosPorcentaje);
   const [sircreb, setSircreb] = useState(sircrebPorcentaje);
-  const [mpComision, setMpComision] = useState(mpComisionPorcentaje);
   const [impDebitos, setImpDebitos] = useState(impDebitosPorcentaje);
 
   const [isPendingRent, startTransitionRent] = useTransition();
   const [guardadoRent, setGuardadoRent] = useState(false);
   const [ivaGeneral, setIvaGeneral] = useState(ivaGeneralPorcentaje);
   const [iibb, setIibb] = useState(iibbPorcentaje);
+
+  const [isPendingMp, startTransitionMp] = useTransition();
+  const [guardadoMp, setGuardadoMp] = useState(false);
+  const [mpDineroCuenta, setMpDineroCuenta] = useState(mpComisionDineroCuenta);
+  const [mpDebito, setMpDebito] = useState(mpComisionDebito);
+  const [mpCuotas, setMpCuotas] = useState(mpComisionCuotasSinInteres);
+  const [mpPrepaga, setMpPrepaga] = useState(mpComisionPrepaga);
+  const [mpCredito, setMpCredito] = useState(mpComisionCredito);
 
   const puntosCalculados = useMemo(() => {
     if (!cadaMonto || cadaMonto <= 0) return 0;
@@ -69,6 +89,14 @@ export default function ConfiguracionApp({
     startTransitionRent(async () => {
       await guardarConfigRentabilidad(formData);
       setGuardadoRent(true);
+    });
+  }
+
+  function handleSubmitMp(formData: FormData) {
+    setGuardadoMp(false);
+    startTransitionMp(async () => {
+      await guardarConfigMercadoPago(formData);
+      setGuardadoMp(true);
     });
   }
 
@@ -208,21 +236,6 @@ export default function ConfiguracionApp({
             <p className="text-xs text-neutral-400 mt-1">Lo absorbe WiiGo — solo informativo, no se le descuenta a la marca.</p>
           </div>
           <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="mp_comision_porcentaje">
-              Comisión Mercado Pago (%)
-            </label>
-            <input
-              id="mp_comision_porcentaje"
-              name="mp_comision_porcentaje"
-              type="number"
-              step="0.01"
-              value={mpComision}
-              onChange={(e) => setMpComision(Number(e.target.value))}
-              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-            />
-            <p className="text-xs text-neutral-400 mt-1">Estimada a mano hasta conectar la API real de Mercado Pago.</p>
-          </div>
-          <div>
             <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="imp_debitos_porcentaje">
               Imp. a los Débitos (%)
             </label>
@@ -251,6 +264,102 @@ export default function ConfiguracionApp({
           className="w-full rounded-lg bg-accent hover:bg-accent-dark text-white py-2 text-sm font-medium disabled:opacity-50"
         >
           {isPendingLiq ? "Guardando..." : "Guardar tasas"}
+        </button>
+      </form>
+
+      <form action={handleSubmitMp} className="bg-white border border-neutral-200 rounded-xl p-5 mt-5">
+        <h2 className="text-base font-semibold text-neutral-900 mb-1">💳 Comisión de Mercado Pago</h2>
+        <p className="text-sm text-neutral-500 mb-4">
+          No es una sola tasa — Mercado Pago cobra distinto según cómo pagó el cliente. Cargá cada una con el IVA ya
+          incluido, tal cual la publica Mercado Pago. Al confirmar un cobro por Mercado Pago se va a elegir cuál de
+          estas se usó, para que Liquidaciones y Rentabilidad apliquen la correcta.
+        </p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="mp_comision_dinero_cuenta">
+              Dinero en cuenta MP (%)
+            </label>
+            <input
+              id="mp_comision_dinero_cuenta"
+              name="mp_comision_dinero_cuenta"
+              type="number"
+              step="0.01"
+              value={mpDineroCuenta}
+              onChange={(e) => setMpDineroCuenta(Number(e.target.value))}
+              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="mp_comision_debito">
+              Tarjeta de débito (%)
+            </label>
+            <input
+              id="mp_comision_debito"
+              name="mp_comision_debito"
+              type="number"
+              step="0.01"
+              value={mpDebito}
+              onChange={(e) => setMpDebito(Number(e.target.value))}
+              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="mp_comision_cuotas_sin_interes">
+              Cuotas sin interés (%)
+            </label>
+            <input
+              id="mp_comision_cuotas_sin_interes"
+              name="mp_comision_cuotas_sin_interes"
+              type="number"
+              step="0.01"
+              value={mpCuotas}
+              onChange={(e) => setMpCuotas(Number(e.target.value))}
+              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="mp_comision_prepaga">
+              Tarjeta prepaga (%)
+            </label>
+            <input
+              id="mp_comision_prepaga"
+              name="mp_comision_prepaga"
+              type="number"
+              step="0.01"
+              value={mpPrepaga}
+              onChange={(e) => setMpPrepaga(Number(e.target.value))}
+              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="mp_comision_credito">
+              Tarjeta de crédito (%)
+            </label>
+            <input
+              id="mp_comision_credito"
+              name="mp_comision_credito"
+              type="number"
+              step="0.01"
+              value={mpCredito}
+              onChange={(e) => setMpCredito(Number(e.target.value))}
+              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+          </div>
+        </div>
+
+        {guardadoMp && (
+          <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 mb-4">
+            Configuración guardada.
+          </p>
+        )}
+
+        <button
+          type="submit"
+          disabled={isPendingMp}
+          className="w-full rounded-lg bg-accent hover:bg-accent-dark text-white py-2 text-sm font-medium disabled:opacity-50"
+        >
+          {isPendingMp ? "Guardando..." : "Guardar tasas"}
         </button>
       </form>
 
@@ -289,7 +398,9 @@ export default function ConfiguracionApp({
               onChange={(e) => setIibb(Number(e.target.value))}
               className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
             />
-            <p className="text-xs text-neutral-400 mt-1">Alícuota sobre la facturación neta.</p>
+            <p className="text-xs text-neutral-400 mt-1">
+              Alícuota sobre la facturación neta — solo se aplica a ventas por banco/Mercado Pago, no a efectivo.
+            </p>
           </div>
         </div>
 

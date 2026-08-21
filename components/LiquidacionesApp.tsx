@@ -34,6 +34,23 @@ function formatearFecha(fechaISO: string) {
   return fecha.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
+const ETIQUETA_FORMA_PAGO_MP: Record<string, string> = {
+  DINERO_CUENTA: "Dinero en cuenta",
+  DEBITO: "Débito",
+  CUOTAS_SIN_INTERES: "Cuotas s/interés",
+  PREPAGA: "Prepaga",
+  CREDITO: "Crédito",
+};
+
+function formatearMedioPago(medioPago: string | null, formaPagoMp: string | null) {
+  if (medioPago === "EFECTIVO") return "Efectivo";
+  if (medioPago === "MERCADO_PAGO") {
+    const forma = formaPagoMp ? ETIQUETA_FORMA_PAGO_MP[formaPagoMp] : null;
+    return forma ? `Mercado Pago (${forma})` : "Mercado Pago";
+  }
+  return "—";
+}
+
 function inicioDeMes() {
   const d = new Date();
   return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
@@ -211,8 +228,8 @@ export default function LiquidacionesApp({ marcas }: { marcas: Marca[] }) {
                         </td>
                         <td className="p-3">{l.producto}</td>
                         <td className="p-3">{l.cantidad}</td>
-                        <td className="p-3 text-neutral-500">
-                          {l.medioPago === "MERCADO_PAGO" ? "Mercado Pago" : l.medioPago === "EFECTIVO" ? "Efectivo" : "—"}
+                        <td className="p-3 text-neutral-500 whitespace-nowrap">
+                          {formatearMedioPago(l.medioPago, l.formaPagoMp)}
                         </td>
                         <td className="p-3 text-right tabular-nums">${formatearMonto(l.ventaBruta)}</td>
                         <td className="p-3 text-right tabular-nums text-red-600">-${formatearMonto(l.comisionWiigo)}</td>

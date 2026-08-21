@@ -15,10 +15,14 @@ export default async function ConfiguracionPage() {
       "PUNTOS_OTORGADOS",
       "IMP_CREDITOS_PORCENTAJE",
       "SIRCREB_PORCENTAJE",
-      "MP_COMISION_PORCENTAJE",
       "IMP_DEBITOS_PORCENTAJE",
       "IVA_GENERAL_PORCENTAJE",
       "IIBB_PORCENTAJE",
+      "MP_COMISION_DINERO_CUENTA",
+      "MP_COMISION_DEBITO",
+      "MP_COMISION_CUOTAS_SIN_INTERES",
+      "MP_COMISION_PREPAGA",
+      "MP_COMISION_CREDITO",
     ]);
 
   const valores = new Map((data ?? []).map((c) => [c.parametro, c.valor]));
@@ -30,10 +34,14 @@ export default async function ConfiguracionPage() {
       puntosOtorgados={Number(valores.get("PUNTOS_OTORGADOS") ?? 10)}
       impCreditosPorcentaje={Number(valores.get("IMP_CREDITOS_PORCENTAJE") ?? 0.6)}
       sircrebPorcentaje={Number(valores.get("SIRCREB_PORCENTAJE") ?? 5)}
-      mpComisionPorcentaje={Number(valores.get("MP_COMISION_PORCENTAJE") ?? 0)}
       impDebitosPorcentaje={Number(valores.get("IMP_DEBITOS_PORCENTAJE") ?? 0.6)}
       ivaGeneralPorcentaje={Number(valores.get("IVA_GENERAL_PORCENTAJE") ?? 21)}
       iibbPorcentaje={Number(valores.get("IIBB_PORCENTAJE") ?? 0)}
+      mpComisionDineroCuenta={Number(valores.get("MP_COMISION_DINERO_CUENTA") ?? 0.8)}
+      mpComisionDebito={Number(valores.get("MP_COMISION_DEBITO") ?? 1.39)}
+      mpComisionCuotasSinInteres={Number(valores.get("MP_COMISION_CUOTAS_SIN_INTERES") ?? 1.38)}
+      mpComisionPrepaga={Number(valores.get("MP_COMISION_PREPAGA") ?? 3.85)}
+      mpComisionCredito={Number(valores.get("MP_COMISION_CREDITO") ?? 6.15)}
     />
   );
 }

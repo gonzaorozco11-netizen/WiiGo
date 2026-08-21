@@ -206,7 +206,8 @@ export default function RentabilidadApp({ marcas }: { marcas: Marca[] }) {
                         </span>
                       </p>
                       <p className="text-xs text-neutral-400 mt-1">
-                        Ya sin IVA, sin el CMV, sin los costos financieros de cobro y sin IIBB.
+                        Ya sin IVA, sin el CMV, sin los costos financieros de cobro y sin IIBB (este último solo se
+                        descuenta en las ventas por banco/Mercado Pago — en efectivo no corresponde).
                       </p>
                     </div>
                   </div>
