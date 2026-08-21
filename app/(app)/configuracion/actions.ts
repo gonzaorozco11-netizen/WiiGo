@@ -104,6 +104,7 @@ export async function guardarConfigMercadoPago(formData: FormData) {
 export async function guardarConfigRentabilidad(formData: FormData) {
   const ivaGeneral = Number(formData.get("iva_general_porcentaje") ?? 21);
   const iibb = Number(formData.get("iibb_porcentaje") ?? 0);
+  const margenMinimo = Number(formData.get("margen_minimo_porcentaje") ?? 15);
 
   const supabase = getSupabaseServerClient();
 
@@ -118,6 +119,12 @@ export async function guardarConfigRentabilidad(formData: FormData) {
     "IIBB_PORCENTAJE",
     String(iibb),
     "Rentabilidad: alícuota de Ingresos Brutos sobre la facturación neta de productos propios"
+  );
+  await guardarParametro(
+    supabase,
+    "MARGEN_MINIMO_PORCENTAJE",
+    String(margenMinimo),
+    "Productos: margen sobre venta mínimo recomendado para no perder plata (cubre IIBB, costos financieros de cobro y un colchón operativo) — se usa para la alerta al cargar precios"
   );
 
   revalidatePath("/configuracion");

@@ -1,9 +1,18 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
+import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 import type { SupabaseClient } from "@supabase/supabase-js";
+
+async function usuarioActual() {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(SESSION_COOKIE)?.value;
+  const session = await readSessionToken(token, process.env.AUTH_SECRET ?? "");
+  return session?.nombre ?? null;
+}
 
 function text(formData: FormData, name: string) {
   const s = String(formData.get(name) ?? "").trim();
@@ -128,21 +137,57 @@ async function generarCodigoBarrasVariante(supabase: SupabaseClient) {
   return String(mayor + 1);
 }
 
+// Carga el stock físico inicial de una variante recién creada, con su
+// movimiento de auditoría — mismo patrón que ajustarStock en
+// app/(app)/stock/actions.ts, pero sin pasar por esa función porque acá
+// ya sabemos que la cantidad previa es 0 (variante nueva).
+async function cargarStockInicial(
+  supabase: SupabaseClient,
+  idVariante: string,
+  idLocal: string,
+  cantidad: number,
+  usuario: string | null
+) {
+  if (cantidad <= 0) return;
+  const { error: errorStock } = await supabase
+    .from("stock")
+    .upsert(
+      { id_variante: idVariante, id_local: idLocal, cantidad, fecha_actualizacion: new Date().toISOString() },
+      { onConflict: "id_variante,id_local" }
+    );
+  if (errorStock) throw new Error(friendlyDbError(errorStock));
+
+  const { error: errorMov } = await supabase.from("movimientos_stock").insert({
+    id_variante: idVariante,
+    id_local: idLocal,
+    tipo: "CARGA_INICIAL",
+    cantidad,
+    motivo: "Carga inicial al crear el producto",
+    usuario,
+  });
+  if (errorMov) throw new Error(friendlyDbError(errorMov));
+}
+
 // Sincroniza las variantes del producto con lo que llegó del formulario:
 // renombra las que ya existían, crea las nuevas (con SKU/código
 // automáticos) y borra las que se sacaron de la lista. Si no queda
 // ninguna, crea una por defecto llamada "Único" — todo producto necesita
-// al menos una variante para tener stock.
+// al menos una variante para tener stock. `idLocalInicial` solo se pasa
+// al crear un producto nuevo — al editar nunca se toca el stock acá,
+// eso se maneja desde /stock.
 async function sincronizarVariantes(
   supabase: SupabaseClient,
   idProducto: string,
   idMarca: string,
-  formData: FormData
+  formData: FormData,
+  idLocalInicial: string | null,
+  usuario: string | null
 ) {
   const ids = formData.getAll("variante_id").map(String);
   const nombres = formData.getAll("variante_nombre").map(String);
   const stocksMinimos = formData.getAll("variante_stock_minimo").map(Number);
   const stocksObjetivo = formData.getAll("variante_stock_objetivo").map(Number);
+  const stocksIniciales = formData.getAll("variante_stock_inicial").map(Number);
 
   const { data: existentes } = await supabase
     .from("variantes_producto")
@@ -174,15 +219,24 @@ async function sincronizarVariantes(
     } else {
       const sku = await generarSkuVariante(supabase, idMarca);
       const codigoBarras = await generarCodigoBarrasVariante(supabase);
-      const { error } = await supabase.from("variantes_producto").insert({
-        id_producto: idProducto,
-        nombre,
-        sku,
-        codigo_barras: codigoBarras,
-        stock_minimo: stockMinimo,
-        stock_objetivo: stockObjetivo,
-      });
+      const { data: nueva, error } = await supabase
+        .from("variantes_producto")
+        .insert({
+          id_producto: idProducto,
+          nombre,
+          sku,
+          codigo_barras: codigoBarras,
+          stock_minimo: stockMinimo,
+          stock_objetivo: stockObjetivo,
+        })
+        .select("id_variante")
+        .single();
       if (error) throw new Error(friendlyDbError(error));
+
+      const stockInicial = Number.isFinite(stocksIniciales[i]) ? stocksIniciales[i] : 0;
+      if (idLocalInicial && stockInicial > 0) {
+        await cargarStockInicial(supabase, nueva.id_variante, idLocalInicial, stockInicial, usuario);
+      }
     }
   }
 
@@ -194,10 +248,17 @@ async function sincronizarVariantes(
   if (!count) {
     const sku = await generarSkuVariante(supabase, idMarca);
     const codigoBarras = await generarCodigoBarrasVariante(supabase);
-    const { error } = await supabase
+    const { data: unica, error } = await supabase
       .from("variantes_producto")
-      .insert({ id_producto: idProducto, nombre: "Único", sku, codigo_barras: codigoBarras });
+      .insert({ id_producto: idProducto, nombre: "Único", sku, codigo_barras: codigoBarras })
+      .select("id_variante")
+      .single();
     if (error) throw new Error(friendlyDbError(error));
+
+    const stockInicial = Number.isFinite(stocksIniciales[0]) ? stocksIniciales[0] : 0;
+    if (idLocalInicial && stockInicial > 0) {
+      await cargarStockInicial(supabase, unica.id_variante, idLocalInicial, stockInicial, usuario);
+    }
   }
 }
 
@@ -282,10 +343,13 @@ export async function createProducto(formData: FormData) {
     .single();
   if (error) throw new Error(friendlyDbError(error));
 
-  await sincronizarVariantes(supabase, inserted.id_producto, idMarca, formData);
+  const idLocalInicial = text(formData, "id_local_inicial");
+  const usuario = await usuarioActual();
+  await sincronizarVariantes(supabase, inserted.id_producto, idMarca, formData, idLocalInicial, usuario);
   await guardarContenidoAsesor(supabase, inserted.id_producto, formData);
 
   revalidatePath("/productos");
+  revalidatePath("/stock");
   revalidatePath(`/marcas/${idMarca}`);
 }
 
@@ -301,7 +365,9 @@ export async function updateProducto(id: string, formData: FormData) {
   const { error } = await supabase.from("productos").update(data).eq("id_producto", id);
   if (error) throw new Error(friendlyDbError(error));
 
-  await sincronizarVariantes(supabase, id, idMarca, formData);
+  // Al editar nunca se toca el stock desde acá (idLocalInicial null) — eso
+  // se maneja desde /stock, para no pisar cantidades reales sin querer.
+  await sincronizarVariantes(supabase, id, idMarca, formData, null, null);
   await guardarContenidoAsesor(supabase, id, formData);
 
   revalidatePath("/productos");

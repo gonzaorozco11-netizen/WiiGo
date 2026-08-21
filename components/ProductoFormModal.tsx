@@ -9,6 +9,7 @@ import type {
   Objetivo,
   FiltroProducto,
   VarianteProducto,
+  Local,
 } from "@/lib/supabase";
 import { createProducto, updateProducto } from "@/app/(app)/productos/actions";
 
@@ -18,12 +19,15 @@ type VarianteForm = {
   sku: string | null;
   stockMinimo: number;
   stockObjetivo: number;
+  stockInicial: number;
 };
 
 export default function ProductoFormModal({
   producto,
   marcas,
   subcategorias,
+  locales = [],
+  margenMinimo = 15,
   objetivosGlobales = [],
   filtrosGlobales = [],
   ficha = null,
@@ -35,6 +39,8 @@ export default function ProductoFormModal({
   producto: Producto | null;
   marcas: Marca[];
   subcategorias: Subcategoria[];
+  locales?: Local[];
+  margenMinimo?: number;
   objetivosGlobales?: Objetivo[];
   filtrosGlobales?: FiltroProducto[];
   ficha?: FichaProducto | null;
@@ -55,9 +61,11 @@ export default function ProductoFormModal({
           sku: v.sku,
           stockMinimo: v.stock_minimo,
           stockObjetivo: v.stock_objetivo,
+          stockInicial: 0,
         }))
-      : [{ id: "", nombre: "", sku: null, stockMinimo: 0, stockObjetivo: 0 }]
+      : [{ id: "", nombre: "", sku: null, stockMinimo: 0, stockObjetivo: 0, stockInicial: 0 }]
   );
+  const [idLocalInicial, setIdLocalInicial] = useState(locales[0]?.id_local ?? "");
   const isEditing = Boolean(producto);
   const marcaSeleccionada = marcas.find((m) => m.id_marca === idMarca);
 
@@ -153,7 +161,14 @@ export default function ProductoFormModal({
             </div>
           </div>
 
-          <VariantesSection variantes={variantes} setVariantes={setVariantes} />
+          <VariantesSection
+            variantes={variantes}
+            setVariantes={setVariantes}
+            mostrarStockInicial={!isEditing}
+            locales={locales}
+            idLocalInicial={idLocalInicial}
+            setIdLocalInicial={setIdLocalInicial}
+          />
 
           <div>
             <label className="block text-sm font-medium text-neutral-700 mb-1">Descripción</label>
@@ -165,29 +180,13 @@ export default function ProductoFormModal({
             />
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
-            <Field
-              label={marcaSeleccionada?.tipo_comercializacion === "PROPIA" ? "Costo (CMV, sin IVA)" : "Costo informado"}
-              name="costo_informado"
-              defaultValue={producto?.costo_informado ?? ""}
-              type="number"
-              step="0.01"
-            />
-            <Field
-              label="Precio de venta"
-              name="precio_venta"
-              defaultValue={producto?.precio_venta ?? ""}
-              type="number"
-              step="0.01"
-            />
-            <Field
-              label="Descuento %"
-              name="descuento_porcentaje"
-              defaultValue={producto?.descuento_porcentaje ?? ""}
-              type="number"
-              step="0.01"
-            />
-          </div>
+          <PrecioCalculadora
+            costoInicial={producto?.costo_informado ?? null}
+            precioInicial={producto?.precio_venta ?? null}
+            descuentoInicial={producto?.descuento_porcentaje ?? null}
+            labelCosto={marcaSeleccionada?.tipo_comercializacion === "PROPIA" ? "Costo (CMV, sin IVA)" : "Costo informado"}
+            margenMinimo={margenMinimo}
+          />
 
           <Field label="Imagen (URL)" name="imagen" defaultValue={producto?.imagen ?? ""} />
 
@@ -287,12 +286,227 @@ function Field({
   );
 }
 
+function Ayuda({ texto }: { texto: string }) {
+  const [abierto, setAbierto] = useState(false);
+  return (
+    <span className="relative inline-block ml-1 align-middle">
+      <button
+        type="button"
+        onClick={() => setAbierto((v) => !v)}
+        onBlur={() => setAbierto(false)}
+        className="text-neutral-400 hover:text-accent"
+        aria-label="Ayuda"
+      >
+        🔍
+      </button>
+      {abierto && (
+        <span className="absolute z-20 left-1/2 -translate-x-1/2 bottom-full mb-1.5 w-56 bg-neutral-900 text-white text-xs font-normal leading-snug rounded-lg px-3 py-2 shadow-lg">
+          {texto}
+        </span>
+      )}
+    </span>
+  );
+}
+
+type ModoPrecio = "PRECIO" | "MARKUP" | "MARGEN";
+
+// Costo + uno de los tres (Precio, Markup o Margen) alcanza para derivar
+// los otros dos. El usuario elige cuál de los tres quiere completar a
+// mano — los otros dos se calculan solos.
+function PrecioCalculadora({
+  costoInicial,
+  precioInicial,
+  descuentoInicial,
+  labelCosto,
+  margenMinimo,
+}: {
+  costoInicial: number | null;
+  precioInicial: number | null;
+  descuentoInicial: number | null;
+  labelCosto: string;
+  margenMinimo: number;
+}) {
+  const [costo, setCosto] = useState(costoInicial ?? 0);
+  const [modo, setModo] = useState<ModoPrecio>("PRECIO");
+  const [valorPrecio, setValorPrecio] = useState(precioInicial ?? 0);
+  const [valorMarkup, setValorMarkup] = useState(() =>
+    costoInicial && precioInicial && costoInicial > 0 ? ((precioInicial - costoInicial) / costoInicial) * 100 : 0
+  );
+  const [valorMargen, setValorMargen] = useState(() =>
+    precioInicial && costoInicial !== null && precioInicial > 0
+      ? ((precioInicial - costoInicial) / precioInicial) * 100
+      : 0
+  );
+  const [descuento, setDescuento] = useState(descuentoInicial ?? 0);
+
+  const { precio, markup, margen } = useMemo(() => {
+    if (modo === "PRECIO") {
+      const p = valorPrecio;
+      return {
+        precio: p,
+        markup: costo > 0 ? ((p - costo) / costo) * 100 : 0,
+        margen: p > 0 ? ((p - costo) / p) * 100 : 0,
+      };
+    }
+    if (modo === "MARKUP") {
+      const p = costo * (1 + valorMarkup / 100);
+      return { precio: p, markup: valorMarkup, margen: p > 0 ? ((p - costo) / p) * 100 : 0 };
+    }
+    // MARGEN — un margen de 100% o más implicaría precio infinito, no tiene sentido.
+    const g = Math.min(valorMargen, 99);
+    const p = g < 100 ? costo / (1 - g / 100) : 0;
+    return { precio: p, markup: costo > 0 ? ((p - costo) / costo) * 100 : 0, margen: valorMargen };
+  }, [modo, costo, valorPrecio, valorMarkup, valorMargen]);
+
+  const precioRedondeado = Math.round(precio * 100) / 100;
+  const margenBajo = precioRedondeado > 0 && margen < margenMinimo;
+
+  return (
+    <div className="border border-neutral-200 rounded-xl p-4 space-y-3">
+      <h3 className="text-sm font-semibold text-neutral-900">💲 Precio y rentabilidad</h3>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="costo_informado">
+            {labelCosto}
+          </label>
+          <input
+            id="costo_informado"
+            name="costo_informado"
+            type="number"
+            step="0.01"
+            value={costo || ""}
+            onChange={(e) => setCosto(Number(e.target.value) || 0)}
+            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="descuento_porcentaje">
+            Descuento %
+          </label>
+          <input
+            id="descuento_porcentaje"
+            name="descuento_porcentaje"
+            type="number"
+            step="0.01"
+            value={descuento || ""}
+            onChange={(e) => setDescuento(Number(e.target.value) || 0)}
+            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+          />
+        </div>
+      </div>
+
+      <div>
+        <p className="text-xs font-medium text-neutral-500 mb-1.5">¿Qué querés completar?</p>
+        <div className="flex gap-1.5">
+          {([
+            ["PRECIO", "Precio"],
+            ["MARKUP", "Markup"],
+            ["MARGEN", "Margen"],
+          ] as [ModoPrecio, string][]).map(([m, etiqueta]) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setModo(m)}
+              className={`text-xs font-semibold px-3 py-1.5 rounded-full border ${
+                modo === m ? "bg-accent border-accent text-white" : "bg-white border-neutral-300 text-neutral-600"
+              }`}
+            >
+              {etiqueta}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-3">
+        <div>
+          <label className="block text-sm font-medium text-neutral-700 mb-1">
+            Precio de venta
+            {modo !== "PRECIO" && <span className="text-neutral-400 font-normal text-xs"> (calculado)</span>}
+          </label>
+          {modo === "PRECIO" ? (
+            <input
+              type="number"
+              step="0.01"
+              value={valorPrecio || ""}
+              onChange={(e) => setValorPrecio(Number(e.target.value) || 0)}
+              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+          ) : (
+            <div className="w-full rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm font-semibold text-neutral-900">
+              ${precioRedondeado.toFixed(2)}
+            </div>
+          )}
+          <input type="hidden" name="precio_venta" value={precioRedondeado || 0} />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-neutral-700 mb-1">
+            Markup
+            <Ayuda texto="Cuánto le sumás al costo para llegar al precio. Markup = (Precio − Costo) / Costo × 100. Ej: costo $100, precio $150 → markup 50%." />
+            {modo !== "MARKUP" && <span className="text-neutral-400 font-normal text-xs"> (calculado)</span>}
+          </label>
+          {modo === "MARKUP" ? (
+            <input
+              type="number"
+              step="0.01"
+              value={valorMarkup || ""}
+              onChange={(e) => setValorMarkup(Number(e.target.value) || 0)}
+              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+          ) : (
+            <div className="w-full rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm font-semibold text-neutral-900">
+              {markup.toFixed(1)}%
+            </div>
+          )}
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-neutral-700 mb-1">
+            Margen
+            <Ayuda texto="De todo lo que factura ese producto, qué % es ganancia real. Margen = (Precio − Costo) / Precio × 100. Sirve para analizar rentabilidad." />
+            {modo !== "MARGEN" && <span className="text-neutral-400 font-normal text-xs"> (calculado)</span>}
+          </label>
+          {modo === "MARGEN" ? (
+            <input
+              type="number"
+              step="0.01"
+              value={valorMargen || ""}
+              onChange={(e) => setValorMargen(Number(e.target.value) || 0)}
+              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+          ) : (
+            <div className="w-full rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm font-semibold text-neutral-900">
+              {margen.toFixed(1)}%
+            </div>
+          )}
+        </div>
+      </div>
+
+      {margenBajo && (
+        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          ⚠️ Margen bajo: {margen.toFixed(1)}%. El mínimo recomendado para no perder plata es {margenMinimo}% (cubre
+          IIBB, costos financieros de cobro y un colchón operativo — ajustable en Configuración).
+        </p>
+      )}
+    </div>
+  );
+}
+
 function VariantesSection({
   variantes,
   setVariantes,
+  mostrarStockInicial,
+  locales,
+  idLocalInicial,
+  setIdLocalInicial,
 }: {
   variantes: VarianteForm[];
   setVariantes: React.Dispatch<React.SetStateAction<VarianteForm[]>>;
+  mostrarStockInicial: boolean;
+  locales: Local[];
+  idLocalInicial: string;
+  setIdLocalInicial: (id: string) => void;
 }) {
   return (
     <div className="border border-neutral-200 rounded-xl p-4">
@@ -301,7 +515,10 @@ function VariantesSection({
         <button
           type="button"
           onClick={() =>
-            setVariantes((prev) => [...prev, { id: "", nombre: "", sku: null, stockMinimo: 0, stockObjetivo: 0 }])
+            setVariantes((prev) => [
+              ...prev,
+              { id: "", nombre: "", sku: null, stockMinimo: 0, stockObjetivo: 0, stockInicial: 0 },
+            ])
           }
           className="text-xs text-accent"
         >
@@ -313,6 +530,27 @@ function VariantesSection({
         código se genera solo). Si el producto no tiene variaciones, dejá una sola fila — se va a
         llamar "Único".
       </p>
+
+      {mostrarStockInicial && locales.length > 0 && (
+        <div className="mb-3">
+          <label className="block text-xs font-medium text-neutral-500 mb-1" htmlFor="id_local_inicial">
+            Local que recibe el stock inicial
+          </label>
+          <select
+            id="id_local_inicial"
+            name="id_local_inicial"
+            value={idLocalInicial}
+            onChange={(e) => setIdLocalInicial(e.target.value)}
+            className="w-full sm:w-64 rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
+          >
+            {locales.map((l) => (
+              <option key={l.id_local} value={l.id_local}>
+                {l.nombre}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div className="space-y-2">
         {variantes.map((v, i) => (
@@ -327,6 +565,26 @@ function VariantesSection({
               placeholder="Único"
               className="flex-1 min-w-[120px] rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
             />
+            {mostrarStockInicial && (
+              <div className="flex items-center gap-1 shrink-0">
+                <label className="text-xs text-neutral-500" htmlFor={`variante_stock_inicial_${i}`}>
+                  Inicial
+                </label>
+                <input
+                  id={`variante_stock_inicial_${i}`}
+                  name="variante_stock_inicial"
+                  type="number"
+                  min={0}
+                  value={v.stockInicial}
+                  onChange={(e) =>
+                    setVariantes((prev) =>
+                      prev.map((x, j) => (j === i ? { ...x, stockInicial: Number(e.target.value) } : x))
+                    )
+                  }
+                  className="w-16 rounded-lg border border-neutral-300 px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                />
+              </div>
+            )}
             <div className="flex items-center gap-1 shrink-0">
               <label className="text-xs text-neutral-500" htmlFor={`variante_stock_minimo_${i}`}>
                 Mín.

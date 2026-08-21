@@ -17,6 +17,7 @@ export default function ConfiguracionApp({
   impDebitosPorcentaje,
   ivaGeneralPorcentaje,
   iibbPorcentaje,
+  margenMinimoPorcentaje,
   mpComisionDineroCuenta,
   mpComisionDebito,
   mpComisionCuotasSinInteres,
@@ -31,6 +32,7 @@ export default function ConfiguracionApp({
   impDebitosPorcentaje: number;
   ivaGeneralPorcentaje: number;
   iibbPorcentaje: number;
+  margenMinimoPorcentaje: number;
   mpComisionDineroCuenta: number;
   mpComisionDebito: number;
   mpComisionCuotasSinInteres: number;
@@ -54,6 +56,7 @@ export default function ConfiguracionApp({
   const [guardadoRent, setGuardadoRent] = useState(false);
   const [ivaGeneral, setIvaGeneral] = useState(ivaGeneralPorcentaje);
   const [iibb, setIibb] = useState(iibbPorcentaje);
+  const [margenMinimo, setMargenMinimo] = useState(margenMinimoPorcentaje);
 
   const [isPendingMp, startTransitionMp] = useTransition();
   const [guardadoMp, setGuardadoMp] = useState(false);
@@ -401,6 +404,23 @@ export default function ConfiguracionApp({
             />
             <p className="text-xs text-neutral-400 mt-1">
               Alícuota sobre la facturación neta — solo se aplica a ventas por banco/Mercado Pago, no a efectivo.
+            </p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="margen_minimo_porcentaje">
+              Margen mínimo de venta (%)
+            </label>
+            <input
+              id="margen_minimo_porcentaje"
+              name="margen_minimo_porcentaje"
+              type="number"
+              step="0.01"
+              value={margenMinimo}
+              onChange={(e) => setMargenMinimo(Number(e.target.value))}
+              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+            <p className="text-xs text-neutral-400 mt-1">
+              Por debajo de esto, el producto avisa que puede estar perdiendo plata (IIBB + costos de cobro + colchón).
             </p>
           </div>
         </div>
