@@ -37,11 +37,15 @@ async function tasasRentabilidad(supabase: SupabaseClient) {
   };
 }
 
-export type FilaRentabilidad = {
-  idProducto: string;
-  nombre: string;
-  unidades: number;
-  facturacionBruta: number;
+export type LineaRentabilidad = {
+  idDetalle: string;
+  fecha: string;
+  numeroVenta: number;
+  producto: string;
+  cantidad: number;
+  medioPago: string | null;
+  formaPagoMp: string | null;
+  ventaBruta: number;
   facturacionNeta: number;
   cmv: number;
   gastosFinancieros: number;
@@ -50,10 +54,15 @@ export type FilaRentabilidad = {
   contribucionPorcentaje: number;
 };
 
-// Rentabilidad real de los productos de una marca propia: se saca el IVA
-// de la facturación (no es un costo, se compensa con crédito fiscal), y
-// se resta el CMV + los costos financieros de cobro + el costo
-// impositivo directo (IIBB) — lo que queda es la contribución marginal.
+function vacioResumenRent() {
+  return { facturacionNeta: 0, cmv: 0, gastosFinancieros: 0, costoImpositivo: 0, contribucionNeta: 0 };
+}
+
+// Rentabilidad real de los productos de una marca propia, línea por línea
+// (igual que Liquidaciones): se saca el IVA de la facturación (no es un
+// costo, se compensa con crédito fiscal), y se resta el CMV + los costos
+// financieros de cobro + el costo impositivo directo (IIBB) — lo que
+// queda es la contribución marginal de esa venta.
 export async function calcularRentabilidad(idMarca: string, desde: string, hasta: string) {
   const supabase = getSupabaseServerClient();
   const tasas = await tasasRentabilidad(supabase);
@@ -72,26 +81,26 @@ export async function calcularRentabilidad(idMarca: string, desde: string, hasta
     .eq("id_marca", idMarca);
   const productoPorId = new Map((productos ?? []).map((p) => [p.id_producto, p]));
   const idsProducto = (productos ?? []).map((p) => p.id_producto);
-  if (idsProducto.length === 0) return { marca: marca.nombre, filas: [] as FilaRentabilidad[], resumen: vacioResumenRent() };
+  if (idsProducto.length === 0) return { marca: marca.nombre, lineas: [] as LineaRentabilidad[], resumen: vacioResumenRent() };
 
   const { data: variantes } = await supabase
     .from("variantes_producto")
-    .select("id_variante, id_producto")
+    .select("id_variante, id_producto, nombre")
     .in("id_producto", idsProducto);
-  const productoDeVariante = new Map((variantes ?? []).map((v) => [v.id_variante, v.id_producto]));
+  const variantePorId = new Map((variantes ?? []).map((v) => [v.id_variante, v]));
   const idsVariante = (variantes ?? []).map((v) => v.id_variante);
-  if (idsVariante.length === 0) return { marca: marca.nombre, filas: [] as FilaRentabilidad[], resumen: vacioResumenRent() };
+  if (idsVariante.length === 0) return { marca: marca.nombre, lineas: [] as LineaRentabilidad[], resumen: vacioResumenRent() };
 
   const { data: detalle, error: errorDetalle } = await supabase
     .from("detalle_ventas")
-    .select("id_venta, id_variante, cantidad, subtotal")
+    .select("id_detalle, id_venta, id_variante, cantidad, subtotal")
     .in("id_variante", idsVariante);
   if (errorDetalle) throw new Error(friendlyDbError(errorDetalle));
 
   const idsVenta = [...new Set((detalle ?? []).map((d) => d.id_venta))];
   const { data: ventas, error: errorVentas } = await supabase
     .from("ventas")
-    .select("id_venta, fecha, medio_pago, estado, id_pago")
+    .select("id_venta, numero, fecha, medio_pago, estado, id_pago")
     .in("id_venta", idsVenta.length > 0 ? idsVenta : ["00000000-0000-0000-0000-000000000000"])
     .eq("estado", "PAGADA")
     .gte("fecha", `${desde}T00:00:00`)
@@ -106,17 +115,15 @@ export async function calcularRentabilidad(idMarca: string, desde: string, hasta
     .in("id_pago", idsPago.length > 0 ? idsPago : ["00000000-0000-0000-0000-000000000000"]);
   const formaPagoPorIdPago = new Map((pagos ?? []).map((p) => [p.id_pago, p.forma_pago_cliente]));
 
-  const porProducto = new Map<
-    string,
-    { nombre: string; unidades: number; facturacionBruta: number; cmv: number; gastosFinancieros: number; costoImpositivo: number }
-  >();
+  const lineas: LineaRentabilidad[] = [];
 
   for (const linea of detalle ?? []) {
     const venta = ventaPorId.get(linea.id_venta);
     if (!venta) continue;
-    const idProducto = productoDeVariante.get(linea.id_variante);
-    if (!idProducto) continue;
-    const producto = productoPorId.get(idProducto);
+    const variante = variantePorId.get(linea.id_variante);
+    if (!variante) continue;
+    const producto = productoPorId.get(variante.id_producto);
+    const nombreProducto = `${producto?.nombre ?? "Producto"}${variante.nombre !== "Único" ? ` — ${variante.nombre}` : ""}`;
 
     const ventaBruta = linea.subtotal ?? 0;
     const esEfectivo = venta.medio_pago === "EFECTIVO";
@@ -130,60 +137,43 @@ export async function calcularRentabilidad(idMarca: string, desde: string, hasta
     // efectivo no hay retención ni rastro bancario, así que no corresponde.
     const facturacionNetaLinea = ventaBruta / (1 + tasas.ivaGeneral / 100);
     const costoImpositivoLinea = esEfectivo ? 0 : facturacionNetaLinea * (tasas.iibb / 100);
+    const cmvLinea = (producto?.costo_informado ?? 0) * linea.cantidad;
+    const gastosFinancierosLinea = Math.round(impCreditosLinea + feeMpLinea);
+    const costoImpositivoRedondeado = Math.round(costoImpositivoLinea);
+    const contribucionNeta = Math.round(facturacionNetaLinea - cmvLinea - gastosFinancierosLinea - costoImpositivoRedondeado);
 
-    const acc = porProducto.get(idProducto) ?? {
-      nombre: producto?.nombre ?? "Producto",
-      unidades: 0,
-      facturacionBruta: 0,
-      cmv: 0,
-      gastosFinancieros: 0,
-      costoImpositivo: 0,
-    };
-    acc.unidades += linea.cantidad;
-    acc.facturacionBruta += ventaBruta;
-    acc.cmv += (producto?.costo_informado ?? 0) * linea.cantidad;
-    acc.gastosFinancieros += impCreditosLinea + feeMpLinea;
-    acc.costoImpositivo += costoImpositivoLinea;
-    porProducto.set(idProducto, acc);
+    lineas.push({
+      idDetalle: linea.id_detalle,
+      fecha: venta.fecha,
+      numeroVenta: venta.numero,
+      producto: nombreProducto,
+      cantidad: linea.cantidad,
+      medioPago: venta.medio_pago,
+      formaPagoMp,
+      ventaBruta: Math.round(ventaBruta),
+      facturacionNeta: Math.round(facturacionNetaLinea),
+      cmv: Math.round(cmvLinea),
+      gastosFinancieros: gastosFinancierosLinea,
+      costoImpositivo: costoImpositivoRedondeado,
+      contribucionNeta,
+      contribucionPorcentaje: facturacionNetaLinea > 0 ? (contribucionNeta / facturacionNetaLinea) * 100 : 0,
+    });
   }
 
-  const filas: FilaRentabilidad[] = [...porProducto.entries()]
-    .map(([idProducto, p]) => {
-      const facturacionNeta = p.facturacionBruta / (1 + tasas.ivaGeneral / 100);
-      const costoImpositivo = Math.round(p.costoImpositivo);
-      const gastosFinancieros = Math.round(p.gastosFinancieros);
-      const contribucionNeta = Math.round(facturacionNeta - p.cmv - gastosFinancieros - costoImpositivo);
-      return {
-        idProducto,
-        nombre: p.nombre,
-        unidades: p.unidades,
-        facturacionBruta: Math.round(p.facturacionBruta),
-        facturacionNeta: Math.round(facturacionNeta),
-        cmv: Math.round(p.cmv),
-        gastosFinancieros,
-        costoImpositivo,
-        contribucionNeta,
-        contribucionPorcentaje: facturacionNeta > 0 ? (contribucionNeta / facturacionNeta) * 100 : 0,
-      };
-    })
-    .sort((a, b) => b.facturacionNeta - a.facturacionNeta);
+  lineas.sort((a, b) => a.fecha.localeCompare(b.fecha));
 
-  const resumen = filas.reduce(
-    (acc, f) => ({
-      facturacionNeta: acc.facturacionNeta + f.facturacionNeta,
-      cmv: acc.cmv + f.cmv,
-      gastosFinancieros: acc.gastosFinancieros + f.gastosFinancieros,
-      costoImpositivo: acc.costoImpositivo + f.costoImpositivo,
-      contribucionNeta: acc.contribucionNeta + f.contribucionNeta,
+  const resumen = lineas.reduce(
+    (acc, l) => ({
+      facturacionNeta: acc.facturacionNeta + l.facturacionNeta,
+      cmv: acc.cmv + l.cmv,
+      gastosFinancieros: acc.gastosFinancieros + l.gastosFinancieros,
+      costoImpositivo: acc.costoImpositivo + l.costoImpositivo,
+      contribucionNeta: acc.contribucionNeta + l.contribucionNeta,
     }),
     vacioResumenRent()
   );
 
-  return { marca: marca.nombre, filas, resumen };
-}
-
-function vacioResumenRent() {
-  return { facturacionNeta: 0, cmv: 0, gastosFinancieros: 0, costoImpositivo: 0, contribucionNeta: 0 };
+  return { marca: marca.nombre, lineas, resumen };
 }
 
 // Panel de auditoría interna de WiiGo — no se le muestra a las marcas.

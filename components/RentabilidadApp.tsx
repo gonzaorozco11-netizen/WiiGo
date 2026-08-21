@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { Marca } from "@/lib/supabase";
-import { calcularRentabilidad, panelAuditoria, type FilaRentabilidad } from "@/app/(app)/rentabilidad/actions";
+import { calcularRentabilidad, panelAuditoria, type LineaRentabilidad } from "@/app/(app)/rentabilidad/actions";
 
 type Resumen = {
   facturacionNeta: number;
@@ -23,6 +23,28 @@ function formatearMonto(valor: number) {
   return valor.toLocaleString("es-AR", { maximumFractionDigits: 0 });
 }
 
+function formatearFecha(fechaISO: string) {
+  const fecha = fechaISO.includes("T") ? new Date(fechaISO) : new Date(`${fechaISO}T00:00:00`);
+  return fecha.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
+const ETIQUETA_FORMA_PAGO_MP: Record<string, string> = {
+  DINERO_CUENTA: "Dinero en cuenta",
+  DEBITO: "Débito",
+  CUOTAS_SIN_INTERES: "Cuotas s/interés",
+  PREPAGA: "Prepaga",
+  CREDITO: "Crédito",
+};
+
+function formatearMedioPago(medioPago: string | null, formaPagoMp: string | null) {
+  if (medioPago === "EFECTIVO") return "Efectivo";
+  if (medioPago === "MERCADO_PAGO") {
+    const forma = formaPagoMp ? ETIQUETA_FORMA_PAGO_MP[formaPagoMp] : null;
+    return forma ? `Mercado Pago (${forma})` : "Mercado Pago";
+  }
+  return "—";
+}
+
 function inicioDeMes() {
   const d = new Date();
   return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
@@ -38,7 +60,7 @@ export default function RentabilidadApp({ marcas }: { marcas: Marca[] }) {
   const [hasta, setHasta] = useState(hoyISO());
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [resultado, setResultado] = useState<{ marca: string; filas: FilaRentabilidad[]; resumen: Resumen } | null>(null);
+  const [resultado, setResultado] = useState<{ marca: string; lineas: LineaRentabilidad[]; resumen: Resumen } | null>(null);
 
   const [auditoria, setAuditoria] = useState<Auditoria | null>(null);
   const [cargandoAuditoria, setCargandoAuditoria] = useState(false);
@@ -130,7 +152,7 @@ export default function RentabilidadApp({ marcas }: { marcas: Marca[] }) {
 
           {resultado && (
             <div className="bg-white border border-neutral-200 rounded-xl overflow-hidden mb-6">
-              {resultado.filas.length === 0 ? (
+              {resultado.lineas.length === 0 ? (
                 <p className="text-sm text-neutral-400 text-center py-12">
                   No hay ventas de {resultado.marca} en ese rango de fechas.
                 </p>
@@ -140,8 +162,10 @@ export default function RentabilidadApp({ marcas }: { marcas: Marca[] }) {
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b border-neutral-200 text-left text-xs text-neutral-500">
+                          <th className="p-3">Fecha / Venta</th>
                           <th className="p-3">Producto</th>
-                          <th className="p-3 text-right">Unidades</th>
+                          <th className="p-3">Cant.</th>
+                          <th className="p-3">Pago</th>
                           <th className="p-3 text-right">Facturación neta</th>
                           <th className="p-3 text-right">CMV</th>
                           <th className="p-3 text-right">Gastos financieros</th>
@@ -151,31 +175,37 @@ export default function RentabilidadApp({ marcas }: { marcas: Marca[] }) {
                         </tr>
                       </thead>
                       <tbody>
-                        {resultado.filas.map((f) => (
-                          <tr key={f.idProducto} className="border-b border-neutral-100 last:border-0">
-                            <td className="p-3">{f.nombre}</td>
-                            <td className="p-3 text-right tabular-nums">{f.unidades}</td>
-                            <td className="p-3 text-right tabular-nums">${formatearMonto(f.facturacionNeta)}</td>
-                            <td className="p-3 text-right tabular-nums text-red-600">-${formatearMonto(f.cmv)}</td>
+                        {resultado.lineas.map((l) => (
+                          <tr key={l.idDetalle} className="border-b border-neutral-100 last:border-0">
+                            <td className="p-3 whitespace-nowrap text-neutral-500">
+                              {formatearFecha(l.fecha)} · #{String(l.numeroVenta).padStart(4, "0")}
+                            </td>
+                            <td className="p-3">{l.producto}</td>
+                            <td className="p-3">{l.cantidad}</td>
+                            <td className="p-3 text-neutral-500 whitespace-nowrap">
+                              {formatearMedioPago(l.medioPago, l.formaPagoMp)}
+                            </td>
+                            <td className="p-3 text-right tabular-nums">${formatearMonto(l.facturacionNeta)}</td>
+                            <td className="p-3 text-right tabular-nums text-red-600">-${formatearMonto(l.cmv)}</td>
                             <td className="p-3 text-right tabular-nums text-red-600">
-                              {f.gastosFinancieros > 0 ? `-$${formatearMonto(f.gastosFinancieros)}` : "—"}
+                              {l.gastosFinancieros > 0 ? `-$${formatearMonto(l.gastosFinancieros)}` : "—"}
                             </td>
                             <td className="p-3 text-right tabular-nums text-red-600">
-                              {f.costoImpositivo > 0 ? `-$${formatearMonto(f.costoImpositivo)}` : "—"}
+                              {l.costoImpositivo > 0 ? `-$${formatearMonto(l.costoImpositivo)}` : "—"}
                             </td>
                             <td
                               className={`p-3 text-right tabular-nums font-semibold ${
-                                f.contribucionNeta < 0 ? "text-red-600" : "text-neutral-900"
+                                l.contribucionNeta < 0 ? "text-red-600" : "text-neutral-900"
                               }`}
                             >
-                              ${formatearMonto(f.contribucionNeta)}
+                              ${formatearMonto(l.contribucionNeta)}
                             </td>
                             <td
                               className={`p-3 text-right tabular-nums ${
-                                f.contribucionPorcentaje < 0 ? "text-red-600" : "text-neutral-500"
+                                l.contribucionPorcentaje < 0 ? "text-red-600" : "text-neutral-500"
                               }`}
                             >
-                              {f.contribucionPorcentaje.toFixed(1)}%
+                              {l.contribucionPorcentaje.toFixed(1)}%
                             </td>
                           </tr>
                         ))}
