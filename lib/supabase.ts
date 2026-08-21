@@ -68,6 +68,10 @@ export type Producto = {
   nombre: string;
   descripcion: string | null;
   costo_informado: number | null;
+  // CONSIGNACION (la mercadería es de la marca externa, WiiGo solo cobra
+  // comisión) o PROPIA (mercadería de WiiGo Dietética, costo_informado es
+  // el CMV sin IVA para calcular rentabilidad) — ver módulo Liquidaciones.
+  tipo_comercializacion: string;
   precio_venta: number | null;
   descuento_porcentaje: number | null;
   puntos: number;

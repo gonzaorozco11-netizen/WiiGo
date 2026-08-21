@@ -46,6 +46,7 @@ export default function ProductoFormModal({
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [idMarca, setIdMarca] = useState(producto?.id_marca ?? marcas[0]?.id_marca ?? "");
+  const [tipoComercializacion, setTipoComercializacion] = useState(producto?.tipo_comercializacion ?? "CONSIGNACION");
   const [nuevaSubcategoria, setNuevaSubcategoria] = useState(false);
   const [variantes, setVariantes] = useState<VarianteForm[]>(
     variantesIniciales.length > 0
@@ -152,6 +153,27 @@ export default function ProductoFormModal({
             </div>
           </div>
 
+          <div className="border border-neutral-200 rounded-xl p-4">
+            <label className="block text-sm font-semibold text-neutral-900 mb-1" htmlFor="tipo_comercializacion">
+              Tipo de comercialización
+            </label>
+            <p className="text-xs text-neutral-500 mb-2">
+              Define cómo se liquida la venta de este producto. Consignación: la mercadería es de la marca, WiiGo
+              retiene su comisión y le rinde el resto. Propia: es mercadería de WiiGo Dietética, no hay rendición a
+              terceros — el costo de abajo se usa para calcular la rentabilidad real.
+            </p>
+            <select
+              id="tipo_comercializacion"
+              name="tipo_comercializacion"
+              value={tipoComercializacion}
+              onChange={(e) => setTipoComercializacion(e.target.value)}
+              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            >
+              <option value="CONSIGNACION">Consignación (marca externa)</option>
+              <option value="PROPIA">Propia (WiiGo Dietética)</option>
+            </select>
+          </div>
+
           <VariantesSection variantes={variantes} setVariantes={setVariantes} />
 
           <div>
@@ -166,7 +188,7 @@ export default function ProductoFormModal({
 
           <div className="grid grid-cols-3 gap-3">
             <Field
-              label="Costo"
+              label={tipoComercializacion === "PROPIA" ? "Costo (CMV, sin IVA)" : "Costo informado"}
               name="costo_informado"
               defaultValue={producto?.costo_informado ?? ""}
               type="number"

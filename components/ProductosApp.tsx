@@ -142,6 +142,11 @@ export default function ProductosApp({
                       -{p.descuento_porcentaje}%
                     </span>
                   )}
+                  {p.tipo_comercializacion === "PROPIA" && (
+                    <span className="text-xs bg-accent-tint text-accent-dark rounded-full px-2 py-0.5 font-medium">
+                      Propia
+                    </span>
+                  )}
                 </div>
                 <div className="text-sm text-neutral-500 flex flex-wrap gap-x-3">
                   {p.precio_venta !== null && <span>${p.precio_venta}</span>}
