@@ -122,8 +122,10 @@ export async function calcularRentabilidad(idMarca: string, desde: string, hasta
     const esEfectivo = venta.medio_pago === "EFECTIVO";
     const impCreditosLinea = esEfectivo ? 0 : ventaBruta * (tasas.impCreditos / 100);
     const formaPagoMp = venta.id_pago ? formaPagoPorIdPago.get(venta.id_pago) ?? null : null;
+    // Igual que en Liquidaciones: la tasa cargada es sin IVA, se le suma acá.
     const tasaMp = formaPagoMp ? tasas.mpComisionPorFormaPago[formaPagoMp] ?? 0 : 0;
-    const feeMpLinea = !esEfectivo && venta.medio_pago === "MERCADO_PAGO" ? ventaBruta * (tasaMp / 100) : 0;
+    const tasaMpConIva = tasaMp * (1 + tasas.ivaGeneral / 100);
+    const feeMpLinea = !esEfectivo && venta.medio_pago === "MERCADO_PAGO" ? ventaBruta * (tasaMpConIva / 100) : 0;
     // IIBB solo se percibe/expone sobre lo que pasa por el banco — en
     // efectivo no hay retención ni rastro bancario, así que no corresponde.
     const facturacionNetaLinea = ventaBruta / (1 + tasas.ivaGeneral / 100);

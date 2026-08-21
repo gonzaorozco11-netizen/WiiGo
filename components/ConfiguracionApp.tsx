@@ -270,9 +270,10 @@ export default function ConfiguracionApp({
       <form action={handleSubmitMp} className="bg-white border border-neutral-200 rounded-xl p-5 mt-5">
         <h2 className="text-base font-semibold text-neutral-900 mb-1">💳 Comisión de Mercado Pago</h2>
         <p className="text-sm text-neutral-500 mb-4">
-          No es una sola tasa — Mercado Pago cobra distinto según cómo pagó el cliente. Cargá cada una con el IVA ya
-          incluido, tal cual la publica Mercado Pago. Al confirmar un cobro por Mercado Pago se va a elegir cuál de
-          estas se usó, para que Liquidaciones y Rentabilidad apliquen la correcta.
+          No es una sola tasa — Mercado Pago cobra distinto según cómo pagó el cliente. Cargá el número base tal cual
+          lo publica Mercado Pago (ej. Débito 1,39%) — el sistema le suma el IVA arriba solo, no hace falta
+          calcularlo a mano. Al confirmar un cobro por Mercado Pago se va a elegir cuál de estas se usó, para que
+          Liquidaciones y Rentabilidad apliquen la correcta.
         </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">

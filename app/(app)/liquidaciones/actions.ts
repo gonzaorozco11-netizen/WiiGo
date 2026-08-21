@@ -29,10 +29,11 @@ async function tasasGenerales(supabase: SupabaseClient) {
   const { data } = await supabase
     .from("configuracion")
     .select("parametro, valor")
-    .in("parametro", ["IMP_CREDITOS_PORCENTAJE", ...Object.values(CLAVE_COMISION_MP)]);
+    .in("parametro", ["IMP_CREDITOS_PORCENTAJE", "IVA_GENERAL_PORCENTAJE", ...Object.values(CLAVE_COMISION_MP)]);
   const cfg = Object.fromEntries((data ?? []).map((r) => [r.parametro, Number(r.valor ?? 0)]));
   return {
     impCreditos: cfg.IMP_CREDITOS_PORCENTAJE ?? 0,
+    ivaGeneral: cfg.IVA_GENERAL_PORCENTAJE ?? 21,
     mpComisionPorFormaPago: Object.fromEntries(
       Object.entries(CLAVE_COMISION_MP).map(([forma, clave]) => [forma, cfg[clave] ?? 0])
     ) as Record<string, number>,
@@ -150,10 +151,14 @@ async function construirLineas(supabase: SupabaseClient, idMarca: string, ventas
     // comisión de Mercado Pago, que solo existe si cobró por esa vía — y
     // varía según la forma de pago real del cliente (ver arriba).
     const impCreditosLinea = esEfectivo ? 0 : Math.round(ventaBruta * (tasas.impCreditos / 100));
+    // La comisión de Mercado Pago se cobra + IVA (ej. débito 1,39% + 21%
+    // de IVA sobre esa comisión) — la tasa cargada en Configuración es la
+    // base, sin IVA, así que el IVA se suma acá, no al cargar la tasa.
     const tasaMp = formaPagoMp ? tasas.mpComisionPorFormaPago[formaPagoMp] ?? 0 : 0;
+    const tasaMpConIva = tasaMp * (1 + tasas.ivaGeneral / 100);
     const feeMp =
       !esEfectivo && marca.trasladar_comision_cobro && venta.medio_pago === "MERCADO_PAGO"
-        ? Math.round(ventaBruta * (tasaMp / 100))
+        ? Math.round(ventaBruta * (tasaMpConIva / 100))
         : 0;
     const netoARendir = ventaBruta - comisionWiigo - ivaComision - impCreditosLinea - feeMp;
 

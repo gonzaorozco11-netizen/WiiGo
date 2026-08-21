@@ -46,8 +46,12 @@ const FORMAS_PAGO_MP: Record<string, string> = {
 async function tasaComisionMp(supabase: SupabaseClient, formaPago: string) {
   const clave = FORMAS_PAGO_MP[formaPago];
   if (!clave) return 0;
-  const { data } = await supabase.from("configuracion").select("valor").eq("parametro", clave).maybeSingle();
-  return Number(data?.valor ?? 0);
+  const { data } = await supabase
+    .from("configuracion")
+    .select("parametro, valor")
+    .in("parametro", [clave, "IVA_GENERAL_PORCENTAJE"]);
+  const cfg = Object.fromEntries((data ?? []).map((r) => [r.parametro, Number(r.valor ?? 0)]));
+  return { base: cfg[clave] ?? 0, ivaGeneral: cfg.IVA_GENERAL_PORCENTAJE ?? 21 };
 }
 
 export async function confirmarCobro(idVenta: string, montoRecibido: number, formaPagoMp?: string) {
@@ -71,8 +75,11 @@ export async function confirmarCobro(idVenta: string, montoRecibido: number, for
   let pagoInsert: Record<string, unknown>;
   if (esMercadoPago) {
     if (!formaPagoMp || !FORMAS_PAGO_MP[formaPagoMp]) throw new Error("Elegí cómo pagó el cliente por Mercado Pago");
-    const tasa = await tasaComisionMp(supabase, formaPagoMp);
+    const { base: tasa, ivaGeneral } = await tasaComisionMp(supabase, formaPagoMp);
+    // Mercado Pago cobra la comisión + IVA sobre esa comisión (ej. débito
+    // 1,39% + 21% de IVA) — la tasa cargada en Configuración es la base.
     const comisionImporte = Math.round(total * (tasa / 100));
+    const ivaComisionImporte = Math.round(comisionImporte * (ivaGeneral / 100));
     pagoInsert = {
       id_venta: idVenta,
       medio: "MERCADO_PAGO",
@@ -80,12 +87,13 @@ export async function confirmarCobro(idVenta: string, montoRecibido: number, for
       importe_bruto: total,
       comision_porcentaje: tasa,
       comision_importe: comisionImporte,
-      neto_acreditado: total - comisionImporte,
+      iva_comision: ivaComisionImporte,
+      neto_acreditado: total - comisionImporte - ivaComisionImporte,
       fecha_pago: new Date().toISOString(),
       fecha_acreditacion: new Date().toISOString(),
       estado: "ACREDITADO",
       estado_conciliacion: "CONCILIADO",
-      observaciones: `Confirmado por ${usuario ?? "personal"} · Mercado Pago (${formaPagoMp}) · comisión ${tasa}%`,
+      observaciones: `Confirmado por ${usuario ?? "personal"} · Mercado Pago (${formaPagoMp}) · comisión ${tasa}% + IVA`,
     };
   } else {
     const vuelto = montoRecibido - total;

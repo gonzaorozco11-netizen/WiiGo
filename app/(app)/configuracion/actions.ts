@@ -76,7 +76,8 @@ export async function guardarConfigLiquidaciones(formData: FormData) {
 
 // La comisión real de Mercado Pago no es una tasa única: varía según cómo
 // pagó el cliente (dinero en cuenta, débito, crédito, cuotas, prepaga).
-// Cada tasa se carga con IVA incluido, tal cual la publica Mercado Pago.
+// Cada tasa se carga SIN IVA (la base tal cual la publica Mercado Pago) —
+// el IVA se suma aparte en el cálculo, ver liquidaciones/rentabilidad.
 export async function guardarConfigMercadoPago(formData: FormData) {
   const tasas: Record<string, string> = {
     MP_COMISION_DINERO_CUENTA: "Dinero en cuenta de Mercado Pago",
@@ -90,7 +91,7 @@ export async function guardarConfigMercadoPago(formData: FormData) {
 
   for (const [clave, descripcion] of Object.entries(tasas)) {
     const valor = Number(formData.get(clave.toLowerCase()) ?? 0);
-    await guardarParametro(supabase, clave, String(valor), `Comisión de Mercado Pago — ${descripcion} (con IVA incluido)`);
+    await guardarParametro(supabase, clave, String(valor), `Comisión de Mercado Pago — ${descripcion} (base, sin IVA)`);
   }
 
   revalidatePath("/configuracion");
