@@ -23,6 +23,7 @@ function bool(formData: FormData, name: string) {
 function marcaFromForm(formData: FormData) {
   return {
     nombre: text(formData, "nombre"),
+    tipo_comercializacion: text(formData, "tipo_comercializacion") ?? "CONSIGNACION",
     cuit: text(formData, "cuit"),
     contacto: text(formData, "contacto"),
     telefono: text(formData, "telefono"),

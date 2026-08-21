@@ -32,6 +32,12 @@ export type Usuario = {
 export type Marca = {
   id_marca: string;
   nombre: string;
+  // CONSIGNACION (marca externa: WiiGo retiene comisión y le rinde el
+  // resto) o PROPIA (WiiGo Dietética: sin rendición, se calcula
+  // rentabilidad real con el costo_informado de cada producto) — ver
+  // módulo Liquidaciones. Es por marca, no por producto: todos los
+  // productos de una marca comparten el mismo tipo.
+  tipo_comercializacion: string;
   cuit: string | null;
   contacto: string | null;
   telefono: string | null;
@@ -68,10 +74,6 @@ export type Producto = {
   nombre: string;
   descripcion: string | null;
   costo_informado: number | null;
-  // CONSIGNACION (la mercadería es de la marca externa, WiiGo solo cobra
-  // comisión) o PROPIA (mercadería de WiiGo Dietética, costo_informado es
-  // el CMV sin IVA para calcular rentabilidad) — ver módulo Liquidaciones.
-  tipo_comercializacion: string;
   precio_venta: number | null;
   descuento_porcentaje: number | null;
   puntos: number;

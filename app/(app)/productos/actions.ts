@@ -63,7 +63,6 @@ function productoFromForm(formData: FormData, idMarca: string, idSubcategoria: s
     nombre: text(formData, "nombre"),
     descripcion: text(formData, "descripcion"),
     costo_informado: number(formData, "costo_informado"),
-    tipo_comercializacion: text(formData, "tipo_comercializacion") ?? "CONSIGNACION",
     precio_venta: number(formData, "precio_venta"),
     descuento_porcentaje: number(formData, "descuento_porcentaje"),
     imagen: text(formData, "imagen"),

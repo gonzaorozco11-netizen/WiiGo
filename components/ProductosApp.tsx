@@ -142,7 +142,7 @@ export default function ProductosApp({
                       -{p.descuento_porcentaje}%
                     </span>
                   )}
-                  {p.tipo_comercializacion === "PROPIA" && (
+                  {marcaPorId.get(p.id_marca)?.tipo_comercializacion === "PROPIA" && (
                     <span className="text-xs bg-accent-tint text-accent-dark rounded-full px-2 py-0.5 font-medium">
                       Propia
                     </span>

@@ -13,6 +13,7 @@ export default function MarcaFormModal({
 }) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [tipoComercializacion, setTipoComercializacion] = useState(marca?.tipo_comercializacion ?? "CONSIGNACION");
   const isEditing = Boolean(marca);
 
   function handleSubmit(formData: FormData) {
@@ -44,6 +45,24 @@ export default function MarcaFormModal({
         </div>
 
         <form action={handleSubmit} className="space-y-6">
+          <fieldset>
+            <legend className="text-sm font-semibold text-neutral-900 mb-1">Tipo de comercialización</legend>
+            <p className="text-xs text-neutral-500 mb-3">
+              Consignación: la mercadería es de la marca, WiiGo retiene su comisión y le rinde el resto (define las
+              condiciones comerciales de abajo). Propia: es WiiGo Dietética — sin rendición a terceros, se calcula
+              rentabilidad real con el costo de cada producto.
+            </p>
+            <select
+              name="tipo_comercializacion"
+              value={tipoComercializacion}
+              onChange={(e) => setTipoComercializacion(e.target.value)}
+              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            >
+              <option value="CONSIGNACION">Consignación (marca externa)</option>
+              <option value="PROPIA">Propia (WiiGo Dietética)</option>
+            </select>
+          </fieldset>
+
           <Section title="Datos generales">
             <Field label="Nombre *" name="nombre" defaultValue={marca?.nombre} required />
             <Field label="CUIT" name="cuit" defaultValue={marca?.cuit ?? ""} />
@@ -74,6 +93,7 @@ export default function MarcaFormModal({
             </div>
           </Section>
 
+          {tipoComercializacion === "CONSIGNACION" && (
           <Section title="Condiciones comerciales">
             <Field
               label="Fee de ingreso"
@@ -148,6 +168,7 @@ export default function MarcaFormModal({
               defaultChecked={marca?.trasladar_imp_debitos}
             />
           </Section>
+          )}
 
           {error && (
             <p className="text-sm text-red-600" role="alert">
