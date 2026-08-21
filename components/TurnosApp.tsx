@@ -53,6 +53,7 @@ export default function TurnosApp({ locales, turnosAbiertos }: { locales: Local[
 
   const [resumen, setResumen] = useState<Resumen | null>(null);
   const [cargandoResumen, setCargandoResumen] = useState(false);
+  const [ventasAbierto, setVentasAbierto] = useState<VentaTurno[]>([]);
   const [cerrando, setCerrando] = useState(false);
   const [efectivoContado, setEfectivoContado] = useState("");
   const [observaciones, setObservaciones] = useState("");
@@ -84,6 +85,17 @@ export default function TurnosApp({ locales, turnosAbiertos }: { locales: Local[
       .finally(() => setCargandoHistorial(false));
   }, [idLocal, turnoAbierto]);
 
+  useEffect(() => {
+    if (!turnoAbierto) return;
+    setCargandoResumen(true);
+    Promise.all([resumenTurnoAbierto(turnoAbierto.id_turno), ventasDeTurno(turnoAbierto.id_turno)])
+      .then(([r, v]) => {
+        setResumen(r);
+        setVentasAbierto(v);
+      })
+      .finally(() => setCargandoResumen(false));
+  }, [turnoAbierto]);
+
   function toggleExpandirTurno(idTurno: string) {
     if (idTurnoExpandido === idTurno) {
       setIdTurnoExpandido(null);
@@ -97,14 +109,6 @@ export default function TurnosApp({ locales, turnosAbiertos }: { locales: Local[
         .finally(() => setCargandoVentasDe(null));
     }
   }
-
-  useEffect(() => {
-    if (!turnoAbierto) return;
-    setCargandoResumen(true);
-    resumenTurnoAbierto(turnoAbierto.id_turno)
-      .then(setResumen)
-      .finally(() => setCargandoResumen(false));
-  }, [turnoAbierto]);
 
   function handleAbrirTurno() {
     const monto = Number(montoInicial.replace(/[^\d.-]/g, "")) || 0;
@@ -129,28 +133,33 @@ export default function TurnosApp({ locales, turnosAbiertos }: { locales: Local[
 
   const contadoNum = Number(efectivoContado.replace(/[^\d.-]/g, "")) || 0;
   const diferencia = resumen ? contadoNum - resumen.efectivoEsperado : 0;
+  const efectivoRecibido = resumen ? resumen.totalEfectivo + resumen.totalVueltoEntregado : 0;
 
   return (
-    <div className="max-w-2xl">
+    <div>
       <h1 className="text-lg font-semibold text-neutral-900 mb-1">Turnos de caja</h1>
-      <p className="text-sm text-neutral-500 mb-4">
+      <p className="text-sm text-neutral-500 mb-5 max-w-2xl">
         Apertura y cierre de caja por local, con arqueo de efectivo — así queda registrado qué empleado atendió cada
         turno y todas las ventas que se hicieron durante ese tiempo.
       </p>
 
-      <div className="mb-5">
-        <label className="block text-xs font-medium text-neutral-500 mb-1">Local</label>
-        <select
-          value={idLocal}
-          onChange={(e) => setIdLocal(e.target.value)}
-          className="border border-neutral-300 rounded-lg px-3 py-2 text-sm bg-white"
-        >
-          {locales.map((l) => (
-            <option key={l.id_local} value={l.id_local}>
-              {l.nombre}
-            </option>
-          ))}
-        </select>
+      <div className="flex items-end gap-1 border-b border-neutral-200 mb-5">
+        {locales.map((l) => {
+          const activo = l.id_local === idLocal;
+          return (
+            <button
+              key={l.id_local}
+              onClick={() => setIdLocal(l.id_local)}
+              className={`px-4 py-2.5 rounded-t-lg text-sm font-semibold -mb-px border ${
+                activo
+                  ? "bg-white border-neutral-200 border-b-white text-accent"
+                  : "border-transparent text-neutral-500 hover:text-neutral-800"
+              }`}
+            >
+              📍 {l.nombre}
+            </button>
+          );
+        })}
       </div>
 
       {error && (
@@ -160,74 +169,88 @@ export default function TurnosApp({ locales, turnosAbiertos }: { locales: Local[
       )}
 
       {!turnoAbierto ? (
-        <div className="bg-white border border-neutral-200 rounded-xl p-5">
-          <h2 className="text-base font-semibold text-neutral-900 mb-1">No hay ningún turno abierto acá</h2>
-          <p className="text-sm text-neutral-500 mb-4">
+        <div className="bg-white border border-neutral-200 rounded-xl p-5 max-w-md">
+          <h2 className="text-sm font-semibold text-neutral-700 mb-0.5">No hay ningún turno abierto acá</h2>
+          <p className="text-xs text-neutral-400 mb-3">
             Nadie va a poder cobrar ventas en este local (Vender ni Cobros en Efectivo) hasta que se abra un turno.
           </p>
-          <label className="block text-sm font-medium text-neutral-700 mb-1">Fondo inicial de efectivo</label>
+          <label className="block text-xs font-medium text-neutral-500 mb-1">Fondo inicial de efectivo</label>
           <input
             value={montoInicial}
             onChange={(e) => setMontoInicial(e.target.value)}
             placeholder="$0"
-            className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm mb-3"
+            className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm mb-2.5"
           />
           <button
             onClick={handleAbrirTurno}
             disabled={procesando}
-            className="w-full bg-accent hover:bg-accent-dark disabled:opacity-50 text-white font-bold py-3 rounded-xl text-sm"
+            className="bg-accent hover:bg-accent-dark disabled:opacity-50 text-white font-medium px-4 py-1.5 rounded-lg text-sm"
           >
             {procesando ? "Abriendo..." : "Abrir turno"}
           </button>
         </div>
       ) : (
-        <div className="bg-white border border-neutral-200 rounded-xl p-5">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700">
-              🟢 Turno abierto
+        <>
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 bg-white border border-neutral-200 rounded-xl px-4 py-3 mb-4">
+            <span className="flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Turno abierto
             </span>
-            <span className="text-xs text-neutral-400">Desde {formatearFechaHora(turnoAbierto.fecha_apertura)}</span>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 text-sm mb-4">
-            <Campo etiqueta="Abierto por" valor={turnoAbierto.usuario_apertura ?? "—"} />
-            <Campo etiqueta="Fondo inicial" valor={`$${formatearMonto(turnoAbierto.monto_inicial_efectivo)}`} />
+            <span className="text-sm text-neutral-500">
+              👤 Abierto por <b className="text-neutral-900 font-semibold">{turnoAbierto.usuario_apertura ?? "—"}</b>
+            </span>
+            <span className="text-sm text-neutral-500">
+              🕒 Desde <b className="text-neutral-900 font-semibold">{formatearFechaHora(turnoAbierto.fecha_apertura)}</b>
+            </span>
+            {resumen && (
+              <span className="text-sm text-neutral-500">
+                🧾 <b className="text-neutral-900 font-semibold">{resumen.cantidadVentas}</b>{" "}
+                {resumen.cantidadVentas === 1 ? "venta" : "ventas"}
+              </span>
+            )}
           </div>
 
           {cargandoResumen || !resumen ? (
             <p className="text-sm text-neutral-400 mb-4">Calculando ventas del turno...</p>
           ) : (
-            <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-4 mb-4">
-              <div className="grid grid-cols-3 gap-3 text-sm mb-3">
-                <Campo etiqueta="Ventas" valor={String(resumen.cantidadVentas)} />
-                <Campo etiqueta="Efectivo recibido" valor={`$${formatearMonto(resumen.totalEfectivo + resumen.totalVueltoEntregado)}`} />
-                <Campo etiqueta="Mercado Pago" valor={`$${formatearMonto(resumen.totalMercadoPago)}`} />
-              </div>
-              {resumen.totalVueltoEntregado > 0 && (
-                <div className="flex justify-between items-center text-sm text-red-600 mb-2">
-                  <span>Vuelto entregado (salida)</span>
-                  <span className="font-semibold">-${formatearMonto(resumen.totalVueltoEntregado)}</span>
-                </div>
-              )}
-              <div className="flex justify-between items-center border-t border-neutral-200 pt-2.5">
-                <span className="font-semibold text-neutral-900">Efectivo esperado en caja</span>
-                <span className="font-extrabold text-lg text-neutral-900">${formatearMonto(resumen.efectivoEsperado)}</span>
-              </div>
-              <p className="text-xs text-neutral-400 mt-1">
-                Fondo inicial + efectivo recibido de clientes − vuelto entregado.
-              </p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5 mb-4">
+              <StatCard color="purple" icono="💼" etiqueta="Fondo inicial" valor={`$${formatearMonto(resumen.montoInicial)}`} />
+              <StatCard
+                color="success"
+                icono="⬇"
+                etiqueta="Efectivo recibido"
+                valor={`$${formatearMonto(efectivoRecibido)}`}
+                nota="De clientes, antes del vuelto"
+              />
+              <StatCard
+                color="danger"
+                icono="⬆"
+                etiqueta="Vuelto entregado"
+                valor={resumen.totalVueltoEntregado > 0 ? `-$${formatearMonto(resumen.totalVueltoEntregado)}` : "$0"}
+                nota="Salida de caja"
+              />
+              <StatCard
+                color="accent"
+                icono="📊"
+                etiqueta="Efectivo esperado"
+                valor={`$${formatearMonto(resumen.efectivoEsperado)}`}
+                nota="Fondo + recibido − vuelto"
+              />
             </div>
           )}
 
-          {!cerrando ? (
-            <button
-              onClick={() => setCerrando(true)}
-              className="w-full border-2 border-accent text-accent font-bold py-3 rounded-xl text-sm"
-            >
-              Cerrar turno (arqueo)
-            </button>
-          ) : (
-            <div className="border-t border-neutral-200 pt-4">
+          <div className="flex justify-end mb-5">
+            {!cerrando && (
+              <button
+                onClick={() => setCerrando(true)}
+                className="border-2 border-accent text-accent hover:bg-accent-tint font-bold px-5 py-2 rounded-lg text-sm"
+              >
+                🔒 Cerrar turno (arqueo)
+              </button>
+            )}
+          </div>
+
+          {cerrando && (
+            <div className="bg-white border border-neutral-200 rounded-xl p-5 mb-5 max-w-md">
               <h3 className="text-sm font-bold text-neutral-900 mb-2">Arqueo de cierre</h3>
               <label className="block text-sm font-medium text-neutral-700 mb-1">Efectivo contado (contá la caja física)</label>
               <input
@@ -273,139 +296,189 @@ export default function TurnosApp({ locales, turnosAbiertos }: { locales: Local[
               </div>
             </div>
           )}
-        </div>
+
+          <div className="bg-white border border-neutral-200 rounded-xl overflow-hidden mb-6">
+            <div className="flex items-baseline justify-between px-4 py-3 border-b border-neutral-100">
+              <h2 className="text-sm font-bold text-neutral-900">Ventas de este turno</h2>
+              <span className="text-xs text-neutral-400">{ventasAbierto.length} {ventasAbierto.length === 1 ? "venta" : "ventas"}</span>
+            </div>
+            {ventasAbierto.length === 0 ? (
+              <p className="text-sm text-neutral-400 text-center py-8">Todavía no hay ventas en este turno.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <VentasTabla ventas={ventasAbierto} />
+              </div>
+            )}
+          </div>
+        </>
       )}
 
-      <div className="mt-6">
-        <h2 className="text-sm font-bold text-neutral-900 mb-2">Historial de turnos</h2>
-        <p className="text-xs text-neutral-400 mb-3">Del más reciente al más viejo. Tocá una fila para ver las ventas de ese turno.</p>
+      <div className="bg-white border border-neutral-200 rounded-xl overflow-hidden">
+        <div className="flex items-baseline justify-between px-4 py-3 border-b border-neutral-100">
+          <h2 className="text-sm font-bold text-neutral-900">Historial de turnos</h2>
+          <span className="text-xs text-neutral-400">Del más reciente al más viejo — tocá una fila para ver el detalle</span>
+        </div>
 
-        <div className="bg-white border border-neutral-200 rounded-xl overflow-hidden">
-          {cargandoHistorial ? (
-            <p className="text-sm text-neutral-400 text-center py-8">Cargando...</p>
-          ) : historial.length === 0 ? (
-            <p className="text-sm text-neutral-400 text-center py-8">Todavía no hay turnos cerrados en este local.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-neutral-200 text-left text-xs text-neutral-500">
-                    <th className="p-3">Apertura</th>
-                    <th className="p-3">Cierre</th>
-                    <th className="p-3 text-right">Fondo inicial</th>
-                    <th className="p-3 text-right">Esperado</th>
-                    <th className="p-3 text-right">Contado</th>
-                    <th className="p-3 text-right">Diferencia</th>
-                    <th className="p-3 text-right">Vuelto</th>
-                    <th className="p-3 text-right">Mercado Pago</th>
-                    <th className="p-3 text-right">Ventas</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {historial.map((t) => {
-                    const diff = t.diferencia_efectivo ?? 0;
-                    const expandido = idTurnoExpandido === t.id_turno;
-                    return (
-                      <Fragment key={t.id_turno}>
-                        <tr
-                          onClick={() => toggleExpandirTurno(t.id_turno)}
-                          className={`border-b border-neutral-100 last:border-0 cursor-pointer hover:bg-neutral-50 ${
-                            expandido ? "bg-neutral-50" : ""
+        {cargandoHistorial ? (
+          <p className="text-sm text-neutral-400 text-center py-8">Cargando...</p>
+        ) : historial.length === 0 ? (
+          <p className="text-sm text-neutral-400 text-center py-8">Todavía no hay turnos cerrados en este local.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-neutral-200 text-left text-xs text-neutral-500">
+                  <th className="p-3">Apertura</th>
+                  <th className="p-3">Cierre</th>
+                  <th className="p-3 text-right">Fondo inicial</th>
+                  <th className="p-3 text-right">Esperado</th>
+                  <th className="p-3 text-right">Contado</th>
+                  <th className="p-3 text-right">Diferencia</th>
+                  <th className="p-3 text-right">Vuelto</th>
+                  <th className="p-3 text-right">Mercado Pago</th>
+                  <th className="p-3 text-right">Ventas</th>
+                </tr>
+              </thead>
+              <tbody>
+                {historial.map((t) => {
+                  const diff = t.diferencia_efectivo ?? 0;
+                  const expandido = idTurnoExpandido === t.id_turno;
+                  return (
+                    <Fragment key={t.id_turno}>
+                      <tr
+                        onClick={() => toggleExpandirTurno(t.id_turno)}
+                        className={`border-b border-neutral-100 last:border-0 cursor-pointer hover:bg-neutral-50 ${
+                          expandido ? "bg-neutral-50" : ""
+                        }`}
+                      >
+                        <td className="p-3 whitespace-nowrap">
+                          <span className="text-neutral-400 mr-1">{expandido ? "▾" : "▸"}</span>
+                          {formatearFechaHora(t.fecha_apertura)}
+                          <div className="text-xs text-neutral-400 pl-3.5">{t.usuario_apertura ?? "—"}</div>
+                        </td>
+                        <td className="p-3 whitespace-nowrap">
+                          {t.fecha_cierre ? formatearFechaHora(t.fecha_cierre) : "—"}
+                          <div className="text-xs text-neutral-400">{t.usuario_cierre ?? "—"}</div>
+                        </td>
+                        <td className="p-3 text-right tabular-nums">${formatearMonto(t.monto_inicial_efectivo)}</td>
+                        <td className="p-3 text-right tabular-nums">${formatearMonto(t.efectivo_esperado ?? 0)}</td>
+                        <td className="p-3 text-right tabular-nums">${formatearMonto(t.efectivo_contado ?? 0)}</td>
+                        <td
+                          className={`p-3 text-right tabular-nums font-semibold ${
+                            diff === 0 ? "text-emerald-600" : "text-red-600"
                           }`}
                         >
-                          <td className="p-3 whitespace-nowrap">
-                            <span className="text-neutral-400 mr-1">{expandido ? "▾" : "▸"}</span>
-                            {formatearFechaHora(t.fecha_apertura)}
-                            <div className="text-xs text-neutral-400 pl-3.5">{t.usuario_apertura ?? "—"}</div>
+                          {diff === 0 ? "$0" : `${diff > 0 ? "+" : "-"}$${formatearMonto(Math.abs(diff))}`}
+                        </td>
+                        <td className="p-3 text-right tabular-nums text-neutral-500">
+                          {t.total_vuelto_entregado ? `-$${formatearMonto(t.total_vuelto_entregado)}` : "—"}
+                        </td>
+                        <td className="p-3 text-right tabular-nums">${formatearMonto(t.total_mercado_pago ?? 0)}</td>
+                        <td className="p-3 text-right tabular-nums">{t.cantidad_ventas ?? 0}</td>
+                      </tr>
+                      {expandido && (
+                        <tr className="border-b border-neutral-100 last:border-0">
+                          <td colSpan={9} className="bg-neutral-50 p-0">
+                            {cargandoVentasDe === t.id_turno ? (
+                              <p className="text-sm text-neutral-400 text-center py-4">Cargando ventas...</p>
+                            ) : (ventasPorTurno[t.id_turno] ?? []).length === 0 ? (
+                              <p className="text-sm text-neutral-400 text-center py-4">
+                                Este turno no tuvo ninguna venta.
+                              </p>
+                            ) : (
+                              <div className="pl-8 pr-2">
+                                <VentasTabla ventas={ventasPorTurno[t.id_turno] ?? []} compacta />
+                              </div>
+                            )}
                           </td>
-                          <td className="p-3 whitespace-nowrap">
-                            {t.fecha_cierre ? formatearFechaHora(t.fecha_cierre) : "—"}
-                            <div className="text-xs text-neutral-400">{t.usuario_cierre ?? "—"}</div>
-                          </td>
-                          <td className="p-3 text-right tabular-nums">${formatearMonto(t.monto_inicial_efectivo)}</td>
-                          <td className="p-3 text-right tabular-nums">${formatearMonto(t.efectivo_esperado ?? 0)}</td>
-                          <td className="p-3 text-right tabular-nums">${formatearMonto(t.efectivo_contado ?? 0)}</td>
-                          <td
-                            className={`p-3 text-right tabular-nums font-semibold ${
-                              diff === 0 ? "text-emerald-600" : "text-red-600"
-                            }`}
-                          >
-                            {diff === 0 ? "$0" : `${diff > 0 ? "+" : "-"}$${formatearMonto(Math.abs(diff))}`}
-                          </td>
-                          <td className="p-3 text-right tabular-nums text-neutral-500">
-                            {t.total_vuelto_entregado ? `-$${formatearMonto(t.total_vuelto_entregado)}` : "—"}
-                          </td>
-                          <td className="p-3 text-right tabular-nums">${formatearMonto(t.total_mercado_pago ?? 0)}</td>
-                          <td className="p-3 text-right tabular-nums">{t.cantidad_ventas ?? 0}</td>
                         </tr>
-                        {expandido && (
-                          <tr key={`${t.id_turno}-detalle`} className="border-b border-neutral-100 last:border-0">
-                            <td colSpan={9} className="bg-neutral-50 p-0">
-                              {cargandoVentasDe === t.id_turno ? (
-                                <p className="text-sm text-neutral-400 text-center py-4">Cargando ventas...</p>
-                              ) : (ventasPorTurno[t.id_turno] ?? []).length === 0 ? (
-                                <p className="text-sm text-neutral-400 text-center py-4">
-                                  Este turno no tuvo ninguna venta.
-                                </p>
-                              ) : (
-                                <table className="w-full text-xs">
-                                  <thead>
-                                    <tr className="text-left text-neutral-400 border-b border-neutral-200">
-                                      <th className="p-2.5 pl-8">Hora</th>
-                                      <th className="p-2.5">Pedido</th>
-                                      <th className="p-2.5">Productos</th>
-                                      <th className="p-2.5">Pago</th>
-                                      <th className="p-2.5 text-right">Total</th>
-                                      <th className="p-2.5 text-right">Pagó con</th>
-                                      <th className="p-2.5 text-right">Vuelto</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {(ventasPorTurno[t.id_turno] ?? []).map((v) => (
-                                      <tr key={v.idVenta} className="border-b border-neutral-100 last:border-0">
-                                        <td className="p-2.5 pl-8 whitespace-nowrap">{formatearHora(v.fecha)}</td>
-                                        <td className="p-2.5 whitespace-nowrap">{formatearPedido(v.numero)}</td>
-                                        <td className="p-2.5">{v.productos || "—"}</td>
-                                        <td className="p-2.5 text-neutral-500">
-                                          {v.medioPago === "MERCADO_PAGO" ? "Mercado Pago" : v.medioPago === "EFECTIVO" ? "Efectivo" : "—"}
-                                        </td>
-                                        <td className="p-2.5 text-right tabular-nums">${formatearMonto(v.total)}</td>
-                                        <td className="p-2.5 text-right tabular-nums">
-                                          {v.medioPago === "EFECTIVO" && v.totalCobrado != null
-                                            ? `$${formatearMonto(v.totalCobrado)}`
-                                            : "—"}
-                                        </td>
-                                        <td className="p-2.5 text-right tabular-nums">
-                                          {v.medioPago === "EFECTIVO" && v.totalCobrado != null && v.totalCobrado > v.total
-                                            ? `$${formatearMonto(v.totalCobrado - v.total)}`
-                                            : "—"}
-                                        </td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              )}
-                            </td>
-                          </tr>
-                        )}
-                      </Fragment>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-function Campo({ etiqueta, valor }: { etiqueta: string; valor: string }) {
+const COLORES_STAT = {
+  purple: { borde: "border-t-purple-600", icono: "bg-purple-100 text-purple-600" },
+  success: { borde: "border-t-emerald-600", icono: "bg-emerald-100 text-emerald-600" },
+  danger: { borde: "border-t-red-600", icono: "bg-red-100 text-red-600" },
+  accent: { borde: "border-t-accent", icono: "bg-accent-tint text-accent" },
+} as const;
+
+function StatCard({
+  color,
+  icono,
+  etiqueta,
+  valor,
+  nota,
+}: {
+  color: keyof typeof COLORES_STAT;
+  icono: string;
+  etiqueta: string;
+  valor: string;
+  nota?: string;
+}) {
+  const c = COLORES_STAT[color];
   return (
-    <div>
-      <p className="text-xs text-neutral-500">{etiqueta}</p>
-      <p className="text-sm font-semibold text-neutral-900">{valor}</p>
+    <div className={`bg-white border border-neutral-200 border-t-4 ${c.borde} rounded-xl p-4`}>
+      <div className="flex items-center gap-2.5 mb-2">
+        <span className={`w-7 h-7 rounded-lg flex items-center justify-center text-sm ${c.icono}`}>{icono}</span>
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400">{etiqueta}</p>
+      </div>
+      <p className="text-xl font-extrabold text-neutral-900 tabular-nums tracking-tight">{valor}</p>
+      {nota && <p className="text-[11px] text-neutral-400 mt-0.5">{nota}</p>}
     </div>
+  );
+}
+
+function VentasTabla({ ventas, compacta = false }: { ventas: VentaTurno[]; compacta?: boolean }) {
+  const tam = compacta ? "text-xs" : "text-sm";
+  const pad = compacta ? "p-2.5" : "p-3";
+  return (
+    <table className={`w-full ${tam}`}>
+      <thead>
+        <tr className="text-left text-neutral-400 border-b border-neutral-200">
+          <th className={pad}>Hora</th>
+          <th className={pad}>Pedido</th>
+          <th className={pad}>Productos</th>
+          <th className={pad}>Pago</th>
+          <th className={`${pad} text-right`}>Total</th>
+          <th className={`${pad} text-right`}>Pagó con</th>
+          <th className={`${pad} text-right`}>Vuelto</th>
+        </tr>
+      </thead>
+      <tbody>
+        {ventas.map((v) => (
+          <tr key={v.idVenta} className="border-b border-neutral-100 last:border-0">
+            <td className={`${pad} whitespace-nowrap text-neutral-500`}>{formatearHora(v.fecha)}</td>
+            <td className={`${pad} whitespace-nowrap`}>
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-accent-tint text-accent-dark">
+                {formatearPedido(v.numero)}
+              </span>
+            </td>
+            <td className={pad}>{v.productos || "—"}</td>
+            <td className={`${pad} text-neutral-500`}>
+              {v.medioPago === "MERCADO_PAGO" ? "Mercado Pago" : v.medioPago === "EFECTIVO" ? "Efectivo" : "—"}
+            </td>
+            <td className={`${pad} text-right tabular-nums`}>${formatearMonto(v.total)}</td>
+            <td className={`${pad} text-right tabular-nums`}>
+              {v.medioPago === "EFECTIVO" && v.totalCobrado != null ? `$${formatearMonto(v.totalCobrado)}` : "—"}
+            </td>
+            <td className={`${pad} text-right tabular-nums`}>
+              {v.medioPago === "EFECTIVO" && v.totalCobrado != null && v.totalCobrado > v.total
+                ? `$${formatearMonto(v.totalCobrado - v.total)}`
+                : "—"}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
