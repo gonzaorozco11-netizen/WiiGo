@@ -209,7 +209,10 @@ export async function venderPos(
     });
   }
 
-  const puntosGenerados = await calcularPuntos(supabase, total);
+  // Sin cliente identificado no hay a quién sumarle los puntos, así que
+  // la venta queda con 0 aunque la regla general esté activa.
+  const puntosGenerados = idCliente ? await calcularPuntos(supabase, total) : 0;
+  await supabase.from("ventas").update({ puntos_generados: puntosGenerados }).eq("id_venta", venta.id_venta);
 
   if (idCliente && puntosGenerados > 0) {
     const { data: cliente } = await supabase.from("clientes").select("puntos").eq("id_cliente", idCliente).maybeSingle();
@@ -222,5 +225,5 @@ export async function venderPos(
   revalidatePath("/pos");
   revalidatePath("/stock");
 
-  return { numero: venta.numero as number, total, vuelto };
+  return { numero: venta.numero as number, total, vuelto, puntosGenerados };
 }

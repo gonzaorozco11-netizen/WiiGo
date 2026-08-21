@@ -116,7 +116,10 @@ export async function confirmarCobro(idVenta: string, montoRecibido: number) {
     });
   }
 
-  const puntosGenerados = await calcularPuntos(supabase, total);
+  // Sin cliente identificado no hay a quién sumarle los puntos, así que
+  // la venta queda con 0 aunque la regla general esté activa.
+  const puntosGenerados = venta.id_cliente ? await calcularPuntos(supabase, total) : 0;
+  await supabase.from("ventas").update({ puntos_generados: puntosGenerados }).eq("id_venta", idVenta);
 
   if (venta.id_cliente && puntosGenerados > 0) {
     const { data: cliente } = await supabase

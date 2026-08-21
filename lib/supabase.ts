@@ -197,6 +197,7 @@ export type Venta = {
   terminal: string | null;
   descuento_puntos: number;
   puntos_canjeados: number;
+  puntos_generados: number;
   total_cobrado: number | null;
   motivo_cancelacion: string | null;
   fecha_cancelacion: string | null;

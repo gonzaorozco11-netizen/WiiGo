@@ -25,7 +25,7 @@ function formatearMonto(valor: number) {
 }
 
 function formatearPedido(numero: number) {
-  return `COB-${String(numero).padStart(4, "0")}`;
+  return `VTA-${String(numero).padStart(4, "0")}`;
 }
 
 function precioFinal(producto: Producto, variante: VarianteProducto) {

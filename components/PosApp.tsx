@@ -19,7 +19,7 @@ function formatearMonto(valor: number) {
 }
 
 function formatearPedido(numero: number) {
-  return `COB-${String(numero).padStart(4, "0")}`;
+  return `VTA-${String(numero).padStart(4, "0")}`;
 }
 
 function precioFinal(producto: Producto, variante: VarianteProducto) {
@@ -49,7 +49,9 @@ export default function PosApp({
   const [montoRecibido, setMontoRecibido] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [resultado, setResultado] = useState<{ numero: number; total: number; vuelto: number } | null>(null);
+  const [resultado, setResultado] = useState<{ numero: number; total: number; vuelto: number; puntosGenerados: number } | null>(
+    null
+  );
   const [clienteEncontrado, setClienteEncontrado] = useState<{ nombre: string; apellido: string | null; puntos: number } | null>(null);
   const [buscandoCliente, setBuscandoCliente] = useState(false);
 
@@ -180,9 +182,14 @@ export default function PosApp({
         <h1 className="text-xl font-bold text-neutral-900 mb-1">Venta registrada</h1>
         <p className="text-sm text-neutral-500 mb-1">Pedido #{formatearPedido(resultado.numero)}</p>
         <p className="text-2xl font-extrabold text-neutral-900 mb-1">${formatearMonto(resultado.total)}</p>
-        {resultado.vuelto > 0 && (
-          <p className="text-sm text-emerald-600 font-semibold mb-6">Vuelto: ${formatearMonto(resultado.vuelto)}</p>
-        )}
+        <div className="mb-6">
+          {resultado.vuelto > 0 && (
+            <p className="text-sm text-emerald-600 font-semibold">Vuelto: ${formatearMonto(resultado.vuelto)}</p>
+          )}
+          {resultado.puntosGenerados > 0 && (
+            <p className="text-sm text-accent font-semibold">⭐ +{resultado.puntosGenerados} WiiGo Points</p>
+          )}
+        </div>
         <button
           onClick={nuevaVenta}
           className="bg-accent hover:bg-accent-dark text-white font-bold px-6 py-3 rounded-xl"

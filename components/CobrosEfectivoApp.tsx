@@ -12,7 +12,7 @@ function formatearMonto(valor: number) {
 }
 
 function formatearPedido(numero: number) {
-  return `COB-${String(numero).padStart(4, "0")}`;
+  return `VTA-${String(numero).padStart(4, "0")}`;
 }
 
 function formatearHora(fechaISO: string) {
@@ -290,6 +290,12 @@ export default function CobrosEfectivoApp({
                   <Campo etiqueta="Cliente" valor={ventaSeleccionada.id_cliente ? clientePorId.get(ventaSeleccionada.id_cliente)?.nombre ?? "Cliente" : "Sin cliente"} />
                   {tab === "PENDIENTE" && <Campo etiqueta="Subtotal" valor={`$${formatearMonto(ventaSeleccionada.subtotal ?? 0)}`} />}
                   {tab === "COMPLETOS" && <Campo etiqueta="Cobrado" valor={formatearHora(ventaSeleccionada.fecha)} />}
+                  {tab === "COMPLETOS" && (
+                    <Campo
+                      etiqueta="WiiGo Points"
+                      valor={ventaSeleccionada.puntos_generados > 0 ? `+${ventaSeleccionada.puntos_generados}` : "—"}
+                    />
+                  )}
                   {tab === "CANCELADOS" && (
                     <Campo etiqueta="Motivo" valor={ventaSeleccionada.motivo_cancelacion ?? "—"} />
                   )}

@@ -9,6 +9,7 @@ const ITEMS = [
   { href: "/stock", label: "Stock" },
   { href: "/reposicion", label: "Abastecimiento" },
   { href: "/cobros-efectivo", label: "Cobros en efectivo" },
+  { href: "/ventas", label: "Ventas" },
   { href: "/pos", label: "Vender" },
   { href: "/clientes", label: "Clientes" },
   { href: "/locales", label: "Locales" },
