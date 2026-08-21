@@ -209,17 +209,46 @@ export type Venta = {
   fecha_cancelacion: string | null;
 };
 
+// Tabla original del esquema (ya pensada para el detalle completo de una
+// liquidación: comisión de cobro asignada, IVA asignado, SIRCREB, imp. a
+// los créditos, imp. a los débitos trasladado, costo financiero WiiGo,
+// etc.) — no crear otra, reusar estos campos. Todavía no completamos
+// todas las columnas (algunas requieren datos que no calculamos todavía,
+// como el prorrateo de imp. a los débitos de la transferencia bancaria).
 export type Liquidacion = {
   id_liquidacion: string;
   id_marca: string;
-  periodo_desde: string;
-  periodo_hasta: string;
-  fecha_liquidacion: string;
-  usuario: string | null;
-  venta_bruta_total: number;
-  deducciones_total: number;
-  neto_total: number;
+  fecha_desde: string | null;
+  fecha_hasta: string | null;
+  venta_bruta: number | null;
+  total_retenciones: number | null;
+  total_comisiones: number | null;
+  royalty: number | null;
+  iva_royalty: number | null;
+  ajustes: number | null;
+  neto_a_transferir: number | null;
   estado: string;
+  fecha_pago: string | null;
+  referencia_pago: string | null;
+  descuentos_comerciales: number | null;
+  venta_neta_marca: number | null;
+  comision_cobro_asignada: number | null;
+  iva_comision_asignado: number | null;
+  sircreb_asignado: number | null;
+  imp_creditos_asignado: number | null;
+  otras_retenciones_asignadas: number | null;
+  otros_costos_cobro_asignados: number | null;
+  total_costos_cobro_asignados: number | null;
+  royalty_porcentaje: number | null;
+  iva_royalty_porcentaje: number | null;
+  base_antes_transferencia: number | null;
+  imp_debitos_porcentaje: number | null;
+  imp_debitos_liquidacion: number | null;
+  imp_debitos_trasladado_marca: number | null;
+  costo_financiero_wiigo: number | null;
+  neto_economico_marca: number | null;
+  fecha_generacion: string;
+  observaciones: string | null;
   comprobante_path: string | null;
 };
 

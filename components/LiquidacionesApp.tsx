@@ -151,7 +151,6 @@ export default function LiquidacionesApp({ marcas }: { marcas: Marca[] }) {
                   <th className="p-3 text-right">Venta bruta</th>
                   <th className="p-3 text-right">Deducciones</th>
                   <th className="p-3 text-right">Neto rendido</th>
-                  <th className="p-3">Usuario</th>
                   <th className="p-3">Comprobante</th>
                 </tr>
               </thead>
@@ -159,13 +158,12 @@ export default function LiquidacionesApp({ marcas }: { marcas: Marca[] }) {
                 {historial.map((l) => (
                   <tr key={l.id_liquidacion} className="border-b border-neutral-100 last:border-0">
                     <td className="p-3">
-                      {formatearFecha(l.periodo_desde)} – {formatearFecha(l.periodo_hasta)}
+                      {formatearFecha(l.fecha_desde)} – {formatearFecha(l.fecha_hasta)}
                     </td>
-                    <td className="p-3 text-neutral-500">{formatearFecha(l.fecha_liquidacion)}</td>
-                    <td className="p-3 text-right tabular-nums">${formatearMonto(l.venta_bruta_total)}</td>
-                    <td className="p-3 text-right tabular-nums text-red-600">-${formatearMonto(l.deducciones_total)}</td>
-                    <td className="p-3 text-right tabular-nums font-semibold">${formatearMonto(l.neto_total)}</td>
-                    <td className="p-3 text-neutral-500">{l.usuario ?? "—"}</td>
+                    <td className="p-3 text-neutral-500">{formatearFecha(l.fecha_generacion)}</td>
+                    <td className="p-3 text-right tabular-nums">${formatearMonto(l.venta_bruta ?? 0)}</td>
+                    <td className="p-3 text-right tabular-nums text-red-600">-${formatearMonto(l.total_retenciones ?? 0)}</td>
+                    <td className="p-3 text-right tabular-nums font-semibold">${formatearMonto(l.neto_a_transferir ?? 0)}</td>
                     <td className="p-3">
                       <FilaComprobante liquidacion={l} />
                     </td>
@@ -217,7 +215,9 @@ export default function LiquidacionesApp({ marcas }: { marcas: Marca[] }) {
                         <td className="p-3 text-right tabular-nums text-red-600">
                           {l.ivaComision > 0 ? `-$${formatearMonto(l.ivaComision)}` : "—"}
                         </td>
-                        <td className="p-3 text-right tabular-nums text-red-600">-${formatearMonto(l.impCreditos)}</td>
+                        <td className="p-3 text-right tabular-nums text-red-600">
+                          {l.impCreditos > 0 ? `-$${formatearMonto(l.impCreditos)}` : "—"}
+                        </td>
                         <td className="p-3 text-right tabular-nums text-red-600">
                           {l.feeMp > 0 ? `-$${formatearMonto(l.feeMp)}` : "—"}
                         </td>

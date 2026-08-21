@@ -61,10 +61,10 @@ export default function ComprobanteLiquidacion({
           </div>
           <div className="text-right text-sm text-neutral-500">
             <p>
-              Período: {formatearFecha(liquidacion.periodo_desde)} – {formatearFecha(liquidacion.periodo_hasta)}
+              Período: {formatearFecha(liquidacion.fecha_desde ?? liquidacion.fecha_generacion)} – {formatearFecha(liquidacion.fecha_hasta ?? liquidacion.fecha_generacion)}
             </p>
-            <p>Fecha de liquidación: {formatearFecha(liquidacion.fecha_liquidacion)}</p>
-            {liquidacion.usuario && <p>Confirmado por: {liquidacion.usuario}</p>}
+            <p>Fecha de liquidación: {formatearFecha(liquidacion.fecha_generacion)}</p>
+            {liquidacion.observaciones && <p>{liquidacion.observaciones}</p>}
           </div>
         </div>
 

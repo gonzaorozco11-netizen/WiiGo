@@ -217,24 +217,40 @@ export async function marcarComoLiquidada(
   idMarca: string,
   desde: string,
   hasta: string,
-  resumen: { ventaBruta: number; comisionWiigo: number; ivaComision: number; impCreditos: number; feeMp: number; netoARendir: number }
+  resumen: {
+    ventaBruta: number;
+    comisionWiigo: number;
+    ivaComision: number;
+    impCreditos: number;
+    feeMp: number;
+    netoARendir: number;
+    netoEfectivo: number;
+    netoTransferencia: number;
+  }
 ) {
   const supabase = getSupabaseServerClient();
   const usuario = await usuarioActual();
 
-  const deducciones = resumen.comisionWiigo + resumen.ivaComision + resumen.impCreditos + resumen.feeMp;
+  const totalComisiones = resumen.comisionWiigo + resumen.ivaComision + resumen.feeMp;
+  const totalRetenciones = totalComisiones + resumen.impCreditos;
 
   const { data: liquidacion, error: errorLiquidacion } = await supabase
     .from("liquidaciones")
     .insert({
       id_marca: idMarca,
-      periodo_desde: desde,
-      periodo_hasta: hasta,
-      usuario,
-      venta_bruta_total: resumen.ventaBruta,
-      deducciones_total: deducciones,
-      neto_total: resumen.netoARendir,
+      fecha_desde: desde,
+      fecha_hasta: hasta,
+      fecha_generacion: new Date().toISOString(),
+      venta_bruta: resumen.ventaBruta,
+      royalty: resumen.comisionWiigo,
+      iva_royalty: resumen.ivaComision,
+      comision_cobro_asignada: resumen.feeMp,
+      imp_creditos_asignado: resumen.impCreditos,
+      total_comisiones: totalComisiones,
+      total_retenciones: totalRetenciones,
+      neto_a_transferir: resumen.netoARendir,
       estado: "LIQUIDADA",
+      observaciones: `Confirmado por ${usuario ?? "—"} · Efectivo entregado: $${resumen.netoEfectivo} · Transferido por banco: $${resumen.netoTransferencia}`,
     })
     .select("id_liquidacion")
     .single();
@@ -265,7 +281,7 @@ export async function historialLiquidaciones(idMarca: string) {
     .from("liquidaciones")
     .select("*")
     .eq("id_marca", idMarca)
-    .order("fecha_liquidacion", { ascending: false });
+    .order("fecha_generacion", { ascending: false });
   if (error) throw new Error(friendlyDbError(error));
   return data ?? [];
 }
