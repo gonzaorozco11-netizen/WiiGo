@@ -209,6 +209,20 @@ export type Venta = {
   fecha_cancelacion: string | null;
 };
 
+export type Liquidacion = {
+  id_liquidacion: string;
+  id_marca: string;
+  periodo_desde: string;
+  periodo_hasta: string;
+  fecha_liquidacion: string;
+  usuario: string | null;
+  venta_bruta_total: number;
+  deducciones_total: number;
+  neto_total: number;
+  estado: string;
+  comprobante_path: string | null;
+};
+
 // Tabla original del esquema (pensada para liquidaciones: comisión, IVA,
 // SIRCREB, conciliación con Mercado Pago, etc.) — no crear otra, reusar
 // estos campos. Para Efectivo no hay comisión ni conciliación externa, así

@@ -10,6 +10,7 @@ const ITEMS = [
   { href: "/reposicion", label: "Abastecimiento" },
   { href: "/cobros-efectivo", label: "Cobros en efectivo" },
   { href: "/ventas", label: "Ventas" },
+  { href: "/liquidaciones", label: "Liquidaciones" },
   { href: "/pos", label: "Vender" },
   { href: "/clientes", label: "Clientes" },
   { href: "/locales", label: "Locales" },

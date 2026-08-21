@@ -1,16 +1,22 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { guardarConfigPuntos } from "@/app/(app)/configuracion/actions";
+import { guardarConfigPuntos, guardarConfigLiquidaciones } from "@/app/(app)/configuracion/actions";
 
 export default function ConfiguracionApp({
   puntosActivo,
   puntosCadaMonto,
   puntosOtorgados,
+  impCreditosPorcentaje,
+  sircrebPorcentaje,
+  mpComisionPorcentaje,
 }: {
   puntosActivo: boolean;
   puntosCadaMonto: number;
   puntosOtorgados: number;
+  impCreditosPorcentaje: number;
+  sircrebPorcentaje: number;
+  mpComisionPorcentaje: number;
 }) {
   const [isPending, startTransition] = useTransition();
   const [guardado, setGuardado] = useState(false);
@@ -18,6 +24,12 @@ export default function ConfiguracionApp({
   const [cadaMonto, setCadaMonto] = useState(puntosCadaMonto);
   const [otorgados, setOtorgados] = useState(puntosOtorgados);
   const [compraEjemplo, setCompraEjemplo] = useState(23500);
+
+  const [isPendingLiq, startTransitionLiq] = useTransition();
+  const [guardadoLiq, setGuardadoLiq] = useState(false);
+  const [impCreditos, setImpCreditos] = useState(impCreditosPorcentaje);
+  const [sircreb, setSircreb] = useState(sircrebPorcentaje);
+  const [mpComision, setMpComision] = useState(mpComisionPorcentaje);
 
   const puntosCalculados = useMemo(() => {
     if (!cadaMonto || cadaMonto <= 0) return 0;
@@ -29,6 +41,14 @@ export default function ConfiguracionApp({
     startTransition(async () => {
       await guardarConfigPuntos(formData);
       setGuardado(true);
+    });
+  }
+
+  function handleSubmitLiq(formData: FormData) {
+    setGuardadoLiq(false);
+    startTransitionLiq(async () => {
+      await guardarConfigLiquidaciones(formData);
+      setGuardadoLiq(true);
     });
   }
 
@@ -126,6 +146,76 @@ export default function ConfiguracionApp({
           className="w-full rounded-lg bg-accent hover:bg-accent-dark text-white py-2 text-sm font-medium disabled:opacity-50"
         >
           {isPending ? "Guardando..." : "Guardar configuración"}
+        </button>
+      </form>
+
+      <form action={handleSubmitLiq} className="bg-white border border-neutral-200 rounded-xl p-5 mt-5">
+        <h2 className="text-base font-semibold text-neutral-900 mb-1">📊 Liquidaciones — tasas generales</h2>
+        <p className="text-sm text-neutral-500 mb-4">
+          Se aplican igual para todas las marcas en consignación. El royalty y el IVA sobre royalty son por marca —
+          se cargan en la ficha de cada una, no acá.
+        </p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="imp_creditos_porcentaje">
+              Imp. a los Créditos (%)
+            </label>
+            <input
+              id="imp_creditos_porcentaje"
+              name="imp_creditos_porcentaje"
+              type="number"
+              step="0.01"
+              value={impCreditos}
+              onChange={(e) => setImpCreditos(Number(e.target.value))}
+              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+            <p className="text-xs text-neutral-400 mt-1">Se descuenta de lo que se le rinde a la marca.</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="sircreb_porcentaje">
+              SIRCREB (%)
+            </label>
+            <input
+              id="sircreb_porcentaje"
+              name="sircreb_porcentaje"
+              type="number"
+              step="0.01"
+              value={sircreb}
+              onChange={(e) => setSircreb(Number(e.target.value))}
+              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+            <p className="text-xs text-neutral-400 mt-1">Lo absorbe WiiGo — solo informativo, no se le descuenta a la marca.</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="mp_comision_porcentaje">
+              Comisión Mercado Pago (%)
+            </label>
+            <input
+              id="mp_comision_porcentaje"
+              name="mp_comision_porcentaje"
+              type="number"
+              step="0.01"
+              value={mpComision}
+              onChange={(e) => setMpComision(Number(e.target.value))}
+              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+            <p className="text-xs text-neutral-400 mt-1">Estimada a mano hasta conectar la API real de Mercado Pago.</p>
+          </div>
+        </div>
+
+        {guardadoLiq && (
+          <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 mb-4">
+            Configuración guardada.
+          </p>
+        )}
+
+        <button
+          type="submit"
+          disabled={isPendingLiq}
+          className="w-full rounded-lg bg-accent hover:bg-accent-dark text-white py-2 text-sm font-medium disabled:opacity-50"
+        >
+          {isPendingLiq ? "Guardando..." : "Guardar tasas"}
         </button>
       </form>
     </div>
