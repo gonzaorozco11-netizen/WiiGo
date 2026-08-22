@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import type {
   Marca,
@@ -13,114 +13,9 @@ import type {
 } from "@/lib/supabase";
 import { deleteSubcategoria } from "@/app/(app)/marcas/actions";
 import { deleteProducto } from "@/app/(app)/productos/actions";
-import { saldosRetencionMarcaAction, historialRetencionMarcaAction } from "@/app/(app)/liquidaciones/actions";
 import MarcaFormModal from "@/components/MarcaFormModal";
 import SubcategoriaFormModal from "@/components/SubcategoriaFormModal";
 import ProductoFormModal from "@/components/ProductoFormModal";
-
-function formatearMonto(valor: number) {
-  return valor.toLocaleString("es-AR", { maximumFractionDigits: 0 });
-}
-
-const ETIQUETA_TIPO_RETENCION: Record<string, string> = {
-  SIRCREB: "SIRCREB",
-  IMP_DEBITO_CREDITO: "Impuesto a los créditos/débitos",
-  OTRO: "Otros",
-};
-
-const ETIQUETA_TIPO_MOVIMIENTO: Record<string, string> = {
-  RETENCION: "Retención",
-  COMPENSACION: "Compensación",
-  DEVOLUCION: "Devolución",
-  AJUSTE_POSITIVO: "Ajuste (+)",
-  AJUSTE_NEGATIVO: "Ajuste (−)",
-  ANULACION: "Anulación",
-};
-
-// Cuenta corriente de retenciones — nunca es plata de WiiGo, es lo
-// retenido preventivamente (hoy solo SIRCREB) pendiente de compensar o
-// devolver a la marca. Mismo patrón visual que el saldo por marca de
-// Profesionales: saldo derivado de movimientos, nunca un número suelto.
-function RetencionesMarca({ idMarca }: { idMarca: string }) {
-  const [saldos, setSaldos] = useState<{ tipoRetencion: string; saldo: number }[]>([]);
-  const [historial, setHistorial] = useState<
-    { idMovimiento: string; tipoRetencion: string; tipoMovimiento: string; importe: number; saldoNuevo: number; usuario: string | null; observaciones: string | null; fecha: string }[]
-  >([]);
-  const [cargando, setCargando] = useState(true);
-  const [mostrarHistorial, setMostrarHistorial] = useState(false);
-
-  useEffect(() => {
-    setCargando(true);
-    Promise.all([saldosRetencionMarcaAction(idMarca), historialRetencionMarcaAction(idMarca)])
-      .then(([s, h]) => {
-        setSaldos(s);
-        setHistorial(h);
-      })
-      .finally(() => setCargando(false));
-  }, [idMarca]);
-
-  const totalPendiente = saldos.reduce((acc, s) => acc + s.saldo, 0);
-
-  if (cargando) return null;
-  if (saldos.length === 0 && historial.length === 0) return null;
-
-  return (
-    <div className="bg-white border border-neutral-200 rounded-xl p-4 mb-8">
-      <div className="flex items-center justify-between mb-1">
-        <h2 className="text-base font-semibold text-neutral-900">🧾 Cuenta corriente de retenciones</h2>
-        <span className="text-lg font-extrabold text-purple-700 tabular-nums">${formatearMonto(totalPendiente)}</span>
-      </div>
-      <p className="text-xs text-neutral-400 mb-3">
-        Retenido preventivamente en liquidaciones (ej. SIRCREB) — no es ganancia de WiiGo, queda pendiente de compensar o devolver.
-      </p>
-      {saldos.length > 0 && (
-        <div className="space-y-1.5 mb-3">
-          {saldos.map((s) => (
-            <div key={s.tipoRetencion} className="flex items-center justify-between bg-purple-50 border border-purple-200 rounded-lg px-3 py-2">
-              <span className="text-sm font-medium text-purple-900">{ETIQUETA_TIPO_RETENCION[s.tipoRetencion] ?? s.tipoRetencion}</span>
-              <span className="text-sm font-bold text-purple-700 tabular-nums">${formatearMonto(s.saldo)}</span>
-            </div>
-          ))}
-        </div>
-      )}
-      <button onClick={() => setMostrarHistorial((v) => !v)} className="text-xs font-semibold text-accent">
-        {mostrarHistorial ? "▾" : "▸"} Historial de movimientos ({historial.length})
-      </button>
-      {mostrarHistorial && (
-        <div className="overflow-x-auto mt-2">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="text-left text-neutral-400 border-b border-neutral-200">
-                <th className="p-2">Fecha</th>
-                <th className="p-2">Tipo</th>
-                <th className="p-2">Movimiento</th>
-                <th className="p-2 text-right">Importe</th>
-                <th className="p-2 text-right">Saldo</th>
-                <th className="p-2">Observaciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {historial.map((m) => (
-                <tr key={m.idMovimiento} className="border-b border-neutral-100 last:border-0">
-                  <td className="p-2 whitespace-nowrap text-neutral-500">
-                    {new Date(m.fecha).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "2-digit" })}
-                  </td>
-                  <td className="p-2">{ETIQUETA_TIPO_RETENCION[m.tipoRetencion] ?? m.tipoRetencion}</td>
-                  <td className="p-2">{ETIQUETA_TIPO_MOVIMIENTO[m.tipoMovimiento] ?? m.tipoMovimiento}</td>
-                  <td className={`p-2 text-right tabular-nums font-semibold ${m.importe >= 0 ? "text-purple-700" : "text-emerald-600"}`}>
-                    {m.importe >= 0 ? "+" : ""}${formatearMonto(m.importe)}
-                  </td>
-                  <td className="p-2 text-right tabular-nums">${formatearMonto(m.saldoNuevo)}</td>
-                  <td className="p-2 text-neutral-400">{m.observaciones ?? "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
-}
 
 export default function MarcaDetail({
   marca,
@@ -244,8 +139,6 @@ export default function MarcaDetail({
         <Dato label="Royalty" valor={marca.royalty_porcentaje !== null ? `${marca.royalty_porcentaje}%` : null} />
         <Dato label="Fee de ingreso" valor={marca.fee_ingreso !== null ? `$${marca.fee_ingreso}` : null} />
       </div>
-
-      {marca.tipo_comercializacion === "CONSIGNACION" && <RetencionesMarca idMarca={marca.id_marca} />}
 
       {/* Subcategorías */}
       <div className="mb-8">

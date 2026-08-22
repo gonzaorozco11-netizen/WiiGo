@@ -8,6 +8,8 @@ import {
   historialLiquidaciones,
   subirComprobante,
   obtenerUrlComprobante,
+  saldosRetencionMarcaAction,
+  historialRetencionMarcaAction,
   type LineaRendicion,
 } from "@/app/(app)/liquidaciones/actions";
 
@@ -67,6 +69,7 @@ export default function LiquidacionesApp({ marcas }: { marcas: Marca[] }) {
   const [hasta, setHasta] = useState(hoyISO());
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorCierre, setErrorCierre] = useState<string | null>(null);
   const [resultado, setResultado] = useState<{ lineas: LineaRendicion[]; resumen: Resumen } | null>(null);
   const [cerrando, setCerrando] = useState(false);
   const [historial, setHistorial] = useState<Liquidacion[]>([]);
@@ -75,6 +78,7 @@ export default function LiquidacionesApp({ marcas }: { marcas: Marca[] }) {
   useEffect(() => {
     setResultado(null);
     setError(null);
+    setErrorCierre(null);
   }, [idMarca]);
 
   function handleCalcular() {
@@ -89,14 +93,14 @@ export default function LiquidacionesApp({ marcas }: { marcas: Marca[] }) {
   function handleMarcarLiquidada() {
     if (!resultado || resultado.lineas.length === 0) return;
     if (!confirm(`¿Marcar como liquidado? Se van a cerrar ${resultado.lineas.length} líneas por un neto de $${formatearMonto(resultado.resumen.netoARendir)}.`)) return;
-    setError(null);
+    setErrorCierre(null);
     setCerrando(true);
     marcarComoLiquidada(idMarca, desde, hasta, resultado.resumen)
       .then((res) => {
-        if (res.error) setError(res.error);
+        if (res.error) setErrorCierre(res.error);
         else setResultado(null);
       })
-      .catch((e) => setError(e instanceof Error ? e.message : "No se pudo cerrar la liquidación"))
+      .catch((e) => setErrorCierre(e instanceof Error ? e.message : "No se pudo cerrar la liquidación"))
       .finally(() => setCerrando(false));
   }
 
@@ -162,6 +166,8 @@ export default function LiquidacionesApp({ marcas }: { marcas: Marca[] }) {
           {error}
         </p>
       )}
+
+      {idMarca && <RetencionesMarca key={idMarca} idMarca={idMarca} />}
 
       {verHistorial && (
         <div className="bg-white border border-neutral-200 rounded-xl overflow-hidden mb-5">
@@ -287,6 +293,11 @@ export default function LiquidacionesApp({ marcas }: { marcas: Marca[] }) {
                   </div>
                 </div>
 
+                {errorCierre && (
+                  <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-3" role="alert">
+                    {errorCierre}
+                  </p>
+                )}
                 <button
                   onClick={handleMarcarLiquidada}
                   disabled={cerrando}
@@ -366,6 +377,107 @@ function ResumenCampo({ etiqueta, valor, destacado }: { etiqueta: string; valor:
       <p className={`font-semibold ${destacado ? "text-lg text-neutral-900" : negativo ? "text-red-600" : "text-neutral-900"}`}>
         {negativo ? "-" : ""}${formatearMonto(Math.abs(valor))}
       </p>
+    </div>
+  );
+}
+
+const ETIQUETA_TIPO_RETENCION: Record<string, string> = {
+  SIRCREB: "SIRCREB",
+  IMP_DEBITO_CREDITO: "Impuesto a los créditos/débitos",
+  OTRO: "Otros",
+};
+
+const ETIQUETA_TIPO_MOVIMIENTO: Record<string, string> = {
+  RETENCION: "Retención",
+  COMPENSACION: "Compensación",
+  DEVOLUCION: "Devolución",
+  AJUSTE_POSITIVO: "Ajuste (+)",
+  AJUSTE_NEGATIVO: "Ajuste (−)",
+  ANULACION: "Anulación",
+};
+
+// Cuenta corriente de retenciones — vive en Finanzas (acá), no en la ficha
+// de la marca (Catálogo es solo productos/subcategorías). Nunca es plata
+// de WiiGo: es lo retenido preventivamente (hoy solo SIRCREB) pendiente de
+// compensar o devolver. Saldo siempre derivado de movimientos, nunca un
+// número suelto — mismo patrón que el saldo por marca de Profesionales.
+function RetencionesMarca({ idMarca }: { idMarca: string }) {
+  const [saldos, setSaldos] = useState<{ tipoRetencion: string; saldo: number }[]>([]);
+  const [historial, setHistorial] = useState<
+    { idMovimiento: string; tipoRetencion: string; tipoMovimiento: string; importe: number; saldoNuevo: number; usuario: string | null; observaciones: string | null; fecha: string }[]
+  >([]);
+  const [cargando, setCargando] = useState(true);
+  const [mostrarHistorial, setMostrarHistorial] = useState(false);
+
+  useEffect(() => {
+    setCargando(true);
+    Promise.all([saldosRetencionMarcaAction(idMarca), historialRetencionMarcaAction(idMarca)])
+      .then(([s, h]) => {
+        setSaldos(s);
+        setHistorial(h);
+      })
+      .finally(() => setCargando(false));
+  }, [idMarca]);
+
+  const totalPendiente = saldos.reduce((acc, s) => acc + s.saldo, 0);
+
+  if (cargando) return null;
+  if (saldos.length === 0 && historial.length === 0) return null;
+
+  return (
+    <div className="bg-white border border-neutral-200 rounded-xl p-4 mb-5">
+      <div className="flex items-center justify-between mb-1">
+        <h2 className="text-base font-semibold text-neutral-900">🧾 Cuenta corriente de retenciones</h2>
+        <span className="text-lg font-extrabold text-purple-700 tabular-nums">${formatearMonto(totalPendiente)}</span>
+      </div>
+      <p className="text-xs text-neutral-400 mb-3">
+        Retenido preventivamente en liquidaciones (ej. SIRCREB) — no es ganancia de WiiGo, queda pendiente de compensar o devolver.
+      </p>
+      {saldos.length > 0 && (
+        <div className="space-y-1.5 mb-3">
+          {saldos.map((s) => (
+            <div key={s.tipoRetencion} className="flex items-center justify-between bg-purple-50 border border-purple-200 rounded-lg px-3 py-2">
+              <span className="text-sm font-medium text-purple-900">{ETIQUETA_TIPO_RETENCION[s.tipoRetencion] ?? s.tipoRetencion}</span>
+              <span className="text-sm font-bold text-purple-700 tabular-nums">${formatearMonto(s.saldo)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      <button onClick={() => setMostrarHistorial((v) => !v)} className="text-xs font-semibold text-accent">
+        {mostrarHistorial ? "▾" : "▸"} Historial de movimientos ({historial.length})
+      </button>
+      {mostrarHistorial && (
+        <div className="overflow-x-auto mt-2">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-left text-neutral-400 border-b border-neutral-200">
+                <th className="p-2">Fecha</th>
+                <th className="p-2">Tipo</th>
+                <th className="p-2">Movimiento</th>
+                <th className="p-2 text-right">Importe</th>
+                <th className="p-2 text-right">Saldo</th>
+                <th className="p-2">Observaciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {historial.map((m) => (
+                <tr key={m.idMovimiento} className="border-b border-neutral-100 last:border-0">
+                  <td className="p-2 whitespace-nowrap text-neutral-500">
+                    {new Date(m.fecha).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "2-digit" })}
+                  </td>
+                  <td className="p-2">{ETIQUETA_TIPO_RETENCION[m.tipoRetencion] ?? m.tipoRetencion}</td>
+                  <td className="p-2">{ETIQUETA_TIPO_MOVIMIENTO[m.tipoMovimiento] ?? m.tipoMovimiento}</td>
+                  <td className={`p-2 text-right tabular-nums font-semibold ${m.importe >= 0 ? "text-purple-700" : "text-emerald-600"}`}>
+                    {m.importe >= 0 ? "+" : ""}${formatearMonto(m.importe)}
+                  </td>
+                  <td className="p-2 text-right tabular-nums">${formatearMonto(m.saldoNuevo)}</td>
+                  <td className="p-2 text-neutral-400">{m.observaciones ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
