@@ -13,13 +13,16 @@ export const dynamic = "force-dynamic";
 export default async function PosPage() {
   const supabase = getSupabaseServerClient();
 
-  const [localesRes, productosRes, variantesRes, marcasRes, stockRes] = await Promise.all([
+  const [localesRes, productosRes, variantesRes, marcasRes, stockRes, configRes] = await Promise.all([
     supabase.from("locales").select("*").eq("estado", "ACTIVO").order("nombre", { ascending: true }),
     supabase.from("productos").select("*").eq("estado", "ACTIVO"),
     supabase.from("variantes_producto").select("*").eq("estado", "ACTIVO"),
     supabase.from("marcas").select("*").eq("estado", "ACTIVA"),
     supabase.from("stock").select("*"),
+    supabase.from("configuracion").select("valor").eq("parametro", "IVA_GENERAL_PORCENTAJE").maybeSingle(),
   ]);
+
+  const ivaGeneralPorcentaje = Number(configRes.data?.valor ?? 21);
 
   const error = localesRes.error || productosRes.error || variantesRes.error || marcasRes.error || stockRes.error;
   if (error) {
@@ -47,6 +50,7 @@ export default async function PosPage() {
       variantes={(variantesRes.data ?? []) as VarianteProducto[]}
       marcas={(marcasRes.data ?? []) as Marca[]}
       stock={(stockRes.data ?? []) as Stock[]}
+      ivaGeneralPorcentaje={ivaGeneralPorcentaje}
     />
   );
 }

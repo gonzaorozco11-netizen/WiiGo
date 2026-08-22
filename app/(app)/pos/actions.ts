@@ -13,7 +13,7 @@ import {
   puntosExtraPorMonto,
   enlazarDetalleVenta,
 } from "@/lib/referidosProfesionales";
-import { buscarProfesionalPorDni, verificarPinProfesional, calcularDescuentoCanje, registrarCanje } from "@/lib/canjesProfesionales";
+import { buscarProfesionalPorDni, verificarPinProfesional, calcularDescuentoCanje, registrarCanje, esProfesionalActivo } from "@/lib/canjesProfesionales";
 import { calcularCanjePuntos, aplicarCanjePuntos } from "@/lib/puntosWiigo";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -370,10 +370,12 @@ export async function venderPos(
   }
 
   // Sin cliente identificado no hay a quién sumarle los puntos, así que
-  // la venta queda con 0 aunque la regla general esté activa. Los puntos
-  // extra por código de profesional (financiados por la marca) se suman
-  // aparte, arriba de los puntos normales de la venta.
-  const puntosGenerados = (idCliente ? await calcularPuntos(supabase, total) : 0) + puntosExtra;
+  // la venta queda con 0 aunque la regla general esté activa. Un profesional
+  // no suma puntos de club en sus propias compras (ver esProfesionalActivo).
+  // Los puntos extra por código de profesional (financiados por la marca,
+  // para el cliente que referenció) se suman aparte, arriba de los normales.
+  const esProfesional = await esProfesionalActivo(supabase, dniLimpio || null);
+  const puntosGenerados = (idCliente && !esProfesional ? await calcularPuntos(supabase, total) : 0) + puntosExtra;
   await supabase.from("ventas").update({ puntos_generados: puntosGenerados }).eq("id_venta", venta.id_venta);
 
   if (idCliente && puntosGenerados > 0) {

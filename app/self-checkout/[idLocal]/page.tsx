@@ -24,12 +24,15 @@ export default async function SelfCheckoutPage({ params }: { params: Promise<{ i
 
   if (!local) notFound();
 
-  const [productosRes, variantesRes, marcasRes, stockRes] = await Promise.all([
+  const [productosRes, variantesRes, marcasRes, stockRes, configRes] = await Promise.all([
     supabase.from("productos").select("*").eq("estado", "ACTIVO"),
     supabase.from("variantes_producto").select("*").eq("estado", "ACTIVO"),
     supabase.from("marcas").select("*").eq("estado", "ACTIVA"),
     supabase.from("stock").select("*").eq("id_local", idLocal),
+    supabase.from("configuracion").select("valor").eq("parametro", "IVA_GENERAL_PORCENTAJE").maybeSingle(),
   ]);
+
+  const ivaGeneralPorcentaje = Number(configRes.data?.valor ?? 21);
 
   return (
     <SelfCheckoutApp
@@ -38,6 +41,7 @@ export default async function SelfCheckoutPage({ params }: { params: Promise<{ i
       variantes={(variantesRes.data ?? []) as VarianteProducto[]}
       marcas={(marcasRes.data ?? []) as Marca[]}
       stock={(stockRes.data ?? []) as Stock[]}
+      ivaGeneralPorcentaje={ivaGeneralPorcentaje}
     />
   );
 }

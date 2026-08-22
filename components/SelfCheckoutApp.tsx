@@ -40,12 +40,14 @@ export default function SelfCheckoutApp({
   variantes,
   marcas,
   stock,
+  ivaGeneralPorcentaje,
 }: {
   local: Local;
   productos: Producto[];
   variantes: VarianteProducto[];
   marcas: Marca[];
   stock: Stock[];
+  ivaGeneralPorcentaje: number;
 }) {
   const [paso, setPaso] = useState<Paso>("bienvenida");
   const [carrito, setCarrito] = useState<Record<string, number>>({});
@@ -164,8 +166,8 @@ export default function SelfCheckoutApp({
   const subtotalCarrito = itemsCarrito.reduce((acc, i) => acc + i.precio * i.cantidad, 0);
 
   // Marcas presentes en el carrito con el saldo del profesional para cada
-  // una — solo se puede tildar si el saldo alcanza para cubrir esa parte
-  // completa (nada de pagos parciales por ahora).
+  // una — si el saldo no cubre todo el importe de esa marca, se aplica como
+  // descuento parcial (lo que haya disponible) y el resto se paga normal.
   const marcasEnCarrito = useMemo(() => {
     const subtotalPorMarca = new Map<string, number>();
     for (const i of itemsCarrito) {
@@ -180,7 +182,12 @@ export default function SelfCheckoutApp({
 
   const descuentoCanje = marcasEnCarrito
     .filter((m) => marcasCanje.has(m.idMarca))
-    .reduce((acc, m) => acc + m.subtotalCarrito, 0);
+    .reduce((acc, m) => acc + Math.min(m.subtotalCarrito, m.saldo), 0);
+  // El precio de cada producto ya incluye el IVA — esto solo lo desglosa
+  // para que se vea, no cambia nada de lo que paga el cliente.
+  const subtotalSinIva = ivaGeneralPorcentaje > 0 ? subtotalCarrito / (1 + ivaGeneralPorcentaje / 100) : subtotalCarrito;
+  const montoIva = subtotalCarrito - subtotalSinIva;
+
   const totalConCanje = Math.max(subtotalCarrito - descuentoCanje, 0);
   const descuentoPuntosPreview = usarPuntosWiigo && infoPuntos ? infoPuntos.maxDescuento : 0;
   const totalFinal = Math.max(totalConCanje - descuentoPuntosPreview, 0);
@@ -607,16 +614,20 @@ export default function SelfCheckoutApp({
                 <div className="space-y-1.5 mb-2">
                   {marcasEnCarrito.map((m) => {
                     const alcanza = m.saldo >= m.subtotalCarrito;
+                    const montoAplicado = Math.min(m.saldo, m.subtotalCarrito);
                     return (
                       <label
                         key={m.idMarca}
-                        className={`flex items-center justify-between gap-2 text-sm bg-white border border-purple-200 rounded-lg px-3 py-2 ${!alcanza ? "opacity-50" : "cursor-pointer"}`}
+                        className="flex items-center justify-between gap-2 text-sm bg-white border border-purple-200 rounded-lg px-3 py-2 cursor-pointer"
                       >
                         <span className="flex items-center gap-2">
-                          <input type="checkbox" disabled={!alcanza} checked={marcasCanje.has(m.idMarca)} onChange={() => toggleMarcaCanje(m.idMarca)} />
+                          <input type="checkbox" checked={marcasCanje.has(m.idMarca)} onChange={() => toggleMarcaCanje(m.idMarca)} />
                           {m.nombreMarca} — <span className="tabular-nums">${formatearMonto(m.subtotalCarrito)}</span>
                         </span>
-                        <span className="text-xs text-purple-600 tabular-nums">Saldo: ${formatearMonto(m.saldo)}</span>
+                        <span className="text-xs text-purple-600 tabular-nums">
+                          Saldo: ${formatearMonto(m.saldo)}
+                          {!alcanza && ` (descuenta $${formatearMonto(montoAplicado)}, resto se paga normal)`}
+                        </span>
                       </label>
                     );
                   })}
@@ -680,6 +691,18 @@ export default function SelfCheckoutApp({
                 : "📱 Mercado Pago: pagá con tu celular y avisale al personal para que lo confirme"}
             </p>
 
+            <div className="flex justify-between items-center text-xs text-neutral-400 mt-1">
+              <span>Subtotal (sin IVA)</span>
+              <span>${formatearMonto(subtotalSinIva)}</span>
+            </div>
+            <div className="flex justify-between items-center text-xs text-neutral-400 mb-1 pb-1 border-b border-dashed border-neutral-200">
+              <span>IVA ({ivaGeneralPorcentaje}%)</span>
+              <span>${formatearMonto(montoIva)}</span>
+            </div>
+            <div className="flex justify-between items-center text-sm">
+              <span>Subtotal</span>
+              <span>${formatearMonto(subtotalCarrito)}</span>
+            </div>
             {descuentoCanje > 0 && (
               <div className="flex justify-between items-center text-sm text-purple-600">
                 <span>Pagado con saldo de profesional</span>

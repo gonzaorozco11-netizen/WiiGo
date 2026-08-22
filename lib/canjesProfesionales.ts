@@ -70,6 +70,15 @@ export async function saldosPorMarca(supabase: SupabaseClient, idProfesional: st
   }));
 }
 
+// Un profesional no suma puntos WiiGo Club en sus propias compras — ese
+// saldo por marca ya es su recompensa por referir clientes, sumarle puntos
+// de club encima sería darle el mismo beneficio dos veces.
+export async function esProfesionalActivo(supabase: SupabaseClient, dni: string | null) {
+  if (!dni) return false;
+  const { data } = await supabase.from("profesionales").select("id_profesional").eq("dni", dni).eq("estado", "ACTIVO").maybeSingle();
+  return !!data;
+}
+
 export async function verificarPinProfesional(supabase: SupabaseClient, idProfesional: string, pin: string) {
   if (!pin || pin.length < 4) return false;
   const { data } = await supabase.from("profesionales").select("pin_hash").eq("id_profesional", idProfesional).maybeSingle();

@@ -44,12 +44,14 @@ export default function PosApp({
   variantes,
   marcas,
   stock,
+  ivaGeneralPorcentaje,
 }: {
   locales: Local[];
   productos: Producto[];
   variantes: VarianteProducto[];
   marcas: Marca[];
   stock: Stock[];
+  ivaGeneralPorcentaje: number;
 }) {
   const [idLocal, setIdLocal] = useState(locales[0]?.id_local ?? "");
   const [carrito, setCarrito] = useState<Record<string, number>>({});
@@ -189,6 +191,11 @@ export default function PosApp({
   const descuentoCanje = marcasEnCarrito
     .filter((m) => marcasCanje.has(m.idMarca))
     .reduce((acc, m) => acc + Math.min(m.subtotalCarrito, m.saldo), 0);
+
+  // El precio de cada producto ya incluye el IVA — esto solo lo desglosa
+  // para que se vea, no cambia nada de lo que paga el cliente.
+  const subtotalSinIva = ivaGeneralPorcentaje > 0 ? subtotal / (1 + ivaGeneralPorcentaje / 100) : subtotal;
+  const montoIva = subtotal - subtotalSinIva;
 
   const totalConCanje = Math.max(subtotal - descuentoCanje, 0);
   const descuentoPuntosPreview = usarPuntosWiigo && infoPuntos ? infoPuntos.maxDescuento : 0;
@@ -433,13 +440,17 @@ export default function PosApp({
           <div className="space-y-1.5 mb-2">
             {marcasEnCarrito.map((m) => {
               const alcanza = m.saldo >= m.subtotalCarrito;
+              const montoAplicado = Math.min(m.saldo, m.subtotalCarrito);
               return (
-                <label key={m.idMarca} className={`flex items-center justify-between gap-2 text-sm bg-white border border-purple-200 rounded-lg px-3 py-2 ${!alcanza ? "opacity-50" : "cursor-pointer"}`}>
+                <label key={m.idMarca} className="flex items-center justify-between gap-2 text-sm bg-white border border-purple-200 rounded-lg px-3 py-2 cursor-pointer">
                   <span className="flex items-center gap-2">
-                    <input type="checkbox" disabled={!alcanza} checked={marcasCanje.has(m.idMarca)} onChange={() => toggleMarcaCanje(m.idMarca)} />
+                    <input type="checkbox" checked={marcasCanje.has(m.idMarca)} onChange={() => toggleMarcaCanje(m.idMarca)} />
                     {m.nombreMarca} — <span className="tabular-nums">${formatearMonto(m.subtotalCarrito)}</span>
                   </span>
-                  <span className="text-xs text-purple-600 tabular-nums">Saldo: ${formatearMonto(m.saldo)}</span>
+                  <span className="text-xs text-purple-600 tabular-nums">
+                    Saldo: ${formatearMonto(m.saldo)}
+                    {!alcanza && ` (descuenta $${formatearMonto(montoAplicado)}, resto se paga normal)`}
+                  </span>
                 </label>
               );
             })}
@@ -510,6 +521,18 @@ export default function PosApp({
       </div>
 
       <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-4 mb-4">
+        <div className="flex justify-between items-center text-xs text-neutral-400 mb-1">
+          <span>Subtotal (sin IVA)</span>
+          <span>${formatearMonto(subtotalSinIva)}</span>
+        </div>
+        <div className="flex justify-between items-center text-xs text-neutral-400 mb-2 pb-2 border-b border-dashed border-neutral-200">
+          <span>IVA ({ivaGeneralPorcentaje}%)</span>
+          <span>${formatearMonto(montoIva)}</span>
+        </div>
+        <div className="flex justify-between items-center text-sm mb-1">
+          <span>Subtotal</span>
+          <span>${formatearMonto(subtotal)}</span>
+        </div>
         {descuentoCanje > 0 && (
           <div className="flex justify-between items-center text-sm text-purple-600 mb-1">
             <span>Pagado con saldo de profesional</span>

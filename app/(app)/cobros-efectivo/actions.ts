@@ -7,7 +7,7 @@ import { friendlyDbError } from "@/lib/errors";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 import { turnoAbiertoDeLocal } from "@/app/(app)/turnos/actions";
 import { calcularBeneficioReferido, registrarReferido, puntosExtraPorMonto } from "@/lib/referidosProfesionales";
-import { registrarCanje } from "@/lib/canjesProfesionales";
+import { registrarCanje, esProfesionalActivo } from "@/lib/canjesProfesionales";
 import { calcularCanjePuntos, aplicarCanjePuntos } from "@/lib/puntosWiigo";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -254,9 +254,16 @@ export async function confirmarCobro(
   }
 
   // Sin cliente identificado no hay a quién sumarle los puntos, así que
-  // la venta queda con 0 aunque la regla general esté activa. Los puntos
-  // extra por código de profesional se suman aparte, arriba de los normales.
-  const puntosGenerados = (venta.id_cliente ? await calcularPuntos(supabase, total) : 0) + puntosExtra;
+  // la venta queda con 0 aunque la regla general esté activa. Un profesional
+  // no suma puntos de club en sus propias compras (ver esProfesionalActivo).
+  // Los puntos extra por código de profesional (para el cliente referenciado)
+  // se suman aparte, arriba de los normales.
+  let esProfesional = false;
+  if (venta.id_cliente) {
+    const { data: clienteDni } = await supabase.from("clientes").select("dni").eq("id_cliente", venta.id_cliente).maybeSingle();
+    esProfesional = await esProfesionalActivo(supabase, clienteDni?.dni ?? null);
+  }
+  const puntosGenerados = (venta.id_cliente && !esProfesional ? await calcularPuntos(supabase, total) : 0) + puntosExtra;
   await supabase.from("ventas").update({ puntos_generados: puntosGenerados }).eq("id_venta", idVenta);
 
   if (venta.id_cliente && puntosGenerados > 0) {
