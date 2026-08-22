@@ -341,7 +341,7 @@ export async function historialComercialAction(idMarca: string) {
 // Liquidaciones no tiene ledger propio: el "pendiente" sale de sumar lo que
 // todavía no se liquidó (calcularRendicion) más lo ya liquidado pero sin
 // comprobante subido, menos lo que ya se compensó contra esta cuenta.
-async function saldoLiquidacionesPendiente(idMarca: string) {
+export async function saldoLiquidacionesPendiente(idMarca: string) {
   const supabase = getSupabaseServerClient();
   const hoy = new Date().toISOString().slice(0, 10);
   const [rendicion, historial, compensado] = await Promise.all([
