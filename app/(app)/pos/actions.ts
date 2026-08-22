@@ -88,6 +88,23 @@ export async function buscarProfesionalPorDniAction(dni: string) {
   return buscarProfesionalPorDni(supabase, dni);
 }
 
+// Confirmación en vivo mientras se escribe el código, igual que el DNI de
+// arriba — sin esto el campo quedaba mudo y no se notaba si el código era
+// válido hasta apretar Cobrar.
+export async function buscarCodigoProfesionalAction(codigo: string): Promise<{ nombre: string | null; error: string | null }> {
+  if (!codigo.trim()) return { nombre: null, error: null };
+  const supabase = getSupabaseServerClient();
+  const resuelto = await resolverCodigoProfesional(supabase, codigo);
+  if (resuelto.error) return { nombre: null, error: resuelto.error };
+  if (!resuelto.idProfesional) return { nombre: null, error: null };
+  const { data } = await supabase
+    .from("profesionales")
+    .select("nombre, apellido")
+    .eq("id_profesional", resuelto.idProfesional)
+    .maybeSingle();
+  return { nombre: data ? `${data.nombre}${data.apellido ? ` ${data.apellido}` : ""}` : null, error: null };
+}
+
 // Venta mostrador: a diferencia del Self Checkout, acá el mismo empleado
 // arma el pedido y cobra en el momento — no queda pendiente esperando a
 // nadie. Sirve tanto como venta asistida normal como respaldo si se cae

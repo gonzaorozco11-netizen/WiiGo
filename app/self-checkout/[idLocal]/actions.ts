@@ -18,6 +18,22 @@ export async function buscarProfesionalPorDniAction(dni: string) {
   return buscarProfesionalPorDni(supabase, dni);
 }
 
+// Confirmación en vivo mientras se escribe el código, igual que el DNI —
+// sin esto el campo quedaba mudo hasta terminar de armar el pedido.
+export async function buscarCodigoProfesionalAction(codigo: string): Promise<{ nombre: string | null; error: string | null }> {
+  if (!codigo.trim()) return { nombre: null, error: null };
+  const supabase = getSupabaseServerClient();
+  const resuelto = await resolverCodigoProfesional(supabase, codigo);
+  if (resuelto.error) return { nombre: null, error: resuelto.error };
+  if (!resuelto.idProfesional) return { nombre: null, error: null };
+  const { data } = await supabase
+    .from("profesionales")
+    .select("nombre, apellido")
+    .eq("id_profesional", resuelto.idProfesional)
+    .maybeSingle();
+  return { nombre: data ? `${data.nombre}${data.apellido ? ` ${data.apellido}` : ""}` : null, error: null };
+}
+
 export async function confirmarPedido(
   idLocal: string,
   items: ItemCarrito[],

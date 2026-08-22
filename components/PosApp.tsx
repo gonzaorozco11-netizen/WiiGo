@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { Local, Marca, Producto, VarianteProducto, Stock } from "@/lib/supabase";
-import { venderPos, buscarClientePorDni, buscarProfesionalPorDniAction } from "@/app/(app)/pos/actions";
+import { venderPos, buscarClientePorDni, buscarProfesionalPorDniAction, buscarCodigoProfesionalAction } from "@/app/(app)/pos/actions";
 
 type Item = {
   variante: VarianteProducto;
@@ -74,6 +74,8 @@ export default function PosApp({
   } | null>(null);
   const [marcasCanje, setMarcasCanje] = useState<Set<string>>(new Set());
   const [pinCanje, setPinCanje] = useState("");
+  const [codigoInfo, setCodigoInfo] = useState<{ nombre: string | null; error: string | null } | null>(null);
+  const [buscandoCodigo, setBuscandoCodigo] = useState(false);
 
   // Autocompletar nombre al escribir el DNI, con una pequeña pausa para
   // no consultar en cada tecla. El mismo DNI también identifica si es un
@@ -97,6 +99,23 @@ export default function PosApp({
     }, 400);
     return () => clearTimeout(timeout);
   }, [dni]);
+
+  // Misma idea que el DNI: confirmar en vivo si el código de profesional
+  // existe, para no depender de apretar Cobrar para enterarse.
+  useEffect(() => {
+    const codigoLimpio = codigoProfesional.trim();
+    if (!codigoLimpio) {
+      setCodigoInfo(null);
+      return;
+    }
+    setBuscandoCodigo(true);
+    const timeout = setTimeout(() => {
+      buscarCodigoProfesionalAction(codigoLimpio)
+        .then(setCodigoInfo)
+        .finally(() => setBuscandoCodigo(false));
+    }, 400);
+    return () => clearTimeout(timeout);
+  }, [codigoProfesional]);
 
   const productoPorId = useMemo(() => new Map(productos.map((p) => [p.id_producto, p])), [productos]);
   const marcaPorId = useMemo(() => new Map(marcas.map((m) => [m.id_marca, m])), [marcas]);
@@ -421,6 +440,13 @@ export default function PosApp({
           placeholder="Código del profesional"
           className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm mt-2"
         />
+        {buscandoCodigo && <p className="text-xs text-neutral-400 mt-1.5">Buscando...</p>}
+        {!buscandoCodigo && codigoInfo?.nombre && (
+          <p className="text-xs text-emerald-600 font-semibold mt-1.5">✓ {codigoInfo.nombre}</p>
+        )}
+        {!buscandoCodigo && codigoInfo?.error && (
+          <p className="text-xs text-red-600 font-semibold mt-1.5">✗ {codigoInfo.error}</p>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-2 mb-4">

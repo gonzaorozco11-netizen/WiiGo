@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Local, Marca, Producto, VarianteProducto, Stock } from "@/lib/supabase";
-import { confirmarPedido, estadoPedido, cancelarPedidoCliente, buscarProfesionalPorDniAction } from "@/app/self-checkout/[idLocal]/actions";
+import { confirmarPedido, estadoPedido, cancelarPedidoCliente, buscarProfesionalPorDniAction, buscarCodigoProfesionalAction } from "@/app/self-checkout/[idLocal]/actions";
 
 type Item = {
   variante: VarianteProducto;
@@ -66,6 +66,8 @@ export default function SelfCheckoutApp({
   } | null>(null);
   const [marcasCanje, setMarcasCanje] = useState<Set<string>>(new Set());
   const [pinCanje, setPinCanje] = useState("");
+  const [codigoInfo, setCodigoInfo] = useState<{ nombre: string | null; error: string | null } | null>(null);
+  const [buscandoCodigo, setBuscandoCodigo] = useState(false);
 
   // El mismo DNI que identifica al cliente también identifica si es un
   // profesional que puede pagar con el saldo que acumuló vendiendo marcas.
@@ -81,6 +83,22 @@ export default function SelfCheckoutApp({
     }, 400);
     return () => clearTimeout(timeout);
   }, [dni]);
+
+  // Confirmar en vivo si el código de profesional existe, misma idea que el DNI.
+  useEffect(() => {
+    const codigoLimpio = codigoProfesional.trim();
+    if (!codigoLimpio) {
+      setCodigoInfo(null);
+      return;
+    }
+    setBuscandoCodigo(true);
+    const timeout = setTimeout(() => {
+      buscarCodigoProfesionalAction(codigoLimpio)
+        .then(setCodigoInfo)
+        .finally(() => setBuscandoCodigo(false));
+    }, 400);
+    return () => clearTimeout(timeout);
+  }, [codigoProfesional]);
 
   const [toast, setToast] = useState<{ nombre: string; precio: number } | null>(null);
   const toastTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -547,6 +565,13 @@ export default function SelfCheckoutApp({
                 placeholder="Ingresá tu código"
                 className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
+              {buscandoCodigo && <p className="text-xs text-neutral-400 mt-1.5">Buscando...</p>}
+              {!buscandoCodigo && codigoInfo?.nombre && (
+                <p className="text-xs text-emerald-600 font-semibold mt-1.5">✓ {codigoInfo.nombre}</p>
+              )}
+              {!buscandoCodigo && codigoInfo?.error && (
+                <p className="text-xs text-red-600 font-semibold mt-1.5">✗ {codigoInfo.error}</p>
+              )}
             </div>
 
             {profesional && marcasEnCarrito.length > 0 && (
