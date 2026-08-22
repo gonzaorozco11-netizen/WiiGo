@@ -2,7 +2,7 @@
 
 import { Fragment, useState, useTransition } from "react";
 import type { Usuario } from "@/lib/supabase";
-import { PERMISOS_DISPONIBLES } from "@/lib/permisos";
+import { PERMISOS_DISPONIBLES } from "@/lib/permisos-constantes";
 import {
   crearUsuario,
   cambiarEstadoUsuario,

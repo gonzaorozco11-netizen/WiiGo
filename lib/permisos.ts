@@ -4,42 +4,18 @@
 // base de datos en el momento (nunca contra la cookie de sesión, que puede
 // tener hasta 30 días) — así si un admin le saca un permiso a alguien, o lo
 // desactiva, el cambio pega al toque, no espera a que esa persona reloguee.
+//
+// Este archivo usa next/headers y el service role de Supabase — es
+// server-only. Los componentes de cliente que solo necesitan la lista de
+// permisos y sus etiquetas deben importar de "./permisos-constantes".
 
 import { cookies } from "next/headers";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 
-export const PERMISOS = {
-  VER_CAJA_ADMIN: "ver_caja_administracion",
-  GESTIONAR_NOMINA: "gestionar_nomina",
-  AUTORIZAR_GASTOS_SIN_LIMITE: "autorizar_gastos_sin_limite",
-  EDITAR_CONFIGURACION: "editar_configuracion",
-} as const;
-
-export type Permiso = (typeof PERMISOS)[keyof typeof PERMISOS];
-
-export const PERMISOS_DISPONIBLES: { clave: Permiso; label: string; descripcion: string }[] = [
-  {
-    clave: PERMISOS.VER_CAJA_ADMIN,
-    label: "Ver Caja Administración",
-    descripcion: "El efectivo consolidado de todos los cierres de turno, de todos los locales.",
-  },
-  {
-    clave: PERMISOS.GESTIONAR_NOMINA,
-    label: "Gestionar Nómina",
-    descripcion: "Ver y editar sueldos base y adelantos de todos los empleados.",
-  },
-  {
-    clave: PERMISOS.AUTORIZAR_GASTOS_SIN_LIMITE,
-    label: "Autorizar gastos sin límite",
-    descripcion: "Puede confirmar un gasto por encima del tope sin pedirle la clave a un admin.",
-  },
-  {
-    clave: PERMISOS.EDITAR_CONFIGURACION,
-    label: "Editar Configuración",
-    descripcion: "Tasas de IVA/IIBB, comisiones de Mercado Pago, reglas de puntos, tope de gastos.",
-  },
-];
+export { PERMISOS, PERMISOS_DISPONIBLES } from "./permisos-constantes";
+export type { Permiso } from "./permisos-constantes";
+import { PERMISOS, type Permiso } from "./permisos-constantes";
 
 export type SesionConPermisos = {
   idUsuario: string;
