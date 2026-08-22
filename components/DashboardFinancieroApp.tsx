@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { resumenFinanciero } from "@/app/(app)/dashboard/actions";
+import { resumenFinanciero, rentabilidadPorMarca, platasDeMarcas } from "@/app/(app)/dashboard/actions";
 
 type Resumen = Awaited<ReturnType<typeof resumenFinanciero>>;
+type Ranking = Awaited<ReturnType<typeof rentabilidadPorMarca>>;
+type Platas = Awaited<ReturnType<typeof platasDeMarcas>>;
 
 function formatearMonto(valor: number) {
   return Math.round(valor).toLocaleString("es-AR", { maximumFractionDigits: 0 });
@@ -40,14 +42,20 @@ export default function DashboardFinancieroApp() {
   const [desdePersonalizado, setDesdePersonalizado] = useState(hoyISO());
   const [hastaPersonalizado, setHastaPersonalizado] = useState(hoyISO());
   const [resumen, setResumen] = useState<Resumen | null>(null);
+  const [ranking, setRanking] = useState<Ranking | null>(null);
+  const [platas, setPlatas] = useState<Platas | null>(null);
   const [cargando, setCargando] = useState(true);
 
   const { desde, hasta } = rangoPeriodo(periodo, desdePersonalizado, hastaPersonalizado);
 
   useEffect(() => {
     setCargando(true);
-    resumenFinanciero(desde, hasta)
-      .then(setResumen)
+    Promise.all([resumenFinanciero(desde, hasta), rentabilidadPorMarca(desde, hasta), platasDeMarcas()])
+      .then(([r, rk, p]) => {
+        setResumen(r);
+        setRanking(rk);
+        setPlatas(p);
+      })
       .finally(() => setCargando(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [desde, hasta]);
@@ -200,6 +208,102 @@ export default function DashboardFinancieroApp() {
             </div>
           </div>
 
+          {/* Rentabilidad por marca (Fase 6) */}
+          {ranking && (
+            <div className="bg-white border border-neutral-200 rounded-xl overflow-hidden mb-3.5">
+              <div className="px-4 py-3 border-b border-neutral-100">
+                <h2 className="text-sm font-bold text-neutral-900">Rentabilidad por marca</h2>
+                <p className="text-[11px] text-neutral-400">Qué marca le aporta más a WiiGo en el período — ingreso real, no venta bruta.</p>
+              </div>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-[10px] font-bold uppercase tracking-wide text-neutral-400 border-b border-neutral-100">
+                    <th className="px-4 py-2">Marca</th>
+                    <th className="px-4 py-2 text-right">Ventas</th>
+                    <th className="px-4 py-2 text-right">Ingreso real</th>
+                    <th className="px-4 py-2 w-40">% del ingreso real</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ranking.filas.map((f) => (
+                    <tr key={f.idMarca} className="border-b border-neutral-100 last:border-0">
+                      <td className="px-4 py-2.5">
+                        {f.nombre}{" "}
+                        <span
+                          className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                            f.tipo === "PROPIA" ? "bg-emerald-50 text-emerald-600" : "bg-accent-tint text-accent"
+                          }`}
+                        >
+                          {f.tipo === "PROPIA" ? "Propia" : "Consignación"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-right tabular-nums">${formatearMonto(f.ventas)}</td>
+                      <td className="px-4 py-2.5 text-right tabular-nums font-semibold">${formatearMonto(f.ingresoReal)}</td>
+                      <td className="px-4 py-2.5">
+                        <BarraPct pct={f.pct} />
+                      </td>
+                    </tr>
+                  ))}
+                  {ranking.otrosIngresos !== 0 && (
+                    <tr>
+                      <td className="px-4 py-2.5 text-neutral-500">Otros ingresos (fees + gasto fijo)</td>
+                      <td className="px-4 py-2.5 text-right text-neutral-300">—</td>
+                      <td className="px-4 py-2.5 text-right tabular-nums font-semibold">${formatearMonto(ranking.otrosIngresos)}</td>
+                      <td className="px-4 py-2.5">
+                        <BarraPct pct={ranking.otrosIngresosPct} />
+                      </td>
+                    </tr>
+                  )}
+                  {ranking.filas.length === 0 && ranking.otrosIngresos === 0 && (
+                    <tr>
+                      <td colSpan={4} className="px-4 py-4 text-center text-xs text-neutral-400">
+                        No hay ventas en este período.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Plata de cada marca (Fase 6) */}
+          {platas && platas.filas.length > 0 && (
+            <div className="bg-red-50 border border-red-200 rounded-xl overflow-hidden mb-3.5">
+              <div className="px-4 py-3 border-b border-red-100">
+                <h2 className="text-sm font-bold text-red-700">Plata que le corresponde a cada marca</h2>
+                <p className="text-[11px] text-red-700/70">
+                  Del disponible real, esto es lo que en realidad no es tuyo — está en tu caja pero le pertenece a cada marca.
+                </p>
+              </div>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-[10px] font-bold uppercase tracking-wide text-red-700/60 border-b border-red-100">
+                    <th className="px-4 py-2">Marca</th>
+                    <th className="px-4 py-2 text-right">Pendiente de liquidar/pagar</th>
+                    <th className="px-4 py-2 text-right">Retenciones a devolver</th>
+                    <th className="px-4 py-2 text-right">Total que no es tuyo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {platas.filas.map((f) => (
+                    <tr key={f.idMarca} className="border-b border-red-100 last:border-0">
+                      <td className="px-4 py-2.5">{f.nombre}</td>
+                      <td className="px-4 py-2.5 text-right tabular-nums">${formatearMonto(f.pendiente)}</td>
+                      <td className="px-4 py-2.5 text-right tabular-nums">${formatearMonto(f.retenciones)}</td>
+                      <td className="px-4 py-2.5 text-right tabular-nums font-bold text-red-700">${formatearMonto(f.total)}</td>
+                    </tr>
+                  ))}
+                  <tr className="bg-red-100/60 font-bold">
+                    <td className="px-4 py-2.5">Total reservado (no gastable)</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums">${formatearMonto(platas.totalLiquidaciones)}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums">${formatearMonto(platas.totalRetenciones)}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-red-700">${formatearMonto(platas.totalGeneral)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
+
           {/* Gastos por categoría */}
           <div className="bg-white border border-neutral-200 rounded-xl p-4">
             <h2 className="text-sm font-bold text-neutral-900 mb-3">Gastos del período — por categoría</h2>
@@ -287,6 +391,18 @@ function Fila({ etiqueta, valor, fuerte }: { etiqueta: string; valor: number; fu
       <span className={`tabular-nums ${valor < 0 ? "text-red-600" : fuerte ? "" : ""}`}>
         {valor < 0 ? "-" : valor > 0 && !fuerte ? "+" : ""}${formatearMonto(Math.abs(valor))}
       </span>
+    </div>
+  );
+}
+
+function BarraPct({ pct }: { pct: number }) {
+  const acotado = Math.max(Math.min(pct, 100), 0);
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex-1 h-1.5 bg-neutral-100 rounded-full overflow-hidden min-w-[50px]">
+        <div className="h-full bg-accent rounded-full" style={{ width: `${acotado}%` }} />
+      </div>
+      <span className="text-[11px] text-neutral-400 w-10 text-right">{formatearPorcentaje(pct)}%</span>
     </div>
   );
 }

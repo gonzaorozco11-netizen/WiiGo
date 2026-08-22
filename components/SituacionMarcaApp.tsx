@@ -18,6 +18,7 @@ import {
   registrarCompensacionAction,
 } from "@/app/(app)/situacion-marca/actions";
 import { calcularRendicion, historialLiquidaciones } from "@/app/(app)/liquidaciones/actions";
+import { disponibleRealActual } from "@/app/(app)/dashboard/actions";
 import { RetencionesMarca } from "@/components/LiquidacionesApp";
 
 function formatearMonto(valor: number) {
@@ -48,6 +49,11 @@ export default function SituacionMarcaApp({ marcas, locales }: { marcas: Marca[]
   const [saldoComercial, setSaldoComercial] = useState(0);
   const [saldoRetenciones, setSaldoRetenciones] = useState(0);
   const [saldoLiquidacionesReal, setSaldoLiquidacionesReal] = useState(0);
+  const [disponibleReal, setDisponibleReal] = useState<number | null>(null);
+
+  useEffect(() => {
+    disponibleRealActual().then(setDisponibleReal);
+  }, []);
 
   function recargarResumen() {
     if (!idMarca) return;
@@ -150,6 +156,15 @@ export default function SituacionMarcaApp({ marcas, locales }: { marcas: Marca[]
               )}
             </div>
           </div>
+
+          {/* Alerta de capital de trabajo (Fase 6) */}
+          {disponibleReal !== null && saldoLiquidacionesReal > 0 && (
+            <AlertaCapitalTrabajo
+              nombreMarca={marca?.nombre ?? "esta marca"}
+              pendienteMarca={saldoLiquidacionesReal}
+              disponibleReal={disponibleReal}
+            />
+          )}
 
           {/* Cuenta comercial */}
           <CuentaComercial idMarca={idMarca} locales={locales} saldo={saldoComercial} onCambio={recargarResumen} />
@@ -774,6 +789,51 @@ function CompensacionCuentas({
             )}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// El disponible real es de TODO el negocio, no de esta marca sola — la
+// plata no está separada por marca en el banco. Esto solo avisa, nunca
+// bloquea: vos decidís si liquidás igual.
+function AlertaCapitalTrabajo({
+  nombreMarca,
+  pendienteMarca,
+  disponibleReal,
+}: {
+  nombreMarca: string;
+  pendienteMarca: number;
+  disponibleReal: number;
+}) {
+  const alcanza = disponibleReal >= pendienteMarca;
+  const faltante = Math.max(pendienteMarca - disponibleReal, 0);
+
+  return (
+    <div className={`border rounded-xl p-4 mb-3.5 ${alcanza ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
+      <p className={`text-sm font-bold mb-1 ${alcanza ? "text-emerald-700" : "text-red-700"}`}>
+        {alcanza ? "✓ Alcanza para liquidar sin usar plata propia" : "⚠️ Esta liquidación te va a pedir plata propia"}
+      </p>
+      <p className="text-[11px] text-neutral-500 mb-3">
+        {alcanza
+          ? "El disponible real de todo el negocio cubre lo pendiente de esta marca, incluso si liquidás todo ahora mismo."
+          : `${nombreMarca} tiene más pendiente de liquidar que el disponible real de todo el negocio.`}
+      </p>
+      <div className="flex gap-6 text-xs">
+        <div>
+          <p className="text-neutral-400">Pendiente de esta marca</p>
+          <p className="text-base font-extrabold tabular-nums">${formatearMonto(pendienteMarca)}</p>
+        </div>
+        <div>
+          <p className="text-neutral-400">Disponible real (todo el negocio)</p>
+          <p className="text-base font-extrabold tabular-nums">${formatearMonto(disponibleReal)}</p>
+        </div>
+        <div>
+          <p className="text-neutral-400">{alcanza ? "Sobra" : "Te faltaría"}</p>
+          <p className={`text-base font-extrabold tabular-nums ${alcanza ? "text-emerald-700" : "text-red-700"}`}>
+            ${formatearMonto(alcanza ? disponibleReal - pendienteMarca : faltante)}
+          </p>
+        </div>
       </div>
     </div>
   );

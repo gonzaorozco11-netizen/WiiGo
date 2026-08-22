@@ -163,3 +163,130 @@ export async function resumenFinanciero(desde: string, hasta: string) {
     situacion,
   };
 }
+
+// ===================== FASE 6: RENTABILIDAD POR MARCA + CAPITAL DE TRABAJO =====================
+
+export type FilaRentabilidadMarca = {
+  idMarca: string;
+  nombre: string;
+  tipo: "PROPIA" | "CONSIGNACION";
+  ventas: number;
+  ingresoReal: number;
+  pct: number;
+};
+
+// A diferencia de royaltyConsignacionPeriodo/margenMarcaPropiaPeriodo (que
+// dan un total), esto separa el ingreso real marca por marca — para ver
+// cuál le aporta más a WiiGo, no solo cuánto en total.
+export async function rentabilidadPorMarca(desde: string, hasta: string) {
+  const supabase = getSupabaseServerClient();
+  const { data: marcas } = await supabase
+    .from("marcas")
+    .select("id_marca, nombre, tipo_comercializacion, royalty_porcentaje, iva_royalty_porcentaje, trasladar_iva_comision");
+
+  const { data: ventas } = await supabase
+    .from("ventas")
+    .select("id_venta")
+    .eq("estado", "PAGADA")
+    .gte("fecha", `${desde}T00:00:00`)
+    .lte("fecha", `${hasta}T23:59:59`);
+  const idsVenta = (ventas ?? []).map((v) => v.id_venta);
+
+  const filas: Omit<FilaRentabilidadMarca, "pct">[] = [];
+  let totalIngresoReal = 0;
+
+  if (idsVenta.length > 0) {
+    const { data: detalle } = await supabase
+      .from("detalle_ventas")
+      .select("id_marca, subtotal, precio_unitario, cantidad")
+      .in("id_venta", idsVenta);
+
+    const ventasPorMarca = new Map<string, number>();
+    for (const d of detalle ?? []) {
+      const importe = d.subtotal ?? d.precio_unitario * d.cantidad;
+      ventasPorMarca.set(d.id_marca, (ventasPorMarca.get(d.id_marca) ?? 0) + importe);
+    }
+
+    for (const m of marcas ?? []) {
+      const ventasMarca = ventasPorMarca.get(m.id_marca) ?? 0;
+      if (ventasMarca <= 0) continue;
+
+      let ingresoReal = 0;
+      if (m.tipo_comercializacion === "CONSIGNACION") {
+        const comision = ventasMarca * ((m.royalty_porcentaje ?? 0) / 100);
+        const ivaComision = m.trasladar_iva_comision ? comision * ((m.iva_royalty_porcentaje ?? 0) / 100) : 0;
+        ingresoReal = Math.round(comision + ivaComision);
+      } else {
+        const r = await calcularRentabilidad(m.id_marca, desde, hasta);
+        ingresoReal = r.resumen.contribucionNeta;
+      }
+
+      filas.push({
+        idMarca: m.id_marca,
+        nombre: m.nombre,
+        tipo: m.tipo_comercializacion,
+        ventas: Math.round(ventasMarca),
+        ingresoReal,
+      });
+      totalIngresoReal += ingresoReal;
+    }
+  }
+
+  const otrosIngresos = await otrosIngresosPeriodo(supabase, desde, hasta);
+  totalIngresoReal += otrosIngresos;
+
+  return {
+    filas: (filas as FilaRentabilidadMarca[])
+      .map((f) => ({ ...f, pct: totalIngresoReal > 0 ? (f.ingresoReal / totalIngresoReal) * 100 : 0 }))
+      .sort((a, b) => b.ingresoReal - a.ingresoReal),
+    otrosIngresos,
+    otrosIngresosPct: totalIngresoReal > 0 ? (otrosIngresos / totalIngresoReal) * 100 : 0,
+    totalIngresoReal: Math.round(totalIngresoReal),
+  };
+}
+
+// Cuánto de la caja hoy en realidad le pertenece a cada marca (pendiente
+// de liquidar/pagar + retenciones a devolver) — para nunca gastar por
+// error plata que no es de WiiGo.
+export async function platasDeMarcas() {
+  const supabase = getSupabaseServerClient();
+  const { data: consignacion } = await supabase.from("marcas").select("id_marca, nombre").eq("tipo_comercializacion", "CONSIGNACION");
+
+  const filas: { idMarca: string; nombre: string; pendiente: number; retenciones: number; total: number }[] = [];
+  let totalLiquidaciones = 0;
+  let totalRetenciones = 0;
+
+  for (const m of consignacion ?? []) {
+    const pendiente = await saldoLiquidacionesPendiente(m.id_marca);
+    const saldosRet = await saldosRetencionPorMarca(supabase, m.id_marca);
+    const retenciones = saldosRet.reduce((acc, s) => acc + s.saldo, 0);
+    if (pendiente <= 0 && retenciones <= 0) continue;
+    filas.push({
+      idMarca: m.id_marca,
+      nombre: m.nombre,
+      pendiente: Math.round(pendiente),
+      retenciones: Math.round(retenciones),
+      total: Math.round(pendiente + retenciones),
+    });
+    totalLiquidaciones += pendiente;
+    totalRetenciones += retenciones;
+  }
+
+  return {
+    filas: filas.sort((a, b) => b.total - a.total),
+    totalLiquidaciones: Math.round(totalLiquidaciones),
+    totalRetenciones: Math.round(totalRetenciones),
+    totalGeneral: Math.round(totalLiquidaciones + totalRetenciones),
+  };
+}
+
+// El disponible real de AHORA (no de un período) — se usa para la alerta
+// de capital de trabajo en Situación de marca: toma toda la plata cobrada
+// históricamente menos los gastos ya pagados, así funciona como un saldo
+// de caja acumulado en vez de un movimiento de un mes puntual.
+export async function disponibleRealActual() {
+  const supabase = getSupabaseServerClient();
+  const hoy = new Date().toISOString().slice(0, 10);
+  const [caja, situacion] = await Promise.all([cajaPeriodo(supabase, "2000-01-01", hoy), situacionAgregadaMarcas(supabase)]);
+  return Math.round(caja - situacion.liquidaciones - situacion.retenciones + situacion.comercial);
+}
