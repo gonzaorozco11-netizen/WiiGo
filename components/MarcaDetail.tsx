@@ -118,12 +118,6 @@ export default function MarcaDetail({
           </span>
         </div>
         <div className="flex gap-2">
-          <Link
-            href={`/marcas/${marca.id_marca}/importar`}
-            className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700"
-          >
-            Importar precios
-          </Link>
           <button
             onClick={() => setEditMarcaOpen(true)}
             className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700"

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import Link from "next/link";
 import type {
   Producto,
   Marca,
@@ -137,6 +138,23 @@ export default function ProductosApp({
             </option>
           ))}
         </select>
+        {idMarcaFiltro ? (
+          <Link
+            href={`/productos/importar/${idMarcaFiltro}`}
+            className="rounded-lg border border-neutral-300 text-neutral-700 hover:bg-neutral-50 px-4 py-2 text-sm font-medium whitespace-nowrap"
+          >
+            Importar precios
+          </Link>
+        ) : (
+          <button
+            type="button"
+            disabled
+            title="Elegí una marca en el filtro de arriba para importar sus precios"
+            className="rounded-lg border border-neutral-200 text-neutral-400 px-4 py-2 text-sm font-medium whitespace-nowrap cursor-not-allowed"
+          >
+            Importar precios
+          </button>
+        )}
         <button
           onClick={openNew}
           className="rounded-lg bg-accent hover:bg-accent-dark text-white px-4 py-2 text-sm font-medium whitespace-nowrap"

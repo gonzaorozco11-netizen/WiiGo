@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import type { Marca } from "@/lib/supabase";
 import type { FilaImportacion } from "@/lib/importarPrecios";
-import { previsualizarImportacion, confirmarImportacion } from "@/app/(app)/marcas/[id]/importar/actions";
+import { previsualizarImportacion, confirmarImportacion } from "@/app/(app)/productos/importar/[id]/actions";
 
 export default function ImportarPreciosApp({ marca }: { marca: Marca }) {
   const [isPending, startTransition] = useTransition();
@@ -71,11 +71,11 @@ export default function ImportarPreciosApp({ marca }: { marca: Marca }) {
 
   return (
     <div>
-      <Link href={`/marcas/${marca.id_marca}`} className="text-sm text-accent hover:underline">
-        ← Volver a {marca.nombre}
+      <Link href="/productos" className="text-sm text-accent hover:underline">
+        ← Volver a Productos
       </Link>
 
-      <h1 className="text-lg font-semibold text-neutral-900 mt-4 mb-1">Importar precios</h1>
+      <h1 className="text-lg font-semibold text-neutral-900 mt-4 mb-1">Importar precios — {marca.nombre}</h1>
       <p className="text-sm text-neutral-500 mb-4">
         Subí el Excel que te manda {marca.nombre} con las variaciones de costo, precio y descuento.
         Vamos a buscar cada producto por nombre — antes de aplicar nada, te muestro qué encontró y
@@ -83,7 +83,7 @@ export default function ImportarPreciosApp({ marca }: { marca: Marca }) {
       </p>
 
       <a
-        href={`/marcas/${marca.id_marca}/importar/plantilla`}
+        href={`/productos/importar/${marca.id_marca}/plantilla`}
         className="inline-block text-sm text-accent hover:underline mb-6"
       >
         ⬇ Descargar plantilla con los productos actuales de {marca.nombre}
