@@ -545,15 +545,15 @@ function FormNuevoGasto({
           )}
         </div>
         <div>
-          <label className="block text-sm font-medium text-neutral-700 mb-1">Subcategoría (opcional)</label>
+          <label className="block text-sm font-medium text-neutral-700 mb-1">Subcategoría</label>
           <select
             name="id_subcategoria"
             value={idSubcategoria}
             onChange={(e) => setIdSubcategoria(e.target.value)}
-            disabled={idCategoria === "__nueva__"}
-            className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm disabled:opacity-50"
+            required
+            className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm"
           >
-            <option value="">Sin subcategoría</option>
+            <option value="" disabled>Elegí una subcategoría...</option>
             {subDisponibles.map((s) => (
               <option key={s.id_subcategoria} value={s.id_subcategoria}>{s.nombre}</option>
             ))}
@@ -1129,9 +1129,9 @@ function FormNuevoRecurrente({
           )}
         </div>
         <div>
-          <label className="block text-sm font-medium text-neutral-700 mb-1">Subcategoría (opcional)</label>
-          <select name="id_subcategoria" value={idSubcategoria} onChange={(e) => setIdSubcategoria(e.target.value)} disabled={idCategoria === "__nueva__"} className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm disabled:opacity-50">
-            <option value="">Sin subcategoría</option>
+          <label className="block text-sm font-medium text-neutral-700 mb-1">Subcategoría</label>
+          <select name="id_subcategoria" value={idSubcategoria} onChange={(e) => setIdSubcategoria(e.target.value)} required className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm">
+            <option value="" disabled>Elegí una subcategoría...</option>
             {subDisponibles.map((s) => (
               <option key={s.id_subcategoria} value={s.id_subcategoria}>{s.nombre}</option>
             ))}

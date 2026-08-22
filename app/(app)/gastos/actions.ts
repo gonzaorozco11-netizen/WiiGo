@@ -123,6 +123,7 @@ export async function crearGasto(formData: FormData): Promise<{ error: string | 
     const idCategoria = await resolveCategoria(supabase, formData);
     if (!idCategoria) return { error: "Elegí o creá una categoría" };
     const idSubcategoria = await resolveSubcategoria(supabase, formData, idCategoria);
+    if (!idSubcategoria) return { error: "Elegí o creá una subcategoría" };
 
     const monto = number(formData, "monto");
     if (!monto || monto <= 0) return { error: "El monto tiene que ser mayor a 0" };
@@ -329,6 +330,7 @@ export async function crearRecurrente(formData: FormData): Promise<{ error: stri
     const idCategoria = await resolveCategoria(supabase, formData);
     if (!idCategoria) return { error: "Elegí o creá una categoría" };
     const idSubcategoria = await resolveSubcategoria(supabase, formData, idCategoria);
+    if (!idSubcategoria) return { error: "Elegí o creá una subcategoría" };
     const descripcion = text(formData, "descripcion");
     if (!descripcion) return { error: "La descripción es obligatoria" };
     const montoEstimado = number(formData, "monto_estimado") ?? 0;
