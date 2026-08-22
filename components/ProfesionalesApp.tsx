@@ -411,7 +411,15 @@ function DetalleProfesional({
         ) : (
           <div className="space-y-1.5">
             {saldos.map((s) => (
-              <FilaSaldoMarca key={s.idMarca} idProfesional={profesional.id_profesional} saldo={s} onCambio={recargar} />
+              <FilaSaldoMarca
+                key={s.idMarca}
+                idProfesional={profesional.id_profesional}
+                saldo={s}
+                onCambio={() => {
+                  recargar();
+                  onCambio();
+                }}
+              />
             ))}
           </div>
         )}
