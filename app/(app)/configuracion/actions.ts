@@ -2,6 +2,15 @@
 
 import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase";
+import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos";
+
+async function requireEditarConfiguracion(): Promise<string | null> {
+  const sesion = await obtenerSesionConPermisos();
+  if (!tienePermiso(sesion, PERMISOS.EDITAR_CONFIGURACION)) {
+    return "No tenés permiso para editar la Configuración.";
+  }
+  return null;
+}
 
 // Next.js redacta en producción el mensaje de un Error tirado desde una
 // Server Action (queda solo un digest genérico en el navegador) — por eso
@@ -23,6 +32,9 @@ async function guardarParametro(
 }
 
 export async function guardarConfigPuntos(formData: FormData): Promise<{ error: string | null }> {
+  const permisoError = await requireEditarConfiguracion();
+  if (permisoError) return { error: permisoError };
+
   const activo = formData.get("puntos_activo") === "on";
   const cadaMonto = Number(formData.get("puntos_cada_monto") ?? 1000);
   const otorgados = Number(formData.get("puntos_otorgados") ?? 0);
@@ -56,6 +68,9 @@ export async function guardarConfigPuntos(formData: FormData): Promise<{ error: 
 // consignación). El royalty y el IVA sobre royalty son por marca (ya
 // están en la ficha de cada una) — esto es lo que es igual para todos.
 export async function guardarConfigLiquidaciones(formData: FormData): Promise<{ error: string | null }> {
+  const permisoError = await requireEditarConfiguracion();
+  if (permisoError) return { error: permisoError };
+
   const impCreditos = Number(formData.get("imp_creditos_porcentaje") ?? 0);
   const sircreb = Number(formData.get("sircreb_porcentaje") ?? 0);
   const impDebitos = Number(formData.get("imp_debitos_porcentaje") ?? 0);
@@ -95,6 +110,9 @@ export async function guardarConfigLiquidaciones(formData: FormData): Promise<{ 
 // Cada tasa se carga SIN IVA (la base tal cual la publica Mercado Pago) —
 // el IVA se suma aparte en el cálculo, ver liquidaciones/rentabilidad.
 export async function guardarConfigMercadoPago(formData: FormData): Promise<{ error: string | null }> {
+  const permisoError = await requireEditarConfiguracion();
+  if (permisoError) return { error: permisoError };
+
   const tasas: Record<string, string> = {
     MP_COMISION_DINERO_CUENTA: "Dinero en cuenta de Mercado Pago",
     MP_COMISION_DEBITO: "Tarjeta de débito",
@@ -120,6 +138,9 @@ export async function guardarConfigMercadoPago(formData: FormData): Promise<{ er
 // fiscal se compensa con crédito fiscal, no es un costo) y se suma el
 // costo impositivo directo de Ingresos Brutos.
 export async function guardarConfigRentabilidad(formData: FormData): Promise<{ error: string | null }> {
+  const permisoError = await requireEditarConfiguracion();
+  if (permisoError) return { error: permisoError };
+
   const ivaGeneral = Number(formData.get("iva_general_porcentaje") ?? 21);
   const iibb = Number(formData.get("iibb_porcentaje") ?? 0);
   const margenMinimo = Number(formData.get("margen_minimo_porcentaje") ?? 15);
@@ -157,6 +178,9 @@ export async function guardarConfigRentabilidad(formData: FormData): Promise<{ e
 // Tope a partir del cual un gasto necesita la contraseña de un
 // administrador para confirmarse (ver crearGasto en app/(app)/gastos/actions.ts).
 export async function guardarConfigGastos(formData: FormData): Promise<{ error: string | null }> {
+  const permisoError = await requireEditarConfiguracion();
+  if (permisoError) return { error: permisoError };
+
   const tope = Number(formData.get("gastos_tope_sin_autorizacion") ?? 10000);
 
   const supabase = getSupabaseServerClient();

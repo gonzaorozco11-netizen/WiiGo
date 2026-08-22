@@ -74,7 +74,9 @@ export default function GastosApp({
   turnosAbiertos,
   categoriasIniciales,
   subcategoriasIniciales,
-  rol,
+  puedeVerCajaAdmin,
+  puedeGestionarNomina,
+  puedeAutorizarSinLimite,
   topeAutorizacion,
 }: {
   locales: Local[];
@@ -82,10 +84,11 @@ export default function GastosApp({
   turnosAbiertos: TurnoAbiertoMin[];
   categoriasIniciales: CategoriaGasto[];
   subcategoriasIniciales: SubcategoriaGasto[];
-  rol: string | null;
+  puedeVerCajaAdmin: boolean;
+  puedeGestionarNomina: boolean;
+  puedeAutorizarSinLimite: boolean;
   topeAutorizacion: number;
 }) {
-  const esAdmin = rol === "admin";
   const [tab, setTab] = useState<"gastos" | "caja" | "nomina" | "recurrentes">("gastos");
 
   const categoriaPorId = useMemo(() => new Map(categoriasIniciales.map((c) => [c.id_categoria, c])), [categoriasIniciales]);
@@ -101,8 +104,8 @@ export default function GastosApp({
 
       <div className="flex items-center gap-1 border-b border-neutral-200 mb-5 flex-wrap">
         <TabButton activo={tab === "gastos"} onClick={() => setTab("gastos")} icono="💸" label="Gastos" />
-        {esAdmin && <TabButton activo={tab === "caja"} onClick={() => setTab("caja")} icono="🔒" label="Caja Administración" />}
-        {esAdmin && <TabButton activo={tab === "nomina"} onClick={() => setTab("nomina")} icono="👥" label="Nómina" />}
+        {puedeVerCajaAdmin && <TabButton activo={tab === "caja"} onClick={() => setTab("caja")} icono="🔒" label="Caja Administración" />}
+        {puedeGestionarNomina && <TabButton activo={tab === "nomina"} onClick={() => setTab("nomina")} icono="👥" label="Nómina" />}
         <TabButton activo={tab === "recurrentes"} onClick={() => setTab("recurrentes")} icono="🔁" label="Recurrentes" />
       </div>
 
@@ -115,12 +118,12 @@ export default function GastosApp({
           subcategorias={subcategoriasIniciales}
           categoriaPorId={categoriaPorId}
           subcategoriaPorId={subcategoriaPorId}
-          esAdmin={esAdmin}
+          puedeAutorizarSinLimite={puedeAutorizarSinLimite}
           topeAutorizacion={topeAutorizacion}
         />
       )}
-      {tab === "caja" && esAdmin && <TabCajaAdmin />}
-      {tab === "nomina" && esAdmin && <TabNomina usuarios={usuarios} />}
+      {tab === "caja" && puedeVerCajaAdmin && <TabCajaAdmin />}
+      {tab === "nomina" && puedeGestionarNomina && <TabNomina usuarios={usuarios} />}
       {tab === "recurrentes" && (
         <TabRecurrentes locales={locales} categorias={categoriasIniciales} subcategorias={subcategoriasIniciales} categoriaPorId={categoriaPorId} />
       )}
@@ -185,8 +188,7 @@ function TabGastos({
   subcategorias,
   categoriaPorId,
   subcategoriaPorId,
-  usuarioPorId,
-  esAdmin,
+  puedeAutorizarSinLimite,
   topeAutorizacion,
 }: {
   locales: Local[];
@@ -196,7 +198,7 @@ function TabGastos({
   subcategorias: SubcategoriaGasto[];
   categoriaPorId: Map<string, CategoriaGasto>;
   subcategoriaPorId: Map<string, SubcategoriaGasto>;
-  esAdmin: boolean;
+  puedeAutorizarSinLimite: boolean;
   topeAutorizacion: number;
 }) {
   const [filtroLocal, setFiltroLocal] = useState("");
@@ -382,7 +384,7 @@ function TabGastos({
         turnosAbiertos={turnosAbiertos}
         categorias={categorias}
         subcategorias={subcategorias}
-        esAdmin={esAdmin}
+        puedeAutorizarSinLimite={puedeAutorizarSinLimite}
         topeAutorizacion={topeAutorizacion}
       />
     </div>
@@ -453,7 +455,7 @@ function FormNuevoGasto({
   turnosAbiertos,
   categorias,
   subcategorias,
-  esAdmin,
+  puedeAutorizarSinLimite,
   topeAutorizacion,
 }: {
   locales: Local[];
@@ -461,7 +463,7 @@ function FormNuevoGasto({
   turnosAbiertos: TurnoAbiertoMin[];
   categorias: CategoriaGasto[];
   subcategorias: SubcategoriaGasto[];
-  esAdmin: boolean;
+  puedeAutorizarSinLimite: boolean;
   topeAutorizacion: number;
 }) {
   const [idCategoria, setIdCategoria] = useState(categorias[0]?.id_categoria ?? "__nueva__");
@@ -484,7 +486,7 @@ function FormNuevoGasto({
   const mostrarAdelanto = nombreSubSeleccionada.toLowerCase().includes("adelanto");
   const turnoAbiertoDelLocal = turnosAbiertos.find((t) => t.id_local === idLocal);
   const montoNum = Number(monto.replace(/[^\d.-]/g, "")) || 0;
-  const mostrarAuth = !esAdmin && montoNum > topeAutorizacion;
+  const mostrarAuth = !puedeAutorizarSinLimite && montoNum > topeAutorizacion;
 
   function handleCategoriaChange(id: string) {
     setIdCategoria(id);
@@ -666,14 +668,14 @@ function FormNuevoGasto({
         <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-3">
           <p className="text-sm font-semibold text-red-700 mb-1">⚠️ Requiere autorización</p>
           <p className="text-xs text-red-700 mb-2">
-            Este monto supera el tope de ${formatearMonto(topeAutorizacion)} configurado para gastos sin aprobar. Un administrador tiene que ingresar su contraseña.
+            Este monto supera el tope de ${formatearMonto(topeAutorizacion)} configurado para gastos sin aprobar. Hace falta la contraseña de un admin o de alguien autorizado para confirmarlo.
           </p>
           <input
             type="password"
             name="clave_admin"
             value={claveAdmin}
             onChange={(e) => setClaveAdmin(e.target.value)}
-            placeholder="Contraseña de administrador"
+            placeholder="Contraseña de quien autoriza"
             className="w-full sm:w-64 border border-red-300 rounded-lg px-3 py-2 text-sm"
           />
         </div>
@@ -734,7 +736,7 @@ function TabCajaAdmin() {
 
   return (
     <div>
-      <p className="text-xs text-neutral-400 mb-3">🔒 Esta pantalla solo la ve el rol admin.</p>
+      <p className="text-xs text-neutral-400 mb-3">🔒 Esta pantalla solo la ve quien tenga el permiso de Caja Administración.</p>
 
       <div className="bg-gradient-to-br from-accent to-accent-dark rounded-xl p-6 text-white mb-4 flex flex-wrap items-center justify-between gap-4">
         <div>

@@ -28,6 +28,7 @@ export type Usuario = {
   fecha_alta: string;
   password_hash: string;
   sueldo_base: number | null;
+  permisos: string[];
 };
 
 export type Marca = {

@@ -7,6 +7,7 @@ import { friendlyDbError } from "@/lib/errors";
 import { verifyPassword } from "@/lib/auth";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 import { turnoAbiertoDeLocal } from "@/app/(app)/turnos/actions";
+import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Gasto } from "@/lib/supabase";
 
@@ -140,31 +141,33 @@ export async function crearGasto(formData: FormData): Promise<{ error: string | 
       if (!idTurno) return { error: "No hay un turno de caja abierto en ese local — no se puede descontar de ahí." };
     }
 
-    // Si quien carga no es admin y el monto supera el tope, hace falta la
-    // contraseña de un administrador para autorizarlo en el momento.
+    // Si quien carga no puede autorizar gastos sin límite (no es admin ni
+    // tiene ese permiso puntual) y el monto supera el tope, hace falta la
+    // contraseña de alguien que sí pueda, para autorizarlo en el momento.
     const tope = await topeAutorizacion(supabase);
     let requirioAutorizacion = false;
     let autorizadoPor: string | null = null;
-    if (sesion?.rol !== "admin" && monto > tope) {
+    const sesionCompleta = await obtenerSesionConPermisos();
+    if (!tienePermiso(sesionCompleta, PERMISOS.AUTORIZAR_GASTOS_SIN_LIMITE) && monto > tope) {
       requirioAutorizacion = true;
       const claveAdmin = String(formData.get("clave_admin") ?? "");
       if (!claveAdmin) {
-        return { error: `Este gasto supera el tope de $${tope} — hace falta la contraseña de un administrador.` };
+        return { error: `Este gasto supera el tope de $${tope} — hace falta la contraseña de alguien autorizado.` };
       }
-      const { data: admins } = await supabase
+      const { data: candidatos } = await supabase
         .from("usuarios")
-        .select("nombre, password_hash")
-        .eq("rol", "admin")
+        .select("nombre, rol, permisos, password_hash")
         .eq("estado", "ACTIVO");
-      let admin: { nombre: string } | null = null;
-      for (const a of admins ?? []) {
-        if (await verifyPassword(claveAdmin, a.password_hash)) {
-          admin = a;
+      let autorizador: { nombre: string } | null = null;
+      for (const c of candidatos ?? []) {
+        const puedeAutorizar = c.rol === "admin" || (c.permisos ?? []).includes(PERMISOS.AUTORIZAR_GASTOS_SIN_LIMITE);
+        if (puedeAutorizar && (await verifyPassword(claveAdmin, c.password_hash))) {
+          autorizador = c;
           break;
         }
       }
-      if (!admin) return { error: "Contraseña de administrador incorrecta" };
-      autorizadoPor = admin.nombre;
+      if (!autorizador) return { error: "Contraseña incorrecta" };
+      autorizadoPor = autorizador.nombre;
     }
 
     const { data: gasto, error } = await supabase
@@ -396,6 +399,9 @@ export async function cargarRecurrente(idRecurrente: string, montoConfirmado: nu
 // Nómina simplificada: sueldo base (en usuarios.sueldo_base) menos la
 // suma de los gastos cargados como adelanto para ese empleado en el mes.
 export async function resumenNomina(mes: string) {
+  const sesion = await obtenerSesionConPermisos();
+  if (!tienePermiso(sesion, PERMISOS.GESTIONAR_NOMINA)) throw new Error("No tenés permiso para ver la Nómina.");
+
   const supabase = getSupabaseServerClient();
   const { data: usuarios, error } = await supabase
     .from("usuarios")
@@ -433,6 +439,9 @@ export async function resumenNomina(mes: string) {
 // Caja Administración — solo efectivo físico. Mercado Pago/transferencia
 // nunca entra acá, ya cae directo al banco (ver totalCobradoPorBanco).
 export async function resumenCajaAdmin() {
+  const sesion = await obtenerSesionConPermisos();
+  if (!tienePermiso(sesion, PERMISOS.VER_CAJA_ADMIN)) throw new Error("No tenés permiso para ver la Caja Administración.");
+
   const supabase = getSupabaseServerClient();
   const { data: movimientos, error } = await supabase.from("movimientos_caja_admin").select("tipo, monto, fecha");
   if (error) throw new Error(friendlyDbError(error));
@@ -453,6 +462,9 @@ export async function resumenCajaAdmin() {
 }
 
 export async function movimientosCajaAdmin() {
+  const sesion = await obtenerSesionConPermisos();
+  if (!tienePermiso(sesion, PERMISOS.VER_CAJA_ADMIN)) throw new Error("No tenés permiso para ver la Caja Administración.");
+
   const supabase = getSupabaseServerClient();
   const { data, error } = await supabase
     .from("movimientos_caja_admin")
@@ -475,6 +487,10 @@ export async function registrarMovimientoCajaAdmin(
   descripcion: string
 ): Promise<{ error: string | null }> {
   if (!monto || monto <= 0) return { error: "El monto tiene que ser mayor a 0" };
+  const sesionPermisos = await obtenerSesionConPermisos();
+  if (!tienePermiso(sesionPermisos, PERMISOS.VER_CAJA_ADMIN)) {
+    return { error: "No tenés permiso para operar la Caja Administración." };
+  }
   try {
     const supabase = getSupabaseServerClient();
     const sesion = await sesionActual();
@@ -495,6 +511,9 @@ export async function registrarMovimientoCajaAdmin(
 // Informativo — no se maneja en Caja Administración, ya está seguro en
 // el banco. Solo para tener la foto completa de liquidez.
 export async function totalCobradoPorBanco(desde: string, hasta: string) {
+  const sesion = await obtenerSesionConPermisos();
+  if (!tienePermiso(sesion, PERMISOS.VER_CAJA_ADMIN)) throw new Error("No tenés permiso para ver la Caja Administración.");
+
   const supabase = getSupabaseServerClient();
   const { data } = await supabase
     .from("ventas")

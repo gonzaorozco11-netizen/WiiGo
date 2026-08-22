@@ -24,7 +24,7 @@ export default async function UsuariosPage() {
   // hay que arriesgarse a exponerlo por accidente.
   const { data, error } = await supabase
     .from("usuarios")
-    .select("id_usuario, nombre, email, rol, estado, fecha_alta")
+    .select("id_usuario, nombre, email, rol, estado, fecha_alta, permisos")
     .order("nombre", { ascending: true });
 
   if (error) {

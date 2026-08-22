@@ -1,8 +1,14 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { Fragment, useState, useTransition } from "react";
 import type { Usuario } from "@/lib/supabase";
-import { crearUsuario, cambiarEstadoUsuario, cambiarPasswordUsuario } from "@/app/(app)/usuarios/actions";
+import { PERMISOS_DISPONIBLES } from "@/lib/permisos";
+import {
+  crearUsuario,
+  cambiarEstadoUsuario,
+  cambiarPasswordUsuario,
+  actualizarPermisosUsuario,
+} from "@/app/(app)/usuarios/actions";
 
 type UsuarioSinHash = Omit<Usuario, "password_hash">;
 
@@ -13,6 +19,7 @@ function formatearFecha(fechaISO: string) {
 export default function UsuariosApp({ usuarios }: { usuarios: UsuarioSinHash[] }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [cambiandoPassword, setCambiandoPassword] = useState<UsuarioSinHash | null>(null);
+  const [expandido, setExpandido] = useState<string | null>(null);
 
   return (
     <div className="max-w-3xl">
@@ -49,28 +56,43 @@ export default function UsuariosApp({ usuarios }: { usuarios: UsuarioSinHash[] }
             </thead>
             <tbody>
               {usuarios.map((u) => (
-                <tr key={u.id_usuario} className="border-b border-neutral-100 last:border-0">
-                  <td className="p-3 font-medium text-neutral-900">{u.nombre}</td>
-                  <td className="p-3 text-neutral-500">{u.email}</td>
-                  <td className="p-3">
-                    <span className="text-xs bg-neutral-100 text-neutral-600 rounded-full px-2 py-0.5">
-                      {u.rol ?? "—"}
-                    </span>
-                  </td>
-                  <td className="p-3">
-                    <span
-                      className={`text-xs rounded-full px-2 py-0.5 ${
-                        u.estado === "ACTIVO" ? "bg-emerald-50 text-emerald-700" : "bg-neutral-100 text-neutral-600"
-                      }`}
-                    >
-                      {u.estado}
-                    </span>
-                  </td>
-                  <td className="p-3 text-neutral-400">{formatearFecha(u.fecha_alta)}</td>
-                  <td className="p-3 text-right whitespace-nowrap">
-                    <FilaAcciones usuario={u} onCambiarPassword={() => setCambiandoPassword(u)} />
-                  </td>
-                </tr>
+                <Fragment key={u.id_usuario}>
+                  <tr className="border-b border-neutral-100 last:border-0">
+                    <td className="p-3 font-medium text-neutral-900">{u.nombre}</td>
+                    <td className="p-3 text-neutral-500">{u.email}</td>
+                    <td className="p-3">
+                      <span className="text-xs bg-neutral-100 text-neutral-600 rounded-full px-2 py-0.5">
+                        {u.rol ?? "—"}
+                      </span>
+                    </td>
+                    <td className="p-3">
+                      <span
+                        className={`text-xs rounded-full px-2 py-0.5 ${
+                          u.estado === "ACTIVO" ? "bg-emerald-50 text-emerald-700" : "bg-neutral-100 text-neutral-600"
+                        }`}
+                      >
+                        {u.estado}
+                      </span>
+                    </td>
+                    <td className="p-3 text-neutral-400">{formatearFecha(u.fecha_alta)}</td>
+                    <td className="p-3 text-right whitespace-nowrap">
+                      <button
+                        onClick={() => setExpandido(expandido === u.id_usuario ? null : u.id_usuario)}
+                        className="text-sm text-accent hover:underline mr-3"
+                      >
+                        Permisos
+                      </button>
+                      <FilaAcciones usuario={u} onCambiarPassword={() => setCambiandoPassword(u)} />
+                    </td>
+                  </tr>
+                  {expandido === u.id_usuario && (
+                    <tr className="border-b border-neutral-100 last:border-0">
+                      <td colSpan={6} className="bg-neutral-50 p-0">
+                        <FilaPermisos usuario={u} />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               ))}
             </tbody>
           </table>
@@ -109,6 +131,68 @@ function FilaAcciones({ usuario, onCambiarPassword }: { usuario: UsuarioSinHash;
         {usuario.estado === "ACTIVO" ? "Desactivar" : "Activar"}
       </button>
     </>
+  );
+}
+
+function FilaPermisos({ usuario }: { usuario: UsuarioSinHash }) {
+  const [permisos, setPermisos] = useState<string[]>(usuario.permisos ?? []);
+  const [isPending, startTransition] = useTransition();
+  const [guardado, setGuardado] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (usuario.rol === "admin") {
+    return (
+      <p className="text-sm text-neutral-500 px-4 py-4">
+        {usuario.nombre} es administrador — tiene todos los permisos siempre, no hace falta tildar nada.
+      </p>
+    );
+  }
+
+  function toggle(clave: string) {
+    setGuardado(false);
+    setPermisos((prev) => (prev.includes(clave) ? prev.filter((p) => p !== clave) : [...prev, clave]));
+  }
+
+  function handleGuardar() {
+    setError(null);
+    startTransition(async () => {
+      const res = await actualizarPermisosUsuario(usuario.id_usuario, permisos);
+      if (res.error) setError(res.error);
+      else setGuardado(true);
+    });
+  }
+
+  return (
+    <div className="px-4 py-4">
+      <p className="text-xs text-neutral-500 mb-3">
+        Permisos puntuales para {usuario.nombre} — se aplican al toque, no hace falta que reloguee.
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
+        {PERMISOS_DISPONIBLES.map((p) => (
+          <label key={p.clave} className="flex items-start gap-2 bg-white border border-neutral-200 rounded-lg px-3 py-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={permisos.includes(p.clave)}
+              onChange={() => toggle(p.clave)}
+              className="mt-0.5"
+            />
+            <span>
+              <span className="block text-sm font-medium text-neutral-800">{p.label}</span>
+              <span className="block text-xs text-neutral-400">{p.descripcion}</span>
+            </span>
+          </label>
+        ))}
+      </div>
+      {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
+      {guardado && <p className="text-sm text-emerald-600 mb-2">Permisos guardados.</p>}
+      <button
+        onClick={handleGuardar}
+        disabled={isPending}
+        className="rounded-lg bg-accent hover:bg-accent-dark text-white px-4 py-1.5 text-sm font-medium disabled:opacity-50"
+      >
+        {isPending ? "Guardando..." : "Guardar permisos"}
+      </button>
+    </div>
   );
 }
 

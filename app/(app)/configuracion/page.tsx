@@ -1,9 +1,20 @@
 import { getSupabaseServerClient } from "@/lib/supabase";
+import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos";
 import ConfiguracionApp from "@/components/ConfiguracionApp";
 
 export const dynamic = "force-dynamic";
 
 export default async function ConfiguracionPage() {
+  const sesion = await obtenerSesionConPermisos();
+  if (!tienePermiso(sesion, PERMISOS.EDITAR_CONFIGURACION)) {
+    return (
+      <div className="max-w-md mx-auto text-center py-12">
+        <p className="text-neutral-700 font-medium mb-1">No tenés permiso para ver esta pantalla</p>
+        <p className="text-sm text-neutral-500">Editar la Configuración es solo para admin o quien tenga ese permiso.</p>
+      </div>
+    );
+  }
+
   const supabase = getSupabaseServerClient();
 
   const { data } = await supabase

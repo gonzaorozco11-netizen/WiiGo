@@ -1,6 +1,5 @@
-import { cookies } from "next/headers";
 import { getSupabaseServerClient, type Local } from "@/lib/supabase";
-import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
+import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos";
 import { listarCategorias, listarSubcategorias } from "@/app/(app)/gastos/actions";
 import GastosApp from "@/components/GastosApp";
 
@@ -8,11 +7,8 @@ export const dynamic = "force-dynamic";
 
 export default async function GastosPage() {
   const supabase = getSupabaseServerClient();
-  const cookieStore = await cookies();
-  const token = cookieStore.get(SESSION_COOKIE)?.value;
-  const session = await readSessionToken(token, process.env.AUTH_SECRET ?? "");
 
-  const [localesRes, usuariosRes, turnosAbiertosRes, categorias, subcategorias, configRes] = await Promise.all([
+  const [localesRes, usuariosRes, turnosAbiertosRes, categorias, subcategorias, configRes, sesion] = await Promise.all([
     supabase.from("locales").select("*").eq("estado", "ACTIVO").order("nombre", { ascending: true }),
     supabase
       .from("usuarios")
@@ -23,6 +19,7 @@ export default async function GastosPage() {
     listarCategorias(),
     listarSubcategorias(),
     supabase.from("configuracion").select("valor").eq("parametro", "GASTOS_TOPE_SIN_AUTORIZACION").maybeSingle(),
+    obtenerSesionConPermisos(),
   ]);
 
   return (
@@ -32,7 +29,9 @@ export default async function GastosPage() {
       turnosAbiertos={turnosAbiertosRes.data ?? []}
       categoriasIniciales={categorias}
       subcategoriasIniciales={subcategorias}
-      rol={session?.rol ?? null}
+      puedeVerCajaAdmin={tienePermiso(sesion, PERMISOS.VER_CAJA_ADMIN)}
+      puedeGestionarNomina={tienePermiso(sesion, PERMISOS.GESTIONAR_NOMINA)}
+      puedeAutorizarSinLimite={tienePermiso(sesion, PERMISOS.AUTORIZAR_GASTOS_SIN_LIMITE)}
       topeAutorizacion={Number(configRes.data?.valor ?? 10000)}
     />
   );
