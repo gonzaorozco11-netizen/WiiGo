@@ -109,106 +109,115 @@ export async function listarSubcategorias() {
 // resumenTurno en turnos/actions.ts); el de Caja Administración se anota
 // como salida en ese libro; transferencia y tarjeta/MP no tocan ninguna
 // caja física — quedan solo para el reporte de gastos.
-export async function crearGasto(formData: FormData) {
-  const supabase = getSupabaseServerClient();
-  const sesion = await sesionActual();
-  const usuario = sesion?.nombre ?? null;
+// Next.js redacta en producción el mensaje de cualquier Error que se
+// lance desde una Server Action (queda solo un "digest" genérico en el
+// navegador) — por eso esta función nunca throwea para errores
+// esperables: devuelve { error } como dato y el componente lo muestra tal cual.
+export async function crearGasto(formData: FormData): Promise<{ error: string | null }> {
+  try {
+    const supabase = getSupabaseServerClient();
+    const sesion = await sesionActual();
+    const usuario = sesion?.nombre ?? null;
 
-  const idCategoria = await resolveCategoria(supabase, formData);
-  if (!idCategoria) throw new Error("Elegí o creá una categoría");
-  const idSubcategoria = await resolveSubcategoria(supabase, formData, idCategoria);
+    const idCategoria = await resolveCategoria(supabase, formData);
+    if (!idCategoria) return { error: "Elegí o creá una categoría" };
+    const idSubcategoria = await resolveSubcategoria(supabase, formData, idCategoria);
 
-  const monto = number(formData, "monto");
-  if (!monto || monto <= 0) throw new Error("El monto tiene que ser mayor a 0");
+    const monto = number(formData, "monto");
+    if (!monto || monto <= 0) return { error: "El monto tiene que ser mayor a 0" };
 
-  const medioPago = text(formData, "medio_pago") ?? "TRANSFERENCIA";
-  const tipo = text(formData, "tipo") ?? "VARIABLE";
-  const descripcion = text(formData, "descripcion");
-  const pendienteFactura = formData.get("pendiente_factura") === "on";
-  const idUsuarioAdelanto = text(formData, "id_usuario_adelanto");
-  const idLocal = text(formData, "id_local");
+    const medioPago = text(formData, "medio_pago") ?? "TRANSFERENCIA";
+    const tipo = text(formData, "tipo") ?? "VARIABLE";
+    const descripcion = text(formData, "descripcion");
+    const pendienteFactura = formData.get("pendiente_factura") === "on";
+    const idUsuarioAdelanto = text(formData, "id_usuario_adelanto");
+    const idLocal = text(formData, "id_local");
 
-  let idTurno: string | null = null;
-  if (medioPago === "EFECTIVO_TURNO") {
-    if (!idLocal) throw new Error("Elegí el local para descontar del turno abierto");
-    idTurno = await turnoAbiertoDeLocal(supabase, idLocal);
-    if (!idTurno) throw new Error("No hay un turno de caja abierto en ese local — no se puede descontar de ahí.");
-  }
-
-  // Si quien carga no es admin y el monto supera el tope, hace falta la
-  // contraseña de un administrador para autorizarlo en el momento.
-  const tope = await topeAutorizacion(supabase);
-  let requirioAutorizacion = false;
-  let autorizadoPor: string | null = null;
-  if (sesion?.rol !== "admin" && monto > tope) {
-    requirioAutorizacion = true;
-    const claveAdmin = String(formData.get("clave_admin") ?? "");
-    if (!claveAdmin) {
-      throw new Error(`Este gasto supera el tope de $${tope} — hace falta la contraseña de un administrador.`);
+    let idTurno: string | null = null;
+    if (medioPago === "EFECTIVO_TURNO") {
+      if (!idLocal) return { error: "Elegí el local para descontar del turno abierto" };
+      idTurno = await turnoAbiertoDeLocal(supabase, idLocal);
+      if (!idTurno) return { error: "No hay un turno de caja abierto en ese local — no se puede descontar de ahí." };
     }
-    const { data: admins } = await supabase
-      .from("usuarios")
-      .select("nombre, password_hash")
-      .eq("rol", "admin")
-      .eq("estado", "ACTIVO");
-    let admin: { nombre: string } | null = null;
-    for (const a of admins ?? []) {
-      if (await verifyPassword(claveAdmin, a.password_hash)) {
-        admin = a;
-        break;
+
+    // Si quien carga no es admin y el monto supera el tope, hace falta la
+    // contraseña de un administrador para autorizarlo en el momento.
+    const tope = await topeAutorizacion(supabase);
+    let requirioAutorizacion = false;
+    let autorizadoPor: string | null = null;
+    if (sesion?.rol !== "admin" && monto > tope) {
+      requirioAutorizacion = true;
+      const claveAdmin = String(formData.get("clave_admin") ?? "");
+      if (!claveAdmin) {
+        return { error: `Este gasto supera el tope de $${tope} — hace falta la contraseña de un administrador.` };
+      }
+      const { data: admins } = await supabase
+        .from("usuarios")
+        .select("nombre, password_hash")
+        .eq("rol", "admin")
+        .eq("estado", "ACTIVO");
+      let admin: { nombre: string } | null = null;
+      for (const a of admins ?? []) {
+        if (await verifyPassword(claveAdmin, a.password_hash)) {
+          admin = a;
+          break;
+        }
+      }
+      if (!admin) return { error: "Contraseña de administrador incorrecta" };
+      autorizadoPor = admin.nombre;
+    }
+
+    const { data: gasto, error } = await supabase
+      .from("gastos")
+      .insert({
+        id_local: idLocal,
+        id_turno: idTurno,
+        id_categoria: idCategoria,
+        id_subcategoria: idSubcategoria,
+        tipo,
+        medio_pago: medioPago,
+        monto,
+        descripcion,
+        pendiente_factura: pendienteFactura,
+        requirio_autorizacion: requirioAutorizacion,
+        autorizado_por: autorizadoPor,
+        id_usuario_adelanto: idUsuarioAdelanto,
+        usuario,
+      })
+      .select("id_gasto")
+      .single();
+    if (error) return { error: friendlyDbError(error) };
+
+    const comprobante = formData.get("comprobante") as File | null;
+    if (comprobante && comprobante.size > 0) {
+      const extension = comprobante.name.split(".").pop() ?? "jpg";
+      const path = `${gasto.id_gasto}.${extension}`;
+      const { error: errorUpload } = await supabase.storage
+        .from("comprobantes-gasto")
+        .upload(path, comprobante, { upsert: true, contentType: comprobante.type || undefined });
+      // No bloquea el gasto si falla la subida — la plata ya se movió, el
+      // comprobante se puede volver a intentar después.
+      if (!errorUpload) {
+        await supabase.from("gastos").update({ comprobante_path: path }).eq("id_gasto", gasto.id_gasto);
       }
     }
-    if (!admin) throw new Error("Contraseña de administrador incorrecta");
-    autorizadoPor = admin.nombre;
-  }
 
-  const { data: gasto, error } = await supabase
-    .from("gastos")
-    .insert({
-      id_local: idLocal,
-      id_turno: idTurno,
-      id_categoria: idCategoria,
-      id_subcategoria: idSubcategoria,
-      tipo,
-      medio_pago: medioPago,
-      monto,
-      descripcion,
-      pendiente_factura: pendienteFactura,
-      requirio_autorizacion: requirioAutorizacion,
-      autorizado_por: autorizadoPor,
-      id_usuario_adelanto: idUsuarioAdelanto,
-      usuario,
-    })
-    .select("id_gasto")
-    .single();
-  if (error) throw new Error(friendlyDbError(error));
-
-  const comprobante = formData.get("comprobante") as File | null;
-  if (comprobante && comprobante.size > 0) {
-    const extension = comprobante.name.split(".").pop() ?? "jpg";
-    const path = `${gasto.id_gasto}.${extension}`;
-    const { error: errorUpload } = await supabase.storage
-      .from("comprobantes-gasto")
-      .upload(path, comprobante, { upsert: true, contentType: comprobante.type || undefined });
-    // No bloquea el gasto si falla la subida — la plata ya se movió, el
-    // comprobante se puede volver a intentar después.
-    if (!errorUpload) {
-      await supabase.from("gastos").update({ comprobante_path: path }).eq("id_gasto", gasto.id_gasto);
+    if (medioPago === "EFECTIVO_ADMIN") {
+      await supabase.from("movimientos_caja_admin").insert({
+        tipo: "EGRESO_GASTO",
+        monto: -monto,
+        id_gasto: gasto.id_gasto,
+        descripcion: descripcion ?? "Gasto pagado desde Caja Administración",
+        usuario,
+      });
     }
-  }
 
-  if (medioPago === "EFECTIVO_ADMIN") {
-    await supabase.from("movimientos_caja_admin").insert({
-      tipo: "EGRESO_GASTO",
-      monto: -monto,
-      id_gasto: gasto.id_gasto,
-      descripcion: descripcion ?? "Gasto pagado desde Caja Administración",
-      usuario,
-    });
+    revalidatePath("/gastos");
+    revalidatePath("/turnos");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo guardar el gasto" };
   }
-
-  revalidatePath("/gastos");
-  revalidatePath("/turnos");
 }
 
 export async function obtenerUrlComprobanteGasto(path: string) {
@@ -311,28 +320,33 @@ export async function listarRecurrentes() {
   return data ?? [];
 }
 
-export async function crearRecurrente(formData: FormData) {
-  const supabase = getSupabaseServerClient();
-  const idCategoria = await resolveCategoria(supabase, formData);
-  if (!idCategoria) throw new Error("Elegí o creá una categoría");
-  const idSubcategoria = await resolveSubcategoria(supabase, formData, idCategoria);
-  const descripcion = text(formData, "descripcion");
-  if (!descripcion) throw new Error("La descripción es obligatoria");
-  const montoEstimado = number(formData, "monto_estimado") ?? 0;
-  const diaMes = Number(formData.get("dia_mes") ?? 1);
-  const idLocal = text(formData, "id_local");
+export async function crearRecurrente(formData: FormData): Promise<{ error: string | null }> {
+  try {
+    const supabase = getSupabaseServerClient();
+    const idCategoria = await resolveCategoria(supabase, formData);
+    if (!idCategoria) return { error: "Elegí o creá una categoría" };
+    const idSubcategoria = await resolveSubcategoria(supabase, formData, idCategoria);
+    const descripcion = text(formData, "descripcion");
+    if (!descripcion) return { error: "La descripción es obligatoria" };
+    const montoEstimado = number(formData, "monto_estimado") ?? 0;
+    const diaMes = Number(formData.get("dia_mes") ?? 1);
+    const idLocal = text(formData, "id_local");
 
-  const { error } = await supabase.from("gastos_recurrentes").insert({
-    id_categoria: idCategoria,
-    id_subcategoria: idSubcategoria,
-    descripcion,
-    monto_estimado: montoEstimado,
-    dia_mes: diaMes,
-    id_local: idLocal,
-    activo: true,
-  });
-  if (error) throw new Error(friendlyDbError(error));
-  revalidatePath("/gastos");
+    const { error } = await supabase.from("gastos_recurrentes").insert({
+      id_categoria: idCategoria,
+      id_subcategoria: idSubcategoria,
+      descripcion,
+      monto_estimado: montoEstimado,
+      dia_mes: diaMes,
+      id_local: idLocal,
+      activo: true,
+    });
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/gastos");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo crear el gasto recurrente" };
+  }
 }
 
 // Convierte un recurrente en un Gasto real del mes actual — el monto se
@@ -455,18 +469,27 @@ export async function movimientosCajaAdmin() {
   return conSaldo.reverse();
 }
 
-export async function registrarMovimientoCajaAdmin(tipo: "RETIRO_MANUAL" | "DEPOSITO_MANUAL", monto: number, descripcion: string) {
-  if (!monto || monto <= 0) throw new Error("El monto tiene que ser mayor a 0");
-  const supabase = getSupabaseServerClient();
-  const sesion = await sesionActual();
-  const { error } = await supabase.from("movimientos_caja_admin").insert({
-    tipo,
-    monto: tipo === "RETIRO_MANUAL" ? -monto : monto,
-    descripcion: descripcion || null,
-    usuario: sesion?.nombre ?? null,
-  });
-  if (error) throw new Error(friendlyDbError(error));
-  revalidatePath("/gastos");
+export async function registrarMovimientoCajaAdmin(
+  tipo: "RETIRO_MANUAL" | "DEPOSITO_MANUAL",
+  monto: number,
+  descripcion: string
+): Promise<{ error: string | null }> {
+  if (!monto || monto <= 0) return { error: "El monto tiene que ser mayor a 0" };
+  try {
+    const supabase = getSupabaseServerClient();
+    const sesion = await sesionActual();
+    const { error } = await supabase.from("movimientos_caja_admin").insert({
+      tipo,
+      monto: tipo === "RETIRO_MANUAL" ? -monto : monto,
+      descripcion: descripcion || null,
+      usuario: sesion?.nombre ?? null,
+    });
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/gastos");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo registrar el movimiento" };
+  }
 }
 
 // Informativo — no se maneja en Caja Administración, ya está seguro en

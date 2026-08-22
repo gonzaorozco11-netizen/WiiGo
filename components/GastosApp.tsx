@@ -499,7 +499,10 @@ function FormNuevoGasto({
     const formData = new FormData(e.currentTarget);
     setGuardando(true);
     crearGasto(formData)
-      .then(() => window.location.reload())
+      .then((res) => {
+        if (res.error) setError(res.error);
+        else window.location.reload();
+      })
       .catch((err) => setError(err instanceof Error ? err.message : "No se pudo guardar el gasto"))
       .finally(() => setGuardando(false));
   }
@@ -696,6 +699,7 @@ function TabCajaAdmin() {
   const [monto, setMonto] = useState("");
   const [descripcion, setDescripcion] = useState("");
   const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   function recargar() {
     setCargando(true);
@@ -712,9 +716,14 @@ function TabCajaAdmin() {
 
   function handleRegistrar() {
     const montoNum = Number(monto.replace(/[^\d.-]/g, "")) || 0;
+    setError(null);
     setGuardando(true);
     registrarMovimientoCajaAdmin(mostrarForm === "retiro" ? "RETIRO_MANUAL" : "DEPOSITO_MANUAL", montoNum, descripcion)
-      .then(() => {
+      .then((res) => {
+        if (res.error) {
+          setError(res.error);
+          return;
+        }
         setMostrarForm(null);
         setMonto("");
         setDescripcion("");
@@ -749,6 +758,7 @@ function TabCajaAdmin() {
       {mostrarForm && (
         <div className="bg-white border border-neutral-200 rounded-xl p-4 mb-4 max-w-md">
           <h3 className="text-sm font-bold text-neutral-900 mb-2">{mostrarForm === "retiro" ? "Registrar retiro" : "Registrar depósito"}</h3>
+          {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
           <label className="block text-xs font-medium text-neutral-500 mb-1">Monto</label>
           <input value={monto} onChange={(e) => setMonto(e.target.value)} placeholder="$0" className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm mb-2" />
           <label className="block text-xs font-medium text-neutral-500 mb-1">Descripción</label>
@@ -821,6 +831,7 @@ function TabNomina({ usuarios }: { usuarios: UsuarioMin[] }) {
   const [editando, setEditando] = useState<string | null>(null);
   const [valorEdit, setValorEdit] = useState("");
   const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   function recargar() {
     setCargando(true);
@@ -831,9 +842,14 @@ function TabNomina({ usuarios }: { usuarios: UsuarioMin[] }) {
 
   function handleGuardarSueldo(idUsuario: string) {
     const monto = Number(valorEdit.replace(/[^\d.-]/g, "")) || 0;
+    setError(null);
     setGuardando(true);
     actualizarSueldoBase(idUsuario, monto)
-      .then(() => {
+      .then((res) => {
+        if (res.error) {
+          setError(res.error);
+          return;
+        }
         setEditando(null);
         recargar();
       })
@@ -846,6 +862,8 @@ function TabNomina({ usuarios }: { usuarios: UsuarioMin[] }) {
         👥 Sueldo simplificado por empleado — sueldo base − adelantos del mes = a pagar. No reemplaza un módulo de
         RR.HH. completo (legajos, vacaciones, licencias) — eso se arma aparte, más adelante.
       </p>
+
+      {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
 
       <div className="mb-4">
         <input type="month" value={mes} onChange={(e) => setMes(e.target.value)} className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-sm" />
@@ -1076,7 +1094,10 @@ function FormNuevoRecurrente({
     const formData = new FormData(e.currentTarget);
     setGuardando(true);
     crearRecurrente(formData)
-      .then(onCreado)
+      .then((res) => {
+        if (res.error) setError(res.error);
+        else onCreado();
+      })
       .catch((err) => setError(err instanceof Error ? err.message : "No se pudo crear el gasto recurrente"))
       .finally(() => setGuardando(false));
   }
