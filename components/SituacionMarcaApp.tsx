@@ -13,6 +13,9 @@ import {
   registrarPagoComercial,
   saldoComercialAction,
   historialComercialAction,
+  saldosCuentasAction,
+  historialCompensacionesAction,
+  registrarCompensacionAction,
 } from "@/app/(app)/situacion-marca/actions";
 import { calcularRendicion, historialLiquidaciones } from "@/app/(app)/liquidaciones/actions";
 import { RetencionesMarca } from "@/components/LiquidacionesApp";
@@ -44,6 +47,7 @@ export default function SituacionMarcaApp({ marcas, locales }: { marcas: Marca[]
   const [liquidacionesHist, setLiquidacionesHist] = useState<{ pagado: number; pendiente: number }>({ pagado: 0, pendiente: 0 });
   const [saldoComercial, setSaldoComercial] = useState(0);
   const [saldoRetenciones, setSaldoRetenciones] = useState(0);
+  const [saldoLiquidacionesReal, setSaldoLiquidacionesReal] = useState(0);
 
   function recargarResumen() {
     if (!idMarca) return;
@@ -53,8 +57,9 @@ export default function SituacionMarcaApp({ marcas, locales }: { marcas: Marca[]
       calcularRendicion(idMarca, "2000-01-01", new Date().toISOString().slice(0, 10)),
       historialLiquidaciones(idMarca),
       saldoComercialAction(idMarca),
+      saldosCuentasAction(idMarca),
     ])
-      .then(([v, rendicion, historial, saldoCom]) => {
+      .then(([v, rendicion, historial, saldoCom, saldosReales]) => {
         setVentas(v);
         setPendienteLiquidar(rendicion.resumen.netoARendir);
         let pagado = 0;
@@ -65,9 +70,15 @@ export default function SituacionMarcaApp({ marcas, locales }: { marcas: Marca[]
         }
         setLiquidacionesHist({ pagado, pendiente });
         setSaldoComercial(saldoCom);
+        setSaldoLiquidacionesReal(saldosReales.liquidaciones);
       })
       .finally(() => setCargando(false));
   }
+
+  // Lo compensado contra Liquidaciones no tiene un ledger propio — se ve acá
+  // como la diferencia entre el pendiente "bruto" y el saldo real ya
+  // descontada la compensación (saldosCuentasAction).
+  const compensadoLiquidaciones = Math.max(pendienteLiquidar + liquidacionesHist.pendiente - saldoLiquidacionesReal, 0);
 
   useEffect(recargarResumen, [idMarca]);
 
@@ -116,9 +127,7 @@ export default function SituacionMarcaApp({ marcas, locales }: { marcas: Marca[]
                 <h2 className="text-sm font-bold text-neutral-900">💰 Cuenta de liquidaciones</h2>
                 <p className="text-[11px] text-neutral-400">Plata que WiiGo le debe transferir a la marca por sus ventas</p>
               </div>
-              <span className="text-lg font-extrabold text-accent tabular-nums">
-                ${formatearMonto(pendienteLiquidar + liquidacionesHist.pendiente)}
-              </span>
+              <span className="text-lg font-extrabold text-accent tabular-nums">${formatearMonto(saldoLiquidacionesReal)}</span>
             </div>
             <div className="px-4 py-3 space-y-2 text-sm">
               <div className="flex justify-between border-b border-neutral-100 pb-2">
@@ -129,10 +138,16 @@ export default function SituacionMarcaApp({ marcas, locales }: { marcas: Marca[]
                 <span className="text-neutral-500">Liquidado y pagado (con comprobante subido)</span>
                 <span className="font-semibold tabular-nums text-emerald-600">${formatearMonto(liquidacionesHist.pagado)}</span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between border-b border-neutral-100 pb-2">
                 <span className="text-neutral-500">Liquidado, pendiente de pago (sin comprobante)</span>
                 <span className="font-semibold tabular-nums text-red-600">${formatearMonto(liquidacionesHist.pendiente)}</span>
               </div>
+              {compensadoLiquidaciones > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-neutral-500">Compensado contra otras cuentas</span>
+                  <span className="font-semibold tabular-nums text-teal-600">-${formatearMonto(compensadoLiquidaciones)}</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -141,6 +156,13 @@ export default function SituacionMarcaApp({ marcas, locales }: { marcas: Marca[]
 
           {/* Cuenta de retenciones (Fase 1) */}
           <RetencionesMarca idMarca={idMarca} />
+
+          {/* Compensación entre cuentas (Fase 4) */}
+          <CompensacionCuentas
+            idMarca={idMarca}
+            saldos={{ liquidaciones: saldoLiquidacionesReal, comercial: saldoComercial, retenciones: saldoRetenciones }}
+            onCambio={recargarResumen}
+          />
 
           {/* Resumen neto */}
           <div className="bg-white border-2 border-neutral-200 rounded-xl p-4 mt-2">
@@ -155,7 +177,7 @@ export default function SituacionMarcaApp({ marcas, locales }: { marcas: Marca[]
                   <span className="inline-block w-2.5 h-2.5 rounded-sm bg-accent mr-2" />
                   WiiGo le debe a {marca?.nombre ?? "la marca"} (liquidaciones)
                 </span>
-                <span className="font-bold tabular-nums">${formatearMonto(pendienteLiquidar + liquidacionesHist.pendiente)}</span>
+                <span className="font-bold tabular-nums">${formatearMonto(saldoLiquidacionesReal)}</span>
               </div>
               <div className="flex justify-between border-b border-dashed border-neutral-200 py-1.5">
                 <span>
@@ -581,5 +603,178 @@ function PagoManualForm({ idMarca, onGuardado }: { idMarca: string; onGuardado: 
         {guardando ? "Guardando..." : "Registrar"}
       </button>
     </form>
+  );
+}
+
+const ETIQUETA_CUENTA: Record<string, string> = {
+  LIQUIDACIONES: "💰 Liquidaciones",
+  COMERCIAL: "🏬 Comercial",
+  RETENCIONES: "🧾 Retenciones",
+};
+
+type CuentaMarca = "LIQUIDACIONES" | "COMERCIAL" | "RETENCIONES";
+type SaldosCuentas = { liquidaciones: number; comercial: number; retenciones: number };
+
+function saldoDe(saldos: SaldosCuentas, cuenta: CuentaMarca) {
+  if (cuenta === "LIQUIDACIONES") return saldos.liquidaciones;
+  if (cuenta === "COMERCIAL") return saldos.comercial;
+  return saldos.retenciones;
+}
+
+type CompensacionFila = {
+  idCompensacion: string;
+  cuentaA: CuentaMarca;
+  cuentaB: CuentaMarca;
+  importe: number;
+  usuario: string | null;
+  observaciones: string | null;
+  fecha: string;
+};
+
+function CompensacionCuentas({
+  idMarca,
+  saldos,
+  onCambio,
+}: {
+  idMarca: string;
+  saldos: SaldosCuentas;
+  onCambio: () => void;
+}) {
+  const [cuentaA, setCuentaA] = useState<CuentaMarca>("LIQUIDACIONES");
+  const [cuentaB, setCuentaB] = useState<CuentaMarca>("COMERCIAL");
+  const [monto, setMonto] = useState("");
+  const [observaciones, setObservaciones] = useState("");
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [historial, setHistorial] = useState<CompensacionFila[]>([]);
+  const [mostrarHistorial, setMostrarHistorial] = useState(false);
+
+  function recargarHistorial() {
+    historialCompensacionesAction(idMarca).then(setHistorial);
+  }
+
+  useEffect(recargarHistorial, [idMarca]);
+
+  const maximo = Math.max(Math.min(saldoDe(saldos, cuentaA), saldoDe(saldos, cuentaB)), 0);
+
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError(null);
+    const formData = new FormData(e.currentTarget);
+    setGuardando(true);
+    registrarCompensacionAction(idMarca, formData)
+      .then((res) => {
+        if (res.error) setError(res.error);
+        else {
+          setMonto("");
+          setObservaciones("");
+          recargarHistorial();
+          onCambio();
+        }
+      })
+      .finally(() => setGuardando(false));
+  }
+
+  return (
+    <div className="bg-teal-50 border border-teal-200 rounded-xl overflow-hidden mb-3.5">
+      <div className="px-4 py-3 border-b border-teal-100">
+        <h2 className="text-sm font-bold text-teal-800">⇄ Compensar cuentas</h2>
+        <p className="text-[11px] text-teal-700/70">
+          Cruzá manualmente lo que se deben entre sí dos de las tres cuentas — nunca es automático.
+        </p>
+      </div>
+      <div className="px-4 py-3">
+        {error && <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-3">{error}</p>}
+        <form onSubmit={handleSubmit} className="space-y-2.5">
+          <div className="grid grid-cols-2 gap-2.5">
+            <div>
+              <label className="block text-[11px] text-teal-700 mb-1">Cuenta A</label>
+              <select
+                name="cuenta_a"
+                value={cuentaA}
+                onChange={(e) => setCuentaA(e.target.value as CuentaMarca)}
+                className="w-full border border-teal-300 rounded-lg px-2.5 py-1.5 text-xs bg-white"
+              >
+                {(["LIQUIDACIONES", "COMERCIAL", "RETENCIONES"] as CuentaMarca[]).map((c) => (
+                  <option key={c} value={c} disabled={c === cuentaB}>
+                    {ETIQUETA_CUENTA[c]} — ${formatearMonto(saldoDe(saldos, c))}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[11px] text-teal-700 mb-1">Cuenta B</label>
+              <select
+                name="cuenta_b"
+                value={cuentaB}
+                onChange={(e) => setCuentaB(e.target.value as CuentaMarca)}
+                className="w-full border border-teal-300 rounded-lg px-2.5 py-1.5 text-xs bg-white"
+              >
+                {(["LIQUIDACIONES", "COMERCIAL", "RETENCIONES"] as CuentaMarca[]).map((c) => (
+                  <option key={c} value={c} disabled={c === cuentaA}>
+                    {ETIQUETA_CUENTA[c]} — ${formatearMonto(saldoDe(saldos, c))}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="block text-[11px] text-teal-700 mb-1">Monto a compensar (máximo ${formatearMonto(maximo)})</label>
+            <input
+              name="importe"
+              type="number"
+              step="1"
+              max={maximo}
+              value={monto}
+              onChange={(e) => setMonto(e.target.value)}
+              className="w-full border border-teal-300 rounded-lg px-2.5 py-1.5 text-xs bg-white"
+            />
+          </div>
+          <div>
+            <label className="block text-[11px] text-teal-700 mb-1">Observaciones (opcional)</label>
+            <input
+              name="observaciones"
+              value={observaciones}
+              onChange={(e) => setObservaciones(e.target.value)}
+              className="w-full border border-teal-300 rounded-lg px-2.5 py-1.5 text-xs bg-white"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={guardando || maximo <= 0}
+            className="text-xs font-bold text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-40 px-3 py-1.5 rounded-lg"
+          >
+            {guardando ? "Guardando..." : `Confirmar compensación`}
+          </button>
+          {maximo <= 0 && <p className="text-[10px] text-teal-700/70">No hay saldo en común entre esas dos cuentas para compensar.</p>}
+        </form>
+
+        <button onClick={() => setMostrarHistorial((v) => !v)} className="text-xs font-semibold text-teal-700 mt-3">
+          {mostrarHistorial ? "▾" : "▸"} Historial de compensaciones ({historial.length})
+        </button>
+        {mostrarHistorial && (
+          <div className="mt-2 space-y-1.5">
+            {historial.length === 0 ? (
+              <p className="text-xs text-teal-700/60">Todavía no se registró ninguna compensación.</p>
+            ) : (
+              historial.map((h) => (
+                <div key={h.idCompensacion} className="bg-white border border-teal-200 rounded-lg px-3 py-2 text-xs">
+                  <div className="flex justify-between font-semibold">
+                    <span>
+                      {ETIQUETA_CUENTA[h.cuentaA]} ⇄ {ETIQUETA_CUENTA[h.cuentaB]}
+                    </span>
+                    <span className="tabular-nums">${formatearMonto(h.importe)}</span>
+                  </div>
+                  <div className="text-teal-700/60 mt-0.5">
+                    {formatearFecha(h.fecha)} · {h.usuario ?? "—"}
+                    {h.observaciones && ` · ${h.observaciones}`}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

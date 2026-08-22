@@ -11,6 +11,14 @@ import {
   yaTieneCargoDelPeriodo,
   registrarMovimientoComercial,
 } from "@/lib/cuentaComercialMarca";
+import { saldosRetencionPorMarca } from "@/lib/retencionesMarca";
+import {
+  type CuentaMarca,
+  historialCompensaciones,
+  totalCompensadoLiquidaciones,
+  registrarCompensacion,
+} from "@/lib/compensacionesMarca";
+import { calcularRendicion, historialLiquidaciones } from "@/app/(app)/liquidaciones/actions";
 
 async function sesionActual() {
   const cookieStore = await cookies();
@@ -326,4 +334,91 @@ export async function historialComercialAction(idMarca: string) {
     observaciones: m.observaciones as string | null,
     fecha: m.fecha as string,
   }));
+}
+
+// ===================== COMPENSACIÓN ENTRE CUENTAS (Fase 4) =====================
+
+// Liquidaciones no tiene ledger propio: el "pendiente" sale de sumar lo que
+// todavía no se liquidó (calcularRendicion) más lo ya liquidado pero sin
+// comprobante subido, menos lo que ya se compensó contra esta cuenta.
+async function saldoLiquidacionesPendiente(idMarca: string) {
+  const supabase = getSupabaseServerClient();
+  const hoy = new Date().toISOString().slice(0, 10);
+  const [rendicion, historial, compensado] = await Promise.all([
+    calcularRendicion(idMarca, "2000-01-01", hoy),
+    historialLiquidaciones(idMarca),
+    totalCompensadoLiquidaciones(supabase, idMarca),
+  ]);
+  const pendienteSinComprobante = historial.reduce((acc, l) => acc + (l.comprobante_path ? 0 : l.neto_a_transferir ?? 0), 0);
+  return rendicion.resumen.netoARendir + pendienteSinComprobante - compensado;
+}
+
+async function saldoDeCuenta(idMarca: string, cuenta: CuentaMarca): Promise<number> {
+  const supabase = getSupabaseServerClient();
+  if (cuenta === "COMERCIAL") return saldoCuentaComercial(supabase, idMarca);
+  if (cuenta === "RETENCIONES") {
+    const saldos = await saldosRetencionPorMarca(supabase, idMarca);
+    return saldos.reduce((acc, s) => acc + s.saldo, 0);
+  }
+  return saldoLiquidacionesPendiente(idMarca);
+}
+
+export async function saldosCuentasAction(idMarca: string) {
+  const [liquidaciones, comercial, retenciones] = await Promise.all([
+    saldoDeCuenta(idMarca, "LIQUIDACIONES"),
+    saldoDeCuenta(idMarca, "COMERCIAL"),
+    saldoDeCuenta(idMarca, "RETENCIONES"),
+  ]);
+  return { liquidaciones, comercial, retenciones };
+}
+
+export async function historialCompensacionesAction(idMarca: string) {
+  const supabase = getSupabaseServerClient();
+  const rows = await historialCompensaciones(supabase, idMarca);
+  return rows.map((r) => ({
+    idCompensacion: r.id_compensacion as string,
+    cuentaA: r.cuenta_a as CuentaMarca,
+    cuentaB: r.cuenta_b as CuentaMarca,
+    importe: r.importe as number,
+    usuario: r.usuario as string | null,
+    observaciones: r.observaciones as string | null,
+    fecha: r.fecha as string,
+  }));
+}
+
+// Nunca confía en el monto máximo que mandó el cliente — lo recalcula acá
+// a partir del saldo real de las dos cuentas elegidas, en el momento.
+export async function registrarCompensacionAction(idMarca: string, formData: FormData): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+
+  const cuentaA = text(formData, "cuenta_a") as CuentaMarca | null;
+  const cuentaB = text(formData, "cuenta_b") as CuentaMarca | null;
+  const importe = number(formData, "importe");
+  if (!cuentaA || !cuentaB || cuentaA === cuentaB) return { error: "Elegí dos cuentas distintas para cruzar." };
+  if (!importe || importe <= 0) return { error: "El monto tiene que ser mayor a 0." };
+
+  try {
+    const supabase = getSupabaseServerClient();
+    const [saldoA, saldoB] = await Promise.all([saldoDeCuenta(idMarca, cuentaA), saldoDeCuenta(idMarca, cuentaB)]);
+    const maximo = Math.min(saldoA, saldoB);
+    if (importe > maximo) {
+      return { error: `No podés compensar más de $${Math.round(maximo).toLocaleString("es-AR")} — es lo más chico entre las dos cuentas.` };
+    }
+
+    const sesion = await sesionActual();
+    await registrarCompensacion(supabase, {
+      idMarca,
+      cuentaA,
+      cuentaB,
+      importe,
+      usuario: sesion?.nombre ?? null,
+      observaciones: text(formData, "observaciones"),
+    });
+
+    revalidatePath("/situacion-marca");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo registrar la compensación" };
+  }
 }

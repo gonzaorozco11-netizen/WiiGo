@@ -5,7 +5,7 @@
 // suma de movimientos, nunca se guarda un número suelto.
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type TipoCargoComercial = "FEE_INGRESO" | "GASTO_FIJO_MENSUAL" | "OTRO_CARGO" | "PAGO" | "AJUSTE";
+export type TipoCargoComercial = "FEE_INGRESO" | "GASTO_FIJO_MENSUAL" | "OTRO_CARGO" | "PAGO" | "AJUSTE" | "COMPENSACION";
 
 export async function saldoCuentaComercial(supabase: SupabaseClient, idMarca: string) {
   const { data } = await supabase.from("movimientos_cuenta_comercial_marca").select("importe").eq("id_marca", idMarca);
