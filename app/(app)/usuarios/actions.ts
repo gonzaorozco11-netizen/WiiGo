@@ -1,19 +1,34 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { hashPassword } from "@/lib/auth";
+import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 
 function text(formData: FormData, name: string) {
   const s = String(formData.get(name) ?? "").trim();
   return s.length ? s : null;
 }
 
+// Gestión de usuarios (altas, bajas, contraseñas) es solo para admin —
+// un operativo de local no puede crear ni tocar cuentas de otros.
+async function requireAdmin() {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(SESSION_COOKIE)?.value;
+  const sesion = await readSessionToken(token, process.env.AUTH_SECRET ?? "");
+  if (sesion?.rol !== "admin") return "No tenés permiso para hacer esto — hace falta ser administrador.";
+  return null;
+}
+
 // Next.js redacta en producción el mensaje de un Error tirado desde una
 // Server Action (queda solo un digest genérico en el navegador) — por eso
 // estas funciones no throwean para errores esperables: devuelven { error }.
 export async function crearUsuario(formData: FormData): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+
   const nombre = text(formData, "nombre");
   const email = text(formData, "email")?.toLowerCase() ?? null;
   const rol = text(formData, "rol") ?? "operativo";
@@ -44,6 +59,8 @@ export async function crearUsuario(formData: FormData): Promise<{ error: string 
 }
 
 export async function cambiarEstadoUsuario(id: string, estado: string): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
   try {
     const supabase = getSupabaseServerClient();
     const { error } = await supabase.from("usuarios").update({ estado }).eq("id_usuario", id);
@@ -56,6 +73,8 @@ export async function cambiarEstadoUsuario(id: string, estado: string): Promise<
 }
 
 export async function cambiarPasswordUsuario(id: string, password: string): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
   if (password.length < 6) return { error: "La contraseña tiene que tener al menos 6 caracteres" };
   try {
     const supabase = getSupabaseServerClient();
@@ -72,6 +91,8 @@ export async function cambiarPasswordUsuario(id: string, password: string): Prom
 // Usado desde la pestaña Nómina de Gastos para calcular sueldo base −
 // adelantos del mes.
 export async function actualizarSueldoBase(id: string, sueldoBase: number): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
   if (sueldoBase < 0) return { error: "El sueldo no puede ser negativo" };
   const supabase = getSupabaseServerClient();
   const { error } = await supabase.from("usuarios").update({ sueldo_base: sueldoBase }).eq("id_usuario", id);
