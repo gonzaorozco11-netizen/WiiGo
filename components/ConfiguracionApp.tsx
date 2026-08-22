@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import type { Usuario } from "@/lib/supabase";
+import type { Usuario, Rol } from "@/lib/supabase";
 import UsuariosApp from "@/components/UsuariosApp";
 import {
   guardarConfigPuntos,
@@ -30,6 +30,7 @@ export default function ConfiguracionApp({
   gastosTopeSinAutorizacion,
   esAdmin,
   usuarios,
+  roles,
 }: {
   puntosActivo: boolean;
   puntosCadaMonto: number;
@@ -49,6 +50,7 @@ export default function ConfiguracionApp({
   gastosTopeSinAutorizacion: number;
   esAdmin: boolean;
   usuarios: Omit<Usuario, "password_hash">[];
+  roles: Rol[];
 }) {
   const [tab, setTab] = useState<"general" | "usuarios">("general");
   const [isPending, startTransition] = useTransition();
@@ -175,7 +177,7 @@ export default function ConfiguracionApp({
       )}
 
       {tab === "usuarios" && esAdmin ? (
-        <UsuariosApp usuarios={usuarios} />
+        <UsuariosApp usuarios={usuarios} roles={roles} />
       ) : (
         <>
       <form action={handleSubmit} className="bg-white border border-neutral-200 rounded-xl p-5">

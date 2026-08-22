@@ -29,6 +29,15 @@ export type Usuario = {
   password_hash: string;
   sueldo_base: number | null;
   permisos: string[];
+  id_rol: string | null;
+};
+
+export type Rol = {
+  id_rol: string;
+  nombre: string;
+  pantallas: string[];
+  estado: string;
+  fecha_creacion: string;
 };
 
 export type Marca = {

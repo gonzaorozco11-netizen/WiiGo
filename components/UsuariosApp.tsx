@@ -1,13 +1,18 @@
 "use client";
 
 import { Fragment, useState, useTransition } from "react";
-import type { Usuario } from "@/lib/supabase";
+import type { Usuario, Rol } from "@/lib/supabase";
 import { PERMISOS_DISPONIBLES } from "@/lib/permisos-constantes";
+import { PANTALLAS_DISPONIBLES } from "@/lib/pantallas";
 import {
   crearUsuario,
   cambiarEstadoUsuario,
   cambiarPasswordUsuario,
   actualizarPermisosUsuario,
+  actualizarRolUsuario,
+  crearRol,
+  actualizarRol,
+  cambiarEstadoRol,
 } from "@/app/(app)/usuarios/actions";
 
 type UsuarioSinHash = Omit<Usuario, "password_hash">;
@@ -16,10 +21,20 @@ function formatearFecha(fechaISO: string) {
   return new Date(fechaISO).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
-export default function UsuariosApp({ usuarios }: { usuarios: UsuarioSinHash[] }) {
+// "admin" en la base sigue siendo el dueño de siempre (puede todo) — acá
+// se muestra como "Dueño" para no confundirlo con el rol configurable
+// "Administración" que Gonzalo arma en la pestaña Roles.
+function etiquetaRolBase(rol: string | null) {
+  if (rol === "admin") return "Dueño";
+  return "Operativo";
+}
+
+export default function UsuariosApp({ usuarios, roles }: { usuarios: UsuarioSinHash[]; roles: Rol[] }) {
+  const [tab, setTab] = useState<"usuarios" | "roles">("usuarios");
   const [modalOpen, setModalOpen] = useState(false);
   const [cambiandoPassword, setCambiandoPassword] = useState<UsuarioSinHash | null>(null);
   const [expandido, setExpandido] = useState<string | null>(null);
+  const rolPorId = new Map(roles.map((r) => [r.id_rol, r]));
 
   return (
     <div className="max-w-3xl">
@@ -31,73 +46,95 @@ export default function UsuariosApp({ usuarios }: { usuarios: UsuarioSinHash[] }
             nombre.
           </p>
         </div>
+        {tab === "usuarios" && (
+          <button
+            onClick={() => setModalOpen(true)}
+            className="rounded-lg bg-accent hover:bg-accent-dark text-white px-4 py-2 text-sm font-medium whitespace-nowrap"
+          >
+            + Nuevo usuario
+          </button>
+        )}
+      </div>
+
+      <div className="inline-flex gap-1 bg-neutral-100 rounded-lg p-1 mb-4">
         <button
-          onClick={() => setModalOpen(true)}
-          className="rounded-lg bg-accent hover:bg-accent-dark text-white px-4 py-2 text-sm font-medium whitespace-nowrap"
+          onClick={() => setTab("usuarios")}
+          className={`text-xs font-bold px-3 py-1.5 rounded-md ${tab === "usuarios" ? "bg-white shadow-sm text-neutral-900" : "text-neutral-500"}`}
         >
-          + Nuevo usuario
+          Usuarios
+        </button>
+        <button
+          onClick={() => setTab("roles")}
+          className={`text-xs font-bold px-3 py-1.5 rounded-md ${tab === "roles" ? "bg-white shadow-sm text-neutral-900" : "text-neutral-500"}`}
+        >
+          Roles
         </button>
       </div>
 
-      <div className="bg-white border border-neutral-200 rounded-xl overflow-hidden">
-        {usuarios.length === 0 ? (
-          <p className="text-sm text-neutral-400 text-center py-10">Todavía no hay usuarios cargados.</p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-neutral-200 text-left text-xs text-neutral-500">
-                <th className="p-3">Nombre</th>
-                <th className="p-3">Email</th>
-                <th className="p-3">Rol</th>
-                <th className="p-3">Estado</th>
-                <th className="p-3">Alta</th>
-                <th className="p-3"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {usuarios.map((u) => (
-                <Fragment key={u.id_usuario}>
-                  <tr className="border-b border-neutral-100 last:border-0">
-                    <td className="p-3 font-medium text-neutral-900">{u.nombre}</td>
-                    <td className="p-3 text-neutral-500">{u.email}</td>
-                    <td className="p-3">
-                      <span className="text-xs bg-neutral-100 text-neutral-600 rounded-full px-2 py-0.5">
-                        {u.rol ?? "—"}
-                      </span>
-                    </td>
-                    <td className="p-3">
-                      <span
-                        className={`text-xs rounded-full px-2 py-0.5 ${
-                          u.estado === "ACTIVO" ? "bg-emerald-50 text-emerald-700" : "bg-neutral-100 text-neutral-600"
-                        }`}
-                      >
-                        {u.estado}
-                      </span>
-                    </td>
-                    <td className="p-3 text-neutral-400">{formatearFecha(u.fecha_alta)}</td>
-                    <td className="p-3 text-right whitespace-nowrap">
-                      <button
-                        onClick={() => setExpandido(expandido === u.id_usuario ? null : u.id_usuario)}
-                        className="text-sm text-accent hover:underline mr-3"
-                      >
-                        Permisos
-                      </button>
-                      <FilaAcciones usuario={u} onCambiarPassword={() => setCambiandoPassword(u)} />
-                    </td>
-                  </tr>
-                  {expandido === u.id_usuario && (
+      {tab === "usuarios" ? (
+        <div className="bg-white border border-neutral-200 rounded-xl overflow-hidden">
+          {usuarios.length === 0 ? (
+            <p className="text-sm text-neutral-400 text-center py-10">Todavía no hay usuarios cargados.</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-neutral-200 text-left text-xs text-neutral-500">
+                  <th className="p-3">Nombre</th>
+                  <th className="p-3">Email</th>
+                  <th className="p-3">Rol</th>
+                  <th className="p-3">Estado</th>
+                  <th className="p-3">Alta</th>
+                  <th className="p-3"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {usuarios.map((u) => (
+                  <Fragment key={u.id_usuario}>
                     <tr className="border-b border-neutral-100 last:border-0">
-                      <td colSpan={6} className="bg-neutral-50 p-0">
-                        <FilaPermisos usuario={u} />
+                      <td className="p-3 font-medium text-neutral-900">{u.nombre}</td>
+                      <td className="p-3 text-neutral-500">{u.email}</td>
+                      <td className="p-3">
+                        <span className="text-xs bg-neutral-100 text-neutral-600 rounded-full px-2 py-0.5">
+                          {etiquetaRolBase(u.rol)}
+                          {u.rol !== "admin" && u.id_rol && rolPorId.get(u.id_rol) && ` · ${rolPorId.get(u.id_rol)!.nombre}`}
+                        </span>
+                      </td>
+                      <td className="p-3">
+                        <span
+                          className={`text-xs rounded-full px-2 py-0.5 ${
+                            u.estado === "ACTIVO" ? "bg-emerald-50 text-emerald-700" : "bg-neutral-100 text-neutral-600"
+                          }`}
+                        >
+                          {u.estado}
+                        </span>
+                      </td>
+                      <td className="p-3 text-neutral-400">{formatearFecha(u.fecha_alta)}</td>
+                      <td className="p-3 text-right whitespace-nowrap">
+                        <button
+                          onClick={() => setExpandido(expandido === u.id_usuario ? null : u.id_usuario)}
+                          className="text-sm text-accent hover:underline mr-3"
+                        >
+                          Permisos
+                        </button>
+                        <FilaAcciones usuario={u} onCambiarPassword={() => setCambiandoPassword(u)} />
                       </td>
                     </tr>
-                  )}
-                </Fragment>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+                    {expandido === u.id_usuario && (
+                      <tr className="border-b border-neutral-100 last:border-0">
+                        <td colSpan={6} className="bg-neutral-50 p-0">
+                          <FilaPermisos usuario={u} roles={roles} />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      ) : (
+        <TabRoles roles={roles} />
+      )}
 
       {modalOpen && <NuevoUsuarioModal onClose={() => setModalOpen(false)} />}
       {cambiandoPassword && (
@@ -134,7 +171,7 @@ function FilaAcciones({ usuario, onCambiarPassword }: { usuario: UsuarioSinHash;
   );
 }
 
-function FilaPermisos({ usuario }: { usuario: UsuarioSinHash }) {
+function FilaPermisos({ usuario, roles }: { usuario: UsuarioSinHash; roles: Rol[] }) {
   const [permisos, setPermisos] = useState<string[]>(usuario.permisos ?? []);
   const [isPending, startTransition] = useTransition();
   const [guardado, setGuardado] = useState(false);
@@ -143,7 +180,7 @@ function FilaPermisos({ usuario }: { usuario: UsuarioSinHash }) {
   if (usuario.rol === "admin") {
     return (
       <p className="text-sm text-neutral-500 px-4 py-4">
-        {usuario.nombre} es administrador — tiene todos los permisos siempre, no hace falta tildar nada.
+        {usuario.nombre} es Dueño — tiene todos los permisos siempre, no hace falta tildar nada.
       </p>
     );
   }
@@ -164,6 +201,8 @@ function FilaPermisos({ usuario }: { usuario: UsuarioSinHash }) {
 
   return (
     <div className="px-4 py-4">
+      <SelectorRolAcceso usuario={usuario} roles={roles} />
+
       <p className="text-xs text-neutral-500 mb-3">
         Permisos puntuales para {usuario.nombre} — se aplican al toque, no hace falta que reloguee.
       </p>
@@ -193,6 +232,166 @@ function FilaPermisos({ usuario }: { usuario: UsuarioSinHash }) {
         {isPending ? "Guardando..." : "Guardar permisos"}
       </button>
     </div>
+  );
+}
+
+// Qué pantallas del menú puede ver este operativo — si no tiene ningún rol
+// asignado, sigue viendo todo (igual que siempre), para no romper a nadie
+// que ya estaba cargado antes de que existiera esto.
+function SelectorRolAcceso({ usuario, roles }: { usuario: UsuarioSinHash; roles: Rol[] }) {
+  const [idRol, setIdRol] = useState(usuario.id_rol ?? "");
+  const [isPending, startTransition] = useTransition();
+  const [guardado, setGuardado] = useState(false);
+
+  function handleChange(valor: string) {
+    setIdRol(valor);
+    setGuardado(false);
+    startTransition(async () => {
+      await actualizarRolUsuario(usuario.id_usuario, valor || null);
+      setGuardado(true);
+    });
+  }
+
+  return (
+    <div className="bg-white border border-neutral-200 rounded-lg px-3 py-3 mb-3">
+      <label className="block text-xs font-medium text-neutral-600 mb-1">Rol de acceso (qué pantallas puede ver)</label>
+      <select
+        value={idRol}
+        onChange={(e) => handleChange(e.target.value)}
+        disabled={isPending}
+        className="w-full sm:w-64 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm"
+      >
+        <option value="">Sin restricción — ve todo el menú</option>
+        {roles.map((r) => (
+          <option key={r.id_rol} value={r.id_rol}>
+            {r.nombre}
+          </option>
+        ))}
+      </select>
+      {guardado && <span className="text-xs text-emerald-600 ml-2">Guardado.</span>}
+      {roles.length === 0 && (
+        <p className="text-xs text-neutral-400 mt-1.5">Todavía no creaste ningún rol — hacelo en la pestaña "Roles".</p>
+      )}
+    </div>
+  );
+}
+
+function TabRoles({ roles }: { roles: Rol[] }) {
+  const [creando, setCreando] = useState(false);
+  const [expandido, setExpandido] = useState<string | null>(null);
+
+  return (
+    <div>
+      <div className="flex justify-end mb-3">
+        <button
+          onClick={() => setCreando((v) => !v)}
+          className="rounded-lg bg-accent hover:bg-accent-dark text-white px-4 py-2 text-sm font-medium"
+        >
+          {creando ? "Cancelar" : "+ Nuevo rol"}
+        </button>
+      </div>
+
+      {creando && <FormRol onGuardado={() => setCreando(false)} />}
+
+      {roles.length === 0 ? (
+        <p className="text-sm text-neutral-400 text-center py-10 bg-white border border-neutral-200 rounded-xl">
+          Todavía no creaste ningún rol.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {roles.map((r) => (
+            <div key={r.id_rol} className="bg-white border border-neutral-200 rounded-xl overflow-hidden">
+              <button
+                onClick={() => setExpandido(expandido === r.id_rol ? null : r.id_rol)}
+                className="w-full flex items-center justify-between px-4 py-3 text-left"
+              >
+                <div>
+                  <span className="font-semibold text-neutral-900 text-sm">{r.nombre}</span>
+                  <span className="ml-3 text-xs text-neutral-400">{r.pantallas.length} pantallas habilitadas</span>
+                </div>
+                <span className="text-neutral-400 text-xs">{expandido === r.id_rol ? "▾" : "▸"}</span>
+              </button>
+              {expandido === r.id_rol && (
+                <div className="px-4 pb-4 border-t border-neutral-100 pt-3">
+                  <FormRol rol={r} onGuardado={() => setExpandido(null)} />
+                  <button
+                    onClick={() => cambiarEstadoRol(r.id_rol, "INACTIVO")}
+                    className="text-xs text-red-500 hover:text-red-700 mt-2"
+                  >
+                    Desactivar rol
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const GRUPOS_PANTALLAS = [...new Set(PANTALLAS_DISPONIBLES.map((p) => p.grupo))];
+
+function FormRol({ rol, onGuardado }: { rol?: Rol; onGuardado: () => void }) {
+  const [nombre, setNombre] = useState(rol?.nombre ?? "");
+  const [pantallas, setPantallas] = useState<string[]>(rol?.pantallas ?? []);
+  const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  function toggle(clave: string) {
+    setPantallas((prev) => (prev.includes(clave) ? prev.filter((p) => p !== clave) : [...prev, clave]));
+  }
+
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError(null);
+    const formData = new FormData();
+    formData.set("nombre", nombre);
+    pantallas.forEach((p) => formData.append("pantallas", p));
+    startTransition(async () => {
+      const res = rol ? await actualizarRol(rol.id_rol, formData) : await crearRol(formData);
+      if (res.error) setError(res.error);
+      else onGuardado();
+    });
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className={rol ? "" : "bg-white border border-neutral-200 rounded-xl p-4 mb-3"}>
+      {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
+      <div className="mb-3">
+        <label className="block text-xs font-medium text-neutral-600 mb-1">Nombre del rol</label>
+        <input
+          value={nombre}
+          onChange={(e) => setNombre(e.target.value)}
+          placeholder="Ej: Administración, Encargado de local"
+          required
+          className="w-full sm:w-72 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm"
+        />
+      </div>
+      <p className="text-xs font-medium text-neutral-600 mb-2">Qué pantallas puede ver</p>
+      <div className="space-y-3 mb-3">
+        {GRUPOS_PANTALLAS.map((grupo) => (
+          <div key={grupo}>
+            <p className="text-[11px] font-bold uppercase tracking-wide text-neutral-400 mb-1.5">{grupo}</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+              {PANTALLAS_DISPONIBLES.filter((p) => p.grupo === grupo).map((p) => (
+                <label key={p.clave} className="flex items-center gap-1.5 text-sm bg-neutral-50 border border-neutral-200 rounded-lg px-2.5 py-1.5 cursor-pointer">
+                  <input type="checkbox" checked={pantallas.includes(p.clave)} onChange={() => toggle(p.clave)} />
+                  {p.label}
+                </label>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      <button
+        type="submit"
+        disabled={isPending}
+        className="rounded-lg bg-accent hover:bg-accent-dark text-white px-4 py-1.5 text-sm font-medium disabled:opacity-50"
+      >
+        {isPending ? "Guardando..." : rol ? "Guardar cambios" : "Crear rol"}
+      </button>
+    </form>
   );
 }
 
@@ -257,8 +456,8 @@ function NuevoUsuarioModal({ onClose }: { onClose: () => void }) {
               defaultValue="operativo"
               className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
             >
-              <option value="admin">Administración</option>
-              <option value="operativo">Operativo de local</option>
+              <option value="admin">Dueño (acceso total)</option>
+              <option value="operativo">Operativo — le asignás un Rol después</option>
             </select>
           </div>
           <div>

@@ -57,10 +57,25 @@ const GROUPS: NavGroup[] = [
 
 const SUELTO: NavItem = { href: "/configuracion", label: "Configuración" };
 
-export default function AppNav() {
+// Solo el Dueño (rol admin) ve esto — es la línea de tiempo de todo lo que
+// se movió de plata en Fases 1 a 6, nunca delegable a un rol configurable.
+const AUDITORIA: NavItem = { href: "/auditoria", label: "🔍 Auditoría" };
+
+function clave(href: string) {
+  return href.replace(/^\//, "");
+}
+
+export default function AppNav({ pantallas, esAdmin }: { pantallas: string[] | null; esAdmin: boolean }) {
   const pathname = usePathname();
   const [abierto, setAbierto] = useState<string | null>(null);
   const navRef = useRef<HTMLElement>(null);
+
+  // pantallas === null: sin restricción, ve todo el menú (Dueño, o un
+  // operativo sin rol asignado todavía — nunca arrancar a nadie en blanco).
+  const puedeVer = (href: string) => pantallas === null || pantallas.includes(clave(href));
+  const grupos = GROUPS.map((g) => ({ ...g, items: g.items.filter((i) => puedeVer(i.href)) })).filter(
+    (g) => g.items.length > 0
+  );
 
   // Cerrar el desplegable al hacer click afuera o al navegar.
   useEffect(() => {
@@ -79,7 +94,7 @@ export default function AppNav() {
 
   return (
     <nav ref={navRef} className="flex flex-wrap items-center gap-1">
-      {GROUPS.map((grupo) => {
+      {grupos.map((grupo) => {
         const grupoActivo = grupo.items.some((i) => esActivo(i.href));
         const grupoAbierto = abierto === grupo.label;
         return (
@@ -120,6 +135,16 @@ export default function AppNav() {
       >
         {SUELTO.label}
       </Link>
+      {esAdmin && (
+        <Link
+          href={AUDITORIA.href}
+          className={`text-sm font-semibold px-2.5 py-1.5 rounded-lg ${
+            esActivo(AUDITORIA.href) ? "text-accent bg-accent-tint" : "text-neutral-600 hover:text-neutral-900"
+          }`}
+        >
+          {AUDITORIA.label}
+        </Link>
+      )}
     </nav>
   );
 }

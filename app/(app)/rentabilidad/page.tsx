@@ -1,9 +1,14 @@
 import { getSupabaseServerClient, type Marca } from "@/lib/supabase";
+import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
+import PantallaBloqueada from "@/components/PantallaBloqueada";
 import RentabilidadApp from "@/components/RentabilidadApp";
 
 export const dynamic = "force-dynamic";
 
 export default async function RentabilidadPage() {
+  const sesion = await obtenerSesionConPantallas();
+  if (!puedeVerPantalla(sesion, "rentabilidad")) return <PantallaBloqueada />;
+
   const supabase = getSupabaseServerClient();
 
   const { data, error } = await supabase

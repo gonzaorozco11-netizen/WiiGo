@@ -1,9 +1,14 @@
 import { getSupabaseServerClient, type Objetivo, type FiltroProducto } from "@/lib/supabase";
+import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
+import PantallaBloqueada from "@/components/PantallaBloqueada";
 import CatalogoAsesorApp from "@/components/CatalogoAsesorApp";
 
 export const dynamic = "force-dynamic";
 
 export default async function CatalogoAsesorPage() {
+  const sesion = await obtenerSesionConPantallas();
+  if (!puedeVerPantalla(sesion, "catalogo-asesor")) return <PantallaBloqueada />;
+
   const supabase = getSupabaseServerClient();
 
   const [objetivosRes, filtrosRes] = await Promise.all([

@@ -6,11 +6,16 @@ import {
   type VarianteProducto,
   type Stock,
 } from "@/lib/supabase";
+import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
+import PantallaBloqueada from "@/components/PantallaBloqueada";
 import PosApp from "@/components/PosApp";
 
 export const dynamic = "force-dynamic";
 
 export default async function PosPage() {
+  const sesion = await obtenerSesionConPantallas();
+  if (!puedeVerPantalla(sesion, "pos")) return <PantallaBloqueada />;
+
   const supabase = getSupabaseServerClient();
 
   const [localesRes, productosRes, variantesRes, marcasRes, stockRes, configRes] = await Promise.all([

@@ -1,11 +1,16 @@
 import { getSupabaseServerClient, type Local } from "@/lib/supabase";
 import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos";
+import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
+import PantallaBloqueada from "@/components/PantallaBloqueada";
 import { listarCategorias, listarSubcategorias } from "@/app/(app)/gastos/actions";
 import GastosApp from "@/components/GastosApp";
 
 export const dynamic = "force-dynamic";
 
 export default async function GastosPage() {
+  const sesionPantallas = await obtenerSesionConPantallas();
+  if (!puedeVerPantalla(sesionPantallas, "gastos")) return <PantallaBloqueada />;
+
   const supabase = getSupabaseServerClient();
 
   const [localesRes, usuariosRes, turnosAbiertosRes, categorias, subcategorias, configRes, sesion] = await Promise.all([

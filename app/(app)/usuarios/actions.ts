@@ -7,6 +7,7 @@ import { friendlyDbError } from "@/lib/errors";
 import { hashPassword } from "@/lib/auth";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 import { obtenerSesionConPermisos, tienePermiso, PERMISOS, PERMISOS_DISPONIBLES } from "@/lib/permisos";
+import { PANTALLAS_DISPONIBLES } from "@/lib/pantallas";
 
 function text(formData: FormData, name: string) {
   const s = String(formData.get(name) ?? "").trim();
@@ -116,6 +117,77 @@ export async function actualizarPermisosUsuario(id: string, permisos: string[]):
 
   const supabase = getSupabaseServerClient();
   const { error } = await supabase.from("usuarios").update({ permisos: permisosLimpios }).eq("id_usuario", id);
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath("/usuarios");
+  return { error: null };
+}
+
+// ===================== ROLES (Fase 7) =====================
+// Un rol define qué pantallas puede ver un usuario "operativo" (Dueño =
+// rol admin sigue viendo todo siempre, no pasa por acá). Se guarda como un
+// registro versionable a futuro, pero por ahora es simple: nombre + lista
+// de pantallas — ver lib/pantallas.ts para el catálogo completo.
+
+export async function listarRoles() {
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase.from("roles").select("*").eq("estado", "ACTIVO").order("nombre");
+  if (error) throw new Error(friendlyDbError(error));
+  return data ?? [];
+}
+
+function pantallasValidas(pantallas: string[]) {
+  const claves = new Set(PANTALLAS_DISPONIBLES.map((p) => p.clave));
+  return pantallas.filter((p) => claves.has(p));
+}
+
+export async function crearRol(formData: FormData): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+
+  const nombre = text(formData, "nombre");
+  if (!nombre) return { error: "El nombre del rol es obligatorio" };
+  const pantallas = pantallasValidas(formData.getAll("pantallas") as string[]);
+
+  const supabase = getSupabaseServerClient();
+  const { error } = await supabase.from("roles").insert({ nombre, pantallas, estado: "ACTIVO" });
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath("/usuarios");
+  return { error: null };
+}
+
+export async function actualizarRol(idRol: string, formData: FormData): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+
+  const nombre = text(formData, "nombre");
+  if (!nombre) return { error: "El nombre del rol es obligatorio" };
+  const pantallas = pantallasValidas(formData.getAll("pantallas") as string[]);
+
+  const supabase = getSupabaseServerClient();
+  const { error } = await supabase.from("roles").update({ nombre, pantallas }).eq("id_rol", idRol);
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath("/usuarios");
+  return { error: null };
+}
+
+export async function cambiarEstadoRol(idRol: string, estado: string): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+
+  const supabase = getSupabaseServerClient();
+  const { error } = await supabase.from("roles").update({ estado }).eq("id_rol", idRol);
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath("/usuarios");
+  return { error: null };
+}
+
+// Asigna (o saca, con idRol null) el rol de acceso de un usuario operativo.
+export async function actualizarRolUsuario(idUsuario: string, idRol: string | null): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+
+  const supabase = getSupabaseServerClient();
+  const { error } = await supabase.from("usuarios").update({ id_rol: idRol }).eq("id_usuario", idUsuario);
   if (error) return { error: friendlyDbError(error) };
   revalidatePath("/usuarios");
   return { error: null };

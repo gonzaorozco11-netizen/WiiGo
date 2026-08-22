@@ -8,11 +8,16 @@ import {
   type Stock,
   type MovimientoStock,
 } from "@/lib/supabase";
+import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
+import PantallaBloqueada from "@/components/PantallaBloqueada";
 import StockApp from "@/components/StockApp";
 
 export const dynamic = "force-dynamic";
 
 export default async function StockPage() {
+  const sesion = await obtenerSesionConPantallas();
+  if (!puedeVerPantalla(sesion, "stock")) return <PantallaBloqueada />;
+
   const supabase = getSupabaseServerClient();
 
   const [localesRes, variantesRes, productosRes, marcasRes, subcategoriasRes, stockRes, movimientosRes] =

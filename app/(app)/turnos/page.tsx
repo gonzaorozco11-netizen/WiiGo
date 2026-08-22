@@ -1,9 +1,14 @@
 import { getSupabaseServerClient, type Local, type Turno } from "@/lib/supabase";
+import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
+import PantallaBloqueada from "@/components/PantallaBloqueada";
 import TurnosApp from "@/components/TurnosApp";
 
 export const dynamic = "force-dynamic";
 
 export default async function TurnosPage() {
+  const sesion = await obtenerSesionConPantallas();
+  if (!puedeVerPantalla(sesion, "turnos")) return <PantallaBloqueada />;
+
   const supabase = getSupabaseServerClient();
 
   const [localesRes, turnosAbiertosRes] = await Promise.all([

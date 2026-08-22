@@ -9,11 +9,16 @@ import {
   type DetalleReposicion,
   type DetalleRecepcion,
 } from "@/lib/supabase";
+import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
+import PantallaBloqueada from "@/components/PantallaBloqueada";
 import ReposicionApp from "@/components/ReposicionApp";
 
 export const dynamic = "force-dynamic";
 
 export default async function ReposicionPage() {
+  const sesion = await obtenerSesionConPantallas();
+  if (!puedeVerPantalla(sesion, "reposicion")) return <PantallaBloqueada />;
+
   const supabase = getSupabaseServerClient();
 
   const [marcasRes, localesRes, productosRes, variantesRes, stockRes, ordenesRes, detalleRes, detalleRecepcionRes] =

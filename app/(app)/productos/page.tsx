@@ -1,6 +1,8 @@
 import { getSupabaseServerClient, type Producto, type Marca, type Subcategoria, type Local } from "@/lib/supabase";
 import { fetchContenidoAsesor } from "@/lib/contenidoAsesor";
 import { fetchVariantesPorProducto } from "@/lib/variantes";
+import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
+import PantallaBloqueada from "@/components/PantallaBloqueada";
 import ProductosApp from "@/components/ProductosApp";
 
 export const dynamic = "force-dynamic";
@@ -12,6 +14,9 @@ const DIAS_VENTANA = 30;
 const DIAS_COBERTURA = 14;
 
 export default async function ProductosPage() {
+  const sesion = await obtenerSesionConPantallas();
+  if (!puedeVerPantalla(sesion, "productos")) return <PantallaBloqueada />;
+
   const supabase = getSupabaseServerClient();
 
   const cutoff = new Date();

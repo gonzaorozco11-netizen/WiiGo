@@ -1,9 +1,14 @@
 import { getSupabaseServerClient, type Marca, type Local } from "@/lib/supabase";
+import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
+import PantallaBloqueada from "@/components/PantallaBloqueada";
 import SituacionMarcaApp from "@/components/SituacionMarcaApp";
 
 export const dynamic = "force-dynamic";
 
 export default async function SituacionMarcaPage() {
+  const sesion = await obtenerSesionConPantallas();
+  if (!puedeVerPantalla(sesion, "situacion-marca")) return <PantallaBloqueada />;
+
   const supabase = getSupabaseServerClient();
 
   const [marcasRes, localesRes] = await Promise.all([

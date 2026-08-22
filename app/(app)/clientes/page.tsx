@@ -1,9 +1,14 @@
 import { getSupabaseServerClient, type Cliente } from "@/lib/supabase";
+import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
+import PantallaBloqueada from "@/components/PantallaBloqueada";
 import ClientesApp from "@/components/ClientesApp";
 
 export const dynamic = "force-dynamic";
 
 export default async function ClientesPage() {
+  const sesion = await obtenerSesionConPantallas();
+  if (!puedeVerPantalla(sesion, "clientes")) return <PantallaBloqueada />;
+
   const supabase = getSupabaseServerClient();
 
   const { data, error } = await supabase.from("clientes").select("*").order("nombre", { ascending: true });

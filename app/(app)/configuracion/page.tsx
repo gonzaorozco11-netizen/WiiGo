@@ -1,4 +1,4 @@
-import { getSupabaseServerClient, type Usuario } from "@/lib/supabase";
+import { getSupabaseServerClient, type Usuario, type Rol } from "@/lib/supabase";
 import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos";
 import ConfiguracionApp from "@/components/ConfiguracionApp";
 
@@ -23,8 +23,11 @@ export default async function ConfiguracionPage() {
   const usuariosRes = esAdmin
     ? await supabase
         .from("usuarios")
-        .select("id_usuario, nombre, email, rol, estado, fecha_alta, permisos")
+        .select("id_usuario, nombre, email, rol, estado, fecha_alta, permisos, id_rol")
         .order("nombre", { ascending: true })
+    : null;
+  const rolesRes = esAdmin
+    ? await supabase.from("roles").select("*").eq("estado", "ACTIVO").order("nombre", { ascending: true })
     : null;
 
   const { data } = await supabase
@@ -71,6 +74,7 @@ export default async function ConfiguracionPage() {
       gastosTopeSinAutorizacion={Number(valores.get("GASTOS_TOPE_SIN_AUTORIZACION") ?? 10000)}
       esAdmin={esAdmin}
       usuarios={(usuariosRes?.data ?? []) as Omit<Usuario, "password_hash">[]}
+      roles={(rolesRes?.data ?? []) as Rol[]}
     />
   );
 }

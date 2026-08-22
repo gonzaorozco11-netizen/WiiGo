@@ -19,6 +19,7 @@ import {
   registrarCompensacion,
 } from "@/lib/compensacionesMarca";
 import { calcularRendicion, historialLiquidaciones } from "@/app/(app)/liquidaciones/actions";
+import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 
 async function sesionActual() {
   const cookieStore = await cookies();
@@ -26,12 +27,16 @@ async function sesionActual() {
   return readSessionToken(token, process.env.AUTH_SECRET ?? "");
 }
 
-// Fee, gasto fijo y pagos mueven plata real que la marca le debe a WiiGo —
-// solo admin puede tocarlos (mismo criterio que Profesionales). Ver la
-// situación (lecturas) queda abierto a cualquiera logueado.
+// Fee, gasto fijo, pagos y compensaciones mueven plata real que la marca le
+// debe a WiiGo — antes exigía ser Dueño siempre; ahora también puede
+// hacerlo un operativo cuyo Rol (Usuarios → Roles) incluya la pantalla
+// "situacion-marca". Ver la situación (lecturas) queda abierto a cualquiera
+// logueado, igual que antes.
 async function requireAdmin() {
-  const sesion = await sesionActual();
-  if (sesion?.rol !== "admin") return "No tenés permiso para hacer esto — hace falta ser administrador.";
+  const sesion = await obtenerSesionConPantallas();
+  if (!puedeVerPantalla(sesion, "situacion-marca")) {
+    return "No tenés permiso para hacer esto.";
+  }
   return null;
 }
 

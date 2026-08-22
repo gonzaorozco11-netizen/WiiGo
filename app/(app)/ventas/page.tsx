@@ -8,11 +8,16 @@ import {
   type Marca,
   type Cliente,
 } from "@/lib/supabase";
+import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
+import PantallaBloqueada from "@/components/PantallaBloqueada";
 import VentasApp from "@/components/VentasApp";
 
 export const dynamic = "force-dynamic";
 
 export default async function VentasPage() {
+  const sesion = await obtenerSesionConPantallas();
+  if (!puedeVerPantalla(sesion, "ventas")) return <PantallaBloqueada />;
+
   const supabase = getSupabaseServerClient();
 
   const [localesRes, ventasRes, detalleRes, productosRes, variantesRes, marcasRes, clientesRes] = await Promise.all([
