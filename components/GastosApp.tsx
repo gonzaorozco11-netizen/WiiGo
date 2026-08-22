@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { Local, Gasto, MovimientoCajaAdmin, GastoRecurrente } from "@/lib/supabase";
 import {
   crearGasto,
+  actualizarGasto,
   listarGastos,
   resumenGastos,
   obtenerUrlComprobanteGasto,
@@ -208,6 +209,7 @@ function TabGastos({
   const [resumen, setResumen] = useState<Resumen | null>(null);
   const [presupuestos, setPresupuestos] = useState<Map<string, number>>(new Map());
   const [cargando, setCargando] = useState(false);
+  const [modalGasto, setModalGasto] = useState<"nuevo" | Gasto | null>(null);
 
   const { desde, hasta } = useMemo(() => {
     if (periodo === "hoy") return { desde: hoyISO(), hasta: hoyISO() };
@@ -242,24 +244,32 @@ function TabGastos({
 
   return (
     <div>
-      <div className="flex flex-wrap gap-2 items-center mb-4">
-        <select value={filtroLocal} onChange={(e) => setFiltroLocal(e.target.value)} className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-sm">
-          <option value="">Todos los locales</option>
-          {locales.map((l) => (
-            <option key={l.id_local} value={l.id_local}>{l.nombre}</option>
-          ))}
-        </select>
-        <select value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)} className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-sm">
-          <option value="">Todas las categorías</option>
-          {categorias.map((c) => (
-            <option key={c.id_categoria} value={c.id_categoria}>{c.nombre}</option>
-          ))}
-        </select>
-        <select value={periodo} onChange={(e) => setPeriodo(e.target.value as typeof periodo)} className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-sm">
-          <option value="mes">Este mes</option>
-          <option value="semana">Últimos 7 días</option>
-          <option value="hoy">Hoy</option>
-        </select>
+      <div className="flex flex-wrap gap-2 items-center justify-between mb-4">
+        <div className="flex flex-wrap gap-2 items-center">
+          <select value={filtroLocal} onChange={(e) => setFiltroLocal(e.target.value)} className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-sm">
+            <option value="">Todos los locales</option>
+            {locales.map((l) => (
+              <option key={l.id_local} value={l.id_local}>{l.nombre}</option>
+            ))}
+          </select>
+          <select value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)} className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-sm">
+            <option value="">Todas las categorías</option>
+            {categorias.map((c) => (
+              <option key={c.id_categoria} value={c.id_categoria}>{c.nombre}</option>
+            ))}
+          </select>
+          <select value={periodo} onChange={(e) => setPeriodo(e.target.value as typeof periodo)} className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-sm">
+            <option value="mes">Este mes</option>
+            <option value="semana">Últimos 7 días</option>
+            <option value="hoy">Hoy</option>
+          </select>
+        </div>
+        <button
+          onClick={() => setModalGasto("nuevo")}
+          className="bg-accent hover:bg-accent-dark text-white font-medium px-4 py-2 rounded-lg text-sm"
+        >
+          + Nuevo gasto
+        </button>
       </div>
 
       {resumen && (
@@ -362,12 +372,15 @@ function TabGastos({
                           <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">OK</span>
                         )}
                       </td>
-                      <td className="p-3">
+                      <td className="p-3 whitespace-nowrap">
                         {g.comprobante_path && (
-                          <button onClick={() => handleVerComprobante(g.comprobante_path!)} className="text-accent text-xs font-medium">
+                          <button onClick={() => handleVerComprobante(g.comprobante_path!)} className="text-accent text-xs font-medium mr-2.5">
                             Ver comprobante
                           </button>
                         )}
+                        <button onClick={() => setModalGasto(g)} className="text-accent text-xs font-medium">
+                          Editar
+                        </button>
                       </td>
                     </tr>
                   );
@@ -378,15 +391,19 @@ function TabGastos({
         )}
       </div>
 
-      <FormNuevoGasto
-        locales={locales}
-        usuarios={usuarios}
-        turnosAbiertos={turnosAbiertos}
-        categorias={categorias}
-        subcategorias={subcategorias}
-        puedeAutorizarSinLimite={puedeAutorizarSinLimite}
-        topeAutorizacion={topeAutorizacion}
-      />
+      {modalGasto && (
+        <FormNuevoGasto
+          gasto={modalGasto === "nuevo" ? null : modalGasto}
+          locales={locales}
+          usuarios={usuarios}
+          turnosAbiertos={turnosAbiertos}
+          categorias={categorias}
+          subcategorias={subcategorias}
+          puedeAutorizarSinLimite={puedeAutorizarSinLimite}
+          topeAutorizacion={topeAutorizacion}
+          onClose={() => setModalGasto(null)}
+        />
+      )}
     </div>
   );
 }
@@ -450,6 +467,7 @@ function PresupuestosPorCategoria({
 }
 
 function FormNuevoGasto({
+  gasto = null,
   locales,
   usuarios,
   turnosAbiertos,
@@ -457,7 +475,9 @@ function FormNuevoGasto({
   subcategorias,
   puedeAutorizarSinLimite,
   topeAutorizacion,
+  onClose,
 }: {
+  gasto?: Gasto | null;
   locales: Local[];
   usuarios: UsuarioMin[];
   turnosAbiertos: TurnoAbiertoMin[];
@@ -465,17 +485,21 @@ function FormNuevoGasto({
   subcategorias: SubcategoriaGasto[];
   puedeAutorizarSinLimite: boolean;
   topeAutorizacion: number;
+  onClose: () => void;
 }) {
-  const [idCategoria, setIdCategoria] = useState(categorias[0]?.id_categoria ?? "__nueva__");
+  const isEditing = !!gasto;
+  const [idCategoria, setIdCategoria] = useState(gasto?.id_categoria ?? categorias[0]?.id_categoria ?? "__nueva__");
   const [nuevaCategoria, setNuevaCategoria] = useState("");
-  const [idSubcategoria, setIdSubcategoria] = useState("");
+  const [idSubcategoria, setIdSubcategoria] = useState(gasto?.id_subcategoria ?? "");
   const [nuevaSubcategoria, setNuevaSubcategoria] = useState("");
-  const [monto, setMonto] = useState("");
-  const [tipo, setTipo] = useState<"FIJO" | "VARIABLE">(categorias[0]?.tipo_default === "FIJO" ? "FIJO" : "VARIABLE");
+  const [monto, setMonto] = useState(gasto ? String(gasto.monto) : "");
+  const [tipo, setTipo] = useState<"FIJO" | "VARIABLE">(
+    gasto ? (gasto.tipo === "FIJO" ? "FIJO" : "VARIABLE") : categorias[0]?.tipo_default === "FIJO" ? "FIJO" : "VARIABLE"
+  );
   const [idLocal, setIdLocal] = useState(locales[0]?.id_local ?? "");
   const [medioPago, setMedioPago] = useState<"EFECTIVO_TURNO" | "EFECTIVO_ADMIN" | "TRANSFERENCIA" | "MERCADO_PAGO">("TRANSFERENCIA");
-  const [descripcion, setDescripcion] = useState("");
-  const [pendienteFactura, setPendienteFactura] = useState(false);
+  const [descripcion, setDescripcion] = useState(gasto?.descripcion ?? "");
+  const [pendienteFactura, setPendienteFactura] = useState(gasto?.pendiente_factura ?? false);
   const [idUsuarioAdelanto, setIdUsuarioAdelanto] = useState("");
   const [claveAdmin, setClaveAdmin] = useState("");
   const [guardando, setGuardando] = useState(false);
@@ -500,7 +524,8 @@ function FormNuevoGasto({
     setError(null);
     const formData = new FormData(e.currentTarget);
     setGuardando(true);
-    crearGasto(formData)
+    const promesa = isEditing ? actualizarGasto(gasto!.id_gasto, formData) : crearGasto(formData);
+    promesa
       .then((res) => {
         if (res.error) setError(res.error);
         else window.location.reload();
@@ -510,8 +535,14 @@ function FormNuevoGasto({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white border border-neutral-200 rounded-xl p-5">
-      <h2 className="text-base font-semibold text-neutral-900 mb-4">+ Nuevo gasto</h2>
+    <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+      <form onSubmit={handleSubmit} className="bg-white w-full sm:max-w-2xl rounded-t-2xl sm:rounded-2xl p-6 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-neutral-900">{isEditing ? "Editar gasto" : "+ Nuevo gasto"}</h2>
+          <button type="button" onClick={onClose} className="text-neutral-400 hover:text-neutral-700" aria-label="Cerrar">
+            ✕
+          </button>
+        </div>
 
       {error && (
         <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-4" role="alert">
@@ -599,18 +630,20 @@ function FormNuevoGasto({
             </button>
           </div>
         </div>
-        <div>
-          <label className="block text-sm font-medium text-neutral-700 mb-1">Local</label>
-          <select name="id_local" value={idLocal} onChange={(e) => setIdLocal(e.target.value)} className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm">
-            <option value="">Sin local (gasto general)</option>
-            {locales.map((l) => (
-              <option key={l.id_local} value={l.id_local}>{l.nombre}</option>
-            ))}
-          </select>
-        </div>
+        {!isEditing && (
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-1">Local</label>
+            <select name="id_local" value={idLocal} onChange={(e) => setIdLocal(e.target.value)} className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm">
+              <option value="">Sin local (gasto general)</option>
+              {locales.map((l) => (
+                <option key={l.id_local} value={l.id_local}>{l.nombre}</option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
-      {mostrarAdelanto && (
+      {!isEditing && mostrarAdelanto && (
         <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 mb-3">
           <label className="block text-sm font-medium text-purple-700 mb-1">👤 Empleado al que se le descuenta</label>
           <select name="id_usuario_adelanto" value={idUsuarioAdelanto} onChange={(e) => setIdUsuarioAdelanto(e.target.value)} className="w-full border border-purple-300 rounded-lg px-3 py-2 text-sm">
@@ -623,40 +656,60 @@ function FormNuevoGasto({
         </div>
       )}
 
-      <div className="mb-3">
-        <label className="block text-sm font-medium text-neutral-700 mb-1">¿De dónde sale la plata?</label>
-        <div className="flex flex-col gap-1.5">
-          {(["EFECTIVO_TURNO", "EFECTIVO_ADMIN", "TRANSFERENCIA", "MERCADO_PAGO"] as const).map((opcion) => (
-            <label
-              key={opcion}
-              className={`flex items-center gap-2 border rounded-lg px-3 py-2 text-sm cursor-pointer ${
-                medioPago === opcion ? "border-accent bg-accent-tint" : "border-neutral-300"
-              } ${opcion === "EFECTIVO_TURNO" && !turnoAbiertoDelLocal ? "opacity-40 cursor-not-allowed" : ""}`}
-            >
-              <input
-                type="radio"
-                name="medio_pago"
-                value={opcion}
-                checked={medioPago === opcion}
-                disabled={opcion === "EFECTIVO_TURNO" && !turnoAbiertoDelLocal}
-                onChange={() => setMedioPago(opcion)}
-              />
-              {MEDIO_PAGO_LABEL[opcion]}
-              {opcion === "EFECTIVO_TURNO" && !turnoAbiertoDelLocal && " — no hay turno abierto en ese local"}
-            </label>
-          ))}
+      {isEditing ? (
+        <p className="text-xs text-neutral-400 bg-neutral-50 border border-neutral-100 rounded-lg px-3 py-2 mb-3">
+          Local y medio de pago no se pueden editar acá (ya impactaron en el turno o la caja) — {MEDIO_PAGO_LABEL[gasto!.medio_pago] ?? gasto!.medio_pago}.
+          {gasto!.comprobante_path && (
+            <>
+              {" "}
+              <button
+                type="button"
+                onClick={() => obtenerUrlComprobanteGasto(gasto!.comprobante_path!).then((url) => window.open(url, "_blank"))}
+                className="text-accent font-semibold"
+              >
+                Ver comprobante
+              </button>
+            </>
+          )}
+        </p>
+      ) : (
+        <div className="mb-3">
+          <label className="block text-sm font-medium text-neutral-700 mb-1">¿De dónde sale la plata?</label>
+          <div className="flex flex-col gap-1.5">
+            {(["EFECTIVO_TURNO", "EFECTIVO_ADMIN", "TRANSFERENCIA", "MERCADO_PAGO"] as const).map((opcion) => (
+              <label
+                key={opcion}
+                className={`flex items-center gap-2 border rounded-lg px-3 py-2 text-sm cursor-pointer ${
+                  medioPago === opcion ? "border-accent bg-accent-tint" : "border-neutral-300"
+                } ${opcion === "EFECTIVO_TURNO" && !turnoAbiertoDelLocal ? "opacity-40 cursor-not-allowed" : ""}`}
+              >
+                <input
+                  type="radio"
+                  name="medio_pago"
+                  value={opcion}
+                  checked={medioPago === opcion}
+                  disabled={opcion === "EFECTIVO_TURNO" && !turnoAbiertoDelLocal}
+                  onChange={() => setMedioPago(opcion)}
+                />
+                {MEDIO_PAGO_LABEL[opcion]}
+                {opcion === "EFECTIVO_TURNO" && !turnoAbiertoDelLocal && " — no hay turno abierto en ese local"}
+              </label>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
         <div>
           <label className="block text-sm font-medium text-neutral-700 mb-1">Descripción</label>
           <input name="descripcion" value={descripcion} onChange={(e) => setDescripcion(e.target.value)} className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm" />
         </div>
-        <div>
-          <label className="block text-sm font-medium text-neutral-700 mb-1">Comprobante (opcional)</label>
-          <input type="file" name="comprobante" className="w-full text-sm" />
-        </div>
+        {!isEditing && (
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-1">Comprobante (opcional)</label>
+            <input type="file" name="comprobante" className="w-full text-sm" />
+          </div>
+        )}
       </div>
 
       <label className="flex items-center gap-2 text-sm text-neutral-700 mb-3">
@@ -683,10 +736,11 @@ function FormNuevoGasto({
 
       <div className="flex justify-end">
         <button type="submit" disabled={guardando} className="bg-accent hover:bg-accent-dark disabled:opacity-50 text-white font-medium px-5 py-2 rounded-lg text-sm">
-          {guardando ? "Guardando..." : "Guardar gasto"}
+          {guardando ? "Guardando..." : isEditing ? "Guardar cambios" : "Guardar gasto"}
         </button>
       </div>
-    </form>
+      </form>
+    </div>
   );
 }
 

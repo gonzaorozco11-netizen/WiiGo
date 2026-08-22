@@ -224,6 +224,77 @@ export async function crearGasto(formData: FormData): Promise<{ error: string | 
   }
 }
 
+// Edición de un gasto ya cargado — para corregir un error de tipeo (monto,
+// categoría, descripción). A propósito NO toca medio de pago, local ni
+// comprobante: esos están atados al turno/caja donde ya impactó la plata,
+// tocarlos ahí podría descuadrar un arqueo ya cerrado.
+export async function actualizarGasto(idGasto: string, formData: FormData): Promise<{ error: string | null }> {
+  try {
+    const supabase = getSupabaseServerClient();
+
+    const idCategoria = await resolveCategoria(supabase, formData);
+    if (!idCategoria) return { error: "Elegí o creá una categoría" };
+    const idSubcategoria = await resolveSubcategoria(supabase, formData, idCategoria);
+    if (!idSubcategoria) return { error: "Elegí o creá una subcategoría" };
+
+    const monto = number(formData, "monto");
+    if (!monto || monto <= 0) return { error: "El monto tiene que ser mayor a 0" };
+
+    const tipo = text(formData, "tipo") ?? "VARIABLE";
+    const descripcion = text(formData, "descripcion");
+    const pendienteFactura = formData.get("pendiente_factura") === "on";
+
+    // Mismo criterio que al crear: si el monto corregido supera el tope y
+    // quien edita no puede autorizar sin límite, hace falta la contraseña
+    // de alguien que sí pueda.
+    const tope = await topeAutorizacion(supabase);
+    let requirioAutorizacion = false;
+    let autorizadoPor: string | null = null;
+    const sesionCompleta = await obtenerSesionConPermisos();
+    if (!tienePermiso(sesionCompleta, PERMISOS.AUTORIZAR_GASTOS_SIN_LIMITE) && monto > tope) {
+      requirioAutorizacion = true;
+      const claveAdmin = String(formData.get("clave_admin") ?? "");
+      if (!claveAdmin) {
+        return { error: `Este gasto supera el tope de $${tope} — hace falta la contraseña de alguien autorizado.` };
+      }
+      const { data: candidatos } = await supabase
+        .from("usuarios")
+        .select("nombre, rol, permisos, password_hash")
+        .eq("estado", "ACTIVO");
+      let autorizador: { nombre: string } | null = null;
+      for (const c of candidatos ?? []) {
+        const puedeAutorizar = c.rol === "admin" || (c.permisos ?? []).includes(PERMISOS.AUTORIZAR_GASTOS_SIN_LIMITE);
+        if (puedeAutorizar && (await verifyPassword(claveAdmin, c.password_hash))) {
+          autorizador = c;
+          break;
+        }
+      }
+      if (!autorizador) return { error: "Contraseña incorrecta" };
+      autorizadoPor = autorizador.nombre;
+    }
+
+    const { error } = await supabase
+      .from("gastos")
+      .update({
+        id_categoria: idCategoria,
+        id_subcategoria: idSubcategoria,
+        tipo,
+        monto,
+        descripcion,
+        pendiente_factura: pendienteFactura,
+        requirio_autorizacion: requirioAutorizacion,
+        autorizado_por: autorizadoPor,
+      })
+      .eq("id_gasto", idGasto);
+    if (error) return { error: friendlyDbError(error) };
+
+    revalidatePath("/gastos");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo actualizar el gasto" };
+  }
+}
+
 export async function obtenerUrlComprobanteGasto(path: string) {
   const supabase = getSupabaseServerClient();
   const { data, error } = await supabase.storage.from("comprobantes-gasto").createSignedUrl(path, 60 * 10);
