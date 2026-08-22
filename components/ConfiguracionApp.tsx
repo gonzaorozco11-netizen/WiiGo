@@ -15,6 +15,7 @@ export default function ConfiguracionApp({
   puntosActivo,
   puntosCadaMonto,
   puntosOtorgados,
+  puntosTopeCanjePorcentaje,
   impCreditosPorcentaje,
   sircrebPorcentaje,
   impDebitosPorcentaje,
@@ -33,6 +34,7 @@ export default function ConfiguracionApp({
   puntosActivo: boolean;
   puntosCadaMonto: number;
   puntosOtorgados: number;
+  puntosTopeCanjePorcentaje: number;
   impCreditosPorcentaje: number;
   sircrebPorcentaje: number;
   impDebitosPorcentaje: number;
@@ -55,6 +57,7 @@ export default function ConfiguracionApp({
   const [activo, setActivo] = useState(puntosActivo);
   const [cadaMonto, setCadaMonto] = useState(puntosCadaMonto);
   const [otorgados, setOtorgados] = useState(puntosOtorgados);
+  const [topeCanje, setTopeCanje] = useState(puntosTopeCanjePorcentaje);
   const [compraEjemplo, setCompraEjemplo] = useState(23500);
 
   const [isPendingLiq, startTransitionLiq] = useTransition();
@@ -89,6 +92,9 @@ export default function ConfiguracionApp({
     if (!cadaMonto || cadaMonto <= 0) return 0;
     return Math.floor((compraEjemplo / cadaMonto) * otorgados);
   }, [compraEjemplo, cadaMonto, otorgados]);
+
+  const valorPorPunto = otorgados > 0 ? cadaMonto / otorgados : 0;
+  const maxCanjeEjemplo = Math.round(compraEjemplo * (topeCanje / 100));
 
   function handleSubmit(formData: FormData) {
     setGuardado(false);
@@ -246,6 +252,32 @@ export default function ConfiguracionApp({
           <p className="text-sm text-neutral-600">
             Compra de ${compraEjemplo.toLocaleString("es-AR")} →{" "}
             <strong className="text-neutral-900">{puntosCalculados} puntos</strong>
+          </p>
+        </div>
+
+        <div className="border-t border-dashed border-neutral-200 pt-4 mb-5">
+          <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="puntos_tope_canje_porcentaje">
+            Tope de canje — % máximo de una compra que se puede pagar con puntos
+          </label>
+          <div className="flex items-center gap-2 mb-2">
+            <input
+              id="puntos_tope_canje_porcentaje"
+              name="puntos_tope_canje_porcentaje"
+              type="number"
+              min={0}
+              max={100}
+              value={topeCanje}
+              onChange={(e) => setTopeCanje(Number(e.target.value))}
+              className="w-24 rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+            <span className="text-sm text-neutral-500">%</span>
+          </div>
+          <p className="text-xs text-neutral-400 mb-2">
+            En 0% el canje queda desactivado. 1 punto vale ${valorPorPunto.toLocaleString("es-AR", { maximumFractionDigits: 2 })} al canjear (misma tasa que la acumulación).
+          </p>
+          <p className="text-sm text-neutral-600">
+            Compra de ${compraEjemplo.toLocaleString("es-AR")} → como máximo se pueden pagar{" "}
+            <strong className="text-neutral-900">${maxCanjeEjemplo.toLocaleString("es-AR")}</strong> con puntos.
           </p>
         </div>
 

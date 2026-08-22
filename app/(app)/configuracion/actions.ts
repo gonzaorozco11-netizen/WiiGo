@@ -38,6 +38,8 @@ export async function guardarConfigPuntos(formData: FormData): Promise<{ error: 
   const activo = formData.get("puntos_activo") === "on";
   const cadaMonto = Number(formData.get("puntos_cada_monto") ?? 1000);
   const otorgados = Number(formData.get("puntos_otorgados") ?? 0);
+  const topeCanje = Number(formData.get("puntos_tope_canje_porcentaje") ?? 0);
+  if (topeCanje < 0 || topeCanje > 100) return { error: "El tope de canje tiene que estar entre 0% y 100%." };
 
   const supabase = getSupabaseServerClient();
 
@@ -56,6 +58,14 @@ export async function guardarConfigPuntos(formData: FormData): Promise<{ error: 
       "PUNTOS_OTORGADOS",
       String(otorgados),
       "WiiGo Club: cuántos puntos se otorgan por cada tramo de PUNTOS_CADA_MONTO"
+    );
+  }
+  if (!error) {
+    error = await guardarParametro(
+      supabase,
+      "PUNTOS_TOPE_CANJE_PORCENTAJE",
+      String(topeCanje),
+      "WiiGo Club: qué % máximo de una compra se puede pagar con puntos"
     );
   }
   if (error) return { error };

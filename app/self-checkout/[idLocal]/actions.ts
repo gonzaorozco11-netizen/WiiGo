@@ -4,6 +4,7 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { calcularBeneficioReferido, resolverCodigoProfesional } from "@/lib/referidosProfesionales";
 import { buscarProfesionalPorDni, verificarPinProfesional, calcularDescuentoCanje } from "@/lib/canjesProfesionales";
+import { calcularCanjePuntos } from "@/lib/puntosWiigo";
 
 type ItemCarrito = { idVariante: string; idMarca: string | null; cantidad: number; precioUnitario: number };
 type MedioPago = "EFECTIVO" | "MERCADO_PAGO";
@@ -34,13 +35,25 @@ export async function buscarCodigoProfesionalAction(codigo: string): Promise<{ n
   return { nombre: data ? `${data.nombre}${data.apellido ? ` ${data.apellido}` : ""}` : null, error: null };
 }
 
+// Para mostrarle al cliente, en vivo, cuánto puede cubrir con sus puntos
+// WiiGo antes de confirmar el pedido.
+export async function infoCanjePuntosAction(dni: string, montoAPagar: number) {
+  const supabase = getSupabaseServerClient();
+  const dniLimpio = dni.trim();
+  if (!dniLimpio) return null;
+  const { data: cliente } = await supabase.from("clientes").select("id_cliente").eq("dni", dniLimpio).maybeSingle();
+  if (!cliente) return null;
+  return calcularCanjePuntos(supabase, cliente.id_cliente, montoAPagar);
+}
+
 export async function confirmarPedido(
   idLocal: string,
   items: ItemCarrito[],
   dni: string,
   codigoProfesional: string,
   medioPago: MedioPago,
-  canje?: { idProfesional: string; pin: string; marcas: string[] }
+  canje?: { idProfesional: string; pin: string; marcas: string[] },
+  usarPuntosWiigo?: boolean
 ): Promise<{ error: string | null; pedido?: ResultadoPedido }> {
   if (items.length === 0) return { error: "El carrito está vacío" };
 
@@ -108,7 +121,21 @@ export async function confirmarPedido(
     descuentoCanje = resultadoCanje.descuentoTotal;
   }
 
-  const total = Math.max(subtotal - descuentoBeneficio - descuentoCanje, 0);
+  // El cliente puede cubrir parte de lo que le queda por pagar con sus
+  // propios puntos WiiGo — solo se calcula acá (para el total que ve en la
+  // pantalla), el descuento real de clientes.puntos recién se aplica cuando
+  // el personal confirma el cobro (mismo criterio que el resto de esta
+  // función: nada se descuenta hasta que la venta esté efectivamente paga).
+  let descuentoPuntos = 0;
+  let puntosACanjear = 0;
+  if (usarPuntosWiigo && idCliente) {
+    const montoAntesDePuntos = Math.max(subtotal - descuentoBeneficio - descuentoCanje, 0);
+    const infoPuntos = await calcularCanjePuntos(supabase, idCliente, montoAntesDePuntos);
+    descuentoPuntos = infoPuntos.maxDescuento;
+    puntosACanjear = infoPuntos.puntosNecesarios;
+  }
+
+  const total = Math.max(subtotal - descuentoBeneficio - descuentoCanje - descuentoPuntos, 0);
 
   const { data: venta, error: errorVenta } = await supabase
     .from("ventas")
@@ -117,7 +144,9 @@ export async function confirmarPedido(
       id_cliente: idCliente,
       id_local: idLocal,
       subtotal,
-      descuento: descuentoBeneficio + descuentoCanje,
+      descuento: descuentoBeneficio + descuentoCanje + descuentoPuntos,
+      descuento_puntos: descuentoPuntos || null,
+      puntos_canjeados: puntosACanjear || null,
       total,
       estado: "PENDIENTE_PAGO",
       medio_pago: medioPago,
@@ -144,7 +173,7 @@ export async function confirmarPedido(
 
     return {
       error: null,
-      pedido: { idVenta: venta.id_venta, numero: venta.numero as number, total, descuento: descuentoBeneficio },
+      pedido: { idVenta: venta.id_venta, numero: venta.numero as number, total, descuento: descuentoBeneficio + descuentoPuntos },
     };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo confirmar el pedido" };

@@ -8,6 +8,7 @@ import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 import { turnoAbiertoDeLocal } from "@/app/(app)/turnos/actions";
 import { calcularBeneficioReferido, registrarReferido, puntosExtraPorMonto } from "@/lib/referidosProfesionales";
 import { registrarCanje } from "@/lib/canjesProfesionales";
+import { calcularCanjePuntos, aplicarCanjePuntos } from "@/lib/puntosWiigo";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 async function usuarioActual() {
@@ -70,7 +71,7 @@ export async function confirmarCobro(
 
     const { data: venta, error: errorVenta } = await supabase
       .from("ventas")
-      .select("id_venta, id_cliente, id_local, total, estado, medio_pago, id_codigo_profesional, id_profesional_canje, marcas_canje")
+      .select("id_venta, id_cliente, id_local, total, estado, medio_pago, id_codigo_profesional, id_profesional_canje, marcas_canje, puntos_canjeados")
       .eq("id_venta", idVenta)
       .maybeSingle();
     if (errorVenta) return { error: friendlyDbError(errorVenta) };
@@ -186,6 +187,7 @@ export async function confirmarCobro(
   // pedido y el cobro, así que en la práctica es el mismo % que vio el
   // cliente al armar el carrito).
   let puntosExtra = 0;
+  let descuentoBeneficioReal = 0;
   if (venta.id_codigo_profesional) {
     const { data: codigo } = await supabase
       .from("codigos_profesionales")
@@ -205,6 +207,7 @@ export async function confirmarCobro(
           importe: d.subtotal ?? d.precio_unitario * d.cantidad,
         }))
       );
+      descuentoBeneficioReal = resultado.descuentoTotal;
       await registrarReferido(supabase, {
         idVenta,
         idCliente: venta.id_cliente,
@@ -223,18 +226,31 @@ export async function confirmarCobro(
   // recién se descuenta de su saldo cuando se confirma el cobro, no al armar
   // el pedido. El monto por marca se recalcula sumando los productos reales
   // de esa marca en esta venta — nunca se confía en un monto guardado.
+  let descuentoCanjeProfesionalReal = 0;
   if (venta.id_profesional_canje && venta.marcas_canje && venta.marcas_canje.length > 0) {
     const subtotalPorMarca = new Map<string, number>();
     for (const d of detalle ?? []) {
       if (!d.id_marca || !venta.marcas_canje.includes(d.id_marca)) continue;
       subtotalPorMarca.set(d.id_marca, (subtotalPorMarca.get(d.id_marca) ?? 0) + (d.subtotal ?? d.precio_unitario * d.cantidad));
     }
+    descuentoCanjeProfesionalReal = [...subtotalPorMarca.values()].reduce((acc, m) => acc + m, 0);
     await registrarCanje(supabase, {
       idProfesional: venta.id_profesional_canje,
       idVenta,
       porMarca: [...subtotalPorMarca.entries()].map(([idMarca, monto]) => ({ idMarca, monto })),
       usuario,
     });
+  }
+
+  // El descuento por puntos WiiGo del cliente se aplica recién acá (mismo
+  // criterio que el referido y el canje de profesional de arriba) —
+  // recalculado desde el subtotal real de la venta, nunca desde el número
+  // que se guardó al armar el pedido.
+  if (venta.id_cliente && (venta.puntos_canjeados ?? 0) > 0) {
+    const subtotalReal = (detalle ?? []).reduce((acc, d) => acc + (d.subtotal ?? d.precio_unitario * d.cantidad), 0);
+    const montoAntesDePuntos = Math.max(subtotalReal - descuentoBeneficioReal - descuentoCanjeProfesionalReal, 0);
+    const infoPuntos = await calcularCanjePuntos(supabase, venta.id_cliente, montoAntesDePuntos);
+    await aplicarCanjePuntos(supabase, venta.id_cliente, infoPuntos.puntosNecesarios);
   }
 
   // Sin cliente identificado no hay a quién sumarle los puntos, así que

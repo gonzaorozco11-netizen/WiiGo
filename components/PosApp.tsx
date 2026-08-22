@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { Local, Marca, Producto, VarianteProducto, Stock } from "@/lib/supabase";
-import { venderPos, buscarClientePorDni, buscarProfesionalPorDniAction, buscarCodigoProfesionalAction } from "@/app/(app)/pos/actions";
+import { venderPos, buscarClientePorDni, buscarProfesionalPorDniAction, buscarCodigoProfesionalAction, infoCanjePuntosAction } from "@/app/(app)/pos/actions";
 
 type Item = {
   variante: VarianteProducto;
@@ -76,6 +76,14 @@ export default function PosApp({
   const [pinCanje, setPinCanje] = useState("");
   const [codigoInfo, setCodigoInfo] = useState<{ nombre: string | null; error: string | null } | null>(null);
   const [buscandoCodigo, setBuscandoCodigo] = useState(false);
+  const [infoPuntos, setInfoPuntos] = useState<{
+    puntosDisponibles: number;
+    valorPorPunto: number;
+    topePorcentaje: number;
+    maxDescuento: number;
+    puntosNecesarios: number;
+  } | null>(null);
+  const [usarPuntosWiigo, setUsarPuntosWiigo] = useState(false);
 
   // Autocompletar nombre al escribir el DNI, con una pequeña pausa para
   // no consultar en cada tecla. El mismo DNI también identifica si es un
@@ -183,8 +191,25 @@ export default function PosApp({
     .reduce((acc, m) => acc + m.subtotalCarrito, 0);
 
   const totalConCanje = Math.max(subtotal - descuentoCanje, 0);
+  const descuentoPuntosPreview = usarPuntosWiigo && infoPuntos ? infoPuntos.maxDescuento : 0;
+  const totalFinal = Math.max(totalConCanje - descuentoPuntosPreview, 0);
   const montoNum = Number(montoRecibido.replace(/[^\d.-]/g, "")) || 0;
-  const vueltoPrevio = montoNum - totalConCanje;
+  const vueltoPrevio = montoNum - totalFinal;
+
+  // Cuánto puede cubrir el cliente con sus puntos WiiGo sobre lo que queda
+  // por pagar después del descuento de referido/canje de profesional — solo
+  // vista previa, el server vuelve a calcular todo antes de cobrar.
+  useEffect(() => {
+    const dniLimpio = dni.trim();
+    if (dniLimpio.length < 6 || totalConCanje <= 0) {
+      setInfoPuntos(null);
+      return;
+    }
+    const timeout = setTimeout(() => {
+      infoCanjePuntosAction(dniLimpio, totalConCanje).then(setInfoPuntos);
+    }, 400);
+    return () => clearTimeout(timeout);
+  }, [dni, totalConCanje]);
 
   function agregar(idVariante: string) {
     const item = itemPorVariante.get(idVariante);
@@ -224,6 +249,8 @@ export default function PosApp({
     setProfesional(null);
     setMarcasCanje(new Set());
     setPinCanje("");
+    setInfoPuntos(null);
+    setUsarPuntosWiigo(false);
   }
 
   const esMercadoPago = medioPago === "MERCADO_PAGO";
@@ -255,7 +282,8 @@ export default function PosApp({
       esMercadoPago ? formaPagoMp : undefined,
       profesional && marcasCanje.size > 0
         ? { idProfesional: profesional.idProfesional, pin: pinCanje, marcas: [...marcasCanje] }
-        : undefined
+        : undefined,
+      usarPuntosWiigo
     )
       .then((r) => {
         if (r.error) setError(r.error);
@@ -449,6 +477,17 @@ export default function PosApp({
         )}
       </div>
 
+      {infoPuntos && infoPuntos.maxDescuento > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+          <label className="flex items-center justify-between gap-2 cursor-pointer">
+            <span className="text-sm font-bold text-amber-900">
+              ⭐ Usar puntos WiiGo — cubre hasta ${formatearMonto(infoPuntos.maxDescuento)} ({infoPuntos.puntosNecesarios} de {infoPuntos.puntosDisponibles} puntos)
+            </span>
+            <input type="checkbox" checked={usarPuntosWiigo} onChange={(e) => setUsarPuntosWiigo(e.target.checked)} className="w-5 h-5" />
+          </label>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-2 mb-4">
         <button
           onClick={() => setMedioPago("EFECTIVO")}
@@ -473,13 +512,19 @@ export default function PosApp({
       <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-4 mb-4">
         {descuentoCanje > 0 && (
           <div className="flex justify-between items-center text-sm text-purple-600 mb-1">
-            <span>Pagado con puntos</span>
+            <span>Pagado con saldo de profesional</span>
             <span>-${formatearMonto(descuentoCanje)}</span>
+          </div>
+        )}
+        {descuentoPuntosPreview > 0 && (
+          <div className="flex justify-between items-center text-sm text-amber-700 mb-1">
+            <span>Pagado con puntos WiiGo</span>
+            <span>-${formatearMonto(descuentoPuntosPreview)}</span>
           </div>
         )}
         <div className="flex justify-between items-center font-extrabold text-lg pb-2 border-b border-neutral-200 mb-2">
           <span>Total</span>
-          <span>${formatearMonto(totalConCanje)}</span>
+          <span>${formatearMonto(totalFinal)}</span>
         </div>
         {esMercadoPago ? (
           <div>
@@ -530,11 +575,11 @@ export default function PosApp({
           enviando ||
           itemsCarrito.length === 0 ||
           (marcasCanje.size > 0 && pinCanje.length < 4) ||
-          (esMercadoPago ? !formaPagoMp : montoNum < totalConCanje)
+          (esMercadoPago ? !formaPagoMp : montoNum < totalFinal)
         }
         className="w-full bg-accent hover:bg-accent-dark disabled:opacity-40 text-white font-bold py-4 rounded-xl mb-8"
       >
-        {enviando ? "Registrando..." : `Cobrar · $${formatearMonto(totalConCanje)}`}
+        {enviando ? "Registrando..." : `Cobrar · $${formatearMonto(totalFinal)}`}
       </button>
     </div>
   );

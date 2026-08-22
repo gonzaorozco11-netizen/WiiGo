@@ -14,6 +14,7 @@ import {
   enlazarDetalleVenta,
 } from "@/lib/referidosProfesionales";
 import { buscarProfesionalPorDni, verificarPinProfesional, calcularDescuentoCanje, registrarCanje } from "@/lib/canjesProfesionales";
+import { calcularCanjePuntos, aplicarCanjePuntos } from "@/lib/puntosWiigo";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 async function usuarioActual() {
@@ -105,6 +106,18 @@ export async function buscarCodigoProfesionalAction(codigo: string): Promise<{ n
   return { nombre: data ? `${data.nombre}${data.apellido ? ` ${data.apellido}` : ""}` : null, error: null };
 }
 
+// Para mostrarle al empleado, en vivo, cuánto puede cubrir el cliente con
+// sus puntos WiiGo antes de cobrar (mismo criterio que el resto de las
+// validaciones en vivo de esta pantalla).
+export async function infoCanjePuntosAction(dni: string, montoAPagar: number) {
+  const supabase = getSupabaseServerClient();
+  const dniLimpio = dni.trim();
+  if (!dniLimpio) return null;
+  const { data: cliente } = await supabase.from("clientes").select("id_cliente").eq("dni", dniLimpio).maybeSingle();
+  if (!cliente) return null;
+  return calcularCanjePuntos(supabase, cliente.id_cliente, montoAPagar);
+}
+
 // Venta mostrador: a diferencia del Self Checkout, acá el mismo empleado
 // arma el pedido y cobra en el momento — no queda pendiente esperando a
 // nadie. Sirve tanto como venta asistida normal como respaldo si se cae
@@ -122,7 +135,8 @@ export async function venderPos(
   montoRecibido: number,
   medioPago: "EFECTIVO" | "MERCADO_PAGO" = "EFECTIVO",
   formaPagoMp?: string,
-  canje?: { idProfesional: string; pin: string; marcas: string[] }
+  canje?: { idProfesional: string; pin: string; marcas: string[] },
+  usarPuntosWiigo?: boolean
 ): Promise<{ error: string | null; venta?: ResultadoVenta }> {
   if (items.length === 0) return { error: "El carrito está vacío" };
 
@@ -198,7 +212,19 @@ export async function venderPos(
     canjePorMarca = resultadoCanje.porMarca;
   }
 
-  const total = Math.max(subtotal - descuentoBeneficio - descuentoCanje, 0);
+  // El cliente puede cubrir parte de lo que le queda por pagar (después del
+  // descuento de referido y del canje de la profesional) con sus propios
+  // puntos WiiGo — nunca más del % tope configurado ni más de los que tiene.
+  let descuentoPuntos = 0;
+  let puntosACanjear = 0;
+  if (usarPuntosWiigo && idCliente) {
+    const montoAntesDePuntos = Math.max(subtotal - descuentoBeneficio - descuentoCanje, 0);
+    const infoPuntos = await calcularCanjePuntos(supabase, idCliente, montoAntesDePuntos);
+    descuentoPuntos = infoPuntos.maxDescuento;
+    puntosACanjear = infoPuntos.puntosNecesarios;
+  }
+
+  const total = Math.max(subtotal - descuentoBeneficio - descuentoCanje - descuentoPuntos, 0);
   const esMercadoPago = medioPago === "MERCADO_PAGO";
   if (esMercadoPago && (!formaPagoMp || !FORMAS_PAGO_MP[formaPagoMp])) {
     return { error: "Elegí cómo pagó el cliente por Mercado Pago" };
@@ -219,7 +245,9 @@ export async function venderPos(
       id_cliente: idCliente,
       id_local: idLocal,
       subtotal,
-      descuento: descuentoBeneficio + descuentoCanje,
+      descuento: descuentoBeneficio + descuentoCanje + descuentoPuntos,
+      descuento_puntos: descuentoPuntos || null,
+      puntos_canjeados: puntosACanjear || null,
       total,
       estado: "PAGADA",
       medio_pago: medioPago,
@@ -307,6 +335,10 @@ export async function venderPos(
 
   if (canje && canjePorMarca.length > 0) {
     await registrarCanje(supabase, { idProfesional: canje.idProfesional, idVenta: venta.id_venta, porMarca: canjePorMarca, usuario });
+  }
+
+  if (idCliente && puntosACanjear > 0) {
+    await aplicarCanjePuntos(supabase, idCliente, puntosACanjear);
   }
 
   for (const item of items) {
