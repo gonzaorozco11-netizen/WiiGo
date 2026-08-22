@@ -14,28 +14,32 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 // liquidado o no, porque el ingreso se genera cuando se vende, no cuando
 // se rinde.
 async function royaltyConsignacionPeriodo(supabase: SupabaseClient, desde: string, hasta: string) {
-  const { data: marcas } = await supabase
+  const { data: marcas, error: errorMarcas } = await supabase
     .from("marcas")
     .select("id_marca, royalty_porcentaje, iva_royalty_porcentaje, trasladar_iva_comision")
     .eq("tipo_comercializacion", "CONSIGNACION");
+  if (errorMarcas) throw new Error(errorMarcas.message);
   const marcaPorId = new Map((marcas ?? []).map((m) => [m.id_marca, m]));
-  const idsMarca = (marcas ?? []).map((m) => m.id_marca);
-  if (idsMarca.length === 0) return 0;
+  if (marcaPorId.size === 0) return 0;
 
-  const { data: ventas } = await supabase
+  const { data: ventas, error: errorVentas } = await supabase
     .from("ventas")
     .select("id_venta")
     .eq("estado", "PAGADA")
     .gte("fecha", `${desde}T00:00:00`)
     .lte("fecha", `${hasta}T23:59:59`);
+  if (errorVentas) throw new Error(errorVentas.message);
   const idsVenta = (ventas ?? []).map((v) => v.id_venta);
   if (idsVenta.length === 0) return 0;
 
-  const { data: detalle } = await supabase
+  // Se filtra la marca del lado de JS (en vez de un segundo .in()) para no
+  // depender de cómo Postgrest combine dos filtros .in() en la misma
+  // consulta — más simple de confiar y de depurar.
+  const { data: detalle, error: errorDetalle } = await supabase
     .from("detalle_ventas")
     .select("id_marca, subtotal, precio_unitario, cantidad")
-    .in("id_venta", idsVenta)
-    .in("id_marca", idsMarca);
+    .in("id_venta", idsVenta);
+  if (errorDetalle) throw new Error(errorDetalle.message);
 
   let royalty = 0;
   for (const d of detalle ?? []) {
