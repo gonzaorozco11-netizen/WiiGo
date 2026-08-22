@@ -153,7 +153,10 @@ export default function CobrosEfectivoApp({
     setError(null);
     setProcesando(true);
     confirmarCobro(ventaSeleccionada.id_venta, montoNum, esMercadoPago ? formaPagoMp : undefined)
-      .then(() => setIdVentaSeleccionada(null))
+      .then((res) => {
+        if (res.error) setError(res.error);
+        else setIdVentaSeleccionada(null);
+      })
       .catch((e) => setError(e instanceof Error ? e.message : "No se pudo confirmar el cobro"))
       .finally(() => setProcesando(false));
   }
@@ -163,7 +166,11 @@ export default function CobrosEfectivoApp({
     setError(null);
     setProcesando(true);
     cancelarPedido(ventaSeleccionada.id_venta, motivoCancelacion)
-      .then(() => {
+      .then((res) => {
+        if (res.error) {
+          setError(res.error);
+          return;
+        }
         setIdVentaSeleccionada(null);
         setCancelando(false);
       })

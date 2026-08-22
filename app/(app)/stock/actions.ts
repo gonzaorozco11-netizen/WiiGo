@@ -23,35 +23,47 @@ async function obtenerCantidad(supabase: ReturnType<typeof getSupabaseServerClie
   return data?.cantidad ?? 0;
 }
 
-export async function ajustarStock(idVariante: string, idLocal: string, nuevaCantidad: number, motivo: string) {
-  if (nuevaCantidad < 0) throw new Error("La cantidad no puede ser negativa");
+// Next.js redacta en producción el mensaje de un throw new Error() en una
+// Server Action (queda solo un digest genérico) — por eso estas funciones
+// devuelven { error } como dato en vez de tirar throw.
+export async function ajustarStock(
+  idVariante: string,
+  idLocal: string,
+  nuevaCantidad: number,
+  motivo: string
+): Promise<{ error: string | null }> {
+  if (nuevaCantidad < 0) return { error: "La cantidad no puede ser negativa" };
+  try {
+    const supabase = getSupabaseServerClient();
+    const actual = await obtenerCantidad(supabase, idVariante, idLocal);
+    const delta = nuevaCantidad - actual;
 
-  const supabase = getSupabaseServerClient();
-  const actual = await obtenerCantidad(supabase, idVariante, idLocal);
-  const delta = nuevaCantidad - actual;
+    const { error: errorStock } = await supabase
+      .from("stock")
+      .upsert(
+        { id_variante: idVariante, id_local: idLocal, cantidad: nuevaCantidad, fecha_actualizacion: new Date().toISOString() },
+        { onConflict: "id_variante,id_local" }
+      );
+    if (errorStock) return { error: friendlyDbError(errorStock) };
 
-  const { error: errorStock } = await supabase
-    .from("stock")
-    .upsert(
-      { id_variante: idVariante, id_local: idLocal, cantidad: nuevaCantidad, fecha_actualizacion: new Date().toISOString() },
-      { onConflict: "id_variante,id_local" }
-    );
-  if (errorStock) throw new Error(friendlyDbError(errorStock));
+    if (delta !== 0) {
+      const usuario = await usuarioActual();
+      const { error: errorMov } = await supabase.from("movimientos_stock").insert({
+        id_variante: idVariante,
+        id_local: idLocal,
+        tipo: "AJUSTE",
+        cantidad: delta,
+        motivo: motivo || null,
+        usuario,
+      });
+      if (errorMov) return { error: friendlyDbError(errorMov) };
+    }
 
-  if (delta !== 0) {
-    const usuario = await usuarioActual();
-    const { error: errorMov } = await supabase.from("movimientos_stock").insert({
-      id_variante: idVariante,
-      id_local: idLocal,
-      tipo: "AJUSTE",
-      cantidad: delta,
-      motivo: motivo || null,
-      usuario,
-    });
-    if (errorMov) throw new Error(friendlyDbError(errorMov));
+    revalidatePath("/stock");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo ajustar el stock" };
   }
-
-  revalidatePath("/stock");
 }
 
 export async function transferirStock(
@@ -60,63 +72,68 @@ export async function transferirStock(
   idLocalDestino: string,
   cantidad: number,
   motivo: string
-) {
-  if (idLocalOrigen === idLocalDestino) throw new Error("Elegí dos locales distintos");
-  if (cantidad <= 0) throw new Error("La cantidad tiene que ser mayor a 0");
+): Promise<{ error: string | null }> {
+  if (idLocalOrigen === idLocalDestino) return { error: "Elegí dos locales distintos" };
+  if (cantidad <= 0) return { error: "La cantidad tiene que ser mayor a 0" };
 
-  const supabase = getSupabaseServerClient();
-  const cantidadOrigen = await obtenerCantidad(supabase, idVariante, idLocalOrigen);
-  if (cantidadOrigen < cantidad) {
-    throw new Error(`No hay suficiente stock en el local de origen (hay ${cantidadOrigen}).`);
-  }
-  const cantidadDestino = await obtenerCantidad(supabase, idVariante, idLocalDestino);
+  try {
+    const supabase = getSupabaseServerClient();
+    const cantidadOrigen = await obtenerCantidad(supabase, idVariante, idLocalOrigen);
+    if (cantidadOrigen < cantidad) {
+      return { error: `No hay suficiente stock en el local de origen (hay ${cantidadOrigen}).` };
+    }
+    const cantidadDestino = await obtenerCantidad(supabase, idVariante, idLocalDestino);
 
-  const { error: errorOrigen } = await supabase
-    .from("stock")
-    .upsert(
+    const { error: errorOrigen } = await supabase
+      .from("stock")
+      .upsert(
+        {
+          id_variante: idVariante,
+          id_local: idLocalOrigen,
+          cantidad: cantidadOrigen - cantidad,
+          fecha_actualizacion: new Date().toISOString(),
+        },
+        { onConflict: "id_variante,id_local" }
+      );
+    if (errorOrigen) return { error: friendlyDbError(errorOrigen) };
+
+    const { error: errorDestino } = await supabase
+      .from("stock")
+      .upsert(
+        {
+          id_variante: idVariante,
+          id_local: idLocalDestino,
+          cantidad: cantidadDestino + cantidad,
+          fecha_actualizacion: new Date().toISOString(),
+        },
+        { onConflict: "id_variante,id_local" }
+      );
+    if (errorDestino) return { error: friendlyDbError(errorDestino) };
+
+    const usuario = await usuarioActual();
+    const { error: errorMov } = await supabase.from("movimientos_stock").insert([
       {
         id_variante: idVariante,
         id_local: idLocalOrigen,
-        cantidad: cantidadOrigen - cantidad,
-        fecha_actualizacion: new Date().toISOString(),
+        tipo: "TRANSFERENCIA_SALIDA",
+        cantidad: -cantidad,
+        motivo: motivo || null,
+        usuario,
       },
-      { onConflict: "id_variante,id_local" }
-    );
-  if (errorOrigen) throw new Error(friendlyDbError(errorOrigen));
-
-  const { error: errorDestino } = await supabase
-    .from("stock")
-    .upsert(
       {
         id_variante: idVariante,
         id_local: idLocalDestino,
-        cantidad: cantidadDestino + cantidad,
-        fecha_actualizacion: new Date().toISOString(),
+        tipo: "TRANSFERENCIA_ENTRADA",
+        cantidad,
+        motivo: motivo || null,
+        usuario,
       },
-      { onConflict: "id_variante,id_local" }
-    );
-  if (errorDestino) throw new Error(friendlyDbError(errorDestino));
+    ]);
+    if (errorMov) return { error: friendlyDbError(errorMov) };
 
-  const usuario = await usuarioActual();
-  const { error: errorMov } = await supabase.from("movimientos_stock").insert([
-    {
-      id_variante: idVariante,
-      id_local: idLocalOrigen,
-      tipo: "TRANSFERENCIA_SALIDA",
-      cantidad: -cantidad,
-      motivo: motivo || null,
-      usuario,
-    },
-    {
-      id_variante: idVariante,
-      id_local: idLocalDestino,
-      tipo: "TRANSFERENCIA_ENTRADA",
-      cantidad,
-      motivo: motivo || null,
-      usuario,
-    },
-  ]);
-  if (errorMov) throw new Error(friendlyDbError(errorMov));
-
-  revalidatePath("/stock");
+    revalidatePath("/stock");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo transferir el stock" };
+  }
 }

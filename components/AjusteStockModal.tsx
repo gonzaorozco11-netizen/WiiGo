@@ -26,8 +26,9 @@ export default function AjusteStockModal({
 
     startTransition(async () => {
       try {
-        await ajustarStock(idVariante, idLocal, nuevaCantidad, motivo);
-        onClose();
+        const res = await ajustarStock(idVariante, idLocal, nuevaCantidad, motivo);
+        if (res.error) setError(res.error);
+        else onClose();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Algo salió mal");
       }

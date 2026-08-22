@@ -77,6 +77,11 @@ export async function buscarClientePorDni(dni: string) {
 // arma el pedido y cobra en el momento — no queda pendiente esperando a
 // nadie. Sirve tanto como venta asistida normal como respaldo si se cae
 // la conexión de algún totem.
+type ResultadoVenta = { numero: number; total: number; vuelto: number; puntosGenerados: number };
+
+// Next.js redacta en producción el mensaje de un Error tirado desde una
+// Server Action (queda solo un digest genérico en el navegador) — por eso
+// esta función no throwea para errores esperables: devuelve { error }.
 export async function venderPos(
   idLocal: string,
   items: ItemCarrito[],
@@ -85,33 +90,34 @@ export async function venderPos(
   montoRecibido: number,
   medioPago: "EFECTIVO" | "MERCADO_PAGO" = "EFECTIVO",
   formaPagoMp?: string
-) {
-  if (items.length === 0) throw new Error("El carrito está vacío");
+): Promise<{ error: string | null; venta?: ResultadoVenta }> {
+  if (items.length === 0) return { error: "El carrito está vacío" };
 
-  const supabase = getSupabaseServerClient();
-  const usuario = await usuarioActual();
+  try {
+    const supabase = getSupabaseServerClient();
+    const usuario = await usuarioActual();
 
-  let idCliente: string | null = null;
-  const dniLimpio = dni.trim();
-  if (dniLimpio) {
-    const { data: existente } = await supabase
-      .from("clientes")
-      .select("id_cliente")
-      .eq("dni", dniLimpio)
-      .maybeSingle();
-
-    if (existente) {
-      idCliente = existente.id_cliente;
-    } else {
-      const { data: nuevo, error } = await supabase
+    let idCliente: string | null = null;
+    const dniLimpio = dni.trim();
+    if (dniLimpio) {
+      const { data: existente } = await supabase
         .from("clientes")
-        .insert({ nombre: "Cliente WiiGo", dni: dniLimpio, estado: "ACTIVO" })
         .select("id_cliente")
-        .single();
-      if (error) throw new Error(friendlyDbError(error));
-      idCliente = nuevo?.id_cliente ?? null;
+        .eq("dni", dniLimpio)
+        .maybeSingle();
+
+      if (existente) {
+        idCliente = existente.id_cliente;
+      } else {
+        const { data: nuevo, error } = await supabase
+          .from("clientes")
+          .insert({ nombre: "Cliente WiiGo", dni: dniLimpio, estado: "ACTIVO" })
+          .select("id_cliente")
+          .single();
+        if (error) return { error: friendlyDbError(error) };
+        idCliente = nuevo?.id_cliente ?? null;
+      }
     }
-  }
 
   const subtotal = items.reduce((acc, i) => acc + i.precioUnitario * i.cantidad, 0);
 
@@ -141,14 +147,14 @@ export async function venderPos(
   const total = Math.max(subtotal - descuentoBeneficio, 0);
   const esMercadoPago = medioPago === "MERCADO_PAGO";
   if (esMercadoPago && (!formaPagoMp || !FORMAS_PAGO_MP[formaPagoMp])) {
-    throw new Error("Elegí cómo pagó el cliente por Mercado Pago");
+    return { error: "Elegí cómo pagó el cliente por Mercado Pago" };
   }
   const montoFinal = esMercadoPago ? total : montoRecibido;
-  if (montoFinal < total) throw new Error("El monto recibido es menor al total de la venta");
+  if (montoFinal < total) return { error: "El monto recibido es menor al total de la venta" };
   const vuelto = montoFinal - total;
 
   const idTurno = await turnoAbiertoDeLocal(supabase, idLocal);
-  if (!idTurno) throw new Error("No hay un turno de caja abierto en este local — abrilo en Turnos antes de vender.");
+  if (!idTurno) return { error: "No hay un turno de caja abierto en este local — abrilo en Turnos antes de vender." };
 
   // La venta se crea primero: pagos.id_venta no admite null, así que no
   // se puede insertar el pago hasta tener el id de la venta.
@@ -170,7 +176,7 @@ export async function venderPos(
     })
     .select("id_venta, numero")
     .single();
-  if (errorVenta) throw new Error(friendlyDbError(errorVenta));
+  if (errorVenta) return { error: friendlyDbError(errorVenta) };
 
   let pagoInsert: Record<string, unknown>;
   if (esMercadoPago) {
@@ -210,7 +216,7 @@ export async function venderPos(
   }
 
   const { data: pago, error: errorPago } = await supabase.from("pagos").insert(pagoInsert).select("id_pago").single();
-  if (errorPago) throw new Error(friendlyDbError(errorPago));
+  if (errorPago) return { error: friendlyDbError(errorPago) };
 
   await supabase.from("ventas").update({ id_pago: pago.id_pago }).eq("id_venta", venta.id_venta);
 
@@ -223,7 +229,7 @@ export async function venderPos(
     subtotal: i.precioUnitario * i.cantidad,
   }));
   const { error: errorDetalle } = await supabase.from("detalle_ventas").insert(filasDetalle);
-  if (errorDetalle) throw new Error(friendlyDbError(errorDetalle));
+  if (errorDetalle) return { error: friendlyDbError(errorDetalle) };
 
   if (idCodigo && idProfesional) {
     await supabase.from("referidos_profesionales").insert({
@@ -252,7 +258,7 @@ export async function venderPos(
         { id_variante: item.idVariante, id_local: idLocal, cantidad: nuevaCantidad, fecha_actualizacion: new Date().toISOString() },
         { onConflict: "id_variante,id_local" }
       );
-    if (errorStock) throw new Error(friendlyDbError(errorStock));
+    if (errorStock) return { error: friendlyDbError(errorStock) };
 
     await supabase.from("movimientos_stock").insert({
       id_variante: item.idVariante,
@@ -281,5 +287,8 @@ export async function venderPos(
   revalidatePath("/pos");
   revalidatePath("/stock");
 
-  return { numero: venta.numero as number, total, vuelto, puntosGenerados };
+    return { error: null, venta: { numero: venta.numero as number, total, vuelto, puntosGenerados } };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo registrar la venta" };
+  }
 }

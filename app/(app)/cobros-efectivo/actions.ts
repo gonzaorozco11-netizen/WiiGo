@@ -55,31 +55,41 @@ async function tasaComisionMp(supabase: SupabaseClient, formaPago: string) {
   return { base: cfg[clave] ?? 0, ivaGeneral: cfg.IVA_GENERAL_PORCENTAJE ?? 21 };
 }
 
-export async function confirmarCobro(idVenta: string, montoRecibido: number, formaPagoMp?: string) {
-  const supabase = getSupabaseServerClient();
+// Next.js redacta en producción el mensaje de un Error tirado desde una
+// Server Action (queda solo un digest genérico en el navegador) — por eso
+// esta función no throwea para errores esperables: devuelve { error }.
+export async function confirmarCobro(
+  idVenta: string,
+  montoRecibido: number,
+  formaPagoMp?: string
+): Promise<{ error: string | null }> {
+  try {
+    const supabase = getSupabaseServerClient();
 
-  const { data: venta, error: errorVenta } = await supabase
-    .from("ventas")
-    .select("id_venta, id_cliente, id_local, total, estado, medio_pago")
-    .eq("id_venta", idVenta)
-    .maybeSingle();
-  if (errorVenta) throw new Error(friendlyDbError(errorVenta));
-  if (!venta) throw new Error("No se encontró el pedido");
-  if (venta.estado !== "PENDIENTE_PAGO") throw new Error("Este pedido ya no está pendiente de pago");
+    const { data: venta, error: errorVenta } = await supabase
+      .from("ventas")
+      .select("id_venta, id_cliente, id_local, total, estado, medio_pago")
+      .eq("id_venta", idVenta)
+      .maybeSingle();
+    if (errorVenta) return { error: friendlyDbError(errorVenta) };
+    if (!venta) return { error: "No se encontró el pedido" };
+    if (venta.estado !== "PENDIENTE_PAGO") return { error: "Este pedido ya no está pendiente de pago" };
 
-  const total = venta.total ?? 0;
-  if (montoRecibido < total) throw new Error("El monto recibido es menor al total del pedido");
-  if (!venta.id_local) throw new Error("Este pedido no tiene local asignado");
+    const total = venta.total ?? 0;
+    if (montoRecibido < total) return { error: "El monto recibido es menor al total del pedido" };
+    if (!venta.id_local) return { error: "Este pedido no tiene local asignado" };
 
-  const idTurno = await turnoAbiertoDeLocal(supabase, venta.id_local);
-  if (!idTurno) throw new Error("No hay un turno de caja abierto en este local — abrilo en Turnos antes de confirmar cobros.");
+    const idTurno = await turnoAbiertoDeLocal(supabase, venta.id_local);
+    if (!idTurno) {
+      return { error: "No hay un turno de caja abierto en este local — abrilo en Turnos antes de confirmar cobros." };
+    }
 
-  const usuario = await usuarioActual();
-  const esMercadoPago = venta.medio_pago === "MERCADO_PAGO";
+    const usuario = await usuarioActual();
+    const esMercadoPago = venta.medio_pago === "MERCADO_PAGO";
 
   let pagoInsert: Record<string, unknown>;
   if (esMercadoPago) {
-    if (!formaPagoMp || !FORMAS_PAGO_MP[formaPagoMp]) throw new Error("Elegí cómo pagó el cliente por Mercado Pago");
+    if (!formaPagoMp || !FORMAS_PAGO_MP[formaPagoMp]) return { error: "Elegí cómo pagó el cliente por Mercado Pago" };
     const { base: tasa, ivaGeneral } = await tasaComisionMp(supabase, formaPagoMp);
     // Mercado Pago cobra la comisión + IVA sobre esa comisión (ej. débito
     // 1,39% + 21% de IVA) — la tasa cargada en Configuración es la base.
@@ -120,19 +130,19 @@ export async function confirmarCobro(idVenta: string, montoRecibido: number, for
   }
 
   const { data: pago, error: errorPago } = await supabase.from("pagos").insert(pagoInsert).select("id_pago").single();
-  if (errorPago) throw new Error(friendlyDbError(errorPago));
+  if (errorPago) return { error: friendlyDbError(errorPago) };
 
   const { error: errorVentaUpdate } = await supabase
     .from("ventas")
     .update({ estado: "PAGADA", id_pago: pago.id_pago, total_cobrado: montoRecibido, id_turno: idTurno })
     .eq("id_venta", idVenta);
-  if (errorVentaUpdate) throw new Error(friendlyDbError(errorVentaUpdate));
+  if (errorVentaUpdate) return { error: friendlyDbError(errorVentaUpdate) };
 
   const { data: detalle, error: errorDetalle } = await supabase
     .from("detalle_ventas")
     .select("id_detalle, id_variante, cantidad")
     .eq("id_venta", idVenta);
-  if (errorDetalle) throw new Error(friendlyDbError(errorDetalle));
+  if (errorDetalle) return { error: friendlyDbError(errorDetalle) };
 
   for (const linea of detalle ?? []) {
     const { data: stockActual } = await supabase
@@ -154,7 +164,7 @@ export async function confirmarCobro(idVenta: string, montoRecibido: number, for
         },
         { onConflict: "id_variante,id_local" }
       );
-    if (errorStock) throw new Error(friendlyDbError(errorStock));
+    if (errorStock) return { error: friendlyDbError(errorStock) };
 
     await supabase.from("movimientos_stock").insert({
       id_variante: linea.id_variante,
@@ -184,20 +194,29 @@ export async function confirmarCobro(idVenta: string, montoRecibido: number, for
       .eq("id_cliente", venta.id_cliente);
   }
 
-  revalidatePath("/cobros-efectivo");
+    revalidatePath("/cobros-efectivo");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo confirmar el cobro" };
+  }
 }
 
-export async function cancelarPedido(idVenta: string, motivo: string) {
-  const supabase = getSupabaseServerClient();
-  const { error } = await supabase
-    .from("ventas")
-    .update({
-      estado: "CANCELADA",
-      motivo_cancelacion: motivo || "Cancelado por el personal",
-      fecha_cancelacion: new Date().toISOString(),
-    })
-    .eq("id_venta", idVenta)
-    .eq("estado", "PENDIENTE_PAGO");
-  if (error) throw new Error(friendlyDbError(error));
-  revalidatePath("/cobros-efectivo");
+export async function cancelarPedido(idVenta: string, motivo: string): Promise<{ error: string | null }> {
+  try {
+    const supabase = getSupabaseServerClient();
+    const { error } = await supabase
+      .from("ventas")
+      .update({
+        estado: "CANCELADA",
+        motivo_cancelacion: motivo || "Cancelado por el personal",
+        fecha_cancelacion: new Date().toISOString(),
+      })
+      .eq("id_venta", idVenta)
+      .eq("estado", "PENDIENTE_PAGO");
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/cobros-efectivo");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo cancelar el pedido" };
+  }
 }

@@ -23,7 +23,8 @@ export default function CatalogoAsesorApp({
     if (!confirm(`¿Borrar el objetivo "${o.nombre}"?`)) return;
     startTransition(async () => {
       try {
-        await deleteObjetivo(o.id_objetivo);
+        const res = await deleteObjetivo(o.id_objetivo);
+        if (res.error) alert(res.error);
       } catch (e) {
         alert(e instanceof Error ? e.message : "Algo salió mal");
       }
@@ -34,7 +35,8 @@ export default function CatalogoAsesorApp({
     if (!confirm(`¿Borrar el filtro "${f.nombre}"?`)) return;
     startTransition(async () => {
       try {
-        await deleteFiltro(f.id_filtro);
+        const res = await deleteFiltro(f.id_filtro);
+        if (res.error) alert(res.error);
       } catch (e) {
         alert(e instanceof Error ? e.message : "Algo salió mal");
       }

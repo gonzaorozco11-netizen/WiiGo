@@ -19,29 +19,47 @@ function localFromForm(formData: FormData) {
   };
 }
 
-export async function createLocal(formData: FormData) {
-  const data = localFromForm(formData);
-  if (!data.nombre) throw new Error("El nombre es obligatorio");
+// Next.js redacta en producción el mensaje de un throw new Error() en una
+// Server Action (queda solo un digest genérico) — por eso estas funciones
+// devuelven { error } como dato en vez de tirar throw.
+export async function createLocal(formData: FormData): Promise<{ error: string | null }> {
+  try {
+    const data = localFromForm(formData);
+    if (!data.nombre) return { error: "El nombre es obligatorio" };
 
-  const supabase = getSupabaseServerClient();
-  const { error } = await supabase.from("locales").insert(data);
-  if (error) throw new Error(friendlyDbError(error));
-  revalidatePath("/locales");
+    const supabase = getSupabaseServerClient();
+    const { error } = await supabase.from("locales").insert(data);
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/locales");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo crear el local" };
+  }
 }
 
-export async function updateLocal(id: string, formData: FormData) {
-  const data = localFromForm(formData);
-  if (!data.nombre) throw new Error("El nombre es obligatorio");
+export async function updateLocal(id: string, formData: FormData): Promise<{ error: string | null }> {
+  try {
+    const data = localFromForm(formData);
+    if (!data.nombre) return { error: "El nombre es obligatorio" };
 
-  const supabase = getSupabaseServerClient();
-  const { error } = await supabase.from("locales").update(data).eq("id_local", id);
-  if (error) throw new Error(friendlyDbError(error));
-  revalidatePath("/locales");
+    const supabase = getSupabaseServerClient();
+    const { error } = await supabase.from("locales").update(data).eq("id_local", id);
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/locales");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo actualizar el local" };
+  }
 }
 
-export async function deleteLocal(id: string) {
-  const supabase = getSupabaseServerClient();
-  const { error } = await supabase.from("locales").delete().eq("id_local", id);
-  if (error) throw new Error(friendlyDbError(error));
-  revalidatePath("/locales");
+export async function deleteLocal(id: string): Promise<{ error: string | null }> {
+  try {
+    const supabase = getSupabaseServerClient();
+    const { error } = await supabase.from("locales").delete().eq("id_local", id);
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/locales");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo eliminar el local" };
+  }
 }

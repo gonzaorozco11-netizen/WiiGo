@@ -81,13 +81,14 @@ export default function NuevaOrdenModal({
     setError(null);
     startTransition(async () => {
       try {
-        await crearOrden(
+        const res = await crearOrden(
           idMarca,
           idLocal,
           lineas.map((l) => ({ idVariante: l.idVariante, cantidad: Number(l.cantidad) })),
           observaciones
         );
-        onClose();
+        if (res.error) setError(res.error);
+        else onClose();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Algo salió mal");
       }

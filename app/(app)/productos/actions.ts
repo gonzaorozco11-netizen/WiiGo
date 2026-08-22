@@ -327,63 +327,83 @@ async function guardarContenidoAsesor(supabase: SupabaseClient, idProducto: stri
   );
 }
 
-export async function createProducto(formData: FormData) {
-  const idMarca = text(formData, "id_marca");
-  if (!idMarca) throw new Error("Elegí una marca");
-  if (!text(formData, "nombre")) throw new Error("El nombre es obligatorio");
+// Next.js redacta en producción el mensaje de un throw new Error() en una
+// Server Action (queda solo un digest genérico) — por eso estas funciones
+// devuelven { error } como dato. Los helpers de arriba (resolveSubcategoria,
+// sincronizarVariantes, etc.) siguen usando throw — como se llaman desde
+// acá adentro, el try/catch de estas funciones los atrapa igual.
+export async function createProducto(formData: FormData): Promise<{ error: string | null }> {
+  try {
+    const idMarca = text(formData, "id_marca");
+    if (!idMarca) return { error: "Elegí una marca" };
+    if (!text(formData, "nombre")) return { error: "El nombre es obligatorio" };
 
-  const supabase = getSupabaseServerClient();
-  const idSubcategoria = await resolveSubcategoria(supabase, formData, idMarca);
-  const data = productoFromForm(formData, idMarca, idSubcategoria);
+    const supabase = getSupabaseServerClient();
+    const idSubcategoria = await resolveSubcategoria(supabase, formData, idMarca);
+    const data = productoFromForm(formData, idMarca, idSubcategoria);
 
-  const { data: inserted, error } = await supabase
-    .from("productos")
-    .insert(data)
-    .select("id_producto")
-    .single();
-  if (error) throw new Error(friendlyDbError(error));
+    const { data: inserted, error } = await supabase
+      .from("productos")
+      .insert(data)
+      .select("id_producto")
+      .single();
+    if (error) return { error: friendlyDbError(error) };
 
-  const idLocalInicial = text(formData, "id_local_inicial");
-  const usuario = await usuarioActual();
-  await sincronizarVariantes(supabase, inserted.id_producto, idMarca, formData, idLocalInicial, usuario);
-  await guardarContenidoAsesor(supabase, inserted.id_producto, formData);
+    const idLocalInicial = text(formData, "id_local_inicial");
+    const usuario = await usuarioActual();
+    await sincronizarVariantes(supabase, inserted.id_producto, idMarca, formData, idLocalInicial, usuario);
+    await guardarContenidoAsesor(supabase, inserted.id_producto, formData);
 
-  revalidatePath("/productos");
-  revalidatePath("/stock");
-  revalidatePath(`/marcas/${idMarca}`);
+    revalidatePath("/productos");
+    revalidatePath("/stock");
+    revalidatePath(`/marcas/${idMarca}`);
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo crear el producto" };
+  }
 }
 
-export async function updateProducto(id: string, formData: FormData) {
-  const idMarca = text(formData, "id_marca");
-  if (!idMarca) throw new Error("Elegí una marca");
-  if (!text(formData, "nombre")) throw new Error("El nombre es obligatorio");
+export async function updateProducto(id: string, formData: FormData): Promise<{ error: string | null }> {
+  try {
+    const idMarca = text(formData, "id_marca");
+    if (!idMarca) return { error: "Elegí una marca" };
+    if (!text(formData, "nombre")) return { error: "El nombre es obligatorio" };
 
-  const supabase = getSupabaseServerClient();
-  const idSubcategoria = await resolveSubcategoria(supabase, formData, idMarca);
-  const data = productoFromForm(formData, idMarca, idSubcategoria);
+    const supabase = getSupabaseServerClient();
+    const idSubcategoria = await resolveSubcategoria(supabase, formData, idMarca);
+    const data = productoFromForm(formData, idMarca, idSubcategoria);
 
-  const { error } = await supabase.from("productos").update(data).eq("id_producto", id);
-  if (error) throw new Error(friendlyDbError(error));
+    const { error } = await supabase.from("productos").update(data).eq("id_producto", id);
+    if (error) return { error: friendlyDbError(error) };
 
-  // Al editar nunca se toca el stock desde acá (idLocalInicial null) — eso
-  // se maneja desde /stock, para no pisar cantidades reales sin querer.
-  await sincronizarVariantes(supabase, id, idMarca, formData, null, null);
-  await guardarContenidoAsesor(supabase, id, formData);
+    // Al editar nunca se toca el stock desde acá (idLocalInicial null) — eso
+    // se maneja desde /stock, para no pisar cantidades reales sin querer.
+    await sincronizarVariantes(supabase, id, idMarca, formData, null, null);
+    await guardarContenidoAsesor(supabase, id, formData);
 
-  revalidatePath("/productos");
-  revalidatePath(`/marcas/${idMarca}`);
+    revalidatePath("/productos");
+    revalidatePath(`/marcas/${idMarca}`);
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo actualizar el producto" };
+  }
 }
 
-export async function deleteProducto(id: string) {
-  const supabase = getSupabaseServerClient();
-  const { data: producto } = await supabase
-    .from("productos")
-    .select("id_marca")
-    .eq("id_producto", id)
-    .maybeSingle();
+export async function deleteProducto(id: string): Promise<{ error: string | null }> {
+  try {
+    const supabase = getSupabaseServerClient();
+    const { data: producto } = await supabase
+      .from("productos")
+      .select("id_marca")
+      .eq("id_producto", id)
+      .maybeSingle();
 
-  const { error } = await supabase.from("productos").delete().eq("id_producto", id);
-  if (error) throw new Error(friendlyDbError(error));
-  revalidatePath("/productos");
-  if (producto?.id_marca) revalidatePath(`/marcas/${producto.id_marca}`);
+    const { error } = await supabase.from("productos").delete().eq("id_producto", id);
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/productos");
+    if (producto?.id_marca) revalidatePath(`/marcas/${producto.id_marca}`);
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo eliminar el producto" };
+  }
 }

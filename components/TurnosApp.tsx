@@ -116,7 +116,10 @@ export default function TurnosApp({ locales, turnosAbiertos }: { locales: Local[
     setError(null);
     setProcesando(true);
     abrirTurno(idLocal, monto)
-      .then(() => window.location.reload())
+      .then((res) => {
+        if (res.error) setError(res.error);
+        else window.location.reload();
+      })
       .catch((e) => setError(e instanceof Error ? e.message : "No se pudo abrir el turno"))
       .finally(() => setProcesando(false));
   }
@@ -127,7 +130,10 @@ export default function TurnosApp({ locales, turnosAbiertos }: { locales: Local[
     setError(null);
     setProcesando(true);
     cerrarTurno(turnoAbierto.id_turno, contado, observaciones)
-      .then(() => window.location.reload())
+      .then((res) => {
+        if (res.error) setError(res.error);
+        else window.location.reload();
+      })
       .catch((e) => setError(e instanceof Error ? e.message : "No se pudo cerrar el turno"))
       .finally(() => setProcesando(false));
   }

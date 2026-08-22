@@ -188,7 +188,10 @@ export default function PosApp({
       medioPago,
       esMercadoPago ? formaPagoMp : undefined
     )
-      .then((r) => setResultado(r))
+      .then((r) => {
+        if (r.error) setError(r.error);
+        else if (r.venta) setResultado(r.venta);
+      })
       .catch((e) => setError(e instanceof Error ? e.message : "No se pudo registrar la venta"))
       .finally(() => setEnviando(false));
   }

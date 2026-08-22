@@ -10,45 +10,63 @@ function text(formData: FormData, name: string) {
   return s.length ? s : null;
 }
 
-export async function crearUsuario(formData: FormData) {
+// Next.js redacta en producción el mensaje de un Error tirado desde una
+// Server Action (queda solo un digest genérico en el navegador) — por eso
+// estas funciones no throwean para errores esperables: devuelven { error }.
+export async function crearUsuario(formData: FormData): Promise<{ error: string | null }> {
   const nombre = text(formData, "nombre");
   const email = text(formData, "email")?.toLowerCase() ?? null;
   const rol = text(formData, "rol") ?? "operativo";
   const password = String(formData.get("password") ?? "");
 
-  if (!nombre) throw new Error("El nombre es obligatorio");
-  if (!email) throw new Error("El email es obligatorio");
-  if (password.length < 6) throw new Error("La contraseña tiene que tener al menos 6 caracteres");
+  if (!nombre) return { error: "El nombre es obligatorio" };
+  if (!email) return { error: "El email es obligatorio" };
+  if (password.length < 6) return { error: "La contraseña tiene que tener al menos 6 caracteres" };
 
-  const supabase = getSupabaseServerClient();
-  const password_hash = await hashPassword(password);
+  try {
+    const supabase = getSupabaseServerClient();
+    const password_hash = await hashPassword(password);
 
-  const { error } = await supabase.from("usuarios").insert({
-    nombre,
-    email,
-    rol,
-    password_hash,
-    estado: "ACTIVO",
-  });
-  if (error) throw new Error(friendlyDbError(error));
+    const { error } = await supabase.from("usuarios").insert({
+      nombre,
+      email,
+      rol,
+      password_hash,
+      estado: "ACTIVO",
+    });
+    if (error) return { error: friendlyDbError(error) };
 
-  revalidatePath("/usuarios");
+    revalidatePath("/usuarios");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo crear el usuario" };
+  }
 }
 
-export async function cambiarEstadoUsuario(id: string, estado: string) {
-  const supabase = getSupabaseServerClient();
-  const { error } = await supabase.from("usuarios").update({ estado }).eq("id_usuario", id);
-  if (error) throw new Error(friendlyDbError(error));
-  revalidatePath("/usuarios");
+export async function cambiarEstadoUsuario(id: string, estado: string): Promise<{ error: string | null }> {
+  try {
+    const supabase = getSupabaseServerClient();
+    const { error } = await supabase.from("usuarios").update({ estado }).eq("id_usuario", id);
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/usuarios");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo cambiar el estado del usuario" };
+  }
 }
 
-export async function cambiarPasswordUsuario(id: string, password: string) {
-  if (password.length < 6) throw new Error("La contraseña tiene que tener al menos 6 caracteres");
-  const supabase = getSupabaseServerClient();
-  const password_hash = await hashPassword(password);
-  const { error } = await supabase.from("usuarios").update({ password_hash }).eq("id_usuario", id);
-  if (error) throw new Error(friendlyDbError(error));
-  revalidatePath("/usuarios");
+export async function cambiarPasswordUsuario(id: string, password: string): Promise<{ error: string | null }> {
+  if (password.length < 6) return { error: "La contraseña tiene que tener al menos 6 caracteres" };
+  try {
+    const supabase = getSupabaseServerClient();
+    const password_hash = await hashPassword(password);
+    const { error } = await supabase.from("usuarios").update({ password_hash }).eq("id_usuario", id);
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/usuarios");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo cambiar la contraseña" };
+  }
 }
 
 // Usado desde la pestaña Nómina de Gastos para calcular sueldo base −

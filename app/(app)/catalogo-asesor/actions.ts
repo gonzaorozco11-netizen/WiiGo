@@ -26,31 +26,49 @@ function objetivoFromForm(formData: FormData) {
   };
 }
 
-export async function createObjetivo(formData: FormData) {
-  const data = objetivoFromForm(formData);
-  if (!data.nombre) throw new Error("El nombre es obligatorio");
+// Next.js redacta en producción el mensaje de un throw new Error() en una
+// Server Action (queda solo un digest genérico) — por eso estas funciones
+// devuelven { error } como dato en vez de tirar throw.
+export async function createObjetivo(formData: FormData): Promise<{ error: string | null }> {
+  try {
+    const data = objetivoFromForm(formData);
+    if (!data.nombre) return { error: "El nombre es obligatorio" };
 
-  const supabase = getSupabaseServerClient();
-  const { error } = await supabase.from("objetivos").insert(data);
-  if (error) throw new Error(friendlyDbError(error));
-  revalidatePath("/catalogo-asesor");
+    const supabase = getSupabaseServerClient();
+    const { error } = await supabase.from("objetivos").insert(data);
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/catalogo-asesor");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo crear el objetivo" };
+  }
 }
 
-export async function updateObjetivo(id: string, formData: FormData) {
-  const data = objetivoFromForm(formData);
-  if (!data.nombre) throw new Error("El nombre es obligatorio");
+export async function updateObjetivo(id: string, formData: FormData): Promise<{ error: string | null }> {
+  try {
+    const data = objetivoFromForm(formData);
+    if (!data.nombre) return { error: "El nombre es obligatorio" };
 
-  const supabase = getSupabaseServerClient();
-  const { error } = await supabase.from("objetivos").update(data).eq("id_objetivo", id);
-  if (error) throw new Error(friendlyDbError(error));
-  revalidatePath("/catalogo-asesor");
+    const supabase = getSupabaseServerClient();
+    const { error } = await supabase.from("objetivos").update(data).eq("id_objetivo", id);
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/catalogo-asesor");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo actualizar el objetivo" };
+  }
 }
 
-export async function deleteObjetivo(id: string) {
-  const supabase = getSupabaseServerClient();
-  const { error } = await supabase.from("objetivos").delete().eq("id_objetivo", id);
-  if (error) throw new Error(friendlyDbError(error));
-  revalidatePath("/catalogo-asesor");
+export async function deleteObjetivo(id: string): Promise<{ error: string | null }> {
+  try {
+    const supabase = getSupabaseServerClient();
+    const { error } = await supabase.from("objetivos").delete().eq("id_objetivo", id);
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/catalogo-asesor");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo eliminar el objetivo" };
+  }
 }
 
 function filtroFromForm(formData: FormData) {
@@ -62,29 +80,44 @@ function filtroFromForm(formData: FormData) {
   };
 }
 
-export async function createFiltro(formData: FormData) {
-  const data = filtroFromForm(formData);
-  if (!data.nombre) throw new Error("El nombre es obligatorio");
+export async function createFiltro(formData: FormData): Promise<{ error: string | null }> {
+  try {
+    const data = filtroFromForm(formData);
+    if (!data.nombre) return { error: "El nombre es obligatorio" };
 
-  const supabase = getSupabaseServerClient();
-  const { error } = await supabase.from("filtros_producto").insert(data);
-  if (error) throw new Error(friendlyDbError(error));
-  revalidatePath("/catalogo-asesor");
+    const supabase = getSupabaseServerClient();
+    const { error } = await supabase.from("filtros_producto").insert(data);
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/catalogo-asesor");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo crear el filtro" };
+  }
 }
 
-export async function updateFiltro(id: string, formData: FormData) {
-  const data = filtroFromForm(formData);
-  if (!data.nombre) throw new Error("El nombre es obligatorio");
+export async function updateFiltro(id: string, formData: FormData): Promise<{ error: string | null }> {
+  try {
+    const data = filtroFromForm(formData);
+    if (!data.nombre) return { error: "El nombre es obligatorio" };
 
-  const supabase = getSupabaseServerClient();
-  const { error } = await supabase.from("filtros_producto").update(data).eq("id_filtro", id);
-  if (error) throw new Error(friendlyDbError(error));
-  revalidatePath("/catalogo-asesor");
+    const supabase = getSupabaseServerClient();
+    const { error } = await supabase.from("filtros_producto").update(data).eq("id_filtro", id);
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/catalogo-asesor");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo actualizar el filtro" };
+  }
 }
 
-export async function deleteFiltro(id: string) {
-  const supabase = getSupabaseServerClient();
-  const { error } = await supabase.from("filtros_producto").delete().eq("id_filtro", id);
-  if (error) throw new Error(friendlyDbError(error));
-  revalidatePath("/catalogo-asesor");
+export async function deleteFiltro(id: string): Promise<{ error: string | null }> {
+  try {
+    const supabase = getSupabaseServerClient();
+    const { error } = await supabase.from("filtros_producto").delete().eq("id_filtro", id);
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/catalogo-asesor");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo eliminar el filtro" };
+  }
 }

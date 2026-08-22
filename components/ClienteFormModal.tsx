@@ -13,12 +13,9 @@ export default function ClienteFormModal({ cliente, onClose }: { cliente: Client
     setError(null);
     startTransition(async () => {
       try {
-        if (cliente) {
-          await updateCliente(cliente.id_cliente, formData);
-        } else {
-          await createCliente(formData);
-        }
-        onClose();
+        const res = cliente ? await updateCliente(cliente.id_cliente, formData) : await createCliente(formData);
+        if (res.error) setError(res.error);
+        else onClose();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Algo salió mal");
       }

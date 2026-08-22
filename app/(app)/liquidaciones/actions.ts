@@ -253,6 +253,9 @@ export async function detalleLiquidacion(idLiquidacion: string) {
   return { liquidacion, marca, lineas, resumen };
 }
 
+// Next.js redacta en producción el mensaje de cualquier Error que se lance
+// desde una Server Action (queda solo un digest genérico en el navegador) —
+// por eso esta función devuelve { error } como dato en vez de tirar throw.
 export async function marcarComoLiquidada(
   idMarca: string,
   desde: string,
@@ -267,52 +270,57 @@ export async function marcarComoLiquidada(
     netoEfectivo: number;
     netoTransferencia: number;
   }
-) {
-  const supabase = getSupabaseServerClient();
-  const usuario = await usuarioActual();
+): Promise<{ error: string | null }> {
+  try {
+    const supabase = getSupabaseServerClient();
+    const usuario = await usuarioActual();
 
-  const totalComisiones = resumen.comisionWiigo + resumen.ivaComision + resumen.feeMp;
-  const totalRetenciones = totalComisiones + resumen.impCreditos;
+    const totalComisiones = resumen.comisionWiigo + resumen.ivaComision + resumen.feeMp;
+    const totalRetenciones = totalComisiones + resumen.impCreditos;
 
-  const { data: liquidacion, error: errorLiquidacion } = await supabase
-    .from("liquidaciones")
-    .insert({
-      id_marca: idMarca,
-      fecha_desde: desde,
-      fecha_hasta: hasta,
-      fecha_generacion: new Date().toISOString(),
-      venta_bruta: resumen.ventaBruta,
-      royalty: resumen.comisionWiigo,
-      iva_royalty: resumen.ivaComision,
-      comision_cobro_asignada: resumen.feeMp,
-      imp_creditos_asignado: resumen.impCreditos,
-      total_comisiones: totalComisiones,
-      total_retenciones: totalRetenciones,
-      neto_a_transferir: resumen.netoARendir,
-      estado: "LIQUIDADA",
-      observaciones: `Confirmado por ${usuario ?? "—"} · Efectivo entregado: $${resumen.netoEfectivo} · Transferido por banco: $${resumen.netoTransferencia}`,
-    })
-    .select("id_liquidacion")
-    .single();
-  if (errorLiquidacion) throw new Error(friendlyDbError(errorLiquidacion));
+    const { data: liquidacion, error: errorLiquidacion } = await supabase
+      .from("liquidaciones")
+      .insert({
+        id_marca: idMarca,
+        fecha_desde: desde,
+        fecha_hasta: hasta,
+        fecha_generacion: new Date().toISOString(),
+        venta_bruta: resumen.ventaBruta,
+        royalty: resumen.comisionWiigo,
+        iva_royalty: resumen.ivaComision,
+        comision_cobro_asignada: resumen.feeMp,
+        imp_creditos_asignado: resumen.impCreditos,
+        total_comisiones: totalComisiones,
+        total_retenciones: totalRetenciones,
+        neto_a_transferir: resumen.netoARendir,
+        estado: "LIQUIDADA",
+        observaciones: `Confirmado por ${usuario ?? "—"} · Efectivo entregado: $${resumen.netoEfectivo} · Transferido por banco: $${resumen.netoTransferencia}`,
+      })
+      .select("id_liquidacion")
+      .single();
+    if (errorLiquidacion) return { error: friendlyDbError(errorLiquidacion) };
 
-  // Estampa todas las ventas del período que ya se rindieron, para que no
-  // se vuelvan a contar en la próxima liquidación.
-  const { data: detalle } = await supabase.from("detalle_ventas").select("id_venta").eq("id_marca", idMarca);
-  const idsVenta = [...new Set((detalle ?? []).map((d) => d.id_venta))];
-  if (idsVenta.length > 0) {
-    const { error: errorUpdate } = await supabase
-      .from("ventas")
-      .update({ id_liquidacion: liquidacion.id_liquidacion })
-      .in("id_venta", idsVenta)
-      .eq("estado", "PAGADA")
-      .is("id_liquidacion", null)
-      .gte("fecha", `${desde}T00:00:00`)
-      .lte("fecha", `${hasta}T23:59:59`);
-    if (errorUpdate) throw new Error(friendlyDbError(errorUpdate));
+    // Estampa todas las ventas del período que ya se rindieron, para que no
+    // se vuelvan a contar en la próxima liquidación.
+    const { data: detalle } = await supabase.from("detalle_ventas").select("id_venta").eq("id_marca", idMarca);
+    const idsVenta = [...new Set((detalle ?? []).map((d) => d.id_venta))];
+    if (idsVenta.length > 0) {
+      const { error: errorUpdate } = await supabase
+        .from("ventas")
+        .update({ id_liquidacion: liquidacion.id_liquidacion })
+        .in("id_venta", idsVenta)
+        .eq("estado", "PAGADA")
+        .is("id_liquidacion", null)
+        .gte("fecha", `${desde}T00:00:00`)
+        .lte("fecha", `${hasta}T23:59:59`);
+      if (errorUpdate) return { error: friendlyDbError(errorUpdate) };
+    }
+
+    revalidatePath("/liquidaciones");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo cerrar la liquidación" };
   }
-
-  revalidatePath("/liquidaciones");
 }
 
 export async function historialLiquidaciones(idMarca: string) {
@@ -329,26 +337,31 @@ export async function historialLiquidaciones(idMarca: string) {
 // El comprobante firmado se guarda en un bucket privado de Supabase
 // Storage — nunca queda público, se ve a través de un link firmado con
 // vencimiento (ver obtenerUrlComprobante).
-export async function subirComprobante(idLiquidacion: string, formData: FormData) {
-  const archivo = formData.get("archivo") as File | null;
-  if (!archivo || archivo.size === 0) throw new Error("Elegí un archivo primero");
+export async function subirComprobante(idLiquidacion: string, formData: FormData): Promise<{ error: string | null }> {
+  try {
+    const archivo = formData.get("archivo") as File | null;
+    if (!archivo || archivo.size === 0) return { error: "Elegí un archivo primero" };
 
-  const supabase = getSupabaseServerClient();
-  const extension = archivo.name.split(".").pop() ?? "pdf";
-  const path = `${idLiquidacion}.${extension}`;
+    const supabase = getSupabaseServerClient();
+    const extension = archivo.name.split(".").pop() ?? "pdf";
+    const path = `${idLiquidacion}.${extension}`;
 
-  const { error: errorUpload } = await supabase.storage
-    .from("comprobantes-liquidacion")
-    .upload(path, archivo, { upsert: true, contentType: archivo.type || undefined });
-  if (errorUpload) throw new Error(errorUpload.message);
+    const { error: errorUpload } = await supabase.storage
+      .from("comprobantes-liquidacion")
+      .upload(path, archivo, { upsert: true, contentType: archivo.type || undefined });
+    if (errorUpload) return { error: errorUpload.message };
 
-  const { error: errorUpdate } = await supabase
-    .from("liquidaciones")
-    .update({ comprobante_path: path })
-    .eq("id_liquidacion", idLiquidacion);
-  if (errorUpdate) throw new Error(friendlyDbError(errorUpdate));
+    const { error: errorUpdate } = await supabase
+      .from("liquidaciones")
+      .update({ comprobante_path: path })
+      .eq("id_liquidacion", idLiquidacion);
+    if (errorUpdate) return { error: friendlyDbError(errorUpdate) };
 
-  revalidatePath("/liquidaciones");
+    revalidatePath("/liquidaciones");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo subir el comprobante" };
+  }
 }
 
 export async function obtenerUrlComprobante(path: string) {

@@ -103,7 +103,8 @@ export default function ProductosApp({
     if (!confirm(`¿Borrar "${producto.nombre}"?`)) return;
     startTransition(async () => {
       try {
-        await deleteProducto(producto.id_producto);
+        const res = await deleteProducto(producto.id_producto);
+        if (res.error) alert(res.error);
       } catch (e) {
         alert(e instanceof Error ? e.message : "Algo salió mal");
       }

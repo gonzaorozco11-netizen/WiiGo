@@ -78,12 +78,9 @@ export default function ProductoFormModal({
     setError(null);
     startTransition(async () => {
       try {
-        if (producto) {
-          await updateProducto(producto.id_producto, formData);
-        } else {
-          await createProducto(formData);
-        }
-        onClose();
+        const res = producto ? await updateProducto(producto.id_producto, formData) : await createProducto(formData);
+        if (res.error) setError(res.error);
+        else onClose();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Algo salió mal");
       }

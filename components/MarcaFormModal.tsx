@@ -20,12 +20,9 @@ export default function MarcaFormModal({
     setError(null);
     startTransition(async () => {
       try {
-        if (marca) {
-          await updateMarca(marca.id_marca, formData);
-        } else {
-          await createMarca(formData);
-        }
-        onClose();
+        const res = marca ? await updateMarca(marca.id_marca, formData) : await createMarca(formData);
+        if (res.error) setError(res.error);
+        else onClose();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Algo salió mal");
       }

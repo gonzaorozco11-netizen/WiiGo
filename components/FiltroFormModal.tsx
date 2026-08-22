@@ -19,12 +19,9 @@ export default function FiltroFormModal({
     setError(null);
     startTransition(async () => {
       try {
-        if (filtro) {
-          await updateFiltro(filtro.id_filtro, formData);
-        } else {
-          await createFiltro(formData);
-        }
-        onClose();
+        const res = filtro ? await updateFiltro(filtro.id_filtro, formData) : await createFiltro(formData);
+        if (res.error) setError(res.error);
+        else onClose();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Algo salió mal");
       }

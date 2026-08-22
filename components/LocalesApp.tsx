@@ -31,7 +31,8 @@ export default function LocalesApp({ initialLocales }: { initialLocales: Local[]
     if (!confirm(`¿Borrar el local "${local.nombre}"?`)) return;
     startTransition(async () => {
       try {
-        await deleteLocal(local.id_local);
+        const res = await deleteLocal(local.id_local);
+        if (res.error) alert(res.error);
       } catch (e) {
         alert(e instanceof Error ? e.message : "Algo salió mal");
       }

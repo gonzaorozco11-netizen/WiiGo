@@ -91,7 +91,10 @@ export default function LiquidacionesApp({ marcas }: { marcas: Marca[] }) {
     setError(null);
     setCerrando(true);
     marcarComoLiquidada(idMarca, desde, hasta, resultado.resumen)
-      .then(() => setResultado(null))
+      .then((res) => {
+        if (res.error) setError(res.error);
+        else setResultado(null);
+      })
       .catch((e) => setError(e instanceof Error ? e.message : "No se pudo cerrar la liquidación"))
       .finally(() => setCerrando(false));
   }
@@ -304,7 +307,10 @@ function FilaComprobante({ liquidacion }: { liquidacion: Liquidacion }) {
     const formData = new FormData();
     formData.set("archivo", archivo);
     subirComprobante(liquidacion.id_liquidacion, formData)
-      .then(() => setPath(`${liquidacion.id_liquidacion}.${archivo.name.split(".").pop() ?? "pdf"}`))
+      .then((res) => {
+        if (res.error) setError(res.error);
+        else setPath(`${liquidacion.id_liquidacion}.${archivo.name.split(".").pop() ?? "pdf"}`);
+      })
       .catch((err) => setError(err instanceof Error ? err.message : "No se pudo subir"))
       .finally(() => setSubiendo(false));
     e.target.value = "";

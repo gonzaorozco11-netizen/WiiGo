@@ -21,12 +21,11 @@ export default function SubcategoriaFormModal({
     setError(null);
     startTransition(async () => {
       try {
-        if (subcategoria) {
-          await updateSubcategoria(subcategoria.id_subcategoria, idMarca, formData);
-        } else {
-          await createSubcategoria(idMarca, formData);
-        }
-        onClose();
+        const res = subcategoria
+          ? await updateSubcategoria(subcategoria.id_subcategoria, idMarca, formData)
+          : await createSubcategoria(idMarca, formData);
+        if (res.error) setError(res.error);
+        else onClose();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Algo salió mal");
       }

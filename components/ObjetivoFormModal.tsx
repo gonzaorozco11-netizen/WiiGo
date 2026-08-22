@@ -19,12 +19,9 @@ export default function ObjetivoFormModal({
     setError(null);
     startTransition(async () => {
       try {
-        if (objetivo) {
-          await updateObjetivo(objetivo.id_objetivo, formData);
-        } else {
-          await createObjetivo(formData);
-        }
-        onClose();
+        const res = objetivo ? await updateObjetivo(objetivo.id_objetivo, formData) : await createObjetivo(formData);
+        if (res.error) setError(res.error);
+        else onClose();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Algo salió mal");
       }

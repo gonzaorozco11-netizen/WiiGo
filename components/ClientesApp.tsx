@@ -33,7 +33,8 @@ export default function ClientesApp({ initialClientes }: { initialClientes: Clie
     if (!confirm(`¿Borrar a "${cliente.nombre}"?`)) return;
     startTransition(async () => {
       try {
-        await deleteCliente(cliente.id_cliente);
+        const res = await deleteCliente(cliente.id_cliente);
+        if (res.error) alert(res.error);
       } catch (e) {
         alert(e instanceof Error ? e.message : "Algo salió mal");
       }

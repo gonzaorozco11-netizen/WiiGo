@@ -13,72 +13,81 @@ async function usuarioActual() {
   return session?.nombre ?? null;
 }
 
+// Next.js redacta en producción el mensaje de un Error tirado desde una
+// Server Action (queda solo un digest genérico en el navegador) — por eso
+// estas funciones no throwean para errores esperables: devuelven { error }.
 export async function crearOrden(
   idMarca: string,
   idLocal: string,
   items: { idVariante: string; cantidad: number }[],
   observaciones: string
-) {
+): Promise<{ error: string | null }> {
   const validos = items.filter((i) => i.cantidad > 0);
-  if (validos.length === 0) throw new Error("Agregá al menos un producto con cantidad mayor a 0");
+  if (validos.length === 0) return { error: "Agregá al menos un producto con cantidad mayor a 0" };
 
-  const supabase = getSupabaseServerClient();
-  const totalUnidades = validos.reduce((acc, i) => acc + i.cantidad, 0);
+  try {
+    const supabase = getSupabaseServerClient();
+    const totalUnidades = validos.reduce((acc, i) => acc + i.cantidad, 0);
 
-  const { data: orden, error: errorOrden } = await supabase
-    .from("ordenes_reposicion")
-    .insert({
-      id_marca: idMarca,
-      id_local: idLocal,
-      estado: "PENDIENTE",
-      total_unidades: totalUnidades,
-      observaciones: observaciones || null,
-    })
-    .select("id_orden")
-    .single();
-  if (errorOrden) throw new Error(friendlyDbError(errorOrden));
+    const { data: orden, error: errorOrden } = await supabase
+      .from("ordenes_reposicion")
+      .insert({
+        id_marca: idMarca,
+        id_local: idLocal,
+        estado: "PENDIENTE",
+        total_unidades: totalUnidades,
+        observaciones: observaciones || null,
+      })
+      .select("id_orden")
+      .single();
+    if (errorOrden) return { error: friendlyDbError(errorOrden) };
 
-  const filas = validos.map((i) => ({
-    id_orden: orden.id_orden,
-    id_variante: i.idVariante,
-    cantidad_solicitada: i.cantidad,
-    cantidad_recibida: 0,
-  }));
-  const { error: errorDetalle } = await supabase.from("detalle_reposicion").insert(filas);
-  if (errorDetalle) throw new Error(friendlyDbError(errorDetalle));
+    const filas = validos.map((i) => ({
+      id_orden: orden.id_orden,
+      id_variante: i.idVariante,
+      cantidad_solicitada: i.cantidad,
+      cantidad_recibida: 0,
+    }));
+    const { error: errorDetalle } = await supabase.from("detalle_reposicion").insert(filas);
+    if (errorDetalle) return { error: friendlyDbError(errorDetalle) };
 
-  revalidatePath("/reposicion");
+    revalidatePath("/reposicion");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo crear la orden" };
+  }
 }
 
 export async function recepcionarOrden(
   idOrden: string,
   items: { idDetalle: string; idVariante: string; cantidadSolicitada: number; cantidadRecibida: number }[],
   observaciones: string
-) {
-  const supabase = getSupabaseServerClient();
+): Promise<{ error: string | null }> {
+  try {
+    const supabase = getSupabaseServerClient();
 
-  const { data: orden, error: errorOrdenGet } = await supabase
-    .from("ordenes_reposicion")
-    .select("id_marca, id_local")
-    .eq("id_orden", idOrden)
-    .maybeSingle();
-  if (errorOrdenGet) throw new Error(friendlyDbError(errorOrdenGet));
-  if (!orden) throw new Error("No se encontró la orden");
+    const { data: orden, error: errorOrdenGet } = await supabase
+      .from("ordenes_reposicion")
+      .select("id_marca, id_local")
+      .eq("id_orden", idOrden)
+      .maybeSingle();
+    if (errorOrdenGet) return { error: friendlyDbError(errorOrdenGet) };
+    if (!orden) return { error: "No se encontró la orden" };
 
-  const usuario = await usuarioActual();
+    const usuario = await usuarioActual();
 
-  const { data: recepcion, error: errorRecepcion } = await supabase
-    .from("recepciones")
-    .insert({
-      id_orden: idOrden,
-      id_marca: orden.id_marca,
-      id_local: orden.id_local,
-      usuario,
-      observaciones: observaciones || null,
-    })
-    .select("id_recepcion")
-    .single();
-  if (errorRecepcion) throw new Error(friendlyDbError(errorRecepcion));
+    const { data: recepcion, error: errorRecepcion } = await supabase
+      .from("recepciones")
+      .insert({
+        id_orden: idOrden,
+        id_marca: orden.id_marca,
+        id_local: orden.id_local,
+        usuario,
+        observaciones: observaciones || null,
+      })
+      .select("id_recepcion")
+      .single();
+    if (errorRecepcion) return { error: friendlyDbError(errorRecepcion) };
 
   let todoCompleto = true;
 
@@ -91,7 +100,7 @@ export async function recepcionarOrden(
       .from("detalle_reposicion")
       .update({ cantidad_recibida: item.cantidadRecibida })
       .eq("id_detalle", item.idDetalle);
-    if (errorUpdateDetalle) throw new Error(friendlyDbError(errorUpdateDetalle));
+    if (errorUpdateDetalle) return { error: friendlyDbError(errorUpdateDetalle) };
 
     const { error: errorDetalleRecepcion } = await supabase.from("detalle_recepciones").insert({
       id_recepcion: recepcion.id_recepcion,
@@ -102,7 +111,7 @@ export async function recepcionarOrden(
       estado_control: estadoControl,
       diferencia,
     });
-    if (errorDetalleRecepcion) throw new Error(friendlyDbError(errorDetalleRecepcion));
+    if (errorDetalleRecepcion) return { error: friendlyDbError(errorDetalleRecepcion) };
 
     if (item.cantidadRecibida > 0) {
       const { data: stockActual } = await supabase
@@ -124,7 +133,7 @@ export async function recepcionarOrden(
           },
           { onConflict: "id_variante,id_local" }
         );
-      if (errorStock) throw new Error(friendlyDbError(errorStock));
+      if (errorStock) return { error: friendlyDbError(errorStock) };
 
       const { error: errorMov } = await supabase.from("movimientos_stock").insert({
         id_variante: item.idVariante,
@@ -135,16 +144,20 @@ export async function recepcionarOrden(
         id_referencia: idOrden,
         usuario,
       });
-      if (errorMov) throw new Error(friendlyDbError(errorMov));
+      if (errorMov) return { error: friendlyDbError(errorMov) };
     }
   }
 
-  const { error: errorEstado } = await supabase
-    .from("ordenes_reposicion")
-    .update({ estado: todoCompleto ? "RECIBIDA" : "RECIBIDA_CON_DIFERENCIAS" })
-    .eq("id_orden", idOrden);
-  if (errorEstado) throw new Error(friendlyDbError(errorEstado));
+    const { error: errorEstado } = await supabase
+      .from("ordenes_reposicion")
+      .update({ estado: todoCompleto ? "RECIBIDA" : "RECIBIDA_CON_DIFERENCIAS" })
+      .eq("id_orden", idOrden);
+    if (errorEstado) return { error: friendlyDbError(errorEstado) };
 
-  revalidatePath("/reposicion");
-  revalidatePath("/stock");
+    revalidatePath("/reposicion");
+    revalidatePath("/stock");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo registrar la recepción" };
+  }
 }

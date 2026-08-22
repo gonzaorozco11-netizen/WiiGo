@@ -13,12 +13,9 @@ export default function LocalFormModal({ local, onClose }: { local: Local | null
     setError(null);
     startTransition(async () => {
       try {
-        if (local) {
-          await updateLocal(local.id_local, formData);
-        } else {
-          await createLocal(formData);
-        }
-        onClose();
+        const res = local ? await updateLocal(local.id_local, formData) : await createLocal(formData);
+        if (res.error) setError(res.error);
+        else onClose();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Algo salió mal");
       }

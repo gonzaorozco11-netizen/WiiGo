@@ -204,7 +204,11 @@ export default function SelfCheckoutApp({
       medioPago
     )
       .then((r) => {
-        setPedido(r);
+        if (r.error || !r.pedido) {
+          setError(r.error ?? "Algo salió mal, probá de nuevo.");
+          return;
+        }
+        setPedido(r.pedido);
         setPaso(medioPago === "EFECTIVO" ? "efectivo-esperando" : "mp-esperando");
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Algo salió mal, probá de nuevo."))

@@ -47,32 +47,50 @@ function marcaFromForm(formData: FormData) {
   };
 }
 
-export async function createMarca(formData: FormData) {
-  const data = marcaFromForm(formData);
-  if (!data.nombre) throw new Error("El nombre es obligatorio");
+// Next.js redacta en producción el mensaje de un throw new Error() en una
+// Server Action (queda solo un digest genérico) — por eso estas funciones
+// devuelven { error } como dato en vez de tirar throw.
+export async function createMarca(formData: FormData): Promise<{ error: string | null }> {
+  try {
+    const data = marcaFromForm(formData);
+    if (!data.nombre) return { error: "El nombre es obligatorio" };
 
-  const supabase = getSupabaseServerClient();
-  const { error } = await supabase.from("marcas").insert(data);
-  if (error) throw new Error(error.message);
-  revalidatePath("/marcas");
+    const supabase = getSupabaseServerClient();
+    const { error } = await supabase.from("marcas").insert(data);
+    if (error) return { error: error.message };
+    revalidatePath("/marcas");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo crear la marca" };
+  }
 }
 
-export async function updateMarca(id: string, formData: FormData) {
-  const data = marcaFromForm(formData);
-  if (!data.nombre) throw new Error("El nombre es obligatorio");
+export async function updateMarca(id: string, formData: FormData): Promise<{ error: string | null }> {
+  try {
+    const data = marcaFromForm(formData);
+    if (!data.nombre) return { error: "El nombre es obligatorio" };
 
-  const supabase = getSupabaseServerClient();
-  const { error } = await supabase.from("marcas").update(data).eq("id_marca", id);
-  if (error) throw new Error(error.message);
-  revalidatePath("/marcas");
-  revalidatePath(`/marcas/${id}`);
+    const supabase = getSupabaseServerClient();
+    const { error } = await supabase.from("marcas").update(data).eq("id_marca", id);
+    if (error) return { error: error.message };
+    revalidatePath("/marcas");
+    revalidatePath(`/marcas/${id}`);
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo actualizar la marca" };
+  }
 }
 
-export async function deleteMarca(id: string) {
-  const supabase = getSupabaseServerClient();
-  const { error } = await supabase.from("marcas").delete().eq("id_marca", id);
-  if (error) throw new Error(friendlyDbError(error));
-  revalidatePath("/marcas");
+export async function deleteMarca(id: string): Promise<{ error: string | null }> {
+  try {
+    const supabase = getSupabaseServerClient();
+    const { error } = await supabase.from("marcas").delete().eq("id_marca", id);
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/marcas");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo eliminar la marca" };
+  }
 }
 
 function subcategoriaFromForm(formData: FormData) {
@@ -82,29 +100,44 @@ function subcategoriaFromForm(formData: FormData) {
   };
 }
 
-export async function createSubcategoria(idMarca: string, formData: FormData) {
-  const data = subcategoriaFromForm(formData);
-  if (!data.nombre) throw new Error("El nombre es obligatorio");
+export async function createSubcategoria(idMarca: string, formData: FormData): Promise<{ error: string | null }> {
+  try {
+    const data = subcategoriaFromForm(formData);
+    if (!data.nombre) return { error: "El nombre es obligatorio" };
 
-  const supabase = getSupabaseServerClient();
-  const { error } = await supabase.from("subcategorias").insert({ id_marca: idMarca, ...data });
-  if (error) throw new Error(friendlyDbError(error));
-  revalidatePath(`/marcas/${idMarca}`);
+    const supabase = getSupabaseServerClient();
+    const { error } = await supabase.from("subcategorias").insert({ id_marca: idMarca, ...data });
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath(`/marcas/${idMarca}`);
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo crear la subcategoría" };
+  }
 }
 
-export async function updateSubcategoria(id: string, idMarca: string, formData: FormData) {
-  const data = subcategoriaFromForm(formData);
-  if (!data.nombre) throw new Error("El nombre es obligatorio");
+export async function updateSubcategoria(id: string, idMarca: string, formData: FormData): Promise<{ error: string | null }> {
+  try {
+    const data = subcategoriaFromForm(formData);
+    if (!data.nombre) return { error: "El nombre es obligatorio" };
 
-  const supabase = getSupabaseServerClient();
-  const { error } = await supabase.from("subcategorias").update(data).eq("id_subcategoria", id);
-  if (error) throw new Error(friendlyDbError(error));
-  revalidatePath(`/marcas/${idMarca}`);
+    const supabase = getSupabaseServerClient();
+    const { error } = await supabase.from("subcategorias").update(data).eq("id_subcategoria", id);
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath(`/marcas/${idMarca}`);
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo actualizar la subcategoría" };
+  }
 }
 
-export async function deleteSubcategoria(id: string, idMarca: string) {
-  const supabase = getSupabaseServerClient();
-  const { error } = await supabase.from("subcategorias").delete().eq("id_subcategoria", id);
-  if (error) throw new Error(friendlyDbError(error));
-  revalidatePath(`/marcas/${idMarca}`);
+export async function deleteSubcategoria(id: string, idMarca: string): Promise<{ error: string | null }> {
+  try {
+    const supabase = getSupabaseServerClient();
+    const { error } = await supabase.from("subcategorias").delete().eq("id_subcategoria", id);
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath(`/marcas/${idMarca}`);
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo eliminar la subcategoría" };
+  }
 }

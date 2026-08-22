@@ -35,8 +35,9 @@ export default function TransferenciaStockModal({
 
     startTransition(async () => {
       try {
-        await transferirStock(idVariante, idLocalOrigen, idLocalDestino, cantidad, motivo);
-        onClose();
+        const res = await transferirStock(idVariante, idLocalOrigen, idLocalDestino, cantidad, motivo);
+        if (res.error) setError(res.error);
+        else onClose();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Algo salió mal");
       }

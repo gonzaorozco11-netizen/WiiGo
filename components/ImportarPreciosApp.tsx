@@ -21,8 +21,12 @@ export default function ImportarPreciosApp({ marca }: { marca: Marca }) {
     setResultado(null);
     startTransition(async () => {
       try {
-        const filas = await previsualizarImportacion(marca.id_marca, formData);
-        setPreview(filas);
+        const res = await previsualizarImportacion(marca.id_marca, formData);
+        if (res.error) {
+          setError(res.error);
+          return;
+        }
+        setPreview(res.filas ?? []);
         setExcluidas(new Set());
       } catch (e) {
         setError(e instanceof Error ? e.message : "Algo salió mal");
@@ -44,6 +48,10 @@ export default function ImportarPreciosApp({ marca }: { marca: Marca }) {
     startTransition(async () => {
       try {
         const res = await confirmarImportacion(marca.id_marca, cambios);
+        if (res.error) {
+          setError(res.error);
+          return;
+        }
         setResultado(`Se actualizaron ${res.actualizados} productos.`);
         setPreview(null);
       } catch (e) {

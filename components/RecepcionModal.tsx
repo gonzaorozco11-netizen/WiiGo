@@ -35,7 +35,7 @@ export default function RecepcionModal({
     setError(null);
     startTransition(async () => {
       try {
-        await recepcionarOrden(
+        const res = await recepcionarOrden(
           orden.id_orden,
           detalle.map((d) => ({
             idDetalle: d.id_detalle,
@@ -45,7 +45,8 @@ export default function RecepcionModal({
           })),
           observaciones
         );
-        onClose();
+        if (res.error) setError(res.error);
+        else onClose();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Algo salió mal");
       }

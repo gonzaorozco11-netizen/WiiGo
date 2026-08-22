@@ -92,7 +92,8 @@ function FilaAcciones({ usuario, onCambiarPassword }: { usuario: UsuarioSinHash;
     const nuevoEstado = usuario.estado === "ACTIVO" ? "INACTIVO" : "ACTIVO";
     startTransition(async () => {
       try {
-        await cambiarEstadoUsuario(usuario.id_usuario, nuevoEstado);
+        const res = await cambiarEstadoUsuario(usuario.id_usuario, nuevoEstado);
+        if (res.error) alert(res.error);
       } catch (e) {
         alert(e instanceof Error ? e.message : "Algo salió mal");
       }
@@ -119,8 +120,9 @@ function NuevoUsuarioModal({ onClose }: { onClose: () => void }) {
     setError(null);
     startTransition(async () => {
       try {
-        await crearUsuario(formData);
-        onClose();
+        const res = await crearUsuario(formData);
+        if (res.error) setError(res.error);
+        else onClose();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Algo salió mal");
       }
@@ -227,8 +229,9 @@ function CambiarPasswordModal({ usuario, onClose }: { usuario: UsuarioSinHash; o
     setError(null);
     startTransition(async () => {
       try {
-        await cambiarPasswordUsuario(usuario.id_usuario, password);
-        onClose();
+        const res = await cambiarPasswordUsuario(usuario.id_usuario, password);
+        if (res.error) setError(res.error);
+        else onClose();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Algo salió mal");
       }

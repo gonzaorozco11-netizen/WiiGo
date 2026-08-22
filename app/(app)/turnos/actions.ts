@@ -28,23 +28,31 @@ export async function turnoAbiertoDeLocal(supabase: SupabaseClient, idLocal: str
   return data?.id_turno ?? null;
 }
 
-export async function abrirTurno(idLocal: string, montoInicial: number) {
-  if (montoInicial < 0) throw new Error("El fondo inicial no puede ser negativo");
+// Next.js redacta en producción el mensaje de un Error tirado desde una
+// Server Action (queda solo un digest genérico en el navegador) — por eso
+// esta función no throwea para errores esperables: devuelve { error }.
+export async function abrirTurno(idLocal: string, montoInicial: number): Promise<{ error: string | null }> {
+  if (montoInicial < 0) return { error: "El fondo inicial no puede ser negativo" };
 
-  const supabase = getSupabaseServerClient();
-  const existente = await turnoAbiertoDeLocal(supabase, idLocal);
-  if (existente) throw new Error("Ya hay un turno abierto en este local — cerralo antes de abrir uno nuevo.");
+  try {
+    const supabase = getSupabaseServerClient();
+    const existente = await turnoAbiertoDeLocal(supabase, idLocal);
+    if (existente) return { error: "Ya hay un turno abierto en este local — cerralo antes de abrir uno nuevo." };
 
-  const usuario = await usuarioActual();
-  const { error } = await supabase.from("turnos").insert({
-    id_local: idLocal,
-    usuario_apertura: usuario,
-    monto_inicial_efectivo: montoInicial,
-    estado: "ABIERTO",
-  });
-  if (error) throw new Error(friendlyDbError(error));
+    const usuario = await usuarioActual();
+    const { error } = await supabase.from("turnos").insert({
+      id_local: idLocal,
+      usuario_apertura: usuario,
+      monto_inicial_efectivo: montoInicial,
+      estado: "ABIERTO",
+    });
+    if (error) return { error: friendlyDbError(error) };
 
-  revalidatePath("/turnos");
+    revalidatePath("/turnos");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo abrir el turno" };
+  }
 }
 
 // Solo cuenta ventas ya PAGADAS — una pendiente de Self Checkout que
@@ -109,55 +117,64 @@ export async function resumenTurnoAbierto(idTurno: string) {
   };
 }
 
-export async function cerrarTurno(idTurno: string, efectivoContado: number, observaciones: string) {
-  if (efectivoContado < 0) throw new Error("El efectivo contado no puede ser negativo");
+export async function cerrarTurno(
+  idTurno: string,
+  efectivoContado: number,
+  observaciones: string
+): Promise<{ error: string | null }> {
+  if (efectivoContado < 0) return { error: "El efectivo contado no puede ser negativo" };
 
-  const supabase = getSupabaseServerClient();
-  const { data: turno, error: errorTurno } = await supabase
-    .from("turnos")
-    .select("estado, monto_inicial_efectivo, id_local")
-    .eq("id_turno", idTurno)
-    .maybeSingle();
-  if (errorTurno) throw new Error(friendlyDbError(errorTurno));
-  if (!turno) throw new Error("No se encontró el turno");
-  if (turno.estado !== "ABIERTO") throw new Error("Este turno ya está cerrado");
+  try {
+    const supabase = getSupabaseServerClient();
+    const { data: turno, error: errorTurno } = await supabase
+      .from("turnos")
+      .select("estado, monto_inicial_efectivo, id_local")
+      .eq("id_turno", idTurno)
+      .maybeSingle();
+    if (errorTurno) return { error: friendlyDbError(errorTurno) };
+    if (!turno) return { error: "No se encontró el turno" };
+    if (turno.estado !== "ABIERTO") return { error: "Este turno ya está cerrado" };
 
-  const resumen = await resumenTurno(supabase, idTurno);
-  const efectivoEsperado = turno.monto_inicial_efectivo + resumen.totalEfectivo - resumen.totalGastosEfectivo;
-  const usuario = await usuarioActual();
+    const resumen = await resumenTurno(supabase, idTurno);
+    const efectivoEsperado = turno.monto_inicial_efectivo + resumen.totalEfectivo - resumen.totalGastosEfectivo;
+    const usuario = await usuarioActual();
 
-  const { error } = await supabase
-    .from("turnos")
-    .update({
-      estado: "CERRADO",
-      usuario_cierre: usuario,
-      fecha_cierre: new Date().toISOString(),
-      efectivo_esperado: efectivoEsperado,
-      efectivo_contado: efectivoContado,
-      diferencia_efectivo: efectivoContado - efectivoEsperado,
-      total_mercado_pago: resumen.totalMercadoPago,
-      total_vuelto_entregado: resumen.totalVueltoEntregado,
-      total_gastos_efectivo: resumen.totalGastosEfectivo,
-      cantidad_ventas: resumen.cantidadVentas,
-      observaciones: observaciones || null,
-    })
-    .eq("id_turno", idTurno);
-  if (error) throw new Error(friendlyDbError(error));
+    const { error } = await supabase
+      .from("turnos")
+      .update({
+        estado: "CERRADO",
+        usuario_cierre: usuario,
+        fecha_cierre: new Date().toISOString(),
+        efectivo_esperado: efectivoEsperado,
+        efectivo_contado: efectivoContado,
+        diferencia_efectivo: efectivoContado - efectivoEsperado,
+        total_mercado_pago: resumen.totalMercadoPago,
+        total_vuelto_entregado: resumen.totalVueltoEntregado,
+        total_gastos_efectivo: resumen.totalGastosEfectivo,
+        cantidad_ventas: resumen.cantidadVentas,
+        observaciones: observaciones || null,
+      })
+      .eq("id_turno", idTurno);
+    if (error) return { error: friendlyDbError(error) };
 
-  // El efectivo contado entra solo a la Caja Administración — es el
-  // único lugar donde se junta la plata de todos los cierres de todos
-  // los turnos, para que administración sepa cuánto tiene sin sumar a mano.
-  const { data: local } = await supabase.from("locales").select("nombre").eq("id_local", turno.id_local).maybeSingle();
-  await supabase.from("movimientos_caja_admin").insert({
-    tipo: "INGRESO_TURNO",
-    monto: efectivoContado,
-    id_turno: idTurno,
-    descripcion: `Cierre de turno — ${local?.nombre ?? "Local"} — ${usuario ?? "—"}`,
-    usuario,
-  });
+    // El efectivo contado entra solo a la Caja Administración — es el
+    // único lugar donde se junta la plata de todos los cierres de todos
+    // los turnos, para que administración sepa cuánto tiene sin sumar a mano.
+    const { data: local } = await supabase.from("locales").select("nombre").eq("id_local", turno.id_local).maybeSingle();
+    await supabase.from("movimientos_caja_admin").insert({
+      tipo: "INGRESO_TURNO",
+      monto: efectivoContado,
+      id_turno: idTurno,
+      descripcion: `Cierre de turno — ${local?.nombre ?? "Local"} — ${usuario ?? "—"}`,
+      usuario,
+    });
 
-  revalidatePath("/turnos");
-  revalidatePath("/gastos");
+    revalidatePath("/turnos");
+    revalidatePath("/gastos");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo cerrar el turno" };
+  }
 }
 
 export async function historialTurnos(idLocal: string) {

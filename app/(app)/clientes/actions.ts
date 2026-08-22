@@ -21,29 +21,47 @@ function clienteFromForm(formData: FormData) {
   };
 }
 
-export async function createCliente(formData: FormData) {
-  const data = clienteFromForm(formData);
-  if (!data.nombre) throw new Error("El nombre es obligatorio");
+// Next.js redacta en producción el mensaje de un throw new Error() en una
+// Server Action (queda solo un digest genérico) — por eso estas funciones
+// devuelven { error } como dato en vez de tirar throw.
+export async function createCliente(formData: FormData): Promise<{ error: string | null }> {
+  try {
+    const data = clienteFromForm(formData);
+    if (!data.nombre) return { error: "El nombre es obligatorio" };
 
-  const supabase = getSupabaseServerClient();
-  const { error } = await supabase.from("clientes").insert({ ...data, puntos: 0 });
-  if (error) throw new Error(friendlyDbError(error));
-  revalidatePath("/clientes");
+    const supabase = getSupabaseServerClient();
+    const { error } = await supabase.from("clientes").insert({ ...data, puntos: 0 });
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/clientes");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo crear el cliente" };
+  }
 }
 
-export async function updateCliente(id: string, formData: FormData) {
-  const data = clienteFromForm(formData);
-  if (!data.nombre) throw new Error("El nombre es obligatorio");
+export async function updateCliente(id: string, formData: FormData): Promise<{ error: string | null }> {
+  try {
+    const data = clienteFromForm(formData);
+    if (!data.nombre) return { error: "El nombre es obligatorio" };
 
-  const supabase = getSupabaseServerClient();
-  const { error } = await supabase.from("clientes").update(data).eq("id_cliente", id);
-  if (error) throw new Error(friendlyDbError(error));
-  revalidatePath("/clientes");
+    const supabase = getSupabaseServerClient();
+    const { error } = await supabase.from("clientes").update(data).eq("id_cliente", id);
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/clientes");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo actualizar el cliente" };
+  }
 }
 
-export async function deleteCliente(id: string) {
-  const supabase = getSupabaseServerClient();
-  const { error } = await supabase.from("clientes").delete().eq("id_cliente", id);
-  if (error) throw new Error(friendlyDbError(error));
-  revalidatePath("/clientes");
+export async function deleteCliente(id: string): Promise<{ error: string | null }> {
+  try {
+    const supabase = getSupabaseServerClient();
+    const { error } = await supabase.from("clientes").delete().eq("id_cliente", id);
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/clientes");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo eliminar el cliente" };
+  }
 }

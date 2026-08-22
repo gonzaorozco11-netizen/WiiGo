@@ -34,7 +34,8 @@ export default function MarcasApp({ initialMarcas }: { initialMarcas: Marca[] })
     if (!confirm(`¿Borrar la marca "${marca.nombre}"?`)) return;
     startTransition(async () => {
       try {
-        await deleteMarca(marca.id_marca);
+        const res = await deleteMarca(marca.id_marca);
+        if (res.error) alert(res.error);
       } catch (e) {
         alert(e instanceof Error ? e.message : "Algo salió mal");
       }

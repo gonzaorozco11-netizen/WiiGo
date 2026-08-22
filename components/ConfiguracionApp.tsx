@@ -44,6 +44,7 @@ export default function ConfiguracionApp({
 }) {
   const [isPending, startTransition] = useTransition();
   const [guardado, setGuardado] = useState(false);
+  const [errorPuntos, setErrorPuntos] = useState<string | null>(null);
   const [activo, setActivo] = useState(puntosActivo);
   const [cadaMonto, setCadaMonto] = useState(puntosCadaMonto);
   const [otorgados, setOtorgados] = useState(puntosOtorgados);
@@ -51,18 +52,21 @@ export default function ConfiguracionApp({
 
   const [isPendingLiq, startTransitionLiq] = useTransition();
   const [guardadoLiq, setGuardadoLiq] = useState(false);
+  const [errorLiq, setErrorLiq] = useState<string | null>(null);
   const [impCreditos, setImpCreditos] = useState(impCreditosPorcentaje);
   const [sircreb, setSircreb] = useState(sircrebPorcentaje);
   const [impDebitos, setImpDebitos] = useState(impDebitosPorcentaje);
 
   const [isPendingRent, startTransitionRent] = useTransition();
   const [guardadoRent, setGuardadoRent] = useState(false);
+  const [errorRent, setErrorRent] = useState<string | null>(null);
   const [ivaGeneral, setIvaGeneral] = useState(ivaGeneralPorcentaje);
   const [iibb, setIibb] = useState(iibbPorcentaje);
   const [margenMinimo, setMargenMinimo] = useState(margenMinimoPorcentaje);
 
   const [isPendingMp, startTransitionMp] = useTransition();
   const [guardadoMp, setGuardadoMp] = useState(false);
+  const [errorMp, setErrorMp] = useState<string | null>(null);
   const [mpDineroCuenta, setMpDineroCuenta] = useState(mpComisionDineroCuenta);
   const [mpDebito, setMpDebito] = useState(mpComisionDebito);
   const [mpCuotas, setMpCuotas] = useState(mpComisionCuotasSinInteres);
@@ -71,6 +75,7 @@ export default function ConfiguracionApp({
 
   const [isPendingGastos, startTransitionGastos] = useTransition();
   const [guardadoGastos, setGuardadoGastos] = useState(false);
+  const [errorGastos, setErrorGastos] = useState<string | null>(null);
   const [topeGastos, setTopeGastos] = useState(gastosTopeSinAutorizacion);
 
   const puntosCalculados = useMemo(() => {
@@ -80,41 +85,51 @@ export default function ConfiguracionApp({
 
   function handleSubmit(formData: FormData) {
     setGuardado(false);
+    setErrorPuntos(null);
     startTransition(async () => {
-      await guardarConfigPuntos(formData);
-      setGuardado(true);
+      const res = await guardarConfigPuntos(formData);
+      if (res.error) setErrorPuntos(res.error);
+      else setGuardado(true);
     });
   }
 
   function handleSubmitLiq(formData: FormData) {
     setGuardadoLiq(false);
+    setErrorLiq(null);
     startTransitionLiq(async () => {
-      await guardarConfigLiquidaciones(formData);
-      setGuardadoLiq(true);
+      const res = await guardarConfigLiquidaciones(formData);
+      if (res.error) setErrorLiq(res.error);
+      else setGuardadoLiq(true);
     });
   }
 
   function handleSubmitRent(formData: FormData) {
     setGuardadoRent(false);
+    setErrorRent(null);
     startTransitionRent(async () => {
-      await guardarConfigRentabilidad(formData);
-      setGuardadoRent(true);
+      const res = await guardarConfigRentabilidad(formData);
+      if (res.error) setErrorRent(res.error);
+      else setGuardadoRent(true);
     });
   }
 
   function handleSubmitMp(formData: FormData) {
     setGuardadoMp(false);
+    setErrorMp(null);
     startTransitionMp(async () => {
-      await guardarConfigMercadoPago(formData);
-      setGuardadoMp(true);
+      const res = await guardarConfigMercadoPago(formData);
+      if (res.error) setErrorMp(res.error);
+      else setGuardadoMp(true);
     });
   }
 
   function handleSubmitGastos(formData: FormData) {
     setGuardadoGastos(false);
+    setErrorGastos(null);
     startTransitionGastos(async () => {
-      await guardarConfigGastos(formData);
-      setGuardadoGastos(true);
+      const res = await guardarConfigGastos(formData);
+      if (res.error) setErrorGastos(res.error);
+      else setGuardadoGastos(true);
     });
   }
 
@@ -200,6 +215,9 @@ export default function ConfiguracionApp({
           </p>
         </div>
 
+        {errorPuntos && (
+          <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-4">{errorPuntos}</p>
+        )}
         {guardado && (
           <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 mb-4">
             Configuración guardada.
@@ -270,6 +288,9 @@ export default function ConfiguracionApp({
           </div>
         </div>
 
+        {errorLiq && (
+          <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-4">{errorLiq}</p>
+        )}
         {guardadoLiq && (
           <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 mb-4">
             Configuración guardada.
@@ -367,6 +388,9 @@ export default function ConfiguracionApp({
           </div>
         </div>
 
+        {errorMp && (
+          <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-4">{errorMp}</p>
+        )}
         {guardadoMp && (
           <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 mb-4">
             Configuración guardada.
@@ -440,6 +464,9 @@ export default function ConfiguracionApp({
           </div>
         </div>
 
+        {errorRent && (
+          <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-4">{errorRent}</p>
+        )}
         {guardadoRent && (
           <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 mb-4">
             Configuración guardada.
@@ -477,6 +504,9 @@ export default function ConfiguracionApp({
           />
         </div>
 
+        {errorGastos && (
+          <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-4">{errorGastos}</p>
+        )}
         {guardadoGastos && (
           <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 mb-4">
             Configuración guardada.

@@ -78,7 +78,8 @@ export default function MarcaDetail({
     if (!confirm(`¿Borrar la subcategoría "${sub.nombre}"?`)) return;
     startTransition(async () => {
       try {
-        await deleteSubcategoria(sub.id_subcategoria, marca.id_marca);
+        const res = await deleteSubcategoria(sub.id_subcategoria, marca.id_marca);
+        if (res.error) alert(res.error);
       } catch (e) {
         alert(e instanceof Error ? e.message : "Algo salió mal");
       }
@@ -89,7 +90,8 @@ export default function MarcaDetail({
     if (!confirm(`¿Borrar "${prod.nombre}"?`)) return;
     startTransition(async () => {
       try {
-        await deleteProducto(prod.id_producto);
+        const res = await deleteProducto(prod.id_producto);
+        if (res.error) alert(res.error);
       } catch (e) {
         alert(e instanceof Error ? e.message : "Algo salió mal");
       }
