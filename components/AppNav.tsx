@@ -18,17 +18,15 @@ const ITEMS = [
   { href: "/clientes", label: "Clientes" },
   { href: "/locales", label: "Locales" },
   { href: "/catalogo-asesor", label: "Catálogo asesor" },
-  { href: "/usuarios", label: "Usuarios", soloAdmin: true },
   { href: "/configuracion", label: "Configuración" },
 ];
 
-export default function AppNav({ rol }: { rol: string | null }) {
+export default function AppNav() {
   const pathname = usePathname();
-  const items = ITEMS.filter((item) => !item.soloAdmin || rol === "admin");
 
   return (
     <nav className="flex flex-wrap items-center gap-x-4 gap-y-2">
-      {items.map((item) => {
+      {ITEMS.map((item) => {
         const activo = pathname === item.href || pathname.startsWith(`${item.href}/`);
         return (
           <Link

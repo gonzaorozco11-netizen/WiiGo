@@ -14,7 +14,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <div className="max-w-6xl mx-auto px-4 py-4 flex flex-wrap items-center justify-between gap-4">
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
             <span className="text-lg font-semibold text-neutral-900">WiiGo</span>
-            <AppNav rol={session?.rol ?? null} />
+            <AppNav />
           </div>
           <div className="flex items-center gap-3">
             {session && (
