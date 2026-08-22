@@ -6,6 +6,8 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 import { turnoAbiertoDeLocal } from "@/app/(app)/turnos/actions";
+import { calcularBeneficioReferido, registrarReferido, puntosExtraPorMonto } from "@/lib/referidosProfesionales";
+import { registrarCanje } from "@/lib/canjesProfesionales";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 async function usuarioActual() {
@@ -68,7 +70,7 @@ export async function confirmarCobro(
 
     const { data: venta, error: errorVenta } = await supabase
       .from("ventas")
-      .select("id_venta, id_cliente, id_local, total, estado, medio_pago")
+      .select("id_venta, id_cliente, id_local, total, estado, medio_pago, id_codigo_profesional, id_profesional_canje, marcas_canje")
       .eq("id_venta", idVenta)
       .maybeSingle();
     if (errorVenta) return { error: friendlyDbError(errorVenta) };
@@ -140,7 +142,7 @@ export async function confirmarCobro(
 
   const { data: detalle, error: errorDetalle } = await supabase
     .from("detalle_ventas")
-    .select("id_detalle, id_variante, cantidad")
+    .select("id_detalle, id_variante, id_marca, cantidad, precio_unitario, subtotal")
     .eq("id_venta", idVenta);
   if (errorDetalle) return { error: friendlyDbError(errorDetalle) };
 
@@ -177,9 +179,68 @@ export async function confirmarCobro(
     });
   }
 
+  // El referido de profesional recién se registra acá (no al armar el
+  // pedido) — así un carrito abandonado antes de pagar nunca genera un
+  // referido ni comisión. El % de cada marca se vuelve a calcular con la
+  // config vigente de ahora mismo (normalmente pasan pocos minutos entre el
+  // pedido y el cobro, así que en la práctica es el mismo % que vio el
+  // cliente al armar el carrito).
+  let puntosExtra = 0;
+  if (venta.id_codigo_profesional) {
+    const { data: codigo } = await supabase
+      .from("codigos_profesionales")
+      .select("id_profesional, usos")
+      .eq("id_codigo", venta.id_codigo_profesional)
+      .maybeSingle();
+    if (codigo) {
+      const resultado = await calcularBeneficioReferido(
+        supabase,
+        (detalle ?? []).map((d) => ({
+          idVariante: d.id_variante,
+          idDetalleVenta: d.id_detalle,
+          idProducto: null,
+          idMarca: d.id_marca,
+          cantidad: d.cantidad,
+          precioUnitario: d.precio_unitario,
+          importe: d.subtotal ?? d.precio_unitario * d.cantidad,
+        }))
+      );
+      await registrarReferido(supabase, {
+        idVenta,
+        idCliente: venta.id_cliente,
+        idCodigo: venta.id_codigo_profesional,
+        idProfesional: codigo.id_profesional,
+        idLocal: venta.id_local,
+        usosActuales: codigo.usos,
+        totalVenta: total,
+        resultado,
+      });
+      if (venta.id_cliente) puntosExtra = await puntosExtraPorMonto(supabase, resultado.puntosExtraMonto);
+    }
+  }
+
+  // Mismo criterio que arriba: el canje con puntos propios de un profesional
+  // recién se descuenta de su saldo cuando se confirma el cobro, no al armar
+  // el pedido. El monto por marca se recalcula sumando los productos reales
+  // de esa marca en esta venta — nunca se confía en un monto guardado.
+  if (venta.id_profesional_canje && venta.marcas_canje && venta.marcas_canje.length > 0) {
+    const subtotalPorMarca = new Map<string, number>();
+    for (const d of detalle ?? []) {
+      if (!d.id_marca || !venta.marcas_canje.includes(d.id_marca)) continue;
+      subtotalPorMarca.set(d.id_marca, (subtotalPorMarca.get(d.id_marca) ?? 0) + (d.subtotal ?? d.precio_unitario * d.cantidad));
+    }
+    await registrarCanje(supabase, {
+      idProfesional: venta.id_profesional_canje,
+      idVenta,
+      porMarca: [...subtotalPorMarca.entries()].map(([idMarca, monto]) => ({ idMarca, monto })),
+      usuario,
+    });
+  }
+
   // Sin cliente identificado no hay a quién sumarle los puntos, así que
-  // la venta queda con 0 aunque la regla general esté activa.
-  const puntosGenerados = venta.id_cliente ? await calcularPuntos(supabase, total) : 0;
+  // la venta queda con 0 aunque la regla general esté activa. Los puntos
+  // extra por código de profesional se suman aparte, arriba de los normales.
+  const puntosGenerados = (venta.id_cliente ? await calcularPuntos(supabase, total) : 0) + puntosExtra;
   await supabase.from("ventas").update({ puntos_generados: puntosGenerados }).eq("id_venta", idVenta);
 
   if (venta.id_cliente && puntosGenerados > 0) {

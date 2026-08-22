@@ -6,6 +6,14 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 import { turnoAbiertoDeLocal } from "@/app/(app)/turnos/actions";
+import {
+  calcularBeneficioReferido,
+  resolverCodigoProfesional,
+  registrarReferido,
+  puntosExtraPorMonto,
+  enlazarDetalleVenta,
+} from "@/lib/referidosProfesionales";
+import { buscarProfesionalPorDni, verificarPinProfesional, calcularDescuentoCanje, registrarCanje } from "@/lib/canjesProfesionales";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 async function usuarioActual() {
@@ -73,6 +81,13 @@ export async function buscarClientePorDni(dni: string) {
   return data ?? null;
 }
 
+// Para que un profesional pueda pagar su propia compra con el saldo que
+// acumuló vendiendo cada marca — se dispara con el mismo DNI de arriba.
+export async function buscarProfesionalPorDniAction(dni: string) {
+  const supabase = getSupabaseServerClient();
+  return buscarProfesionalPorDni(supabase, dni);
+}
+
 // Venta mostrador: a diferencia del Self Checkout, acá el mismo empleado
 // arma el pedido y cobra en el momento — no queda pendiente esperando a
 // nadie. Sirve tanto como venta asistida normal como respaldo si se cae
@@ -89,7 +104,8 @@ export async function venderPos(
   codigoProfesional: string,
   montoRecibido: number,
   medioPago: "EFECTIVO" | "MERCADO_PAGO" = "EFECTIVO",
-  formaPagoMp?: string
+  formaPagoMp?: string,
+  canje?: { idProfesional: string; pin: string; marcas: string[] }
 ): Promise<{ error: string | null; venta?: ResultadoVenta }> {
   if (items.length === 0) return { error: "El carrito está vacío" };
 
@@ -121,30 +137,51 @@ export async function venderPos(
 
   const subtotal = items.reduce((acc, i) => acc + i.precioUnitario * i.cantidad, 0);
 
-  let idCodigo: string | null = null;
-  let idProfesional: string | null = null;
-  let descuentoBeneficio = 0;
-  const codigoLimpio = codigoProfesional.trim().toUpperCase();
-  if (codigoLimpio) {
-    const { data: codigo } = await supabase
-      .from("codigos_profesionales")
-      .select("id_codigo, id_profesional, tipo_beneficio_cliente, valor_beneficio_cliente")
-      .eq("codigo", codigoLimpio)
-      .eq("estado", "ACTIVO")
-      .maybeSingle();
+  const codigoResuelto = await resolverCodigoProfesional(supabase, codigoProfesional);
+  if (codigoResuelto.error) return { error: codigoResuelto.error };
 
-    if (codigo) {
-      idCodigo = codigo.id_codigo;
-      idProfesional = codigo.id_profesional;
-      if (codigo.tipo_beneficio_cliente === "PORCENTAJE" && codigo.valor_beneficio_cliente) {
-        descuentoBeneficio = Math.round(subtotal * (codigo.valor_beneficio_cliente / 100));
-      } else if (codigo.tipo_beneficio_cliente === "MONTO" && codigo.valor_beneficio_cliente) {
-        descuentoBeneficio = Math.min(codigo.valor_beneficio_cliente, subtotal);
-      }
-    }
+  let resultadoReferido = null as Awaited<ReturnType<typeof calcularBeneficioReferido>> | null;
+  if (codigoResuelto.idCodigo) {
+    const idsVariante = items.map((i) => i.idVariante);
+    const { data: variantes } = await supabase
+      .from("variantes_producto")
+      .select("id_variante, id_producto")
+      .in("id_variante", idsVariante);
+    const productoPorVariante = new Map((variantes ?? []).map((v) => [v.id_variante, v.id_producto]));
+
+    resultadoReferido = await calcularBeneficioReferido(
+      supabase,
+      items.map((i) => ({
+        idVariante: i.idVariante,
+        idProducto: productoPorVariante.get(i.idVariante) ?? null,
+        idMarca: i.idMarca,
+        cantidad: i.cantidad,
+        precioUnitario: i.precioUnitario,
+        importe: i.precioUnitario * i.cantidad,
+      }))
+    );
+  }
+  const descuentoBeneficio = resultadoReferido?.descuentoTotal ?? 0;
+
+  // El profesional paga su propia compra con el saldo que acumuló vendiendo
+  // cada marca — el DNI solo no alcanza, hace falta su PIN.
+  let descuentoCanje = 0;
+  let canjePorMarca: { idMarca: string; monto: number }[] = [];
+  if (canje && canje.marcas.length > 0) {
+    const pinOk = await verificarPinProfesional(supabase, canje.idProfesional, canje.pin);
+    if (!pinOk) return { error: "PIN incorrecto." };
+    const resultadoCanje = await calcularDescuentoCanje(
+      supabase,
+      canje.idProfesional,
+      canje.marcas,
+      items.map((i) => ({ idMarca: i.idMarca, importe: i.precioUnitario * i.cantidad }))
+    );
+    if (resultadoCanje.error) return { error: resultadoCanje.error };
+    descuentoCanje = resultadoCanje.descuentoTotal;
+    canjePorMarca = resultadoCanje.porMarca;
   }
 
-  const total = Math.max(subtotal - descuentoBeneficio, 0);
+  const total = Math.max(subtotal - descuentoBeneficio - descuentoCanje, 0);
   const esMercadoPago = medioPago === "MERCADO_PAGO";
   if (esMercadoPago && (!formaPagoMp || !FORMAS_PAGO_MP[formaPagoMp])) {
     return { error: "Elegí cómo pagó el cliente por Mercado Pago" };
@@ -165,7 +202,7 @@ export async function venderPos(
       id_cliente: idCliente,
       id_local: idLocal,
       subtotal,
-      descuento: descuentoBeneficio,
+      descuento: descuentoBeneficio + descuentoCanje,
       total,
       estado: "PAGADA",
       medio_pago: medioPago,
@@ -228,19 +265,31 @@ export async function venderPos(
     precio_unitario: i.precioUnitario,
     subtotal: i.precioUnitario * i.cantidad,
   }));
-  const { error: errorDetalle } = await supabase.from("detalle_ventas").insert(filasDetalle);
+  const { data: detalleInsertado, error: errorDetalle } = await supabase
+    .from("detalle_ventas")
+    .insert(filasDetalle)
+    .select("id_detalle, id_variante");
   if (errorDetalle) return { error: friendlyDbError(errorDetalle) };
 
-  if (idCodigo && idProfesional) {
-    await supabase.from("referidos_profesionales").insert({
-      id_venta: venta.id_venta,
-      id_cliente: idCliente,
-      id_profesional: idProfesional,
-      id_codigo: idCodigo,
-      total_venta: total,
-      beneficio_cliente: descuentoBeneficio,
-      estado: "PENDIENTE",
+  let puntosExtra = 0;
+  if (resultadoReferido && codigoResuelto.idCodigo && codigoResuelto.idProfesional) {
+    const mapaVarianteADetalle = new Map((detalleInsertado ?? []).map((d) => [d.id_variante, d.id_detalle]));
+    const resultadoConDetalle = enlazarDetalleVenta(resultadoReferido, mapaVarianteADetalle);
+    await registrarReferido(supabase, {
+      idVenta: venta.id_venta,
+      idCliente,
+      idCodigo: codigoResuelto.idCodigo,
+      idProfesional: codigoResuelto.idProfesional,
+      idLocal,
+      usosActuales: codigoResuelto.usosActuales,
+      totalVenta: total,
+      resultado: resultadoConDetalle,
     });
+    if (idCliente) puntosExtra = await puntosExtraPorMonto(supabase, resultadoReferido.puntosExtraMonto);
+  }
+
+  if (canje && canjePorMarca.length > 0) {
+    await registrarCanje(supabase, { idProfesional: canje.idProfesional, idVenta: venta.id_venta, porMarca: canjePorMarca, usuario });
   }
 
   for (const item of items) {
@@ -272,8 +321,10 @@ export async function venderPos(
   }
 
   // Sin cliente identificado no hay a quién sumarle los puntos, así que
-  // la venta queda con 0 aunque la regla general esté activa.
-  const puntosGenerados = idCliente ? await calcularPuntos(supabase, total) : 0;
+  // la venta queda con 0 aunque la regla general esté activa. Los puntos
+  // extra por código de profesional (financiados por la marca) se suman
+  // aparte, arriba de los puntos normales de la venta.
+  const puntosGenerados = (idCliente ? await calcularPuntos(supabase, total) : 0) + puntosExtra;
   await supabase.from("ventas").update({ puntos_generados: puntosGenerados }).eq("id_venta", venta.id_venta);
 
   if (idCliente && puntosGenerados > 0) {

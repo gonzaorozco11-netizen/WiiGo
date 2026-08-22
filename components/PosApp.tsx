@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { Local, Marca, Producto, VarianteProducto, Stock } from "@/lib/supabase";
-import { venderPos, buscarClientePorDni } from "@/app/(app)/pos/actions";
+import { venderPos, buscarClientePorDni, buscarProfesionalPorDniAction } from "@/app/(app)/pos/actions";
 
 type Item = {
   variante: VarianteProducto;
@@ -66,19 +66,33 @@ export default function PosApp({
   );
   const [clienteEncontrado, setClienteEncontrado] = useState<{ nombre: string; apellido: string | null; puntos: number } | null>(null);
   const [buscandoCliente, setBuscandoCliente] = useState(false);
+  const [profesional, setProfesional] = useState<{
+    idProfesional: string;
+    nombre: string;
+    tienePin: boolean;
+    saldosPorMarca: { idMarca: string; nombreMarca: string; saldo: number; tipoRecompensa: string }[];
+  } | null>(null);
+  const [marcasCanje, setMarcasCanje] = useState<Set<string>>(new Set());
+  const [pinCanje, setPinCanje] = useState("");
 
   // Autocompletar nombre al escribir el DNI, con una pequeña pausa para
-  // no consultar en cada tecla.
+  // no consultar en cada tecla. El mismo DNI también identifica si es un
+  // profesional que puede pagar con el saldo que acumuló.
   useEffect(() => {
     const dniLimpio = dni.trim();
     if (dniLimpio.length < 6) {
       setClienteEncontrado(null);
+      setProfesional(null);
+      setMarcasCanje(new Set());
       return;
     }
     setBuscandoCliente(true);
     const timeout = setTimeout(() => {
-      buscarClientePorDni(dniLimpio)
-        .then((c) => setClienteEncontrado(c))
+      Promise.all([buscarClientePorDni(dniLimpio), buscarProfesionalPorDniAction(dniLimpio)])
+        .then(([c, p]) => {
+          setClienteEncontrado(c);
+          setProfesional(p);
+        })
         .finally(() => setBuscandoCliente(false));
     }, 400);
     return () => clearTimeout(timeout);
@@ -129,8 +143,29 @@ export default function PosApp({
   }, [carrito, itemPorVariante]);
 
   const subtotal = itemsCarrito.reduce((acc, i) => acc + i.precio * i.cantidad, 0);
+
+  // Marcas presentes en el carrito con el saldo del profesional para cada
+  // una — solo se puede tildar si el saldo alcanza para cubrir esa parte
+  // completa (nada de pagos parciales por ahora).
+  const marcasEnCarrito = useMemo(() => {
+    const subtotalPorMarca = new Map<string, number>();
+    for (const i of itemsCarrito) {
+      if (!i.producto.id_marca) continue;
+      subtotalPorMarca.set(i.producto.id_marca, (subtotalPorMarca.get(i.producto.id_marca) ?? 0) + i.precio * i.cantidad);
+    }
+    if (!profesional) return [];
+    return profesional.saldosPorMarca
+      .filter((s) => subtotalPorMarca.has(s.idMarca))
+      .map((s) => ({ ...s, subtotalCarrito: subtotalPorMarca.get(s.idMarca) ?? 0 }));
+  }, [itemsCarrito, profesional]);
+
+  const descuentoCanje = marcasEnCarrito
+    .filter((m) => marcasCanje.has(m.idMarca))
+    .reduce((acc, m) => acc + m.subtotalCarrito, 0);
+
+  const totalConCanje = Math.max(subtotal - descuentoCanje, 0);
   const montoNum = Number(montoRecibido.replace(/[^\d.-]/g, "")) || 0;
-  const vueltoPrevio = montoNum - subtotal;
+  const vueltoPrevio = montoNum - totalConCanje;
 
   function agregar(idVariante: string) {
     const item = itemPorVariante.get(idVariante);
@@ -167,9 +202,21 @@ export default function PosApp({
     setResultado(null);
     setError(null);
     setClienteEncontrado(null);
+    setProfesional(null);
+    setMarcasCanje(new Set());
+    setPinCanje("");
   }
 
   const esMercadoPago = medioPago === "MERCADO_PAGO";
+
+  function toggleMarcaCanje(idMarca: string) {
+    setMarcasCanje((prev) => {
+      const next = new Set(prev);
+      if (next.has(idMarca)) next.delete(idMarca);
+      else next.add(idMarca);
+      return next;
+    });
+  }
 
   function handleCobrar() {
     setError(null);
@@ -186,7 +233,10 @@ export default function PosApp({
       codigoProfesional,
       montoNum,
       medioPago,
-      esMercadoPago ? formaPagoMp : undefined
+      esMercadoPago ? formaPagoMp : undefined,
+      profesional && marcasCanje.size > 0
+        ? { idProfesional: profesional.idProfesional, pin: pinCanje, marcas: [...marcasCanje] }
+        : undefined
     )
       .then((r) => {
         if (r.error) setError(r.error);
@@ -330,6 +380,37 @@ export default function PosApp({
         )}
       </div>
 
+      {profesional && marcasEnCarrito.length > 0 && (
+        <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 mb-3">
+          <p className="text-sm font-bold text-purple-800 mb-2">🤝 {profesional.nombre} puede pagar con su saldo</p>
+          <div className="space-y-1.5 mb-2">
+            {marcasEnCarrito.map((m) => {
+              const alcanza = m.saldo >= m.subtotalCarrito;
+              return (
+                <label key={m.idMarca} className={`flex items-center justify-between gap-2 text-sm bg-white border border-purple-200 rounded-lg px-3 py-2 ${!alcanza ? "opacity-50" : "cursor-pointer"}`}>
+                  <span className="flex items-center gap-2">
+                    <input type="checkbox" disabled={!alcanza} checked={marcasCanje.has(m.idMarca)} onChange={() => toggleMarcaCanje(m.idMarca)} />
+                    {m.nombreMarca} — <span className="tabular-nums">${formatearMonto(m.subtotalCarrito)}</span>
+                  </span>
+                  <span className="text-xs text-purple-600 tabular-nums">Saldo: ${formatearMonto(m.saldo)}</span>
+                </label>
+              );
+            })}
+          </div>
+          {marcasCanje.size > 0 && (
+            <input
+              value={pinCanje}
+              onChange={(e) => setPinCanje(e.target.value)}
+              placeholder="PIN del profesional"
+              type="password"
+              inputMode="numeric"
+              maxLength={6}
+              className="w-full rounded-lg border border-purple-300 px-3 py-2 text-sm"
+            />
+          )}
+        </div>
+      )}
+
       <div className="bg-white border border-neutral-200 rounded-xl p-4 mb-4">
         <p className="text-sm font-bold text-neutral-900">
           ¿Referido? <span className="font-normal text-neutral-400">Opcional</span>
@@ -364,9 +445,15 @@ export default function PosApp({
       </div>
 
       <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-4 mb-4">
+        {descuentoCanje > 0 && (
+          <div className="flex justify-between items-center text-sm text-purple-600 mb-1">
+            <span>Pagado con puntos</span>
+            <span>-${formatearMonto(descuentoCanje)}</span>
+          </div>
+        )}
         <div className="flex justify-between items-center font-extrabold text-lg pb-2 border-b border-neutral-200 mb-2">
           <span>Total</span>
-          <span>${formatearMonto(subtotal)}</span>
+          <span>${formatearMonto(totalConCanje)}</span>
         </div>
         {esMercadoPago ? (
           <div>
@@ -413,10 +500,15 @@ export default function PosApp({
 
       <button
         onClick={handleCobrar}
-        disabled={enviando || itemsCarrito.length === 0 || (esMercadoPago ? !formaPagoMp : montoNum < subtotal)}
+        disabled={
+          enviando ||
+          itemsCarrito.length === 0 ||
+          (marcasCanje.size > 0 && pinCanje.length < 4) ||
+          (esMercadoPago ? !formaPagoMp : montoNum < totalConCanje)
+        }
         className="w-full bg-accent hover:bg-accent-dark disabled:opacity-40 text-white font-bold py-4 rounded-xl mb-8"
       >
-        {enviando ? "Registrando..." : `Cobrar · $${formatearMonto(subtotal)}`}
+        {enviando ? "Registrando..." : `Cobrar · $${formatearMonto(totalConCanje)}`}
       </button>
     </div>
   );

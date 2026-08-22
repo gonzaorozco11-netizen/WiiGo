@@ -389,6 +389,10 @@ export type DetalleVenta = {
   puntos_generados: number;
 };
 
+// tipo_beneficio_cliente/valor_beneficio_cliente/tipo_recompensa_profesional/
+// valor_recompensa_profesional quedaron sin uso — ahora esos porcentajes los
+// define cada marca (ver ConfigProfesionalMarca), no el código, para que un
+// mismo código sirva igual en todas las marcas.
 export type CodigoProfesional = {
   id_codigo: string;
   id_profesional: string;
@@ -402,6 +406,78 @@ export type CodigoProfesional = {
   estado: string;
   limite_usos: number | null;
   usos: number;
+  fecha_creacion: string;
+  observaciones: string | null;
+};
+
+export type Profesional = {
+  id_profesional: string;
+  nombre: string;
+  apellido: string | null;
+  categoria: string | null;
+  titulo: string | null;
+  especialidad: string | null;
+  bio: string | null;
+  foto: string | null;
+  email: string | null;
+  telefono: string | null;
+  tipo_atencion: string | null;
+  link_reserva: string | null;
+  estado: string;
+  orden: number | null;
+  fecha_alta: string;
+  observaciones: string | null;
+};
+
+// Programa de beneficios por marca, con historial: cada cambio cierra la
+// vigencia anterior (fecha_hasta) e inserta una fila nueva — nunca se pisa
+// una config vieja, para que una venta pasada conserve el % que usó de verdad.
+export type ConfigProfesionalMarca = {
+  id_config: string;
+  id_marca: string;
+  participa: boolean;
+  porcentaje_aporte_total: number;
+  porcentaje_cliente: number;
+  porcentaje_profesional: number;
+  tipo_beneficio_cliente: string; // 'PUNTOS' | 'DESCUENTO'
+  tipo_recompensa_profesional: string; // 'DINERO' | 'PUNTOS'
+  fecha_desde: string;
+  fecha_hasta: string | null;
+  estado: string;
+  observaciones: string | null;
+  fecha_creacion: string;
+};
+
+export type ReferidoProfesional = {
+  id_referido: string;
+  id_venta: string;
+  id_cliente: string | null;
+  id_profesional: string;
+  id_codigo: string;
+  fecha: string;
+  total_venta: number;
+  beneficio_cliente: number;
+  recompensa_profesional: number;
+  estado: string; // 'PENDIENTE' | 'PAGADA'
+  id_local: string | null;
+};
+
+export type DetalleReferidoProfesional = {
+  id_detalle_referido: string;
+  id_referido: string;
+  id_detalle_venta: string | null;
+  id_producto: string | null;
+  id_marca: string;
+  cantidad: number;
+  precio_unitario: number;
+  importe: number;
+  costo_unitario: number | null;
+  margen_linea: number | null;
+  porcentaje_cliente_aplicado: number;
+  beneficio_cliente: number;
+  porcentaje_profesional_aplicado: number;
+  recompensa_profesional: number;
+  fecha: string;
 };
 
 export type Objetivo = {

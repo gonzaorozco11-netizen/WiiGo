@@ -16,6 +16,7 @@ const ITEMS = [
   { href: "/rentabilidad", label: "Rentabilidad" },
   { href: "/pos", label: "Vender" },
   { href: "/clientes", label: "Clientes" },
+  { href: "/profesionales", label: "Profesionales" },
   { href: "/locales", label: "Locales" },
   { href: "/catalogo-asesor", label: "Catálogo asesor" },
   { href: "/configuracion", label: "Configuración" },

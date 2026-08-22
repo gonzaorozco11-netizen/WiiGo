@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Local, Marca, Producto, VarianteProducto, Stock } from "@/lib/supabase";
-import { confirmarPedido, estadoPedido, cancelarPedidoCliente } from "@/app/self-checkout/[idLocal]/actions";
+import { confirmarPedido, estadoPedido, cancelarPedidoCliente, buscarProfesionalPorDniAction } from "@/app/self-checkout/[idLocal]/actions";
 
 type Item = {
   variante: VarianteProducto;
@@ -58,6 +58,29 @@ export default function SelfCheckoutApp({
   const [pedido, setPedido] = useState<{ idVenta: string; numero: number; total: number; descuento: number } | null>(
     null
   );
+  const [profesional, setProfesional] = useState<{
+    idProfesional: string;
+    nombre: string;
+    tienePin: boolean;
+    saldosPorMarca: { idMarca: string; nombreMarca: string; saldo: number; tipoRecompensa: string }[];
+  } | null>(null);
+  const [marcasCanje, setMarcasCanje] = useState<Set<string>>(new Set());
+  const [pinCanje, setPinCanje] = useState("");
+
+  // El mismo DNI que identifica al cliente también identifica si es un
+  // profesional que puede pagar con el saldo que acumuló vendiendo marcas.
+  useEffect(() => {
+    const dniLimpio = dni.trim();
+    if (dniLimpio.length < 6) {
+      setProfesional(null);
+      setMarcasCanje(new Set());
+      return;
+    }
+    const timeout = setTimeout(() => {
+      buscarProfesionalPorDniAction(dniLimpio).then(setProfesional);
+    }, 400);
+    return () => clearTimeout(timeout);
+  }, [dni]);
 
   const [toast, setToast] = useState<{ nombre: string; precio: number } | null>(null);
   const toastTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -113,6 +136,35 @@ export default function SelfCheckoutApp({
 
   const totalItemsCarrito = itemsCarrito.reduce((acc, i) => acc + i.cantidad, 0);
   const subtotalCarrito = itemsCarrito.reduce((acc, i) => acc + i.precio * i.cantidad, 0);
+
+  // Marcas presentes en el carrito con el saldo del profesional para cada
+  // una — solo se puede tildar si el saldo alcanza para cubrir esa parte
+  // completa (nada de pagos parciales por ahora).
+  const marcasEnCarrito = useMemo(() => {
+    const subtotalPorMarca = new Map<string, number>();
+    for (const i of itemsCarrito) {
+      if (!i.producto.id_marca) continue;
+      subtotalPorMarca.set(i.producto.id_marca, (subtotalPorMarca.get(i.producto.id_marca) ?? 0) + i.precio * i.cantidad);
+    }
+    if (!profesional) return [];
+    return profesional.saldosPorMarca
+      .filter((s) => subtotalPorMarca.has(s.idMarca))
+      .map((s) => ({ ...s, subtotalCarrito: subtotalPorMarca.get(s.idMarca) ?? 0 }));
+  }, [itemsCarrito, profesional]);
+
+  const descuentoCanje = marcasEnCarrito
+    .filter((m) => marcasCanje.has(m.idMarca))
+    .reduce((acc, m) => acc + m.subtotalCarrito, 0);
+  const totalConCanje = Math.max(subtotalCarrito - descuentoCanje, 0);
+
+  function toggleMarcaCanje(idMarca: string) {
+    setMarcasCanje((prev) => {
+      const next = new Set(prev);
+      if (next.has(idMarca)) next.delete(idMarca);
+      else next.add(idMarca);
+      return next;
+    });
+  }
 
   const mostrarToast = useCallback((nombre: string, precio: number) => {
     if (toastTimeout.current) clearTimeout(toastTimeout.current);
@@ -185,6 +237,9 @@ export default function SelfCheckoutApp({
     setError(null);
     setBusquedaTexto("");
     setBuscarAbierto(false);
+    setProfesional(null);
+    setMarcasCanje(new Set());
+    setPinCanje("");
     setPaso("bienvenida");
   }
 
@@ -201,7 +256,10 @@ export default function SelfCheckoutApp({
       })),
       dni,
       codigoProfesional,
-      medioPago
+      medioPago,
+      profesional && marcasCanje.size > 0
+        ? { idProfesional: profesional.idProfesional, pin: pinCanje, marcas: [...marcasCanje] }
+        : undefined
     )
       .then((r) => {
         if (r.error || !r.pedido) {
@@ -491,6 +549,40 @@ export default function SelfCheckoutApp({
               />
             </div>
 
+            {profesional && marcasEnCarrito.length > 0 && (
+              <div className="bg-purple-50 border border-purple-200 rounded-2xl p-3.5 mb-3">
+                <p className="text-sm font-bold text-purple-800 mb-2">🤝 {profesional.nombre}, podés pagar con tu saldo</p>
+                <div className="space-y-1.5 mb-2">
+                  {marcasEnCarrito.map((m) => {
+                    const alcanza = m.saldo >= m.subtotalCarrito;
+                    return (
+                      <label
+                        key={m.idMarca}
+                        className={`flex items-center justify-between gap-2 text-sm bg-white border border-purple-200 rounded-lg px-3 py-2 ${!alcanza ? "opacity-50" : "cursor-pointer"}`}
+                      >
+                        <span className="flex items-center gap-2">
+                          <input type="checkbox" disabled={!alcanza} checked={marcasCanje.has(m.idMarca)} onChange={() => toggleMarcaCanje(m.idMarca)} />
+                          {m.nombreMarca} — <span className="tabular-nums">${formatearMonto(m.subtotalCarrito)}</span>
+                        </span>
+                        <span className="text-xs text-purple-600 tabular-nums">Saldo: ${formatearMonto(m.saldo)}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+                {marcasCanje.size > 0 && (
+                  <input
+                    value={pinCanje}
+                    onChange={(e) => setPinCanje(e.target.value)}
+                    placeholder="Tu PIN"
+                    type="password"
+                    inputMode="numeric"
+                    maxLength={6}
+                    className="w-full rounded-lg border border-purple-300 px-3 py-2 text-sm"
+                  />
+                )}
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-2 mb-1">
               <button
                 onClick={() => setMedioPagoElegido("EFECTIVO")}
@@ -522,9 +614,15 @@ export default function SelfCheckoutApp({
                 : "📱 Mercado Pago: pagá con tu celular y avisale al personal para que lo confirme"}
             </p>
 
+            {descuentoCanje > 0 && (
+              <div className="flex justify-between items-center text-sm text-purple-600">
+                <span>Pagado con puntos</span>
+                <span>-${formatearMonto(descuentoCanje)}</span>
+              </div>
+            )}
             <div className="flex justify-between items-center font-extrabold text-lg text-neutral-900 my-2">
               <span>Total</span>
-              <span>${formatearMonto(subtotalCarrito)}</span>
+              <span>${formatearMonto(totalConCanje)}</span>
             </div>
 
             {error && (
@@ -542,7 +640,7 @@ export default function SelfCheckoutApp({
               </button>
               <button
                 onClick={() => handleConfirmar(medioPagoElegido)}
-                disabled={enviando}
+                disabled={enviando || (marcasCanje.size > 0 && pinCanje.length < 4)}
                 className="flex-1 bg-accent hover:bg-accent-dark disabled:opacity-50 text-white font-bold py-3.5 rounded-2xl text-sm"
               >
                 {enviando ? "Confirmando..." : "Confirmar y pagar"}

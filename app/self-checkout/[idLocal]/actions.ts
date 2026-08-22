@@ -2,6 +2,8 @@
 
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
+import { calcularBeneficioReferido, resolverCodigoProfesional } from "@/lib/referidosProfesionales";
+import { buscarProfesionalPorDni, verificarPinProfesional, calcularDescuentoCanje } from "@/lib/canjesProfesionales";
 
 type ItemCarrito = { idVariante: string; idMarca: string | null; cantidad: number; precioUnitario: number };
 type MedioPago = "EFECTIVO" | "MERCADO_PAGO";
@@ -11,12 +13,18 @@ type ResultadoPedido = { idVenta: string; numero: number; total: number; descuen
 // Next.js redacta en producción el mensaje de un Error tirado desde una
 // Server Action (queda solo un digest genérico en el navegador) — por eso
 // esta función no throwea para errores esperables: devuelve { error }.
+export async function buscarProfesionalPorDniAction(dni: string) {
+  const supabase = getSupabaseServerClient();
+  return buscarProfesionalPorDni(supabase, dni);
+}
+
 export async function confirmarPedido(
   idLocal: string,
   items: ItemCarrito[],
   dni: string,
   codigoProfesional: string,
-  medioPago: MedioPago
+  medioPago: MedioPago,
+  canje?: { idProfesional: string; pin: string; marcas: string[] }
 ): Promise<{ error: string | null; pedido?: ResultadoPedido }> {
   if (items.length === 0) return { error: "El carrito está vacío" };
 
@@ -48,31 +56,43 @@ export async function confirmarPedido(
 
   const subtotal = items.reduce((acc, i) => acc + i.precioUnitario * i.cantidad, 0);
 
-  // Código de descuento del profesional que refirió al cliente.
-  let idCodigo: string | null = null;
-  let idProfesional: string | null = null;
-  let descuentoBeneficio = 0;
-  const codigoLimpio = codigoProfesional.trim().toUpperCase();
-  if (codigoLimpio) {
-    const { data: codigo } = await supabase
-      .from("codigos_profesionales")
-      .select("id_codigo, id_profesional, tipo_beneficio_cliente, valor_beneficio_cliente")
-      .eq("codigo", codigoLimpio)
-      .eq("estado", "ACTIVO")
-      .maybeSingle();
+  // El código solo se valida y se calcula el descuento acá (hace falta para
+  // el total que ve el cliente) — el referido en sí (con su detalle y la
+  // comisión del profesional) recién se registra cuando el personal
+  // confirma el cobro, ver confirmarCobro en cobros-efectivo/actions.ts. Así
+  // no queda un referido de un carrito que el cliente termina abandonando.
+  const codigoResuelto = await resolverCodigoProfesional(supabase, codigoProfesional);
+  if (codigoResuelto.error) return { error: codigoResuelto.error };
 
-    if (codigo) {
-      idCodigo = codigo.id_codigo;
-      idProfesional = codigo.id_profesional;
-      if (codigo.tipo_beneficio_cliente === "PORCENTAJE" && codigo.valor_beneficio_cliente) {
-        descuentoBeneficio = Math.round(subtotal * (codigo.valor_beneficio_cliente / 100));
-      } else if (codigo.tipo_beneficio_cliente === "MONTO" && codigo.valor_beneficio_cliente) {
-        descuentoBeneficio = Math.min(codigo.valor_beneficio_cliente, subtotal);
-      }
-    }
+  let descuentoBeneficio = 0;
+  if (codigoResuelto.idCodigo) {
+    const resultado = await calcularBeneficioReferido(
+      supabase,
+      items.map((i) => ({ idProducto: null, idMarca: i.idMarca, cantidad: i.cantidad, precioUnitario: i.precioUnitario, importe: i.precioUnitario * i.cantidad }))
+    );
+    descuentoBeneficio = resultado.descuentoTotal;
   }
 
-  const total = Math.max(subtotal - descuentoBeneficio, 0);
+  // El profesional puede pagar su propia compra con el saldo que acumuló
+  // vendiendo cada marca — el DNI solo no alcanza, hace falta su PIN. El
+  // canje en sí (descontarle el saldo de verdad) recién se confirma cuando
+  // el personal cobra, ver confirmarCobro en cobros-efectivo/actions.ts —
+  // por eso acá solo se guarda la intención (qué marcas eligió).
+  let descuentoCanje = 0;
+  if (canje && canje.marcas.length > 0) {
+    const pinOk = await verificarPinProfesional(supabase, canje.idProfesional, canje.pin);
+    if (!pinOk) return { error: "PIN incorrecto." };
+    const resultadoCanje = await calcularDescuentoCanje(
+      supabase,
+      canje.idProfesional,
+      canje.marcas,
+      items.map((i) => ({ idMarca: i.idMarca, importe: i.precioUnitario * i.cantidad }))
+    );
+    if (resultadoCanje.error) return { error: resultadoCanje.error };
+    descuentoCanje = resultadoCanje.descuentoTotal;
+  }
+
+  const total = Math.max(subtotal - descuentoBeneficio - descuentoCanje, 0);
 
   const { data: venta, error: errorVenta } = await supabase
     .from("ventas")
@@ -81,12 +101,15 @@ export async function confirmarPedido(
       id_cliente: idCliente,
       id_local: idLocal,
       subtotal,
-      descuento: descuentoBeneficio,
+      descuento: descuentoBeneficio + descuentoCanje,
       total,
       estado: "PENDIENTE_PAGO",
       medio_pago: medioPago,
       usuario: "CLIENTE",
       terminal: `SELF-${idLocal.slice(0, 6).toUpperCase()}`,
+      id_codigo_profesional: codigoResuelto.idCodigo,
+      id_profesional_canje: canje && canje.marcas.length > 0 ? canje.idProfesional : null,
+      marcas_canje: canje && canje.marcas.length > 0 ? canje.marcas : null,
     })
     .select("id_venta, numero")
     .single();
@@ -102,19 +125,6 @@ export async function confirmarPedido(
   }));
   const { error: errorDetalle } = await supabase.from("detalle_ventas").insert(filasDetalle);
   if (errorDetalle) return { error: friendlyDbError(errorDetalle) };
-
-  if (idCodigo && idProfesional) {
-    const { error: errorReferido } = await supabase.from("referidos_profesionales").insert({
-      id_venta: venta.id_venta,
-      id_cliente: idCliente,
-      id_profesional: idProfesional,
-      id_codigo: idCodigo,
-      total_venta: total,
-      beneficio_cliente: descuentoBeneficio,
-      estado: "PENDIENTE",
-    });
-    if (errorReferido) return { error: friendlyDbError(errorReferido) };
-  }
 
     return {
       error: null,
