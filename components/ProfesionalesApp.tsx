@@ -14,6 +14,7 @@ import {
   resumenProfesionales,
   saldosDeProfesional,
   canjesDeProfesional,
+  ventasGeneradasDeProfesional,
   detalleCanje,
   registrarPagoCanje,
   listarConfigMarcas,
@@ -67,6 +68,16 @@ type CanjeFila = {
   numeroVenta: number | null;
   descripcion: string | null;
   usuario: string | null;
+  fecha: string;
+};
+
+type VentaGeneradaFila = {
+  idReferido: string;
+  idVenta: string | null;
+  numeroVenta: number | null;
+  totalVenta: number;
+  comisionGenerada: number;
+  estado: string;
   fecha: string;
 };
 
@@ -319,6 +330,7 @@ function DetalleProfesional({
 }) {
   const [saldos, setSaldos] = useState<SaldoMarca[]>([]);
   const [canjes, setCanjes] = useState<CanjeFila[]>([]);
+  const [ventasGeneradas, setVentasGeneradas] = useState<VentaGeneradaFila[]>([]);
   const [cargando, setCargando] = useState(true);
   const [mostrarCodigoForm, setMostrarCodigoForm] = useState(false);
   const [mostrarPinForm, setMostrarPinForm] = useState(false);
@@ -326,10 +338,15 @@ function DetalleProfesional({
 
   function recargar() {
     setCargando(true);
-    Promise.all([saldosDeProfesional(profesional.id_profesional), canjesDeProfesional(profesional.id_profesional)])
-      .then(([s, c]) => {
+    Promise.all([
+      saldosDeProfesional(profesional.id_profesional),
+      canjesDeProfesional(profesional.id_profesional),
+      ventasGeneradasDeProfesional(profesional.id_profesional),
+    ])
+      .then(([s, c, v]) => {
         setSaldos(s);
         setCanjes(c as CanjeFila[]);
+        setVentasGeneradas(v);
       })
       .finally(() => setCargando(false));
   }
@@ -422,6 +439,46 @@ function DetalleProfesional({
               />
             ))}
           </div>
+        )}
+      </div>
+
+      <div className="bg-white border border-neutral-200 rounded-lg overflow-hidden mb-4">
+        <div className="px-3 py-2 border-b border-neutral-100">
+          <p className="text-xs font-bold text-neutral-700">Ventas generadas (referidos)</p>
+          <p className="text-[11px] text-neutral-400">Las ventas donde fue el código referido — esto es lo que le fue sumando saldo</p>
+        </div>
+        {cargando ? (
+          <p className="text-xs text-neutral-400 text-center py-4">Cargando...</p>
+        ) : ventasGeneradas.length === 0 ? (
+          <p className="text-xs text-neutral-400 text-center py-4">
+            Todavía no generó ninguna venta con su código — si esperabas ver una acá, fijate que la marca de esos
+            productos tenga habilitado el programa de profesionales (pestaña "Configuración por marca", arriba).
+          </p>
+        ) : (
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-left text-neutral-400 border-b border-neutral-200">
+                <th className="p-2.5">Fecha</th>
+                <th className="p-2.5">Venta</th>
+                <th className="p-2.5 text-right">Total venta</th>
+                <th className="p-2.5 text-right">Comisión generada</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ventasGeneradas.map((v) => (
+                <tr key={v.idReferido} className="border-b border-neutral-100 last:border-0">
+                  <td className="p-2.5 whitespace-nowrap text-neutral-500">
+                    {new Date(v.fecha).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                  </td>
+                  <td className="p-2.5">{v.numeroVenta ? `#${v.numeroVenta}` : "—"}</td>
+                  <td className="p-2.5 text-right tabular-nums">${Math.round(v.totalVenta).toLocaleString("es-AR")}</td>
+                  <td className="p-2.5 text-right tabular-nums font-semibold text-emerald-600">
+                    +${Math.round(v.comisionGenerada).toLocaleString("es-AR")}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </div>
 

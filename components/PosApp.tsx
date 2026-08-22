@@ -172,8 +172,8 @@ export default function PosApp({
   const subtotal = itemsCarrito.reduce((acc, i) => acc + i.precio * i.cantidad, 0);
 
   // Marcas presentes en el carrito con el saldo del profesional para cada
-  // una — solo se puede tildar si el saldo alcanza para cubrir esa parte
-  // completa (nada de pagos parciales por ahora).
+  // una — si el saldo no cubre todo el importe de esa marca, se aplica como
+  // descuento parcial (lo que haya disponible) y el resto se paga normal.
   const marcasEnCarrito = useMemo(() => {
     const subtotalPorMarca = new Map<string, number>();
     for (const i of itemsCarrito) {
@@ -188,7 +188,7 @@ export default function PosApp({
 
   const descuentoCanje = marcasEnCarrito
     .filter((m) => marcasCanje.has(m.idMarca))
-    .reduce((acc, m) => acc + m.subtotalCarrito, 0);
+    .reduce((acc, m) => acc + Math.min(m.subtotalCarrito, m.saldo), 0);
 
   const totalConCanje = Math.max(subtotal - descuentoCanje, 0);
   const descuentoPuntosPreview = usarPuntosWiigo && infoPuntos ? infoPuntos.maxDescuento : 0;

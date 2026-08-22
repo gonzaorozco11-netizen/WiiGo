@@ -337,6 +337,37 @@ export async function canjesDeProfesional(idProfesional: string) {
   }));
 }
 
+// Las ventas donde este profesional fue el referido — es lo que le generó
+// saldo (distinto del historial de pagos/canjes, que es lo que ya gastó).
+// Sin esto no había forma de ver "la venta de tal día le generó tanto".
+export async function ventasGeneradasDeProfesional(idProfesional: string) {
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("referidos_profesionales")
+    .select("id_referido, id_venta, total_venta, recompensa_profesional, estado, fecha")
+    .eq("id_profesional", idProfesional)
+    .order("fecha", { ascending: false })
+    .limit(100);
+  if (error) throw new Error(friendlyDbError(error));
+
+  const idsVenta = [...new Set((data ?? []).map((r) => r.id_venta).filter((v): v is string => !!v))];
+  const { data: ventas } = await supabase
+    .from("ventas")
+    .select("id_venta, numero")
+    .in("id_venta", idsVenta.length > 0 ? idsVenta : ["00000000-0000-0000-0000-000000000000"]);
+  const numeroPorVenta = new Map((ventas ?? []).map((v) => [v.id_venta, v.numero]));
+
+  return (data ?? []).map((r) => ({
+    idReferido: r.id_referido as string,
+    idVenta: r.id_venta as string | null,
+    numeroVenta: r.id_venta ? (numeroPorVenta.get(r.id_venta) ?? null) : null,
+    totalVenta: r.total_venta as number,
+    comisionGenerada: r.recompensa_profesional as number,
+    estado: r.estado as string,
+    fecha: r.fecha as string,
+  }));
+}
+
 // Para ver "en qué gastó sus puntos": los productos de esa marca puntual
 // dentro de la venta donde se hizo el canje.
 export async function detalleCanje(idMovimiento: string) {

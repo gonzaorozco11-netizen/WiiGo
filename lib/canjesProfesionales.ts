@@ -79,8 +79,10 @@ export async function verificarPinProfesional(supabase: SupabaseClient, idProfes
 
 // Se llama con las marcas que el profesional eligió pagar con puntos y los
 // productos reales de la venta — recalcula el monto exacto por marca a
-// partir de la venta (nunca confía en un monto mandado desde el cliente) y
-// solo aplica el canje si el saldo alcanza.
+// partir de la venta (nunca confía en un monto mandado desde el cliente).
+// Si el saldo no alcanza para cubrir todo, aplica lo que haya disponible
+// como descuento parcial y el resto se paga por el medio de pago normal —
+// no es todo-o-nada.
 export async function calcularDescuentoCanje(
   supabase: SupabaseClient,
   idProfesional: string,
@@ -102,11 +104,10 @@ export async function calcularDescuentoCanje(
   let descuentoTotal = 0;
   for (const [idMarca, monto] of subtotalPorMarca) {
     const saldo = saldoPorMarca.get(idMarca) ?? 0;
-    if (saldo < monto) {
-      return { error: "El saldo de esa marca no alcanza para cubrir lo elegido.", descuentoTotal: 0, porMarca: [] };
-    }
-    porMarca.push({ idMarca, monto });
-    descuentoTotal += monto;
+    const montoAplicado = Math.min(monto, saldo);
+    if (montoAplicado <= 0) continue;
+    porMarca.push({ idMarca, monto: montoAplicado });
+    descuentoTotal += montoAplicado;
   }
 
   return { error: null, descuentoTotal, porMarca };
