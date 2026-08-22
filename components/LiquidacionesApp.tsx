@@ -401,7 +401,7 @@ const ETIQUETA_TIPO_MOVIMIENTO: Record<string, string> = {
 // de WiiGo: es lo retenido preventivamente (hoy solo SIRCREB) pendiente de
 // compensar o devolver. Saldo siempre derivado de movimientos, nunca un
 // número suelto — mismo patrón que el saldo por marca de Profesionales.
-function RetencionesMarca({ idMarca }: { idMarca: string }) {
+export function RetencionesMarca({ idMarca }: { idMarca: string }) {
   const [saldos, setSaldos] = useState<{ tipoRetencion: string; saldo: number }[]>([]);
   const [historial, setHistorial] = useState<
     { idMovimiento: string; tipoRetencion: string; tipoMovimiento: string; importe: number; saldoNuevo: number; usuario: string | null; observaciones: string | null; fecha: string }[]
