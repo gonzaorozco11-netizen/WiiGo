@@ -17,6 +17,7 @@ type Resumen = {
   ivaComision: number;
   impCreditos: number;
   feeMp: number;
+  sircreb: number;
   netoARendir: number;
   netoEfectivo: number;
   netoTransferencia: number;
@@ -220,6 +221,7 @@ export default function LiquidacionesApp({ marcas }: { marcas: Marca[] }) {
                       <th className="p-3 text-right">IVA s/comisión</th>
                       <th className="p-3 text-right">Imp. créd.</th>
                       <th className="p-3 text-right">Fee MP</th>
+                      <th className="p-3 text-right">SIRCREB</th>
                       <th className="p-3 text-right">Neto a rendir</th>
                     </tr>
                   </thead>
@@ -245,6 +247,9 @@ export default function LiquidacionesApp({ marcas }: { marcas: Marca[] }) {
                         <td className="p-3 text-right tabular-nums text-red-600">
                           {l.feeMp > 0 ? `-$${formatearMonto(l.feeMp)}` : "—"}
                         </td>
+                        <td className="p-3 text-right tabular-nums text-purple-600">
+                          {l.sircreb > 0 ? `-$${formatearMonto(l.sircreb)}` : "—"}
+                        </td>
                         <td className="p-3 text-right tabular-nums font-semibold">${formatearMonto(l.netoARendir)}</td>
                       </tr>
                     ))}
@@ -259,8 +264,15 @@ export default function LiquidacionesApp({ marcas }: { marcas: Marca[] }) {
                   <ResumenCampo etiqueta="IVA s/comisión" valor={-resultado.resumen.ivaComision} />
                   <ResumenCampo etiqueta="Imp. a los créditos" valor={-resultado.resumen.impCreditos} />
                   <ResumenCampo etiqueta="Fee Mercado Pago" valor={-resultado.resumen.feeMp} />
-                  <ResumenCampo etiqueta="Total deducciones" valor={-(resultado.resumen.comisionWiigo + resultado.resumen.ivaComision + resultado.resumen.impCreditos + resultado.resumen.feeMp)} />
+                  <ResumenCampo etiqueta="SIRCREB retenido" valor={-resultado.resumen.sircreb} />
+                  <ResumenCampo etiqueta="Total deducciones" valor={-(resultado.resumen.comisionWiigo + resultado.resumen.ivaComision + resultado.resumen.impCreditos + resultado.resumen.feeMp + resultado.resumen.sircreb)} />
                 </div>
+
+                {resultado.resumen.sircreb > 0 && (
+                  <p className="text-xs text-purple-700 bg-purple-50 border border-purple-200 rounded-lg px-3 py-2 mb-4">
+                    ⓘ El SIRCREB retenido (${formatearMonto(resultado.resumen.sircreb)}) no es ganancia de WiiGo — queda en la cuenta corriente de retenciones de {resultado.marca}, pendiente de compensar o devolver.
+                  </p>
+                )}
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
                   <div className="bg-white border-2 border-emerald-200 rounded-xl p-4">

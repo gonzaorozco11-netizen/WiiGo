@@ -98,7 +98,7 @@ export async function guardarConfigLiquidaciones(formData: FormData): Promise<{ 
       supabase,
       "SIRCREB_PORCENTAJE",
       String(sircreb),
-      "Liquidaciones: retención SIRCREB — la absorbe WiiGo, solo informativo (crédito a favor de IIBB)"
+      "Liquidaciones: % de SIRCREB a retener preventivamente en marcas con 'trasladar SIRCREB' tildado en su ficha (queda en su cuenta de retenciones, no es ganancia de WiiGo); en el resto lo sigue absorbiendo WiiGo"
     );
   }
   if (!error) {

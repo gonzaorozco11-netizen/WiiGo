@@ -335,7 +335,11 @@ export default function ConfiguracionApp({
               onChange={(e) => setSircreb(Number(e.target.value))}
               className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
             />
-            <p className="text-xs text-neutral-400 mt-1">Lo absorbe WiiGo — solo informativo, no se le descuenta a la marca.</p>
+            <p className="text-xs text-neutral-400 mt-1">
+              Tasa usada para retenerlo preventivamente en la liquidación de las marcas que tengan tildado "SIRCREB" en
+              Costos de cobro a trasladar (ficha de la marca) — no es ganancia de WiiGo, queda en su cuenta corriente
+              de retenciones. Si la marca no lo tiene tildado, lo sigue absorbiendo WiiGo como hasta ahora.
+            </p>
           </div>
           <div>
             <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="imp_debitos_porcentaje">

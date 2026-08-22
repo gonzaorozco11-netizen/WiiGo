@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
+import { registrarMovimientoRetencion, saldosRetencionPorMarca, historialRetencionMarca } from "@/lib/retencionesMarca";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 async function usuarioActual() {
@@ -29,11 +30,12 @@ async function tasasGenerales(supabase: SupabaseClient) {
   const { data } = await supabase
     .from("configuracion")
     .select("parametro, valor")
-    .in("parametro", ["IMP_CREDITOS_PORCENTAJE", "IVA_GENERAL_PORCENTAJE", ...Object.values(CLAVE_COMISION_MP)]);
+    .in("parametro", ["IMP_CREDITOS_PORCENTAJE", "IVA_GENERAL_PORCENTAJE", "SIRCREB_PORCENTAJE", ...Object.values(CLAVE_COMISION_MP)]);
   const cfg = Object.fromEntries((data ?? []).map((r) => [r.parametro, Number(r.valor ?? 0)]));
   return {
     impCreditos: cfg.IMP_CREDITOS_PORCENTAJE ?? 0,
     ivaGeneral: cfg.IVA_GENERAL_PORCENTAJE ?? 21,
+    sircreb: cfg.SIRCREB_PORCENTAJE ?? 0,
     mpComisionPorFormaPago: Object.fromEntries(
       Object.entries(CLAVE_COMISION_MP).map(([forma, clave]) => [forma, cfg[clave] ?? 0])
     ) as Record<string, number>,
@@ -53,6 +55,7 @@ export type LineaRendicion = {
   ivaComision: number;
   impCreditos: number;
   feeMp: number;
+  sircreb: number;
   netoARendir: number;
 };
 
@@ -63,6 +66,7 @@ function vacioResumen() {
     ivaComision: 0,
     impCreditos: 0,
     feeMp: 0,
+    sircreb: 0,
     netoARendir: 0,
     netoEfectivo: 0,
     netoTransferencia: 0,
@@ -85,7 +89,7 @@ type VentaMinima = {
 async function construirLineas(supabase: SupabaseClient, idMarca: string, ventasFiltradas: VentaMinima[]) {
   const { data: marca, error: errorMarca } = await supabase
     .from("marcas")
-    .select("nombre, royalty_porcentaje, iva_royalty_porcentaje, trasladar_iva_comision, trasladar_comision_cobro")
+    .select("nombre, royalty_porcentaje, iva_royalty_porcentaje, trasladar_iva_comision, trasladar_comision_cobro, trasladar_sircreb")
     .eq("id_marca", idMarca)
     .maybeSingle();
   if (errorMarca) throw new Error(friendlyDbError(errorMarca));
@@ -160,7 +164,18 @@ async function construirLineas(supabase: SupabaseClient, idMarca: string, ventas
       !esEfectivo && marca.trasladar_comision_cobro && venta.medio_pago === "MERCADO_PAGO"
         ? Math.round(ventaBruta * (tasaMpConIva / 100))
         : 0;
-    const netoARendir = ventaBruta - comisionWiigo - ivaComision - impCreditosLinea - feeMp;
+    // SIRCREB solo se retiene preventivamente si la marca tiene tildado
+    // "trasladar SIRCREB" en su ficha — si no, WiiGo lo sigue absorbiendo
+    // como hasta ahora (comportamiento sin cambios para esas marcas). El
+    // sentido de retenerlo acá (en vez de dejarlo como pérdida de WiiGo o
+    // de la marca) es no financiar con plata propia una retención que es de
+    // un tercero: ver movimientos_retencion_marca, esto NUNCA es ganancia
+    // de WiiGo, queda pendiente de compensar/devolver.
+    const sircrebLinea =
+      !esEfectivo && marca.trasladar_sircreb && venta.medio_pago === "MERCADO_PAGO"
+        ? Math.round(ventaBruta * (tasas.sircreb / 100))
+        : 0;
+    const netoARendir = ventaBruta - comisionWiigo - ivaComision - impCreditosLinea - feeMp - sircrebLinea;
 
     lineas.push({
       idDetalle: linea.id_detalle,
@@ -175,6 +190,7 @@ async function construirLineas(supabase: SupabaseClient, idMarca: string, ventas
       ivaComision,
       impCreditos: impCreditosLinea,
       feeMp,
+      sircreb: sircrebLinea,
       netoARendir,
     });
   }
@@ -188,6 +204,7 @@ async function construirLineas(supabase: SupabaseClient, idMarca: string, ventas
       ivaComision: acc.ivaComision + l.ivaComision,
       impCreditos: acc.impCreditos + l.impCreditos,
       feeMp: acc.feeMp + l.feeMp,
+      sircreb: acc.sircreb + l.sircreb,
       netoARendir: acc.netoARendir + l.netoARendir,
       // Dos plata distintas: lo que se le entrega en mano (efectivo) y lo
       // que se le transfiere por banco — no se pueden mezclar en un solo
@@ -266,6 +283,7 @@ export async function marcarComoLiquidada(
     ivaComision: number;
     impCreditos: number;
     feeMp: number;
+    sircreb: number;
     netoARendir: number;
     netoEfectivo: number;
     netoTransferencia: number;
@@ -276,7 +294,7 @@ export async function marcarComoLiquidada(
     const usuario = await usuarioActual();
 
     const totalComisiones = resumen.comisionWiigo + resumen.ivaComision + resumen.feeMp;
-    const totalRetenciones = totalComisiones + resumen.impCreditos;
+    const totalRetenciones = totalComisiones + resumen.impCreditos + resumen.sircreb;
 
     const { data: liquidacion, error: errorLiquidacion } = await supabase
       .from("liquidaciones")
@@ -290,6 +308,7 @@ export async function marcarComoLiquidada(
         iva_royalty: resumen.ivaComision,
         comision_cobro_asignada: resumen.feeMp,
         imp_creditos_asignado: resumen.impCreditos,
+        sircreb_asignado: resumen.sircreb,
         total_comisiones: totalComisiones,
         total_retenciones: totalRetenciones,
         neto_a_transferir: resumen.netoARendir,
@@ -299,6 +318,21 @@ export async function marcarComoLiquidada(
       .select("id_liquidacion")
       .single();
     if (errorLiquidacion) return { error: friendlyDbError(errorLiquidacion) };
+
+    // Lo retenido preventivamente NUNCA es ganancia de WiiGo — queda en la
+    // cuenta corriente de retenciones de la marca, pendiente de compensar
+    // o devolver más adelante (Fase 4).
+    if (resumen.sircreb > 0) {
+      await registrarMovimientoRetencion(supabase, {
+        idMarca,
+        tipoRetencion: "SIRCREB",
+        tipoMovimiento: "RETENCION",
+        importe: resumen.sircreb,
+        idLiquidacion: liquidacion.id_liquidacion,
+        usuario,
+        observaciones: `Retenido preventivamente en la liquidación del ${desde} al ${hasta}`,
+      });
+    }
 
     // Estampa todas las ventas del período que ya se rindieron, para que no
     // se vuelvan a contar en la próxima liquidación.
@@ -362,6 +396,29 @@ export async function subirComprobante(idLiquidacion: string, formData: FormData
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo subir el comprobante" };
   }
+}
+
+// Cuenta corriente de retenciones (SIRCREB por ahora) — nunca es plata de
+// WiiGo, es lo retenido preventivamente a esta marca pendiente de
+// compensar o devolver.
+export async function saldosRetencionMarcaAction(idMarca: string) {
+  const supabase = getSupabaseServerClient();
+  return saldosRetencionPorMarca(supabase, idMarca);
+}
+
+export async function historialRetencionMarcaAction(idMarca: string) {
+  const supabase = getSupabaseServerClient();
+  const movimientos = await historialRetencionMarca(supabase, idMarca);
+  return movimientos.map((m) => ({
+    idMovimiento: m.id_movimiento as string,
+    tipoRetencion: m.tipo_retencion as string,
+    tipoMovimiento: m.tipo_movimiento as string,
+    importe: m.importe as number,
+    saldoNuevo: m.saldo_nuevo as number,
+    usuario: m.usuario as string | null,
+    observaciones: m.observaciones as string | null,
+    fecha: m.fecha as string,
+  }));
 }
 
 export async function obtenerUrlComprobante(path: string) {
