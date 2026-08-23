@@ -389,6 +389,38 @@ export async function updateProducto(id: string, formData: FormData): Promise<{ 
   }
 }
 
+export async function subirFotoProducto(
+  idProducto: string,
+  formData: FormData
+): Promise<{ error: string | null; url?: string }> {
+  const archivo = formData.get("archivo") as File | null;
+  if (!archivo || archivo.size === 0) return { error: "Elegí una foto primero" };
+
+  try {
+    const supabase = getSupabaseServerClient();
+    const extension = archivo.name.split(".").pop() ?? "jpg";
+    const path = `${idProducto}-${Date.now()}.${extension}`;
+
+    const { error: errorUpload } = await supabase.storage
+      .from("fotos-productos")
+      .upload(path, archivo, { upsert: true, contentType: archivo.type || undefined });
+    if (errorUpload) return { error: errorUpload.message };
+
+    const { data } = supabase.storage.from("fotos-productos").getPublicUrl(path);
+
+    const { error: errorUpdate } = await supabase
+      .from("productos")
+      .update({ imagen: data.publicUrl })
+      .eq("id_producto", idProducto);
+    if (errorUpdate) return { error: friendlyDbError(errorUpdate) };
+
+    revalidatePath("/productos");
+    return { error: null, url: data.publicUrl };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo subir la foto" };
+  }
+}
+
 export async function deleteProducto(id: string): Promise<{ error: string | null }> {
   try {
     const supabase = getSupabaseServerClient();

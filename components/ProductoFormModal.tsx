@@ -11,7 +11,7 @@ import type {
   VarianteProducto,
   Local,
 } from "@/lib/supabase";
-import { createProducto, updateProducto } from "@/app/(app)/productos/actions";
+import { createProducto, updateProducto, subirFotoProducto } from "@/app/(app)/productos/actions";
 
 type VarianteForm = {
   id: string;
@@ -66,7 +66,23 @@ export default function ProductoFormModal({
       : [{ id: "", nombre: "", sku: null, stockMinimo: 0, stockObjetivo: 0, stockInicial: 0 }]
   );
   const [idLocalInicial, setIdLocalInicial] = useState(locales[0]?.id_local ?? "");
+  const [fotoProducto, setFotoProducto] = useState(producto?.imagen ?? "");
+  const [subiendoFoto, setSubiendoFoto] = useState(false);
   const isEditing = Boolean(producto);
+
+  function handleFoto(e: React.ChangeEvent<HTMLInputElement>) {
+    const archivo = e.target.files?.[0];
+    if (!archivo || !producto) return;
+    const formData = new FormData();
+    formData.set("archivo", archivo);
+    setSubiendoFoto(true);
+    subirFotoProducto(producto.id_producto, formData)
+      .then((res) => {
+        if (res.error) setError(res.error);
+        else if (res.url) setFotoProducto(res.url);
+      })
+      .finally(() => setSubiendoFoto(false));
+  }
   const marcaSeleccionada = marcas.find((m) => m.id_marca === idMarca);
 
   const subcategoriasDeMarca = useMemo(
@@ -185,7 +201,31 @@ export default function ProductoFormModal({
             margenMinimo={margenMinimo}
           />
 
-          <Field label="Imagen (URL)" name="imagen" defaultValue={producto?.imagen ?? ""} />
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-1">Imagen</label>
+            {isEditing ? (
+              <div className="flex items-center gap-3 mb-2">
+                <span className="w-16 h-16 rounded-lg overflow-hidden bg-neutral-100 border border-neutral-200 flex items-center justify-center shrink-0">
+                  {fotoProducto ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={fotoProducto} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-neutral-300 text-xs">Sin foto</span>
+                  )}
+                </span>
+                <label className="text-xs font-semibold text-accent cursor-pointer">
+                  {subiendoFoto ? "Subiendo..." : fotoProducto ? "Cambiar foto" : "Subir foto"}
+                  <input type="file" accept="image/*" onChange={handleFoto} disabled={subiendoFoto} className="hidden" />
+                </label>
+              </div>
+            ) : (
+              <p className="text-xs text-neutral-400 mb-2">La foto se sube después de crear el producto, editándolo.</p>
+            )}
+            <Field key={fotoProducto} label="o pegar una URL de imagen" name="imagen" defaultValue={fotoProducto} />
+            <p className="text-xs text-neutral-400 mt-1">
+              Recomendado: foto cuadrada, mínimo 800×800px, fondo blanco o neutro — así quedan todas parejas en el catálogo y en el Asesor.
+            </p>
+          </div>
 
           <div>
             <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="estado">

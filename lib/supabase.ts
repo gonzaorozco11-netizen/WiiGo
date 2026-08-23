@@ -93,6 +93,7 @@ export type Marca = {
   fecha_ingreso: string | null;
   estado: string;
   visible_asesor: boolean;
+  logo: string | null;
   observaciones: string | null;
   iva_royalty_porcentaje: number | null;
   trasladar_comision_cobro: boolean;

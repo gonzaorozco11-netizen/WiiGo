@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import type { Marca } from "@/lib/supabase";
-import { createMarca, updateMarca } from "@/app/(app)/marcas/actions";
+import { createMarca, updateMarca, subirLogoMarca } from "@/app/(app)/marcas/actions";
 
 export default function MarcaFormModal({
   marca,
@@ -14,7 +14,23 @@ export default function MarcaFormModal({
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [tipoComercializacion, setTipoComercializacion] = useState(marca?.tipo_comercializacion ?? "CONSIGNACION");
+  const [logo, setLogo] = useState(marca?.logo ?? "");
+  const [subiendoLogo, setSubiendoLogo] = useState(false);
   const isEditing = Boolean(marca);
+
+  function handleLogo(e: React.ChangeEvent<HTMLInputElement>) {
+    const archivo = e.target.files?.[0];
+    if (!archivo || !marca) return;
+    const formData = new FormData();
+    formData.set("archivo", archivo);
+    setSubiendoLogo(true);
+    subirLogoMarca(marca.id_marca, formData)
+      .then((res) => {
+        if (res.error) setError(res.error);
+        else if (res.url) setLogo(res.url);
+      })
+      .finally(() => setSubiendoLogo(false));
+  }
 
   function handleSubmit(formData: FormData) {
     setError(null);
@@ -61,6 +77,30 @@ export default function MarcaFormModal({
           </fieldset>
 
           <Section title="Datos generales">
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium text-neutral-700 mb-1">Logo</label>
+              {isEditing ? (
+                <div className="flex items-center gap-3">
+                  <span className="w-16 h-16 rounded-lg overflow-hidden bg-neutral-100 border border-neutral-200 flex items-center justify-center shrink-0">
+                    {logo ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={logo} alt="" className="w-full h-full object-contain" />
+                    ) : (
+                      <span className="text-neutral-300 text-xs">Sin logo</span>
+                    )}
+                  </span>
+                  <label className="text-xs font-semibold text-accent cursor-pointer">
+                    {subiendoLogo ? "Subiendo..." : logo ? "Cambiar logo" : "Subir logo"}
+                    <input type="file" accept="image/*" onChange={handleLogo} disabled={subiendoLogo} className="hidden" />
+                  </label>
+                </div>
+              ) : (
+                <p className="text-xs text-neutral-400">El logo se sube después de crear la marca, editándola.</p>
+              )}
+              <p className="text-xs text-neutral-400 mt-1">
+                Recomendado: cuadrado, mínimo 400×400px, fondo blanco o transparente (PNG) — así quedan todos parejos.
+              </p>
+            </div>
             <Field label="Nombre *" name="nombre" defaultValue={marca?.nombre} required />
             <Field label="CUIT" name="cuit" defaultValue={marca?.cuit ?? ""} />
             <Field label="Contacto" name="contacto" defaultValue={marca?.contacto ?? ""} />

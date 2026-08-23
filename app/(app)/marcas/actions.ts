@@ -81,6 +81,36 @@ export async function updateMarca(id: string, formData: FormData): Promise<{ err
   }
 }
 
+export async function subirLogoMarca(
+  idMarca: string,
+  formData: FormData
+): Promise<{ error: string | null; url?: string }> {
+  const archivo = formData.get("archivo") as File | null;
+  if (!archivo || archivo.size === 0) return { error: "Elegí un logo primero" };
+
+  try {
+    const supabase = getSupabaseServerClient();
+    const extension = archivo.name.split(".").pop() ?? "jpg";
+    const path = `${idMarca}-${Date.now()}.${extension}`;
+
+    const { error: errorUpload } = await supabase.storage
+      .from("fotos-marcas")
+      .upload(path, archivo, { upsert: true, contentType: archivo.type || undefined });
+    if (errorUpload) return { error: errorUpload.message };
+
+    const { data } = supabase.storage.from("fotos-marcas").getPublicUrl(path);
+
+    const { error: errorUpdate } = await supabase.from("marcas").update({ logo: data.publicUrl }).eq("id_marca", idMarca);
+    if (errorUpdate) return { error: friendlyDbError(errorUpdate) };
+
+    revalidatePath("/marcas");
+    revalidatePath(`/marcas/${idMarca}`);
+    return { error: null, url: data.publicUrl };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo subir el logo" };
+  }
+}
+
 export async function deleteMarca(id: string): Promise<{ error: string | null }> {
   try {
     const supabase = getSupabaseServerClient();
