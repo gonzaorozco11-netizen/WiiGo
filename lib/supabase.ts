@@ -40,6 +40,45 @@ export type Rol = {
   fecha_creacion: string;
 };
 
+export type Area = {
+  id_area: string;
+  nombre: string;
+  descripcion: string | null;
+  orden: number;
+  estado: string;
+  fecha_creacion: string;
+};
+
+export type Puesto = {
+  id_puesto: string;
+  id_area: string;
+  nombre: string;
+  tipo: string;
+  nivel: number;
+  estado: string;
+  fecha_creacion: string;
+};
+
+export type Persona = {
+  id_persona: string;
+  nombre: string;
+  apellido: string | null;
+  email: string | null;
+  telefono: string | null;
+  tipo: string;
+  id_local: string | null;
+  reporta_a: string | null;
+  estado: string;
+  fecha_alta: string;
+};
+
+export type PersonaPuesto = {
+  id_persona_puesto: string;
+  id_persona: string;
+  id_puesto: string;
+  es_principal: boolean;
+};
+
 export type Marca = {
   id_marca: string;
   nombre: string;

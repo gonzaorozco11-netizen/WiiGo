@@ -53,6 +53,10 @@ const GROUPS: NavGroup[] = [
       { href: "/locales", label: "Locales" },
     ],
   },
+  {
+    label: "Equipo",
+    items: [{ href: "/organizacion", label: "Organización" }],
+  },
 ];
 
 const SUELTO: NavItem = { href: "/configuracion", label: "Configuración" };
