@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Image from "next/image";
 import type { Local, Marca, Producto, Objetivo, FiltroProducto, FichaProducto } from "@/lib/supabase";
 
-type Pantalla = "home" | "objetivo" | "resultado" | "proximamente";
+type Pantalla = "home" | "objetivo" | "resultado" | "marcas" | "productosMarca" | "proximamente";
 
 const SAGE = "#b6bca2";
 const SAGE_DARK = "#646759";
@@ -96,6 +96,7 @@ export default function AsesorApp({
   const [objetivoId, setObjetivoId] = useState<string | null>(null);
   const [filtrosSeleccionados, setFiltrosSeleccionados] = useState<Set<string>>(new Set());
   const [seccionProximamente, setSeccionProximamente] = useState("");
+  const [marcaId, setMarcaId] = useState<string | null>(null);
 
   const marcaPorId = useMemo(() => {
     const mapa: Record<string, Marca> = {};
@@ -111,6 +112,26 @@ export default function AsesorApp({
 
   const objetivoSeleccionado = objetivoId ? objetivos.find((o) => o.id_objetivo === objetivoId) ?? null : null;
 
+  const conteoProductosPorMarca = useMemo(() => {
+    const mapa: Record<string, number> = {};
+    productos.forEach((p) => {
+      mapa[p.id_marca] = (mapa[p.id_marca] ?? 0) + 1;
+    });
+    return mapa;
+  }, [productos]);
+
+  const marcasOrdenadas = useMemo(
+    () => [...marcas].sort((a, b) => a.nombre.localeCompare(b.nombre)),
+    [marcas]
+  );
+
+  const marcaActual = marcaId ? marcaPorId[marcaId] ?? null : null;
+
+  const productosDeMarca = useMemo(() => {
+    if (!marcaId) return [];
+    return productos.filter((p) => p.id_marca === marcaId);
+  }, [productos, marcaId]);
+
   function irAObjetivo() {
     setBusqueda("");
     setObjetivoId(null);
@@ -121,6 +142,16 @@ export default function AsesorApp({
   function irAProximamente(nombre: string) {
     setSeccionProximamente(nombre);
     setPantalla("proximamente");
+  }
+
+  function irAMarcas() {
+    setMarcaId(null);
+    setPantalla("marcas");
+  }
+
+  function elegirMarca(id: string) {
+    setMarcaId(id);
+    setPantalla("productosMarca");
   }
 
   function elegirObjetivo(id: string) {
@@ -142,6 +173,7 @@ export default function AsesorApp({
     setBusqueda("");
     setObjetivoId(null);
     setFiltrosSeleccionados(new Set());
+    setMarcaId(null);
   }
 
   function volverDesdeResultado() {
@@ -214,7 +246,7 @@ export default function AsesorApp({
               </span>
               <span className="text-[15px] font-extrabold leading-tight">Encontrar<br />productos para mí</span>
             </button>
-            <button onClick={() => irAProximamente("Marcas y productos")} className="flex flex-col items-center gap-3 rounded-2xl border border-[#d8d8d8] bg-white p-6 shadow-sm aspect-square justify-center">
+            <button onClick={irAMarcas} className="flex flex-col items-center gap-3 rounded-2xl border border-[#d8d8d8] bg-white p-6 shadow-sm aspect-square justify-center">
               <span className="flex items-center justify-center w-14 h-14 rounded-full text-white" style={{ background: C2 }}>
                 <IconoBolsa className="w-7 h-7" />
               </span>
@@ -278,6 +310,86 @@ export default function AsesorApp({
                 </button>
               ))}
             </div>
+          </div>
+        </div>
+      )}
+
+      {pantalla === "marcas" && (
+        <div className="flex-1 flex flex-col">
+          <Navbar onVolver={volverAInicio} onInicio={volverAInicio} />
+          <div className="flex-1 px-6 pt-6 pb-10">
+            <h2 className="text-2xl font-extrabold mb-6">Marcas</h2>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-w-2xl mx-auto">
+              {marcasOrdenadas.length === 0 && (
+                <p className="text-[#686868] text-sm text-center py-8 col-span-full">
+                  Todav&iacute;a no hay marcas visibles en el Asesor.
+                </p>
+              )}
+              {marcasOrdenadas.map((m) => (
+                <button
+                  key={m.id_marca}
+                  onClick={() => elegirMarca(m.id_marca)}
+                  className="flex flex-col items-center gap-3 rounded-2xl border border-[#d8d8d8] bg-white p-5 shadow-sm text-center"
+                >
+                  <span
+                    className="flex items-center justify-center w-12 h-12 rounded-full font-extrabold text-[16px]"
+                    style={{ background: SAGE_TINT, color: SAGE_DARK }}
+                  >
+                    {m.nombre.charAt(0).toUpperCase()}
+                  </span>
+                  <span className="text-[14px] font-extrabold leading-tight">{m.nombre}</span>
+                  <span className="text-[11px] text-[#a8a8a8] font-medium">
+                    {conteoProductosPorMarca[m.id_marca] ?? 0} producto
+                    {(conteoProductosPorMarca[m.id_marca] ?? 0) === 1 ? "" : "s"}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pantalla === "productosMarca" && (
+        <div className="flex-1 flex flex-col">
+          <Navbar onVolver={irAMarcas} onInicio={volverAInicio} />
+          <div className="flex-1 px-6 pt-6 pb-10 max-w-3xl mx-auto w-full">
+            <h2 className="text-2xl font-extrabold mb-1">{marcaActual?.nombre ?? "Marca"}</h2>
+            <p className="text-[13px] text-[#686868] mb-5">
+              {productosDeMarca.length} producto{productosDeMarca.length === 1 ? "" : "s"}
+            </p>
+
+            {productosDeMarca.length === 0 ? (
+              <p className="text-[#686868] text-sm text-center py-12">
+                Todav&iacute;a no hay productos visibles de esta marca en el Asesor.
+              </p>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {productosDeMarca.map((p) => {
+                  const ficha = fichaPorProducto[p.id_producto];
+                  return (
+                    <div key={p.id_producto} className="rounded-xl border border-[#d8d8d8] bg-white overflow-hidden shadow-sm flex flex-col">
+                      <div className="h-20 bg-gradient-to-br from-[#f0f2ec] to-[#d8d8d8] flex items-center justify-center">
+                        {(ficha?.imagen_principal || p.imagen) ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={ficha?.imagen_principal || p.imagen || ""} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <span style={{ color: SAGE_DARK }}>
+                            <IconoBolsa className="w-6 h-6" />
+                          </span>
+                        )}
+                      </div>
+                      <div className="p-2.5 flex flex-col gap-1">
+                        <p className="text-[12px] font-extrabold leading-tight line-clamp-2">{p.nombre}</p>
+                        {ficha?.descripcion_publica && (
+                          <p className="text-[10px] text-[#686868] leading-snug line-clamp-2">{ficha.descripcion_publica}</p>
+                        )}
+                        <span className="text-[13px] font-extrabold mt-1">{formatoPrecio(p.precio_venta)}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}
