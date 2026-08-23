@@ -4,6 +4,7 @@ import {
   type Local,
   type Marca,
   type Producto,
+  type Subcategoria,
 } from "@/lib/supabase";
 import { fetchContenidoAsesor } from "@/lib/contenidoAsesor";
 import AsesorApp from "@/components/AsesorApp";
@@ -23,9 +24,10 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
 
   if (!local) notFound();
 
-  const [marcasRes, productosRes, contenido] = await Promise.all([
+  const [marcasRes, productosRes, subcategoriasRes, contenido] = await Promise.all([
     supabase.from("marcas").select("*").eq("estado", "ACTIVA").eq("visible_asesor", true),
     supabase.from("productos").select("*").eq("estado", "ACTIVO").eq("visible_asesor", true),
+    supabase.from("subcategorias").select("*").eq("estado", "ACTIVA"),
     fetchContenidoAsesor(supabase),
   ]);
 
@@ -34,6 +36,7 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
       local={local as Local}
       marcas={(marcasRes.data ?? []) as Marca[]}
       productos={(productosRes.data ?? []) as Producto[]}
+      subcategorias={(subcategoriasRes.data ?? []) as Subcategoria[]}
       objetivos={contenido.objetivosGlobales}
       filtros={contenido.filtrosGlobales}
       fichaPorProducto={contenido.fichaPorProducto}
