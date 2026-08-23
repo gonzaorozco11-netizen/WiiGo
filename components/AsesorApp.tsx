@@ -106,6 +106,7 @@ export default function AsesorApp({
   const [seccionProximamente, setSeccionProximamente] = useState("");
   const [marcaId, setMarcaId] = useState<string | null>(null);
   const [subcategoriaId, setSubcategoriaId] = useState<string | null>(null);
+  const [marcaOfertaId, setMarcaOfertaId] = useState<string | null>(null);
 
   const marcaPorId = useMemo(() => {
     const mapa: Record<string, Marca> = {};
@@ -153,6 +154,24 @@ export default function AsesorApp({
     [productos]
   );
 
+  const marcasConOferta = useMemo(
+    () => [...new Set(productosEnOferta.map((p) => p.id_marca))],
+    [productosEnOferta]
+  );
+
+  const conteoOfertasPorMarca = useMemo(() => {
+    const mapa: Record<string, number> = {};
+    productosEnOferta.forEach((p) => {
+      mapa[p.id_marca] = (mapa[p.id_marca] ?? 0) + 1;
+    });
+    return mapa;
+  }, [productosEnOferta]);
+
+  const productosEnOfertaFiltrados = useMemo(() => {
+    if (!marcaOfertaId) return productosEnOferta;
+    return productosEnOferta.filter((p) => p.id_marca === marcaOfertaId);
+  }, [productosEnOferta, marcaOfertaId]);
+
   function irAObjetivo() {
     setBusqueda("");
     setObjetivoId(null);
@@ -171,6 +190,11 @@ export default function AsesorApp({
     setPantalla("marcas");
   }
 
+  function irAOfertas() {
+    setMarcaOfertaId(null);
+    setPantalla("ofertas");
+  }
+
   function toggleMarca(id: string) {
     setSubcategoriaId(null);
     setMarcaId((actual) => (actual === id ? null : id));
@@ -178,6 +202,10 @@ export default function AsesorApp({
 
   function toggleSubcategoria(id: string) {
     setSubcategoriaId((actual) => (actual === id ? null : id));
+  }
+
+  function toggleMarcaOferta(id: string) {
+    setMarcaOfertaId((actual) => (actual === id ? null : id));
   }
 
   function elegirObjetivo(id: string) {
@@ -201,6 +229,7 @@ export default function AsesorApp({
     setFiltrosSeleccionados(new Set());
     setMarcaId(null);
     setSubcategoriaId(null);
+    setMarcaOfertaId(null);
   }
 
   function volverDesdeResultado() {
@@ -279,7 +308,7 @@ export default function AsesorApp({
               </span>
               <span className="text-[15px] font-extrabold leading-tight">Marcas y<br />productos</span>
             </button>
-            <button onClick={() => setPantalla("ofertas")} className="flex flex-col items-center gap-3 rounded-2xl border border-[#d8d8d8] bg-white p-6 shadow-sm aspect-square justify-center">
+            <button onClick={irAOfertas} className="flex flex-col items-center gap-3 rounded-2xl border border-[#d8d8d8] bg-white p-6 shadow-sm aspect-square justify-center">
               <span className="flex items-center justify-center w-14 h-14 rounded-full text-white" style={{ background: C3 }}>
                 <IconoEtiqueta className="w-7 h-7" />
               </span>
@@ -453,18 +482,52 @@ export default function AsesorApp({
         <div className="flex-1 flex flex-col">
           <Navbar onVolver={volverAInicio} onInicio={volverAInicio} />
           <div className="flex-1 px-6 pt-6 pb-10 max-w-3xl mx-auto w-full">
-            <h2 className="text-2xl font-extrabold mb-1">Ofertas</h2>
-            <p className="text-[13px] text-[#686868] mb-5">
-              {productosEnOferta.length} producto{productosEnOferta.length === 1 ? "" : "s"} con descuento
+            <h2 className="text-2xl font-extrabold mb-4">Ofertas</h2>
+
+            {marcasConOferta.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-5">
+                {marcasOrdenadas
+                  .filter((m) => marcasConOferta.includes(m.id_marca))
+                  .map((m) => {
+                    const on = marcaOfertaId === m.id_marca;
+                    return (
+                      <button
+                        key={m.id_marca}
+                        onClick={() => toggleMarcaOferta(m.id_marca)}
+                        className="flex items-center gap-2 rounded-full border px-3 py-2 shadow-sm transition-colors"
+                        style={
+                          on
+                            ? { background: SAGE_TINT, borderColor: SAGE, color: SAGE_DARK }
+                            : { background: "#fff", borderColor: "#d8d8d8", color: "#2d2d2d" }
+                        }
+                      >
+                        <span
+                          className="flex items-center justify-center w-7 h-7 rounded-full font-extrabold text-[12px] shrink-0"
+                          style={on ? { background: "rgba(255,255,255,.5)" } : { background: SAGE_TINT, color: SAGE_DARK }}
+                        >
+                          {m.nombre.charAt(0).toUpperCase()}
+                        </span>
+                        <span className="text-[13px] font-extrabold">{m.nombre}</span>
+                        <span className="text-[11px] font-medium opacity-70">
+                          {conteoOfertasPorMarca[m.id_marca] ?? 0}
+                        </span>
+                      </button>
+                    );
+                  })}
+              </div>
+            )}
+
+            <p className="text-[13px] text-[#686868] mb-4">
+              {productosEnOfertaFiltrados.length} producto{productosEnOfertaFiltrados.length === 1 ? "" : "s"} con descuento
             </p>
 
-            {productosEnOferta.length === 0 ? (
+            {productosEnOfertaFiltrados.length === 0 ? (
               <p className="text-[#686868] text-sm text-center py-12">
                 Por ahora no hay productos con descuento cargado.
               </p>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {productosEnOferta.map((p) => {
+                {productosEnOfertaFiltrados.map((p) => {
                   const ficha = fichaPorProducto[p.id_producto];
                   const marca = marcaPorId[p.id_marca];
                   return (
