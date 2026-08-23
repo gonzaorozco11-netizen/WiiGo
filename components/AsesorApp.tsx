@@ -409,10 +409,15 @@ export default function AsesorApp({
                     }
                   >
                     <span
-                      className="flex items-center justify-center w-7 h-7 rounded-full font-extrabold text-[12px] shrink-0"
+                      className="flex items-center justify-center w-7 h-7 rounded-full font-extrabold text-[12px] shrink-0 overflow-hidden"
                       style={on ? { background: "rgba(255,255,255,.5)" } : { background: SAGE_TINT, color: SAGE_DARK }}
                     >
-                      {m.nombre.charAt(0).toUpperCase()}
+                      {m.logo ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={m.logo} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        m.nombre.charAt(0).toUpperCase()
+                      )}
                     </span>
                     <span className="text-[13px] font-extrabold">{m.nombre}</span>
                     <span className="text-[11px] font-medium opacity-70">
@@ -517,10 +522,15 @@ export default function AsesorApp({
                         }
                       >
                         <span
-                          className="flex items-center justify-center w-7 h-7 rounded-full font-extrabold text-[12px] shrink-0"
+                          className="flex items-center justify-center w-7 h-7 rounded-full font-extrabold text-[12px] shrink-0 overflow-hidden"
                           style={on ? { background: "rgba(255,255,255,.5)" } : { background: SAGE_TINT, color: SAGE_DARK }}
                         >
-                          {m.nombre.charAt(0).toUpperCase()}
+                          {m.logo ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={m.logo} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            m.nombre.charAt(0).toUpperCase()
+                          )}
                         </span>
                         <span className="text-[13px] font-extrabold">{m.nombre}</span>
                         <span className="text-[11px] font-medium opacity-70">
