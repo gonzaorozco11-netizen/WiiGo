@@ -468,6 +468,7 @@ export type Profesional = {
   telefono: string | null;
   tipo_atencion: string | null;
   link_reserva: string | null;
+  dni: string | null;
   estado: string;
   orden: number | null;
   fecha_alta: string;

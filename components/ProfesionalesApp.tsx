@@ -1,11 +1,12 @@
 "use client";
 
 import { Fragment, useEffect, useState } from "react";
-import type { Marca } from "@/lib/supabase";
+import type { Marca, Profesional } from "@/lib/supabase";
 import {
   listarProfesionales,
   crearProfesional,
   actualizarProfesional,
+  subirFotoProfesional,
   cambiarEstadoProfesional,
   guardarPinProfesional,
   listarCodigos,
@@ -20,19 +21,6 @@ import {
   listarConfigMarcas,
   guardarConfigMarca,
 } from "@/app/(app)/profesionales/actions";
-
-type Profesional = {
-  id_profesional: string;
-  nombre: string;
-  apellido: string | null;
-  categoria: string | null;
-  especialidad: string | null;
-  telefono: string | null;
-  email: string | null;
-  dni: string | null;
-  estado: string;
-  observaciones: string | null;
-};
 
 type Codigo = {
   id_codigo: string;
@@ -334,6 +322,7 @@ function DetalleProfesional({
   const [cargando, setCargando] = useState(true);
   const [mostrarCodigoForm, setMostrarCodigoForm] = useState(false);
   const [mostrarPinForm, setMostrarPinForm] = useState(false);
+  const [mostrarEditar, setMostrarEditar] = useState(false);
   const [expandido, setExpandido] = useState<string | null>(null);
 
   function recargar() {
@@ -372,6 +361,9 @@ function DetalleProfesional({
           {profesional.dni && <span>🪪 DNI {profesional.dni}</span>}
         </div>
         <div className="flex items-center gap-3">
+          <button onClick={() => setMostrarEditar((v) => !v)} className="text-xs font-semibold text-accent">
+            {mostrarEditar ? "Cancelar" : "✏️ Editar"}
+          </button>
           <button onClick={() => setMostrarPinForm((v) => !v)} className="text-xs font-semibold text-accent">
             {mostrarPinForm ? "Cancelar" : "🔒 Cambiar PIN"}
           </button>
@@ -381,6 +373,15 @@ function DetalleProfesional({
         </div>
       </div>
 
+      {mostrarEditar && (
+        <FormEditarProfesional
+          profesional={profesional}
+          onGuardado={() => {
+            setMostrarEditar(false);
+            onCambio();
+          }}
+        />
+      )}
       {mostrarPinForm && <FormPin idProfesional={profesional.id_profesional} onGuardado={() => setMostrarPinForm(false)} />}
       {!profesional.dni && (
         <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
@@ -711,6 +712,10 @@ function FormNuevoProfesional({ onCreado }: { onCreado: () => void }) {
           <input name="especialidad" placeholder="Especialidad (opcional)" className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm" />
         </div>
         <div>
+          <label className="block text-sm font-medium text-neutral-700 mb-1">Título</label>
+          <input name="titulo" placeholder="Ej: Lic. en Nutrición" className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm" />
+        </div>
+        <div>
           <label className="block text-sm font-medium text-neutral-700 mb-1">Teléfono</label>
           <input name="telefono" className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm" />
         </div>
@@ -723,6 +728,25 @@ function FormNuevoProfesional({ onCreado }: { onCreado: () => void }) {
           <input name="dni" className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm" />
           <p className="text-xs text-neutral-400 mt-1">Para que pueda pagar en caja con su propio saldo.</p>
         </div>
+        <div>
+          <label className="block text-sm font-medium text-neutral-700 mb-1">Tipo de atención</label>
+          <select name="tipo_atencion" className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm">
+            <option value="">Sin especificar</option>
+            <option value="Presencial">Presencial</option>
+            <option value="Virtual">Virtual</option>
+            <option value="Presencial y virtual">Presencial y virtual</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-neutral-700 mb-1">Link de reserva</label>
+          <input name="link_reserva" placeholder="Ej: link de WhatsApp o Calendly" className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm" />
+        </div>
+      </div>
+
+      <div className="mb-4">
+        <label className="block text-sm font-medium text-neutral-700 mb-1">Bio</label>
+        <textarea name="bio" rows={2} placeholder="Presentación corta para mostrarle al cliente" className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm" />
+        <p className="text-xs text-neutral-400 mt-1">La foto se agrega después, editando el profesional ya creado.</p>
       </div>
 
       <div className="border-t border-dashed border-neutral-200 pt-3 mb-3">
@@ -755,6 +779,126 @@ function FormNuevoProfesional({ onCreado }: { onCreado: () => void }) {
       <div className="flex justify-end">
         <button type="submit" disabled={guardando} className="bg-accent hover:bg-accent-dark disabled:opacity-50 text-white font-medium px-5 py-2 rounded-lg text-sm">
           {guardando ? "Guardando..." : "Crear profesional"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function FormEditarProfesional({ profesional, onGuardado }: { profesional: Profesional; onGuardado: () => void }) {
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [foto, setFoto] = useState(profesional.foto);
+  const [subiendoFoto, setSubiendoFoto] = useState(false);
+
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError(null);
+    const formData = new FormData(e.currentTarget);
+    setGuardando(true);
+    actualizarProfesional(profesional.id_profesional, formData)
+      .then((res) => {
+        if (res.error) setError(res.error);
+        else onGuardado();
+      })
+      .finally(() => setGuardando(false));
+  }
+
+  function handleFoto(e: React.ChangeEvent<HTMLInputElement>) {
+    const archivo = e.target.files?.[0];
+    if (!archivo) return;
+    const formData = new FormData();
+    formData.set("archivo", archivo);
+    setSubiendoFoto(true);
+    subirFotoProfesional(profesional.id_profesional, formData)
+      .then((res) => {
+        if (res.error) setError(res.error);
+        else if (res.url) setFoto(res.url);
+      })
+      .finally(() => setSubiendoFoto(false));
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="bg-white border border-neutral-200 rounded-lg p-4 mb-4">
+      <h3 className="text-sm font-bold text-neutral-900 mb-3">Editar profesional</h3>
+      {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-3">{error}</p>}
+
+      <div className="flex items-center gap-3 mb-4">
+        <span className="w-16 h-16 rounded-xl overflow-hidden bg-neutral-100 flex items-center justify-center text-neutral-400 text-xl font-bold shrink-0">
+          {foto ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={foto} alt="" className="w-full h-full object-cover" />
+          ) : (
+            profesional.nombre.charAt(0).toUpperCase()
+          )}
+        </span>
+        <label className="text-xs font-semibold text-accent cursor-pointer">
+          {subiendoFoto ? "Subiendo..." : foto ? "Cambiar foto" : "Agregar foto"}
+          <input type="file" accept="image/*" onChange={handleFoto} disabled={subiendoFoto} className="hidden" />
+        </label>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+        <div>
+          <label className="block text-xs font-medium text-neutral-600 mb-1">Nombre</label>
+          <input name="nombre" required defaultValue={profesional.nombre} className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-neutral-600 mb-1">Apellido</label>
+          <input name="apellido" defaultValue={profesional.apellido ?? ""} className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-neutral-600 mb-1">Categoría</label>
+          <input name="categoria" defaultValue={profesional.categoria ?? ""} placeholder="Ej: Nutricionista" className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-neutral-600 mb-1">Especialidad</label>
+          <input name="especialidad" defaultValue={profesional.especialidad ?? ""} className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-neutral-600 mb-1">Título</label>
+          <input name="titulo" defaultValue={profesional.titulo ?? ""} placeholder="Ej: Lic. en Nutrición" className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-neutral-600 mb-1">Tipo de atención</label>
+          <select name="tipo_atencion" defaultValue={profesional.tipo_atencion ?? ""} className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm">
+            <option value="">Sin especificar</option>
+            <option value="Presencial">Presencial</option>
+            <option value="Virtual">Virtual</option>
+            <option value="Presencial y virtual">Presencial y virtual</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-neutral-600 mb-1">Teléfono</label>
+          <input name="telefono" defaultValue={profesional.telefono ?? ""} className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-neutral-600 mb-1">Email</label>
+          <input name="email" type="email" defaultValue={profesional.email ?? ""} className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-neutral-600 mb-1">DNI</label>
+          <input name="dni" defaultValue={profesional.dni ?? ""} className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-neutral-600 mb-1">Link de reserva</label>
+          <input name="link_reserva" defaultValue={profesional.link_reserva ?? ""} placeholder="WhatsApp, Calendly, etc." className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
+        </div>
+      </div>
+
+      <div className="mb-3">
+        <label className="block text-xs font-medium text-neutral-600 mb-1">Bio</label>
+        <textarea name="bio" rows={2} defaultValue={profesional.bio ?? ""} className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
+      </div>
+
+      <div className="mb-3">
+        <label className="block text-xs font-medium text-neutral-600 mb-1">Observaciones</label>
+        <input name="observaciones" defaultValue={profesional.observaciones ?? ""} className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
+      </div>
+
+      <div className="flex justify-end">
+        <button type="submit" disabled={guardando} className="bg-accent hover:bg-accent-dark disabled:opacity-50 text-white font-medium px-4 py-1.5 rounded-lg text-sm">
+          {guardando ? "Guardando..." : "Guardar cambios"}
         </button>
       </div>
     </form>

@@ -47,7 +47,9 @@ export async function listarProfesionales() {
   const supabase = getSupabaseServerClient();
   const { data, error } = await supabase
     .from("profesionales")
-    .select("id_profesional, nombre, apellido, categoria, especialidad, telefono, email, dni, estado, fecha_alta, observaciones")
+    .select(
+      "id_profesional, nombre, apellido, categoria, titulo, especialidad, bio, foto, telefono, email, dni, tipo_atencion, link_reserva, estado, fecha_alta, observaciones"
+    )
     .order("nombre", { ascending: true });
   if (error) throw new Error(friendlyDbError(error));
   return data ?? [];
@@ -88,10 +90,14 @@ export async function crearProfesional(formData: FormData): Promise<{ error: str
         nombre,
         apellido: text(formData, "apellido"),
         categoria: text(formData, "categoria"),
+        titulo: text(formData, "titulo"),
         especialidad: text(formData, "especialidad"),
+        bio: text(formData, "bio"),
         telefono: text(formData, "telefono"),
         email: text(formData, "email"),
         dni,
+        tipo_atencion: text(formData, "tipo_atencion"),
+        link_reserva: text(formData, "link_reserva"),
         estado: "ACTIVO",
         observaciones: text(formData, "observaciones"),
       })
@@ -145,16 +151,55 @@ export async function actualizarProfesional(idProfesional: string, formData: For
       nombre,
       apellido: text(formData, "apellido"),
       categoria: text(formData, "categoria"),
+      titulo: text(formData, "titulo"),
       especialidad: text(formData, "especialidad"),
+      bio: text(formData, "bio"),
       telefono: text(formData, "telefono"),
       email: text(formData, "email"),
       dni,
+      tipo_atencion: text(formData, "tipo_atencion"),
+      link_reserva: text(formData, "link_reserva"),
       observaciones: text(formData, "observaciones"),
     })
     .eq("id_profesional", idProfesional);
   if (error) return { error: friendlyDbError(error) };
   revalidatePath("/profesionales");
   return { error: null };
+}
+
+export async function subirFotoProfesional(
+  idProfesional: string,
+  formData: FormData
+): Promise<{ error: string | null; url?: string }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+
+  const archivo = formData.get("archivo") as File | null;
+  if (!archivo || archivo.size === 0) return { error: "Elegí una foto primero" };
+
+  try {
+    const supabase = getSupabaseServerClient();
+    const extension = archivo.name.split(".").pop() ?? "jpg";
+    const path = `${idProfesional}-${Date.now()}.${extension}`;
+
+    const { error: errorUpload } = await supabase.storage
+      .from("fotos-profesionales")
+      .upload(path, archivo, { upsert: true, contentType: archivo.type || undefined });
+    if (errorUpload) return { error: errorUpload.message };
+
+    const { data } = supabase.storage.from("fotos-profesionales").getPublicUrl(path);
+
+    const { error: errorUpdate } = await supabase
+      .from("profesionales")
+      .update({ foto: data.publicUrl })
+      .eq("id_profesional", idProfesional);
+    if (errorUpdate) return { error: friendlyDbError(errorUpdate) };
+
+    revalidatePath("/profesionales");
+    return { error: null, url: data.publicUrl };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo subir la foto" };
+  }
 }
 
 // El PIN habilita que el profesional pague en caja con su propio saldo — se

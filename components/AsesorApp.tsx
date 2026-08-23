@@ -108,6 +108,7 @@ export default function AsesorApp({
   const [marcaId, setMarcaId] = useState<string | null>(null);
   const [subcategoriaId, setSubcategoriaId] = useState<string | null>(null);
   const [marcaOfertaId, setMarcaOfertaId] = useState<string | null>(null);
+  const [categoriaProf, setCategoriaProf] = useState<string | null>(null);
 
   const marcaPorId = useMemo(() => {
     const mapa: Record<string, Marca> = {};
@@ -173,6 +174,19 @@ export default function AsesorApp({
     return productosEnOferta.filter((p) => p.id_marca === marcaOfertaId);
   }, [productosEnOferta, marcaOfertaId]);
 
+  const categoriasProf = useMemo(() => {
+    const set = new Set<string>();
+    profesionales.forEach((p) => {
+      if (p.categoria) set.add(p.categoria);
+    });
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [profesionales]);
+
+  const profesionalesFiltrados = useMemo(() => {
+    if (!categoriaProf) return profesionales;
+    return profesionales.filter((p) => p.categoria === categoriaProf);
+  }, [profesionales, categoriaProf]);
+
   function irAObjetivo() {
     setBusqueda("");
     setObjetivoId(null);
@@ -204,6 +218,10 @@ export default function AsesorApp({
     setMarcaOfertaId((actual) => (actual === id ? null : id));
   }
 
+  function toggleCategoriaProf(categoria: string) {
+    setCategoriaProf((actual) => (actual === categoria ? null : categoria));
+  }
+
   function elegirObjetivo(id: string) {
     setObjetivoId(id);
     setBusqueda("");
@@ -226,6 +244,7 @@ export default function AsesorApp({
     setMarcaId(null);
     setSubcategoriaId(null);
     setMarcaOfertaId(null);
+    setCategoriaProf(null);
   }
 
   function volverDesdeResultado() {
@@ -656,17 +675,39 @@ export default function AsesorApp({
         <div className="flex-1 flex flex-col">
           <Navbar onVolver={volverAInicio} onInicio={volverAInicio} />
           <div className="flex-1 px-6 pt-6 pb-10 max-w-md mx-auto w-full">
-            <h2 className="text-2xl font-extrabold mb-6">Profesionales</h2>
+            <h2 className="text-2xl font-extrabold mb-4">Profesionales</h2>
 
-            {profesionales.length === 0 ? (
+            {categoriasProf.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-5">
+                {categoriasProf.map((cat) => {
+                  const on = categoriaProf === cat;
+                  return (
+                    <button
+                      key={cat}
+                      onClick={() => toggleCategoriaProf(cat)}
+                      className="rounded-full border px-3.5 py-2 text-[12px] font-bold"
+                      style={
+                        on
+                          ? { background: SAGE_TINT, borderColor: SAGE, color: SAGE_DARK }
+                          : { background: "#fff", borderColor: "#d8d8d8", color: "#686868" }
+                      }
+                    >
+                      {cat}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {profesionalesFiltrados.length === 0 ? (
               <p className="text-[#686868] text-sm text-center py-12">
-                Todav&iacute;a no hay profesionales cargados.
+                Todav&iacute;a no hay profesionales cargados ac&aacute;.
               </p>
             ) : (
               <div className="flex flex-col gap-3">
-                {profesionales.map((prof) => (
-                  <div key={prof.id_profesional} className="rounded-2xl border border-[#d8d8d8] bg-white p-4 shadow-sm flex gap-3">
-                    <span className="w-14 h-14 rounded-full overflow-hidden shrink-0 flex items-center justify-center font-extrabold text-[18px]" style={{ background: SAGE_TINT, color: SAGE_DARK }}>
+                {profesionalesFiltrados.map((prof) => (
+                  <div key={prof.id_profesional} className="rounded-2xl border border-[#d8d8d8] bg-white p-4 shadow-sm flex gap-4">
+                    <span className="w-24 h-24 rounded-2xl overflow-hidden shrink-0 flex items-center justify-center font-extrabold text-[30px]" style={{ background: SAGE_TINT, color: SAGE_DARK }}>
                       {prof.foto ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={prof.foto} alt="" className="w-full h-full object-cover" />
