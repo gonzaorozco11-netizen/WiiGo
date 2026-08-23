@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useState } from "react";
 import type { Local, Area, Puesto, Usuario, Rol } from "@/lib/supabase";
+import { PANTALLAS_DISPONIBLES } from "@/lib/pantallas";
 import UsuariosApp from "@/components/UsuariosApp";
 import {
   listarAreas,
@@ -16,6 +17,7 @@ import {
   crearPersona,
   actualizarPersona,
   cambiarEstadoPersona,
+  subirFotoPersona,
   type PersonaConPuestos,
 } from "@/app/(app)/organizacion/actions";
 
@@ -26,6 +28,39 @@ const TIPOS_PERSONA: Record<string, string> = {
 };
 
 type Tab = "personas" | "areas" | "puestos" | "organigrama" | "usuarios";
+
+const COLORES_AVATAR = ["bg-accent", "bg-emerald-500", "bg-amber-500", "bg-purple-500", "bg-rose-500", "bg-teal-500"];
+
+function colorAvatar(texto: string) {
+  let hash = 0;
+  for (const c of texto) hash = (hash * 31 + c.charCodeAt(0)) >>> 0;
+  return COLORES_AVATAR[hash % COLORES_AVATAR.length];
+}
+
+function Avatar({
+  nombre,
+  apellido,
+  fotoUrl,
+  tamaño = "sm",
+}: {
+  nombre: string;
+  apellido?: string | null;
+  fotoUrl?: string | null;
+  tamaño?: "sm" | "md";
+}) {
+  const clases = tamaño === "md" ? "w-14 h-14 text-lg" : "w-9 h-9 text-xs";
+  const iniciales = `${nombre[0] ?? ""}${apellido?.[0] ?? ""}`.toUpperCase();
+
+  if (fotoUrl) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={fotoUrl} alt={nombre} className={`${clases} rounded-full object-cover shrink-0 border border-neutral-200`} />;
+  }
+  return (
+    <div className={`${clases} ${colorAvatar(nombre + (apellido ?? ""))} rounded-full flex items-center justify-center text-white font-bold shrink-0`}>
+      {iniciales || "?"}
+    </div>
+  );
+}
 
 export default function OrganizacionApp({
   locales,
@@ -90,11 +125,11 @@ export default function OrganizacionApp({
       ) : tab === "personas" ? (
         <TabPersonas personas={personas} areas={areas} puestos={puestos} locales={locales} onCambio={recargarTodo} />
       ) : tab === "areas" ? (
-        <TabAreas areas={areas} onCambio={recargarTodo} />
+        <TabAreas areas={areas} esAdmin={esAdmin} onCambio={recargarTodo} />
       ) : tab === "puestos" ? (
         <TabPuestos puestos={puestos} areas={areas} onCambio={recargarTodo} />
       ) : tab === "usuarios" && esAdmin ? (
-        <UsuariosApp usuarios={usuarios} roles={roles} />
+        <UsuariosApp usuarios={usuarios} roles={roles} personas={personas} />
       ) : (
         <TabOrganigrama personas={personas} />
       )}
@@ -148,10 +183,15 @@ function TabPersonas({
               {personas.map((p) => (
                 <tr key={p.id_persona} className="border-b border-neutral-100 last:border-0 align-top">
                   <td className="p-3">
-                    <span className="font-medium text-neutral-900">
-                      {p.nombre} {p.apellido ?? ""}
-                    </span>
-                    {p.email && <span className="block text-xs text-neutral-400">{p.email}</span>}
+                    <div className="flex items-center gap-2.5">
+                      <Avatar nombre={p.nombre} apellido={p.apellido} fotoUrl={p.foto_url} />
+                      <div>
+                        <span className="font-medium text-neutral-900 block">
+                          {p.nombre} {p.apellido ?? ""}
+                        </span>
+                        {p.email && <span className="block text-xs text-neutral-400">{p.email}</span>}
+                      </div>
+                    </div>
                   </td>
                   <td className="p-3">
                     <div className="flex flex-wrap gap-1">
@@ -235,8 +275,24 @@ function ModalPersona({
   const [asignaciones, setAsignaciones] = useState<{ idArea: string; idPuesto: string; esPrincipal: boolean }[]>(
     persona?.asignaciones.map((a) => ({ idArea: a.idArea, idPuesto: a.idPuesto, esPrincipal: a.esPrincipal })) ?? []
   );
+  const [fotoUrl, setFotoUrl] = useState(persona?.foto_url ?? null);
+  const [subiendoFoto, setSubiendoFoto] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  function handleFoto(e: React.ChangeEvent<HTMLInputElement>) {
+    const archivo = e.target.files?.[0];
+    if (!archivo || !persona) return;
+    const formData = new FormData();
+    formData.set("archivo", archivo);
+    setSubiendoFoto(true);
+    subirFotoPersona(persona.id_persona, formData)
+      .then((res) => {
+        if (res.error) setError(res.error);
+        else if (res.url) setFotoUrl(res.url);
+      })
+      .finally(() => setSubiendoFoto(false));
+  }
 
   function agregarAsignacion() {
     setAsignaciones((prev) => [...prev, { idArea: areas[0]?.id_area ?? "", idPuesto: "", esPrincipal: prev.length === 0 }]);
@@ -287,6 +343,19 @@ function ModalPersona({
         </div>
 
         {error && <p className="text-sm text-red-600 mb-3" role="alert">{error}</p>}
+
+        {isEditing && (
+          <div className="flex items-center gap-3 mb-4">
+            <Avatar nombre={persona!.nombre} apellido={persona!.apellido} fotoUrl={fotoUrl} tamaño="md" />
+            <label className="text-xs font-semibold text-accent cursor-pointer">
+              {subiendoFoto ? "Subiendo..." : fotoUrl ? "Cambiar foto" : "Agregar foto"}
+              <input type="file" accept="image/*" onChange={handleFoto} disabled={subiendoFoto} className="hidden" />
+            </label>
+          </div>
+        )}
+        {!isEditing && (
+          <p className="text-xs text-neutral-400 mb-3">Podés agregarle una foto después de crearla, desde "Editar".</p>
+        )}
 
         <div className="grid grid-cols-2 gap-3 mb-3">
           <div>
@@ -403,7 +472,7 @@ function ModalPersona({
 
 // ===================== ÁREAS =====================
 
-function TabAreas({ areas, onCambio }: { areas: Area[]; onCambio: () => void }) {
+function TabAreas({ areas, esAdmin, onCambio }: { areas: Area[]; esAdmin: boolean; onCambio: () => void }) {
   const [creando, setCreando] = useState(false);
   const [editando, setEditando] = useState<string | null>(null);
 
@@ -414,7 +483,7 @@ function TabAreas({ areas, onCambio }: { areas: Area[]; onCambio: () => void }) 
           {creando ? "Cancelar" : "+ Nueva área"}
         </button>
       </div>
-      {creando && <FormArea onGuardado={() => { setCreando(false); onCambio(); }} />}
+      {creando && <FormArea esAdmin={esAdmin} onGuardado={() => { setCreando(false); onCambio(); }} />}
 
       <div className="bg-white border border-neutral-200 rounded-xl overflow-hidden">
         {areas.length === 0 ? (
@@ -448,7 +517,7 @@ function TabAreas({ areas, onCambio }: { areas: Area[]; onCambio: () => void }) 
                   {editando === a.id_area && (
                     <tr>
                       <td colSpan={4} className="bg-neutral-50 p-4">
-                        <FormArea area={a} onGuardado={() => { setEditando(null); onCambio(); }} />
+                        <FormArea area={a} esAdmin={esAdmin} onGuardado={() => { setEditando(null); onCambio(); }} />
                       </td>
                     </tr>
                   )}
@@ -462,14 +531,20 @@ function TabAreas({ areas, onCambio }: { areas: Area[]; onCambio: () => void }) 
   );
 }
 
-function FormArea({ area, onGuardado }: { area?: Area; onGuardado: () => void }) {
+function FormArea({ area, esAdmin, onGuardado }: { area?: Area; esAdmin: boolean; onGuardado: () => void }) {
+  const [pantallas, setPantallas] = useState<string[]>(area?.pantallas ?? []);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  function toggle(clave: string) {
+    setPantallas((prev) => (prev.includes(clave) ? prev.filter((p) => p !== clave) : [...prev, clave]));
+  }
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     const formData = new FormData(e.currentTarget);
+    pantallas.forEach((p) => formData.append("pantallas", p));
     setGuardando(true);
     (area ? actualizarArea(area.id_area, formData) : crearArea(formData))
       .then((res) => {
@@ -487,6 +562,27 @@ function FormArea({ area, onGuardado }: { area?: Area; onGuardado: () => void })
         <input name="descripcion" defaultValue={area?.descripcion ?? ""} placeholder="Descripción" className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm" />
         <input name="orden" type="number" defaultValue={area?.orden ?? 0} placeholder="Orden" className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm" />
       </div>
+
+      {esAdmin && (
+        <div className="mb-3">
+          <p className="text-xs font-semibold text-neutral-700 mb-1">
+            Qué pantallas del sistema puede usar quien esté en esta área
+          </p>
+          <p className="text-[11px] text-neutral-400 mb-2">
+            Cualquier persona con este área asignada en Organización va a poder ver estas pantallas al loguearse — a
+            menos que tenga un Rol manual puesto como excepción.
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+            {PANTALLAS_DISPONIBLES.map((p) => (
+              <label key={p.clave} className="flex items-center gap-1.5 text-sm bg-neutral-50 border border-neutral-200 rounded-lg px-2.5 py-1.5 cursor-pointer">
+                <input type="checkbox" checked={pantallas.includes(p.clave)} onChange={() => toggle(p.clave)} />
+                {p.label}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
       <button type="submit" disabled={guardando} className="rounded-lg bg-accent hover:bg-accent-dark text-white px-4 py-1.5 text-sm font-medium disabled:opacity-50">
         {guardando ? "Guardando..." : area ? "Guardar cambios" : "Crear área"}
       </button>
@@ -640,7 +736,8 @@ function NodoOrganigrama({
 
   return (
     <div className="flex flex-col items-center">
-      <div className={`border-2 rounded-xl px-4 py-2.5 text-center min-w-[160px] ${nivel === 0 ? "border-accent bg-accent-tint" : "border-neutral-200 bg-white"}`}>
+      <div className={`border-2 rounded-xl px-4 py-2.5 text-center min-w-[160px] flex flex-col items-center gap-1.5 ${nivel === 0 ? "border-accent bg-accent-tint" : "border-neutral-200 bg-white"}`}>
+        <Avatar nombre={persona.nombre} apellido={persona.apellido} fotoUrl={persona.foto_url} />
         <p className="text-sm font-bold text-neutral-900">
           {persona.nombre} {persona.apellido ?? ""}
         </p>

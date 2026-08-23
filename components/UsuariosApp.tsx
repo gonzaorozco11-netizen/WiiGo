@@ -4,12 +4,14 @@ import { Fragment, useState, useTransition } from "react";
 import type { Usuario, Rol } from "@/lib/supabase";
 import { PERMISOS_DISPONIBLES } from "@/lib/permisos-constantes";
 import { PANTALLAS_DISPONIBLES } from "@/lib/pantallas";
+import type { PersonaConPuestos } from "@/app/(app)/organizacion/actions";
 import {
   crearUsuario,
   cambiarEstadoUsuario,
   cambiarPasswordUsuario,
   actualizarPermisosUsuario,
   actualizarRolUsuario,
+  actualizarPersonaUsuario,
   crearRol,
   actualizarRol,
   cambiarEstadoRol,
@@ -29,7 +31,15 @@ function etiquetaRolBase(rol: string | null) {
   return "Operativo";
 }
 
-export default function UsuariosApp({ usuarios, roles }: { usuarios: UsuarioSinHash[]; roles: Rol[] }) {
+export default function UsuariosApp({
+  usuarios,
+  roles,
+  personas,
+}: {
+  usuarios: UsuarioSinHash[];
+  roles: Rol[];
+  personas: PersonaConPuestos[];
+}) {
   const [tab, setTab] = useState<"usuarios" | "roles">("usuarios");
   const [modalOpen, setModalOpen] = useState(false);
   const [cambiandoPassword, setCambiandoPassword] = useState<UsuarioSinHash | null>(null);
@@ -122,7 +132,7 @@ export default function UsuariosApp({ usuarios, roles }: { usuarios: UsuarioSinH
                     {expandido === u.id_usuario && (
                       <tr className="border-b border-neutral-100 last:border-0">
                         <td colSpan={6} className="bg-neutral-50 p-0">
-                          <FilaPermisos usuario={u} roles={roles} />
+                          <FilaPermisos usuario={u} roles={roles} personas={personas} />
                         </td>
                       </tr>
                     )}
@@ -171,7 +181,7 @@ function FilaAcciones({ usuario, onCambiarPassword }: { usuario: UsuarioSinHash;
   );
 }
 
-function FilaPermisos({ usuario, roles }: { usuario: UsuarioSinHash; roles: Rol[] }) {
+function FilaPermisos({ usuario, roles, personas }: { usuario: UsuarioSinHash; roles: Rol[]; personas: PersonaConPuestos[] }) {
   const [permisos, setPermisos] = useState<string[]>(usuario.permisos ?? []);
   const [isPending, startTransition] = useTransition();
   const [guardado, setGuardado] = useState(false);
@@ -201,6 +211,7 @@ function FilaPermisos({ usuario, roles }: { usuario: UsuarioSinHash; roles: Rol[
 
   return (
     <div className="px-4 py-4">
+      <SelectorPersonaVinculada usuario={usuario} personas={personas} />
       <SelectorRolAcceso usuario={usuario} roles={roles} />
 
       <p className="text-xs text-neutral-500 mb-3">
@@ -261,7 +272,7 @@ function SelectorRolAcceso({ usuario, roles }: { usuario: UsuarioSinHash; roles:
         disabled={isPending}
         className="w-full sm:w-64 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm"
       >
-        <option value="">Sin restricción — ve todo el menú</option>
+        <option value="">{usuario.id_persona ? "Sin excepción — sigue el área de su persona" : "Sin restricción — ve todo el menú"}</option>
         {roles.map((r) => (
           <option key={r.id_rol} value={r.id_rol}>
             {r.nombre}
@@ -271,6 +282,51 @@ function SelectorRolAcceso({ usuario, roles }: { usuario: UsuarioSinHash; roles:
       {guardado && <span className="text-xs text-emerald-600 ml-2">Guardado.</span>}
       {roles.length === 0 && (
         <p className="text-xs text-neutral-400 mt-1.5">Todavía no creaste ningún rol — hacelo en la pestaña "Roles".</p>
+      )}
+      <p className="text-[11px] text-neutral-400 mt-1.5">Un Rol acá puesto a mano es una excepción — pisa lo que le tocaría por su área.</p>
+    </div>
+  );
+}
+
+// Sin persona vinculada, el acceso depende solo del Rol de arriba (o queda
+// sin restricción, igual que siempre). Con una persona vinculada, si no hay
+// Rol manual, el acceso se calcula solo de las áreas de esa persona.
+function SelectorPersonaVinculada({ usuario, personas }: { usuario: UsuarioSinHash; personas: PersonaConPuestos[] }) {
+  const [idPersona, setIdPersona] = useState(usuario.id_persona ?? "");
+  const [isPending, startTransition] = useTransition();
+  const [guardado, setGuardado] = useState(false);
+  const persona = personas.find((p) => p.id_persona === idPersona);
+
+  function handleChange(valor: string) {
+    setIdPersona(valor);
+    setGuardado(false);
+    startTransition(async () => {
+      await actualizarPersonaUsuario(usuario.id_usuario, valor || null);
+      setGuardado(true);
+    });
+  }
+
+  return (
+    <div className="bg-white border border-neutral-200 rounded-lg px-3 py-3 mb-3">
+      <label className="block text-xs font-medium text-neutral-600 mb-1">Persona de Organización vinculada</label>
+      <select
+        value={idPersona}
+        onChange={(e) => handleChange(e.target.value)}
+        disabled={isPending}
+        className="w-full sm:w-64 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm"
+      >
+        <option value="">Sin vincular</option>
+        {personas.map((p) => (
+          <option key={p.id_persona} value={p.id_persona}>
+            {p.nombre} {p.apellido ?? ""}
+          </option>
+        ))}
+      </select>
+      {guardado && <span className="text-xs text-emerald-600 ml-2">Guardado.</span>}
+      {persona && persona.asignaciones.length > 0 && (
+        <p className="text-[11px] text-neutral-400 mt-1.5">
+          Áreas de {persona.nombre}: {[...new Set(persona.asignaciones.map((a) => a.nombreArea))].join(", ")}
+        </p>
       )}
     </div>
   );

@@ -30,6 +30,7 @@ export type Usuario = {
   sueldo_base: number | null;
   permisos: string[];
   id_rol: string | null;
+  id_persona: string | null;
 };
 
 export type Rol = {
@@ -45,6 +46,7 @@ export type Area = {
   nombre: string;
   descripcion: string | null;
   orden: number;
+  pantallas: string[];
   estado: string;
   fecha_creacion: string;
 };
@@ -68,6 +70,7 @@ export type Persona = {
   tipo: string;
   id_local: string | null;
   reporta_a: string | null;
+  foto_url: string | null;
   estado: string;
   fecha_alta: string;
 };

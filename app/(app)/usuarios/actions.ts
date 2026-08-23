@@ -192,3 +192,17 @@ export async function actualizarRolUsuario(idUsuario: string, idRol: string | nu
   revalidatePath("/organizacion");
   return { error: null };
 }
+
+// Vincula este login con una Persona de Organización — así su acceso se
+// puede calcular solo, sumando las pantallas de las áreas de esa persona
+// (a menos que tenga un Rol manual puesto como excepción).
+export async function actualizarPersonaUsuario(idUsuario: string, idPersona: string | null): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+
+  const supabase = getSupabaseServerClient();
+  const { error } = await supabase.from("usuarios").update({ id_persona: idPersona }).eq("id_usuario", idUsuario);
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath("/organizacion");
+  return { error: null };
+}

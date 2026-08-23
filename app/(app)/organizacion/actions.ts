@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
+import { PANTALLAS_DISPONIBLES } from "@/lib/pantallas";
 
 function text(formData: FormData, name: string) {
   const s = String(formData.get(name) ?? "").trim();
@@ -25,6 +26,19 @@ async function requireAcceso() {
   return null;
 }
 
+// Qué pantallas ve cada Área es, en el fondo, un control de acceso — igual
+// de sensible que un Rol. Solo el Dueño lo puede tocar, para que nadie se
+// otorgue más acceso a sí mismo editando su propia área.
+async function esDueño() {
+  const sesion = await obtenerSesionConPantallas();
+  return sesion?.rol === "admin";
+}
+
+function pantallasValidas(pantallas: string[]) {
+  const claves = new Set(PANTALLAS_DISPONIBLES.map((p) => p.clave));
+  return pantallas.filter((p) => claves.has(p));
+}
+
 // ===================== ÁREAS =====================
 
 export async function listarAreas() {
@@ -42,12 +56,15 @@ export async function crearArea(formData: FormData): Promise<{ error: string | n
   if (!nombre) return { error: "El nombre del área es obligatorio" };
 
   const supabase = getSupabaseServerClient();
-  const { error } = await supabase.from("areas").insert({
+  const datos: Record<string, unknown> = {
     nombre,
     descripcion: text(formData, "descripcion"),
     orden: number(formData, "orden") ?? 0,
     estado: "ACTIVA",
-  });
+  };
+  if (await esDueño()) datos.pantallas = pantallasValidas(formData.getAll("pantallas") as string[]);
+
+  const { error } = await supabase.from("areas").insert(datos);
   if (error) return { error: friendlyDbError(error) };
   revalidatePath("/organizacion");
   return { error: null };
@@ -61,10 +78,10 @@ export async function actualizarArea(idArea: string, formData: FormData): Promis
   if (!nombre) return { error: "El nombre del área es obligatorio" };
 
   const supabase = getSupabaseServerClient();
-  const { error } = await supabase
-    .from("areas")
-    .update({ nombre, descripcion: text(formData, "descripcion"), orden: number(formData, "orden") ?? 0 })
-    .eq("id_area", idArea);
+  const datos: Record<string, unknown> = { nombre, descripcion: text(formData, "descripcion"), orden: number(formData, "orden") ?? 0 };
+  if (await esDueño()) datos.pantallas = pantallasValidas(formData.getAll("pantallas") as string[]);
+
+  const { error } = await supabase.from("areas").update(datos).eq("id_area", idArea);
   if (error) return { error: friendlyDbError(error) };
   revalidatePath("/organizacion");
   return { error: null };
@@ -158,6 +175,7 @@ export type PersonaConPuestos = {
   tipo: string;
   id_local: string | null;
   reporta_a: string | null;
+  foto_url: string | null;
   estado: string;
   fecha_alta: string;
   asignaciones: { idPuesto: string; nombrePuesto: string; idArea: string; nombreArea: string; esPrincipal: boolean }[];
@@ -313,4 +331,36 @@ export async function cambiarEstadoPersona(idPersona: string, estado: string): P
   if (error) return { error: friendlyDbError(error) };
   revalidatePath("/organizacion");
   return { error: null };
+}
+
+// La foto de perfil va en un bucket público (a diferencia de los
+// comprobantes, que son privados) — se muestra todo el tiempo en tablas y
+// en el organigrama, no tiene sentido pedirle una URL firmada cada vez.
+export async function subirFotoPersona(idPersona: string, formData: FormData): Promise<{ error: string | null; url?: string }> {
+  const permisoError = await requireAcceso();
+  if (permisoError) return { error: permisoError };
+
+  const archivo = formData.get("archivo") as File | null;
+  if (!archivo || archivo.size === 0) return { error: "Elegí una foto primero" };
+
+  try {
+    const supabase = getSupabaseServerClient();
+    const extension = archivo.name.split(".").pop() ?? "jpg";
+    const path = `${idPersona}-${Date.now()}.${extension}`;
+
+    const { error: errorUpload } = await supabase.storage
+      .from("fotos-personas")
+      .upload(path, archivo, { upsert: true, contentType: archivo.type || undefined });
+    if (errorUpload) return { error: errorUpload.message };
+
+    const { data } = supabase.storage.from("fotos-personas").getPublicUrl(path);
+
+    const { error: errorUpdate } = await supabase.from("personas").update({ foto_url: data.publicUrl }).eq("id_persona", idPersona);
+    if (errorUpdate) return { error: friendlyDbError(errorUpdate) };
+
+    revalidatePath("/organizacion");
+    return { error: null, url: data.publicUrl };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo subir la foto" };
+  }
 }
