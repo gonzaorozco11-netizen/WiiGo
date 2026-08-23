@@ -53,7 +53,7 @@ export async function crearUsuario(formData: FormData): Promise<{ error: string 
     });
     if (error) return { error: friendlyDbError(error) };
 
-    revalidatePath("/usuarios");
+    revalidatePath("/organizacion");
     return { error: null };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo crear el usuario" };
@@ -67,7 +67,7 @@ export async function cambiarEstadoUsuario(id: string, estado: string): Promise<
     const supabase = getSupabaseServerClient();
     const { error } = await supabase.from("usuarios").update({ estado }).eq("id_usuario", id);
     if (error) return { error: friendlyDbError(error) };
-    revalidatePath("/usuarios");
+    revalidatePath("/organizacion");
     return { error: null };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo cambiar el estado del usuario" };
@@ -83,7 +83,7 @@ export async function cambiarPasswordUsuario(id: string, password: string): Prom
     const password_hash = await hashPassword(password);
     const { error } = await supabase.from("usuarios").update({ password_hash }).eq("id_usuario", id);
     if (error) return { error: friendlyDbError(error) };
-    revalidatePath("/usuarios");
+    revalidatePath("/organizacion");
     return { error: null };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo cambiar la contraseña" };
@@ -118,7 +118,7 @@ export async function actualizarPermisosUsuario(id: string, permisos: string[]):
   const supabase = getSupabaseServerClient();
   const { error } = await supabase.from("usuarios").update({ permisos: permisosLimpios }).eq("id_usuario", id);
   if (error) return { error: friendlyDbError(error) };
-  revalidatePath("/usuarios");
+  revalidatePath("/organizacion");
   return { error: null };
 }
 
@@ -151,7 +151,7 @@ export async function crearRol(formData: FormData): Promise<{ error: string | nu
   const supabase = getSupabaseServerClient();
   const { error } = await supabase.from("roles").insert({ nombre, pantallas, estado: "ACTIVO" });
   if (error) return { error: friendlyDbError(error) };
-  revalidatePath("/usuarios");
+  revalidatePath("/organizacion");
   return { error: null };
 }
 
@@ -166,7 +166,7 @@ export async function actualizarRol(idRol: string, formData: FormData): Promise<
   const supabase = getSupabaseServerClient();
   const { error } = await supabase.from("roles").update({ nombre, pantallas }).eq("id_rol", idRol);
   if (error) return { error: friendlyDbError(error) };
-  revalidatePath("/usuarios");
+  revalidatePath("/organizacion");
   return { error: null };
 }
 
@@ -177,7 +177,7 @@ export async function cambiarEstadoRol(idRol: string, estado: string): Promise<{
   const supabase = getSupabaseServerClient();
   const { error } = await supabase.from("roles").update({ estado }).eq("id_rol", idRol);
   if (error) return { error: friendlyDbError(error) };
-  revalidatePath("/usuarios");
+  revalidatePath("/organizacion");
   return { error: null };
 }
 
@@ -189,6 +189,6 @@ export async function actualizarRolUsuario(idUsuario: string, idRol: string | nu
   const supabase = getSupabaseServerClient();
   const { error } = await supabase.from("usuarios").update({ id_rol: idRol }).eq("id_usuario", idUsuario);
   if (error) return { error: friendlyDbError(error) };
-  revalidatePath("/usuarios");
+  revalidatePath("/organizacion");
   return { error: null };
 }

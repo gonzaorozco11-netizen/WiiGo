@@ -1,7 +1,8 @@
 "use client";
 
 import { Fragment, useEffect, useState } from "react";
-import type { Local, Area, Puesto } from "@/lib/supabase";
+import type { Local, Area, Puesto, Usuario, Rol } from "@/lib/supabase";
+import UsuariosApp from "@/components/UsuariosApp";
 import {
   listarAreas,
   crearArea,
@@ -24,9 +25,19 @@ const TIPOS_PERSONA: Record<string, string> = {
   EXTERNO: "Externo",
 };
 
-type Tab = "personas" | "areas" | "puestos" | "organigrama";
+type Tab = "personas" | "areas" | "puestos" | "organigrama" | "usuarios";
 
-export default function OrganizacionApp({ locales }: { locales: Local[] }) {
+export default function OrganizacionApp({
+  locales,
+  esAdmin,
+  usuarios,
+  roles,
+}: {
+  locales: Local[];
+  esAdmin: boolean;
+  usuarios: Omit<Usuario, "password_hash">[];
+  roles: Rol[];
+}) {
   const [tab, setTab] = useState<Tab>("personas");
   const [areas, setAreas] = useState<Area[]>([]);
   const [puestos, setPuestos] = useState<Puesto[]>([]);
@@ -61,6 +72,7 @@ export default function OrganizacionApp({ locales }: { locales: Local[] }) {
             ["areas", "🧩 Áreas"],
             ["puestos", "💼 Puestos"],
             ["organigrama", "🌳 Organigrama"],
+            ...(esAdmin ? ([["usuarios", "🔐 Usuarios"]] as [Tab, string][]) : []),
           ] as [Tab, string][]
         ).map(([valor, etiqueta]) => (
           <button
@@ -81,6 +93,8 @@ export default function OrganizacionApp({ locales }: { locales: Local[] }) {
         <TabAreas areas={areas} onCambio={recargarTodo} />
       ) : tab === "puestos" ? (
         <TabPuestos puestos={puestos} areas={areas} onCambio={recargarTodo} />
+      ) : tab === "usuarios" && esAdmin ? (
+        <UsuariosApp usuarios={usuarios} roles={roles} />
       ) : (
         <TabOrganigrama personas={personas} />
       )}

@@ -1,8 +1,6 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import type { Usuario, Rol } from "@/lib/supabase";
-import UsuariosApp from "@/components/UsuariosApp";
 import {
   guardarConfigPuntos,
   guardarConfigLiquidaciones,
@@ -28,9 +26,6 @@ export default function ConfiguracionApp({
   mpComisionPrepaga,
   mpComisionCredito,
   gastosTopeSinAutorizacion,
-  esAdmin,
-  usuarios,
-  roles,
 }: {
   puntosActivo: boolean;
   puntosCadaMonto: number;
@@ -48,11 +43,7 @@ export default function ConfiguracionApp({
   mpComisionPrepaga: number;
   mpComisionCredito: number;
   gastosTopeSinAutorizacion: number;
-  esAdmin: boolean;
-  usuarios: Omit<Usuario, "password_hash">[];
-  roles: Rol[];
 }) {
-  const [tab, setTab] = useState<"general" | "usuarios">("general");
   const [isPending, startTransition] = useTransition();
   const [guardado, setGuardado] = useState(false);
   const [errorPuntos, setErrorPuntos] = useState<string | null>(null);
@@ -149,37 +140,12 @@ export default function ConfiguracionApp({
   }
 
   return (
-    <div className={tab === "usuarios" ? "max-w-3xl" : "max-w-xl"}>
+    <div className="max-w-xl">
       <h1 className="text-lg font-semibold text-neutral-900 mb-1">Configuración</h1>
-      <p className="text-sm text-neutral-500 mb-6">Parámetros generales del sistema WiiGo.</p>
+      <p className="text-sm text-neutral-500 mb-6">
+        Parámetros generales del sistema WiiGo. Los usuarios y roles se mudaron a Organización → Usuarios.
+      </p>
 
-      {esAdmin && (
-        <div className="flex items-center gap-1 border-b border-neutral-200 mb-5">
-          {(
-            [
-              { id: "general", label: "⚙️ General" },
-              { id: "usuarios", label: "👥 Usuarios" },
-            ] as const
-          ).map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={`px-4 py-2.5 rounded-t-lg text-sm font-semibold -mb-px border ${
-                tab === t.id
-                  ? "bg-white border-neutral-200 border-b-white text-accent"
-                  : "border-transparent text-neutral-500 hover:text-neutral-800"
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {tab === "usuarios" && esAdmin ? (
-        <UsuariosApp usuarios={usuarios} roles={roles} />
-      ) : (
-        <>
       <form action={handleSubmit} className="bg-white border border-neutral-200 rounded-xl p-5">
         <h2 className="text-base font-semibold text-neutral-900 mb-1">⭐ WiiGo Club</h2>
         <p className="text-sm text-neutral-500 mb-4">
@@ -593,8 +559,6 @@ export default function ConfiguracionApp({
           {isPendingGastos ? "Guardando..." : "Guardar tope"}
         </button>
       </form>
-        </>
-      )}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { getSupabaseServerClient, type Usuario, type Rol } from "@/lib/supabase";
+import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos";
 import ConfiguracionApp from "@/components/ConfiguracionApp";
 
@@ -15,20 +15,7 @@ export default async function ConfiguracionPage() {
     );
   }
 
-  const esAdmin = sesion?.rol === "admin";
   const supabase = getSupabaseServerClient();
-
-  // La gestión de usuarios vive acá adentro como pestaña, pero sigue siendo
-  // estrictamente admin-only — no es delegable como el resto de esta pantalla.
-  const usuariosRes = esAdmin
-    ? await supabase
-        .from("usuarios")
-        .select("id_usuario, nombre, email, rol, estado, fecha_alta, permisos, id_rol")
-        .order("nombre", { ascending: true })
-    : null;
-  const rolesRes = esAdmin
-    ? await supabase.from("roles").select("*").eq("estado", "ACTIVO").order("nombre", { ascending: true })
-    : null;
 
   const { data } = await supabase
     .from("configuracion")
@@ -72,9 +59,6 @@ export default async function ConfiguracionPage() {
       mpComisionPrepaga={Number(valores.get("MP_COMISION_PREPAGA") ?? 3.85)}
       mpComisionCredito={Number(valores.get("MP_COMISION_CREDITO") ?? 6.15)}
       gastosTopeSinAutorizacion={Number(valores.get("GASTOS_TOPE_SIN_AUTORIZACION") ?? 10000)}
-      esAdmin={esAdmin}
-      usuarios={(usuariosRes?.data ?? []) as Omit<Usuario, "password_hash">[]}
-      roles={(rolesRes?.data ?? []) as Rol[]}
     />
   );
 }
