@@ -38,6 +38,10 @@ function number(formData: FormData, name: string) {
   return Number.isFinite(n) ? n : null;
 }
 
+function bool(formData: FormData, name: string) {
+  return formData.get(name) === "on";
+}
+
 // ===================== PROFESIONALES =====================
 
 // Nunca se trae pin_hash acá — no hace falta en el cliente y no hay que
@@ -48,7 +52,7 @@ export async function listarProfesionales() {
   const { data, error } = await supabase
     .from("profesionales")
     .select(
-      "id_profesional, nombre, apellido, categoria, titulo, especialidad, bio, foto, telefono, email, dni, tipo_atencion, link_reserva, estado, fecha_alta, observaciones"
+      "id_profesional, nombre, apellido, categoria, titulo, especialidad, bio, biografia_completa, foto, telefono, email, dni, fecha_nacimiento, matricula, tipo_atencion, link_reserva, estado, publicado, fecha_alta, observaciones"
     )
     .order("nombre", { ascending: true });
   if (error) throw new Error(friendlyDbError(error));
@@ -93,12 +97,16 @@ export async function crearProfesional(formData: FormData): Promise<{ error: str
         titulo: text(formData, "titulo"),
         especialidad: text(formData, "especialidad"),
         bio: text(formData, "bio"),
+        biografia_completa: text(formData, "biografia_completa"),
         telefono: text(formData, "telefono"),
         email: text(formData, "email"),
         dni,
+        fecha_nacimiento: text(formData, "fecha_nacimiento"),
+        matricula: text(formData, "matricula"),
         tipo_atencion: text(formData, "tipo_atencion"),
         link_reserva: text(formData, "link_reserva"),
         estado: "ACTIVO",
+        publicado: bool(formData, "publicado"),
         observaciones: text(formData, "observaciones"),
       })
       .select("id_profesional")
@@ -154,11 +162,15 @@ export async function actualizarProfesional(idProfesional: string, formData: For
       titulo: text(formData, "titulo"),
       especialidad: text(formData, "especialidad"),
       bio: text(formData, "bio"),
+      biografia_completa: text(formData, "biografia_completa"),
       telefono: text(formData, "telefono"),
       email: text(formData, "email"),
       dni,
+      fecha_nacimiento: text(formData, "fecha_nacimiento"),
+      matricula: text(formData, "matricula"),
       tipo_atencion: text(formData, "tipo_atencion"),
       link_reserva: text(formData, "link_reserva"),
+      publicado: bool(formData, "publicado"),
       observaciones: text(formData, "observaciones"),
     })
     .eq("id_profesional", idProfesional);
@@ -222,6 +234,201 @@ export async function cambiarEstadoProfesional(idProfesional: string, estado: st
   if (permisoError) return { error: permisoError };
   const supabase = getSupabaseServerClient();
   const { error } = await supabase.from("profesionales").update({ estado }).eq("id_profesional", idProfesional);
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath("/profesionales");
+  return { error: null };
+}
+
+export async function cambiarPublicacionProfesional(
+  idProfesional: string,
+  publicado: boolean
+): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  const supabase = getSupabaseServerClient();
+  const { error } = await supabase.from("profesionales").update({ publicado }).eq("id_profesional", idProfesional);
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath("/profesionales");
+  return { error: null };
+}
+
+// ===================== FORTALEZAS ("¿en qué se destaca?") =====================
+
+export async function listarFortalezas() {
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("fortalezas_profesional")
+    .select("*")
+    .eq("estado", "ACTIVA")
+    .order("orden", { ascending: true });
+  if (error) throw new Error(friendlyDbError(error));
+  return data ?? [];
+}
+
+// Crea la fortaleza al vuelo desde la ficha del profesional si todavía no
+// existe una con ese nombre — mismo criterio que "nueva subcategoría" en
+// Productos, para no obligar a pasar por una pantalla aparte.
+async function resolveFortaleza(supabase: ReturnType<typeof getSupabaseServerClient>, nombre: string) {
+  const normalizado = nombre.trim().toLowerCase();
+  const { data: existentes } = await supabase.from("fortalezas_profesional").select("id_fortaleza, nombre").eq("estado", "ACTIVA");
+  const existente = (existentes ?? []).find((f: { nombre: string }) => f.nombre.trim().toLowerCase() === normalizado);
+  if (existente) return existente.id_fortaleza as string;
+
+  const { data, error } = await supabase
+    .from("fortalezas_profesional")
+    .insert({ nombre: nombre.trim() })
+    .select("id_fortaleza")
+    .single();
+  if (error) throw new Error(friendlyDbError(error));
+  return data.id_fortaleza as string;
+}
+
+// Para el listado: qué profesionales ya tienen al menos una fortaleza u
+// objetivo cargado, sin tener que hacer una consulta por cada fila.
+export async function listarProfesionalesConFortalezas() {
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase.from("profesional_fortalezas").select("id_profesional");
+  if (error) throw new Error(friendlyDbError(error));
+  return [...new Set((data ?? []).map((r: { id_profesional: string }) => r.id_profesional))];
+}
+
+export async function listarProfesionalesConObjetivos() {
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase.from("profesional_objetivos").select("id_profesional");
+  if (error) throw new Error(friendlyDbError(error));
+  return [...new Set((data ?? []).map((r: { id_profesional: string }) => r.id_profesional))];
+}
+
+export async function listarFortalezasDeProfesional(idProfesional: string) {
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("profesional_fortalezas")
+    .select("id_fortaleza, principal")
+    .eq("id_profesional", idProfesional);
+  if (error) throw new Error(friendlyDbError(error));
+  return data ?? [];
+}
+
+// Reemplaza todo el conjunto de fortalezas del profesional de una — más
+// simple que ir agregando/sacando de a una desde una lista de chips.
+export async function guardarFortalezasProfesional(
+  idProfesional: string,
+  seleccion: { nombre: string; principal: boolean }[]
+): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  try {
+    const supabase = getSupabaseServerClient();
+    const filas = await Promise.all(
+      seleccion.map(async (s) => ({
+        id_profesional: idProfesional,
+        id_fortaleza: await resolveFortaleza(supabase, s.nombre),
+        principal: s.principal,
+      }))
+    );
+
+    const { error: errorBorrado } = await supabase.from("profesional_fortalezas").delete().eq("id_profesional", idProfesional);
+    if (errorBorrado) return { error: friendlyDbError(errorBorrado) };
+
+    if (filas.length > 0) {
+      const { error: errorInsert } = await supabase.from("profesional_fortalezas").insert(filas);
+      if (errorInsert) return { error: friendlyDbError(errorInsert) };
+    }
+
+    revalidatePath("/profesionales");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudieron guardar las fortalezas" };
+  }
+}
+
+// ===================== "¿CÓMO PUEDE AYUDARTE?" (objetivos) =====================
+
+export async function listarObjetivosDeProfesional(idProfesional: string) {
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("profesional_objetivos")
+    .select("id_objetivo")
+    .eq("id_profesional", idProfesional);
+  if (error) throw new Error(friendlyDbError(error));
+  return (data ?? []).map((r: { id_objetivo: string }) => r.id_objetivo);
+}
+
+export async function guardarObjetivosProfesional(
+  idProfesional: string,
+  idsObjetivo: string[]
+): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  const supabase = getSupabaseServerClient();
+
+  const { error: errorBorrado } = await supabase.from("profesional_objetivos").delete().eq("id_profesional", idProfesional);
+  if (errorBorrado) return { error: friendlyDbError(errorBorrado) };
+
+  if (idsObjetivo.length > 0) {
+    const { error: errorInsert } = await supabase
+      .from("profesional_objetivos")
+      .insert(idsObjetivo.map((id_objetivo) => ({ id_profesional: idProfesional, id_objetivo })));
+    if (errorInsert) return { error: friendlyDbError(errorInsert) };
+  }
+
+  revalidatePath("/profesionales");
+  return { error: null };
+}
+
+// ===================== FORMACIÓN =====================
+
+export async function listarFormacion(idProfesional: string) {
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("formacion_profesional")
+    .select("*")
+    .eq("id_profesional", idProfesional)
+    .order("anio", { ascending: false });
+  if (error) throw new Error(friendlyDbError(error));
+  return data ?? [];
+}
+
+function formacionFromForm(formData: FormData) {
+  return {
+    titulo: text(formData, "titulo"),
+    institucion: text(formData, "institucion"),
+    anio: number(formData, "anio"),
+    tipo: text(formData, "tipo"),
+    descripcion: text(formData, "descripcion"),
+    publico: bool(formData, "publico"),
+  };
+}
+
+export async function crearFormacion(idProfesional: string, formData: FormData): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  const datos = formacionFromForm(formData);
+  if (!datos.titulo) return { error: "El título es obligatorio" };
+  const supabase = getSupabaseServerClient();
+  const { error } = await supabase.from("formacion_profesional").insert({ ...datos, id_profesional: idProfesional });
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath("/profesionales");
+  return { error: null };
+}
+
+export async function actualizarFormacion(idFormacion: string, formData: FormData): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  const datos = formacionFromForm(formData);
+  if (!datos.titulo) return { error: "El título es obligatorio" };
+  const supabase = getSupabaseServerClient();
+  const { error } = await supabase.from("formacion_profesional").update(datos).eq("id_formacion", idFormacion);
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath("/profesionales");
+  return { error: null };
+}
+
+export async function eliminarFormacion(idFormacion: string): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  const supabase = getSupabaseServerClient();
+  const { error } = await supabase.from("formacion_profesional").delete().eq("id_formacion", idFormacion);
   if (error) return { error: friendlyDbError(error) };
   revalidatePath("/profesionales");
   return { error: null };

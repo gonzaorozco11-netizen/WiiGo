@@ -464,16 +464,41 @@ export type Profesional = {
   titulo: string | null;
   especialidad: string | null;
   bio: string | null;
+  biografia_completa: string | null;
   foto: string | null;
   email: string | null;
   telefono: string | null;
+  fecha_nacimiento: string | null;
+  matricula: string | null;
   tipo_atencion: string | null;
   link_reserva: string | null;
   dni: string | null;
   estado: string;
+  publicado: boolean;
   orden: number | null;
   fecha_alta: string;
   observaciones: string | null;
+};
+
+export type FortalezaProfesional = {
+  id_fortaleza: string;
+  nombre: string;
+  orden: number | null;
+  estado: string;
+};
+
+export type FormacionProfesional = {
+  id_formacion: string;
+  id_profesional: string;
+  titulo: string;
+  institucion: string | null;
+  anio: number | null;
+  tipo: string | null;
+  descripcion: string | null;
+  certificado_url: string | null;
+  publico: boolean;
+  orden: number | null;
+  fecha_creacion: string;
 };
 
 // Programa de beneficios por marca, con historial: cada cambio cierra la

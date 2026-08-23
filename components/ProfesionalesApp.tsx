@@ -1,13 +1,14 @@
 "use client";
 
-import { Fragment, useEffect, useState } from "react";
-import type { Marca, Profesional } from "@/lib/supabase";
+import { Fragment, useEffect, useRef, useState } from "react";
+import type { Marca, Profesional, Objetivo, FortalezaProfesional, FormacionProfesional } from "@/lib/supabase";
 import {
   listarProfesionales,
   crearProfesional,
   actualizarProfesional,
   subirFotoProfesional,
   cambiarEstadoProfesional,
+  cambiarPublicacionProfesional,
   guardarPinProfesional,
   listarCodigos,
   crearCodigoProfesional,
@@ -20,6 +21,17 @@ import {
   registrarPagoCanje,
   listarConfigMarcas,
   guardarConfigMarca,
+  listarFortalezas,
+  listarProfesionalesConFortalezas,
+  listarProfesionalesConObjetivos,
+  listarFortalezasDeProfesional,
+  guardarFortalezasProfesional,
+  listarObjetivosDeProfesional,
+  guardarObjetivosProfesional,
+  listarFormacion,
+  crearFormacion,
+  actualizarFormacion,
+  eliminarFormacion,
 } from "@/app/(app)/profesionales/actions";
 
 type Codigo = {
@@ -99,7 +111,7 @@ function hoyISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
-export default function ProfesionalesApp({ marcas }: { marcas: Marca[] }) {
+export default function ProfesionalesApp({ marcas, objetivosGlobales }: { marcas: Marca[]; objetivosGlobales: Objetivo[] }) {
   const [tab, setTab] = useState<"profesionales" | "config">("profesionales");
 
   return (
@@ -115,9 +127,25 @@ export default function ProfesionalesApp({ marcas }: { marcas: Marca[] }) {
         <TabButton activo={tab === "config"} onClick={() => setTab("config")} icono="🏷️" label="Configuración por marca" />
       </div>
 
-      {tab === "profesionales" ? <TabProfesionales /> : <TabConfigMarcas marcas={marcas} />}
+      {tab === "profesionales" ? <TabProfesionales objetivosGlobales={objetivosGlobales} /> : <TabConfigMarcas marcas={marcas} />}
     </div>
   );
+}
+
+// Cuántos de los campos clave de la Fase A están cargados — para el
+// indicador "Perfil completado" en el listado y en la ficha de edición.
+function calcularCompletitud(p: Profesional, tieneFortalezas: boolean, tieneObjetivos: boolean) {
+  const items: { label: string; ok: boolean }[] = [
+    { label: "Foto", ok: Boolean(p.foto) },
+    { label: "Título y especialidad", ok: Boolean(p.titulo && p.especialidad) },
+    { label: "Presentación corta", ok: Boolean(p.bio) },
+    { label: "Fortalezas", ok: tieneFortalezas },
+    { label: "Cómo puede ayudarte", ok: tieneObjetivos },
+    { label: "Atención y reserva", ok: Boolean(p.tipo_atencion && p.link_reserva) },
+  ];
+  const completados = items.filter((i) => i.ok).length;
+  const porcentaje = Math.round((completados / items.length) * 100);
+  return { items, porcentaje };
 }
 
 function TabButton({ activo, onClick, icono, label }: { activo: boolean; onClick: () => void; icono: string; label: string }) {
@@ -168,11 +196,13 @@ function StatCard({
 
 // ===================== TAB PROFESIONALES =====================
 
-function TabProfesionales() {
+function TabProfesionales({ objetivosGlobales }: { objetivosGlobales: Objetivo[] }) {
   const [periodo, setPeriodo] = useState<"hoy" | "semana" | "mes">("mes");
   const [filas, setFilas] = useState<FilaResumen[]>([]);
   const [profesionales, setProfesionales] = useState<Profesional[]>([]);
   const [codigos, setCodigos] = useState<Codigo[]>([]);
+  const [conFortalezas, setConFortalezas] = useState<string[]>([]);
+  const [conObjetivos, setConObjetivos] = useState<string[]>([]);
   const [cargando, setCargando] = useState(false);
   const [expandido, setExpandido] = useState<string | null>(null);
   const [mostrarForm, setMostrarForm] = useState(false);
@@ -189,11 +219,19 @@ function TabProfesionales() {
 
   function recargar() {
     setCargando(true);
-    Promise.all([resumenProfesionales({ desde, hasta }), listarProfesionales(), listarCodigos()])
-      .then(([r, p, c]) => {
+    Promise.all([
+      resumenProfesionales({ desde, hasta }),
+      listarProfesionales(),
+      listarCodigos(),
+      listarProfesionalesConFortalezas(),
+      listarProfesionalesConObjetivos(),
+    ])
+      .then(([r, p, c, cf, co]) => {
         setFilas(r);
         setProfesionales(p as Profesional[]);
         setCodigos(c as Codigo[]);
+        setConFortalezas(cf);
+        setConObjetivos(co);
       })
       .finally(() => setCargando(false));
   }
@@ -248,6 +286,7 @@ function TabProfesionales() {
                   <th className="p-3 text-right">Total vendido</th>
                   <th className="p-3 text-right">Comisión pendiente</th>
                   <th className="p-3">Estado</th>
+                  <th className="p-3">Perfil</th>
                 </tr>
               </thead>
               <tbody>
@@ -255,6 +294,13 @@ function TabProfesionales() {
                   const expandido2 = expandido === f.idProfesional;
                   const profesional = profesionales.find((p) => p.id_profesional === f.idProfesional);
                   const codigosDelProfesional = codigos.filter((c) => c.id_profesional === f.idProfesional);
+                  const completitud = profesional
+                    ? calcularCompletitud(
+                        profesional,
+                        conFortalezas.includes(profesional.id_profesional),
+                        conObjetivos.includes(profesional.id_profesional)
+                      )
+                    : null;
                   return (
                     <Fragment key={f.idProfesional}>
                       <tr
@@ -283,12 +329,27 @@ function TabProfesionales() {
                             {f.estado}
                           </span>
                         </td>
+                        <td className="p-3">
+                          {profesional && completitud && (
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`text-xs font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${
+                                  profesional.publicado ? "bg-emerald-100 text-emerald-700" : "bg-neutral-100 text-neutral-500"
+                                }`}
+                              >
+                                {profesional.publicado ? "🟢 Publicado" : "⚪ Borrador"}
+                              </span>
+                              <span className="text-xs text-neutral-400 tabular-nums">{completitud.porcentaje}%</span>
+                            </div>
+                          )}
+                        </td>
                       </tr>
                       {expandido2 && profesional && (
                         <tr className="border-b border-neutral-100 last:border-0">
-                          <td colSpan={6} className="bg-neutral-50 p-0">
+                          <td colSpan={7} className="bg-neutral-50 p-0">
                             <DetalleProfesional
                               profesional={profesional}
+                              objetivosGlobales={objetivosGlobales}
                               codigos={codigosDelProfesional}
                               onCambio={recargar}
                             />
@@ -309,10 +370,12 @@ function TabProfesionales() {
 
 function DetalleProfesional({
   profesional,
+  objetivosGlobales,
   codigos,
   onCambio,
 }: {
   profesional: Profesional;
+  objetivosGlobales: Objetivo[];
   codigos: Codigo[];
   onCambio: () => void;
 }) {
@@ -347,6 +410,10 @@ function DetalleProfesional({
     cambiarEstadoProfesional(profesional.id_profesional, nuevo).then(onCambio);
   }
 
+  function togglePublicacion() {
+    cambiarPublicacionProfesional(profesional.id_profesional, !profesional.publicado).then(onCambio);
+  }
+
   function toggleEstadoCodigo(codigo: Codigo) {
     const nuevo = codigo.estado === "ACTIVO" ? "INACTIVO" : "ACTIVO";
     cambiarEstadoCodigo(codigo.id_codigo, nuevo).then(onCambio);
@@ -367,6 +434,9 @@ function DetalleProfesional({
           <button onClick={() => setMostrarPinForm((v) => !v)} className="text-xs font-semibold text-accent">
             {mostrarPinForm ? "Cancelar" : "🔒 Cambiar PIN"}
           </button>
+          <button onClick={togglePublicacion} className="text-xs font-semibold text-emerald-600 hover:text-emerald-800">
+            {profesional.publicado ? "Pasar a Borrador" : "🟢 Publicar"}
+          </button>
           <button onClick={toggleEstadoProfesional} className="text-xs font-semibold text-red-500 hover:text-red-700">
             {profesional.estado === "ACTIVO" ? "Desactivar profesional" : "Activar profesional"}
           </button>
@@ -376,6 +446,7 @@ function DetalleProfesional({
       {mostrarEditar && (
         <FormEditarProfesional
           profesional={profesional}
+          objetivosGlobales={objetivosGlobales}
           onGuardado={() => {
             setMostrarEditar(false);
             onCambio();
@@ -746,7 +817,10 @@ function FormNuevoProfesional({ onCreado }: { onCreado: () => void }) {
       <div className="mb-4">
         <label className="block text-sm font-medium text-neutral-700 mb-1">Bio</label>
         <textarea name="bio" rows={2} placeholder="Presentación corta para mostrarle al cliente" className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm" />
-        <p className="text-xs text-neutral-400 mt-1">La foto se agrega después, editando el profesional ya creado.</p>
+        <p className="text-xs text-neutral-400 mt-1">
+          La foto, fortalezas, formación, "cómo puede ayudarte" y la publicación se completan después, editando el
+          profesional ya creado.
+        </p>
       </div>
 
       <div className="border-t border-dashed border-neutral-200 pt-3 mb-3">
@@ -785,20 +859,100 @@ function FormNuevoProfesional({ onCreado }: { onCreado: () => void }) {
   );
 }
 
-function FormEditarProfesional({ profesional, onGuardado }: { profesional: Profesional; onGuardado: () => void }) {
+const OPCIONES_TIPO_FORMACION = ["Carrera universitaria", "Posgrado", "Especialización", "Diplomatura", "Curso", "Certificación"];
+
+function SeccionFormLabel({ children }: { children: React.ReactNode }) {
+  return <p className="text-xs font-bold uppercase tracking-wide text-accent-dark mt-5 mb-2 first:mt-0">{children}</p>;
+}
+
+function FormEditarProfesional({
+  profesional,
+  objetivosGlobales,
+  onGuardado,
+}: {
+  profesional: Profesional;
+  objetivosGlobales: Objetivo[];
+  onGuardado: () => void;
+}) {
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [foto, setFoto] = useState(profesional.foto);
   const [subiendoFoto, setSubiendoFoto] = useState(false);
+
+  const [catalogoFortalezas, setCatalogoFortalezas] = useState<FortalezaProfesional[]>([]);
+  const [fortalezasSeleccionadas, setFortalezasSeleccionadas] = useState<Set<string>>(new Set());
+  const [fortalezaPrincipal, setFortalezaPrincipal] = useState<string | null>(null);
+  const [nuevaFortaleza, setNuevaFortaleza] = useState("");
+  const [objetivosSeleccionados, setObjetivosSeleccionados] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    Promise.all([listarFortalezas(), listarFortalezasDeProfesional(profesional.id_profesional), listarObjetivosDeProfesional(profesional.id_profesional)]).then(
+      ([catalogo, propias, objetivos]) => {
+        setCatalogoFortalezas(catalogo as FortalezaProfesional[]);
+        const porId = new Map((catalogo as FortalezaProfesional[]).map((f) => [f.id_fortaleza, f.nombre]));
+        const nombresPropios = new Set<string>();
+        let principal: string | null = null;
+        (propias as { id_fortaleza: string; principal: boolean }[]).forEach((p) => {
+          const nombre = porId.get(p.id_fortaleza);
+          if (!nombre) return;
+          nombresPropios.add(nombre);
+          if (p.principal) principal = nombre;
+        });
+        setFortalezasSeleccionadas(nombresPropios);
+        setFortalezaPrincipal(principal);
+        setObjetivosSeleccionados(new Set(objetivos));
+      }
+    );
+  }, [profesional.id_profesional]);
+
+  function toggleFortaleza(nombre: string) {
+    setFortalezasSeleccionadas((prev) => {
+      const next = new Set(prev);
+      if (next.has(nombre)) {
+        next.delete(nombre);
+        if (fortalezaPrincipal === nombre) setFortalezaPrincipal(null);
+      } else {
+        next.add(nombre);
+      }
+      return next;
+    });
+  }
+
+  function agregarFortalezaNueva() {
+    const nombre = nuevaFortaleza.trim();
+    if (!nombre) return;
+    if (!catalogoFortalezas.some((f) => f.nombre.toLowerCase() === nombre.toLowerCase())) {
+      setCatalogoFortalezas((prev) => [...prev, { id_fortaleza: `nueva-${nombre}`, nombre, orden: null, estado: "ACTIVA" }]);
+    }
+    setFortalezasSeleccionadas((prev) => new Set(prev).add(nombre));
+    setNuevaFortaleza("");
+  }
+
+  function toggleObjetivo(id: string) {
+    setObjetivosSeleccionados((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     const formData = new FormData(e.currentTarget);
     setGuardando(true);
-    actualizarProfesional(profesional.id_profesional, formData)
-      .then((res) => {
-        if (res.error) setError(res.error);
+    Promise.all([
+      actualizarProfesional(profesional.id_profesional, formData),
+      guardarFortalezasProfesional(
+        profesional.id_profesional,
+        [...fortalezasSeleccionadas].map((nombre) => ({ nombre, principal: nombre === fortalezaPrincipal }))
+      ),
+      guardarObjetivosProfesional(profesional.id_profesional, [...objetivosSeleccionados]),
+    ])
+      .then(([res1, res2, res3]) => {
+        const err = res1.error || res2.error || res3.error;
+        if (err) setError(err);
         else onGuardado();
       })
       .finally(() => setGuardando(false));
@@ -838,7 +992,24 @@ function FormEditarProfesional({ profesional, onGuardado }: { profesional: Profe
         </label>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+      {(() => {
+        const completitud = calcularCompletitud({ ...profesional, foto }, fortalezasSeleccionadas.size > 0, objetivosSeleccionados.size > 0);
+        return (
+          <div className="bg-accent-tint border border-accent rounded-lg p-3 mb-4">
+            <p className="text-sm font-bold text-neutral-900 mb-1.5">Perfil completado: {completitud.porcentaje}%</p>
+            <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+              {completitud.items.map((item) => (
+                <p key={item.label} className={`text-xs ${item.ok ? "text-emerald-700" : "text-amber-700"}`}>
+                  {item.ok ? "✓" : "⚠"} {item.label}
+                </p>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
+      <SeccionFormLabel>👤 Datos personales</SeccionFormLabel>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="block text-xs font-medium text-neutral-600 mb-1">Nombre</label>
           <input name="nombre" required defaultValue={profesional.nombre} className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
@@ -848,17 +1019,133 @@ function FormEditarProfesional({ profesional, onGuardado }: { profesional: Profe
           <input name="apellido" defaultValue={profesional.apellido ?? ""} className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
         </div>
         <div>
-          <label className="block text-xs font-medium text-neutral-600 mb-1">Categoría</label>
+          <label className="block text-xs font-medium text-neutral-600 mb-1">DNI 🔒</label>
+          <input name="dni" defaultValue={profesional.dni ?? ""} className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-neutral-600 mb-1">Fecha de nacimiento 🔒</label>
+          <input name="fecha_nacimiento" type="date" defaultValue={profesional.fecha_nacimiento ?? ""} className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-neutral-600 mb-1">Email</label>
+          <input name="email" type="email" defaultValue={profesional.email ?? ""} className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-neutral-600 mb-1">Teléfono 🔒</label>
+          <input name="telefono" defaultValue={profesional.telefono ?? ""} className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-neutral-600 mb-1">Profesión</label>
           <input name="categoria" defaultValue={profesional.categoria ?? ""} placeholder="Ej: Nutricionista" className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
         </div>
         <div>
-          <label className="block text-xs font-medium text-neutral-600 mb-1">Especialidad</label>
-          <input name="especialidad" defaultValue={profesional.especialidad ?? ""} className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
+          <label className="block text-xs font-medium text-neutral-600 mb-1">Matrícula profesional</label>
+          <input name="matricula" defaultValue={profesional.matricula ?? ""} placeholder="Ej: MP 4521" className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
         </div>
+      </div>
+      <p className="text-[11px] text-neutral-400 mt-2">🔒 Estos campos son administrativos — nunca se muestran en el kiosco ni en la ficha del cliente.</p>
+
+      <SeccionFormLabel>🎓 Formación</SeccionFormLabel>
+      <SeccionFormacion idProfesional={profesional.id_profesional} />
+
+      <SeccionFormLabel>⭐ Perfil profesional</SeccionFormLabel>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
         <div>
-          <label className="block text-xs font-medium text-neutral-600 mb-1">Título</label>
+          <label className="block text-xs font-medium text-neutral-600 mb-1">Título principal</label>
           <input name="titulo" defaultValue={profesional.titulo ?? ""} placeholder="Ej: Lic. en Nutrición" className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
         </div>
+        <div>
+          <label className="block text-xs font-medium text-neutral-600 mb-1">Especialidad principal</label>
+          <input name="especialidad" defaultValue={profesional.especialidad ?? ""} className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
+        </div>
+      </div>
+      <div className="mb-3">
+        <label className="block text-xs font-medium text-neutral-600 mb-1">Presentación corta — aparece al tocar su foto en el kiosco</label>
+        <textarea name="bio" rows={2} defaultValue={profesional.bio ?? ""} className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
+      </div>
+      <div className="mb-3">
+        <label className="block text-xs font-medium text-neutral-600 mb-1">
+          Biografía completa — se guarda ya, se va a mostrar cuando armemos "Conóceme"
+        </label>
+        <textarea name="biografia_completa" rows={3} defaultValue={profesional.biografia_completa ?? ""} className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
+      </div>
+
+      <SeccionFormLabel>💪 ¿En qué se destaca?</SeccionFormLabel>
+      <div className="flex flex-wrap gap-2 mb-1">
+        {catalogoFortalezas.map((f) => {
+          const on = fortalezasSeleccionadas.has(f.nombre);
+          return (
+            <button
+              key={f.id_fortaleza}
+              type="button"
+              onClick={() => toggleFortaleza(f.nombre)}
+              className={`text-xs font-semibold px-3 py-1.5 rounded-full border flex items-center gap-1.5 ${
+                on ? "bg-accent-tint border-accent text-accent-dark" : "border-neutral-300 text-neutral-600"
+              }`}
+            >
+              {f.nombre}
+              {on && (
+                <span
+                  role="button"
+                  tabIndex={-1}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setFortalezaPrincipal(fortalezaPrincipal === f.nombre ? null : f.nombre);
+                  }}
+                  title="Marcar como principal"
+                  className={fortalezaPrincipal === f.nombre ? "text-amber-500" : "text-neutral-300"}
+                >
+                  ★
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      <div className="flex gap-2 mb-2 max-w-xs">
+        <input
+          value={nuevaFortaleza}
+          onChange={(e) => setNuevaFortaleza(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              agregarFortalezaNueva();
+            }
+          }}
+          placeholder="Crear una nueva..."
+          className="flex-1 border border-neutral-300 rounded-lg px-2.5 py-1 text-xs"
+        />
+        <button type="button" onClick={agregarFortalezaNueva} className="text-xs font-semibold text-accent">
+          + Crear
+        </button>
+      </div>
+      <p className="text-[11px] text-neutral-400 mb-3">Tocá la ★ de una fortaleza elegida para marcarla como principal.</p>
+
+      <SeccionFormLabel>🎯 ¿Cómo puede ayudarte?</SeccionFormLabel>
+      <div className="flex flex-wrap gap-2 mb-1">
+        {objetivosGlobales.length === 0 && <p className="text-xs text-neutral-400">Todavía no cargaste objetivos en Catálogo asesor.</p>}
+        {objetivosGlobales.map((o) => {
+          const on = objetivosSeleccionados.has(o.id_objetivo);
+          return (
+            <button
+              key={o.id_objetivo}
+              type="button"
+              onClick={() => toggleObjetivo(o.id_objetivo)}
+              className={`text-xs font-semibold px-3 py-1.5 rounded-full border ${
+                on ? "bg-accent-tint border-accent text-accent-dark" : "border-neutral-300 text-neutral-600"
+              }`}
+            >
+              {o.nombre}
+            </button>
+          );
+        })}
+      </div>
+      <p className="text-[11px] text-neutral-400 mb-3">
+        Son los mismos objetivos de "Encontrar productos para mí" — así el Asesor puede recomendar a este profesional según lo que busca el cliente.
+      </p>
+
+      <SeccionFormLabel>📅 Atención y reserva</SeccionFormLabel>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
         <div>
           <label className="block text-xs font-medium text-neutral-600 mb-1">Tipo de atención</label>
           <select name="tipo_atencion" defaultValue={profesional.tipo_atencion ?? ""} className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm">
@@ -869,27 +1156,16 @@ function FormEditarProfesional({ profesional, onGuardado }: { profesional: Profe
           </select>
         </div>
         <div>
-          <label className="block text-xs font-medium text-neutral-600 mb-1">Teléfono</label>
-          <input name="telefono" defaultValue={profesional.telefono ?? ""} className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-neutral-600 mb-1">Email</label>
-          <input name="email" type="email" defaultValue={profesional.email ?? ""} className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-neutral-600 mb-1">DNI</label>
-          <input name="dni" defaultValue={profesional.dni ?? ""} className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
-        </div>
-        <div>
           <label className="block text-xs font-medium text-neutral-600 mb-1">Link de reserva</label>
           <input name="link_reserva" defaultValue={profesional.link_reserva ?? ""} placeholder="WhatsApp, Calendly, etc." className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
         </div>
       </div>
 
-      <div className="mb-3">
-        <label className="block text-xs font-medium text-neutral-600 mb-1">Bio</label>
-        <textarea name="bio" rows={2} defaultValue={profesional.bio ?? ""} className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
-      </div>
+      <SeccionFormLabel>👁️ Publicación</SeccionFormLabel>
+      <label className="flex items-center gap-2 text-sm text-neutral-700 mb-3">
+        <input type="checkbox" name="publicado" defaultChecked={profesional.publicado} className="rounded border-neutral-300 text-accent focus:ring-accent" />
+        Publicado en el kiosco del Asesor (si no está tildado, queda en Borrador y no se muestra al cliente)
+      </label>
 
       <div className="mb-3">
         <label className="block text-xs font-medium text-neutral-600 mb-1">Observaciones</label>
@@ -902,6 +1178,172 @@ function FormEditarProfesional({ profesional, onGuardado }: { profesional: Profe
         </button>
       </div>
     </form>
+  );
+}
+
+function SeccionFormacion({ idProfesional }: { idProfesional: string }) {
+  const [formacion, setFormacion] = useState<FormacionProfesional[]>([]);
+  const [cargando, setCargando] = useState(true);
+  const [mostrarForm, setMostrarForm] = useState(false);
+  const [editando, setEditando] = useState<FormacionProfesional | null>(null);
+
+  function recargar() {
+    setCargando(true);
+    listarFormacion(idProfesional)
+      .then((f) => setFormacion(f as FormacionProfesional[]))
+      .finally(() => setCargando(false));
+  }
+
+  useEffect(recargar, [idProfesional]);
+
+  function handleEliminar(f: FormacionProfesional) {
+    if (!confirm(`¿Borrar "${f.titulo}"?`)) return;
+    eliminarFormacion(f.id_formacion).then(recargar);
+  }
+
+  return (
+    <div className="mb-3">
+      {cargando ? (
+        <p className="text-xs text-neutral-400">Cargando...</p>
+      ) : formacion.length === 0 ? (
+        <p className="text-xs text-neutral-400 mb-2">Todavía no cargaste formación académica.</p>
+      ) : (
+        <div className="space-y-1.5 mb-2">
+          {formacion.map((f) => (
+            <div key={f.id_formacion} className="bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2 flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-neutral-800">{f.titulo}</p>
+                <p className="text-xs text-neutral-400">
+                  {[f.institucion, f.anio, f.tipo].filter(Boolean).join(" · ")}
+                  {!f.publico && " · oculto"}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button type="button" onClick={() => setEditando(f)} className="text-xs font-semibold text-accent">
+                  Editar
+                </button>
+                <button type="button" onClick={() => handleEliminar(f)} className="text-xs font-semibold text-red-500">
+                  Borrar
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {editando && (
+        <FormFormacion
+          idProfesional={idProfesional}
+          formacion={editando}
+          onListo={() => {
+            setEditando(null);
+            recargar();
+          }}
+          onCancelar={() => setEditando(null)}
+        />
+      )}
+
+      {!editando &&
+        (mostrarForm ? (
+          <FormFormacion
+            idProfesional={idProfesional}
+            formacion={null}
+            onListo={() => {
+              setMostrarForm(false);
+              recargar();
+            }}
+            onCancelar={() => setMostrarForm(false)}
+          />
+        ) : (
+          <button type="button" onClick={() => setMostrarForm(true)} className="text-xs font-semibold text-accent">
+            + Agregar formación
+          </button>
+        ))}
+    </div>
+  );
+}
+
+function FormFormacion({
+  idProfesional,
+  formacion,
+  onListo,
+  onCancelar,
+}: {
+  idProfesional: string;
+  formacion: FormacionProfesional | null;
+  onListo: () => void;
+  onCancelar: () => void;
+}) {
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const contenedorRef = useRef<HTMLDivElement>(null);
+
+  // No es un <form> propio a propósito: esto vive adentro del <form> grande
+  // de "Editar profesional", y HTML no permite anidar formularios. Se arma
+  // el FormData a mano leyendo los campos del contenedor.
+  function handleGuardar() {
+    if (!contenedorRef.current) return;
+    setError(null);
+    const formData = new FormData();
+    contenedorRef.current.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>("[name]").forEach((el) => {
+      if (el instanceof HTMLInputElement && el.type === "checkbox") {
+        if (el.checked) formData.set(el.name, "on");
+      } else {
+        formData.set(el.name, el.value);
+      }
+    });
+    if (!String(formData.get("titulo") ?? "").trim()) {
+      setError("El título es obligatorio");
+      return;
+    }
+    setGuardando(true);
+    const promesa = formacion ? actualizarFormacion(formacion.id_formacion, formData) : crearFormacion(idProfesional, formData);
+    promesa
+      .then((res) => {
+        if (res.error) setError(res.error);
+        else onListo();
+      })
+      .finally(() => setGuardando(false));
+  }
+
+  return (
+    <div ref={contenedorRef} className="bg-neutral-50 border border-neutral-200 rounded-lg p-3 mt-2">
+      {error && <p className="text-xs text-red-600 mb-2">{error}</p>}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2">
+        <input name="titulo" defaultValue={formacion?.titulo ?? ""} placeholder="Título" className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs sm:col-span-1" />
+        <input name="institucion" defaultValue={formacion?.institucion ?? ""} placeholder="Institución / Universidad" className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs" />
+        <input name="anio" type="number" defaultValue={formacion?.anio ?? ""} placeholder="Año" className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs" />
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
+        <select name="tipo" defaultValue={formacion?.tipo ?? ""} className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs">
+          <option value="">Tipo...</option>
+          {OPCIONES_TIPO_FORMACION.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
+        <label className="flex items-center gap-2 text-xs text-neutral-600">
+          <input type="checkbox" name="publico" defaultChecked={formacion?.publico ?? true} className="rounded border-neutral-300 text-accent focus:ring-accent" />
+          Mostrar públicamente
+        </label>
+      </div>
+      <textarea
+        name="descripcion"
+        rows={2}
+        defaultValue={formacion?.descripcion ?? ""}
+        placeholder="Descripción (opcional)"
+        className="w-full border border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs mb-2"
+      />
+      <div className="flex justify-end gap-2">
+        <button type="button" onClick={onCancelar} className="text-xs font-semibold text-neutral-500 px-3 py-1.5">
+          Cancelar
+        </button>
+        <button type="button" onClick={handleGuardar} disabled={guardando} className="text-xs font-bold text-white bg-accent hover:bg-accent-dark disabled:opacity-40 px-3 py-1.5 rounded-lg">
+          {guardando ? "..." : "Guardar"}
+        </button>
+      </div>
+    </div>
   );
 }
 

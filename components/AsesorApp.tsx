@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Image from "next/image";
 import type { Local, Marca, Producto, Objetivo, FiltroProducto, FichaProducto, Subcategoria, Profesional } from "@/lib/supabase";
 
-type Pantalla = "home" | "objetivo" | "resultado" | "marcas" | "ofertas" | "profesionales";
+type Pantalla = "home" | "objetivo" | "resultado" | "marcas" | "ofertas" | "profesionales" | "fichaProfesional";
 
 const SAGE = "#b6bca2";
 const SAGE_DARK = "#646759";
@@ -84,6 +84,8 @@ export default function AsesorApp({
   productos,
   subcategorias,
   profesionales,
+  fortalezasPorProfesional,
+  objetivosPorProfesional,
   objetivos,
   filtros,
   fichaPorProducto,
@@ -95,6 +97,8 @@ export default function AsesorApp({
   productos: Producto[];
   subcategorias: Subcategoria[];
   profesionales: Profesional[];
+  fortalezasPorProfesional: Record<string, { nombre: string; principal: boolean }[]>;
+  objetivosPorProfesional: Record<string, string[]>;
   objetivos: Objetivo[];
   filtros: FiltroProducto[];
   fichaPorProducto: Record<string, FichaProducto>;
@@ -109,6 +113,8 @@ export default function AsesorApp({
   const [subcategoriaId, setSubcategoriaId] = useState<string | null>(null);
   const [marcaOfertaId, setMarcaOfertaId] = useState<string | null>(null);
   const [categoriaProf, setCategoriaProf] = useState<string | null>(null);
+  const [profesionalId, setProfesionalId] = useState<string | null>(null);
+  const [mostrarComoAyuda, setMostrarComoAyuda] = useState(false);
 
   const marcaPorId = useMemo(() => {
     const mapa: Record<string, Marca> = {};
@@ -187,6 +193,20 @@ export default function AsesorApp({
     return profesionales.filter((p) => p.categoria === categoriaProf);
   }, [profesionales, categoriaProf]);
 
+  const profesionalActual = profesionalId ? profesionales.find((p) => p.id_profesional === profesionalId) ?? null : null;
+
+  const fortalezasDelProfesionalActual = useMemo(() => {
+    if (!profesionalId) return [];
+    const propias = fortalezasPorProfesional[profesionalId] ?? [];
+    return [...propias].sort((a, b) => Number(b.principal) - Number(a.principal));
+  }, [profesionalId, fortalezasPorProfesional]);
+
+  const objetivosDelProfesionalActual = useMemo(() => {
+    if (!profesionalId) return [];
+    const ids = objetivosPorProfesional[profesionalId] ?? [];
+    return ids.map((id) => objetivos.find((o) => o.id_objetivo === id)?.nombre).filter(Boolean) as string[];
+  }, [profesionalId, objetivosPorProfesional, objetivos]);
+
   function irAObjetivo() {
     setBusqueda("");
     setObjetivoId(null);
@@ -222,6 +242,12 @@ export default function AsesorApp({
     setCategoriaProf((actual) => (actual === categoria ? null : categoria));
   }
 
+  function irAFichaProfesional(id: string) {
+    setProfesionalId(id);
+    setMostrarComoAyuda(false);
+    setPantalla("fichaProfesional");
+  }
+
   function elegirObjetivo(id: string) {
     setObjetivoId(id);
     setBusqueda("");
@@ -245,6 +271,8 @@ export default function AsesorApp({
     setSubcategoriaId(null);
     setMarcaOfertaId(null);
     setCategoriaProf(null);
+    setProfesionalId(null);
+    setMostrarComoAyuda(false);
   }
 
   function volverDesdeResultado() {
@@ -716,7 +744,11 @@ export default function AsesorApp({
             ) : (
               <div className="flex flex-col gap-3">
                 {profesionalesFiltrados.map((prof) => (
-                  <div key={prof.id_profesional} className="rounded-2xl border border-[#d8d8d8] bg-white p-4 shadow-sm flex gap-4">
+                  <button
+                    key={prof.id_profesional}
+                    onClick={() => irAFichaProfesional(prof.id_profesional)}
+                    className="rounded-2xl border border-[#d8d8d8] bg-white p-4 shadow-sm flex gap-4 text-left"
+                  >
                     <span className="w-24 h-24 rounded-2xl overflow-hidden shrink-0 flex items-center justify-center font-extrabold text-[30px]" style={{ background: SAGE_TINT, color: SAGE_DARK }}>
                       {prof.foto ? (
                         // eslint-disable-next-line @next/next/no-img-element
@@ -734,25 +766,95 @@ export default function AsesorApp({
                           {[prof.titulo, prof.especialidad].filter(Boolean).join(" · ")}
                         </p>
                       )}
-                      {prof.bio && (
-                        <p className="text-[11px] text-[#686868] leading-snug mt-1 line-clamp-2">{prof.bio}</p>
-                      )}
-                      {prof.link_reserva && (
-                        <a
-                          href={prof.link_reserva}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-block mt-2 text-[11px] font-extrabold px-3 py-1.5 rounded-full text-white"
-                          style={{ background: C4 }}
-                        >
-                          Reservar turno
-                        </a>
-                      )}
+                      <span className="text-[10px] font-bold mt-1 inline-block" style={{ color: SAGE_DARK }}>
+                        Tocá para ver más ›
+                      </span>
                     </div>
-                  </div>
+                  </button>
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {pantalla === "fichaProfesional" && profesionalActual && (
+        <div className="flex-1 flex flex-col">
+          <Navbar onVolver={() => setPantalla("profesionales")} onInicio={volverAInicio} />
+          <div className="flex-1 px-6 pt-4 pb-10 max-w-md mx-auto w-full flex flex-col">
+            <div className="w-full aspect-square rounded-2xl overflow-hidden mb-4 flex items-center justify-center font-extrabold text-[48px]" style={{ background: SAGE_TINT, color: SAGE_DARK }}>
+              {profesionalActual.foto ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={profesionalActual.foto} alt="" className="w-full h-full object-cover" />
+              ) : (
+                profesionalActual.nombre.charAt(0).toUpperCase()
+              )}
+            </div>
+            <p className="text-[19px] font-extrabold leading-tight">
+              {profesionalActual.nombre} {profesionalActual.apellido ?? ""}
+            </p>
+            {(profesionalActual.titulo || profesionalActual.especialidad) && (
+              <p className="text-[12px] font-bold mb-2" style={{ color: SAGE_DARK }}>
+                {[profesionalActual.titulo, profesionalActual.especialidad].filter(Boolean).join(" · ")}
+              </p>
+            )}
+            {profesionalActual.bio && <p className="text-[12px] text-[#686868] leading-snug mb-3">{profesionalActual.bio}</p>}
+
+            {fortalezasDelProfesionalActual.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-4">
+                {fortalezasDelProfesionalActual.map((f) => (
+                  <span
+                    key={f.nombre}
+                    className="text-[10px] font-bold px-2.5 py-1 rounded-full"
+                    style={{ background: SAGE_TINT, color: SAGE_DARK }}
+                  >
+                    {f.nombre}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            <div className="mt-auto flex flex-col gap-2">
+              {profesionalActual.link_reserva ? (
+                <a
+                  href={profesionalActual.link_reserva}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-center text-[13px] font-extrabold text-white py-3 rounded-full"
+                  style={{ background: SAGE_DARK }}
+                >
+                  📅 Reservar turno
+                </a>
+              ) : (
+                <p className="text-center text-[11px] text-[#a8a8a8]">Todavía no tiene link de reserva cargado.</p>
+              )}
+
+              {objetivosDelProfesionalActual.length > 0 && (
+                <>
+                  <button
+                    onClick={() => setMostrarComoAyuda((v) => !v)}
+                    className="text-center text-[12px] font-bold py-2.5 rounded-full border"
+                    style={{ borderColor: "#d8d8d8", color: "#686868" }}
+                  >
+                    🎯 ¿Cómo puede ayudarte? {mostrarComoAyuda ? "▴" : "▾"}
+                  </button>
+                  {mostrarComoAyuda && (
+                    <div className="rounded-xl border border-[#d8d8d8] bg-white p-3">
+                      <p className="text-[11px] font-bold mb-2">
+                        {profesionalActual.nombre.split(" ")[0]} puede ayudarte si buscás:
+                      </p>
+                      <ul className="flex flex-col gap-1">
+                        {objetivosDelProfesionalActual.map((nombre) => (
+                          <li key={nombre} className="text-[11px] text-[#686868]">
+                            • {nombre}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}
