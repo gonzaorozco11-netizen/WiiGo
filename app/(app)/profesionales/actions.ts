@@ -434,6 +434,315 @@ export async function eliminarFormacion(idFormacion: string): Promise<{ error: s
   return { error: null };
 }
 
+// Sube/baja un ítem un lugar dentro de la lista del mismo profesional,
+// intercambiando su "orden" con el vecino — lo usan galería, videos,
+// trayectoria y filminas. Flechas en vez de arrastrar: más fácil de tocar
+// bien en una pantalla táctil chica.
+async function reordenar(
+  supabase: ReturnType<typeof getSupabaseServerClient>,
+  tabla: string,
+  columnaId: string,
+  idProfesional: string,
+  idItem: string,
+  direccion: "up" | "down"
+) {
+  const { data } = await supabase
+    .from(tabla)
+    .select(`${columnaId}, orden`)
+    .eq("id_profesional", idProfesional)
+    .order("orden", { ascending: true });
+  const filas = (data ?? []) as Record<string, string | number>[];
+  const idx = filas.findIndex((f) => f[columnaId] === idItem);
+  if (idx === -1) return;
+  const posVecino = direccion === "up" ? idx - 1 : idx + 1;
+  if (posVecino < 0 || posVecino >= filas.length) return;
+  const actual = filas[idx];
+  const vecino = filas[posVecino];
+  await supabase.from(tabla).update({ orden: vecino.orden }).eq(columnaId, actual[columnaId]);
+  await supabase.from(tabla).update({ orden: actual.orden }).eq(columnaId, vecino[columnaId]);
+}
+
+async function siguienteOrden(supabase: ReturnType<typeof getSupabaseServerClient>, tabla: string, idProfesional: string) {
+  const { data } = await supabase
+    .from(tabla)
+    .select("orden")
+    .eq("id_profesional", idProfesional)
+    .order("orden", { ascending: false })
+    .limit(1);
+  const maximo = (data?.[0] as { orden: number } | undefined)?.orden ?? -1;
+  return maximo + 1;
+}
+
+// ===================== GALERÍA DE FOTOS =====================
+
+export async function listarGaleria(idProfesional: string) {
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("galeria_profesional")
+    .select("*")
+    .eq("id_profesional", idProfesional)
+    .order("orden", { ascending: true });
+  if (error) throw new Error(friendlyDbError(error));
+  return data ?? [];
+}
+
+export async function subirFotoGaleria(idProfesional: string, formData: FormData): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  const archivo = formData.get("archivo") as File | null;
+  if (!archivo || archivo.size === 0) return { error: "Elegí una foto primero" };
+
+  try {
+    const supabase = getSupabaseServerClient();
+    const extension = archivo.name.split(".").pop() ?? "jpg";
+    const path = `galeria-${idProfesional}-${Date.now()}.${extension}`;
+
+    const { error: errorUpload } = await supabase.storage
+      .from("fotos-profesionales")
+      .upload(path, archivo, { upsert: true, contentType: archivo.type || undefined });
+    if (errorUpload) return { error: errorUpload.message };
+
+    const { data } = supabase.storage.from("fotos-profesionales").getPublicUrl(path);
+    const orden = await siguienteOrden(supabase, "galeria_profesional", idProfesional);
+
+    const { error } = await supabase.from("galeria_profesional").insert({
+      id_profesional: idProfesional,
+      url: data.publicUrl,
+      titulo: text(formData, "titulo"),
+      descripcion: text(formData, "descripcion"),
+      publico: bool(formData, "publico"),
+      orden,
+    });
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/profesionales");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo subir la foto" };
+  }
+}
+
+export async function actualizarFotoGaleria(idFoto: string, formData: FormData): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  const supabase = getSupabaseServerClient();
+  const { error } = await supabase
+    .from("galeria_profesional")
+    .update({ titulo: text(formData, "titulo"), descripcion: text(formData, "descripcion"), publico: bool(formData, "publico") })
+    .eq("id_foto", idFoto);
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath("/profesionales");
+  return { error: null };
+}
+
+export async function eliminarFotoGaleria(idFoto: string): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  const supabase = getSupabaseServerClient();
+  const { error } = await supabase.from("galeria_profesional").delete().eq("id_foto", idFoto);
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath("/profesionales");
+  return { error: null };
+}
+
+export async function reordenarFotoGaleria(idProfesional: string, idFoto: string, direccion: "up" | "down"): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  const supabase = getSupabaseServerClient();
+  await reordenar(supabase, "galeria_profesional", "id_foto", idProfesional, idFoto, direccion);
+  revalidatePath("/profesionales");
+  return { error: null };
+}
+
+// ===================== VIDEOS =====================
+
+export async function listarVideos(idProfesional: string) {
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("videos_profesional")
+    .select("*")
+    .eq("id_profesional", idProfesional)
+    .order("orden", { ascending: true });
+  if (error) throw new Error(friendlyDbError(error));
+  return data ?? [];
+}
+
+export async function crearVideo(idProfesional: string, formData: FormData): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  const titulo = text(formData, "titulo");
+  const url = text(formData, "url");
+  if (!titulo || !url) return { error: "Título y link son obligatorios" };
+  const supabase = getSupabaseServerClient();
+  const orden = await siguienteOrden(supabase, "videos_profesional", idProfesional);
+  const { error } = await supabase.from("videos_profesional").insert({ id_profesional: idProfesional, titulo, url, orden });
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath("/profesionales");
+  return { error: null };
+}
+
+export async function actualizarVideo(idVideo: string, formData: FormData): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  const titulo = text(formData, "titulo");
+  const url = text(formData, "url");
+  if (!titulo || !url) return { error: "Título y link son obligatorios" };
+  const supabase = getSupabaseServerClient();
+  const { error } = await supabase.from("videos_profesional").update({ titulo, url }).eq("id_video", idVideo);
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath("/profesionales");
+  return { error: null };
+}
+
+export async function eliminarVideo(idVideo: string): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  const supabase = getSupabaseServerClient();
+  const { error } = await supabase.from("videos_profesional").delete().eq("id_video", idVideo);
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath("/profesionales");
+  return { error: null };
+}
+
+// ===================== TRAYECTORIA =====================
+
+export async function listarTrayectoria(idProfesional: string) {
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("trayectoria_profesional")
+    .select("*")
+    .eq("id_profesional", idProfesional)
+    .order("orden", { ascending: true });
+  if (error) throw new Error(friendlyDbError(error));
+  return data ?? [];
+}
+
+function trayectoriaFromForm(formData: FormData) {
+  return {
+    titulo: text(formData, "titulo"),
+    lugar: text(formData, "lugar"),
+    anio_desde: number(formData, "anio_desde"),
+    anio_hasta: number(formData, "anio_hasta"),
+    descripcion: text(formData, "descripcion"),
+    publico: bool(formData, "publico"),
+  };
+}
+
+export async function crearTrayectoria(idProfesional: string, formData: FormData): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  const datos = trayectoriaFromForm(formData);
+  if (!datos.titulo) return { error: "El título es obligatorio" };
+  const supabase = getSupabaseServerClient();
+  const orden = await siguienteOrden(supabase, "trayectoria_profesional", idProfesional);
+  const { error } = await supabase.from("trayectoria_profesional").insert({ ...datos, id_profesional: idProfesional, orden });
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath("/profesionales");
+  return { error: null };
+}
+
+export async function actualizarTrayectoria(idTrayectoria: string, formData: FormData): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  const datos = trayectoriaFromForm(formData);
+  if (!datos.titulo) return { error: "El título es obligatorio" };
+  const supabase = getSupabaseServerClient();
+  const { error } = await supabase.from("trayectoria_profesional").update(datos).eq("id_trayectoria", idTrayectoria);
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath("/profesionales");
+  return { error: null };
+}
+
+export async function eliminarTrayectoria(idTrayectoria: string): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  const supabase = getSupabaseServerClient();
+  const { error } = await supabase.from("trayectoria_profesional").delete().eq("id_trayectoria", idTrayectoria);
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath("/profesionales");
+  return { error: null };
+}
+
+// ===================== CONÓCEME (filminas) =====================
+
+export async function listarFilminas(idProfesional: string) {
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("filminas_profesional")
+    .select("*")
+    .eq("id_profesional", idProfesional)
+    .order("orden", { ascending: true });
+  if (error) throw new Error(friendlyDbError(error));
+  return data ?? [];
+}
+
+export async function crearFilmina(idProfesional: string, formData: FormData): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  const tipo = text(formData, "tipo");
+  if (!tipo) return { error: "Elegí un tipo de filmina" };
+  const supabase = getSupabaseServerClient();
+  const orden = await siguienteOrden(supabase, "filminas_profesional", idProfesional);
+  const { error } = await supabase.from("filminas_profesional").insert({
+    id_profesional: idProfesional,
+    tipo,
+    titulo: text(formData, "titulo"),
+    texto: text(formData, "texto"),
+    id_foto: text(formData, "id_foto"),
+    id_video: text(formData, "id_video"),
+    orden,
+  });
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath("/profesionales");
+  return { error: null };
+}
+
+export async function actualizarFilmina(idFilmina: string, formData: FormData): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  const supabase = getSupabaseServerClient();
+  const { error } = await supabase
+    .from("filminas_profesional")
+    .update({
+      titulo: text(formData, "titulo"),
+      texto: text(formData, "texto"),
+      id_foto: text(formData, "id_foto"),
+      id_video: text(formData, "id_video"),
+    })
+    .eq("id_filmina", idFilmina);
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath("/profesionales");
+  return { error: null };
+}
+
+export async function eliminarFilmina(idFilmina: string): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  const supabase = getSupabaseServerClient();
+  const { error } = await supabase.from("filminas_profesional").delete().eq("id_filmina", idFilmina);
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath("/profesionales");
+  return { error: null };
+}
+
+export async function toggleVisibleFilmina(idFilmina: string, visible: boolean): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  const supabase = getSupabaseServerClient();
+  const { error } = await supabase.from("filminas_profesional").update({ visible }).eq("id_filmina", idFilmina);
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath("/profesionales");
+  return { error: null };
+}
+
+export async function reordenarFilmina(idProfesional: string, idFilmina: string, direccion: "up" | "down"): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  const supabase = getSupabaseServerClient();
+  await reordenar(supabase, "filminas_profesional", "id_filmina", idProfesional, idFilmina, direccion);
+  revalidatePath("/profesionales");
+  return { error: null };
+}
+
 // ===================== CÓDIGOS =====================
 
 export async function listarCodigos() {

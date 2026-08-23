@@ -2,9 +2,21 @@
 
 import { useMemo, useState } from "react";
 import Image from "next/image";
-import type { Local, Marca, Producto, Objetivo, FiltroProducto, FichaProducto, Subcategoria, Profesional } from "@/lib/supabase";
+import type {
+  Local,
+  Marca,
+  Producto,
+  Objetivo,
+  FiltroProducto,
+  FichaProducto,
+  Subcategoria,
+  Profesional,
+  ConocemeSlide,
+  FormacionProfesional,
+  TrayectoriaProfesional,
+} from "@/lib/supabase";
 
-type Pantalla = "home" | "objetivo" | "resultado" | "marcas" | "ofertas" | "profesionales" | "fichaProfesional";
+type Pantalla = "home" | "objetivo" | "resultado" | "marcas" | "ofertas" | "profesionales" | "fichaProfesional" | "conoceme";
 
 const SAGE = "#b6bca2";
 const SAGE_DARK = "#646759";
@@ -86,6 +98,9 @@ export default function AsesorApp({
   profesionales,
   fortalezasPorProfesional,
   objetivosPorProfesional,
+  conocemePorProfesional,
+  formacionPorProfesional,
+  trayectoriaPorProfesional,
   objetivos,
   filtros,
   fichaPorProducto,
@@ -99,6 +114,9 @@ export default function AsesorApp({
   profesionales: Profesional[];
   fortalezasPorProfesional: Record<string, { nombre: string; principal: boolean }[]>;
   objetivosPorProfesional: Record<string, string[]>;
+  conocemePorProfesional: Record<string, ConocemeSlide[]>;
+  formacionPorProfesional: Record<string, FormacionProfesional[]>;
+  trayectoriaPorProfesional: Record<string, TrayectoriaProfesional[]>;
   objetivos: Objetivo[];
   filtros: FiltroProducto[];
   fichaPorProducto: Record<string, FichaProducto>;
@@ -114,6 +132,7 @@ export default function AsesorApp({
   const [marcaOfertaId, setMarcaOfertaId] = useState<string | null>(null);
   const [categoriaProf, setCategoriaProf] = useState<string | null>(null);
   const [profesionalId, setProfesionalId] = useState<string | null>(null);
+  const [slideIndex, setSlideIndex] = useState(0);
   const [mostrarComoAyuda, setMostrarComoAyuda] = useState(false);
 
   const marcaPorId = useMemo(() => {
@@ -207,6 +226,19 @@ export default function AsesorApp({
     return ids.map((id) => objetivos.find((o) => o.id_objetivo === id)?.nombre).filter(Boolean) as string[];
   }, [profesionalId, objetivosPorProfesional, objetivos]);
 
+  const slidesDelProfesionalActual = profesionalId ? conocemePorProfesional[profesionalId] ?? [] : [];
+  const formacionDelProfesionalActual = profesionalId ? formacionPorProfesional[profesionalId] ?? [] : [];
+  const trayectoriaDelProfesionalActual = profesionalId ? trayectoriaPorProfesional[profesionalId] ?? [] : [];
+  const slideActual = slidesDelProfesionalActual[slideIndex] ?? null;
+
+  function siguienteSlide() {
+    setSlideIndex((i) => Math.min(i + 1, slidesDelProfesionalActual.length - 1));
+  }
+
+  function anteriorSlide() {
+    setSlideIndex((i) => Math.max(i - 1, 0));
+  }
+
   function irAObjetivo() {
     setBusqueda("");
     setObjetivoId(null);
@@ -248,6 +280,11 @@ export default function AsesorApp({
     setPantalla("fichaProfesional");
   }
 
+  function irAConoceme() {
+    setSlideIndex(0);
+    setPantalla("conoceme");
+  }
+
   function elegirObjetivo(id: string) {
     setObjetivoId(id);
     setBusqueda("");
@@ -273,6 +310,7 @@ export default function AsesorApp({
     setCategoriaProf(null);
     setProfesionalId(null);
     setMostrarComoAyuda(false);
+    setSlideIndex(0);
   }
 
   function volverDesdeResultado() {
@@ -829,6 +867,16 @@ export default function AsesorApp({
                 <p className="text-center text-[11px] text-[#a8a8a8]">Todavía no tiene link de reserva cargado.</p>
               )}
 
+              {slidesDelProfesionalActual.length > 0 && (
+                <button
+                  onClick={irAConoceme}
+                  className="text-center text-[12px] font-extrabold text-white py-2.5 rounded-full"
+                  style={{ background: SAGE }}
+                >
+                  ▶️ Conóceme
+                </button>
+              )}
+
               {objetivosDelProfesionalActual.length > 0 && (
                 <>
                   <button
@@ -855,6 +903,135 @@ export default function AsesorApp({
                 </>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {pantalla === "conoceme" && profesionalActual && (
+        <div className="flex-1 flex flex-col bg-[#fbfbfb]">
+          <div className="flex items-center justify-between px-5 pt-5 shrink-0">
+            <button onClick={() => setPantalla("fichaProfesional")} className="text-[#686868] text-lg leading-none">
+              ✕
+            </button>
+            <div className="flex items-center gap-1.5">
+              {slidesDelProfesionalActual.map((s, i) => (
+                <span
+                  key={s.id_filmina}
+                  className="h-1.5 rounded-full"
+                  style={{ width: i === slideIndex ? 18 : 6, background: i === slideIndex ? SAGE_DARK : "#d8d8d8" }}
+                />
+              ))}
+            </div>
+            <span className="text-[11px] text-[#a8a8a8] font-bold">
+              {slideIndex + 1}/{slidesDelProfesionalActual.length}
+            </span>
+          </div>
+
+          <div className="flex-1 px-6 py-4 flex flex-col max-w-md mx-auto w-full">
+            {slideActual && (
+              <div className="flex-1 flex flex-col">
+                {(slideActual.tipo === "foto" || slideActual.tipo === "texto_foto") && (
+                  <div className="flex-1 rounded-2xl overflow-hidden mb-3" style={{ background: SAGE_TINT }}>
+                    {slideActual.fotoUrl && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={slideActual.fotoUrl} alt="" className="w-full h-full object-cover" />
+                    )}
+                  </div>
+                )}
+
+                {slideActual.tipo === "video" && (
+                  <a
+                    href={slideActual.videoUrl ?? "#"}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 rounded-2xl flex flex-col items-center justify-center gap-2 mb-3"
+                    style={{ background: SAGE_TINT, color: SAGE_DARK }}
+                  >
+                    <span className="text-[36px]">▶️</span>
+                    <span className="text-[12px] font-bold px-6 text-center">{slideActual.videoTitulo}</span>
+                  </a>
+                )}
+
+                {slideActual.titulo && (slideActual.tipo === "texto_foto" || slideActual.tipo === "logro" || slideActual.tipo === "como_trabajo") && (
+                  <p className="text-[15px] font-extrabold mb-1">{slideActual.titulo}</p>
+                )}
+
+                {(slideActual.tipo === "texto_foto" || slideActual.tipo === "logro" || slideActual.tipo === "como_trabajo") && slideActual.texto && (
+                  <p className="text-[12px] text-[#686868] leading-relaxed">{slideActual.texto}</p>
+                )}
+
+                {slideActual.tipo === "historia" && (
+                  <div className="flex-1 flex items-center">
+                    <p className="text-[13px] text-[#686868] leading-relaxed">
+                      {profesionalActual.biografia_completa || "Todavía no cargó su historia."}
+                    </p>
+                  </div>
+                )}
+
+                {slideActual.tipo === "fortalezas" && (
+                  <div className="flex-1 flex flex-col items-center justify-center gap-2">
+                    {fortalezasDelProfesionalActual.map((f) => (
+                      <span key={f.nombre} className="text-[13px] font-bold px-4 py-2 rounded-full" style={{ background: SAGE_TINT, color: SAGE_DARK }}>
+                        {f.nombre}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {slideActual.tipo === "formacion" && (
+                  <div className="flex-1 flex flex-col gap-2 justify-center">
+                    {formacionDelProfesionalActual.map((f) => (
+                      <div key={f.id_formacion} className="rounded-xl border border-[#d8d8d8] bg-white p-3">
+                        <p className="text-[12px] font-bold">{f.titulo}</p>
+                        <p className="text-[10px] text-[#a8a8a8]">{[f.institucion, f.anio].filter(Boolean).join(" · ")}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {slideActual.tipo === "trayectoria" && (
+                  <div className="flex-1 flex flex-col gap-2 justify-center">
+                    {trayectoriaDelProfesionalActual.map((t) => (
+                      <div key={t.id_trayectoria} className="rounded-xl border border-[#d8d8d8] bg-white p-3">
+                        <p className="text-[12px] font-bold">{t.titulo}</p>
+                        <p className="text-[10px] text-[#a8a8a8]">
+                          {[t.lugar, t.anio_desde && `${t.anio_desde} – ${t.anio_hasta ?? "Actualidad"}`].filter(Boolean).join(" · ")}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="flex items-center justify-between mt-4 mb-3">
+              <button
+                onClick={anteriorSlide}
+                disabled={slideIndex === 0}
+                className="text-[13px] font-bold text-[#686868] disabled:opacity-30 px-3 py-2"
+              >
+                ‹ Anterior
+              </button>
+              <button
+                onClick={siguienteSlide}
+                disabled={slideIndex === slidesDelProfesionalActual.length - 1}
+                className="text-[13px] font-bold text-[#686868] disabled:opacity-30 px-3 py-2"
+              >
+                Siguiente ›
+              </button>
+            </div>
+
+            {profesionalActual.link_reserva && (
+              <a
+                href={profesionalActual.link_reserva}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-center text-[13px] font-extrabold text-white py-3 rounded-full"
+                style={{ background: SAGE_DARK }}
+              >
+                📅 Reservar turno
+              </a>
+            )}
           </div>
         </div>
       )}

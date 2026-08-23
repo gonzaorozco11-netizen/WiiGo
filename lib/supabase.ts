@@ -501,6 +501,75 @@ export type FormacionProfesional = {
   fecha_creacion: string;
 };
 
+export type FotoGaleriaProfesional = {
+  id_foto: string;
+  id_profesional: string;
+  url: string;
+  titulo: string | null;
+  descripcion: string | null;
+  publico: boolean;
+  orden: number;
+  fecha_creacion: string;
+};
+
+export type VideoProfesional = {
+  id_video: string;
+  id_profesional: string;
+  titulo: string;
+  url: string;
+  orden: number;
+  fecha_creacion: string;
+};
+
+export type TrayectoriaProfesional = {
+  id_trayectoria: string;
+  id_profesional: string;
+  titulo: string;
+  lugar: string | null;
+  anio_desde: number | null;
+  anio_hasta: number | null;
+  descripcion: string | null;
+  publico: boolean;
+  orden: number;
+  fecha_creacion: string;
+};
+
+export type TipoFilmina =
+  | "foto"
+  | "video"
+  | "texto_foto"
+  | "historia"
+  | "formacion"
+  | "trayectoria"
+  | "fortalezas"
+  | "como_trabajo"
+  | "logro";
+
+export type FilminaProfesional = {
+  id_filmina: string;
+  id_profesional: string;
+  tipo: TipoFilmina;
+  titulo: string | null;
+  texto: string | null;
+  id_foto: string | null;
+  id_video: string | null;
+  visible: boolean;
+  orden: number;
+  fecha_creacion: string;
+};
+
+// Versión ya resuelta de una filmina para el kiosco: la foto/video ya vienen
+// como URL directa, sin que el cliente tenga que ir a buscarlas a otra tabla.
+export type ConocemeSlide = {
+  id_filmina: string;
+  tipo: TipoFilmina;
+  titulo: string | null;
+  texto: string | null;
+  fotoUrl: string | null;
+  videoUrl: string | null;
+  videoTitulo: string | null;
+};
+
 // Programa de beneficios por marca, con historial: cada cambio cierra la
 // vigencia anterior (fecha_hasta) e inserta una fila nueva — nunca se pisa
 // una config vieja, para que una venta pasada conserve el % que usó de verdad.

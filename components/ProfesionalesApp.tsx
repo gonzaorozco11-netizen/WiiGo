@@ -1,7 +1,18 @@
 "use client";
 
 import { Fragment, useEffect, useRef, useState } from "react";
-import type { Marca, Profesional, Objetivo, FortalezaProfesional, FormacionProfesional } from "@/lib/supabase";
+import type {
+  Marca,
+  Profesional,
+  Objetivo,
+  FortalezaProfesional,
+  FormacionProfesional,
+  FotoGaleriaProfesional,
+  VideoProfesional,
+  TrayectoriaProfesional,
+  FilminaProfesional,
+  TipoFilmina,
+} from "@/lib/supabase";
 import {
   listarProfesionales,
   crearProfesional,
@@ -32,6 +43,25 @@ import {
   crearFormacion,
   actualizarFormacion,
   eliminarFormacion,
+  listarGaleria,
+  subirFotoGaleria,
+  actualizarFotoGaleria,
+  eliminarFotoGaleria,
+  reordenarFotoGaleria,
+  listarVideos,
+  crearVideo,
+  actualizarVideo,
+  eliminarVideo,
+  listarTrayectoria,
+  crearTrayectoria,
+  actualizarTrayectoria,
+  eliminarTrayectoria,
+  listarFilminas,
+  crearFilmina,
+  actualizarFilmina,
+  eliminarFilmina,
+  toggleVisibleFilmina,
+  reordenarFilmina,
 } from "@/app/(app)/profesionales/actions";
 
 type Codigo = {
@@ -1144,6 +1174,16 @@ function FormEditarProfesional({
         Son los mismos objetivos de "Encontrar productos para mí" — así el Asesor puede recomendar a este profesional según lo que busca el cliente.
       </p>
 
+      <SeccionFormLabel>🏆 Trayectoria</SeccionFormLabel>
+      <SeccionTrayectoria idProfesional={profesional.id_profesional} />
+
+      <SeccionFormLabel>📸 Fotos y videos</SeccionFormLabel>
+      <SeccionGaleria idProfesional={profesional.id_profesional} />
+      <SeccionVideos idProfesional={profesional.id_profesional} />
+
+      <SeccionFormLabel>🎞️ Conóceme</SeccionFormLabel>
+      <SeccionConoceme idProfesional={profesional.id_profesional} />
+
       <SeccionFormLabel>📅 Atención y reserva</SeccionFormLabel>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
         <div>
@@ -1335,6 +1375,710 @@ function FormFormacion({
         placeholder="Descripción (opcional)"
         className="w-full border border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs mb-2"
       />
+      <div className="flex justify-end gap-2">
+        <button type="button" onClick={onCancelar} className="text-xs font-semibold text-neutral-500 px-3 py-1.5">
+          Cancelar
+        </button>
+        <button type="button" onClick={handleGuardar} disabled={guardando} className="text-xs font-bold text-white bg-accent hover:bg-accent-dark disabled:opacity-40 px-3 py-1.5 rounded-lg">
+          {guardando ? "..." : "Guardar"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ===================== TRAYECTORIA =====================
+
+function SeccionTrayectoria({ idProfesional }: { idProfesional: string }) {
+  const [items, setItems] = useState<TrayectoriaProfesional[]>([]);
+  const [cargando, setCargando] = useState(true);
+  const [mostrarForm, setMostrarForm] = useState(false);
+  const [editando, setEditando] = useState<TrayectoriaProfesional | null>(null);
+
+  function recargar() {
+    setCargando(true);
+    listarTrayectoria(idProfesional)
+      .then((f) => setItems(f as TrayectoriaProfesional[]))
+      .finally(() => setCargando(false));
+  }
+
+  useEffect(recargar, [idProfesional]);
+
+  function handleEliminar(t: TrayectoriaProfesional) {
+    if (!confirm(`¿Borrar "${t.titulo}"?`)) return;
+    eliminarTrayectoria(t.id_trayectoria).then(recargar);
+  }
+
+  return (
+    <div className="mb-3">
+      {cargando ? (
+        <p className="text-xs text-neutral-400">Cargando...</p>
+      ) : items.length === 0 ? (
+        <p className="text-xs text-neutral-400 mb-2">Todavía no cargaste trayectoria.</p>
+      ) : (
+        <div className="space-y-1.5 mb-2">
+          {items.map((t) => (
+            <div key={t.id_trayectoria} className="bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2 flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-neutral-800">{t.titulo}</p>
+                <p className="text-xs text-neutral-400">
+                  {[t.lugar, t.anio_desde && `${t.anio_desde} – ${t.anio_hasta ?? "Actualidad"}`].filter(Boolean).join(" · ")}
+                  {!t.publico && " · oculto"}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button type="button" onClick={() => setEditando(t)} className="text-xs font-semibold text-accent">
+                  Editar
+                </button>
+                <button type="button" onClick={() => handleEliminar(t)} className="text-xs font-semibold text-red-500">
+                  Borrar
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {editando && (
+        <FormTrayectoria
+          idProfesional={idProfesional}
+          item={editando}
+          onListo={() => {
+            setEditando(null);
+            recargar();
+          }}
+          onCancelar={() => setEditando(null)}
+        />
+      )}
+
+      {!editando &&
+        (mostrarForm ? (
+          <FormTrayectoria
+            idProfesional={idProfesional}
+            item={null}
+            onListo={() => {
+              setMostrarForm(false);
+              recargar();
+            }}
+            onCancelar={() => setMostrarForm(false)}
+          />
+        ) : (
+          <button type="button" onClick={() => setMostrarForm(true)} className="text-xs font-semibold text-accent">
+            + Agregar experiencia / logro
+          </button>
+        ))}
+    </div>
+  );
+}
+
+function FormTrayectoria({
+  idProfesional,
+  item,
+  onListo,
+  onCancelar,
+}: {
+  idProfesional: string;
+  item: TrayectoriaProfesional | null;
+  onListo: () => void;
+  onCancelar: () => void;
+}) {
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const contenedorRef = useRef<HTMLDivElement>(null);
+
+  function handleGuardar() {
+    if (!contenedorRef.current) return;
+    setError(null);
+    const formData = new FormData();
+    contenedorRef.current.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("[name]").forEach((el) => {
+      if (el instanceof HTMLInputElement && el.type === "checkbox") {
+        if (el.checked) formData.set(el.name, "on");
+      } else {
+        formData.set(el.name, el.value);
+      }
+    });
+    if (!String(formData.get("titulo") ?? "").trim()) {
+      setError("El título es obligatorio");
+      return;
+    }
+    setGuardando(true);
+    const promesa = item ? actualizarTrayectoria(item.id_trayectoria, formData) : crearTrayectoria(idProfesional, formData);
+    promesa
+      .then((res) => {
+        if (res.error) setError(res.error);
+        else onListo();
+      })
+      .finally(() => setGuardando(false));
+  }
+
+  return (
+    <div ref={contenedorRef} className="bg-neutral-50 border border-neutral-200 rounded-lg p-3 mt-2">
+      {error && <p className="text-xs text-red-600 mb-2">{error}</p>}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
+        <input name="titulo" defaultValue={item?.titulo ?? ""} placeholder="Título (ej: Nutricionista deportiva)" className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs" />
+        <input name="lugar" defaultValue={item?.lugar ?? ""} placeholder="Lugar (ej: Club XXX)" className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs" />
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2">
+        <input name="anio_desde" type="number" defaultValue={item?.anio_desde ?? ""} placeholder="Año desde" className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs" />
+        <input name="anio_hasta" type="number" defaultValue={item?.anio_hasta ?? ""} placeholder="Año hasta (vacío = Actualidad)" className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs" />
+        <label className="flex items-center gap-2 text-xs text-neutral-600">
+          <input type="checkbox" name="publico" defaultChecked={item?.publico ?? true} className="rounded border-neutral-300 text-accent focus:ring-accent" />
+          Mostrar públicamente
+        </label>
+      </div>
+      <textarea
+        name="descripcion"
+        rows={2}
+        defaultValue={item?.descripcion ?? ""}
+        placeholder="Descripción (opcional)"
+        className="w-full border border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs mb-2"
+      />
+      <div className="flex justify-end gap-2">
+        <button type="button" onClick={onCancelar} className="text-xs font-semibold text-neutral-500 px-3 py-1.5">
+          Cancelar
+        </button>
+        <button type="button" onClick={handleGuardar} disabled={guardando} className="text-xs font-bold text-white bg-accent hover:bg-accent-dark disabled:opacity-40 px-3 py-1.5 rounded-lg">
+          {guardando ? "..." : "Guardar"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ===================== GALERÍA DE FOTOS =====================
+
+function SeccionGaleria({ idProfesional }: { idProfesional: string }) {
+  const [fotos, setFotos] = useState<FotoGaleriaProfesional[]>([]);
+  const [cargando, setCargando] = useState(true);
+  const [subiendo, setSubiendo] = useState(false);
+  const [editando, setEditando] = useState<FotoGaleriaProfesional | null>(null);
+
+  function recargar() {
+    setCargando(true);
+    listarGaleria(idProfesional)
+      .then((f) => setFotos(f as FotoGaleriaProfesional[]))
+      .finally(() => setCargando(false));
+  }
+
+  useEffect(recargar, [idProfesional]);
+
+  function handleSubir(e: React.ChangeEvent<HTMLInputElement>) {
+    const archivo = e.target.files?.[0];
+    if (!archivo) return;
+    const formData = new FormData();
+    formData.set("archivo", archivo);
+    setSubiendo(true);
+    subirFotoGaleria(idProfesional, formData)
+      .then(recargar)
+      .finally(() => setSubiendo(false));
+  }
+
+  function handleEliminar(f: FotoGaleriaProfesional) {
+    if (!confirm("¿Borrar esta foto de la galería?")) return;
+    eliminarFotoGaleria(f.id_foto).then(recargar);
+  }
+
+  function handleMover(f: FotoGaleriaProfesional, direccion: "up" | "down") {
+    reordenarFotoGaleria(idProfesional, f.id_foto, direccion).then(recargar);
+  }
+
+  return (
+    <div className="mb-4">
+      <p className="text-xs font-bold text-neutral-700 mb-2">Galería</p>
+      {cargando ? (
+        <p className="text-xs text-neutral-400">Cargando...</p>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
+          {fotos.map((f, idx) => (
+            <div key={f.id_foto} className="border border-neutral-200 rounded-lg overflow-hidden bg-neutral-50">
+              <div className="aspect-square bg-neutral-100 overflow-hidden">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={f.url} alt="" className="w-full h-full object-cover" />
+              </div>
+              <div className="p-1.5">
+                <p className="text-[10px] font-semibold text-neutral-700 truncate">{f.titulo || "Sin título"}</p>
+                <p className="text-[9px] text-neutral-400">{f.publico ? "Público" : "Oculto"}</p>
+                <div className="flex items-center justify-between mt-1">
+                  <div className="flex gap-1">
+                    <button type="button" disabled={idx === 0} onClick={() => handleMover(f, "up")} className="text-[10px] text-neutral-400 disabled:opacity-30">
+                      ▲
+                    </button>
+                    <button type="button" disabled={idx === fotos.length - 1} onClick={() => handleMover(f, "down")} className="text-[10px] text-neutral-400 disabled:opacity-30">
+                      ▼
+                    </button>
+                  </div>
+                  <div className="flex gap-1.5">
+                    <button type="button" onClick={() => setEditando(f)} className="text-[10px] font-semibold text-accent">
+                      Editar
+                    </button>
+                    <button type="button" onClick={() => handleEliminar(f)} className="text-[10px] font-semibold text-red-500">
+                      Borrar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+          <label className="border border-dashed border-neutral-300 rounded-lg aspect-square flex flex-col items-center justify-center gap-1 text-accent text-[11px] font-semibold cursor-pointer">
+            {subiendo ? "Subiendo..." : (
+              <>
+                <span className="text-lg">+</span>
+                Agregar foto
+              </>
+            )}
+            <input type="file" accept="image/*" onChange={handleSubir} disabled={subiendo} className="hidden" />
+          </label>
+        </div>
+      )}
+      {editando && (
+        <FormFotoGaleria
+          foto={editando}
+          onListo={() => {
+            setEditando(null);
+            recargar();
+          }}
+          onCancelar={() => setEditando(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function FormFotoGaleria({
+  foto,
+  onListo,
+  onCancelar,
+}: {
+  foto: FotoGaleriaProfesional;
+  onListo: () => void;
+  onCancelar: () => void;
+}) {
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const contenedorRef = useRef<HTMLDivElement>(null);
+
+  function handleGuardar() {
+    if (!contenedorRef.current) return;
+    setError(null);
+    const formData = new FormData();
+    contenedorRef.current.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("[name]").forEach((el) => {
+      if (el instanceof HTMLInputElement && el.type === "checkbox") {
+        if (el.checked) formData.set(el.name, "on");
+      } else {
+        formData.set(el.name, el.value);
+      }
+    });
+    setGuardando(true);
+    actualizarFotoGaleria(foto.id_foto, formData)
+      .then((res) => {
+        if (res.error) setError(res.error);
+        else onListo();
+      })
+      .finally(() => setGuardando(false));
+  }
+
+  return (
+    <div ref={contenedorRef} className="bg-neutral-50 border border-neutral-200 rounded-lg p-3 mt-2">
+      {error && <p className="text-xs text-red-600 mb-2">{error}</p>}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
+        <input name="titulo" defaultValue={foto.titulo ?? ""} placeholder="Título (ej: Consultorio)" className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs" />
+        <label className="flex items-center gap-2 text-xs text-neutral-600">
+          <input type="checkbox" name="publico" defaultChecked={foto.publico} className="rounded border-neutral-300 text-accent focus:ring-accent" />
+          Mostrar públicamente
+        </label>
+      </div>
+      <textarea
+        name="descripcion"
+        rows={2}
+        defaultValue={foto.descripcion ?? ""}
+        placeholder="Descripción (opcional)"
+        className="w-full border border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs mb-2"
+      />
+      <div className="flex justify-end gap-2">
+        <button type="button" onClick={onCancelar} className="text-xs font-semibold text-neutral-500 px-3 py-1.5">
+          Cancelar
+        </button>
+        <button type="button" onClick={handleGuardar} disabled={guardando} className="text-xs font-bold text-white bg-accent hover:bg-accent-dark disabled:opacity-40 px-3 py-1.5 rounded-lg">
+          {guardando ? "..." : "Guardar"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ===================== VIDEOS =====================
+
+function SeccionVideos({ idProfesional }: { idProfesional: string }) {
+  const [videos, setVideos] = useState<VideoProfesional[]>([]);
+  const [cargando, setCargando] = useState(true);
+  const [mostrarForm, setMostrarForm] = useState(false);
+  const [editando, setEditando] = useState<VideoProfesional | null>(null);
+
+  function recargar() {
+    setCargando(true);
+    listarVideos(idProfesional)
+      .then((v) => setVideos(v as VideoProfesional[]))
+      .finally(() => setCargando(false));
+  }
+
+  useEffect(recargar, [idProfesional]);
+
+  function handleEliminar(v: VideoProfesional) {
+    if (!confirm(`¿Borrar el video "${v.titulo}"?`)) return;
+    eliminarVideo(v.id_video).then(recargar);
+  }
+
+  return (
+    <div className="mb-3">
+      <p className="text-xs font-bold text-neutral-700 mb-2">Videos</p>
+      {cargando ? (
+        <p className="text-xs text-neutral-400">Cargando...</p>
+      ) : videos.length === 0 ? (
+        <p className="text-xs text-neutral-400 mb-2">Todavía no cargaste videos.</p>
+      ) : (
+        <div className="space-y-1.5 mb-2">
+          {videos.map((v) => (
+            <div key={v.id_video} className="bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2 flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-neutral-800 truncate">▶️ {v.titulo}</p>
+                <p className="text-xs text-neutral-400 truncate">{v.url}</p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button type="button" onClick={() => setEditando(v)} className="text-xs font-semibold text-accent">
+                  Editar
+                </button>
+                <button type="button" onClick={() => handleEliminar(v)} className="text-xs font-semibold text-red-500">
+                  Borrar
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {editando && (
+        <FormVideo
+          idProfesional={idProfesional}
+          video={editando}
+          onListo={() => {
+            setEditando(null);
+            recargar();
+          }}
+          onCancelar={() => setEditando(null)}
+        />
+      )}
+
+      {!editando &&
+        (mostrarForm ? (
+          <FormVideo
+            idProfesional={idProfesional}
+            video={null}
+            onListo={() => {
+              setMostrarForm(false);
+              recargar();
+            }}
+            onCancelar={() => setMostrarForm(false)}
+          />
+        ) : (
+          <button type="button" onClick={() => setMostrarForm(true)} className="text-xs font-semibold text-accent">
+            + Agregar video
+          </button>
+        ))}
+      <p className="text-[11px] text-neutral-400 mt-1">Un link de YouTube, Instagram, etc. — no se sube ningún archivo de video.</p>
+    </div>
+  );
+}
+
+function FormVideo({
+  idProfesional,
+  video,
+  onListo,
+  onCancelar,
+}: {
+  idProfesional: string;
+  video: VideoProfesional | null;
+  onListo: () => void;
+  onCancelar: () => void;
+}) {
+  const [titulo, setTitulo] = useState(video?.titulo ?? "");
+  const [url, setUrl] = useState(video?.url ?? "");
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function handleGuardar() {
+    if (!titulo.trim() || !url.trim()) {
+      setError("Título y link son obligatorios");
+      return;
+    }
+    setError(null);
+    const formData = new FormData();
+    formData.set("titulo", titulo.trim());
+    formData.set("url", url.trim());
+    setGuardando(true);
+    const promesa = video ? actualizarVideo(video.id_video, formData) : crearVideo(idProfesional, formData);
+    promesa
+      .then((res) => {
+        if (res.error) setError(res.error);
+        else onListo();
+      })
+      .finally(() => setGuardando(false));
+  }
+
+  return (
+    <div className="bg-neutral-50 border border-neutral-200 rounded-lg p-3 mt-2">
+      {error && <p className="text-xs text-red-600 mb-2">{error}</p>}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
+        <input value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder="Ej: Conóceme en 40 segundos" className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs" />
+        <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Link de YouTube, Instagram, etc." className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs" />
+      </div>
+      <div className="flex justify-end gap-2">
+        <button type="button" onClick={onCancelar} className="text-xs font-semibold text-neutral-500 px-3 py-1.5">
+          Cancelar
+        </button>
+        <button type="button" onClick={handleGuardar} disabled={guardando} className="text-xs font-bold text-white bg-accent hover:bg-accent-dark disabled:opacity-40 px-3 py-1.5 rounded-lg">
+          {guardando ? "..." : "Guardar"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ===================== CONÓCEME (filminas) =====================
+
+const TIPOS_FILMINA: { valor: TipoFilmina; label: string; icono: string; automatica?: boolean }[] = [
+  { valor: "texto_foto", label: "Texto + foto", icono: "👤" },
+  { valor: "foto", label: "Foto", icono: "🖼️" },
+  { valor: "video", label: "Video", icono: "▶️" },
+  { valor: "historia", label: "Mi historia (biografía completa)", icono: "📖", automatica: true },
+  { valor: "formacion", label: "Formación", icono: "🎓", automatica: true },
+  { valor: "trayectoria", label: "Trayectoria", icono: "🏆", automatica: true },
+  { valor: "fortalezas", label: "Fortalezas", icono: "💪", automatica: true },
+  { valor: "como_trabajo", label: "Cómo trabajo", icono: "🗣️" },
+  { valor: "logro", label: "Logro destacado", icono: "⭐" },
+];
+
+function etiquetaTipoFilmina(tipo: TipoFilmina) {
+  return TIPOS_FILMINA.find((t) => t.valor === tipo) ?? TIPOS_FILMINA[0];
+}
+
+function SeccionConoceme({ idProfesional }: { idProfesional: string }) {
+  const [filminas, setFilminas] = useState<FilminaProfesional[]>([]);
+  const [fotos, setFotos] = useState<FotoGaleriaProfesional[]>([]);
+  const [videos, setVideos] = useState<VideoProfesional[]>([]);
+  const [cargando, setCargando] = useState(true);
+  const [mostrarForm, setMostrarForm] = useState(false);
+  const [editando, setEditando] = useState<FilminaProfesional | null>(null);
+
+  function recargar() {
+    setCargando(true);
+    Promise.all([listarFilminas(idProfesional), listarGaleria(idProfesional), listarVideos(idProfesional)])
+      .then(([f, fo, v]) => {
+        setFilminas(f as FilminaProfesional[]);
+        setFotos(fo as FotoGaleriaProfesional[]);
+        setVideos(v as VideoProfesional[]);
+      })
+      .finally(() => setCargando(false));
+  }
+
+  useEffect(recargar, [idProfesional]);
+
+  function handleEliminar(f: FilminaProfesional) {
+    if (!confirm("¿Borrar esta filmina?")) return;
+    eliminarFilmina(f.id_filmina).then(recargar);
+  }
+
+  function handleToggleVisible(f: FilminaProfesional) {
+    toggleVisibleFilmina(f.id_filmina, !f.visible).then(recargar);
+  }
+
+  function handleMover(f: FilminaProfesional, direccion: "up" | "down") {
+    reordenarFilmina(idProfesional, f.id_filmina, direccion).then(recargar);
+  }
+
+  return (
+    <div className="mb-3">
+      {cargando ? (
+        <p className="text-xs text-neutral-400">Cargando...</p>
+      ) : filminas.length === 0 ? (
+        <p className="text-xs text-neutral-400 mb-2">Todavía no armaste ninguna filmina.</p>
+      ) : (
+        <div className="space-y-1.5 mb-2">
+          {filminas.map((f, idx) => {
+            const info = etiquetaTipoFilmina(f.tipo);
+            return (
+              <div key={f.id_filmina} className={`flex items-center gap-2 border border-neutral-200 rounded-lg px-3 py-2 ${f.visible ? "bg-white" : "bg-neutral-50 opacity-60"}`}>
+                <span className="text-xs font-bold text-neutral-400 w-4 text-center">{idx + 1}</span>
+                <span className="w-8 h-8 rounded-lg bg-accent-tint text-accent flex items-center justify-center text-sm shrink-0">{info.icono}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-neutral-800 truncate">{f.titulo || info.label}</p>
+                  <p className="text-xs text-neutral-400">{info.automatica ? "Se arma sola con lo que ya cargaste" : info.label}</p>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button type="button" disabled={idx === 0} onClick={() => handleMover(f, "up")} className="text-xs text-neutral-400 disabled:opacity-30">
+                    ▲
+                  </button>
+                  <button type="button" disabled={idx === filminas.length - 1} onClick={() => handleMover(f, "down")} className="text-xs text-neutral-400 disabled:opacity-30">
+                    ▼
+                  </button>
+                  <button type="button" onClick={() => handleToggleVisible(f)} title={f.visible ? "Ocultar" : "Mostrar"} className="text-sm">
+                    {f.visible ? "👁" : "🚫"}
+                  </button>
+                  <button type="button" onClick={() => setEditando(f)} className="text-xs font-semibold text-accent">
+                    Editar
+                  </button>
+                  <button type="button" onClick={() => handleEliminar(f)} className="text-xs font-semibold text-red-500">
+                    Borrar
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {editando && (
+        <FormFilmina
+          idProfesional={idProfesional}
+          filmina={editando}
+          fotos={fotos}
+          videos={videos}
+          onListo={() => {
+            setEditando(null);
+            recargar();
+          }}
+          onCancelar={() => setEditando(null)}
+        />
+      )}
+
+      {!editando &&
+        (mostrarForm ? (
+          <FormFilmina
+            idProfesional={idProfesional}
+            filmina={null}
+            fotos={fotos}
+            videos={videos}
+            onListo={() => {
+              setMostrarForm(false);
+              recargar();
+            }}
+            onCancelar={() => setMostrarForm(false)}
+          />
+        ) : (
+          <button type="button" onClick={() => setMostrarForm(true)} className="text-xs font-semibold text-accent">
+            + Agregar filmina
+          </button>
+        ))}
+    </div>
+  );
+}
+
+function FormFilmina({
+  idProfesional,
+  filmina,
+  fotos,
+  videos,
+  onListo,
+  onCancelar,
+}: {
+  idProfesional: string;
+  filmina: FilminaProfesional | null;
+  fotos: FotoGaleriaProfesional[];
+  videos: VideoProfesional[];
+  onListo: () => void;
+  onCancelar: () => void;
+}) {
+  const [tipo, setTipo] = useState<TipoFilmina>(filmina?.tipo ?? "texto_foto");
+  const [titulo, setTitulo] = useState(filmina?.titulo ?? "");
+  const [texto, setTexto] = useState(filmina?.texto ?? "");
+  const [idFoto, setIdFoto] = useState(filmina?.id_foto ?? "");
+  const [idVideo, setIdVideo] = useState(filmina?.id_video ?? "");
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const info = etiquetaTipoFilmina(tipo);
+  const necesitaFoto = tipo === "foto" || tipo === "texto_foto";
+  const necesitaVideo = tipo === "video";
+  const necesitaTexto = tipo === "texto_foto" || tipo === "como_trabajo" || tipo === "logro";
+
+  function handleGuardar() {
+    setError(null);
+    const formData = new FormData();
+    formData.set("tipo", tipo);
+    formData.set("titulo", titulo.trim());
+    if (necesitaTexto) formData.set("texto", texto.trim());
+    if (necesitaFoto && idFoto) formData.set("id_foto", idFoto);
+    if (necesitaVideo && idVideo) formData.set("id_video", idVideo);
+    setGuardando(true);
+    const promesa = filmina ? actualizarFilmina(filmina.id_filmina, formData) : crearFilmina(idProfesional, formData);
+    promesa
+      .then((res) => {
+        if (res.error) setError(res.error);
+        else onListo();
+      })
+      .finally(() => setGuardando(false));
+  }
+
+  return (
+    <div className="bg-neutral-50 border border-neutral-200 rounded-lg p-3 mt-2">
+      {error && <p className="text-xs text-red-600 mb-2">{error}</p>}
+      <div className="mb-2">
+        <label className="block text-xs font-medium text-neutral-600 mb-1">Tipo de filmina</label>
+        <select
+          value={tipo}
+          onChange={(e) => setTipo(e.target.value as TipoFilmina)}
+          disabled={Boolean(filmina)}
+          className="w-full border border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs disabled:bg-neutral-100"
+        >
+          {TIPOS_FILMINA.map((t) => (
+            <option key={t.valor} value={t.valor}>
+              {t.icono} {t.label}
+            </option>
+          ))}
+        </select>
+        {info.automatica && <p className="text-[11px] text-neutral-400 mt-1">Esta filmina se arma sola — no hace falta cargar nada más acá.</p>}
+      </div>
+
+      {!info.automatica && (
+        <input
+          value={titulo}
+          onChange={(e) => setTitulo(e.target.value)}
+          placeholder="Título de la filmina (opcional)"
+          className="w-full border border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs mb-2"
+        />
+      )}
+
+      {necesitaFoto && (
+        <select value={idFoto} onChange={(e) => setIdFoto(e.target.value)} className="w-full border border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs mb-2">
+          <option value="">Elegí una foto de la galería...</option>
+          {fotos.map((f) => (
+            <option key={f.id_foto} value={f.id_foto}>
+              {f.titulo || "Sin título"}
+            </option>
+          ))}
+        </select>
+      )}
+
+      {necesitaVideo && (
+        <select value={idVideo} onChange={(e) => setIdVideo(e.target.value)} className="w-full border border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs mb-2">
+          <option value="">Elegí un video...</option>
+          {videos.map((v) => (
+            <option key={v.id_video} value={v.id_video}>
+              {v.titulo}
+            </option>
+          ))}
+        </select>
+      )}
+
+      {necesitaTexto && (
+        <textarea
+          value={texto}
+          onChange={(e) => setTexto(e.target.value)}
+          rows={3}
+          placeholder="Texto de la filmina"
+          className="w-full border border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs mb-2"
+        />
+      )}
+
       <div className="flex justify-end gap-2">
         <button type="button" onClick={onCancelar} className="text-xs font-semibold text-neutral-500 px-3 py-1.5">
           Cancelar
