@@ -29,9 +29,9 @@ async function sesionActual() {
 
 // Fee, gasto fijo, pagos y compensaciones mueven plata real que la marca le
 // debe a WiiGo — antes exigía ser Dueño siempre; ahora también puede
-// hacerlo un operativo cuyo Rol (Usuarios → Roles) incluya la pantalla
-// "situacion-marca". Ver la situación (lecturas) queda abierto a cualquiera
-// logueado, igual que antes.
+// hacerlo un operativo cuya Área (Organización → Áreas) incluya la
+// pantalla "situacion-marca". Ver la situación (lecturas) queda abierto a
+// cualquiera logueado, igual que antes.
 async function requireAdmin() {
   const sesion = await obtenerSesionConPantallas();
   if (!puedeVerPantalla(sesion, "situacion-marca")) {

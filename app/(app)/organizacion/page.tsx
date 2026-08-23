@@ -1,4 +1,4 @@
-import { getSupabaseServerClient, type Local, type Usuario, type Rol } from "@/lib/supabase";
+import { getSupabaseServerClient, type Local, type Usuario } from "@/lib/supabase";
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import PantallaBloqueada from "@/components/PantallaBloqueada";
 import OrganizacionApp from "@/components/OrganizacionApp";
@@ -12,14 +12,16 @@ export default async function OrganizacionPage() {
   const esAdmin = sesion?.rol === "admin";
   const supabase = getSupabaseServerClient();
 
-  const [localesRes, usuariosRes, rolesRes] = await Promise.all([
+  const [localesRes, usuariosRes] = await Promise.all([
     supabase.from("locales").select("*").eq("estado", "ACTIVO").order("nombre", { ascending: true }),
     // La gestión de usuarios sigue siendo estrictamente admin-only, no
     // delegable como el resto de esta pantalla (ver Usuarios → Permisos).
     esAdmin
-      ? supabase.from("usuarios").select("id_usuario, nombre, email, rol, estado, fecha_alta, permisos, id_rol").order("nombre", { ascending: true })
+      ? supabase
+          .from("usuarios")
+          .select("id_usuario, nombre, email, rol, estado, fecha_alta, permisos, id_persona, areas_acceso")
+          .order("nombre", { ascending: true })
       : Promise.resolve({ data: null }),
-    esAdmin ? supabase.from("roles").select("*").eq("estado", "ACTIVO").order("nombre", { ascending: true }) : Promise.resolve({ data: null }),
   ]);
 
   return (
@@ -27,7 +29,6 @@ export default async function OrganizacionPage() {
       locales={(localesRes.data ?? []) as Local[]}
       esAdmin={esAdmin}
       usuarios={(usuariosRes.data ?? []) as Omit<Usuario, "password_hash">[]}
-      roles={(rolesRes.data ?? []) as Rol[]}
     />
   );
 }

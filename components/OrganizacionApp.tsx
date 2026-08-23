@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useState } from "react";
-import type { Local, Area, Puesto, Usuario, Rol } from "@/lib/supabase";
+import type { Local, Area, Puesto, Usuario } from "@/lib/supabase";
 import { PANTALLAS_DISPONIBLES } from "@/lib/pantallas";
 import UsuariosApp from "@/components/UsuariosApp";
 import {
@@ -66,12 +66,10 @@ export default function OrganizacionApp({
   locales,
   esAdmin,
   usuarios,
-  roles,
 }: {
   locales: Local[];
   esAdmin: boolean;
   usuarios: Omit<Usuario, "password_hash">[];
-  roles: Rol[];
 }) {
   const [tab, setTab] = useState<Tab>("personas");
   const [areas, setAreas] = useState<Area[]>([]);
@@ -129,7 +127,7 @@ export default function OrganizacionApp({
       ) : tab === "puestos" ? (
         <TabPuestos puestos={puestos} areas={areas} onCambio={recargarTodo} />
       ) : tab === "usuarios" && esAdmin ? (
-        <UsuariosApp usuarios={usuarios} roles={roles} personas={personas} />
+        <UsuariosApp usuarios={usuarios} areas={areas} personas={personas} />
       ) : (
         <TabOrganigrama personas={personas} />
       )}
@@ -531,6 +529,8 @@ function TabAreas({ areas, esAdmin, onCambio }: { areas: Area[]; esAdmin: boolea
   );
 }
 
+const GRUPOS_PANTALLAS = [...new Set(PANTALLAS_DISPONIBLES.map((p) => p.grupo))];
+
 function FormArea({ area, esAdmin, onGuardado }: { area?: Area; esAdmin: boolean; onGuardado: () => void }) {
   const [pantallas, setPantallas] = useState<string[]>(area?.pantallas ?? []);
   const [guardando, setGuardando] = useState(false);
@@ -538,6 +538,14 @@ function FormArea({ area, esAdmin, onGuardado }: { area?: Area; esAdmin: boolean
 
   function toggle(clave: string) {
     setPantallas((prev) => (prev.includes(clave) ? prev.filter((p) => p !== clave) : [...prev, clave]));
+  }
+
+  function toggleGrupo(grupo: string) {
+    const clavesGrupo = PANTALLAS_DISPONIBLES.filter((p) => p.grupo === grupo).map((p) => p.clave);
+    const yaCompleto = clavesGrupo.every((c) => pantallas.includes(c));
+    setPantallas((prev) =>
+      yaCompleto ? prev.filter((c) => !clavesGrupo.includes(c)) : [...new Set([...prev, ...clavesGrupo])]
+    );
   }
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -570,15 +578,29 @@ function FormArea({ area, esAdmin, onGuardado }: { area?: Area; esAdmin: boolean
           </p>
           <p className="text-[11px] text-neutral-400 mb-2">
             Cualquier persona con este área asignada en Organización va a poder ver estas pantallas al loguearse — a
-            menos que tenga un Rol manual puesto como excepción.
+            menos que su usuario tenga otras Áreas puestas a mano como excepción.
           </p>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-            {PANTALLAS_DISPONIBLES.map((p) => (
-              <label key={p.clave} className="flex items-center gap-1.5 text-sm bg-neutral-50 border border-neutral-200 rounded-lg px-2.5 py-1.5 cursor-pointer">
-                <input type="checkbox" checked={pantallas.includes(p.clave)} onChange={() => toggle(p.clave)} />
-                {p.label}
-              </label>
-            ))}
+          <div className="space-y-3">
+            {GRUPOS_PANTALLAS.map((grupo) => {
+              const items = PANTALLAS_DISPONIBLES.filter((p) => p.grupo === grupo);
+              const completo = items.every((p) => pantallas.includes(p.clave));
+              return (
+                <div key={grupo} className="bg-neutral-50 border border-neutral-200 rounded-lg p-2.5">
+                  <label className="flex items-center gap-1.5 text-xs font-bold text-neutral-700 mb-1.5 cursor-pointer">
+                    <input type="checkbox" checked={completo} onChange={() => toggleGrupo(grupo)} />
+                    {grupo} <span className="font-normal text-neutral-400">(marcar todo)</span>
+                  </label>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 pl-1">
+                    {items.map((p) => (
+                      <label key={p.clave} className="flex items-center gap-1.5 text-sm bg-white border border-neutral-200 rounded-lg px-2.5 py-1.5 cursor-pointer">
+                        <input type="checkbox" checked={pantallas.includes(p.clave)} onChange={() => toggle(p.clave)} />
+                        {p.label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

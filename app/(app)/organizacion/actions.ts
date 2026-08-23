@@ -18,17 +18,17 @@ function number(formData: FormData, name: string) {
   return Number.isFinite(n) ? n : null;
 }
 
-// Igual que Situación de marca: lo puede tocar el Dueño o cualquier Rol
-// (Usuarios → Roles) que incluya la pantalla "organizacion".
+// Igual que Situación de marca: lo puede tocar el Dueño o cualquiera cuya
+// Área (o persona vinculada) incluya la pantalla "organizacion".
 async function requireAcceso() {
   const sesion = await obtenerSesionConPantallas();
   if (!puedeVerPantalla(sesion, "organizacion")) return "No tenés permiso para hacer esto.";
   return null;
 }
 
-// Qué pantallas ve cada Área es, en el fondo, un control de acceso — igual
-// de sensible que un Rol. Solo el Dueño lo puede tocar, para que nadie se
-// otorgue más acceso a sí mismo editando su propia área.
+// Qué pantallas ve cada Área es, en el fondo, un control de acceso — solo
+// el Dueño lo puede tocar, para que nadie se otorgue más acceso a sí mismo
+// editando su propia área.
 async function esDueño() {
   const sesion = await obtenerSesionConPantallas();
   return sesion?.rol === "admin";

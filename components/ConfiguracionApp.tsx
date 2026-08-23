@@ -143,7 +143,7 @@ export default function ConfiguracionApp({
     <div className="max-w-xl">
       <h1 className="text-lg font-semibold text-neutral-900 mb-1">Configuración</h1>
       <p className="text-sm text-neutral-500 mb-6">
-        Parámetros generales del sistema WiiGo. Los usuarios y roles se mudaron a Organización → Usuarios.
+        Parámetros generales del sistema WiiGo. Los usuarios se mudaron a Organización → Usuarios.
       </p>
 
       <form action={handleSubmit} className="bg-white border border-neutral-200 rounded-xl p-5">
