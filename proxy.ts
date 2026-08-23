@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 
 export const config = {
-  // /self-checkout queda público (lo usan los clientes en el local, sin login).
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|self-checkout|login).*)"],
+  // /self-checkout y /asesor quedan públicos (los usan los clientes en el local, sin login).
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|self-checkout|asesor|login).*)"],
 };
 
 export async function proxy(req: NextRequest) {

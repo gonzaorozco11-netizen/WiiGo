@@ -92,6 +92,7 @@ export type Marca = {
   royalty_porcentaje: number | null;
   fecha_ingreso: string | null;
   estado: string;
+  visible_asesor: boolean;
   observaciones: string | null;
   iva_royalty_porcentaje: number | null;
   trasladar_comision_cobro: boolean;
@@ -124,6 +125,7 @@ export type Producto = {
   puntos: number;
   imagen: string | null;
   estado: string;
+  visible_asesor: boolean;
   fecha_alta: string;
   fecha_actualizacion: string;
 };
