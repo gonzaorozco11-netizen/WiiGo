@@ -60,6 +60,27 @@ export async function crearUsuario(formData: FormData): Promise<{ error: string 
   }
 }
 
+export async function actualizarUsuario(id: string, formData: FormData): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+
+  const nombre = text(formData, "nombre");
+  const email = text(formData, "email")?.toLowerCase() ?? null;
+  const rol = text(formData, "rol") ?? "operativo";
+  if (!nombre) return { error: "El nombre es obligatorio" };
+  if (!email) return { error: "El email es obligatorio" };
+
+  try {
+    const supabase = getSupabaseServerClient();
+    const { error } = await supabase.from("usuarios").update({ nombre, email, rol }).eq("id_usuario", id);
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/organizacion");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo actualizar el usuario" };
+  }
+}
+
 export async function cambiarEstadoUsuario(id: string, estado: string): Promise<{ error: string | null }> {
   const permisoError = await requireAdmin();
   if (permisoError) return { error: permisoError };
