@@ -2,9 +2,9 @@
 
 import { useMemo, useState } from "react";
 import Image from "next/image";
-import type { Local, Marca, Producto, Objetivo, FiltroProducto, FichaProducto, Subcategoria } from "@/lib/supabase";
+import type { Local, Marca, Producto, Objetivo, FiltroProducto, FichaProducto, Subcategoria, Profesional } from "@/lib/supabase";
 
-type Pantalla = "home" | "objetivo" | "resultado" | "marcas" | "ofertas" | "proximamente";
+type Pantalla = "home" | "objetivo" | "resultado" | "marcas" | "ofertas" | "profesionales";
 
 const SAGE = "#b6bca2";
 const SAGE_DARK = "#646759";
@@ -83,6 +83,7 @@ export default function AsesorApp({
   marcas,
   productos,
   subcategorias,
+  profesionales,
   objetivos,
   filtros,
   fichaPorProducto,
@@ -93,6 +94,7 @@ export default function AsesorApp({
   marcas: Marca[];
   productos: Producto[];
   subcategorias: Subcategoria[];
+  profesionales: Profesional[];
   objetivos: Objetivo[];
   filtros: FiltroProducto[];
   fichaPorProducto: Record<string, FichaProducto>;
@@ -103,7 +105,6 @@ export default function AsesorApp({
   const [busqueda, setBusqueda] = useState("");
   const [objetivoId, setObjetivoId] = useState<string | null>(null);
   const [filtrosSeleccionados, setFiltrosSeleccionados] = useState<Set<string>>(new Set());
-  const [seccionProximamente, setSeccionProximamente] = useState("");
   const [marcaId, setMarcaId] = useState<string | null>(null);
   const [subcategoriaId, setSubcategoriaId] = useState<string | null>(null);
   const [marcaOfertaId, setMarcaOfertaId] = useState<string | null>(null);
@@ -177,11 +178,6 @@ export default function AsesorApp({
     setObjetivoId(null);
     setFiltrosSeleccionados(new Set());
     setPantalla("objetivo");
-  }
-
-  function irAProximamente(nombre: string) {
-    setSeccionProximamente(nombre);
-    setPantalla("proximamente");
   }
 
   function irAMarcas() {
@@ -314,7 +310,7 @@ export default function AsesorApp({
               </span>
               <span className="text-[15px] font-extrabold leading-tight">Ofertas</span>
             </button>
-            <button onClick={() => irAProximamente("Profesionales")} className="flex flex-col items-center gap-3 rounded-2xl border border-[#d8d8d8] bg-white p-6 shadow-sm aspect-square justify-center">
+            <button onClick={() => setPantalla("profesionales")} className="flex flex-col items-center gap-3 rounded-2xl border border-[#d8d8d8] bg-white p-6 shadow-sm aspect-square justify-center">
               <span className="flex items-center justify-center w-14 h-14 rounded-full text-white" style={{ background: C4 }}>
                 <IconoPersona className="w-7 h-7" />
               </span>
@@ -656,15 +652,56 @@ export default function AsesorApp({
         </div>
       )}
 
-      {pantalla === "proximamente" && (
+      {pantalla === "profesionales" && (
         <div className="flex-1 flex flex-col">
           <Navbar onVolver={volverAInicio} onInicio={volverAInicio} />
-          <div className="flex-1 flex flex-col items-center justify-center px-8 text-center gap-3">
-            <span className="flex items-center justify-center w-16 h-16 rounded-full text-white mb-2" style={{ background: SAGE }}>
-              <IconoEtiqueta className="w-8 h-8" />
-            </span>
-            <h2 className="text-xl font-extrabold">{seccionProximamente}</h2>
-            <p className="text-[#686868] text-sm max-w-xs">Muy pronto vas a poder ver esta sección acá. Estamos trabajando en eso.</p>
+          <div className="flex-1 px-6 pt-6 pb-10 max-w-md mx-auto w-full">
+            <h2 className="text-2xl font-extrabold mb-6">Profesionales</h2>
+
+            {profesionales.length === 0 ? (
+              <p className="text-[#686868] text-sm text-center py-12">
+                Todav&iacute;a no hay profesionales cargados.
+              </p>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {profesionales.map((prof) => (
+                  <div key={prof.id_profesional} className="rounded-2xl border border-[#d8d8d8] bg-white p-4 shadow-sm flex gap-3">
+                    <span className="w-14 h-14 rounded-full overflow-hidden shrink-0 flex items-center justify-center font-extrabold text-[18px]" style={{ background: SAGE_TINT, color: SAGE_DARK }}>
+                      {prof.foto ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={prof.foto} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        prof.nombre.charAt(0).toUpperCase()
+                      )}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[15px] font-extrabold leading-tight">
+                        {prof.nombre} {prof.apellido ?? ""}
+                      </p>
+                      {(prof.titulo || prof.especialidad) && (
+                        <p className="text-[11px] font-bold" style={{ color: SAGE_DARK }}>
+                          {[prof.titulo, prof.especialidad].filter(Boolean).join(" · ")}
+                        </p>
+                      )}
+                      {prof.bio && (
+                        <p className="text-[11px] text-[#686868] leading-snug mt-1 line-clamp-2">{prof.bio}</p>
+                      )}
+                      {prof.link_reserva && (
+                        <a
+                          href={prof.link_reserva}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-block mt-2 text-[11px] font-extrabold px-3 py-1.5 rounded-full text-white"
+                          style={{ background: C4 }}
+                        >
+                          Reservar turno
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
