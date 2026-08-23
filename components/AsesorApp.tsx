@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Image from "next/image";
 import type { Local, Marca, Producto, Objetivo, FiltroProducto, FichaProducto, Subcategoria } from "@/lib/supabase";
 
-type Pantalla = "home" | "objetivo" | "resultado" | "marcas" | "proximamente";
+type Pantalla = "home" | "objetivo" | "resultado" | "marcas" | "ofertas" | "proximamente";
 
 const SAGE = "#b6bca2";
 const SAGE_DARK = "#646759";
@@ -17,6 +17,12 @@ const C4 = "#5f92a8"; // profesionales
 function formatoPrecio(precio: number | null) {
   if (precio == null) return "";
   return "$" + new Intl.NumberFormat("es-AR").format(Math.round(precio));
+}
+
+function precioConDescuento(p: Producto) {
+  const base = p.precio_venta ?? 0;
+  const descuento = p.descuento_porcentaje ?? 0;
+  return descuento > 0 ? Math.round(base * (1 - descuento / 100)) : base;
 }
 
 function IconoBuscar({ className }: { className?: string }) {
@@ -141,6 +147,11 @@ export default function AsesorApp({
       (p) => p.id_marca === marcaId && (!subcategoriaId || p.id_subcategoria === subcategoriaId)
     );
   }, [productos, marcaId, subcategoriaId]);
+
+  const productosEnOferta = useMemo(
+    () => productos.filter((p) => (p.descuento_porcentaje ?? 0) > 0),
+    [productos]
+  );
 
   function irAObjetivo() {
     setBusqueda("");
@@ -268,7 +279,7 @@ export default function AsesorApp({
               </span>
               <span className="text-[15px] font-extrabold leading-tight">Marcas y<br />productos</span>
             </button>
-            <button onClick={() => irAProximamente("Ofertas")} className="flex flex-col items-center gap-3 rounded-2xl border border-[#d8d8d8] bg-white p-6 shadow-sm aspect-square justify-center">
+            <button onClick={() => setPantalla("ofertas")} className="flex flex-col items-center gap-3 rounded-2xl border border-[#d8d8d8] bg-white p-6 shadow-sm aspect-square justify-center">
               <span className="flex items-center justify-center w-14 h-14 rounded-full text-white" style={{ background: C3 }}>
                 <IconoEtiqueta className="w-7 h-7" />
               </span>
@@ -433,6 +444,65 @@ export default function AsesorApp({
                   </div>
                 )}
               </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {pantalla === "ofertas" && (
+        <div className="flex-1 flex flex-col">
+          <Navbar onVolver={volverAInicio} onInicio={volverAInicio} />
+          <div className="flex-1 px-6 pt-6 pb-10 max-w-3xl mx-auto w-full">
+            <h2 className="text-2xl font-extrabold mb-1">Ofertas</h2>
+            <p className="text-[13px] text-[#686868] mb-5">
+              {productosEnOferta.length} producto{productosEnOferta.length === 1 ? "" : "s"} con descuento
+            </p>
+
+            {productosEnOferta.length === 0 ? (
+              <p className="text-[#686868] text-sm text-center py-12">
+                Por ahora no hay productos con descuento cargado.
+              </p>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {productosEnOferta.map((p) => {
+                  const ficha = fichaPorProducto[p.id_producto];
+                  const marca = marcaPorId[p.id_marca];
+                  return (
+                    <div key={p.id_producto} className="relative rounded-xl border border-[#d8d8d8] bg-white overflow-hidden shadow-sm flex flex-col">
+                      <span
+                        className="absolute top-2 left-2 z-10 text-[10px] font-extrabold px-2 py-0.5 rounded-full text-white"
+                        style={{ background: C3 }}
+                      >
+                        -{p.descuento_porcentaje}%
+                      </span>
+                      <div className="h-20 bg-gradient-to-br from-[#f0f2ec] to-[#d8d8d8] flex items-center justify-center">
+                        {(ficha?.imagen_principal || p.imagen) ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={ficha?.imagen_principal || p.imagen || ""} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <span style={{ color: SAGE_DARK }}>
+                            <IconoEtiqueta className="w-6 h-6" />
+                          </span>
+                        )}
+                      </div>
+                      <div className="p-2.5 flex flex-col gap-1">
+                        {marca && (
+                          <p className="text-[9px] font-bold uppercase tracking-wide" style={{ color: SAGE_DARK }}>
+                            {marca.nombre}
+                          </p>
+                        )}
+                        <p className="text-[12px] font-extrabold leading-tight line-clamp-2">{p.nombre}</p>
+                        <div className="flex items-baseline gap-1.5 mt-1">
+                          <span className="text-[13px] font-extrabold" style={{ color: C3 }}>
+                            {formatoPrecio(precioConDescuento(p))}
+                          </span>
+                          <span className="text-[10px] text-[#a8a8a8] line-through">{formatoPrecio(p.precio_venta)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
         </div>
