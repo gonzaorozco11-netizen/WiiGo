@@ -1033,6 +1033,11 @@ export default function AsesorApp({
                         <p className="text-[10.5px] text-[#a8a8a8]">En el consultorio</p>
                       )}
                     </div>
+                    {profesionalActual.precio_presencial != null && (
+                      <span className="ml-auto text-[12px] font-extrabold whitespace-nowrap">
+                        {formatoPrecio(profesionalActual.precio_presencial)}
+                      </span>
+                    )}
                   </button>
                   <button
                     onClick={() => setModalidadTurno("online")}
@@ -1049,6 +1054,11 @@ export default function AsesorApp({
                       <p className="text-[13px] font-extrabold">Online</p>
                       <p className="text-[10.5px] text-[#a8a8a8]">Por videollamada</p>
                     </div>
+                    {profesionalActual.precio_online != null && (
+                      <span className="ml-auto text-[12px] font-extrabold whitespace-nowrap">
+                        {formatoPrecio(profesionalActual.precio_online)}
+                      </span>
+                    )}
                   </button>
                 </div>
 

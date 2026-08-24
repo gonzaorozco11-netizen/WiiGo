@@ -1213,6 +1213,17 @@ function FormEditarProfesional({
             Si cargás los dos links, el cliente va a poder elegir modalidad antes de reservar.
           </p>
         </div>
+        <div>
+          <label className="block text-xs font-medium text-neutral-600 mb-1">Precio — Presencial</label>
+          <input type="number" name="precio_presencial" defaultValue={profesional.precio_presencial ?? ""} placeholder="Ej: 15000" className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-neutral-600 mb-1">Precio — Online</label>
+          <input type="number" name="precio_online" defaultValue={profesional.precio_online ?? ""} placeholder="Ej: 12000" className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
+          <p className="text-[11px] text-neutral-400 mt-1">
+            Solo informativo — el cliente ve el precio antes de reservar, pero el cobro lo hace la profesional directo (efectivo o transferencia) en la consulta.
+          </p>
+        </div>
       </div>
 
       <SeccionFormLabel>👁️ Publicación</SeccionFormLabel>

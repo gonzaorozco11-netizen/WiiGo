@@ -474,6 +474,8 @@ export type Profesional = {
   link_reserva: string | null;
   link_reserva_online: string | null;
   ciudad: string | null;
+  precio_presencial: number | null;
+  precio_online: number | null;
   dni: string | null;
   estado: string;
   publicado: boolean;

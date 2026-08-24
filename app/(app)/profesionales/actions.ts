@@ -52,7 +52,7 @@ export async function listarProfesionales() {
   const { data, error } = await supabase
     .from("profesionales")
     .select(
-      "id_profesional, nombre, apellido, categoria, titulo, especialidad, bio, biografia_completa, foto, telefono, email, dni, fecha_nacimiento, matricula, tipo_atencion, link_reserva, link_reserva_online, ciudad, estado, publicado, fecha_alta, observaciones"
+      "id_profesional, nombre, apellido, categoria, titulo, especialidad, bio, biografia_completa, foto, telefono, email, dni, fecha_nacimiento, matricula, tipo_atencion, link_reserva, link_reserva_online, ciudad, precio_presencial, precio_online, estado, publicado, fecha_alta, observaciones"
     )
     .order("nombre", { ascending: true });
   if (error) throw new Error(friendlyDbError(error));
@@ -107,6 +107,8 @@ export async function crearProfesional(formData: FormData): Promise<{ error: str
         link_reserva: text(formData, "link_reserva"),
         link_reserva_online: text(formData, "link_reserva_online"),
         ciudad: text(formData, "ciudad"),
+        precio_presencial: number(formData, "precio_presencial"),
+        precio_online: number(formData, "precio_online"),
         estado: "ACTIVO",
         publicado: bool(formData, "publicado"),
         observaciones: text(formData, "observaciones"),
@@ -174,6 +176,8 @@ export async function actualizarProfesional(idProfesional: string, formData: For
       link_reserva: text(formData, "link_reserva"),
       link_reserva_online: text(formData, "link_reserva_online"),
       ciudad: text(formData, "ciudad"),
+      precio_presencial: number(formData, "precio_presencial"),
+      precio_online: number(formData, "precio_online"),
       publicado: bool(formData, "publicado"),
       observaciones: text(formData, "observaciones"),
     })
