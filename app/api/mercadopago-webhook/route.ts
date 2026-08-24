@@ -9,7 +9,7 @@
 // https://www.mercadopago.com.ar/developers/es/docs/qr-code/notifications
 
 import { createHmac, timingSafeEqual } from "crypto";
-import { obtenerOrdenMp, obtenerPagoMp, mapearFormaPagoMp } from "@/lib/mercadopago";
+import { obtenerOrdenMp, mapearFormaPagoMp } from "@/lib/mercadopago";
 import { confirmarCobro } from "@/app/(app)/cobros-efectivo/actions";
 
 function firmaValida(req: Request, dataId: string): boolean {
@@ -79,12 +79,8 @@ export async function POST(req: Request) {
       return new Response(null, { status: 200 });
     }
 
-    const idPago: string | undefined = orden?.transactions?.payments?.[0]?.id;
-    let formaPagoMp: ReturnType<typeof mapearFormaPagoMp> = "CREDITO";
-    if (idPago) {
-      const pago = await obtenerPagoMp(String(idPago));
-      formaPagoMp = mapearFormaPagoMp(pago);
-    }
+    const paymentMethod = orden?.transactions?.payments?.[0]?.payment_method;
+    const formaPagoMp = mapearFormaPagoMp(paymentMethod ?? {});
 
     const total = Number(orden?.total_amount ?? 0);
     const resultado = await confirmarCobro(idVenta, total, formaPagoMp, "Mercado Pago (automático)");

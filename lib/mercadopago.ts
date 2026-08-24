@@ -144,31 +144,34 @@ export async function obtenerOrdenMp(idOrden: string) {
   return mpFetch(`/v1/orders/${idOrden}`);
 }
 
-export async function obtenerPagoMp(idPago: string) {
-  return mpFetch(`/v1/payments/${idPago}`);
-}
-
 // Traduce la forma de pago real que usó el cliente (que informa Mercado
-// Pago en el pago) a las mismas categorías que ya se cargan en
-// Configuración → Comisión de Mercado Pago (ver FORMAS_PAGO_MP en
-// app/(app)/cobros-efectivo/actions.ts) — así la comisión se calcula con la
-// tasa correcta según cómo pagó, no una tasa única.
+// Pago dentro de la propia orden, en transactions.payments[0].payment_method)
+// a las mismas categorías que ya se cargan en Configuración → Comisión de
+// Mercado Pago (ver FORMAS_PAGO_MP en app/(app)/cobros-efectivo/actions.ts)
+// — así la comisión se calcula con la tasa correcta según cómo pagó, no una
+// tasa única.
+//
+// Los ids de pago de la Orders API (con prefijo "PAY...") no son
+// compatibles con el endpoint clásico GET /v1/payments/{id} (que espera un
+// id numérico y devuelve 404 con estos) — por eso la forma de pago se lee
+// directo del objeto payment_method que ya viene incluido en la orden, sin
+// necesidad de una llamada aparte.
 //
 // Ojo: distinguir "cuotas sin interés" de "crédito común" no viene
 // explícito y directo en el pago — se infiere de la cantidad de cuotas.
 // Puede no ser 100% preciso en promociones bancarias raras; conviene
 // revisar los primeros cobros reales para confirmar que la comisión
 // calculada tiene sentido.
-export function mapearFormaPagoMp(pago: {
-  payment_type_id?: string;
+export function mapearFormaPagoMp(paymentMethod: {
+  type?: string;
   installments?: number;
 }): "DINERO_CUENTA" | "DEBITO" | "CUOTAS_SIN_INTERES" | "PREPAGA" | "CREDITO" {
-  const tipo = pago.payment_type_id;
+  const tipo = paymentMethod.type;
   if (tipo === "account_money") return "DINERO_CUENTA";
   if (tipo === "debit_card") return "DEBITO";
   if (tipo === "prepaid_card") return "PREPAGA";
   if (tipo === "credit_card") {
-    return (pago.installments ?? 1) > 1 ? "CUOTAS_SIN_INTERES" : "CREDITO";
+    return (paymentMethod.installments ?? 1) > 1 ? "CUOTAS_SIN_INTERES" : "CREDITO";
   }
   return "CREDITO";
 }
