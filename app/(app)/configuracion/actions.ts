@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos";
-import { obtenerUsuarioMp, crearSucursalMp, crearCajaMp } from "@/lib/mercadopago";
+import { obtenerUsuarioMp, buscarSucursalMp, crearSucursalMp, buscarCajaMp, crearCajaMp } from "@/lib/mercadopago";
 
 async function requireEditarConfiguracion(): Promise<string | null> {
   const sesion = await obtenerSesionConPermisos();
@@ -202,20 +202,25 @@ export async function conectarMercadoPagoQR(): Promise<{ error: string | null; p
     const externalStoreId = "WIIGOTOTEM";
     const externalPosId = "WIIGOTOTEMCAJA1";
 
-    const sucursal = await crearSucursalMp(usuario.id, "WiiGo Totem", externalStoreId, {
-      calle: "Aristides Villanueva",
-      altura: "256",
-      ciudad: "Mendoza",
-      provincia: "Mendoza",
-      latitud: -32.8967,
-      longitud: -68.8548,
-    });
-    await crearCajaMp({
-      storeId: sucursal.id,
-      externalStoreId,
-      externalPosId,
-      nombre: "Totem self-checkout",
-    });
+    const sucursal =
+      (await buscarSucursalMp(usuario.id, externalStoreId)) ??
+      (await crearSucursalMp(usuario.id, "WiiGo Totem", externalStoreId, {
+        calle: "Aristides Villanueva",
+        altura: "256",
+        ciudad: "Mendoza",
+        provincia: "Mendoza",
+        latitud: -32.8967,
+        longitud: -68.8548,
+      }));
+
+    if (!(await buscarCajaMp(externalPosId, externalStoreId))) {
+      await crearCajaMp({
+        storeId: sucursal.id,
+        externalStoreId,
+        externalPosId,
+        nombre: "Totem self-checkout",
+      });
+    }
 
     let error = await guardarParametro(supabase, "MP_USER_ID", String(usuario.id), "Mercado Pago: id de usuario/vendedor conectado");
     if (!error) {

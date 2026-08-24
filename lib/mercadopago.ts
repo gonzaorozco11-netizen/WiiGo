@@ -44,6 +44,22 @@ export async function obtenerUsuarioMp(): Promise<{ id: number; nickname?: strin
   return mpFetch("/users/me");
 }
 
+// Si ya se había creado antes (mismo external_id), Mercado Pago no deja
+// crearla de nuevo — hay que buscarla y reusarla. Ver crearSucursalMp/
+// crearCajaMp abajo, que siguen existiendo por si hace falta crear una
+// sucursal o caja nueva desde cero.
+export async function buscarSucursalMp(userId: number, externalId: string): Promise<{ id: string } | null> {
+  const data = await mpFetch(`/users/${userId}/stores/search?external_id=${encodeURIComponent(externalId)}`);
+  const encontrada = data?.results?.[0];
+  return encontrada ? { id: encontrada.id } : null;
+}
+
+export async function buscarCajaMp(externalPosId: string, externalStoreId: string): Promise<{ id: number; external_id: string } | null> {
+  const data = await mpFetch(`/pos?external_id=${encodeURIComponent(externalPosId)}&external_store_id=${encodeURIComponent(externalStoreId)}`);
+  const encontrada = data?.results?.[0];
+  return encontrada ? { id: encontrada.id, external_id: encontrada.external_id } : null;
+}
+
 export async function crearSucursalMp(
   userId: number,
   nombre: string,
