@@ -199,8 +199,8 @@ export async function conectarMercadoPagoQR(): Promise<{ error: string | null; p
     const usuario = await obtenerUsuarioMp();
     const supabase = getSupabaseServerClient();
 
-    const externalStoreId = "WIIGO-TOTEM";
-    const externalPosId = "WIIGO-TOTEM-CAJA1";
+    const externalStoreId = "WIIGOTOTEM";
+    const externalPosId = "WIIGOTOTEMCAJA1";
 
     const sucursal = await crearSucursalMp(usuario.id, "WiiGo Totem", externalStoreId, {
       calle: "Aristides Villanueva",
