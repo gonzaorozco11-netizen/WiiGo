@@ -37,6 +37,12 @@ function plataformaVideo(url: string): string {
   return "Video";
 }
 
+// Links que no se pueden mostrar "adentro" de otra pantalla (apps de chat,
+// no páginas de reserva) — a esos hay que llevarlos afuera directo.
+function esLinkNoEmbebible(url: string): boolean {
+  return /(wa\.me|api\.whatsapp\.com|whatsapp\.com)/i.test(url);
+}
+
 function formatoPrecio(precio: number | null) {
   if (precio == null) return "";
   return "$" + new Intl.NumberFormat("es-AR").format(Math.round(precio));
@@ -1060,7 +1066,24 @@ export default function AsesorApp({
               </>
             )}
 
-            {!eligiendoModalidadTurno && linkReservaFinal && (
+            {!eligiendoModalidadTurno && linkReservaFinal && esLinkNoEmbebible(linkReservaFinal) && (
+              <div className="flex-1 flex flex-col items-center justify-center gap-4 text-center">
+                <p className="text-[13px] text-[#686868] max-w-[240px]">
+                  Este link se abre afuera del kiosco — tocá el botón para continuar.
+                </p>
+                <a
+                  href={linkReservaFinal}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-center text-[13px] font-extrabold text-white py-3 px-8 rounded-full"
+                  style={{ background: SAGE_DARK }}
+                >
+                  📅 Continuar
+                </a>
+              </div>
+            )}
+
+            {!eligiendoModalidadTurno && linkReservaFinal && !esLinkNoEmbebible(linkReservaFinal) && (
               <>
                 <p className="text-[11px] font-bold mb-2" style={{ color: SAGE_DARK }}>
                   {modalidadTurno === "online" ? "💻 Turno online" : "🏠 Turno presencial"} · {profesionalActual.nombre}
