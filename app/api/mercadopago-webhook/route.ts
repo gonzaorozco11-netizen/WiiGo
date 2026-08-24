@@ -36,7 +36,22 @@ function firmaValida(req: Request, dataId: string): boolean {
 
   const a = Buffer.from(esperado);
   const b = Buffer.from(v1);
-  return a.length === b.length && timingSafeEqual(a, b);
+  const valida = a.length === b.length && timingSafeEqual(a, b);
+
+  // Log temporal de diagnóstico — no expone la clave secreta, solo lo que
+  // se recibió y lo que se calculó, para comparar. Sacar una vez resuelto.
+  if (!valida) {
+    console.error("MP webhook DEBUG:", {
+      signatureHeaderCruda: signature,
+      requestIdHeader: req.headers.get("x-request-id"),
+      manifest,
+      hashEsperado: esperado,
+      v1Recibido: v1,
+      secretLength: secret.length,
+    });
+  }
+
+  return valida;
 }
 
 export async function POST(req: Request) {
