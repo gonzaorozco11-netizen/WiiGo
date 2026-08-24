@@ -252,6 +252,10 @@ export default function AsesorApp({
     setSlideIndex((i) => Math.min(i + 1, slidesDelProfesionalActual.length - 1));
   }
 
+  function atrasSlide() {
+    setSlideIndex((i) => Math.max(i - 1, 0));
+  }
+
   function irAObjetivo() {
     setBusqueda("");
     setObjetivoId(null);
@@ -1154,7 +1158,15 @@ export default function AsesorApp({
               </div>
             )}
 
-            <div className="flex justify-end mt-4">
+            <div className="flex justify-between mt-4">
+              <button
+                onClick={atrasSlide}
+                disabled={slideIndex === 0}
+                className="text-[13px] font-bold disabled:opacity-30 px-3 py-2"
+                style={{ color: SAGE_DARK }}
+              >
+                ‹ atrás
+              </button>
               <button
                 onClick={siguienteSlide}
                 disabled={slideIndex === slidesDelProfesionalActual.length - 1}
