@@ -21,10 +21,18 @@ type Pantalla = "home" | "objetivo" | "resultado" | "marcas" | "ofertas" | "prof
 const SAGE = "#b6bca2";
 const SAGE_DARK = "#646759";
 const SAGE_TINT = "#f0f2ec";
+const CLAY = "#b97a52"; // acento cálido: destacados en el perfil de profesionales
 const C1 = "#8fa377"; // encontrar productos
 const C2 = "#d99a5b"; // marcas y productos
 const C3 = "#d97561"; // ofertas
 const C4 = "#5f92a8"; // profesionales
+
+function plataformaVideo(url: string): string {
+  if (/instagram\.com/i.test(url)) return "Instagram";
+  if (/(youtube\.com|youtu\.be)/i.test(url)) return "YouTube";
+  if (/tiktok\.com/i.test(url)) return "TikTok";
+  return "Video";
+}
 
 function formatoPrecio(precio: number | null) {
   if (precio == null) return "";
@@ -231,12 +239,17 @@ export default function AsesorApp({
   const trayectoriaDelProfesionalActual = profesionalId ? trayectoriaPorProfesional[profesionalId] ?? [] : [];
   const slideActual = slidesDelProfesionalActual[slideIndex] ?? null;
 
+  const formacionOrdenada = useMemo(
+    () => [...formacionDelProfesionalActual].sort((a, b) => (a.anio ?? 0) - (b.anio ?? 0)),
+    [formacionDelProfesionalActual]
+  );
+  const trayectoriaOrdenada = useMemo(
+    () => [...trayectoriaDelProfesionalActual].sort((a, b) => (a.anio_desde ?? 0) - (b.anio_desde ?? 0)),
+    [trayectoriaDelProfesionalActual]
+  );
+
   function siguienteSlide() {
     setSlideIndex((i) => Math.min(i + 1, slidesDelProfesionalActual.length - 1));
-  }
-
-  function anteriorSlide() {
-    setSlideIndex((i) => Math.max(i - 1, 0));
   }
 
   function irAObjetivo() {
@@ -820,32 +833,52 @@ export default function AsesorApp({
         <div className="flex-1 flex flex-col">
           <Navbar onVolver={() => setPantalla("profesionales")} onInicio={volverAInicio} />
           <div className="flex-1 px-6 pt-4 pb-10 max-w-md mx-auto w-full flex flex-col">
-            <div className="w-full aspect-square rounded-2xl overflow-hidden mb-4 flex items-center justify-center font-extrabold text-[48px]" style={{ background: SAGE_TINT, color: SAGE_DARK }}>
-              {profesionalActual.foto ? (
+            <div
+              className="relative w-full rounded-2xl overflow-hidden mb-4"
+              style={{ minHeight: 190, background: `linear-gradient(155deg, #8fa584 0%, ${SAGE_DARK} 100%)` }}
+            >
+              {profesionalActual.foto && (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={profesionalActual.foto} alt="" className="w-full h-full object-cover" />
-              ) : (
-                profesionalActual.nombre.charAt(0).toUpperCase()
+                <img src={profesionalActual.foto} alt="" className="absolute inset-0 w-full h-full object-cover opacity-95" />
               )}
+              <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, rgba(0,0,0,0) 35%, rgba(0,0,0,.5) 100%)" }} />
+              {!profesionalActual.foto && (
+                <span className="absolute inset-0 flex items-center justify-center font-extrabold text-[42px] text-white/70">
+                  {profesionalActual.nombre.charAt(0).toUpperCase()}
+                </span>
+              )}
+              <div className="relative flex flex-col justify-end h-full min-h-[190px] p-4">
+                <p className="text-[21px] font-extrabold text-white leading-tight">
+                  {profesionalActual.nombre} {profesionalActual.apellido ?? ""}
+                </p>
+                {(profesionalActual.titulo || profesionalActual.especialidad) && (
+                  <p className="text-[11px] font-bold text-white/90">
+                    {[profesionalActual.titulo, profesionalActual.especialidad].filter(Boolean).join(" · ")}
+                  </p>
+                )}
+              </div>
             </div>
-            <p className="text-[19px] font-extrabold leading-tight">
-              {profesionalActual.nombre} {profesionalActual.apellido ?? ""}
-            </p>
-            {(profesionalActual.titulo || profesionalActual.especialidad) && (
-              <p className="text-[12px] font-bold mb-2" style={{ color: SAGE_DARK }}>
-                {[profesionalActual.titulo, profesionalActual.especialidad].filter(Boolean).join(" · ")}
+
+            {profesionalActual.bio && (
+              <p className="text-[13px] italic leading-relaxed mb-3 pl-3 border-l-2" style={{ borderColor: CLAY, color: "#2d2d2d" }}>
+                {profesionalActual.bio}
               </p>
             )}
-            {profesionalActual.bio && <p className="text-[12px] text-[#686868] leading-snug mb-3">{profesionalActual.bio}</p>}
 
             {fortalezasDelProfesionalActual.length > 0 && (
               <div className="flex flex-wrap gap-1.5 mb-4">
                 {fortalezasDelProfesionalActual.map((f) => (
                   <span
                     key={f.nombre}
-                    className="text-[10px] font-bold px-2.5 py-1 rounded-full"
-                    style={{ background: SAGE_TINT, color: SAGE_DARK }}
+                    className="flex items-center gap-1.5 text-[10.5px] font-bold pl-1.5 pr-2.5 py-1 rounded-full"
+                    style={f.principal ? { background: "#f7ece1", color: CLAY } : { background: SAGE_TINT, color: SAGE_DARK }}
                   >
+                    <span
+                      className="flex items-center justify-center w-3.5 h-3.5 rounded-full text-[8px] text-white shrink-0"
+                      style={{ background: f.principal ? CLAY : SAGE_DARK }}
+                    >
+                      {f.principal ? "★" : "✓"}
+                    </span>
                     {f.nombre}
                   </span>
                 ))}
@@ -909,129 +942,228 @@ export default function AsesorApp({
 
       {pantalla === "conoceme" && profesionalActual && (
         <div className="flex-1 flex flex-col bg-[#fbfbfb]">
-          <div className="flex items-center justify-between px-5 pt-5 shrink-0">
-            <button onClick={() => setPantalla("fichaProfesional")} className="text-[#686868] text-lg leading-none">
-              ✕
-            </button>
-            <div className="flex items-center gap-1.5">
-              {slidesDelProfesionalActual.map((s, i) => (
-                <span
-                  key={s.id_filmina}
-                  className="h-1.5 rounded-full"
-                  style={{ width: i === slideIndex ? 18 : 6, background: i === slideIndex ? SAGE_DARK : "#d8d8d8" }}
-                />
-              ))}
-            </div>
-            <span className="text-[11px] text-[#a8a8a8] font-bold">
-              {slideIndex + 1}/{slidesDelProfesionalActual.length}
-            </span>
-          </div>
+          <style>{`
+            @keyframes wgItemIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+            @keyframes wgGrowLine { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+            @media (prefers-reduced-motion: reduce) {
+              .wg-anim { animation: none !important; opacity: 1 !important; transform: none !important; }
+            }
+          `}</style>
 
-          <div className="flex-1 px-6 py-4 flex flex-col max-w-md mx-auto w-full">
+          <div className="flex-1 px-6 pt-5 pb-4 flex flex-col max-w-md mx-auto w-full">
+            <button
+              onClick={() => setPantalla("fichaProfesional")}
+              className="self-start text-[10.5px] font-bold text-[#a8a8a8] mb-3"
+            >
+              ‹ Volver
+            </button>
+
+            <div className="flex items-center gap-2 mb-5 shrink-0">
+              <div className="flex-1 h-[3px] rounded-full overflow-hidden" style={{ background: "#e2ddd0" }}>
+                <div
+                  className="h-full rounded-full transition-all duration-300"
+                  style={{
+                    width: `${((slideIndex + 1) / Math.max(slidesDelProfesionalActual.length, 1)) * 100}%`,
+                    background: SAGE_DARK,
+                  }}
+                />
+              </div>
+              <span className="text-[10px] font-bold text-[#a8a8a8] tabular-nums">
+                {slideIndex + 1}/{slidesDelProfesionalActual.length}
+              </span>
+            </div>
+
             {slideActual && (
               <div className="flex-1 flex flex-col">
                 {(slideActual.tipo === "foto" || slideActual.tipo === "texto_foto") && (
-                  <div className="flex-1 rounded-2xl overflow-hidden mb-3" style={{ background: SAGE_TINT }}>
-                    {slideActual.fotoUrl && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={slideActual.fotoUrl} alt="" className="w-full h-full object-cover" />
-                    )}
-                  </div>
+                  <>
+                    <p className="text-[10px] font-extrabold uppercase tracking-wide mb-1" style={{ color: CLAY }}>
+                      Conóceme
+                    </p>
+                    {slideActual.titulo && <p className="text-[18px] font-extrabold leading-tight mb-3">{slideActual.titulo}</p>}
+                    <div className="w-full rounded-2xl overflow-hidden mb-3 shadow-sm" style={{ height: 190, background: SAGE_TINT }}>
+                      {slideActual.fotoUrl && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={slideActual.fotoUrl} alt="" className="w-full h-full object-cover" />
+                      )}
+                    </div>
+                    {slideActual.texto && <p className="text-[12.5px] text-[#686868] leading-relaxed">{slideActual.texto}</p>}
+                  </>
                 )}
 
                 {slideActual.tipo === "video" && (
-                  <a
-                    href={slideActual.videoUrl ?? "#"}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex-1 rounded-2xl flex flex-col items-center justify-center gap-2 mb-3"
-                    style={{ background: SAGE_TINT, color: SAGE_DARK }}
-                  >
-                    <span className="text-[36px]">▶️</span>
-                    <span className="text-[12px] font-bold px-6 text-center">{slideActual.videoTitulo}</span>
-                  </a>
+                  <>
+                    <p className="text-[10px] font-extrabold uppercase tracking-wide mb-1" style={{ color: CLAY }}>
+                      Conóceme
+                    </p>
+                    <p className="text-[18px] font-extrabold leading-tight mb-3">{slideActual.titulo || "Un video mío"}</p>
+                    <a
+                      href={slideActual.videoUrl ?? "#"}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="relative w-full rounded-2xl overflow-hidden mb-3 shadow-sm flex items-center justify-center"
+                      style={{ height: 190, background: `linear-gradient(150deg, #3d4a3a, ${SAGE_DARK})` }}
+                    >
+                      <span
+                        className="absolute top-3 right-3 text-[9px] font-extrabold uppercase tracking-wide text-white px-2.5 py-1 rounded-full"
+                        style={{ background: "rgba(0,0,0,.35)" }}
+                      >
+                        {plataformaVideo(slideActual.videoUrl ?? "")}
+                      </span>
+                      <span
+                        className="flex items-center justify-center w-12 h-12 rounded-full bg-white/95 text-[18px] pl-0.5"
+                        style={{ color: SAGE_DARK }}
+                      >
+                        ▶
+                      </span>
+                    </a>
+                    <p className="text-[12.5px] text-[#686868] leading-relaxed">
+                      {slideActual.videoTitulo || "Tocá para verlo — se abre en una pestaña nueva."}
+                    </p>
+                  </>
                 )}
 
-                {slideActual.titulo && (slideActual.tipo === "texto_foto" || slideActual.tipo === "logro" || slideActual.tipo === "como_trabajo") && (
-                  <p className="text-[15px] font-extrabold mb-1">{slideActual.titulo}</p>
-                )}
-
-                {(slideActual.tipo === "texto_foto" || slideActual.tipo === "logro" || slideActual.tipo === "como_trabajo") && slideActual.texto && (
-                  <p className="text-[12px] text-[#686868] leading-relaxed">{slideActual.texto}</p>
+                {(slideActual.tipo === "logro" || slideActual.tipo === "como_trabajo") && (
+                  <>
+                    <p className="text-[10px] font-extrabold uppercase tracking-wide mb-1" style={{ color: CLAY }}>
+                      Conóceme
+                    </p>
+                    {slideActual.titulo && <p className="text-[18px] font-extrabold leading-tight mb-2">{slideActual.titulo}</p>}
+                    {slideActual.texto && <p className="text-[13px] text-[#686868] leading-relaxed">{slideActual.texto}</p>}
+                  </>
                 )}
 
                 {slideActual.tipo === "historia" && (
-                  <div className="flex-1 flex items-center">
-                    <p className="text-[13px] text-[#686868] leading-relaxed">
+                  <>
+                    <p className="text-[10px] font-extrabold uppercase tracking-wide mb-1" style={{ color: CLAY }}>
+                      Conóceme
+                    </p>
+                    <p className="text-[18px] font-extrabold leading-tight mb-3">Mi historia</p>
+                    <div
+                      className="relative w-full rounded-2xl overflow-hidden mb-4"
+                      style={{ height: 100, background: "linear-gradient(140deg,#dccfa8,#c9b788)" }}
+                    >
+                      <span
+                        className="absolute right-2 -bottom-6 text-[90px] leading-none italic"
+                        style={{ color: "rgba(255,255,255,.55)", fontFamily: "Georgia, serif" }}
+                      >
+                        &rdquo;
+                      </span>
+                    </div>
+                    <p className="text-[13px] leading-relaxed text-[#2d2d2d] first-letter:text-[34px] first-letter:font-extrabold first-letter:leading-[0.8] first-letter:float-left first-letter:pr-1.5 first-letter:pt-0.5 first-letter:text-[#646759]">
                       {profesionalActual.biografia_completa || "Todavía no cargó su historia."}
                     </p>
-                  </div>
+                  </>
                 )}
 
                 {slideActual.tipo === "fortalezas" && (
-                  <div className="flex-1 flex flex-col items-center justify-center gap-2">
-                    {fortalezasDelProfesionalActual.map((f) => (
-                      <span key={f.nombre} className="text-[13px] font-bold px-4 py-2 rounded-full" style={{ background: SAGE_TINT, color: SAGE_DARK }}>
-                        {f.nombre}
-                      </span>
-                    ))}
-                  </div>
+                  <>
+                    <p className="text-[10px] font-extrabold uppercase tracking-wide mb-1" style={{ color: CLAY }}>
+                      Conóceme
+                    </p>
+                    <p className="text-[18px] font-extrabold leading-tight mb-0.5">Fortalezas</p>
+                    <p className="text-[11.5px] font-semibold text-[#a8a8a8] mb-4">En qué se destaca</p>
+                    <div className="grid grid-cols-2 gap-2.5">
+                      {fortalezasDelProfesionalActual.map((f) => (
+                        <div
+                          key={f.nombre}
+                          className="flex flex-col items-center gap-2 text-center rounded-2xl border bg-white p-3.5"
+                          style={{ borderColor: f.principal ? CLAY : "#e2ddd0" }}
+                        >
+                          <span
+                            className="flex items-center justify-center w-9 h-9 rounded-full text-[15px]"
+                            style={f.principal ? { background: "#f7ece1", color: CLAY } : { background: SAGE_TINT, color: SAGE_DARK }}
+                          >
+                            {f.principal ? "★" : "✓"}
+                          </span>
+                          <b className="text-[11.5px] leading-tight">{f.nombre}</b>
+                          {f.principal && (
+                            <span className="text-[8.5px] font-extrabold uppercase tracking-wide" style={{ color: CLAY }}>
+                              Principal
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </>
                 )}
 
                 {slideActual.tipo === "formacion" && (
-                  <div className="flex-1 flex flex-col gap-2 justify-center">
-                    {formacionDelProfesionalActual.map((f) => (
-                      <div key={f.id_formacion} className="rounded-xl border border-[#d8d8d8] bg-white p-3">
-                        <p className="text-[12px] font-bold">{f.titulo}</p>
-                        <p className="text-[10px] text-[#a8a8a8]">{[f.institucion, f.anio].filter(Boolean).join(" · ")}</p>
-                      </div>
-                    ))}
-                  </div>
+                  <>
+                    <p className="text-[10px] font-extrabold uppercase tracking-wide mb-1" style={{ color: CLAY }}>
+                      Conóceme
+                    </p>
+                    <p className="text-[18px] font-extrabold leading-tight mb-4">Formación</p>
+                    <div className="relative pl-5">
+                      <div
+                        className="wg-anim absolute left-[5px] top-1 bottom-1 w-[1.5px] origin-top"
+                        style={{ background: SAGE_DARK, animation: "wgGrowLine 1.2s ease-out .1s forwards", transform: "scaleY(0)" }}
+                      />
+                      {formacionOrdenada.map((f, i) => (
+                        <div
+                          key={f.id_formacion}
+                          className="wg-anim relative pb-4 last:pb-0"
+                          style={{ opacity: 0, animation: `wgItemIn .5s ease-out ${0.15 + i * 0.35}s forwards` }}
+                        >
+                          <span
+                            className="absolute -left-5 top-0.5 w-2.5 h-2.5 rounded-full bg-white"
+                            style={{ border: `2px solid ${CLAY}` }}
+                          />
+                          <p className="text-[10px] font-extrabold tabular-nums mb-0.5" style={{ color: CLAY }}>
+                            {f.anio ?? ""}
+                          </p>
+                          <p className="text-[12.5px] font-bold leading-tight">{f.titulo}</p>
+                          <p className="text-[11px] text-[#a8a8a8]">{f.institucion}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </>
                 )}
 
                 {slideActual.tipo === "trayectoria" && (
-                  <div className="flex-1 flex flex-col gap-2 justify-center">
-                    {trayectoriaDelProfesionalActual.map((t) => (
-                      <div key={t.id_trayectoria} className="rounded-xl border border-[#d8d8d8] bg-white p-3">
-                        <p className="text-[12px] font-bold">{t.titulo}</p>
-                        <p className="text-[10px] text-[#a8a8a8]">
-                          {[t.lugar, t.anio_desde && `${t.anio_desde} – ${t.anio_hasta ?? "Actualidad"}`].filter(Boolean).join(" · ")}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
+                  <>
+                    <p className="text-[10px] font-extrabold uppercase tracking-wide mb-1" style={{ color: CLAY }}>
+                      Conóceme
+                    </p>
+                    <p className="text-[18px] font-extrabold leading-tight mb-4">Trayectoria</p>
+                    <div className="relative pl-5">
+                      <div
+                        className="wg-anim absolute left-[5px] top-1 bottom-1 w-[1.5px] origin-top"
+                        style={{ background: SAGE_DARK, animation: "wgGrowLine 1.2s ease-out .1s forwards", transform: "scaleY(0)" }}
+                      />
+                      {trayectoriaOrdenada.map((t, i) => (
+                        <div
+                          key={t.id_trayectoria}
+                          className="wg-anim relative pb-4 last:pb-0"
+                          style={{ opacity: 0, animation: `wgItemIn .5s ease-out ${0.15 + i * 0.35}s forwards` }}
+                        >
+                          <span
+                            className="absolute -left-5 top-0.5 w-2.5 h-2.5 rounded-full bg-white"
+                            style={{ border: `2px solid ${SAGE_DARK}` }}
+                          />
+                          <p className="text-[10px] font-extrabold tabular-nums mb-0.5" style={{ color: SAGE_DARK }}>
+                            {[t.anio_desde, "—", t.anio_hasta ?? "Actualidad"].filter(Boolean).join(" ")}
+                          </p>
+                          <p className="text-[12.5px] font-bold leading-tight">{t.titulo}</p>
+                          <p className="text-[11px] text-[#a8a8a8]">{t.lugar}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </>
                 )}
               </div>
             )}
 
-            <div className="flex items-center justify-between mt-4 mb-3">
-              <button
-                onClick={anteriorSlide}
-                disabled={slideIndex === 0}
-                className="text-[13px] font-bold text-[#686868] disabled:opacity-30 px-3 py-2"
-              >
-                ‹ Anterior
-              </button>
+            <div className="flex justify-end mt-4">
               <button
                 onClick={siguienteSlide}
                 disabled={slideIndex === slidesDelProfesionalActual.length - 1}
-                className="text-[13px] font-bold text-[#686868] disabled:opacity-30 px-3 py-2"
+                className="text-[13px] font-bold disabled:opacity-30 px-3 py-2"
+                style={{ color: SAGE_DARK }}
               >
                 Siguiente ›
               </button>
             </div>
-
-            {profesionalActual.link_reserva && (
-              <a
-                href={profesionalActual.link_reserva}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-center text-[13px] font-extrabold text-white py-3 rounded-full"
-                style={{ background: SAGE_DARK }}
-              >
-                📅 Reservar turno
-              </a>
-            )}
           </div>
         </div>
       )}
