@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos";
+import { obtenerUsuarioMp, crearSucursalMp, crearCajaMp } from "@/lib/mercadopago";
 
 async function requireEditarConfiguracion(): Promise<string | null> {
   const sesion = await obtenerSesionConPermisos();
@@ -183,6 +184,51 @@ export async function guardarConfigRentabilidad(formData: FormData): Promise<{ e
 
   revalidatePath("/configuracion");
   return { error: null };
+}
+
+// Conexión de una única vez: crea (si no existe) una sucursal y una caja en
+// Mercado Pago para el totem, y guarda los IDs en Configuración — de ahí en
+// más el self-checkout ya puede pedir órdenes de QR dinámico. Si se toca de
+// nuevo, no rompe nada: Mercado Pago devuelve la sucursal/caja existente si
+// el external_id ya se había usado antes.
+export async function conectarMercadoPagoQR(): Promise<{ error: string | null; posId?: string }> {
+  const permisoError = await requireEditarConfiguracion();
+  if (permisoError) return { error: permisoError };
+
+  try {
+    const usuario = await obtenerUsuarioMp();
+    const supabase = getSupabaseServerClient();
+
+    const externalStoreId = "WIIGO-TOTEM";
+    const externalPosId = "WIIGO-TOTEM-CAJA1";
+
+    const sucursal = await crearSucursalMp(usuario.id, "WiiGo Totem", externalStoreId);
+    await crearCajaMp({
+      storeId: sucursal.id,
+      externalStoreId,
+      externalPosId,
+      nombre: "Totem self-checkout",
+    });
+
+    let error = await guardarParametro(supabase, "MP_USER_ID", String(usuario.id), "Mercado Pago: id de usuario/vendedor conectado");
+    if (!error) {
+      error = await guardarParametro(supabase, "MP_STORE_ID", sucursal.id, "Mercado Pago: id de la sucursal creada para el totem");
+    }
+    if (!error) {
+      error = await guardarParametro(
+        supabase,
+        "MP_EXTERNAL_POS_ID",
+        externalPosId,
+        "Mercado Pago: id de la caja usada para generar el QR del totem"
+      );
+    }
+    if (error) return { error };
+
+    revalidatePath("/configuracion");
+    return { error: null, posId: externalPosId };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo conectar con Mercado Pago" };
+  }
 }
 
 // Tope a partir del cual un gasto necesita la contraseña de un

@@ -57,7 +57,13 @@ export default function SelfCheckoutApp({
   const [error, setError] = useState<string | null>(null);
   const [medioPagoElegido, setMedioPagoElegido] = useState<MedioPago>("EFECTIVO");
 
-  const [pedido, setPedido] = useState<{ idVenta: string; numero: number; total: number; descuento: number } | null>(
+  const [pedido, setPedido] = useState<{
+    idVenta: string;
+    numero: number;
+    total: number;
+    descuento: number;
+    qrImagen?: string;
+  } | null>(
     null
   );
   const [profesional, setProfesional] = useState<{
@@ -768,8 +774,13 @@ export default function SelfCheckoutApp({
             📱 Mercado Pago
           </div>
           <p className="text-sm text-neutral-500 mb-3.5">Escaneá este código con la app de Mercado Pago de tu celular</p>
-          <div className="w-40 h-40 bg-white rounded-2xl border border-neutral-200 shadow-sm flex items-center justify-center mb-3.5 text-neutral-300 text-xs">
-            (QR pendiente de integración)
+          <div className="w-40 h-40 bg-white rounded-2xl border border-neutral-200 shadow-sm flex items-center justify-center mb-3.5 overflow-hidden">
+            {pedido.qrImagen ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={pedido.qrImagen} alt="Código QR de Mercado Pago" className="w-full h-full object-contain" />
+            ) : (
+              <span className="text-neutral-300 text-xs px-2 text-center">No se pudo generar el QR</span>
+            )}
           </div>
           <p className="text-2xl font-extrabold text-neutral-900">${formatearMonto(pedido.total)}</p>
           <div className="flex items-center gap-2 text-xs text-neutral-400 mt-3">

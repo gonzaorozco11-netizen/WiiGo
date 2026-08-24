@@ -64,7 +64,8 @@ async function tasaComisionMp(supabase: SupabaseClient, formaPago: string) {
 export async function confirmarCobro(
   idVenta: string,
   montoRecibido: number,
-  formaPagoMp?: string
+  formaPagoMp?: string,
+  usuarioOverride?: string
 ): Promise<{ error: string | null }> {
   try {
     const supabase = getSupabaseServerClient();
@@ -87,7 +88,7 @@ export async function confirmarCobro(
       return { error: "No hay un turno de caja abierto en este local — abrilo en Turnos antes de confirmar cobros." };
     }
 
-    const usuario = await usuarioActual();
+    const usuario = usuarioOverride ?? (await usuarioActual());
     const esMercadoPago = venta.medio_pago === "MERCADO_PAGO";
 
   let pagoInsert: Record<string, unknown>;

@@ -5,11 +5,13 @@ import { friendlyDbError } from "@/lib/errors";
 import { calcularBeneficioReferido, resolverCodigoProfesional } from "@/lib/referidosProfesionales";
 import { buscarProfesionalPorDni, verificarPinProfesional, calcularDescuentoCanje } from "@/lib/canjesProfesionales";
 import { calcularCanjePuntos } from "@/lib/puntosWiigo";
+import { crearOrdenQrMp } from "@/lib/mercadopago";
+import QRCode from "qrcode";
 
 type ItemCarrito = { idVariante: string; idMarca: string | null; cantidad: number; precioUnitario: number };
 type MedioPago = "EFECTIVO" | "MERCADO_PAGO";
 
-type ResultadoPedido = { idVenta: string; numero: number; total: number; descuento: number };
+type ResultadoPedido = { idVenta: string; numero: number; total: number; descuento: number; qrImagen?: string };
 
 // Next.js redacta en producción el mensaje de un Error tirado desde una
 // Server Action (queda solo un digest genérico en el navegador) — por eso
@@ -171,9 +173,40 @@ export async function confirmarPedido(
   const { error: errorDetalle } = await supabase.from("detalle_ventas").insert(filasDetalle);
   if (errorDetalle) return { error: friendlyDbError(errorDetalle) };
 
+    let qrImagen: string | undefined;
+    if (medioPago === "MERCADO_PAGO" && total > 0) {
+      const { data: cfg } = await supabase
+        .from("configuracion")
+        .select("valor")
+        .eq("parametro", "MP_EXTERNAL_POS_ID")
+        .maybeSingle();
+      const externalPosId = cfg?.valor;
+      if (!externalPosId) {
+        return { error: "Mercado Pago todavía no está conectado — pedile a un administrador que lo conecte en Configuración." };
+      }
+      try {
+        const orden = await crearOrdenQrMp({
+          idVenta: venta.id_venta,
+          total,
+          externalPosId,
+          descripcion: `Pedido WiiGo #${venta.numero}`,
+        });
+        qrImagen = await QRCode.toDataURL(orden.qrData, { margin: 1, width: 400 });
+        await supabase.from("ventas").update({ id_orden_mp: orden.idOrden }).eq("id_venta", venta.id_venta);
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : "No se pudo generar el QR de Mercado Pago" };
+      }
+    }
+
     return {
       error: null,
-      pedido: { idVenta: venta.id_venta, numero: venta.numero as number, total, descuento: descuentoBeneficio + descuentoPuntos },
+      pedido: {
+        idVenta: venta.id_venta,
+        numero: venta.numero as number,
+        total,
+        descuento: descuentoBeneficio + descuentoPuntos,
+        qrImagen,
+      },
     };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo confirmar el pedido" };

@@ -7,6 +7,7 @@ import {
   guardarConfigRentabilidad,
   guardarConfigMercadoPago,
   guardarConfigGastos,
+  conectarMercadoPagoQR,
 } from "@/app/(app)/configuracion/actions";
 
 export default function ConfiguracionApp({
@@ -25,6 +26,7 @@ export default function ConfiguracionApp({
   mpComisionCuotasSinInteres,
   mpComisionPrepaga,
   mpComisionCredito,
+  mpExternalPosId,
   gastosTopeSinAutorizacion,
 }: {
   puntosActivo: boolean;
@@ -42,6 +44,7 @@ export default function ConfiguracionApp({
   mpComisionCuotasSinInteres: number;
   mpComisionPrepaga: number;
   mpComisionCredito: number;
+  mpExternalPosId: string | null;
   gastosTopeSinAutorizacion: number;
 }) {
   const [isPending, startTransition] = useTransition();
@@ -75,6 +78,19 @@ export default function ConfiguracionApp({
   const [mpCuotas, setMpCuotas] = useState(mpComisionCuotasSinInteres);
   const [mpPrepaga, setMpPrepaga] = useState(mpComisionPrepaga);
   const [mpCredito, setMpCredito] = useState(mpComisionCredito);
+
+  const [isPendingQr, startTransitionQr] = useTransition();
+  const [errorQr, setErrorQr] = useState<string | null>(null);
+  const [posIdQr, setPosIdQr] = useState(mpExternalPosId);
+
+  function handleConectarQr() {
+    setErrorQr(null);
+    startTransitionQr(async () => {
+      const res = await conectarMercadoPagoQR();
+      if (res.error) setErrorQr(res.error);
+      else if (res.posId) setPosIdQr(res.posId);
+    });
+  }
 
   const [isPendingGastos, startTransitionGastos] = useTransition();
   const [guardadoGastos, setGuardadoGastos] = useState(false);
@@ -443,6 +459,35 @@ export default function ConfiguracionApp({
           {isPendingMp ? "Guardando..." : "Guardar tasas"}
         </button>
       </form>
+
+      <div className="bg-white border border-neutral-200 rounded-xl p-5 mt-5">
+        <h2 className="text-base font-semibold text-neutral-900 mb-1">📱 QR de Mercado Pago (totem)</h2>
+        <p className="text-sm text-neutral-500 mb-4">
+          Conecta esta cuenta de Mercado Pago con el self-checkout para que aparezca un QR real al elegir esa forma
+          de pago. Es un paso único — no hace falta repetirlo salvo que cambies de cuenta de Mercado Pago.
+        </p>
+
+        {posIdQr ? (
+          <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 mb-3">
+            ✅ Conectado — caja <span className="font-mono">{posIdQr}</span>
+          </p>
+        ) : (
+          <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+            Todavía no está conectado.
+          </p>
+        )}
+
+        {errorQr && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-3">{errorQr}</p>}
+
+        <button
+          type="button"
+          onClick={handleConectarQr}
+          disabled={isPendingQr}
+          className="w-full rounded-lg bg-accent hover:bg-accent-dark text-white py-2 text-sm font-medium disabled:opacity-50"
+        >
+          {isPendingQr ? "Conectando..." : posIdQr ? "Volver a conectar" : "Conectar Mercado Pago QR"}
+        </button>
+      </div>
 
       <form action={handleSubmitRent} className="bg-white border border-neutral-200 rounded-xl p-5 mt-5">
         <h2 className="text-base font-semibold text-neutral-900 mb-1">📈 Rentabilidad — Marca Propia</h2>
