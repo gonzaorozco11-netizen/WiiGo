@@ -202,7 +202,14 @@ export async function conectarMercadoPagoQR(): Promise<{ error: string | null; p
     const externalStoreId = "WIIGO-TOTEM";
     const externalPosId = "WIIGO-TOTEM-CAJA1";
 
-    const sucursal = await crearSucursalMp(usuario.id, "WiiGo Totem", externalStoreId);
+    const sucursal = await crearSucursalMp(usuario.id, "WiiGo Totem", externalStoreId, {
+      calle: "Aristides Villanueva",
+      altura: "256",
+      ciudad: "Mendoza",
+      provincia: "Mendoza",
+      latitud: -32.8967,
+      longitud: -68.8548,
+    });
     await crearCajaMp({
       storeId: sucursal.id,
       externalStoreId,

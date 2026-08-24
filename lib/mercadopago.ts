@@ -44,13 +44,25 @@ export async function obtenerUsuarioMp(): Promise<{ id: number; nickname?: strin
   return mpFetch("/users/me");
 }
 
-export async function crearSucursalMp(userId: number, nombre: string, externalId: string): Promise<{ id: string }> {
+export async function crearSucursalMp(
+  userId: number,
+  nombre: string,
+  externalId: string,
+  ubicacion: { calle: string; altura: string; ciudad: string; provincia: string; latitud: number; longitud: number }
+): Promise<{ id: string }> {
   return mpFetch(`/users/${userId}/stores`, {
     method: "POST",
     body: JSON.stringify({
       name: nombre,
       external_id: externalId,
-      location: { address_line: nombre },
+      location: {
+        street_name: ubicacion.calle,
+        street_number: ubicacion.altura,
+        city_name: ubicacion.ciudad,
+        state_name: ubicacion.provincia,
+        latitude: ubicacion.latitud,
+        longitude: ubicacion.longitud,
+      },
     }),
   });
 }
