@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 
 export const config = {
-  // /self-checkout y /asesor quedan públicos (los usan los clientes en el local, sin login).
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|self-checkout|asesor|login).*)"],
+  // /self-checkout y /asesor quedan públicos (los usan los clientes en el
+  // local, sin login). /api queda pública también — ahí viven los webhooks
+  // (ej. Mercado Pago), que llegan sin la cookie de sesión porque no los
+  // llama una persona logueada, los llama el servidor de Mercado Pago.
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|self-checkout|asesor|login|api).*)"],
 };
 
 export async function proxy(req: NextRequest) {
