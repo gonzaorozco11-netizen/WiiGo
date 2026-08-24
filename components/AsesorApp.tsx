@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import type {
   Local,
@@ -16,7 +16,10 @@ import type {
   TrayectoriaProfesional,
 } from "@/lib/supabase";
 
-type Pantalla = "home" | "objetivo" | "resultado" | "marcas" | "ofertas" | "profesionales" | "fichaProfesional" | "conoceme";
+type Pantalla = "home" | "objetivo" | "resultado" | "marcas" | "ofertas" | "profesionales" | "fichaProfesional" | "conoceme" | "reservarTurno";
+
+const IDLE_WARNING_MS = 45000; // sin tocar nada
+const IDLE_COUNTDOWN_S = 10; // después del aviso, segundos para volver sola al inicio
 
 const SAGE = "#b6bca2";
 const SAGE_DARK = "#646759";
@@ -142,6 +145,11 @@ export default function AsesorApp({
   const [profesionalId, setProfesionalId] = useState<string | null>(null);
   const [slideIndex, setSlideIndex] = useState(0);
   const [mostrarComoAyuda, setMostrarComoAyuda] = useState(false);
+  const [modalidadTurno, setModalidadTurno] = useState<"presencial" | "online" | null>(null);
+  const [idleWarning, setIdleWarning] = useState(false);
+  const [idleCountdown, setIdleCountdown] = useState(IDLE_COUNTDOWN_S);
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const idleIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const marcaPorId = useMemo(() => {
     const mapa: Record<string, Marca> = {};
@@ -221,6 +229,12 @@ export default function AsesorApp({
   }, [profesionales, categoriaProf]);
 
   const profesionalActual = profesionalId ? profesionales.find((p) => p.id_profesional === profesionalId) ?? null : null;
+
+  const tieneReservaPresencial = Boolean(profesionalActual?.link_reserva);
+  const tieneReservaOnline = Boolean(profesionalActual?.link_reserva_online);
+  const eligiendoModalidadTurno = tieneReservaPresencial && tieneReservaOnline && !modalidadTurno;
+  const linkReservaFinal =
+    modalidadTurno === "online" ? profesionalActual?.link_reserva_online ?? null : profesionalActual?.link_reserva ?? null;
 
   const fortalezasDelProfesionalActual = useMemo(() => {
     if (!profesionalId) return [];
@@ -302,6 +316,11 @@ export default function AsesorApp({
     setPantalla("conoceme");
   }
 
+  function irAReservarTurno() {
+    setModalidadTurno(null);
+    setPantalla("reservarTurno");
+  }
+
   function elegirObjetivo(id: string) {
     setObjetivoId(id);
     setBusqueda("");
@@ -328,7 +347,43 @@ export default function AsesorApp({
     setProfesionalId(null);
     setMostrarComoAyuda(false);
     setSlideIndex(0);
+    setModalidadTurno(null);
   }
+
+  function limpiarTimersInactividad() {
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    if (idleIntervalRef.current) clearInterval(idleIntervalRef.current);
+  }
+
+  function reiniciarInactividad() {
+    limpiarTimersInactividad();
+    setIdleWarning(false);
+    setIdleCountdown(IDLE_COUNTDOWN_S);
+    if (pantalla === "home") return;
+    idleTimerRef.current = setTimeout(() => {
+      setIdleWarning(true);
+      let restante = IDLE_COUNTDOWN_S;
+      idleIntervalRef.current = setInterval(() => {
+        restante -= 1;
+        setIdleCountdown(restante);
+        if (restante <= 0) {
+          limpiarTimersInactividad();
+          volverAInicio();
+        }
+      }, 1000);
+    }, IDLE_WARNING_MS);
+  }
+
+  useEffect(() => {
+    reiniciarInactividad();
+    const eventos: (keyof WindowEventMap)[] = ["pointerdown", "keydown"];
+    eventos.forEach((ev) => window.addEventListener(ev, reiniciarInactividad));
+    return () => {
+      eventos.forEach((ev) => window.removeEventListener(ev, reiniciarInactividad));
+      limpiarTimersInactividad();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pantalla]);
 
   function volverDesdeResultado() {
     if (busqueda.trim()) {
@@ -890,16 +945,14 @@ export default function AsesorApp({
             )}
 
             <div className="mt-auto flex flex-col gap-2">
-              {profesionalActual.link_reserva ? (
-                <a
-                  href={profesionalActual.link_reserva}
-                  target="_blank"
-                  rel="noopener noreferrer"
+              {tieneReservaPresencial || tieneReservaOnline ? (
+                <button
+                  onClick={irAReservarTurno}
                   className="text-center text-[13px] font-extrabold text-white py-3 rounded-full"
                   style={{ background: SAGE_DARK }}
                 >
                   📅 Reservar turno
-                </a>
+                </button>
               ) : (
                 <p className="text-center text-[11px] text-[#a8a8a8]">Todavía no tiene link de reserva cargado.</p>
               )}
@@ -940,6 +993,90 @@ export default function AsesorApp({
                 </>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {pantalla === "reservarTurno" && profesionalActual && (
+        <div className="flex-1 flex flex-col">
+          <Navbar onVolver={() => setPantalla("fichaProfesional")} onInicio={volverAInicio} />
+          <div className="flex-1 px-6 pt-4 pb-6 max-w-md mx-auto w-full flex flex-col">
+            {eligiendoModalidadTurno && (
+              <>
+                <h2 className="text-xl font-extrabold mb-1">Reservar turno</h2>
+                <p className="text-[12px] text-[#686868] mb-4">¿Cómo preferís tu consulta?</p>
+                <div className="flex flex-col gap-2.5">
+                  <button
+                    onClick={() => setModalidadTurno("presencial")}
+                    className="flex items-center gap-3 rounded-2xl border-2 bg-white p-3.5 text-left"
+                    style={{ borderColor: SAGE_DARK }}
+                  >
+                    <span
+                      className="flex items-center justify-center w-9 h-9 rounded-full text-white text-[15px] shrink-0"
+                      style={{ background: SAGE_DARK }}
+                    >
+                      🏠
+                    </span>
+                    <div>
+                      <p className="text-[13px] font-extrabold">Presencial</p>
+                      {profesionalActual.ciudad ? (
+                        <p className="text-[10.5px] font-bold" style={{ color: CLAY }}>
+                          📍 En {profesionalActual.ciudad}
+                        </p>
+                      ) : (
+                        <p className="text-[10.5px] text-[#a8a8a8]">En el consultorio</p>
+                      )}
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => setModalidadTurno("online")}
+                    className="flex items-center gap-3 rounded-2xl border bg-white p-3.5 text-left"
+                    style={{ borderColor: "#d8d8d8" }}
+                  >
+                    <span
+                      className="flex items-center justify-center w-9 h-9 rounded-full text-[15px] shrink-0"
+                      style={{ background: SAGE_TINT, color: SAGE_DARK }}
+                    >
+                      💻
+                    </span>
+                    <div>
+                      <p className="text-[13px] font-extrabold">Online</p>
+                      <p className="text-[10.5px] text-[#a8a8a8]">Por videollamada</p>
+                    </div>
+                  </button>
+                </div>
+
+                {profesionalActual.ciudad && (
+                  <div className="flex gap-2 items-start rounded-xl mt-3 p-3" style={{ background: "#f7ece1" }}>
+                    <span>⚠️</span>
+                    <p className="text-[10.5px] leading-relaxed" style={{ color: "#8a5a35" }}>
+                      <b className="block" style={{ color: "#7a4d2c" }}>
+                        {profesionalActual.nombre} atiende presencial en {profesionalActual.ciudad}
+                      </b>
+                      Si preferís algo local, elegí &quot;Online&quot; o mirá otras profesionales.
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
+
+            {!eligiendoModalidadTurno && linkReservaFinal && (
+              <>
+                <p className="text-[11px] font-bold mb-2" style={{ color: SAGE_DARK }}>
+                  {modalidadTurno === "online" ? "💻 Turno online" : "🏠 Turno presencial"} · {profesionalActual.nombre}
+                </p>
+                <iframe
+                  src={linkReservaFinal}
+                  title="Reservar turno"
+                  className="flex-1 w-full rounded-2xl border-0"
+                  style={{ minHeight: 440, background: "#fff" }}
+                />
+              </>
+            )}
+
+            {!eligiendoModalidadTurno && !linkReservaFinal && (
+              <p className="text-center text-[12px] text-[#a8a8a8] py-10">Todavía no tiene link de reserva cargado.</p>
+            )}
           </div>
         </div>
       )}
@@ -1177,6 +1314,30 @@ export default function AsesorApp({
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {idleWarning && (
+        <div
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 px-8"
+          style={{ background: "rgba(45,45,45,.88)" }}
+        >
+          <div
+            className="flex items-center justify-center w-[74px] h-[74px] rounded-full border-4 text-white text-[20px] font-extrabold"
+            style={{ borderColor: "rgba(255,255,255,.25)", borderTopColor: "#fff" }}
+          >
+            {idleCountdown}
+          </div>
+          <h4 className="text-white text-[16px] font-extrabold text-center">¿Seguís ahí?</h4>
+          <p className="text-white/75 text-[12px] text-center leading-relaxed max-w-[220px]">
+            Si no tocás la pantalla, en unos segundos volvemos al inicio para el próximo cliente.
+          </p>
+          <button
+            onClick={reiniciarInactividad}
+            className="mt-1 text-[#2d2d2d] text-[12.5px] font-extrabold px-6 py-2.5 rounded-full bg-white"
+          >
+            Seguir acá
+          </button>
         </div>
       )}
 

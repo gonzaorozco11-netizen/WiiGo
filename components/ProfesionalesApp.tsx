@@ -1196,8 +1196,22 @@ function FormEditarProfesional({
           </select>
         </div>
         <div>
-          <label className="block text-xs font-medium text-neutral-600 mb-1">Link de reserva</label>
-          <input name="link_reserva" defaultValue={profesional.link_reserva ?? ""} placeholder="WhatsApp, Calendly, etc." className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
+          <label className="block text-xs font-medium text-neutral-600 mb-1">Ciudad (solo si no atiende en el local)</label>
+          <input name="ciudad" defaultValue={profesional.ciudad ?? ""} placeholder="Ej: Buenos Aires" className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
+          <p className="text-[11px] text-neutral-400 mt-1">
+            Si la carga, el cliente ve un aviso antes de reservar un turno presencial fuera del local.
+          </p>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-neutral-600 mb-1">Link de reserva — Presencial</label>
+          <input name="link_reserva" defaultValue={profesional.link_reserva ?? ""} placeholder="Link de Cal.com, WhatsApp, etc." className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-neutral-600 mb-1">Link de reserva — Online</label>
+          <input name="link_reserva_online" defaultValue={profesional.link_reserva_online ?? ""} placeholder="Link de Cal.com para videollamada" className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
+          <p className="text-[11px] text-neutral-400 mt-1">
+            Si cargás los dos links, el cliente va a poder elegir modalidad antes de reservar.
+          </p>
         </div>
       </div>
 
