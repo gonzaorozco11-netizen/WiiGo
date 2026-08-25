@@ -75,8 +75,15 @@ export default function SelfCheckoutApp({
   useEffect(() => {
     let cancelado = false;
     async function actualizar() {
-      const filas = await obtenerStockLocal(local.id_local);
-      if (!cancelado) setStockEnVivo(new Map(filas.map((f) => [f.idVariante, f.cantidad])));
+      try {
+        const filas = await obtenerStockLocal(local.id_local);
+        // Un resultado vacío casi siempre es una consulta que falló, no un
+        // local que de golpe se quedó sin nada de stock — mejor mantener el
+        // último stock bueno conocido que dejar a todo el mundo "sin stock".
+        if (!cancelado && filas.length > 0) setStockEnVivo(new Map(filas.map((f) => [f.idVariante, f.cantidad])));
+      } catch {
+        // Falla de red pasajera — se mantiene el último stock conocido.
+      }
     }
     const id = setInterval(actualizar, STOCK_POLL_MS);
     return () => {
