@@ -61,6 +61,17 @@ export default function SelfCheckoutApp({
 }) {
   const [paso, setPaso] = useState<Paso>("reposo");
 
+  // El totem queda prendido todo el día sin que nadie lo recargue — el
+  // stock/catálogo que trajo el servidor al abrirse la pestaña se va
+  // desactualizando con el tiempo (nuevas entregas, ajustes de stock,
+  // ventas por otro lado). Recargando solo mientras está en reposo (nunca
+  // en medio de una compra) el totem se mantiene al día sin que se note.
+  useEffect(() => {
+    if (paso !== "reposo") return;
+    const id = setInterval(() => window.location.reload(), 10 * 60 * 1000);
+    return () => clearInterval(id);
+  }, [paso]);
+
   // Gotas de la pantalla de reposo con lluvia/tormenta — se calculan una
   // sola vez por clima (no en cada render) para que no "salten" de lugar.
   const gotas = useMemo(() => {
