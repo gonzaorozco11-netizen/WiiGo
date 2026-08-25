@@ -81,6 +81,7 @@ export default function ProductoFormModal({
         if (res.error) setError(res.error);
         else if (res.url) setFotoProducto(res.url);
       })
+      .catch((e) => setError(e instanceof Error ? e.message : "No se pudo subir la foto"))
       .finally(() => setSubiendoFoto(false));
   }
   const marcaSeleccionada = marcas.find((m) => m.id_marca === idMarca);

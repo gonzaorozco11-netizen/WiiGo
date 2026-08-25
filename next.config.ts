@@ -7,6 +7,12 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  // Las Server Actions rechazan de entrada cualquier request de más de 1MB
+  // (default de Next) — una foto de producto sacada con el celular pesa
+  // varios MB, así que subirFotoProducto ni llegaba a ejecutarse.
+  serverActions: {
+    bodySizeLimit: "10mb",
+  },
 };
 
 export default nextConfig;
