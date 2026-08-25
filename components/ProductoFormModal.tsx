@@ -22,6 +22,33 @@ type VarianteForm = {
   stockInicial: number;
 };
 
+// Con ~1000 fotos para cargar, subir la foto tal cual sale del celular (varios
+// MB, a veces 4000x3000px) sería lentísimo y pesado de más para el catálogo.
+// Se reescala en el navegador antes de subir — 1200px de lado más largo
+// alcanza de sobra para verse nítida en el catálogo y en el Asesor, y baja el
+// peso típico de varios MB a algunas centenas de KB.
+async function comprimirImagen(archivo: File, maxLado = 1200, calidad = 0.82): Promise<File> {
+  try {
+    const bitmap = await createImageBitmap(archivo, { imageOrientation: "from-image" });
+    const escala = Math.min(1, maxLado / Math.max(bitmap.width, bitmap.height));
+    const ancho = Math.round(bitmap.width * escala);
+    const alto = Math.round(bitmap.height * escala);
+
+    const canvas = document.createElement("canvas");
+    canvas.width = ancho;
+    canvas.height = alto;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return archivo;
+    ctx.drawImage(bitmap, 0, 0, ancho, alto);
+
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", calidad));
+    if (!blob) return archivo;
+    return new File([blob], archivo.name.replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" });
+  } catch {
+    return archivo;
+  }
+}
+
 export default function ProductoFormModal({
   producto,
   marcas,
@@ -70,19 +97,22 @@ export default function ProductoFormModal({
   const [subiendoFoto, setSubiendoFoto] = useState(false);
   const isEditing = Boolean(producto);
 
-  function handleFoto(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleFoto(e: React.ChangeEvent<HTMLInputElement>) {
     const archivo = e.target.files?.[0];
     if (!archivo || !producto) return;
-    const formData = new FormData();
-    formData.set("archivo", archivo);
     setSubiendoFoto(true);
-    subirFotoProducto(producto.id_producto, formData)
-      .then((res) => {
-        if (res.error) setError(res.error);
-        else if (res.url) setFotoProducto(res.url);
-      })
-      .catch((e) => setError(e instanceof Error ? e.message : "No se pudo subir la foto"))
-      .finally(() => setSubiendoFoto(false));
+    try {
+      const comprimido = await comprimirImagen(archivo);
+      const formData = new FormData();
+      formData.set("archivo", comprimido);
+      const res = await subirFotoProducto(producto.id_producto, formData);
+      if (res.error) setError(res.error);
+      else if (res.url) setFotoProducto(res.url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo subir la foto");
+    } finally {
+      setSubiendoFoto(false);
+    }
   }
   const marcaSeleccionada = marcas.find((m) => m.id_marca === idMarca);
 
@@ -224,7 +254,7 @@ export default function ProductoFormModal({
             )}
             <Field key={fotoProducto} label="o pegar una URL de imagen" name="imagen" defaultValue={fotoProducto} />
             <p className="text-xs text-neutral-400 mt-1">
-              Recomendado: foto cuadrada, mínimo 800×800px, fondo blanco o neutro — así quedan todas parejas en el catálogo y en el Asesor.
+              Recomendado: foto cuadrada, mínimo 800×800px, fondo blanco o neutro — así quedan todas parejas en el catálogo y en el Asesor. Se comprime sola al subir, no importa que la foto original pese varios MB.
             </p>
           </div>
 
