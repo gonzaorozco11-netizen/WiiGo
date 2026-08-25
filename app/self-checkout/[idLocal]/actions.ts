@@ -13,6 +13,17 @@ type MedioPago = "EFECTIVO" | "MERCADO_PAGO";
 
 type ResultadoPedido = { idVenta: string; numero: number; total: number; descuento: number; qrImagen?: string };
 
+// El totem queda prendido todo el día sin recargarse — sin esto, el stock
+// que trajo el servidor al abrirse la pestaña se iría desactualizando con
+// cada entrega, ajuste o venta que pase mientras tanto en cualquier otro
+// lado (POS, otro totem, Stock). Se consulta cada pocos segundos para que
+// el stock disponible esté siempre al día, sin depender de un refresh.
+export async function obtenerStockLocal(idLocal: string): Promise<{ idVariante: string; cantidad: number }[]> {
+  const supabase = getSupabaseServerClient();
+  const { data } = await supabase.from("stock").select("id_variante, cantidad").eq("id_local", idLocal);
+  return (data ?? []).map((s) => ({ idVariante: s.id_variante as string, cantidad: s.cantidad as number }));
+}
+
 // Next.js redacta en producción el mensaje de un Error tirado desde una
 // Server Action (queda solo un digest genérico en el navegador) — por eso
 // esta función no throwea para errores esperables: devuelve { error }.

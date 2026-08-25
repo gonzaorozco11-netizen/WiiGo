@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Local, Marca, Producto, VarianteProducto, Stock } from "@/lib/supabase";
 import type { Clima } from "@/lib/clima";
-import { confirmarPedido, estadoPedido, cancelarPedidoCliente, buscarProfesionalPorDniAction, buscarClientePorDniAction, buscarCodigoProfesionalAction, infoCanjePuntosAction } from "@/app/self-checkout/[idLocal]/actions";
+import { confirmarPedido, estadoPedido, cancelarPedidoCliente, buscarProfesionalPorDniAction, buscarClientePorDniAction, buscarCodigoProfesionalAction, infoCanjePuntosAction, obtenerStockLocal } from "@/app/self-checkout/[idLocal]/actions";
+
+const STOCK_POLL_MS = 8000;
 
 type Item = {
   variante: VarianteProducto;
@@ -62,10 +64,30 @@ export default function SelfCheckoutApp({
   const [paso, setPaso] = useState<Paso>("reposo");
 
   // El totem queda prendido todo el día sin que nadie lo recargue — el
-  // stock/catálogo que trajo el servidor al abrirse la pestaña se va
-  // desactualizando con el tiempo (nuevas entregas, ajustes de stock,
-  // ventas por otro lado). Recargando solo mientras está en reposo (nunca
-  // en medio de una compra) el totem se mantiene al día sin que se note.
+  // stock que trajo el servidor al abrirse la pestaña se iría
+  // desactualizando con cada entrega, ajuste o venta que pase mientras
+  // tanto en cualquier otro lado (POS, otro totem, Stock). Se vuelve a
+  // consultar solo, todo el tiempo, para que el disponible que ve el
+  // cliente sea siempre el real.
+  const [stockEnVivo, setStockEnVivo] = useState<Map<string, number>>(
+    () => new Map(stock.map((s) => [s.id_variante, s.cantidad]))
+  );
+  useEffect(() => {
+    let cancelado = false;
+    async function actualizar() {
+      const filas = await obtenerStockLocal(local.id_local);
+      if (!cancelado) setStockEnVivo(new Map(filas.map((f) => [f.idVariante, f.cantidad])));
+    }
+    const id = setInterval(actualizar, STOCK_POLL_MS);
+    return () => {
+      cancelado = true;
+      clearInterval(id);
+    };
+  }, [local.id_local]);
+
+  // El catálogo (productos/variantes/precios nuevos) sí necesita una
+  // recarga completa — pero solo mientras está en reposo, nunca en medio
+  // de una compra.
   useEffect(() => {
     if (paso !== "reposo") return;
     const id = setInterval(() => window.location.reload(), 10 * 60 * 1000);
@@ -193,11 +215,7 @@ export default function SelfCheckoutApp({
 
   const productoPorId = useMemo(() => new Map(productos.map((p) => [p.id_producto, p])), [productos]);
   const marcaPorId = useMemo(() => new Map(marcas.map((m) => [m.id_marca, m])), [marcas]);
-  const stockPorVariante = useMemo(() => {
-    const map = new Map<string, number>();
-    stock.forEach((s) => map.set(s.id_variante, s.cantidad));
-    return map;
-  }, [stock]);
+  const stockPorVariante = stockEnVivo;
 
   const items = useMemo<Item[]>(() => {
     return variantes
