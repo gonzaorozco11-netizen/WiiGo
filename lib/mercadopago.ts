@@ -18,7 +18,11 @@ function accessToken(): string {
   return token;
 }
 
-async function mpFetch(path: string, init: RequestInit = {}) {
+// permitir404: para búsquedas (stores/search, pos) — una cuenta que todavía
+// no tiene ninguna sucursal/caja creada puede devolver 404 en vez de un
+// listado vacío. En esos casos un 404 significa "no existe todavía", no un
+// error real, así que se devuelve null en vez de cortar con una excepción.
+async function mpFetch(path: string, init: RequestInit = {}, permitir404 = false) {
   const res = await fetch(`${MP_API}${path}`, {
     ...init,
     headers: {
@@ -28,6 +32,7 @@ async function mpFetch(path: string, init: RequestInit = {}) {
     },
     cache: "no-store",
   });
+  if (permitir404 && res.status === 404) return null;
   const data = await res.json().catch(() => null);
   if (!res.ok) {
     const detalle =
@@ -49,13 +54,17 @@ export async function obtenerUsuarioMp(): Promise<{ id: number; nickname?: strin
 // crearCajaMp abajo, que siguen existiendo por si hace falta crear una
 // sucursal o caja nueva desde cero.
 export async function buscarSucursalMp(userId: number, externalId: string): Promise<{ id: string } | null> {
-  const data = await mpFetch(`/users/${userId}/stores/search?external_id=${encodeURIComponent(externalId)}`);
+  const data = await mpFetch(`/users/${userId}/stores/search?external_id=${encodeURIComponent(externalId)}`, {}, true);
   const encontrada = data?.results?.[0];
   return encontrada ? { id: encontrada.id } : null;
 }
 
 export async function buscarCajaMp(externalPosId: string, externalStoreId: string): Promise<{ id: number; external_id: string } | null> {
-  const data = await mpFetch(`/pos?external_id=${encodeURIComponent(externalPosId)}&external_store_id=${encodeURIComponent(externalStoreId)}`);
+  const data = await mpFetch(
+    `/pos?external_id=${encodeURIComponent(externalPosId)}&external_store_id=${encodeURIComponent(externalStoreId)}`,
+    {},
+    true
+  );
   const encontrada = data?.results?.[0];
   return encontrada ? { id: encontrada.id, external_id: encontrada.external_id } : null;
 }
