@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Local, Marca, Producto, VarianteProducto, Stock } from "@/lib/supabase";
+import type { Clima } from "@/lib/clima";
 import { confirmarPedido, estadoPedido, cancelarPedidoCliente, buscarProfesionalPorDniAction, buscarClientePorDniAction, buscarCodigoProfesionalAction, infoCanjePuntosAction } from "@/app/self-checkout/[idLocal]/actions";
 
 type Item = {
@@ -34,6 +35,15 @@ function precioFinal(producto: Producto, variante: VarianteProducto) {
   return descuento > 0 ? Math.round(base * (1 - descuento / 100)) : base;
 }
 
+// Tormenta reusa la misma foto de lluvia, oscurecida por CSS (ver
+// .sc-tormenta-foto) — no hace falta una cuarta foto para eso.
+const FOTOS_CLIMA: Record<Clima, string> = {
+  soleado: "/clima/soleado.jpg",
+  nublado: "/clima/nublado.jpg",
+  lluvia: "/clima/lluvia.jpg",
+  tormenta: "/clima/lluvia.jpg",
+};
+
 export default function SelfCheckoutApp({
   local,
   productos,
@@ -41,6 +51,7 @@ export default function SelfCheckoutApp({
   marcas,
   stock,
   ivaGeneralPorcentaje,
+  clima,
 }: {
   local: Local;
   productos: Producto[];
@@ -48,8 +59,36 @@ export default function SelfCheckoutApp({
   marcas: Marca[];
   stock: Stock[];
   ivaGeneralPorcentaje: number;
+  clima: Clima;
 }) {
   const [paso, setPaso] = useState<Paso>("reposo");
+
+  // Gotas de la pantalla de reposo con lluvia/tormenta — se calculan una
+  // sola vez por clima (no en cada render) para que no "salten" de lugar.
+  const gotas = useMemo(() => {
+    if (clima !== "lluvia" && clima !== "tormenta") return [];
+    const cantidad = clima === "tormenta" ? 75 : 45;
+    const velocidad = clima === "tormenta" ? 1.6 : 0.9;
+    const minLen = clima === "tormenta" ? 18 : 14;
+    const maxLen = clima === "tormenta" ? 28 : 20;
+    return Array.from({ length: cantidad }, () => ({
+      left: Math.random() * 110 - 5,
+      height: minLen + Math.random() * (maxLen - minLen),
+      opacity: 0.4 + Math.random() * 0.5,
+      duration: (0.45 + Math.random() * 0.35) / velocidad,
+      delay: -Math.random() * 2,
+    }));
+  }, [clima]);
+
+  // Relámpago al azar en tormenta — cambiar la key remonta el div y
+  // reinicia la animación CSS cada vez, sin necesidad de refs.
+  const [flashKey, setFlashKey] = useState(0);
+  useEffect(() => {
+    if (clima !== "tormenta") return;
+    const id = setInterval(() => setFlashKey((k) => k + 1), 3200 + Math.random() * 2600);
+    return () => clearInterval(id);
+  }, [clima]);
+
   const [carrito, setCarrito] = useState<Record<string, number>>({});
   const [dni, setDni] = useState("");
   const [codigoProfesional, setCodigoProfesional] = useState("");
@@ -391,27 +430,53 @@ export default function SelfCheckoutApp({
           0%, 100% { opacity: .55; transform: scale(0.96); }
           50% { opacity: .9; transform: scale(1.04); }
         }
-        @keyframes sc-drift {
-          0%, 100% { transform: translateY(0); opacity: .35; }
-          50% { transform: translateY(-16px); opacity: .8; }
-        }
         @keyframes sc-pulse-ring {
           0% { transform: scale(0.85); opacity: .9; }
           100% { transform: scale(1.55); opacity: 0; }
         }
-        .sc-reposo-bg {
-          background:
-            radial-gradient(circle at 22% 18%, rgba(168,176,140,.35), transparent 42%),
-            radial-gradient(circle at 82% 78%, rgba(168,176,140,.22), transparent 45%),
-            linear-gradient(165deg, #3c4530 0%, #232a1c 45%, #12160d 100%);
+        @keyframes sc-kenburns {
+          0% { transform: scale(1) translate(0, 0); }
+          100% { transform: scale(1.14) translate(-1.5%, -2%); }
         }
-        .sc-orb {
+        .sc-clima-foto {
           position: absolute;
-          border-radius: 9999px;
-          filter: blur(2px);
-          background: radial-gradient(circle, rgba(212,221,180,.9), rgba(212,221,180,0) 70%);
-          opacity: .55;
-          animation: sc-drift 9s ease-in-out infinite;
+          inset: -4%;
+          width: 108%;
+          height: 108%;
+          object-fit: cover;
+          animation: sc-kenburns 22s ease-in-out infinite alternate;
+        }
+        .sc-tormenta-foto { filter: brightness(0.5) contrast(1.15) saturate(0.85); }
+        @keyframes sc-gota-caer {
+          from { transform: translate(0, 0); }
+          to { transform: translate(-30px, 900px); }
+        }
+        .sc-gota {
+          position: absolute;
+          top: -8%;
+          width: 1.5px;
+          background: linear-gradient(rgba(220,235,255,0), rgba(220,235,255,.85));
+          animation: sc-gota-caer linear infinite;
+        }
+        .sc-niebla {
+          position: absolute; left: 0; right: 0; bottom: 0; height: 30%;
+          background: linear-gradient(180deg, rgba(180,195,210,0), rgba(180,195,210,.32));
+          pointer-events: none;
+        }
+        .sc-relampago {
+          position: absolute; inset: 0;
+          background: #d9e6ff;
+          opacity: 0;
+          pointer-events: none;
+        }
+        .sc-relampago.sc-flash { animation: sc-flash-anim .5s ease-out; }
+        @keyframes sc-flash-anim {
+          0% { opacity: 0; }
+          8% { opacity: .8; }
+          18% { opacity: .08; }
+          26% { opacity: .55; }
+          40% { opacity: 0; }
+          100% { opacity: 0; }
         }
         .sc-logo-glow {
           position: absolute;
@@ -441,35 +506,59 @@ export default function SelfCheckoutApp({
           animation: sc-pulse-ring 2.2s ease-out infinite;
         }
       `}</style>
-      <header className="border-b border-neutral-200 bg-white shrink-0 px-5 py-3.5 flex items-center justify-between">
-        <span className="font-extrabold tracking-tight text-neutral-900">WiiGo</span>
-        {paso === "escaneo" || paso === "identificar" || paso === "pagar" || paso === "mp-esperando" ? (
-          <button
-            onClick={handleCancelarPedido}
-            className="text-xs text-neutral-400 border border-neutral-200 rounded-full px-3 py-1"
-          >
-            Cancelar
-          </button>
-        ) : (
-          <span className="text-xs text-neutral-400 text-right leading-tight">
-            {local.nombre}
-            <br />
-            Terminal
-          </span>
-        )}
-      </header>
+      {paso !== "reposo" && (
+        <header className="border-b border-neutral-200 bg-white shrink-0 px-5 py-3.5 flex items-center justify-between">
+          <span className="font-extrabold tracking-tight text-neutral-900">WiiGo</span>
+          {paso === "escaneo" || paso === "identificar" || paso === "pagar" || paso === "mp-esperando" ? (
+            <button
+              onClick={handleCancelarPedido}
+              className="text-xs text-neutral-400 border border-neutral-200 rounded-full px-3 py-1"
+            >
+              Cancelar
+            </button>
+          ) : (
+            <span className="text-xs text-neutral-400 text-right leading-tight">
+              {local.nombre}
+              <br />
+              Terminal
+            </span>
+          )}
+        </header>
+      )}
 
       {paso === "reposo" && (
         <div
           onClick={() => setPaso("escaneo")}
-          className="sc-reposo-bg flex-1 relative overflow-hidden flex flex-col items-center justify-center gap-6 text-center px-10 cursor-pointer"
+          className="flex-1 relative overflow-hidden flex flex-col items-center justify-center gap-6 text-center px-10 cursor-pointer"
         >
-          <span className="sc-orb" style={{ width: 10, height: 10, top: "22%", left: "18%" }} />
-          <span className="sc-orb" style={{ width: 6, height: 6, top: "68%", left: "78%", animationDelay: "1.5s" }} />
-          <span className="sc-orb" style={{ width: 8, height: 8, top: "76%", left: "24%", animationDelay: "3s" }} />
-          <span className="sc-orb" style={{ width: 5, height: 5, top: "16%", left: "74%", animationDelay: "4.5s" }} />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={FOTOS_CLIMA[clima]}
+            alt=""
+            className={`sc-clima-foto${clima === "tormenta" ? " sc-tormenta-foto" : ""}`}
+          />
 
-          <div className="relative" style={{ perspective: "1100px" }}>
+          {(clima === "lluvia" || clima === "tormenta") && (
+            <>
+              {gotas.map((g, i) => (
+                <span
+                  key={i}
+                  className="sc-gota"
+                  style={{
+                    left: `${g.left}%`,
+                    height: g.height,
+                    opacity: g.opacity,
+                    animationDuration: `${g.duration}s`,
+                    animationDelay: `${g.delay}s`,
+                  }}
+                />
+              ))}
+              <div className="sc-niebla" />
+            </>
+          )}
+          {clima === "tormenta" && <div key={flashKey} className="sc-relampago sc-flash" />}
+
+          <div className="relative" style={{ perspective: "1100px", zIndex: 2 }}>
             <div className="sc-logo-glow" />
             <div
               className="sc-logo-card relative overflow-hidden rounded-[28px] px-9 py-8"

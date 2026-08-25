@@ -7,6 +7,7 @@ import {
   type VarianteProducto,
   type Stock,
 } from "@/lib/supabase";
+import { obtenerClimaActual } from "@/lib/clima";
 import SelfCheckoutApp from "@/components/SelfCheckoutApp";
 
 export const dynamic = "force-dynamic";
@@ -33,6 +34,7 @@ export default async function SelfCheckoutPage({ params }: { params: Promise<{ i
   ]);
 
   const ivaGeneralPorcentaje = Number(configRes.data?.valor ?? 21);
+  const clima = await obtenerClimaActual((local as Local).latitud, (local as Local).longitud);
 
   return (
     <SelfCheckoutApp
@@ -42,6 +44,7 @@ export default async function SelfCheckoutPage({ params }: { params: Promise<{ i
       marcas={(marcasRes.data ?? []) as Marca[]}
       stock={(stockRes.data ?? []) as Stock[]}
       ivaGeneralPorcentaje={ivaGeneralPorcentaje}
+      clima={clima}
     />
   );
 }

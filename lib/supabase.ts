@@ -155,6 +155,8 @@ export type Local = {
   estado: string;
   fecha_alta: string;
   observaciones: string | null;
+  latitud: number | null;
+  longitud: number | null;
 };
 
 export type Stock = {
