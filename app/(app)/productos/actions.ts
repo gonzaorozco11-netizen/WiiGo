@@ -279,6 +279,9 @@ function fichaFromForm(formData: FormData) {
     imagen_principal: text(formData, "ficha_imagen_principal"),
     video: text(formData, "ficha_video"),
     estado: text(formData, "ficha_estado") ?? "ACTIVO",
+    foto_extra_1: text(formData, "ficha_foto_extra_1"),
+    foto_extra_2: text(formData, "ficha_foto_extra_2"),
+    foto_extra_3: text(formData, "ficha_foto_extra_3"),
   };
 }
 
@@ -412,6 +415,44 @@ export async function subirFotoProducto(
       .from("productos")
       .update({ imagen: data.publicUrl })
       .eq("id_producto", idProducto);
+    if (errorUpdate) return { error: friendlyDbError(errorUpdate) };
+
+    revalidatePath("/productos");
+    return { error: null, url: data.publicUrl };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo subir la foto" };
+  }
+}
+
+const CAMPOS_FOTO_FICHA = ["foto_extra_1", "foto_extra_2", "foto_extra_3"] as const;
+type CampoFotoFicha = (typeof CAMPOS_FOTO_FICHA)[number];
+
+// Fotos adicionales para la ficha ampliada del Asesor — la principal ya es
+// la misma que se sube en producto.imagen, esto solo suma hasta 3 más.
+export async function subirFotoFichaProducto(
+  idProducto: string,
+  campo: CampoFotoFicha,
+  formData: FormData
+): Promise<{ error: string | null; url?: string }> {
+  if (!CAMPOS_FOTO_FICHA.includes(campo)) return { error: "Campo inválido" };
+  const archivo = formData.get("archivo") as File | null;
+  if (!archivo || archivo.size === 0) return { error: "Elegí una foto primero" };
+
+  try {
+    const supabase = getSupabaseServerClient();
+    const extension = archivo.name.split(".").pop() ?? "jpg";
+    const path = `${idProducto}-${campo}-${Date.now()}.${extension}`;
+
+    const { error: errorUpload } = await supabase.storage
+      .from("fotos-productos")
+      .upload(path, archivo, { upsert: true, contentType: archivo.type || undefined });
+    if (errorUpload) return { error: errorUpload.message };
+
+    const { data } = supabase.storage.from("fotos-productos").getPublicUrl(path);
+
+    const { error: errorUpdate } = await supabase
+      .from("ficha_producto")
+      .upsert({ id_producto: idProducto, [campo]: data.publicUrl }, { onConflict: "id_producto" });
     if (errorUpdate) return { error: friendlyDbError(errorUpdate) };
 
     revalidatePath("/productos");

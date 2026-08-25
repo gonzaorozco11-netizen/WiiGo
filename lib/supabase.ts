@@ -662,4 +662,7 @@ export type FichaProducto = {
   imagen_principal: string | null;
   video: string | null;
   estado: string;
+  foto_extra_1: string | null;
+  foto_extra_2: string | null;
+  foto_extra_3: string | null;
 };

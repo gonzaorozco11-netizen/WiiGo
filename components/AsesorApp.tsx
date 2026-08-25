@@ -152,6 +152,7 @@ export default function AsesorApp({
   const [slideIndex, setSlideIndex] = useState(0);
   const [mostrarComoAyuda, setMostrarComoAyuda] = useState(false);
   const [modalidadTurno, setModalidadTurno] = useState<"presencial" | "online" | null>(null);
+  const [productoAbierto, setProductoAbierto] = useState<string | null>(null);
   const [idleWarning, setIdleWarning] = useState(false);
   const [idleCountdown, setIdleCountdown] = useState(IDLE_COUNTDOWN_S);
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -613,11 +614,15 @@ export default function AsesorApp({
                     {productosDeMarca.map((p) => {
                       const ficha = fichaPorProducto[p.id_producto];
                       return (
-                        <div key={p.id_producto} className="rounded-xl border border-[#d8d8d8] bg-white overflow-hidden shadow-sm flex flex-col">
+                        <div
+                          key={p.id_producto}
+                          onClick={() => setProductoAbierto(p.id_producto)}
+                          className="rounded-xl border border-[#d8d8d8] bg-white overflow-hidden shadow-sm flex flex-col cursor-pointer"
+                        >
                           <div className="h-20 bg-gradient-to-br from-[#f0f2ec] to-[#d8d8d8] flex items-center justify-center">
-                            {(ficha?.imagen_principal || p.imagen) ? (
+                            {p.imagen ? (
                               // eslint-disable-next-line @next/next/no-img-element
-                              <img src={ficha?.imagen_principal || p.imagen || ""} alt="" className="w-full h-full object-cover" />
+                              <img src={p.imagen} alt="" className="w-full h-full object-cover" />
                             ) : (
                               <span style={{ color: SAGE_DARK }}>
                                 <IconoBolsa className="w-6 h-6" />
@@ -697,10 +702,13 @@ export default function AsesorApp({
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {productosEnOfertaFiltrados.map((p) => {
-                  const ficha = fichaPorProducto[p.id_producto];
                   const marca = marcaPorId[p.id_marca];
                   return (
-                    <div key={p.id_producto} className="relative rounded-xl border border-[#d8d8d8] bg-white overflow-hidden shadow-sm flex flex-col">
+                    <div
+                      key={p.id_producto}
+                      onClick={() => setProductoAbierto(p.id_producto)}
+                      className="relative rounded-xl border border-[#d8d8d8] bg-white overflow-hidden shadow-sm flex flex-col cursor-pointer"
+                    >
                       <span
                         className="absolute top-2 left-2 z-10 text-[10px] font-extrabold px-2 py-0.5 rounded-full text-white"
                         style={{ background: C3 }}
@@ -708,9 +716,9 @@ export default function AsesorApp({
                         -{p.descuento_porcentaje}%
                       </span>
                       <div className="h-20 bg-gradient-to-br from-[#f0f2ec] to-[#d8d8d8] flex items-center justify-center">
-                        {(ficha?.imagen_principal || p.imagen) ? (
+                        {p.imagen ? (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img src={ficha?.imagen_principal || p.imagen || ""} alt="" className="w-full h-full object-cover" />
+                          <img src={p.imagen} alt="" className="w-full h-full object-cover" />
                         ) : (
                           <span style={{ color: SAGE_DARK }}>
                             <IconoEtiqueta className="w-6 h-6" />
@@ -783,13 +791,16 @@ export default function AsesorApp({
                 {productosFiltrados.map((p) => {
                   const { texto, tag } = porQue(p);
                   const marca = marcaPorId[p.id_marca];
-                  const ficha = fichaPorProducto[p.id_producto];
                   return (
-                    <div key={p.id_producto} className="rounded-xl border border-[#d8d8d8] bg-white overflow-hidden shadow-sm flex flex-col">
+                    <div
+                      key={p.id_producto}
+                      onClick={() => setProductoAbierto(p.id_producto)}
+                      className="rounded-xl border border-[#d8d8d8] bg-white overflow-hidden shadow-sm flex flex-col cursor-pointer"
+                    >
                       <div className="h-20 bg-gradient-to-br from-[#f0f2ec] to-[#d8d8d8] flex items-center justify-center">
-                        {(ficha?.imagen_principal || p.imagen) ? (
+                        {p.imagen ? (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img src={ficha?.imagen_principal || p.imagen || ""} alt="" className="w-full h-full object-cover" />
+                          <img src={p.imagen} alt="" className="w-full h-full object-cover" />
                         ) : (
                           <span style={{ color: SAGE_DARK }}>
                             <IconoBolsa className="w-6 h-6" />
@@ -1374,7 +1385,187 @@ export default function AsesorApp({
         </div>
       )}
 
+      {productoAbierto &&
+        (() => {
+          const p = productos.find((x) => x.id_producto === productoAbierto);
+          if (!p) return null;
+          return (
+            <ProductoDetalleModal
+              key={p.id_producto}
+              producto={p}
+              marca={marcaPorId[p.id_marca]}
+              ficha={fichaPorProducto[p.id_producto] ?? null}
+              onClose={() => setProductoAbierto(null)}
+            />
+          );
+        })()}
+
       <p className="sr-only">Local: {local.nombre}</p>
+    </div>
+  );
+}
+
+function ProductoDetalleModal({
+  producto,
+  marca,
+  ficha,
+  onClose,
+}: {
+  producto: Producto;
+  marca: Marca | undefined;
+  ficha: FichaProducto | null;
+  onClose: () => void;
+}) {
+  const fotos = [producto.imagen, ficha?.foto_extra_1, ficha?.foto_extra_2, ficha?.foto_extra_3].filter(
+    (f): f is string => Boolean(f)
+  );
+  const [fotoActiva, setFotoActiva] = useState<string | null>(fotos[0] ?? null);
+
+  const nutrientes = [
+    { label: "Kcal", valor: ficha?.kcal_100g ?? null, unidad: "" },
+    { label: "Proteínas", valor: ficha?.proteinas ?? null, unidad: "g" },
+    { label: "Carbohidratos", valor: ficha?.carbohidratos ?? null, unidad: "g" },
+    { label: "Grasas", valor: ficha?.grasas ?? null, unidad: "g" },
+    { label: "Fibra", valor: ficha?.fibra ?? null, unidad: "g" },
+    { label: "Sodio", valor: ficha?.sodio ?? null, unidad: "g" },
+  ].filter((n) => n.valor !== null);
+
+  return (
+    <div
+      className="fixed inset-0 z-40 flex items-end sm:items-center justify-center"
+      style={{ background: "rgba(45,45,45,.6)" }}
+      onClick={onClose}
+    >
+      <div
+        className="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl max-h-[88vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="relative">
+          <div className="h-56 bg-gradient-to-br from-[#f0f2ec] to-[#d8d8d8] flex items-center justify-center">
+            {fotoActiva ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={fotoActiva} alt="" className="w-full h-full object-cover" />
+            ) : (
+              <span style={{ color: SAGE_DARK }}>
+                <IconoBolsa className="w-10 h-10" />
+              </span>
+            )}
+          </div>
+          <button
+            onClick={onClose}
+            className="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/90 flex items-center justify-center text-[#2d2d2d] font-bold shadow"
+          >
+            ✕
+          </button>
+        </div>
+
+        {fotos.length > 1 && (
+          <div className="flex gap-2 px-4 pt-3">
+            {fotos.map((f) => (
+              <button
+                key={f}
+                onClick={() => setFotoActiva(f)}
+                className="w-12 h-12 rounded-lg overflow-hidden border-2 shrink-0"
+                style={{ borderColor: f === fotoActiva ? SAGE : "#e5e5e5" }}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={f} alt="" className="w-full h-full object-cover" />
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="p-4 flex flex-col gap-3">
+          {marca && (
+            <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: SAGE_DARK }}>
+              {marca.nombre}
+            </p>
+          )}
+          <h3 className="text-lg font-extrabold leading-tight -mt-1">{producto.nombre}</h3>
+          <div className="flex items-baseline gap-2">
+            <span
+              className="text-xl font-extrabold"
+              style={{ color: (producto.descuento_porcentaje ?? 0) > 0 ? C3 : "#2d2d2d" }}
+            >
+              {formatoPrecio(precioConDescuento(producto))}
+            </span>
+            {(producto.descuento_porcentaje ?? 0) > 0 && (
+              <span className="text-sm text-[#a8a8a8] line-through">{formatoPrecio(producto.precio_venta)}</span>
+            )}
+          </div>
+
+          {ficha?.descripcion_publica && (
+            <p className="text-sm text-[#3d3d3d] leading-relaxed">{ficha.descripcion_publica}</p>
+          )}
+
+          {(ficha?.origen || ficha?.porcion) && (
+            <div className="flex flex-wrap gap-4 text-[12px] text-[#686868]">
+              {ficha?.origen && (
+                <span>
+                  <b className="text-[#2d2d2d]">Origen:</b> {ficha.origen}
+                </span>
+              )}
+              {ficha?.porcion && (
+                <span>
+                  <b className="text-[#2d2d2d]">Porción:</b> {ficha.porcion}
+                </span>
+              )}
+            </div>
+          )}
+
+          {nutrientes.length > 0 && (
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wide text-[#686868] mb-1.5">Cada 100 g</p>
+              <div className="grid grid-cols-3 gap-2">
+                {nutrientes.map((n) => (
+                  <div key={n.label} className="rounded-lg px-2 py-1.5 text-center" style={{ background: SAGE_TINT }}>
+                    <p className="text-[13px] font-extrabold" style={{ color: SAGE_DARK }}>
+                      {n.valor}
+                      {n.unidad}
+                    </p>
+                    <p className="text-[9px] text-[#686868]">{n.label}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {ficha?.ingredientes && (
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wide text-[#686868] mb-1">Ingredientes</p>
+              <p className="text-[12px] text-[#3d3d3d] leading-relaxed">{ficha.ingredientes}</p>
+            </div>
+          )}
+
+          {ficha?.micronutrientes && (
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wide text-[#686868] mb-1">Micronutrientes</p>
+              <p className="text-[12px] text-[#3d3d3d] leading-relaxed">{ficha.micronutrientes}</p>
+            </div>
+          )}
+
+          {ficha?.clasificacion && (
+            <span
+              className="self-start text-[10px] font-bold px-2.5 py-1 rounded-full"
+              style={{ background: SAGE_TINT, color: SAGE_DARK }}
+            >
+              {ficha.clasificacion}
+            </span>
+          )}
+
+          {ficha?.video && (
+            <a
+              href={ficha.video}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[12px] font-bold underline"
+              style={{ color: SAGE_DARK }}
+            >
+              Ver video ↗
+            </a>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

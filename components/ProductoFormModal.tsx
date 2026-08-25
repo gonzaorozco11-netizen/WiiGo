@@ -11,7 +11,7 @@ import type {
   VarianteProducto,
   Local,
 } from "@/lib/supabase";
-import { createProducto, updateProducto, subirFotoProducto } from "@/app/(app)/productos/actions";
+import { createProducto, updateProducto, subirFotoProducto, subirFotoFichaProducto } from "@/app/(app)/productos/actions";
 
 type VarianteForm = {
   id: string;
@@ -273,7 +273,7 @@ export default function ProductoFormModal({
             </select>
           </div>
 
-          <FichaSection ficha={ficha} />
+          <FichaSection ficha={ficha} producto={producto} />
 
           <CheckboxSection
             titulo="🎯 Objetivos"
@@ -677,12 +677,67 @@ function VariantesSection({
   );
 }
 
-function FichaSection({ ficha }: { ficha: FichaProducto | null }) {
+function FotoExtraFicha({
+  idProducto,
+  campo,
+  valorInicial,
+}: {
+  idProducto: string;
+  campo: "foto_extra_1" | "foto_extra_2" | "foto_extra_3";
+  valorInicial: string;
+}) {
+  const [foto, setFoto] = useState(valorInicial);
+  const [subiendo, setSubiendo] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleFoto(e: React.ChangeEvent<HTMLInputElement>) {
+    const archivo = e.target.files?.[0];
+    if (!archivo) return;
+    setSubiendo(true);
+    setError(null);
+    try {
+      const comprimido = await comprimirImagen(archivo);
+      const formData = new FormData();
+      formData.set("archivo", comprimido);
+      const res = await subirFotoFichaProducto(idProducto, campo, formData);
+      if (res.error) setError(res.error);
+      else if (res.url) setFoto(res.url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo subir la foto");
+    } finally {
+      setSubiendo(false);
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-3">
+      <span className="w-14 h-14 rounded-lg overflow-hidden bg-neutral-100 border border-neutral-200 flex items-center justify-center shrink-0">
+        {foto ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={foto} alt="" className="w-full h-full object-cover" />
+        ) : (
+          <span className="text-neutral-300 text-[10px]">Sin foto</span>
+        )}
+      </span>
+      <div>
+        <label className="text-xs font-semibold text-accent cursor-pointer">
+          {subiendo ? "Subiendo..." : foto ? "Cambiar foto" : "Subir foto"}
+          <input type="file" accept="image/*" onChange={handleFoto} disabled={subiendo} className="hidden" />
+        </label>
+        {error && <p className="text-xs text-red-600 mt-0.5">{error}</p>}
+      </div>
+      <input type="hidden" name={`ficha_${campo}`} value={foto} readOnly />
+    </div>
+  );
+}
+
+function FichaSection({ ficha, producto }: { ficha: FichaProducto | null; producto: Producto | null }) {
   return (
     <div className="border border-neutral-200 rounded-xl p-4">
       <h3 className="text-sm font-semibold text-neutral-900">🖥️ Ficha para Pantallas Asesoras</h3>
       <p className="text-xs text-neutral-500 mb-4">
-        Esta información será visible para el cliente en las pantallas interactivas del local.
+        Esta información será visible para el cliente en las pantallas interactivas del local. La foto principal es
+        la misma que cargaste arriba en "Imagen" — acá solo podés sumar hasta 3 fotos más para la ficha ampliada.
       </p>
 
       <div className="grid grid-cols-2 gap-3">
@@ -790,12 +845,18 @@ function FichaSection({ ficha }: { ficha: FichaProducto | null }) {
           />
         </div>
 
-        <Field
-          label="Imagen principal (URL)"
-          name="ficha_imagen_principal"
-          defaultValue={ficha?.imagen_principal ?? ""}
-        />
         <Field label="Video (URL)" name="ficha_video" defaultValue={ficha?.video ?? ""} />
+
+        {producto && (
+          <div className="col-span-2">
+            <label className="block text-sm font-medium text-neutral-700 mb-2">Fotos extra (hasta 3)</label>
+            <div className="flex flex-col gap-2.5">
+              <FotoExtraFicha idProducto={producto.id_producto} campo="foto_extra_1" valorInicial={ficha?.foto_extra_1 ?? ""} />
+              <FotoExtraFicha idProducto={producto.id_producto} campo="foto_extra_2" valorInicial={ficha?.foto_extra_2 ?? ""} />
+              <FotoExtraFicha idProducto={producto.id_producto} campo="foto_extra_3" valorInicial={ficha?.foto_extra_3 ?? ""} />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
