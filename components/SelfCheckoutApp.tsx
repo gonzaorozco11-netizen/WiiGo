@@ -77,10 +77,18 @@ export default function SelfCheckoutApp({
     async function actualizar() {
       try {
         const filas = await obtenerStockLocal(local.id_local);
-        // Un resultado vacío casi siempre es una consulta que falló, no un
-        // local que de golpe se quedó sin nada de stock — mejor mantener el
-        // último stock bueno conocido que dejar a todo el mundo "sin stock".
-        if (!cancelado && filas.length > 0) setStockEnVivo(new Map(filas.map((f) => [f.idVariante, f.cantidad])));
+        if (cancelado || filas.length === 0) return;
+        // Se actualiza solo lo que efectivamente llegó en esta consulta —
+        // nunca se reemplaza el mapa entero. Así, si una consulta viene
+        // incompleta (falta algún producto puntual, algo que puede pasar
+        // ante un problema pasajero del lado de la base de datos), ese
+        // producto conserva su último stock bueno conocido en vez de
+        // quedar en 0 por error.
+        setStockEnVivo((prev) => {
+          const map = new Map(prev);
+          filas.forEach((f) => map.set(f.idVariante, f.cantidad));
+          return map;
+        });
       } catch {
         // Falla de red pasajera — se mantiene el último stock conocido.
       }
@@ -331,12 +339,7 @@ export default function SelfCheckoutApp({
       agregado = true;
       return { ...prev, [idVariante]: actual + 1 };
     });
-    if (agregado) {
-      mostrarToast(item.producto.nombre, item.precio);
-    } else {
-      setError(`No queda más stock disponible de ${item.producto.nombre}`);
-      setTimeout(() => setError(null), TOAST_MS);
-    }
+    if (agregado) mostrarToast(item.producto.nombre, item.precio);
   }
 
   // El lector de código de barras conecta como teclado: "escribe" el
