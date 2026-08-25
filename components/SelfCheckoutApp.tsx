@@ -14,7 +14,7 @@ type Item = {
 
 type ItemCarrito = Item & { cantidad: number };
 
-type Paso = "bienvenida" | "escaneo" | "pago" | "efectivo-esperando" | "mp-esperando" | "pagado" | "cancelado";
+type Paso = "reposo" | "escaneo" | "identificar" | "pagar" | "efectivo-esperando" | "mp-esperando" | "pagado" | "cancelado";
 type MedioPago = "EFECTIVO" | "MERCADO_PAGO";
 
 const POLL_MS = 3000;
@@ -49,7 +49,7 @@ export default function SelfCheckoutApp({
   stock: Stock[];
   ivaGeneralPorcentaje: number;
 }) {
-  const [paso, setPaso] = useState<Paso>("bienvenida");
+  const [paso, setPaso] = useState<Paso>("reposo");
   const [carrito, setCarrito] = useState<Record<string, number>>({});
   const [dni, setDni] = useState("");
   const [codigoProfesional, setCodigoProfesional] = useState("");
@@ -139,10 +139,9 @@ export default function SelfCheckoutApp({
   const [toast, setToast] = useState<{ nombre: string; precio: number } | null>(null);
   const toastTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [buscarAbierto, setBuscarAbierto] = useState(false);
   const [busquedaTexto, setBusquedaTexto] = useState("");
 
-  const scanInputRef = useRef<HTMLInputElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const productoPorId = useMemo(() => new Map(productos.map((p) => [p.id_producto, p])), [productos]);
   const marcaPorId = useMemo(() => new Map(marcas.map((m) => [m.id_marca, m])), [marcas]);
@@ -272,23 +271,26 @@ export default function SelfCheckoutApp({
   }
 
   // El lector de código de barras conecta como teclado: "escribe" el
-  // código leído y remata con Enter, todo en milisegundos. Escuchamos ese
-  // Enter para tomar el valor acumulado y compararlo contra los códigos
-  // de barra cargados — un input controlado no sirve acá porque React lo
-  // limpiaría entre cada tecla antes de que el lector termine de tipear.
-  function handleEscaneoKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+  // código leído y remata con Enter, todo en milisegundos, en el mismo
+  // buscador de arriba. Si lo que se tipeó matchea un código de barras
+  // exacto, se agrega solo (comportamiento de escaneo); si no matchea,
+  // se deja el texto tal cual para que el cliente elija de la lista que
+  // se despliega abajo (búsqueda manual por nombre).
+  function handleBuscadorKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key !== "Enter") return;
     const valor = e.currentTarget.value.trim();
-    e.currentTarget.value = "";
     if (!valor) return;
     const coincidencia = items.find((i) => i.variante.codigo_barras === valor);
-    if (coincidencia) agregarAlCarrito(coincidencia.variante.id_variante);
+    if (coincidencia) {
+      agregarAlCarrito(coincidencia.variante.id_variante);
+      setBusquedaTexto("");
+    }
   }
 
   useEffect(() => {
-    if (paso !== "escaneo" || buscarAbierto) return;
-    scanInputRef.current?.focus();
-  }, [paso, buscarAbierto, itemsCarrito.length]);
+    if (paso !== "escaneo") return;
+    searchInputRef.current?.focus();
+  }, [paso]);
 
   function cambiarCantidad(idVariante: string, delta: number) {
     setCarrito((prev) => {
@@ -311,13 +313,12 @@ export default function SelfCheckoutApp({
     setPedido(null);
     setError(null);
     setBusquedaTexto("");
-    setBuscarAbierto(false);
     setProfesional(null);
     setMarcasCanje(new Set());
     setPinCanje("");
     setInfoPuntos(null);
     setUsarPuntosWiigo(false);
-    setPaso("bienvenida");
+    setPaso("reposo");
   }
 
   function handleConfirmar(medioPago: MedioPago) {
@@ -377,9 +378,72 @@ export default function SelfCheckoutApp({
 
   return (
     <div className="min-h-screen bg-neutral-50 flex flex-col relative">
+      <style>{`
+        @keyframes sc-float3d {
+          0%, 100% { transform: rotateX(9deg) rotateY(-11deg) translateY(0px); }
+          50% { transform: rotateX(4deg) rotateY(11deg) translateY(-9px); }
+        }
+        @keyframes sc-shine {
+          0% { transform: translateX(-40%) rotate(8deg); }
+          45%, 100% { transform: translateX(220%) rotate(8deg); }
+        }
+        @keyframes sc-glow-pulse {
+          0%, 100% { opacity: .55; transform: scale(0.96); }
+          50% { opacity: .9; transform: scale(1.04); }
+        }
+        @keyframes sc-drift {
+          0%, 100% { transform: translateY(0); opacity: .35; }
+          50% { transform: translateY(-16px); opacity: .8; }
+        }
+        @keyframes sc-pulse-ring {
+          0% { transform: scale(0.85); opacity: .9; }
+          100% { transform: scale(1.55); opacity: 0; }
+        }
+        .sc-reposo-bg {
+          background:
+            radial-gradient(circle at 22% 18%, rgba(168,176,140,.35), transparent 42%),
+            radial-gradient(circle at 82% 78%, rgba(168,176,140,.22), transparent 45%),
+            linear-gradient(165deg, #3c4530 0%, #232a1c 45%, #12160d 100%);
+        }
+        .sc-orb {
+          position: absolute;
+          border-radius: 9999px;
+          filter: blur(2px);
+          background: radial-gradient(circle, rgba(212,221,180,.9), rgba(212,221,180,0) 70%);
+          opacity: .55;
+          animation: sc-drift 9s ease-in-out infinite;
+        }
+        .sc-logo-glow {
+          position: absolute;
+          inset: -30px;
+          background: radial-gradient(circle, rgba(212,221,180,.5), rgba(212,221,180,0) 68%);
+          filter: blur(6px);
+          z-index: -1;
+          animation: sc-glow-pulse 6s ease-in-out infinite;
+        }
+        .sc-logo-card {
+          transform-style: preserve-3d;
+          animation: sc-float3d 6.5s ease-in-out infinite;
+        }
+        .sc-logo-card::after {
+          content: "";
+          position: absolute;
+          top: -60%; left: -20%;
+          width: 60%; height: 220%;
+          background: linear-gradient(115deg, rgba(255,255,255,0) 30%, rgba(255,255,255,.55) 48%, rgba(255,255,255,0) 66%);
+          animation: sc-shine 5.5s ease-in-out infinite;
+        }
+        .sc-tap-hint::before {
+          content: "";
+          position: absolute; inset: -10px;
+          border-radius: 9999px;
+          border: 1.5px solid rgba(212,221,180,.55);
+          animation: sc-pulse-ring 2.2s ease-out infinite;
+        }
+      `}</style>
       <header className="border-b border-neutral-200 bg-white shrink-0 px-5 py-3.5 flex items-center justify-between">
         <span className="font-extrabold tracking-tight text-neutral-900">WiiGo</span>
-        {paso === "escaneo" || paso === "mp-esperando" ? (
+        {paso === "escaneo" || paso === "identificar" || paso === "pagar" || paso === "mp-esperando" ? (
           <button
             onClick={handleCancelarPedido}
             className="text-xs text-neutral-400 border border-neutral-200 rounded-full px-3 py-1"
@@ -395,50 +459,89 @@ export default function SelfCheckoutApp({
         )}
       </header>
 
-      {paso === "bienvenida" && (
-        <div className="flex-1 flex flex-col items-center justify-center text-center px-10">
-          <h1 className="text-3xl font-extrabold text-neutral-900 mb-3 text-balance">Tu compra, a tu ritmo</h1>
-          <p className="text-neutral-500 max-w-xs mb-9">
-            Escaneá los productos de tu canasta y pagá con Mercado Pago o en efectivo, sin hacer fila.
+      {paso === "reposo" && (
+        <div
+          onClick={() => setPaso("escaneo")}
+          className="sc-reposo-bg flex-1 relative overflow-hidden flex flex-col items-center justify-center gap-6 text-center px-10 cursor-pointer"
+        >
+          <span className="sc-orb" style={{ width: 10, height: 10, top: "22%", left: "18%" }} />
+          <span className="sc-orb" style={{ width: 6, height: 6, top: "68%", left: "78%", animationDelay: "1.5s" }} />
+          <span className="sc-orb" style={{ width: 8, height: 8, top: "76%", left: "24%", animationDelay: "3s" }} />
+          <span className="sc-orb" style={{ width: 5, height: 5, top: "16%", left: "74%", animationDelay: "4.5s" }} />
+
+          <div className="relative" style={{ perspective: "1100px" }}>
+            <div className="sc-logo-glow" />
+            <div
+              className="sc-logo-card relative overflow-hidden rounded-[28px] px-9 py-8"
+              style={{
+                width: 250,
+                background: "linear-gradient(160deg, #ffffff 0%, #f4f5ef 100%)",
+                boxShadow:
+                  "0 40px 70px -24px rgba(0,0,0,.6), 0 14px 26px -12px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.8), inset 0 -6px 14px -6px rgba(0,0,0,.06)",
+              }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/wiigo-logo.png"
+                alt="WiiGo"
+                className="w-full"
+                style={{ filter: "drop-shadow(0 10px 14px rgba(30,35,20,.28))" }}
+              />
+            </div>
+          </div>
+
+          <h1 className="text-2xl font-extrabold text-white text-balance relative z-10">Tu compra, a tu ritmo</h1>
+
+          <div className="sc-tap-hint relative w-12 h-12 rounded-full bg-white/10 border border-white/25 flex items-center justify-center text-lg z-10">
+            👆
+          </div>
+          <p className="text-xs font-bold uppercase tracking-widest text-white/50 -mt-2 relative z-10">
+            Tocá la pantalla para empezar
           </p>
-          <button
-            onClick={() => setPaso("escaneo")}
-            className="bg-accent hover:bg-accent-dark text-white font-bold px-9 py-4 rounded-2xl shadow-sm"
-          >
-            Iniciar compra
-          </button>
         </div>
       )}
 
       {paso === "escaneo" && (
         <div className="flex-1 flex flex-col min-h-0">
-          <div className="bg-white border-b border-neutral-200 px-5 py-3.5 flex items-center gap-3 shrink-0">
-            <div className="w-11 h-11 rounded-xl bg-accent-tint flex items-center justify-center text-lg shrink-0">
-              📷
+          <div className="bg-white border-b border-neutral-200 px-5 py-3 shrink-0">
+            <div className="relative">
+              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400">🔍</span>
+              <input
+                ref={searchInputRef}
+                value={busquedaTexto}
+                onChange={(e) => setBusquedaTexto(e.target.value)}
+                onKeyDown={handleBuscadorKeyDown}
+                placeholder="Buscá un producto por nombre..."
+                className="w-full rounded-xl border-[1.5px] border-accent bg-accent-tint pl-9 pr-3.5 py-3 text-sm font-medium text-neutral-900"
+              />
             </div>
-            <div className="min-w-0">
-              <h2 className="font-extrabold text-sm text-neutral-900">Escaneá el código de barras</h2>
-              <p className="text-xs text-neutral-500">Se suma solo a la lista de abajo</p>
-            </div>
-            <input
-              ref={scanInputRef}
-              defaultValue=""
-              onKeyDown={handleEscaneoKeyDown}
-              onBlur={() => {
-                if (!buscarAbierto) setTimeout(() => scanInputRef.current?.focus(), 50);
-              }}
-              className="opacity-0 absolute w-px h-px"
-              aria-hidden="true"
-              tabIndex={-1}
-            />
-          </div>
+            <p className="text-[11px] text-neutral-400 mt-1.5">📷 También podés escanear el código de barras en cualquier momento</p>
 
-          <button
-            onClick={() => setBuscarAbierto(true)}
-            className="shrink-0 mx-5 mt-3.5 mb-1 flex items-center justify-center gap-2 bg-accent-tint border-[1.5px] border-accent text-accent-dark font-bold text-sm py-3.5 rounded-2xl"
-          >
-            🔍 Buscar producto por nombre
-          </button>
+            {resultadosBusqueda.length > 0 && (
+              <div className="mt-2 border border-neutral-200 rounded-xl bg-white shadow-lg overflow-hidden max-h-64 overflow-y-auto">
+                {resultadosBusqueda.map((i) => (
+                  <button
+                    key={i.variante.id_variante}
+                    onClick={() => {
+                      agregarAlCarrito(i.variante.id_variante);
+                      setBusquedaTexto("");
+                      searchInputRef.current?.focus();
+                    }}
+                    className="w-full flex items-center justify-between gap-2.5 px-3.5 py-2.5 border-b border-neutral-100 last:border-0 text-left active:bg-accent-tint"
+                  >
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold text-neutral-900 truncate">{i.producto.nombre}</span>
+                      {i.variante.nombre !== "Único" && <span className="block text-xs text-neutral-400">{i.variante.nombre}</span>}
+                    </span>
+                    <span className="shrink-0 font-bold text-sm text-accent-dark">${formatearMonto(i.precio)}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {busquedaTexto.trim() && resultadosBusqueda.length === 0 && (
+              <p className="text-center text-xs text-neutral-400 py-3">No encontramos productos con ese nombre.</p>
+            )}
+          </div>
 
           {toast && (
             <div className="shrink-0 mx-5 mt-3 bg-emerald-50 border border-emerald-200 rounded-xl px-3.5 py-2.5 flex items-center gap-2.5">
@@ -515,265 +618,254 @@ export default function SelfCheckoutApp({
                 <p className="text-lg font-extrabold text-neutral-900">${formatearMonto(subtotalCarrito)}</p>
               </div>
               <button
-                onClick={() => setPaso("pago")}
+                onClick={() => setPaso("identificar")}
                 disabled={itemsCarrito.length === 0}
                 className="bg-accent hover:bg-accent-dark disabled:opacity-40 text-white font-bold px-6 py-3 rounded-xl"
               >
-                Continuar →
+                Ir a pagar →
               </button>
             </div>
           </div>
-
-          {buscarAbierto && (
-            <div className="absolute inset-0 bg-black/40 flex items-end justify-center">
-              <div className="bg-white rounded-t-2xl w-full max-h-[82%] flex flex-col shadow-2xl overflow-hidden">
-                <div className="px-5 pt-4 pb-2.5 border-b border-neutral-200">
-                  <div className="w-9 h-1 bg-neutral-200 rounded-full mx-auto mb-3" />
-                  <h3 className="font-extrabold text-sm text-neutral-900">Buscar producto</h3>
-                  <p className="text-xs text-neutral-500">Para cuando el código no se puede leer o el producto no tiene.</p>
-                </div>
-                <input
-                  autoFocus
-                  type="search"
-                  value={busquedaTexto}
-                  onChange={(e) => setBusquedaTexto(e.target.value)}
-                  placeholder="Escribí el nombre del producto..."
-                  className="mx-5 mt-3 rounded-xl border border-neutral-300 px-3.5 py-2.5 text-sm"
-                />
-                {error && (
-                  <p className="mx-5 mt-2 text-sm font-semibold text-red-600">{error}</p>
-                )}
-                <div className="px-5 pt-3 pb-4 overflow-y-auto flex flex-col gap-2">
-                  {resultadosBusqueda.map((i) => (
-                    <button
-                      key={i.variante.id_variante}
-                      onClick={() => {
-                        agregarAlCarrito(i.variante.id_variante);
-                        setBusquedaTexto("");
-                      }}
-                      className="flex items-center gap-2.5 border border-neutral-200 rounded-xl px-3 py-2.5 bg-neutral-50 text-left"
-                    >
-                      <div className="w-8 h-8 rounded-lg bg-neutral-100 flex items-center justify-center text-sm shrink-0">
-                        📦
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-neutral-900 truncate">{i.producto.nombre}</p>
-                        {i.variante.nombre !== "Único" && (
-                          <p className="text-xs text-neutral-400">{i.variante.nombre}</p>
-                        )}
-                      </div>
-                      <span className="ml-auto font-bold text-sm text-neutral-900">${formatearMonto(i.precio)}</span>
-                    </button>
-                  ))}
-                  {busquedaTexto.trim() && resultadosBusqueda.length === 0 && (
-                    <p className="text-center text-sm text-neutral-400 py-6">No encontramos productos con ese nombre.</p>
-                  )}
-                </div>
-                <button
-                  onClick={() => {
-                    setBuscarAbierto(false);
-                    setBusquedaTexto("");
-                  }}
-                  className="text-sm text-neutral-400 py-3.5"
-                >
-                  Cerrar búsqueda
-                </button>
-              </div>
-            </div>
-          )}
         </div>
       )}
 
-      {paso === "pago" && (
-        <div className="flex-1 flex flex-col min-h-0">
-          <div className="bg-white border-b border-neutral-200 px-5 py-3 flex items-center justify-between shrink-0">
-            <div>
-              <p className="text-xs text-neutral-400">
-                {totalItemsCarrito} producto{totalItemsCarrito === 1 ? "" : "s"}
-              </p>
-              <p className="font-extrabold text-neutral-900">${formatearMonto(subtotalCarrito)}</p>
-            </div>
-            <button onClick={() => setPaso("escaneo")} className="text-xs text-accent font-semibold">
-              Ver carrito ▾
-            </button>
+      {paso === "identificar" && (
+        <div className="flex-1 flex flex-col min-h-0 relative">
+          <div className="flex-1 overflow-y-auto px-5 py-4 opacity-30 pointer-events-none">
+            {itemsCarrito.map((i) => (
+              <div
+                key={i.variante.id_variante}
+                className="flex items-center gap-2.5 bg-white border border-neutral-200 rounded-xl px-3 py-2 mb-2"
+              >
+                <div className="w-9 h-9 rounded-lg bg-neutral-100 flex items-center justify-center text-sm shrink-0">📦</div>
+                <p className="flex-1 min-w-0 text-sm font-semibold text-neutral-900 truncate">{i.producto.nombre}</p>
+                <p className="text-sm font-bold text-neutral-900 shrink-0">${formatearMonto(i.precio * i.cantidad)}</p>
+              </div>
+            ))}
           </div>
 
-          <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col">
-            <h2 className="font-extrabold text-lg text-neutral-900 mb-0.5">Identificate y pagá</h2>
-            <p className="text-xs text-neutral-500 mb-3.5">Ambos pasos son opcionales salvo el medio de pago.</p>
+          <div className="absolute inset-0 bg-black/40 flex items-end">
+            <div className="bg-white rounded-t-3xl w-full max-h-[92%] flex flex-col shadow-2xl px-5 pt-5 pb-5 overflow-y-auto">
+              <p className="text-[11px] font-bold text-accent uppercase tracking-wide mb-1">Paso 1 de 2</p>
+              <h2 className="font-extrabold text-lg text-neutral-900 mb-0.5">¿Sos cliente WiiGo Club?</h2>
+              <p className="text-xs text-neutral-500 mb-4">¡Acumulá puntos con cada compra! Es opcional.</p>
 
-            <div className="bg-white border border-neutral-200 rounded-2xl p-3.5 mb-2.5">
-              <p className="text-sm font-bold text-neutral-900">
-                ¿Sos cliente WiiGo? <span className="font-normal text-neutral-400">Opcional</span>
-              </p>
-              <p className="text-xs text-neutral-500 mb-2">Acumulá puntos con cada compra.</p>
-              <input
-                value={dni}
-                onChange={(e) => setDni(e.target.value)}
-                placeholder="Ingresá tu DNI"
-                className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
-              />
-              {buscandoCliente && <p className="text-xs text-neutral-400 mt-1.5">Buscando...</p>}
-              {!buscandoCliente && clienteInfo?.existe && (
-                <p className="text-xs text-emerald-600 font-semibold mt-1.5">
-                  ✓ Te reconocimos{clienteInfo.puntos > 0 ? ` — tenés ${clienteInfo.puntos} puntos WiiGo` : ""}
+              <div className="bg-accent-tint border border-accent/30 rounded-2xl p-3.5 mb-2.5">
+                <p className="text-sm font-bold text-neutral-900">
+                  Tu DNI <span className="font-normal text-neutral-400">Opcional</span>
                 </p>
-              )}
-              {!buscandoCliente && clienteInfo && !clienteInfo.existe && (
-                <p className="text-xs text-emerald-600 font-semibold mt-1.5">✓ Cliente nuevo — vas a sumar puntos con esta compra</p>
-              )}
-            </div>
-            <div className="bg-white border border-neutral-200 rounded-2xl p-3.5 mb-3">
-              <p className="text-sm font-bold text-neutral-900">
-                ¿Venís recomendado? <span className="font-normal text-neutral-400">Opcional</span>
-              </p>
-              <p className="text-xs text-neutral-500 mb-2">Ingresá el código del profesional.</p>
-              <input
-                value={codigoProfesional}
-                onChange={(e) => setCodigoProfesional(e.target.value)}
-                placeholder="Ingresá tu código"
-                className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
-              />
-              {buscandoCodigo && <p className="text-xs text-neutral-400 mt-1.5">Buscando...</p>}
-              {!buscandoCodigo && codigoInfo?.nombre && (
-                <p className="text-xs text-emerald-600 font-semibold mt-1.5">✓ {codigoInfo.nombre}</p>
-              )}
-              {!buscandoCodigo && codigoInfo?.error && (
-                <p className="text-xs text-red-600 font-semibold mt-1.5">✗ {codigoInfo.error}</p>
-              )}
-            </div>
-
-            {profesional && marcasEnCarrito.length > 0 && (
-              <div className="bg-purple-50 border border-purple-200 rounded-2xl p-3.5 mb-3">
-                <p className="text-sm font-bold text-purple-800 mb-2">🤝 {profesional.nombre}, podés pagar con tu saldo</p>
-                <div className="space-y-1.5 mb-2">
-                  {marcasEnCarrito.map((m) => {
-                    const alcanza = m.saldo >= m.subtotalCarrito;
-                    const montoAplicado = Math.min(m.saldo, m.subtotalCarrito);
-                    return (
-                      <label
-                        key={m.idMarca}
-                        className="flex items-center justify-between gap-2 text-sm bg-white border border-purple-200 rounded-lg px-3 py-2 cursor-pointer"
-                      >
-                        <span className="flex items-center gap-2">
-                          <input type="checkbox" checked={marcasCanje.has(m.idMarca)} onChange={() => toggleMarcaCanje(m.idMarca)} />
-                          {m.nombreMarca} — <span className="tabular-nums">${formatearMonto(m.subtotalCarrito)}</span>
-                        </span>
-                        <span className="text-xs text-purple-600 tabular-nums">
-                          Saldo: ${formatearMonto(m.saldo)}
-                          {!alcanza && ` (descuenta $${formatearMonto(montoAplicado)}, resto se paga normal)`}
-                        </span>
-                      </label>
-                    );
-                  })}
-                </div>
-                {marcasCanje.size > 0 && (
-                  <input
-                    value={pinCanje}
-                    onChange={(e) => setPinCanje(e.target.value)}
-                    placeholder="Tu PIN"
-                    type="password"
-                    inputMode="numeric"
-                    maxLength={6}
-                    className="w-full rounded-lg border border-purple-300 px-3 py-2 text-sm"
-                  />
+                <input
+                  value={dni}
+                  onChange={(e) => setDni(e.target.value)}
+                  placeholder="Ingresá tu DNI"
+                  inputMode="numeric"
+                  className="w-full rounded-lg border border-neutral-300 px-3 py-2.5 text-sm mt-1.5"
+                />
+                {buscandoCliente && <p className="text-xs text-neutral-400 mt-1.5">Buscando...</p>}
+                {!buscandoCliente && clienteInfo?.existe && (
+                  <p className="text-xs text-emerald-600 font-semibold mt-1.5">
+                    ✓ Te reconocimos{clienteInfo.puntos > 0 ? ` — tenés ${clienteInfo.puntos} puntos WiiGo` : ""}
+                  </p>
+                )}
+                {!buscandoCliente && clienteInfo && !clienteInfo.existe && (
+                  <p className="text-xs text-neutral-500 font-semibold mt-1.5">
+                    Todavía no estás registrado — esta compra no suma puntos. Pedile a alguien del local que te registre para la próxima.
+                  </p>
                 )}
               </div>
-            )}
 
-            {infoPuntos && infoPuntos.maxDescuento > 0 && (
-              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3.5 mb-3">
-                <label className="flex items-center justify-between gap-2 cursor-pointer">
-                  <span className="text-sm font-bold text-amber-900">
-                    ⭐ Usar mis puntos WiiGo — cubre hasta ${formatearMonto(infoPuntos.maxDescuento)}
-                  </span>
-                  <input type="checkbox" checked={usarPuntosWiigo} onChange={(e) => setUsarPuntosWiigo(e.target.checked)} className="w-5 h-5" />
-                </label>
-                <p className="text-[11px] text-amber-700 mt-1">
-                  Usa {infoPuntos.puntosNecesarios} de tus {infoPuntos.puntosDisponibles} puntos.
+              <div className="bg-neutral-50 border border-neutral-200 rounded-2xl p-3 mb-3">
+                <p className="text-xs font-bold text-neutral-900">
+                  ¿Sos profesional de una marca? <span className="font-normal text-neutral-400">Opcional</span>
                 </p>
+                <input
+                  value={codigoProfesional}
+                  onChange={(e) => setCodigoProfesional(e.target.value)}
+                  placeholder="Código de profesional"
+                  className="w-full rounded-lg border border-neutral-300 px-2.5 py-1.5 text-xs mt-1.5"
+                />
+                {buscandoCodigo && <p className="text-xs text-neutral-400 mt-1.5">Buscando...</p>}
+                {!buscandoCodigo && codigoInfo?.nombre && (
+                  <p className="text-xs text-emerald-600 font-semibold mt-1.5">✓ {codigoInfo.nombre}</p>
+                )}
+                {!buscandoCodigo && codigoInfo?.error && (
+                  <p className="text-xs text-red-600 font-semibold mt-1.5">✗ {codigoInfo.error}</p>
+                )}
               </div>
-            )}
 
-            <div className="grid grid-cols-2 gap-2 mb-1">
+              {profesional && marcasEnCarrito.length > 0 && (
+                <div className="bg-purple-50 border border-purple-200 rounded-2xl p-3.5 mb-3">
+                  <p className="text-sm font-bold text-purple-800 mb-2">🤝 {profesional.nombre}, podés pagar con tu saldo</p>
+                  <div className="space-y-1.5 mb-2">
+                    {marcasEnCarrito.map((m) => {
+                      const alcanza = m.saldo >= m.subtotalCarrito;
+                      const montoAplicado = Math.min(m.saldo, m.subtotalCarrito);
+                      return (
+                        <label
+                          key={m.idMarca}
+                          className="flex items-center justify-between gap-2 text-sm bg-white border border-purple-200 rounded-lg px-3 py-2 cursor-pointer"
+                        >
+                          <span className="flex items-center gap-2">
+                            <input type="checkbox" checked={marcasCanje.has(m.idMarca)} onChange={() => toggleMarcaCanje(m.idMarca)} />
+                            {m.nombreMarca} — <span className="tabular-nums">${formatearMonto(m.subtotalCarrito)}</span>
+                          </span>
+                          <span className="text-xs text-purple-600 tabular-nums">
+                            Saldo: ${formatearMonto(m.saldo)}
+                            {!alcanza && ` (descuenta $${formatearMonto(montoAplicado)}, resto se paga normal)`}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  {marcasCanje.size > 0 && (
+                    <input
+                      value={pinCanje}
+                      onChange={(e) => setPinCanje(e.target.value)}
+                      placeholder="Tu PIN"
+                      type="password"
+                      inputMode="numeric"
+                      maxLength={6}
+                      className="w-full rounded-lg border border-purple-300 px-3 py-2 text-sm"
+                    />
+                  )}
+                </div>
+              )}
+
+              {infoPuntos && infoPuntos.maxDescuento > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3.5 mb-3">
+                  <label className="flex items-center justify-between gap-2 cursor-pointer">
+                    <span className="text-sm font-bold text-amber-900">
+                      ⭐ Usar mis puntos WiiGo — cubre hasta ${formatearMonto(infoPuntos.maxDescuento)}
+                    </span>
+                    <input type="checkbox" checked={usarPuntosWiigo} onChange={(e) => setUsarPuntosWiigo(e.target.checked)} className="w-5 h-5" />
+                  </label>
+                  <p className="text-[11px] text-amber-700 mt-1">
+                    Usa {infoPuntos.puntosNecesarios} de tus {infoPuntos.puntosDisponibles} puntos.
+                  </p>
+                </div>
+              )}
+
+              <button
+                onClick={() => setPaso("pagar")}
+                disabled={marcasCanje.size > 0 && pinCanje.length < 4}
+                className="bg-accent hover:bg-accent-dark disabled:opacity-50 text-white font-bold py-3.5 rounded-2xl text-sm mt-1"
+              >
+                Continuar
+              </button>
+              <button onClick={() => setPaso("pagar")} className="text-center text-xs text-neutral-400 font-semibold py-2.5">
+                Omitir este paso
+              </button>
+              <button onClick={() => setPaso("escaneo")} className="text-center text-xs text-neutral-400 font-semibold -mt-1">
+                ‹ Volver al carrito
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {paso === "pagar" && (
+        <div className="flex-1 flex flex-col min-h-0 relative">
+          <div className="flex-1 overflow-y-auto px-5 py-4 opacity-30 pointer-events-none">
+            {itemsCarrito.map((i) => (
+              <div
+                key={i.variante.id_variante}
+                className="flex items-center gap-2.5 bg-white border border-neutral-200 rounded-xl px-3 py-2 mb-2"
+              >
+                <div className="w-9 h-9 rounded-lg bg-neutral-100 flex items-center justify-center text-sm shrink-0">📦</div>
+                <p className="flex-1 min-w-0 text-sm font-semibold text-neutral-900 truncate">{i.producto.nombre}</p>
+                <p className="text-sm font-bold text-neutral-900 shrink-0">${formatearMonto(i.precio * i.cantidad)}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="absolute inset-0 bg-black/40 flex items-end">
+            <div className="bg-white rounded-t-3xl w-full max-h-[92%] flex flex-col shadow-2xl px-5 pt-5 pb-5 overflow-y-auto">
+              <p className="text-[11px] font-bold text-accent uppercase tracking-wide mb-1">Paso 2 de 2</p>
+              <h2 className="font-extrabold text-lg text-neutral-900 mb-3.5">¿Cómo querés pagar?</h2>
+
+              <div className="flex justify-between items-center text-xs text-neutral-400">
+                <span>Subtotal (sin IVA)</span>
+                <span>${formatearMonto(subtotalSinIva)}</span>
+              </div>
+              <div className="flex justify-between items-center text-xs text-neutral-400 mb-1 pb-1 border-b border-dashed border-neutral-200">
+                <span>IVA ({ivaGeneralPorcentaje}%)</span>
+                <span>${formatearMonto(montoIva)}</span>
+              </div>
+              <div className="flex justify-between items-center text-sm">
+                <span>Subtotal</span>
+                <span>${formatearMonto(subtotalCarrito)}</span>
+              </div>
+              {descuentoCanje > 0 && (
+                <div className="flex justify-between items-center text-sm text-purple-600">
+                  <span>Pagado con saldo de profesional</span>
+                  <span>-${formatearMonto(descuentoCanje)}</span>
+                </div>
+              )}
+              {descuentoPuntosPreview > 0 && (
+                <div className="flex justify-between items-center text-sm text-amber-700">
+                  <span>Pagado con puntos WiiGo</span>
+                  <span>-${formatearMonto(descuentoPuntosPreview)}</span>
+                </div>
+              )}
+
+              <div className="bg-accent-tint border border-accent/30 rounded-2xl p-4 text-center my-3.5">
+                <p className="text-[11px] font-bold text-accent-dark uppercase tracking-wide">Total a pagar</p>
+                <p className="text-3xl font-extrabold text-neutral-900 tracking-tight">${formatearMonto(totalFinal)}</p>
+              </div>
+
               <button
                 onClick={() => setMedioPagoElegido("EFECTIVO")}
-                className={`flex flex-col items-center gap-1.5 py-4 rounded-2xl border-2 ${
+                className={`flex items-center gap-3 text-left border-2 rounded-2xl px-3.5 py-3 mb-2.5 ${
                   medioPagoElegido === "EFECTIVO" ? "border-accent bg-accent-tint" : "border-neutral-200 bg-white"
                 }`}
               >
-                <span className="text-xl">💵</span>
-                <span className="font-bold text-sm text-neutral-900">Efectivo</span>
+                <span className="w-10 h-10 rounded-xl bg-white border border-neutral-200 flex items-center justify-center text-lg shrink-0">
+                  💵
+                </span>
+                <span>
+                  <span className="block font-bold text-sm text-neutral-900">Efectivo</span>
+                  <span className="block text-xs text-neutral-500">Pagás en caja con el personal</span>
+                </span>
               </button>
               <button
                 onClick={() => setMedioPagoElegido("MERCADO_PAGO")}
-                className={`flex flex-col items-center gap-1.5 py-4 rounded-2xl border-2 ${
+                className={`flex items-center gap-3 text-left border-2 rounded-2xl px-3.5 py-3 mb-2.5 ${
                   medioPagoElegido === "MERCADO_PAGO" ? "border-accent bg-accent-tint" : "border-neutral-200 bg-white"
                 }`}
               >
-                <span className="text-xl">📱</span>
-                <span className="font-bold text-sm text-neutral-900">Mercado Pago</span>
+                <span className="w-10 h-10 rounded-xl bg-white border border-neutral-200 flex items-center justify-center text-lg shrink-0">
+                  📱
+                </span>
+                <span>
+                  <span className="block font-bold text-sm text-neutral-900">Mercado Pago</span>
+                  <span className="block text-xs text-neutral-500">Escaneás un QR y pagás desde tu celular</span>
+                </span>
               </button>
-              <div className="col-span-2 flex flex-col items-center gap-1.5 py-4 rounded-2xl border-2 border-dashed border-neutral-200 bg-neutral-50 text-neutral-400">
-                <span className="text-xl opacity-40">💳</span>
-                <span className="font-bold text-sm">Débito / Crédito</span>
-                <span className="text-[10px]">Próximamente</span>
+              <div className="flex items-center gap-3 text-left border-2 border-dashed border-neutral-200 rounded-2xl px-3.5 py-3 mb-1 opacity-45">
+                <span className="w-10 h-10 rounded-xl bg-white border border-neutral-200 flex items-center justify-center text-lg shrink-0">
+                  💳
+                </span>
+                <span>
+                  <span className="block font-bold text-sm text-neutral-900">Débito / Crédito</span>
+                  <span className="block text-xs text-neutral-500">Próximamente</span>
+                </span>
               </div>
-            </div>
-            <p className="text-[11px] text-neutral-400 -mt-1 mb-2.5">
-              {medioPagoElegido === "EFECTIVO"
-                ? "💵 Efectivo: avisás al personal para abonar"
-                : "📱 Mercado Pago: pagá con tu celular y avisale al personal para que lo confirme"}
-            </p>
 
-            <div className="flex justify-between items-center text-xs text-neutral-400 mt-1">
-              <span>Subtotal (sin IVA)</span>
-              <span>${formatearMonto(subtotalSinIva)}</span>
-            </div>
-            <div className="flex justify-between items-center text-xs text-neutral-400 mb-1 pb-1 border-b border-dashed border-neutral-200">
-              <span>IVA ({ivaGeneralPorcentaje}%)</span>
-              <span>${formatearMonto(montoIva)}</span>
-            </div>
-            <div className="flex justify-between items-center text-sm">
-              <span>Subtotal</span>
-              <span>${formatearMonto(subtotalCarrito)}</span>
-            </div>
-            {descuentoCanje > 0 && (
-              <div className="flex justify-between items-center text-sm text-purple-600">
-                <span>Pagado con saldo de profesional</span>
-                <span>-${formatearMonto(descuentoCanje)}</span>
-              </div>
-            )}
-            {descuentoPuntosPreview > 0 && (
-              <div className="flex justify-between items-center text-sm text-amber-700">
-                <span>Pagado con puntos WiiGo</span>
-                <span>-${formatearMonto(descuentoPuntosPreview)}</span>
-              </div>
-            )}
-            <div className="flex justify-between items-center font-extrabold text-lg text-neutral-900 my-2">
-              <span>Total</span>
-              <span>${formatearMonto(totalFinal)}</span>
-            </div>
+              {error && (
+                <p className="text-sm text-red-600 mt-2.5" role="alert">
+                  {error}
+                </p>
+              )}
 
-            {error && (
-              <p className="text-sm text-red-600 mb-2" role="alert">
-                {error}
-              </p>
-            )}
-
-            <div className="flex gap-2.5 mt-auto pt-2">
-              <button
-                onClick={() => setPaso("escaneo")}
-                className="flex-1 border border-neutral-300 text-neutral-700 font-semibold py-3.5 rounded-2xl text-sm"
-              >
-                ← Seguir
-              </button>
               <button
                 onClick={() => handleConfirmar(medioPagoElegido)}
-                disabled={enviando || (marcasCanje.size > 0 && pinCanje.length < 4)}
-                className="flex-1 bg-accent hover:bg-accent-dark disabled:opacity-50 text-white font-bold py-3.5 rounded-2xl text-sm"
+                disabled={enviando}
+                className="bg-accent hover:bg-accent-dark disabled:opacity-50 text-white font-bold py-3.5 rounded-2xl text-sm mt-3.5"
               >
                 {enviando ? "Confirmando..." : "Confirmar y pagar"}
+              </button>
+              <button onClick={() => setPaso("identificar")} className="text-center text-xs text-neutral-400 font-semibold py-2.5">
+                ‹ Volver
               </button>
             </div>
           </div>

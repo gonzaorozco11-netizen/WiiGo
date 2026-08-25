@@ -73,7 +73,11 @@ export async function confirmarPedido(
   try {
     const supabase = getSupabaseServerClient();
 
-    // Identificar (o crear) al cliente por DNI, si lo cargó.
+    // Identificar al cliente por DNI, si lo cargó — pero solo si ya está
+    // registrado. El totem no crea clientes nuevos solo: no hay nadie del
+    // local ahí para cargarlo con sus datos reales, así que un DNI que no
+    // está en el sistema simplemente no suma puntos en esta compra (recién
+    // va a sumar cuando alguien del local lo registre en Clientes).
     let idCliente: string | null = null;
     const dniLimpio = dni.trim();
     if (dniLimpio) {
@@ -82,18 +86,7 @@ export async function confirmarPedido(
         .select("id_cliente")
         .eq("dni", dniLimpio)
         .maybeSingle();
-
-      if (existente) {
-        idCliente = existente.id_cliente;
-      } else {
-        const { data: nuevo, error } = await supabase
-          .from("clientes")
-          .insert({ nombre: "Cliente WiiGo", dni: dniLimpio, estado: "ACTIVO" })
-          .select("id_cliente")
-          .single();
-        if (error) return { error: friendlyDbError(error) };
-        idCliente = nuevo?.id_cliente ?? null;
-      }
+      idCliente = existente?.id_cliente ?? null;
     }
 
   const subtotal = items.reduce((acc, i) => acc + i.precioUnitario * i.cantidad, 0);
