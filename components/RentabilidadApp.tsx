@@ -7,6 +7,8 @@ import { calcularRentabilidad, panelAuditoria, type LineaRentabilidad } from "@/
 type Resumen = {
   facturacionNeta: number;
   cmv: number;
+  impuestoCreditos: number;
+  comisionMp: number;
   gastosFinancieros: number;
   costoImpositivo: number;
   contribucionNeta: number;
@@ -20,7 +22,7 @@ type Auditoria = {
 };
 
 function formatearMonto(valor: number) {
-  return valor.toLocaleString("es-AR", { maximumFractionDigits: 0 });
+  return valor.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function formatearFecha(fechaISO: string) {
@@ -168,7 +170,8 @@ export default function RentabilidadApp({ marcas }: { marcas: Marca[] }) {
                           <th className="p-3">Pago</th>
                           <th className="p-3 text-right">Facturación neta</th>
                           <th className="p-3 text-right">CMV</th>
-                          <th className="p-3 text-right">Gastos financieros</th>
+                          <th className="p-3 text-right">Imp. Créditos</th>
+                          <th className="p-3 text-right">Comisión MP</th>
                           <th className="p-3 text-right">IIBB</th>
                           <th className="p-3 text-right">Contribución marginal</th>
                           <th className="p-3 text-right">%</th>
@@ -188,7 +191,10 @@ export default function RentabilidadApp({ marcas }: { marcas: Marca[] }) {
                             <td className="p-3 text-right tabular-nums">${formatearMonto(l.facturacionNeta)}</td>
                             <td className="p-3 text-right tabular-nums text-red-600">-${formatearMonto(l.cmv)}</td>
                             <td className="p-3 text-right tabular-nums text-red-600">
-                              {l.gastosFinancieros > 0 ? `-$${formatearMonto(l.gastosFinancieros)}` : "—"}
+                              {l.impuestoCreditos > 0 ? `-$${formatearMonto(l.impuestoCreditos)}` : "—"}
+                            </td>
+                            <td className="p-3 text-right tabular-nums text-red-600">
+                              {l.comisionMp > 0 ? `-$${formatearMonto(l.comisionMp)}` : "—"}
                             </td>
                             <td className="p-3 text-right tabular-nums text-red-600">
                               {l.costoImpositivo > 0 ? `-$${formatearMonto(l.costoImpositivo)}` : "—"}
@@ -214,10 +220,11 @@ export default function RentabilidadApp({ marcas }: { marcas: Marca[] }) {
                   </div>
 
                   <div className="border-t border-neutral-200 bg-neutral-50 p-5">
-                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-sm mb-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-7 gap-3 text-sm mb-4">
                       <ResumenCampo etiqueta="Facturación neta" valor={resultado.resumen.facturacionNeta} />
                       <ResumenCampo etiqueta="CMV" valor={-resultado.resumen.cmv} />
-                      <ResumenCampo etiqueta="Gastos financieros" valor={-resultado.resumen.gastosFinancieros} />
+                      <ResumenCampo etiqueta="Imp. Créditos" valor={-resultado.resumen.impuestoCreditos} />
+                      <ResumenCampo etiqueta="Comisión MP" valor={-resultado.resumen.comisionMp} />
                       <ResumenCampo etiqueta="IIBB" valor={-resultado.resumen.costoImpositivo} />
                       <ResumenCampo etiqueta="Contribución marginal" valor={resultado.resumen.contribucionNeta} destacado />
                     </div>

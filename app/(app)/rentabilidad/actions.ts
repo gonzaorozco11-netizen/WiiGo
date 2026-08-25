@@ -48,6 +48,8 @@ export type LineaRentabilidad = {
   ventaBruta: number;
   facturacionNeta: number;
   cmv: number;
+  impuestoCreditos: number;
+  comisionMp: number;
   gastosFinancieros: number;
   costoImpositivo: number;
   contribucionNeta: number;
@@ -55,7 +57,19 @@ export type LineaRentabilidad = {
 };
 
 function vacioResumenRent() {
-  return { facturacionNeta: 0, cmv: 0, gastosFinancieros: 0, costoImpositivo: 0, contribucionNeta: 0 };
+  return {
+    facturacionNeta: 0,
+    cmv: 0,
+    impuestoCreditos: 0,
+    comisionMp: 0,
+    gastosFinancieros: 0,
+    costoImpositivo: 0,
+    contribucionNeta: 0,
+  };
+}
+
+function redondear2(valor: number) {
+  return Math.round(valor * 100) / 100;
 }
 
 // Rentabilidad real de los productos de una marca propia, línea por línea
@@ -138,9 +152,11 @@ export async function calcularRentabilidad(idMarca: string, desde: string, hasta
     const facturacionNetaLinea = ventaBruta / (1 + tasas.ivaGeneral / 100);
     const costoImpositivoLinea = esEfectivo ? 0 : facturacionNetaLinea * (tasas.iibb / 100);
     const cmvLinea = (producto?.costo_informado ?? 0) * linea.cantidad;
-    const gastosFinancierosLinea = Math.round(impCreditosLinea + feeMpLinea);
-    const costoImpositivoRedondeado = Math.round(costoImpositivoLinea);
-    const contribucionNeta = Math.round(facturacionNetaLinea - cmvLinea - gastosFinancierosLinea - costoImpositivoRedondeado);
+    const impuestoCreditosRedondeado = redondear2(impCreditosLinea);
+    const comisionMpRedondeada = redondear2(feeMpLinea);
+    const gastosFinancierosLinea = redondear2(impCreditosLinea + feeMpLinea);
+    const costoImpositivoRedondeado = redondear2(costoImpositivoLinea);
+    const contribucionNeta = redondear2(facturacionNetaLinea - cmvLinea - gastosFinancierosLinea - costoImpositivoRedondeado);
 
     lineas.push({
       idDetalle: linea.id_detalle,
@@ -150,9 +166,11 @@ export async function calcularRentabilidad(idMarca: string, desde: string, hasta
       cantidad: linea.cantidad,
       medioPago: venta.medio_pago,
       formaPagoMp,
-      ventaBruta: Math.round(ventaBruta),
-      facturacionNeta: Math.round(facturacionNetaLinea),
-      cmv: Math.round(cmvLinea),
+      ventaBruta: redondear2(ventaBruta),
+      facturacionNeta: redondear2(facturacionNetaLinea),
+      cmv: redondear2(cmvLinea),
+      impuestoCreditos: impuestoCreditosRedondeado,
+      comisionMp: comisionMpRedondeada,
       gastosFinancieros: gastosFinancierosLinea,
       costoImpositivo: costoImpositivoRedondeado,
       contribucionNeta,
@@ -164,11 +182,13 @@ export async function calcularRentabilidad(idMarca: string, desde: string, hasta
 
   const resumen = lineas.reduce(
     (acc, l) => ({
-      facturacionNeta: acc.facturacionNeta + l.facturacionNeta,
-      cmv: acc.cmv + l.cmv,
-      gastosFinancieros: acc.gastosFinancieros + l.gastosFinancieros,
-      costoImpositivo: acc.costoImpositivo + l.costoImpositivo,
-      contribucionNeta: acc.contribucionNeta + l.contribucionNeta,
+      facturacionNeta: redondear2(acc.facturacionNeta + l.facturacionNeta),
+      cmv: redondear2(acc.cmv + l.cmv),
+      impuestoCreditos: redondear2(acc.impuestoCreditos + l.impuestoCreditos),
+      comisionMp: redondear2(acc.comisionMp + l.comisionMp),
+      gastosFinancieros: redondear2(acc.gastosFinancieros + l.gastosFinancieros),
+      costoImpositivo: redondear2(acc.costoImpositivo + l.costoImpositivo),
+      contribucionNeta: redondear2(acc.contribucionNeta + l.contribucionNeta),
     }),
     vacioResumenRent()
   );
