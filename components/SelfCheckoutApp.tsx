@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Local, Marca, Producto, VarianteProducto, Stock } from "@/lib/supabase";
-import { confirmarPedido, estadoPedido, cancelarPedidoCliente, buscarProfesionalPorDniAction, buscarCodigoProfesionalAction, infoCanjePuntosAction } from "@/app/self-checkout/[idLocal]/actions";
+import { confirmarPedido, estadoPedido, cancelarPedidoCliente, buscarProfesionalPorDniAction, buscarClientePorDniAction, buscarCodigoProfesionalAction, infoCanjePuntosAction } from "@/app/self-checkout/[idLocal]/actions";
 
 type Item = {
   variante: VarianteProducto;
@@ -76,6 +76,8 @@ export default function SelfCheckoutApp({
   const [pinCanje, setPinCanje] = useState("");
   const [codigoInfo, setCodigoInfo] = useState<{ nombre: string | null; error: string | null } | null>(null);
   const [buscandoCodigo, setBuscandoCodigo] = useState(false);
+  const [clienteInfo, setClienteInfo] = useState<{ existe: boolean; puntos: number } | null>(null);
+  const [buscandoCliente, setBuscandoCliente] = useState(false);
   const [infoPuntos, setInfoPuntos] = useState<{
     puntosDisponibles: number;
     valorPorPunto: number;
@@ -96,6 +98,24 @@ export default function SelfCheckoutApp({
     }
     const timeout = setTimeout(() => {
       buscarProfesionalPorDniAction(dniLimpio).then(setProfesional);
+    }, 400);
+    return () => clearTimeout(timeout);
+  }, [dni]);
+
+  // Aviso en vivo de que el DNI se está reconociendo — sin esto el campo
+  // queda mudo mientras se escribe (el cliente se identifica/crea recién al
+  // confirmar el pedido, ver confirmarPedido en actions.ts).
+  useEffect(() => {
+    const dniLimpio = dni.trim();
+    if (dniLimpio.length < 6) {
+      setClienteInfo(null);
+      return;
+    }
+    setBuscandoCliente(true);
+    const timeout = setTimeout(() => {
+      buscarClientePorDniAction(dniLimpio)
+        .then(setClienteInfo)
+        .finally(() => setBuscandoCliente(false));
     }, 400);
     return () => clearTimeout(timeout);
   }, [dni]);
@@ -593,6 +613,15 @@ export default function SelfCheckoutApp({
                 placeholder="Ingresá tu DNI"
                 className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
               />
+              {buscandoCliente && <p className="text-xs text-neutral-400 mt-1.5">Buscando...</p>}
+              {!buscandoCliente && clienteInfo?.existe && (
+                <p className="text-xs text-emerald-600 font-semibold mt-1.5">
+                  ✓ Te reconocimos{clienteInfo.puntos > 0 ? ` — tenés ${clienteInfo.puntos} puntos WiiGo` : ""}
+                </p>
+              )}
+              {!buscandoCliente && clienteInfo && !clienteInfo.existe && (
+                <p className="text-xs text-emerald-600 font-semibold mt-1.5">✓ Cliente nuevo — vas a sumar puntos con esta compra</p>
+              )}
             </div>
             <div className="bg-white border border-neutral-200 rounded-2xl p-3.5 mb-3">
               <p className="text-sm font-bold text-neutral-900">
