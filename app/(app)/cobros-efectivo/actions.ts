@@ -280,6 +280,7 @@ export async function confirmarCobro(
   }
 
     revalidatePath("/cobros-efectivo");
+    revalidatePath("/clientes");
     return { error: null };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo confirmar el cobro" };

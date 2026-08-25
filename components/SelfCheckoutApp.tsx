@@ -50,7 +50,6 @@ export default function SelfCheckoutApp({
   variantes,
   marcas,
   stock,
-  ivaGeneralPorcentaje,
   clima,
 }: {
   local: Local;
@@ -58,7 +57,6 @@ export default function SelfCheckoutApp({
   variantes: VarianteProducto[];
   marcas: Marca[];
   stock: Stock[];
-  ivaGeneralPorcentaje: number;
   clima: Clima;
 }) {
   const [paso, setPaso] = useState<Paso>("reposo");
@@ -115,7 +113,7 @@ export default function SelfCheckoutApp({
   const [pinCanje, setPinCanje] = useState("");
   const [codigoInfo, setCodigoInfo] = useState<{ nombre: string | null; error: string | null } | null>(null);
   const [buscandoCodigo, setBuscandoCodigo] = useState(false);
-  const [clienteInfo, setClienteInfo] = useState<{ existe: boolean; puntos: number } | null>(null);
+  const [clienteInfo, setClienteInfo] = useState<{ existe: boolean; puntos: number; nombre: string | null } | null>(null);
   const [buscandoCliente, setBuscandoCliente] = useState(false);
   const [infoPuntos, setInfoPuntos] = useState<{
     puntosDisponibles: number;
@@ -247,10 +245,6 @@ export default function SelfCheckoutApp({
   const descuentoCanje = marcasEnCarrito
     .filter((m) => marcasCanje.has(m.idMarca))
     .reduce((acc, m) => acc + Math.min(m.subtotalCarrito, m.saldo), 0);
-  // El precio de cada producto ya incluye el IVA — esto solo lo desglosa
-  // para que se vea, no cambia nada de lo que paga el cliente.
-  const subtotalSinIva = ivaGeneralPorcentaje > 0 ? subtotalCarrito / (1 + ivaGeneralPorcentaje / 100) : subtotalCarrito;
-  const montoIva = subtotalCarrito - subtotalSinIva;
 
   const totalConCanje = Math.max(subtotalCarrito - descuentoCanje, 0);
   const descuentoPuntosPreview = usarPuntosWiigo && infoPuntos ? infoPuntos.maxDescuento : 0;
@@ -753,7 +747,7 @@ export default function SelfCheckoutApp({
                 {buscandoCliente && <p className="text-xs text-neutral-400 mt-1.5">Buscando...</p>}
                 {!buscandoCliente && clienteInfo?.existe && (
                   <p className="text-xs text-emerald-600 font-semibold mt-1.5">
-                    ✓ Te reconocimos{clienteInfo.puntos > 0 ? ` — tenés ${clienteInfo.puntos} puntos WiiGo` : ""}
+                    ¡Hola{clienteInfo.nombre ? ` ${clienteInfo.nombre}` : ""}! Tenés {clienteInfo.puntos} puntos WiiGo.
                   </p>
                 )}
                 {!buscandoCliente && clienteInfo && !clienteInfo.existe && (
@@ -872,14 +866,6 @@ export default function SelfCheckoutApp({
               <p className="text-[11px] font-bold text-accent uppercase tracking-wide mb-1">Paso 2 de 2</p>
               <h2 className="font-extrabold text-lg text-neutral-900 mb-3.5">¿Cómo querés pagar?</h2>
 
-              <div className="flex justify-between items-center text-xs text-neutral-400">
-                <span>Subtotal (sin IVA)</span>
-                <span>${formatearMonto(subtotalSinIva)}</span>
-              </div>
-              <div className="flex justify-between items-center text-xs text-neutral-400 mb-1 pb-1 border-b border-dashed border-neutral-200">
-                <span>IVA ({ivaGeneralPorcentaje}%)</span>
-                <span>${formatearMonto(montoIva)}</span>
-              </div>
               <div className="flex justify-between items-center text-sm">
                 <span>Subtotal</span>
                 <span>${formatearMonto(subtotalCarrito)}</span>

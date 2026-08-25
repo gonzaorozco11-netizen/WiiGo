@@ -21,7 +21,12 @@ export default async function CobrosEfectivoPage() {
 
   const [localesRes, ventasRes, detalleRes, productosRes, variantesRes, clientesRes] = await Promise.all([
     supabase.from("locales").select("*").eq("estado", "ACTIVO").order("nombre", { ascending: true }),
-    supabase.from("ventas").select("*").eq("canal", "SELF_CHECKOUT").order("fecha", { ascending: false }),
+    supabase
+      .from("ventas")
+      .select("*")
+      .eq("canal", "SELF_CHECKOUT")
+      .eq("medio_pago", "EFECTIVO")
+      .order("fecha", { ascending: false }),
     supabase.from("detalle_ventas").select("*"),
     supabase.from("productos").select("*"),
     supabase.from("variantes_producto").select("*"),

@@ -24,12 +24,14 @@ export async function buscarProfesionalPorDniAction(dni: string) {
 // Confirmación en vivo mientras se escribe el DNI del cliente (no del
 // profesional) — sin esto el campo quedaba mudo, sin ningún aviso de que
 // se está reconociendo (o va a crear) al cliente.
-export async function buscarClientePorDniAction(dni: string): Promise<{ existe: boolean; puntos: number } | null> {
+export async function buscarClientePorDniAction(
+  dni: string
+): Promise<{ existe: boolean; puntos: number; nombre: string | null } | null> {
   const dniLimpio = dni.trim();
   if (dniLimpio.length < 6) return null;
   const supabase = getSupabaseServerClient();
-  const { data } = await supabase.from("clientes").select("puntos").eq("dni", dniLimpio).maybeSingle();
-  return data ? { existe: true, puntos: data.puntos ?? 0 } : { existe: false, puntos: 0 };
+  const { data } = await supabase.from("clientes").select("nombre, puntos").eq("dni", dniLimpio).maybeSingle();
+  return data ? { existe: true, puntos: data.puntos ?? 0, nombre: data.nombre ?? null } : { existe: false, puntos: 0, nombre: null };
 }
 
 // Confirmación en vivo mientras se escribe el código, igual que el DNI —

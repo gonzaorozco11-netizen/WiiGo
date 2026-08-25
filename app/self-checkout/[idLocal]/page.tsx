@@ -25,15 +25,26 @@ export default async function SelfCheckoutPage({ params }: { params: Promise<{ i
 
   if (!local) notFound();
 
-  const [productosRes, variantesRes, marcasRes, stockRes, configRes] = await Promise.all([
+  const [productosRes, variantesRes, marcasRes, stockRes] = await Promise.all([
     supabase.from("productos").select("*").eq("estado", "ACTIVO"),
     supabase.from("variantes_producto").select("*").eq("estado", "ACTIVO"),
     supabase.from("marcas").select("*").eq("estado", "ACTIVA"),
     supabase.from("stock").select("*").eq("id_local", idLocal),
-    supabase.from("configuracion").select("valor").eq("parametro", "IVA_GENERAL_PORCENTAJE").maybeSingle(),
   ]);
 
-  const ivaGeneralPorcentaje = Number(configRes.data?.valor ?? 21);
+  // Si esta consulta falla y no se avisa, la pantalla queda con stock vacío
+  // (todos los productos "sin stock" sin ningún error visible) en vez de
+  // mostrar claramente que algo se rompió.
+  const error = productosRes.error || variantesRes.error || marcasRes.error || stockRes.error;
+  if (error) {
+    return (
+      <div className="max-w-md mx-auto text-center py-12">
+        <p className="text-red-600 font-medium mb-2">No se pudo cargar el self-checkout</p>
+        <p className="text-sm text-neutral-500">{error.message}</p>
+      </div>
+    );
+  }
+
   const clima = await obtenerClimaActual((local as Local).latitud, (local as Local).longitud);
 
   return (
@@ -43,7 +54,6 @@ export default async function SelfCheckoutPage({ params }: { params: Promise<{ i
       variantes={(variantesRes.data ?? []) as VarianteProducto[]}
       marcas={(marcasRes.data ?? []) as Marca[]}
       stock={(stockRes.data ?? []) as Stock[]}
-      ivaGeneralPorcentaje={ivaGeneralPorcentaje}
       clima={clima}
     />
   );
