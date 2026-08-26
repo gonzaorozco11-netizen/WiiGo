@@ -1143,8 +1143,8 @@ export default function AsesorApp({
       {pantalla === "profesionales" && (
         <div className="flex-1 flex flex-col">
           <Navbar onVolver={volverAInicio} onInicio={volverAInicio} idioma={idioma} />
-          <div className="flex-1 px-6 pt-6 pb-10 max-w-md mx-auto w-full">
-            <h2 className="text-2xl font-extrabold mb-4">Profesionales</h2>
+          <div className="flex-1 px-6 pt-6 pb-10 max-w-3xl mx-auto w-full">
+            <h2 className={`text-2xl mb-4 ${bodoniModa.className} italic`}>Profesionales</h2>
 
             {categoriasProf.length > 0 && (
               <div className="flex flex-wrap gap-2 mb-5">
@@ -1154,10 +1154,10 @@ export default function AsesorApp({
                     <button
                       key={cat}
                       onClick={() => toggleCategoriaProf(cat)}
-                      className="rounded-full border px-3.5 py-2 text-[12px] font-bold"
+                      className="rounded-full border-[1.5px] px-3.5 py-2 text-[12px] font-bold"
                       style={
                         on
-                          ? { background: SAGE_TINT, borderColor: SAGE, color: SAGE_DARK }
+                          ? { background: SAGE_DARK, borderColor: SAGE_DARK, color: "#fff" }
                           : { background: "#fff", borderColor: "#d8d8d8", color: "#686868" }
                       }
                     >
@@ -1173,32 +1173,32 @@ export default function AsesorApp({
                 Todav&iacute;a no hay profesionales cargados ac&aacute;.
               </p>
             ) : (
-              <div className="flex flex-col gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {profesionalesFiltrados.map((prof) => (
                   <button
                     key={prof.id_profesional}
                     onClick={() => irAFichaProfesional(prof.id_profesional)}
-                    className="rounded-2xl border border-[#d8d8d8] bg-white p-4 shadow-sm flex gap-4 text-left"
+                    className="rounded-2xl bg-white overflow-hidden shadow-sm text-left"
                   >
-                    <span className="w-24 h-24 rounded-2xl overflow-hidden shrink-0 flex items-center justify-center font-extrabold text-[30px]" style={{ background: SAGE_TINT, color: SAGE_DARK }}>
+                    <span className="aspect-square w-full flex items-center justify-center font-extrabold text-[26px]" style={{ background: `linear-gradient(135deg, ${SAGE_TINT}, #d8d8d8)`, color: SAGE_DARK }}>
                       {prof.foto ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={prof.foto} alt="" className="w-full h-full object-cover" />
                       ) : (
-                        prof.nombre.charAt(0).toUpperCase()
+                        `${prof.nombre.charAt(0)}${prof.apellido ? prof.apellido.charAt(0) : ""}`.toUpperCase()
                       )}
                     </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[15px] font-extrabold leading-tight">
+                    <div className="p-2.5 flex flex-col gap-0.5">
+                      <p className="text-[13px] font-extrabold leading-tight">
                         {prof.nombre} {prof.apellido ?? ""}
                       </p>
                       {(prof.titulo || prof.especialidad) && (
-                        <p className="text-[11px] font-bold" style={{ color: SAGE_DARK }}>
+                        <p className="text-[10px] font-bold leading-snug" style={{ color: SAGE_DARK }}>
                           {[prof.titulo, prof.especialidad].filter(Boolean).join(" · ")}
                         </p>
                       )}
-                      <span className="text-[10px] font-bold mt-1 inline-block" style={{ color: SAGE_DARK }}>
-                        Tocá para ver más ›
+                      <span className="text-[9.5px] font-extrabold mt-1" style={{ color: SAGE_DARK }}>
+                        Ver más ›
                       </span>
                     </div>
                   </button>
