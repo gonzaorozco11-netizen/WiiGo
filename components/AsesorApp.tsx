@@ -51,6 +51,25 @@ function traducir(idioma: Idioma, base: string, en: string | null | undefined, p
   if (idioma === "pt") return pt || base;
   return base;
 }
+
+function contarProductos(n: number, idioma: Idioma, sufijo?: "descuento" | "disponibles"): string {
+  if (idioma === "en") {
+    const base = `${n} product${n === 1 ? "" : "s"}`;
+    if (sufijo === "descuento") return `${base} on sale`;
+    if (sufijo === "disponibles") return `${base} available at WiiGo`;
+    return base;
+  }
+  if (idioma === "pt") {
+    const base = `${n} produto${n === 1 ? "" : "s"}`;
+    if (sufijo === "descuento") return `${base} com desconto`;
+    if (sufijo === "disponibles") return `${base} disponíve${n === 1 ? "l" : "is"} na WiiGo`;
+    return base;
+  }
+  const base = `${n} producto${n === 1 ? "" : "s"}`;
+  if (sufijo === "descuento") return `${base} con descuento`;
+  if (sufijo === "disponibles") return `${base} disponible${n === 1 ? "" : "s"} en WiiGo`;
+  return base;
+}
 const HOME_I18N = {
   es: {
     eyebrow: "🌿 Asesores",
@@ -66,6 +85,15 @@ const HOME_I18N = {
     reposoHint: "Tocá para empezar",
     ctaEyebrow: "Recomendado",
     ctaDescripcion: "Contanos qué buscás y te mostramos lo que mejor te queda",
+    marcasTitulo: "Marcas y productos",
+    marcasVacio: "Todavía no hay marcas visibles en el Asesor.",
+    marcasElegir: "Elegí una marca para ver sus productos.",
+    marcasSinProductos: "Todavía no hay productos visibles acá.",
+    ofertasTitulo: "Ofertas",
+    ofertasVacio: "Por ahora no hay productos con descuento cargado.",
+    preferenciaTitulo: "¿Tenés alguna preferencia?",
+    preferenciaVacio: "Todavía no cargaste preferencias en Catálogo asesor.",
+    sinResultados: "No encontramos productos con esa combinación — probá sacando alguna preferencia.",
   },
   en: {
     eyebrow: "🌿 Advisors",
@@ -81,6 +109,15 @@ const HOME_I18N = {
     reposoHint: "Tap to start",
     ctaEyebrow: "Recommended",
     ctaDescripcion: "Tell us what you need and we'll show you what fits best",
+    marcasTitulo: "Brands & products",
+    marcasVacio: "No brands are visible in the Advisor yet.",
+    marcasElegir: "Choose a brand to see its products.",
+    marcasSinProductos: "No products visible here yet.",
+    ofertasTitulo: "Offers",
+    ofertasVacio: "No discounted products loaded yet.",
+    preferenciaTitulo: "Do you have any preference?",
+    preferenciaVacio: "No preferences loaded in Advisor Catalog yet.",
+    sinResultados: "We couldn't find products matching that combination — try removing a preference.",
   },
   pt: {
     eyebrow: "🌿 Consultores",
@@ -96,6 +133,15 @@ const HOME_I18N = {
     reposoHint: "Toque para começar",
     ctaEyebrow: "Recomendado",
     ctaDescripcion: "Conte o que você precisa e mostramos o que combina com você",
+    marcasTitulo: "Marcas e produtos",
+    marcasVacio: "Ainda não há marcas visíveis no Consultor.",
+    marcasElegir: "Escolha uma marca para ver seus produtos.",
+    marcasSinProductos: "Ainda não há produtos visíveis aqui.",
+    ofertasTitulo: "Ofertas",
+    ofertasVacio: "Por enquanto não há produtos com desconto cadastrados.",
+    preferenciaTitulo: "Você tem alguma preferência?",
+    preferenciaVacio: "Ainda não há preferências cadastradas no Catálogo consultor.",
+    sinResultados: "Não encontramos produtos com essa combinação — tente remover alguma preferência.",
   },
 } as const;
 
@@ -157,20 +203,22 @@ function IconoPersona({ className }: { className?: string }) {
   );
 }
 
-function Navbar({ onVolver, onInicio }: { onVolver: () => void; onInicio: () => void }) {
+function Navbar({ onVolver, onInicio, idioma }: { onVolver: () => void; onInicio: () => void; idioma: Idioma }) {
+  const volverTxt = idioma === "en" ? "Back" : idioma === "pt" ? "Voltar" : "Volver";
+  const inicioTxt = idioma === "en" ? "Home" : idioma === "pt" ? "Início" : "Inicio";
   return (
     <div className="flex items-center justify-between px-5 pt-5 shrink-0">
       <button
         onClick={onVolver}
         className="rounded-full border border-[#d8d8d8] bg-white px-3 py-2 text-[13px] font-bold text-[#686868]"
       >
-        ← Volver
+        ← {volverTxt}
       </button>
       <button
         onClick={onInicio}
         className="rounded-full border border-[#d8d8d8] bg-white px-3 py-2 text-[13px] font-bold text-[#686868]"
       >
-        ⌂ Inicio
+        ⌂ {inicioTxt}
       </button>
     </div>
   );
@@ -533,14 +581,18 @@ export default function AsesorApp({
     const propios = filtrosPorProducto[p.id_producto] ?? [];
     const nombresFiltros = propios
       .filter((id) => filtrosSeleccionados.size === 0 || filtrosSeleccionados.has(id))
-      .map((id) => filtroPorId[id]?.nombre)
+      .map((id) => {
+        const f = filtroPorId[id];
+        return f ? tr(f.nombre, f.nombre_en, f.nombre_pt) : undefined;
+      })
       .filter(Boolean) as string[];
 
     if (nombresFiltros.length > 0) {
       return { texto: nombresFiltros.slice(0, 2).join(" · "), tag: nombresFiltros[0] };
     }
     if (objetivoSeleccionado) {
-      return { texto: objetivoSeleccionado.nombre, tag: objetivoSeleccionado.nombre };
+      const nombreObjetivo = tr(objetivoSeleccionado.nombre, objetivoSeleccionado.nombre_en, objetivoSeleccionado.nombre_pt);
+      return { texto: nombreObjetivo, tag: nombreObjetivo };
     }
     const marca = marcaPorId[p.id_marca]?.nombre;
     return { texto: marca ?? "", tag: marca ?? "" };
@@ -672,7 +724,7 @@ export default function AsesorApp({
 
       {pantalla === "objetivo" && (
         <div className="flex-1 flex flex-col">
-          <Navbar onVolver={volverAInicio} onInicio={volverAInicio} />
+          <Navbar onVolver={volverAInicio} onInicio={volverAInicio} idioma={idioma} />
           <div className="flex-1 px-6 pt-6 pb-10">
             <h2 className="text-2xl font-extrabold mb-6">{t("objetivoTitulo")}</h2>
             <div className="flex flex-col gap-2.5 max-w-md mx-auto">
@@ -705,14 +757,12 @@ export default function AsesorApp({
 
       {pantalla === "marcas" && (
         <div className="flex-1 flex flex-col">
-          <Navbar onVolver={volverAInicio} onInicio={volverAInicio} />
+          <Navbar onVolver={volverAInicio} onInicio={volverAInicio} idioma={idioma} />
           <div className="flex-1 px-6 pt-6 pb-10 max-w-3xl mx-auto w-full">
-            <h2 className="text-2xl font-extrabold mb-4">Marcas y productos</h2>
+            <h2 className="text-2xl font-extrabold mb-4">{t("marcasTitulo")}</h2>
 
             <div className="flex flex-wrap gap-2 mb-5">
-              {marcasOrdenadas.length === 0 && (
-                <p className="text-[#686868] text-sm">Todav&iacute;a no hay marcas visibles en el Asesor.</p>
-              )}
+              {marcasOrdenadas.length === 0 && <p className="text-[#686868] text-sm">{t("marcasVacio")}</p>}
               {marcasOrdenadas.map((m) => {
                 const on = marcaId === m.id_marca;
                 return (
@@ -747,9 +797,7 @@ export default function AsesorApp({
             </div>
 
             {!marcaId ? (
-              <p className="text-[#686868] text-sm text-center py-12">
-                Eleg&iacute; una marca para ver sus productos.
-              </p>
+              <p className="text-[#686868] text-sm text-center py-12">{t("marcasElegir")}</p>
             ) : (
               <>
                 {subcategoriasDeMarca.length > 0 && (
@@ -774,14 +822,10 @@ export default function AsesorApp({
                   </div>
                 )}
 
-                <p className="text-[13px] text-[#686868] mb-4">
-                  {productosDeMarca.length} producto{productosDeMarca.length === 1 ? "" : "s"}
-                </p>
+                <p className="text-[13px] text-[#686868] mb-4">{contarProductos(productosDeMarca.length, idioma)}</p>
 
                 {productosDeMarca.length === 0 ? (
-                  <p className="text-[#686868] text-sm text-center py-12">
-                    Todav&iacute;a no hay productos visibles ac&aacute;.
-                  </p>
+                  <p className="text-[#686868] text-sm text-center py-12">{t("marcasSinProductos")}</p>
                 ) : (
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     {productosDeMarca.map((p) => {
@@ -824,9 +868,9 @@ export default function AsesorApp({
 
       {pantalla === "ofertas" && (
         <div className="flex-1 flex flex-col">
-          <Navbar onVolver={volverAInicio} onInicio={volverAInicio} />
+          <Navbar onVolver={volverAInicio} onInicio={volverAInicio} idioma={idioma} />
           <div className="flex-1 px-6 pt-6 pb-10 max-w-3xl mx-auto w-full">
-            <h2 className="text-2xl font-extrabold mb-4">Ofertas</h2>
+            <h2 className="text-2xl font-extrabold mb-4">{t("ofertasTitulo")}</h2>
 
             {marcasConOferta.length > 0 && (
               <div className="flex flex-wrap gap-2 mb-5">
@@ -867,13 +911,11 @@ export default function AsesorApp({
             )}
 
             <p className="text-[13px] text-[#686868] mb-4">
-              {productosEnOfertaFiltrados.length} producto{productosEnOfertaFiltrados.length === 1 ? "" : "s"} con descuento
+              {contarProductos(productosEnOfertaFiltrados.length, idioma, "descuento")}
             </p>
 
             {productosEnOfertaFiltrados.length === 0 ? (
-              <p className="text-[#686868] text-sm text-center py-12">
-                Por ahora no hay productos con descuento cargado.
-              </p>
+              <p className="text-[#686868] text-sm text-center py-12">{t("ofertasVacio")}</p>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {productosEnOfertaFiltrados.map((p) => {
@@ -925,13 +967,11 @@ export default function AsesorApp({
 
       {pantalla === "resultado" && (
         <div className="flex-1 flex flex-col">
-          <Navbar onVolver={volverDesdeResultado} onInicio={volverAInicio} />
+          <Navbar onVolver={volverDesdeResultado} onInicio={volverAInicio} idioma={idioma} />
           <div className="flex-1 px-6 pt-6 pb-10 max-w-3xl mx-auto w-full">
-            <h3 className="text-lg font-extrabold mb-3">¿Tenés alguna preferencia?</h3>
+            <h3 className="text-lg font-extrabold mb-3">{t("preferenciaTitulo")}</h3>
             <div className="flex flex-wrap gap-2 mb-8">
-              {filtros.length === 0 && (
-                <p className="text-[#686868] text-sm">Todavía no cargaste preferencias en Catálogo asesor.</p>
-              )}
+              {filtros.length === 0 && <p className="text-[#686868] text-sm">{t("preferenciaVacio")}</p>}
               {filtros.map((f) => {
                 const on = filtrosSeleccionados.has(f.id_filtro);
                 return (
@@ -953,14 +993,11 @@ export default function AsesorApp({
 
             <h3 className="text-lg font-extrabold mb-1">{t("resultadoTitulo")}</h3>
             <p className="text-[13px] text-[#686868] mb-5">
-              {productosFiltrados.length} producto{productosFiltrados.length === 1 ? "" : "s"} disponible
-              {productosFiltrados.length === 1 ? "" : "s"} en WiiGo
+              {contarProductos(productosFiltrados.length, idioma, "disponibles")}
             </p>
 
             {productosFiltrados.length === 0 ? (
-              <p className="text-[#686868] text-sm text-center py-12">
-                No encontramos productos con esa combinación — probá sacando alguna preferencia.
-              </p>
+              <p className="text-[#686868] text-sm text-center py-12">{t("sinResultados")}</p>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {productosFiltrados.map((p) => {
@@ -1013,7 +1050,7 @@ export default function AsesorApp({
 
       {pantalla === "profesionales" && (
         <div className="flex-1 flex flex-col">
-          <Navbar onVolver={volverAInicio} onInicio={volverAInicio} />
+          <Navbar onVolver={volverAInicio} onInicio={volverAInicio} idioma={idioma} />
           <div className="flex-1 px-6 pt-6 pb-10 max-w-md mx-auto w-full">
             <h2 className="text-2xl font-extrabold mb-4">Profesionales</h2>
 
@@ -1082,7 +1119,7 @@ export default function AsesorApp({
 
       {pantalla === "fichaProfesional" && profesionalActual && (
         <div className="flex-1 flex flex-col">
-          <Navbar onVolver={() => setPantalla("profesionales")} onInicio={volverAInicio} />
+          <Navbar onVolver={() => setPantalla("profesionales")} onInicio={volverAInicio} idioma={idioma} />
           <div className="flex-1 px-6 pt-4 pb-10 max-w-md mx-auto w-full flex flex-col">
             <div
               className="relative w-full rounded-2xl overflow-hidden mb-4"
@@ -1191,7 +1228,7 @@ export default function AsesorApp({
 
       {pantalla === "reservarTurno" && profesionalActual && (
         <div className="flex-1 flex flex-col">
-          <Navbar onVolver={() => setPantalla("fichaProfesional")} onInicio={volverAInicio} />
+          <Navbar onVolver={() => setPantalla("fichaProfesional")} onInicio={volverAInicio} idioma={idioma} />
           <div className="flex-1 px-6 pt-4 pb-6 max-w-md mx-auto w-full flex flex-col">
             {eligiendoModalidadTurno && (
               <>
