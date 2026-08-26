@@ -85,6 +85,8 @@ const HOME_I18N = {
     reposoHint: "Tocá para empezar",
     ctaEyebrow: "Recomendado",
     ctaDescripcion: "Contanos qué buscás y te mostramos lo que mejor te queda",
+    objetivoSubtitulo: "Elegí uno y te recomendamos lo que mejor te queda",
+    objetivoVacio: "Todavía no cargaste objetivos en Catálogo asesor.",
     marcasTitulo: "Marcas y productos",
     marcasVacio: "Todavía no hay marcas visibles en el Asesor.",
     marcasElegir: "Elegí una marca para ver sus productos.",
@@ -109,6 +111,8 @@ const HOME_I18N = {
     reposoHint: "Tap to start",
     ctaEyebrow: "Recommended",
     ctaDescripcion: "Tell us what you need and we'll show you what fits best",
+    objetivoSubtitulo: "Pick one and we'll recommend what fits best",
+    objetivoVacio: "No goals loaded in Advisor Catalog yet.",
     marcasTitulo: "Brands & products",
     marcasVacio: "No brands are visible in the Advisor yet.",
     marcasElegir: "Choose a brand to see its products.",
@@ -133,6 +137,8 @@ const HOME_I18N = {
     reposoHint: "Toque para começar",
     ctaEyebrow: "Recomendado",
     ctaDescripcion: "Conte o que você precisa e mostramos o que combina com você",
+    objetivoSubtitulo: "Escolha um e recomendamos o que combina melhor com você",
+    objetivoVacio: "Ainda não há objetivos cadastrados no Catálogo consultor.",
     marcasTitulo: "Marcas e produtos",
     marcasVacio: "Ainda não há marcas visíveis no Consultor.",
     marcasElegir: "Escolha uma marca para ver seus produtos.",
@@ -726,31 +732,36 @@ export default function AsesorApp({
         <div className="flex-1 flex flex-col">
           <Navbar onVolver={volverAInicio} onInicio={volverAInicio} idioma={idioma} />
           <div className="flex-1 px-6 pt-6 pb-10">
-            <h2 className="text-2xl font-extrabold mb-6">{t("objetivoTitulo")}</h2>
-            <div className="flex flex-col gap-2.5 max-w-md mx-auto">
-              {objetivos.length === 0 && (
-                <p className="text-[#686868] text-sm text-center py-8">
-                  Todavía no cargaste objetivos en Catálogo asesor.
-                </p>
-              )}
-              {objetivos.map((o) => (
-                <button
-                  key={o.id_objetivo}
-                  onClick={() => elegirObjetivo(o.id_objetivo)}
-                  className="flex items-center gap-3 rounded-2xl border border-[#d8d8d8] bg-white px-4 py-3 shadow-sm text-left"
-                >
-                  <span className="flex items-center justify-center w-9 h-9 rounded-full shrink-0 overflow-hidden font-extrabold text-[14px]" style={{ background: SAGE_TINT, color: SAGE_DARK }}>
-                    {o.imagen ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={o.imagen} alt="" className="w-full h-full object-cover" />
-                    ) : (
-                      o.nombre.charAt(0).toUpperCase()
-                    )}
-                  </span>
-                  <span className="text-[15px] font-bold">{tr(o.nombre, o.nombre_en, o.nombre_pt)}</span>
-                </button>
-              ))}
-            </div>
+            <h2 className={`${bodoniModa.className} italic text-[26px] leading-tight mb-1`}>{t("objetivoTitulo")}</h2>
+            <p className="text-[12.5px] text-[#8a8a8a] mb-5">{t("objetivoSubtitulo")}</p>
+            {objetivos.length === 0 ? (
+              <p className="text-[#686868] text-sm text-center py-8">{t("objetivoVacio")}</p>
+            ) : (
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 max-w-2xl mx-auto">
+                {objetivos.map((o) => (
+                  <button
+                    key={o.id_objetivo}
+                    onClick={() => elegirObjetivo(o.id_objetivo)}
+                    className="flex flex-col items-center gap-2 rounded-2xl bg-white p-3 pb-3.5 shadow-sm"
+                  >
+                    <span
+                      className="w-full aspect-square max-w-16 rounded-2xl flex items-center justify-center font-extrabold text-xl overflow-hidden"
+                      style={{ background: `linear-gradient(135deg, ${SAGE_TINT}, #d8d8d8)`, color: SAGE_DARK }}
+                    >
+                      {o.imagen ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={o.imagen} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        o.nombre.charAt(0).toUpperCase()
+                      )}
+                    </span>
+                    <span className="text-[12px] font-bold text-center leading-tight">
+                      {tr(o.nombre, o.nombre_en, o.nombre_pt)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
