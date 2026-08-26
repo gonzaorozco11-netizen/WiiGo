@@ -643,8 +643,35 @@ export default function AsesorApp({
           }}
           onClick={reposoActivo ? () => setReposoActivo(false) : undefined}
         >
+          <div
+            className="absolute rounded-full pointer-events-none"
+            style={{
+              width: 220,
+              height: 220,
+              top: "8%",
+              right: "-60px",
+              background: SAGE,
+              opacity: 0.5,
+              filter: "blur(2px)",
+              animation: "asesorBlob1 7s ease-in-out infinite",
+            }}
+          />
+          <div
+            className="absolute rounded-full pointer-events-none"
+            style={{
+              width: 150,
+              height: 150,
+              bottom: "14%",
+              left: "-50px",
+              background: "#6fa050",
+              opacity: 0.35,
+              filter: "blur(2px)",
+              animation: "asesorBlob2 8.5s ease-in-out infinite",
+              animationDelay: "-1.5s",
+            }}
+          />
           <span
-            className="text-[10px] font-extrabold uppercase tracking-[.16em] text-[#646759] bg-white/55 backdrop-blur px-4 py-1.5 rounded-full mb-6"
+            className="relative text-[10px] font-extrabold uppercase tracking-[.16em] text-[#646759] bg-white/55 backdrop-blur px-4 py-1.5 rounded-full mb-6"
             dangerouslySetInnerHTML={{ __html: t("eyebrow") }}
           />
           <div

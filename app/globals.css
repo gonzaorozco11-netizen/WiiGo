@@ -43,3 +43,13 @@ body {
   0%, 100% { transform: translateY(0) rotate(0deg); }
   50% { transform: translateY(-14px) rotate(-1deg); }
 }
+/* El pan de fondo de arriba es casi imperceptible por sí solo — estas dos
+   formas flotantes son las que realmente se notan en movimiento. */
+@keyframes asesorBlob1 {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(-30px, 40px); }
+}
+@keyframes asesorBlob2 {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(35px, -35px); }
+}
