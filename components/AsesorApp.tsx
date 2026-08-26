@@ -761,7 +761,7 @@ export default function AsesorApp({
           <div className="flex-1 px-6 pt-6 pb-10 max-w-3xl mx-auto w-full">
             <h2 className="text-2xl font-extrabold mb-4">{t("marcasTitulo")}</h2>
 
-            <div className="flex flex-wrap gap-2 mb-5">
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-5">
               {marcasOrdenadas.length === 0 && <p className="text-[#686868] text-sm">{t("marcasVacio")}</p>}
               {marcasOrdenadas.map((m) => {
                 const on = marcaId === m.id_marca;
@@ -769,16 +769,16 @@ export default function AsesorApp({
                   <button
                     key={m.id_marca}
                     onClick={() => toggleMarca(m.id_marca)}
-                    className="flex items-center gap-2 rounded-full border px-3 py-2 shadow-sm transition-colors"
-                    style={
-                      on
-                        ? { background: SAGE_TINT, borderColor: SAGE, color: SAGE_DARK }
-                        : { background: "#fff", borderColor: "#d8d8d8", color: "#2d2d2d" }
-                    }
+                    className="flex flex-col items-center gap-1.5 rounded-2xl border p-2 pb-2.5 transition-colors"
+                    style={on ? { background: SAGE_DARK, borderColor: SAGE_DARK } : { background: "#fff", borderColor: "#d8d8d8" }}
                   >
                     <span
-                      className="flex items-center justify-center w-7 h-7 rounded-full font-extrabold text-[12px] shrink-0 overflow-hidden"
-                      style={on ? { background: "rgba(255,255,255,.5)" } : { background: SAGE_TINT, color: SAGE_DARK }}
+                      className="w-full aspect-square rounded-xl flex items-center justify-center font-extrabold text-xl overflow-hidden"
+                      style={
+                        on
+                          ? { background: "rgba(255,255,255,.2)", color: "#fff" }
+                          : { background: `linear-gradient(135deg, ${SAGE_TINT}, #d8d8d8)`, color: SAGE_DARK }
+                      }
                     >
                       {m.logo ? (
                         // eslint-disable-next-line @next/next/no-img-element
@@ -787,8 +787,10 @@ export default function AsesorApp({
                         m.nombre.charAt(0).toUpperCase()
                       )}
                     </span>
-                    <span className="text-[13px] font-extrabold">{m.nombre}</span>
-                    <span className="text-[11px] font-medium opacity-70">
+                    <span className="text-[10.5px] font-bold text-center leading-tight" style={{ color: on ? "#fff" : "#2d2d2d" }}>
+                      {m.nombre}
+                    </span>
+                    <span className="text-[9px] font-medium" style={{ color: on ? "rgba(255,255,255,.75)" : "#8a8a8a" }}>
                       {conteoProductosPorMarca[m.id_marca] ?? 0}
                     </span>
                   </button>
