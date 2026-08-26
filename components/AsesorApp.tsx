@@ -982,8 +982,8 @@ export default function AsesorApp({
         <div className="flex-1 flex flex-col">
           <Navbar onVolver={volverDesdeResultado} onInicio={volverAInicio} idioma={idioma} />
           <div className="flex-1 px-6 pt-6 pb-10 max-w-3xl mx-auto w-full">
-            <h3 className="text-lg font-extrabold mb-3">{t("preferenciaTitulo")}</h3>
-            <div className="flex flex-wrap gap-2 mb-8">
+            <p className="text-[11px] font-extrabold uppercase tracking-wide text-[#8a8a8a] mb-2">{t("preferenciaTitulo")}</p>
+            <div className="flex flex-wrap gap-2 mb-6">
               {filtros.length === 0 && <p className="text-[#686868] text-sm">{t("preferenciaVacio")}</p>}
               {filtros.map((f) => {
                 const on = filtrosSeleccionados.has(f.id_filtro);
@@ -991,12 +991,8 @@ export default function AsesorApp({
                   <button
                     key={f.id_filtro}
                     onClick={() => toggleFiltro(f.id_filtro)}
-                    className="rounded-full border px-3.5 py-2 text-[13px] font-bold transition-colors"
-                    style={
-                      on
-                        ? { background: SAGE_TINT, borderColor: SAGE, color: SAGE_DARK }
-                        : { background: "#fff", borderColor: "#d8d8d8", color: "#686868" }
-                    }
+                    className="rounded-full border-[1.5px] px-3.5 py-2 text-[12px] font-bold transition-colors"
+                    style={on ? { background: SAGE_DARK, borderColor: SAGE_DARK, color: "#fff" } : { background: "#fff", borderColor: "#d8d8d8", color: "#8a8a8a" }}
                   >
                     {tr(f.nombre, f.nombre_en, f.nombre_pt)}
                   </button>
@@ -1004,8 +1000,8 @@ export default function AsesorApp({
               })}
             </div>
 
-            <h3 className="text-lg font-extrabold mb-1">{t("resultadoTitulo")}</h3>
-            <p className="text-[13px] text-[#686868] mb-5">
+            <h3 className={`${bodoniModa.className} italic text-[21px] mb-1`}>{t("resultadoTitulo")}</h3>
+            <p className="text-[13px] text-[#8a8a8a] mb-5">
               {contarProductos(productosFiltrados.length, idioma, "disponibles")}
             </p>
 
@@ -1014,15 +1010,23 @@ export default function AsesorApp({
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {productosFiltrados.map((p) => {
-                  const { texto, tag } = porQue(p);
+                  const { texto } = porQue(p);
                   const marca = marcaPorId[p.id_marca];
                   return (
                     <div
                       key={p.id_producto}
                       onClick={() => setProductoAbierto(p.id_producto)}
-                      className="rounded-xl border border-[#d8d8d8] bg-white overflow-hidden shadow-sm flex flex-col cursor-pointer"
+                      className="rounded-2xl bg-white overflow-hidden shadow-sm flex flex-col cursor-pointer"
                     >
-                      <div className="h-20 bg-gradient-to-br from-[#f0f2ec] to-[#d8d8d8] flex items-center justify-center">
+                      <div className="relative h-[88px] bg-gradient-to-br from-[#f0f2ec] to-[#d8d8d8] flex items-center justify-center">
+                        {marca && (
+                          <span
+                            className="absolute top-1.5 left-1.5 text-[7.5px] font-extrabold uppercase tracking-wide bg-white/85 px-1.5 py-0.5 rounded-full"
+                            style={{ color: SAGE_DARK }}
+                          >
+                            {marca.nombre}
+                          </span>
+                        )}
                         {p.imagen ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={p.imagen} alt="" className="w-full h-full object-cover" />
@@ -1033,24 +1037,16 @@ export default function AsesorApp({
                         )}
                       </div>
                       <div className="p-2.5 flex flex-col gap-1">
-                        {marca && (
-                          <p className="text-[9px] font-bold uppercase tracking-wide" style={{ color: SAGE_DARK }}>
-                            {marca.nombre}
-                          </p>
+                        <p className="text-[12px] font-bold leading-tight line-clamp-2">{tr(p.nombre, p.nombre_en, p.nombre_pt)}</p>
+                        {texto && (
+                          <span
+                            className="self-start text-[8px] font-extrabold px-2 py-0.5 rounded-full"
+                            style={{ background: "#cfe8a6", color: "#3d5c2a" }}
+                          >
+                            {texto}
+                          </span>
                         )}
-                        <p className="text-[12px] font-extrabold leading-tight line-clamp-2">{tr(p.nombre, p.nombre_en, p.nombre_pt)}</p>
-                        {texto && <p className="text-[10px] text-[#686868] leading-snug">{texto}</p>}
-                        <div className="flex flex-col gap-1 mt-1">
-                          <span className="text-[13px] font-extrabold">{formatoPrecio(p.precio_venta)}</span>
-                          {tag && (
-                            <span
-                              className="self-start text-[9px] font-bold px-2 py-0.5 rounded-full"
-                              style={{ background: SAGE_TINT, color: SAGE_DARK }}
-                            >
-                              {tag}
-                            </span>
-                          )}
-                        </div>
+                        <span className={`${fredoka.className} text-[13.5px] font-semibold mt-0.5`}>{formatoPrecio(p.precio_venta)}</span>
                       </div>
                     </div>
                   );
