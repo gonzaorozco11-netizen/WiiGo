@@ -1228,7 +1228,7 @@ export default function AsesorApp({
                 </span>
               )}
               <div className="relative flex flex-col justify-end h-full min-h-[190px] p-4">
-                <p className="text-[21px] font-extrabold text-white leading-tight">
+                <p className={`${bodoniModa.className} italic text-[24px] text-white leading-tight`}>
                   {profesionalActual.nombre} {profesionalActual.apellido ?? ""}
                 </p>
                 {(profesionalActual.titulo || profesionalActual.especialidad) && (
@@ -1239,33 +1239,35 @@ export default function AsesorApp({
               </div>
             </div>
 
-            {profesionalActual.bio && (
-              <p className="text-[13px] italic leading-relaxed mb-3 pl-3 border-l-2" style={{ borderColor: CLAY, color: "#2d2d2d" }}>
-                {profesionalActual.bio}
-              </p>
-            )}
+            <div className="flex-1 flex flex-col justify-center">
+              {profesionalActual.bio && (
+                <p className="text-[13px] italic leading-relaxed mb-3.5 pl-3 border-l-2" style={{ borderColor: CLAY, color: "#2d2d2d" }}>
+                  {profesionalActual.bio}
+                </p>
+              )}
 
-            {fortalezasDelProfesionalActual.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mb-4">
-                {fortalezasDelProfesionalActual.map((f) => (
-                  <span
-                    key={f.nombre}
-                    className="flex items-center gap-1.5 text-[10.5px] font-bold pl-1.5 pr-2.5 py-1 rounded-full"
-                    style={f.principal ? { background: "#f7ece1", color: CLAY } : { background: SAGE_TINT, color: SAGE_DARK }}
-                  >
+              {fortalezasDelProfesionalActual.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {fortalezasDelProfesionalActual.map((f) => (
                     <span
-                      className="flex items-center justify-center w-3.5 h-3.5 rounded-full text-[8px] text-white shrink-0"
-                      style={{ background: f.principal ? CLAY : SAGE_DARK }}
+                      key={f.nombre}
+                      className="flex items-center gap-1.5 text-[10.5px] font-bold pl-1.5 pr-2.5 py-1 rounded-full"
+                      style={f.principal ? { background: "#f7ece1", color: CLAY } : { background: SAGE_TINT, color: SAGE_DARK }}
                     >
-                      {f.principal ? "★" : "✓"}
+                      <span
+                        className="flex items-center justify-center w-3.5 h-3.5 rounded-full text-[8px] text-white shrink-0"
+                        style={{ background: f.principal ? CLAY : SAGE_DARK }}
+                      >
+                        {f.principal ? "★" : "✓"}
+                      </span>
+                      {f.nombre}
                     </span>
-                    {f.nombre}
-                  </span>
-                ))}
-              </div>
-            )}
+                  ))}
+                </div>
+              )}
+            </div>
 
-            <div className="mt-auto flex flex-col gap-2">
+            <div className="flex flex-col gap-2">
               {tieneReservaPresencial || tieneReservaOnline ? (
                 <button
                   onClick={irAReservarTurno}
