@@ -36,6 +36,41 @@ const C4 = "#5f92a8"; // profesionales
 const fredoka = Fredoka({ subsets: ["latin"], weight: ["500", "600", "700"] });
 const bodoniModa = Bodoni_Moda({ subsets: ["latin"], style: ["italic"], weight: ["500", "600"] });
 
+// Idioma de la pantalla — arranca en español, y se auto-detecta el del
+// dispositivo al cargar (ver el useEffect en AsesorApp). Por ahora solo
+// traduce el texto fijo de la pantalla de Inicio; el resto del Asesor
+// (Objetivo, Resultado, Marcas, etc.) queda pendiente de traducir después.
+type Idioma = "es" | "en" | "pt";
+const HOME_I18N = {
+  es: {
+    eyebrow: "🌿 Asesores",
+    pregunta: "¿Qué estás buscando hoy?",
+    ctaObjetivo: "Encontrar<br />productos para mí",
+    ctaMarcas: "Marcas y<br />productos",
+    ctaOfertas: "Ofertas en<br />la tienda",
+    ctaProfesionales: "Profesionales",
+    buscarPlaceholder: "Buscar producto o marca...",
+  },
+  en: {
+    eyebrow: "🌿 Advisors",
+    pregunta: "What are you looking for today?",
+    ctaObjetivo: "Find<br />products for me",
+    ctaMarcas: "Brands &<br />products",
+    ctaOfertas: "Offers in<br />the store",
+    ctaProfesionales: "Professionals",
+    buscarPlaceholder: "Search product or brand...",
+  },
+  pt: {
+    eyebrow: "🌿 Consultores",
+    pregunta: "O que você está procurando hoje?",
+    ctaObjetivo: "Encontrar<br />produtos pra mim",
+    ctaMarcas: "Marcas e<br />produtos",
+    ctaOfertas: "Ofertas<br />da loja",
+    ctaProfesionales: "Profissionais",
+    buscarPlaceholder: "Buscar produto ou marca...",
+  },
+} as const;
+
 function plataformaVideo(url: string): string {
   if (/instagram\.com/i.test(url)) return "Instagram";
   if (/(youtube\.com|youtu\.be)/i.test(url)) return "YouTube";
@@ -159,6 +194,17 @@ export default function AsesorApp({
   const [mostrarComoAyuda, setMostrarComoAyuda] = useState(false);
   const [modalidadTurno, setModalidadTurno] = useState<"presencial" | "online" | null>(null);
   const [productoAbierto, setProductoAbierto] = useState<string | null>(null);
+  const [idioma, setIdioma] = useState<Idioma>("es");
+  const [selectorIdiomaAbierto, setSelectorIdiomaAbierto] = useState(false);
+
+  // Detecta el idioma del navegador/dispositivo al abrir la pantalla — si no
+  // es ninguno de los 3 soportados, arranca en español. Solo corre una vez.
+  useEffect(() => {
+    const detectado = (navigator.language || "es").slice(0, 2).toLowerCase();
+    if (detectado === "en" || detectado === "pt") setIdioma(detectado);
+  }, []);
+
+  const t = (key: keyof (typeof HOME_I18N)["es"]) => HOME_I18N[idioma][key];
   const [idleWarning, setIdleWarning] = useState(false);
   const [idleCountdown, setIdleCountdown] = useState(IDLE_COUNTDOWN_S);
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -454,37 +500,78 @@ export default function AsesorApp({
 
   return (
     <div className="min-h-screen bg-[#ededed] text-[#2d2d2d] flex flex-col">
+      <div className="fixed top-3.5 right-3.5 z-50 text-right">
+        <button
+          onClick={() => setSelectorIdiomaAbierto((v) => !v)}
+          className="bg-white/70 backdrop-blur rounded-full text-[9.5px] font-extrabold text-[#686868] px-2.5 py-1.5"
+        >
+          🌐 Languages
+        </button>
+        {selectorIdiomaAbierto && (
+          <div className="mt-1.5 bg-white/85 backdrop-blur rounded-xl p-1 flex flex-col gap-0.5">
+            {(["es", "en", "pt"] as Idioma[]).map((lng) => (
+              <button
+                key={lng}
+                onClick={() => {
+                  setIdioma(lng);
+                  setSelectorIdiomaAbierto(false);
+                }}
+                className="flex items-center justify-end gap-1.5 text-[9px] font-extrabold px-1.5 py-1 rounded-full"
+                style={idioma === lng ? { background: SAGE_DARK, color: "#fff" } : { color: "#686868" }}
+              >
+                {lng === "es" ? "ES" : lng === "en" ? "EN" : "PT"}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
       {pantalla === "home" && (
-        <div className="flex-1 flex flex-col items-center px-6 pt-14 pb-8 text-center bg-gradient-to-b from-[#fbfbfb] to-[#f0f2ec]">
-          <div className="w-full max-w-xs mb-8">
+        <div
+          className="relative flex-1 flex flex-col items-center px-6 pt-14 pb-8 text-center overflow-hidden"
+          style={{
+            backgroundImage:
+              "radial-gradient(circle at 25% 20%, rgba(182,188,162,.55), transparent 55%), radial-gradient(circle at 80% 75%, rgba(111,160,80,.35), transparent 55%), linear-gradient(160deg, #fbfbfb, #e2e6da)",
+            backgroundSize: "220% 220%",
+            animation: "asesorFondoDeriva 16s ease-in-out infinite",
+          }}
+        >
+          <span
+            className="text-[10px] font-extrabold uppercase tracking-[.16em] text-[#646759] bg-white/55 backdrop-blur px-4 py-1.5 rounded-full mb-6"
+            dangerouslySetInnerHTML={{ __html: t("eyebrow") }}
+          />
+          <div
+            className="w-full max-w-xs mb-8"
+            style={{ animation: "asesorLogoFlotar 4.5s ease-in-out infinite" }}
+          >
             <Image src="/wiigo-logo.png" alt="WiiGo — Estaciones de bienestar" width={2172} height={448} className="w-full h-auto drop-shadow-sm" priority />
           </div>
-          <p className="text-[15px] font-bold text-[#686868] mb-6">¿Qué estás buscando hoy?</p>
+          <p className="text-[15px] font-bold text-[#686868] mb-6">{t("pregunta")}</p>
 
           <div className="grid grid-cols-2 gap-3 w-full max-w-sm">
             <button onClick={irAObjetivo} className="flex flex-col items-center gap-3 rounded-2xl border border-[#d8d8d8] bg-white p-6 shadow-sm aspect-square justify-center">
               <span className="flex items-center justify-center w-14 h-14 rounded-full text-white" style={{ background: C1 }}>
                 <IconoBuscar className="w-7 h-7" />
               </span>
-              <span className="text-[15px] font-extrabold leading-tight">Encontrar<br />productos para mí</span>
+              <span className="text-[15px] font-extrabold leading-tight" dangerouslySetInnerHTML={{ __html: t("ctaObjetivo") }} />
             </button>
             <button onClick={irAMarcas} className="flex flex-col items-center gap-3 rounded-2xl border border-[#d8d8d8] bg-white p-6 shadow-sm aspect-square justify-center">
               <span className="flex items-center justify-center w-14 h-14 rounded-full text-white" style={{ background: C2 }}>
                 <IconoBolsa className="w-7 h-7" />
               </span>
-              <span className="text-[15px] font-extrabold leading-tight">Marcas y<br />productos</span>
+              <span className="text-[15px] font-extrabold leading-tight" dangerouslySetInnerHTML={{ __html: t("ctaMarcas") }} />
             </button>
             <button onClick={irAOfertas} className="flex flex-col items-center gap-3 rounded-2xl border border-[#d8d8d8] bg-white p-6 shadow-sm aspect-square justify-center">
               <span className="flex items-center justify-center w-14 h-14 rounded-full text-white" style={{ background: C3 }}>
                 <IconoEtiqueta className="w-7 h-7" />
               </span>
-              <span className="text-[15px] font-extrabold leading-tight">Ofertas</span>
+              <span className="text-[15px] font-extrabold leading-tight" dangerouslySetInnerHTML={{ __html: t("ctaOfertas") }} />
             </button>
             <button onClick={() => setPantalla("profesionales")} className="flex flex-col items-center gap-3 rounded-2xl border border-[#d8d8d8] bg-white p-6 shadow-sm aspect-square justify-center">
               <span className="flex items-center justify-center w-14 h-14 rounded-full text-white" style={{ background: C4 }}>
                 <IconoPersona className="w-7 h-7" />
               </span>
-              <span className="text-[15px] font-extrabold leading-tight">Profesionales</span>
+              <span className="text-[15px] font-extrabold leading-tight">{t("ctaProfesionales")}</span>
             </button>
           </div>
 
@@ -496,7 +583,7 @@ export default function AsesorApp({
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && buscar()}
-              placeholder="Buscar producto o marca..."
+              placeholder={t("buscarPlaceholder")}
               className="flex-1 bg-transparent outline-none text-[14px] font-medium text-[#2d2d2d] placeholder:text-[#a8a8a8]"
             />
           </div>
@@ -1468,7 +1555,7 @@ function ProductoDetalleModal({
       <div
         className="w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl max-h-[94vh] overflow-y-auto"
         style={{
-          background: "#ffffff",
+          background: "#e9ede0",
           transform: abierto ? "translateY(0)" : "translateY(24px)",
           transition: "transform .4s cubic-bezier(.2,.8,.2,1)",
         }}

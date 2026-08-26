@@ -31,3 +31,15 @@ body {
   inherits: false;
   initial-value: 0%;
 }
+
+/* Pantalla de inicio del Asesor (components/AsesorApp.tsx) — fondo con
+   movimiento ambiental lento y logo flotando, para que la pantalla no se
+   vea estática mientras nadie la toca. */
+@keyframes asesorFondoDeriva {
+  0%, 100% { background-position: 15% 25%; }
+  50% { background-position: 85% 75%; }
+}
+@keyframes asesorLogoFlotar {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-14px) rotate(-1deg); }
+}
