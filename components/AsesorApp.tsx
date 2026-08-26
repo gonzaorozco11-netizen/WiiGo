@@ -1326,7 +1326,7 @@ export default function AsesorApp({
           <div className="flex-1 px-6 pt-4 pb-6 max-w-md mx-auto w-full flex flex-col">
             {eligiendoModalidadTurno && (
               <>
-                <h2 className="text-xl font-extrabold mb-1">Reservar turno</h2>
+                <h2 className={`${bodoniModa.className} italic text-[22px] mb-1`}>Reservar turno</h2>
                 <p className="text-[12px] text-[#686868] mb-4">¿Cómo preferís tu consulta?</p>
                 <div className="flex flex-col gap-2.5">
                   <button
