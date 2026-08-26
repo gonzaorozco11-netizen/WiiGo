@@ -744,8 +744,15 @@ export default function AsesorApp({
                 </span>
                 <input
                   value={busqueda}
-                  onChange={(e) => setBusqueda(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && buscar()}
+                  onChange={(e) => {
+                    const valor = e.target.value;
+                    setBusqueda(valor);
+                    if (valor.trim()) {
+                      setObjetivoId(null);
+                      setFiltrosSeleccionados(new Set());
+                      setPantalla("resultado");
+                    }
+                  }}
                   placeholder={t("buscarPlaceholder")}
                   className="flex-1 bg-transparent outline-none text-[14px] font-medium text-[#2d2d2d] placeholder:text-[#a8a8a8]"
                 />
@@ -1009,6 +1016,19 @@ export default function AsesorApp({
         <div className="flex-1 flex flex-col">
           <Navbar onVolver={volverDesdeResultado} onInicio={volverAInicio} idioma={idioma} />
           <div className="flex-1 px-6 pt-6 pb-10 max-w-3xl mx-auto w-full">
+            <div className="flex items-center gap-3 rounded-full border border-[#d8d8d8] bg-white px-3 py-3 shadow-sm mb-6">
+              <span className="flex items-center justify-center w-8 h-8 rounded-full shrink-0" style={{ background: SAGE_TINT, color: SAGE_DARK }}>
+                <IconoBuscar className="w-4 h-4" />
+              </span>
+              <input
+                autoFocus
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+                placeholder={t("buscarPlaceholder")}
+                className="flex-1 bg-transparent outline-none text-[14px] font-medium text-[#2d2d2d] placeholder:text-[#a8a8a8]"
+              />
+            </div>
+
             <p className="text-[11px] font-extrabold uppercase tracking-wide text-[#8a8a8a] mb-2">{t("preferenciaTitulo")}</p>
             <div className="flex flex-wrap gap-2 mb-6">
               {filtros.length === 0 && <p className="text-[#686868] text-sm">{t("preferenciaVacio")}</p>}
