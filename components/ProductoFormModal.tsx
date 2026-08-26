@@ -148,6 +148,10 @@ export default function ProductoFormModal({
 
         <form action={handleSubmit} className="space-y-3">
           <Field label="Nombre *" name="nombre" defaultValue={producto?.nombre} required />
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Nombre (inglés)" name="nombre_en" defaultValue={producto?.nombre_en ?? ""} />
+            <Field label="Nombre (portugués)" name="nombre_pt" defaultValue={producto?.nombre_pt ?? ""} />
+          </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -857,6 +861,78 @@ function FichaSection({ ficha, producto }: { ficha: FichaProducto | null; produc
             </div>
           </div>
         )}
+
+        <details className="col-span-2 border border-neutral-200 rounded-xl p-3">
+          <summary className="text-sm font-semibold text-neutral-900 cursor-pointer">
+            🌐 Traducciones (inglés / portugués) — opcional
+          </summary>
+          <p className="text-xs text-neutral-500 mt-1 mb-3">
+            Si los dejás vacíos, el Asesor muestra el texto en español aunque el cliente elija otro idioma.
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Origen (inglés)" name="ficha_origen_en" defaultValue={ficha?.origen_en ?? ""} />
+            <Field label="Origen (portugués)" name="ficha_origen_pt" defaultValue={ficha?.origen_pt ?? ""} />
+            <Field label="Porción (inglés)" name="ficha_porcion_en" defaultValue={ficha?.porcion_en ?? ""} />
+            <Field label="Porción (portugués)" name="ficha_porcion_pt" defaultValue={ficha?.porcion_pt ?? ""} />
+
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-1">Ingredientes (inglés)</label>
+              <textarea
+                name="ficha_ingredientes_en"
+                defaultValue={ficha?.ingredientes_en ?? ""}
+                rows={2}
+                className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-1">Ingredientes (portugués)</label>
+              <textarea
+                name="ficha_ingredientes_pt"
+                defaultValue={ficha?.ingredientes_pt ?? ""}
+                rows={2}
+                className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-1">Micronutrientes (inglés)</label>
+              <textarea
+                name="ficha_micronutrientes_en"
+                defaultValue={ficha?.micronutrientes_en ?? ""}
+                rows={2}
+                className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-1">Micronutrientes (portugués)</label>
+              <textarea
+                name="ficha_micronutrientes_pt"
+                defaultValue={ficha?.micronutrientes_pt ?? ""}
+                rows={2}
+                className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+              />
+            </div>
+
+            <div className="col-span-2">
+              <label className="block text-sm font-medium text-neutral-700 mb-1">Descripción pública (inglés)</label>
+              <textarea
+                name="ficha_descripcion_publica_en"
+                defaultValue={ficha?.descripcion_publica_en ?? ""}
+                rows={2}
+                className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+              />
+            </div>
+            <div className="col-span-2">
+              <label className="block text-sm font-medium text-neutral-700 mb-1">Descripción pública (portugués)</label>
+              <textarea
+                name="ficha_descripcion_publica_pt"
+                defaultValue={ficha?.descripcion_publica_pt ?? ""}
+                rows={2}
+                className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+              />
+            </div>
+          </div>
+        </details>
       </div>
     </div>
   );

@@ -119,6 +119,8 @@ export type Producto = {
   id_marca: string;
   id_subcategoria: string | null;
   nombre: string;
+  nombre_en: string | null;
+  nombre_pt: string | null;
   descripcion: string | null;
   costo_informado: number | null;
   precio_venta: number | null;
@@ -630,6 +632,8 @@ export type DetalleReferidoProfesional = {
 export type Objetivo = {
   id_objetivo: string;
   nombre: string;
+  nombre_en: string | null;
+  nombre_pt: string | null;
   descripcion: string | null;
   imagen: string | null;
   orden: number | null;
@@ -639,6 +643,8 @@ export type Objetivo = {
 export type FiltroProducto = {
   id_filtro: string;
   nombre: string;
+  nombre_en: string | null;
+  nombre_pt: string | null;
   tipo: string | null;
   orden: number | null;
   estado: string;
@@ -648,8 +654,14 @@ export type FichaProducto = {
   id_ficha: string;
   id_producto: string;
   origen: string | null;
+  origen_en: string | null;
+  origen_pt: string | null;
   ingredientes: string | null;
+  ingredientes_en: string | null;
+  ingredientes_pt: string | null;
   porcion: string | null;
+  porcion_en: string | null;
+  porcion_pt: string | null;
   kcal_100g: number | null;
   proteinas: number | null;
   carbohidratos: number | null;
@@ -657,8 +669,12 @@ export type FichaProducto = {
   fibra: number | null;
   sodio: number | null;
   micronutrientes: string | null;
+  micronutrientes_en: string | null;
+  micronutrientes_pt: string | null;
   clasificacion: string | null;
   descripcion_publica: string | null;
+  descripcion_publica_en: string | null;
+  descripcion_publica_pt: string | null;
   imagen_principal: string | null;
   video: string | null;
   estado: string;

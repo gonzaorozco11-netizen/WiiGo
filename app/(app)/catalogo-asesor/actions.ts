@@ -19,6 +19,8 @@ function intOrNull(formData: FormData, name: string) {
 function objetivoFromForm(formData: FormData) {
   return {
     nombre: text(formData, "nombre"),
+    nombre_en: text(formData, "nombre_en"),
+    nombre_pt: text(formData, "nombre_pt"),
     descripcion: text(formData, "descripcion"),
     imagen: text(formData, "imagen"),
     orden: intOrNull(formData, "orden"),
@@ -74,6 +76,8 @@ export async function deleteObjetivo(id: string): Promise<{ error: string | null
 function filtroFromForm(formData: FormData) {
   return {
     nombre: text(formData, "nombre"),
+    nombre_en: text(formData, "nombre_en"),
+    nombre_pt: text(formData, "nombre_pt"),
     tipo: text(formData, "tipo"),
     orden: intOrNull(formData, "orden"),
     estado: text(formData, "estado") ?? "ACTIVO",

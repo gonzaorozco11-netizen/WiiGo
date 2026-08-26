@@ -42,6 +42,10 @@ export default function ObjetivoFormModal({
 
         <form action={handleSubmit} className="space-y-3">
           <Field label="Nombre *" name="nombre" defaultValue={objetivo?.nombre} required />
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Nombre (inglés)" name="nombre_en" defaultValue={objetivo?.nombre_en ?? ""} />
+            <Field label="Nombre (portugués)" name="nombre_pt" defaultValue={objetivo?.nombre_pt ?? ""} />
+          </div>
           <div>
             <label className="block text-sm font-medium text-neutral-700 mb-1">Descripción</label>
             <textarea

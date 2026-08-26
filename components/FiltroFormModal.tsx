@@ -42,6 +42,10 @@ export default function FiltroFormModal({
 
         <form action={handleSubmit} className="space-y-3">
           <Field label="Nombre *" name="nombre" defaultValue={filtro?.nombre} required />
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Nombre (inglés)" name="nombre_en" defaultValue={filtro?.nombre_en ?? ""} />
+            <Field label="Nombre (portugués)" name="nombre_pt" defaultValue={filtro?.nombre_pt ?? ""} />
+          </div>
           <Field
             label="Tipo"
             name="tipo"

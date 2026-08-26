@@ -41,6 +41,16 @@ const bodoniModa = Bodoni_Moda({ subsets: ["latin"], style: ["italic"], weight: 
 // traduce el texto fijo de la pantalla de Inicio; el resto del Asesor
 // (Objetivo, Resultado, Marcas, etc.) queda pendiente de traducir después.
 type Idioma = "es" | "en" | "pt";
+
+// Elige el texto en el idioma actual — si no se cargó traducción para ese
+// campo, muestra el original en español en vez de dejarlo vacío. A nivel de
+// módulo (no dentro de AsesorApp) porque también la usa ProductoDetalleModal,
+// que es un componente aparte.
+function traducir(idioma: Idioma, base: string, en: string | null | undefined, pt: string | null | undefined): string {
+  if (idioma === "en") return en || base;
+  if (idioma === "pt") return pt || base;
+  return base;
+}
 const HOME_I18N = {
   es: {
     eyebrow: "🌿 Asesores",
@@ -50,6 +60,10 @@ const HOME_I18N = {
     ctaOfertas: "Ofertas en<br />la tienda",
     ctaProfesionales: "Profesionales",
     buscarPlaceholder: "Buscar producto o marca...",
+    objetivoTitulo: "¿Cuál es tu objetivo hoy?",
+    resultadoTitulo: "Te recomendamos",
+    reposoSub: "Tocá la pantalla para descubrir qué te conviene hoy",
+    reposoHint: "Tocá para empezar",
   },
   en: {
     eyebrow: "🌿 Advisors",
@@ -59,6 +73,10 @@ const HOME_I18N = {
     ctaOfertas: "Offers in<br />the store",
     ctaProfesionales: "Professionals",
     buscarPlaceholder: "Search product or brand...",
+    objetivoTitulo: "What's your goal today?",
+    resultadoTitulo: "We recommend",
+    reposoSub: "Tap the screen to find what's best for you today",
+    reposoHint: "Tap to start",
   },
   pt: {
     eyebrow: "🌿 Consultores",
@@ -68,6 +86,10 @@ const HOME_I18N = {
     ctaOfertas: "Ofertas<br />da loja",
     ctaProfesionales: "Profissionais",
     buscarPlaceholder: "Buscar produto ou marca...",
+    objetivoTitulo: "Qual é o seu objetivo hoje?",
+    resultadoTitulo: "Recomendamos",
+    reposoSub: "Toque na tela para descobrir o que é melhor pra você hoje",
+    reposoHint: "Toque para começar",
   },
 } as const;
 
@@ -182,6 +204,7 @@ export default function AsesorApp({
   filtrosPorProducto: Record<string, string[]>;
 }) {
   const [pantalla, setPantalla] = useState<Pantalla>("home");
+  const [reposoActivo, setReposoActivo] = useState(true);
   const [busqueda, setBusqueda] = useState("");
   const [objetivoId, setObjetivoId] = useState<string | null>(null);
   const [filtrosSeleccionados, setFiltrosSeleccionados] = useState<Set<string>>(new Set());
@@ -205,6 +228,7 @@ export default function AsesorApp({
   }, []);
 
   const t = (key: keyof (typeof HOME_I18N)["es"]) => HOME_I18N[idioma][key];
+  const tr = (base: string, en: string | null | undefined, pt: string | null | undefined) => traducir(idioma, base, en, pt);
   const [idleWarning, setIdleWarning] = useState(false);
   const [idleCountdown, setIdleCountdown] = useState(IDLE_COUNTDOWN_S);
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -444,6 +468,24 @@ export default function AsesorApp({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pantalla]);
 
+  // La pantalla de Inicio (buscador + tarjetas) vuelve sola a Reposo después
+  // de un rato sin uso — así el totem siempre "descansa" en la pantalla de
+  // bienvenida en vez de quedarse con el buscador abierto indefinidamente.
+  useEffect(() => {
+    if (pantalla !== "home" || reposoActivo) return;
+    let timer = setTimeout(() => setReposoActivo(true), IDLE_WARNING_MS);
+    const reiniciar = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => setReposoActivo(true), IDLE_WARNING_MS);
+    };
+    const eventos: (keyof WindowEventMap)[] = ["pointerdown", "keydown"];
+    eventos.forEach((ev) => window.addEventListener(ev, reiniciar));
+    return () => {
+      clearTimeout(timer);
+      eventos.forEach((ev) => window.removeEventListener(ev, reiniciar));
+    };
+  }, [pantalla, reposoActivo]);
+
   function volverDesdeResultado() {
     if (busqueda.trim()) {
       setBusqueda("");
@@ -535,58 +577,82 @@ export default function AsesorApp({
             backgroundSize: "220% 220%",
             animation: "asesorFondoDeriva 16s ease-in-out infinite",
           }}
+          onClick={reposoActivo ? () => setReposoActivo(false) : undefined}
         >
           <span
             className="text-[10px] font-extrabold uppercase tracking-[.16em] text-[#646759] bg-white/55 backdrop-blur px-4 py-1.5 rounded-full mb-6"
             dangerouslySetInnerHTML={{ __html: t("eyebrow") }}
           />
           <div
-            className="w-full max-w-xs mb-8"
-            style={{ animation: "asesorLogoFlotar 4.5s ease-in-out infinite" }}
+            className={reposoActivo ? "w-full max-w-[280px] mb-8" : "w-full max-w-xs mb-8"}
+            style={{ animation: "asesorLogoFlotar 4.5s ease-in-out infinite", transition: "max-width .4s ease" }}
           >
-            <Image src="/wiigo-logo.png" alt="WiiGo — Estaciones de bienestar" width={2172} height={448} className="w-full h-auto drop-shadow-sm" priority />
-          </div>
-          <p className="text-[15px] font-bold text-[#686868] mb-6">{t("pregunta")}</p>
-
-          <div className="grid grid-cols-2 gap-3 w-full max-w-sm">
-            <button onClick={irAObjetivo} className="flex flex-col items-center gap-3 rounded-2xl border border-[#d8d8d8] bg-white p-6 shadow-sm aspect-square justify-center">
-              <span className="flex items-center justify-center w-14 h-14 rounded-full text-white" style={{ background: C1 }}>
-                <IconoBuscar className="w-7 h-7" />
-              </span>
-              <span className="text-[15px] font-extrabold leading-tight" dangerouslySetInnerHTML={{ __html: t("ctaObjetivo") }} />
-            </button>
-            <button onClick={irAMarcas} className="flex flex-col items-center gap-3 rounded-2xl border border-[#d8d8d8] bg-white p-6 shadow-sm aspect-square justify-center">
-              <span className="flex items-center justify-center w-14 h-14 rounded-full text-white" style={{ background: C2 }}>
-                <IconoBolsa className="w-7 h-7" />
-              </span>
-              <span className="text-[15px] font-extrabold leading-tight" dangerouslySetInnerHTML={{ __html: t("ctaMarcas") }} />
-            </button>
-            <button onClick={irAOfertas} className="flex flex-col items-center gap-3 rounded-2xl border border-[#d8d8d8] bg-white p-6 shadow-sm aspect-square justify-center">
-              <span className="flex items-center justify-center w-14 h-14 rounded-full text-white" style={{ background: C3 }}>
-                <IconoEtiqueta className="w-7 h-7" />
-              </span>
-              <span className="text-[15px] font-extrabold leading-tight" dangerouslySetInnerHTML={{ __html: t("ctaOfertas") }} />
-            </button>
-            <button onClick={() => setPantalla("profesionales")} className="flex flex-col items-center gap-3 rounded-2xl border border-[#d8d8d8] bg-white p-6 shadow-sm aspect-square justify-center">
-              <span className="flex items-center justify-center w-14 h-14 rounded-full text-white" style={{ background: C4 }}>
-                <IconoPersona className="w-7 h-7" />
-              </span>
-              <span className="text-[15px] font-extrabold leading-tight">{t("ctaProfesionales")}</span>
-            </button>
-          </div>
-
-          <div className="w-full max-w-sm mt-6 flex items-center gap-3 rounded-full border border-[#d8d8d8] bg-white px-3 py-3 shadow-sm">
-            <span className="flex items-center justify-center w-8 h-8 rounded-full shrink-0" style={{ background: SAGE_TINT, color: SAGE_DARK }}>
-              <IconoBuscar className="w-4 h-4" />
-            </span>
-            <input
-              value={busqueda}
-              onChange={(e) => setBusqueda(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && buscar()}
-              placeholder={t("buscarPlaceholder")}
-              className="flex-1 bg-transparent outline-none text-[14px] font-medium text-[#2d2d2d] placeholder:text-[#a8a8a8]"
+            <Image
+              src="/wiigo-logo.png"
+              alt="WiiGo — Estaciones de bienestar"
+              width={2172}
+              height={448}
+              className="w-full h-auto"
+              style={{ filter: "brightness(0) drop-shadow(0 14px 24px rgba(0,0,0,.18))" }}
+              priority
             />
           </div>
+
+          {reposoActivo ? (
+            <>
+              <p className="text-[15px] font-bold text-[#686868] mb-6 max-w-xs">{t("reposoSub")}</p>
+              <span
+                className="text-[11px] font-extrabold uppercase tracking-[.1em] px-5 py-2.5 rounded-full border-[1.5px] motion-safe:animate-pulse"
+                style={{ color: SAGE_DARK, borderColor: SAGE_DARK }}
+              >
+                {t("reposoHint")}
+              </span>
+            </>
+          ) : (
+            <>
+              <p className="text-[15px] font-bold text-[#686868] mb-6">{t("pregunta")}</p>
+
+              <div className="grid grid-cols-2 gap-3 w-full max-w-sm">
+                <button onClick={irAObjetivo} className="flex flex-col items-center gap-3 rounded-2xl border border-[#d8d8d8] bg-white p-6 shadow-sm aspect-square justify-center">
+                  <span className="flex items-center justify-center w-14 h-14 rounded-full text-white" style={{ background: C1 }}>
+                    <IconoBuscar className="w-7 h-7" />
+                  </span>
+                  <span className="text-[15px] font-extrabold leading-tight" dangerouslySetInnerHTML={{ __html: t("ctaObjetivo") }} />
+                </button>
+                <button onClick={irAMarcas} className="flex flex-col items-center gap-3 rounded-2xl border border-[#d8d8d8] bg-white p-6 shadow-sm aspect-square justify-center">
+                  <span className="flex items-center justify-center w-14 h-14 rounded-full text-white" style={{ background: C2 }}>
+                    <IconoBolsa className="w-7 h-7" />
+                  </span>
+                  <span className="text-[15px] font-extrabold leading-tight" dangerouslySetInnerHTML={{ __html: t("ctaMarcas") }} />
+                </button>
+                <button onClick={irAOfertas} className="flex flex-col items-center gap-3 rounded-2xl border border-[#d8d8d8] bg-white p-6 shadow-sm aspect-square justify-center">
+                  <span className="flex items-center justify-center w-14 h-14 rounded-full text-white" style={{ background: C3 }}>
+                    <IconoEtiqueta className="w-7 h-7" />
+                  </span>
+                  <span className="text-[15px] font-extrabold leading-tight" dangerouslySetInnerHTML={{ __html: t("ctaOfertas") }} />
+                </button>
+                <button onClick={() => setPantalla("profesionales")} className="flex flex-col items-center gap-3 rounded-2xl border border-[#d8d8d8] bg-white p-6 shadow-sm aspect-square justify-center">
+                  <span className="flex items-center justify-center w-14 h-14 rounded-full text-white" style={{ background: C4 }}>
+                    <IconoPersona className="w-7 h-7" />
+                  </span>
+                  <span className="text-[15px] font-extrabold leading-tight">{t("ctaProfesionales")}</span>
+                </button>
+              </div>
+
+              <div className="w-full max-w-sm mt-6 flex items-center gap-3 rounded-full border border-[#d8d8d8] bg-white px-3 py-3 shadow-sm">
+                <span className="flex items-center justify-center w-8 h-8 rounded-full shrink-0" style={{ background: SAGE_TINT, color: SAGE_DARK }}>
+                  <IconoBuscar className="w-4 h-4" />
+                </span>
+                <input
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && buscar()}
+                  placeholder={t("buscarPlaceholder")}
+                  className="flex-1 bg-transparent outline-none text-[14px] font-medium text-[#2d2d2d] placeholder:text-[#a8a8a8]"
+                />
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -594,7 +660,7 @@ export default function AsesorApp({
         <div className="flex-1 flex flex-col">
           <Navbar onVolver={volverAInicio} onInicio={volverAInicio} />
           <div className="flex-1 px-6 pt-6 pb-10">
-            <h2 className="text-2xl font-extrabold mb-6">¿Cuál es tu objetivo hoy?</h2>
+            <h2 className="text-2xl font-extrabold mb-6">{t("objetivoTitulo")}</h2>
             <div className="flex flex-col gap-2.5 max-w-md mx-auto">
               {objetivos.length === 0 && (
                 <p className="text-[#686868] text-sm text-center py-8">
@@ -615,7 +681,7 @@ export default function AsesorApp({
                       o.nombre.charAt(0).toUpperCase()
                     )}
                   </span>
-                  <span className="text-[15px] font-bold">{o.nombre}</span>
+                  <span className="text-[15px] font-bold">{tr(o.nombre, o.nombre_en, o.nombre_pt)}</span>
                 </button>
               ))}
             </div>
@@ -723,9 +789,11 @@ export default function AsesorApp({
                             )}
                           </div>
                           <div className="p-2.5 flex flex-col gap-1">
-                            <p className="text-[12px] font-extrabold leading-tight line-clamp-2">{p.nombre}</p>
+                            <p className="text-[12px] font-extrabold leading-tight line-clamp-2">{tr(p.nombre, p.nombre_en, p.nombre_pt)}</p>
                             {ficha?.descripcion_publica && (
-                              <p className="text-[10px] text-[#686868] leading-snug line-clamp-2">{ficha.descripcion_publica}</p>
+                              <p className="text-[10px] text-[#686868] leading-snug line-clamp-2">
+                                {tr(ficha.descripcion_publica, ficha.descripcion_publica_en, ficha.descripcion_publica_pt)}
+                              </p>
                             )}
                             <span className="text-[13px] font-extrabold mt-1">{formatoPrecio(p.precio_venta)}</span>
                           </div>
@@ -824,7 +892,7 @@ export default function AsesorApp({
                             {marca.nombre}
                           </p>
                         )}
-                        <p className="text-[12px] font-extrabold leading-tight line-clamp-2">{p.nombre}</p>
+                        <p className="text-[12px] font-extrabold leading-tight line-clamp-2">{tr(p.nombre, p.nombre_en, p.nombre_pt)}</p>
                         <div className="flex items-baseline gap-1.5 mt-1">
                           <span className="text-[13px] font-extrabold" style={{ color: C3 }}>
                             {formatoPrecio(precioConDescuento(p))}
@@ -863,13 +931,13 @@ export default function AsesorApp({
                         : { background: "#fff", borderColor: "#d8d8d8", color: "#686868" }
                     }
                   >
-                    {f.nombre}
+                    {tr(f.nombre, f.nombre_en, f.nombre_pt)}
                   </button>
                 );
               })}
             </div>
 
-            <h3 className="text-lg font-extrabold mb-1">Te recomendamos</h3>
+            <h3 className="text-lg font-extrabold mb-1">{t("resultadoTitulo")}</h3>
             <p className="text-[13px] text-[#686868] mb-5">
               {productosFiltrados.length} producto{productosFiltrados.length === 1 ? "" : "s"} disponible
               {productosFiltrados.length === 1 ? "" : "s"} en WiiGo
@@ -906,7 +974,7 @@ export default function AsesorApp({
                             {marca.nombre}
                           </p>
                         )}
-                        <p className="text-[12px] font-extrabold leading-tight line-clamp-2">{p.nombre}</p>
+                        <p className="text-[12px] font-extrabold leading-tight line-clamp-2">{tr(p.nombre, p.nombre_en, p.nombre_pt)}</p>
                         {texto && <p className="text-[10px] text-[#686868] leading-snug">{texto}</p>}
                         <div className="flex flex-col gap-1 mt-1">
                           <span className="text-[13px] font-extrabold">{formatoPrecio(p.precio_venta)}</span>
@@ -1488,6 +1556,7 @@ export default function AsesorApp({
               producto={p}
               marca={marcaPorId[p.id_marca]}
               ficha={fichaPorProducto[p.id_producto] ?? null}
+              idioma={idioma}
               onClose={() => setProductoAbierto(null)}
             />
           );
@@ -1501,23 +1570,78 @@ export default function AsesorApp({
 // Colores por macro (tono fuerte para el punto/valor, tono claro para el
 // fondo de la explicación cuando se toca la burbuja) — separados del verde
 // de marca porque acá cumplen una función de dato, no de identidad.
-const MACROS_INFO: Record<string, { fuerte: string; claro: string; explicacion: (v: number) => string }> = {
-  Proteínas: { fuerte: "#4f8c7c", claro: "#e3f0ec", explicacion: (v) => `Aporta ${v}g de proteínas cada 100g.` },
-  Carbohidratos: { fuerte: "#c9822f", claro: "#faf0de", explicacion: (v) => `Contiene ${v}g de carbohidratos cada 100g.` },
-  Grasas: { fuerte: "#b85a48", claro: "#f6e6e2", explicacion: (v) => `Tiene ${v}g de grasas cada 100g.` },
-  Fibra: { fuerte: "#7a63ad", claro: "#eee9f7", explicacion: (v) => `Suma ${v}g de fibra cada 100g.` },
-  Sodio: { fuerte: "#5f8bb0", claro: "#e6eef4", explicacion: (v) => `Contiene ${v}g de sodio cada 100g.` },
+const MACROS_INFO: Record<
+  string,
+  { fuerte: string; claro: string; label: Record<Idioma, string>; explicacion: (v: number, idioma: Idioma) => string }
+> = {
+  Proteínas: {
+    fuerte: "#4f8c7c",
+    claro: "#e3f0ec",
+    label: { es: "Proteína", en: "Protein", pt: "Proteína" },
+    explicacion: (v, idioma) =>
+      idioma === "en"
+        ? `Provides ${v}g of protein per 100g.`
+        : idioma === "pt"
+          ? `Fornece ${v}g de proteína a cada 100g.`
+          : `Aporta ${v}g de proteínas cada 100g.`,
+  },
+  Carbohidratos: {
+    fuerte: "#c9822f",
+    claro: "#faf0de",
+    label: { es: "Carbos", en: "Carbs", pt: "Carboidratos" },
+    explicacion: (v, idioma) =>
+      idioma === "en"
+        ? `Contains ${v}g of carbohydrates per 100g.`
+        : idioma === "pt"
+          ? `Contém ${v}g de carboidratos a cada 100g.`
+          : `Contiene ${v}g de carbohidratos cada 100g.`,
+  },
+  Grasas: {
+    fuerte: "#b85a48",
+    claro: "#f6e6e2",
+    label: { es: "Grasas", en: "Fat", pt: "Gorduras" },
+    explicacion: (v, idioma) =>
+      idioma === "en"
+        ? `Has ${v}g of healthy fats per 100g.`
+        : idioma === "pt"
+          ? `Tem ${v}g de gorduras a cada 100g.`
+          : `Tiene ${v}g de grasas cada 100g.`,
+  },
+  Fibra: {
+    fuerte: "#7a63ad",
+    claro: "#eee9f7",
+    label: { es: "Fibra", en: "Fiber", pt: "Fibra" },
+    explicacion: (v, idioma) =>
+      idioma === "en"
+        ? `Adds ${v}g of fiber per 100g.`
+        : idioma === "pt"
+          ? `Soma ${v}g de fibra a cada 100g.`
+          : `Suma ${v}g de fibra cada 100g.`,
+  },
+  Sodio: {
+    fuerte: "#5f8bb0",
+    claro: "#e6eef4",
+    label: { es: "Sodio", en: "Sodium", pt: "Sódio" },
+    explicacion: (v, idioma) =>
+      idioma === "en"
+        ? `Contains ${v}g of sodium per 100g.`
+        : idioma === "pt"
+          ? `Contém ${v}g de sódio a cada 100g.`
+          : `Contiene ${v}g de sodio cada 100g.`,
+  },
 };
 
 function ProductoDetalleModal({
   producto,
   marca,
   ficha,
+  idioma,
   onClose,
 }: {
   producto: Producto;
   marca: Marca | undefined;
   ficha: FichaProducto | null;
+  idioma: Idioma;
   onClose: () => void;
 }) {
   const fotos = [producto.imagen, ficha?.foto_extra_1, ficha?.foto_extra_2, ficha?.foto_extra_3].filter(
@@ -1587,7 +1711,7 @@ function ProductoDetalleModal({
               className="absolute top-3.5 left-3.5 text-white text-[10.5px] font-medium px-3 py-1.5 rounded-full"
               style={{ background: "rgba(255,255,255,.28)", backdropFilter: "blur(6px)" }}
             >
-              📍 {ficha.origen}
+              📍 {traducir(idioma, ficha.origen, ficha.origen_en, ficha.origen_pt)}
             </span>
           )}
           <button
@@ -1645,7 +1769,9 @@ function ProductoDetalleModal({
                 {marca.nombre}
               </p>
             )}
-            <h3 className={`${bodoniModa.className} italic text-2xl leading-tight mt-0.5`}>{producto.nombre}</h3>
+            <h3 className={`${bodoniModa.className} italic text-2xl leading-tight mt-0.5`}>
+              {traducir(idioma, producto.nombre, producto.nombre_en, producto.nombre_pt)}
+            </h3>
             <div className="flex items-baseline gap-2 mt-1.5">
               <span
                 className={`${fredoka.className} text-lg font-semibold`}
@@ -1668,7 +1794,7 @@ function ProductoDetalleModal({
                 transition: "all .5s ease .25s",
               }}
             >
-              {ficha.descripcion_publica}
+              {traducir(idioma, ficha.descripcion_publica, ficha.descripcion_publica_en, ficha.descripcion_publica_pt)}
             </p>
           )}
 
@@ -1687,7 +1813,11 @@ function ProductoDetalleModal({
               }}
             >
               <p className="text-[10.5px] font-bold uppercase tracking-widest text-[#8a8a8a] self-start">
-                Información nutricional · cada 100 g
+                {idioma === "en"
+                  ? "Nutrition facts · per 100 g"
+                  : idioma === "pt"
+                    ? "Informação nutricional · a cada 100 g"
+                    : "Información nutricional · cada 100 g"}
               </p>
 
               {ficha?.kcal_100g !== null && ficha?.kcal_100g !== undefined && (
@@ -1728,7 +1858,7 @@ function ProductoDetalleModal({
                       >
                         <span className="w-1.5 h-1.5 rounded-full" style={{ background: info.fuerte }} />
                         <span className={`${fredoka.className} text-xs font-semibold`}>{m.valor}g</span>
-                        <span className="text-[8px] text-[#8a8a8a] text-center leading-tight">{m.label}</span>
+                        <span className="text-[8px] text-[#8a8a8a] text-center leading-tight">{info.label[idioma]}</span>
                       </button>
                     );
                   })}
@@ -1746,7 +1876,7 @@ function ProductoDetalleModal({
               >
                 {macroSeleccionada && (
                   <p className="text-[11.5px] leading-relaxed text-[#2d2d2d] m-0">
-                    {MACROS_INFO[macroSeleccionada.label].explicacion(macroSeleccionada.valor)}
+                    {MACROS_INFO[macroSeleccionada.label].explicacion(macroSeleccionada.valor, idioma)}
                   </p>
                 )}
               </div>
@@ -1759,7 +1889,9 @@ function ProductoDetalleModal({
                 onClick={() => setIngredientesAbierto((v) => !v)}
                 className="w-full flex items-center justify-between py-3.5"
               >
-                <span className="text-[13px] font-bold">Ingredientes</span>
+                <span className="text-[13px] font-bold">
+                  {idioma === "en" ? "Ingredients" : idioma === "pt" ? "Ingredientes" : "Ingredientes"}
+                </span>
                 <span
                   className="text-[#8a8a8a]"
                   style={{ transition: "transform .3s ease", transform: ingredientesAbierto ? "rotate(180deg)" : "none" }}
@@ -1771,7 +1903,9 @@ function ProductoDetalleModal({
                 className="overflow-hidden"
                 style={{ maxHeight: ingredientesAbierto ? 160 : 0, transition: "max-height .35s ease" }}
               >
-                <p className="text-[12.5px] leading-relaxed text-[#3d3d3d] pb-3.5">{ficha.ingredientes}</p>
+                <p className="text-[12.5px] leading-relaxed text-[#3d3d3d] pb-3.5">
+                  {traducir(idioma, ficha.ingredientes, ficha.ingredientes_en, ficha.ingredientes_pt)}
+                </p>
               </div>
             </div>
           )}
@@ -1782,7 +1916,9 @@ function ProductoDetalleModal({
                 onClick={() => setMicronutrientesAbierto((v) => !v)}
                 className="w-full flex items-center justify-between py-3.5"
               >
-                <span className="text-[13px] font-bold">Micronutrientes</span>
+                <span className="text-[13px] font-bold">
+                  {idioma === "en" ? "Micronutrients" : "Micronutrientes"}
+                </span>
                 <span
                   className="text-[#8a8a8a]"
                   style={{
@@ -1797,7 +1933,9 @@ function ProductoDetalleModal({
                 className="overflow-hidden"
                 style={{ maxHeight: micronutrientesAbierto ? 160 : 0, transition: "max-height .35s ease" }}
               >
-                <p className="text-[12.5px] leading-relaxed text-[#3d3d3d] pb-3.5">{ficha.micronutrientes}</p>
+                <p className="text-[12.5px] leading-relaxed text-[#3d3d3d] pb-3.5">
+                  {traducir(idioma, ficha.micronutrientes, ficha.micronutrientes_en, ficha.micronutrientes_pt)}
+                </p>
               </div>
             </div>
           )}
@@ -1807,7 +1945,8 @@ function ProductoDetalleModal({
               className="self-start text-[10px] font-bold px-3 py-1.5 rounded-full"
               style={{ background: SAGE_TINT, color: SAGE_DARK }}
             >
-              Porción sugerida: {ficha.porcion}
+              {idioma === "en" ? "Suggested serving" : idioma === "pt" ? "Porção sugerida" : "Porción sugerida"}:{" "}
+              {traducir(idioma, ficha.porcion, ficha.porcion_en, ficha.porcion_pt)}
             </span>
           )}
 
