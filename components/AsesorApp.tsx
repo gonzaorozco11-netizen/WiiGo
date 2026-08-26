@@ -64,6 +64,8 @@ const HOME_I18N = {
     resultadoTitulo: "Te recomendamos",
     reposoSub: "Tocá la pantalla para descubrir qué te conviene hoy",
     reposoHint: "Tocá para empezar",
+    ctaEyebrow: "Recomendado",
+    ctaDescripcion: "Contanos qué buscás y te mostramos lo que mejor te queda",
   },
   en: {
     eyebrow: "🌿 Advisors",
@@ -77,6 +79,8 @@ const HOME_I18N = {
     resultadoTitulo: "We recommend",
     reposoSub: "Tap the screen to find what's best for you today",
     reposoHint: "Tap to start",
+    ctaEyebrow: "Recommended",
+    ctaDescripcion: "Tell us what you need and we'll show you what fits best",
   },
   pt: {
     eyebrow: "🌿 Consultores",
@@ -90,6 +94,8 @@ const HOME_I18N = {
     resultadoTitulo: "Recomendamos",
     reposoSub: "Toque na tela para descobrir o que é melhor pra você hoje",
     reposoHint: "Toque para começar",
+    ctaEyebrow: "Recomendado",
+    ctaDescripcion: "Conte o que você precisa e mostramos o que combina com você",
   },
 } as const;
 
@@ -612,30 +618,38 @@ export default function AsesorApp({
             <>
               <p className="text-[15px] font-bold text-[#686868] mb-6">{t("pregunta")}</p>
 
-              <div className="grid grid-cols-2 gap-3 w-full max-w-sm">
-                <button onClick={irAObjetivo} className="flex flex-col items-center gap-3 rounded-2xl border border-[#d8d8d8] bg-white p-6 shadow-sm aspect-square justify-center">
-                  <span className="flex items-center justify-center w-14 h-14 rounded-full text-white" style={{ background: C1 }}>
-                    <IconoBuscar className="w-7 h-7" />
+              <button
+                onClick={irAObjetivo}
+                className="relative w-full max-w-sm rounded-3xl p-6 text-left text-white overflow-hidden"
+                style={{ background: `linear-gradient(135deg, ${SAGE_DARK}, #4d5245)` }}
+              >
+                <p className="text-[10px] font-extrabold uppercase tracking-[.1em] opacity-85">{t("ctaEyebrow")}</p>
+                <h3
+                  className="text-[19px] font-extrabold leading-tight mt-1 mb-1.5"
+                  dangerouslySetInnerHTML={{ __html: t("ctaObjetivo") }}
+                />
+                <p className="text-[12px] opacity-90 max-w-[210px]">{t("ctaDescripcion")}</p>
+                <span className="absolute right-5 bottom-5 text-[22px]">→</span>
+              </button>
+
+              <div className="flex gap-2 w-full max-w-sm mt-3">
+                <button onClick={irAMarcas} className="flex-1 flex flex-col items-center gap-2 rounded-2xl border border-[#d8d8d8] bg-white p-3.5">
+                  <span className="flex items-center justify-center w-9 h-9 rounded-full text-white shrink-0" style={{ background: C2 }}>
+                    <IconoBolsa className="w-4.5 h-4.5" />
                   </span>
-                  <span className="text-[15px] font-extrabold leading-tight" dangerouslySetInnerHTML={{ __html: t("ctaObjetivo") }} />
+                  <span className="text-[11px] font-bold leading-tight text-center" dangerouslySetInnerHTML={{ __html: t("ctaMarcas") }} />
                 </button>
-                <button onClick={irAMarcas} className="flex flex-col items-center gap-3 rounded-2xl border border-[#d8d8d8] bg-white p-6 shadow-sm aspect-square justify-center">
-                  <span className="flex items-center justify-center w-14 h-14 rounded-full text-white" style={{ background: C2 }}>
-                    <IconoBolsa className="w-7 h-7" />
+                <button onClick={irAOfertas} className="flex-1 flex flex-col items-center gap-2 rounded-2xl border border-[#d8d8d8] bg-white p-3.5">
+                  <span className="flex items-center justify-center w-9 h-9 rounded-full text-white shrink-0" style={{ background: C3 }}>
+                    <IconoEtiqueta className="w-4.5 h-4.5" />
                   </span>
-                  <span className="text-[15px] font-extrabold leading-tight" dangerouslySetInnerHTML={{ __html: t("ctaMarcas") }} />
+                  <span className="text-[11px] font-bold leading-tight text-center" dangerouslySetInnerHTML={{ __html: t("ctaOfertas") }} />
                 </button>
-                <button onClick={irAOfertas} className="flex flex-col items-center gap-3 rounded-2xl border border-[#d8d8d8] bg-white p-6 shadow-sm aspect-square justify-center">
-                  <span className="flex items-center justify-center w-14 h-14 rounded-full text-white" style={{ background: C3 }}>
-                    <IconoEtiqueta className="w-7 h-7" />
+                <button onClick={() => setPantalla("profesionales")} className="flex-1 flex flex-col items-center gap-2 rounded-2xl border border-[#d8d8d8] bg-white p-3.5">
+                  <span className="flex items-center justify-center w-9 h-9 rounded-full text-white shrink-0" style={{ background: C4 }}>
+                    <IconoPersona className="w-4.5 h-4.5" />
                   </span>
-                  <span className="text-[15px] font-extrabold leading-tight" dangerouslySetInnerHTML={{ __html: t("ctaOfertas") }} />
-                </button>
-                <button onClick={() => setPantalla("profesionales")} className="flex flex-col items-center gap-3 rounded-2xl border border-[#d8d8d8] bg-white p-6 shadow-sm aspect-square justify-center">
-                  <span className="flex items-center justify-center w-14 h-14 rounded-full text-white" style={{ background: C4 }}>
-                    <IconoPersona className="w-7 h-7" />
-                  </span>
-                  <span className="text-[15px] font-extrabold leading-tight">{t("ctaProfesionales")}</span>
+                  <span className="text-[11px] font-bold leading-tight text-center">{t("ctaProfesionales")}</span>
                 </button>
               </div>
 
