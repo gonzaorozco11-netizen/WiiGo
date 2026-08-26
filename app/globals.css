@@ -22,3 +22,12 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
     Arial, sans-serif;
 }
+
+/* Permite animar el degradé del anillo de kcal en la ficha ampliada del
+   Asesor (components/AsesorApp.tsx) — sin esto un conic-gradient no se
+   puede transicionar con CSS. */
+@property --p {
+  syntax: "<percentage>";
+  inherits: false;
+  initial-value: 0%;
+}

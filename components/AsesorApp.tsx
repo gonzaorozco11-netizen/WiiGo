@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
+import { Fredoka, Bodoni_Moda } from "next/font/google";
 import type {
   Local,
   Marca,
@@ -29,6 +30,11 @@ const C1 = "#8fa377"; // encontrar productos
 const C2 = "#d99a5b"; // marcas y productos
 const C3 = "#d97561"; // ofertas
 const C4 = "#5f92a8"; // profesionales
+
+// Solo para la ficha ampliada de producto (ProductoDetalleModal) — el resto
+// del Asesor sigue con Manrope (ver app/asesor/layout.tsx).
+const fredoka = Fredoka({ subsets: ["latin"], weight: ["500", "600", "700"] });
+const bodoniModa = Bodoni_Moda({ subsets: ["latin"], style: ["italic"], weight: ["500", "600"] });
 
 function plataformaVideo(url: string): string {
   if (/instagram\.com/i.test(url)) return "Instagram";
@@ -1405,6 +1411,17 @@ export default function AsesorApp({
   );
 }
 
+// Colores por macro (tono fuerte para el punto/valor, tono claro para el
+// fondo de la explicación cuando se toca la burbuja) — separados del verde
+// de marca porque acá cumplen una función de dato, no de identidad.
+const MACROS_INFO: Record<string, { fuerte: string; claro: string; explicacion: (v: number) => string }> = {
+  Proteínas: { fuerte: "#4f8c7c", claro: "#e3f0ec", explicacion: (v) => `Aporta ${v}g de proteínas cada 100g.` },
+  Carbohidratos: { fuerte: "#c9822f", claro: "#faf0de", explicacion: (v) => `Contiene ${v}g de carbohidratos cada 100g.` },
+  Grasas: { fuerte: "#b85a48", claro: "#f6e6e2", explicacion: (v) => `Tiene ${v}g de grasas cada 100g.` },
+  Fibra: { fuerte: "#7a63ad", claro: "#eee9f7", explicacion: (v) => `Suma ${v}g de fibra cada 100g.` },
+  Sodio: { fuerte: "#5f8bb0", claro: "#e6eef4", explicacion: (v) => `Contiene ${v}g de sodio cada 100g.` },
+};
+
 function ProductoDetalleModal({
   producto,
   marca,
@@ -1420,28 +1437,51 @@ function ProductoDetalleModal({
     (f): f is string => Boolean(f)
   );
   const [fotoActiva, setFotoActiva] = useState<string | null>(fotos[0] ?? null);
+  const [abierto, setAbierto] = useState(false);
+  const [macroActiva, setMacroActiva] = useState<string | null>(null);
+  const [ingredientesAbierto, setIngredientesAbierto] = useState(false);
+  const [micronutrientesAbierto, setMicronutrientesAbierto] = useState(false);
 
-  const nutrientes = [
-    { label: "Kcal", valor: ficha?.kcal_100g ?? null, unidad: "" },
-    { label: "Proteínas", valor: ficha?.proteinas ?? null, unidad: "g" },
-    { label: "Carbohidratos", valor: ficha?.carbohidratos ?? null, unidad: "g" },
-    { label: "Grasas", valor: ficha?.grasas ?? null, unidad: "g" },
-    { label: "Fibra", valor: ficha?.fibra ?? null, unidad: "g" },
-    { label: "Sodio", valor: ficha?.sodio ?? null, unidad: "g" },
-  ].filter((n) => n.valor !== null);
+  // El anillo se dibuja solo al abrir — arranca en 0% y un instante después
+  // pasa al valor final, la transición CSS de --p hace el resto.
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setAbierto(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+
+  const macros = [
+    { label: "Proteínas", valor: ficha?.proteinas ?? null },
+    { label: "Carbohidratos", valor: ficha?.carbohidratos ?? null },
+    { label: "Grasas", valor: ficha?.grasas ?? null },
+    { label: "Fibra", valor: ficha?.fibra ?? null },
+    { label: "Sodio", valor: ficha?.sodio ?? null },
+  ].filter((m): m is { label: string; valor: number } => m.valor !== null);
+
+  const macroSeleccionada = macros.find((m) => m.label === macroActiva);
 
   return (
     <div
       className="fixed inset-0 z-40 flex items-end sm:items-center justify-center"
-      style={{ background: "rgba(45,45,45,.6)" }}
+      style={{ background: "rgba(20,17,13,.55)" }}
       onClick={onClose}
     >
       <div
-        className="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl max-h-[88vh] overflow-y-auto"
+        className="w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl max-h-[94vh] overflow-y-auto"
+        style={{
+          background: "#ffffff",
+          transform: abierto ? "translateY(0)" : "translateY(24px)",
+          transition: "transform .4s cubic-bezier(.2,.8,.2,1)",
+        }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="relative">
-          <div className="h-56 bg-gradient-to-br from-[#f0f2ec] to-[#d8d8d8] flex items-center justify-center">
+        <div className="relative h-52 overflow-hidden">
+          <div
+            className="absolute inset-0 bg-gradient-to-br from-[#f0f2ec] to-[#d8d8d8] flex items-center justify-center"
+            style={{
+              transform: abierto ? "scale(1)" : "scale(1.12)",
+              transition: "transform .9s cubic-bezier(.2,.8,.2,1)",
+            }}
+          >
             {fotoActiva ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={fotoActiva} alt="" className="w-full h-full object-cover" />
@@ -1451,12 +1491,42 @@ function ProductoDetalleModal({
               </span>
             )}
           </div>
+          <div
+            className="absolute inset-x-0 bottom-0 h-2/3 pointer-events-none"
+            style={{ background: "linear-gradient(to top, rgba(20,17,13,.45), transparent)" }}
+          />
+          {ficha?.origen && (
+            <span
+              className="absolute top-3.5 left-3.5 text-white text-[10.5px] font-medium px-3 py-1.5 rounded-full"
+              style={{ background: "rgba(255,255,255,.28)", backdropFilter: "blur(6px)" }}
+            >
+              📍 {ficha.origen}
+            </span>
+          )}
           <button
             onClick={onClose}
-            className="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/90 flex items-center justify-center text-[#2d2d2d] font-bold shadow"
+            className="absolute top-3.5 right-3.5 w-8 h-8 rounded-full text-white font-bold flex items-center justify-center"
+            style={{ background: "rgba(255,255,255,.28)", backdropFilter: "blur(6px)" }}
           >
             ✕
           </button>
+          {ficha?.clasificacion && (
+            <div
+              className="absolute left-4 -bottom-7 w-16 h-16 rounded-full bg-white flex flex-col items-center justify-center text-center"
+              style={{
+                border: `2px solid ${SAGE_DARK}`,
+                boxShadow: "0 8px 20px -8px rgba(0,0,0,.35)",
+                opacity: abierto ? 1 : 0,
+                transform: abierto ? "translateY(0) scale(1)" : "translateY(6px) scale(.85)",
+                transition: "all .5s cubic-bezier(.2,.8,.2,1) .35s",
+              }}
+            >
+              <span className="text-[15px] leading-none">🌿</span>
+              <span className="text-[6.5px] font-extrabold tracking-wide mt-0.5" style={{ color: SAGE_DARK }}>
+                {ficha.clasificacion}
+              </span>
+            </div>
+          )}
         </div>
 
         {fotos.length > 1 && (
@@ -1465,8 +1535,8 @@ function ProductoDetalleModal({
               <button
                 key={f}
                 onClick={() => setFotoActiva(f)}
-                className="w-12 h-12 rounded-lg overflow-hidden border-2 shrink-0"
-                style={{ borderColor: f === fotoActiva ? SAGE : "#e5e5e5" }}
+                className="w-11 h-11 rounded-lg overflow-hidden border-2 shrink-0"
+                style={{ borderColor: f === fotoActiva ? SAGE_DARK : "#e5e5e5" }}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={f} alt="" className="w-full h-full object-cover" />
@@ -1475,81 +1545,182 @@ function ProductoDetalleModal({
           </div>
         )}
 
-        <div className="p-4 flex flex-col gap-3">
-          {marca && (
-            <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: SAGE_DARK }}>
-              {marca.nombre}
-            </p>
-          )}
-          <h3 className="text-lg font-extrabold leading-tight -mt-1">{producto.nombre}</h3>
-          <div className="flex items-baseline gap-2">
-            <span
-              className="text-xl font-extrabold"
-              style={{ color: (producto.descuento_porcentaje ?? 0) > 0 ? C3 : "#2d2d2d" }}
-            >
-              {formatoPrecio(precioConDescuento(producto))}
-            </span>
-            {(producto.descuento_porcentaje ?? 0) > 0 && (
-              <span className="text-sm text-[#a8a8a8] line-through">{formatoPrecio(producto.precio_venta)}</span>
+        <div className="pt-9 pb-5 px-4 flex flex-col gap-4">
+          <div
+            style={{
+              opacity: abierto ? 1 : 0,
+              transform: abierto ? "translateY(0)" : "translateY(10px)",
+              transition: "all .5s ease .15s",
+            }}
+          >
+            {marca && (
+              <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: SAGE_DARK }}>
+                {marca.nombre}
+              </p>
             )}
+            <h3 className={`${bodoniModa.className} italic text-2xl leading-tight mt-0.5`}>{producto.nombre}</h3>
+            <div className="flex items-baseline gap-2 mt-1.5">
+              <span
+                className={`${fredoka.className} text-lg font-semibold`}
+                style={{ color: (producto.descuento_porcentaje ?? 0) > 0 ? C3 : "#2d2d2d" }}
+              >
+                {formatoPrecio(precioConDescuento(producto))}
+              </span>
+              {(producto.descuento_porcentaje ?? 0) > 0 && (
+                <span className="text-sm text-[#a8a8a8] line-through">{formatoPrecio(producto.precio_venta)}</span>
+              )}
+            </div>
           </div>
 
           {ficha?.descripcion_publica && (
-            <p className="text-sm text-[#3d3d3d] leading-relaxed">{ficha.descripcion_publica}</p>
+            <p
+              className="text-[13.5px] leading-relaxed text-[#686868]"
+              style={{
+                opacity: abierto ? 1 : 0,
+                transform: abierto ? "translateY(0)" : "translateY(10px)",
+                transition: "all .5s ease .25s",
+              }}
+            >
+              {ficha.descripcion_publica}
+            </p>
           )}
 
-          {(ficha?.origen || ficha?.porcion) && (
-            <div className="flex flex-wrap gap-4 text-[12px] text-[#686868]">
-              {ficha?.origen && (
-                <span>
-                  <b className="text-[#2d2d2d]">Origen:</b> {ficha.origen}
-                </span>
-              )}
-              {ficha?.porcion && (
-                <span>
-                  <b className="text-[#2d2d2d]">Porción:</b> {ficha.porcion}
-                </span>
-              )}
-            </div>
-          )}
+          <div
+            className="h-px"
+            style={{ background: `linear-gradient(to right, transparent, ${SAGE_DARK}80, transparent)` }}
+          />
 
-          {nutrientes.length > 0 && (
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-wide text-[#686868] mb-1.5">Cada 100 g</p>
-              <div className="grid grid-cols-3 gap-2">
-                {nutrientes.map((n) => (
-                  <div key={n.label} className="rounded-lg px-2 py-1.5 text-center" style={{ background: SAGE_TINT }}>
-                    <p className="text-[13px] font-extrabold" style={{ color: SAGE_DARK }}>
-                      {n.valor}
-                      {n.unidad}
-                    </p>
-                    <p className="text-[9px] text-[#686868]">{n.label}</p>
+          {(ficha?.kcal_100g !== null && ficha?.kcal_100g !== undefined) || macros.length > 0 ? (
+            <div
+              className="flex flex-col items-center gap-3.5"
+              style={{
+                opacity: abierto ? 1 : 0,
+                transform: abierto ? "translateY(0)" : "translateY(10px)",
+                transition: "all .5s ease .3s",
+              }}
+            >
+              <p className="text-[10.5px] font-bold uppercase tracking-widest text-[#8a8a8a] self-start">
+                Información nutricional · cada 100 g
+              </p>
+
+              {ficha?.kcal_100g !== null && ficha?.kcal_100g !== undefined && (
+                <div
+                  className="w-[124px] h-[124px] rounded-full flex items-center justify-center"
+                  style={
+                    {
+                      "--p": abierto ? "72%" : "0%",
+                      background: `conic-gradient(from -90deg, #6fa050 0%, #cfe8a6 var(--p), #ededed var(--p))`,
+                      transition: "--p 1.1s cubic-bezier(.2,.8,.2,1) .45s",
+                    } as React.CSSProperties
+                  }
+                >
+                  <div className="w-[96px] h-[96px] rounded-full bg-white flex flex-col items-center justify-center">
+                    <span className={`${fredoka.className} text-2xl font-semibold`}>{ficha.kcal_100g}</span>
+                    <span className="text-[9px] tracking-widest text-[#8a8a8a] mt-0.5">KCAL</span>
                   </div>
-                ))}
+                </div>
+              )}
+
+              {macros.length > 0 && (
+                <div className="flex gap-2 flex-wrap justify-center">
+                  {macros.map((m) => {
+                    const info = MACROS_INFO[m.label];
+                    const activa = macroActiva === m.label;
+                    return (
+                      <button
+                        key={m.label}
+                        onClick={() => setMacroActiva(activa ? null : m.label)}
+                        className="w-16 rounded-2xl bg-white border border-[#e5e5e5] flex flex-col items-center gap-0.5 py-2"
+                        style={{
+                          transform: activa ? "scale(1.08)" : "scale(1)",
+                          boxShadow: activa ? "0 8px 18px -8px rgba(0,0,0,.25)" : "none",
+                          borderColor: activa ? "transparent" : "#e5e5e5",
+                          opacity: macroActiva && !activa ? 0.45 : 1,
+                          transition: "all .2s ease",
+                        }}
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: info.fuerte }} />
+                        <span className={`${fredoka.className} text-xs font-semibold`}>{m.valor}g</span>
+                        <span className="text-[8px] text-[#8a8a8a] text-center leading-tight">{m.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div
+                className="w-full rounded-2xl overflow-hidden"
+                style={{
+                  maxHeight: macroSeleccionada ? 80 : 0,
+                  padding: macroSeleccionada ? "10px 14px" : "0 14px",
+                  background: macroSeleccionada ? MACROS_INFO[macroSeleccionada.label].claro : "transparent",
+                  transition: "max-height .35s ease, padding .35s ease",
+                }}
+              >
+                {macroSeleccionada && (
+                  <p className="text-[11.5px] leading-relaxed text-[#2d2d2d] m-0">
+                    {MACROS_INFO[macroSeleccionada.label].explicacion(macroSeleccionada.valor)}
+                  </p>
+                )}
+              </div>
+            </div>
+          ) : null}
+
+          {ficha?.ingredientes && (
+            <div className="border-t border-[#ededed]">
+              <button
+                onClick={() => setIngredientesAbierto((v) => !v)}
+                className="w-full flex items-center justify-between py-3.5"
+              >
+                <span className="text-[13px] font-bold">Ingredientes</span>
+                <span
+                  className="text-[#8a8a8a]"
+                  style={{ transition: "transform .3s ease", transform: ingredientesAbierto ? "rotate(180deg)" : "none" }}
+                >
+                  ⌄
+                </span>
+              </button>
+              <div
+                className="overflow-hidden"
+                style={{ maxHeight: ingredientesAbierto ? 160 : 0, transition: "max-height .35s ease" }}
+              >
+                <p className="text-[12.5px] leading-relaxed text-[#3d3d3d] pb-3.5">{ficha.ingredientes}</p>
               </div>
             </div>
           )}
 
-          {ficha?.ingredientes && (
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-wide text-[#686868] mb-1">Ingredientes</p>
-              <p className="text-[12px] text-[#3d3d3d] leading-relaxed">{ficha.ingredientes}</p>
-            </div>
-          )}
-
           {ficha?.micronutrientes && (
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-wide text-[#686868] mb-1">Micronutrientes</p>
-              <p className="text-[12px] text-[#3d3d3d] leading-relaxed">{ficha.micronutrientes}</p>
+            <div className="border-t border-[#ededed]">
+              <button
+                onClick={() => setMicronutrientesAbierto((v) => !v)}
+                className="w-full flex items-center justify-between py-3.5"
+              >
+                <span className="text-[13px] font-bold">Micronutrientes</span>
+                <span
+                  className="text-[#8a8a8a]"
+                  style={{
+                    transition: "transform .3s ease",
+                    transform: micronutrientesAbierto ? "rotate(180deg)" : "none",
+                  }}
+                >
+                  ⌄
+                </span>
+              </button>
+              <div
+                className="overflow-hidden"
+                style={{ maxHeight: micronutrientesAbierto ? 160 : 0, transition: "max-height .35s ease" }}
+              >
+                <p className="text-[12.5px] leading-relaxed text-[#3d3d3d] pb-3.5">{ficha.micronutrientes}</p>
+              </div>
             </div>
           )}
 
-          {ficha?.clasificacion && (
+          {ficha?.porcion && (
             <span
-              className="self-start text-[10px] font-bold px-2.5 py-1 rounded-full"
+              className="self-start text-[10px] font-bold px-3 py-1.5 rounded-full"
               style={{ background: SAGE_TINT, color: SAGE_DARK }}
             >
-              {ficha.clasificacion}
+              Porción sugerida: {ficha.porcion}
             </span>
           )}
 
