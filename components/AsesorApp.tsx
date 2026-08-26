@@ -209,6 +209,43 @@ function IconoPersona({ className }: { className?: string }) {
   );
 }
 
+// Dibujadas a mano en vez de usar el emoji de bandera — en Windows el emoji
+// de bandera se ve como el código de país en letras, sin ningún color.
+function BanderaIdioma({ lng, className }: { lng: Idioma; className?: string }) {
+  if (lng === "en") {
+    return (
+      <svg className={className} viewBox="0 0 20 14">
+        <rect width="20" height="14" fill="#fff" />
+        <g fill="#B22234">
+          <rect y="0" width="20" height="1.08" />
+          <rect y="2.15" width="20" height="1.08" />
+          <rect y="4.3" width="20" height="1.08" />
+          <rect y="6.45" width="20" height="1.08" />
+          <rect y="8.6" width="20" height="1.08" />
+          <rect y="10.75" width="20" height="1.08" />
+          <rect y="12.9" width="20" height="1.08" />
+        </g>
+        <rect width="9" height="7.5" fill="#3C3B6E" />
+      </svg>
+    );
+  }
+  if (lng === "pt") {
+    return (
+      <svg className={className} viewBox="0 0 20 14">
+        <rect width="20" height="14" fill="#009739" />
+        <polygon points="10,1 19,7 10,13 1,7" fill="#FEDD00" />
+        <circle cx="10" cy="7" r="3" fill="#012169" />
+      </svg>
+    );
+  }
+  return (
+    <svg className={className} viewBox="0 0 20 14">
+      <rect width="20" height="14" fill="#AA151B" />
+      <rect y="3.5" width="20" height="7" fill="#F1BF00" />
+    </svg>
+  );
+}
+
 function Navbar({ onVolver, onInicio, idioma }: { onVolver: () => void; onInicio: () => void; idioma: Idioma }) {
   const volverTxt = idioma === "en" ? "Back" : idioma === "pt" ? "Voltar" : "Volver";
   const inicioTxt = idioma === "en" ? "Home" : idioma === "pt" ? "Início" : "Inicio";
@@ -606,7 +643,7 @@ export default function AsesorApp({
 
   return (
     <div className="min-h-screen bg-[#ededed] text-[#2d2d2d] flex flex-col">
-      <div className="fixed top-3.5 right-3.5 z-50 text-right">
+      <div className={`fixed right-3.5 z-50 text-right ${pantalla === "home" ? "top-3.5" : "top-16"}`}>
         <button
           onClick={() => setSelectorIdiomaAbierto((v) => !v)}
           className="bg-white/70 backdrop-blur rounded-full text-[9.5px] font-extrabold text-[#686868] px-2.5 py-1.5"
@@ -625,6 +662,7 @@ export default function AsesorApp({
                 className="flex items-center justify-end gap-1.5 text-[9px] font-extrabold px-1.5 py-1 rounded-full"
                 style={idioma === lng ? { background: SAGE_DARK, color: "#fff" } : { color: "#686868" }}
               >
+                <BanderaIdioma lng={lng} className="w-3.5 h-auto rounded-[2px] shrink-0" />
                 {lng === "es" ? "ES" : lng === "en" ? "EN" : "PT"}
               </button>
             ))}
@@ -932,13 +970,13 @@ export default function AsesorApp({
                         className="flex items-center gap-2 rounded-full border px-3 py-2 shadow-sm transition-colors"
                         style={
                           on
-                            ? { background: SAGE_TINT, borderColor: SAGE, color: SAGE_DARK }
+                            ? { background: C3, borderColor: C3, color: "#fff" }
                             : { background: "#fff", borderColor: "#d8d8d8", color: "#2d2d2d" }
                         }
                       >
                         <span
                           className="flex items-center justify-center w-7 h-7 rounded-full font-extrabold text-[12px] shrink-0 overflow-hidden"
-                          style={on ? { background: "rgba(255,255,255,.5)" } : { background: SAGE_TINT, color: SAGE_DARK }}
+                          style={on ? { background: "rgba(255,255,255,.3)", color: "#fff" } : { background: SAGE_TINT, color: SAGE_DARK }}
                         >
                           {m.logo ? (
                             // eslint-disable-next-line @next/next/no-img-element
@@ -971,7 +1009,7 @@ export default function AsesorApp({
                     <div
                       key={p.id_producto}
                       onClick={() => setProductoAbierto(p.id_producto)}
-                      className="relative rounded-xl border border-[#d8d8d8] bg-white overflow-hidden shadow-sm flex flex-col cursor-pointer"
+                      className="relative rounded-2xl bg-white overflow-hidden shadow-sm flex flex-col cursor-pointer"
                     >
                       <span
                         className="absolute top-2 left-2 z-10 text-[10px] font-extrabold px-2 py-0.5 rounded-full text-white"
@@ -991,13 +1029,11 @@ export default function AsesorApp({
                       </div>
                       <div className="p-2.5 flex flex-col gap-1">
                         {marca && (
-                          <p className="text-[9px] font-bold uppercase tracking-wide" style={{ color: SAGE_DARK }}>
-                            {marca.nombre}
-                          </p>
+                          <p className="text-[9.5px] font-medium text-[#8a8a8a]">{marca.nombre}</p>
                         )}
                         <p className="text-[12px] font-extrabold leading-tight line-clamp-2">{tr(p.nombre, p.nombre_en, p.nombre_pt)}</p>
                         <div className="flex items-baseline gap-1.5 mt-1">
-                          <span className="text-[13px] font-extrabold" style={{ color: C3 }}>
+                          <span className={`text-[13px] font-extrabold ${fredoka.className}`} style={{ color: C3 }}>
                             {formatoPrecio(precioConDescuento(p))}
                           </span>
                           <span className="text-[10px] text-[#a8a8a8] line-through">{formatoPrecio(p.precio_venta)}</span>
