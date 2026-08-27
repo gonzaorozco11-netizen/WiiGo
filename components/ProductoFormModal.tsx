@@ -12,6 +12,7 @@ import type {
   Local,
 } from "@/lib/supabase";
 import { createProducto, updateProducto, subirFotoProducto, subirFotoFichaProducto } from "@/app/(app)/productos/actions";
+import type { ProveedorConSaldo } from "@/app/(app)/proveedores/actions";
 
 type VarianteForm = {
   id: string;
@@ -61,6 +62,7 @@ export default function ProductoFormModal({
   objetivosAsignados = [],
   filtrosAsignados = [],
   variantesIniciales = [],
+  proveedoresLiquidacion = [],
   onClose,
 }: {
   producto: Producto | null;
@@ -74,6 +76,7 @@ export default function ProductoFormModal({
   objetivosAsignados?: string[];
   filtrosAsignados?: string[];
   variantesIniciales?: VarianteProducto[];
+  proveedoresLiquidacion?: ProveedorConSaldo[];
   onClose: () => void;
 }) {
   const [isPending, startTransition] = useTransition();
@@ -235,6 +238,31 @@ export default function ProductoFormModal({
             labelCosto={marcaSeleccionada?.tipo_comercializacion === "PROPIA" ? "Costo (CMV, sin IVA)" : "Costo informado"}
             margenMinimo={margenMinimo}
           />
+
+          {marcaSeleccionada?.tipo_comercializacion === "PROPIA" && proveedoresLiquidacion.length > 0 && (
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="id_proveedor_liquidacion">
+                Se liquida por venta a (opcional)
+              </label>
+              <select
+                id="id_proveedor_liquidacion"
+                name="id_proveedor_liquidacion"
+                defaultValue={producto?.id_proveedor_liquidacion ?? ""}
+                className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+              >
+                <option value="">Ninguno</option>
+                {proveedoresLiquidacion.map((p) => (
+                  <option key={p.id_proveedor} value={p.id_proveedor}>
+                    {p.nombre}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-neutral-400 mt-1">
+                Si lo elegís, a fin de mes se le paga a este proveedor el costo de lo que se vendió de este producto — no lo
+                que se le compró.
+              </p>
+            </div>
+          )}
 
           <div>
             <label className="block text-sm font-medium text-neutral-700 mb-1">Imagen</label>

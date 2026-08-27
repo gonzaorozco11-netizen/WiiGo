@@ -4,6 +4,7 @@ import { fetchVariantesPorProducto } from "@/lib/variantes";
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import PantallaBloqueada from "@/components/PantallaBloqueada";
 import ProductosApp from "@/components/ProductosApp";
+import { listarProveedores } from "@/app/(app)/proveedores/actions";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +33,7 @@ export default async function ProductosPage() {
     stockRes,
     ventasRecientesRes,
     configRes,
+    proveedores,
   ] = await Promise.all([
     supabase.from("productos").select("*").order("nombre", { ascending: true }),
     supabase.from("marcas").select("*").eq("estado", "ACTIVA").order("nombre", { ascending: true }),
@@ -42,7 +44,9 @@ export default async function ProductosPage() {
     supabase.from("stock").select("id_variante, cantidad"),
     supabase.from("ventas").select("id_venta").eq("estado", "PAGADA").gte("fecha", cutoff.toISOString()),
     supabase.from("configuracion").select("valor").eq("parametro", "MARGEN_MINIMO_PORCENTAJE").maybeSingle(),
+    listarProveedores(),
   ]);
+  const proveedoresLiquidacion = proveedores.filter((p) => p.modo_facturacion === "LIQUIDACION_VENTA" && p.estado === "ACTIVO");
 
   const error = productosRes.error || marcasRes.error || subcategoriasRes.error;
   if (error) {
@@ -102,6 +106,7 @@ export default async function ProductosPage() {
       objetivosPorProducto={contenidoAsesor.objetivosPorProducto}
       filtrosPorProducto={contenidoAsesor.filtrosPorProducto}
       variantesPorProducto={variantesPorProducto}
+      proveedoresLiquidacion={proveedoresLiquidacion}
     />
   );
 }

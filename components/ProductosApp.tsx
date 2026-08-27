@@ -13,6 +13,7 @@ import type {
   Local,
 } from "@/lib/supabase";
 import { deleteProducto } from "@/app/(app)/productos/actions";
+import type { ProveedorConSaldo } from "@/app/(app)/proveedores/actions";
 import ProductoFormModal from "@/components/ProductoFormModal";
 
 function formatearMonto(valor: number) {
@@ -34,6 +35,7 @@ export default function ProductosApp({
   objetivosPorProducto,
   filtrosPorProducto,
   variantesPorProducto,
+  proveedoresLiquidacion = [],
 }: {
   initialProductos: Producto[];
   marcas: Marca[];
@@ -49,6 +51,7 @@ export default function ProductosApp({
   objetivosPorProducto: Record<string, string[]>;
   filtrosPorProducto: Record<string, string[]>;
   variantesPorProducto: Record<string, VarianteProducto[]>;
+  proveedoresLiquidacion?: ProveedorConSaldo[];
 }) {
   const [search, setSearch] = useState("");
   const [idMarcaFiltro, setIdMarcaFiltro] = useState<string | null>(null);
@@ -289,6 +292,7 @@ export default function ProductosApp({
           objetivosAsignados={editing ? objetivosPorProducto[editing.id_producto] ?? [] : []}
           filtrosAsignados={editing ? filtrosPorProducto[editing.id_producto] ?? [] : []}
           variantesIniciales={editing ? variantesPorProducto[editing.id_producto] ?? [] : []}
+          proveedoresLiquidacion={proveedoresLiquidacion}
           onClose={() => setModalOpen(false)}
         />
       )}

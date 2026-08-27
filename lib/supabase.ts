@@ -129,6 +129,9 @@ export type Producto = {
   imagen: string | null;
   estado: string;
   visible_asesor: boolean;
+  // Solo para productos de marca propia con modo LIQUIDACION_VENTA: a qué
+  // proveedor se le paga el costo de lo vendido (ver liquidacionesProveedor.ts).
+  id_proveedor_liquidacion: string | null;
   fecha_alta: string;
   fecha_actualizacion: string;
 };
@@ -320,8 +323,124 @@ export type Proveedor = {
   email: string | null;
   condicion_pago_dias: number | null;
   estado: string;
+  // REMITO = factura por orden puntual. PERIODO = factura consolidada de un
+  // rango de fechas (con devoluciones netas). LIQUIDACION_VENTA = se le paga
+  // el costo de lo vendido, nunca de lo entregado (caso Alifrut).
+  modo_facturacion: string;
   observaciones: string | null;
   fecha_alta: string;
+};
+
+// Orden de compra a un proveedor propio — es un remito, nunca tiene precio
+// (eso llega recién con la factura, ver DetalleFacturaCompra más abajo).
+export type OrdenCompraProveedor = {
+  id_orden: string;
+  id_proveedor: string;
+  id_local: string;
+  estado: string; // PENDIENTE / RECIBIDA / RECIBIDA_CON_DIFERENCIAS / CANCELADA
+  total_unidades: number;
+  observaciones: string | null;
+  usuario: string | null;
+  fecha_alta: string;
+};
+
+export type DetalleOrdenCompra = {
+  id_detalle: string;
+  id_orden: string;
+  id_variante: string;
+  cantidad_solicitada: number;
+  cantidad_recibida: number;
+};
+
+export type RecepcionProveedor = {
+  id_recepcion: string;
+  id_orden: string;
+  id_proveedor: string;
+  id_local: string;
+  usuario: string | null;
+  tiene_diferencias: boolean;
+  revisado_por_administracion: boolean;
+  resolucion_observaciones: string | null;
+  observaciones: string | null;
+  fecha: string;
+};
+
+export type DetalleRecepcionProveedor = {
+  id_detalle: string;
+  id_recepcion: string;
+  id_variante: string;
+  cantidad_solicitada: number;
+  cantidad_recibida: number;
+  estado_control: string; // COMPLETA / FALTANTE / SOBRANTE
+  diferencia: number;
+};
+
+// Simple a propósito: no se ata a una recepción puntual, para que cargarla
+// sea rápido. Se neteá por fecha + proveedor + producto al facturar por
+// período; no tiene costo propio, nunca genera un movimiento de plata sola.
+export type DevolucionProveedor = {
+  id_devolucion: string;
+  id_proveedor: string;
+  id_local: string;
+  id_variante: string;
+  cantidad: number;
+  fecha: string;
+  motivo: string | null;
+  usuario: string | null;
+};
+
+// Acá recién aparece el precio real — nunca antes (ver DetalleOrdenCompra y
+// DetalleRecepcionProveedor, que son puro control físico sin precio).
+export type FacturaCompraProveedor = {
+  id_factura: string;
+  id_proveedor: string;
+  id_orden: string | null; // modo REMITO: a qué orden puntual corresponde
+  numero_factura: string | null;
+  tipo_comprobante: string | null;
+  fecha_emision: string;
+  fecha_vencimiento: string | null;
+  fecha_periodo_desde: string | null; // modo PERIODO: rango que consolida
+  fecha_periodo_hasta: string | null;
+  monto: number;
+  estado: string; // PENDIENTE / PARCIAL / PAGADA / ANULADA
+  comprobante_path: string | null;
+  observaciones: string | null;
+  usuario: string | null;
+  fecha_alta: string;
+};
+
+export type DetalleFacturaCompra = {
+  id_detalle: string;
+  id_factura: string;
+  id_variante: string;
+  cantidad_facturada: number;
+  precio_unitario_real: number;
+  costo_anterior: number | null;
+};
+
+// Modo LIQUIDACION_VENTA (caso Alifrut): se le paga el costo de lo vendido
+// en el período, nunca de lo entregado — mucho más simple que Liquidacion
+// (marcas), sin royalty ni impuestos trasladados.
+export type LiquidacionProveedor = {
+  id_liquidacion: string;
+  id_proveedor: string;
+  fecha_desde: string;
+  fecha_hasta: string;
+  monto_calculado: number;
+  monto_final: number;
+  estado: string; // GENERADA / PAGADA / ANULADA
+  observaciones: string | null;
+  usuario: string | null;
+  fecha_generacion: string;
+};
+
+export type DetalleLiquidacionProveedor = {
+  id_detalle: string;
+  id_liquidacion: string;
+  id_variante: string;
+  cantidad_vendida: number;
+  costo_unitario: number;
+  subtotal: number;
 };
 
 export type Venta = {
@@ -454,6 +573,10 @@ export type DetalleVenta = {
   descuento: number;
   subtotal: number | null;
   puntos_generados: number;
+  // Se estampa por línea (no en toda la venta) para que un carrito mezclando
+  // productos de distintos proveedores en modo LIQUIDACION_VENTA se pueda
+  // liquidar a cada uno por separado, sin que uno tape al otro.
+  id_liquidacion_proveedor: string | null;
 };
 
 // tipo_beneficio_cliente/valor_beneficio_cliente/tipo_recompensa_profesional/

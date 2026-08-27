@@ -8,7 +8,7 @@
 // se deriva de la suma de movimientos, nunca se guarda un número suelto.
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type TipoMovimientoProveedor = "FACTURA_COMPRA" | "PAGO" | "NOTA_CREDITO" | "AJUSTE";
+export type TipoMovimientoProveedor = "FACTURA_COMPRA" | "LIQUIDACION" | "PAGO" | "NOTA_CREDITO" | "AJUSTE";
 
 export async function saldoCuentaProveedor(supabase: SupabaseClient, idProveedor: string) {
   const { data } = await supabase.from("movimientos_cuenta_proveedor").select("importe").eq("id_proveedor", idProveedor);

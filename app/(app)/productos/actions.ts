@@ -76,6 +76,7 @@ function productoFromForm(formData: FormData, idMarca: string, idSubcategoria: s
     costo_informado: number(formData, "costo_informado"),
     precio_venta: number(formData, "precio_venta"),
     descuento_porcentaje: number(formData, "descuento_porcentaje"),
+    id_proveedor_liquidacion: text(formData, "id_proveedor_liquidacion"),
     imagen: text(formData, "imagen"),
     estado: text(formData, "estado") ?? "ACTIVO",
     fecha_actualizacion: new Date().toISOString(),

@@ -50,6 +50,21 @@ export default function ProveedorFormModal({
           </div>
           <Field label="Email" name="email" type="email" defaultValue={proveedor?.email ?? ""} />
           <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="modo_facturacion">
+              Cómo factura
+            </label>
+            <select
+              id="modo_facturacion"
+              name="modo_facturacion"
+              defaultValue={proveedor?.modo_facturacion ?? "REMITO"}
+              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            >
+              <option value="REMITO">Por orden puntual (factura cada entrega)</option>
+              <option value="PERIODO">Por período (factura mensual consolidada)</option>
+              <option value="LIQUIDACION_VENTA">Liquidación por venta (se le paga el costo de lo vendido)</option>
+            </select>
+          </div>
+          <div>
             <label className="block text-sm font-medium text-neutral-700 mb-1">Observaciones</label>
             <textarea
               name="observaciones"
