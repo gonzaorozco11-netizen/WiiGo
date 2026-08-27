@@ -43,6 +43,7 @@ const GROUPS: NavGroup[] = [
       { href: "/cobros-efectivo", label: "Cobros en efectivo" },
       { href: "/liquidaciones", label: "Liquidaciones" },
       { href: "/situacion-marca", label: "Situación de marca" },
+      { href: "/proveedores", label: "Proveedores" },
       { href: "/rentabilidad", label: "Rentabilidad" },
     ],
   },

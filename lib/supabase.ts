@@ -307,6 +307,23 @@ export type Cliente = {
   fecha_alta: string;
 };
 
+// Proveedores propios de insumos/mercadería para marca propia — distinto de
+// `marcas` (consignación, ver situacion-marca). La deuda hacia un proveedor
+// nace recién con la factura (movimientos_cuenta_proveedor), nunca con la
+// orden de compra ni con la recepción — ver lib/cuentaProveedor.ts.
+export type Proveedor = {
+  id_proveedor: string;
+  nombre: string;
+  cuit: string | null;
+  contacto: string | null;
+  telefono: string | null;
+  email: string | null;
+  condicion_pago_dias: number | null;
+  estado: string;
+  observaciones: string | null;
+  fecha_alta: string;
+};
+
 export type Venta = {
   id_venta: string;
   numero: number;

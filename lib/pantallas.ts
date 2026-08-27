@@ -20,6 +20,7 @@ export const PANTALLAS_DISPONIBLES: PantallaDisponible[] = [
   { clave: "cobros-efectivo", label: "Cobros en efectivo", grupo: "Finanzas" },
   { clave: "liquidaciones", label: "Liquidaciones", grupo: "Finanzas" },
   { clave: "situacion-marca", label: "Situación de marca", grupo: "Finanzas" },
+  { clave: "proveedores", label: "Proveedores", grupo: "Finanzas" },
   { clave: "rentabilidad", label: "Rentabilidad", grupo: "Finanzas" },
   { clave: "turnos", label: "Turnos", grupo: "Local" },
   { clave: "locales", label: "Locales", grupo: "Local" },
