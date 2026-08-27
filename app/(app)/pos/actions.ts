@@ -251,10 +251,22 @@ export async function venderPos(
   const total = Math.max(subtotal - descuentoBeneficio - descuentoCanje - descuentoPuntos, 0);
 
   if (medioPago === "MERCADO_PAGO") {
+    // Con Mercado Pago la plata se mueve apenas el cliente escanea el QR —
+    // si no hay turno abierto en ese momento, la confirmación automática
+    // del webhook se rechaza (confirmarCobro la exige) y la venta queda
+    // PENDIENTE_PAGO para siempre con la plata ya cobrada, sin que nadie se
+    // entere solo. Mejor no generar el QR si no hay turno.
+    if (total > 0) {
+      const idTurno = await turnoAbiertoDeLocal(supabase, idLocal);
+      if (!idTurno) {
+        return { error: "No hay un turno de caja abierto en este local — abrilo en Turnos antes de generar el QR." };
+      }
+    }
+
     // La venta queda pendiente y se genera el QR — igual que el totem, la
-    // confirmación real (turno, stock, puntos, referidos, comisión de MP)
-    // llega sola por el webhook cuando el cliente paga desde su celular
-    // (ver app/api/mercadopago-webhook/route.ts), reusando confirmarCobro.
+    // confirmación real (stock, puntos, referidos, comisión de MP) llega
+    // sola por el webhook cuando el cliente paga desde su celular (ver
+    // app/api/mercadopago-webhook/route.ts), reusando confirmarCobro.
     const { data: venta, error: errorVenta } = await supabase
       .from("ventas")
       .insert({

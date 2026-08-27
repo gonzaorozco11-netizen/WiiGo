@@ -6,6 +6,7 @@ import { calcularBeneficioReferido, resolverCodigoProfesional } from "@/lib/refe
 import { buscarProfesionalPorDni, verificarPinProfesional, calcularDescuentoCanje, esProfesionalActivo } from "@/lib/canjesProfesionales";
 import { calcularCanjePuntos } from "@/lib/puntosWiigo";
 import { crearOrdenQrMp } from "@/lib/mercadopago";
+import { turnoAbiertoDeLocal } from "@/app/(app)/turnos/actions";
 import QRCode from "qrcode";
 
 type ItemCarrito = { idVariante: string; idMarca: string | null; cantidad: number; precioUnitario: number };
@@ -255,6 +256,20 @@ export async function confirmarPedido(
   }
 
   const total = Math.max(subtotal - descuentoBeneficio - descuentoCanje - descuentoPuntos, 0);
+
+  // Con Mercado Pago la plata del cliente se mueve apenas escanea el QR —
+  // si en ese momento no hay turno abierto, la confirmación automática del
+  // webhook se rechaza (confirmarCobro la exige) y el pedido queda
+  // PENDIENTE_PAGO para siempre con el cliente ya habiendo pagado, sin que
+  // nadie se entere solo. Mejor no generar el QR directamente si no hay
+  // turno — con Efectivo no hace falta este chequeo acá porque no se mueve
+  // nada hasta que el personal confirma el cobro a mano.
+  if (medioPago === "MERCADO_PAGO" && total > 0) {
+    const idTurno = await turnoAbiertoDeLocal(supabase, idLocal);
+    if (!idTurno) {
+      return { error: "Este local todavía no abrió caja — pedile a alguien del local que te ayude." };
+    }
+  }
 
   const { data: venta, error: errorVenta } = await supabase
     .from("ventas")
