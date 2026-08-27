@@ -32,10 +32,13 @@ export async function buscarProfesionalPorDni(supabase: SupabaseClient, dni: str
 // Saldo = todo lo que generó vendiendo esa marca (detalle_referidos_profesionales,
 // vía sus propios referidos) menos todo lo que ya canjeó/cobró de esa marca.
 export async function saldosPorMarca(supabase: SupabaseClient, idProfesional: string): Promise<SaldoMarca[]> {
+  // Un referido "ANULADO" (venta que se revirtió después) no debe seguir
+  // generando saldo — ver anularVenta en app/(app)/ventas/actions.ts.
   const { data: referidos } = await supabase
     .from("referidos_profesionales")
     .select("id_referido")
-    .eq("id_profesional", idProfesional);
+    .eq("id_profesional", idProfesional)
+    .neq("estado", "ANULADO");
   const idsReferido = (referidos ?? []).map((r) => r.id_referido);
 
   const { data: detalle } = await supabase

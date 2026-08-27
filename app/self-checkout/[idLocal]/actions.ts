@@ -74,17 +74,79 @@ export async function infoCanjePuntosAction(dni: string, montoAPagar: number) {
 
 export async function confirmarPedido(
   idLocal: string,
-  items: ItemCarrito[],
+  itemsPedido: ItemCarrito[],
   dni: string,
   codigoProfesional: string,
   medioPago: MedioPago,
   canje?: { idProfesional: string; pin: string; marcas: string[] },
   usarPuntosWiigo?: boolean
 ): Promise<{ error: string | null; pedido?: ResultadoPedido }> {
-  if (items.length === 0) return { error: "El carrito está vacío" };
+  if (itemsPedido.length === 0) return { error: "El carrito está vacío" };
 
   try {
     const supabase = getSupabaseServerClient();
+
+    // El totem es una pantalla pública sin login — nunca hay que confiar en
+    // el precio, la marca ni el stock disponible que manda el navegador,
+    // porque se puede armar ese pedido a mano contra esta Server Action con
+    // cualquier valor. Acá se vuelve a mirar todo contra la base real antes
+    // de crear la venta.
+    const idsVariante = [...new Set(itemsPedido.map((i) => i.idVariante))];
+    const { data: variantesDb, error: errorVariantes } = await supabase
+      .from("variantes_producto")
+      .select("id_variante, id_producto, precio_venta, estado")
+      .in("id_variante", idsVariante);
+    if (errorVariantes) return { error: friendlyDbError(errorVariantes) };
+
+    const idsProducto = [...new Set((variantesDb ?? []).map((v) => v.id_producto as string))];
+    const { data: productosDb, error: errorProductos } = await supabase
+      .from("productos")
+      .select("id_producto, id_marca, precio_venta, descuento_porcentaje, estado")
+      .in("id_producto", idsProducto);
+    if (errorProductos) return { error: friendlyDbError(errorProductos) };
+
+    const { data: stockDb, error: errorStockCheck } = await supabase
+      .from("stock")
+      .select("id_variante, cantidad")
+      .eq("id_local", idLocal)
+      .in("id_variante", idsVariante);
+    if (errorStockCheck) return { error: friendlyDbError(errorStockCheck) };
+
+    const varianteMap = new Map((variantesDb ?? []).map((v) => [v.id_variante as string, v]));
+    const productoMap = new Map((productosDb ?? []).map((p) => [p.id_producto as string, p]));
+    const stockMap = new Map((stockDb ?? []).map((s) => [s.id_variante as string, s.cantidad as number]));
+
+    const items: ItemCarrito[] = [];
+    for (const itemPedido of itemsPedido) {
+      if (itemPedido.cantidad <= 0) return { error: "Cantidad inválida en el carrito." };
+
+      const variante = varianteMap.get(itemPedido.idVariante);
+      const producto = variante ? productoMap.get(variante.id_producto as string) : undefined;
+      if (!variante || variante.estado !== "ACTIVO" || !producto || producto.estado !== "ACTIVO") {
+        return { error: "Uno de los productos del carrito ya no está disponible — volvé a armar el pedido." };
+      }
+
+      const disponible = stockMap.get(itemPedido.idVariante) ?? 0;
+      if (itemPedido.cantidad > disponible) {
+        return {
+          error:
+            disponible > 0
+              ? `Ya no queda esa cantidad disponible — quedan ${disponible} unidades. Ajustá el carrito.`
+              : "Ese producto se acaba de quedar sin stock. Sacalo del carrito para continuar.",
+        };
+      }
+
+      const base = (variante.precio_venta as number | null) ?? (producto.precio_venta as number | null) ?? 0;
+      const descuento = (producto.descuento_porcentaje as number | null) ?? 0;
+      const precioReal = descuento > 0 ? Math.round(base * (1 - descuento / 100)) : base;
+
+      items.push({
+        idVariante: itemPedido.idVariante,
+        idMarca: producto.id_marca as string,
+        cantidad: itemPedido.cantidad,
+        precioUnitario: precioReal,
+      });
+    }
 
     // Identificar al cliente por DNI, si lo cargó — pero solo si ya está
     // registrado. El totem no crea clientes nuevos solo: no hay nadie del

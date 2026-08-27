@@ -88,6 +88,34 @@ export async function confirmarCobro(
       return { error: "No hay un turno de caja abierto en este local — abrilo en Turnos antes de confirmar cobros." };
     }
 
+    const { data: detalle, error: errorDetalle } = await supabase
+      .from("detalle_ventas")
+      .select("id_detalle, id_variante, id_marca, cantidad, precio_unitario, subtotal")
+      .eq("id_venta", idVenta);
+    if (errorDetalle) return { error: friendlyDbError(errorDetalle) };
+    const lineas = detalle ?? [];
+
+    // Validar que todavía haya stock ANTES de cobrar nada — sin esto, dos
+    // pedidos armados con el mismo producto (dos totems, o self-checkout +
+    // una venta manual) podían cobrarse los dos igual, y el descuento final
+    // se tapaba solo poniendo el stock en 0 en vez de avisar que ya no
+    // alcanzaba.
+    const idsVarianteDetalle = [...new Set(lineas.map((l) => l.id_variante as string))];
+    const { data: stockLineas, error: errorStockCheck } = await supabase
+      .from("stock")
+      .select("id_variante, cantidad")
+      .eq("id_local", venta.id_local)
+      .in("id_variante", idsVarianteDetalle);
+    if (errorStockCheck) return { error: friendlyDbError(errorStockCheck) };
+    const stockMap = new Map((stockLineas ?? []).map((s) => [s.id_variante as string, s.cantidad as number]));
+    for (const linea of lineas) {
+      if ((stockMap.get(linea.id_variante as string) ?? 0) < (linea.cantidad as number)) {
+        return {
+          error: "Ya no queda stock suficiente para completar este pedido — revisá el stock antes de confirmar el cobro.",
+        };
+      }
+    }
+
     const usuario = usuarioOverride ?? (await usuarioActual());
     const esMercadoPago = venta.medio_pago === "MERCADO_PAGO";
 
@@ -136,26 +164,35 @@ export async function confirmarCobro(
   const { data: pago, error: errorPago } = await supabase.from("pagos").insert(pagoInsert).select("id_pago").single();
   if (errorPago) return { error: friendlyDbError(errorPago) };
 
-  const { error: errorVentaUpdate } = await supabase
+  // El .eq("estado", "PENDIENTE_PAGO") es a propósito: si el cliente
+  // cancela el pedido desde el totem justo en el instante en que el
+  // personal confirma el cobro, esto evita que la venta quede marcada
+  // "PAGADA" después de haber sido cancelada (o viceversa).
+  const { data: ventaActualizada, error: errorVentaUpdate } = await supabase
     .from("ventas")
     .update({ estado: "PAGADA", id_pago: pago.id_pago, total_cobrado: montoRecibido, id_turno: idTurno })
-    .eq("id_venta", idVenta);
+    .eq("id_venta", idVenta)
+    .eq("estado", "PENDIENTE_PAGO")
+    .select("id_venta")
+    .maybeSingle();
   if (errorVentaUpdate) return { error: friendlyDbError(errorVentaUpdate) };
+  if (!ventaActualizada) {
+    // El pago ya se había insertado antes de descubrir la cancelación —
+    // se deshace para no dejar un cobro huérfano sin venta pagada detrás.
+    await supabase.from("pagos").delete().eq("id_pago", pago.id_pago);
+    return { error: "Este pedido se canceló justo antes de confirmarse — no se cobró nada." };
+  }
 
-  const { data: detalle, error: errorDetalle } = await supabase
-    .from("detalle_ventas")
-    .select("id_detalle, id_variante, id_marca, cantidad, precio_unitario, subtotal")
-    .eq("id_venta", idVenta);
-  if (errorDetalle) return { error: friendlyDbError(errorDetalle) };
-
-  for (const linea of detalle ?? []) {
-    const { data: stockActual } = await supabase
-      .from("stock")
-      .select("cantidad")
-      .eq("id_variante", linea.id_variante)
-      .eq("id_local", venta.id_local)
-      .maybeSingle();
-    const nuevaCantidad = Math.max((stockActual?.cantidad ?? 0) - linea.cantidad, 0);
+  for (const linea of lineas) {
+    const cantidadActual = stockMap.get(linea.id_variante as string) ?? 0;
+    const nuevaCantidad = cantidadActual - (linea.cantidad as number);
+    if (nuevaCantidad < 0) {
+      // No debería pasar (ya se validó arriba), salvo que otro cobro haya
+      // descontado este mismo stock en el instante entre la validación y
+      // acá — mejor cortar acá con un error claro que dejar el stock en
+      // negativo sin avisar.
+      return { error: "Ya no queda stock suficiente para completar este pedido — revisá el stock antes de confirmar el cobro." };
+    }
 
     const { error: errorStock } = await supabase
       .from("stock")

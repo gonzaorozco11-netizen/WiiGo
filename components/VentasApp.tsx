@@ -2,10 +2,11 @@
 
 import { useMemo, useState } from "react";
 import type { Local, Venta, DetalleVenta, Producto, VarianteProducto, Marca, Cliente } from "@/lib/supabase";
+import { anularVenta } from "@/app/(app)/ventas/actions";
 
 type FiltroFecha = "HOY" | "SEMANA" | "MES" | "TODO" | "RANGO";
 type FiltroCanal = "TODOS" | "SELF_CHECKOUT" | "POS";
-type FiltroEstado = "TODOS" | "PENDIENTE_PAGO" | "PAGADA" | "CANCELADA";
+type FiltroEstado = "TODOS" | "PENDIENTE_PAGO" | "PAGADA" | "CANCELADA" | "ANULADA";
 
 const CANAL_LABEL: Record<string, string> = {
   SELF_CHECKOUT: "Self Checkout",
@@ -16,12 +17,14 @@ const ESTADO_ESTILO: Record<string, string> = {
   PENDIENTE_PAGO: "bg-amber-50 text-amber-700",
   PAGADA: "bg-emerald-50 text-emerald-700",
   CANCELADA: "bg-red-50 text-red-700",
+  ANULADA: "bg-red-50 text-red-700",
 };
 
 const ESTADO_LABEL: Record<string, string> = {
   PENDIENTE_PAGO: "Pendiente",
   PAGADA: "Pagada",
   CANCELADA: "Cancelada",
+  ANULADA: "Anulada",
 };
 
 function formatearMonto(valor: number) {
@@ -84,6 +87,35 @@ export default function VentasApp({
   const [rangoDesde, setRangoDesde] = useState(hoyISO());
   const [rangoHasta, setRangoHasta] = useState(hoyISO());
   const [idVentaSeleccionada, setIdVentaSeleccionada] = useState<string | null>(null);
+  const [anulando, setAnulando] = useState(false);
+  const [motivoAnular, setMotivoAnular] = useState("");
+  const [procesandoAnular, setProcesandoAnular] = useState(false);
+  const [mensajeAnular, setMensajeAnular] = useState<{ tipo: "error" | "aviso"; texto: string } | null>(null);
+
+  function seleccionarVenta(id: string) {
+    setIdVentaSeleccionada(id);
+    setAnulando(false);
+    setMotivoAnular("");
+    setMensajeAnular(null);
+  }
+
+  function handleAnularVenta() {
+    if (!ventaSeleccionada) return;
+    setProcesandoAnular(true);
+    setMensajeAnular(null);
+    anularVenta(ventaSeleccionada.id_venta, motivoAnular)
+      .then((res) => {
+        if (res.error) {
+          setMensajeAnular({ tipo: "error", texto: res.error });
+          return;
+        }
+        setAnulando(false);
+        setMotivoAnular("");
+        if (res.aviso) setMensajeAnular({ tipo: "aviso", texto: res.aviso });
+      })
+      .catch((e) => setMensajeAnular({ tipo: "error", texto: e instanceof Error ? e.message : "No se pudo anular la venta" }))
+      .finally(() => setProcesandoAnular(false));
+  }
 
   const localPorId = useMemo(() => new Map(locales.map((l) => [l.id_local, l])), [locales]);
   const clientePorId = useMemo(() => new Map(clientes.map((c) => [c.id_cliente, c])), [clientes]);
@@ -176,6 +208,7 @@ export default function VentasApp({
           <option value="PENDIENTE_PAGO">Pendiente</option>
           <option value="PAGADA">Pagada</option>
           <option value="CANCELADA">Cancelada</option>
+          <option value="ANULADA">Anulada</option>
         </select>
 
         {(["HOY", "SEMANA", "MES", "TODO", "RANGO"] as FiltroFecha[]).map((f) => (
@@ -232,7 +265,7 @@ export default function VentasApp({
                   {ventasFiltradas.map((v) => (
                     <tr
                       key={v.id_venta}
-                      onClick={() => setIdVentaSeleccionada(v.id_venta)}
+                      onClick={() => seleccionarVenta(v.id_venta)}
                       className={`border-b border-neutral-100 last:border-0 cursor-pointer ${
                         ventaSeleccionada?.id_venta === v.id_venta ? "bg-accent-tint" : "hover:bg-neutral-50"
                       }`}
@@ -343,6 +376,65 @@ export default function VentasApp({
                     <span>${formatearMonto(ventaSeleccionada.total ?? 0)}</span>
                   </div>
                 </div>
+
+                {ventaSeleccionada.estado === "PAGADA" && (
+                  <div className="mt-4">
+                    {!anulando ? (
+                      <button
+                        onClick={() => {
+                          setAnulando(true);
+                          setMensajeAnular(null);
+                        }}
+                        className="w-full text-sm font-semibold text-red-600 border border-red-200 rounded-lg py-2 hover:bg-red-50"
+                      >
+                        Anular venta
+                      </button>
+                    ) : (
+                      <div className="border border-red-200 bg-red-50 rounded-xl p-3.5">
+                        <p className="text-sm font-semibold text-red-700 mb-1">¿Anular esta venta?</p>
+                        <p className="text-xs text-red-600 mb-2.5">
+                          Se repone el stock vendido y se revierten los puntos, referidos o canjes que haya generado.
+                          {ventaSeleccionada.medio_pago === "MERCADO_PAGO" &&
+                            " El reintegro al cliente por Mercado Pago hay que hacerlo aparte, esto no lo hace solo."}
+                        </p>
+                        <textarea
+                          value={motivoAnular}
+                          onChange={(e) => setMotivoAnular(e.target.value)}
+                          placeholder="Motivo de la anulación (obligatorio)"
+                          rows={2}
+                          className="w-full border border-neutral-300 rounded-lg px-2.5 py-2 text-sm mb-2.5"
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            onClick={handleAnularVenta}
+                            disabled={procesandoAnular || !motivoAnular.trim()}
+                            className="flex-1 text-sm font-semibold text-white bg-red-600 rounded-lg py-2 disabled:opacity-50"
+                          >
+                            {procesandoAnular ? "Anulando…" : "Confirmar anulación"}
+                          </button>
+                          <button
+                            onClick={() => {
+                              setAnulando(false);
+                              setMotivoAnular("");
+                            }}
+                            disabled={procesandoAnular}
+                            className="text-sm font-semibold text-neutral-500 px-3"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {mensajeAnular && (
+                  <p
+                    className={`text-xs mt-2.5 ${mensajeAnular.tipo === "error" ? "text-red-600" : "text-amber-700"}`}
+                  >
+                    {mensajeAnular.texto}
+                  </p>
+                )}
               </div>
             )}
           </div>
