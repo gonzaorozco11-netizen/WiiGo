@@ -372,6 +372,40 @@ export async function listarDevolucionesProveedor(idProveedor: string) {
   return data ?? [];
 }
 
+// ===================== COSTOS (modo LIQUIDACION_VENTA) =====================
+// Alifrut no factura por entrega — pero el costo de cada pedido sí puede
+// variar, así que después de recepcionar hay que poder cargarlo igual. A
+// diferencia de cargarFacturaCompra, esto NUNCA genera factura ni movimiento
+// de cuenta corriente — solo actualiza productos.costo_informado, que es lo
+// que después usa la liquidación por venta para calcular cuánto se le debe.
+export async function actualizarCostosRecepcion(
+  costos: { idVariante: string; costo: number }[]
+): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+
+  try {
+    const supabase = getSupabaseServerClient();
+    for (const item of costos) {
+      if (item.costo <= 0) continue;
+      const { data: variante } = await supabase
+        .from("variantes_producto")
+        .select("id_producto")
+        .eq("id_variante", item.idVariante)
+        .maybeSingle();
+      if (!variante) continue;
+      const { error } = await supabase.from("productos").update({ costo_informado: item.costo }).eq("id_producto", variante.id_producto);
+      if (error) return { error: friendlyDbError(error) };
+    }
+
+    revalidatePath("/proveedores");
+    revalidatePath("/productos");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudieron actualizar los costos" };
+  }
+}
+
 // ===================== FACTURA (modos REMITO y PERIODO) =====================
 // El precio recién aparece acá — nunca en la orden ni en la recepción. Sirve
 // para los dos modos: REMITO manda idOrden, PERIODO manda fechaDesde/Hasta.

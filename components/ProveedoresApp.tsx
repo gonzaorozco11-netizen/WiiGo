@@ -8,6 +8,7 @@ import ProveedorFormModal from "./ProveedorFormModal";
 import NuevaOrdenCompraModal from "./NuevaOrdenCompraModal";
 import RecepcionCompraModal from "./RecepcionCompraModal";
 import DevolucionProveedorModal from "./DevolucionProveedorModal";
+import CostosRecepcionModal from "./CostosRecepcionModal";
 import FacturaOrdenModal from "./FacturaOrdenModal";
 import FacturaPeriodoModal from "./FacturaPeriodoModal";
 import LiquidacionProveedorModal from "./LiquidacionProveedorModal";
@@ -91,6 +92,7 @@ export default function ProveedoresApp({
   const [nuevaOrdenAbierta, setNuevaOrdenAbierta] = useState(false);
   const [ordenAbierta, setOrdenAbierta] = useState<OrdenCompraProveedor | null>(null);
   const [facturaOrdenAbierta, setFacturaOrdenAbierta] = useState<OrdenCompraProveedor | null>(null);
+  const [costosOrdenAbierta, setCostosOrdenAbierta] = useState<OrdenCompraProveedor | null>(null);
   const [facturaPeriodoAbierta, setFacturaPeriodoAbierta] = useState(false);
   const [liquidacionAbierta, setLiquidacionAbierta] = useState(false);
   const [devolucionAbierta, setDevolucionAbierta] = useState(false);
@@ -417,6 +419,11 @@ export default function ProveedoresApp({
                         Facturar
                       </button>
                     )}
+                    {o.estado !== "PENDIENTE" && esAdmin && proveedorPorId.get(o.id_proveedor)?.modo_facturacion === "LIQUIDACION_VENTA" && (
+                      <button onClick={() => setCostosOrdenAbierta(o)} className="text-sm text-accent hover:underline">
+                        Cargar factura
+                      </button>
+                    )}
                     <button onClick={() => setOrdenAbierta(o)} className="text-sm text-accent hover:underline">
                       {o.estado === "PENDIENTE" ? "Recepcionar" : "Ver"}
                     </button>
@@ -465,6 +472,17 @@ export default function ProveedoresApp({
           nombrePorVariante={nombrePorVariante}
           costoActualPorVariante={costoActualPorVariante}
           onClose={() => setFacturaOrdenAbierta(null)}
+        />
+      )}
+
+      {costosOrdenAbierta && (
+        <CostosRecepcionModal
+          orden={costosOrdenAbierta}
+          detalle={detalleDeOrden.get(costosOrdenAbierta.id_orden) ?? []}
+          proveedor={proveedorPorId.get(costosOrdenAbierta.id_proveedor)}
+          nombrePorVariante={nombrePorVariante}
+          costoActualPorVariante={costoActualPorVariante}
+          onClose={() => setCostosOrdenAbierta(null)}
         />
       )}
 
