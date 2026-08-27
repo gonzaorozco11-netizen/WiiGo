@@ -3,7 +3,7 @@
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { calcularBeneficioReferido, resolverCodigoProfesional } from "@/lib/referidosProfesionales";
-import { buscarProfesionalPorDni, verificarPinProfesional, calcularDescuentoCanje } from "@/lib/canjesProfesionales";
+import { buscarProfesionalPorDni, verificarPinProfesional, calcularDescuentoCanje, esProfesionalActivo } from "@/lib/canjesProfesionales";
 import { calcularCanjePuntos } from "@/lib/puntosWiigo";
 import { crearOrdenQrMp } from "@/lib/mercadopago";
 import QRCode from "qrcode";
@@ -66,12 +66,17 @@ export async function buscarCodigoProfesionalAction(codigo: string): Promise<{ n
 // momento" en vez de "Puntos extra") — separado de buscarCodigoProfesionalAction,
 // que solo confirma el nombre. Sin esto el total no cambiaba en pantalla
 // aunque confirmarPedido ya calculaba el descuento bien.
+// `dni` es el del comprador: una profesional no puede aplicarse a sí misma
+// el código de descuento (ni el suyo ni el de otra) — ver confirmarPedido.
 export async function previsualizarDescuentoReferidoAction(
   codigo: string,
-  items: { idMarca: string | null; cantidad: number; precioUnitario: number }[]
+  items: { idMarca: string | null; cantidad: number; precioUnitario: number }[],
+  dni?: string
 ): Promise<number> {
   if (!codigo.trim() || items.length === 0) return 0;
   const supabase = getSupabaseServerClient();
+  const compradorEsProfesional = await esProfesionalActivo(supabase, dni?.trim() || null);
+  if (compradorEsProfesional) return 0;
   const resuelto = await resolverCodigoProfesional(supabase, codigo);
   if (resuelto.error || !resuelto.idCodigo) return 0;
   const resultado = await calcularBeneficioReferido(
@@ -192,12 +197,19 @@ export async function confirmarPedido(
 
   const subtotal = items.reduce((acc, i) => acc + i.precioUnitario * i.cantidad, 0);
 
+  // Una profesional no puede usar el código de descuento de otra (ni el
+  // suyo propio) para su propia compra — el beneficio de referido es para
+  // sus pacientes/clientes, no tiene sentido que se lo aplique ella misma.
+  const compradorEsProfesional = await esProfesionalActivo(supabase, dniLimpio || null);
+
   // El código solo se valida y se calcula el descuento acá (hace falta para
   // el total que ve el cliente) — el referido en sí (con su detalle y la
   // comisión del profesional) recién se registra cuando el personal
   // confirma el cobro, ver confirmarCobro en cobros-efectivo/actions.ts. Así
   // no queda un referido de un carrito que el cliente termina abandonando.
-  const codigoResuelto = await resolverCodigoProfesional(supabase, codigoProfesional);
+  const codigoResuelto = compradorEsProfesional
+    ? { error: null, idCodigo: null, idProfesional: null, usosActuales: 0 }
+    : await resolverCodigoProfesional(supabase, codigoProfesional);
   if (codigoResuelto.error) return { error: codigoResuelto.error };
 
   let descuentoBeneficio = 0;

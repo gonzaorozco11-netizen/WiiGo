@@ -314,11 +314,12 @@ export default function SelfCheckoutApp({
     const timeout = setTimeout(() => {
       previsualizarDescuentoReferidoAction(
         codigoLimpio,
-        itemsCarrito.map((i) => ({ idMarca: i.producto.id_marca, cantidad: i.cantidad, precioUnitario: i.precio }))
+        itemsCarrito.map((i) => ({ idMarca: i.producto.id_marca, cantidad: i.cantidad, precioUnitario: i.precio })),
+        dni
       ).then(setDescuentoReferidoPreview);
     }, 400);
     return () => clearTimeout(timeout);
-  }, [codigoProfesional, itemsCarrito]);
+  }, [codigoProfesional, itemsCarrito, dni]);
 
   // Mismo orden que confirmarPedido: primero el descuento de referido,
   // después el canje con saldo propio del profesional, y recién sobre lo

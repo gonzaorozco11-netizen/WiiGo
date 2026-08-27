@@ -7,6 +7,7 @@ import { friendlyDbError } from "@/lib/errors";
 import { hashPassword } from "@/lib/auth";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 import { saldosPorMarca } from "@/lib/canjesProfesionales";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 async function usuarioActual() {
   const cookieStore = await cookies();
@@ -40,6 +41,22 @@ function number(formData: FormData, name: string) {
 
 function bool(formData: FormData, name: string) {
   return formData.get(name) === "on";
+}
+
+// Sin esto, la primera vez que se le vendía algo a una profesional antes de
+// cargarla en Profesionales, POS le creaba sola un cliente genérico
+// "Cliente WiiGo" con su DNI (ver venderPos en pos/actions.ts). Después, al
+// cargarla como profesional de verdad, ese DNI quedaba "ocupado" por un
+// cliente con nombre feo y no se podía prolijizar. Esto sincroniza el
+// nombre del cliente con el de la profesional (o lo crea si no existía)
+// cada vez que se da de alta o se edita una profesional con DNI.
+async function sincronizarClientePorDni(supabase: SupabaseClient, dni: string, nombre: string, apellido: string | null) {
+  const { data: existente } = await supabase.from("clientes").select("id_cliente").eq("dni", dni).maybeSingle();
+  if (existente) {
+    await supabase.from("clientes").update({ nombre, apellido }).eq("id_cliente", existente.id_cliente);
+  } else {
+    await supabase.from("clientes").insert({ nombre, apellido, dni, estado: "ACTIVO" });
+  }
 }
 
 // ===================== PROFESIONALES =====================
@@ -117,6 +134,10 @@ export async function crearProfesional(formData: FormData): Promise<{ error: str
       .single();
     if (error) return { error: friendlyDbError(error) };
 
+    if (dni) {
+      await sincronizarClientePorDni(supabase, dni, nombre, text(formData, "apellido"));
+    }
+
     if (codigoTexto) {
       const { error: errorCodigo } = await supabase.from("codigos_profesionales").insert({
         id_profesional: profesional.id_profesional,
@@ -183,6 +204,11 @@ export async function actualizarProfesional(idProfesional: string, formData: For
     })
     .eq("id_profesional", idProfesional);
   if (error) return { error: friendlyDbError(error) };
+
+  if (dni) {
+    await sincronizarClientePorDni(supabase, dni, nombre, text(formData, "apellido"));
+  }
+
   revalidatePath("/profesionales");
   return { error: null };
 }

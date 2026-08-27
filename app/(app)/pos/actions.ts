@@ -111,12 +111,17 @@ export async function buscarCodigoProfesionalAction(codigo: string): Promise<{ n
 // momento" en vez de "Puntos extra") — separado de buscarCodigoProfesionalAction,
 // que solo confirma el nombre. Sin esto el empleado no veía cambiar el total
 // hasta después de cobrar, aunque venderPos ya calculaba el descuento bien.
+// `dni` es el del comprador: una profesional no puede aplicarse a sí misma
+// el código de descuento (ni el suyo ni el de otra) — ver venderPos.
 export async function previsualizarDescuentoReferidoAction(
   codigo: string,
-  items: { idMarca: string | null; cantidad: number; precioUnitario: number }[]
+  items: { idMarca: string | null; cantidad: number; precioUnitario: number }[],
+  dni?: string
 ): Promise<number> {
   if (!codigo.trim() || items.length === 0) return 0;
   const supabase = getSupabaseServerClient();
+  const compradorEsProfesional = await esProfesionalActivo(supabase, dni?.trim() || null);
+  if (compradorEsProfesional) return 0;
   const resuelto = await resolverCodigoProfesional(supabase, codigo);
   if (resuelto.error || !resuelto.idCodigo) return 0;
   const resultado = await calcularBeneficioReferido(
@@ -170,6 +175,9 @@ export async function venderPos(
     const supabase = getSupabaseServerClient();
     const usuario = await usuarioActual();
 
+    // Igual que en el totem: un DNI que no está registrado no se da de alta
+    // solo acá — el personal lo tiene que cargar a mano en Clientes con sus
+    // datos reales. Esta venta simplemente no suma puntos hasta que eso pase.
     let idCliente: string | null = null;
     const dniLimpio = dni.trim();
     if (dniLimpio) {
@@ -178,23 +186,20 @@ export async function venderPos(
         .select("id_cliente")
         .eq("dni", dniLimpio)
         .maybeSingle();
-
-      if (existente) {
-        idCliente = existente.id_cliente;
-      } else {
-        const { data: nuevo, error } = await supabase
-          .from("clientes")
-          .insert({ nombre: "Cliente WiiGo", dni: dniLimpio, estado: "ACTIVO" })
-          .select("id_cliente")
-          .single();
-        if (error) return { error: friendlyDbError(error) };
-        idCliente = nuevo?.id_cliente ?? null;
-      }
+      idCliente = existente?.id_cliente ?? null;
     }
 
   const subtotal = items.reduce((acc, i) => acc + i.precioUnitario * i.cantidad, 0);
 
-  const codigoResuelto = await resolverCodigoProfesional(supabase, codigoProfesional);
+  // Una profesional no puede usar el código de descuento de otra (ni el
+  // suyo propio) para su propia compra — el beneficio de referido es para
+  // sus pacientes/clientes, no tiene sentido que se lo aplique ella misma.
+  // Se comprueba con el mismo DNI que identificó al comprador arriba.
+  const compradorEsProfesional = await esProfesionalActivo(supabase, dniLimpio || null);
+
+  const codigoResuelto = compradorEsProfesional
+    ? { error: null, idCodigo: null, idProfesional: null, usosActuales: 0 }
+    : await resolverCodigoProfesional(supabase, codigoProfesional);
   if (codigoResuelto.error) return { error: codigoResuelto.error };
 
   let resultadoReferido = null as Awaited<ReturnType<typeof calcularBeneficioReferido>> | null;
@@ -400,8 +405,7 @@ export async function venderPos(
   // no suma puntos de club en sus propias compras (ver esProfesionalActivo).
   // Los puntos extra por código de profesional (financiados por la marca,
   // para el cliente que referenció) se suman aparte, arriba de los normales.
-  const esProfesional = await esProfesionalActivo(supabase, dniLimpio || null);
-  const puntosGenerados = (idCliente && !esProfesional ? await calcularPuntos(supabase, total) : 0) + puntosExtra;
+  const puntosGenerados = (idCliente && !compradorEsProfesional ? await calcularPuntos(supabase, total) : 0) + puntosExtra;
   await supabase.from("ventas").update({ puntos_generados: puntosGenerados }).eq("id_venta", venta.id_venta);
 
   if (idCliente && puntosGenerados > 0) {
