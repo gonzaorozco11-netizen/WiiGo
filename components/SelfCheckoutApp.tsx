@@ -3,7 +3,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Local, Marca, Producto, VarianteProducto, Stock } from "@/lib/supabase";
 import type { Clima } from "@/lib/clima";
-import { confirmarPedido, estadoPedido, cancelarPedidoCliente, buscarProfesionalPorDniAction, buscarClientePorDniAction, buscarCodigoProfesionalAction, infoCanjePuntosAction, obtenerStockLocal } from "@/app/self-checkout/[idLocal]/actions";
+import {
+  confirmarPedido,
+  estadoPedido,
+  cancelarPedidoCliente,
+  buscarProfesionalPorDniAction,
+  buscarClientePorDniAction,
+  buscarCodigoProfesionalAction,
+  previsualizarDescuentoReferidoAction,
+  infoCanjePuntosAction,
+  obtenerStockLocal,
+} from "@/app/self-checkout/[idLocal]/actions";
 
 const STOCK_POLL_MS = 8000;
 
@@ -290,7 +300,30 @@ export default function SelfCheckoutApp({
     .filter((m) => marcasCanje.has(m.idMarca))
     .reduce((acc, m) => acc + Math.min(m.subtotalCarrito, m.saldo), 0);
 
-  const totalConCanje = Math.max(subtotalCarrito - descuentoCanje, 0);
+  // Vista previa en vivo del descuento que el código de profesional le da al
+  // cliente (si la marca eligió "Descuento en el momento") — antes no se
+  // consultaba nunca acá, así que el total en pantalla no bajaba aunque
+  // confirmarPedido ya lo calculara bien.
+  const [descuentoReferidoPreview, setDescuentoReferidoPreview] = useState(0);
+  useEffect(() => {
+    const codigoLimpio = codigoProfesional.trim();
+    if (!codigoLimpio || itemsCarrito.length === 0) {
+      setDescuentoReferidoPreview(0);
+      return;
+    }
+    const timeout = setTimeout(() => {
+      previsualizarDescuentoReferidoAction(
+        codigoLimpio,
+        itemsCarrito.map((i) => ({ idMarca: i.producto.id_marca, cantidad: i.cantidad, precioUnitario: i.precio }))
+      ).then(setDescuentoReferidoPreview);
+    }, 400);
+    return () => clearTimeout(timeout);
+  }, [codigoProfesional, itemsCarrito]);
+
+  // Mismo orden que confirmarPedido: primero el descuento de referido,
+  // después el canje con saldo propio del profesional, y recién sobre lo
+  // que queda se calculan los puntos WiiGo del cliente.
+  const totalConCanje = Math.max(subtotalCarrito - descuentoReferidoPreview - descuentoCanje, 0);
   const descuentoPuntosPreview = usarPuntosWiigo && infoPuntos ? infoPuntos.maxDescuento : 0;
   const totalFinal = Math.max(totalConCanje - descuentoPuntosPreview, 0);
 
@@ -798,12 +831,12 @@ export default function SelfCheckoutApp({
 
               <div className="bg-neutral-50 border border-neutral-200 rounded-2xl p-3 mb-3">
                 <p className="text-xs font-bold text-neutral-900">
-                  ¿Sos profesional de una marca? <span className="font-normal text-neutral-400">Opcional</span>
+                  ¿Te recomendó una profesional? <span className="font-normal text-neutral-400">Opcional</span>
                 </p>
                 <input
                   value={codigoProfesional}
                   onChange={(e) => setCodigoProfesional(e.target.value)}
-                  placeholder="Código de profesional"
+                  placeholder="Código de la profesional"
                   className="w-full rounded-lg border border-neutral-300 px-2.5 py-1.5 text-xs mt-1.5"
                 />
                 {buscandoCodigo && <p className="text-xs text-neutral-400 mt-1.5">Buscando...</p>}
@@ -909,6 +942,12 @@ export default function SelfCheckoutApp({
                 <span>Subtotal</span>
                 <span>${formatearMonto(subtotalCarrito)}</span>
               </div>
+              {descuentoReferidoPreview > 0 && (
+                <div className="flex justify-between items-center text-sm text-emerald-600">
+                  <span>Descuento por código de profesional</span>
+                  <span>-${formatearMonto(descuentoReferidoPreview)}</span>
+                </div>
+              )}
               {descuentoCanje > 0 && (
                 <div className="flex justify-between items-center text-sm text-purple-600">
                   <span>Pagado con saldo de profesional</span>

@@ -61,6 +61,32 @@ export async function buscarCodigoProfesionalAction(codigo: string): Promise<{ n
   return { nombre: data ? `${data.nombre}${data.apellido ? ` ${data.apellido}` : ""}` : null, error: null };
 }
 
+// Vista previa en vivo de cuánto descuento le da al cliente el código de
+// profesional (si la marca de esos productos eligió "Descuento en el
+// momento" en vez de "Puntos extra") — separado de buscarCodigoProfesionalAction,
+// que solo confirma el nombre. Sin esto el total no cambiaba en pantalla
+// aunque confirmarPedido ya calculaba el descuento bien.
+export async function previsualizarDescuentoReferidoAction(
+  codigo: string,
+  items: { idMarca: string | null; cantidad: number; precioUnitario: number }[]
+): Promise<number> {
+  if (!codigo.trim() || items.length === 0) return 0;
+  const supabase = getSupabaseServerClient();
+  const resuelto = await resolverCodigoProfesional(supabase, codigo);
+  if (resuelto.error || !resuelto.idCodigo) return 0;
+  const resultado = await calcularBeneficioReferido(
+    supabase,
+    items.map((i) => ({
+      idProducto: null,
+      idMarca: i.idMarca,
+      cantidad: i.cantidad,
+      precioUnitario: i.precioUnitario,
+      importe: i.precioUnitario * i.cantidad,
+    }))
+  );
+  return resultado.descuentoTotal;
+}
+
 // Para mostrarle al cliente, en vivo, cuánto puede cubrir con sus puntos
 // WiiGo antes de confirmar el pedido.
 export async function infoCanjePuntosAction(dni: string, montoAPagar: number) {

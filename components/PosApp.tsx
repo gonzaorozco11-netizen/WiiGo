@@ -2,7 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { Local, Marca, Producto, VarianteProducto, Stock } from "@/lib/supabase";
-import { venderPos, buscarClientePorDni, buscarProfesionalPorDniAction, buscarCodigoProfesionalAction, infoCanjePuntosAction } from "@/app/(app)/pos/actions";
+import {
+  venderPos,
+  buscarClientePorDni,
+  buscarProfesionalPorDniAction,
+  buscarCodigoProfesionalAction,
+  previsualizarDescuentoReferidoAction,
+  infoCanjePuntosAction,
+} from "@/app/(app)/pos/actions";
 
 type Item = {
   variante: VarianteProducto;
@@ -78,6 +85,7 @@ export default function PosApp({
   const [pinCanje, setPinCanje] = useState("");
   const [codigoInfo, setCodigoInfo] = useState<{ nombre: string | null; error: string | null } | null>(null);
   const [buscandoCodigo, setBuscandoCodigo] = useState(false);
+  const [descuentoReferidoPreview, setDescuentoReferidoPreview] = useState(0);
   const [infoPuntos, setInfoPuntos] = useState<{
     puntosDisponibles: number;
     valorPorPunto: number;
@@ -197,7 +205,29 @@ export default function PosApp({
   const subtotalSinIva = ivaGeneralPorcentaje > 0 ? subtotal / (1 + ivaGeneralPorcentaje / 100) : subtotal;
   const montoIva = subtotal - subtotalSinIva;
 
-  const totalConCanje = Math.max(subtotal - descuentoCanje, 0);
+  // Vista previa en vivo del descuento que el código de profesional le da al
+  // CLIENTE (si la marca eligió "Descuento en el momento") — antes no se
+  // consultaba nunca acá, así que el total en pantalla no bajaba aunque
+  // venderPos ya lo calculara bien al cobrar.
+  useEffect(() => {
+    const codigoLimpio = codigoProfesional.trim();
+    if (!codigoLimpio || itemsCarrito.length === 0) {
+      setDescuentoReferidoPreview(0);
+      return;
+    }
+    const timeout = setTimeout(() => {
+      previsualizarDescuentoReferidoAction(
+        codigoLimpio,
+        itemsCarrito.map((i) => ({ idMarca: i.producto.id_marca, cantidad: i.cantidad, precioUnitario: i.precio }))
+      ).then(setDescuentoReferidoPreview);
+    }, 400);
+    return () => clearTimeout(timeout);
+  }, [codigoProfesional, itemsCarrito]);
+
+  // Mismo orden que venderPos: primero el descuento de referido, después el
+  // canje con saldo propio del profesional, y recién sobre lo que queda se
+  // calculan los puntos WiiGo del cliente.
+  const totalConCanje = Math.max(subtotal - descuentoReferidoPreview - descuentoCanje, 0);
   const descuentoPuntosPreview = usarPuntosWiigo && infoPuntos ? infoPuntos.maxDescuento : 0;
   const totalFinal = Math.max(totalConCanje - descuentoPuntosPreview, 0);
   const montoNum = Number(montoRecibido.replace(/[^\d.-]/g, "")) || 0;
@@ -533,6 +563,12 @@ export default function PosApp({
           <span>Subtotal</span>
           <span>${formatearMonto(subtotal)}</span>
         </div>
+        {descuentoReferidoPreview > 0 && (
+          <div className="flex justify-between items-center text-sm text-emerald-600 mb-1">
+            <span>Descuento por código de profesional</span>
+            <span>-${formatearMonto(descuentoReferidoPreview)}</span>
+          </div>
+        )}
         {descuentoCanje > 0 && (
           <div className="flex justify-between items-center text-sm text-purple-600 mb-1">
             <span>Pagado con saldo de profesional</span>
