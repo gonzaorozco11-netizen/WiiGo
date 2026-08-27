@@ -15,6 +15,9 @@ import {
 } from "@/lib/referidosProfesionales";
 import { buscarProfesionalPorDni, verificarPinProfesional, calcularDescuentoCanje, registrarCanje, esProfesionalActivo } from "@/lib/canjesProfesionales";
 import { calcularCanjePuntos, aplicarCanjePuntos } from "@/lib/puntosWiigo";
+import { crearOrdenQrMp } from "@/lib/mercadopago";
+import { confirmarCobro } from "@/app/(app)/cobros-efectivo/actions";
+import QRCode from "qrcode";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 async function usuarioActual() {
@@ -43,28 +46,6 @@ async function calcularPuntos(supabase: SupabaseClient, total: number) {
 }
 
 type ItemCarrito = { idVariante: string; idMarca: string | null; cantidad: number; precioUnitario: number };
-
-// Coincide con las tasas de Configuración → Comisión de Mercado Pago y con
-// `pagos.forma_pago_cliente` (ver cobros-efectivo/actions.ts) — no hay una
-// sola comisión de MP, varía según cómo pagó el cliente.
-const FORMAS_PAGO_MP: Record<string, string> = {
-  DINERO_CUENTA: "MP_COMISION_DINERO_CUENTA",
-  DEBITO: "MP_COMISION_DEBITO",
-  CUOTAS_SIN_INTERES: "MP_COMISION_CUOTAS_SIN_INTERES",
-  PREPAGA: "MP_COMISION_PREPAGA",
-  CREDITO: "MP_COMISION_CREDITO",
-};
-
-async function tasaComisionMp(supabase: SupabaseClient, formaPago: string) {
-  const clave = FORMAS_PAGO_MP[formaPago];
-  if (!clave) return { base: 0, ivaGeneral: 21 };
-  const { data } = await supabase
-    .from("configuracion")
-    .select("parametro, valor")
-    .in("parametro", [clave, "IVA_GENERAL_PORCENTAJE"]);
-  const cfg = Object.fromEntries((data ?? []).map((r) => [r.parametro, Number(r.valor ?? 0)]));
-  return { base: cfg[clave] ?? 0, ivaGeneral: cfg.IVA_GENERAL_PORCENTAJE ?? 21 };
-}
 
 // Autocompletar nombre al escribir el DNI, para que el empleado vea a
 // quién le está cargando la venta antes de cobrar.
@@ -149,11 +130,24 @@ export async function infoCanjePuntosAction(dni: string, montoAPagar: number) {
   return calcularCanjePuntos(supabase, cliente.id_cliente, montoAPagar);
 }
 
-// Venta mostrador: a diferencia del Self Checkout, acá el mismo empleado
-// arma el pedido y cobra en el momento — no queda pendiente esperando a
-// nadie. Sirve tanto como venta asistida normal como respaldo si se cae
-// la conexión de algún totem.
+// Venta mostrador: en Efectivo el mismo empleado arma el pedido y cobra en
+// el momento, no queda pendiente esperando a nadie. En Mercado Pago genera
+// un QR (igual que el totem) y la venta queda PENDIENTE_PAGO hasta que el
+// cliente paga desde su celular — la confirma sola el webhook, reusando
+// confirmarCobro. Sirve tanto como venta asistida normal como respaldo si
+// se cae la conexión de algún totem.
 type ResultadoVenta = { numero: number; total: number; vuelto: number; puntosGenerados: number };
+type ResultadoPedidoMp = { idVenta: string; numero: number; total: number; qrImagen?: string };
+
+// Para que el POS sepa cuándo el cliente ya pagó el QR y pasar solo a la
+// pantalla de éxito, sin que el empleado tenga que estar preguntando.
+export async function estadoVentaPos(idVenta: string): Promise<{ estado: string; numero: number; total: number }> {
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase.from("ventas").select("estado, numero, total").eq("id_venta", idVenta).maybeSingle();
+  if (error) throw new Error(friendlyDbError(error));
+  if (!data) throw new Error("No se encontró la venta");
+  return { estado: data.estado as string, numero: data.numero as number, total: data.total as number };
+}
 
 // Next.js redacta en producción el mensaje de un Error tirado desde una
 // Server Action (queda solo un digest genérico en el navegador) — por eso
@@ -165,10 +159,9 @@ export async function venderPos(
   codigoProfesional: string,
   montoRecibido: number,
   medioPago: "EFECTIVO" | "MERCADO_PAGO" = "EFECTIVO",
-  formaPagoMp?: string,
   canje?: { idProfesional: string; pin: string; marcas: string[] },
   usarPuntosWiigo?: boolean
-): Promise<{ error: string | null; venta?: ResultadoVenta }> {
+): Promise<{ error: string | null; venta?: ResultadoVenta; pedido?: ResultadoPedidoMp }> {
   if (items.length === 0) return { error: "El carrito está vacío" };
 
   try {
@@ -256,11 +249,82 @@ export async function venderPos(
   }
 
   const total = Math.max(subtotal - descuentoBeneficio - descuentoCanje - descuentoPuntos, 0);
-  const esMercadoPago = medioPago === "MERCADO_PAGO";
-  if (esMercadoPago && (!formaPagoMp || !FORMAS_PAGO_MP[formaPagoMp])) {
-    return { error: "Elegí cómo pagó el cliente por Mercado Pago" };
+
+  if (medioPago === "MERCADO_PAGO") {
+    // La venta queda pendiente y se genera el QR — igual que el totem, la
+    // confirmación real (turno, stock, puntos, referidos, comisión de MP)
+    // llega sola por el webhook cuando el cliente paga desde su celular
+    // (ver app/api/mercadopago-webhook/route.ts), reusando confirmarCobro.
+    const { data: venta, error: errorVenta } = await supabase
+      .from("ventas")
+      .insert({
+        canal: "POS",
+        id_cliente: idCliente,
+        id_local: idLocal,
+        subtotal,
+        descuento: descuentoBeneficio + descuentoCanje + descuentoPuntos,
+        descuento_puntos: descuentoPuntos,
+        puntos_canjeados: puntosACanjear,
+        total,
+        estado: "PENDIENTE_PAGO",
+        medio_pago: "MERCADO_PAGO",
+        usuario,
+        terminal: "POS",
+        id_codigo_profesional: codigoResuelto.idCodigo,
+        id_profesional_canje: canje && canje.marcas.length > 0 ? canje.idProfesional : null,
+        marcas_canje: canje && canje.marcas.length > 0 ? canje.marcas : null,
+      })
+      .select("id_venta, numero")
+      .single();
+    if (errorVenta) return { error: friendlyDbError(errorVenta) };
+
+    const filasDetalle = items.map((i) => ({
+      id_venta: venta.id_venta,
+      id_variante: i.idVariante,
+      id_marca: i.idMarca,
+      cantidad: i.cantidad,
+      precio_unitario: i.precioUnitario,
+      subtotal: i.precioUnitario * i.cantidad,
+    }));
+    const { error: errorDetalle } = await supabase.from("detalle_ventas").insert(filasDetalle);
+    if (errorDetalle) return { error: friendlyDbError(errorDetalle) };
+
+    // Cubierto entero con puntos/canje: no tiene sentido generar un QR de
+    // $0 — se confirma directo, igual que si el empleado la cobrara ahí.
+    if (total <= 0) {
+      const resultadoCobro = await confirmarCobro(venta.id_venta, 0, undefined, usuario ?? undefined);
+      if (resultadoCobro.error) return { error: resultadoCobro.error };
+      return { error: null, venta: { numero: venta.numero as number, total: 0, vuelto: 0, puntosGenerados: 0 } };
+    }
+
+    try {
+      const { data: cfg } = await supabase
+        .from("configuracion")
+        .select("valor")
+        .eq("parametro", "MP_EXTERNAL_POS_ID")
+        .maybeSingle();
+      const externalPosId = cfg?.valor;
+      if (!externalPosId) {
+        return { error: "Mercado Pago todavía no está conectado — pedile a un administrador que lo conecte en Configuración." };
+      }
+      const orden = await crearOrdenQrMp({
+        idVenta: venta.id_venta,
+        total,
+        externalPosId,
+        descripcion: `Venta WiiGo #${venta.numero}`,
+      });
+      const qrImagen = await QRCode.toDataURL(orden.qrData, { margin: 1, width: 400 });
+      await supabase.from("ventas").update({ id_orden_mp: orden.idOrden }).eq("id_venta", venta.id_venta);
+      return {
+        error: null,
+        pedido: { idVenta: venta.id_venta, numero: venta.numero as number, total, qrImagen },
+      };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "No se pudo generar el QR de Mercado Pago" };
+    }
   }
-  const montoFinal = esMercadoPago ? total : montoRecibido;
+
+  const montoFinal = montoRecibido;
   if (montoFinal < total) return { error: "El monto recibido es menor al total de la venta" };
   const vuelto = montoFinal - total;
 
@@ -281,7 +345,7 @@ export async function venderPos(
       puntos_canjeados: puntosACanjear,
       total,
       estado: "PAGADA",
-      medio_pago: medioPago,
+      medio_pago: "EFECTIVO",
       total_cobrado: montoFinal,
       usuario,
       terminal: "POS",
@@ -291,42 +355,20 @@ export async function venderPos(
     .single();
   if (errorVenta) return { error: friendlyDbError(errorVenta) };
 
-  let pagoInsert: Record<string, unknown>;
-  if (esMercadoPago) {
-    const { base: tasa, ivaGeneral } = await tasaComisionMp(supabase, formaPagoMp as string);
-    // Mercado Pago cobra la comisión + IVA sobre esa comisión — la tasa
-    // cargada en Configuración es la base, sin IVA.
-    const comisionImporte = Math.round(total * (tasa / 100));
-    const ivaComisionImporte = Math.round(comisionImporte * (ivaGeneral / 100));
-    pagoInsert = {
-      id_venta: venta.id_venta,
-      medio: "MERCADO_PAGO",
-      forma_pago_cliente: formaPagoMp,
-      importe_bruto: total,
-      comision_porcentaje: tasa,
-      comision_importe: comisionImporte,
-      iva_comision: ivaComisionImporte,
-      neto_acreditado: total - comisionImporte - ivaComisionImporte,
-      fecha_pago: new Date().toISOString(),
-      fecha_acreditacion: new Date().toISOString(),
-      estado: "ACREDITADO",
-      estado_conciliacion: "CONCILIADO",
-      observaciones: `Venta mostrador · ${usuario ?? "personal"} · Mercado Pago (${formaPagoMp}) · comisión ${tasa}% + IVA`,
-    };
-  } else {
-    pagoInsert = {
-      id_venta: venta.id_venta,
-      medio: "EFECTIVO",
-      forma_pago_cliente: "EFECTIVO",
-      importe_bruto: total,
-      neto_acreditado: total,
-      fecha_pago: new Date().toISOString(),
-      fecha_acreditacion: new Date().toISOString(),
-      estado: "ACREDITADO",
-      estado_conciliacion: "CONCILIADO",
-      observaciones: `Venta mostrador · ${usuario ?? "personal"} · Pagó con $${montoFinal} · Vuelto $${vuelto}`,
-    };
-  }
+  // El efectivo no tiene comisión ni conciliación externa: neto = bruto, y
+  // queda acreditado en el momento.
+  const pagoInsert: Record<string, unknown> = {
+    id_venta: venta.id_venta,
+    medio: "EFECTIVO",
+    forma_pago_cliente: "EFECTIVO",
+    importe_bruto: total,
+    neto_acreditado: total,
+    fecha_pago: new Date().toISOString(),
+    fecha_acreditacion: new Date().toISOString(),
+    estado: "ACREDITADO",
+    estado_conciliacion: "CONCILIADO",
+    observaciones: `Venta mostrador · ${usuario ?? "personal"} · Pagó con $${montoFinal} · Vuelto $${vuelto}`,
+  };
 
   const { data: pago, error: errorPago } = await supabase.from("pagos").insert(pagoInsert).select("id_pago").single();
   if (errorPago) return { error: friendlyDbError(errorPago) };

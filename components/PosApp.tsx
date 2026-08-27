@@ -4,12 +4,14 @@ import { useEffect, useMemo, useState } from "react";
 import type { Local, Marca, Producto, VarianteProducto, Stock } from "@/lib/supabase";
 import {
   venderPos,
+  estadoVentaPos,
   buscarClientePorDni,
   buscarProfesionalPorDniAction,
   buscarCodigoProfesionalAction,
   previsualizarDescuentoReferidoAction,
   infoCanjePuntosAction,
 } from "@/app/(app)/pos/actions";
+import { cancelarPedido } from "@/app/(app)/cobros-efectivo/actions";
 
 type Item = {
   variante: VarianteProducto;
@@ -37,13 +39,7 @@ function precioFinal(producto: Producto, variante: VarianteProducto) {
 
 type MedioPago = "EFECTIVO" | "MERCADO_PAGO";
 
-const FORMAS_PAGO_MP: { valor: string; etiqueta: string }[] = [
-  { valor: "DINERO_CUENTA", etiqueta: "Dinero en cuenta MP" },
-  { valor: "DEBITO", etiqueta: "Tarjeta de débito" },
-  { valor: "CUOTAS_SIN_INTERES", etiqueta: "Cuotas sin interés" },
-  { valor: "PREPAGA", etiqueta: "Tarjeta prepaga" },
-  { valor: "CREDITO", etiqueta: "Tarjeta de crédito" },
-];
+const POLL_MS = 3000;
 
 export default function PosApp({
   locales,
@@ -67,12 +63,13 @@ export default function PosApp({
   const [codigoProfesional, setCodigoProfesional] = useState("");
   const [montoRecibido, setMontoRecibido] = useState("");
   const [medioPago, setMedioPago] = useState<MedioPago>("EFECTIVO");
-  const [formaPagoMp, setFormaPagoMp] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resultado, setResultado] = useState<{ numero: number; total: number; vuelto: number; puntosGenerados: number } | null>(
     null
   );
+  const [pedidoMp, setPedidoMp] = useState<{ idVenta: string; numero: number; total: number; qrImagen?: string } | null>(null);
+  const [cancelandoMp, setCancelandoMp] = useState(false);
   const [clienteEncontrado, setClienteEncontrado] = useState<{ nombre: string; apellido: string | null; puntos: number } | null>(null);
   const [buscandoCliente, setBuscandoCliente] = useState(false);
   const [profesional, setProfesional] = useState<{
@@ -280,8 +277,8 @@ export default function PosApp({
     setCodigoProfesional("");
     setMontoRecibido("");
     setMedioPago("EFECTIVO");
-    setFormaPagoMp("");
     setResultado(null);
+    setPedidoMp(null);
     setError(null);
     setClienteEncontrado(null);
     setProfesional(null);
@@ -317,7 +314,6 @@ export default function PosApp({
       codigoProfesional,
       montoNum,
       medioPago,
-      esMercadoPago ? formaPagoMp : undefined,
       profesional && marcasCanje.size > 0
         ? { idProfesional: profesional.idProfesional, pin: pinCanje, marcas: [...marcasCanje] }
         : undefined,
@@ -326,9 +322,80 @@ export default function PosApp({
       .then((r) => {
         if (r.error) setError(r.error);
         else if (r.venta) setResultado(r.venta);
+        else if (r.pedido) setPedidoMp(r.pedido);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "No se pudo registrar la venta"))
       .finally(() => setEnviando(false));
+  }
+
+  // Mientras espera que el cliente escanee y pague el QR, se fija solo cada
+  // pocos segundos si ya cambió de estado — igual que el totem — para pasar
+  // sola a la pantalla de éxito sin que el empleado tenga que preguntar.
+  useEffect(() => {
+    if (!pedidoMp) return;
+    const intervalo = setInterval(() => {
+      estadoVentaPos(pedidoMp.idVenta)
+        .then((r) => {
+          if (r.estado === "PAGADA") {
+            setResultado({ numero: r.numero, total: r.total, vuelto: 0, puntosGenerados: 0 });
+            setPedidoMp(null);
+          } else if (r.estado === "CANCELADA") {
+            setError("Este pedido se canceló.");
+            setPedidoMp(null);
+          }
+        })
+        .catch(() => {});
+    }, POLL_MS);
+    return () => clearInterval(intervalo);
+  }, [pedidoMp]);
+
+  function handleCancelarMp() {
+    if (!pedidoMp) return;
+    setCancelandoMp(true);
+    cancelarPedido(pedidoMp.idVenta, "Cancelado por el personal desde Vender (POS)")
+      .then((r) => {
+        if (r.error) setError(r.error);
+        else setPedidoMp(null);
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : "No se pudo cancelar el pedido"))
+      .finally(() => setCancelandoMp(false));
+  }
+
+  if (pedidoMp) {
+    return (
+      <div className="max-w-md mx-auto text-center py-16 px-6">
+        <div className="inline-flex items-center gap-1.5 bg-[#eef9f1] text-[#00a650] font-bold text-xs px-3.5 py-1.5 rounded-full mb-4">
+          📱 Mercado Pago
+        </div>
+        <p className="text-sm text-neutral-500 mb-3.5">Pedile al cliente que escanee este código con la app de Mercado Pago</p>
+        <div className="w-48 h-48 bg-white rounded-2xl border border-neutral-200 shadow-sm flex items-center justify-center mb-3.5 overflow-hidden mx-auto">
+          {pedidoMp.qrImagen ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={pedidoMp.qrImagen} alt="Código QR de Mercado Pago" className="w-full h-full object-contain" />
+          ) : (
+            <span className="text-neutral-300 text-xs px-2 text-center">No se pudo generar el QR</span>
+          )}
+        </div>
+        <p className="text-2xl font-extrabold text-neutral-900 mb-1">${formatearMonto(pedidoMp.total)}</p>
+        <p className="text-xs text-neutral-400 mb-4">Pedido #{formatearPedido(pedidoMp.numero)}</p>
+        <div className="flex items-center justify-center gap-2 text-xs text-neutral-400 mb-6">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse motion-reduce:animate-none" />
+          Esperando el pago...
+        </div>
+        {error && (
+          <p className="text-sm text-red-600 mb-3" role="alert">
+            {error}
+          </p>
+        )}
+        <button
+          onClick={handleCancelarMp}
+          disabled={cancelandoMp}
+          className="text-sm font-semibold text-neutral-500 border border-neutral-300 rounded-xl px-5 py-2.5 disabled:opacity-50"
+        >
+          {cancelandoMp ? "Cancelando..." : "Cancelar pedido"}
+        </button>
+      </div>
+    );
   }
 
   if (resultado) {
@@ -589,21 +656,9 @@ export default function PosApp({
           <span>${formatearMonto(totalFinal)}</span>
         </div>
         {esMercadoPago ? (
-          <div>
-            <label className="block text-sm text-neutral-500 mb-1">¿Cómo pagó el cliente?</label>
-            <select
-              value={formaPagoMp}
-              onChange={(e) => setFormaPagoMp(e.target.value)}
-              className="w-full border border-neutral-300 rounded-lg px-2.5 py-1.5 text-sm bg-white"
-            >
-              <option value="">Elegí una opción...</option>
-              {FORMAS_PAGO_MP.map((f) => (
-                <option key={f.valor} value={f.valor}>
-                  {f.etiqueta}
-                </option>
-              ))}
-            </select>
-          </div>
+          <p className="text-xs text-neutral-400">
+            Se va a generar un código QR para que el cliente pague desde su celular — la venta se confirma sola apenas paga.
+          </p>
         ) : (
           <>
             <div className="flex justify-between items-center text-sm mb-2">
@@ -637,11 +692,15 @@ export default function PosApp({
           enviando ||
           itemsCarrito.length === 0 ||
           (marcasCanje.size > 0 && pinCanje.length < 4) ||
-          (esMercadoPago ? !formaPagoMp : montoNum < totalFinal)
+          (!esMercadoPago && montoNum < totalFinal)
         }
         className="w-full bg-accent hover:bg-accent-dark disabled:opacity-40 text-white font-bold py-4 rounded-xl mb-8"
       >
-        {enviando ? "Registrando..." : `Cobrar · $${formatearMonto(totalFinal)}`}
+        {enviando
+          ? "Generando..."
+          : esMercadoPago
+            ? `Generar QR · $${formatearMonto(totalFinal)}`
+            : `Cobrar · $${formatearMonto(totalFinal)}`}
       </button>
     </div>
   );
