@@ -9,6 +9,12 @@ function redondear2(valor: number) {
   return Math.round(valor * 100) / 100;
 }
 
+export type DetalleLineaVenta = {
+  nombreProducto: string;
+  cantidad: number;
+  subtotal: number;
+};
+
 export type LineaResumenVentas = {
   idVenta: string;
   numeroVenta: number;
@@ -19,6 +25,7 @@ export type LineaResumenVentas = {
   costo: number;
   margen: number;
   margenPorcentaje: number;
+  detalle: DetalleLineaVenta[];
 };
 
 // Resumen de TODO lo vendido en un rango de fechas, una fila por venta —
@@ -66,16 +73,24 @@ export async function calcularResumenVentas(
   const idsVariante = [...new Set(detalle.map((d) => d.id_variante as string))];
   const { data: variantes } = await supabase
     .from("variantes_producto")
-    .select("id_variante, id_producto")
+    .select("id_variante, id_producto, nombre")
     .in("id_variante", idsVariante);
+  const varianteInfoPorId = new Map((variantes ?? []).map((v) => [v.id_variante as string, v]));
   const productoPorVariante = new Map((variantes ?? []).map((v) => [v.id_variante as string, v.id_producto as string]));
 
   const idsProducto = [...new Set([...productoPorVariante.values()])];
   const { data: productos } = await supabase
     .from("productos")
-    .select("id_producto, costo_informado, id_marca")
+    .select("id_producto, nombre, costo_informado, id_marca")
     .in("id_producto", idsProducto.length > 0 ? idsProducto : ["00000000-0000-0000-0000-000000000000"]);
   const productoPorId = new Map((productos ?? []).map((p) => [p.id_producto as string, p]));
+
+  const nombreProductoLinea = (idVariante: string) => {
+    const variante = varianteInfoPorId.get(idVariante);
+    const producto = variante ? productoPorId.get(variante.id_producto as string) : undefined;
+    const base = producto?.nombre ?? "Producto";
+    return variante && variante.nombre !== "Único" ? `${base} — ${variante.nombre}` : base;
+  };
 
   const idsMarca = [...new Set((productos ?? []).map((p) => p.id_marca as string).filter(Boolean))];
   const { data: marcas } = await supabase
@@ -84,7 +99,10 @@ export async function calcularResumenVentas(
     .in("id_marca", idsMarca.length > 0 ? idsMarca : ["00000000-0000-0000-0000-000000000000"]);
   const marcaPorId = new Map((marcas ?? []).map((m) => [m.id_marca as string, m]));
 
-  const acumPorVenta = new Map<string, { items: number; total: number; costo: number; margen: number }>();
+  const acumPorVenta = new Map<
+    string,
+    { items: number; total: number; costo: number; margen: number; detalle: DetalleLineaVenta[] }
+  >();
   for (const d of detalle) {
     const idVenta = d.id_venta as string;
     const idProducto = productoPorVariante.get(d.id_variante as string);
@@ -103,11 +121,16 @@ export async function calcularResumenVentas(
       margenLinea = redondear2(subtotalLinea - costoLinea);
     }
 
-    const actual = acumPorVenta.get(idVenta) ?? { items: 0, total: 0, costo: 0, margen: 0 };
+    const actual = acumPorVenta.get(idVenta) ?? { items: 0, total: 0, costo: 0, margen: 0, detalle: [] };
     actual.items += cantidadLinea;
     actual.total += subtotalLinea;
     actual.costo += costoLinea;
     actual.margen += margenLinea;
+    actual.detalle.push({
+      nombreProducto: nombreProductoLinea(d.id_variante as string),
+      cantidad: cantidadLinea,
+      subtotal: redondear2(subtotalLinea),
+    });
     acumPorVenta.set(idVenta, actual);
   }
 
@@ -124,6 +147,7 @@ export async function calcularResumenVentas(
       medioPago: venta.medio_pago as string | null,
       cantidadItems: acum.items,
       totalFacturado,
+      detalle: acum.detalle,
       costo: redondear2(acum.costo),
       margen,
       margenPorcentaje: totalFacturado > 0 ? (margen / totalFacturado) * 100 : 0,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { calcularResumenVentas, type LineaResumenVentas } from "@/app/(app)/resumen-ventas/actions";
 
 function formatearMonto(valor: number) {
@@ -38,6 +38,7 @@ export default function ResumenVentasApp() {
   const [posibleTruncado, setPosibleTruncado] = useState(false);
   const [busqueda, setBusqueda] = useState("");
   const [filtroPago, setFiltroPago] = useState<"TODOS" | "EFECTIVO" | "MERCADO_PAGO">("TODOS");
+  const [expandida, setExpandida] = useState<string | null>(null);
 
   const lineasFiltradas = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
@@ -57,6 +58,7 @@ export default function ResumenVentasApp() {
   useEffect(() => {
     if (!fechaDesde || !fechaHasta) return;
     setCargando(true);
+    setExpandida(null);
     calcularResumenVentas(fechaDesde, fechaHasta)
       .then((r) => {
         setLineas(r.lineas);
@@ -154,6 +156,7 @@ export default function ResumenVentasApp() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-neutral-200 text-left text-xs text-neutral-500">
+                  <th className="p-3"></th>
                   <th className="p-3">Venta</th>
                   <th className="p-3">Fecha</th>
                   <th className="p-3">Pago</th>
@@ -166,18 +169,45 @@ export default function ResumenVentasApp() {
               </thead>
               <tbody>
                 {lineasFiltradas.map((l) => (
-                  <tr key={l.idVenta} className="border-b border-neutral-100 last:border-0">
-                    <td className="p-3 font-medium text-neutral-900">{formatearPedido(l.numeroVenta)}</td>
-                    <td className="p-3 text-neutral-500 whitespace-nowrap">{formatearFechaHora(l.fecha)}</td>
-                    <td className="p-3 text-neutral-500">{formatearMedioPago(l.medioPago)}</td>
-                    <td className="p-3 text-right tabular-nums">{l.cantidadItems}</td>
-                    <td className="p-3 text-right tabular-nums font-medium">${formatearMonto(l.totalFacturado)}</td>
-                    <td className="p-3 text-right tabular-nums text-neutral-400">
-                      {l.costo > 0 ? `-$${formatearMonto(l.costo)}` : "—"}
-                    </td>
-                    <td className="p-3 text-right tabular-nums font-semibold text-emerald-700">${formatearMonto(l.margen)}</td>
-                    <td className="p-3 text-right tabular-nums text-neutral-500">{l.margenPorcentaje.toFixed(1)}%</td>
-                  </tr>
+                  <Fragment key={l.idVenta}>
+                    <tr
+                      onClick={() => setExpandida((actual) => (actual === l.idVenta ? null : l.idVenta))}
+                      className="border-b border-neutral-100 last:border-0 cursor-pointer hover:bg-neutral-50"
+                    >
+                      <td className="p-3 text-neutral-400 text-xs w-5">{expandida === l.idVenta ? "▾" : "▸"}</td>
+                      <td className="p-3 font-medium text-neutral-900">{formatearPedido(l.numeroVenta)}</td>
+                      <td className="p-3 text-neutral-500 whitespace-nowrap">{formatearFechaHora(l.fecha)}</td>
+                      <td className="p-3 text-neutral-500">{formatearMedioPago(l.medioPago)}</td>
+                      <td className="p-3 text-right tabular-nums">{l.cantidadItems}</td>
+                      <td className="p-3 text-right tabular-nums font-medium">${formatearMonto(l.totalFacturado)}</td>
+                      <td className="p-3 text-right tabular-nums text-neutral-400">
+                        {l.costo > 0 ? `-$${formatearMonto(l.costo)}` : "—"}
+                      </td>
+                      <td className="p-3 text-right tabular-nums font-semibold text-emerald-700">${formatearMonto(l.margen)}</td>
+                      <td className="p-3 text-right tabular-nums text-neutral-500">{l.margenPorcentaje.toFixed(1)}%</td>
+                    </tr>
+                    {expandida === l.idVenta && (
+                      <tr className="border-b border-neutral-100 last:border-0 bg-neutral-50">
+                        <td></td>
+                        <td colSpan={8} className="px-3 pb-3">
+                          <p className="text-[10px] font-semibold text-neutral-400 uppercase tracking-wide mb-1">
+                            Lo que se vendió en {formatearPedido(l.numeroVenta)}
+                          </p>
+                          <table className="w-full text-xs">
+                            <tbody>
+                              {l.detalle.map((d, i) => (
+                                <tr key={i}>
+                                  <td className="py-1 text-neutral-700">{d.nombreProducto}</td>
+                                  <td className="py-1 text-right text-neutral-500">{d.cantidad} un.</td>
+                                  <td className="py-1 text-right font-medium text-neutral-700">${formatearMonto(d.subtotal)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
