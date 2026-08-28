@@ -14,7 +14,7 @@ export default async function GastosIngresosPage() {
 
   const supabase = getSupabaseServerClient();
 
-  const [localesRes, marcasRes, categoriasGasto, subcategoriasGasto, categoriasCargo, subcategoriasCargo, categoriasIngreso, subcategoriasIngreso, configRes, sesionPermisos] =
+  const [localesRes, marcasRes, categoriasGasto, subcategoriasGasto, categoriasCargo, subcategoriasCargo, categoriasIngreso, subcategoriasIngreso, configRes, sesionPermisos, ivaRes] =
     await Promise.all([
       supabase.from("locales").select("*").eq("estado", "ACTIVO").order("nombre", { ascending: true }),
       supabase.from("marcas").select("*").eq("tipo_comercializacion", "CONSIGNACION").order("nombre", { ascending: true }),
@@ -26,6 +26,7 @@ export default async function GastosIngresosPage() {
       listarSubcategoriasIngreso(),
       supabase.from("configuracion").select("valor").eq("parametro", "GASTOS_TOPE_SIN_AUTORIZACION").maybeSingle(),
       obtenerSesionConPermisos(),
+      supabase.from("configuracion").select("valor").eq("parametro", "IVA_GENERAL_PORCENTAJE").maybeSingle(),
     ]);
 
   return (
@@ -40,6 +41,7 @@ export default async function GastosIngresosPage() {
       subcategoriasIngreso={subcategoriasIngreso}
       topeAutorizacion={Number(configRes.data?.valor ?? 10000)}
       puedeAutorizarSinLimite={tienePermiso(sesionPermisos, PERMISOS.AUTORIZAR_GASTOS_SIN_LIMITE)}
+      ivaGeneralPorcentaje={Number(ivaRes.data?.valor ?? 21)}
     />
   );
 }

@@ -280,6 +280,8 @@ export type Ingreso = {
   id_subcategoria: string | null;
   medio_pago: string;
   monto: number;
+  neto: number | null;
+  iva: number | null;
   descripcion: string | null;
   usuario: string | null;
   fecha: string;
@@ -296,6 +298,7 @@ export type IngresoRecurrente = {
   recurrencia: string;
   dia_mes: number;
   mes_anual: number | null;
+  lleva_iva: boolean;
   activo: boolean;
   ultimo_periodo_cargado: string | null;
 };
@@ -310,6 +313,7 @@ export type CargoRecurrenteMarca = {
   recurrencia: string;
   dia_mes: number;
   mes_anual: number | null;
+  lleva_iva: boolean;
   activo: boolean;
   ultimo_periodo_cargado: string | null;
 };

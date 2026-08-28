@@ -51,6 +51,17 @@ function periodoDe(recurrencia: string) {
   return recurrencia === "ANUAL" ? String(ahora.getFullYear()) : ahora.toISOString().slice(0, 7);
 }
 
+function redondear2(valor: number) {
+  return Math.round(valor * 100) / 100;
+}
+
+// Mismo parámetro que ya usan Liquidaciones y Rentabilidad — no se define
+// un % de IVA aparte acá.
+async function ivaGeneralPorcentaje(supabase: SupabaseClient) {
+  const { data } = await supabase.from("configuracion").select("valor").eq("parametro", "IVA_GENERAL_PORCENTAJE").maybeSingle();
+  return Number(data?.valor ?? 21);
+}
+
 // ===================== CATEGORÍAS (cargo a marca) =====================
 
 async function resolveCategoriaCargoMarca(supabase: SupabaseClient, formData: FormData) {
@@ -166,20 +177,27 @@ export async function registrarCargoMarcaUnico(idMarca: string, formData: FormDa
   const permisoError = await requireAdmin();
   if (permisoError) return { error: permisoError };
 
-  const monto = number(formData, "monto");
-  if (!monto || monto <= 0) return { error: "El monto tiene que ser mayor a 0" };
+  // El monto que se carga acá siempre es el neto — el IVA se suma aparte,
+  // solo si se tildó "lleva IVA".
+  const neto = number(formData, "monto");
+  if (!neto || neto <= 0) return { error: "El monto tiene que ser mayor a 0" };
 
   try {
     const supabase = getSupabaseServerClient();
     const idCategoria = await resolveCategoriaCargoMarca(supabase, formData);
     if (!idCategoria) return { error: "Elegí o creá una categoría" };
     const idSubcategoria = await resolveSubcategoriaCargoMarca(supabase, formData, idCategoria);
+    const llevaIva = formData.get("lleva_iva") === "on";
+    const iva = llevaIva ? redondear2(neto * ((await ivaGeneralPorcentaje(supabase)) / 100)) : 0;
+    const importe = redondear2(neto + iva);
 
     const sesion = await sesionActual();
     await registrarMovimientoComercial(supabase, {
       idMarca,
       tipoCargo: "OTRO_CARGO",
-      importe: monto,
+      importe,
+      neto,
+      iva,
       idCategoria,
       idSubcategoria,
       usuario: sesion?.nombre ?? null,
@@ -224,6 +242,7 @@ export async function crearCargoRecurrenteMarca(idMarca: string, formData: FormD
     const recurrencia = text(formData, "recurrencia") === "ANUAL" ? "ANUAL" : "MENSUAL";
     const diaMes = Number(formData.get("dia_mes") ?? 1);
     const mesAnual = recurrencia === "ANUAL" ? Number(formData.get("mes_anual") ?? 1) : null;
+    const llevaIva = formData.get("lleva_iva") === "on";
 
     const { error } = await supabase.from("cargos_recurrentes_marca").insert({
       id_marca: idMarca,
@@ -234,6 +253,7 @@ export async function crearCargoRecurrenteMarca(idMarca: string, formData: FormD
       recurrencia,
       dia_mes: diaMes,
       mes_anual: mesAnual,
+      lleva_iva: llevaIva,
       activo: true,
     });
     if (error) return { error: friendlyDbError(error) };
@@ -244,10 +264,14 @@ export async function crearCargoRecurrenteMarca(idMarca: string, formData: FormD
   }
 }
 
-export async function cargarCargoRecurrenteMarca(idRecurrente: string, montoConfirmado: number): Promise<{ error: string | null }> {
+export async function cargarCargoRecurrenteMarca(
+  idRecurrente: string,
+  montoConfirmadoNeto: number,
+  llevaIva: boolean
+): Promise<{ error: string | null }> {
   const permisoError = await requireAdmin();
   if (permisoError) return { error: permisoError };
-  if (!montoConfirmado || montoConfirmado <= 0) return { error: "El monto tiene que ser mayor a 0" };
+  if (!montoConfirmadoNeto || montoConfirmadoNeto <= 0) return { error: "El monto tiene que ser mayor a 0" };
 
   try {
     const supabase = getSupabaseServerClient();
@@ -264,11 +288,16 @@ export async function cargarCargoRecurrenteMarca(idRecurrente: string, montoConf
       return { error: `Ya se generó el cargo de ${periodo} para esta marca.` };
     }
 
+    const iva = llevaIva ? redondear2(montoConfirmadoNeto * ((await ivaGeneralPorcentaje(supabase)) / 100)) : 0;
+    const importe = redondear2(montoConfirmadoNeto + iva);
+
     const sesion = await sesionActual();
     await registrarMovimientoComercial(supabase, {
       idMarca: recurrente.id_marca,
       tipoCargo: "CARGO_RECURRENTE" as TipoCargoComercial,
-      importe: montoConfirmado,
+      importe,
+      neto: montoConfirmadoNeto,
+      iva,
       periodo,
       idCategoria: recurrente.id_categoria,
       idSubcategoria: recurrente.id_subcategoria,
@@ -315,8 +344,10 @@ export async function crearIngreso(formData: FormData): Promise<{ error: string 
   const permisoError = await requireAdmin();
   if (permisoError) return { error: permisoError };
 
-  const monto = number(formData, "monto");
-  if (!monto || monto <= 0) return { error: "El monto tiene que ser mayor a 0" };
+  // El monto que se carga acá siempre es el neto — el IVA se suma aparte,
+  // solo si se tildó "lleva IVA".
+  const neto = number(formData, "monto");
+  if (!neto || neto <= 0) return { error: "El monto tiene que ser mayor a 0" };
 
   try {
     const supabase = getSupabaseServerClient();
@@ -326,6 +357,9 @@ export async function crearIngreso(formData: FormData): Promise<{ error: string 
     const medioPago = text(formData, "medio_pago") ?? "TRANSFERENCIA";
     const descripcion = text(formData, "descripcion");
     const idLocal = text(formData, "id_local");
+    const llevaIva = formData.get("lleva_iva") === "on";
+    const iva = llevaIva ? redondear2(neto * ((await ivaGeneralPorcentaje(supabase)) / 100)) : 0;
+    const monto = redondear2(neto + iva);
     const sesion = await sesionActual();
 
     const { error } = await supabase.from("ingresos").insert({
@@ -334,6 +368,8 @@ export async function crearIngreso(formData: FormData): Promise<{ error: string 
       id_subcategoria: idSubcategoria,
       medio_pago: medioPago,
       monto,
+      neto,
+      iva,
       descripcion,
       usuario: sesion?.nombre ?? null,
     });
@@ -392,6 +428,7 @@ export async function crearIngresoRecurrente(formData: FormData): Promise<{ erro
     const recurrencia = text(formData, "recurrencia") === "ANUAL" ? "ANUAL" : "MENSUAL";
     const diaMes = Number(formData.get("dia_mes") ?? 1);
     const mesAnual = recurrencia === "ANUAL" ? Number(formData.get("mes_anual") ?? 1) : null;
+    const llevaIva = formData.get("lleva_iva") === "on";
 
     const { error } = await supabase.from("ingresos_recurrentes").insert({
       id_categoria: idCategoria,
@@ -401,6 +438,7 @@ export async function crearIngresoRecurrente(formData: FormData): Promise<{ erro
       recurrencia,
       dia_mes: diaMes,
       mes_anual: mesAnual,
+      lleva_iva: llevaIva,
       activo: true,
     });
     if (error) return { error: friendlyDbError(error) };
@@ -411,10 +449,15 @@ export async function crearIngresoRecurrente(formData: FormData): Promise<{ erro
   }
 }
 
-export async function cargarIngresoRecurrente(idRecurrente: string, montoConfirmado: number, medioPago: string): Promise<{ error: string | null }> {
+export async function cargarIngresoRecurrente(
+  idRecurrente: string,
+  montoConfirmadoNeto: number,
+  medioPago: string,
+  llevaIva: boolean
+): Promise<{ error: string | null }> {
   const permisoError = await requireAdmin();
   if (permisoError) return { error: permisoError };
-  if (!montoConfirmado || montoConfirmado <= 0) return { error: "El monto tiene que ser mayor a 0" };
+  if (!montoConfirmadoNeto || montoConfirmadoNeto <= 0) return { error: "El monto tiene que ser mayor a 0" };
 
   try {
     const supabase = getSupabaseServerClient();
@@ -431,12 +474,17 @@ export async function cargarIngresoRecurrente(idRecurrente: string, montoConfirm
       return { error: `Ya se cargó el ingreso de ${periodo}.` };
     }
 
+    const iva = llevaIva ? redondear2(montoConfirmadoNeto * ((await ivaGeneralPorcentaje(supabase)) / 100)) : 0;
+    const monto = redondear2(montoConfirmadoNeto + iva);
+
     const sesion = await sesionActual();
     const { error } = await supabase.from("ingresos").insert({
       id_categoria: recurrente.id_categoria,
       id_subcategoria: recurrente.id_subcategoria,
       medio_pago: medioPago,
-      monto: montoConfirmado,
+      monto,
+      neto: montoConfirmadoNeto,
+      iva,
       descripcion: recurrente.descripcion,
       usuario: sesion?.nombre ?? null,
     });
@@ -445,7 +493,7 @@ export async function cargarIngresoRecurrente(idRecurrente: string, montoConfirm
     if (medioPago === "EFECTIVO_ADMIN") {
       await supabase.from("movimientos_caja_admin").insert({
         tipo: "INGRESO_OTRO",
-        monto: montoConfirmado,
+        monto,
         id_gasto: null,
         descripcion: recurrente.descripcion,
         usuario: sesion?.nombre ?? null,
@@ -485,13 +533,13 @@ export async function listarUltimosMovimientos(): Promise<MovimientoUnificado[]>
       .limit(LIMITE_MOVIMIENTOS),
     supabase
       .from("movimientos_cuenta_comercial_marca")
-      .select("id_movimiento, fecha, observaciones, importe, tipo_cargo, id_marca, id_categoria")
+      .select("id_movimiento, fecha, observaciones, importe, neto, iva, tipo_cargo, id_marca, id_categoria")
       .in("tipo_cargo", ["OTRO_CARGO", "CARGO_RECURRENTE", "GASTO_FIJO_MENSUAL"])
       .order("fecha", { ascending: false })
       .limit(LIMITE_MOVIMIENTOS),
     supabase
       .from("ingresos")
-      .select("id_ingreso, fecha, descripcion, monto, id_categoria")
+      .select("id_ingreso, fecha, descripcion, monto, neto, iva, id_categoria")
       .order("fecha", { ascending: false })
       .limit(LIMITE_MOVIMIENTOS),
   ]);
@@ -523,11 +571,14 @@ export async function listarUltimosMovimientos(): Promise<MovimientoUnificado[]>
     monto: -(g.monto as number),
     recurrente: false,
   }));
+  const notaIva = (neto: unknown, iva: unknown) =>
+    typeof iva === "number" && iva > 0 ? ` (neto $${(neto as number).toLocaleString("es-AR")} + IVA $${iva.toLocaleString("es-AR")})` : "";
+
   const cargos: MovimientoUnificado[] = cargosData.map((c) => ({
     id: c.id_movimiento as string,
     tipo: "CARGO_MARCA",
     fecha: c.fecha as string,
-    concepto: `${nombreMarca.get(c.id_marca as string) ?? "Marca"} — ${(c.observaciones as string | null) ?? "Cargo"}`,
+    concepto: `${nombreMarca.get(c.id_marca as string) ?? "Marca"} — ${(c.observaciones as string | null) ?? "Cargo"}${notaIva(c.neto, c.iva)}`,
     categoria: c.id_categoria ? nombreCategoriaCargo.get(c.id_categoria as string) ?? "—" : "—",
     monto: c.importe as number,
     recurrente: c.tipo_cargo === "CARGO_RECURRENTE" || c.tipo_cargo === "GASTO_FIJO_MENSUAL",
@@ -536,7 +587,7 @@ export async function listarUltimosMovimientos(): Promise<MovimientoUnificado[]>
     id: i.id_ingreso as string,
     tipo: "INGRESO",
     fecha: i.fecha as string,
-    concepto: (i.descripcion as string | null) ?? "Ingreso",
+    concepto: `${(i.descripcion as string | null) ?? "Ingreso"}${notaIva(i.neto, i.iva)}`,
     categoria: nombreCategoriaIngreso.get(i.id_categoria as string) ?? "—",
     monto: i.monto as number,
     recurrente: false,

@@ -32,6 +32,10 @@ function formatearMonto(valor: number) {
   return Math.round(Math.abs(valor)).toLocaleString("es-AR", { maximumFractionDigits: 0 });
 }
 
+function redondear2(valor: number) {
+  return Math.round(valor * 100) / 100;
+}
+
 function periodoActual(recurrencia: string) {
   const ahora = new Date();
   return recurrencia === "ANUAL" ? String(ahora.getFullYear()) : ahora.toISOString().slice(0, 7);
@@ -48,6 +52,8 @@ type PendienteRecurrente = {
   montoEstimado: number;
   extra: string | null;
   necesitaMedioPago: boolean;
+  puedeIva: boolean;
+  llevaIvaDefault: boolean;
 };
 
 const TIPO_BADGE: Record<Tab, { label: string; clases: string }> = {
@@ -67,6 +73,7 @@ export default function GastosIngresosApp({
   subcategoriasIngreso,
   topeAutorizacion,
   puedeAutorizarSinLimite,
+  ivaGeneralPorcentaje,
 }: {
   locales: Local[];
   marcas: Marca[];
@@ -78,6 +85,7 @@ export default function GastosIngresosApp({
   subcategoriasIngreso: SubcategoriaIngreso[];
   topeAutorizacion: number;
   puedeAutorizarSinLimite: boolean;
+  ivaGeneralPorcentaje: number;
 }) {
   const [tab, setTab] = useState<Tab>("gasto");
   const [recurrencia, setRecurrencia] = useState<Recurrencia>("UNICO");
@@ -92,6 +100,7 @@ export default function GastosIngresosApp({
   const [idLocal, setIdLocal] = useState("");
   const [diaMes, setDiaMes] = useState("1");
   const [mesAnual, setMesAnual] = useState("1");
+  const [llevaIva, setLlevaIva] = useState(false);
   const [claveAdmin, setClaveAdmin] = useState("");
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -100,6 +109,7 @@ export default function GastosIngresosApp({
   const [pendientes, setPendientes] = useState<PendienteRecurrente[]>([]);
   const [montoCargar, setMontoCargar] = useState<Record<string, string>>({});
   const [medioCargar, setMedioCargar] = useState<Record<string, string>>({});
+  const [ivaCargar, setIvaCargar] = useState<Record<string, boolean>>({});
   const [cargandoId, setCargandoId] = useState<string | null>(null);
 
   const [pendienteCobro, setPendienteCobro] = useState<{ idMarca: string; nombre: string; saldo: number }[]>([]);
@@ -107,6 +117,7 @@ export default function GastosIngresosApp({
   const [cargandoListas, setCargandoListas] = useState(true);
 
   const montoNum = Number(monto.replace(/[^\d.-]/g, "")) || 0;
+  const montoConIva = redondear2(montoNum * (1 + ivaGeneralPorcentaje / 100));
   const mostrarAuth = tab === "gasto" && recurrencia === "UNICO" && !puedeAutorizarSinLimite && montoNum > topeAutorizacion;
 
   const categorias = tab === "gasto" ? categoriasGasto : tab === "cargo" ? categoriasCargo : categoriasIngreso;
@@ -120,17 +131,44 @@ export default function GastosIngresosApp({
         const pend: PendienteRecurrente[] = [];
         for (const r of gastoRec) {
           if (r.ultimo_mes_cargado !== periodoActual("MENSUAL")) {
-            pend.push({ id: r.id_recurrente, tipo: "gasto", descripcion: r.descripcion, montoEstimado: r.monto_estimado, extra: null, necesitaMedioPago: true });
+            pend.push({
+              id: r.id_recurrente,
+              tipo: "gasto",
+              descripcion: r.descripcion,
+              montoEstimado: r.monto_estimado,
+              extra: null,
+              necesitaMedioPago: true,
+              puedeIva: false,
+              llevaIvaDefault: false,
+            });
           }
         }
         for (const r of cargoRec) {
           if (r.ultimo_periodo_cargado !== periodoActual(r.recurrencia)) {
-            pend.push({ id: r.id_recurrente, tipo: "cargo", descripcion: r.descripcion, montoEstimado: r.monto_estimado, extra: r.nombreMarca, necesitaMedioPago: false });
+            pend.push({
+              id: r.id_recurrente,
+              tipo: "cargo",
+              descripcion: r.descripcion,
+              montoEstimado: r.monto_estimado,
+              extra: r.nombreMarca,
+              necesitaMedioPago: false,
+              puedeIva: true,
+              llevaIvaDefault: !!r.lleva_iva,
+            });
           }
         }
         for (const r of ingresoRec) {
           if (r.ultimo_periodo_cargado !== periodoActual(r.recurrencia)) {
-            pend.push({ id: r.id_recurrente, tipo: "ingreso", descripcion: r.descripcion, montoEstimado: r.monto_estimado, extra: null, necesitaMedioPago: true });
+            pend.push({
+              id: r.id_recurrente,
+              tipo: "ingreso",
+              descripcion: r.descripcion,
+              montoEstimado: r.monto_estimado,
+              extra: null,
+              necesitaMedioPago: true,
+              puedeIva: true,
+              llevaIvaDefault: !!r.lleva_iva,
+            });
           }
         }
         setPendientes(pend);
@@ -152,6 +190,7 @@ export default function GastosIngresosApp({
     setNuevaSubcategoria("");
     setMonto("");
     setDescripcion("");
+    setLlevaIva(false);
     setError(null);
     setMensajeOk(null);
   }
@@ -169,6 +208,7 @@ export default function GastosIngresosApp({
     setNuevaSubcategoria("");
     setIdSubcategoria("");
     setClaveAdmin("");
+    setLlevaIva(false);
   }
 
   function handleGuardar() {
@@ -197,6 +237,7 @@ export default function GastosIngresosApp({
       fd.append("id_subcategoria", idSubcategoria);
     }
     fd.append("descripcion", descripcion);
+    if ((tab === "cargo" || tab === "ingreso") && llevaIva) fd.append("lleva_iva", "on");
 
     let promesa: Promise<{ error: string | null }>;
 
@@ -258,12 +299,13 @@ export default function GastosIngresosApp({
   function handleCargarPendiente(item: PendienteRecurrente) {
     const montoNum = Number((montoCargar[item.id] ?? String(item.montoEstimado)).replace(/[^\d.-]/g, "")) || 0;
     const medio = medioCargar[item.id] ?? "TRANSFERENCIA";
+    const iva = ivaCargar[item.id] ?? item.llevaIvaDefault;
     setError(null);
     setCargandoId(item.id);
     let promesa: Promise<{ error: string | null } | void>;
     if (item.tipo === "gasto") promesa = cargarRecurrente(item.id, montoNum, medio);
-    else if (item.tipo === "cargo") promesa = cargarCargoRecurrenteMarca(item.id, montoNum);
-    else promesa = cargarIngresoRecurrente(item.id, montoNum, medio);
+    else if (item.tipo === "cargo") promesa = cargarCargoRecurrenteMarca(item.id, montoNum, iva);
+    else promesa = cargarIngresoRecurrente(item.id, montoNum, medio, iva);
     promesa
       .then((res) => {
         if (res && res.error) {
@@ -365,8 +407,24 @@ export default function GastosIngresosApp({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
           <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-1">Monto {recurrencia !== "UNICO" && "estimado"}</label>
+            <label className="block text-sm font-medium text-neutral-700 mb-1">
+              Monto {recurrencia !== "UNICO" && "estimado"} {(tab === "cargo" || tab === "ingreso") ? "(sin IVA)" : ""}
+            </label>
             <input value={monto} onChange={(e) => setMonto(e.target.value)} placeholder="$0" className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm" />
+
+            {(tab === "cargo" || tab === "ingreso") && (
+              <div className="mt-2">
+                <label className="flex items-center gap-2 text-sm text-neutral-700 cursor-pointer">
+                  <input type="checkbox" checked={llevaIva} onChange={(e) => setLlevaIva(e.target.checked)} />
+                  Agregar IVA ({ivaGeneralPorcentaje}%)
+                </label>
+                {llevaIva && montoNum > 0 && (
+                  <p className="text-xs text-neutral-500 bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2 mt-1.5">
+                    ${formatearMonto(montoNum)} + IVA ${formatearMonto(montoConIva - montoNum)} = <span className="font-bold text-neutral-800">${formatearMonto(montoConIva)}</span>
+                  </p>
+                )}
+              </div>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-neutral-700 mb-1">Recurrencia</label>
@@ -482,6 +540,16 @@ export default function GastosIngresosApp({
                   onChange={(e) => setMontoCargar((v) => ({ ...v, [p.id]: e.target.value }))}
                   className="w-24 border border-neutral-300 rounded-lg px-2 py-1 text-xs text-right"
                 />
+                {p.puedeIva && (
+                  <label className="flex items-center gap-1 text-xs text-neutral-600 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={ivaCargar[p.id] ?? p.llevaIvaDefault}
+                      onChange={(e) => setIvaCargar((v) => ({ ...v, [p.id]: e.target.checked }))}
+                    />
+                    +IVA
+                  </label>
+                )}
                 {p.necesitaMedioPago && (
                   <select
                     value={medioCargar[p.id] ?? "TRANSFERENCIA"}

@@ -54,6 +54,12 @@ export async function registrarMovimientoComercial(
     idFee?: string | null;
     idCategoria?: string | null;
     idSubcategoria?: string | null;
+    // Desglose opcional del importe (neto + iva = importe) — permite
+    // sumar el IVA por separado más adelante para un reporte de IVA a
+    // pagar, sin cambiar cómo se calcula el saldo (que sigue siendo la
+    // suma de "importe", el total real que afecta la deuda de la marca).
+    neto?: number | null;
+    iva?: number | null;
     usuario?: string | null;
     observaciones?: string | null;
   }
@@ -65,6 +71,8 @@ export async function registrarMovimientoComercial(
     id_local: params.idLocal ?? null,
     tipo_cargo: params.tipoCargo,
     importe: params.importe,
+    neto: params.neto ?? null,
+    iva: params.iva ?? null,
     saldo_anterior: saldoAnterior,
     saldo_nuevo: saldoNuevo,
     periodo: params.periodo ?? null,
