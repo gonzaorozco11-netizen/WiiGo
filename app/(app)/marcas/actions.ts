@@ -55,7 +55,6 @@ function marcaFromForm(formData: FormData) {
     trasladar_imp_creditos: bool(formData, "trasladar_imp_creditos"),
     trasladar_otras_retenciones: bool(formData, "trasladar_otras_retenciones"),
     trasladar_otros_costos_cobro: bool(formData, "trasladar_otros_costos_cobro"),
-    imp_debitos_porcentaje: number(formData, "imp_debitos_porcentaje"),
     trasladar_imp_debitos: bool(formData, "trasladar_imp_debitos"),
     frecuencia_liquidacion: text(formData, "frecuencia_liquidacion"),
   };

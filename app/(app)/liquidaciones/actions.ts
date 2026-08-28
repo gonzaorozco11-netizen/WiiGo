@@ -30,10 +30,17 @@ async function tasasGenerales(supabase: SupabaseClient) {
   const { data } = await supabase
     .from("configuracion")
     .select("parametro, valor")
-    .in("parametro", ["IMP_CREDITOS_PORCENTAJE", "IVA_GENERAL_PORCENTAJE", "SIRCREB_PORCENTAJE", ...Object.values(CLAVE_COMISION_MP)]);
+    .in("parametro", [
+      "IMP_CREDITOS_PORCENTAJE",
+      "IMP_DEBITOS_PORCENTAJE",
+      "IVA_GENERAL_PORCENTAJE",
+      "SIRCREB_PORCENTAJE",
+      ...Object.values(CLAVE_COMISION_MP),
+    ]);
   const cfg = Object.fromEntries((data ?? []).map((r) => [r.parametro, Number(r.valor ?? 0)]));
   return {
     impCreditos: cfg.IMP_CREDITOS_PORCENTAJE ?? 0,
+    impDebitos: cfg.IMP_DEBITOS_PORCENTAJE ?? 0,
     ivaGeneral: cfg.IVA_GENERAL_PORCENTAJE ?? 21,
     sircreb: cfg.SIRCREB_PORCENTAJE ?? 0,
     mpComisionPorFormaPago: Object.fromEntries(
@@ -92,7 +99,7 @@ async function construirLineas(supabase: SupabaseClient, idMarca: string, ventas
   const { data: marca, error: errorMarca } = await supabase
     .from("marcas")
     .select(
-      "nombre, royalty_porcentaje, iva_royalty_porcentaje, trasladar_iva_comision, trasladar_comision_cobro, trasladar_sircreb, trasladar_imp_creditos, trasladar_imp_debitos, imp_debitos_porcentaje"
+      "nombre, royalty_porcentaje, iva_royalty_porcentaje, trasladar_iva_comision, trasladar_comision_cobro, trasladar_sircreb, trasladar_imp_creditos, trasladar_imp_debitos"
     )
     .eq("id_marca", idMarca)
     .maybeSingle();
@@ -184,13 +191,10 @@ async function construirLineas(supabase: SupabaseClient, idMarca: string, ventas
         ? Math.round(ventaBruta * (tasas.sircreb / 100))
         : 0;
     // Impuesto a los Débitos: al revés de los demás, hoy WiiGo lo absorbe
-    // siempre (ninguna marca lo tiene tildado) — usa su propia tasa
-    // cargada en la ficha de la marca, no una tasa general, porque puede
-    // variar de una marca a otra.
+    // siempre (ninguna marca lo tiene tildado) — misma tasa general que el
+    // resto, cargada en Configuración.
     const impDebitosLinea =
-      !esEfectivo && marca.trasladar_imp_debitos
-        ? Math.round(ventaBruta * ((marca.imp_debitos_porcentaje ?? 0) / 100))
-        : 0;
+      !esEfectivo && marca.trasladar_imp_debitos ? Math.round(ventaBruta * (tasas.impDebitos / 100)) : 0;
     const netoARendir = ventaBruta - comisionWiigo - ivaComision - impCreditosLinea - feeMp - sircrebLinea - impDebitosLinea;
 
     lineas.push({

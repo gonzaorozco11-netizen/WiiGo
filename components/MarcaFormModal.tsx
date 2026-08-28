@@ -169,7 +169,7 @@ export default function MarcaFormModal({
 
           <Section title="Costos de cobro a trasladar a la marca">
             <Checkbox
-              label="Comisión de cobro"
+              label="Comisión de Mercado Pago"
               name="trasladar_comision_cobro"
               defaultChecked={marca?.trasladar_comision_cobro}
             />
@@ -183,18 +183,15 @@ export default function MarcaFormModal({
               name="trasladar_imp_creditos"
               defaultChecked={marca ? marca.trasladar_imp_creditos : true}
             />
-            <Field
-              label="Impuesto a los débitos (%)"
-              name="imp_debitos_porcentaje"
-              defaultValue={marca?.imp_debitos_porcentaje ?? ""}
-              type="number"
-              step="0.001"
-            />
             <Checkbox
-              label="Trasladar impuesto a los débitos"
+              label="Impuesto a los débitos"
               name="trasladar_imp_debitos"
               defaultChecked={marca?.trasladar_imp_debitos}
             />
+            <p className="sm:col-span-2 text-xs text-neutral-400 -mt-1">
+              El % de cada uno de estos (Mercado Pago, SIRCREB, Créditos, Débitos) se carga una sola vez en
+              Configuración — acá solo elegís si a esta marca se le traslada o no.
+            </p>
             <div className="sm:col-span-2 opacity-50 pointer-events-none" title="Todavía no implementado en el cálculo de liquidaciones">
               <p className="text-xs font-semibold text-neutral-400 uppercase mb-1.5">Próximamente (no afecta el cálculo)</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
