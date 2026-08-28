@@ -51,6 +51,7 @@ const GROUPS: NavGroup[] = [
       { href: "/gastos", label: "Gastos" },
       { href: "/gastos-ingresos", label: "Gastos e Ingresos" },
       { href: "/resumen-ventas", label: "Resumen de ventas" },
+      { href: "/resultado-mes", label: "Resultado del mes" },
       { href: "/rentabilidad", label: "Rentabilidad" },
     ],
   },

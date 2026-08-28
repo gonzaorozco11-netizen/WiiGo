@@ -104,7 +104,7 @@ type VentaMinima = {
 // arma el detalle línea por línea con las deducciones. El royalty y el
 // IVA sobre royalty salen de la ficha de la marca; las tasas generales
 // (Imp. a los Créditos, comisión MP), de Configuración.
-async function construirLineas(supabase: SupabaseClient, idMarca: string, ventasFiltradas: VentaMinima[]) {
+export async function construirLineas(supabase: SupabaseClient, idMarca: string, ventasFiltradas: VentaMinima[]) {
   const { data: marca, error: errorMarca } = await supabase
     .from("marcas")
     .select(
