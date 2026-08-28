@@ -53,6 +53,10 @@ export type ProveedorConSaldo = {
   observaciones: string | null;
   fecha_alta: string;
   saldo: number;
+  // Recepciones que todavía no tienen su factura (o, en LIQUIDACION_VENTA,
+  // su costo) cargada — es el aviso concreto de "esto está pendiente" que
+  // le faltaba a administración.
+  pendientesFacturar: number;
 };
 
 export async function listarProveedores(): Promise<ProveedorConSaldo[]> {
@@ -61,7 +65,18 @@ export async function listarProveedores(): Promise<ProveedorConSaldo[]> {
   if (error) throw new Error(friendlyDbError(error));
   const proveedores = data ?? [];
   const saldos = await saldosPorProveedor(supabase, proveedores.map((p) => p.id_proveedor));
-  return proveedores.map((p) => ({ ...p, saldo: saldos.get(p.id_proveedor) ?? 0 }));
+
+  const { data: pendientes } = await supabase.from("recepciones_proveedor").select("id_proveedor").eq("facturada", false);
+  const pendientesPorProveedor = new Map<string, number>();
+  for (const r of pendientes ?? []) {
+    pendientesPorProveedor.set(r.id_proveedor, (pendientesPorProveedor.get(r.id_proveedor) ?? 0) + 1);
+  }
+
+  return proveedores.map((p) => ({
+    ...p,
+    saldo: saldos.get(p.id_proveedor) ?? 0,
+    pendientesFacturar: pendientesPorProveedor.get(p.id_proveedor) ?? 0,
+  }));
 }
 
 export async function crearProveedor(formData: FormData): Promise<{ error: string | null }> {
@@ -379,6 +394,7 @@ export async function listarDevolucionesProveedor(idProveedor: string) {
 // de cuenta corriente — solo actualiza productos.costo_informado, que es lo
 // que después usa la liquidación por venta para calcular cuánto se le debe.
 export async function actualizarCostosRecepcion(
+  idOrden: string,
   costos: { idVariante: string; costo: number }[]
 ): Promise<{ error: string | null }> {
   const permisoError = await requireAdmin();
@@ -398,6 +414,10 @@ export async function actualizarCostosRecepcion(
       if (error) return { error: friendlyDbError(error) };
     }
 
+    // Marca la recepción como procesada — es lo que hace que deje de
+    // aparecer en "pendientes de facturar" para administración.
+    await supabase.from("recepciones_proveedor").update({ facturada: true }).eq("id_orden", idOrden);
+
     revalidatePath("/proveedores");
     revalidatePath("/productos");
     return { error: null };
@@ -416,10 +436,14 @@ export async function actualizarCostosRecepcion(
 export async function calcularResumenPeriodoProveedor(idProveedor: string, fechaDesde: string, fechaHasta: string) {
   const supabase = getSupabaseServerClient();
 
+  // facturada=false es lo que evita cobrar dos veces lo mismo si alguna vez
+  // se eligen rangos de fechas que se pisan entre sí — el filtro real de
+  // "ya está cubierto" es este flag, la fecha es solo para juntar el lote.
   const { data: recepciones } = await supabase
     .from("recepciones_proveedor")
     .select("id_recepcion")
     .eq("id_proveedor", idProveedor)
+    .eq("facturada", false)
     .gte("fecha", `${fechaDesde}T00:00:00`)
     .lte("fecha", `${fechaHasta}T23:59:59`);
   const idsRecepcion = (recepciones ?? []).map((r) => r.id_recepcion as string);
@@ -433,6 +457,7 @@ export async function calcularResumenPeriodoProveedor(idProveedor: string, fecha
     .from("devoluciones_proveedor")
     .select("id_variante, cantidad")
     .eq("id_proveedor", idProveedor)
+    .eq("facturada", false)
     .gte("fecha", `${fechaDesde}T00:00:00`)
     .lte("fecha", `${fechaHasta}T23:59:59`);
 
@@ -518,6 +543,28 @@ export async function cargarFacturaCompra(params: {
         costo_anterior: costoAnterior,
       });
       if (errorDetalle) return { error: friendlyDbError(errorDetalle) };
+    }
+
+    // Marca lo cubierto como ya facturado, para que deje de aparecer como
+    // pendiente — por orden puntual (REMITO) o por rango de fechas (PERIODO).
+    if (params.idOrden) {
+      await supabase.from("recepciones_proveedor").update({ facturada: true }).eq("id_orden", params.idOrden);
+    }
+    if (params.fechaPeriodoDesde && params.fechaPeriodoHasta) {
+      await supabase
+        .from("recepciones_proveedor")
+        .update({ facturada: true })
+        .eq("id_proveedor", params.idProveedor)
+        .eq("facturada", false)
+        .gte("fecha", `${params.fechaPeriodoDesde}T00:00:00`)
+        .lte("fecha", `${params.fechaPeriodoHasta}T23:59:59`);
+      await supabase
+        .from("devoluciones_proveedor")
+        .update({ facturada: true })
+        .eq("id_proveedor", params.idProveedor)
+        .eq("facturada", false)
+        .gte("fecha", `${params.fechaPeriodoDesde}T00:00:00`)
+        .lte("fecha", `${params.fechaPeriodoHasta}T23:59:59`);
     }
 
     await registrarMovimientoProveedor(supabase, {

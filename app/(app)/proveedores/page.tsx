@@ -7,6 +7,7 @@ import {
   type OrdenCompraProveedor,
   type DetalleOrdenCompra,
   type DetalleRecepcionProveedor,
+  type RecepcionProveedor,
 } from "@/lib/supabase";
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import PantallaBloqueada from "@/components/PantallaBloqueada";
@@ -30,6 +31,7 @@ export default async function ProveedoresPage() {
     ordenesRes,
     detalleOrdenesRes,
     detalleRecepcionRes,
+    recepcionesRes,
   ] = await Promise.all([
     listarProveedores(),
     supabase.from("locales").select("*").eq("estado", "ACTIVO").order("nombre", { ascending: true }),
@@ -39,6 +41,7 @@ export default async function ProveedoresPage() {
     supabase.from("ordenes_compra_proveedor").select("*").order("fecha_alta", { ascending: false }),
     supabase.from("detalle_orden_compra").select("*"),
     supabase.from("detalle_recepcion_proveedor").select("*").neq("estado_control", "COMPLETA"),
+    supabase.from("recepciones_proveedor").select("id_orden, facturada"),
   ]);
 
   const idsMarcaPropia = (marcasPropiasRes.data ?? []).map((m) => m.id_marca);
@@ -55,7 +58,8 @@ export default async function ProveedoresPage() {
     stockRes.error ||
     ordenesRes.error ||
     detalleOrdenesRes.error ||
-    detalleRecepcionRes.error;
+    detalleRecepcionRes.error ||
+    recepcionesRes.error;
 
   if (error) {
     return (
@@ -77,6 +81,7 @@ export default async function ProveedoresPage() {
       ordenes={(ordenesRes.data ?? []) as OrdenCompraProveedor[]}
       detalleOrdenes={(detalleOrdenesRes.data ?? []) as DetalleOrdenCompra[]}
       reclamos={(detalleRecepcionRes.data ?? []) as DetalleRecepcionProveedor[]}
+      recepciones={(recepcionesRes.data ?? []) as Pick<RecepcionProveedor, "id_orden" | "facturada">[]}
     />
   );
 }

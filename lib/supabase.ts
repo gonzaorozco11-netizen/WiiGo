@@ -359,6 +359,10 @@ export type RecepcionProveedor = {
   id_local: string;
   usuario: string | null;
   tiene_diferencias: boolean;
+  // true una vez que se cargó la factura/costo correspondiente — es lo que
+  // le permite a administración ver qué recepciones todavía le faltan
+  // procesar, en cualquiera de los 3 modos de facturación.
+  facturada: boolean;
   revisado_por_administracion: boolean;
   resolucion_observaciones: string | null;
   observaciones: string | null;
@@ -387,6 +391,7 @@ export type DevolucionProveedor = {
   fecha: string;
   motivo: string | null;
   usuario: string | null;
+  facturada: boolean;
 };
 
 // Acá recién aparece el precio real — nunca antes (ver DetalleOrdenCompra y

@@ -44,6 +44,7 @@ export default function ProveedoresApp({
   ordenes,
   detalleOrdenes,
   reclamos,
+  recepciones,
 }: {
   proveedores: ProveedorConSaldo[];
   esAdmin: boolean;
@@ -54,6 +55,7 @@ export default function ProveedoresApp({
   ordenes: OrdenCompraProveedor[];
   detalleOrdenes: DetalleOrdenCompra[];
   reclamos: DetalleRecepcionProveedor[];
+  recepciones: { id_orden: string; facturada: boolean }[];
 }) {
   const [tab, setTab] = useState<Tab>("CUENTAS");
 
@@ -81,6 +83,13 @@ export default function ProveedoresApp({
 
   const deudaTotal = proveedores.reduce((acc, p) => acc + Math.max(p.saldo, 0), 0);
   const conDeuda = proveedores.filter((p) => p.saldo > 0).length;
+  const totalPendientesFacturar = proveedores.reduce((acc, p) => acc + p.pendientesFacturar, 0);
+
+  const facturadaPorOrden = useMemo(() => {
+    const map = new Map<string, boolean>();
+    recepciones.forEach((r) => map.set(r.id_orden, r.facturada));
+    return map;
+  }, [recepciones]);
 
   function handleCambiarEstado(p: ProveedorConSaldo) {
     const nuevo = p.estado === "ACTIVO" ? "INACTIVO" : "ACTIVO";
@@ -178,9 +187,16 @@ export default function ProveedoresApp({
           </button>
         )}
       </div>
-      <p className="text-sm text-neutral-500 mb-4">
-        {conDeuda} proveedor{conDeuda === 1 ? "" : "es"} con deuda · ${formatearMonto(deudaTotal)} en total
-      </p>
+      <div className="mb-4">
+        <p className="text-sm text-neutral-500">
+          {conDeuda} proveedor{conDeuda === 1 ? "" : "es"} con deuda · ${formatearMonto(deudaTotal)} en total
+        </p>
+        {totalPendientesFacturar > 0 && (
+          <p className="text-sm font-semibold text-amber-700">
+            ⚠ {totalPendientesFacturar} recepción{totalPendientesFacturar === 1 ? "" : "es"} sin facturar todavía
+          </p>
+        )}
+      </div>
 
       <div className="flex gap-2 mb-4">
         <TabButton activo={tab === "CUENTAS"} onClick={() => setTab("CUENTAS")}>
@@ -256,6 +272,11 @@ export default function ProveedoresApp({
                           <td className="p-3 font-medium text-neutral-900">
                             {p.nombre}
                             {p.estado === "INACTIVO" && <span className="ml-2 text-xs text-neutral-400">(inactivo)</span>}
+                            {p.pendientesFacturar > 0 && (
+                              <span className="ml-2 text-xs font-semibold bg-amber-50 text-amber-700 rounded-full px-1.5 py-0.5">
+                                {p.pendientesFacturar} sin facturar
+                              </span>
+                            )}
                           </td>
                           <td className="p-3 text-neutral-500">{p.cuit ?? "—"}</td>
                           <td className="p-3 text-neutral-500">{p.condicion_pago_dias ? `${p.condicion_pago_dias} días` : "Contado"}</td>
@@ -295,7 +316,13 @@ export default function ProveedoresApp({
                       {seleccionado.cuit ? `CUIT ${seleccionado.cuit}` : "Sin CUIT cargado"} ·{" "}
                       {seleccionado.condicion_pago_dias ? `${seleccionado.condicion_pago_dias} días` : "Contado"}
                     </p>
-                    <p className="text-[11px] font-semibold text-accent mb-4">{MODO_LABEL[seleccionado.modo_facturacion] ?? seleccionado.modo_facturacion}</p>
+                    <p className="text-[11px] font-semibold text-accent mb-1">{MODO_LABEL[seleccionado.modo_facturacion] ?? seleccionado.modo_facturacion}</p>
+                    {seleccionado.pendientesFacturar > 0 && (
+                      <p className="text-[11px] font-semibold text-amber-700 mb-4">
+                        ⚠ {seleccionado.pendientesFacturar} recepción{seleccionado.pendientesFacturar === 1 ? "" : "es"} sin facturar
+                      </p>
+                    )}
+                    {seleccionado.pendientesFacturar === 0 && <div className="mb-4" />}
 
                     <div className={`rounded-xl p-4 mb-4 ${seleccionado.saldo > 0 ? "bg-red-50" : "bg-emerald-50"}`}>
                       <p className={`text-[11px] font-bold uppercase tracking-wide mb-0.5 ${seleccionado.saldo > 0 ? "text-red-700" : "text-emerald-700"}`}>
@@ -414,16 +441,25 @@ export default function ProveedoresApp({
                     </p>
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
-                    {o.estado !== "PENDIENTE" && esAdmin && proveedorPorId.get(o.id_proveedor)?.modo_facturacion === "REMITO" && (
-                      <button onClick={() => setFacturaOrdenAbierta(o)} className="text-sm text-accent hover:underline">
-                        Facturar
-                      </button>
+                    {o.estado !== "PENDIENTE" && facturadaPorOrden.get(o.id_orden) && (
+                      <span className="text-xs font-semibold text-emerald-600">✓ Facturada</span>
                     )}
-                    {o.estado !== "PENDIENTE" && esAdmin && proveedorPorId.get(o.id_proveedor)?.modo_facturacion === "LIQUIDACION_VENTA" && (
-                      <button onClick={() => setCostosOrdenAbierta(o)} className="text-sm text-accent hover:underline">
-                        Cargar factura
-                      </button>
-                    )}
+                    {o.estado !== "PENDIENTE" &&
+                      !facturadaPorOrden.get(o.id_orden) &&
+                      esAdmin &&
+                      proveedorPorId.get(o.id_proveedor)?.modo_facturacion === "REMITO" && (
+                        <button onClick={() => setFacturaOrdenAbierta(o)} className="text-sm text-accent hover:underline">
+                          Facturar
+                        </button>
+                      )}
+                    {o.estado !== "PENDIENTE" &&
+                      !facturadaPorOrden.get(o.id_orden) &&
+                      esAdmin &&
+                      proveedorPorId.get(o.id_proveedor)?.modo_facturacion === "LIQUIDACION_VENTA" && (
+                        <button onClick={() => setCostosOrdenAbierta(o)} className="text-sm text-accent hover:underline">
+                          Cargar factura
+                        </button>
+                      )}
                     <button onClick={() => setOrdenAbierta(o)} className="text-sm text-accent hover:underline">
                       {o.estado === "PENDIENTE" ? "Recepcionar" : "Ver"}
                     </button>

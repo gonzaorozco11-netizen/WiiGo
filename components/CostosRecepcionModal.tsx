@@ -35,6 +35,7 @@ export default function CostosRecepcionModal({
     startTransition(async () => {
       try {
         const res = await actualizarCostosRecepcion(
+          orden.id_orden,
           detalle.map((d) => ({ idVariante: d.id_variante, costo: Number(costos[d.id_variante]) || 0 }))
         );
         if (res.error) setError(res.error);
