@@ -49,6 +49,7 @@ const GROUPS: NavGroup[] = [
     items: [
       { href: "/dashboard", label: "Dashboard" },
       { href: "/gastos", label: "Gastos" },
+      { href: "/gastos-ingresos", label: "Gastos e Ingresos" },
       { href: "/resumen-ventas", label: "Resumen de ventas" },
       { href: "/rentabilidad", label: "Rentabilidad" },
     ],

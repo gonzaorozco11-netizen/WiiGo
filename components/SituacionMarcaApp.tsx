@@ -34,6 +34,7 @@ const ETIQUETA_TIPO_CARGO: Record<string, string> = {
   FEE_INGRESO: "Fee de ingreso",
   GASTO_FIJO_MENSUAL: "Gasto fijo mensual",
   OTRO_CARGO: "Otro cargo",
+  CARGO_RECURRENTE: "Cargo recurrente",
   PAGO: "Pago",
   AJUSTE: "Ajuste",
 };

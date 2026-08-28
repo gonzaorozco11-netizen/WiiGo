@@ -242,6 +242,78 @@ export type GastoRecurrente = {
   ultimo_mes_cargado: string | null;
 };
 
+// ===== Gastos e Ingresos unificado =====
+// Categorías separadas por tipo de movimiento a propósito: lo que se le
+// carga a una marca (canon, publicidad) no es del mismo mundo que un gasto
+// propio de WiiGo (alquiler, sueldos) ni que un ingreso ajeno a ventas
+// (sponsoreo) — mezclarlas en una sola lista sería confuso al elegir.
+export type CategoriaCargoMarca = {
+  id_categoria: string;
+  nombre: string;
+  estado: string;
+};
+
+export type SubcategoriaCargoMarca = {
+  id_subcategoria: string;
+  id_categoria: string;
+  nombre: string;
+  estado: string;
+};
+
+export type CategoriaIngreso = {
+  id_categoria: string;
+  nombre: string;
+  estado: string;
+};
+
+export type SubcategoriaIngreso = {
+  id_subcategoria: string;
+  id_categoria: string;
+  nombre: string;
+  estado: string;
+};
+
+export type Ingreso = {
+  id_ingreso: string;
+  id_local: string | null;
+  id_categoria: string;
+  id_subcategoria: string | null;
+  medio_pago: string;
+  monto: number;
+  descripcion: string | null;
+  usuario: string | null;
+  fecha: string;
+};
+
+// Mismo mecanismo semi-automático que GastoRecurrente: se define una vez, y
+// cada período hay que "cargarlo" a mano para confirmar el monto real.
+export type IngresoRecurrente = {
+  id_recurrente: string;
+  id_categoria: string;
+  id_subcategoria: string | null;
+  descripcion: string;
+  monto_estimado: number;
+  recurrencia: string;
+  dia_mes: number;
+  mes_anual: number | null;
+  activo: boolean;
+  ultimo_periodo_cargado: string | null;
+};
+
+export type CargoRecurrenteMarca = {
+  id_recurrente: string;
+  id_marca: string;
+  id_categoria: string;
+  id_subcategoria: string | null;
+  descripcion: string;
+  monto_estimado: number;
+  recurrencia: string;
+  dia_mes: number;
+  mes_anual: number | null;
+  activo: boolean;
+  ultimo_periodo_cargado: string | null;
+};
+
 export type MovimientoStock = {
   id_movimiento: string;
   id_variante: string;

@@ -40,7 +40,7 @@ function normalizarNombre(s: string) {
 // Mismo criterio que las subcategorías de Productos: si se escribió el
 // nombre de una categoría nueva, reutiliza la que ya exista con ese
 // nombre (ignorando may/min y tildes) en vez de crear una duplicada.
-async function resolveCategoria(supabase: SupabaseClient, formData: FormData) {
+export async function resolveCategoria(supabase: SupabaseClient, formData: FormData) {
   const nueva = text(formData, "nueva_categoria");
   if (!nueva) return text(formData, "id_categoria");
 
@@ -61,7 +61,7 @@ async function resolveCategoria(supabase: SupabaseClient, formData: FormData) {
   return data.id_categoria as string;
 }
 
-async function resolveSubcategoria(supabase: SupabaseClient, formData: FormData, idCategoria: string) {
+export async function resolveSubcategoria(supabase: SupabaseClient, formData: FormData, idCategoria: string) {
   const nueva = text(formData, "nueva_subcategoria_gasto");
   if (!nueva) return text(formData, "id_subcategoria");
 

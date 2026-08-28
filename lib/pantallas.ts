@@ -21,6 +21,7 @@ export const PANTALLAS_DISPONIBLES: PantallaDisponible[] = [
   { clave: "proveedores", label: "Proveedores", grupo: "Marcas y Proveedores" },
   { clave: "dashboard", label: "Dashboard", grupo: "Finanzas" },
   { clave: "gastos", label: "Gastos", grupo: "Finanzas" },
+  { clave: "gastos-ingresos", label: "Gastos e Ingresos", grupo: "Finanzas" },
   { clave: "resumen-ventas", label: "Resumen de ventas", grupo: "Finanzas" },
   { clave: "rentabilidad", label: "Rentabilidad", grupo: "Finanzas" },
   { clave: "turnos", label: "Turnos", grupo: "Local" },
