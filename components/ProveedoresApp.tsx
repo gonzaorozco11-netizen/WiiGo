@@ -1,9 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Local, Producto, VarianteProducto, Stock, OrdenCompraProveedor, DetalleOrdenCompra, DetalleRecepcionProveedor } from "@/lib/supabase";
 import type { ProveedorConSaldo } from "@/app/(app)/proveedores/actions";
-import { cambiarEstadoProveedor } from "@/app/(app)/proveedores/actions";
+import {
+  cambiarEstadoProveedor,
+  registrarPagoProveedor,
+  obtenerUrlComprobanteProveedor,
+  historialProveedorAction,
+} from "@/app/(app)/proveedores/actions";
 import ProveedorFormModal from "./ProveedorFormModal";
 import NuevaOrdenCompraModal from "./NuevaOrdenCompraModal";
 import RecepcionCompraModal from "./RecepcionCompraModal";
@@ -17,6 +22,21 @@ const MODO_LABEL: Record<string, string> = {
   REMITO: "Factura por orden puntual",
   PERIODO: "Factura por período",
   LIQUIDACION_VENTA: "Liquidación por venta",
+};
+
+const MEDIO_PAGO_LABEL: Record<string, string> = {
+  EFECTIVO_TURNO: "💵 Efectivo del turno",
+  EFECTIVO_ADMIN: "🔒 Caja Administración",
+  TRANSFERENCIA: "🏦 Transferencia",
+  MERCADO_PAGO: "💳 Mercado Pago / Tarjeta",
+};
+
+const TIPO_MOVIMIENTO_LABEL: Record<string, string> = {
+  FACTURA_COMPRA: "Factura de compra",
+  LIQUIDACION: "Liquidación",
+  PAGO: "Pago",
+  NOTA_CREDITO: "Nota de crédito",
+  AJUSTE: "Ajuste",
 };
 
 type FiltroEstado = "TODOS" | "CON_DEUDA" | "AL_DIA";
@@ -45,6 +65,7 @@ export default function ProveedoresApp({
   detalleOrdenes,
   reclamos,
   recepciones,
+  turnosAbiertos,
 }: {
   proveedores: ProveedorConSaldo[];
   esAdmin: boolean;
@@ -56,6 +77,7 @@ export default function ProveedoresApp({
   detalleOrdenes: DetalleOrdenCompra[];
   reclamos: DetalleRecepcionProveedor[];
   recepciones: { id_orden: string; facturada: boolean }[];
+  turnosAbiertos: { id_turno: string; id_local: string }[];
 }) {
   const [tab, setTab] = useState<Tab>("CUENTAS");
 
@@ -66,6 +88,7 @@ export default function ProveedoresApp({
   const [idSeleccionado, setIdSeleccionado] = useState<string | null>(null);
   const [modalAbierto, setModalAbierto] = useState<"NUEVO" | "EDITAR" | null>(null);
   const [nuevaOrdenPara, setNuevaOrdenPara] = useState<string | null>(null);
+  const [mostrarPagoForm, setMostrarPagoForm] = useState(false);
 
   const filtrados = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
@@ -366,8 +389,30 @@ export default function ProveedoresApp({
                         >
                           + Devolución
                         </button>
+
+                        <div>
+                          <button
+                            onClick={() => setMostrarPagoForm((v) => !v)}
+                            className={`w-full text-sm font-semibold text-accent bg-white border-[1.5px] border-dashed border-accent py-2 ${
+                              mostrarPagoForm ? "rounded-t-lg border-b-0" : "rounded-lg"
+                            }`}
+                          >
+                            {mostrarPagoForm ? "− Cancelar" : "+ Registrar pago"}
+                          </button>
+                          {mostrarPagoForm && (
+                            <PagoProveedorForm
+                              key={seleccionado.id_proveedor}
+                              idProveedor={seleccionado.id_proveedor}
+                              locales={locales}
+                              turnosAbiertos={turnosAbiertos}
+                              onGuardado={() => setMostrarPagoForm(false)}
+                            />
+                          )}
+                        </div>
                       </div>
                     )}
+
+                    <HistorialProveedor key={`hist-${seleccionado.id_proveedor}`} idProveedor={seleccionado.id_proveedor} />
 
                     {seleccionado.contacto || seleccionado.telefono || seleccionado.email ? (
                       <div className="text-xs text-neutral-500 space-y-1 mb-4">
@@ -557,5 +602,200 @@ function TabButton({ activo, onClick, children }: { activo: boolean; onClick: ()
     >
       {children}
     </button>
+  );
+}
+
+const OPCIONES_MEDIO_PAGO = ["EFECTIVO_TURNO", "EFECTIVO_ADMIN", "TRANSFERENCIA", "MERCADO_PAGO"] as const;
+
+function PagoProveedorForm({
+  idProveedor,
+  locales,
+  turnosAbiertos,
+  onGuardado,
+}: {
+  idProveedor: string;
+  locales: Local[];
+  turnosAbiertos: { id_turno: string; id_local: string }[];
+  onGuardado: () => void;
+}) {
+  const [monto, setMonto] = useState("");
+  const [medioPago, setMedioPago] = useState<(typeof OPCIONES_MEDIO_PAGO)[number]>("TRANSFERENCIA");
+  const [idLocal, setIdLocal] = useState(locales[0]?.id_local ?? "");
+  const [descripcion, setDescripcion] = useState("");
+  const [comprobante, setComprobante] = useState<File | null>(null);
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const turnoAbiertoDelLocal = turnosAbiertos.some((t) => t.id_local === idLocal);
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const formData = new FormData();
+    formData.set("monto", monto);
+    formData.set("medio_pago", medioPago);
+    formData.set("descripcion", descripcion);
+    if (medioPago === "EFECTIVO_TURNO") formData.set("id_local", idLocal);
+    if (comprobante) formData.set("comprobante", comprobante);
+    setGuardando(true);
+    registrarPagoProveedor(idProveedor, formData)
+      .then((res) => {
+        if (res.error) setError(res.error);
+        else onGuardado();
+      })
+      .finally(() => setGuardando(false));
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="p-3 bg-accent-tint border-[1.5px] border-accent rounded-b-lg space-y-2">
+      {error && <p className="text-xs text-red-600">{error}</p>}
+      <input
+        type="number"
+        min={0}
+        required
+        value={monto}
+        onChange={(e) => setMonto(e.target.value)}
+        placeholder="Monto"
+        className="w-full border border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs bg-white"
+      />
+      <div className="flex flex-col gap-1.5">
+        {OPCIONES_MEDIO_PAGO.map((opcion) => (
+          <label
+            key={opcion}
+            className={`flex items-center gap-2 border rounded-lg px-2.5 py-1.5 text-xs cursor-pointer bg-white ${
+              medioPago === opcion ? "border-accent" : "border-neutral-300"
+            } ${opcion === "EFECTIVO_TURNO" && !turnoAbiertoDelLocal ? "opacity-40 cursor-not-allowed" : ""}`}
+          >
+            <input
+              type="radio"
+              name="medio_pago_proveedor"
+              checked={medioPago === opcion}
+              disabled={opcion === "EFECTIVO_TURNO" && !turnoAbiertoDelLocal}
+              onChange={() => setMedioPago(opcion)}
+            />
+            {MEDIO_PAGO_LABEL[opcion]}
+            {opcion === "EFECTIVO_TURNO" && !turnoAbiertoDelLocal && " — no hay turno abierto en ese local"}
+          </label>
+        ))}
+      </div>
+      {medioPago === "EFECTIVO_TURNO" && (
+        <select
+          value={idLocal}
+          onChange={(e) => setIdLocal(e.target.value)}
+          className="w-full border border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs bg-white"
+        >
+          {locales.map((l) => (
+            <option key={l.id_local} value={l.id_local}>
+              {l.nombre}
+            </option>
+          ))}
+        </select>
+      )}
+      <input
+        value={descripcion}
+        onChange={(e) => setDescripcion(e.target.value)}
+        placeholder="Descripción (opcional)"
+        className="w-full border border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs bg-white"
+      />
+      <label className="flex items-center gap-2 border border-dashed border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs bg-white cursor-pointer">
+        📎
+        <span className="truncate">{comprobante ? comprobante.name : "Adjuntar comprobante (opcional)"}</span>
+        <input
+          type="file"
+          accept="image/*,.pdf"
+          className="hidden"
+          onChange={(e) => setComprobante(e.target.files?.[0] ?? null)}
+        />
+      </label>
+      <button
+        type="submit"
+        disabled={guardando}
+        className="text-xs font-bold text-white bg-accent hover:bg-accent-dark disabled:opacity-40 px-3 py-1.5 rounded-lg"
+      >
+        {guardando ? "Guardando..." : "Registrar pago"}
+      </button>
+    </form>
+  );
+}
+
+type MovimientoHistorial = {
+  idMovimiento: string;
+  tipoMovimiento: string;
+  importe: number;
+  saldoNuevo: number;
+  medioPago: string | null;
+  comprobantePath: string | null;
+  usuario: string | null;
+  observaciones: string | null;
+  fecha: string;
+};
+
+function HistorialProveedor({ idProveedor }: { idProveedor: string }) {
+  const [mostrar, setMostrar] = useState(false);
+  const [cargando, setCargando] = useState(false);
+  const [historial, setHistorial] = useState<MovimientoHistorial[]>([]);
+
+  useEffect(() => {
+    if (!mostrar) return;
+    setCargando(true);
+    historialProveedorAction(idProveedor)
+      .then(setHistorial)
+      .finally(() => setCargando(false));
+  }, [mostrar, idProveedor]);
+
+  function handleVerComprobante(path: string) {
+    obtenerUrlComprobanteProveedor(path).then((url) => window.open(url, "_blank"));
+  }
+
+  return (
+    <div className="mb-4">
+      <button onClick={() => setMostrar((v) => !v)} className="text-xs font-semibold text-accent">
+        {mostrar ? "▾" : "▸"} Historial de movimientos
+      </button>
+      {mostrar && (
+        <div className="overflow-x-auto mt-2">
+          {cargando ? (
+            <p className="text-xs text-neutral-400 text-center py-4">Cargando...</p>
+          ) : historial.length === 0 ? (
+            <p className="text-xs text-neutral-400 text-center py-4">Todavía no hay movimientos.</p>
+          ) : (
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-neutral-400 border-b border-neutral-200">
+                  <th className="p-2">Fecha</th>
+                  <th className="p-2">Tipo</th>
+                  <th className="p-2 text-right">Importe</th>
+                  <th className="p-2 text-right">Saldo</th>
+                  <th className="p-2">Observaciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {historial.map((m) => (
+                  <tr key={m.idMovimiento} className="border-b border-neutral-100 last:border-0">
+                    <td className="p-2 whitespace-nowrap text-neutral-500">{new Date(m.fecha).toLocaleDateString("es-AR")}</td>
+                    <td className="p-2 whitespace-nowrap">{TIPO_MOVIMIENTO_LABEL[m.tipoMovimiento] ?? m.tipoMovimiento}</td>
+                    <td className={`p-2 text-right tabular-nums font-semibold ${m.importe >= 0 ? "text-amber-700" : "text-emerald-600"}`}>
+                      {m.importe >= 0 ? "+" : ""}${formatearMonto(m.importe)}
+                    </td>
+                    <td className="p-2 text-right tabular-nums">${formatearMonto(m.saldoNuevo)}</td>
+                    <td className="p-2 text-neutral-400">
+                      {m.observaciones ?? "—"}
+                      {m.comprobantePath && (
+                        <>
+                          {" · "}
+                          <button onClick={() => handleVerComprobante(m.comprobantePath!)} className="text-accent font-semibold">
+                            📎 Ver comprobante
+                          </button>
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

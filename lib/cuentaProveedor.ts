@@ -45,20 +45,30 @@ export async function registrarMovimientoProveedor(
     idFactura?: string | null;
     usuario?: string | null;
     observaciones?: string | null;
+    medioPago?: string | null;
+    idLocal?: string | null;
+    idTurno?: string | null;
   }
 ) {
   const saldoAnterior = await saldoCuentaProveedor(supabase, params.idProveedor);
   const saldoNuevo = saldoAnterior + params.importe;
-  const { error } = await supabase.from("movimientos_cuenta_proveedor").insert({
-    id_proveedor: params.idProveedor,
-    tipo_movimiento: params.tipoMovimiento,
-    importe: params.importe,
-    saldo_anterior: saldoAnterior,
-    saldo_nuevo: saldoNuevo,
-    id_factura: params.idFactura ?? null,
-    usuario: params.usuario ?? null,
-    observaciones: params.observaciones ?? null,
-  });
+  const { data, error } = await supabase
+    .from("movimientos_cuenta_proveedor")
+    .insert({
+      id_proveedor: params.idProveedor,
+      tipo_movimiento: params.tipoMovimiento,
+      importe: params.importe,
+      saldo_anterior: saldoAnterior,
+      saldo_nuevo: saldoNuevo,
+      id_factura: params.idFactura ?? null,
+      usuario: params.usuario ?? null,
+      observaciones: params.observaciones ?? null,
+      medio_pago: params.medioPago ?? null,
+      id_local: params.idLocal ?? null,
+      id_turno: params.idTurno ?? null,
+    })
+    .select("id_movimiento")
+    .single();
   if (error) throw new Error(error.message);
-  return saldoNuevo;
+  return { saldoNuevo, idMovimiento: data.id_movimiento as string };
 }

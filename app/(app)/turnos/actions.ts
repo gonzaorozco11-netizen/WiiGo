@@ -90,11 +90,22 @@ async function resumenTurno(supabase: SupabaseClient, idTurno: string) {
     .eq("medio_pago", "EFECTIVO_TURNO");
   const totalGastosEfectivo = (gastos ?? []).reduce((acc, g) => acc + (g.monto ?? 0), 0);
 
+  // Mismo criterio para los pagos a proveedores hechos en efectivo de este
+  // turno — el importe ahí se guarda negativo (resta saldo), por eso se
+  // invierte el signo para sumarlo como salida de caja.
+  const { data: pagosProveedor } = await supabase
+    .from("movimientos_cuenta_proveedor")
+    .select("importe")
+    .eq("id_turno", idTurno)
+    .eq("medio_pago", "EFECTIVO_TURNO");
+  const totalPagosProveedorEfectivo = (pagosProveedor ?? []).reduce((acc, m) => acc - (m.importe ?? 0), 0);
+
   return {
     totalEfectivo,
     totalMercadoPago,
     totalVueltoEntregado: totalRecibidoEfectivo - totalEfectivo,
     totalGastosEfectivo,
+    totalPagosProveedorEfectivo,
     cantidadVentas: (ventas ?? []).length,
   };
 }
@@ -113,7 +124,8 @@ export async function resumenTurnoAbierto(idTurno: string) {
   return {
     ...resumen,
     montoInicial: turno.monto_inicial_efectivo,
-    efectivoEsperado: turno.monto_inicial_efectivo + resumen.totalEfectivo - resumen.totalGastosEfectivo,
+    efectivoEsperado:
+      turno.monto_inicial_efectivo + resumen.totalEfectivo - resumen.totalGastosEfectivo - resumen.totalPagosProveedorEfectivo,
   };
 }
 
@@ -136,7 +148,8 @@ export async function cerrarTurno(
     if (turno.estado !== "ABIERTO") return { error: "Este turno ya está cerrado" };
 
     const resumen = await resumenTurno(supabase, idTurno);
-    const efectivoEsperado = turno.monto_inicial_efectivo + resumen.totalEfectivo - resumen.totalGastosEfectivo;
+    const efectivoEsperado =
+      turno.monto_inicial_efectivo + resumen.totalEfectivo - resumen.totalGastosEfectivo - resumen.totalPagosProveedorEfectivo;
     const usuario = await usuarioActual();
 
     const { error } = await supabase
@@ -151,6 +164,7 @@ export async function cerrarTurno(
         total_mercado_pago: resumen.totalMercadoPago,
         total_vuelto_entregado: resumen.totalVueltoEntregado,
         total_gastos_efectivo: resumen.totalGastosEfectivo,
+        total_pagos_proveedor_efectivo: resumen.totalPagosProveedorEfectivo,
         cantidad_ventas: resumen.cantidadVentas,
         observaciones: observaciones || null,
       })

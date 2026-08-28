@@ -39,6 +39,7 @@ export default function FacturaPeriodoModal({
   const [numeroFactura, setNumeroFactura] = useState("");
   const [monto, setMonto] = useState("");
   const [observaciones, setObservaciones] = useState("");
+  const [comprobante, setComprobante] = useState<File | null>(null);
 
   useEffect(() => {
     if (!fechaDesde || !fechaHasta) return;
@@ -83,6 +84,7 @@ export default function FacturaPeriodoModal({
               precioUnitarioReal: Number(precios[l.idVariante]) || 0,
               actualizarCosto: !!actualizarCosto[l.idVariante],
             })),
+          comprobante,
         });
         if (res.error) setError(res.error);
         else onClose();
@@ -215,6 +217,16 @@ export default function FacturaPeriodoModal({
               onChange={(e) => setObservaciones(e.target.value)}
               rows={2}
               className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-neutral-500 uppercase mb-1">Comprobante de la factura (opcional)</label>
+            <input
+              type="file"
+              accept="image/*,.pdf"
+              onChange={(e) => setComprobante(e.target.files?.[0] ?? null)}
+              className="w-full text-sm"
             />
           </div>
 

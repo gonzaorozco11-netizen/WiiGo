@@ -32,6 +32,7 @@ export default async function ProveedoresPage() {
     detalleOrdenesRes,
     detalleRecepcionRes,
     recepcionesRes,
+    turnosAbiertosRes,
   ] = await Promise.all([
     listarProveedores(),
     supabase.from("locales").select("*").eq("estado", "ACTIVO").order("nombre", { ascending: true }),
@@ -42,6 +43,7 @@ export default async function ProveedoresPage() {
     supabase.from("detalle_orden_compra").select("*"),
     supabase.from("detalle_recepcion_proveedor").select("*").neq("estado_control", "COMPLETA"),
     supabase.from("recepciones_proveedor").select("id_orden, facturada"),
+    supabase.from("turnos").select("id_turno, id_local").eq("estado", "ABIERTO"),
   ]);
 
   const idsMarcaPropia = (marcasPropiasRes.data ?? []).map((m) => m.id_marca);
@@ -59,7 +61,8 @@ export default async function ProveedoresPage() {
     ordenesRes.error ||
     detalleOrdenesRes.error ||
     detalleRecepcionRes.error ||
-    recepcionesRes.error;
+    recepcionesRes.error ||
+    turnosAbiertosRes.error;
 
   if (error) {
     return (
@@ -82,6 +85,7 @@ export default async function ProveedoresPage() {
       detalleOrdenes={(detalleOrdenesRes.data ?? []) as DetalleOrdenCompra[]}
       reclamos={(detalleRecepcionRes.data ?? []) as DetalleRecepcionProveedor[]}
       recepciones={(recepcionesRes.data ?? []) as Pick<RecepcionProveedor, "id_orden" | "facturada">[]}
+      turnosAbiertos={turnosAbiertosRes.data ?? []}
     />
   );
 }

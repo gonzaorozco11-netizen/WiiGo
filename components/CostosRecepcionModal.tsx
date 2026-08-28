@@ -29,6 +29,7 @@ export default function CostosRecepcionModal({
   const [costos, setCostos] = useState<Record<string, string>>(
     Object.fromEntries(detalle.map((d) => [d.id_variante, String(costoActualPorVariante.get(d.id_variante) ?? "")]))
   );
+  const [comprobante, setComprobante] = useState<File | null>(null);
 
   function handleSubmit() {
     setError(null);
@@ -36,7 +37,8 @@ export default function CostosRecepcionModal({
       try {
         const res = await actualizarCostosRecepcion(
           orden.id_orden,
-          detalle.map((d) => ({ idVariante: d.id_variante, costo: Number(costos[d.id_variante]) || 0 }))
+          detalle.map((d) => ({ idVariante: d.id_variante, costo: Number(costos[d.id_variante]) || 0 })),
+          comprobante
         );
         if (res.error) setError(res.error);
         else onClose();
@@ -113,6 +115,16 @@ export default function CostosRecepcionModal({
                 })}
               </tbody>
             </table>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-neutral-500 uppercase mb-1">Comprobante de la factura (opcional)</label>
+            <input
+              type="file"
+              accept="image/*,.pdf"
+              onChange={(e) => setComprobante(e.target.files?.[0] ?? null)}
+              className="w-full text-sm"
+            />
           </div>
 
           {error && (

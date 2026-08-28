@@ -492,6 +492,7 @@ export type Turno = {
   total_mercado_pago: number | null;
   total_vuelto_entregado: number | null;
   total_gastos_efectivo: number | null;
+  total_pagos_proveedor_efectivo: number | null;
   cantidad_ventas: number | null;
   observaciones: string | null;
 };

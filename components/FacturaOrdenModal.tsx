@@ -36,6 +36,7 @@ export default function FacturaOrdenModal({
   const [actualizarCosto, setActualizarCosto] = useState<Record<string, boolean>>({});
   const [monto, setMonto] = useState("");
   const [observaciones, setObservaciones] = useState("");
+  const [comprobante, setComprobante] = useState<File | null>(null);
 
   const totalCalculado = detalle.reduce((acc, d) => acc + d.cantidad_recibida * (Number(precios[d.id_variante]) || 0), 0);
   const montoNum = Number(monto) || 0;
@@ -60,6 +61,7 @@ export default function FacturaOrdenModal({
             precioUnitarioReal: Number(precios[d.id_variante]) || 0,
             actualizarCosto: !!actualizarCosto[d.id_variante],
           })),
+          comprobante,
         });
         if (res.error) setError(res.error);
         else onClose();
@@ -187,6 +189,16 @@ export default function FacturaOrdenModal({
               onChange={(e) => setObservaciones(e.target.value)}
               rows={2}
               className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-neutral-500 uppercase mb-1">Comprobante de la factura (opcional)</label>
+            <input
+              type="file"
+              accept="image/*,.pdf"
+              onChange={(e) => setComprobante(e.target.files?.[0] ?? null)}
+              className="w-full text-sm"
             />
           </div>
 

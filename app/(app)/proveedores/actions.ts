@@ -5,8 +5,9 @@ import { cookies } from "next/headers";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
-import { saldosPorProveedor, registrarMovimientoProveedor } from "@/lib/cuentaProveedor";
+import { saldosPorProveedor, registrarMovimientoProveedor, historialCuentaProveedor } from "@/lib/cuentaProveedor";
 import { calcularLiquidacionProveedor, generarLiquidacionProveedor, type LineaLiquidacionProveedor } from "@/lib/liquidacionesProveedor";
+import { turnoAbiertoDeLocal } from "@/app/(app)/turnos/actions";
 
 async function usuarioActual() {
   const cookieStore = await cookies();
@@ -395,7 +396,8 @@ export async function listarDevolucionesProveedor(idProveedor: string) {
 // que después usa la liquidación por venta para calcular cuánto se le debe.
 export async function actualizarCostosRecepcion(
   idOrden: string,
-  costos: { idVariante: string; costo: number }[]
+  costos: { idVariante: string; costo: number }[],
+  comprobante?: File | null
 ): Promise<{ error: string | null }> {
   const permisoError = await requireAdmin();
   if (permisoError) return { error: permisoError };
@@ -415,8 +417,22 @@ export async function actualizarCostosRecepcion(
     }
 
     // Marca la recepción como procesada — es lo que hace que deje de
-    // aparecer en "pendientes de facturar" para administración.
-    await supabase.from("recepciones_proveedor").update({ facturada: true }).eq("id_orden", idOrden);
+    // aparecer en "pendientes de facturar" para administración. El
+    // comprobante se guarda acá mismo (y no en facturas_compra_proveedor)
+    // porque en este modo nunca nace una factura financiera real.
+    const updateRecepcion: Record<string, unknown> = { facturada: true };
+
+    const extension = comprobante?.name.split(".").pop();
+    if (comprobante && comprobante.size > 0) {
+      const path = `recepcion-${idOrden}.${extension ?? "jpg"}`;
+      const { error: errorUpload } = await supabase.storage
+        .from("comprobantes-proveedor")
+        .upload(path, comprobante, { upsert: true, contentType: comprobante.type || undefined });
+      // No bloquea el guardado si falla la subida — se puede reintentar después.
+      if (!errorUpload) updateRecepcion.comprobante_path = path;
+    }
+
+    await supabase.from("recepciones_proveedor").update(updateRecepcion).eq("id_orden", idOrden);
 
     revalidatePath("/proveedores");
     revalidatePath("/productos");
@@ -486,6 +502,7 @@ export async function cargarFacturaCompra(params: {
   monto: number;
   observaciones: string;
   lineas: { idVariante: string; cantidadFacturada: number; precioUnitarioReal: number; actualizarCosto: boolean }[];
+  comprobante?: File | null;
 }): Promise<{ error: string | null }> {
   const permisoError = await requireAdmin();
   if (permisoError) return { error: permisoError };
@@ -515,6 +532,18 @@ export async function cargarFacturaCompra(params: {
       .select("id_factura")
       .single();
     if (errorFactura) return { error: friendlyDbError(errorFactura) };
+
+    if (params.comprobante && params.comprobante.size > 0) {
+      const extension = params.comprobante.name.split(".").pop() ?? "jpg";
+      const path = `factura-${factura.id_factura}.${extension}`;
+      const { error: errorUpload } = await supabase.storage
+        .from("comprobantes-proveedor")
+        .upload(path, params.comprobante, { upsert: true, contentType: params.comprobante.type || undefined });
+      // No bloquea la factura si falla la subida — se puede reintentar después.
+      if (!errorUpload) {
+        await supabase.from("facturas_compra_proveedor").update({ comprobante_path: path }).eq("id_factura", factura.id_factura);
+      }
+    }
 
     for (const linea of params.lineas) {
       const { data: variante } = await supabase
@@ -633,4 +662,100 @@ export async function generarLiquidacionProveedorAction(params: {
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo generar la liquidación" };
   }
+}
+
+// ===================== PAGO A PROVEEDOR =====================
+// A diferencia de una marca (que puede tener saldo a favor de WiiGo), acá la
+// relación es de un solo sentido: siempre le debemos a él, nunca al revés —
+// por eso alcanza con un único tipo "PAGO" que resta del saldo. Cuando la
+// forma de pago es efectivo (turno o Caja Administración), la plata sale de
+// verdad de esa caja física — mismo criterio que ya usamos en Gastos.
+
+export async function registrarPagoProveedor(idProveedor: string, formData: FormData): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+
+  const monto = number(formData, "monto");
+  if (!monto || monto <= 0) return { error: "El monto tiene que ser mayor a 0" };
+
+  const medioPago = text(formData, "medio_pago") ?? "TRANSFERENCIA";
+  const idLocal = text(formData, "id_local");
+  const descripcion = text(formData, "descripcion");
+
+  try {
+    const supabase = getSupabaseServerClient();
+    const usuario = await usuarioActual();
+
+    let idTurno: string | null = null;
+    if (medioPago === "EFECTIVO_TURNO") {
+      if (!idLocal) return { error: "Elegí el local para descontar del turno abierto" };
+      idTurno = await turnoAbiertoDeLocal(supabase, idLocal);
+      if (!idTurno) return { error: "No hay un turno de caja abierto en ese local — no se puede descontar de ahí." };
+    }
+
+    const { idMovimiento } = await registrarMovimientoProveedor(supabase, {
+      idProveedor,
+      tipoMovimiento: "PAGO",
+      importe: -monto,
+      usuario,
+      observaciones: descripcion ?? "Pago manual",
+      medioPago,
+      idLocal: medioPago === "EFECTIVO_TURNO" ? idLocal : null,
+      idTurno,
+    });
+
+    const comprobante = formData.get("comprobante") as File | null;
+    if (comprobante && comprobante.size > 0) {
+      const extension = comprobante.name.split(".").pop() ?? "jpg";
+      const path = `pago-${idMovimiento}.${extension}`;
+      const { error: errorUpload } = await supabase.storage
+        .from("comprobantes-proveedor")
+        .upload(path, comprobante, { upsert: true, contentType: comprobante.type || undefined });
+      // No bloquea el pago si falla la subida — la plata ya se movió, el
+      // comprobante se puede volver a intentar después.
+      if (!errorUpload) {
+        await supabase.from("movimientos_cuenta_proveedor").update({ comprobante_path: path }).eq("id_movimiento", idMovimiento);
+      }
+    }
+
+    if (medioPago === "EFECTIVO_ADMIN") {
+      await supabase.from("movimientos_caja_admin").insert({
+        tipo: "EGRESO_PAGO_PROVEEDOR",
+        monto: -monto,
+        id_movimiento_proveedor: idMovimiento,
+        descripcion: descripcion ?? "Pago a proveedor desde Caja Administración",
+        usuario,
+      });
+    }
+
+    revalidatePath("/proveedores");
+    revalidatePath("/turnos");
+    revalidatePath("/gastos");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo registrar el pago" };
+  }
+}
+
+export async function obtenerUrlComprobanteProveedor(path: string) {
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase.storage.from("comprobantes-proveedor").createSignedUrl(path, 60 * 10);
+  if (error) throw new Error(error.message);
+  return data.signedUrl;
+}
+
+export async function historialProveedorAction(idProveedor: string) {
+  const supabase = getSupabaseServerClient();
+  const movimientos = await historialCuentaProveedor(supabase, idProveedor);
+  return movimientos.map((m) => ({
+    idMovimiento: m.id_movimiento as string,
+    tipoMovimiento: m.tipo_movimiento as string,
+    importe: m.importe as number,
+    saldoNuevo: m.saldo_nuevo as number,
+    medioPago: m.medio_pago as string | null,
+    comprobantePath: m.comprobante_path as string | null,
+    usuario: m.usuario as string | null,
+    observaciones: m.observaciones as string | null,
+    fecha: m.fecha as string,
+  }));
 }
