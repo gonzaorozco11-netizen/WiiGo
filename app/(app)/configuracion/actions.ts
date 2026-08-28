@@ -75,16 +75,19 @@ export async function guardarConfigPuntos(formData: FormData): Promise<{ error: 
   return { error: null };
 }
 
-// Tasas generales para el motor de liquidaciones (rendición a marcas en
-// consignación). El royalty y el IVA sobre royalty son por marca (ya
-// están en la ficha de cada una) — esto es lo que es igual para todos.
-export async function guardarConfigLiquidaciones(formData: FormData): Promise<{ error: string | null }> {
+// Tasas compartidas por Liquidaciones (rendición a marcas en consignación)
+// Y Rentabilidad (margen real de Marca Propia) — antes estaban repartidas
+// entre dos secciones distintas de la pantalla sin dejar claro que las usan
+// los dos módulos a la vez; ahora viven juntas acá. El royalty y el IVA
+// sobre royalty siguen siendo por marca (ficha de cada una), eso no cambia.
+export async function guardarConfigImpuestos(formData: FormData): Promise<{ error: string | null }> {
   const permisoError = await requireEditarConfiguracion();
   if (permisoError) return { error: permisoError };
 
   const impCreditos = Number(formData.get("imp_creditos_porcentaje") ?? 0);
   const sircreb = Number(formData.get("sircreb_porcentaje") ?? 0);
   const impDebitos = Number(formData.get("imp_debitos_porcentaje") ?? 0);
+  const ivaGeneral = Number(formData.get("iva_general_porcentaje") ?? 21);
 
   const supabase = getSupabaseServerClient();
 
@@ -92,14 +95,14 @@ export async function guardarConfigLiquidaciones(formData: FormData): Promise<{ 
     supabase,
     "IMP_CREDITOS_PORCENTAJE",
     String(impCreditos),
-    "Liquidaciones: Impuesto a los Créditos (Ley 25.413) sobre la venta bruta"
+    "Liquidaciones y Rentabilidad: Impuesto a los Créditos (Ley 25.413) sobre toda venta no efectivo — se le cobra a todas las marcas por igual, no es configurable por marca"
   );
   if (!error) {
     error = await guardarParametro(
       supabase,
       "SIRCREB_PORCENTAJE",
       String(sircreb),
-      "Liquidaciones: % de SIRCREB a retener preventivamente en marcas con 'trasladar SIRCREB' tildado en su ficha (queda en su cuenta de retenciones, no es ganancia de WiiGo); en el resto lo sigue absorbiendo WiiGo"
+      "Liquidaciones y Rentabilidad: % de SIRCREB a retener preventivamente en marcas con 'trasladar SIRCREB' tildado en su ficha (queda en su cuenta de retenciones, no es ganancia de WiiGo); en el resto lo sigue absorbiendo WiiGo"
     );
   }
   if (!error) {
@@ -107,7 +110,15 @@ export async function guardarConfigLiquidaciones(formData: FormData): Promise<{ 
       supabase,
       "IMP_DEBITOS_PORCENTAJE",
       String(impDebitos),
-      "Liquidaciones: Impuesto a los Débitos (Ley 25.413) que cobra el banco al transferir — lo absorbe WiiGo, solo informativo/proyección"
+      "Rentabilidad: Impuesto a los Débitos (Ley 25.413) que cobra el banco al transferir — lo absorbe WiiGo siempre, nunca se le traslada a ninguna marca, solo informativo/proyección"
+    );
+  }
+  if (!error) {
+    error = await guardarParametro(
+      supabase,
+      "IVA_GENERAL_PORCENTAJE",
+      String(ivaGeneral),
+      "Liquidaciones y Rentabilidad: IVA general — se usa tanto para el IVA que se le suma a la comisión de Mercado Pago como para sacar la facturación neta de productos propios"
     );
   }
   if (error) return { error };
@@ -144,15 +155,13 @@ export async function guardarConfigMercadoPago(formData: FormData): Promise<{ er
   return { error: null };
 }
 
-// Tasas para calcular la rentabilidad real de los productos de marca
-// propia (WiiGo Dietética) — el IVA se saca de la facturación (débito
-// fiscal se compensa con crédito fiscal, no es un costo) y se suma el
-// costo impositivo directo de Ingresos Brutos.
+// Tasas exclusivas de Rentabilidad (margen real de los productos de marca
+// propia, WiiGo Dietética) — el IVA general y demás impuestos compartidos
+// con Liquidaciones se cargan en guardarConfigImpuestos, no acá.
 export async function guardarConfigRentabilidad(formData: FormData): Promise<{ error: string | null }> {
   const permisoError = await requireEditarConfiguracion();
   if (permisoError) return { error: permisoError };
 
-  const ivaGeneral = Number(formData.get("iva_general_porcentaje") ?? 21);
   const iibb = Number(formData.get("iibb_porcentaje") ?? 0);
   const margenMinimo = Number(formData.get("margen_minimo_porcentaje") ?? 15);
 
@@ -160,18 +169,10 @@ export async function guardarConfigRentabilidad(formData: FormData): Promise<{ e
 
   let error = await guardarParametro(
     supabase,
-    "IVA_GENERAL_PORCENTAJE",
-    String(ivaGeneral),
-    "Rentabilidad: IVA incluido en el precio de venta de los productos propios, para sacar la facturación neta"
+    "IIBB_PORCENTAJE",
+    String(iibb),
+    "Rentabilidad: alícuota de Ingresos Brutos sobre la facturación neta de productos propios"
   );
-  if (!error) {
-    error = await guardarParametro(
-      supabase,
-      "IIBB_PORCENTAJE",
-      String(iibb),
-      "Rentabilidad: alícuota de Ingresos Brutos sobre la facturación neta de productos propios"
-    );
-  }
   if (!error) {
     error = await guardarParametro(
       supabase,

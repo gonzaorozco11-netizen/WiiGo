@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import {
   guardarConfigPuntos,
-  guardarConfigLiquidaciones,
+  guardarConfigImpuestos,
   guardarConfigRentabilidad,
   guardarConfigMercadoPago,
   guardarConfigGastos,
@@ -62,11 +62,11 @@ export default function ConfiguracionApp({
   const [impCreditos, setImpCreditos] = useState(impCreditosPorcentaje);
   const [sircreb, setSircreb] = useState(sircrebPorcentaje);
   const [impDebitos, setImpDebitos] = useState(impDebitosPorcentaje);
+  const [ivaGeneral, setIvaGeneral] = useState(ivaGeneralPorcentaje);
 
   const [isPendingRent, startTransitionRent] = useTransition();
   const [guardadoRent, setGuardadoRent] = useState(false);
   const [errorRent, setErrorRent] = useState<string | null>(null);
-  const [ivaGeneral, setIvaGeneral] = useState(ivaGeneralPorcentaje);
   const [iibb, setIibb] = useState(iibbPorcentaje);
   const [margenMinimo, setMargenMinimo] = useState(margenMinimoPorcentaje);
 
@@ -119,7 +119,7 @@ export default function ConfiguracionApp({
     setGuardadoLiq(false);
     setErrorLiq(null);
     startTransitionLiq(async () => {
-      const res = await guardarConfigLiquidaciones(formData);
+      const res = await guardarConfigImpuestos(formData);
       if (res.error) setErrorLiq(res.error);
       else setGuardadoLiq(true);
     });
@@ -284,10 +284,11 @@ export default function ConfiguracionApp({
       </form>
 
       <form action={handleSubmitLiq} className="bg-white border border-neutral-200 rounded-xl p-5 mt-5">
-        <h2 className="text-base font-semibold text-neutral-900 mb-1">📊 Liquidaciones — tasas generales</h2>
+        <h2 className="text-base font-semibold text-neutral-900 mb-1">💰 Impuestos y comisiones bancarias</h2>
         <p className="text-sm text-neutral-500 mb-4">
-          Se aplican igual para todas las marcas en consignación. El royalty y el IVA sobre royalty son por marca —
-          se cargan en la ficha de cada una, no acá.
+          Estos 4 valores los usan tanto <b>Liquidaciones</b> (lo que se le rinde a cada marca) como{" "}
+          <b>Rentabilidad</b> (el margen real de Marca Propia) — cambiarlos acá afecta a los dos. El royalty y el IVA
+          sobre royalty son por marca, se cargan en la ficha de cada una, no acá.
         </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
@@ -304,7 +305,9 @@ export default function ConfiguracionApp({
               onChange={(e) => setImpCreditos(Number(e.target.value))}
               className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
             />
-            <p className="text-xs text-neutral-400 mt-1">Se descuenta de lo que se le rinde a la marca.</p>
+            <p className="text-xs text-neutral-400 mt-1">
+              Se descuenta a todas las marcas por igual en toda venta no efectivo — no es configurable por marca.
+            </p>
           </div>
           <div>
             <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="sircreb_porcentaje">
@@ -338,7 +341,25 @@ export default function ConfiguracionApp({
               onChange={(e) => setImpDebitos(Number(e.target.value))}
               className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
             />
-            <p className="text-xs text-neutral-400 mt-1">Lo cobra el banco al transferir — lo absorbe WiiGo, solo proyección.</p>
+            <p className="text-xs text-neutral-400 mt-1">Lo cobra el banco al transferir — lo absorbe WiiGo siempre, nunca se le traslada a ninguna marca. Solo proyección en Rentabilidad.</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="iva_general_porcentaje">
+              IVA general (%)
+            </label>
+            <input
+              id="iva_general_porcentaje"
+              name="iva_general_porcentaje"
+              type="number"
+              step="0.01"
+              value={ivaGeneral}
+              onChange={(e) => setIvaGeneral(Number(e.target.value))}
+              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+            <p className="text-xs text-neutral-400 mt-1">
+              Se usa para el IVA que se suma a la comisión de Mercado Pago cobrada a las marcas, y para sacar la
+              facturación neta de los productos propios en Rentabilidad.
+            </p>
           </div>
         </div>
 
@@ -492,25 +513,11 @@ export default function ConfiguracionApp({
       <form action={handleSubmitRent} className="bg-white border border-neutral-200 rounded-xl p-5 mt-5">
         <h2 className="text-base font-semibold text-neutral-900 mb-1">📈 Rentabilidad — Marca Propia</h2>
         <p className="text-sm text-neutral-500 mb-4">
-          Para calcular la contribución marginal real de los productos de WiiGo Dietética.
+          Para calcular la contribución marginal real de los productos de WiiGo Dietética. También usa los impuestos
+          y comisiones cargados arriba (Impuestos y comisiones bancarias, y Comisión de Mercado Pago).
         </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-          <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="iva_general_porcentaje">
-              IVA incluido en el precio (%)
-            </label>
-            <input
-              id="iva_general_porcentaje"
-              name="iva_general_porcentaje"
-              type="number"
-              step="0.01"
-              value={ivaGeneral}
-              onChange={(e) => setIvaGeneral(Number(e.target.value))}
-              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-            />
-            <p className="text-xs text-neutral-400 mt-1">Se saca de la venta para calcular la facturación neta — el IVA no es un costo.</p>
-          </div>
           <div>
             <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="iibb_porcentaje">
               Ingresos Brutos (%)

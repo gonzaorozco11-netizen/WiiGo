@@ -154,6 +154,11 @@ export default function MarcaFormModal({
               type="number"
               step="0.001"
             />
+            <Checkbox
+              label="Aplicar IVA sobre el royalty"
+              name="trasladar_iva_comision"
+              defaultChecked={marca?.trasladar_iva_comision}
+            />
             <Field
               label="Frecuencia de liquidación"
               name="frecuencia_liquidacion"
@@ -169,30 +174,14 @@ export default function MarcaFormModal({
               defaultChecked={marca?.trasladar_comision_cobro}
             />
             <Checkbox
-              label="IVA de la comisión"
-              name="trasladar_iva_comision"
-              defaultChecked={marca?.trasladar_iva_comision}
-            />
-            <Checkbox
               label="SIRCREB"
               name="trasladar_sircreb"
               defaultChecked={marca?.trasladar_sircreb}
             />
-            <Checkbox
-              label="Impuesto a los créditos"
-              name="trasladar_imp_creditos"
-              defaultChecked={marca?.trasladar_imp_creditos}
-            />
-            <Checkbox
-              label="Otras retenciones"
-              name="trasladar_otras_retenciones"
-              defaultChecked={marca?.trasladar_otras_retenciones}
-            />
-            <Checkbox
-              label="Otros costos de cobro"
-              name="trasladar_otros_costos_cobro"
-              defaultChecked={marca?.trasladar_otros_costos_cobro}
-            />
+            <p className="sm:col-span-2 text-xs text-neutral-400 -mt-1">
+              El Impuesto a los Créditos se le descuenta a todas las marcas por igual en toda venta no efectivo — no
+              es configurable por marca, por eso no aparece acá como casillero.
+            </p>
             <Field
               label="Impuesto a los débitos (%)"
               name="imp_debitos_porcentaje"
@@ -205,6 +194,13 @@ export default function MarcaFormModal({
               name="trasladar_imp_debitos"
               defaultChecked={marca?.trasladar_imp_debitos}
             />
+            <div className="sm:col-span-2 opacity-50 pointer-events-none" title="Todavía no implementado en el cálculo de liquidaciones">
+              <p className="text-xs font-semibold text-neutral-400 uppercase mb-1.5">Próximamente (no afecta el cálculo)</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Checkbox label="Otras retenciones" name="trasladar_otras_retenciones" defaultChecked={marca?.trasladar_otras_retenciones} />
+                <Checkbox label="Otros costos de cobro" name="trasladar_otros_costos_cobro" defaultChecked={marca?.trasladar_otros_costos_cobro} />
+              </div>
+            </div>
           </Section>
           </>
           )}
