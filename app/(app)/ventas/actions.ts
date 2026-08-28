@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
-import { getSupabaseServerClient } from "@/lib/supabase";
+import { getSupabaseServerClient, type Venta, type DetalleVenta } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 
@@ -197,4 +197,46 @@ export async function anularVenta(
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo anular la venta" };
   }
+}
+
+// ===================== LISTADO FILTRADO (optimización de carga) =====================
+// Antes esta pantalla traía TODA la tabla ventas (y detalle_ventas) en cada
+// carga, sin ningún límite — a medida que crece el negocio esto se pone cada
+// vez más lento, y además Supabase podría empezar a cortar el resultado
+// antes de tiempo, escondiendo ventas reales sin ningún aviso. Ahora se pide
+// acotado por fecha/local cada vez que cambia el filtro en pantalla, con un
+// límite explícito y generoso como red de seguridad (avisando si se llega a
+// tocar, en vez de fallar en silencio).
+const LIMITE_VENTAS = 5000;
+
+export async function listarVentasFiltradas(params: {
+  idLocal?: string | null;
+  desde?: string | null;
+  hasta?: string | null;
+}): Promise<{ ventas: Venta[]; posibleTruncado: boolean; error: string | null }> {
+  try {
+    const supabase = getSupabaseServerClient();
+    let query = supabase.from("ventas").select("*").order("fecha", { ascending: false }).limit(LIMITE_VENTAS);
+    if (params.idLocal) query = query.eq("id_local", params.idLocal);
+    if (params.desde) query = query.gte("fecha", `${params.desde}T00:00:00`);
+    if (params.hasta) query = query.lte("fecha", `${params.hasta}T23:59:59`);
+
+    const { data, error } = await query;
+    if (error) return { ventas: [], posibleTruncado: false, error: friendlyDbError(error) };
+
+    return { ventas: (data ?? []) as Venta[], posibleTruncado: (data ?? []).length === LIMITE_VENTAS, error: null };
+  } catch (err) {
+    return { ventas: [], posibleTruncado: false, error: err instanceof Error ? err.message : "No se pudieron cargar las ventas" };
+  }
+}
+
+// El detalle de línea solo hace falta para la venta que se está mirando en
+// el panel de la derecha — antes se traía TODO detalle_ventas junto con el
+// listado completo sin usarse para nada más que esto. Ahora se pide bajo
+// demanda, una venta a la vez, por id_venta (ya indexado).
+export async function obtenerDetalleVenta(idVenta: string): Promise<DetalleVenta[]> {
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase.from("detalle_ventas").select("*").eq("id_venta", idVenta);
+  if (error) throw new Error(friendlyDbError(error));
+  return (data ?? []) as DetalleVenta[];
 }

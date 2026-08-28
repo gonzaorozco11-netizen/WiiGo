@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Local, Venta, DetalleVenta, Producto, VarianteProducto, Marca, Cliente } from "@/lib/supabase";
-import { anularVenta } from "@/app/(app)/ventas/actions";
+import { anularVenta, listarVentasFiltradas, obtenerDetalleVenta } from "@/app/(app)/ventas/actions";
 
 type FiltroFecha = "HOY" | "SEMANA" | "MES" | "TODO" | "RANGO";
 type FiltroCanal = "TODOS" | "SELF_CHECKOUT" | "POS";
@@ -39,47 +39,52 @@ function formatearFechaHora(fechaISO: string) {
   return new Date(fechaISO).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
-function mismoDia(a: Date, b: Date) {
-  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
-}
-
-function fechaEnRango(fechaISO: string, filtro: FiltroFecha, desde: string, hasta: string) {
-  if (filtro === "TODO") return true;
-  const fecha = new Date(fechaISO);
-  const hoy = new Date();
-  if (filtro === "HOY") return mismoDia(fecha, hoy);
-  if (filtro === "SEMANA") {
-    const hace7 = new Date(hoy);
-    hace7.setDate(hoy.getDate() - 6);
-    hace7.setHours(0, 0, 0, 0);
-    return fecha >= hace7;
-  }
-  if (filtro === "MES") return fecha.getFullYear() === hoy.getFullYear() && fecha.getMonth() === hoy.getMonth();
-  const clave = fechaISO.slice(0, 10);
-  return (!desde || clave >= desde) && (!hasta || clave <= hasta);
-}
-
 function hoyISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
+// Traduce el filtro elegido en pantalla a un rango de fechas concreto para
+// pedírselo al servidor — antes esto filtraba en el navegador sobre TODA la
+// tabla ya cargada; ahora el servidor solo manda lo que corresponde a este
+// rango (ver listarVentasFiltradas en actions.ts).
+function rangoParaFiltro(
+  filtro: FiltroFecha,
+  rangoDesde: string,
+  rangoHasta: string
+): { desde: string | null; hasta: string | null } {
+  const hoy = new Date();
+  if (filtro === "TODO") return { desde: null, hasta: null };
+  if (filtro === "HOY") return { desde: hoyISO(), hasta: hoyISO() };
+  if (filtro === "SEMANA") {
+    const hace7 = new Date(hoy);
+    hace7.setDate(hoy.getDate() - 6);
+    return { desde: hace7.toISOString().slice(0, 10), hasta: hoyISO() };
+  }
+  if (filtro === "MES") {
+    const primerDia = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+    return { desde: primerDia.toISOString().slice(0, 10), hasta: hoyISO() };
+  }
+  return { desde: rangoDesde || null, hasta: rangoHasta || null };
+}
+
 export default function VentasApp({
   locales,
-  ventas,
-  detalle,
+  ventasIniciales,
   productos,
   variantes,
   marcas,
   clientes,
 }: {
   locales: Local[];
-  ventas: Venta[];
-  detalle: DetalleVenta[];
+  ventasIniciales: Venta[];
   productos: Producto[];
   variantes: VarianteProducto[];
   marcas: Marca[];
   clientes: Cliente[];
 }) {
+  const [ventas, setVentas] = useState<Venta[]>(ventasIniciales);
+  const [cargandoVentas, setCargandoVentas] = useState(false);
+  const [posibleTruncado, setPosibleTruncado] = useState(false);
   const [idLocal, setIdLocal] = useState<string>("TODOS");
   const [filtroCanal, setFiltroCanal] = useState<FiltroCanal>("TODOS");
   const [filtroEstado, setFiltroEstado] = useState<FiltroEstado>("TODOS");
@@ -87,10 +92,45 @@ export default function VentasApp({
   const [rangoDesde, setRangoDesde] = useState(hoyISO());
   const [rangoHasta, setRangoHasta] = useState(hoyISO());
   const [idVentaSeleccionada, setIdVentaSeleccionada] = useState<string | null>(null);
+  const [detalleSeleccionado, setDetalleSeleccionado] = useState<DetalleVenta[]>([]);
+  const [cargandoDetalle, setCargandoDetalle] = useState(false);
   const [anulando, setAnulando] = useState(false);
   const [motivoAnular, setMotivoAnular] = useState("");
   const [procesandoAnular, setProcesandoAnular] = useState(false);
   const [mensajeAnular, setMensajeAnular] = useState<{ tipo: "error" | "aviso"; texto: string } | null>(null);
+
+  // La carga inicial (ventasIniciales) ya viene filtrada por "esta semana"
+  // desde el servidor — solo hay que volver a pedir cuando el filtro de
+  // fecha cambia a otra cosa.
+  const primerRender = useRef(true);
+  useEffect(() => {
+    if (primerRender.current) {
+      primerRender.current = false;
+      return;
+    }
+    const { desde, hasta } = rangoParaFiltro(filtroFecha, rangoDesde, rangoHasta);
+    setCargandoVentas(true);
+    listarVentasFiltradas({ desde, hasta })
+      .then((res) => {
+        if (!res.error) {
+          setVentas(res.ventas);
+          setPosibleTruncado(res.posibleTruncado);
+        }
+      })
+      .finally(() => setCargandoVentas(false));
+  }, [filtroFecha, rangoDesde, rangoHasta]);
+
+  useEffect(() => {
+    if (!idVentaSeleccionada) {
+      setDetalleSeleccionado([]);
+      return;
+    }
+    setCargandoDetalle(true);
+    obtenerDetalleVenta(idVentaSeleccionada)
+      .then(setDetalleSeleccionado)
+      .catch(() => setDetalleSeleccionado([]))
+      .finally(() => setCargandoDetalle(false));
+  }, [idVentaSeleccionada]);
 
   function seleccionarVenta(id: string) {
     setIdVentaSeleccionada(id);
@@ -131,25 +171,17 @@ export default function VentasApp({
     return variante.nombre !== "Único" ? `${base} — ${variante.nombre}` : base;
   };
 
-  const detallePorVenta = useMemo(() => {
-    const map = new Map<string, DetalleVenta[]>();
-    detalle.forEach((d) => {
-      const grupo = map.get(d.id_venta) ?? [];
-      grupo.push(d);
-      map.set(d.id_venta, grupo);
-    });
-    return map;
-  }, [detalle]);
-
+  // El filtro de fecha ya vino aplicado desde el servidor (ver el useEffect
+  // de arriba) — acá solo quedan los filtros que no ameritan un viaje al
+  // servidor porque ya operan sobre un conjunto acotado.
   const ventasFiltradas = useMemo(() => {
     return ventas.filter((v) => {
       if (idLocal !== "TODOS" && v.id_local !== idLocal) return false;
       if (filtroCanal !== "TODOS" && v.canal !== filtroCanal) return false;
       if (filtroEstado !== "TODOS" && v.estado !== filtroEstado) return false;
-      if (!fechaEnRango(v.fecha, filtroFecha, rangoDesde, rangoHasta)) return false;
       return true;
     });
-  }, [ventas, idLocal, filtroCanal, filtroEstado, filtroFecha, rangoDesde, rangoHasta]);
+  }, [ventas, idLocal, filtroCanal, filtroEstado]);
 
   const resumen = useMemo(() => {
     const pagadas = ventasFiltradas.filter((v) => v.estado === "PAGADA");
@@ -163,7 +195,6 @@ export default function VentasApp({
     () => ventasFiltradas.find((v) => v.id_venta === idVentaSeleccionada) ?? null,
     [ventasFiltradas, idVentaSeleccionada]
   );
-  const detalleSeleccionado = ventaSeleccionada ? detallePorVenta.get(ventaSeleccionada.id_venta) ?? [] : [];
 
   return (
     <div>
@@ -173,7 +204,14 @@ export default function VentasApp({
       <p className="text-sm text-neutral-500 mb-4">
         {resumen.cantidad} venta{resumen.cantidad === 1 ? "" : "s"} pagada{resumen.cantidad === 1 ? "" : "s"} · $
         {formatearMonto(resumen.totalBruto)}
+        {cargandoVentas && <span className="text-neutral-400"> · Actualizando…</span>}
       </p>
+      {posibleTruncado && (
+        <p className="text-xs font-semibold text-amber-700 mb-3">
+          ⚠ Hay muchas ventas en este rango — se están mostrando las 5000 más recientes. Achicá el filtro de fecha para ver el
+          resto.
+        </p>
+      )}
 
       <div className="flex flex-wrap gap-2 mb-4">
         <select
@@ -339,6 +377,9 @@ export default function VentasApp({
                   </div>
                 </div>
 
+                {cargandoDetalle ? (
+                  <p className="text-sm text-neutral-400 text-center py-4">Cargando detalle...</p>
+                ) : (
                 <table className="w-full text-sm mb-4">
                   <thead>
                     <tr className="text-xs uppercase tracking-wide text-neutral-400 border-b border-neutral-200">
@@ -359,6 +400,7 @@ export default function VentasApp({
                     ))}
                   </tbody>
                 </table>
+                )}
 
                 <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-4 text-sm">
                   <div className="flex justify-between mb-1.5">
