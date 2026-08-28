@@ -24,5 +24,5 @@ export default async function MarcasPage() {
     );
   }
 
-  return <MarcasApp initialMarcas={(data ?? []) as Marca[]} />;
+  return <MarcasApp initialMarcas={(data ?? []) as Marca[]} esAdmin={sesion?.rol === "admin"} />;
 }

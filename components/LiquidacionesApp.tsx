@@ -20,6 +20,7 @@ type Resumen = {
   impCreditos: number;
   feeMp: number;
   sircreb: number;
+  impDebitos: number;
   netoARendir: number;
   netoEfectivo: number;
   netoTransferencia: number;
@@ -228,6 +229,7 @@ export default function LiquidacionesApp({ marcas }: { marcas: Marca[] }) {
                       <th className="p-3 text-right">Imp. créd.</th>
                       <th className="p-3 text-right">Fee MP</th>
                       <th className="p-3 text-right">SIRCREB</th>
+                      <th className="p-3 text-right">Imp. déb.</th>
                       <th className="p-3 text-right">Neto a rendir</th>
                     </tr>
                   </thead>
@@ -256,6 +258,9 @@ export default function LiquidacionesApp({ marcas }: { marcas: Marca[] }) {
                         <td className="p-3 text-right tabular-nums text-purple-600">
                           {l.sircreb > 0 ? `-$${formatearMonto(l.sircreb)}` : "—"}
                         </td>
+                        <td className="p-3 text-right tabular-nums text-red-600">
+                          {l.impDebitos > 0 ? `-$${formatearMonto(l.impDebitos)}` : "—"}
+                        </td>
                         <td className="p-3 text-right tabular-nums font-semibold">${formatearMonto(l.netoARendir)}</td>
                       </tr>
                     ))}
@@ -271,7 +276,18 @@ export default function LiquidacionesApp({ marcas }: { marcas: Marca[] }) {
                   <ResumenCampo etiqueta="Imp. a los créditos" valor={-resultado.resumen.impCreditos} />
                   <ResumenCampo etiqueta="Fee Mercado Pago" valor={-resultado.resumen.feeMp} />
                   <ResumenCampo etiqueta="SIRCREB retenido" valor={-resultado.resumen.sircreb} />
-                  <ResumenCampo etiqueta="Total deducciones" valor={-(resultado.resumen.comisionWiigo + resultado.resumen.ivaComision + resultado.resumen.impCreditos + resultado.resumen.feeMp + resultado.resumen.sircreb)} />
+                  <ResumenCampo etiqueta="Imp. a los débitos" valor={-resultado.resumen.impDebitos} />
+                  <ResumenCampo
+                    etiqueta="Total deducciones"
+                    valor={-(
+                      resultado.resumen.comisionWiigo +
+                      resultado.resumen.ivaComision +
+                      resultado.resumen.impCreditos +
+                      resultado.resumen.feeMp +
+                      resultado.resumen.sircreb +
+                      resultado.resumen.impDebitos
+                    )}
+                  />
                 </div>
 
                 {resultado.resumen.sircreb > 0 && (

@@ -178,10 +178,11 @@ export default function MarcaFormModal({
               name="trasladar_sircreb"
               defaultChecked={marca?.trasladar_sircreb}
             />
-            <p className="sm:col-span-2 text-xs text-neutral-400 -mt-1">
-              El Impuesto a los Créditos se le descuenta a todas las marcas por igual en toda venta no efectivo — no
-              es configurable por marca, por eso no aparece acá como casillero.
-            </p>
+            <Checkbox
+              label="Impuesto a los créditos"
+              name="trasladar_imp_creditos"
+              defaultChecked={marca ? marca.trasladar_imp_creditos : true}
+            />
             <Field
               label="Impuesto a los débitos (%)"
               name="imp_debitos_porcentaje"

@@ -56,6 +56,7 @@ export type LineaRendicion = {
   impCreditos: number;
   feeMp: number;
   sircreb: number;
+  impDebitos: number;
   netoARendir: number;
 };
 
@@ -67,6 +68,7 @@ function vacioResumen() {
     impCreditos: 0,
     feeMp: 0,
     sircreb: 0,
+    impDebitos: 0,
     netoARendir: 0,
     netoEfectivo: 0,
     netoTransferencia: 0,
@@ -89,7 +91,9 @@ type VentaMinima = {
 async function construirLineas(supabase: SupabaseClient, idMarca: string, ventasFiltradas: VentaMinima[]) {
   const { data: marca, error: errorMarca } = await supabase
     .from("marcas")
-    .select("nombre, royalty_porcentaje, iva_royalty_porcentaje, trasladar_iva_comision, trasladar_comision_cobro, trasladar_sircreb")
+    .select(
+      "nombre, royalty_porcentaje, iva_royalty_porcentaje, trasladar_iva_comision, trasladar_comision_cobro, trasladar_sircreb, trasladar_imp_creditos, trasladar_imp_debitos, imp_debitos_porcentaje"
+    )
     .eq("id_marca", idMarca)
     .maybeSingle();
   if (errorMarca) throw new Error(friendlyDbError(errorMarca));
@@ -153,8 +157,12 @@ async function construirLineas(supabase: SupabaseClient, idMarca: string, ventas
     // El Impuesto a los Créditos es bancario: no corresponde si se le va a
     // entregar el efectivo en mano, sin pasar por una cuenta. Lo mismo la
     // comisión de Mercado Pago, que solo existe si cobró por esa vía — y
-    // varía según la forma de pago real del cliente (ver arriba).
-    const impCreditosLinea = esEfectivo ? 0 : Math.round(ventaBruta * (tasas.impCreditos / 100));
+    // varía según la forma de pago real del cliente (ver arriba). Además
+    // respeta el casillero "Impuesto a los créditos" de la ficha de la
+    // marca — hoy todas lo tienen tildado (comportamiento sin cambios),
+    // pero queda disponible por si alguna vez hace falta una excepción.
+    const impCreditosLinea =
+      esEfectivo || !marca.trasladar_imp_creditos ? 0 : Math.round(ventaBruta * (tasas.impCreditos / 100));
     // La comisión de Mercado Pago se cobra + IVA (ej. débito 1,39% + 21%
     // de IVA sobre esa comisión) — la tasa cargada en Configuración es la
     // base, sin IVA, así que el IVA se suma acá, no al cargar la tasa.
@@ -175,7 +183,15 @@ async function construirLineas(supabase: SupabaseClient, idMarca: string, ventas
       !esEfectivo && marca.trasladar_sircreb && venta.medio_pago === "MERCADO_PAGO"
         ? Math.round(ventaBruta * (tasas.sircreb / 100))
         : 0;
-    const netoARendir = ventaBruta - comisionWiigo - ivaComision - impCreditosLinea - feeMp - sircrebLinea;
+    // Impuesto a los Débitos: al revés de los demás, hoy WiiGo lo absorbe
+    // siempre (ninguna marca lo tiene tildado) — usa su propia tasa
+    // cargada en la ficha de la marca, no una tasa general, porque puede
+    // variar de una marca a otra.
+    const impDebitosLinea =
+      !esEfectivo && marca.trasladar_imp_debitos
+        ? Math.round(ventaBruta * ((marca.imp_debitos_porcentaje ?? 0) / 100))
+        : 0;
+    const netoARendir = ventaBruta - comisionWiigo - ivaComision - impCreditosLinea - feeMp - sircrebLinea - impDebitosLinea;
 
     lineas.push({
       idDetalle: linea.id_detalle,
@@ -191,6 +207,7 @@ async function construirLineas(supabase: SupabaseClient, idMarca: string, ventas
       impCreditos: impCreditosLinea,
       feeMp,
       sircreb: sircrebLinea,
+      impDebitos: impDebitosLinea,
       netoARendir,
     });
   }
@@ -205,6 +222,7 @@ async function construirLineas(supabase: SupabaseClient, idMarca: string, ventas
       impCreditos: acc.impCreditos + l.impCreditos,
       feeMp: acc.feeMp + l.feeMp,
       sircreb: acc.sircreb + l.sircreb,
+      impDebitos: acc.impDebitos + l.impDebitos,
       netoARendir: acc.netoARendir + l.netoARendir,
       // Dos plata distintas: lo que se le entrega en mano (efectivo) y lo
       // que se le transfiere por banco — no se pueden mezclar en un solo
@@ -284,6 +302,7 @@ export async function marcarComoLiquidada(
     impCreditos: number;
     feeMp: number;
     sircreb: number;
+    impDebitos: number;
     netoARendir: number;
     netoEfectivo: number;
     netoTransferencia: number;
@@ -294,7 +313,7 @@ export async function marcarComoLiquidada(
     const usuario = await usuarioActual();
 
     const totalComisiones = resumen.comisionWiigo + resumen.ivaComision + resumen.feeMp;
-    const totalRetenciones = totalComisiones + resumen.impCreditos + resumen.sircreb;
+    const totalRetenciones = totalComisiones + resumen.impCreditos + resumen.sircreb + resumen.impDebitos;
 
     const { data: liquidacion, error: errorLiquidacion } = await supabase
       .from("liquidaciones")
@@ -309,6 +328,7 @@ export async function marcarComoLiquidada(
         comision_cobro_asignada: resumen.feeMp,
         imp_creditos_asignado: resumen.impCreditos,
         sircreb_asignado: resumen.sircreb,
+        imp_debitos_liquidacion: resumen.impDebitos,
         total_comisiones: totalComisiones,
         total_retenciones: totalRetenciones,
         neto_a_transferir: resumen.netoARendir,

@@ -1,8 +1,22 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
+import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
+
+// Crear/editar/eliminar una marca (o subirle el logo) es solo para el Dueño
+// — acá se cargan el royalty, IVA y qué impuestos se le trasladan, así que
+// es plata real. Ver la pantalla de Marcas sigue siendo delegable como
+// hasta ahora; lo que se restringe es poder tocar los datos.
+async function requireAdmin() {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(SESSION_COOKIE)?.value;
+  const sesion = await readSessionToken(token, process.env.AUTH_SECRET ?? "");
+  if (sesion?.rol !== "admin") return "No tenés permiso para hacer esto — hace falta ser el Dueño.";
+  return null;
+}
 
 function text(formData: FormData, name: string) {
   const s = String(formData.get(name) ?? "").trim();
@@ -51,6 +65,9 @@ function marcaFromForm(formData: FormData) {
 // Server Action (queda solo un digest genérico) — por eso estas funciones
 // devuelven { error } como dato en vez de tirar throw.
 export async function createMarca(formData: FormData): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+
   try {
     const data = marcaFromForm(formData);
     if (!data.nombre) return { error: "El nombre es obligatorio" };
@@ -66,6 +83,9 @@ export async function createMarca(formData: FormData): Promise<{ error: string |
 }
 
 export async function updateMarca(id: string, formData: FormData): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+
   try {
     const data = marcaFromForm(formData);
     if (!data.nombre) return { error: "El nombre es obligatorio" };
@@ -85,6 +105,9 @@ export async function subirLogoMarca(
   idMarca: string,
   formData: FormData
 ): Promise<{ error: string | null; url?: string }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+
   const archivo = formData.get("archivo") as File | null;
   if (!archivo || archivo.size === 0) return { error: "Elegí un logo primero" };
 
@@ -112,6 +135,9 @@ export async function subirLogoMarca(
 }
 
 export async function deleteMarca(id: string): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+
   try {
     const supabase = getSupabaseServerClient();
     const { error } = await supabase.from("marcas").delete().eq("id_marca", id);

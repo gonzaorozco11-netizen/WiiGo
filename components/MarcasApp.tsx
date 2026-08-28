@@ -6,7 +6,7 @@ import type { Marca } from "@/lib/supabase";
 import { deleteMarca } from "@/app/(app)/marcas/actions";
 import MarcaFormModal from "@/components/MarcaFormModal";
 
-export default function MarcasApp({ initialMarcas }: { initialMarcas: Marca[] }) {
+export default function MarcasApp({ initialMarcas, esAdmin }: { initialMarcas: Marca[]; esAdmin: boolean }) {
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Marca | null>(null);
@@ -56,12 +56,14 @@ export default function MarcasApp({ initialMarcas }: { initialMarcas: Marca[] })
           onChange={(e) => setSearch(e.target.value)}
           className="flex-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
         />
-        <button
-          onClick={openNew}
-          className="rounded-lg bg-accent hover:bg-accent-dark text-white px-4 py-2 text-sm font-medium whitespace-nowrap"
-        >
-          + Nueva marca
-        </button>
+        {esAdmin && (
+          <button
+            onClick={openNew}
+            className="rounded-lg bg-accent hover:bg-accent-dark text-white px-4 py-2 text-sm font-medium whitespace-nowrap"
+          >
+            + Nueva marca
+          </button>
+        )}
       </div>
 
       {filtered.length === 0 ? (
@@ -104,19 +106,23 @@ export default function MarcasApp({ initialMarcas }: { initialMarcas: Marca[] })
                 >
                   Ver
                 </Link>
-                <button
-                  onClick={() => openEdit(m)}
-                  className="text-sm text-neutral-500 hover:text-neutral-900"
-                >
-                  Editar
-                </button>
-                <button
-                  onClick={() => handleDelete(m)}
-                  disabled={isPending}
-                  className="text-sm text-red-500 hover:text-red-700 disabled:opacity-50"
-                >
-                  Borrar
-                </button>
+                {esAdmin && (
+                  <button
+                    onClick={() => openEdit(m)}
+                    className="text-sm text-neutral-500 hover:text-neutral-900"
+                  >
+                    Editar
+                  </button>
+                )}
+                {esAdmin && (
+                  <button
+                    onClick={() => handleDelete(m)}
+                    disabled={isPending}
+                    className="text-sm text-red-500 hover:text-red-700 disabled:opacity-50"
+                  >
+                    Borrar
+                  </button>
+                )}
               </div>
             </li>
           ))}
