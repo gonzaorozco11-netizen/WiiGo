@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { Fragment, useEffect, useState, useTransition } from "react";
 import type { ProveedorConSaldo } from "@/app/(app)/proveedores/actions";
 import type { LineaLiquidacionProveedor } from "@/lib/liquidacionesProveedor";
 import { calcularLiquidacionProveedorAction, generarLiquidacionProveedorAction } from "@/app/(app)/proveedores/actions";
@@ -34,6 +34,16 @@ export default function LiquidacionProveedorModal({
   const [montoCalculado, setMontoCalculado] = useState(0);
   const [montoFinal, setMontoFinal] = useState("");
   const [observaciones, setObservaciones] = useState("");
+  const [expandidas, setExpandidas] = useState<Set<string>>(new Set());
+
+  function toggleExpandida(idVariante: string) {
+    setExpandidas((prev) => {
+      const next = new Set(prev);
+      if (next.has(idVariante)) next.delete(idVariante);
+      else next.add(idVariante);
+      return next;
+    });
+  }
 
   useEffect(() => {
     if (!fechaDesde || !fechaHasta) return;
@@ -58,7 +68,6 @@ export default function LiquidacionProveedorModal({
           fechaDesde,
           fechaHasta,
           montoFinal: montoNum,
-          lineas,
           observaciones,
         });
         if (res.error) setError(res.error);
@@ -116,20 +125,60 @@ export default function LiquidacionProveedorModal({
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-neutral-50 border-b border-neutral-200 text-left text-xs text-neutral-500">
+                    <th className="p-3"></th>
                     <th className="p-3">Producto</th>
                     <th className="p-3 text-right">Vendido</th>
-                    <th className="p-3 text-right">Costo unit.</th>
+                    <th className="p-3 text-right">Costo prom.</th>
                     <th className="p-3 text-right">Subtotal</th>
                   </tr>
                 </thead>
                 <tbody>
                   {lineas.map((l) => (
-                    <tr key={l.idVariante} className="border-b border-neutral-100 last:border-0">
-                      <td className="p-3 text-neutral-900">{l.nombreProducto}</td>
-                      <td className="p-3 text-right text-neutral-500">{l.cantidadVendida}</td>
-                      <td className="p-3 text-right text-neutral-500">${formatearMonto(l.costoUnitario)}</td>
-                      <td className="p-3 text-right font-medium text-neutral-900">${formatearMonto(l.subtotal)}</td>
-                    </tr>
+                    <Fragment key={l.idVariante}>
+                      <tr
+                        onClick={() => toggleExpandida(l.idVariante)}
+                        className="border-b border-neutral-100 last:border-0 cursor-pointer hover:bg-neutral-50"
+                      >
+                        <td className="p-3 text-neutral-400 text-xs w-5">{expandidas.has(l.idVariante) ? "▾" : "▸"}</td>
+                        <td className="p-3 text-neutral-900">
+                          {l.nombreProducto}
+                          {l.estimado && (
+                            <span className="ml-2 text-[10px] font-semibold text-amber-700 bg-amber-50 rounded-full px-1.5 py-0.5">
+                              parte estimada
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-3 text-right text-neutral-500">{l.cantidadVendida}</td>
+                        <td className="p-3 text-right text-neutral-500">${formatearMonto(l.costoUnitario)}</td>
+                        <td className="p-3 text-right font-medium text-neutral-900">${formatearMonto(l.subtotal)}</td>
+                      </tr>
+                      {expandidas.has(l.idVariante) && (
+                        <tr key={`${l.idVariante}-detalle`} className="border-b border-neutral-100 last:border-0 bg-neutral-50">
+                          <td></td>
+                          <td colSpan={4} className="px-3 pb-3">
+                            <p className="text-[10px] font-semibold text-neutral-400 uppercase tracking-wide mb-1">
+                              De qué remitos salió (más viejo primero)
+                            </p>
+                            <table className="w-full text-xs">
+                              <tbody>
+                                {l.lotes.map((lote, i) => (
+                                  <tr key={i}>
+                                    <td className="py-1 text-neutral-500">
+                                      {lote.idDetalleRecepcion === "ESTIMADO" ? "Sin remito registrado (estimado)" : `Remito #${lote.idDetalleRecepcion.slice(0, 8).toUpperCase()}`}
+                                    </td>
+                                    <td className="py-1 text-right text-neutral-500">{lote.cantidad} un.</td>
+                                    <td className="py-1 text-right text-neutral-500">${formatearMonto(lote.costoUnitario)} c/u</td>
+                                    <td className="py-1 text-right font-medium text-neutral-700">
+                                      ${formatearMonto(lote.cantidad * lote.costoUnitario)}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   ))}
                 </tbody>
               </table>
@@ -137,7 +186,8 @@ export default function LiquidacionProveedorModal({
           )}
 
           <p className="text-xs text-neutral-500">
-            Lo que no se vendió (quedó en stock o se devolvió) no aparece acá — no genera ninguna deuda.
+            Lo que no se vendió (quedó en stock o se devolvió) no aparece acá — no genera ninguna deuda. Hacé clic en un
+            producto para ver de qué remitos salió el costo.
           </p>
 
           <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-3.5">

@@ -6,7 +6,8 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 import { saldosPorProveedor, registrarMovimientoProveedor, historialCuentaProveedor } from "@/lib/cuentaProveedor";
-import { calcularLiquidacionProveedor, generarLiquidacionProveedor, type LineaLiquidacionProveedor } from "@/lib/liquidacionesProveedor";
+import { calcularLiquidacionProveedor, generarLiquidacionProveedor } from "@/lib/liquidacionesProveedor";
+import { consumirFifo } from "@/lib/fifoProveedor";
 import { turnoAbiertoDeLocal } from "@/app/(app)/turnos/actions";
 
 async function usuarioActual() {
@@ -257,6 +258,10 @@ export async function recepcionarOrdenCompra(
         cantidad_recibida: item.cantidadRecibida,
         estado_control: estadoControl,
         diferencia,
+        // Arranca con toda la cantidad recibida disponible — el costeo FIFO
+        // (lib/fifoProveedor.ts) la va descontando a medida que se vende o
+        // se devuelve, siempre del lote más viejo primero.
+        cantidad_disponible_fifo: item.cantidadRecibida,
       });
       if (errorDetalleRecepcion) return { error: friendlyDbError(errorDetalleRecepcion) };
 
@@ -368,6 +373,12 @@ export async function registrarDevolucionProveedor(
     });
     if (errorDevolucion) return { error: friendlyDbError(errorDevolucion) };
 
+    // Si este proveedor usa costeo FIFO (caso Alifrut), lo devuelto también
+    // se descuenta del lote más viejo con saldo — mismo criterio que una
+    // venta — para que no quede "disponible" para liquidar después. No
+    // tiene ningún efecto si el proveedor no tiene lotes con costo cargado.
+    await consumirFifo(supabase, idProveedor, idVariante, cantidad, null);
+
     revalidatePath("/proveedores");
     revalidatePath("/stock");
     return { error: null };
@@ -392,8 +403,10 @@ export async function listarDevolucionesProveedor(idProveedor: string) {
 // Alifrut no factura por entrega — pero el costo de cada pedido sí puede
 // variar, así que después de recepcionar hay que poder cargarlo igual. A
 // diferencia de cargarFacturaCompra, esto NUNCA genera factura ni movimiento
-// de cuenta corriente — solo actualiza productos.costo_informado, que es lo
-// que después usa la liquidación por venta para calcular cuánto se le debe.
+// de cuenta corriente — actualiza productos.costo_informado (para mostrar el
+// costo "actual" en pantalla) y además el costo real de este lote puntual
+// (detalle_recepcion_proveedor.costo_unitario), que es lo que usa el
+// costeo FIFO de la liquidación por venta para calcular cuánto se le debe.
 export async function actualizarCostosRecepcion(
   idOrden: string,
   costos: { idVariante: string; costo: number }[],
@@ -404,6 +417,12 @@ export async function actualizarCostosRecepcion(
 
   try {
     const supabase = getSupabaseServerClient();
+    const { data: recepcion } = await supabase
+      .from("recepciones_proveedor")
+      .select("id_recepcion")
+      .eq("id_orden", idOrden)
+      .maybeSingle();
+
     for (const item of costos) {
       if (item.costo <= 0) continue;
       const { data: variante } = await supabase
@@ -414,6 +433,14 @@ export async function actualizarCostosRecepcion(
       if (!variante) continue;
       const { error } = await supabase.from("productos").update({ costo_informado: item.costo }).eq("id_producto", variante.id_producto);
       if (error) return { error: friendlyDbError(error) };
+
+      if (recepcion) {
+        await supabase
+          .from("detalle_recepcion_proveedor")
+          .update({ costo_unitario: item.costo })
+          .eq("id_recepcion", recepcion.id_recepcion)
+          .eq("id_variante", item.idVariante);
+      }
     }
 
     // Marca la recepción como procesada — es lo que hace que deje de
@@ -627,7 +654,6 @@ export async function generarLiquidacionProveedorAction(params: {
   fechaDesde: string;
   fechaHasta: string;
   montoFinal: number;
-  lineas: LineaLiquidacionProveedor[];
   observaciones: string;
 }): Promise<{ error: string | null }> {
   const permisoError = await requireAdmin();
@@ -644,7 +670,6 @@ export async function generarLiquidacionProveedorAction(params: {
       fechaDesde: params.fechaDesde,
       fechaHasta: params.fechaHasta,
       montoFinal: params.montoFinal,
-      lineas: params.lineas,
       usuario,
       observaciones: params.observaciones || null,
     });

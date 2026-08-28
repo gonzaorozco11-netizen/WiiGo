@@ -366,6 +366,7 @@ export type RecepcionProveedor = {
   revisado_por_administracion: boolean;
   resolucion_observaciones: string | null;
   observaciones: string | null;
+  comprobante_path: string | null;
   fecha: string;
 };
 
@@ -377,6 +378,12 @@ export type DetalleRecepcionProveedor = {
   cantidad_recibida: number;
   estado_control: string; // COMPLETA / FALTANTE / SOBRANTE
   diferencia: number;
+  // Costeo FIFO (caso Alifrut) — ver lib/fifoProveedor.ts. costo_unitario se
+  // completa recién cuando se carga la factura de este lote puntual;
+  // cantidad_disponible_fifo arranca en cantidad_recibida y baja con cada
+  // venta o devolución que consume de este lote.
+  costo_unitario: number | null;
+  cantidad_disponible_fifo: number | null;
 };
 
 // Simple a propósito: no se ata a una recepción puntual, para que cargarla
@@ -443,6 +450,9 @@ export type DetalleLiquidacionProveedor = {
   id_detalle: string;
   id_liquidacion: string;
   id_variante: string;
+  // Un renglón por lote/remito consumido (no uno por producto) — null si esa
+  // parte se tuvo que estimar por no tener un lote con costo registrado.
+  id_detalle_recepcion: string | null;
   cantidad_vendida: number;
   costo_unitario: number;
   subtotal: number;

@@ -4,14 +4,22 @@
 // Liquidaciones de marcas: sin royalty, sin comisión de Mercado Pago
 // trasladada, sin SIRCREB. WiiGo se queda con todo el margen entre el
 // precio de venta y este costo.
+//
+// El costo de cada unidad vendida se calcula por FIFO (ver
+// lib/fifoProveedor.ts): se descuenta del lote/remito más viejo que todavía
+// tenga saldo, así se paga exactamente lo que costó cada unidad real, no un
+// promedio ni el último costo cargado.
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { simularConsumoFifo, aplicarConsumoLotes, type ConsumoLote } from "./fifoProveedor";
 
 export type LineaLiquidacionProveedor = {
   idVariante: string;
   nombreProducto: string;
   cantidadVendida: number;
-  costoUnitario: number;
+  costoUnitario: number; // promedio ponderado entre los lotes consumidos, para mostrar un solo número
   subtotal: number;
+  lotes: ConsumoLote[]; // detalle por remito, para trazabilidad
+  estimado: boolean; // true si algún tramo no tenía lote/costo registrado y se estimó
 };
 
 // Se marca por LÍNEA de venta (detalle_ventas.id_liquidacion_proveedor), no
@@ -56,12 +64,12 @@ export async function calcularLiquidacionProveedor(
     .is("id_liquidacion_proveedor", null);
 
   const nombrePorVariante = new Map<string, string>();
-  const costoPorVariante = new Map<string, number>();
+  const costoReservaPorVariante = new Map<string, number>();
   for (const v of variantes ?? []) {
     const producto = productoPorId.get(v.id_producto as string);
     const nombreBase = producto?.nombre ?? "Producto";
     nombrePorVariante.set(v.id_variante as string, v.nombre !== "Único" ? `${nombreBase} — ${v.nombre}` : nombreBase);
-    costoPorVariante.set(v.id_variante as string, (producto?.costo_informado as number | null) ?? 0);
+    costoReservaPorVariante.set(v.id_variante as string, (producto?.costo_informado as number | null) ?? 0);
   }
 
   const cantidadPorVariante = new Map<string, number>();
@@ -73,9 +81,17 @@ export async function calcularLiquidacionProveedor(
   let total = 0;
   for (const [idVariante, cantidad] of cantidadPorVariante) {
     if (cantidad <= 0) continue;
-    const costoUnitario = costoPorVariante.get(idVariante) ?? 0;
-    const subtotal = Math.round(cantidad * costoUnitario);
-    lineas.push({ idVariante, nombreProducto: nombrePorVariante.get(idVariante) ?? "Producto", cantidadVendida: cantidad, costoUnitario, subtotal });
+    const resultado = await simularConsumoFifo(supabase, idProveedor, idVariante, cantidad, costoReservaPorVariante.get(idVariante) ?? null);
+    const subtotal = Math.round(resultado.costoTotal);
+    lineas.push({
+      idVariante,
+      nombreProducto: nombrePorVariante.get(idVariante) ?? "Producto",
+      cantidadVendida: cantidad,
+      costoUnitario: Math.round(resultado.costoTotal / cantidad),
+      subtotal,
+      lotes: resultado.consumos,
+      estimado: resultado.estimado,
+    });
     total += subtotal;
   }
 
@@ -89,12 +105,16 @@ export async function generarLiquidacionProveedor(
     fechaDesde: string;
     fechaHasta: string;
     montoFinal: number;
-    lineas: LineaLiquidacionProveedor[];
     usuario: string | null;
     observaciones: string | null;
   }
 ): Promise<string> {
-  const montoCalculado = params.lineas.reduce((acc, l) => acc + l.subtotal, 0);
+  // Se recalcula fresco (no se reusa lo que se mostró en el preview) porque
+  // puede haber pasado tiempo entre calcular y confirmar, y en el medio
+  // pudo haberse cargado otra venta o devolución que cambie qué lotes están
+  // disponibles.
+  const fresco = await calcularLiquidacionProveedor(supabase, params.idProveedor, params.fechaDesde, params.fechaHasta);
+  const montoCalculado = fresco.lineas.reduce((acc, l) => acc + l.subtotal, 0);
 
   const { data: liquidacion, error } = await supabase
     .from("liquidaciones_proveedor")
@@ -112,24 +132,29 @@ export async function generarLiquidacionProveedor(
     .single();
   if (error) throw new Error(error.message);
 
-  if (params.lineas.length > 0) {
-    const { error: errorDetalle } = await supabase.from("detalle_liquidacion_proveedor").insert(
-      params.lineas.map((l) => ({
+  // Un renglón por cada lote consumido (no uno por producto) para poder ver
+  // después de qué remito salió cada parte de la plata liquidada.
+  for (const linea of fresco.lineas) {
+    for (const lote of linea.lotes) {
+      const { error: errorDetalle } = await supabase.from("detalle_liquidacion_proveedor").insert({
         id_liquidacion: liquidacion.id_liquidacion,
-        id_variante: l.idVariante,
-        cantidad_vendida: l.cantidadVendida,
-        costo_unitario: l.costoUnitario,
-        subtotal: l.subtotal,
-      }))
-    );
-    if (errorDetalle) throw new Error(errorDetalle.message);
+        id_variante: linea.idVariante,
+        id_detalle_recepcion: lote.idDetalleRecepcion === "ESTIMADO" ? null : lote.idDetalleRecepcion,
+        cantidad_vendida: lote.cantidad,
+        costo_unitario: lote.costoUnitario,
+        subtotal: Math.round(lote.cantidad * lote.costoUnitario),
+      });
+      if (errorDetalle) throw new Error(errorDetalle.message);
+    }
+    // Recién acá, al confirmar, se descuenta de verdad el saldo disponible
+    // de cada lote — es lo que hace que lo no vendido quede para el mes
+    // que viene en vez de perderse.
+    await aplicarConsumoLotes(supabase, linea.lotes);
   }
 
   // Marcar por línea las ventas ya cubiertas por esta liquidación, para no
-  // volver a contarlas el mes que viene — se vuelve a buscar en vez de
-  // reusar las líneas de arriba porque puede haber pasado tiempo entre
-  // calcular y confirmar.
-  const varianteIds = params.lineas.map((l) => l.idVariante);
+  // volver a contarlas el mes que viene.
+  const varianteIds = fresco.lineas.map((l) => l.idVariante);
   if (varianteIds.length > 0) {
     const { data: ventasDelPeriodo } = await supabase
       .from("ventas")
