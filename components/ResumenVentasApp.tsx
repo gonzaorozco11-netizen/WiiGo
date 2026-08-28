@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { calcularResumenVentas, type LineaResumenVentas } from "@/app/(app)/resumen-ventas/actions";
 
 function formatearMonto(valor: number) {
@@ -14,6 +14,11 @@ function formatearPedido(numero: number) {
 function formatearFechaHora(fechaISO: string) {
   return new Date(fechaISO).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
+
+const CANAL_LABEL: Record<string, string> = {
+  SELF_CHECKOUT: "Self Checkout",
+  POS: "Vender (POS)",
+};
 
 function formatearMedioPago(medioPago: string | null) {
   if (medioPago === "EFECTIVO") return "Efectivo";
@@ -38,7 +43,7 @@ export default function ResumenVentasApp() {
   const [posibleTruncado, setPosibleTruncado] = useState(false);
   const [busqueda, setBusqueda] = useState("");
   const [filtroPago, setFiltroPago] = useState<"TODOS" | "EFECTIVO" | "MERCADO_PAGO">("TODOS");
-  const [expandida, setExpandida] = useState<string | null>(null);
+  const [idVentaSeleccionada, setIdVentaSeleccionada] = useState<string | null>(null);
 
   const lineasFiltradas = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
@@ -55,10 +60,12 @@ export default function ResumenVentasApp() {
   const totalMargenFiltrado = useMemo(() => lineasFiltradas.reduce((acc, l) => acc + l.margen, 0), [lineasFiltradas]);
   const hayFiltroActivo = busqueda.trim() !== "" || filtroPago !== "TODOS";
 
+  const ventaSeleccionada = lineasFiltradas.find((l) => l.idVenta === idVentaSeleccionada) ?? null;
+
   useEffect(() => {
     if (!fechaDesde || !fechaHasta) return;
     setCargando(true);
-    setExpandida(null);
+    setIdVentaSeleccionada(null);
     calcularResumenVentas(fechaDesde, fechaHasta)
       .then((r) => {
         setLineas(r.lineas);
@@ -152,29 +159,30 @@ export default function ResumenVentasApp() {
         ) : lineasFiltradas.length === 0 ? (
           <p className="text-sm text-neutral-400 text-center py-16">No hay ventas que coincidan con la búsqueda.</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-neutral-200 text-left text-xs text-neutral-500">
-                  <th className="p-3"></th>
-                  <th className="p-3">Venta</th>
-                  <th className="p-3">Fecha</th>
-                  <th className="p-3">Pago</th>
-                  <th className="p-3 text-right">Items</th>
-                  <th className="p-3 text-right">Total facturado</th>
-                  <th className="p-3 text-right">Costo</th>
-                  <th className="p-3 text-right">Margen</th>
-                  <th className="p-3 text-right">%</th>
-                </tr>
-              </thead>
-              <tbody>
-                {lineasFiltradas.map((l) => (
-                  <Fragment key={l.idVenta}>
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_360px] min-h-[400px]">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-neutral-200 text-left text-xs text-neutral-500">
+                    <th className="p-3">Venta</th>
+                    <th className="p-3">Fecha</th>
+                    <th className="p-3">Pago</th>
+                    <th className="p-3 text-right">Items</th>
+                    <th className="p-3 text-right">Total facturado</th>
+                    <th className="p-3 text-right">Costo</th>
+                    <th className="p-3 text-right">Margen</th>
+                    <th className="p-3 text-right">%</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lineasFiltradas.map((l) => (
                     <tr
-                      onClick={() => setExpandida((actual) => (actual === l.idVenta ? null : l.idVenta))}
-                      className="border-b border-neutral-100 last:border-0 cursor-pointer hover:bg-neutral-50"
+                      key={l.idVenta}
+                      onClick={() => setIdVentaSeleccionada(l.idVenta)}
+                      className={`border-b border-neutral-100 last:border-0 cursor-pointer ${
+                        ventaSeleccionada?.idVenta === l.idVenta ? "bg-accent-tint" : "hover:bg-neutral-50"
+                      }`}
                     >
-                      <td className="p-3 text-neutral-400 text-xs w-5">{expandida === l.idVenta ? "▾" : "▸"}</td>
                       <td className="p-3 font-medium text-neutral-900">{formatearPedido(l.numeroVenta)}</td>
                       <td className="p-3 text-neutral-500 whitespace-nowrap">{formatearFechaHora(l.fecha)}</td>
                       <td className="p-3 text-neutral-500">{formatearMedioPago(l.medioPago)}</td>
@@ -186,31 +194,84 @@ export default function ResumenVentasApp() {
                       <td className="p-3 text-right tabular-nums font-semibold text-emerald-700">${formatearMonto(l.margen)}</td>
                       <td className="p-3 text-right tabular-nums text-neutral-500">{l.margenPorcentaje.toFixed(1)}%</td>
                     </tr>
-                    {expandida === l.idVenta && (
-                      <tr className="border-b border-neutral-100 last:border-0 bg-neutral-50">
-                        <td></td>
-                        <td colSpan={8} className="px-3 pb-3">
-                          <p className="text-[10px] font-semibold text-neutral-400 uppercase tracking-wide mb-1">
-                            Lo que se vendió en {formatearPedido(l.numeroVenta)}
-                          </p>
-                          <table className="w-full text-xs">
-                            <tbody>
-                              {l.detalle.map((d, i) => (
-                                <tr key={i}>
-                                  <td className="py-1 text-neutral-700">{d.nombreProducto}</td>
-                                  <td className="py-1 text-right text-neutral-500">{d.cantidad} un.</td>
-                                  <td className="py-1 text-right font-medium text-neutral-700">${formatearMonto(d.subtotal)}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </td>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="border-t md:border-t-0 md:border-l border-neutral-200 p-5">
+              {!ventaSeleccionada ? (
+                <p className="text-sm text-neutral-400 text-center py-10">Elegí una venta de la lista.</p>
+              ) : (
+                <div>
+                  <div className="flex items-baseline justify-between mb-3.5">
+                    <h3 className="font-bold text-neutral-900">{formatearPedido(ventaSeleccionada.numeroVenta)}</h3>
+                    <span className="text-xs rounded-full px-2.5 py-1 font-semibold bg-emerald-50 text-emerald-700">Pagada</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 mb-4 text-sm">
+                    <div>
+                      <p className="text-[11px] uppercase tracking-wide text-neutral-400">Local</p>
+                      <p className="font-medium text-neutral-900">{ventaSeleccionada.local}</p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] uppercase tracking-wide text-neutral-400">Canal</p>
+                      <p className="font-medium text-neutral-900">
+                        {ventaSeleccionada.canal ? CANAL_LABEL[ventaSeleccionada.canal] ?? ventaSeleccionada.canal : "—"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] uppercase tracking-wide text-neutral-400">Pago</p>
+                      <p className="font-medium text-neutral-900">{formatearMedioPago(ventaSeleccionada.medioPago)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] uppercase tracking-wide text-neutral-400">Fecha</p>
+                      <p className="font-medium text-neutral-900">{formatearFechaHora(ventaSeleccionada.fecha)}</p>
+                    </div>
+                  </div>
+
+                  <table className="w-full text-sm mb-4">
+                    <thead>
+                      <tr className="text-xs uppercase tracking-wide text-neutral-400 border-b border-neutral-200">
+                        <th className="text-left font-bold pb-2">Producto</th>
+                        <th className="text-left font-bold pb-2">Marca</th>
+                        <th className="text-left font-bold pb-2">Cant.</th>
+                        <th className="text-right font-bold pb-2">Subtotal</th>
                       </tr>
-                    )}
-                  </Fragment>
-                ))}
-              </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                      {ventaSeleccionada.detalle.map((d, i) => (
+                        <tr key={i} className="border-b border-neutral-100">
+                          <td className="py-2">{d.nombreProducto}</td>
+                          <td className="py-2 text-neutral-500">{d.marca}</td>
+                          <td className="py-2">{d.cantidad}</td>
+                          <td className="py-2 text-right tabular-nums">${formatearMonto(d.subtotal)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+
+                  <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-4 text-sm">
+                    <div className="flex justify-between mb-1.5">
+                      <span className="text-neutral-500">Total facturado</span>
+                      <span>${formatearMonto(ventaSeleccionada.totalFacturado)}</span>
+                    </div>
+                    <div className="flex justify-between mb-1.5">
+                      <span className="text-neutral-500">Costo</span>
+                      <span className="text-neutral-500">
+                        {ventaSeleccionada.costo > 0 ? `-$${formatearMonto(ventaSeleccionada.costo)}` : "—"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between font-extrabold text-base border-t border-neutral-200 pt-1.5">
+                      <span>Margen</span>
+                      <span className="text-emerald-700">
+                        ${formatearMonto(ventaSeleccionada.margen)} ({ventaSeleccionada.margenPorcentaje.toFixed(1)}%)
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>

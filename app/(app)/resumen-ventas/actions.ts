@@ -11,6 +11,7 @@ function redondear2(valor: number) {
 
 export type DetalleLineaVenta = {
   nombreProducto: string;
+  marca: string;
   cantidad: number;
   subtotal: number;
 };
@@ -20,6 +21,8 @@ export type LineaResumenVentas = {
   numeroVenta: number;
   fecha: string;
   medioPago: string | null;
+  canal: string | null;
+  local: string;
   cantidadItems: number;
   totalFacturado: number;
   costo: number;
@@ -51,7 +54,7 @@ export async function calcularResumenVentas(
 
   const { data: ventas, error: errorVentas } = await supabase
     .from("ventas")
-    .select("id_venta, numero, fecha, medio_pago")
+    .select("id_venta, numero, fecha, medio_pago, canal, id_local")
     .eq("estado", "PAGADA")
     .gte("fecha", `${desde}T00:00:00`)
     .lte("fecha", `${hasta}T23:59:59`)
@@ -62,6 +65,13 @@ export async function calcularResumenVentas(
   if (!ventas || ventas.length === 0) return { lineas: [], totalFacturado: 0, totalMargen: 0, posibleTruncado: false };
   const ventaPorId = new Map(ventas.map((v) => [v.id_venta as string, v]));
   const idsVenta = ventas.map((v) => v.id_venta as string);
+
+  const idsLocal = [...new Set(ventas.map((v) => v.id_local as string).filter(Boolean))];
+  const { data: locales } = await supabase
+    .from("locales")
+    .select("id_local, nombre")
+    .in("id_local", idsLocal.length > 0 ? idsLocal : ["00000000-0000-0000-0000-000000000000"]);
+  const localPorId = new Map((locales ?? []).map((l) => [l.id_local as string, l.nombre as string]));
 
   const { data: detalle, error: errorDetalle } = await supabase
     .from("detalle_ventas")
@@ -95,7 +105,7 @@ export async function calcularResumenVentas(
   const idsMarca = [...new Set((productos ?? []).map((p) => p.id_marca as string).filter(Boolean))];
   const { data: marcas } = await supabase
     .from("marcas")
-    .select("id_marca, tipo_comercializacion, royalty_porcentaje")
+    .select("id_marca, nombre, tipo_comercializacion, royalty_porcentaje")
     .in("id_marca", idsMarca.length > 0 ? idsMarca : ["00000000-0000-0000-0000-000000000000"]);
   const marcaPorId = new Map((marcas ?? []).map((m) => [m.id_marca as string, m]));
 
@@ -128,6 +138,7 @@ export async function calcularResumenVentas(
     actual.margen += margenLinea;
     actual.detalle.push({
       nombreProducto: nombreProductoLinea(d.id_variante as string),
+      marca: marca?.nombre ?? "—",
       cantidad: cantidadLinea,
       subtotal: redondear2(subtotalLinea),
     });
@@ -145,6 +156,8 @@ export async function calcularResumenVentas(
       numeroVenta: venta.numero as number,
       fecha: venta.fecha as string,
       medioPago: venta.medio_pago as string | null,
+      canal: (venta.canal as string | null) ?? null,
+      local: venta.id_local ? localPorId.get(venta.id_local as string) ?? "—" : "—",
       cantidadItems: acum.items,
       totalFacturado,
       detalle: acum.detalle,
