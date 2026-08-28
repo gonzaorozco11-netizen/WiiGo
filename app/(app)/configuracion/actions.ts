@@ -187,6 +187,44 @@ export async function guardarConfigRentabilidad(formData: FormData): Promise<{ e
   return { error: null };
 }
 
+// Qué se descuenta en Rentabilidad según la forma de pago — antes era fijo
+// en el código (IVA siempre, IIBB/Créditos/Comisión MP solo si no era
+// efectivo); ahora cada casillero es una decisión explícita, separada por
+// Efectivo y Mercado Pago (ver calcularRentabilidad en rentabilidad/actions.ts).
+export async function guardarConfigRentabilidadDescuentos(formData: FormData): Promise<{ error: string | null }> {
+  const permisoError = await requireEditarConfiguracion();
+  if (permisoError) return { error: permisoError };
+
+  const supabase = getSupabaseServerClient();
+
+  const claves: { clave: string; campo: string; descripcion: string }[] = [
+    { clave: "RENT_EFECTIVO_IVA", campo: "rent_efectivo_iva", descripcion: "Rentabilidad: descontar IVA en ventas en efectivo" },
+    { clave: "RENT_EFECTIVO_IIBB", campo: "rent_efectivo_iibb", descripcion: "Rentabilidad: descontar IIBB en ventas en efectivo" },
+    {
+      clave: "RENT_EFECTIVO_IMP_CREDITOS",
+      campo: "rent_efectivo_imp_creditos",
+      descripcion: "Rentabilidad: descontar Impuesto a los Créditos en ventas en efectivo",
+    },
+    { clave: "RENT_MP_IVA", campo: "rent_mp_iva", descripcion: "Rentabilidad: descontar IVA en ventas por Mercado Pago" },
+    { clave: "RENT_MP_IIBB", campo: "rent_mp_iibb", descripcion: "Rentabilidad: descontar IIBB en ventas por Mercado Pago" },
+    {
+      clave: "RENT_MP_IMP_CREDITOS",
+      campo: "rent_mp_imp_creditos",
+      descripcion: "Rentabilidad: descontar Impuesto a los Créditos en ventas por Mercado Pago",
+    },
+    { clave: "RENT_MP_COMISION", campo: "rent_mp_comision", descripcion: "Rentabilidad: descontar la comisión de Mercado Pago en ventas por esa vía" },
+  ];
+
+  for (const { clave, campo, descripcion } of claves) {
+    const valor = formData.get(campo) === "on";
+    const error = await guardarParametro(supabase, clave, String(valor), descripcion);
+    if (error) return { error };
+  }
+
+  revalidatePath("/configuracion");
+  return { error: null };
+}
+
 // Conexión de una única vez: crea (si no existe) una sucursal y una caja en
 // Mercado Pago para el totem, y guarda los IDs en Configuración — de ahí en
 // más el self-checkout ya puede pedir órdenes de QR dinámico. Si se toca de

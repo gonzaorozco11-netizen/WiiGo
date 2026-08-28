@@ -16,6 +16,19 @@ const CLAVE_COMISION_MP: Record<string, string> = {
   CREDITO: "MP_COMISION_CREDITO",
 };
 
+// Qué se descuenta según la forma de pago es configurable — Efectivo y
+// Mercado Pago pueden tener reglas distintas (ej. no descontar IVA en
+// efectivo), se carga en Configuración → Rentabilidad — Marca Propia.
+const CLAVES_DESCUENTOS = [
+  "RENT_EFECTIVO_IVA",
+  "RENT_EFECTIVO_IIBB",
+  "RENT_EFECTIVO_IMP_CREDITOS",
+  "RENT_MP_IVA",
+  "RENT_MP_IIBB",
+  "RENT_MP_IMP_CREDITOS",
+  "RENT_MP_COMISION",
+] as const;
+
 async function tasasRentabilidad(supabase: SupabaseClient) {
   const { data } = await supabase
     .from("configuracion")
@@ -25,15 +38,35 @@ async function tasasRentabilidad(supabase: SupabaseClient) {
       "IIBB_PORCENTAJE",
       "IMP_CREDITOS_PORCENTAJE",
       ...Object.values(CLAVE_COMISION_MP),
+      ...CLAVES_DESCUENTOS,
     ]);
-  const cfg = Object.fromEntries((data ?? []).map((r) => [r.parametro, Number(r.valor ?? 0)]));
+  const cfg = Object.fromEntries((data ?? []).map((r) => [r.parametro, r.valor]));
+  const bool = (clave: string, porDefecto: boolean) => (cfg[clave] === undefined ? porDefecto : cfg[clave] === "true");
   return {
-    ivaGeneral: cfg.IVA_GENERAL_PORCENTAJE ?? 21,
-    iibb: cfg.IIBB_PORCENTAJE ?? 0,
-    impCreditos: cfg.IMP_CREDITOS_PORCENTAJE ?? 0,
+    ivaGeneral: Number(cfg.IVA_GENERAL_PORCENTAJE ?? 21),
+    iibb: Number(cfg.IIBB_PORCENTAJE ?? 0),
+    impCreditos: Number(cfg.IMP_CREDITOS_PORCENTAJE ?? 0),
     mpComisionPorFormaPago: Object.fromEntries(
-      Object.entries(CLAVE_COMISION_MP).map(([forma, clave]) => [forma, cfg[clave] ?? 0])
+      Object.entries(CLAVE_COMISION_MP).map(([forma, clave]) => [forma, Number(cfg[clave] ?? 0)])
     ) as Record<string, number>,
+    // Por defecto Efectivo no descuenta nada (no hay rastro bancario) y
+    // Mercado Pago descuenta todo — mismo comportamiento que había antes
+    // de que esto fuera configurable, hasta que se cambie a mano.
+    efectivo: {
+      iva: bool("RENT_EFECTIVO_IVA", false),
+      iibb: bool("RENT_EFECTIVO_IIBB", false),
+      impCreditos: bool("RENT_EFECTIVO_IMP_CREDITOS", false),
+      // En efectivo nunca hay comisión de Mercado Pago de por medio — se
+      // deja en false siempre, para que ambas ramas (efectivo/MP) tengan
+      // la misma forma y "reglas.comision" sea seguro de leer más abajo.
+      comision: false,
+    },
+    mercadoPago: {
+      iva: bool("RENT_MP_IVA", true),
+      iibb: bool("RENT_MP_IIBB", true),
+      impCreditos: bool("RENT_MP_IMP_CREDITOS", true),
+      comision: bool("RENT_MP_COMISION", true),
+    },
   };
 }
 
@@ -47,6 +80,7 @@ export type LineaRentabilidad = {
   formaPagoMp: string | null;
   ventaBruta: number;
   facturacionNeta: number;
+  iva: number;
   cmv: number;
   impuestoCreditos: number;
   comisionMp: number;
@@ -59,6 +93,7 @@ export type LineaRentabilidad = {
 function vacioResumenRent() {
   return {
     facturacionNeta: 0,
+    iva: 0,
     cmv: 0,
     impuestoCreditos: 0,
     comisionMp: 0,
@@ -141,16 +176,20 @@ export async function calcularRentabilidad(idMarca: string, desde: string, hasta
 
     const ventaBruta = linea.subtotal ?? 0;
     const esEfectivo = venta.medio_pago === "EFECTIVO";
-    const impCreditosLinea = esEfectivo ? 0 : ventaBruta * (tasas.impCreditos / 100);
+    const reglas = esEfectivo ? tasas.efectivo : tasas.mercadoPago;
+
+    const impCreditosLinea = reglas.impCreditos ? ventaBruta * (tasas.impCreditos / 100) : 0;
     const formaPagoMp = venta.id_pago ? formaPagoPorIdPago.get(venta.id_pago) ?? null : null;
     // Igual que en Liquidaciones: la tasa cargada es sin IVA, se le suma acá.
     const tasaMp = formaPagoMp ? tasas.mpComisionPorFormaPago[formaPagoMp] ?? 0 : 0;
     const tasaMpConIva = tasaMp * (1 + tasas.ivaGeneral / 100);
-    const feeMpLinea = !esEfectivo && venta.medio_pago === "MERCADO_PAGO" ? ventaBruta * (tasaMpConIva / 100) : 0;
-    // IIBB solo se percibe/expone sobre lo que pasa por el banco — en
-    // efectivo no hay retención ni rastro bancario, así que no corresponde.
-    const facturacionNetaLinea = ventaBruta / (1 + tasas.ivaGeneral / 100);
-    const costoImpositivoLinea = esEfectivo ? 0 : facturacionNetaLinea * (tasas.iibb / 100);
+    const feeMpLinea = venta.medio_pago === "MERCADO_PAGO" && reglas.comision ? ventaBruta * (tasaMpConIva / 100) : 0;
+    // El IVA, IIBB e Impuesto a los Créditos ahora se aplican o no según lo
+    // que esté tildado en Configuración para cada forma de pago — antes
+    // era fijo (IVA siempre, el resto solo si no era efectivo).
+    const facturacionNetaLinea = reglas.iva ? ventaBruta / (1 + tasas.ivaGeneral / 100) : ventaBruta;
+    const ivaLinea = ventaBruta - facturacionNetaLinea;
+    const costoImpositivoLinea = reglas.iibb ? facturacionNetaLinea * (tasas.iibb / 100) : 0;
     const cmvLinea = (producto?.costo_informado ?? 0) * linea.cantidad;
     const impuestoCreditosRedondeado = redondear2(impCreditosLinea);
     const comisionMpRedondeada = redondear2(feeMpLinea);
@@ -168,6 +207,7 @@ export async function calcularRentabilidad(idMarca: string, desde: string, hasta
       formaPagoMp,
       ventaBruta: redondear2(ventaBruta),
       facturacionNeta: redondear2(facturacionNetaLinea),
+      iva: redondear2(ivaLinea),
       cmv: redondear2(cmvLinea),
       impuestoCreditos: impuestoCreditosRedondeado,
       comisionMp: comisionMpRedondeada,
@@ -183,6 +223,7 @@ export async function calcularRentabilidad(idMarca: string, desde: string, hasta
   const resumen = lineas.reduce(
     (acc, l) => ({
       facturacionNeta: redondear2(acc.facturacionNeta + l.facturacionNeta),
+      iva: redondear2(acc.iva + l.iva),
       cmv: redondear2(acc.cmv + l.cmv),
       impuestoCreditos: redondear2(acc.impuestoCreditos + l.impuestoCreditos),
       comisionMp: redondear2(acc.comisionMp + l.comisionMp),

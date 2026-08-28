@@ -6,6 +6,7 @@ import { calcularRentabilidad, panelAuditoria, type LineaRentabilidad } from "@/
 
 type Resumen = {
   facturacionNeta: number;
+  iva: number;
   cmv: number;
   impuestoCreditos: number;
   comisionMp: number;
@@ -169,6 +170,7 @@ export default function RentabilidadApp({ marcas }: { marcas: Marca[] }) {
                           <th className="p-3">Cant.</th>
                           <th className="p-3">Pago</th>
                           <th className="p-3 text-right">Facturación neta</th>
+                          <th className="p-3 text-right">IVA</th>
                           <th className="p-3 text-right">CMV</th>
                           <th className="p-3 text-right">Imp. Créditos</th>
                           <th className="p-3 text-right">Comisión MP</th>
@@ -189,6 +191,9 @@ export default function RentabilidadApp({ marcas }: { marcas: Marca[] }) {
                               {formatearMedioPago(l.medioPago, l.formaPagoMp)}
                             </td>
                             <td className="p-3 text-right tabular-nums">${formatearMonto(l.facturacionNeta)}</td>
+                            <td className="p-3 text-right tabular-nums text-red-600">
+                              {l.iva > 0 ? `-$${formatearMonto(l.iva)}` : "—"}
+                            </td>
                             <td className="p-3 text-right tabular-nums text-red-600">-${formatearMonto(l.cmv)}</td>
                             <td className="p-3 text-right tabular-nums text-red-600">
                               {l.impuestoCreditos > 0 ? `-$${formatearMonto(l.impuestoCreditos)}` : "—"}
@@ -220,8 +225,9 @@ export default function RentabilidadApp({ marcas }: { marcas: Marca[] }) {
                   </div>
 
                   <div className="border-t border-neutral-200 bg-neutral-50 p-5">
-                    <div className="grid grid-cols-2 sm:grid-cols-7 gap-3 text-sm mb-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 text-sm mb-4">
                       <ResumenCampo etiqueta="Facturación neta" valor={resultado.resumen.facturacionNeta} />
+                      <ResumenCampo etiqueta="IVA" valor={-resultado.resumen.iva} />
                       <ResumenCampo etiqueta="CMV" valor={-resultado.resumen.cmv} />
                       <ResumenCampo etiqueta="Imp. Créditos" valor={-resultado.resumen.impuestoCreditos} />
                       <ResumenCampo etiqueta="Comisión MP" valor={-resultado.resumen.comisionMp} />

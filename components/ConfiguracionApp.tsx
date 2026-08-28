@@ -5,6 +5,7 @@ import {
   guardarConfigPuntos,
   guardarConfigImpuestos,
   guardarConfigRentabilidad,
+  guardarConfigRentabilidadDescuentos,
   guardarConfigMercadoPago,
   guardarConfigGastos,
   conectarMercadoPagoQR,
@@ -28,6 +29,13 @@ export default function ConfiguracionApp({
   mpComisionCredito,
   mpExternalPosId,
   gastosTopeSinAutorizacion,
+  rentEfectivoIva,
+  rentEfectivoIibb,
+  rentEfectivoImpCreditos,
+  rentMpIva,
+  rentMpIibb,
+  rentMpImpCreditos,
+  rentMpComision,
 }: {
   puntosActivo: boolean;
   puntosCadaMonto: number;
@@ -46,6 +54,13 @@ export default function ConfiguracionApp({
   mpComisionCredito: number;
   mpExternalPosId: string | null;
   gastosTopeSinAutorizacion: number;
+  rentEfectivoIva: boolean;
+  rentEfectivoIibb: boolean;
+  rentEfectivoImpCreditos: boolean;
+  rentMpIva: boolean;
+  rentMpIibb: boolean;
+  rentMpImpCreditos: boolean;
+  rentMpComision: boolean;
 }) {
   const [isPending, startTransition] = useTransition();
   const [guardado, setGuardado] = useState(false);
@@ -69,6 +84,17 @@ export default function ConfiguracionApp({
   const [errorRent, setErrorRent] = useState<string | null>(null);
   const [iibb, setIibb] = useState(iibbPorcentaje);
   const [margenMinimo, setMargenMinimo] = useState(margenMinimoPorcentaje);
+
+  const [isPendingDesc, startTransitionDesc] = useTransition();
+  const [guardadoDesc, setGuardadoDesc] = useState(false);
+  const [errorDesc, setErrorDesc] = useState<string | null>(null);
+  const [efIva, setEfIva] = useState(rentEfectivoIva);
+  const [efIibb, setEfIibb] = useState(rentEfectivoIibb);
+  const [efCreditos, setEfCreditos] = useState(rentEfectivoImpCreditos);
+  const [mpIva, setMpIva] = useState(rentMpIva);
+  const [mpIibb, setMpIibb] = useState(rentMpIibb);
+  const [mpCreditos, setMpCreditos] = useState(rentMpImpCreditos);
+  const [mpComision, setMpComision] = useState(rentMpComision);
 
   const [isPendingMp, startTransitionMp] = useTransition();
   const [guardadoMp, setGuardadoMp] = useState(false);
@@ -132,6 +158,16 @@ export default function ConfiguracionApp({
       const res = await guardarConfigRentabilidad(formData);
       if (res.error) setErrorRent(res.error);
       else setGuardadoRent(true);
+    });
+  }
+
+  function handleSubmitDesc(formData: FormData) {
+    setGuardadoDesc(false);
+    setErrorDesc(null);
+    startTransitionDesc(async () => {
+      const res = await guardarConfigRentabilidadDescuentos(formData);
+      if (res.error) setErrorDesc(res.error);
+      else setGuardadoDesc(true);
     });
   }
 
@@ -532,7 +568,8 @@ export default function ConfiguracionApp({
               className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
             />
             <p className="text-xs text-neutral-400 mt-1">
-              Alícuota sobre la facturación neta — solo se aplica a ventas por banco/Mercado Pago, no a efectivo.
+              Alícuota sobre la facturación neta — a qué ventas se le aplica (efectivo, Mercado Pago, o ambas) se
+              elige más abajo.
             </p>
           </div>
           <div>
@@ -569,6 +606,87 @@ export default function ConfiguracionApp({
           className="w-full rounded-lg bg-accent hover:bg-accent-dark text-white py-2 text-sm font-medium disabled:opacity-50"
         >
           {isPendingRent ? "Guardando..." : "Guardar tasas"}
+        </button>
+      </form>
+
+      <form action={handleSubmitDesc} className="bg-white border border-neutral-200 rounded-xl p-5 mt-5">
+        <h2 className="text-base font-semibold text-neutral-900 mb-1">🧮 Rentabilidad — qué se descuenta según la forma de pago</h2>
+        <p className="text-sm text-neutral-500 mb-4">
+          Cada forma de pago puede tener sus propias reglas — por ejemplo, no descontar IVA en ventas en efectivo. Los
+          % de cada impuesto son los cargados arriba.
+        </p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+          <div className="border border-neutral-200 rounded-lg p-3.5">
+            <p className="text-xs font-bold text-neutral-700 uppercase tracking-wide mb-2">💵 Efectivo</p>
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-sm text-neutral-700">
+                <input type="checkbox" name="rent_efectivo_iva" checked={efIva} onChange={(e) => setEfIva(e.target.checked)} />
+                IVA
+              </label>
+              <label className="flex items-center gap-2 text-sm text-neutral-700">
+                <input type="checkbox" name="rent_efectivo_iibb" checked={efIibb} onChange={(e) => setEfIibb(e.target.checked)} />
+                IIBB
+              </label>
+              <label className="flex items-center gap-2 text-sm text-neutral-700">
+                <input
+                  type="checkbox"
+                  name="rent_efectivo_imp_creditos"
+                  checked={efCreditos}
+                  onChange={(e) => setEfCreditos(e.target.checked)}
+                />
+                Imp. a los Créditos
+              </label>
+            </div>
+          </div>
+          <div className="border border-neutral-200 rounded-lg p-3.5">
+            <p className="text-xs font-bold text-neutral-700 uppercase tracking-wide mb-2">💳 Mercado Pago</p>
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-sm text-neutral-700">
+                <input type="checkbox" name="rent_mp_iva" checked={mpIva} onChange={(e) => setMpIva(e.target.checked)} />
+                IVA
+              </label>
+              <label className="flex items-center gap-2 text-sm text-neutral-700">
+                <input type="checkbox" name="rent_mp_iibb" checked={mpIibb} onChange={(e) => setMpIibb(e.target.checked)} />
+                IIBB
+              </label>
+              <label className="flex items-center gap-2 text-sm text-neutral-700">
+                <input
+                  type="checkbox"
+                  name="rent_mp_imp_creditos"
+                  checked={mpCreditos}
+                  onChange={(e) => setMpCreditos(e.target.checked)}
+                />
+                Imp. a los Créditos
+              </label>
+              <label className="flex items-center gap-2 text-sm text-neutral-700">
+                <input
+                  type="checkbox"
+                  name="rent_mp_comision"
+                  checked={mpComision}
+                  onChange={(e) => setMpComision(e.target.checked)}
+                />
+                Comisión de Mercado Pago
+              </label>
+            </div>
+          </div>
+        </div>
+
+        {errorDesc && (
+          <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-4">{errorDesc}</p>
+        )}
+        {guardadoDesc && (
+          <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 mb-4">
+            Configuración guardada.
+          </p>
+        )}
+
+        <button
+          type="submit"
+          disabled={isPendingDesc}
+          className="w-full rounded-lg bg-accent hover:bg-accent-dark text-white py-2 text-sm font-medium disabled:opacity-50"
+        >
+          {isPendingDesc ? "Guardando..." : "Guardar reglas"}
         </button>
       </form>
 

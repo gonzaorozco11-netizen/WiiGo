@@ -38,6 +38,13 @@ export default async function ConfiguracionPage() {
       "MP_COMISION_CREDITO",
       "MP_EXTERNAL_POS_ID",
       "GASTOS_TOPE_SIN_AUTORIZACION",
+      "RENT_EFECTIVO_IVA",
+      "RENT_EFECTIVO_IIBB",
+      "RENT_EFECTIVO_IMP_CREDITOS",
+      "RENT_MP_IVA",
+      "RENT_MP_IIBB",
+      "RENT_MP_IMP_CREDITOS",
+      "RENT_MP_COMISION",
     ]);
 
   const valores = new Map((data ?? []).map((c) => [c.parametro, c.valor]));
@@ -61,6 +68,13 @@ export default async function ConfiguracionPage() {
       mpComisionCredito={Number(valores.get("MP_COMISION_CREDITO") ?? 6.15)}
       mpExternalPosId={valores.get("MP_EXTERNAL_POS_ID") ?? null}
       gastosTopeSinAutorizacion={Number(valores.get("GASTOS_TOPE_SIN_AUTORIZACION") ?? 10000)}
+      rentEfectivoIva={(valores.get("RENT_EFECTIVO_IVA") ?? "false") === "true"}
+      rentEfectivoIibb={(valores.get("RENT_EFECTIVO_IIBB") ?? "false") === "true"}
+      rentEfectivoImpCreditos={(valores.get("RENT_EFECTIVO_IMP_CREDITOS") ?? "false") === "true"}
+      rentMpIva={(valores.get("RENT_MP_IVA") ?? "true") === "true"}
+      rentMpIibb={(valores.get("RENT_MP_IIBB") ?? "true") === "true"}
+      rentMpImpCreditos={(valores.get("RENT_MP_IMP_CREDITOS") ?? "true") === "true"}
+      rentMpComision={(valores.get("RENT_MP_COMISION") ?? "true") === "true"}
     />
   );
 }
