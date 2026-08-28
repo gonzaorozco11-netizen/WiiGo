@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/cargos-recurrentes",
+      "schedule": "0 9 * * *"
+    }
+  ]
+}
