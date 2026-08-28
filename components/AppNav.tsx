@@ -31,8 +31,17 @@ const GROUPS: NavGroup[] = [
     items: [
       { href: "/pos", label: "Vender" },
       { href: "/ventas", label: "Ventas" },
+      { href: "/cobros-efectivo", label: "Cobros en efectivo" },
       { href: "/clientes", label: "Clientes" },
       { href: "/profesionales", label: "Profesionales" },
+    ],
+  },
+  {
+    label: "Marcas y Proveedores",
+    items: [
+      { href: "/situacion-marca", label: "Situación de marca" },
+      { href: "/liquidaciones", label: "Liquidaciones" },
+      { href: "/proveedores", label: "Proveedores" },
     ],
   },
   {
@@ -40,10 +49,6 @@ const GROUPS: NavGroup[] = [
     items: [
       { href: "/dashboard", label: "Dashboard" },
       { href: "/gastos", label: "Gastos" },
-      { href: "/cobros-efectivo", label: "Cobros en efectivo" },
-      { href: "/liquidaciones", label: "Liquidaciones" },
-      { href: "/situacion-marca", label: "Situación de marca" },
-      { href: "/proveedores", label: "Proveedores" },
       { href: "/rentabilidad", label: "Rentabilidad" },
     ],
   },
