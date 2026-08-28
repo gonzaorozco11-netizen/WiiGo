@@ -178,7 +178,7 @@ export async function calcularRentabilidad(idMarca: string, desde: string, hasta
     });
   }
 
-  lineas.sort((a, b) => a.fecha.localeCompare(b.fecha));
+  lineas.sort((a, b) => b.fecha.localeCompare(a.fecha));
 
   const resumen = lineas.reduce(
     (acc, l) => ({
