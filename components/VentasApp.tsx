@@ -199,7 +199,7 @@ export default function VentasApp({
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
-        <h1 className="text-lg font-semibold text-neutral-900">Ventas</h1>
+        <h1 className="text-lg font-semibold text-neutral-900">Transacciones</h1>
       </div>
       <p className="text-sm text-neutral-500 mb-4">
         {resumen.cantidad} venta{resumen.cantidad === 1 ? "" : "s"} pagada{resumen.cantidad === 1 ? "" : "s"} · $
@@ -243,7 +243,6 @@ export default function VentasApp({
           className="border border-neutral-300 rounded-lg px-3 py-2 text-sm bg-white"
         >
           <option value="TODOS">Todos los estados</option>
-          <option value="PENDIENTE_PAGO">Pendiente</option>
           <option value="PAGADA">Pagada</option>
           <option value="CANCELADA">Cancelada</option>
           <option value="ANULADA">Anulada</option>

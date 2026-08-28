@@ -216,7 +216,15 @@ export async function listarVentasFiltradas(params: {
 }): Promise<{ ventas: Venta[]; posibleTruncado: boolean; error: string | null }> {
   try {
     const supabase = getSupabaseServerClient();
-    let query = supabase.from("ventas").select("*").order("fecha", { ascending: false }).limit(LIMITE_VENTAS);
+    // Un carrito de Self Checkout que el cliente dejó a la mitad y nunca
+    // pagó ni canceló queda en PENDIENTE_PAGO para siempre — no es una
+    // venta real, así que no tiene sentido que aparezca acá.
+    let query = supabase
+      .from("ventas")
+      .select("*")
+      .neq("estado", "PENDIENTE_PAGO")
+      .order("fecha", { ascending: false })
+      .limit(LIMITE_VENTAS);
     if (params.idLocal) query = query.eq("id_local", params.idLocal);
     if (params.desde) query = query.gte("fecha", `${params.desde}T00:00:00`);
     if (params.hasta) query = query.lte("fecha", `${params.hasta}T23:59:59`);

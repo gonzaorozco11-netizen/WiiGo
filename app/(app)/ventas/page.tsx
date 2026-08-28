@@ -35,6 +35,7 @@ export default async function VentasPage() {
     supabase
       .from("ventas")
       .select("*")
+      .neq("estado", "PENDIENTE_PAGO")
       .gte("fecha", `${hace7diasISO()}T00:00:00`)
       .order("fecha", { ascending: false }),
     supabase.from("productos").select("*"),

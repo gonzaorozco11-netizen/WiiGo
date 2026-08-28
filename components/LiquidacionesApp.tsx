@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Marca, Liquidacion } from "@/lib/supabase";
 import {
   calcularRendicion,
@@ -27,7 +27,7 @@ type Resumen = {
 };
 
 function formatearMonto(valor: number) {
-  return valor.toLocaleString("es-AR", { maximumFractionDigits: 0 });
+  return valor.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function formatearFecha(fechaISO: string) {
@@ -75,11 +75,25 @@ export default function LiquidacionesApp({ marcas }: { marcas: Marca[] }) {
   const [cerrando, setCerrando] = useState(false);
   const [historial, setHistorial] = useState<Liquidacion[]>([]);
   const [verHistorial, setVerHistorial] = useState(false);
+  const [busqueda, setBusqueda] = useState("");
+  const [filtroPago, setFiltroPago] = useState<"TODOS" | "EFECTIVO" | "MERCADO_PAGO">("TODOS");
+
+  const lineasFiltradas = useMemo(() => {
+    if (!resultado) return [];
+    const q = busqueda.trim().toLowerCase();
+    return resultado.lineas.filter((l) => {
+      if (filtroPago !== "TODOS" && l.medioPago !== filtroPago) return false;
+      if (q && !l.producto.toLowerCase().includes(q) && !String(l.numeroVenta).includes(q)) return false;
+      return true;
+    });
+  }, [resultado, busqueda, filtroPago]);
 
   useEffect(() => {
     setResultado(null);
     setError(null);
     setErrorCierre(null);
+    setBusqueda("");
+    setFiltroPago("TODOS");
   }, [idMarca]);
 
   function handleCalcular() {
@@ -215,6 +229,27 @@ export default function LiquidacionesApp({ marcas }: { marcas: Marca[] }) {
             </p>
           ) : (
             <>
+              <div className="flex flex-wrap gap-2 p-3 border-b border-neutral-200">
+                <input
+                  type="search"
+                  placeholder="Buscar por producto o N° de venta..."
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                  className="flex-1 min-w-[200px] border border-neutral-300 rounded-lg px-3 py-1.5 text-sm"
+                />
+                <select
+                  value={filtroPago}
+                  onChange={(e) => setFiltroPago(e.target.value as "TODOS" | "EFECTIVO" | "MERCADO_PAGO")}
+                  className="border border-neutral-300 rounded-lg px-3 py-1.5 text-sm bg-white"
+                >
+                  <option value="TODOS">Todos los pagos</option>
+                  <option value="EFECTIVO">Efectivo</option>
+                  <option value="MERCADO_PAGO">Mercado Pago</option>
+                </select>
+              </div>
+              {lineasFiltradas.length === 0 ? (
+                <p className="text-sm text-neutral-400 text-center py-8">No hay líneas que coincidan con la búsqueda.</p>
+              ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -234,7 +269,7 @@ export default function LiquidacionesApp({ marcas }: { marcas: Marca[] }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {resultado.lineas.map((l) => (
+                    {lineasFiltradas.map((l) => (
                       <tr key={l.idDetalle} className="border-b border-neutral-100 last:border-0">
                         <td className="p-3 whitespace-nowrap text-neutral-500">
                           {formatearFecha(l.fecha)} · #{String(l.numeroVenta).padStart(4, "0")}
@@ -267,6 +302,7 @@ export default function LiquidacionesApp({ marcas }: { marcas: Marca[] }) {
                   </tbody>
                 </table>
               </div>
+              )}
 
               <div className="border-t border-neutral-200 bg-neutral-50 p-5">
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm mb-4">

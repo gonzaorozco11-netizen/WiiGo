@@ -30,7 +30,7 @@ const GROUPS: NavGroup[] = [
     label: "Ventas",
     items: [
       { href: "/pos", label: "Vender" },
-      { href: "/ventas", label: "Ventas" },
+      { href: "/ventas", label: "Transacciones" },
       { href: "/cobros-efectivo", label: "Cobros en efectivo" },
       { href: "/clientes", label: "Clientes" },
       { href: "/profesionales", label: "Profesionales" },
@@ -49,6 +49,7 @@ const GROUPS: NavGroup[] = [
     items: [
       { href: "/dashboard", label: "Dashboard" },
       { href: "/gastos", label: "Gastos" },
+      { href: "/resumen-ventas", label: "Resumen de ventas" },
       { href: "/rentabilidad", label: "Rentabilidad" },
     ],
   },
