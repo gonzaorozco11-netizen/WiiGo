@@ -5,12 +5,7 @@ import { cookies } from "next/headers";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
-import {
-  saldoCuentaComercial,
-  historialCuentaComercial,
-  yaTieneCargoDelPeriodo,
-  registrarMovimientoComercial,
-} from "@/lib/cuentaComercialMarca";
+import { saldoCuentaComercial, historialCuentaComercial, registrarMovimientoComercial } from "@/lib/cuentaComercialMarca";
 import { saldosRetencionPorMarca } from "@/lib/retencionesMarca";
 import {
   type CuentaMarca,
@@ -52,10 +47,6 @@ function number(formData: FormData, name: string) {
   return Number.isFinite(n) ? n : null;
 }
 
-function mesActual() {
-  return new Date().toISOString().slice(0, 7); // "2026-08"
-}
-
 // ===================== VENTAS DEL PERÍODO =====================
 
 export async function resumenVentasMarca(idMarca: string) {
@@ -88,105 +79,6 @@ export async function resumenVentasMarca(idMarca: string) {
     if (fecha >= inicioMesISO) esteMes += monto;
   }
   return { esteMes, historico };
-}
-
-// ===================== CONDICIÓN COMERCIAL (gasto fijo mensual) =====================
-
-export async function condicionComercialVigente(idMarca: string) {
-  const supabase = getSupabaseServerClient();
-  const hoy = new Date().toISOString().slice(0, 10);
-  const { data, error } = await supabase
-    .from("condiciones_comerciales_marca")
-    .select("*")
-    .eq("id_marca", idMarca)
-    .eq("estado", "ACTIVA")
-    .lte("fecha_desde", hoy)
-    .or(`fecha_hasta.is.null,fecha_hasta.gte.${hoy}`)
-    .order("fecha_desde", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (error) throw new Error(friendlyDbError(error));
-  return data;
-}
-
-// Con historial: cierra la vigencia anterior e inserta una fila nueva —
-// nunca se pisa, así un cargo ya generado conserva el monto que tenía en
-// su momento aunque después cambies la condición.
-export async function guardarCondicionComercial(idMarca: string, formData: FormData): Promise<{ error: string | null }> {
-  const permisoError = await requireAdmin();
-  if (permisoError) return { error: permisoError };
-
-  const idLocal = text(formData, "id_local");
-  const metros = number(formData, "metros_ocupados");
-  const valorM2 = number(formData, "valor_por_m2");
-  const montoDirecto = number(formData, "monto_mensual");
-  const montoMensual = montoDirecto ?? (metros && valorM2 ? metros * valorM2 : null);
-  if (!montoMensual || montoMensual <= 0) {
-    return { error: "Cargá un monto mensual mayor a 0 (directo, o metros × valor por m²)." };
-  }
-
-  try {
-    const supabase = getSupabaseServerClient();
-    const hoy = new Date().toISOString().slice(0, 10);
-    const ayer = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-
-    await supabase
-      .from("condiciones_comerciales_marca")
-      .update({ fecha_hasta: ayer })
-      .eq("id_marca", idMarca)
-      .eq("estado", "ACTIVA")
-      .is("fecha_hasta", null);
-
-    const { error } = await supabase.from("condiciones_comerciales_marca").insert({
-      id_marca: idMarca,
-      id_local: idLocal,
-      metros_ocupados: metros,
-      valor_por_m2: valorM2,
-      monto_mensual: montoMensual,
-      fecha_desde: hoy,
-      estado: "ACTIVA",
-      observaciones: text(formData, "observaciones"),
-    });
-    if (error) return { error: friendlyDbError(error) };
-
-    revalidatePath("/situacion-marca");
-    return { error: null };
-  } catch (err) {
-    return { error: err instanceof Error ? err.message : "No se pudo guardar la condición comercial" };
-  }
-}
-
-// Genera el cargo del mes actual si todavía no existe uno para esta marca
-// — evita cobrarlo dos veces. Requiere una condición comercial vigente.
-export async function generarCargoMensual(idMarca: string): Promise<{ error: string | null }> {
-  const permisoError = await requireAdmin();
-  if (permisoError) return { error: permisoError };
-
-  try {
-    const supabase = getSupabaseServerClient();
-    const condicion = await condicionComercialVigente(idMarca);
-    if (!condicion) return { error: "Esta marca no tiene una condición comercial vigente configurada." };
-
-    const periodo = mesActual();
-    const yaExiste = await yaTieneCargoDelPeriodo(supabase, idMarca, "GASTO_FIJO_MENSUAL", periodo);
-    if (yaExiste) return { error: `Ya se generó el cargo de ${periodo} para esta marca.` };
-
-    const sesion = await sesionActual();
-    await registrarMovimientoComercial(supabase, {
-      idMarca,
-      idLocal: condicion.id_local,
-      tipoCargo: "GASTO_FIJO_MENSUAL",
-      importe: condicion.monto_mensual,
-      periodo,
-      usuario: sesion?.nombre ?? null,
-      observaciones: `Gasto fijo mensual de ${periodo}${condicion.metros_ocupados ? ` (${condicion.metros_ocupados} m² × $${condicion.valor_por_m2})` : ""}`,
-    });
-
-    revalidatePath("/situacion-marca");
-    return { error: null };
-  } catch (err) {
-    return { error: err instanceof Error ? err.message : "No se pudo generar el cargo" };
-  }
 }
 
 // ===================== FEE DE INGRESO =====================
@@ -300,22 +192,21 @@ export async function registrarPagoComercial(idMarca: string, formData: FormData
 
   const monto = number(formData, "monto");
   if (!monto || monto <= 0) return { error: "El monto tiene que ser mayor a 0" };
-  const tipo = text(formData, "tipo") === "cargo" ? "OTRO_CARGO" : "PAGO";
 
   try {
     const supabase = getSupabaseServerClient();
     const sesion = await sesionActual();
     await registrarMovimientoComercial(supabase, {
       idMarca,
-      tipoCargo: tipo,
-      importe: tipo === "PAGO" ? -monto : monto,
+      tipoCargo: "PAGO",
+      importe: -monto,
       usuario: sesion?.nombre ?? null,
-      observaciones: text(formData, "descripcion") ?? (tipo === "PAGO" ? "Pago manual" : "Cargo manual"),
+      observaciones: text(formData, "descripcion") ?? "Pago manual",
     });
     revalidatePath("/situacion-marca");
     return { error: null };
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "No se pudo registrar el movimiento" };
+    return { error: err instanceof Error ? err.message : "No se pudo registrar el pago" };
   }
 }
 

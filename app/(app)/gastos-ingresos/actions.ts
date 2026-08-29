@@ -315,8 +315,9 @@ export async function cargarCargoRecurrenteMarca(
 }
 
 // Marcas con saldo a favor de WiiGo en su cuenta comercial — lo que
-// generarCargoMensual/cargarCargoRecurrenteMarca ya imputó pero la marca
-// todavía no pagó (ver registrarPagoComercial, sin cambios, para saldarlo).
+// registrarCargoMarcaUnico/cargarCargoRecurrenteMarca ya imputó pero la
+// marca todavía no pagó (ver registrarPagoComercial en situacion-marca,
+// que sigue igual, para saldarlo).
 export async function listarMarcasConSaldoPendiente() {
   const supabase = getSupabaseServerClient();
   const { data: movimientos, error } = await supabase.from("movimientos_cuenta_comercial_marca").select("id_marca, importe");

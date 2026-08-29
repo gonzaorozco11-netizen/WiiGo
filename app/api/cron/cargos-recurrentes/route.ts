@@ -9,7 +9,7 @@
 // comercial — no hay plata física en juego, así que es seguro generarlo
 // solo, sin que nadie lo mire primero.
 import { getSupabaseServerClient } from "@/lib/supabase";
-import { registrarMovimientoComercial, yaTieneCargoDelPeriodo, type TipoCargoComercial } from "@/lib/cuentaComercialMarca";
+import { registrarMovimientoComercial, type TipoCargoComercial } from "@/lib/cuentaComercialMarca";
 
 function redondear2(valor: number) {
   return Math.round(valor * 100) / 100;
@@ -32,7 +32,6 @@ export async function GET(req: Request) {
   const mesHoy = hoy.getMonth() + 1;
   const periodoMensual = hoy.toISOString().slice(0, 7);
   const periodoAnual = String(hoy.getFullYear());
-  const hoyISO = hoy.toISOString().slice(0, 10);
 
   const generados: string[] = [];
   const errores: string[] = [];
@@ -40,7 +39,6 @@ export async function GET(req: Request) {
   const { data: cfgIva } = await supabase.from("configuracion").select("valor").eq("parametro", "IVA_GENERAL_PORCENTAJE").maybeSingle();
   const ivaGeneral = Number(cfgIva?.valor ?? 21);
 
-  // ===== Cargos recurrentes a marca (mecanismo nuevo — Gastos e Ingresos) =====
   const { data: recurrentes } = await supabase.from("cargos_recurrentes_marca").select("*").eq("activo", true);
   for (const r of recurrentes ?? []) {
     const periodo = r.recurrencia === "ANUAL" ? periodoAnual : periodoMensual;
@@ -68,35 +66,6 @@ export async function GET(req: Request) {
       generados.push(`Cargo recurrente: ${r.descripcion}`);
     } catch (err) {
       errores.push(`Cargo recurrente ${r.id_recurrente}: ${err instanceof Error ? err.message : String(err)}`);
-    }
-  }
-
-  // ===== Gasto fijo mensual (mecanismo viejo — Situación de marca, m² × valor) =====
-  if (diaHoy === 1) {
-    const { data: condiciones } = await supabase
-      .from("condiciones_comerciales_marca")
-      .select("*")
-      .eq("estado", "ACTIVA")
-      .lte("fecha_desde", hoyISO)
-      .or(`fecha_hasta.is.null,fecha_hasta.gte.${hoyISO}`);
-
-    for (const c of condiciones ?? []) {
-      try {
-        const yaExiste = await yaTieneCargoDelPeriodo(supabase, c.id_marca as string, "GASTO_FIJO_MENSUAL", periodoMensual);
-        if (yaExiste) continue;
-        await registrarMovimientoComercial(supabase, {
-          idMarca: c.id_marca as string,
-          idLocal: c.id_local as string | null,
-          tipoCargo: "GASTO_FIJO_MENSUAL",
-          importe: c.monto_mensual as number,
-          periodo: periodoMensual,
-          usuario: "Automático (cron mensual)",
-          observaciones: `Gasto fijo mensual de ${periodoMensual}${c.metros_ocupados ? ` (${c.metros_ocupados} m² × $${c.valor_por_m2})` : ""}`,
-        });
-        generados.push(`Gasto fijo mensual: marca ${c.id_marca}`);
-      } catch (err) {
-        errores.push(`Gasto fijo mensual marca ${c.id_marca}: ${err instanceof Error ? err.message : String(err)}`);
-      }
     }
   }
 
