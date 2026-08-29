@@ -79,6 +79,7 @@ export default function GastosApp({
   puedeGestionarNomina,
   puedeAutorizarSinLimite,
   topeAutorizacion,
+  ivaGeneralPorcentaje,
 }: {
   locales: Local[];
   usuarios: UsuarioMin[];
@@ -89,6 +90,7 @@ export default function GastosApp({
   puedeGestionarNomina: boolean;
   puedeAutorizarSinLimite: boolean;
   topeAutorizacion: number;
+  ivaGeneralPorcentaje: number;
 }) {
   const [tab, setTab] = useState<"gastos" | "caja" | "nomina" | "recurrentes">("gastos");
 
@@ -121,12 +123,19 @@ export default function GastosApp({
           subcategoriaPorId={subcategoriaPorId}
           puedeAutorizarSinLimite={puedeAutorizarSinLimite}
           topeAutorizacion={topeAutorizacion}
+          ivaGeneralPorcentaje={ivaGeneralPorcentaje}
         />
       )}
       {tab === "caja" && puedeVerCajaAdmin && <TabCajaAdmin />}
       {tab === "nomina" && puedeGestionarNomina && <TabNomina usuarios={usuarios} />}
       {tab === "recurrentes" && (
-        <TabRecurrentes locales={locales} categorias={categoriasIniciales} subcategorias={subcategoriasIniciales} categoriaPorId={categoriaPorId} />
+        <TabRecurrentes
+          locales={locales}
+          categorias={categoriasIniciales}
+          subcategorias={subcategoriasIniciales}
+          categoriaPorId={categoriaPorId}
+          ivaGeneralPorcentaje={ivaGeneralPorcentaje}
+        />
       )}
     </div>
   );
@@ -191,6 +200,7 @@ function TabGastos({
   subcategoriaPorId,
   puedeAutorizarSinLimite,
   topeAutorizacion,
+  ivaGeneralPorcentaje,
 }: {
   locales: Local[];
   usuarios: UsuarioMin[];
@@ -201,6 +211,7 @@ function TabGastos({
   subcategoriaPorId: Map<string, SubcategoriaGasto>;
   puedeAutorizarSinLimite: boolean;
   topeAutorizacion: number;
+  ivaGeneralPorcentaje: number;
 }) {
   const [filtroLocal, setFiltroLocal] = useState("");
   const [filtroCategoria, setFiltroCategoria] = useState("");
@@ -401,6 +412,7 @@ function TabGastos({
           subcategorias={subcategorias}
           puedeAutorizarSinLimite={puedeAutorizarSinLimite}
           topeAutorizacion={topeAutorizacion}
+          ivaGeneralPorcentaje={ivaGeneralPorcentaje}
           onClose={() => setModalGasto(null)}
         />
       )}
@@ -475,6 +487,7 @@ function FormNuevoGasto({
   subcategorias,
   puedeAutorizarSinLimite,
   topeAutorizacion,
+  ivaGeneralPorcentaje,
   onClose,
 }: {
   gasto?: Gasto | null;
@@ -485,6 +498,7 @@ function FormNuevoGasto({
   subcategorias: SubcategoriaGasto[];
   puedeAutorizarSinLimite: boolean;
   topeAutorizacion: number;
+  ivaGeneralPorcentaje: number;
   onClose: () => void;
 }) {
   const isEditing = !!gasto;
@@ -492,7 +506,7 @@ function FormNuevoGasto({
   const [nuevaCategoria, setNuevaCategoria] = useState("");
   const [idSubcategoria, setIdSubcategoria] = useState(gasto?.id_subcategoria ?? "");
   const [nuevaSubcategoria, setNuevaSubcategoria] = useState("");
-  const [monto, setMonto] = useState(gasto ? String(gasto.monto) : "");
+  const [monto, setMonto] = useState(gasto ? String(gasto.neto ?? gasto.monto) : "");
   const [tipo, setTipo] = useState<"FIJO" | "VARIABLE">(
     gasto ? (gasto.tipo === "FIJO" ? "FIJO" : "VARIABLE") : categorias[0]?.tipo_default === "FIJO" ? "FIJO" : "VARIABLE"
   );
@@ -501,6 +515,7 @@ function FormNuevoGasto({
   const [descripcion, setDescripcion] = useState(gasto?.descripcion ?? "");
   const [pendienteFactura, setPendienteFactura] = useState(gasto?.pendiente_factura ?? false);
   const [idUsuarioAdelanto, setIdUsuarioAdelanto] = useState("");
+  const [llevaIva, setLlevaIva] = useState((gasto?.iva ?? 0) > 0);
   const [claveAdmin, setClaveAdmin] = useState("");
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -510,7 +525,8 @@ function FormNuevoGasto({
   const mostrarAdelanto = nombreSubSeleccionada.toLowerCase().includes("adelanto");
   const turnoAbiertoDelLocal = turnosAbiertos.find((t) => t.id_local === idLocal);
   const montoNum = Number(monto.replace(/[^\d.-]/g, "")) || 0;
-  const mostrarAuth = !puedeAutorizarSinLimite && montoNum > topeAutorizacion;
+  const montoConIva = Math.round(montoNum * (1 + ivaGeneralPorcentaje / 100) * 100) / 100;
+  const mostrarAuth = !puedeAutorizarSinLimite && (llevaIva ? montoConIva : montoNum) > topeAutorizacion;
 
   function handleCategoriaChange(id: string) {
     setIdCategoria(id);
@@ -617,6 +633,15 @@ function FormNuevoGasto({
             placeholder="$0"
             className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm"
           />
+          <label className="flex items-center gap-2 text-xs text-neutral-600 cursor-pointer mt-1.5">
+            <input type="checkbox" name="lleva_iva" checked={llevaIva} onChange={(e) => setLlevaIva(e.target.checked)} />
+            Tiene factura con IVA ({ivaGeneralPorcentaje}%)
+          </label>
+          {llevaIva && montoNum > 0 && (
+            <p className="text-[11px] text-neutral-500 bg-neutral-50 border border-neutral-200 rounded-lg px-2 py-1.5 mt-1">
+              ${formatearMonto(montoNum)} + IVA = <span className="font-bold text-neutral-800">${formatearMonto(montoConIva)}</span>
+            </p>
+          )}
         </div>
         <div>
           <label className="block text-sm font-medium text-neutral-700 mb-1">Tipo de gasto</label>
@@ -999,11 +1024,13 @@ function TabRecurrentes({
   categorias,
   subcategorias,
   categoriaPorId,
+  ivaGeneralPorcentaje,
 }: {
   locales: Local[];
   categorias: CategoriaGasto[];
   subcategorias: SubcategoriaGasto[];
   categoriaPorId: Map<string, CategoriaGasto>;
+  ivaGeneralPorcentaje: number;
 }) {
   const [recurrentes, setRecurrentes] = useState<GastoRecurrente[]>([]);
   const [cargando, setCargando] = useState(false);
@@ -1011,6 +1038,7 @@ function TabRecurrentes({
   const [cargandoId, setCargandoId] = useState<string | null>(null);
   const [montoCargar, setMontoCargar] = useState<Record<string, string>>({});
   const [medioCargar, setMedioCargar] = useState<Record<string, string>>({});
+  const [ivaCargar, setIvaCargar] = useState<Record<string, boolean>>({});
 
   function recargar() {
     setCargando(true);
@@ -1025,8 +1053,9 @@ function TabRecurrentes({
   function handleCargar(r: GastoRecurrente) {
     const monto = Number((montoCargar[r.id_recurrente] ?? String(r.monto_estimado)).replace(/[^\d.-]/g, "")) || 0;
     const medio = medioCargar[r.id_recurrente] ?? "TRANSFERENCIA";
+    const iva = ivaCargar[r.id_recurrente] ?? r.lleva_iva;
     setCargandoId(r.id_recurrente);
-    cargarRecurrente(r.id_recurrente, monto, medio)
+    cargarRecurrente(r.id_recurrente, monto, medio, iva)
       .then(recargar)
       .finally(() => setCargandoId(null));
   }
@@ -1051,7 +1080,18 @@ function TabRecurrentes({
         </button>
       </div>
 
-      {mostrarForm && <FormNuevoRecurrente locales={locales} categorias={categorias} subcategorias={subcategorias} onCreado={() => { setMostrarForm(false); recargar(); }} />}
+      {mostrarForm && (
+        <FormNuevoRecurrente
+          locales={locales}
+          categorias={categorias}
+          subcategorias={subcategorias}
+          ivaGeneralPorcentaje={ivaGeneralPorcentaje}
+          onCreado={() => {
+            setMostrarForm(false);
+            recargar();
+          }}
+        />
+      )}
 
       <div className="bg-white border border-neutral-200 rounded-xl overflow-hidden">
         <div className="flex items-baseline justify-between px-4 py-3 border-b border-neutral-100">
@@ -1091,6 +1131,14 @@ function TabRecurrentes({
                               onChange={(e) => setMontoCargar((v) => ({ ...v, [r.id_recurrente]: e.target.value }))}
                               className="w-24 border border-neutral-300 rounded-lg px-2 py-1 text-xs text-right"
                             />
+                            <label className="flex items-center gap-1 text-xs text-neutral-600 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={ivaCargar[r.id_recurrente] ?? r.lleva_iva}
+                                onChange={(e) => setIvaCargar((v) => ({ ...v, [r.id_recurrente]: e.target.checked }))}
+                              />
+                              +IVA
+                            </label>
                             <select
                               value={medioCargar[r.id_recurrente] ?? "TRANSFERENCIA"}
                               onChange={(e) => setMedioCargar((v) => ({ ...v, [r.id_recurrente]: e.target.value }))}
@@ -1128,17 +1176,20 @@ function FormNuevoRecurrente({
   locales,
   categorias,
   subcategorias,
+  ivaGeneralPorcentaje,
   onCreado,
 }: {
   locales: Local[];
   categorias: CategoriaGasto[];
   subcategorias: SubcategoriaGasto[];
+  ivaGeneralPorcentaje: number;
   onCreado: () => void;
 }) {
   const [idCategoria, setIdCategoria] = useState(categorias[0]?.id_categoria ?? "__nueva__");
   const [nuevaCategoria, setNuevaCategoria] = useState("");
   const [idSubcategoria, setIdSubcategoria] = useState("");
   const [nuevaSubcategoria, setNuevaSubcategoria] = useState("");
+  const [llevaIva, setLlevaIva] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1204,6 +1255,10 @@ function FormNuevoRecurrente({
         <div>
           <label className="block text-sm font-medium text-neutral-700 mb-1">Monto estimado</label>
           <input name="monto_estimado" type="number" step="1" className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm" />
+          <label className="flex items-center gap-2 text-xs text-neutral-600 cursor-pointer mt-1.5">
+            <input type="checkbox" name="lleva_iva" checked={llevaIva} onChange={(e) => setLlevaIva(e.target.checked)} />
+            Tiene IVA ({ivaGeneralPorcentaje}%)
+          </label>
         </div>
         <div>
           <label className="block text-sm font-medium text-neutral-700 mb-1">Día del mes</label>

@@ -13,7 +13,7 @@ export default async function GastosPage() {
 
   const supabase = getSupabaseServerClient();
 
-  const [localesRes, usuariosRes, turnosAbiertosRes, categorias, subcategorias, configRes, sesion] = await Promise.all([
+  const [localesRes, usuariosRes, turnosAbiertosRes, categorias, subcategorias, configRes, sesion, ivaRes] = await Promise.all([
     supabase.from("locales").select("*").eq("estado", "ACTIVO").order("nombre", { ascending: true }),
     supabase
       .from("usuarios")
@@ -25,6 +25,7 @@ export default async function GastosPage() {
     listarSubcategorias(),
     supabase.from("configuracion").select("valor").eq("parametro", "GASTOS_TOPE_SIN_AUTORIZACION").maybeSingle(),
     obtenerSesionConPermisos(),
+    supabase.from("configuracion").select("valor").eq("parametro", "IVA_GENERAL_PORCENTAJE").maybeSingle(),
   ]);
 
   return (
@@ -38,6 +39,7 @@ export default async function GastosPage() {
       puedeGestionarNomina={tienePermiso(sesion, PERMISOS.GESTIONAR_NOMINA)}
       puedeAutorizarSinLimite={tienePermiso(sesion, PERMISOS.AUTORIZAR_GASTOS_SIN_LIMITE)}
       topeAutorizacion={Number(configRes.data?.valor ?? 10000)}
+      ivaGeneralPorcentaje={Number(ivaRes.data?.valor ?? 21)}
     />
   );
 }

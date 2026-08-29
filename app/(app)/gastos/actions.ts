@@ -92,6 +92,17 @@ async function topeAutorizacion(supabase: SupabaseClient) {
   return Number(data?.valor ?? 10000);
 }
 
+function redondear2(valor: number) {
+  return Math.round(valor * 100) / 100;
+}
+
+// Mismo parámetro que ya usan Liquidaciones, Rentabilidad y Gastos e
+// Ingresos — no se define un % de IVA aparte acá.
+async function ivaGeneralPorcentaje(supabase: SupabaseClient) {
+  const { data } = await supabase.from("configuracion").select("valor").eq("parametro", "IVA_GENERAL_PORCENTAJE").maybeSingle();
+  return Number(data?.valor ?? 21);
+}
+
 export async function listarCategorias() {
   const supabase = getSupabaseServerClient();
   const { data, error } = await supabase.from("categorias_gasto").select("*").eq("estado", "ACTIVA").order("nombre");
@@ -125,8 +136,13 @@ export async function crearGasto(formData: FormData): Promise<{ error: string | 
     const idSubcategoria = await resolveSubcategoria(supabase, formData, idCategoria);
     if (!idSubcategoria) return { error: "Elegí o creá una subcategoría" };
 
-    const monto = number(formData, "monto");
-    if (!monto || monto <= 0) return { error: "El monto tiene que ser mayor a 0" };
+    // El monto que se carga acá siempre es el neto — el IVA se suma
+    // aparte, solo si se tildó "Tiene factura con IVA".
+    const neto = number(formData, "monto");
+    if (!neto || neto <= 0) return { error: "El monto tiene que ser mayor a 0" };
+    const llevaIva = formData.get("lleva_iva") === "on";
+    const iva = llevaIva ? redondear2(neto * ((await ivaGeneralPorcentaje(supabase)) / 100)) : 0;
+    const monto = redondear2(neto + iva);
 
     const medioPago = text(formData, "medio_pago") ?? "TRANSFERENCIA";
     const tipo = text(formData, "tipo") ?? "VARIABLE";
@@ -181,6 +197,8 @@ export async function crearGasto(formData: FormData): Promise<{ error: string | 
         tipo,
         medio_pago: medioPago,
         monto,
+        neto,
+        iva,
         descripcion,
         pendiente_factura: pendienteFactura,
         requirio_autorizacion: requirioAutorizacion,
@@ -237,8 +255,11 @@ export async function actualizarGasto(idGasto: string, formData: FormData): Prom
     const idSubcategoria = await resolveSubcategoria(supabase, formData, idCategoria);
     if (!idSubcategoria) return { error: "Elegí o creá una subcategoría" };
 
-    const monto = number(formData, "monto");
-    if (!monto || monto <= 0) return { error: "El monto tiene que ser mayor a 0" };
+    const neto = number(formData, "monto");
+    if (!neto || neto <= 0) return { error: "El monto tiene que ser mayor a 0" };
+    const llevaIva = formData.get("lleva_iva") === "on";
+    const iva = llevaIva ? redondear2(neto * ((await ivaGeneralPorcentaje(supabase)) / 100)) : 0;
+    const monto = redondear2(neto + iva);
 
     const tipo = text(formData, "tipo") ?? "VARIABLE";
     const descripcion = text(formData, "descripcion");
@@ -280,6 +301,8 @@ export async function actualizarGasto(idGasto: string, formData: FormData): Prom
         id_subcategoria: idSubcategoria,
         tipo,
         monto,
+        neto,
+        iva,
         descripcion,
         pendiente_factura: pendienteFactura,
         requirio_autorizacion: requirioAutorizacion,
@@ -407,6 +430,7 @@ export async function crearRecurrente(formData: FormData): Promise<{ error: stri
     const montoEstimado = number(formData, "monto_estimado") ?? 0;
     const diaMes = Number(formData.get("dia_mes") ?? 1);
     const idLocal = text(formData, "id_local");
+    const llevaIva = formData.get("lleva_iva") === "on";
 
     const { error } = await supabase.from("gastos_recurrentes").insert({
       id_categoria: idCategoria,
@@ -415,6 +439,7 @@ export async function crearRecurrente(formData: FormData): Promise<{ error: stri
       monto_estimado: montoEstimado,
       dia_mes: diaMes,
       id_local: idLocal,
+      lleva_iva: llevaIva,
       activo: true,
     });
     if (error) return { error: friendlyDbError(error) };
@@ -425,9 +450,11 @@ export async function crearRecurrente(formData: FormData): Promise<{ error: stri
   }
 }
 
-// Convierte un recurrente en un Gasto real del mes actual — el monto se
-// puede ajustar acá si varió (ej. la luz nunca es exactamente igual).
-export async function cargarRecurrente(idRecurrente: string, montoConfirmado: number, medioPago: string) {
+// Convierte un recurrente en un Gasto real del mes actual — el monto
+// (siempre neto) se puede ajustar acá si varió (ej. la luz nunca es
+// exactamente igual), y el IVA se recalcula con el % vigente al momento
+// de cargarlo, no con el que había cuando se creó la plantilla.
+export async function cargarRecurrente(idRecurrente: string, montoConfirmadoNeto: number, medioPago: string, llevaIva: boolean) {
   const supabase = getSupabaseServerClient();
   const sesion = await sesionActual();
   const { data: recurrente, error: errorRec } = await supabase
@@ -438,6 +465,9 @@ export async function cargarRecurrente(idRecurrente: string, montoConfirmado: nu
   if (errorRec) throw new Error(friendlyDbError(errorRec));
   if (!recurrente) throw new Error("No se encontró el gasto recurrente");
 
+  const iva = llevaIva ? redondear2(montoConfirmadoNeto * ((await ivaGeneralPorcentaje(supabase)) / 100)) : 0;
+  const monto = redondear2(montoConfirmadoNeto + iva);
+
   const mesActual = new Date().toISOString().slice(0, 7);
   const { data: gasto, error } = await supabase
     .from("gastos")
@@ -447,7 +477,9 @@ export async function cargarRecurrente(idRecurrente: string, montoConfirmado: nu
       id_subcategoria: recurrente.id_subcategoria,
       tipo: "FIJO",
       medio_pago: medioPago,
-      monto: montoConfirmado,
+      monto,
+      neto: montoConfirmadoNeto,
+      iva,
       descripcion: recurrente.descripcion,
       usuario: sesion?.nombre ?? null,
     })
@@ -458,7 +490,7 @@ export async function cargarRecurrente(idRecurrente: string, montoConfirmado: nu
   if (medioPago === "EFECTIVO_ADMIN") {
     await supabase.from("movimientos_caja_admin").insert({
       tipo: "EGRESO_GASTO",
-      monto: -montoConfirmado,
+      monto: -monto,
       id_gasto: gasto.id_gasto,
       descripcion: recurrente.descripcion,
       usuario: sesion?.nombre ?? null,

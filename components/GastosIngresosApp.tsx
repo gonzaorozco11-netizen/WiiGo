@@ -140,8 +140,8 @@ export default function GastosIngresosApp({
               montoEstimado: r.monto_estimado,
               extra: null,
               necesitaMedioPago: true,
-              puedeIva: false,
-              llevaIvaDefault: false,
+              puedeIva: true,
+              llevaIvaDefault: !!r.lleva_iva,
             });
           }
         }
@@ -261,7 +261,7 @@ export default function GastosIngresosApp({
       fd.append("id_subcategoria", idSubcategoria);
     }
     fd.append("descripcion", descripcion);
-    if ((tab === "cargo" || tab === "ingreso") && llevaIva) fd.append("lleva_iva", "on");
+    if (llevaIva) fd.append("lleva_iva", "on");
 
     let promesa: Promise<{ error: string | null }>;
 
@@ -327,7 +327,7 @@ export default function GastosIngresosApp({
     setError(null);
     setCargandoId(item.id);
     let promesa: Promise<{ error: string | null } | void>;
-    if (item.tipo === "gasto") promesa = cargarRecurrente(item.id, montoNum, medio);
+    if (item.tipo === "gasto") promesa = cargarRecurrente(item.id, montoNum, medio, iva);
     else if (item.tipo === "cargo") promesa = cargarCargoRecurrenteMarca(item.id, montoNum, iva);
     else promesa = cargarIngresoRecurrente(item.id, montoNum, medio, iva);
     promesa
@@ -458,11 +458,11 @@ export default function GastosIngresosApp({
         <div className={`grid grid-cols-1 gap-3 mb-3 ${tab === "cargo" && modoCargo === "PAGO" ? "" : "sm:grid-cols-2"}`}>
           <div>
             <label className="block text-sm font-medium text-neutral-700 mb-1">
-              {tab === "cargo" && modoCargo === "PAGO" ? "Monto pagado" : `Monto ${recurrencia !== "UNICO" ? "estimado " : ""}${tab === "cargo" || tab === "ingreso" ? "(sin IVA)" : ""}`}
+              {tab === "cargo" && modoCargo === "PAGO" ? "Monto pagado" : `Monto ${recurrencia !== "UNICO" ? "estimado " : ""}(sin IVA)`}
             </label>
             <input value={monto} onChange={(e) => setMonto(e.target.value)} placeholder="$0" className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm" />
 
-            {(tab === "cargo" || tab === "ingreso") && !(tab === "cargo" && modoCargo === "PAGO") && (
+            {!(tab === "cargo" && modoCargo === "PAGO") && (
               <div className="mt-2">
                 <label className="flex items-center gap-2 text-sm text-neutral-700 cursor-pointer">
                   <input type="checkbox" checked={llevaIva} onChange={(e) => setLlevaIva(e.target.checked)} />

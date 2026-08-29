@@ -199,6 +199,8 @@ export type Gasto = {
   tipo: string;
   medio_pago: string;
   monto: number;
+  neto: number | null;
+  iva: number | null;
   descripcion: string | null;
   comprobante_path: string | null;
   pendiente_factura: boolean;
@@ -238,6 +240,7 @@ export type GastoRecurrente = {
   descripcion: string;
   monto_estimado: number;
   dia_mes: number;
+  lleva_iva: boolean;
   activo: boolean;
   ultimo_mes_cargado: string | null;
 };
