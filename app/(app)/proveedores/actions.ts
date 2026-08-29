@@ -10,6 +10,10 @@ import { calcularLiquidacionProveedor, generarLiquidacionProveedor } from "@/lib
 import { consumirFifo } from "@/lib/fifoProveedor";
 import { turnoAbiertoDeLocal } from "@/app/(app)/turnos/actions";
 
+function redondear2(valor: number) {
+  return Math.round(valor * 100) / 100;
+}
+
 async function usuarioActual() {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
@@ -527,6 +531,12 @@ export async function cargarFacturaCompra(params: {
   fechaEmision: string;
   fechaVencimiento: string;
   monto: number;
+  // IVA discriminado en la factura (opcional) — el monto total de la
+  // factura NO cambia de significado (sigue siendo el total, igual que
+  // siempre, para no romper la comparación contra "total calculado" ni el
+  // costo por unidad que ya se usa para costo_informado). Esto es solo
+  // para poder sumarlo después como Crédito Fiscal en IVA a pagar.
+  iva?: number | null;
   observaciones: string;
   lineas: { idVariante: string; cantidadFacturada: number; precioUnitarioReal: number; actualizarCosto: boolean }[];
   comprobante?: File | null;
@@ -540,6 +550,9 @@ export async function cargarFacturaCompra(params: {
     const supabase = getSupabaseServerClient();
     const usuario = await usuarioActual();
 
+    const iva = params.iva && params.iva > 0 ? redondear2(params.iva) : null;
+    const neto = iva ? redondear2(params.monto - iva) : null;
+
     const { data: factura, error: errorFactura } = await supabase
       .from("facturas_compra_proveedor")
       .insert({
@@ -552,6 +565,8 @@ export async function cargarFacturaCompra(params: {
         fecha_emision: params.fechaEmision,
         fecha_vencimiento: params.fechaVencimiento || null,
         monto: params.monto,
+        neto,
+        iva,
         estado: "PENDIENTE",
         observaciones: params.observaciones || null,
         usuario,

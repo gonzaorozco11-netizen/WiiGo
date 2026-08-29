@@ -493,6 +493,8 @@ export type FacturaCompraProveedor = {
   fecha_periodo_desde: string | null; // modo PERIODO: rango que consolida
   fecha_periodo_hasta: string | null;
   monto: number;
+  neto: number | null;
+  iva: number | null;
   estado: string; // PENDIENTE / PARCIAL / PAGADA / ANULADA
   comprobante_path: string | null;
   observaciones: string | null;

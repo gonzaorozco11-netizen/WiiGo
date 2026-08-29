@@ -35,12 +35,23 @@ export default function FacturaOrdenModal({
   );
   const [actualizarCosto, setActualizarCosto] = useState<Record<string, boolean>>({});
   const [monto, setMonto] = useState("");
+  const [discriminaIva, setDiscriminaIva] = useState(false);
+  const [ivaMonto, setIvaMonto] = useState("");
   const [observaciones, setObservaciones] = useState("");
   const [comprobante, setComprobante] = useState<File | null>(null);
 
   const totalCalculado = detalle.reduce((acc, d) => acc + d.cantidad_recibida * (Number(precios[d.id_variante]) || 0), 0);
   const montoNum = Number(monto) || 0;
   const diferencia = monto ? montoNum - totalCalculado : 0;
+  const ivaNum = Number(ivaMonto) || 0;
+
+  function handleToggleDiscriminaIva(checked: boolean) {
+    setDiscriminaIva(checked);
+    if (checked && !ivaMonto) {
+      const base = montoNum || totalCalculado;
+      setIvaMonto(base > 0 ? String(Math.round(base - base / 1.21)) : "");
+    }
+  }
 
   function handleSubmit() {
     setError(null);
@@ -54,6 +65,7 @@ export default function FacturaOrdenModal({
           fechaEmision,
           fechaVencimiento,
           monto: montoNum || totalCalculado,
+          iva: discriminaIva ? ivaNum : null,
           observaciones,
           lineas: detalle.map((d) => ({
             idVariante: d.id_variante,
@@ -179,6 +191,24 @@ export default function FacturaOrdenModal({
               <p className="text-xs text-amber-700 mt-2">
                 Diferencia de ${formatearMonto(Math.abs(diferencia))} contra lo calculado — puede ser flete u otro cargo legítimo.
               </p>
+            )}
+
+            <label className="flex items-center gap-2 text-xs text-neutral-600 cursor-pointer mt-3">
+              <input type="checkbox" checked={discriminaIva} onChange={(e) => handleToggleDiscriminaIva(e.target.checked)} />
+              Esta factura discrimina IVA
+            </label>
+            {discriminaIva && (
+              <div className="mt-1.5">
+                <label className="block text-xs font-semibold text-neutral-500 uppercase mb-1">IVA de la factura</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={ivaMonto}
+                  onChange={(e) => setIvaMonto(e.target.value)}
+                  className="w-40 rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                />
+                <p className="text-[11px] text-neutral-400 mt-1">Sugerido con 21% — ajustalo si en la factura figura otro valor.</p>
+              </div>
             )}
           </div>
 

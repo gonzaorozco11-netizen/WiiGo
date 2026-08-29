@@ -56,6 +56,10 @@ const GROUPS: NavGroup[] = [
     ],
   },
   {
+    label: "Contabilidad",
+    items: [{ href: "/iva-a-pagar", label: "IVA a pagar" }],
+  },
+  {
     label: "Local",
     items: [
       { href: "/turnos", label: "Turnos" },
