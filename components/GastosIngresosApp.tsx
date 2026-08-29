@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { Local, Marca, CategoriaGasto, SubcategoriaGasto, CategoriaCargoMarca, SubcategoriaCargoMarca, CategoriaIngreso, SubcategoriaIngreso } from "@/lib/supabase";
 import { crearGasto, crearRecurrente, listarRecurrentes, cargarRecurrente } from "@/app/(app)/gastos/actions";
+import { registrarPagoComercial } from "@/app/(app)/situacion-marca/actions";
 import {
   registrarCargoMarcaUnico,
   crearCargoRecurrenteMarca,
@@ -88,6 +89,7 @@ export default function GastosIngresosApp({
   ivaGeneralPorcentaje: number;
 }) {
   const [tab, setTab] = useState<Tab>("gasto");
+  const [modoCargo, setModoCargo] = useState<"CARGO" | "PAGO">("CARGO");
   const [recurrencia, setRecurrencia] = useState<Recurrencia>("UNICO");
   const [idMarca, setIdMarca] = useState(marcas[0]?.id_marca ?? "");
   const [idCategoria, setIdCategoria] = useState(categoriasGasto[0]?.id_categoria ?? "__nueva__");
@@ -182,6 +184,7 @@ export default function GastosIngresosApp({
 
   function handleCambiarTab(nuevoTab: Tab) {
     setTab(nuevoTab);
+    setModoCargo("CARGO");
     setRecurrencia("UNICO");
     const cats = nuevoTab === "gasto" ? categoriasGasto : nuevoTab === "cargo" ? categoriasCargo : categoriasIngreso;
     setIdCategoria(cats[0]?.id_categoria ?? "__nueva__");
@@ -219,12 +222,33 @@ export default function GastosIngresosApp({
       setError("El monto tiene que ser mayor a 0");
       return;
     }
-    if (idCategoria === "__nueva__" && !nuevaCategoria.trim()) {
-      setError("Elegí o creá una categoría");
-      return;
-    }
     if (tab === "cargo" && !idMarca) {
       setError("Elegí una marca");
+      return;
+    }
+
+    if (tab === "cargo" && modoCargo === "PAGO") {
+      const fdPago = new FormData();
+      fdPago.append("monto", String(montoNum));
+      fdPago.append("descripcion", descripcion);
+      setGuardando(true);
+      registrarPagoComercial(idMarca, fdPago)
+        .then((res) => {
+          if (res.error) {
+            setError(res.error);
+            return;
+          }
+          setMensajeOk("Pago registrado.");
+          resetForm();
+          recargarListas();
+        })
+        .catch((err) => setError(err instanceof Error ? err.message : "No se pudo registrar el pago"))
+        .finally(() => setGuardando(false));
+      return;
+    }
+
+    if (idCategoria === "__nueva__" && !nuevaCategoria.trim()) {
+      setError("Elegí o creá una categoría");
       return;
     }
 
@@ -367,52 +391,78 @@ export default function GastosIngresosApp({
           </div>
         )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-          <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-1">Categoría</label>
-            <select value={idCategoria} onChange={(e) => handleCambiarCategoria(e.target.value)} className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm">
-              {categorias.map((c) => (
-                <option key={c.id_categoria} value={c.id_categoria}>{c.nombre}</option>
-              ))}
-              <option value="__nueva__">+ Crear categoría nueva…</option>
-            </select>
-            {idCategoria === "__nueva__" && (
-              <input
-                value={nuevaCategoria}
-                onChange={(e) => setNuevaCategoria(e.target.value)}
-                placeholder="Nombre de la categoría nueva"
-                className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm mt-1.5"
-              />
-            )}
+        {tab === "cargo" && (
+          <div className="flex gap-1.5 mb-3">
+            <button
+              onClick={() => setModoCargo("CARGO")}
+              className={`flex-1 text-center py-2 rounded-lg border-[1.5px] text-xs font-bold ${
+                modoCargo === "CARGO" ? "border-purple-500 bg-purple-50 text-purple-700" : "border-neutral-200 text-neutral-500 bg-white"
+              }`}
+            >
+              🏷️ Cargo nuevo
+            </button>
+            <button
+              onClick={() => {
+                setModoCargo("PAGO");
+                setRecurrencia("UNICO");
+              }}
+              className={`flex-1 text-center py-2 rounded-lg border-[1.5px] text-xs font-bold ${
+                modoCargo === "PAGO" ? "border-emerald-500 bg-emerald-50 text-emerald-700" : "border-neutral-200 text-neutral-500 bg-white"
+              }`}
+            >
+              💵 Pago recibido
+            </button>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-1">Subcategoría (opcional)</label>
-            <select value={idSubcategoria} onChange={(e) => setIdSubcategoria(e.target.value)} className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm">
-              <option value="">Sin subcategoría</option>
-              {subDisponibles.map((s) => (
-                <option key={s.id_subcategoria} value={s.id_subcategoria}>{s.nombre}</option>
-              ))}
-              <option value="__nueva__">+ Crear subcategoría nueva…</option>
-            </select>
-            {idSubcategoria === "__nueva__" && (
-              <input
-                value={nuevaSubcategoria}
-                onChange={(e) => setNuevaSubcategoria(e.target.value)}
-                placeholder="Nombre de la subcategoría nueva"
-                className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm mt-1.5"
-              />
-            )}
-          </div>
-        </div>
+        )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+        {!(tab === "cargo" && modoCargo === "PAGO") && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-1">Categoría</label>
+              <select value={idCategoria} onChange={(e) => handleCambiarCategoria(e.target.value)} className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm">
+                {categorias.map((c) => (
+                  <option key={c.id_categoria} value={c.id_categoria}>{c.nombre}</option>
+                ))}
+                <option value="__nueva__">+ Crear categoría nueva…</option>
+              </select>
+              {idCategoria === "__nueva__" && (
+                <input
+                  value={nuevaCategoria}
+                  onChange={(e) => setNuevaCategoria(e.target.value)}
+                  placeholder="Nombre de la categoría nueva"
+                  className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm mt-1.5"
+                />
+              )}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-1">Subcategoría (opcional)</label>
+              <select value={idSubcategoria} onChange={(e) => setIdSubcategoria(e.target.value)} className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm">
+                <option value="">Sin subcategoría</option>
+                {subDisponibles.map((s) => (
+                  <option key={s.id_subcategoria} value={s.id_subcategoria}>{s.nombre}</option>
+                ))}
+                <option value="__nueva__">+ Crear subcategoría nueva…</option>
+              </select>
+              {idSubcategoria === "__nueva__" && (
+                <input
+                  value={nuevaSubcategoria}
+                  onChange={(e) => setNuevaSubcategoria(e.target.value)}
+                  placeholder="Nombre de la subcategoría nueva"
+                  className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm mt-1.5"
+                />
+              )}
+            </div>
+          </div>
+        )}
+
+        <div className={`grid grid-cols-1 gap-3 mb-3 ${tab === "cargo" && modoCargo === "PAGO" ? "" : "sm:grid-cols-2"}`}>
           <div>
             <label className="block text-sm font-medium text-neutral-700 mb-1">
-              Monto {recurrencia !== "UNICO" && "estimado"} {(tab === "cargo" || tab === "ingreso") ? "(sin IVA)" : ""}
+              {tab === "cargo" && modoCargo === "PAGO" ? "Monto pagado" : `Monto ${recurrencia !== "UNICO" ? "estimado " : ""}${tab === "cargo" || tab === "ingreso" ? "(sin IVA)" : ""}`}
             </label>
             <input value={monto} onChange={(e) => setMonto(e.target.value)} placeholder="$0" className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm" />
 
-            {(tab === "cargo" || tab === "ingreso") && (
+            {(tab === "cargo" || tab === "ingreso") && !(tab === "cargo" && modoCargo === "PAGO") && (
               <div className="mt-2">
                 <label className="flex items-center gap-2 text-sm text-neutral-700 cursor-pointer">
                   <input type="checkbox" checked={llevaIva} onChange={(e) => setLlevaIva(e.target.checked)} />
@@ -426,21 +476,23 @@ export default function GastosIngresosApp({
               </div>
             )}
           </div>
-          <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-1">Recurrencia</label>
-            <select
-              value={recurrencia}
-              onChange={(e) => setRecurrencia(e.target.value as Recurrencia)}
-              className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm"
-            >
-              <option value="UNICO">Único</option>
-              <option value="MENSUAL">Mensual</option>
-              {tab !== "gasto" && <option value="ANUAL">Anual</option>}
-            </select>
-          </div>
+          {!(tab === "cargo" && modoCargo === "PAGO") && (
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-1">Recurrencia</label>
+              <select
+                value={recurrencia}
+                onChange={(e) => setRecurrencia(e.target.value as Recurrencia)}
+                className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm"
+              >
+                <option value="UNICO">Único</option>
+                <option value="MENSUAL">Mensual</option>
+                {tab !== "gasto" && <option value="ANUAL">Anual</option>}
+              </select>
+            </div>
+          )}
         </div>
 
-        {recurrencia !== "UNICO" && (
+        {recurrencia !== "UNICO" && !(tab === "cargo" && modoCargo === "PAGO") && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
             <div>
               <label className="block text-sm font-medium text-neutral-700 mb-1">Día del mes</label>
@@ -495,8 +547,9 @@ export default function GastosIngresosApp({
 
         {tab === "cargo" && (
           <p className="text-xs text-neutral-400 mb-3">
-            Esto solo genera la deuda en la cuenta comercial de la marca — cuando te pague de verdad, registrá el
-            pago en Situación de marca.
+            {modoCargo === "CARGO"
+              ? "Esto solo genera la deuda en la cuenta comercial de la marca — cuando te pague de verdad, elegí \"Pago recibido\" acá arriba."
+              : "Esto baja el saldo de la cuenta comercial de la marca — no queda atado a un cargo puntual, así que anotá en la descripción a qué corresponde si te sirve."}
           </p>
         )}
 

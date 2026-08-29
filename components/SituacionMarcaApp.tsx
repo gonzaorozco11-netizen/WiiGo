@@ -7,7 +7,6 @@ import {
   listarFeesIngreso,
   registrarFeeIngreso,
   marcarFeePagado,
-  registrarPagoComercial,
   saldoComercialAction,
   historialComercialAction,
   saldosCuentasAction,
@@ -262,9 +261,8 @@ function CuentaComercial({
   const [historial, setHistorial] = useState<
     { idMovimiento: string; tipoCargo: string; importe: number; saldoNuevo: number; periodo: string | null; observaciones: string | null; fecha: string }[]
   >([]);
-  const [mostrarHistorial, setMostrarHistorial] = useState(false);
+  const [mostrarHistorial, setMostrarHistorial] = useState(true);
   const [mostrarFeeForm, setMostrarFeeForm] = useState(false);
-  const [mostrarPagoForm, setMostrarPagoForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   function recargar() {
@@ -282,7 +280,7 @@ function CuentaComercial({
         <div>
           <h2 className="text-sm font-bold text-neutral-900">🏬 Cuenta comercial</h2>
           <p className="text-[11px] text-neutral-400 print:hidden">
-            Lo que la marca le debe a WiiGo (fee de ingreso, canon, otros cargos — se cargan desde Gastos e Ingresos)
+            Lo que la marca le debe a WiiGo — los cargos y los pagos recibidos se registran desde Gastos e Ingresos
           </p>
         </div>
         <span className="text-lg font-extrabold text-amber-700 tabular-nums">${formatearMonto(saldo)}</span>
@@ -321,29 +319,9 @@ function CuentaComercial({
           )}
         </div>
 
-        {/* Pago manual — el cargo manual ahora se registra en Gastos e Ingresos */}
-        <div className="mb-3 print:hidden">
-          <button onClick={() => setMostrarPagoForm((v) => !v)} className="text-xs font-semibold text-accent">
-            {mostrarPagoForm ? "Cancelar" : "+ Registrar pago recibido"}
-          </button>
-          {mostrarPagoForm && (
-            <PagoManualForm
-              idMarca={idMarca}
-              onGuardado={() => {
-                setMostrarPagoForm(false);
-                recargar();
-                onCambio();
-              }}
-            />
-          )}
-        </div>
-
         <button onClick={() => setMostrarHistorial((v) => !v)} className="text-xs font-semibold text-accent">
           {mostrarHistorial ? "▾" : "▸"} Historial de movimientos ({historial.length})
         </button>
-        <p className="hidden print:block text-[10px] text-neutral-400 -mt-1 mb-1">
-          (tocá &quot;Historial de movimientos&quot; antes de imprimir si querés que salga el detalle completo)
-        </p>
         {mostrarHistorial && (
           <div className="overflow-x-auto mt-2">
             <table className="w-full text-xs">
@@ -459,37 +437,6 @@ function FeeRow({
         <span className="font-semibold text-emerald-600">{fee.estado}</span>
       )}
     </div>
-  );
-}
-
-function PagoManualForm({ idMarca, onGuardado }: { idMarca: string; onGuardado: () => void }) {
-  const [guardando, setGuardando] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setError(null);
-    const formData = new FormData(e.currentTarget);
-    setGuardando(true);
-    registrarPagoComercial(idMarca, formData)
-      .then((res) => {
-        if (res.error) setError(res.error);
-        else onGuardado();
-      })
-      .finally(() => setGuardando(false));
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="mt-2 pt-2 border-t border-neutral-200 space-y-2">
-      {error && <p className="text-xs text-red-600">{error}</p>}
-      <div className="grid grid-cols-2 gap-2 items-end">
-        <input name="monto" type="number" step="1" required placeholder="Monto" className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs" />
-        <input name="descripcion" placeholder="Descripción" className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs" />
-      </div>
-      <button type="submit" disabled={guardando} className="text-xs font-bold text-white bg-accent hover:bg-accent-dark disabled:opacity-40 px-3 py-1.5 rounded-lg">
-        {guardando ? "Guardando..." : "Registrar"}
-      </button>
-    </form>
   );
 }
 
