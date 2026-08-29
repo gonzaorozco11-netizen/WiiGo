@@ -18,6 +18,8 @@ import {
   movimientosCajaAdmin,
   registrarMovimientoCajaAdmin,
   totalCobradoPorBanco,
+  desactivarCategoria,
+  desactivarSubcategoria,
 } from "@/app/(app)/gastos/actions";
 import { actualizarSueldoBase } from "@/app/(app)/usuarios/actions";
 
@@ -92,7 +94,7 @@ export default function GastosApp({
   topeAutorizacion: number;
   ivaGeneralPorcentaje: number;
 }) {
-  const [tab, setTab] = useState<"gastos" | "caja" | "nomina" | "recurrentes">("gastos");
+  const [tab, setTab] = useState<"gastos" | "caja" | "nomina" | "recurrentes" | "categorias">("gastos");
 
   const categoriaPorId = useMemo(() => new Map(categoriasIniciales.map((c) => [c.id_categoria, c])), [categoriasIniciales]);
   const subcategoriaPorId = useMemo(() => new Map(subcategoriasIniciales.map((s) => [s.id_subcategoria, s])), [subcategoriasIniciales]);
@@ -110,6 +112,7 @@ export default function GastosApp({
         {puedeVerCajaAdmin && <TabButton activo={tab === "caja"} onClick={() => setTab("caja")} icono="🔒" label="Caja Administración" />}
         {puedeGestionarNomina && <TabButton activo={tab === "nomina"} onClick={() => setTab("nomina")} icono="👥" label="Nómina" />}
         <TabButton activo={tab === "recurrentes"} onClick={() => setTab("recurrentes")} icono="🔁" label="Recurrentes" />
+        <TabButton activo={tab === "categorias"} onClick={() => setTab("categorias")} icono="🏷️" label="Categorías" />
       </div>
 
       {tab === "gastos" && (
@@ -137,6 +140,7 @@ export default function GastosApp({
           ivaGeneralPorcentaje={ivaGeneralPorcentaje}
         />
       )}
+      {tab === "categorias" && <TabCategorias categoriasIniciales={categoriasIniciales} subcategoriasIniciales={subcategoriasIniciales} />}
     </div>
   );
 }
@@ -1280,5 +1284,93 @@ function FormNuevoRecurrente({
         </button>
       </div>
     </form>
+  );
+}
+
+// ===================== TAB CATEGORÍAS =====================
+
+function TabCategorias({
+  categoriasIniciales,
+  subcategoriasIniciales,
+}: {
+  categoriasIniciales: CategoriaGasto[];
+  subcategoriasIniciales: SubcategoriaGasto[];
+}) {
+  const [desactivandoId, setDesactivandoId] = useState<string | null>(null);
+
+  function handleDesactivarCategoria(c: CategoriaGasto) {
+    setDesactivandoId(c.id_categoria);
+    desactivarCategoria(c.id_categoria)
+      .then((res) => {
+        if (res.error) alert(res.error);
+        else window.location.reload();
+      })
+      .finally(() => setDesactivandoId(null));
+  }
+
+  function handleDesactivarSubcategoria(s: SubcategoriaGasto) {
+    setDesactivandoId(s.id_subcategoria);
+    desactivarSubcategoria(s.id_subcategoria)
+      .then((res) => {
+        if (res.error) alert(res.error);
+        else window.location.reload();
+      })
+      .finally(() => setDesactivandoId(null));
+  }
+
+  return (
+    <div>
+      <p className="text-xs text-neutral-400 mb-3">
+        "Desactivar" no borra nada — los gastos ya cargados con esa categoría o subcategoría siguen intactos, solo
+        deja de aparecer para elegirla de nuevo.
+      </p>
+
+      {categoriasIniciales.length === 0 ? (
+        <p className="text-sm text-neutral-400 text-center py-8 bg-white border border-neutral-200 rounded-xl">
+          Todavía no hay categorías creadas.
+        </p>
+      ) : (
+        <div className="bg-white border border-neutral-200 rounded-xl overflow-hidden">
+          {categoriasIniciales.map((c) => {
+            const subs = subcategoriasIniciales.filter((s) => s.id_categoria === c.id_categoria);
+            return (
+              <div key={c.id_categoria} className="border-b border-neutral-100 last:border-0">
+                <div className="flex items-center justify-between px-4 py-3">
+                  <span className="text-sm font-bold text-neutral-900">
+                    {c.nombre}
+                    <span className="text-xs font-medium text-neutral-400 ml-2">
+                      {subs.length} {subs.length === 1 ? "subcategoría" : "subcategorías"}
+                    </span>
+                  </span>
+                  <button
+                    onClick={() => handleDesactivarCategoria(c)}
+                    disabled={desactivandoId === c.id_categoria}
+                    className="text-[11px] font-bold text-red-600 bg-red-50 border border-red-600 rounded-lg px-2.5 py-1 disabled:opacity-40"
+                  >
+                    {desactivandoId === c.id_categoria ? "..." : "Desactivar"}
+                  </button>
+                </div>
+                {subs.length > 0 && (
+                  <div className="px-4 pb-3 pl-7 space-y-1.5">
+                    {subs.map((s) => (
+                      <div key={s.id_subcategoria} className="flex items-center justify-between text-xs text-neutral-600 border-t border-dashed border-neutral-100 pt-1.5 first:border-0 first:pt-0">
+                        <span>{s.nombre}</span>
+                        <button
+                          onClick={() => handleDesactivarSubcategoria(s)}
+                          disabled={desactivandoId === s.id_subcategoria}
+                          className="text-[10.5px] font-bold text-red-600 bg-red-50 border border-red-600 rounded-lg px-2 py-0.5 disabled:opacity-40"
+                        >
+                          {desactivandoId === s.id_subcategoria ? "..." : "Desactivar"}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }

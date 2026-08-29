@@ -103,6 +103,34 @@ async function ivaGeneralPorcentaje(supabase: SupabaseClient) {
   return Number(data?.valor ?? 21);
 }
 
+// Baja lógica, no borrado: pisa el estado en vez de eliminar la fila, así
+// los gastos ya cargados con esta categoría/subcategoría siguen intactos y
+// se siguen viendo bien en el historial — solo deja de aparecer para
+// elegirla de nuevo en gastos futuros.
+export async function desactivarCategoria(idCategoria: string): Promise<{ error: string | null }> {
+  try {
+    const supabase = getSupabaseServerClient();
+    const { error } = await supabase.from("categorias_gasto").update({ estado: "INACTIVA" }).eq("id_categoria", idCategoria);
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/gastos");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo desactivar la categoría" };
+  }
+}
+
+export async function desactivarSubcategoria(idSubcategoria: string): Promise<{ error: string | null }> {
+  try {
+    const supabase = getSupabaseServerClient();
+    const { error } = await supabase.from("subcategorias_gasto").update({ estado: "INACTIVA" }).eq("id_subcategoria", idSubcategoria);
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/gastos");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo desactivar la subcategoría" };
+  }
+}
+
 export async function listarCategorias() {
   const supabase = getSupabaseServerClient();
   const { data, error } = await supabase.from("categorias_gasto").select("*").eq("estado", "ACTIVA").order("nombre");
