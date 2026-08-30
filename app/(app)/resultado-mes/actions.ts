@@ -25,6 +25,7 @@ async function configuracionNumero(supabase: ReturnType<typeof getSupabaseServer
 }
 
 export type ItemMonto = { nombre: string; fuente: string; monto: number };
+export type ItemCategoriaGasto = { nombre: string; monto: number; subitems: { nombre: string; monto: number }[] };
 export type ReservaLinea = { idReserva: string | null; nombre: string; porcentaje: number; montoSupuesto: number; montoReal: number };
 
 // Todo lo que se calcula en vivo mientras el mes está en curso. Al cerrar el
@@ -37,9 +38,9 @@ type TableroSupuesto = {
   ventasNetas: number;
   cmv: number;
   contribucionMarginal: number;
-  gastosFijos: ItemMonto[];
+  gastosFijos: ItemCategoriaGasto[];
   totalGastosFijos: number;
-  gastosVariables: ItemMonto[];
+  gastosVariables: ItemCategoriaGasto[];
   totalGastosVariables: number;
   impuestoCreditos: number;
   impuestoDebitos: number;
@@ -189,22 +190,36 @@ async function calcularTableroEnVivo(periodo: string): Promise<TableroSupuesto> 
     .lte("fecha", `${hasta}T23:59:59`);
   const { data: subcategoriasGasto } = await supabase.from("subcategorias_gasto").select("id_subcategoria, nombre");
   const nombreSubPorId = new Map((subcategoriasGasto ?? []).map((s) => [s.id_subcategoria as string, s.nombre as string]));
+  const { data: categoriasGastoTodas } = await supabase.from("categorias_gasto").select("id_categoria, nombre");
+  const nombreCategoriaGastoPorId = new Map((categoriasGastoTodas ?? []).map((c) => [c.id_categoria as string, c.nombre as string]));
 
-  const fijosPorSub = new Map<string, number>();
-  const variablesPorSub = new Map<string, number>();
+  // Agrupado en 2 niveles: categoría (lo que se ve siempre) → subcategorías
+  // (se despliegan al tocar la categoría, solo si tiene más de una).
+  const fijosPorCat = new Map<string, Map<string, number>>();
+  const variablesPorCat = new Map<string, Map<string, number>>();
   for (const g of gastosPeriodo ?? []) {
     if (idCategoriaImpuestos && g.id_categoria === idCategoriaImpuestos) continue;
-    const nombre = g.id_subcategoria ? nombreSubPorId.get(g.id_subcategoria as string) ?? "Sin subcategoría" : "Sin subcategoría";
-    const mapa = g.tipo === "FIJO" ? fijosPorSub : variablesPorSub;
-    mapa.set(nombre, (mapa.get(nombre) ?? 0) + ((g.monto as number) ?? 0));
+    const idCat = g.id_categoria as string;
+    const nombreSub = g.id_subcategoria ? nombreSubPorId.get(g.id_subcategoria as string) ?? "Sin subcategoría" : "Sin subcategoría";
+    const mapaCat = g.tipo === "FIJO" ? fijosPorCat : variablesPorCat;
+    if (!mapaCat.has(idCat)) mapaCat.set(idCat, new Map());
+    const subMap = mapaCat.get(idCat)!;
+    subMap.set(nombreSub, (subMap.get(nombreSub) ?? 0) + ((g.monto as number) ?? 0));
   }
-  const gastosFijos: ItemMonto[] = [...fijosPorSub.entries()]
-    .map(([nombre, monto]) => ({ nombre, fuente: "Gastos", monto: redondear2(monto) }))
-    .sort((a, b) => b.monto - a.monto);
+  function armarPorCategoria(mapaCat: Map<string, Map<string, number>>): ItemCategoriaGasto[] {
+    return [...mapaCat.entries()]
+      .map(([idCat, subMap]) => {
+        const subitems = [...subMap.entries()]
+          .map(([nombre, monto]) => ({ nombre, monto: redondear2(monto) }))
+          .sort((a, b) => b.monto - a.monto);
+        const monto = redondear2(subitems.reduce((acc, s) => acc + s.monto, 0));
+        return { nombre: nombreCategoriaGastoPorId.get(idCat) ?? "Sin categoría", monto, subitems };
+      })
+      .sort((a, b) => b.monto - a.monto);
+  }
+  const gastosFijos = armarPorCategoria(fijosPorCat);
   const totalGastosFijos = redondear2(gastosFijos.reduce((acc, i) => acc + i.monto, 0));
-  const gastosVariables: ItemMonto[] = [...variablesPorSub.entries()]
-    .map(([nombre, monto]) => ({ nombre, fuente: "Gastos", monto: redondear2(monto) }))
-    .sort((a, b) => b.monto - a.monto);
+  const gastosVariables = armarPorCategoria(variablesPorCat);
   const totalGastosVariables = redondear2(gastosVariables.reduce((acc, i) => acc + i.monto, 0));
 
   // ===== Retenciones: Impuesto a los Créditos (solo marca propia — el de

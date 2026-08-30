@@ -10,6 +10,7 @@ import {
   eliminarReservaConfigurada,
   type TableroResultados,
   type ItemMonto,
+  type ItemCategoriaGasto,
 } from "@/app/(app)/resultado-mes/actions";
 
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
@@ -189,8 +190,8 @@ export default function ResultadoMesApp() {
 
         <FilaHito color="purple" nombre="= Contribución Marginal" monto={datos.contribucionMarginal} pctSub={pct(datos.contribucionMarginal, datos.ventasNetas)} />
 
-        <BloqueItems titulo="Gastos fijos operativos" total={-datos.totalGastosFijos} items={datos.gastosFijos} pctVentas={pct(-datos.totalGastosFijos, datos.ventasNetas)} />
-        <BloqueItems titulo="Gastos variables" total={-datos.totalGastosVariables} items={datos.gastosVariables} pctVentas={pct(-datos.totalGastosVariables, datos.ventasNetas)} />
+        <BloqueGastosCategoria titulo="Gastos fijos operativos" total={-datos.totalGastosFijos} items={datos.gastosFijos} pctVentas={pct(-datos.totalGastosFijos, datos.ventasNetas)} />
+        <BloqueGastosCategoria titulo="Gastos variables" total={-datos.totalGastosVariables} items={datos.gastosVariables} pctVentas={pct(-datos.totalGastosVariables, datos.ventasNetas)} />
 
         <BloqueItems
           titulo="Retenciones"
@@ -327,6 +328,89 @@ function BloqueItems({ titulo, total, items, pctVentas }: { titulo: string; tota
           <span className="tabular-nums">{formatearMonto(i.monto)}</span>
         </div>
       ))}
+    </>
+  );
+}
+
+// Gastos fijos/variables agrupados por categoría — si una categoría tiene
+// más de una subcategoría se muestra plegable (tocás para desplegar), si
+// tiene una sola se muestra directo, sin flechita de más.
+function BloqueGastosCategoria({
+  titulo,
+  total,
+  items,
+  pctVentas,
+}: {
+  titulo: string;
+  total: number;
+  items: ItemCategoriaGasto[];
+  pctVentas: string;
+}) {
+  const [abiertas, setAbiertas] = useState<Set<string>>(new Set());
+  const totalAbs = Math.abs(total);
+
+  function toggle(nombre: string) {
+    setAbiertas((prev) => {
+      const next = new Set(prev);
+      if (next.has(nombre)) next.delete(nombre);
+      else next.add(nombre);
+      return next;
+    });
+  }
+
+  return (
+    <>
+      <div className="flex items-center justify-between px-4 py-2.5 border-t border-neutral-100 font-medium">
+        <span>{titulo}</span>
+        <span className="text-right">
+          <span className="block tabular-nums">{formatearMonto(total)}</span>
+          <span className="block text-[11px] font-normal text-blue-600">{pctVentas}</span>
+        </span>
+      </div>
+      {items.map((cat) => {
+        const montoCat = cat.monto === 0 ? 0 : -Math.abs(cat.monto);
+        if (cat.subitems.length <= 1) {
+          return (
+            <div key={cat.nombre} className="flex items-center justify-between px-4 py-1.5 pl-7 text-neutral-500 text-[13px]">
+              <span>
+                <span className="text-blue-600 font-medium text-xs mr-2 tabular-nums">{pctDeBloque(cat.monto, totalAbs)}</span>
+                {cat.nombre}
+                {cat.subitems[0] && cat.subitems[0].nombre !== "Sin subcategoría" && (
+                  <span className="text-neutral-400"> — {cat.subitems[0].nombre}</span>
+                )}
+              </span>
+              <span className="tabular-nums">{formatearMonto(montoCat)}</span>
+            </div>
+          );
+        }
+        const abierta = abiertas.has(cat.nombre);
+        return (
+          <div key={cat.nombre}>
+            <button
+              type="button"
+              onClick={() => toggle(cat.nombre)}
+              className="w-full flex items-center justify-between px-4 py-1.5 pl-7 text-neutral-500 text-[13px] hover:bg-neutral-50"
+            >
+              <span className="flex items-center gap-1.5">
+                <span className={`inline-block text-[9px] text-neutral-400 transition-transform ${abierta ? "rotate-90" : ""}`}>▶</span>
+                <span className="text-blue-600 font-medium text-xs tabular-nums">{pctDeBloque(cat.monto, totalAbs)}</span>
+                {cat.nombre}
+              </span>
+              <span className="tabular-nums">{formatearMonto(montoCat)}</span>
+            </button>
+            {abierta &&
+              cat.subitems.map((s) => (
+                <div key={s.nombre} className="flex items-center justify-between px-4 py-1 pl-11 text-neutral-400 text-[12px] border-t border-dashed border-neutral-100">
+                  <span>
+                    <span className="text-blue-500 font-medium text-[10.5px] mr-1.5 tabular-nums">{pctDeBloque(s.monto, Math.abs(cat.monto))}</span>
+                    {s.nombre}
+                  </span>
+                  <span className="tabular-nums">{formatearMonto(s.monto === 0 ? 0 : -Math.abs(s.monto))}</span>
+                </div>
+              ))}
+          </div>
+        );
+      })}
     </>
   );
 }
