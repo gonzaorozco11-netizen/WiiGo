@@ -183,6 +183,26 @@ export async function renombrarSubcategoriaGasto(idSubcategoria: string, nombre:
   }
 }
 
+// Cuántos gastos activos tiene cada categoría/subcategoría — se usa para
+// avisar antes de desactivar una que ya tiene historial cargado (así no se
+// corta sin querer una serie que se venía comparando mes a mes).
+export async function contarGastosPorCategoria(): Promise<{ porCategoria: Record<string, number>; porSubcategoria: Record<string, number> }> {
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase.from("gastos").select("id_categoria, id_subcategoria").eq("anulado", false);
+  if (error) throw new Error(friendlyDbError(error));
+  const porCategoria: Record<string, number> = {};
+  const porSubcategoria: Record<string, number> = {};
+  for (const g of data ?? []) {
+    const idCategoria = g.id_categoria as string;
+    porCategoria[idCategoria] = (porCategoria[idCategoria] ?? 0) + 1;
+    if (g.id_subcategoria) {
+      const idSubcategoria = g.id_subcategoria as string;
+      porSubcategoria[idSubcategoria] = (porSubcategoria[idSubcategoria] ?? 0) + 1;
+    }
+  }
+  return { porCategoria, porSubcategoria };
+}
+
 export async function listarCategorias() {
   const supabase = getSupabaseServerClient();
   const { data, error } = await supabase.from("categorias_gasto").select("*").eq("estado", "ACTIVA").order("nombre");

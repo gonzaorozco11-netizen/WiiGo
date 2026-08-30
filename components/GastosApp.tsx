@@ -24,6 +24,9 @@ import {
   renombrarCategoriaGasto,
   crearSubcategoriaGasto,
   renombrarSubcategoriaGasto,
+  listarCategorias,
+  listarSubcategorias,
+  contarGastosPorCategoria,
   anularGasto,
 } from "@/app/(app)/gastos/actions";
 import { actualizarSueldoBase } from "@/app/(app)/usuarios/actions";
@@ -101,9 +104,18 @@ export default function GastosApp({
   ivaGeneralPorcentaje: number;
 }) {
   const [tab, setTab] = useState<"gastos" | "caja" | "nomina" | "recurrentes" | "categorias">("gastos");
+  const [categorias, setCategorias] = useState(categoriasIniciales);
+  const [subcategorias, setSubcategorias] = useState(subcategoriasIniciales);
 
-  const categoriaPorId = useMemo(() => new Map(categoriasIniciales.map((c) => [c.id_categoria, c])), [categoriasIniciales]);
-  const subcategoriaPorId = useMemo(() => new Map(subcategoriasIniciales.map((s) => [s.id_subcategoria, s])), [subcategoriasIniciales]);
+  function recargarCategorias() {
+    Promise.all([listarCategorias(), listarSubcategorias()]).then(([cats, subs]) => {
+      setCategorias(cats);
+      setSubcategorias(subs);
+    });
+  }
+
+  const categoriaPorId = useMemo(() => new Map(categorias.map((c) => [c.id_categoria, c])), [categorias]);
+  const subcategoriaPorId = useMemo(() => new Map(subcategorias.map((s) => [s.id_subcategoria, s])), [subcategorias]);
 
   return (
     <div>
@@ -126,8 +138,8 @@ export default function GastosApp({
           locales={locales}
           usuarios={usuarios}
           turnosAbiertos={turnosAbiertos}
-          categorias={categoriasIniciales}
-          subcategorias={subcategoriasIniciales}
+          categorias={categorias}
+          subcategorias={subcategorias}
           categoriaPorId={categoriaPorId}
           subcategoriaPorId={subcategoriaPorId}
           puedeAutorizarSinLimite={puedeAutorizarSinLimite}
@@ -140,13 +152,15 @@ export default function GastosApp({
       {tab === "recurrentes" && (
         <TabRecurrentes
           locales={locales}
-          categorias={categoriasIniciales}
-          subcategorias={subcategoriasIniciales}
+          categorias={categorias}
+          subcategorias={subcategorias}
           categoriaPorId={categoriaPorId}
           ivaGeneralPorcentaje={ivaGeneralPorcentaje}
         />
       )}
-      {tab === "categorias" && <TabCategorias categoriasIniciales={categoriasIniciales} subcategoriasIniciales={subcategoriasIniciales} />}
+      {tab === "categorias" && (
+        <TabCategorias categoriasIniciales={categorias} subcategoriasIniciales={subcategorias} onCambio={recargarCategorias} />
+      )}
     </div>
   );
 }
@@ -1307,9 +1321,11 @@ function FormNuevoRecurrente({
 function TabCategorias({
   categoriasIniciales,
   subcategoriasIniciales,
+  onCambio,
 }: {
   categoriasIniciales: CategoriaGasto[];
   subcategoriasIniciales: SubcategoriaGasto[];
+  onCambio: () => void;
 }) {
   const [desactivandoId, setDesactivandoId] = useState<string | null>(null);
   const [editando, setEditando] = useState<string | null>(null); // id_categoria o id_subcategoria
@@ -1320,23 +1336,45 @@ function TabCategorias({
   const [agregandoSubDe, setAgregandoSubDe] = useState<string | null>(null);
   const [nombreNuevaSub, setNombreNuevaSub] = useState("");
   const [guardando, setGuardando] = useState(false);
+  const [conteo, setConteo] = useState<{ porCategoria: Record<string, number>; porSubcategoria: Record<string, number> }>({
+    porCategoria: {},
+    porSubcategoria: {},
+  });
+
+  useEffect(() => {
+    contarGastosPorCategoria().then(setConteo);
+  }, []);
 
   function handleDesactivarCategoria(c: CategoriaGasto) {
+    const cantidad = conteo.porCategoria[c.id_categoria] ?? 0;
+    if (cantidad > 0) {
+      const ok = confirm(
+        `"${c.nombre}" ya tiene ${cantidad} ${cantidad === 1 ? "gasto cargado" : "gastos cargados"}. Si la desactivás, no vas a poder elegirla para gastos nuevos — para seguir comparándola mes a mes, dejala activa.\n\n¿Desactivar de todos modos?`
+      );
+      if (!ok) return;
+    }
     setDesactivandoId(c.id_categoria);
     desactivarCategoria(c.id_categoria)
       .then((res) => {
         if (res.error) alert(res.error);
-        else window.location.reload();
+        else onCambio();
       })
       .finally(() => setDesactivandoId(null));
   }
 
   function handleDesactivarSubcategoria(s: SubcategoriaGasto) {
+    const cantidad = conteo.porSubcategoria[s.id_subcategoria] ?? 0;
+    if (cantidad > 0) {
+      const ok = confirm(
+        `"${s.nombre}" ya tiene ${cantidad} ${cantidad === 1 ? "gasto cargado" : "gastos cargados"}. Si la desactivás, no vas a poder elegirla para gastos nuevos.\n\n¿Desactivar de todos modos?`
+      );
+      if (!ok) return;
+    }
     setDesactivandoId(s.id_subcategoria);
     desactivarSubcategoria(s.id_subcategoria)
       .then((res) => {
         if (res.error) alert(res.error);
-        else window.location.reload();
+        else onCambio();
       })
       .finally(() => setDesactivandoId(null));
   }
@@ -1347,7 +1385,11 @@ function TabCategorias({
     crearCategoriaGasto(nombreNueva, tipoNueva)
       .then((res) => {
         if (res.error) alert(res.error);
-        else window.location.reload();
+        else {
+          onCambio();
+          setMostrarNueva(false);
+          setNombreNueva("");
+        }
       })
       .finally(() => setGuardando(false));
   }
@@ -1358,7 +1400,11 @@ function TabCategorias({
     crearSubcategoriaGasto(idCategoria, nombreNuevaSub)
       .then((res) => {
         if (res.error) alert(res.error);
-        else window.location.reload();
+        else {
+          onCambio();
+          setAgregandoSubDe(null);
+          setNombreNuevaSub("");
+        }
       })
       .finally(() => setGuardando(false));
   }
@@ -1372,7 +1418,10 @@ function TabCategorias({
     renombrarCategoriaGasto(c.id_categoria, valorEdit)
       .then((res) => {
         if (res.error) alert(res.error);
-        else window.location.reload();
+        else {
+          onCambio();
+          setEditando(null);
+        }
       })
       .finally(() => setGuardando(false));
   }
@@ -1386,7 +1435,10 @@ function TabCategorias({
     renombrarSubcategoriaGasto(s.id_subcategoria, valorEdit)
       .then((res) => {
         if (res.error) alert(res.error);
-        else window.location.reload();
+        else {
+          onCambio();
+          setEditando(null);
+        }
       })
       .finally(() => setGuardando(false));
   }
@@ -1469,6 +1521,9 @@ function TabCategorias({
                       {c.nombre}
                       <span className="text-xs font-medium text-neutral-400 ml-2">
                         {subs.length} {subs.length === 1 ? "subcategoría" : "subcategorías"}
+                        {(conteo.porCategoria[c.id_categoria] ?? 0) > 0 && (
+                          <> · {conteo.porCategoria[c.id_categoria]} {conteo.porCategoria[c.id_categoria] === 1 ? "gasto" : "gastos"}</>
+                        )}
                       </span>
                     </button>
                   )}
@@ -1502,6 +1557,11 @@ function TabCategorias({
                           title="Tocar para renombrar"
                         >
                           {s.nombre}
+                          {(conteo.porSubcategoria[s.id_subcategoria] ?? 0) > 0 && (
+                            <span className="text-neutral-400 ml-1.5">
+                              · {conteo.porSubcategoria[s.id_subcategoria]} {conteo.porSubcategoria[s.id_subcategoria] === 1 ? "gasto" : "gastos"}
+                            </span>
+                          )}
                         </button>
                       )}
                       <button
