@@ -131,6 +131,58 @@ export async function desactivarSubcategoria(idSubcategoria: string): Promise<{ 
   }
 }
 
+export async function crearCategoriaGasto(nombre: string, tipoDefault: "FIJO" | "VARIABLE"): Promise<{ error: string | null }> {
+  if (!nombre.trim()) return { error: "Poné un nombre para la categoría" };
+  try {
+    const supabase = getSupabaseServerClient();
+    const { error } = await supabase.from("categorias_gasto").insert({ nombre: nombre.trim(), tipo_default: tipoDefault, estado: "ACTIVA" });
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/gastos");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo crear la categoría" };
+  }
+}
+
+export async function renombrarCategoriaGasto(idCategoria: string, nombre: string): Promise<{ error: string | null }> {
+  if (!nombre.trim()) return { error: "Poné un nombre para la categoría" };
+  try {
+    const supabase = getSupabaseServerClient();
+    const { error } = await supabase.from("categorias_gasto").update({ nombre: nombre.trim() }).eq("id_categoria", idCategoria);
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/gastos");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo renombrar la categoría" };
+  }
+}
+
+export async function crearSubcategoriaGasto(idCategoria: string, nombre: string): Promise<{ error: string | null }> {
+  if (!nombre.trim()) return { error: "Poné un nombre para la subcategoría" };
+  try {
+    const supabase = getSupabaseServerClient();
+    const { error } = await supabase.from("subcategorias_gasto").insert({ id_categoria: idCategoria, nombre: nombre.trim(), estado: "ACTIVA" });
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/gastos");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo crear la subcategoría" };
+  }
+}
+
+export async function renombrarSubcategoriaGasto(idSubcategoria: string, nombre: string): Promise<{ error: string | null }> {
+  if (!nombre.trim()) return { error: "Poné un nombre para la subcategoría" };
+  try {
+    const supabase = getSupabaseServerClient();
+    const { error } = await supabase.from("subcategorias_gasto").update({ nombre: nombre.trim() }).eq("id_subcategoria", idSubcategoria);
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/gastos");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo renombrar la subcategoría" };
+  }
+}
+
 export async function listarCategorias() {
   const supabase = getSupabaseServerClient();
   const { data, error } = await supabase.from("categorias_gasto").select("*").eq("estado", "ACTIVA").order("nombre");

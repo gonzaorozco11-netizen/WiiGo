@@ -180,10 +180,12 @@ export async function calcularTablero(periodo: string): Promise<TableroResultado
   // ===== Gastos fijos / variables por subcategoría (la categoría "Impuestos"
   // no entra acá — los impuestos del Tablero se calculan aparte, por fórmula,
   // para no contarlos dos veces si además los cargás como gasto) =====
-  const { data: categoriasGasto } = await supabase.from("categorias_gasto").select("id_categoria, nombre");
-  const idCategoriaImpuestos = (categoriasGasto ?? []).find(
-    (c) => normalizarNombre(c.nombre as string) === "impuestos"
-  )?.id_categoria as string | undefined;
+  const { data: categoriaImpuestos } = await supabase
+    .from("categorias_gasto")
+    .select("id_categoria")
+    .eq("es_impuestos", true)
+    .maybeSingle();
+  const idCategoriaImpuestos = categoriaImpuestos?.id_categoria as string | undefined;
 
   const { data: gastosPeriodo } = await supabase
     .from("gastos")
@@ -356,14 +358,6 @@ export async function calcularTablero(periodo: string): Promise<TableroResultado
     utilidadDistribuibleSupuesto: redondear2(gananciaNetaSupuesto - totalReservasSupuesto),
     utilidadDistribuibleReal,
   };
-}
-
-function normalizarNombre(s: string) {
-  return s
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .toLowerCase()
-    .trim();
 }
 
 // Congela el supuesto tal como está calculado en este momento y guarda los

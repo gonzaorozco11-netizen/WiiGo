@@ -20,6 +20,10 @@ import {
   totalCobradoPorBanco,
   desactivarCategoria,
   desactivarSubcategoria,
+  crearCategoriaGasto,
+  renombrarCategoriaGasto,
+  crearSubcategoriaGasto,
+  renombrarSubcategoriaGasto,
   anularGasto,
 } from "@/app/(app)/gastos/actions";
 import { actualizarSueldoBase } from "@/app/(app)/usuarios/actions";
@@ -103,7 +107,7 @@ export default function GastosApp({
 
   return (
     <div>
-      <h1 className="text-lg font-semibold text-neutral-900 mb-1">Gastos</h1>
+      <h1 className="text-lg font-semibold text-neutral-900 mb-1">Resumen de Gastos</h1>
       <p className="text-sm text-neutral-500 mb-5 max-w-2xl">
         Todo egreso queda categorizado, vinculado al turno que lo pagó (si salió de la caja física) y con su
         comprobante — así se sabe en qué se va la plata y el arqueo de cada turno sigue cuadrando.
@@ -226,7 +230,7 @@ function TabGastos({
   const [resumen, setResumen] = useState<Resumen | null>(null);
   const [presupuestos, setPresupuestos] = useState<Map<string, number>>(new Map());
   const [cargando, setCargando] = useState(false);
-  const [modalGasto, setModalGasto] = useState<"nuevo" | Gasto | null>(null);
+  const [modalGasto, setModalGasto] = useState<Gasto | null>(null);
   const [anulando, setAnulando] = useState<Gasto | null>(null);
 
   const { desde, hasta } = useMemo(() => {
@@ -262,32 +266,24 @@ function TabGastos({
 
   return (
     <div>
-      <div className="flex flex-wrap gap-2 items-center justify-between mb-4">
-        <div className="flex flex-wrap gap-2 items-center">
-          <select value={filtroLocal} onChange={(e) => setFiltroLocal(e.target.value)} className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-sm">
-            <option value="">Todos los locales</option>
-            {locales.map((l) => (
-              <option key={l.id_local} value={l.id_local}>{l.nombre}</option>
-            ))}
-          </select>
-          <select value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)} className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-sm">
-            <option value="">Todas las categorías</option>
-            {categorias.map((c) => (
-              <option key={c.id_categoria} value={c.id_categoria}>{c.nombre}</option>
-            ))}
-          </select>
-          <select value={periodo} onChange={(e) => setPeriodo(e.target.value as typeof periodo)} className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-sm">
-            <option value="mes">Este mes</option>
-            <option value="semana">Últimos 7 días</option>
-            <option value="hoy">Hoy</option>
-          </select>
-        </div>
-        <button
-          onClick={() => setModalGasto("nuevo")}
-          className="bg-accent hover:bg-accent-dark text-white font-medium px-4 py-2 rounded-lg text-sm"
-        >
-          + Nuevo gasto
-        </button>
+      <div className="flex flex-wrap gap-2 items-center mb-4">
+        <select value={filtroLocal} onChange={(e) => setFiltroLocal(e.target.value)} className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-sm">
+          <option value="">Todos los locales</option>
+          {locales.map((l) => (
+            <option key={l.id_local} value={l.id_local}>{l.nombre}</option>
+          ))}
+        </select>
+        <select value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)} className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-sm">
+          <option value="">Todas las categorías</option>
+          {categorias.map((c) => (
+            <option key={c.id_categoria} value={c.id_categoria}>{c.nombre}</option>
+          ))}
+        </select>
+        <select value={periodo} onChange={(e) => setPeriodo(e.target.value as typeof periodo)} className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-sm">
+          <option value="mes">Este mes</option>
+          <option value="semana">Últimos 7 días</option>
+          <option value="hoy">Hoy</option>
+        </select>
       </div>
 
       {resumen && (
@@ -414,7 +410,7 @@ function TabGastos({
 
       {modalGasto && (
         <FormNuevoGasto
-          gasto={modalGasto === "nuevo" ? null : modalGasto}
+          gasto={modalGasto}
           locales={locales}
           usuarios={usuarios}
           turnosAbiertos={turnosAbiertos}
@@ -1316,6 +1312,14 @@ function TabCategorias({
   subcategoriasIniciales: SubcategoriaGasto[];
 }) {
   const [desactivandoId, setDesactivandoId] = useState<string | null>(null);
+  const [editando, setEditando] = useState<string | null>(null); // id_categoria o id_subcategoria
+  const [valorEdit, setValorEdit] = useState("");
+  const [mostrarNueva, setMostrarNueva] = useState(false);
+  const [nombreNueva, setNombreNueva] = useState("");
+  const [tipoNueva, setTipoNueva] = useState<"VARIABLE" | "FIJO">("VARIABLE");
+  const [agregandoSubDe, setAgregandoSubDe] = useState<string | null>(null);
+  const [nombreNuevaSub, setNombreNuevaSub] = useState("");
+  const [guardando, setGuardando] = useState(false);
 
   function handleDesactivarCategoria(c: CategoriaGasto) {
     setDesactivandoId(c.id_categoria);
@@ -1337,12 +1341,101 @@ function TabCategorias({
       .finally(() => setDesactivandoId(null));
   }
 
+  function guardarNuevaCategoria() {
+    if (!nombreNueva.trim()) return;
+    setGuardando(true);
+    crearCategoriaGasto(nombreNueva, tipoNueva)
+      .then((res) => {
+        if (res.error) alert(res.error);
+        else window.location.reload();
+      })
+      .finally(() => setGuardando(false));
+  }
+
+  function guardarNuevaSubcategoria(idCategoria: string) {
+    if (!nombreNuevaSub.trim()) return;
+    setGuardando(true);
+    crearSubcategoriaGasto(idCategoria, nombreNuevaSub)
+      .then((res) => {
+        if (res.error) alert(res.error);
+        else window.location.reload();
+      })
+      .finally(() => setGuardando(false));
+  }
+
+  function guardarRenombreCategoria(c: CategoriaGasto) {
+    if (!valorEdit.trim() || valorEdit === c.nombre) {
+      setEditando(null);
+      return;
+    }
+    setGuardando(true);
+    renombrarCategoriaGasto(c.id_categoria, valorEdit)
+      .then((res) => {
+        if (res.error) alert(res.error);
+        else window.location.reload();
+      })
+      .finally(() => setGuardando(false));
+  }
+
+  function guardarRenombreSubcategoria(s: SubcategoriaGasto) {
+    if (!valorEdit.trim() || valorEdit === s.nombre) {
+      setEditando(null);
+      return;
+    }
+    setGuardando(true);
+    renombrarSubcategoriaGasto(s.id_subcategoria, valorEdit)
+      .then((res) => {
+        if (res.error) alert(res.error);
+        else window.location.reload();
+      })
+      .finally(() => setGuardando(false));
+  }
+
   return (
     <div>
       <p className="text-xs text-neutral-400 mb-3">
-        "Desactivar" no borra nada — los gastos ya cargados con esa categoría o subcategoría siguen intactos, solo
+        Tocá el nombre para renombrarla. "Desactivar" no borra nada — los gastos ya cargados siguen intactos, solo
         deja de aparecer para elegirla de nuevo.
       </p>
+
+      {!mostrarNueva ? (
+        <button
+          onClick={() => setMostrarNueva(true)}
+          className="bg-accent hover:bg-accent-dark text-white font-medium px-3.5 py-1.5 rounded-lg text-sm mb-3.5"
+        >
+          + Nueva categoría
+        </button>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2 bg-accent-tint border border-accent rounded-lg p-3 mb-3.5">
+          <input
+            autoFocus
+            value={nombreNueva}
+            onChange={(e) => setNombreNueva(e.target.value)}
+            placeholder="Nombre de la categoría"
+            className="flex-1 min-w-[160px] border border-neutral-300 rounded-md px-2.5 py-1.5 text-sm"
+          />
+          <select
+            value={tipoNueva}
+            onChange={(e) => setTipoNueva(e.target.value as "VARIABLE" | "FIJO")}
+            className="border border-neutral-300 rounded-md px-2 py-1.5 text-sm"
+          >
+            <option value="VARIABLE">Variable</option>
+            <option value="FIJO">Fijo</option>
+          </select>
+          <button onClick={guardarNuevaCategoria} disabled={guardando} className="bg-accent text-white text-xs font-bold px-3 py-1.5 rounded-md disabled:opacity-50">
+            Guardar
+          </button>
+          <button
+            onClick={() => {
+              setMostrarNueva(false);
+              setNombreNueva("");
+            }}
+            className="text-xs font-semibold text-neutral-500 px-2"
+          >
+            Cancelar
+          </button>
+        </div>
+      )}
 
       {categoriasIniciales.length === 0 ? (
         <p className="text-sm text-neutral-400 text-center py-8 bg-white border border-neutral-200 rounded-xl">
@@ -1354,37 +1447,108 @@ function TabCategorias({
             const subs = subcategoriasIniciales.filter((s) => s.id_categoria === c.id_categoria);
             return (
               <div key={c.id_categoria} className="border-b border-neutral-100 last:border-0">
-                <div className="flex items-center justify-between px-4 py-3">
-                  <span className="text-sm font-bold text-neutral-900">
-                    {c.nombre}
-                    <span className="text-xs font-medium text-neutral-400 ml-2">
-                      {subs.length} {subs.length === 1 ? "subcategoría" : "subcategorías"}
-                    </span>
-                  </span>
+                <div className="flex items-center justify-between px-4 py-3 gap-3">
+                  {editando === c.id_categoria ? (
+                    <input
+                      autoFocus
+                      value={valorEdit}
+                      onChange={(e) => setValorEdit(e.target.value)}
+                      onBlur={() => guardarRenombreCategoria(c)}
+                      onKeyDown={(e) => e.key === "Enter" && guardarRenombreCategoria(c)}
+                      className="text-sm font-bold border border-accent rounded-md px-2 py-1 flex-1"
+                    />
+                  ) : (
+                    <button
+                      onClick={() => {
+                        setEditando(c.id_categoria);
+                        setValorEdit(c.nombre);
+                      }}
+                      className="text-sm font-bold text-neutral-900 text-left hover:text-accent"
+                      title="Tocar para renombrar"
+                    >
+                      {c.nombre}
+                      <span className="text-xs font-medium text-neutral-400 ml-2">
+                        {subs.length} {subs.length === 1 ? "subcategoría" : "subcategorías"}
+                      </span>
+                    </button>
+                  )}
                   <button
                     onClick={() => handleDesactivarCategoria(c)}
                     disabled={desactivandoId === c.id_categoria}
-                    className="text-[11px] font-bold text-red-600 bg-red-50 border border-red-600 rounded-lg px-2.5 py-1 disabled:opacity-40"
+                    className="text-[11px] font-bold text-red-600 bg-red-50 border border-red-600 rounded-lg px-2.5 py-1 disabled:opacity-40 whitespace-nowrap"
                   >
                     {desactivandoId === c.id_categoria ? "..." : "Desactivar"}
                   </button>
                 </div>
-                {subs.length > 0 && (
-                  <div className="px-4 pb-3 pl-7 space-y-1.5">
-                    {subs.map((s) => (
-                      <div key={s.id_subcategoria} className="flex items-center justify-between text-xs text-neutral-600 border-t border-dashed border-neutral-100 pt-1.5 first:border-0 first:pt-0">
-                        <span>{s.nombre}</span>
+                <div className="px-4 pb-3 pl-7 space-y-1.5">
+                  {subs.map((s) => (
+                    <div key={s.id_subcategoria} className="flex items-center justify-between gap-3 text-xs text-neutral-600 border-t border-dashed border-neutral-100 pt-1.5 first:border-0 first:pt-0">
+                      {editando === s.id_subcategoria ? (
+                        <input
+                          autoFocus
+                          value={valorEdit}
+                          onChange={(e) => setValorEdit(e.target.value)}
+                          onBlur={() => guardarRenombreSubcategoria(s)}
+                          onKeyDown={(e) => e.key === "Enter" && guardarRenombreSubcategoria(s)}
+                          className="border border-accent rounded-md px-2 py-0.5 text-xs flex-1"
+                        />
+                      ) : (
                         <button
-                          onClick={() => handleDesactivarSubcategoria(s)}
-                          disabled={desactivandoId === s.id_subcategoria}
-                          className="text-[10.5px] font-bold text-red-600 bg-red-50 border border-red-600 rounded-lg px-2 py-0.5 disabled:opacity-40"
+                          onClick={() => {
+                            setEditando(s.id_subcategoria);
+                            setValorEdit(s.nombre);
+                          }}
+                          className="text-left hover:text-accent"
+                          title="Tocar para renombrar"
                         >
-                          {desactivandoId === s.id_subcategoria ? "..." : "Desactivar"}
+                          {s.nombre}
                         </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                      )}
+                      <button
+                        onClick={() => handleDesactivarSubcategoria(s)}
+                        disabled={desactivandoId === s.id_subcategoria}
+                        className="text-[10.5px] font-bold text-red-600 bg-red-50 border border-red-600 rounded-lg px-2 py-0.5 disabled:opacity-40 whitespace-nowrap"
+                      >
+                        {desactivandoId === s.id_subcategoria ? "..." : "Desactivar"}
+                      </button>
+                    </div>
+                  ))}
+                  {agregandoSubDe === c.id_categoria ? (
+                    <div className="flex items-center gap-1.5 pt-1.5 border-t border-dashed border-neutral-100">
+                      <input
+                        autoFocus
+                        value={nombreNuevaSub}
+                        onChange={(e) => setNombreNuevaSub(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && guardarNuevaSubcategoria(c.id_categoria)}
+                        placeholder="Nueva subcategoría..."
+                        className="flex-1 border border-neutral-300 rounded-md px-2 py-1 text-xs"
+                      />
+                      <button
+                        onClick={() => guardarNuevaSubcategoria(c.id_categoria)}
+                        disabled={guardando}
+                        className="text-[11px] font-bold text-accent disabled:opacity-50"
+                      >
+                        Agregar
+                      </button>
+                      <button
+                        onClick={() => {
+                          setAgregandoSubDe(null);
+                          setNombreNuevaSub("");
+                        }}
+                        className="text-[11px] text-neutral-400"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setAgregandoSubDe(c.id_categoria)}
+                      className="text-[11px] font-bold text-accent pt-1"
+                    >
+                      + Agregar subcategoría
+                    </button>
+                  )}
+                </div>
               </div>
             );
           })}
