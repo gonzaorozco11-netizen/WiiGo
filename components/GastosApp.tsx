@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { Local, Gasto, MovimientoCajaAdmin, GastoRecurrente } from "@/lib/supabase";
+import type { Local, Gasto, MovimientoCajaAdmin } from "@/lib/supabase";
 import {
   crearGasto,
   actualizarGasto,
@@ -10,9 +10,6 @@ import {
   obtenerUrlComprobanteGasto,
   guardarPresupuesto,
   listarPresupuestos,
-  listarRecurrentes,
-  crearRecurrente,
-  cargarRecurrente,
   resumenNomina,
   resumenCajaAdmin,
   movimientosCajaAdmin,
@@ -96,7 +93,7 @@ export default function GastosApp({
   topeAutorizacion: number;
   ivaGeneralPorcentaje: number;
 }) {
-  const [tab, setTab] = useState<"gastos" | "caja" | "nomina" | "recurrentes">("gastos");
+  const [tab, setTab] = useState<"gastos" | "caja" | "nomina">("gastos");
   const [categorias, setCategorias] = useState(categoriasIniciales);
   const [subcategorias, setSubcategorias] = useState(subcategoriasIniciales);
 
@@ -122,11 +119,10 @@ export default function GastosApp({
         <TabButton activo={tab === "gastos"} onClick={() => setTab("gastos")} icono="💸" label="Gastos" />
         {puedeVerCajaAdmin && <TabButton activo={tab === "caja"} onClick={() => setTab("caja")} icono="🔒" label="Caja Administración" />}
         {puedeGestionarNomina && <TabButton activo={tab === "nomina"} onClick={() => setTab("nomina")} icono="👥" label="Nómina" />}
-        <TabButton activo={tab === "recurrentes"} onClick={() => setTab("recurrentes")} icono="🔁" label="Recurrentes" />
       </div>
       <p className="text-xs text-neutral-400 -mt-3 mb-5">
-        Las categorías de Gastos (y las de Cargo a marca e Ingreso) ahora se manejan desde{" "}
-        <a href="/gastos-ingresos" className="text-accent hover:underline">Gastos e Ingresos → Categorías</a>.
+        Las categorías (Gastos, Cargo a marca e Ingreso) y los gastos recurrentes ahora se manejan desde{" "}
+        <a href="/gastos-ingresos" className="text-accent hover:underline">Gastos e Ingresos</a>.
       </p>
 
       {tab === "gastos" && (
@@ -145,15 +141,6 @@ export default function GastosApp({
       )}
       {tab === "caja" && puedeVerCajaAdmin && <TabCajaAdmin />}
       {tab === "nomina" && puedeGestionarNomina && <TabNomina usuarios={usuarios} />}
-      {tab === "recurrentes" && (
-        <TabRecurrentes
-          locales={locales}
-          categorias={categorias}
-          subcategorias={subcategorias}
-          categoriaPorId={categoriaPorId}
-          ivaGeneralPorcentaje={ivaGeneralPorcentaje}
-        />
-      )}
     </div>
   );
 }
@@ -1046,272 +1033,6 @@ function TabNomina({ usuarios }: { usuarios: UsuarioMin[] }) {
         )}
       </div>
     </div>
-  );
-}
-
-// ===================== TAB RECURRENTES =====================
-
-function TabRecurrentes({
-  locales,
-  categorias,
-  subcategorias,
-  categoriaPorId,
-  ivaGeneralPorcentaje,
-}: {
-  locales: Local[];
-  categorias: CategoriaGasto[];
-  subcategorias: SubcategoriaGasto[];
-  categoriaPorId: Map<string, CategoriaGasto>;
-  ivaGeneralPorcentaje: number;
-}) {
-  const [recurrentes, setRecurrentes] = useState<GastoRecurrente[]>([]);
-  const [cargando, setCargando] = useState(false);
-  const [mostrarForm, setMostrarForm] = useState(false);
-  const [cargandoId, setCargandoId] = useState<string | null>(null);
-  const [montoCargar, setMontoCargar] = useState<Record<string, string>>({});
-  const [medioCargar, setMedioCargar] = useState<Record<string, string>>({});
-  const [ivaCargar, setIvaCargar] = useState<Record<string, boolean>>({});
-
-  function recargar() {
-    setCargando(true);
-    listarRecurrentes().then(setRecurrentes).finally(() => setCargando(false));
-  }
-
-  useEffect(recargar, []);
-
-  const mesActual = mesActualISO();
-  const pendientes = recurrentes.filter((r) => r.ultimo_mes_cargado !== mesActual);
-
-  function handleCargar(r: GastoRecurrente) {
-    const monto = Number((montoCargar[r.id_recurrente] ?? String(r.monto_estimado)).replace(/[^\d.-]/g, "")) || 0;
-    const medio = medioCargar[r.id_recurrente] ?? "TRANSFERENCIA";
-    const iva = ivaCargar[r.id_recurrente] ?? r.lleva_iva;
-    setCargandoId(r.id_recurrente);
-    cargarRecurrente(r.id_recurrente, monto, medio, iva)
-      .then(recargar)
-      .finally(() => setCargandoId(null));
-  }
-
-  return (
-    <div>
-      <p className="text-xs text-neutral-400 mb-3">
-        🔁 Semi-automático: el sistema avisa cuándo toca cargar uno, vos confirmás el monto (puede variar) y con un
-        clic se completa el gasto.
-      </p>
-
-      {pendientes.length > 0 && (
-        <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-lg px-4 py-3 mb-4 text-sm">
-          ⏰ Tenés <b>{pendientes.length}</b> {pendientes.length === 1 ? "gasto recurrente pendiente" : "gastos recurrentes pendientes"} de cargar este mes:{" "}
-          {pendientes.map((p) => p.descripcion).join(", ")}.
-        </div>
-      )}
-
-      <div className="flex justify-end mb-4">
-        <button onClick={() => setMostrarForm((v) => !v)} className="bg-accent hover:bg-accent-dark text-white font-medium px-4 py-2 rounded-lg text-sm">
-          {mostrarForm ? "Cancelar" : "+ Nuevo gasto recurrente"}
-        </button>
-      </div>
-
-      {mostrarForm && (
-        <FormNuevoRecurrente
-          locales={locales}
-          categorias={categorias}
-          subcategorias={subcategorias}
-          ivaGeneralPorcentaje={ivaGeneralPorcentaje}
-          onCreado={() => {
-            setMostrarForm(false);
-            recargar();
-          }}
-        />
-      )}
-
-      <div className="bg-white border border-neutral-200 rounded-xl overflow-hidden">
-        <div className="flex items-baseline justify-between px-4 py-3 border-b border-neutral-100">
-          <h2 className="text-sm font-bold text-neutral-900">Configurados</h2>
-          <span className="text-xs text-neutral-400">{recurrentes.length} activos</span>
-        </div>
-        {cargando ? (
-          <p className="text-sm text-neutral-400 text-center py-8">Cargando...</p>
-        ) : recurrentes.length === 0 ? (
-          <p className="text-sm text-neutral-400 text-center py-8">Todavía no hay gastos recurrentes configurados.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-neutral-200 text-left text-xs text-neutral-500">
-                  <th className="p-3">Descripción</th>
-                  <th className="p-3">Categoría</th>
-                  <th className="p-3">Día</th>
-                  <th className="p-3 text-right">Monto estimado</th>
-                  <th className="p-3">Este mes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recurrentes.map((r) => {
-                  const pendiente = r.ultimo_mes_cargado !== mesActual;
-                  return (
-                    <tr key={r.id_recurrente} className="border-b border-neutral-100 last:border-0">
-                      <td className="p-3">{r.descripcion}</td>
-                      <td className="p-3 text-neutral-500">{categoriaPorId.get(r.id_categoria)?.nombre ?? "—"}</td>
-                      <td className="p-3 text-neutral-500">Día {r.dia_mes}</td>
-                      <td className="p-3 text-right tabular-nums">${formatearMonto(r.monto_estimado)}</td>
-                      <td className="p-3">
-                        {pendiente ? (
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <input
-                              value={montoCargar[r.id_recurrente] ?? String(r.monto_estimado)}
-                              onChange={(e) => setMontoCargar((v) => ({ ...v, [r.id_recurrente]: e.target.value }))}
-                              className="w-24 border border-neutral-300 rounded-lg px-2 py-1 text-xs text-right"
-                            />
-                            <label className="flex items-center gap-1 text-xs text-neutral-600 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={ivaCargar[r.id_recurrente] ?? r.lleva_iva}
-                                onChange={(e) => setIvaCargar((v) => ({ ...v, [r.id_recurrente]: e.target.checked }))}
-                              />
-                              +IVA
-                            </label>
-                            <select
-                              value={medioCargar[r.id_recurrente] ?? "TRANSFERENCIA"}
-                              onChange={(e) => setMedioCargar((v) => ({ ...v, [r.id_recurrente]: e.target.value }))}
-                              className="border border-neutral-300 rounded-lg px-1.5 py-1 text-xs"
-                            >
-                              <option value="TRANSFERENCIA">Transferencia</option>
-                              <option value="EFECTIVO_ADMIN">Caja Admin.</option>
-                              <option value="MERCADO_PAGO">MP/Tarjeta</option>
-                            </select>
-                            <button
-                              onClick={() => handleCargar(r)}
-                              disabled={cargandoId === r.id_recurrente}
-                              className="text-xs font-bold text-white bg-accent hover:bg-accent-dark disabled:opacity-40 px-2.5 py-1 rounded-lg"
-                            >
-                              {cargandoId === r.id_recurrente ? "..." : "Cargar"}
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="text-xs font-semibold text-emerald-600">✓ Ya se cargó</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function FormNuevoRecurrente({
-  locales,
-  categorias,
-  subcategorias,
-  ivaGeneralPorcentaje,
-  onCreado,
-}: {
-  locales: Local[];
-  categorias: CategoriaGasto[];
-  subcategorias: SubcategoriaGasto[];
-  ivaGeneralPorcentaje: number;
-  onCreado: () => void;
-}) {
-  const [idCategoria, setIdCategoria] = useState(categorias[0]?.id_categoria ?? "__nueva__");
-  const [nuevaCategoria, setNuevaCategoria] = useState("");
-  const [idSubcategoria, setIdSubcategoria] = useState("");
-  const [nuevaSubcategoria, setNuevaSubcategoria] = useState("");
-  const [llevaIva, setLlevaIva] = useState(false);
-  const [guardando, setGuardando] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const subDisponibles = subcategorias.filter((s) => s.id_categoria === idCategoria);
-
-  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setError(null);
-    const formData = new FormData(e.currentTarget);
-    setGuardando(true);
-    crearRecurrente(formData)
-      .then((res) => {
-        if (res.error) setError(res.error);
-        else onCreado();
-      })
-      .catch((err) => setError(err instanceof Error ? err.message : "No se pudo crear el gasto recurrente"))
-      .finally(() => setGuardando(false));
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="bg-white border border-neutral-200 rounded-xl p-4 mb-5">
-      {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-        <div>
-          <label className="block text-sm font-medium text-neutral-700 mb-1">Categoría</label>
-          <select
-            name="id_categoria"
-            value={idCategoria}
-            onChange={(e) => {
-              setIdCategoria(e.target.value);
-              setIdSubcategoria("");
-            }}
-            className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm"
-          >
-            {categorias.map((c) => (
-              <option key={c.id_categoria} value={c.id_categoria}>{c.nombre}</option>
-            ))}
-            <option value="__nueva__">+ Crear categoría nueva…</option>
-          </select>
-          {idCategoria === "__nueva__" && (
-            <input name="nueva_categoria" required value={nuevaCategoria} onChange={(e) => setNuevaCategoria(e.target.value)} placeholder="Nombre de la categoría nueva" className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm mt-1.5" />
-          )}
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-neutral-700 mb-1">Subcategoría</label>
-          <select name="id_subcategoria" value={idSubcategoria} onChange={(e) => setIdSubcategoria(e.target.value)} required className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm">
-            <option value="" disabled>Elegí una subcategoría...</option>
-            {subDisponibles.map((s) => (
-              <option key={s.id_subcategoria} value={s.id_subcategoria}>{s.nombre}</option>
-            ))}
-            <option value="__nueva__">+ Crear subcategoría nueva…</option>
-          </select>
-          {idSubcategoria === "__nueva__" && (
-            <input name="nueva_subcategoria_gasto" required value={nuevaSubcategoria} onChange={(e) => setNuevaSubcategoria(e.target.value)} placeholder="Nombre de la subcategoría nueva" className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm mt-1.5" />
-          )}
-        </div>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
-        <div>
-          <label className="block text-sm font-medium text-neutral-700 mb-1">Descripción</label>
-          <input name="descripcion" required className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm" />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-neutral-700 mb-1">Monto estimado</label>
-          <input name="monto_estimado" type="number" step="1" className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm" />
-          <label className="flex items-center gap-2 text-xs text-neutral-600 cursor-pointer mt-1.5">
-            <input type="checkbox" name="lleva_iva" checked={llevaIva} onChange={(e) => setLlevaIva(e.target.checked)} />
-            Tiene IVA ({ivaGeneralPorcentaje}%)
-          </label>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-neutral-700 mb-1">Día del mes</label>
-          <input name="dia_mes" type="number" min="1" max="28" defaultValue="1" className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm" />
-        </div>
-      </div>
-      <div className="mb-3">
-        <label className="block text-sm font-medium text-neutral-700 mb-1">Local (opcional)</label>
-        <select name="id_local" className="w-full sm:w-64 border border-neutral-300 rounded-lg px-3 py-2 text-sm">
-          <option value="">Sin local (gasto general)</option>
-          {locales.map((l) => (
-            <option key={l.id_local} value={l.id_local}>{l.nombre}</option>
-          ))}
-        </select>
-      </div>
-      <div className="flex justify-end">
-        <button type="submit" disabled={guardando} className="bg-accent hover:bg-accent-dark disabled:opacity-50 text-white font-medium px-4 py-2 rounded-lg text-sm">
-          {guardando ? "Guardando..." : "Guardar recurrente"}
-        </button>
-      </div>
-    </form>
   );
 }
 
