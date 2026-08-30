@@ -115,6 +115,122 @@ export async function listarSubcategoriasCargoMarca() {
   return data ?? [];
 }
 
+export async function crearCategoriaCargoMarca(nombre: string): Promise<{ error: string | null }> {
+  if (!nombre.trim()) return { error: "Poné un nombre para la categoría" };
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  try {
+    const supabase = getSupabaseServerClient();
+    const { error } = await supabase.from("categorias_cargo_marca").insert({ nombre: nombre.trim(), estado: "ACTIVA" });
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/gastos-ingresos");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo crear la categoría" };
+  }
+}
+
+export async function renombrarCategoriaCargoMarca(idCategoria: string, nombre: string): Promise<{ error: string | null }> {
+  if (!nombre.trim()) return { error: "Poné un nombre para la categoría" };
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  try {
+    const supabase = getSupabaseServerClient();
+    const { error } = await supabase.from("categorias_cargo_marca").update({ nombre: nombre.trim() }).eq("id_categoria", idCategoria);
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/gastos-ingresos");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo actualizar la categoría" };
+  }
+}
+
+// Baja lógica — los cargos ya cargados con esta categoría siguen intactos,
+// solo deja de aparecer para elegirla en cargos nuevos.
+export async function desactivarCategoriaCargoMarca(idCategoria: string): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  try {
+    const supabase = getSupabaseServerClient();
+    const { error } = await supabase.from("categorias_cargo_marca").update({ estado: "INACTIVA" }).eq("id_categoria", idCategoria);
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/gastos-ingresos");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo desactivar la categoría" };
+  }
+}
+
+export async function crearSubcategoriaCargoMarca(idCategoria: string, nombre: string): Promise<{ error: string | null }> {
+  if (!nombre.trim()) return { error: "Poné un nombre para la subcategoría" };
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  try {
+    const supabase = getSupabaseServerClient();
+    const { error } = await supabase.from("subcategorias_cargo_marca").insert({ id_categoria: idCategoria, nombre: nombre.trim(), estado: "ACTIVA" });
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/gastos-ingresos");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo crear la subcategoría" };
+  }
+}
+
+export async function renombrarSubcategoriaCargoMarca(idSubcategoria: string, nombre: string): Promise<{ error: string | null }> {
+  if (!nombre.trim()) return { error: "Poné un nombre para la subcategoría" };
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  try {
+    const supabase = getSupabaseServerClient();
+    const { error } = await supabase.from("subcategorias_cargo_marca").update({ nombre: nombre.trim() }).eq("id_subcategoria", idSubcategoria);
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/gastos-ingresos");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo renombrar la subcategoría" };
+  }
+}
+
+export async function desactivarSubcategoriaCargoMarca(idSubcategoria: string): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  try {
+    const supabase = getSupabaseServerClient();
+    const { error } = await supabase.from("subcategorias_cargo_marca").update({ estado: "INACTIVA" }).eq("id_subcategoria", idSubcategoria);
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/gastos-ingresos");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo desactivar la subcategoría" };
+  }
+}
+
+// Cuántos cargos activos tiene cada categoría/subcategoría — mismo criterio
+// que contarGastosPorCategoria, para avisar antes de desactivar una que ya
+// tiene historial.
+export async function contarCargosPorCategoria(): Promise<{ porCategoria: Record<string, number>; porSubcategoria: Record<string, number> }> {
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("movimientos_cuenta_comercial_marca")
+    .select("id_categoria, id_subcategoria")
+    .in("tipo_cargo", ["GASTO_FIJO_MENSUAL", "CARGO_RECURRENTE", "OTRO_CARGO"])
+    .eq("anulado", false);
+  if (error) throw new Error(friendlyDbError(error));
+  const porCategoria: Record<string, number> = {};
+  const porSubcategoria: Record<string, number> = {};
+  for (const m of data ?? []) {
+    if (m.id_categoria) {
+      const idCategoria = m.id_categoria as string;
+      porCategoria[idCategoria] = (porCategoria[idCategoria] ?? 0) + 1;
+    }
+    if (m.id_subcategoria) {
+      const idSubcategoria = m.id_subcategoria as string;
+      porSubcategoria[idSubcategoria] = (porSubcategoria[idSubcategoria] ?? 0) + 1;
+    }
+  }
+  return { porCategoria, porSubcategoria };
+}
+
 // ===================== CATEGORÍAS (otro ingreso) =====================
 
 async function resolveCategoriaIngreso(supabase: SupabaseClient, formData: FormData) {
@@ -166,6 +282,113 @@ export async function listarSubcategoriasIngreso() {
   const { data, error } = await supabase.from("subcategorias_ingreso").select("*").eq("estado", "ACTIVA").order("nombre");
   if (error) throw new Error(friendlyDbError(error));
   return data ?? [];
+}
+
+export async function crearCategoriaIngreso(nombre: string): Promise<{ error: string | null }> {
+  if (!nombre.trim()) return { error: "Poné un nombre para la categoría" };
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  try {
+    const supabase = getSupabaseServerClient();
+    const { error } = await supabase.from("categorias_ingreso").insert({ nombre: nombre.trim(), estado: "ACTIVA" });
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/gastos-ingresos");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo crear la categoría" };
+  }
+}
+
+export async function renombrarCategoriaIngreso(idCategoria: string, nombre: string): Promise<{ error: string | null }> {
+  if (!nombre.trim()) return { error: "Poné un nombre para la categoría" };
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  try {
+    const supabase = getSupabaseServerClient();
+    const { error } = await supabase.from("categorias_ingreso").update({ nombre: nombre.trim() }).eq("id_categoria", idCategoria);
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/gastos-ingresos");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo actualizar la categoría" };
+  }
+}
+
+export async function desactivarCategoriaIngreso(idCategoria: string): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  try {
+    const supabase = getSupabaseServerClient();
+    const { error } = await supabase.from("categorias_ingreso").update({ estado: "INACTIVA" }).eq("id_categoria", idCategoria);
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/gastos-ingresos");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo desactivar la categoría" };
+  }
+}
+
+export async function crearSubcategoriaIngreso(idCategoria: string, nombre: string): Promise<{ error: string | null }> {
+  if (!nombre.trim()) return { error: "Poné un nombre para la subcategoría" };
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  try {
+    const supabase = getSupabaseServerClient();
+    const { error } = await supabase.from("subcategorias_ingreso").insert({ id_categoria: idCategoria, nombre: nombre.trim(), estado: "ACTIVA" });
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/gastos-ingresos");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo crear la subcategoría" };
+  }
+}
+
+export async function renombrarSubcategoriaIngreso(idSubcategoria: string, nombre: string): Promise<{ error: string | null }> {
+  if (!nombre.trim()) return { error: "Poné un nombre para la subcategoría" };
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  try {
+    const supabase = getSupabaseServerClient();
+    const { error } = await supabase.from("subcategorias_ingreso").update({ nombre: nombre.trim() }).eq("id_subcategoria", idSubcategoria);
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/gastos-ingresos");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo renombrar la subcategoría" };
+  }
+}
+
+export async function desactivarSubcategoriaIngreso(idSubcategoria: string): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  try {
+    const supabase = getSupabaseServerClient();
+    const { error } = await supabase.from("subcategorias_ingreso").update({ estado: "INACTIVA" }).eq("id_subcategoria", idSubcategoria);
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/gastos-ingresos");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo desactivar la subcategoría" };
+  }
+}
+
+export async function contarIngresosPorCategoria(): Promise<{ porCategoria: Record<string, number>; porSubcategoria: Record<string, number> }> {
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase.from("ingresos").select("id_categoria, id_subcategoria").eq("anulado", false);
+  if (error) throw new Error(friendlyDbError(error));
+  const porCategoria: Record<string, number> = {};
+  const porSubcategoria: Record<string, number> = {};
+  for (const i of data ?? []) {
+    if (i.id_categoria) {
+      const idCategoria = i.id_categoria as string;
+      porCategoria[idCategoria] = (porCategoria[idCategoria] ?? 0) + 1;
+    }
+    if (i.id_subcategoria) {
+      const idSubcategoria = i.id_subcategoria as string;
+      porSubcategoria[idSubcategoria] = (porSubcategoria[idSubcategoria] ?? 0) + 1;
+    }
+  }
+  return { porCategoria, porSubcategoria };
 }
 
 // ===================== CARGO A MARCA — único =====================

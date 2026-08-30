@@ -2,7 +2,23 @@
 
 import { useEffect, useState } from "react";
 import type { Local, Marca, CategoriaGasto, SubcategoriaGasto, CategoriaCargoMarca, SubcategoriaCargoMarca, CategoriaIngreso, SubcategoriaIngreso } from "@/lib/supabase";
-import { crearGasto, crearRecurrente, listarRecurrentes, cargarRecurrente, anularGasto } from "@/app/(app)/gastos/actions";
+import {
+  crearGasto,
+  crearRecurrente,
+  listarRecurrentes,
+  cargarRecurrente,
+  anularGasto,
+  listarCategorias,
+  listarSubcategorias,
+  crearCategoriaGasto,
+  renombrarCategoriaGasto,
+  desactivarCategoria,
+  desactivarSubcategoria,
+  crearSubcategoriaGasto,
+  renombrarSubcategoriaGasto,
+  contarGastosPorCategoria,
+  aplicarTipoACategoria,
+} from "@/app/(app)/gastos/actions";
 import { registrarPagoComercial } from "@/app/(app)/situacion-marca/actions";
 import {
   registrarCargoMarcaUnico,
@@ -17,6 +33,24 @@ import {
   listarUltimosMovimientos,
   anularCargoMarca,
   anularIngreso,
+  listarCategoriasCargoMarca,
+  listarSubcategoriasCargoMarca,
+  crearCategoriaCargoMarca,
+  renombrarCategoriaCargoMarca,
+  desactivarCategoriaCargoMarca,
+  crearSubcategoriaCargoMarca,
+  renombrarSubcategoriaCargoMarca,
+  desactivarSubcategoriaCargoMarca,
+  contarCargosPorCategoria,
+  listarCategoriasIngreso,
+  listarSubcategoriasIngreso,
+  crearCategoriaIngreso,
+  renombrarCategoriaIngreso,
+  desactivarCategoriaIngreso,
+  crearSubcategoriaIngreso,
+  renombrarSubcategoriaIngreso,
+  desactivarSubcategoriaIngreso,
+  contarIngresosPorCategoria,
   type MovimientoUnificado,
 } from "@/app/(app)/gastos-ingresos/actions";
 import ModalAnularMovimiento from "@/components/ModalAnularMovimiento";
@@ -69,12 +103,12 @@ const TIPO_BADGE: Record<Tab, { label: string; clases: string }> = {
 export default function GastosIngresosApp({
   locales,
   marcas,
-  categoriasGasto,
-  subcategoriasGasto,
-  categoriasCargo,
-  subcategoriasCargo,
-  categoriasIngreso,
-  subcategoriasIngreso,
+  categoriasGasto: categoriasGastoIniciales,
+  subcategoriasGasto: subcategoriasGastoIniciales,
+  categoriasCargo: categoriasCargoIniciales,
+  subcategoriasCargo: subcategoriasCargoIniciales,
+  categoriasIngreso: categoriasIngresoIniciales,
+  subcategoriasIngreso: subcategoriasIngresoIniciales,
   topeAutorizacion,
   puedeAutorizarSinLimite,
   ivaGeneralPorcentaje,
@@ -91,6 +125,32 @@ export default function GastosIngresosApp({
   puedeAutorizarSinLimite: boolean;
   ivaGeneralPorcentaje: number;
 }) {
+  const [vista, setVista] = useState<"cargar" | "categorias">("cargar");
+  const [categoriasGasto, setCategoriasGasto] = useState(categoriasGastoIniciales);
+  const [subcategoriasGasto, setSubcategoriasGasto] = useState(subcategoriasGastoIniciales);
+  const [categoriasCargo, setCategoriasCargo] = useState(categoriasCargoIniciales);
+  const [subcategoriasCargo, setSubcategoriasCargo] = useState(subcategoriasCargoIniciales);
+  const [categoriasIngreso, setCategoriasIngreso] = useState(categoriasIngresoIniciales);
+  const [subcategoriasIngreso, setSubcategoriasIngreso] = useState(subcategoriasIngresoIniciales);
+
+  function recargarCategorias() {
+    Promise.all([
+      listarCategorias(),
+      listarSubcategorias(),
+      listarCategoriasCargoMarca(),
+      listarSubcategoriasCargoMarca(),
+      listarCategoriasIngreso(),
+      listarSubcategoriasIngreso(),
+    ]).then(([cg, sg, cc, sc, ci, si]) => {
+      setCategoriasGasto(cg as CategoriaGasto[]);
+      setSubcategoriasGasto(sg as SubcategoriaGasto[]);
+      setCategoriasCargo(cc as CategoriaCargoMarca[]);
+      setSubcategoriasCargo(sc as SubcategoriaCargoMarca[]);
+      setCategoriasIngreso(ci as CategoriaIngreso[]);
+      setSubcategoriasIngreso(si as SubcategoriaIngreso[]);
+    });
+  }
+
   const [tab, setTab] = useState<Tab>("gasto");
   const [modoCargo, setModoCargo] = useState<"CARGO" | "PAGO">("CARGO");
   const [recurrencia, setRecurrencia] = useState<Recurrencia>("UNICO");
@@ -364,6 +424,35 @@ export default function GastosIngresosApp({
         una vez y cada período se confirma acá abajo, en &quot;Pendiente de cargar&quot;.
       </p>
 
+      <div className="inline-flex gap-1 bg-neutral-100 border border-neutral-200 rounded-lg p-1 mb-5">
+        <button
+          type="button"
+          onClick={() => setVista("cargar")}
+          className={`px-3.5 py-1.5 rounded-md text-sm font-medium ${vista === "cargar" ? "bg-white shadow-sm text-neutral-900" : "text-neutral-500"}`}
+        >
+          Cargar movimiento
+        </button>
+        <button
+          type="button"
+          onClick={() => setVista("categorias")}
+          className={`px-3.5 py-1.5 rounded-md text-sm font-medium ${vista === "categorias" ? "bg-white shadow-sm text-neutral-900" : "text-neutral-500"}`}
+        >
+          🏷️ Categorías
+        </button>
+      </div>
+
+      {vista === "categorias" ? (
+        <VistaCategorias
+          categoriasGasto={categoriasGasto}
+          subcategoriasGasto={subcategoriasGasto}
+          categoriasCargo={categoriasCargo}
+          subcategoriasCargo={subcategoriasCargo}
+          categoriasIngreso={categoriasIngreso}
+          subcategoriasIngreso={subcategoriasIngreso}
+          onCambio={recargarCategorias}
+        />
+      ) : (
+      <>
       <div className="flex gap-1.5 mb-4 flex-wrap">
         {(["gasto", "cargo", "ingreso"] as const).map((t) => (
           <button
@@ -732,6 +821,460 @@ export default function GastosIngresosApp({
           }}
           onClose={() => setAnulandoMov(null)}
         />
+      )}
+      </>
+      )}
+    </div>
+  );
+}
+
+// ===================== VISTA CATEGORÍAS (Gastos, Cargo a marca, Ingreso) =====================
+
+function VistaCategorias({
+  categoriasGasto,
+  subcategoriasGasto,
+  categoriasCargo,
+  subcategoriasCargo,
+  categoriasIngreso,
+  subcategoriasIngreso,
+  onCambio,
+}: {
+  categoriasGasto: CategoriaGasto[];
+  subcategoriasGasto: SubcategoriaGasto[];
+  categoriasCargo: CategoriaCargoMarca[];
+  subcategoriasCargo: SubcategoriaCargoMarca[];
+  categoriasIngreso: CategoriaIngreso[];
+  subcategoriasIngreso: SubcategoriaIngreso[];
+  onCambio: () => void;
+}) {
+  return (
+    <div>
+      <p className="text-xs text-neutral-400 mb-4 max-w-lg">
+        Categorías de todo lo que carga esta pantalla — gastos, cargos a marca e ingresos — en un solo lugar. Tocá
+        el nombre para renombrarla. &quot;Desactivar&quot; no borra nada, solo deja de aparecer para elegirla de nuevo.
+      </p>
+
+      <BloqueCategorias
+        icono="💸"
+        titulo="Gastos"
+        categorias={categoriasGasto}
+        subcategorias={subcategoriasGasto}
+        conTipo
+        onContar={contarGastosPorCategoria}
+        onCrear={(nombre, tipo) => crearCategoriaGasto(nombre, tipo ?? "VARIABLE")}
+        onRenombrar={(id, nombre, tipo) => renombrarCategoriaGasto(id, nombre, tipo ?? "VARIABLE")}
+        onDesactivar={desactivarCategoria}
+        onCrearSub={crearSubcategoriaGasto}
+        onRenombrarSub={renombrarSubcategoriaGasto}
+        onDesactivarSub={desactivarSubcategoria}
+        onAplicarTipo={aplicarTipoACategoria}
+        onCambio={onCambio}
+      />
+
+      <BloqueCategorias
+        icono="🏷️"
+        titulo="Cargo a marca"
+        categorias={categoriasCargo}
+        subcategorias={subcategoriasCargo}
+        conTipo={false}
+        onContar={contarCargosPorCategoria}
+        onCrear={(nombre) => crearCategoriaCargoMarca(nombre)}
+        onRenombrar={(id, nombre) => renombrarCategoriaCargoMarca(id, nombre)}
+        onDesactivar={desactivarCategoriaCargoMarca}
+        onCrearSub={crearSubcategoriaCargoMarca}
+        onRenombrarSub={renombrarSubcategoriaCargoMarca}
+        onDesactivarSub={desactivarSubcategoriaCargoMarca}
+        onCambio={onCambio}
+      />
+
+      <BloqueCategorias
+        icono="💰"
+        titulo="Otro ingreso"
+        categorias={categoriasIngreso}
+        subcategorias={subcategoriasIngreso}
+        conTipo={false}
+        onContar={contarIngresosPorCategoria}
+        onCrear={(nombre) => crearCategoriaIngreso(nombre)}
+        onRenombrar={(id, nombre) => renombrarCategoriaIngreso(id, nombre)}
+        onDesactivar={desactivarCategoriaIngreso}
+        onCrearSub={crearSubcategoriaIngreso}
+        onRenombrarSub={renombrarSubcategoriaIngreso}
+        onDesactivarSub={desactivarSubcategoriaIngreso}
+        onCambio={onCambio}
+      />
+    </div>
+  );
+}
+
+type CategoriaBase = { id_categoria: string; nombre: string; estado: string; tipo_default?: string };
+type SubcategoriaBase = { id_subcategoria: string; id_categoria: string; nombre: string; estado: string };
+
+function BloqueCategorias({
+  icono,
+  titulo,
+  categorias,
+  subcategorias,
+  conTipo,
+  onContar,
+  onCrear,
+  onRenombrar,
+  onDesactivar,
+  onCrearSub,
+  onRenombrarSub,
+  onDesactivarSub,
+  onAplicarTipo,
+  onCambio,
+}: {
+  icono: string;
+  titulo: string;
+  categorias: CategoriaBase[];
+  subcategorias: SubcategoriaBase[];
+  conTipo: boolean;
+  onContar: () => Promise<{ porCategoria: Record<string, number>; porSubcategoria: Record<string, number> }>;
+  onCrear: (nombre: string, tipo?: "FIJO" | "VARIABLE") => Promise<{ error: string | null }>;
+  onRenombrar: (id: string, nombre: string, tipo?: "FIJO" | "VARIABLE") => Promise<{ error: string | null }>;
+  onDesactivar: (id: string) => Promise<{ error: string | null }>;
+  onCrearSub: (idCategoria: string, nombre: string) => Promise<{ error: string | null }>;
+  onRenombrarSub: (id: string, nombre: string) => Promise<{ error: string | null }>;
+  onDesactivarSub: (id: string) => Promise<{ error: string | null }>;
+  onAplicarTipo?: (id: string) => Promise<{ error: string | null; actualizados?: number }>;
+  onCambio: () => void;
+}) {
+  const [desactivandoId, setDesactivandoId] = useState<string | null>(null);
+  const [editando, setEditando] = useState<string | null>(null);
+  const [valorEdit, setValorEdit] = useState("");
+  const [valorTipoEdit, setValorTipoEdit] = useState<"FIJO" | "VARIABLE">("VARIABLE");
+  const [mostrarNueva, setMostrarNueva] = useState(false);
+  const [nombreNueva, setNombreNueva] = useState("");
+  const [tipoNueva, setTipoNueva] = useState<"VARIABLE" | "FIJO">("VARIABLE");
+  const [agregandoSubDe, setAgregandoSubDe] = useState<string | null>(null);
+  const [nombreNuevaSub, setNombreNuevaSub] = useState("");
+  const [guardando, setGuardando] = useState(false);
+  const [conteo, setConteo] = useState<{ porCategoria: Record<string, number>; porSubcategoria: Record<string, number> }>({
+    porCategoria: {},
+    porSubcategoria: {},
+  });
+
+  useEffect(() => {
+    onContar().then(setConteo);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function etiquetaCantidad(n: number) {
+    return `${n} ${n === 1 ? "cargado" : "cargados"}`;
+  }
+
+  function handleDesactivarCategoria(c: CategoriaBase) {
+    const cantidad = conteo.porCategoria[c.id_categoria] ?? 0;
+    if (cantidad > 0) {
+      const ok = confirm(
+        `"${c.nombre}" ya tiene ${etiquetaCantidad(cantidad)}. Si la desactivás, no vas a poder elegirla de nuevo — para seguir comparándola, dejala activa.\n\n¿Desactivar de todos modos?`
+      );
+      if (!ok) return;
+    }
+    setDesactivandoId(c.id_categoria);
+    onDesactivar(c.id_categoria)
+      .then((res) => {
+        if (res.error) alert(res.error);
+        else onCambio();
+      })
+      .finally(() => setDesactivandoId(null));
+  }
+
+  function handleDesactivarSubcategoria(s: SubcategoriaBase) {
+    const cantidad = conteo.porSubcategoria[s.id_subcategoria] ?? 0;
+    if (cantidad > 0) {
+      const ok = confirm(`"${s.nombre}" ya tiene ${etiquetaCantidad(cantidad)}. Si la desactivás, no vas a poder elegirla de nuevo.\n\n¿Desactivar de todos modos?`);
+      if (!ok) return;
+    }
+    setDesactivandoId(s.id_subcategoria);
+    onDesactivarSub(s.id_subcategoria)
+      .then((res) => {
+        if (res.error) alert(res.error);
+        else onCambio();
+      })
+      .finally(() => setDesactivandoId(null));
+  }
+
+  function guardarNuevaCategoria() {
+    if (!nombreNueva.trim()) return;
+    setGuardando(true);
+    onCrear(nombreNueva, tipoNueva)
+      .then((res) => {
+        if (res.error) alert(res.error);
+        else {
+          onCambio();
+          setMostrarNueva(false);
+          setNombreNueva("");
+        }
+      })
+      .finally(() => setGuardando(false));
+  }
+
+  function guardarNuevaSubcategoria(idCategoria: string) {
+    if (!nombreNuevaSub.trim()) return;
+    setGuardando(true);
+    onCrearSub(idCategoria, nombreNuevaSub)
+      .then((res) => {
+        if (res.error) alert(res.error);
+        else {
+          onCambio();
+          setAgregandoSubDe(null);
+          setNombreNuevaSub("");
+        }
+      })
+      .finally(() => setGuardando(false));
+  }
+
+  function preguntarAplicarACategoria(c: CategoriaBase, tipoNuevo: "FIJO" | "VARIABLE") {
+    if (!onAplicarTipo) return;
+    const cantidad = conteo.porCategoria[c.id_categoria] ?? 0;
+    if (cantidad === 0) return;
+    const etiqueta = tipoNuevo === "FIJO" ? "Fijo" : "Variable";
+    const ok = confirm(`Ya cargaste ${etiquetaCantidad(cantidad)} en "${c.nombre}" (con cualquier subcategoría). ¿Marcarlos también como ${etiqueta} ahora?`);
+    if (!ok) return;
+    onAplicarTipo(c.id_categoria).then((res) => {
+      if (res.error) alert(res.error);
+      else onCambio();
+    });
+  }
+
+  function guardarRenombreCategoria(c: CategoriaBase) {
+    if (!valorEdit.trim()) {
+      setEditando(null);
+      return;
+    }
+    const tipoCambio = conTipo && valorTipoEdit !== c.tipo_default;
+    if (valorEdit === c.nombre && !tipoCambio) {
+      setEditando(null);
+      return;
+    }
+    setGuardando(true);
+    onRenombrar(c.id_categoria, valorEdit, valorTipoEdit)
+      .then((res) => {
+        if (res.error) alert(res.error);
+        else {
+          onCambio();
+          setEditando(null);
+          if (tipoCambio) preguntarAplicarACategoria(c, valorTipoEdit);
+        }
+      })
+      .finally(() => setGuardando(false));
+  }
+
+  function guardarRenombreSubcategoria(s: SubcategoriaBase) {
+    if (!valorEdit.trim() || valorEdit === s.nombre) {
+      setEditando(null);
+      return;
+    }
+    setGuardando(true);
+    onRenombrarSub(s.id_subcategoria, valorEdit)
+      .then((res) => {
+        if (res.error) alert(res.error);
+        else {
+          onCambio();
+          setEditando(null);
+        }
+      })
+      .finally(() => setGuardando(false));
+  }
+
+  return (
+    <div className="mb-6">
+      <h2 className="text-sm font-bold text-neutral-900 mb-2">
+        {icono} {titulo}
+      </h2>
+
+      {!mostrarNueva ? (
+        <button
+          type="button"
+          onClick={() => setMostrarNueva(true)}
+          className="bg-accent hover:bg-accent-dark text-white font-medium px-3.5 py-1.5 rounded-lg text-sm mb-3"
+        >
+          + Nueva categoría
+        </button>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2 bg-accent-tint border border-accent rounded-lg p-3 mb-3">
+          <input
+            autoFocus
+            value={nombreNueva}
+            onChange={(e) => setNombreNueva(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && guardarNuevaCategoria()}
+            placeholder="Nombre de la categoría"
+            className="flex-1 min-w-[160px] border border-neutral-300 rounded-md px-2.5 py-1.5 text-sm"
+          />
+          {conTipo && (
+            <select value={tipoNueva} onChange={(e) => setTipoNueva(e.target.value as "VARIABLE" | "FIJO")} className="border border-neutral-300 rounded-md px-2 py-1.5 text-sm">
+              <option value="VARIABLE">Variable</option>
+              <option value="FIJO">Fijo</option>
+            </select>
+          )}
+          <button type="button" onClick={guardarNuevaCategoria} disabled={guardando} className="bg-accent text-white text-xs font-bold px-3 py-1.5 rounded-md disabled:opacity-50">
+            Guardar
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setMostrarNueva(false);
+              setNombreNueva("");
+            }}
+            className="text-xs font-semibold text-neutral-500 px-2"
+          >
+            Cancelar
+          </button>
+        </div>
+      )}
+
+      {categorias.length === 0 ? (
+        <p className="text-sm text-neutral-400 text-center py-8 bg-white border border-neutral-200 rounded-xl">Todavía no hay categorías creadas.</p>
+      ) : (
+        <div className="bg-white border border-neutral-200 rounded-xl overflow-hidden">
+          {categorias.map((c) => {
+            const subs = subcategorias.filter((s) => s.id_categoria === c.id_categoria);
+            return (
+              <div key={c.id_categoria} className="border-b border-neutral-100 last:border-0">
+                <div className="flex items-center justify-between px-4 py-3 gap-3">
+                  {editando === c.id_categoria ? (
+                    <div className="flex items-center gap-1.5 flex-1 flex-wrap">
+                      <input
+                        autoFocus
+                        value={valorEdit}
+                        onChange={(e) => setValorEdit(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") guardarRenombreCategoria(c);
+                          if (e.key === "Escape") setEditando(null);
+                        }}
+                        className="text-sm font-bold border border-accent rounded-md px-2 py-1 flex-1 min-w-[120px]"
+                      />
+                      {conTipo && (
+                        <select value={valorTipoEdit} onChange={(e) => setValorTipoEdit(e.target.value as "FIJO" | "VARIABLE")} className="text-xs border border-accent rounded-md px-1.5 py-1">
+                          <option value="VARIABLE">Variable</option>
+                          <option value="FIJO">Fijo</option>
+                        </select>
+                      )}
+                      <button type="button" onClick={() => guardarRenombreCategoria(c)} disabled={guardando} className="text-[11px] font-bold text-accent px-1.5">
+                        Guardar
+                      </button>
+                      <button type="button" onClick={() => setEditando(null)} className="text-[11px] text-neutral-400 px-1">
+                        Cancelar
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditando(c.id_categoria);
+                        setValorEdit(c.nombre);
+                        setValorTipoEdit(c.tipo_default === "FIJO" ? "FIJO" : "VARIABLE");
+                      }}
+                      className="text-sm font-bold text-neutral-900 text-left hover:text-accent underline decoration-dotted decoration-neutral-300 underline-offset-4"
+                      title="Tocar para renombrar"
+                    >
+                      {c.nombre}
+                      {conTipo && (
+                        <span className={`text-[10px] font-bold ml-2 px-1.5 py-0.5 rounded-full no-underline ${c.tipo_default === "FIJO" ? "bg-purple-100 text-purple-700" : "bg-accent-tint text-accent-dark"}`}>
+                          {c.tipo_default === "FIJO" ? "Fijo" : "Variable"}
+                        </span>
+                      )}
+                      <span className="text-xs font-medium text-neutral-400 ml-2 no-underline">
+                        {subs.length} {subs.length === 1 ? "subcategoría" : "subcategorías"}
+                        {(conteo.porCategoria[c.id_categoria] ?? 0) > 0 && <> · {conteo.porCategoria[c.id_categoria]} {conteo.porCategoria[c.id_categoria] === 1 ? "cargado" : "cargados"}</>}
+                      </span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleDesactivarCategoria(c)}
+                    disabled={desactivandoId === c.id_categoria}
+                    className="text-[11px] font-bold text-red-600 bg-red-50 border border-red-600 rounded-lg px-2.5 py-1 disabled:opacity-40 whitespace-nowrap"
+                  >
+                    {desactivandoId === c.id_categoria ? "..." : "Desactivar"}
+                  </button>
+                </div>
+                <div className="px-4 pb-3 pl-7 space-y-1.5">
+                  {subs.map((s) => (
+                    <div key={s.id_subcategoria} className="flex items-center justify-between gap-3 text-xs text-neutral-600 border-t border-dashed border-neutral-100 pt-1.5 first:border-0 first:pt-0">
+                      {editando === s.id_subcategoria ? (
+                        <div className="flex items-center gap-1.5 flex-1">
+                          <input
+                            autoFocus
+                            value={valorEdit}
+                            onChange={(e) => setValorEdit(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") guardarRenombreSubcategoria(s);
+                              if (e.key === "Escape") setEditando(null);
+                            }}
+                            className="border border-accent rounded-md px-2 py-0.5 text-xs flex-1"
+                          />
+                          <button type="button" onClick={() => guardarRenombreSubcategoria(s)} disabled={guardando} className="text-[10.5px] font-bold text-accent px-1">
+                            Guardar
+                          </button>
+                          <button type="button" onClick={() => setEditando(null)} className="text-[10.5px] text-neutral-400 px-1">
+                            Cancelar
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditando(s.id_subcategoria);
+                            setValorEdit(s.nombre);
+                          }}
+                          className="text-left hover:text-accent underline decoration-dotted decoration-neutral-300 underline-offset-4"
+                          title="Tocar para renombrar"
+                        >
+                          {s.nombre}
+                          {(conteo.porSubcategoria[s.id_subcategoria] ?? 0) > 0 && (
+                            <span className="text-neutral-400 ml-1.5 no-underline">
+                              · {conteo.porSubcategoria[s.id_subcategoria]} {conteo.porSubcategoria[s.id_subcategoria] === 1 ? "cargado" : "cargados"}
+                            </span>
+                          )}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleDesactivarSubcategoria(s)}
+                        disabled={desactivandoId === s.id_subcategoria}
+                        className="text-[10.5px] font-bold text-red-600 bg-red-50 border border-red-600 rounded-lg px-2 py-0.5 disabled:opacity-40 whitespace-nowrap"
+                      >
+                        {desactivandoId === s.id_subcategoria ? "..." : "Desactivar"}
+                      </button>
+                    </div>
+                  ))}
+                  {agregandoSubDe === c.id_categoria ? (
+                    <div className="flex items-center gap-1.5 pt-1.5 border-t border-dashed border-neutral-100">
+                      <input
+                        autoFocus
+                        value={nombreNuevaSub}
+                        onChange={(e) => setNombreNuevaSub(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && guardarNuevaSubcategoria(c.id_categoria)}
+                        placeholder="Nueva subcategoría..."
+                        className="flex-1 border border-neutral-300 rounded-md px-2 py-1 text-xs"
+                      />
+                      <button type="button" onClick={() => guardarNuevaSubcategoria(c.id_categoria)} disabled={guardando} className="text-[11px] font-bold text-accent disabled:opacity-50">
+                        Agregar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAgregandoSubDe(null);
+                          setNombreNuevaSub("");
+                        }}
+                        className="text-[11px] text-neutral-400"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ) : (
+                    <button type="button" onClick={() => setAgregandoSubDe(c.id_categoria)} className="text-[11px] font-bold text-accent pt-1">
+                      + Agregar subcategoría
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );
