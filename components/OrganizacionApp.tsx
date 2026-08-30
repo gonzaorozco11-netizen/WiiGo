@@ -18,7 +18,9 @@ import {
   actualizarPersona,
   cambiarEstadoPersona,
   subirFotoPersona,
+  listarHorarios,
   type PersonaConPuestos,
+  type HorarioTrabajo,
 } from "@/app/(app)/organizacion/actions";
 import ModalLegajo from "@/components/ModalLegajo";
 
@@ -76,15 +78,17 @@ export default function OrganizacionApp({
   const [areas, setAreas] = useState<Area[]>([]);
   const [puestos, setPuestos] = useState<Puesto[]>([]);
   const [personas, setPersonas] = useState<PersonaConPuestos[]>([]);
+  const [horarios, setHorarios] = useState<HorarioTrabajo[]>([]);
   const [cargando, setCargando] = useState(true);
 
   function recargarTodo() {
     setCargando(true);
-    Promise.all([listarAreas(), listarPuestos(), listarPersonas()])
-      .then(([a, p, per]) => {
+    Promise.all([listarAreas(), listarPuestos(), listarPersonas(), listarHorarios()])
+      .then(([a, p, per, h]) => {
         setAreas(a);
         setPuestos(p);
         setPersonas(per);
+        setHorarios(h);
       })
       .finally(() => setCargando(false));
   }
@@ -122,7 +126,7 @@ export default function OrganizacionApp({
       {cargando ? (
         <p className="text-sm text-neutral-400 text-center py-12">Cargando...</p>
       ) : tab === "personas" ? (
-        <TabPersonas personas={personas} areas={areas} puestos={puestos} locales={locales} onCambio={recargarTodo} />
+        <TabPersonas personas={personas} areas={areas} puestos={puestos} locales={locales} horarios={horarios} onCambio={recargarTodo} />
       ) : tab === "areas" ? (
         <TabAreas areas={areas} esAdmin={esAdmin} onCambio={recargarTodo} />
       ) : tab === "puestos" ? (
@@ -143,17 +147,20 @@ function TabPersonas({
   areas,
   puestos,
   locales,
+  horarios,
   onCambio,
 }: {
   personas: PersonaConPuestos[];
   areas: Area[];
   puestos: Puesto[];
   locales: Local[];
+  horarios: HorarioTrabajo[];
   onCambio: () => void;
 }) {
   const [modal, setModal] = useState<"nueva" | PersonaConPuestos | null>(null);
   const [modalLegajo, setModalLegajo] = useState<PersonaConPuestos | null>(null);
   const localPorId = new Map(locales.map((l) => [l.id_local, l.nombre]));
+  const horarioPorId = new Map(horarios.map((h) => [h.id_horario, h.nombre]));
   const personaPorId = new Map(personas.map((p) => [p.id_persona, p]));
 
   return (
@@ -174,6 +181,7 @@ function TabPersonas({
                 <th className="p-3">Persona</th>
                 <th className="p-3">Áreas y puestos</th>
                 <th className="p-3">Sucursal</th>
+                <th className="p-3">Horario</th>
                 <th className="p-3">Reporta a</th>
                 <th className="p-3">Tipo</th>
                 <th className="p-3"></th>
@@ -212,6 +220,7 @@ function TabPersonas({
                     </div>
                   </td>
                   <td className="p-3 text-neutral-500">{p.id_local ? localPorId.get(p.id_local) ?? "—" : "—"}</td>
+                  <td className="p-3 text-neutral-500">{p.id_horario ? horarioPorId.get(p.id_horario) ?? "—" : "—"}</td>
                   <td className="p-3 text-neutral-500">{p.reporta_a ? personaPorId.get(p.reporta_a)?.nombre ?? "—" : "—"}</td>
                   <td className="p-3">
                     <span className="text-xs bg-neutral-100 text-neutral-600 rounded-full px-2 py-0.5">
@@ -246,6 +255,7 @@ function TabPersonas({
           areas={areas}
           puestos={puestos}
           locales={locales}
+          horarios={horarios}
           onClose={() => setModal(null)}
           onGuardado={() => {
             setModal(null);
@@ -271,6 +281,7 @@ function ModalPersona({
   areas,
   puestos,
   locales,
+  horarios,
   onClose,
   onGuardado,
 }: {
@@ -279,6 +290,7 @@ function ModalPersona({
   areas: Area[];
   puestos: Puesto[];
   locales: Local[];
+  horarios: HorarioTrabajo[];
   onClose: () => void;
   onGuardado: () => void;
 }) {
@@ -400,6 +412,17 @@ function ModalPersona({
               {locales.map((l) => (
                 <option key={l.id_local} value={l.id_local}>
                   {l.nombre}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-neutral-600 mb-1">Horario de trabajo</label>
+            <select name="id_horario" defaultValue={persona?.id_horario ?? ""} className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-white">
+              <option value="">Sin horario asignado</option>
+              {horarios.map((h) => (
+                <option key={h.id_horario} value={h.id_horario}>
+                  {h.nombre} ({h.hora_entrada.slice(0, 5)})
                 </option>
               ))}
             </select>

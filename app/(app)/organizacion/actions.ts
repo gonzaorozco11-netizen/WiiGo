@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
+import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos";
 import { PANTALLAS_DISPONIBLES } from "@/lib/pantallas";
 
 function text(formData: FormData, name: string) {
@@ -23,6 +24,15 @@ function number(formData: FormData, name: string) {
 async function requireAcceso() {
   const sesion = await obtenerSesionConPantallas();
   if (!puedeVerPantalla(sesion, "organizacion")) return "No tenés permiso para hacer esto.";
+  return null;
+}
+
+// Los horarios de trabajo se gestionan desde RR.HH. (permiso puntual
+// GESTIONAR_NOMINA, igual que Nómina y Presentismo), no desde la pantalla
+// "organizacion" — por eso llevan su propio chequeo.
+async function requireAccesoRrhh() {
+  const sesion = await obtenerSesionConPermisos();
+  if (!tienePermiso(sesion, PERMISOS.GESTIONAR_NOMINA)) return "No tenés permiso para hacer esto.";
   return null;
 }
 
@@ -184,6 +194,7 @@ export type PersonaConPuestos = {
   domicilio: string | null;
   fecha_ingreso: string | null;
   convenio_colectivo: string | null;
+  id_horario: string | null;
   asignaciones: { idPuesto: string; nombrePuesto: string; idArea: string; nombreArea: string; esPrincipal: boolean }[];
 };
 
@@ -275,6 +286,7 @@ export async function crearPersona(formData: FormData): Promise<{ error: string 
         tipo: text(formData, "tipo") ?? "EMPLEADO",
         id_local: text(formData, "id_local"),
         reporta_a: text(formData, "reporta_a"),
+        id_horario: text(formData, "id_horario"),
         estado: "ACTIVO",
       })
       .select("id_persona")
@@ -316,6 +328,7 @@ export async function actualizarPersona(idPersona: string, formData: FormData): 
         tipo: text(formData, "tipo") ?? "EMPLEADO",
         id_local: text(formData, "id_local"),
         reporta_a: text(formData, "reporta_a"),
+        id_horario: text(formData, "id_horario"),
       })
       .eq("id_persona", idPersona);
     if (error) return { error: friendlyDbError(error) };
@@ -369,6 +382,105 @@ export async function subirFotoPersona(idPersona: string, formData: FormData): P
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo subir la foto" };
   }
+}
+
+// ===================== HORARIOS DE TRABAJO (RR.HH. — Fase 2) =====================
+// "Horario de trabajo" a propósito, no "turno": turno ya significa la
+// sesión de caja (apertura/cierre con arqueo) en todo el resto del sistema.
+
+export type HorarioTrabajo = {
+  id_horario: string;
+  nombre: string;
+  hora_entrada: string;
+  hora_salida: string | null;
+  tolerancia_minutos: number;
+  dias_semana: number[];
+  estado: string;
+};
+
+export async function listarHorarios(): Promise<HorarioTrabajo[]> {
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase.from("horarios_trabajo").select("*").eq("estado", "ACTIVO").order("nombre");
+  if (error) throw new Error(friendlyDbError(error));
+  return (data ?? []) as HorarioTrabajo[];
+}
+
+function diasDesdeFormData(formData: FormData): number[] {
+  const dias = String(formData.get("dias_semana") ?? "")
+    .split(",")
+    .map((s) => Number(s.trim()))
+    .filter((n) => n >= 1 && n <= 7);
+  return dias.length > 0 ? dias : [1, 2, 3, 4, 5];
+}
+
+export async function crearHorario(formData: FormData): Promise<{ error: string | null }> {
+  const permisoError = await requireAccesoRrhh();
+  if (permisoError) return { error: permisoError };
+
+  const nombre = text(formData, "nombre");
+  if (!nombre) return { error: "El nombre es obligatorio" };
+  const horaEntrada = text(formData, "hora_entrada");
+  if (!horaEntrada) return { error: "La hora de entrada es obligatoria" };
+
+  try {
+    const supabase = getSupabaseServerClient();
+    const { error } = await supabase.from("horarios_trabajo").insert({
+      nombre,
+      hora_entrada: horaEntrada,
+      hora_salida: text(formData, "hora_salida"),
+      tolerancia_minutos: number(formData, "tolerancia_minutos") ?? 5,
+      dias_semana: diasDesdeFormData(formData),
+      estado: "ACTIVO",
+    });
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/rrhh");
+    revalidatePath("/organizacion");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo crear el horario" };
+  }
+}
+
+export async function actualizarHorario(idHorario: string, formData: FormData): Promise<{ error: string | null }> {
+  const permisoError = await requireAccesoRrhh();
+  if (permisoError) return { error: permisoError };
+
+  const nombre = text(formData, "nombre");
+  if (!nombre) return { error: "El nombre es obligatorio" };
+  const horaEntrada = text(formData, "hora_entrada");
+  if (!horaEntrada) return { error: "La hora de entrada es obligatoria" };
+
+  try {
+    const supabase = getSupabaseServerClient();
+    const { error } = await supabase
+      .from("horarios_trabajo")
+      .update({
+        nombre,
+        hora_entrada: horaEntrada,
+        hora_salida: text(formData, "hora_salida"),
+        tolerancia_minutos: number(formData, "tolerancia_minutos") ?? 5,
+        dias_semana: diasDesdeFormData(formData),
+      })
+      .eq("id_horario", idHorario);
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/rrhh");
+    revalidatePath("/organizacion");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo actualizar el horario" };
+  }
+}
+
+export async function desactivarHorario(idHorario: string): Promise<{ error: string | null }> {
+  const permisoError = await requireAccesoRrhh();
+  if (permisoError) return { error: permisoError };
+
+  const supabase = getSupabaseServerClient();
+  const { error } = await supabase.from("horarios_trabajo").update({ estado: "INACTIVO" }).eq("id_horario", idHorario);
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath("/rrhh");
+  revalidatePath("/organizacion");
+  return { error: null };
 }
 
 // ===================== LEGAJO (RR.HH. — Fase 1) =====================

@@ -30,6 +30,7 @@ const GROUPS: NavGroup[] = [
     label: "Operaciones",
     items: [
       { href: "/pos", label: "POS" },
+      { href: "/ficha-asistencia", label: "Ficha Asistencia" },
       { href: "/ventas", label: "Ventas" },
       { href: "/cobros-efectivo", label: "Cobros en efectivo" },
       { href: "/turnos", label: "Turnos" },
