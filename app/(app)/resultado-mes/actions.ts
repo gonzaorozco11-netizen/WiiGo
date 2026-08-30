@@ -78,14 +78,18 @@ async function calcularTableroEnVivo(periodo: string): Promise<TableroSupuesto> 
   const supabase = getSupabaseServerClient();
   const { desde, hasta } = rangoDelPeriodo(periodo);
 
-  // ===== Marca propia: reutiliza el motor de Rentabilidad, marca por marca =====
+  // ===== Marca propia: reutiliza el motor de Rentabilidad, en paralelo por
+  // marca (antes era secuencial — con varias marcas podía tardar tanto que
+  // el servidor cortaba la respuesta a mitad de camino) =====
   const { data: marcasPropia } = await supabase.from("marcas").select("id_marca, nombre").eq("tipo_comercializacion", "PROPIA");
+  const resultadosPropia = await Promise.all(
+    (marcasPropia ?? []).map((marca) => calcularRentabilidad(marca.id_marca as string, desde, hasta))
+  );
   let ventaBrutaPropia = 0;
   let cmv = 0;
   let impuestoCreditosPropia = 0;
   let comisionMpPropia = 0;
-  for (const marca of marcasPropia ?? []) {
-    const { lineas, resumen } = await calcularRentabilidad(marca.id_marca as string, desde, hasta);
+  for (const { lineas, resumen } of resultadosPropia) {
     ventaBrutaPropia += lineas.reduce((acc, l) => acc + l.ventaBruta, 0);
     cmv += resumen.cmv;
     impuestoCreditosPropia += resumen.impuestoCreditos;
@@ -94,14 +98,12 @@ async function calcularTableroEnVivo(periodo: string): Promise<TableroSupuesto> 
   ventaBrutaPropia = redondear2(ventaBrutaPropia);
   cmv = redondear2(cmv);
 
-  // ===== Consignación: reutiliza el motor de Liquidaciones, marca por marca =====
-  const { data: marcasConsignacion } = await supabase.from("marcas").select("id_marca, nombre").eq("tipo_comercializacion", "CONSIGNACION");
-  let royaltyNeto = 0;
-  let ivaRoyalty = 0;
-  for (const marca of marcasConsignacion ?? []) {
-    const { data: detalleMarca } = await supabase.from("detalle_ventas").select("id_venta").eq("id_marca", marca.id_marca);
+  // ===== Consignación: reutiliza el motor de Liquidaciones, también en
+  // paralelo por marca =====
+  async function royaltyDeMarca(idMarca: string) {
+    const { data: detalleMarca } = await supabase.from("detalle_ventas").select("id_venta").eq("id_marca", idMarca);
     const idsVentaMarca = [...new Set((detalleMarca ?? []).map((d) => d.id_venta as string))];
-    if (idsVentaMarca.length === 0) continue;
+    if (idsVentaMarca.length === 0) return { royaltyNeto: 0, ivaRoyalty: 0 };
     const { data: ventasMarca } = await supabase
       .from("ventas")
       .select("id_venta, numero, fecha, medio_pago, id_pago")
@@ -109,10 +111,17 @@ async function calcularTableroEnVivo(periodo: string): Promise<TableroSupuesto> 
       .eq("estado", "PAGADA")
       .gte("fecha", `${desde}T00:00:00`)
       .lte("fecha", `${hasta}T23:59:59`);
-    if (!ventasMarca || ventasMarca.length === 0) continue;
-    const { resumen } = await construirLineas(supabase, marca.id_marca as string, ventasMarca);
-    royaltyNeto += resumen.comisionWiigo;
-    ivaRoyalty += resumen.ivaComision;
+    if (!ventasMarca || ventasMarca.length === 0) return { royaltyNeto: 0, ivaRoyalty: 0 };
+    const { resumen } = await construirLineas(supabase, idMarca, ventasMarca);
+    return { royaltyNeto: resumen.comisionWiigo, ivaRoyalty: resumen.ivaComision };
+  }
+  const { data: marcasConsignacion } = await supabase.from("marcas").select("id_marca, nombre").eq("tipo_comercializacion", "CONSIGNACION");
+  const resultadosConsignacion = await Promise.all((marcasConsignacion ?? []).map((m) => royaltyDeMarca(m.id_marca as string)));
+  let royaltyNeto = 0;
+  let ivaRoyalty = 0;
+  for (const r of resultadosConsignacion) {
+    royaltyNeto += r.royaltyNeto;
+    ivaRoyalty += r.ivaRoyalty;
   }
   royaltyNeto = redondear2(royaltyNeto);
   ivaRoyalty = redondear2(ivaRoyalty);

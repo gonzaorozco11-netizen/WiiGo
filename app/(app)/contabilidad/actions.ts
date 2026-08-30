@@ -37,21 +37,22 @@ export async function calcularIvaAPagar(periodo: string): Promise<IvaAPagar> {
   const supabase = getSupabaseServerClient();
   const { desde, hasta } = rangoDelPeriodo(periodo);
 
-  // ===== Débito: ventas marca propia =====
+  // ===== Débito: ventas marca propia — en paralelo por marca =====
   const { data: marcasPropia } = await supabase.from("marcas").select("id_marca, nombre").eq("tipo_comercializacion", "PROPIA");
+  const resumenesPropia = await Promise.all(
+    (marcasPropia ?? []).map((marca) => calcularRentabilidad(marca.id_marca as string, desde, hasta))
+  );
   let ivaVentaPropia = 0;
-  for (const marca of marcasPropia ?? []) {
-    const { resumen } = await calcularRentabilidad(marca.id_marca as string, desde, hasta);
+  for (const { resumen } of resumenesPropia) {
     ivaVentaPropia += resumen.iva;
   }
 
-  // ===== Débito: royalty de consignación (mismo motor que Liquidaciones) =====
-  const { data: marcasConsignacion } = await supabase.from("marcas").select("id_marca, nombre").eq("tipo_comercializacion", "CONSIGNACION");
-  let ivaRoyalty = 0;
-  for (const marca of marcasConsignacion ?? []) {
-    const { data: detalleMarca } = await supabase.from("detalle_ventas").select("id_venta").eq("id_marca", marca.id_marca);
+  // ===== Débito: royalty de consignación (mismo motor que Liquidaciones),
+  // también en paralelo =====
+  async function ivaRoyaltyDeMarca(idMarca: string) {
+    const { data: detalleMarca } = await supabase.from("detalle_ventas").select("id_venta").eq("id_marca", idMarca);
     const idsVentaMarca = [...new Set((detalleMarca ?? []).map((d) => d.id_venta as string))];
-    if (idsVentaMarca.length === 0) continue;
+    if (idsVentaMarca.length === 0) return 0;
     const { data: ventasMarca } = await supabase
       .from("ventas")
       .select("id_venta, numero, fecha, medio_pago, id_pago")
@@ -59,10 +60,13 @@ export async function calcularIvaAPagar(periodo: string): Promise<IvaAPagar> {
       .eq("estado", "PAGADA")
       .gte("fecha", `${desde}T00:00:00`)
       .lte("fecha", `${hasta}T23:59:59`);
-    if (!ventasMarca || ventasMarca.length === 0) continue;
-    const { resumen } = await construirLineas(supabase, marca.id_marca as string, ventasMarca);
-    ivaRoyalty += resumen.ivaComision;
+    if (!ventasMarca || ventasMarca.length === 0) return 0;
+    const { resumen } = await construirLineas(supabase, idMarca, ventasMarca);
+    return resumen.ivaComision;
   }
+  const { data: marcasConsignacion } = await supabase.from("marcas").select("id_marca, nombre").eq("tipo_comercializacion", "CONSIGNACION");
+  const ivasRoyalty = await Promise.all((marcasConsignacion ?? []).map((m) => ivaRoyaltyDeMarca(m.id_marca as string)));
+  const ivaRoyalty = ivasRoyalty.reduce((acc, v) => acc + v, 0);
 
   // ===== Débito: cargos a marca (canon, publicidad, etc.) =====
   const { data: cargosMovs } = await supabase
