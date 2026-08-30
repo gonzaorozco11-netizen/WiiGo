@@ -104,6 +104,7 @@ const TIPO_BADGE: Record<Tab, { label: string; clases: string }> = {
 export default function GastosIngresosApp({
   locales,
   marcas,
+  usuarios,
   categoriasGasto: categoriasGastoIniciales,
   subcategoriasGasto: subcategoriasGastoIniciales,
   categoriasCargo: categoriasCargoIniciales,
@@ -115,6 +116,7 @@ export default function GastosIngresosApp({
   ivaGeneralPorcentaje,
 }: {
   locales: Local[];
+  usuarios: { id_usuario: string; nombre: string }[];
   marcas: Marca[];
   categoriasGasto: CategoriaGasto[];
   subcategoriasGasto: SubcategoriaGasto[];
@@ -161,6 +163,7 @@ export default function GastosIngresosApp({
   const [nuevaCategoriaTipo, setNuevaCategoriaTipo] = useState<"FIJO" | "VARIABLE">("VARIABLE");
   const [idSubcategoria, setIdSubcategoria] = useState("");
   const [nuevaSubcategoria, setNuevaSubcategoria] = useState("");
+  const [idUsuarioAdelanto, setIdUsuarioAdelanto] = useState("");
   const [monto, setMonto] = useState("");
   const [descripcion, setDescripcion] = useState("");
   const [medioPago, setMedioPago] = useState<"TRANSFERENCIA" | "EFECTIVO_ADMIN" | "MERCADO_PAGO">("TRANSFERENCIA");
@@ -229,6 +232,8 @@ export default function GastosIngresosApp({
   const categorias = tab === "gasto" ? categoriasGasto : tab === "cargo" ? categoriasCargo : categoriasIngreso;
   const subcategorias = tab === "gasto" ? subcategoriasGasto : tab === "cargo" ? subcategoriasCargo : subcategoriasIngreso;
   const subDisponibles = subcategorias.filter((s) => s.id_categoria === idCategoria);
+  const nombreSubSeleccionada = idSubcategoria === "__nueva__" ? nuevaSubcategoria : subDisponibles.find((s) => s.id_subcategoria === idSubcategoria)?.nombre ?? "";
+  const mostrarAdelanto = tab === "gasto" && recurrencia === "UNICO" && nombreSubSeleccionada.toLowerCase().includes("adelanto");
 
   function recargarListas() {
     setCargandoListas(true);
@@ -316,6 +321,7 @@ export default function GastosIngresosApp({
     setIdSubcategoria("");
     setClaveAdmin("");
     setLlevaIva(false);
+    setIdUsuarioAdelanto("");
   }
 
   function ejecutarGuardado(promesa: Promise<{ error: string | null }>, esUnico: boolean) {
@@ -396,6 +402,7 @@ export default function GastosIngresosApp({
       if (idLocal) fd.append("id_local", idLocal);
     }
     if (tab === "gasto" && claveAdmin) fd.append("clave_admin", claveAdmin);
+    if (mostrarAdelanto && idUsuarioAdelanto) fd.append("id_usuario_adelanto", idUsuarioAdelanto);
 
     function crear(fdFinal: FormData) {
       return tab === "gasto" ? crearGasto(fdFinal) : tab === "cargo" ? registrarCargoMarcaUnico(idMarca, fdFinal) : crearIngreso(fdFinal);
@@ -585,6 +592,19 @@ export default function GastosIngresosApp({
                 />
               )}
             </div>
+          </div>
+        )}
+
+        {mostrarAdelanto && (
+          <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 mb-3">
+            <label className="block text-sm font-medium text-purple-700 mb-1">👤 Empleado al que se le descuenta</label>
+            <select value={idUsuarioAdelanto} onChange={(e) => setIdUsuarioAdelanto(e.target.value)} className="w-full border border-purple-300 rounded-lg px-3 py-2 text-sm">
+              <option value="">Elegir empleado…</option>
+              {usuarios.map((u) => (
+                <option key={u.id_usuario} value={u.id_usuario}>{u.nombre}</option>
+              ))}
+            </select>
+            <p className="text-xs text-purple-600 mt-1.5">Este monto se descuenta solo del sueldo en la pestaña Nómina.</p>
           </div>
         )}
 

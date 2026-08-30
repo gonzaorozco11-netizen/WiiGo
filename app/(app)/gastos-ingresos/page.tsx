@@ -14,10 +14,11 @@ export default async function GastosIngresosPage() {
 
   const supabase = getSupabaseServerClient();
 
-  const [localesRes, marcasRes, categoriasGasto, subcategoriasGasto, categoriasCargo, subcategoriasCargo, categoriasIngreso, subcategoriasIngreso, configRes, sesionPermisos, ivaRes] =
+  const [localesRes, marcasRes, usuariosRes, categoriasGasto, subcategoriasGasto, categoriasCargo, subcategoriasCargo, categoriasIngreso, subcategoriasIngreso, configRes, sesionPermisos, ivaRes] =
     await Promise.all([
       supabase.from("locales").select("*").eq("estado", "ACTIVO").order("nombre", { ascending: true }),
       supabase.from("marcas").select("*").eq("tipo_comercializacion", "CONSIGNACION").order("nombre", { ascending: true }),
+      supabase.from("usuarios").select("id_usuario, nombre").eq("estado", "ACTIVO").order("nombre", { ascending: true }),
       listarCategorias(),
       listarSubcategorias(),
       listarCategoriasCargoMarca(),
@@ -33,6 +34,7 @@ export default async function GastosIngresosPage() {
     <GastosIngresosApp
       locales={(localesRes.data ?? []) as Local[]}
       marcas={(marcasRes.data ?? []) as Marca[]}
+      usuarios={usuariosRes.data ?? []}
       categoriasGasto={categoriasGasto}
       subcategoriasGasto={subcategoriasGasto}
       categoriasCargo={categoriasCargo}
