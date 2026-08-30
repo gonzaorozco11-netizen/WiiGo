@@ -140,11 +140,11 @@ export default function ResultadoMesApp() {
       <div className="flex items-start justify-between gap-4 flex-wrap mb-1">
         <h1 className="text-lg font-semibold text-neutral-900">Tablero de Resultados</h1>
         <div className="flex items-center gap-1 bg-white border border-neutral-200 rounded-lg px-1 py-1 shadow-sm">
-          <button onClick={() => setPeriodo((p) => sumarMes(p, -1))} className="px-2 py-1 text-neutral-400 hover:text-neutral-700 font-bold">
+          <button onClick={() => setPeriodo((p) => sumarMes(p, -1))} className="px-2 py-1 text-neutral-400 hover:text-neutral-700 font-medium">
             ‹
           </button>
-          <span className="text-sm font-bold px-2">{formatearPeriodo(periodo)}</span>
-          <button onClick={() => setPeriodo((p) => sumarMes(p, 1))} className="px-2 py-1 text-neutral-400 hover:text-neutral-700 font-bold">
+          <span className="text-sm font-medium px-2">{formatearPeriodo(periodo)}</span>
+          <button onClick={() => setPeriodo((p) => sumarMes(p, 1))} className="px-2 py-1 text-neutral-400 hover:text-neutral-700 font-medium">
             ›
           </button>
         </div>
@@ -156,21 +156,21 @@ export default function ResultadoMesApp() {
 
       <div className="flex items-center gap-3 flex-wrap mb-4">
         {enCurso ? (
-          <span className="inline-flex items-center rounded-full px-3 py-1 text-xs font-bold bg-blue-50 text-blue-600">
+          <span className="inline-flex items-center rounded-full px-3 py-1 text-xs font-medium bg-blue-50 text-blue-600">
             En curso — estimado
           </span>
         ) : (
-          <span className="inline-flex items-center rounded-full px-3 py-1 text-xs font-bold bg-emerald-50 text-emerald-600">
+          <span className="inline-flex items-center rounded-full px-3 py-1 text-xs font-medium bg-emerald-50 text-emerald-600">
             Cerrado{datos.fechaCierre ? ` el ${new Date(datos.fechaCierre).toLocaleDateString("es-AR")}` : ""}
           </span>
         )}
         {!enCurso && !reabriendo && (
-          <button onClick={() => setReabriendo(true)} className="text-xs font-bold text-accent hover:underline">
+          <button onClick={() => setReabriendo(true)} className="text-xs font-medium text-accent hover:underline">
             Reabrir para corregir →
           </button>
         )}
         {mostrarEdicion && (
-          <span className="inline-flex items-center rounded-full px-3 py-1 text-xs font-bold bg-amber-50 text-amber-600">
+          <span className="inline-flex items-center rounded-full px-3 py-1 text-xs font-medium bg-amber-50 text-amber-600">
             Editando el cierre
           </span>
         )}
@@ -245,15 +245,15 @@ export default function ResultadoMesApp() {
           />
         ))}
         {enCurso && (
-          <button onClick={agregarReserva} className="w-full py-2 text-xs font-bold text-accent border-t border-dashed border-neutral-200 hover:bg-neutral-50">
+          <button onClick={agregarReserva} className="w-full py-2 text-xs font-medium text-accent border-t border-dashed border-neutral-200 hover:bg-neutral-50">
             + Agregar reserva
           </button>
         )}
 
         <div className="flex items-center justify-between px-4 py-4 bg-emerald-600 text-white">
-          <span className="font-extrabold">Utilidad Distribuible</span>
+          <span className="font-semibold">Utilidad Distribuible</span>
           <span className="text-right">
-            <span className="block font-extrabold tabular-nums">{formatearMonto(distribuibleMostrado)}</span>
+            <span className="block font-semibold tabular-nums">{formatearMonto(distribuibleMostrado)}</span>
             <span className="block text-xs opacity-85">{pct(distribuibleMostrado, datos.ventasNetas)}</span>
           </span>
         </div>
@@ -262,7 +262,7 @@ export default function ResultadoMesApp() {
           <button
             onClick={confirmarCierre}
             disabled={guardando}
-            className="w-full py-3 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60"
+            className="w-full py-3 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60"
           >
             {guardando ? "Cerrando..." : "Cerrar este mes"}
           </button>
@@ -271,7 +271,7 @@ export default function ResultadoMesApp() {
           <button
             onClick={confirmarActualizacion}
             disabled={guardando}
-            className="w-full py-3 text-sm font-bold text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-60"
+            className="w-full py-3 text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-60"
           >
             {guardando ? "Guardando..." : "Guardar y volver a cerrar"}
           </button>
@@ -289,14 +289,14 @@ export default function ResultadoMesApp() {
 function BloqueVentasBrutas({ items, total }: { items: ItemMonto[]; total: number }) {
   return (
     <>
-      <div className="flex items-center justify-between px-4 py-2.5 font-bold">
+      <div className="flex items-center justify-between px-4 py-2.5 font-medium">
         <span>Ventas totales brutas</span>
         <span className="tabular-nums">{formatearMonto(total)}</span>
       </div>
       {items.map((i) => (
         <div key={i.nombre} className="flex items-center justify-between px-4 py-1.5 pl-7 border-t border-neutral-50 text-neutral-500 text-[13px]">
           <span>
-            <span className="text-blue-600 font-bold text-xs mr-2 tabular-nums">{pctDeBloque(i.monto, total)}</span>
+            <span className="text-blue-600 font-medium text-xs mr-2 tabular-nums">{pctDeBloque(i.monto, total)}</span>
             {i.nombre}
           </span>
           <span className="tabular-nums">{formatearMonto(i.monto)}</span>
@@ -310,17 +310,17 @@ function BloqueItems({ titulo, total, items, pctVentas }: { titulo: string; tota
   const totalAbs = Math.abs(total);
   return (
     <>
-      <div className="flex items-center justify-between px-4 py-2.5 border-t border-neutral-100 font-bold">
+      <div className="flex items-center justify-between px-4 py-2.5 border-t border-neutral-100 font-medium">
         <span>{titulo}</span>
         <span className="text-right">
           <span className="block tabular-nums">{formatearMonto(total)}</span>
-          <span className="block text-[11px] font-semibold text-blue-600">{pctVentas}</span>
+          <span className="block text-[11px] font-normal text-blue-600">{pctVentas}</span>
         </span>
       </div>
       {items.map((i) => (
         <div key={i.nombre} className="flex items-center justify-between px-4 py-1.5 pl-7 text-neutral-500 text-[13px]">
           <span>
-            <span className="text-blue-600 font-bold text-xs mr-2 tabular-nums">{pctDeBloque(i.monto, totalAbs)}</span>
+            <span className="text-blue-600 font-medium text-xs mr-2 tabular-nums">{pctDeBloque(i.monto, totalAbs)}</span>
             {i.nombre}
             {i.fuente && <span className="block text-[10px] text-neutral-400">{i.fuente}</span>}
           </span>
@@ -333,11 +333,11 @@ function BloqueItems({ titulo, total, items, pctVentas }: { titulo: string; tota
 
 function FilaSimple({ nombre, monto, pctSub }: { nombre: string; monto: number; pctSub: string }) {
   return (
-    <div className="flex items-center justify-between px-4 py-2.5 border-t border-neutral-100 font-bold">
+    <div className="flex items-center justify-between px-4 py-2.5 border-t border-neutral-100 font-medium">
       <span>{nombre}</span>
       <span className="text-right">
         <span className="block tabular-nums">{formatearMonto(monto)}</span>
-        <span className="block text-[11px] font-semibold text-blue-600">{pctSub}</span>
+        <span className="block text-[11px] font-normal text-blue-600">{pctSub}</span>
       </span>
     </div>
   );
@@ -347,7 +347,7 @@ function FilaDetalle({ nombre, monto, positivo }: { nombre: string; monto: numbe
   return (
     <div className="flex items-center justify-between px-4 py-1.5 pl-7 text-neutral-500 text-[13px]">
       <span>{nombre}</span>
-      <span className={`tabular-nums ${positivo ? "text-emerald-600 font-semibold" : ""}`}>{formatearMonto(monto)}</span>
+      <span className={`tabular-nums ${positivo ? "text-emerald-600 font-medium" : ""}`}>{formatearMonto(monto)}</span>
     </div>
   );
 }
@@ -361,11 +361,11 @@ const COLOR_HITO: Record<string, string> = {
 
 function FilaHito({ color, nombre, monto, pctSub }: { color: string; nombre: string; monto: number; pctSub: string }) {
   return (
-    <div className={`flex items-center justify-between px-4 py-3 border-t border-b border-neutral-200 font-extrabold ${COLOR_HITO[color]}`}>
+    <div className={`flex items-center justify-between px-4 py-3 border-t border-b border-neutral-200 font-semibold ${COLOR_HITO[color]}`}>
       <span>{nombre}</span>
       <span className="text-right">
         <span className="block tabular-nums">{formatearMonto(monto)}</span>
-        <span className="block text-[11px] font-bold opacity-80">{pctSub}</span>
+        <span className="block text-[11px] font-normal opacity-80">{pctSub}</span>
       </span>
     </div>
   );
@@ -421,8 +421,8 @@ function FilaProvisionGanancias({
           </span>
         ) : (
           <>
-            <span className="block tabular-nums font-bold">{formatearMonto(-(enCurso ? montoSupuesto : Number(montoReal)))}</span>
-            <span className="block text-[11px] font-semibold text-blue-600">{pctVenta}</span>
+            <span className="block tabular-nums font-medium">{formatearMonto(-(enCurso ? montoSupuesto : Number(montoReal)))}</span>
+            <span className="block text-[11px] font-normal text-blue-600">{pctVenta}</span>
           </>
         )}
       </span>
