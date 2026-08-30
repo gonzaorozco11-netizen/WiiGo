@@ -326,6 +326,11 @@ export async function crearGasto(formData: FormData): Promise<{ error: string | 
       autorizadoPor = autorizador.nombre;
     }
 
+    // Se usa cuando el mes actual ya está cerrado y se eligió cargar este
+    // gasto en el mes siguiente en vez de reabrir el cierre (ver
+    // GastosIngresosApp / estaPeriodoCerrado).
+    const fechaOverride = text(formData, "fecha_override");
+
     const { data: gasto, error } = await supabase
       .from("gastos")
       .insert({
@@ -344,6 +349,7 @@ export async function crearGasto(formData: FormData): Promise<{ error: string | 
         autorizado_por: autorizadoPor,
         id_usuario_adelanto: idUsuarioAdelanto,
         usuario,
+        ...(fechaOverride ? { fecha: fechaOverride } : {}),
       })
       .select("id_gasto")
       .single();

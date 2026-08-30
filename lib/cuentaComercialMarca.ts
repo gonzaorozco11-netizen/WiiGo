@@ -83,6 +83,10 @@ export async function registrarMovimientoComercial(
     iva?: number | null;
     usuario?: string | null;
     observaciones?: string | null;
+    // Se usa cuando el mes actual ya está cerrado en el Tablero de
+    // Resultados y se eligió cargar este cargo en el mes siguiente en vez
+    // de reabrir el cierre (ver GastosIngresosApp / estaPeriodoCerrado).
+    fecha?: string | null;
   }
 ) {
   const saldoAnterior = await saldoCuentaComercial(supabase, params.idMarca);
@@ -102,6 +106,7 @@ export async function registrarMovimientoComercial(
     id_subcategoria: params.idSubcategoria ?? null,
     usuario: params.usuario ?? null,
     observaciones: params.observaciones ?? null,
+    ...(params.fecha ? { fecha: params.fecha } : {}),
   });
   if (error) throw new Error(error.message);
   return saldoNuevo;

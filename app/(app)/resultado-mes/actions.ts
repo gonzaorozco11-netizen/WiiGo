@@ -490,6 +490,27 @@ export async function actualizarValoresReales(
   return { error: null };
 }
 
+// Se usa al cargar un gasto/cargo/ingreso nuevo, para avisar antes de que
+// quede invisible en un mes que ya se cerró (ver GastosIngresosApp).
+export async function estaPeriodoCerrado(fecha: string): Promise<boolean> {
+  const supabase = getSupabaseServerClient();
+  const periodo = fecha.slice(0, 7);
+  const { data } = await supabase.from("cierres_resultado_mes").select("estado").eq("periodo", periodo).maybeSingle();
+  return data?.estado === "CERRADO";
+}
+
+// Reabre un mes cerrado por completo (mismo efecto que borrar el cierre a
+// mano): vuelve a "en curso" y todo se recalcula en vivo, incluyendo lo que
+// se acaba de cargar. Los valores reales que se habían cargado al cerrar se
+// pierden — hay que volver a cerrarlo y cargarlos de nuevo.
+export async function reabrirCierreCompleto(periodo: string): Promise<{ error: string | null }> {
+  const supabase = getSupabaseServerClient();
+  const { error } = await supabase.from("cierres_resultado_mes").delete().eq("periodo", periodo);
+  if (error) return { error: error.message };
+  revalidatePath("/resultado-mes");
+  return { error: null };
+}
+
 export async function listarReservasConfiguradas() {
   const supabase = getSupabaseServerClient();
   const { data, error } = await supabase

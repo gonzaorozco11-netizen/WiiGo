@@ -20,6 +20,7 @@ import {
   aplicarTipoACategoria,
 } from "@/app/(app)/gastos/actions";
 import { registrarPagoComercial } from "@/app/(app)/situacion-marca/actions";
+import { estaPeriodoCerrado, reabrirCierreCompleto } from "@/app/(app)/resultado-mes/actions";
 import {
   registrarCargoMarcaUnico,
   crearCargoRecurrenteMarca,
@@ -182,6 +183,38 @@ export default function GastosIngresosApp({
   const [movimientos, setMovimientos] = useState<MovimientoUnificado[]>([]);
   const [cargandoListas, setCargandoListas] = useState(true);
   const [anulandoMov, setAnulandoMov] = useState<MovimientoUnificado | null>(null);
+  const [periodoCerradoInfo, setPeriodoCerradoInfo] = useState<{
+    fd: FormData;
+    periodo: string;
+    crear: (fd: FormData) => Promise<{ error: string | null }>;
+  } | null>(null);
+
+  function confirmarAgregarAPeriodoCerrado() {
+    if (!periodoCerradoInfo) return;
+    const { fd, periodo, crear } = periodoCerradoInfo;
+    setPeriodoCerradoInfo(null);
+    setGuardando(true);
+    reabrirCierreCompleto(periodo).then((res) => {
+      if (res.error) {
+        setError(res.error);
+        setGuardando(false);
+        return;
+      }
+      ejecutarGuardado(crear(fd), true);
+    });
+  }
+
+  function confirmarCargarEnProximoMes() {
+    if (!periodoCerradoInfo) return;
+    const { fd, crear } = periodoCerradoInfo;
+    const hoy = new Date();
+    const fechaProxima = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 1).toISOString().slice(0, 10);
+    const fd2 = new FormData();
+    for (const [k, v] of fd.entries()) fd2.append(k, v as string);
+    fd2.set("fecha_override", fechaProxima);
+    setPeriodoCerradoInfo(null);
+    ejecutarGuardado(crear(fd2), true);
+  }
 
   function anularMovimiento(m: MovimientoUnificado, motivo: string) {
     if (m.tipo === "GASTO") return anularGasto(m.id, motivo);
@@ -285,7 +318,23 @@ export default function GastosIngresosApp({
     setLlevaIva(false);
   }
 
-  function handleGuardar() {
+  function ejecutarGuardado(promesa: Promise<{ error: string | null }>, esUnico: boolean) {
+    setGuardando(true);
+    promesa
+      .then((res) => {
+        if (res.error) {
+          setError(res.error);
+          return;
+        }
+        setMensajeOk(esUnico ? "Guardado." : "Guardado — vas a tener que confirmarlo cada período en 'Pendiente de cargar'.");
+        resetForm();
+        recargarListas();
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : "No se pudo guardar"))
+      .finally(() => setGuardando(false));
+  }
+
+  async function handleGuardar() {
     setError(null);
     setMensajeOk(null);
     const montoNum = Number(monto.replace(/[^\d.-]/g, "")) || 0;
@@ -302,19 +351,7 @@ export default function GastosIngresosApp({
       const fdPago = new FormData();
       fdPago.append("monto", String(montoNum));
       fdPago.append("descripcion", descripcion);
-      setGuardando(true);
-      registrarPagoComercial(idMarca, fdPago)
-        .then((res) => {
-          if (res.error) {
-            setError(res.error);
-            return;
-          }
-          setMensajeOk("Pago registrado.");
-          resetForm();
-          recargarListas();
-        })
-        .catch((err) => setError(err instanceof Error ? err.message : "No se pudo registrar el pago"))
-        .finally(() => setGuardando(false));
+      ejecutarGuardado(registrarPagoComercial(idMarca, fdPago), true);
       return;
     }
 
@@ -337,60 +374,42 @@ export default function GastosIngresosApp({
     fd.append("descripcion", descripcion);
     if (llevaIva) fd.append("lleva_iva", "on");
 
-    let promesa: Promise<{ error: string | null }>;
+    if (recurrencia !== "UNICO") {
+      fd.append("monto_estimado", String(montoNum));
+      fd.append("dia_mes", diaMes);
+      if (tab === "gasto") {
+        if (idLocal) fd.append("id_local", idLocal);
+      } else {
+        fd.append("recurrencia", recurrencia);
+        if (recurrencia === "ANUAL") fd.append("mes_anual", mesAnual);
+      }
+      const promesa = tab === "gasto" ? crearRecurrente(fd) : tab === "cargo" ? crearCargoRecurrenteMarca(idMarca, fd) : crearIngresoRecurrente(fd);
+      ejecutarGuardado(promesa, false);
+      return;
+    }
 
-    if (tab === "gasto") {
-      if (recurrencia === "UNICO") {
-        fd.append("monto", String(montoNum));
-        fd.append("medio_pago", medioPago);
-        if (idLocal) fd.append("id_local", idLocal);
-        if (claveAdmin) fd.append("clave_admin", claveAdmin);
-        promesa = crearGasto(fd);
-      } else {
-        fd.append("monto_estimado", String(montoNum));
-        fd.append("dia_mes", diaMes);
-        if (idLocal) fd.append("id_local", idLocal);
-        promesa = crearRecurrente(fd);
-      }
-    } else if (tab === "cargo") {
-      if (recurrencia === "UNICO") {
-        fd.append("monto", String(montoNum));
-        promesa = registrarCargoMarcaUnico(idMarca, fd);
-      } else {
-        fd.append("monto_estimado", String(montoNum));
-        fd.append("recurrencia", recurrencia);
-        fd.append("dia_mes", diaMes);
-        if (recurrencia === "ANUAL") fd.append("mes_anual", mesAnual);
-        promesa = crearCargoRecurrenteMarca(idMarca, fd);
-      }
-    } else {
-      if (recurrencia === "UNICO") {
-        fd.append("monto", String(montoNum));
-        fd.append("medio_pago", medioPago);
-        if (idLocal) fd.append("id_local", idLocal);
-        promesa = crearIngreso(fd);
-      } else {
-        fd.append("monto_estimado", String(montoNum));
-        fd.append("recurrencia", recurrencia);
-        fd.append("dia_mes", diaMes);
-        if (recurrencia === "ANUAL") fd.append("mes_anual", mesAnual);
-        promesa = crearIngresoRecurrente(fd);
-      }
+    // Único — se carga con fecha de hoy, por eso acá (y solo acá) importa
+    // si el mes de hoy ya está cerrado en el Tablero de Resultados.
+    fd.append("monto", String(montoNum));
+    if (tab !== "cargo") {
+      fd.append("medio_pago", medioPago);
+      if (idLocal) fd.append("id_local", idLocal);
+    }
+    if (tab === "gasto" && claveAdmin) fd.append("clave_admin", claveAdmin);
+
+    function crear(fdFinal: FormData) {
+      return tab === "gasto" ? crearGasto(fdFinal) : tab === "cargo" ? registrarCargoMarcaUnico(idMarca, fdFinal) : crearIngreso(fdFinal);
     }
 
     setGuardando(true);
-    promesa
-      .then((res) => {
-        if (res.error) {
-          setError(res.error);
-          return;
-        }
-        setMensajeOk(recurrencia === "UNICO" ? "Guardado." : "Guardado — vas a tener que confirmarlo cada período en 'Pendiente de cargar'.");
-        resetForm();
-        recargarListas();
-      })
-      .catch((err) => setError(err instanceof Error ? err.message : "No se pudo guardar"))
-      .finally(() => setGuardando(false));
+    const hoy = new Date().toISOString().slice(0, 10);
+    const cerrado = await estaPeriodoCerrado(hoy);
+    if (cerrado) {
+      setGuardando(false);
+      setPeriodoCerradoInfo({ fd, periodo: hoy.slice(0, 7), crear });
+      return;
+    }
+    ejecutarGuardado(crear(fd), true);
   }
 
   function handleCargarPendiente(item: PendienteRecurrente) {
@@ -822,8 +841,72 @@ export default function GastosIngresosApp({
           onClose={() => setAnulandoMov(null)}
         />
       )}
+
+      {periodoCerradoInfo && (
+        <ModalPeriodoCerrado
+          periodo={periodoCerradoInfo.periodo}
+          guardando={guardando}
+          onAgregarIgual={confirmarAgregarAPeriodoCerrado}
+          onCargarProximoMes={confirmarCargarEnProximoMes}
+          onCancelar={() => setPeriodoCerradoInfo(null)}
+        />
+      )}
       </>
       )}
+    </div>
+  );
+}
+
+function ModalPeriodoCerrado({
+  periodo,
+  guardando,
+  onAgregarIgual,
+  onCargarProximoMes,
+  onCancelar,
+}: {
+  periodo: string;
+  guardando: boolean;
+  onAgregarIgual: () => void;
+  onCargarProximoMes: () => void;
+  onCancelar: () => void;
+}) {
+  const [anio, mes] = periodo.split("-");
+  const nombreMes = `${MESES[Number(mes) - 1] ?? mes} ${anio}`;
+  const hoy = new Date();
+  const proximoMes = MESES[(hoy.getMonth() + 1) % 12];
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-5">
+        <h3 className="text-sm font-bold text-neutral-900 mb-2">{nombreMes} ya está cerrado</h3>
+        <p className="text-sm text-neutral-500 mb-4">
+          Este movimiento queda invisible en el Tablero de Resultados si lo cargás así nomás — {nombreMes} ya se cerró y
+          quedó congelado.
+        </p>
+        <div className="flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={onAgregarIgual}
+            disabled={guardando}
+            className="bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-medium px-4 py-2.5 rounded-lg text-sm text-left"
+          >
+            Agregarlo a {nombreMes} igual
+            <span className="block text-xs font-normal opacity-90">Reabre el cierre — vas a tener que cerrarlo de nuevo con los valores reales.</span>
+          </button>
+          <button
+            type="button"
+            onClick={onCargarProximoMes}
+            disabled={guardando}
+            className="bg-accent hover:bg-accent-dark disabled:opacity-50 text-white font-medium px-4 py-2.5 rounded-lg text-sm text-left"
+          >
+            Cargarlo en {proximoMes}
+            <span className="block text-xs font-normal opacity-90">No toca el cierre de {nombreMes} — se guarda con fecha de {proximoMes}, el mes que sigue abierto.</span>
+          </button>
+          <button type="button" onClick={onCancelar} disabled={guardando} className="text-sm font-medium text-neutral-500 px-4 py-2 disabled:opacity-50">
+            Cancelar
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

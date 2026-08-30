@@ -425,6 +425,7 @@ export async function registrarCargoMarcaUnico(idMarca: string, formData: FormDa
       idSubcategoria,
       usuario: sesion?.nombre ?? null,
       observaciones: text(formData, "descripcion") ?? "Cargo manual",
+      fecha: text(formData, "fecha_override"),
     });
 
     revalidatePath("/gastos-ingresos");
@@ -588,6 +589,7 @@ export async function crearIngreso(formData: FormData): Promise<{ error: string 
     const iva = llevaIva ? redondear2(neto * ((await ivaGeneralPorcentaje(supabase)) / 100)) : 0;
     const monto = redondear2(neto + iva);
     const sesion = await sesionActual();
+    const fechaOverride = text(formData, "fecha_override");
 
     const { error } = await supabase.from("ingresos").insert({
       id_local: idLocal,
@@ -599,6 +601,7 @@ export async function crearIngreso(formData: FormData): Promise<{ error: string 
       iva,
       descripcion,
       usuario: sesion?.nombre ?? null,
+      ...(fechaOverride ? { fecha: fechaOverride } : {}),
     });
     if (error) return { error: friendlyDbError(error) };
 
