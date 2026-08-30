@@ -6,7 +6,7 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
-import { registrarMovimientoComercial, type TipoCargoComercial } from "@/lib/cuentaComercialMarca";
+import { registrarMovimientoComercial, anularMovimientoComercial, type TipoCargoComercial } from "@/lib/cuentaComercialMarca";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 async function sesionActual() {
@@ -320,7 +320,10 @@ export async function cargarCargoRecurrenteMarca(
 // que sigue igual, para saldarlo).
 export async function listarMarcasConSaldoPendiente() {
   const supabase = getSupabaseServerClient();
-  const { data: movimientos, error } = await supabase.from("movimientos_cuenta_comercial_marca").select("id_marca, importe");
+  const { data: movimientos, error } = await supabase
+    .from("movimientos_cuenta_comercial_marca")
+    .select("id_marca, importe")
+    .eq("anulado", false);
   if (error) throw new Error(friendlyDbError(error));
 
   const saldoPorMarca = new Map<string, number>();
@@ -398,11 +401,39 @@ export async function listarIngresos(desde: string, hasta: string) {
   const { data, error } = await supabase
     .from("ingresos")
     .select("*")
+    .eq("anulado", false)
     .gte("fecha", `${desde}T00:00:00`)
     .lte("fecha", `${hasta}T23:59:59`)
     .order("fecha", { ascending: false });
   if (error) throw new Error(friendlyDbError(error));
   return data ?? [];
+}
+
+// Anula un ingreso ya cargado (no se borra de la base) — deja de sumar en
+// Últimos movimientos, IVA a pagar y el Tablero de Resultados.
+export async function anularIngreso(idIngreso: string, motivo: string): Promise<{ error: string | null }> {
+  if (!motivo.trim()) return { error: "Contá brevemente por qué lo anulás." };
+  const supabase = getSupabaseServerClient();
+  const { error } = await supabase
+    .from("ingresos")
+    .update({ anulado: true, motivo_anulacion: motivo.trim(), anulado_en: new Date().toISOString() })
+    .eq("id_ingreso", idIngreso);
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath("/gastos-ingresos");
+  revalidatePath("/resultado-mes");
+  return { error: null };
+}
+
+// Anula un cargo/pago a marca ya cargado — deja de sumar en el saldo de la
+// cuenta comercial, Últimos movimientos, IVA a pagar y el Tablero.
+export async function anularCargoMarca(idMovimiento: string, motivo: string): Promise<{ error: string | null }> {
+  const supabase = getSupabaseServerClient();
+  const res = await anularMovimientoComercial(supabase, idMovimiento, motivo);
+  if (res.error) return res;
+  revalidatePath("/gastos-ingresos");
+  revalidatePath("/situacion-marca");
+  revalidatePath("/resultado-mes");
+  return { error: null };
 }
 
 // ===================== OTRO INGRESO — recurrente =====================
@@ -530,17 +561,20 @@ export async function listarUltimosMovimientos(): Promise<MovimientoUnificado[]>
     supabase
       .from("gastos")
       .select("id_gasto, fecha, descripcion, monto, id_categoria")
+      .eq("anulado", false)
       .order("fecha", { ascending: false })
       .limit(LIMITE_MOVIMIENTOS),
     supabase
       .from("movimientos_cuenta_comercial_marca")
       .select("id_movimiento, fecha, observaciones, importe, neto, iva, tipo_cargo, id_marca, id_categoria")
       .in("tipo_cargo", ["OTRO_CARGO", "CARGO_RECURRENTE", "GASTO_FIJO_MENSUAL"])
+      .eq("anulado", false)
       .order("fecha", { ascending: false })
       .limit(LIMITE_MOVIMIENTOS),
     supabase
       .from("ingresos")
       .select("id_ingreso, fecha, descripcion, monto, neto, iva, id_categoria")
+      .eq("anulado", false)
       .order("fecha", { ascending: false })
       .limit(LIMITE_MOVIMIENTOS),
   ]);

@@ -128,6 +128,7 @@ export async function calcularTablero(periodo: string): Promise<TableroResultado
     .from("movimientos_cuenta_comercial_marca")
     .select("importe, tipo_cargo, id_categoria")
     .in("tipo_cargo", ["GASTO_FIJO_MENSUAL", "CARGO_RECURRENTE", "OTRO_CARGO"])
+    .eq("anulado", false)
     .gte("fecha", `${desde}T00:00:00`)
     .lte("fecha", `${hasta}T23:59:59`);
   const idsCatCargo = [...new Set((cargosMovs ?? []).map((c) => c.id_categoria as string).filter(Boolean))];
@@ -146,6 +147,7 @@ export async function calcularTablero(periodo: string): Promise<TableroResultado
   const { data: ingresosMovs } = await supabase
     .from("ingresos")
     .select("monto, id_categoria")
+    .eq("anulado", false)
     .gte("fecha", `${desde}T00:00:00`)
     .lte("fecha", `${hasta}T23:59:59`);
   const idsCatIngreso = [...new Set((ingresosMovs ?? []).map((i) => i.id_categoria as string).filter(Boolean))];
@@ -186,6 +188,7 @@ export async function calcularTablero(periodo: string): Promise<TableroResultado
   const { data: gastosPeriodo } = await supabase
     .from("gastos")
     .select("monto, tipo, id_categoria, id_subcategoria")
+    .eq("anulado", false)
     .gte("fecha", `${desde}T00:00:00`)
     .lte("fecha", `${hasta}T23:59:59`);
   const { data: subcategoriasGasto } = await supabase.from("subcategorias_gasto").select("id_subcategoria, nombre");

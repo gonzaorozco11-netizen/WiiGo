@@ -20,8 +20,10 @@ import {
   totalCobradoPorBanco,
   desactivarCategoria,
   desactivarSubcategoria,
+  anularGasto,
 } from "@/app/(app)/gastos/actions";
 import { actualizarSueldoBase } from "@/app/(app)/usuarios/actions";
+import ModalAnularMovimiento from "@/components/ModalAnularMovimiento";
 
 type CategoriaGasto = { id_categoria: string; nombre: string; tipo_default: string; estado: string; fecha_alta: string };
 type SubcategoriaGasto = { id_subcategoria: string; id_categoria: string; nombre: string; estado: string };
@@ -225,6 +227,7 @@ function TabGastos({
   const [presupuestos, setPresupuestos] = useState<Map<string, number>>(new Map());
   const [cargando, setCargando] = useState(false);
   const [modalGasto, setModalGasto] = useState<"nuevo" | Gasto | null>(null);
+  const [anulando, setAnulando] = useState<Gasto | null>(null);
 
   const { desde, hasta } = useMemo(() => {
     if (periodo === "hoy") return { desde: hoyISO(), hasta: hoyISO() };
@@ -393,8 +396,11 @@ function TabGastos({
                             Ver comprobante
                           </button>
                         )}
-                        <button onClick={() => setModalGasto(g)} className="text-accent text-xs font-medium">
+                        <button onClick={() => setModalGasto(g)} className="text-accent text-xs font-medium mr-2.5">
                           Editar
+                        </button>
+                        <button onClick={() => setAnulando(g)} className="text-red-600 text-xs font-medium">
+                          Eliminar
                         </button>
                       </td>
                     </tr>
@@ -418,6 +424,19 @@ function TabGastos({
           topeAutorizacion={topeAutorizacion}
           ivaGeneralPorcentaje={ivaGeneralPorcentaje}
           onClose={() => setModalGasto(null)}
+        />
+      )}
+
+      {anulando && (
+        <ModalAnularMovimiento
+          titulo="Eliminar gasto"
+          descripcion={`${anulando.descripcion ?? "Gasto"} — $${formatearMonto(anulando.monto)}`}
+          onConfirmar={async (motivo) => {
+            const res = await anularGasto(anulando.id_gasto, motivo);
+            if (!res.error) window.location.reload();
+            return res;
+          }}
+          onClose={() => setAnulando(null)}
         />
       )}
     </div>

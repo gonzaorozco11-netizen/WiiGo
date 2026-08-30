@@ -87,7 +87,8 @@ async function resumenTurno(supabase: SupabaseClient, idTurno: string) {
     .from("gastos")
     .select("monto")
     .eq("id_turno", idTurno)
-    .eq("medio_pago", "EFECTIVO_TURNO");
+    .eq("medio_pago", "EFECTIVO_TURNO")
+    .eq("anulado", false);
   const totalGastosEfectivo = (gastos ?? []).reduce((acc, g) => acc + (g.monto ?? 0), 0);
 
   // Mismo criterio para los pagos a proveedores hechos en efectivo de este

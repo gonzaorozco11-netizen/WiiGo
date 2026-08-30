@@ -69,6 +69,7 @@ export async function calcularIvaAPagar(periodo: string): Promise<IvaAPagar> {
     .from("movimientos_cuenta_comercial_marca")
     .select("iva")
     .in("tipo_cargo", ["GASTO_FIJO_MENSUAL", "CARGO_RECURRENTE", "OTRO_CARGO"])
+    .eq("anulado", false)
     .gte("fecha", `${desde}T00:00:00`)
     .lte("fecha", `${hasta}T23:59:59`);
   const ivaCargosMarca = (cargosMovs ?? []).reduce((acc, c) => acc + ((c.iva as number | null) ?? 0), 0);
@@ -77,6 +78,7 @@ export async function calcularIvaAPagar(periodo: string): Promise<IvaAPagar> {
   const { data: ingresosMovs } = await supabase
     .from("ingresos")
     .select("iva")
+    .eq("anulado", false)
     .gte("fecha", `${desde}T00:00:00`)
     .lte("fecha", `${hasta}T23:59:59`);
   const ivaOtrosIngresos = (ingresosMovs ?? []).reduce((acc, i) => acc + ((i.iva as number | null) ?? 0), 0);
@@ -85,6 +87,7 @@ export async function calcularIvaAPagar(periodo: string): Promise<IvaAPagar> {
   const { data: gastosPeriodo } = await supabase
     .from("gastos")
     .select("iva")
+    .eq("anulado", false)
     .gte("fecha", `${desde}T00:00:00`)
     .lte("fecha", `${hasta}T23:59:59`);
   const ivaGastos = (gastosPeriodo ?? []).reduce((acc, g) => acc + ((g.iva as number | null) ?? 0), 0);

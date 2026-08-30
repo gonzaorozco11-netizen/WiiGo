@@ -360,6 +360,7 @@ export async function listarGastos(filtros: FiltrosGastos) {
   let query = supabase
     .from("gastos")
     .select("*")
+    .eq("anulado", false)
     .gte("fecha", `${filtros.desde}T00:00:00`)
     .lte("fecha", `${filtros.hasta}T23:59:59`)
     .order("fecha", { ascending: false });
@@ -370,11 +371,29 @@ export async function listarGastos(filtros: FiltrosGastos) {
   return (data ?? []) as Gasto[];
 }
 
+// Anula un gasto ya cargado (no lo borra de la base): deja de sumar en
+// Historial, Resumen, Nómina, el Tablero de Resultados y todo lo demás que
+// lea "gastos", pero queda el registro con el motivo por si hay que
+// auditarlo después.
+export async function anularGasto(idGasto: string, motivo: string): Promise<{ error: string | null }> {
+  if (!motivo.trim()) return { error: "Contá brevemente por qué lo anulás." };
+  const supabase = getSupabaseServerClient();
+  const { error } = await supabase
+    .from("gastos")
+    .update({ anulado: true, motivo_anulacion: motivo.trim(), anulado_en: new Date().toISOString() })
+    .eq("id_gasto", idGasto);
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath("/gastos");
+  revalidatePath("/resultado-mes");
+  return { error: null };
+}
+
 export async function resumenGastos(filtros: { idLocal?: string; desde: string; hasta: string }) {
   const supabase = getSupabaseServerClient();
   let query = supabase
     .from("gastos")
     .select("id_categoria, monto, tipo, pendiente_factura")
+    .eq("anulado", false)
     .gte("fecha", `${filtros.desde}T00:00:00`)
     .lte("fecha", `${filtros.hasta}T23:59:59`);
   if (filtros.idLocal) query = query.eq("id_local", filtros.idLocal);
@@ -546,6 +565,7 @@ export async function resumenNomina(mes: string) {
   const { data: adelantos } = await supabase
     .from("gastos")
     .select("id_usuario_adelanto, monto")
+    .eq("anulado", false)
     .not("id_usuario_adelanto", "is", null)
     .gte("fecha", `${mes}-01T00:00:00`)
     .lt("fecha", `${mes}-32T00:00:00`);

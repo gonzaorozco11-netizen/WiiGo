@@ -74,6 +74,7 @@ async function otrosIngresosPeriodo(supabase: SupabaseClient, desde: string, has
     .from("movimientos_cuenta_comercial_marca")
     .select("importe")
     .in("tipo_cargo", ["FEE_INGRESO", "GASTO_FIJO_MENSUAL"])
+    .eq("anulado", false)
     .gte("fecha", `${desde}T00:00:00`)
     .lte("fecha", `${hasta}T23:59:59`);
   return Math.round((data ?? []).reduce((acc, m) => acc + (m.importe > 0 ? m.importe : 0), 0));
@@ -105,6 +106,7 @@ async function cajaPeriodo(supabase: SupabaseClient, desde: string, hasta: strin
   const { data: gastos } = await supabase
     .from("gastos")
     .select("monto, pendiente_factura")
+    .eq("anulado", false)
     .gte("fecha", `${desde}T00:00:00`)
     .lte("fecha", `${hasta}T23:59:59`);
   const pagado = (gastos ?? []).filter((g) => !g.pendiente_factura).reduce((acc, g) => acc + (g.monto ?? 0), 0);

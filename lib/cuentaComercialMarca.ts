@@ -15,7 +15,11 @@ export type TipoCargoComercial =
   | "COMPENSACION";
 
 export async function saldoCuentaComercial(supabase: SupabaseClient, idMarca: string) {
-  const { data } = await supabase.from("movimientos_cuenta_comercial_marca").select("importe").eq("id_marca", idMarca);
+  const { data } = await supabase
+    .from("movimientos_cuenta_comercial_marca")
+    .select("importe")
+    .eq("id_marca", idMarca)
+    .eq("anulado", false);
   return (data ?? []).reduce((acc, m) => acc + (m.importe ?? 0), 0);
 }
 
@@ -24,10 +28,27 @@ export async function historialCuentaComercial(supabase: SupabaseClient, idMarca
     .from("movimientos_cuenta_comercial_marca")
     .select("*")
     .eq("id_marca", idMarca)
+    .eq("anulado", false)
     .order("fecha", { ascending: false })
     .limit(200);
   if (error) throw new Error(error.message);
   return data ?? [];
+}
+
+// Anula un cargo/pago ya cargado (no se borra de la base): deja de sumar en
+// el saldo de la marca y en todo lo que lea este movimiento. Ojo: los
+// saldo_anterior/saldo_nuevo guardados en movimientos posteriores a este no
+// se recalculan — quedan como una foto de lo que mostraba el sistema en su
+// momento. El saldo actual de la marca (que siempre se recalcula sumando en
+// vivo) sí queda correcto apenas se anula.
+export async function anularMovimientoComercial(supabase: SupabaseClient, idMovimiento: string, motivo: string) {
+  if (!motivo.trim()) return { error: "Contá brevemente por qué lo anulás." };
+  const { error } = await supabase
+    .from("movimientos_cuenta_comercial_marca")
+    .update({ anulado: true, motivo_anulacion: motivo.trim(), anulado_en: new Date().toISOString() })
+    .eq("id_movimiento", idMovimiento);
+  if (error) return { error: error.message };
+  return { error: null };
 }
 
 // Si ya se generó el cargo de ese período para esa marca, no lo vuelve a

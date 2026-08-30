@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { Local, Marca, CategoriaGasto, SubcategoriaGasto, CategoriaCargoMarca, SubcategoriaCargoMarca, CategoriaIngreso, SubcategoriaIngreso } from "@/lib/supabase";
-import { crearGasto, crearRecurrente, listarRecurrentes, cargarRecurrente } from "@/app/(app)/gastos/actions";
+import { crearGasto, crearRecurrente, listarRecurrentes, cargarRecurrente, anularGasto } from "@/app/(app)/gastos/actions";
 import { registrarPagoComercial } from "@/app/(app)/situacion-marca/actions";
 import {
   registrarCargoMarcaUnico,
@@ -15,8 +15,11 @@ import {
   listarIngresosRecurrentes,
   cargarIngresoRecurrente,
   listarUltimosMovimientos,
+  anularCargoMarca,
+  anularIngreso,
   type MovimientoUnificado,
 } from "@/app/(app)/gastos-ingresos/actions";
+import ModalAnularMovimiento from "@/components/ModalAnularMovimiento";
 
 type Tab = "gasto" | "cargo" | "ingreso";
 type Recurrencia = "UNICO" | "MENSUAL" | "ANUAL";
@@ -117,6 +120,13 @@ export default function GastosIngresosApp({
   const [pendienteCobro, setPendienteCobro] = useState<{ idMarca: string; nombre: string; saldo: number }[]>([]);
   const [movimientos, setMovimientos] = useState<MovimientoUnificado[]>([]);
   const [cargandoListas, setCargandoListas] = useState(true);
+  const [anulandoMov, setAnulandoMov] = useState<MovimientoUnificado | null>(null);
+
+  function anularMovimiento(m: MovimientoUnificado, motivo: string) {
+    if (m.tipo === "GASTO") return anularGasto(m.id, motivo);
+    if (m.tipo === "CARGO_MARCA") return anularCargoMarca(m.id, motivo);
+    return anularIngreso(m.id, motivo);
+  }
 
   const montoNum = Number(monto.replace(/[^\d.-]/g, "")) || 0;
   const montoConIva = redondear2(montoNum * (1 + ivaGeneralPorcentaje / 100));
@@ -658,6 +668,7 @@ export default function GastosIngresosApp({
                     <th className="p-3">Concepto</th>
                     <th className="p-3">Categoría</th>
                     <th className="p-3 text-right">Monto</th>
+                    <th className="p-3"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -677,6 +688,11 @@ export default function GastosIngresosApp({
                         <td className={`p-3 text-right tabular-nums font-semibold ${m.monto >= 0 ? "text-emerald-600" : "text-red-600"}`}>
                           {m.monto >= 0 ? "+" : "-"}${formatearMonto(m.monto)}
                         </td>
+                        <td className="p-3 whitespace-nowrap">
+                          <button onClick={() => setAnulandoMov(m)} className="text-red-600 text-xs font-medium">
+                            Eliminar
+                          </button>
+                        </td>
                       </tr>
                     );
                   })}
@@ -686,6 +702,22 @@ export default function GastosIngresosApp({
           )}
         </div>
       </div>
+
+      {anulandoMov && (
+        <ModalAnularMovimiento
+          titulo="Eliminar movimiento"
+          descripcion={`${anulandoMov.concepto} — $${formatearMonto(anulandoMov.monto)}`}
+          onConfirmar={async (motivo) => {
+            const res = await anularMovimiento(anulandoMov, motivo);
+            if (!res.error) {
+              setAnulandoMov(null);
+              recargarListas();
+            }
+            return res;
+          }}
+          onClose={() => setAnulandoMov(null)}
+        />
+      )}
     </div>
   );
 }
