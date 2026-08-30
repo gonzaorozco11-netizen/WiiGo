@@ -19,7 +19,8 @@ async function personaActual() {
     .select("id_persona, nombre, apellido, id_horario")
     .eq("id_persona", usuario.id_persona)
     .maybeSingle();
-  return persona;
+  if (!persona) return null;
+  return { ...persona, nombreSesion: sesion.nombre as string };
 }
 
 export type EstadoFicha = {
@@ -47,21 +48,25 @@ export async function obtenerEstadoFicha(): Promise<EstadoFicha> {
     horario = data as typeof horario;
   }
 
-  const hoy = new Date().toISOString().slice(0, 10);
-  const { data: fichajesHoy } = await supabase
+  // Se trae el último fichaje sin importar cuándo, y se compara la fecha en
+  // JS (no con un rango gte/lte en la consulta) — más simple y sin
+  // ambigüedad de con qué huso horario Postgres interpreta un string de
+  // fecha sin "Z".
+  const { data: ultimoFichaje } = await supabase
     .from("fichajes")
-    .select("tipo")
+    .select("tipo, fecha_hora")
     .eq("id_persona", persona.id_persona as string)
-    .gte("fecha_hora", `${hoy}T00:00:00`)
-    .lte("fecha_hora", `${hoy}T23:59:59`)
     .order("fecha_hora", { ascending: false })
-    .limit(1);
-  const ultimoTipo = fichajesHoy?.[0]?.tipo as string | undefined;
+    .limit(1)
+    .maybeSingle();
+
+  const hoy = new Date().toISOString().slice(0, 10);
+  const esDeHoy = !!ultimoFichaje && (ultimoFichaje.fecha_hora as string).slice(0, 10) === hoy;
 
   return {
     persona: { nombre: persona.nombre as string, apellido: persona.apellido as string | null },
     horario,
-    siguienteTipo: ultimoTipo === "ENTRADA" ? "SALIDA" : "ENTRADA",
+    siguienteTipo: esDeHoy && ultimoFichaje!.tipo === "ENTRADA" ? "SALIDA" : "ENTRADA",
     sinPersonaVinculada: false,
   };
 }
@@ -72,6 +77,7 @@ export type ResultadoFichaje = {
   tipo?: "ENTRADA" | "SALIDA";
   estado?: "A_TIEMPO" | "TARDE" | "ANTICIPADA" | "SIN_HORARIO";
   minutos?: number;
+  turnoAbiertoLocal?: string | null;
 };
 
 // El fichaje se registra siempre con la hora del servidor (nunca la del
@@ -121,5 +127,22 @@ export async function fichar(tipo: "ENTRADA" | "SALIDA"): Promise<ResultadoFicha
   });
   if (error) return { error: error.message };
 
-  return { error: null, nombre: persona.nombre as string, tipo, estado, minutos };
+  // Recordatorio de caja: si esta persona tiene un turno de caja abierto a
+  // su nombre, se lo avisamos justo al fichar la salida — es el momento en
+  // que más sentido tiene, antes de que se vaya del local.
+  let turnoAbiertoLocal: string | null = null;
+  if (tipo === "SALIDA") {
+    const { data: turno } = await supabase
+      .from("turnos")
+      .select("id_local")
+      .eq("usuario_apertura", persona.nombreSesion)
+      .eq("estado", "ABIERTO")
+      .maybeSingle();
+    if (turno?.id_local) {
+      const { data: local } = await supabase.from("locales").select("nombre").eq("id_local", turno.id_local as string).maybeSingle();
+      turnoAbiertoLocal = (local?.nombre as string | undefined) ?? "un local";
+    }
+  }
+
+  return { error: null, nombre: persona.nombre as string, tipo, estado, minutos, turnoAbiertoLocal };
 }

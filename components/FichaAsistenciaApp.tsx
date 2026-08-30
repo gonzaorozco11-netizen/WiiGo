@@ -25,10 +25,13 @@ export default function FichaAsistenciaApp() {
       .then((res) => {
         setResultado(res);
         if (!res.error) {
-          setTimeout(() => {
-            setResultado(null);
-            recargar();
-          }, 5000);
+          setTimeout(
+            () => {
+              setResultado(null);
+              recargar();
+            },
+            res.turnoAbiertoLocal ? 9000 : 5000
+          );
         }
       })
       .finally(() => setFichando(false));
@@ -69,6 +72,11 @@ export default function FichaAsistenciaApp() {
           )}
           {!problema && <>¡Muy bien, {resultado.nombre}! Qué carita feliz, seguí así 😊</>}
         </p>
+        {resultado.turnoAbiertoLocal && (
+          <p className="text-sm font-bold text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mt-4">
+            ⚠️ Te queda la caja de <b>{resultado.turnoAbiertoLocal}</b> abierta — ¡cerrala antes de irte!
+          </p>
+        )}
         <p className="text-xs text-neutral-400 mt-6">Volviendo a la pantalla principal…</p>
       </div>
     );
