@@ -375,15 +375,16 @@ function BloqueGastosCategoria({
         </span>
       </div>
       {items.map((cat) => {
+        const subitems = cat.subitems ?? [];
         const montoCat = cat.monto === 0 ? 0 : -Math.abs(cat.monto);
-        if (cat.subitems.length <= 1) {
+        if (subitems.length <= 1) {
           return (
             <div key={cat.nombre} className="flex items-center justify-between px-4 py-1.5 pl-7 text-neutral-500 text-[13px]">
               <span>
                 <span className="text-blue-600 font-medium text-xs mr-2 tabular-nums">{pctDeBloque(cat.monto, totalAbs)}</span>
                 {cat.nombre}
-                {cat.subitems[0] && cat.subitems[0].nombre !== "Sin subcategoría" && (
-                  <span className="text-neutral-400"> — {cat.subitems[0].nombre}</span>
+                {subitems[0] && subitems[0].nombre !== "Sin subcategoría" && (
+                  <span className="text-neutral-400"> — {subitems[0].nombre}</span>
                 )}
               </span>
               <span className="tabular-nums">{formatearMonto(montoCat)}</span>
@@ -406,7 +407,7 @@ function BloqueGastosCategoria({
               <span className="tabular-nums">{formatearMonto(montoCat)}</span>
             </button>
             {abierta &&
-              cat.subitems.map((s) => (
+              subitems.map((s) => (
                 <div key={s.nombre} className="flex items-center justify-between px-4 py-1 pl-11 text-neutral-400 text-[12px] border-t border-dashed border-neutral-100">
                   <span>
                     <span className="text-blue-500 font-medium text-[10.5px] mr-1.5 tabular-nums">{pctDeBloque(s.monto, Math.abs(cat.monto))}</span>

@@ -369,7 +369,23 @@ export async function calcularTablero(periodo: string): Promise<TableroResultado
     };
   }
 
-  const snap = cierre!.snapshot as TableroSupuesto;
+  // Normaliza gastosFijos/gastosVariables por si el snapshot quedó
+  // congelado con una versión anterior de esta estructura (antes de que
+  // existiera el desplegable por subcategoría) — así un mes cerrado viejo
+  // no rompe la pantalla, se ve simplemente sin ese desglose.
+  function normalizarGastos(items: unknown): ItemCategoriaGasto[] {
+    return ((items as ItemCategoriaGasto[] | undefined) ?? []).map((item) => ({
+      nombre: item.nombre,
+      monto: item.monto,
+      subitems: Array.isArray(item.subitems) ? item.subitems : [{ nombre: item.nombre, monto: item.monto }],
+    }));
+  }
+
+  const snap = {
+    ...(cierre!.snapshot as TableroSupuesto),
+    gastosFijos: normalizarGastos((cierre!.snapshot as TableroSupuesto).gastosFijos),
+    gastosVariables: normalizarGastos((cierre!.snapshot as TableroSupuesto).gastosVariables),
+  };
   const iibbReal = cierre!.iibb_real as number;
   const provisionGananciasReal = cierre!.provision_ganancias_real as number;
   const reservasReal = (cierre!.reservas_real as { nombre: string; monto: number }[] | null) ?? [];
