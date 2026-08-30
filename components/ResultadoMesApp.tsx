@@ -258,10 +258,10 @@ export default function ResultadoMesApp() {
           </button>
         )}
 
-        <div className="flex items-center justify-between px-4 py-4 bg-emerald-600 text-white">
+        <div className={`flex items-center justify-between px-4 py-4 text-white ${distribuibleMostrado < 0 ? "bg-red-600" : "bg-emerald-600"}`}>
           <span className="font-semibold">Utilidad Distribuible</span>
           <span className="text-right">
-            <span className="block font-semibold tabular-nums">{formatearMonto(distribuibleMostrado)}</span>
+            <span className="block text-2xl font-semibold tabular-nums">{formatearMonto(distribuibleMostrado)}</span>
             <span className="block text-xs opacity-85">{pct(distribuibleMostrado, datos.ventasNetas)}</span>
           </span>
         </div>
