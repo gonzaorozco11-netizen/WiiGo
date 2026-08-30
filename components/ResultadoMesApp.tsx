@@ -212,9 +212,16 @@ export default function ResultadoMesApp() {
 
         <FilaHito color="teal" nombre="= Resultado Operativo" monto={datos.resultadoOperativo} pctSub={pct(datos.resultadoOperativo, datos.ventasNetas)} />
 
-        <FilaSimple nombre="IIBB a pagar" monto={-iibbMostrado} pctSub={pct(-iibbMostrado, datos.ventasNetas)} />
-        <FilaDetalle nombre="Ingresos Brutos" monto={-datos.ingresosBrutosIibb} />
-        <FilaDetalle nombre="SIRCREB del mes (recuperable)" monto={datos.sircrebRecuperable} positivo />
+        <FilaSimple nombre="Gastos contables" monto={-iibbMostrado} pctSub={pct(-iibbMostrado, datos.ventasNetas)} />
+        <FilaIibb
+          mostrarEdicion={mostrarEdicion}
+          montoSupuesto={datos.iibbSupuesto}
+          montoReal={iibbRealInput}
+          onMontoReal={setIibbRealInput}
+          montoMostrado={-iibbMostrado}
+        />
+        <FilaDetalle nombre="Ingresos Brutos" monto={-datos.ingresosBrutosIibb} nivel={2} />
+        <FilaDetalle nombre="SIRCREB del mes (recuperable)" monto={datos.sircrebRecuperable} positivo nivel={2} />
 
         <FilaProvisionGanancias
           enCurso={enCurso}
@@ -427,11 +434,57 @@ function FilaSimple({ nombre, monto, pctSub }: { nombre: string; monto: number; 
   );
 }
 
-function FilaDetalle({ nombre, monto, positivo }: { nombre: string; monto: number; positivo?: boolean }) {
+function FilaDetalle({ nombre, monto, positivo, nivel = 1 }: { nombre: string; monto: number; positivo?: boolean; nivel?: 1 | 2 }) {
   return (
-    <div className="flex items-center justify-between px-4 py-1.5 pl-7 text-neutral-500 text-[13px]">
+    <div
+      className={
+        nivel === 2
+          ? "flex items-center justify-between px-4 py-1 pl-11 text-neutral-400 text-[12px] border-t border-dashed border-neutral-100"
+          : "flex items-center justify-between px-4 py-1.5 pl-7 text-neutral-500 text-[13px]"
+      }
+    >
       <span>{nombre}</span>
       <span className={`tabular-nums ${positivo ? "text-emerald-600 font-medium" : ""}`}>{formatearMonto(monto)}</span>
+    </div>
+  );
+}
+
+// La única "línea" bajo Gastos contables — muestra el mismo total que el
+// rubro (es el único ítem de ese bloque, igual que Comisión Mercado Pago es
+// el único ítem de Gastos bancarios), pero acá además se puede corregir con
+// el número real una vez que se reabre el mes para editar.
+function FilaIibb({
+  mostrarEdicion,
+  montoSupuesto,
+  montoReal,
+  onMontoReal,
+  montoMostrado,
+}: {
+  mostrarEdicion: boolean;
+  montoSupuesto: number;
+  montoReal: string;
+  onMontoReal: (v: string) => void;
+  montoMostrado: number;
+}) {
+  return (
+    <div className="flex items-center justify-between px-4 py-1.5 pl-7 text-neutral-500 text-[13px]">
+      <span>
+        <span className="text-blue-600 font-medium text-xs mr-2 tabular-nums">100,0%</span>
+        IIBB
+      </span>
+      {mostrarEdicion ? (
+        <span className="flex items-center gap-2">
+          <span className="text-[10px] text-neutral-400 whitespace-nowrap">Supuesto {formatearMonto(-montoSupuesto)}</span>
+          <input
+            type="number"
+            value={montoReal}
+            onChange={(e) => onMontoReal(e.target.value)}
+            className="w-24 border border-amber-400 rounded px-1.5 py-0.5 text-xs text-right tabular-nums"
+          />
+        </span>
+      ) : (
+        <span className="tabular-nums">{formatearMonto(montoMostrado)}</span>
+      )}
     </div>
   );
 }
