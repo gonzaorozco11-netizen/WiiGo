@@ -590,38 +590,46 @@ function ModalPlanillaHoraria({ fila, mes, onClose }: { fila: PresentismoFila; m
             {dias.length === 0 ? (
               <p className="text-sm text-neutral-400 text-center py-8">No hay fichajes en este mes.</p>
             ) : (
-              <div className="space-y-0.5">
-                {dias.map((d) => {
-                  const badges: { label: string; clases: string }[] = [];
-                  if (!d.horaEntrada) badges.push({ label: "Sin fichaje", clases: "bg-neutral-100 text-neutral-400" });
-                  else {
-                    badges.push(d.tardanza ? { label: "Tardanza", clases: "bg-amber-100 text-amber-700" } : { label: "A tiempo", clases: "bg-emerald-100 text-emerald-700" });
-                    if (!d.horaSalida) badges.push({ label: "Sin salida", clases: "bg-red-100 text-red-700" });
-                    else if (d.salidaAnticipada) badges.push({ label: "Salida anticipada", clases: "bg-red-100 text-red-700" });
-                  }
-                  return (
-                    <div key={d.fecha} className="flex items-center justify-between gap-2 text-sm py-2 border-t border-dashed border-neutral-100 first:border-0 flex-wrap">
-                      <span className="font-semibold text-neutral-800 w-20 capitalize">{formatearFecha(d.fecha)}</span>
-                      {d.horaEntrada ? (
-                        <span className="flex items-center gap-2 text-neutral-500 tabular-nums">
-                          <span className={d.tardanza ? "font-bold text-amber-600" : ""}>{d.horaEntrada}</span>
-                          <span>→</span>
-                          <span className={d.salidaAnticipada || !d.horaSalida ? "font-bold text-red-600" : ""}>{d.horaSalida ?? "—"}</span>
-                        </span>
-                      ) : (
-                        <span className="text-xs text-neutral-300 italic">—</span>
-                      )}
-                      <span className="flex gap-1">
-                        {badges.map((b) => (
-                          <span key={b.label} className={`text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${b.clases}`}>
-                            {b.label}
-                          </span>
-                        ))}
-                      </span>
-                      <span className="font-bold text-neutral-800 tabular-nums w-14 text-right">{d.horasTrabajadas != null ? `${d.horasTrabajadas} hs` : "—"}</span>
-                    </div>
-                  );
-                })}
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-neutral-200 text-left text-[10.5px] font-bold uppercase tracking-wide text-neutral-400">
+                      <th className="py-2 pr-2">Fecha</th>
+                      <th className="py-2 pr-2">Hora de ingreso</th>
+                      <th className="py-2 pr-2">Hora de salida</th>
+                      <th className="py-2 pr-2 text-right">Total hs</th>
+                      <th className="py-2">Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dias.map((d) => {
+                      const badges: { label: string; clases: string }[] = [];
+                      if (!d.horaEntrada) badges.push({ label: "Sin fichaje", clases: "bg-neutral-100 text-neutral-400" });
+                      else {
+                        badges.push(d.tardanza ? { label: "Tardanza", clases: "bg-amber-100 text-amber-700" } : { label: "A tiempo", clases: "bg-emerald-100 text-emerald-700" });
+                        if (!d.horaSalida) badges.push({ label: "Sin salida", clases: "bg-red-100 text-red-700" });
+                        else if (d.salidaAnticipada) badges.push({ label: "Salida anticipada", clases: "bg-red-100 text-red-700" });
+                      }
+                      return (
+                        <tr key={d.fecha} className="border-b border-dashed border-neutral-100 last:border-0">
+                          <td className="py-2 pr-2 font-bold text-neutral-800 capitalize whitespace-nowrap">{formatearFecha(d.fecha)}</td>
+                          <td className={`py-2 pr-2 tabular-nums ${d.tardanza ? "font-bold text-amber-600" : "text-neutral-500"}`}>{d.horaEntrada ?? "—"}</td>
+                          <td className={`py-2 pr-2 tabular-nums ${d.salidaAnticipada || (d.horaEntrada && !d.horaSalida) ? "font-bold text-red-600" : "text-neutral-500"}`}>{d.horaSalida ?? "—"}</td>
+                          <td className="py-2 pr-2 text-right font-bold text-neutral-800 tabular-nums whitespace-nowrap">{d.horasTrabajadas != null ? `${d.horasTrabajadas} hs` : "—"}</td>
+                          <td className="py-2">
+                            <span className="flex gap-1 flex-wrap">
+                              {badges.map((b) => (
+                                <span key={b.label} className={`text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${b.clases}`}>
+                                  {b.label}
+                                </span>
+                              ))}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             )}
           </>
