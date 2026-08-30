@@ -97,12 +97,12 @@ export default function GastosIngresosApp({
   const [idMarca, setIdMarca] = useState(marcas[0]?.id_marca ?? "");
   const [idCategoria, setIdCategoria] = useState(categoriasGasto[0]?.id_categoria ?? "__nueva__");
   const [nuevaCategoria, setNuevaCategoria] = useState("");
+  const [nuevaCategoriaTipo, setNuevaCategoriaTipo] = useState<"FIJO" | "VARIABLE">("VARIABLE");
   const [idSubcategoria, setIdSubcategoria] = useState("");
   const [nuevaSubcategoria, setNuevaSubcategoria] = useState("");
   const [monto, setMonto] = useState("");
   const [descripcion, setDescripcion] = useState("");
   const [medioPago, setMedioPago] = useState<"TRANSFERENCIA" | "EFECTIVO_ADMIN" | "MERCADO_PAGO">("TRANSFERENCIA");
-  const [tipoGasto, setTipoGasto] = useState<"FIJO" | "VARIABLE">("VARIABLE");
   const [idLocal, setIdLocal] = useState("");
   const [diaMes, setDiaMes] = useState("1");
   const [mesAnual, setMesAnual] = useState("1");
@@ -264,7 +264,10 @@ export default function GastosIngresosApp({
     }
 
     const fd = new FormData();
-    if (idCategoria === "__nueva__") fd.append("nueva_categoria", nuevaCategoria);
+    if (idCategoria === "__nueva__") {
+      fd.append("nueva_categoria", nuevaCategoria);
+      if (tab === "gasto") fd.append("tipo", nuevaCategoriaTipo);
+    }
     else fd.append("id_categoria", idCategoria);
     if (idSubcategoria === "__nueva__" && nuevaSubcategoria.trim()) {
       fd.append(tab === "gasto" ? "nueva_subcategoria_gasto" : "nueva_subcategoria", nuevaSubcategoria);
@@ -279,7 +282,6 @@ export default function GastosIngresosApp({
     if (tab === "gasto") {
       if (recurrencia === "UNICO") {
         fd.append("monto", String(montoNum));
-        fd.append("tipo", tipoGasto);
         fd.append("medio_pago", medioPago);
         if (idLocal) fd.append("id_local", idLocal);
         if (claveAdmin) fd.append("clave_admin", claveAdmin);
@@ -437,12 +439,24 @@ export default function GastosIngresosApp({
                 <option value="__nueva__">+ Crear categoría nueva…</option>
               </select>
               {idCategoria === "__nueva__" && (
-                <input
-                  value={nuevaCategoria}
-                  onChange={(e) => setNuevaCategoria(e.target.value)}
-                  placeholder="Nombre de la categoría nueva"
-                  className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm mt-1.5"
-                />
+                <>
+                  <input
+                    value={nuevaCategoria}
+                    onChange={(e) => setNuevaCategoria(e.target.value)}
+                    placeholder="Nombre de la categoría nueva"
+                    className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm mt-1.5"
+                  />
+                  {tab === "gasto" && (
+                    <select
+                      value={nuevaCategoriaTipo}
+                      onChange={(e) => setNuevaCategoriaTipo(e.target.value as "FIJO" | "VARIABLE")}
+                      className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm mt-1.5"
+                    >
+                      <option value="VARIABLE">Variable — depende del mes</option>
+                      <option value="FIJO">Fijo — todos los meses igual</option>
+                    </select>
+                  )}
+                </>
               )}
             </div>
             <div>
@@ -519,24 +533,6 @@ export default function GastosIngresosApp({
                 </select>
               </div>
             )}
-          </div>
-        )}
-
-        {tab === "gasto" && recurrencia === "UNICO" && (
-          <div className="mb-3">
-            <label className="block text-sm font-medium text-neutral-700 mb-1">Tipo de gasto</label>
-            <div className="flex gap-2">
-              {(["FIJO", "VARIABLE"] as const).map((opcion) => (
-                <label
-                  key={opcion}
-                  className={`flex-1 flex items-center justify-center gap-2 border rounded-lg px-3 py-2 text-sm cursor-pointer ${tipoGasto === opcion ? "border-accent bg-accent-tint" : "border-neutral-300"}`}
-                >
-                  <input type="radio" checked={tipoGasto === opcion} onChange={() => setTipoGasto(opcion)} />
-                  {opcion === "FIJO" ? "Fijo" : "Variable"}
-                </label>
-              ))}
-            </div>
-            <p className="text-xs text-neutral-400 mt-1.5">Fijo: lo pagás todos los meses pase lo que pase. Variable: depende de tu actividad ese mes.</p>
           </div>
         )}
 
