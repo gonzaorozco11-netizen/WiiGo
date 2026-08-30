@@ -122,7 +122,7 @@ export async function actualizarSueldoBase(id: string, sueldoBase: number): Prom
   const supabase = getSupabaseServerClient();
   const { error } = await supabase.from("usuarios").update({ sueldo_base: sueldoBase }).eq("id_usuario", id);
   if (error) return { error: friendlyDbError(error) };
-  revalidatePath("/gastos");
+  revalidatePath("/gastos-ingresos");
   return { error: null };
 }
 

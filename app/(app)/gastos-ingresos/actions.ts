@@ -856,3 +856,109 @@ export async function listarUltimosMovimientos(): Promise<MovimientoUnificado[]>
 
   return [...gastos, ...cargos, ...ingresos].sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, LIMITE_MOVIMIENTOS);
 }
+
+export type ResumenUnificado = {
+  items: MovimientoUnificado[];
+  totalGastos: number;
+  totalCargos: number;
+  totalIngresos: number;
+  balance: number;
+};
+
+// Mismo criterio que listarUltimosMovimientos (junta gasto + cargo a marca +
+// ingreso en una sola lista), pero acotado por período en vez de "los
+// últimos 15 de cada uno" — para la pestaña "Resumen" de Gastos e Ingresos.
+export async function resumenUnificado(filtros: { idLocal?: string; desde: string; hasta: string }): Promise<ResumenUnificado> {
+  const supabase = getSupabaseServerClient();
+  const { idLocal, desde, hasta } = filtros;
+  const desdeTs = `${desde}T00:00:00`;
+  const hastaTs = `${hasta}T23:59:59`;
+
+  let qGastos = supabase
+    .from("gastos")
+    .select("id_gasto, fecha, descripcion, monto, id_categoria")
+    .eq("anulado", false)
+    .gte("fecha", desdeTs)
+    .lte("fecha", hastaTs);
+  if (idLocal) qGastos = qGastos.eq("id_local", idLocal);
+
+  let qCargos = supabase
+    .from("movimientos_cuenta_comercial_marca")
+    .select("id_movimiento, fecha, observaciones, importe, neto, iva, tipo_cargo, id_marca, id_categoria")
+    .in("tipo_cargo", ["OTRO_CARGO", "CARGO_RECURRENTE", "GASTO_FIJO_MENSUAL"])
+    .eq("anulado", false)
+    .gte("fecha", desdeTs)
+    .lte("fecha", hastaTs);
+  if (idLocal) qCargos = qCargos.eq("id_local", idLocal);
+
+  let qIngresos = supabase
+    .from("ingresos")
+    .select("id_ingreso, fecha, descripcion, monto, neto, iva, id_categoria")
+    .eq("anulado", false)
+    .gte("fecha", desdeTs)
+    .lte("fecha", hastaTs);
+  if (idLocal) qIngresos = qIngresos.eq("id_local", idLocal);
+
+  const [gastosRes, cargosRes, ingresosRes] = await Promise.all([qGastos, qCargos, qIngresos]);
+
+  const gastosData = gastosRes.data ?? [];
+  const cargosData = cargosRes.data ?? [];
+  const ingresosData = ingresosRes.data ?? [];
+
+  const [categoriasGastoRes, categoriasCargoRes, categoriasIngresoRes, marcasRes] = await Promise.all([
+    supabase.from("categorias_gasto").select("id_categoria, nombre"),
+    supabase.from("categorias_cargo_marca").select("id_categoria, nombre"),
+    supabase.from("categorias_ingreso").select("id_categoria, nombre"),
+    supabase
+      .from("marcas")
+      .select("id_marca, nombre")
+      .in("id_marca", [...new Set(cargosData.map((c) => c.id_marca as string))].length > 0 ? [...new Set(cargosData.map((c) => c.id_marca as string))] : ["00000000-0000-0000-0000-000000000000"]),
+  ]);
+  const nombreCategoriaGasto = new Map((categoriasGastoRes.data ?? []).map((c) => [c.id_categoria as string, c.nombre as string]));
+  const nombreCategoriaCargo = new Map((categoriasCargoRes.data ?? []).map((c) => [c.id_categoria as string, c.nombre as string]));
+  const nombreCategoriaIngreso = new Map((categoriasIngresoRes.data ?? []).map((c) => [c.id_categoria as string, c.nombre as string]));
+  const nombreMarca = new Map((marcasRes.data ?? []).map((m) => [m.id_marca as string, m.nombre as string]));
+
+  const notaIva = (neto: unknown, iva: unknown) =>
+    typeof iva === "number" && iva > 0 ? ` (neto $${(neto as number).toLocaleString("es-AR")} + IVA $${iva.toLocaleString("es-AR")})` : "";
+
+  const gastos: MovimientoUnificado[] = gastosData.map((g) => ({
+    id: g.id_gasto as string,
+    tipo: "GASTO",
+    fecha: g.fecha as string,
+    concepto: (g.descripcion as string | null) ?? "Gasto",
+    categoria: nombreCategoriaGasto.get(g.id_categoria as string) ?? "—",
+    monto: -(g.monto as number),
+    recurrente: false,
+  }));
+  const cargos: MovimientoUnificado[] = cargosData.map((c) => ({
+    id: c.id_movimiento as string,
+    tipo: "CARGO_MARCA",
+    fecha: c.fecha as string,
+    concepto: `${nombreMarca.get(c.id_marca as string) ?? "Marca"} — ${(c.observaciones as string | null) ?? "Cargo"}${notaIva(c.neto, c.iva)}`,
+    categoria: c.id_categoria ? nombreCategoriaCargo.get(c.id_categoria as string) ?? "—" : "—",
+    monto: c.importe as number,
+    recurrente: c.tipo_cargo === "CARGO_RECURRENTE" || c.tipo_cargo === "GASTO_FIJO_MENSUAL",
+  }));
+  const ingresos: MovimientoUnificado[] = ingresosData.map((i) => ({
+    id: i.id_ingreso as string,
+    tipo: "INGRESO",
+    fecha: i.fecha as string,
+    concepto: `${(i.descripcion as string | null) ?? "Ingreso"}${notaIva(i.neto, i.iva)}`,
+    categoria: nombreCategoriaIngreso.get(i.id_categoria as string) ?? "—",
+    monto: i.monto as number,
+    recurrente: false,
+  }));
+
+  const totalGastos = gastos.reduce((acc, g) => acc + Math.abs(g.monto), 0);
+  const totalCargos = cargos.reduce((acc, c) => acc + c.monto, 0);
+  const totalIngresos = ingresos.reduce((acc, i) => acc + i.monto, 0);
+
+  return {
+    items: [...gastos, ...cargos, ...ingresos].sort((a, b) => b.fecha.localeCompare(a.fecha)),
+    totalGastos,
+    totalCargos,
+    totalIngresos,
+    balance: totalCargos + totalIngresos - totalGastos,
+  };
+}

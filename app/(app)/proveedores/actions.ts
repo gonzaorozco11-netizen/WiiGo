@@ -770,7 +770,7 @@ export async function registrarPagoProveedor(idProveedor: string, formData: Form
 
     revalidatePath("/proveedores");
     revalidatePath("/turnos");
-    revalidatePath("/gastos");
+    revalidatePath("/gastos-ingresos");
     return { error: null };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo registrar el pago" };

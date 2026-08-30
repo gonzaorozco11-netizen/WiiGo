@@ -34,7 +34,6 @@ const GROUPS: NavGroup[] = [
       { href: "/cobros-efectivo", label: "Cobros en efectivo" },
       { href: "/turnos", label: "Turnos" },
       { href: "/gastos-ingresos", label: "Gastos e Ingresos" },
-      { href: "/gastos", label: "Resumen de Gastos" },
     ],
   },
   {

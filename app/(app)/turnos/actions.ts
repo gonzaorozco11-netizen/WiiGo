@@ -185,7 +185,7 @@ export async function cerrarTurno(
     });
 
     revalidatePath("/turnos");
-    revalidatePath("/gastos");
+    revalidatePath("/gastos-ingresos");
     return { error: null };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo cerrar el turno" };

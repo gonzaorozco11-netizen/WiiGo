@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import type { Local, Marca, CategoriaGasto, SubcategoriaGasto, CategoriaCargoMarca, SubcategoriaCargoMarca, CategoriaIngreso, SubcategoriaIngreso } from "@/lib/supabase";
+import { useEffect, useMemo, useState } from "react";
+import type { Local, Marca, Gasto, CategoriaGasto, SubcategoriaGasto, CategoriaCargoMarca, SubcategoriaCargoMarca, CategoriaIngreso, SubcategoriaIngreso } from "@/lib/supabase";
 import {
   crearGasto,
   crearRecurrente,
@@ -18,9 +18,14 @@ import {
   renombrarSubcategoriaGasto,
   contarGastosPorCategoria,
   aplicarTipoACategoria,
+  resumenGastos,
+  listarPresupuestos,
+  guardarPresupuesto,
+  obtenerGasto,
 } from "@/app/(app)/gastos/actions";
 import { registrarPagoComercial } from "@/app/(app)/situacion-marca/actions";
 import { estaPeriodoCerrado, reabrirCierreCompleto } from "@/app/(app)/resultado-mes/actions";
+import ModalEditarGasto from "@/components/ModalEditarGasto";
 import {
   registrarCargoMarcaUnico,
   crearCargoRecurrenteMarca,
@@ -32,6 +37,8 @@ import {
   listarIngresosRecurrentes,
   cargarIngresoRecurrente,
   listarUltimosMovimientos,
+  resumenUnificado,
+  type ResumenUnificado,
   anularCargoMarca,
   anularIngreso,
   listarCategoriasCargoMarca,
@@ -128,7 +135,7 @@ export default function GastosIngresosApp({
   puedeAutorizarSinLimite: boolean;
   ivaGeneralPorcentaje: number;
 }) {
-  const [vista, setVista] = useState<"cargar" | "categorias">("cargar");
+  const [vista, setVista] = useState<"cargar" | "resumen" | "categorias">("cargar");
   const [categoriasGasto, setCategoriasGasto] = useState(categoriasGastoIniciales);
   const [subcategoriasGasto, setSubcategoriasGasto] = useState(subcategoriasGastoIniciales);
   const [categoriasCargo, setCategoriasCargo] = useState(categoriasCargoIniciales);
@@ -460,6 +467,13 @@ export default function GastosIngresosApp({
         </button>
         <button
           type="button"
+          onClick={() => setVista("resumen")}
+          className={`px-3.5 py-1.5 rounded-md text-sm font-medium ${vista === "resumen" ? "bg-white shadow-sm text-neutral-900" : "text-neutral-500"}`}
+        >
+          📊 Resumen
+        </button>
+        <button
+          type="button"
           onClick={() => setVista("categorias")}
           className={`px-3.5 py-1.5 rounded-md text-sm font-medium ${vista === "categorias" ? "bg-white shadow-sm text-neutral-900" : "text-neutral-500"}`}
         >
@@ -467,7 +481,18 @@ export default function GastosIngresosApp({
         </button>
       </div>
 
-      {vista === "categorias" ? (
+      {vista === "resumen" ? (
+        <VistaResumen
+          locales={locales}
+          categoriasGasto={categoriasGasto}
+          subcategoriasGasto={subcategoriasGasto}
+          categoriasCargo={categoriasCargo}
+          categoriasIngreso={categoriasIngreso}
+          puedeAutorizarSinLimite={puedeAutorizarSinLimite}
+          topeAutorizacion={topeAutorizacion}
+          ivaGeneralPorcentaje={ivaGeneralPorcentaje}
+        />
+      ) : vista === "categorias" ? (
         <VistaCategorias
           categoriasGasto={categoriasGasto}
           subcategoriasGasto={subcategoriasGasto}
@@ -872,6 +897,413 @@ export default function GastosIngresosApp({
         />
       )}
       </>
+      )}
+    </div>
+  );
+}
+
+// ===================== VISTA RESUMEN (gastos + cargos + ingresos) =====================
+
+function hoyISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function inicioDeMes() {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
+}
+
+function formatearFechaCorta(fechaISO: string) {
+  return new Date(fechaISO).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" });
+}
+
+type ResumenGastosData = {
+  total: number;
+  totalFijos: number;
+  totalVariables: number;
+  pendientesFactura: number;
+  porCategoria: {
+    idCategoria: string;
+    nombre: string;
+    gastado: number;
+    pct: number;
+    presupuesto: number | null;
+    pctPresupuesto: number | null;
+  }[];
+};
+
+const TIPO_MOV_BADGE: Record<MovimientoUnificado["tipo"], { label: string; clases: string }> = {
+  GASTO: { label: "Gasto", clases: "bg-red-100 text-red-700" },
+  CARGO_MARCA: { label: "Cargo a marca", clases: "bg-purple-100 text-purple-700" },
+  INGRESO: { label: "Ingreso", clases: "bg-emerald-100 text-emerald-700" },
+};
+
+function VistaResumen({
+  locales,
+  categoriasGasto,
+  subcategoriasGasto,
+  categoriasCargo,
+  categoriasIngreso,
+  puedeAutorizarSinLimite,
+  topeAutorizacion,
+  ivaGeneralPorcentaje,
+}: {
+  locales: Local[];
+  categoriasGasto: CategoriaGasto[];
+  subcategoriasGasto: SubcategoriaGasto[];
+  categoriasCargo: CategoriaCargoMarca[];
+  categoriasIngreso: CategoriaIngreso[];
+  puedeAutorizarSinLimite: boolean;
+  topeAutorizacion: number;
+  ivaGeneralPorcentaje: number;
+}) {
+  const [filtroLocal, setFiltroLocal] = useState("");
+  const [periodo, setPeriodo] = useState<"hoy" | "semana" | "mes">("mes");
+  const [filtroCategoria, setFiltroCategoria] = useState("");
+  const [filtroTipo, setFiltroTipo] = useState<"TODO" | MovimientoUnificado["tipo"]>("TODO");
+  const [texto, setTexto] = useState("");
+  const [datos, setDatos] = useState<ResumenUnificado | null>(null);
+  const [resumenG, setResumenG] = useState<ResumenGastosData | null>(null);
+  const [presupuestos, setPresupuestos] = useState<Map<string, number>>(new Map());
+  const [cargando, setCargando] = useState(false);
+  const [anulando, setAnulando] = useState<MovimientoUnificado | null>(null);
+  const [cargandoEditar, setCargandoEditar] = useState<string | null>(null);
+  const [gastoEditando, setGastoEditando] = useState<Gasto | null>(null);
+
+  const { desde, hasta } = useMemo(() => {
+    if (periodo === "hoy") return { desde: hoyISO(), hasta: hoyISO() };
+    if (periodo === "semana") {
+      const d = new Date();
+      d.setDate(d.getDate() - 6);
+      return { desde: d.toISOString().slice(0, 10), hasta: hoyISO() };
+    }
+    return { desde: inicioDeMes(), hasta: hoyISO() };
+  }, [periodo]);
+
+  function recargar() {
+    setCargando(true);
+    Promise.all([
+      resumenUnificado({ idLocal: filtroLocal || undefined, desde, hasta }),
+      resumenGastos({ idLocal: filtroLocal || undefined, desde, hasta }),
+      listarPresupuestos(),
+    ])
+      .then(([u, r, p]) => {
+        setDatos(u);
+        setResumenG(r);
+        setPresupuestos(new Map(p.map((x) => [x.id_categoria, x.monto_mensual])));
+      })
+      .finally(() => setCargando(false));
+  }
+
+  useEffect(recargar, [filtroLocal, desde, hasta]);
+
+  const categoriasUnificadas = useMemo(() => {
+    const nombres = new Set<string>();
+    categoriasGasto.forEach((c) => nombres.add(c.nombre));
+    categoriasCargo.forEach((c) => nombres.add(c.nombre));
+    categoriasIngreso.forEach((c) => nombres.add(c.nombre));
+    return [...nombres].sort((a, b) => a.localeCompare(b));
+  }, [categoriasGasto, categoriasCargo, categoriasIngreso]);
+
+  const itemsFiltrados = useMemo(() => {
+    if (!datos) return [];
+    const textoNorm = texto.trim().toLowerCase();
+    return datos.items.filter((m) => {
+      if (filtroTipo !== "TODO" && m.tipo !== filtroTipo) return false;
+      if (filtroCategoria && m.categoria !== filtroCategoria) return false;
+      if (textoNorm && !`${m.concepto} ${m.categoria}`.toLowerCase().includes(textoNorm)) return false;
+      return true;
+    });
+  }, [datos, filtroTipo, filtroCategoria, texto]);
+
+  function anularMovimientoResumen(m: MovimientoUnificado, motivo: string) {
+    if (m.tipo === "GASTO") return anularGasto(m.id, motivo);
+    if (m.tipo === "CARGO_MARCA") return anularCargoMarca(m.id, motivo);
+    return anularIngreso(m.id, motivo);
+  }
+
+  function handleEditar(m: MovimientoUnificado) {
+    setCargandoEditar(m.id);
+    obtenerGasto(m.id)
+      .then((g) => {
+        if (g) setGastoEditando(g);
+      })
+      .finally(() => setCargandoEditar(null));
+  }
+
+  return (
+    <div>
+      <div className="flex flex-wrap gap-2 items-center mb-4">
+        <div className="relative flex-1 min-w-[220px]">
+          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-400 text-xs">🔍</span>
+          <input
+            value={texto}
+            onChange={(e) => setTexto(e.target.value)}
+            placeholder="Buscar por descripción o categoría…"
+            className="w-full border border-neutral-300 rounded-lg pl-7 pr-2.5 py-1.5 text-sm"
+          />
+        </div>
+        <select value={filtroLocal} onChange={(e) => setFiltroLocal(e.target.value)} className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-sm">
+          <option value="">Todos los locales</option>
+          {locales.map((l) => (
+            <option key={l.id_local} value={l.id_local}>{l.nombre}</option>
+          ))}
+        </select>
+        <select value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)} className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-sm">
+          <option value="">Todas las categorías</option>
+          {categoriasUnificadas.map((nombre) => (
+            <option key={nombre} value={nombre}>{nombre}</option>
+          ))}
+        </select>
+        <select value={periodo} onChange={(e) => setPeriodo(e.target.value as typeof periodo)} className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-sm">
+          <option value="mes">Este mes</option>
+          <option value="semana">Últimos 7 días</option>
+          <option value="hoy">Hoy</option>
+        </select>
+      </div>
+
+      <div className="flex gap-1.5 mb-4">
+        {(["TODO", "GASTO", "CARGO_MARCA", "INGRESO"] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setFiltroTipo(t)}
+            className={`text-xs font-semibold px-3 py-1.5 rounded-full border ${
+              filtroTipo === t
+                ? t === "GASTO"
+                  ? "bg-red-50 border-red-300 text-red-700"
+                  : t === "CARGO_MARCA"
+                  ? "bg-purple-50 border-purple-300 text-purple-700"
+                  : t === "INGRESO"
+                  ? "bg-emerald-50 border-emerald-300 text-emerald-700"
+                  : "bg-accent-tint border-accent text-accent-dark"
+                : "border-neutral-200 text-neutral-500 bg-white"
+            }`}
+          >
+            {t === "TODO" ? "Todo" : t === "GASTO" ? "Gastos" : t === "CARGO_MARCA" ? "Cargos" : "Ingresos"}
+          </button>
+        ))}
+      </div>
+
+      {datos && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5 mb-5">
+          <div className="bg-white border border-neutral-200 border-t-4 border-t-red-600 rounded-xl p-4">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400 mb-1">💸 Gastos</p>
+            <p className="text-xl font-extrabold text-neutral-900 tabular-nums">${formatearMonto(datos.totalGastos)}</p>
+          </div>
+          <div className="bg-white border border-neutral-200 border-t-4 border-t-purple-600 rounded-xl p-4">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400 mb-1">🏷️ Cargos a marca</p>
+            <p className="text-xl font-extrabold text-neutral-900 tabular-nums">${formatearMonto(datos.totalCargos)}</p>
+          </div>
+          <div className="bg-white border border-neutral-200 border-t-4 border-t-emerald-600 rounded-xl p-4">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400 mb-1">💰 Otros ingresos</p>
+            <p className="text-xl font-extrabold text-neutral-900 tabular-nums">${formatearMonto(datos.totalIngresos)}</p>
+          </div>
+          <div className="bg-white border border-neutral-200 border-t-4 border-t-accent rounded-xl p-4">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400 mb-1">Σ Balance del período</p>
+            <p className={`text-xl font-extrabold tabular-nums ${datos.balance < 0 ? "text-red-600" : "text-emerald-600"}`}>
+              {datos.balance >= 0 ? "+" : "-"}${formatearMonto(Math.abs(datos.balance))}
+            </p>
+          </div>
+        </div>
+      )}
+
+      <div className="bg-white border border-neutral-200 rounded-xl overflow-hidden mb-6">
+        <div className="flex items-baseline justify-between px-4 py-3 border-b border-neutral-100">
+          <h2 className="text-sm font-bold text-neutral-900">Movimientos</h2>
+          <span className="text-xs text-neutral-400">{itemsFiltrados.length} resultados</span>
+        </div>
+        {cargando ? (
+          <p className="text-sm text-neutral-400 text-center py-8">Cargando...</p>
+        ) : itemsFiltrados.length === 0 ? (
+          <p className="text-sm text-neutral-400 text-center py-8">No hay movimientos con estos filtros.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-neutral-200 text-left text-xs text-neutral-500">
+                  <th className="p-3">Fecha</th>
+                  <th className="p-3">Tipo</th>
+                  <th className="p-3">Descripción</th>
+                  <th className="p-3 text-right">Monto</th>
+                  <th className="p-3"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {itemsFiltrados.map((m) => (
+                  <tr key={`${m.tipo}-${m.id}`} className="border-b border-neutral-100 last:border-0">
+                    <td className="p-3 whitespace-nowrap text-neutral-500">{formatearFechaCorta(m.fecha)}</td>
+                    <td className="p-3">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${TIPO_MOV_BADGE[m.tipo].clases}`}>{TIPO_MOV_BADGE[m.tipo].label}</span>
+                    </td>
+                    <td className="p-3">
+                      {m.concepto}
+                      {m.recurrente && <span className="text-[10px] text-neutral-400 ml-1">🔁</span>}
+                      <span className="block text-xs text-neutral-400">{m.categoria}</span>
+                    </td>
+                    <td className={`p-3 text-right tabular-nums font-semibold ${m.monto >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                      {m.monto >= 0 ? "+" : "-"}${formatearMonto(m.monto)}
+                    </td>
+                    <td className="p-3 whitespace-nowrap text-right">
+                      {m.tipo === "GASTO" && (
+                        <button onClick={() => handleEditar(m)} disabled={cargandoEditar === m.id} className="text-accent text-xs font-medium mr-2.5 disabled:opacity-40">
+                          {cargandoEditar === m.id ? "..." : "Editar"}
+                        </button>
+                      )}
+                      <button onClick={() => setAnulando(m)} className="text-red-600 text-xs font-medium">
+                        Eliminar
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {resumenG && (
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5 mb-4">
+            <div className="bg-white border border-neutral-200 border-t-4 border-t-purple-600 rounded-xl p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400 mb-1">📌 Gastos fijos</p>
+              <p className="text-xl font-extrabold text-neutral-900 tabular-nums">${formatearMonto(resumenG.totalFijos)}</p>
+            </div>
+            <div className="bg-white border border-neutral-200 border-t-4 border-t-emerald-600 rounded-xl p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400 mb-1">📈 Gastos variables</p>
+              <p className="text-xl font-extrabold text-neutral-900 tabular-nums">${formatearMonto(resumenG.totalVariables)}</p>
+            </div>
+            <div className="bg-white border border-neutral-200 border-t-4 border-t-red-600 rounded-xl p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400 mb-1">🧾 Pendientes de factura</p>
+              <p className="text-xl font-extrabold text-neutral-900 tabular-nums">{resumenG.pendientesFactura}</p>
+            </div>
+          </div>
+
+          {resumenG.porCategoria.length > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 mb-1">
+              {resumenG.porCategoria.map((c) => {
+                const sobrepresupuesto = c.pctPresupuesto != null && c.pctPresupuesto >= 100;
+                const cercaPresupuesto = c.pctPresupuesto != null && c.pctPresupuesto >= 80 && c.pctPresupuesto < 100;
+                return (
+                  <div
+                    key={c.idCategoria}
+                    className={`border rounded-lg p-3 ${
+                      sobrepresupuesto ? "bg-red-50 border-red-200" : cercaPresupuesto ? "bg-amber-50 border-amber-200" : "bg-white border-neutral-200"
+                    }`}
+                  >
+                    <p className="text-[11px] font-semibold text-neutral-500 mb-1 truncate">{c.nombre}</p>
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="text-sm font-extrabold tabular-nums">${formatearMonto(c.gastado)}</span>
+                      <span className="text-xs font-bold text-accent">{c.pct.toFixed(1)}%</span>
+                    </div>
+                    <div className="h-1 rounded-full bg-neutral-100 mt-2 overflow-hidden">
+                      <span
+                        className={`block h-full ${sobrepresupuesto ? "bg-red-500" : cercaPresupuesto ? "bg-amber-500" : "bg-accent"}`}
+                        style={{ width: `${Math.min(c.pctPresupuesto ?? c.pct, 100)}%` }}
+                      />
+                    </div>
+                    {c.pctPresupuesto != null && (
+                      <p className={`text-[10px] mt-1 font-semibold ${sobrepresupuesto ? "text-red-600" : cercaPresupuesto ? "text-amber-700" : "text-neutral-400"}`}>
+                        {sobrepresupuesto ? "🔴" : cercaPresupuesto ? "⚠" : ""} {Math.round(c.pctPresupuesto)}% del presupuesto (${formatearMonto(c.presupuesto ?? 0)})
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <p className="text-xs text-neutral-400 mb-5">% de gastos sobre el total de gastos del período filtrado.</p>
+
+          <PresupuestosPorCategoriaResumen categorias={categoriasGasto} presupuestos={presupuestos} onGuardado={recargar} />
+        </>
+      )}
+
+      {anulando && (
+        <ModalAnularMovimiento
+          titulo="Eliminar movimiento"
+          descripcion={`${anulando.concepto} — $${formatearMonto(anulando.monto)}`}
+          onConfirmar={async (motivo) => {
+            const res = await anularMovimientoResumen(anulando, motivo);
+            if (!res.error) {
+              setAnulando(null);
+              recargar();
+            }
+            return res;
+          }}
+          onClose={() => setAnulando(null)}
+        />
+      )}
+
+      {gastoEditando && (
+        <ModalEditarGasto
+          gasto={gastoEditando}
+          categorias={categoriasGasto}
+          subcategorias={subcategoriasGasto}
+          puedeAutorizarSinLimite={puedeAutorizarSinLimite}
+          topeAutorizacion={topeAutorizacion}
+          ivaGeneralPorcentaje={ivaGeneralPorcentaje}
+          onClose={() => setGastoEditando(null)}
+          onGuardado={recargar}
+        />
+      )}
+    </div>
+  );
+}
+
+function PresupuestosPorCategoriaResumen({
+  categorias,
+  presupuestos,
+  onGuardado,
+}: {
+  categorias: CategoriaGasto[];
+  presupuestos: Map<string, number>;
+  onGuardado: () => void;
+}) {
+  const [abierto, setAbierto] = useState(false);
+  const [valores, setValores] = useState<Record<string, string>>({});
+  const [guardandoId, setGuardandoId] = useState<string | null>(null);
+
+  function valor(idCategoria: string) {
+    if (valores[idCategoria] !== undefined) return valores[idCategoria];
+    const p = presupuestos.get(idCategoria);
+    return p ? String(p) : "";
+  }
+
+  function handleGuardar(idCategoria: string) {
+    const monto = Number(valor(idCategoria)) || 0;
+    setGuardandoId(idCategoria);
+    guardarPresupuesto(idCategoria, monto)
+      .then(onGuardado)
+      .finally(() => setGuardandoId(null));
+  }
+
+  return (
+    <div className="mb-2">
+      <button type="button" onClick={() => setAbierto((v) => !v)} className="text-xs font-semibold text-accent">
+        {abierto ? "▾" : "▸"} Presupuestos mensuales por categoría de gasto
+      </button>
+      {abierto && (
+        <div className="bg-white border border-neutral-200 rounded-xl p-4 mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          {categorias.map((c) => (
+            <div key={c.id_categoria} className="flex items-center gap-2">
+              <span className="text-sm text-neutral-600 flex-1 truncate">{c.nombre}</span>
+              <input
+                value={valor(c.id_categoria)}
+                onChange={(e) => setValores((v) => ({ ...v, [c.id_categoria]: e.target.value }))}
+                placeholder="$0"
+                className="w-28 border border-neutral-300 rounded-lg px-2 py-1 text-sm text-right"
+              />
+              <button
+                type="button"
+                onClick={() => handleGuardar(c.id_categoria)}
+                disabled={guardandoId === c.id_categoria}
+                className="text-xs font-semibold text-accent disabled:opacity-40"
+              >
+                Guardar
+              </button>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );

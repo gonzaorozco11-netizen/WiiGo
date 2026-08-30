@@ -120,7 +120,7 @@ export async function desactivarCategoria(idCategoria: string): Promise<{ error:
     const supabase = getSupabaseServerClient();
     const { error } = await supabase.from("categorias_gasto").update({ estado: "INACTIVA" }).eq("id_categoria", idCategoria);
     if (error) return { error: friendlyDbError(error) };
-    revalidatePath("/gastos");
+    revalidatePath("/gastos-ingresos");
     return { error: null };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo desactivar la categoría" };
@@ -132,7 +132,7 @@ export async function desactivarSubcategoria(idSubcategoria: string): Promise<{ 
     const supabase = getSupabaseServerClient();
     const { error } = await supabase.from("subcategorias_gasto").update({ estado: "INACTIVA" }).eq("id_subcategoria", idSubcategoria);
     if (error) return { error: friendlyDbError(error) };
-    revalidatePath("/gastos");
+    revalidatePath("/gastos-ingresos");
     return { error: null };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo desactivar la subcategoría" };
@@ -152,7 +152,7 @@ export async function crearCategoriaGasto(nombre: string, tipoDefault: "FIJO" | 
       .from("categorias_gasto")
       .insert({ nombre: nombre.trim(), tipo_default: tipoDefault, estado: "ACTIVA", es_impuestos: esImpuestos });
     if (error) return { error: friendlyDbError(error) };
-    revalidatePath("/gastos");
+    revalidatePath("/gastos-ingresos");
     return { error: null };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo crear la categoría" };
@@ -171,7 +171,7 @@ export async function renombrarCategoriaGasto(idCategoria: string, nombre: strin
       .update({ nombre: nombre.trim(), tipo_default: tipoDefault })
       .eq("id_categoria", idCategoria);
     if (error) return { error: friendlyDbError(error) };
-    revalidatePath("/gastos");
+    revalidatePath("/gastos-ingresos");
     return { error: null };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo actualizar la categoría" };
@@ -184,7 +184,7 @@ export async function crearSubcategoriaGasto(idCategoria: string, nombre: string
     const supabase = getSupabaseServerClient();
     const { error } = await supabase.from("subcategorias_gasto").insert({ id_categoria: idCategoria, nombre: nombre.trim(), estado: "ACTIVA" });
     if (error) return { error: friendlyDbError(error) };
-    revalidatePath("/gastos");
+    revalidatePath("/gastos-ingresos");
     return { error: null };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo crear la subcategoría" };
@@ -197,7 +197,7 @@ export async function renombrarSubcategoriaGasto(idSubcategoria: string, nombre:
     const supabase = getSupabaseServerClient();
     const { error } = await supabase.from("subcategorias_gasto").update({ nombre: nombre.trim() }).eq("id_subcategoria", idSubcategoria);
     if (error) return { error: friendlyDbError(error) };
-    revalidatePath("/gastos");
+    revalidatePath("/gastos-ingresos");
     return { error: null };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo renombrar la subcategoría" };
@@ -217,7 +217,7 @@ export async function aplicarTipoACategoria(idCategoria: string): Promise<{ erro
     .eq("id_categoria", idCategoria)
     .select("id_gasto");
   if (error) return { error: friendlyDbError(error) };
-  revalidatePath("/gastos");
+  revalidatePath("/gastos-ingresos");
   revalidatePath("/resultado-mes");
   return { error: null, actualizados: data?.length ?? 0 };
 }
@@ -379,7 +379,7 @@ export async function crearGasto(formData: FormData): Promise<{ error: string | 
       });
     }
 
-    revalidatePath("/gastos");
+    revalidatePath("/gastos-ingresos");
     revalidatePath("/turnos");
     return { error: null };
   } catch (err) {
@@ -456,7 +456,7 @@ export async function actualizarGasto(idGasto: string, formData: FormData): Prom
       .eq("id_gasto", idGasto);
     if (error) return { error: friendlyDbError(error) };
 
-    revalidatePath("/gastos");
+    revalidatePath("/gastos-ingresos");
     return { error: null };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo actualizar el gasto" };
@@ -488,6 +488,16 @@ export async function listarGastos(filtros: FiltrosGastos) {
   return (data ?? []) as Gasto[];
 }
 
+// Trae un gasto puntual con todos sus campos — se usa al abrir "Editar"
+// desde la tabla unificada de Gastos e Ingresos, que solo tiene la versión
+// resumida (MovimientoUnificado) para mostrar en la lista.
+export async function obtenerGasto(idGasto: string): Promise<Gasto | null> {
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase.from("gastos").select("*").eq("id_gasto", idGasto).maybeSingle();
+  if (error) throw new Error(friendlyDbError(error));
+  return (data as Gasto) ?? null;
+}
+
 // Anula un gasto ya cargado (no lo borra de la base): deja de sumar en
 // Historial, Resumen, Nómina, el Tablero de Resultados y todo lo demás que
 // lea "gastos", pero queda el registro con el motivo por si hay que
@@ -500,7 +510,7 @@ export async function anularGasto(idGasto: string, motivo: string): Promise<{ er
     .update({ anulado: true, motivo_anulacion: motivo.trim(), anulado_en: new Date().toISOString() })
     .eq("id_gasto", idGasto);
   if (error) return { error: friendlyDbError(error) };
-  revalidatePath("/gastos");
+  revalidatePath("/gastos-ingresos");
   revalidatePath("/resultado-mes");
   return { error: null };
 }
@@ -562,7 +572,7 @@ export async function guardarPresupuesto(idCategoria: string, montoMensual: numb
       { onConflict: "id_categoria" }
     );
   if (error) throw new Error(friendlyDbError(error));
-  revalidatePath("/gastos");
+  revalidatePath("/gastos-ingresos");
 }
 
 export async function listarPresupuestos() {
@@ -607,7 +617,7 @@ export async function crearRecurrente(formData: FormData): Promise<{ error: stri
       activo: true,
     });
     if (error) return { error: friendlyDbError(error) };
-    revalidatePath("/gastos");
+    revalidatePath("/gastos-ingresos");
     return { error: null };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo crear el gasto recurrente" };
@@ -663,7 +673,7 @@ export async function cargarRecurrente(idRecurrente: string, montoConfirmadoNeto
   }
 
   await supabase.from("gastos_recurrentes").update({ ultimo_mes_cargado: mesActual }).eq("id_recurrente", idRecurrente);
-  revalidatePath("/gastos");
+  revalidatePath("/gastos-ingresos");
 }
 
 // Nómina simplificada: sueldo base (en usuarios.sueldo_base) menos la
@@ -772,7 +782,7 @@ export async function registrarMovimientoCajaAdmin(
       usuario: sesion?.nombre ?? null,
     });
     if (error) return { error: friendlyDbError(error) };
-    revalidatePath("/gastos");
+    revalidatePath("/gastos-ingresos");
     return { error: null };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo registrar el movimiento" };
