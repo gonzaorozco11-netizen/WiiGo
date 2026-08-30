@@ -13,7 +13,7 @@ export const PANTALLAS_DISPONIBLES: PantallaDisponible[] = [
   { clave: "catalogo-asesor", label: "Catálogo asesor", grupo: "Catálogo" },
   { clave: "stock", label: "Stock", grupo: "Stock" },
   { clave: "reposicion", label: "Abastecimiento", grupo: "Stock" },
-  { clave: "pos", label: "Vender", grupo: "Operaciones" },
+  { clave: "pos", label: "POS", grupo: "Operaciones" },
   { clave: "ventas", label: "Ventas", grupo: "Operaciones" },
   { clave: "cobros-efectivo", label: "Cobros en efectivo", grupo: "Operaciones" },
   { clave: "turnos", label: "Turnos", grupo: "Operaciones" },
