@@ -7,6 +7,7 @@ export default function FichaAsistenciaApp() {
   const [estado, setEstado] = useState<EstadoFicha | null>(null);
   const [cargando, setCargando] = useState(true);
   const [fichando, setFichando] = useState(false);
+  const [confirmando, setConfirmando] = useState(false);
   const [resultado, setResultado] = useState<ResultadoFichaje | null>(null);
 
   function recargar() {
@@ -20,6 +21,7 @@ export default function FichaAsistenciaApp() {
 
   function handleFichar() {
     if (!estado) return;
+    setConfirmando(false);
     setFichando(true);
     fichar(estado.siguienteTipo)
       .then((res) => {
@@ -82,6 +84,8 @@ export default function FichaAsistenciaApp() {
     );
   }
 
+  const esEntrada = estado?.siguienteTipo === "ENTRADA";
+
   return (
     <div className="max-w-md mx-auto text-center py-16">
       {resultado?.error && <p className="text-sm text-red-600 mb-4">{resultado.error}</p>}
@@ -89,14 +93,30 @@ export default function FichaAsistenciaApp() {
         {new Date().toLocaleString("es-AR", { weekday: "long", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
       </p>
       <h1 className="text-xl font-bold text-neutral-900 mb-8">Hola, {estado?.persona?.nombre} 👋</h1>
+
+      {confirmando && (
+        <p className={`text-sm font-semibold rounded-lg px-3 py-2 mb-4 ${esEntrada ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+          ¿Fichar {esEntrada ? "entrada" : "salida"}? Tocá de nuevo para confirmar.
+        </p>
+      )}
+
       <button
-        onClick={handleFichar}
+        onClick={() => (confirmando ? handleFichar() : setConfirmando(true))}
         disabled={fichando}
-        className="w-44 h-44 rounded-full bg-gradient-to-br from-accent to-accent-dark text-white font-bold text-sm mx-auto flex flex-col items-center justify-center gap-1.5 shadow-lg disabled:opacity-60"
+        className={`w-44 h-44 rounded-full text-white font-bold text-sm mx-auto flex flex-col items-center justify-center gap-1.5 shadow-lg disabled:opacity-60 ${
+          esEntrada ? "bg-gradient-to-br from-emerald-500 to-emerald-700" : "bg-gradient-to-br from-amber-500 to-amber-700"
+        } ${confirmando ? "ring-4 ring-offset-2 " + (esEntrada ? "ring-emerald-300" : "ring-amber-300") : ""}`}
       >
-        <span className="text-4xl">🕐</span>
-        {fichando ? "Fichando..." : estado?.siguienteTipo === "ENTRADA" ? "Fichar entrada" : "Fichar salida"}
+        <span className="text-4xl">{esEntrada ? "🚪" : "🚶"}</span>
+        {fichando ? "Fichando..." : confirmando ? "Confirmar" : esEntrada ? "Fichar entrada" : "Fichar salida"}
       </button>
+
+      {confirmando && !fichando && (
+        <button onClick={() => setConfirmando(false)} className="block mx-auto mt-4 text-xs font-semibold text-neutral-400 hover:text-neutral-600">
+          Cancelar
+        </button>
+      )}
+
       {estado?.horario ? (
         <p className="text-xs text-neutral-400 mt-8 bg-neutral-50 border border-neutral-200 rounded-lg inline-block px-3 py-2">
           Tu horario: {estado.horario.hora_entrada.slice(0, 5)} (tolerancia {estado.horario.tolerancia_minutos} min)
