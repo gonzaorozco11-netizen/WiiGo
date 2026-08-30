@@ -20,6 +20,7 @@ import {
   subirFotoPersona,
   type PersonaConPuestos,
 } from "@/app/(app)/organizacion/actions";
+import ModalLegajo from "@/components/ModalLegajo";
 
 const TIPOS_PERSONA: Record<string, string> = {
   SOCIO: "Socio",
@@ -151,6 +152,7 @@ function TabPersonas({
   onCambio: () => void;
 }) {
   const [modal, setModal] = useState<"nueva" | PersonaConPuestos | null>(null);
+  const [modalLegajo, setModalLegajo] = useState<PersonaConPuestos | null>(null);
   const localPorId = new Map(locales.map((l) => [l.id_local, l.nombre]));
   const personaPorId = new Map(personas.map((p) => [p.id_persona, p]));
 
@@ -217,6 +219,9 @@ function TabPersonas({
                     </span>
                   </td>
                   <td className="p-3 text-right whitespace-nowrap">
+                    <button onClick={() => setModalLegajo(p)} className="text-sm text-accent hover:underline mr-3">
+                      Ver legajo
+                    </button>
                     <button onClick={() => setModal(p)} className="text-sm text-accent hover:underline mr-3">
                       Editar
                     </button>
@@ -246,6 +251,14 @@ function TabPersonas({
             setModal(null);
             onCambio();
           }}
+        />
+      )}
+
+      {modalLegajo && (
+        <ModalLegajo
+          persona={modalLegajo}
+          onClose={() => setModalLegajo(null)}
+          onGuardado={onCambio}
         />
       )}
     </div>

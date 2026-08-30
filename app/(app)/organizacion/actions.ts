@@ -178,6 +178,12 @@ export type PersonaConPuestos = {
   foto_url: string | null;
   estado: string;
   fecha_alta: string;
+  dni: string | null;
+  cuil: string | null;
+  fecha_nacimiento: string | null;
+  domicilio: string | null;
+  fecha_ingreso: string | null;
+  convenio_colectivo: string | null;
   asignaciones: { idPuesto: string; nombrePuesto: string; idArea: string; nombreArea: string; esPrincipal: boolean }[];
 };
 
@@ -362,5 +368,123 @@ export async function subirFotoPersona(idPersona: string, formData: FormData): P
     return { error: null, url: data.publicUrl };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo subir la foto" };
+  }
+}
+
+// ===================== LEGAJO (RR.HH. — Fase 1) =====================
+
+export type DocumentoLegajo = {
+  id_documento: string;
+  id_persona: string;
+  tipo: string;
+  nombre_archivo: string;
+  path: string;
+  usuario: string | null;
+  fecha_subida: string;
+};
+
+// Datos sensibles del legajo — aparte de la edición rápida de Organización
+// (nombre/área/puesto), para no mezclar el día a día con el papeleo legal.
+export async function actualizarLegajo(idPersona: string, formData: FormData): Promise<{ error: string | null }> {
+  const permisoError = await requireAcceso();
+  if (permisoError) return { error: permisoError };
+
+  try {
+    const supabase = getSupabaseServerClient();
+    const { error } = await supabase
+      .from("personas")
+      .update({
+        dni: text(formData, "dni"),
+        cuil: text(formData, "cuil"),
+        fecha_nacimiento: text(formData, "fecha_nacimiento"),
+        domicilio: text(formData, "domicilio"),
+        fecha_ingreso: text(formData, "fecha_ingreso"),
+        convenio_colectivo: text(formData, "convenio_colectivo"),
+      })
+      .eq("id_persona", idPersona);
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/organizacion");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo actualizar el legajo" };
+  }
+}
+
+export async function listarDocumentosLegajo(idPersona: string): Promise<DocumentoLegajo[]> {
+  const permisoError = await requireAcceso();
+  if (permisoError) throw new Error(permisoError);
+
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("documentos_legajo")
+    .select("*")
+    .eq("id_persona", idPersona)
+    .order("fecha_subida", { ascending: false });
+  if (error) throw new Error(friendlyDbError(error));
+  return (data ?? []) as DocumentoLegajo[];
+}
+
+// Bucket privado (a diferencia de la foto de perfil): DNI, apto médico, CBU
+// y contrato son datos sensibles, no algo para mostrar en pantallas
+// públicas — se accede siempre con URL firmada, nunca URL pública.
+export async function subirDocumentoLegajo(idPersona: string, tipo: string, formData: FormData): Promise<{ error: string | null }> {
+  const permisoError = await requireAcceso();
+  if (permisoError) return { error: permisoError };
+
+  const archivo = formData.get("archivo") as File | null;
+  if (!archivo || archivo.size === 0) return { error: "Elegí un archivo primero" };
+
+  try {
+    const supabase = getSupabaseServerClient();
+    const sesion = await obtenerSesionConPantallas();
+    const extension = archivo.name.split(".").pop() ?? "pdf";
+    const path = `${idPersona}/${tipo}-${Date.now()}.${extension}`;
+
+    const { error: errorUpload } = await supabase.storage
+      .from("documentos-legajo")
+      .upload(path, archivo, { contentType: archivo.type || undefined });
+    if (errorUpload) return { error: errorUpload.message };
+
+    const { error } = await supabase.from("documentos_legajo").insert({
+      id_persona: idPersona,
+      tipo,
+      nombre_archivo: archivo.name,
+      path,
+      usuario: sesion?.nombre ?? null,
+    });
+    if (error) return { error: friendlyDbError(error) };
+
+    revalidatePath("/organizacion");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo subir el documento" };
+  }
+}
+
+export async function obtenerUrlDocumentoLegajo(path: string): Promise<string> {
+  const permisoError = await requireAcceso();
+  if (permisoError) throw new Error(permisoError);
+
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase.storage.from("documentos-legajo").createSignedUrl(path, 60 * 10);
+  if (error) throw new Error(error.message);
+  return data.signedUrl;
+}
+
+// Se guarda el historial completo a propósito (ver project RR.HH.) — esto
+// es solo para sacar un archivo subido por error, no un reemplazo normal.
+export async function eliminarDocumentoLegajo(idDocumento: string, path: string): Promise<{ error: string | null }> {
+  const permisoError = await requireAcceso();
+  if (permisoError) return { error: permisoError };
+
+  try {
+    const supabase = getSupabaseServerClient();
+    await supabase.storage.from("documentos-legajo").remove([path]);
+    const { error } = await supabase.from("documentos_legajo").delete().eq("id_documento", idDocumento);
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/organizacion");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo eliminar el documento" };
   }
 }
