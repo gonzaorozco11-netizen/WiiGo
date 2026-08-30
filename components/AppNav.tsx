@@ -27,11 +27,19 @@ const GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: "Ventas",
+    label: "Operaciones",
     items: [
       { href: "/pos", label: "Vender" },
-      { href: "/ventas", label: "Transacciones" },
+      { href: "/ventas", label: "Ventas" },
       { href: "/cobros-efectivo", label: "Cobros en efectivo" },
+      { href: "/turnos", label: "Turnos" },
+      { href: "/gastos-ingresos", label: "Gastos e Ingresos" },
+      { href: "/gastos", label: "Resumen de Gastos" },
+    ],
+  },
+  {
+    label: "Base de Datos",
+    items: [
       { href: "/clientes", label: "Clientes" },
       { href: "/profesionales", label: "Profesionales" },
     ],
@@ -48,10 +56,8 @@ const GROUPS: NavGroup[] = [
     label: "Finanzas",
     items: [
       { href: "/dashboard", label: "Dashboard" },
-      { href: "/gastos", label: "Resumen de Gastos" },
-      { href: "/gastos-ingresos", label: "Gastos e Ingresos" },
       { href: "/resumen-ventas", label: "Resumen de ventas" },
-      { href: "/resultado-mes", label: "Resultado del mes" },
+      { href: "/resultado-mes", label: "Estado de Resultados" },
       { href: "/rentabilidad", label: "Rentabilidad" },
     ],
   },
@@ -60,9 +66,16 @@ const GROUPS: NavGroup[] = [
     items: [{ href: "/iva-a-pagar", label: "IVA a pagar" }],
   },
   {
+    label: "Tesorería",
+    items: [{ href: "/tesoreria", label: "Caja Administración" }],
+  },
+  {
+    label: "RR.HH.",
+    items: [{ href: "/rrhh", label: "Nómina" }],
+  },
+  {
     label: "Local",
     items: [
-      { href: "/turnos", label: "Turnos" },
       { href: "/locales", label: "Locales" },
       { href: "/pantallas", label: "Pantallas" },
     ],
@@ -83,7 +96,17 @@ function clave(href: string) {
   return href.replace(/^\//, "");
 }
 
-export default function AppNav({ pantallas, esAdmin }: { pantallas: string[] | null; esAdmin: boolean }) {
+export default function AppNav({
+  pantallas,
+  esAdmin,
+  puedeVerCajaAdmin,
+  puedeGestionarNomina,
+}: {
+  pantallas: string[] | null;
+  esAdmin: boolean;
+  puedeVerCajaAdmin: boolean;
+  puedeGestionarNomina: boolean;
+}) {
   const pathname = usePathname();
   const [abierto, setAbierto] = useState<string | null>(null);
   const navRef = useRef<HTMLElement>(null);
@@ -91,9 +114,15 @@ export default function AppNav({ pantallas, esAdmin }: { pantallas: string[] | n
   // pantallas === null: sin restricción, ve todo el menú (Dueño, o un
   // operativo sin rol asignado todavía — nunca arrancar a nadie en blanco).
   const puedeVer = (href: string) => pantallas === null || pantallas.includes(clave(href));
-  const grupos = GROUPS.map((g) => ({ ...g, items: g.items.filter((i) => puedeVer(i.href)) })).filter(
-    (g) => g.items.length > 0
-  );
+  // Tesorería y RR.HH. no son pantallas del catálogo general — se filtran
+  // por los permisos puntuales que llegan desde el layout, no por "pantallas".
+  const grupos = GROUPS
+    .map((g) => {
+      if (g.label === "Tesorería") return { ...g, items: puedeVerCajaAdmin ? g.items : [] };
+      if (g.label === "RR.HH.") return { ...g, items: puedeGestionarNomina ? g.items : [] };
+      return { ...g, items: g.items.filter((i) => puedeVer(i.href)) };
+    })
+    .filter((g) => g.items.length > 0);
 
   // Cerrar el desplegable al hacer click afuera o al navegar.
   useEffect(() => {

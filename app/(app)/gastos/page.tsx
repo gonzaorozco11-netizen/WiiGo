@@ -35,8 +35,6 @@ export default async function GastosPage() {
       turnosAbiertos={turnosAbiertosRes.data ?? []}
       categoriasIniciales={categorias}
       subcategoriasIniciales={subcategorias}
-      puedeVerCajaAdmin={tienePermiso(sesion, PERMISOS.VER_CAJA_ADMIN)}
-      puedeGestionarNomina={tienePermiso(sesion, PERMISOS.GESTIONAR_NOMINA)}
       puedeAutorizarSinLimite={tienePermiso(sesion, PERMISOS.AUTORIZAR_GASTOS_SIN_LIMITE)}
       topeAutorizacion={Number(configRes.data?.valor ?? 10000)}
       ivaGeneralPorcentaje={Number(ivaRes.data?.valor ?? 21)}

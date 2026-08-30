@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 import { logout } from "@/app/login/actions";
 import { obtenerSesionConPantallas } from "@/lib/roles";
+import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos";
 import AppNav from "@/components/AppNav";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -11,6 +12,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // Se busca fresco en la base (no en la cookie) para que un rol nuevo o
   // recién cambiado pegue al toque, sin esperar a que la persona reloguee.
   const sesionConPantallas = await obtenerSesionConPantallas();
+  // Tesorería y RR.HH. no son "pantallas" del catálogo general — se
+  // muestran según los mismos permisos puntuales que ya controlaban estas
+  // pestañas dentro de Gastos (ver project-wiigo-permisos).
+  const sesionPermisos = await obtenerSesionConPermisos();
+  const puedeVerCajaAdmin = tienePermiso(sesionPermisos, PERMISOS.VER_CAJA_ADMIN);
+  const puedeGestionarNomina = tienePermiso(sesionPermisos, PERMISOS.GESTIONAR_NOMINA);
 
   return (
     <div className="min-h-screen bg-neutral-50">
@@ -18,7 +25,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <div className="max-w-6xl mx-auto px-4 py-4 flex flex-wrap items-center justify-between gap-4">
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
             <span className="text-lg font-semibold text-neutral-900">WiiGo</span>
-            <AppNav pantallas={sesionConPantallas?.pantallas ?? null} esAdmin={session?.rol === "admin"} />
+            <AppNav
+              pantallas={sesionConPantallas?.pantallas ?? null}
+              esAdmin={session?.rol === "admin"}
+              puedeVerCajaAdmin={puedeVerCajaAdmin}
+              puedeGestionarNomina={puedeGestionarNomina}
+            />
           </div>
           <div className="flex items-center gap-3">
             {session && (

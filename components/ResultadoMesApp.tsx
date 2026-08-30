@@ -86,7 +86,7 @@ export default function ResultadoMesApp() {
   if (cargando || !datos) {
     return (
       <div className="max-w-2xl">
-        <h1 className="text-lg font-semibold text-neutral-900 mb-5">Tablero de Resultados</h1>
+        <h1 className="text-lg font-semibold text-neutral-900 mb-5">Estado de Resultados</h1>
         <p className="text-sm text-neutral-400 text-center py-12">Calculando...</p>
       </div>
     );
@@ -139,7 +139,7 @@ export default function ResultadoMesApp() {
   return (
     <div className="max-w-2xl">
       <div className="flex items-start justify-between gap-4 flex-wrap mb-1">
-        <h1 className="text-lg font-semibold text-neutral-900">Tablero de Resultados</h1>
+        <h1 className="text-lg font-semibold text-neutral-900">Estado de Resultados</h1>
         <div className="flex items-center gap-1 bg-white border border-neutral-200 rounded-lg px-1 py-1 shadow-sm">
           <button onClick={() => setPeriodo((p) => sumarMes(p, -1))} className="px-2 py-1 text-neutral-400 hover:text-neutral-700 font-medium">
             ‹
