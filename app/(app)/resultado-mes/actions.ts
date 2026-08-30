@@ -320,7 +320,11 @@ async function calcularTableroEnVivo(periodo: string): Promise<TableroSupuesto> 
 export async function calcularTablero(periodo: string): Promise<TableroResultados> {
   const supabase = getSupabaseServerClient();
   const { data: cierre } = await supabase.from("cierres_resultado_mes").select("*").eq("periodo", periodo).maybeSingle();
-  const cerrado = cierre?.estado === "CERRADO";
+  // Si el cierre quedó sin "snapshot" (por ejemplo, un cierre viejo de antes
+  // de que existiera esta columna), se trata como si el mes siguiera
+  // abierto en vez de romper la pantalla — mejor mostrar el estimado que
+  // no mostrar nada.
+  const cerrado = cierre?.estado === "CERRADO" && cierre?.snapshot != null;
 
   if (!cerrado) {
     const supuesto = await calcularTableroEnVivo(periodo);
