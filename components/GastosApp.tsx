@@ -1452,6 +1452,7 @@ function TabCategorias({
 
       {!mostrarNueva ? (
         <button
+          type="button"
           onClick={() => setMostrarNueva(true)}
           className="bg-accent hover:bg-accent-dark text-white font-medium px-3.5 py-1.5 rounded-lg text-sm mb-3.5"
         >
@@ -1463,6 +1464,7 @@ function TabCategorias({
             autoFocus
             value={nombreNueva}
             onChange={(e) => setNombreNueva(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && guardarNuevaCategoria()}
             placeholder="Nombre de la categoría"
             className="flex-1 min-w-[160px] border border-neutral-300 rounded-md px-2.5 py-1.5 text-sm"
           />
@@ -1474,10 +1476,11 @@ function TabCategorias({
             <option value="VARIABLE">Variable</option>
             <option value="FIJO">Fijo</option>
           </select>
-          <button onClick={guardarNuevaCategoria} disabled={guardando} className="bg-accent text-white text-xs font-bold px-3 py-1.5 rounded-md disabled:opacity-50">
+          <button type="button" onClick={guardarNuevaCategoria} disabled={guardando} className="bg-accent text-white text-xs font-bold px-3 py-1.5 rounded-md disabled:opacity-50">
             Guardar
           </button>
           <button
+            type="button"
             onClick={() => {
               setMostrarNueva(false);
               setNombreNueva("");
@@ -1501,25 +1504,36 @@ function TabCategorias({
               <div key={c.id_categoria} className="border-b border-neutral-100 last:border-0">
                 <div className="flex items-center justify-between px-4 py-3 gap-3">
                   {editando === c.id_categoria ? (
-                    <input
-                      autoFocus
-                      value={valorEdit}
-                      onChange={(e) => setValorEdit(e.target.value)}
-                      onBlur={() => guardarRenombreCategoria(c)}
-                      onKeyDown={(e) => e.key === "Enter" && guardarRenombreCategoria(c)}
-                      className="text-sm font-bold border border-accent rounded-md px-2 py-1 flex-1"
-                    />
+                    <div className="flex items-center gap-1.5 flex-1">
+                      <input
+                        autoFocus
+                        value={valorEdit}
+                        onChange={(e) => setValorEdit(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") guardarRenombreCategoria(c);
+                          if (e.key === "Escape") setEditando(null);
+                        }}
+                        className="text-sm font-bold border border-accent rounded-md px-2 py-1 flex-1"
+                      />
+                      <button type="button" onClick={() => guardarRenombreCategoria(c)} disabled={guardando} className="text-[11px] font-bold text-accent px-1.5">
+                        Guardar
+                      </button>
+                      <button type="button" onClick={() => setEditando(null)} className="text-[11px] text-neutral-400 px-1">
+                        Cancelar
+                      </button>
+                    </div>
                   ) : (
                     <button
+                      type="button"
                       onClick={() => {
                         setEditando(c.id_categoria);
                         setValorEdit(c.nombre);
                       }}
-                      className="text-sm font-bold text-neutral-900 text-left hover:text-accent"
+                      className="text-sm font-bold text-neutral-900 text-left hover:text-accent underline decoration-dotted decoration-neutral-300 underline-offset-4"
                       title="Tocar para renombrar"
                     >
                       {c.nombre}
-                      <span className="text-xs font-medium text-neutral-400 ml-2">
+                      <span className="text-xs font-medium text-neutral-400 ml-2 no-underline">
                         {subs.length} {subs.length === 1 ? "subcategoría" : "subcategorías"}
                         {(conteo.porCategoria[c.id_categoria] ?? 0) > 0 && (
                           <> · {conteo.porCategoria[c.id_categoria]} {conteo.porCategoria[c.id_categoria] === 1 ? "gasto" : "gastos"}</>
@@ -1528,6 +1542,7 @@ function TabCategorias({
                     </button>
                   )}
                   <button
+                    type="button"
                     onClick={() => handleDesactivarCategoria(c)}
                     disabled={desactivandoId === c.id_categoria}
                     className="text-[11px] font-bold text-red-600 bg-red-50 border border-red-600 rounded-lg px-2.5 py-1 disabled:opacity-40 whitespace-nowrap"
@@ -1539,32 +1554,44 @@ function TabCategorias({
                   {subs.map((s) => (
                     <div key={s.id_subcategoria} className="flex items-center justify-between gap-3 text-xs text-neutral-600 border-t border-dashed border-neutral-100 pt-1.5 first:border-0 first:pt-0">
                       {editando === s.id_subcategoria ? (
-                        <input
-                          autoFocus
-                          value={valorEdit}
-                          onChange={(e) => setValorEdit(e.target.value)}
-                          onBlur={() => guardarRenombreSubcategoria(s)}
-                          onKeyDown={(e) => e.key === "Enter" && guardarRenombreSubcategoria(s)}
-                          className="border border-accent rounded-md px-2 py-0.5 text-xs flex-1"
-                        />
+                        <div className="flex items-center gap-1.5 flex-1">
+                          <input
+                            autoFocus
+                            value={valorEdit}
+                            onChange={(e) => setValorEdit(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") guardarRenombreSubcategoria(s);
+                              if (e.key === "Escape") setEditando(null);
+                            }}
+                            className="border border-accent rounded-md px-2 py-0.5 text-xs flex-1"
+                          />
+                          <button type="button" onClick={() => guardarRenombreSubcategoria(s)} disabled={guardando} className="text-[10.5px] font-bold text-accent px-1">
+                            Guardar
+                          </button>
+                          <button type="button" onClick={() => setEditando(null)} className="text-[10.5px] text-neutral-400 px-1">
+                            Cancelar
+                          </button>
+                        </div>
                       ) : (
                         <button
+                          type="button"
                           onClick={() => {
                             setEditando(s.id_subcategoria);
                             setValorEdit(s.nombre);
                           }}
-                          className="text-left hover:text-accent"
+                          className="text-left hover:text-accent underline decoration-dotted decoration-neutral-300 underline-offset-4"
                           title="Tocar para renombrar"
                         >
                           {s.nombre}
                           {(conteo.porSubcategoria[s.id_subcategoria] ?? 0) > 0 && (
-                            <span className="text-neutral-400 ml-1.5">
+                            <span className="text-neutral-400 ml-1.5 no-underline">
                               · {conteo.porSubcategoria[s.id_subcategoria]} {conteo.porSubcategoria[s.id_subcategoria] === 1 ? "gasto" : "gastos"}
                             </span>
                           )}
                         </button>
                       )}
                       <button
+                        type="button"
                         onClick={() => handleDesactivarSubcategoria(s)}
                         disabled={desactivandoId === s.id_subcategoria}
                         className="text-[10.5px] font-bold text-red-600 bg-red-50 border border-red-600 rounded-lg px-2 py-0.5 disabled:opacity-40 whitespace-nowrap"
@@ -1584,6 +1611,7 @@ function TabCategorias({
                         className="flex-1 border border-neutral-300 rounded-md px-2 py-1 text-xs"
                       />
                       <button
+                        type="button"
                         onClick={() => guardarNuevaSubcategoria(c.id_categoria)}
                         disabled={guardando}
                         className="text-[11px] font-bold text-accent disabled:opacity-50"
@@ -1591,6 +1619,7 @@ function TabCategorias({
                         Agregar
                       </button>
                       <button
+                        type="button"
                         onClick={() => {
                           setAgregandoSubDe(null);
                           setNombreNuevaSub("");
@@ -1602,6 +1631,7 @@ function TabCategorias({
                     </div>
                   ) : (
                     <button
+                      type="button"
                       onClick={() => setAgregandoSubDe(c.id_categoria)}
                       className="text-[11px] font-bold text-accent pt-1"
                     >
