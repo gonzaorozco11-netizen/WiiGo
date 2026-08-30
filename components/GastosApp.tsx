@@ -28,14 +28,13 @@ import {
   listarSubcategorias,
   contarGastosPorCategoria,
   aplicarTipoACategoria,
-  aplicarTipoASubcategoria,
   anularGasto,
 } from "@/app/(app)/gastos/actions";
 import { actualizarSueldoBase } from "@/app/(app)/usuarios/actions";
 import ModalAnularMovimiento from "@/components/ModalAnularMovimiento";
 
 type CategoriaGasto = { id_categoria: string; nombre: string; tipo_default: string; estado: string; fecha_alta: string };
-type SubcategoriaGasto = { id_subcategoria: string; id_categoria: string; nombre: string; estado: string; tipo_default: string };
+type SubcategoriaGasto = { id_subcategoria: string; id_categoria: string; nombre: string; estado: string };
 type UsuarioMin = { id_usuario: string; nombre: string; sueldo_base: number | null };
 type TurnoAbiertoMin = { id_turno: string; id_local: string };
 type Resumen = {
@@ -557,10 +556,9 @@ function FormNuevoGasto({
   const nombreSubSeleccionada = idSubcategoria === "__nueva__" ? nuevaSubcategoria : subDisponibles.find((s) => s.id_subcategoria === idSubcategoria)?.nombre ?? "";
   const mostrarAdelanto = nombreSubSeleccionada.toLowerCase().includes("adelanto");
   // Solo informativo: el tipo real lo define el servidor a partir de la
-  // categoría/subcategoría elegida — acá se muestra lo que va a quedar.
-  const subSeleccionada = subDisponibles.find((s) => s.id_subcategoria === idSubcategoria);
+  // categoría elegida — acá se muestra lo que va a quedar.
   const categoriaSeleccionada = categorias.find((c) => c.id_categoria === idCategoria);
-  const tipoResultante = subSeleccionada?.tipo_default ?? categoriaSeleccionada?.tipo_default ?? "VARIABLE";
+  const tipoResultante = categoriaSeleccionada?.tipo_default ?? "VARIABLE";
   const turnoAbiertoDelLocal = turnosAbiertos.find((t) => t.id_local === idLocal);
   const montoNum = Number(monto.replace(/[^\d.-]/g, "")) || 0;
   const montoConIva = Math.round(montoNum * (1 + ivaGeneralPorcentaje / 100) * 100) / 100;
@@ -1345,7 +1343,6 @@ function TabCategorias({
   const [tipoNueva, setTipoNueva] = useState<"VARIABLE" | "FIJO">("VARIABLE");
   const [agregandoSubDe, setAgregandoSubDe] = useState<string | null>(null);
   const [nombreNuevaSub, setNombreNuevaSub] = useState("");
-  const [tipoNuevaSub, setTipoNuevaSub] = useState<"VARIABLE" | "FIJO">("VARIABLE");
   const [guardando, setGuardando] = useState(false);
   const [conteo, setConteo] = useState<{ porCategoria: Record<string, number>; porSubcategoria: Record<string, number> }>({
     porCategoria: {},
@@ -1408,14 +1405,13 @@ function TabCategorias({
   function guardarNuevaSubcategoria(idCategoria: string) {
     if (!nombreNuevaSub.trim()) return;
     setGuardando(true);
-    crearSubcategoriaGasto(idCategoria, nombreNuevaSub, tipoNuevaSub)
+    crearSubcategoriaGasto(idCategoria, nombreNuevaSub)
       .then((res) => {
         if (res.error) alert(res.error);
         else {
           onCambio();
           setAgregandoSubDe(null);
           setNombreNuevaSub("");
-          setTipoNuevaSub("VARIABLE");
         }
       })
       .finally(() => setGuardando(false));
@@ -1430,18 +1426,6 @@ function TabCategorias({
     );
     if (!ok) return;
     aplicarTipoACategoria(c.id_categoria).then((res) => {
-      if (res.error) alert(res.error);
-      else onCambio();
-    });
-  }
-
-  function preguntarAplicarASubcategoria(s: SubcategoriaGasto, tipoNuevo: "FIJO" | "VARIABLE") {
-    const cantidad = conteo.porSubcategoria[s.id_subcategoria] ?? 0;
-    if (cantidad === 0) return;
-    const etiqueta = tipoNuevo === "FIJO" ? "Fijo" : "Variable";
-    const ok = confirm(`Ya cargaste ${cantidad} ${cantidad === 1 ? "gasto" : "gastos"} con "${s.nombre}". ¿Marcarlos también como ${etiqueta} ahora?`);
-    if (!ok) return;
-    aplicarTipoASubcategoria(s.id_subcategoria).then((res) => {
       if (res.error) alert(res.error);
       else onCambio();
     });
@@ -1471,23 +1455,17 @@ function TabCategorias({
   }
 
   function guardarRenombreSubcategoria(s: SubcategoriaGasto) {
-    if (!valorEdit.trim()) {
-      setEditando(null);
-      return;
-    }
-    const tipoCambio = valorTipoEdit !== s.tipo_default;
-    if (valorEdit === s.nombre && !tipoCambio) {
+    if (!valorEdit.trim() || valorEdit === s.nombre) {
       setEditando(null);
       return;
     }
     setGuardando(true);
-    renombrarSubcategoriaGasto(s.id_subcategoria, valorEdit, valorTipoEdit)
+    renombrarSubcategoriaGasto(s.id_subcategoria, valorEdit)
       .then((res) => {
         if (res.error) alert(res.error);
         else {
           onCambio();
           setEditando(null);
-          if (tipoCambio) preguntarAplicarASubcategoria(s, valorTipoEdit);
         }
       })
       .finally(() => setGuardando(false));
@@ -1616,7 +1594,7 @@ function TabCategorias({
                   {subs.map((s) => (
                     <div key={s.id_subcategoria} className="flex items-center justify-between gap-3 text-xs text-neutral-600 border-t border-dashed border-neutral-100 pt-1.5 first:border-0 first:pt-0">
                       {editando === s.id_subcategoria ? (
-                        <div className="flex items-center gap-1.5 flex-1 flex-wrap">
+                        <div className="flex items-center gap-1.5 flex-1">
                           <input
                             autoFocus
                             value={valorEdit}
@@ -1625,16 +1603,8 @@ function TabCategorias({
                               if (e.key === "Enter") guardarRenombreSubcategoria(s);
                               if (e.key === "Escape") setEditando(null);
                             }}
-                            className="border border-accent rounded-md px-2 py-0.5 text-xs flex-1 min-w-[100px]"
+                            className="border border-accent rounded-md px-2 py-0.5 text-xs flex-1"
                           />
-                          <select
-                            value={valorTipoEdit}
-                            onChange={(e) => setValorTipoEdit(e.target.value as "FIJO" | "VARIABLE")}
-                            className="border border-accent rounded-md px-1 py-0.5 text-[10.5px]"
-                          >
-                            <option value="VARIABLE">Variable</option>
-                            <option value="FIJO">Fijo</option>
-                          </select>
                           <button type="button" onClick={() => guardarRenombreSubcategoria(s)} disabled={guardando} className="text-[10.5px] font-bold text-accent px-1">
                             Guardar
                           </button>
@@ -1648,15 +1618,11 @@ function TabCategorias({
                           onClick={() => {
                             setEditando(s.id_subcategoria);
                             setValorEdit(s.nombre);
-                            setValorTipoEdit(s.tipo_default === "FIJO" ? "FIJO" : "VARIABLE");
                           }}
                           className="text-left hover:text-accent underline decoration-dotted decoration-neutral-300 underline-offset-4"
                           title="Tocar para renombrar"
                         >
                           {s.nombre}
-                          <span className={`text-[9.5px] font-bold ml-1.5 px-1 py-0.5 rounded-full no-underline ${s.tipo_default === "FIJO" ? "bg-purple-100 text-purple-700" : "bg-accent-tint text-accent-dark"}`}>
-                            {s.tipo_default === "FIJO" ? "Fijo" : "Variable"}
-                          </span>
                           {(conteo.porSubcategoria[s.id_subcategoria] ?? 0) > 0 && (
                             <span className="text-neutral-400 ml-1.5 no-underline">
                               · {conteo.porSubcategoria[s.id_subcategoria]} {conteo.porSubcategoria[s.id_subcategoria] === 1 ? "gasto" : "gastos"}
@@ -1675,23 +1641,15 @@ function TabCategorias({
                     </div>
                   ))}
                   {agregandoSubDe === c.id_categoria ? (
-                    <div className="flex items-center gap-1.5 pt-1.5 border-t border-dashed border-neutral-100 flex-wrap">
+                    <div className="flex items-center gap-1.5 pt-1.5 border-t border-dashed border-neutral-100">
                       <input
                         autoFocus
                         value={nombreNuevaSub}
                         onChange={(e) => setNombreNuevaSub(e.target.value)}
                         onKeyDown={(e) => e.key === "Enter" && guardarNuevaSubcategoria(c.id_categoria)}
                         placeholder="Nueva subcategoría..."
-                        className="flex-1 min-w-[100px] border border-neutral-300 rounded-md px-2 py-1 text-xs"
+                        className="flex-1 border border-neutral-300 rounded-md px-2 py-1 text-xs"
                       />
-                      <select
-                        value={tipoNuevaSub}
-                        onChange={(e) => setTipoNuevaSub(e.target.value as "VARIABLE" | "FIJO")}
-                        className="border border-neutral-300 rounded-md px-1 py-1 text-[10.5px]"
-                      >
-                        <option value="VARIABLE">Variable</option>
-                        <option value="FIJO">Fijo</option>
-                      </select>
                       <button
                         type="button"
                         onClick={() => guardarNuevaSubcategoria(c.id_categoria)}
@@ -1712,14 +1670,7 @@ function TabCategorias({
                       </button>
                     </div>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAgregandoSubDe(c.id_categoria);
-                        setTipoNuevaSub(c.tipo_default === "FIJO" ? "FIJO" : "VARIABLE");
-                      }}
-                      className="text-[11px] font-bold text-accent pt-1"
-                    >
+                    <button type="button" onClick={() => setAgregandoSubDe(c.id_categoria)} className="text-[11px] font-bold text-accent pt-1">
                       + Agregar subcategoría
                     </button>
                   )}

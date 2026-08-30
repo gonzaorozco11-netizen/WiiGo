@@ -74,27 +74,19 @@ export async function resolveSubcategoria(supabase: SupabaseClient, formData: Fo
   const existente = (existentes ?? []).find((s) => normalizarNombre(s.nombre) === normalizada);
   if (existente) return existente.id_subcategoria as string;
 
-  // Nace con el mismo Fijo/Variable que su categoría — se puede afinar
-  // después desde la pestaña Categorías si esta subcategoría en particular
-  // necesita otro tipo.
-  const { data: categoria } = await supabase.from("categorias_gasto").select("tipo_default").eq("id_categoria", idCategoria).maybeSingle();
   const { data, error } = await supabase
     .from("subcategorias_gasto")
-    .insert({ id_categoria: idCategoria, nombre: nueva, estado: "ACTIVA", tipo_default: categoria?.tipo_default ?? "VARIABLE" })
+    .insert({ id_categoria: idCategoria, nombre: nueva, estado: "ACTIVA" })
     .select("id_subcategoria")
     .single();
   if (error) throw new Error(friendlyDbError(error));
   return data.id_subcategoria as string;
 }
 
-// Fijo/Variable se define una sola vez en la categoría o la subcategoría —
-// nunca se le vuelve a preguntar a quien carga un gasto. Si la subcategoría
-// tiene su propio tipo, gana ella; si no, se usa el de la categoría.
-async function resolverTipoGasto(supabase: SupabaseClient, idCategoria: string, idSubcategoria: string | null) {
-  if (idSubcategoria) {
-    const { data: sub } = await supabase.from("subcategorias_gasto").select("tipo_default").eq("id_subcategoria", idSubcategoria).maybeSingle();
-    if (sub?.tipo_default) return sub.tipo_default as "FIJO" | "VARIABLE";
-  }
+// Fijo/Variable se define una sola vez, en la categoría — nunca se le
+// vuelve a preguntar a quien carga un gasto, y la subcategoría no tiene tipo
+// propio (todas las subcategorías de una categoría comparten su tipo).
+async function resolverTipoGasto(supabase: SupabaseClient, idCategoria: string) {
   const { data: cat } = await supabase.from("categorias_gasto").select("tipo_default").eq("id_categoria", idCategoria).maybeSingle();
   return (cat?.tipo_default as "FIJO" | "VARIABLE" | undefined) ?? "VARIABLE";
 }
@@ -186,13 +178,11 @@ export async function renombrarCategoriaGasto(idCategoria: string, nombre: strin
   }
 }
 
-export async function crearSubcategoriaGasto(idCategoria: string, nombre: string, tipoDefault: "FIJO" | "VARIABLE"): Promise<{ error: string | null }> {
+export async function crearSubcategoriaGasto(idCategoria: string, nombre: string): Promise<{ error: string | null }> {
   if (!nombre.trim()) return { error: "Poné un nombre para la subcategoría" };
   try {
     const supabase = getSupabaseServerClient();
-    const { error } = await supabase
-      .from("subcategorias_gasto")
-      .insert({ id_categoria: idCategoria, nombre: nombre.trim(), estado: "ACTIVA", tipo_default: tipoDefault });
+    const { error } = await supabase.from("subcategorias_gasto").insert({ id_categoria: idCategoria, nombre: nombre.trim(), estado: "ACTIVA" });
     if (error) return { error: friendlyDbError(error) };
     revalidatePath("/gastos");
     return { error: null };
@@ -201,27 +191,22 @@ export async function crearSubcategoriaGasto(idCategoria: string, nombre: string
   }
 }
 
-// El tipo acá tampoco toca los gastos ya cargados — para eso está
-// aplicarTipoASubcategoria, que lo hace a propósito y de una sola vez.
-export async function renombrarSubcategoriaGasto(idSubcategoria: string, nombre: string, tipoDefault: "FIJO" | "VARIABLE"): Promise<{ error: string | null }> {
+export async function renombrarSubcategoriaGasto(idSubcategoria: string, nombre: string): Promise<{ error: string | null }> {
   if (!nombre.trim()) return { error: "Poné un nombre para la subcategoría" };
   try {
     const supabase = getSupabaseServerClient();
-    const { error } = await supabase
-      .from("subcategorias_gasto")
-      .update({ nombre: nombre.trim(), tipo_default: tipoDefault })
-      .eq("id_subcategoria", idSubcategoria);
+    const { error } = await supabase.from("subcategorias_gasto").update({ nombre: nombre.trim() }).eq("id_subcategoria", idSubcategoria);
     if (error) return { error: friendlyDbError(error) };
     revalidatePath("/gastos");
     return { error: null };
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "No se pudo actualizar la subcategoría" };
+    return { error: err instanceof Error ? err.message : "No se pudo renombrar la subcategoría" };
   }
 }
 
-// Aplica el Fijo/Variable actual de la categoría/subcategoría a los gastos
-// que ya cargaste con ella — para corregir de una sola vez lo que quedó mal
-// clasificado, sin tener que editar gasto por gasto.
+// Aplica el Fijo/Variable actual de la categoría a todos los gastos que ya
+// cargaste con ella (tengan o no subcategoría) — para corregir de una sola
+// vez lo que quedó mal clasificado, sin tener que editar gasto por gasto.
 export async function aplicarTipoACategoria(idCategoria: string): Promise<{ error: string | null; actualizados?: number }> {
   const supabase = getSupabaseServerClient();
   const { data: categoria } = await supabase.from("categorias_gasto").select("tipo_default").eq("id_categoria", idCategoria).maybeSingle();
@@ -230,22 +215,6 @@ export async function aplicarTipoACategoria(idCategoria: string): Promise<{ erro
     .from("gastos")
     .update({ tipo: categoria.tipo_default })
     .eq("id_categoria", idCategoria)
-    .is("id_subcategoria", null)
-    .select("id_gasto");
-  if (error) return { error: friendlyDbError(error) };
-  revalidatePath("/gastos");
-  revalidatePath("/resultado-mes");
-  return { error: null, actualizados: data?.length ?? 0 };
-}
-
-export async function aplicarTipoASubcategoria(idSubcategoria: string): Promise<{ error: string | null; actualizados?: number }> {
-  const supabase = getSupabaseServerClient();
-  const { data: subcategoria } = await supabase.from("subcategorias_gasto").select("tipo_default").eq("id_subcategoria", idSubcategoria).maybeSingle();
-  if (!subcategoria) return { error: "No se encontró la subcategoría" };
-  const { data, error } = await supabase
-    .from("gastos")
-    .update({ tipo: subcategoria.tipo_default })
-    .eq("id_subcategoria", idSubcategoria)
     .select("id_gasto");
   if (error) return { error: friendlyDbError(error) };
   revalidatePath("/gastos");
@@ -315,7 +284,7 @@ export async function crearGasto(formData: FormData): Promise<{ error: string | 
     const monto = redondear2(neto + iva);
 
     const medioPago = text(formData, "medio_pago") ?? "TRANSFERENCIA";
-    const tipo = await resolverTipoGasto(supabase, idCategoria, idSubcategoria);
+    const tipo = await resolverTipoGasto(supabase, idCategoria);
     const descripcion = text(formData, "descripcion");
     const pendienteFactura = formData.get("pendiente_factura") === "on";
     const idUsuarioAdelanto = text(formData, "id_usuario_adelanto");
@@ -431,7 +400,7 @@ export async function actualizarGasto(idGasto: string, formData: FormData): Prom
     const iva = llevaIva ? redondear2(neto * ((await ivaGeneralPorcentaje(supabase)) / 100)) : 0;
     const monto = redondear2(neto + iva);
 
-    const tipo = await resolverTipoGasto(supabase, idCategoria, idSubcategoria);
+    const tipo = await resolverTipoGasto(supabase, idCategoria);
     const descripcion = text(formData, "descripcion");
     const pendienteFactura = formData.get("pendiente_factura") === "on";
 
@@ -656,7 +625,7 @@ export async function cargarRecurrente(idRecurrente: string, montoConfirmadoNeto
 
   const iva = llevaIva ? redondear2(montoConfirmadoNeto * ((await ivaGeneralPorcentaje(supabase)) / 100)) : 0;
   const monto = redondear2(montoConfirmadoNeto + iva);
-  const tipo = await resolverTipoGasto(supabase, recurrente.id_categoria, recurrente.id_subcategoria);
+  const tipo = await resolverTipoGasto(supabase, recurrente.id_categoria);
 
   const mesActual = new Date().toISOString().slice(0, 7);
   const { data: gasto, error } = await supabase

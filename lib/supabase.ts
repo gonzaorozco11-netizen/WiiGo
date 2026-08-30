@@ -185,7 +185,6 @@ export type SubcategoriaGasto = {
   id_categoria: string;
   nombre: string;
   estado: string;
-  tipo_default: string;
 };
 
 // Cada egreso queda categorizado y, si salió de la caja física de un
