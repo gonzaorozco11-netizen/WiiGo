@@ -145,3 +145,70 @@ export async function calcularPresentismoMes(periodo: string): Promise<Presentis
   }
   return resultado.sort((a, b) => a.nombre.localeCompare(b.nombre));
 }
+
+export type FilaPlanilla = {
+  fecha: string;
+  horaEntrada: string | null;
+  horaSalida: string | null;
+  horasTrabajadas: number | null;
+  tardanza: boolean;
+  salidaAnticipada: boolean;
+};
+
+// Detalle día por día de un empleado en el mes — a diferencia de
+// calcularPresentismoMes (que solo cuenta), esto muestra la hora concreta
+// de entrada/salida y las horas trabajadas por día.
+export async function listarPlanillaHoraria(idPersona: string, periodo: string): Promise<FilaPlanilla[]> {
+  const permisoError = await requireAcceso();
+  if (permisoError) throw new Error(permisoError);
+
+  const supabase = getSupabaseServerClient();
+  const [anio, mes] = periodo.split("-").map(Number);
+  const desdeStr = `${periodo}-01`;
+  const ultimoDia = new Date(anio, mes, 0).getDate();
+  const hastaStr = `${periodo}-${String(ultimoDia).padStart(2, "0")}`;
+
+  const { data: fichajes } = await supabase
+    .from("fichajes")
+    .select("tipo, fecha_hora, estado")
+    .eq("id_persona", idPersona)
+    .gte("fecha_hora", `${desdeStr}T00:00:00`)
+    .lte("fecha_hora", `${hastaStr}T23:59:59`)
+    .order("fecha_hora", { ascending: true });
+
+  const porDia = new Map<string, { entrada?: string; salida?: string; estadoEntrada?: string; estadoSalida?: string }>();
+  for (const f of fichajes ?? []) {
+    const fechaHora = f.fecha_hora as string;
+    const fecha = fechaHora.slice(0, 10);
+    const hora = fechaHora.slice(11, 16);
+    const fila = porDia.get(fecha) ?? {};
+    if (f.tipo === "ENTRADA" && !fila.entrada) {
+      fila.entrada = hora;
+      fila.estadoEntrada = f.estado as string;
+    }
+    if (f.tipo === "SALIDA") {
+      fila.salida = hora;
+      fila.estadoSalida = f.estado as string;
+    }
+    porDia.set(fecha, fila);
+  }
+
+  return [...porDia.entries()]
+    .map(([fecha, v]) => {
+      let horasTrabajadas: number | null = null;
+      if (v.entrada && v.salida) {
+        const [eh, em] = v.entrada.split(":").map(Number);
+        const [sh, sm] = v.salida.split(":").map(Number);
+        horasTrabajadas = Math.round(((sh * 60 + sm - (eh * 60 + em)) / 60) * 100) / 100;
+      }
+      return {
+        fecha,
+        horaEntrada: v.entrada ?? null,
+        horaSalida: v.salida ?? null,
+        horasTrabajadas,
+        tardanza: v.estadoEntrada === "TARDE",
+        salidaAnticipada: v.estadoSalida === "ANTICIPADA",
+      };
+    })
+    .sort((a, b) => b.fecha.localeCompare(a.fecha));
+}

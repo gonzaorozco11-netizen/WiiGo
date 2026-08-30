@@ -4,7 +4,14 @@ import { useEffect, useState } from "react";
 import { resumenNomina } from "@/app/(app)/gastos/actions";
 import { actualizarSueldoBase } from "@/app/(app)/usuarios/actions";
 import { crearHorario, actualizarHorario, desactivarHorario, listarHorarios, type HorarioTrabajo } from "@/app/(app)/organizacion/actions";
-import { obtenerParametrosPresentismo, actualizarParametrosPresentismo, calcularPresentismoMes, type PresentismoFila } from "@/app/(app)/rrhh/actions";
+import {
+  obtenerParametrosPresentismo,
+  actualizarParametrosPresentismo,
+  calcularPresentismoMes,
+  listarPlanillaHoraria,
+  type PresentismoFila,
+  type FilaPlanilla,
+} from "@/app/(app)/rrhh/actions";
 
 type UsuarioMin = { id_usuario: string; nombre: string; sueldo_base: number | null };
 type NominaFila = { idUsuario: string; nombre: string; sueldoBase: number; adelantado: number; aPagar: number };
@@ -334,6 +341,7 @@ function TabPresentismo() {
   const [mostrarConfig, setMostrarConfig] = useState(false);
   const [params, setParams] = useState<Record<string, number> | null>(null);
   const [guardandoConfig, setGuardandoConfig] = useState(false);
+  const [modalPlanilla, setModalPlanilla] = useState<PresentismoFila | null>(null);
 
   function recargar() {
     setCargando(true);
@@ -419,6 +427,7 @@ function TabPresentismo() {
                 <th className="p-3 text-right">Faltas</th>
                 <th className="p-3 text-right">Salidas anticipadas</th>
                 <th className="p-3">Presentismo</th>
+                <th className="p-3"></th>
               </tr>
             </thead>
             <tbody>
@@ -433,10 +442,97 @@ function TabPresentismo() {
                       {f.resultado === "COMPLETO" ? "Completo" : f.resultado === "PARCIAL" ? "Parcial" : "Perdido"}
                     </span>
                   </td>
+                  <td className="p-3 text-right whitespace-nowrap">
+                    <button onClick={() => setModalPlanilla(f)} className="text-xs font-semibold text-accent">
+                      Planilla horaria →
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        )}
+      </div>
+
+      {modalPlanilla && <ModalPlanillaHoraria fila={modalPlanilla} mes={mes} onClose={() => setModalPlanilla(null)} />}
+    </div>
+  );
+}
+
+function ModalPlanillaHoraria({ fila, mes, onClose }: { fila: PresentismoFila; mes: string; onClose: () => void }) {
+  const [dias, setDias] = useState<FilaPlanilla[]>([]);
+  const [cargando, setCargando] = useState(true);
+
+  useEffect(() => {
+    setCargando(true);
+    listarPlanillaHoraria(fila.idPersona, mes)
+      .then(setDias)
+      .finally(() => setCargando(false));
+  }, [fila.idPersona, mes]);
+
+  const diasTrabajados = dias.filter((d) => d.horaEntrada).length;
+  const horasTotales = dias.reduce((acc, d) => acc + (d.horasTrabajadas ?? 0), 0);
+
+  function formatearFecha(fecha: string) {
+    return new Date(`${fecha}T00:00:00`).toLocaleDateString("es-AR", { weekday: "short", day: "2-digit", month: "2-digit" });
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+      <div className="bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl p-6 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-start justify-between mb-1">
+          <div>
+            <h2 className="text-lg font-semibold text-neutral-900">Planilla horaria</h2>
+            <p className="text-xs text-neutral-400">
+              {fila.nombre} · {new Date(`${mes}-01T00:00:00`).toLocaleDateString("es-AR", { month: "long", year: "numeric" })}
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="text-neutral-400 hover:text-neutral-700" aria-label="Cerrar">
+            ✕
+          </button>
+        </div>
+
+        {cargando ? (
+          <p className="text-sm text-neutral-400 text-center py-8">Cargando...</p>
+        ) : (
+          <>
+            <div className="grid grid-cols-3 gap-2.5 my-4">
+              <div className="bg-accent-tint rounded-lg px-3 py-2.5 text-center">
+                <p className="text-lg font-extrabold text-accent tabular-nums">{diasTrabajados}</p>
+                <p className="text-[10px] font-semibold uppercase text-neutral-500">Días trabajados</p>
+              </div>
+              <div className="bg-accent-tint rounded-lg px-3 py-2.5 text-center">
+                <p className="text-lg font-extrabold text-accent tabular-nums">{horasTotales.toFixed(1)}</p>
+                <p className="text-[10px] font-semibold uppercase text-neutral-500">Horas totales</p>
+              </div>
+              <div className="bg-accent-tint rounded-lg px-3 py-2.5 text-center">
+                <p className="text-lg font-extrabold text-accent tabular-nums">{fila.tardanzas}</p>
+                <p className="text-[10px] font-semibold uppercase text-neutral-500">Tardanzas</p>
+              </div>
+            </div>
+
+            {dias.length === 0 ? (
+              <p className="text-sm text-neutral-400 text-center py-8">No hay fichajes en este mes.</p>
+            ) : (
+              <div className="space-y-0.5">
+                {dias.map((d) => (
+                  <div key={d.fecha} className="flex items-center justify-between text-sm py-2 border-t border-dashed border-neutral-100 first:border-0">
+                    <span className="font-semibold text-neutral-800 w-20 capitalize">{formatearFecha(d.fecha)}</span>
+                    {d.horaEntrada ? (
+                      <span className="flex items-center gap-2 text-neutral-500 tabular-nums">
+                        <span className={d.tardanza ? "font-bold text-amber-600" : ""}>{d.horaEntrada}</span>
+                        <span>→</span>
+                        <span className={d.salidaAnticipada ? "font-bold text-red-600" : ""}>{d.horaSalida ?? "—"}</span>
+                      </span>
+                    ) : (
+                      <span className="text-xs text-neutral-300 italic">Sin fichaje</span>
+                    )}
+                    <span className="font-bold text-neutral-800 tabular-nums w-14 text-right">{d.horasTrabajadas != null ? `${d.horasTrabajadas} hs` : "—"}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
