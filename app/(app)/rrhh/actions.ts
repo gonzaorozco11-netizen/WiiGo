@@ -61,6 +61,7 @@ export type PresentismoFila = {
   tardanzas: number;
   faltas: number;
   salidasAnticipadas: number;
+  licenciaParticularSinGoce: boolean;
   resultado: "COMPLETO" | "PARCIAL" | "PERDIDO";
 };
 
@@ -74,9 +75,35 @@ function diasDelPeriodo(periodo: string) {
   return { desde, hasta };
 }
 
-// Sin el módulo de Vacaciones/Licencias (todavía no armado) no hay forma de
-// distinguir una ausencia autorizada de una falta real — por ahora toda
-// falta cuenta como injustificada. Se retoma cuando se sume esa fase.
+// Devuelve, por persona, el set de fechas (YYYY-MM-DD) cubiertas por
+// cualquier licencia que se superponga con el período — esos días no
+// cuentan como falta, estén o no con goce de sueldo.
+async function diasConLicenciaPorPersona(supabase: ReturnType<typeof getSupabaseServerClient>, idsPersona: string[], desdeStr: string, hastaStr: string) {
+  const { data: licencias } = await supabase
+    .from("licencias")
+    .select("id_persona, tipo, fecha_desde, fecha_hasta, con_goce_sueldo")
+    .in("id_persona", idsPersona.length > 0 ? idsPersona : ["00000000-0000-0000-0000-000000000000"])
+    .lte("fecha_desde", hastaStr)
+    .gte("fecha_hasta", desdeStr);
+
+  const diasPorPersona = new Map<string, Set<string>>();
+  const sinGocePorPersona = new Map<string, boolean>();
+  for (const l of licencias ?? []) {
+    const desdeClamp = (l.fecha_desde as string) < desdeStr ? desdeStr : (l.fecha_desde as string);
+    const hastaClamp = (l.fecha_hasta as string) > hastaStr ? hastaStr : (l.fecha_hasta as string);
+    const set = diasPorPersona.get(l.id_persona as string) ?? new Set<string>();
+    const cursor = new Date(`${desdeClamp}T00:00:00`);
+    const fin = new Date(`${hastaClamp}T00:00:00`);
+    while (cursor <= fin) {
+      set.add(cursor.toISOString().slice(0, 10));
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    diasPorPersona.set(l.id_persona as string, set);
+    if (l.tipo === "PARTICULAR" && l.con_goce_sueldo === false) sinGocePorPersona.set(l.id_persona as string, true);
+  }
+  return { diasPorPersona, sinGocePorPersona };
+}
+
 export async function calcularPresentismoMes(periodo: string): Promise<PresentismoFila[]> {
   const permisoError = await requireAcceso();
   if (permisoError) throw new Error(permisoError);
@@ -116,11 +143,14 @@ export async function calcularPresentismoMes(periodo: string): Promise<Presentis
     .map((f) => ({ ...f, fechaArg: fechaHoraArgentina(f.fecha_hora as string).fecha }))
     .filter((f) => f.fechaArg >= desdeStr && f.fechaArg <= hastaStr);
 
+  const { diasPorPersona: diasConLicencia, sinGocePorPersona } = await diasConLicenciaPorPersona(supabase, idsPersona, desdeStr, hastaStr);
+
   const resultado: PresentismoFila[] = [];
   for (const p of personas ?? []) {
     const diasSemana = horarioPorId.get(p.id_horario as string);
     if (!diasSemana) continue;
     const fichajesPersona = fichajes.filter((f) => f.id_persona === p.id_persona);
+    const diasLicenciaPersona = diasConLicencia.get(p.id_persona as string) ?? new Set<string>();
 
     const tardanzas = fichajesPersona.filter((f) => f.tipo === "ENTRADA" && f.estado === "TARDE" && !f.justificado).length;
     const salidasAnticipadas = fichajesPersona.filter((f) => f.tipo === "SALIDA" && f.estado === "ANTICIPADA" && !f.justificado).length;
@@ -129,16 +159,18 @@ export async function calcularPresentismoMes(periodo: string): Promise<Presentis
     const cursor = new Date(desde);
     while (cursor <= hasta) {
       const isoDow = cursor.getDay() === 0 ? 7 : cursor.getDay();
-      if (diasSemana.includes(isoDow)) diasEsperados.push(cursor.toISOString().slice(0, 10));
+      const fechaCursor = cursor.toISOString().slice(0, 10);
+      if (diasSemana.includes(isoDow) && !diasLicenciaPersona.has(fechaCursor)) diasEsperados.push(fechaCursor);
       cursor.setDate(cursor.getDate() + 1);
     }
     const diasConEntrada = new Set(fichajesPersona.filter((f) => f.tipo === "ENTRADA").map((f) => f.fechaArg));
     const faltas = diasEsperados.filter((d) => !diasConEntrada.has(d)).length;
+    const licenciaParticularSinGoce = sinGocePorPersona.get(p.id_persona as string) ?? false;
 
     let resultadoPresentismo: PresentismoFila["resultado"] = "COMPLETO";
     if (faltas >= params.PRESENTISMO_MAX_FALTAS || tardanzas > params.PRESENTISMO_MAX_TARDANZAS || salidasAnticipadas > params.PRESENTISMO_MAX_SALIDAS_ANTICIPADAS) {
       resultadoPresentismo = "PERDIDO";
-    } else if (tardanzas >= params.PRESENTISMO_TARDANZAS_PARA_PARCIAL) {
+    } else if (tardanzas >= params.PRESENTISMO_TARDANZAS_PARA_PARCIAL || licenciaParticularSinGoce) {
       resultadoPresentismo = "PARCIAL";
     }
 
@@ -148,6 +180,7 @@ export async function calcularPresentismoMes(periodo: string): Promise<Presentis
       tardanzas,
       faltas,
       salidasAnticipadas,
+      licenciaParticularSinGoce,
       resultado: resultadoPresentismo,
     });
   }
@@ -317,4 +350,160 @@ export async function completarSalidaManual(idPersona: string, fecha: string, ho
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo completar el fichaje" };
   }
+}
+
+// ===================== VACACIONES Y LICENCIAS (RR.HH. — Fase 3) =====================
+// Vos (RR.HH.) las cargás directamente ya "aprobadas" — no hay pantalla de
+// solicitud para el empleado ni bandeja de aprobación todavía (no existe el
+// rol "Encargado" para eso); si hace falta más adelante, se suma aparte.
+
+// Mínimo legal según antigüedad (Art. 150/151 LCT) — no contempla días
+// extra que algún convenio colectivo específico pudiera sumar por encima
+// del mínimo, porque esos términos varían por convenio y no están cargados
+// en el sistema. Ajustá a mano si tu convenio da más días que el legal.
+function calcularDiasVacacionesLegales(fechaIngresoStr: string, anio: number): number {
+  const fechaIngreso = new Date(`${fechaIngresoStr}T00:00:00`);
+  const inicioAnio = new Date(anio, 0, 1);
+  const finAnio = new Date(anio, 11, 31);
+  if (fechaIngreso > finAnio) return 0;
+
+  const desde = fechaIngreso > inicioAnio ? fechaIngreso : inicioAnio;
+  const diasTrabajadosEnAnio = Math.floor((finAnio.getTime() - desde.getTime()) / 86400000) + 1;
+
+  // Si no llegó a trabajar al menos medio año, la licencia es proporcional:
+  // 1 día cada 20 trabajados (Art. 153 LCT) — típico en el año de ingreso.
+  if (diasTrabajadosEnAnio < 183) return Math.floor(diasTrabajadosEnAnio / 20);
+
+  let antiguedad = anio - fechaIngreso.getFullYear();
+  const aniversarioEsteAnio = new Date(anio, fechaIngreso.getMonth(), fechaIngreso.getDate());
+  if (aniversarioEsteAnio > finAnio) antiguedad -= 1;
+
+  if (antiguedad <= 5) return 14;
+  if (antiguedad <= 10) return 21;
+  if (antiguedad <= 20) return 28;
+  return 35;
+}
+
+function diasEntre(desdeStr: string, hastaStr: string) {
+  const desde = new Date(`${desdeStr}T00:00:00`);
+  const hasta = new Date(`${hastaStr}T00:00:00`);
+  return Math.max(0, Math.floor((hasta.getTime() - desde.getTime()) / 86400000) + 1);
+}
+
+export type SaldoVacaciones = {
+  idPersona: string;
+  nombre: string;
+  fechaIngreso: string;
+  diasLegales: number;
+  diasTomados: number;
+  diasDisponibles: number;
+};
+
+export async function listarSaldosVacaciones(anio: number): Promise<SaldoVacaciones[]> {
+  const permisoError = await requireAcceso();
+  if (permisoError) throw new Error(permisoError);
+
+  const supabase = getSupabaseServerClient();
+  const { data: personas } = await supabase
+    .from("personas")
+    .select("id_persona, nombre, apellido, fecha_ingreso")
+    .eq("estado", "ACTIVO")
+    .not("fecha_ingreso", "is", null);
+
+  const idsPersona = (personas ?? []).map((p) => p.id_persona as string);
+  const { data: licenciasVac } = await supabase
+    .from("licencias")
+    .select("id_persona, fecha_desde, fecha_hasta")
+    .eq("tipo", "VACACIONES")
+    .in("id_persona", idsPersona.length > 0 ? idsPersona : ["00000000-0000-0000-0000-000000000000"]);
+
+  const inicioAnio = `${anio}-01-01`;
+  const finAnio = `${anio}-12-31`;
+  const tomadosPorPersona = new Map<string, number>();
+  for (const l of licenciasVac ?? []) {
+    const desdeClamp = (l.fecha_desde as string) < inicioAnio ? inicioAnio : (l.fecha_desde as string);
+    const hastaClamp = (l.fecha_hasta as string) > finAnio ? finAnio : (l.fecha_hasta as string);
+    if (desdeClamp > hastaClamp) continue;
+    const dias = diasEntre(desdeClamp, hastaClamp);
+    tomadosPorPersona.set(l.id_persona as string, (tomadosPorPersona.get(l.id_persona as string) ?? 0) + dias);
+  }
+
+  return (personas ?? [])
+    .map((p) => {
+      const diasLegales = calcularDiasVacacionesLegales(p.fecha_ingreso as string, anio);
+      const diasTomados = tomadosPorPersona.get(p.id_persona as string) ?? 0;
+      return {
+        idPersona: p.id_persona as string,
+        nombre: `${p.nombre as string} ${(p.apellido as string | null) ?? ""}`.trim(),
+        fechaIngreso: p.fecha_ingreso as string,
+        diasLegales,
+        diasTomados,
+        diasDisponibles: diasLegales - diasTomados,
+      };
+    })
+    .sort((a, b) => a.nombre.localeCompare(b.nombre));
+}
+
+export type Licencia = {
+  id_licencia: string;
+  id_persona: string;
+  tipo: string;
+  fecha_desde: string;
+  fecha_hasta: string;
+  con_goce_sueldo: boolean;
+  motivo: string | null;
+  usuario: string | null;
+  fecha_carga: string;
+};
+
+export async function listarLicencias(idPersona: string): Promise<Licencia[]> {
+  const permisoError = await requireAcceso();
+  if (permisoError) throw new Error(permisoError);
+
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase.from("licencias").select("*").eq("id_persona", idPersona).order("fecha_desde", { ascending: false });
+  if (error) throw new Error(friendlyDbError(error));
+  return (data ?? []) as Licencia[];
+}
+
+export async function crearLicencia(formData: FormData): Promise<{ error: string | null }> {
+  const permisoError = await requireAcceso();
+  if (permisoError) return { error: permisoError };
+
+  const idPersona = String(formData.get("id_persona") ?? "");
+  const tipo = String(formData.get("tipo") ?? "");
+  const fechaDesde = String(formData.get("fecha_desde") ?? "");
+  const fechaHasta = String(formData.get("fecha_hasta") ?? "");
+  if (!idPersona || !tipo || !fechaDesde || !fechaHasta) return { error: "Completá todos los campos obligatorios" };
+  if (fechaHasta < fechaDesde) return { error: "La fecha hasta no puede ser anterior a la fecha desde" };
+
+  try {
+    const supabase = getSupabaseServerClient();
+    const sesion = await obtenerSesionConPermisos();
+    const { error } = await supabase.from("licencias").insert({
+      id_persona: idPersona,
+      tipo,
+      fecha_desde: fechaDesde,
+      fecha_hasta: fechaHasta,
+      con_goce_sueldo: formData.get("con_goce_sueldo") === "on",
+      motivo: String(formData.get("motivo") ?? "").trim() || null,
+      usuario: sesion?.nombre ?? null,
+    });
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/rrhh");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo cargar la licencia" };
+  }
+}
+
+export async function eliminarLicencia(idLicencia: string): Promise<{ error: string | null }> {
+  const permisoError = await requireAcceso();
+  if (permisoError) return { error: permisoError };
+
+  const supabase = getSupabaseServerClient();
+  const { error } = await supabase.from("licencias").delete().eq("id_licencia", idLicencia);
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath("/rrhh");
+  return { error: null };
 }

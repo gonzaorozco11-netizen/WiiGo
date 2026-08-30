@@ -11,14 +11,30 @@ import {
   listarPlanillaHoraria,
   listarFichajesPendientesSalida,
   completarSalidaManual,
+  listarSaldosVacaciones,
+  listarLicencias,
+  crearLicencia,
+  eliminarLicencia,
   type PresentismoFila,
   type FilaPlanilla,
   type FichajePendiente,
+  type SaldoVacaciones,
+  type Licencia,
 } from "@/app/(app)/rrhh/actions";
 
 type UsuarioMin = { id_usuario: string; nombre: string; sueldo_base: number | null };
+type PersonaMin = { id_persona: string; nombre: string; apellido: string | null };
 type NominaFila = { idUsuario: string; nombre: string; sueldoBase: number; adelantado: number; aPagar: number };
-type Tab = "nomina" | "horarios" | "presentismo";
+type Tab = "nomina" | "horarios" | "presentismo" | "vacaciones";
+
+const TIPO_LICENCIA_LABEL: Record<string, string> = {
+  VACACIONES: "Vacaciones",
+  MATERNIDAD: "Maternidad",
+  EXAMEN: "Examen",
+  PARTICULAR: "Particular",
+  ENFERMEDAD: "Enfermedad",
+  OTRO: "Otro",
+};
 
 const DIAS_LABEL: Record<number, string> = { 1: "Lun", 2: "Mar", 3: "Mié", 4: "Jue", 5: "Vie", 6: "Sáb", 7: "Dom" };
 
@@ -30,7 +46,15 @@ function mesActualISO() {
   return new Date().toISOString().slice(0, 7);
 }
 
-export default function RrhhApp({ usuarios, horariosIniciales }: { usuarios: UsuarioMin[]; horariosIniciales: HorarioTrabajo[] }) {
+export default function RrhhApp({
+  usuarios,
+  horariosIniciales,
+  personas,
+}: {
+  usuarios: UsuarioMin[];
+  horariosIniciales: HorarioTrabajo[];
+  personas: PersonaMin[];
+}) {
   const [tab, setTab] = useState<Tab>("nomina");
   const [horarios, setHorarios] = useState(horariosIniciales);
 
@@ -42,8 +66,8 @@ export default function RrhhApp({ usuarios, horariosIniciales }: { usuarios: Usu
     <div>
       <h1 className="text-lg font-semibold text-neutral-900 mb-1">RR.HH.</h1>
       <p className="text-sm text-neutral-500 mb-4 max-w-2xl">
-        Sueldos, horarios de trabajo y presentismo. No reemplaza un módulo de RR.HH. completo (vacaciones, licencias,
-        nómina con pasivo contable) — eso se arma en fases siguientes.
+        Sueldos, horarios de trabajo, presentismo y licencias. No reemplaza un módulo de RR.HH. completo (roles
+        jerárquicos, nómina con pasivo contable) — eso se arma en fases siguientes.
       </p>
 
       <div className="inline-flex gap-1 bg-neutral-100 rounded-lg p-1 mb-4">
@@ -52,6 +76,7 @@ export default function RrhhApp({ usuarios, horariosIniciales }: { usuarios: Usu
             ["nomina", "💰 Nómina"],
             ["horarios", "🕐 Horarios"],
             ["presentismo", "📋 Presentismo"],
+            ["vacaciones", "🌴 Vacaciones"],
           ] as [Tab, string][]
         ).map(([valor, etiqueta]) => (
           <button
@@ -67,6 +92,7 @@ export default function RrhhApp({ usuarios, horariosIniciales }: { usuarios: Usu
       {tab === "nomina" && <TabNomina usuarios={usuarios} />}
       {tab === "horarios" && <TabHorarios horarios={horarios} onCambio={recargarHorarios} />}
       {tab === "presentismo" && <TabPresentismo />}
+      {tab === "vacaciones" && <TabVacaciones personas={personas} />}
     </div>
   );
 }
@@ -633,6 +659,220 @@ function ModalPlanillaHoraria({ fila, mes, onClose }: { fila: PresentismoFila; m
               </div>
             )}
           </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ===================== VACACIONES Y LICENCIAS =====================
+
+function anioActual() {
+  return new Date().getFullYear();
+}
+
+function TabVacaciones({ personas }: { personas: PersonaMin[] }) {
+  const [anio, setAnio] = useState(anioActual());
+  const [saldos, setSaldos] = useState<SaldoVacaciones[]>([]);
+  const [cargando, setCargando] = useState(true);
+  const [modalPersona, setModalPersona] = useState<SaldoVacaciones | null>(null);
+
+  function recargar() {
+    setCargando(true);
+    listarSaldosVacaciones(anio).then(setSaldos).finally(() => setCargando(false));
+  }
+
+  useEffect(recargar, [anio]);
+
+  return (
+    <div>
+      <p className="text-xs text-neutral-400 mb-3">
+        Días legales según antigüedad (Art. 150/151 LCT) — no suma días extra que tu convenio colectivo pudiera dar
+        por encima del mínimo. Vos cargás la licencia ya definida, no hay pantalla de solicitud para el empleado.
+      </p>
+
+      <div className="flex items-center gap-2 mb-3">
+        <button onClick={() => setAnio((a) => a - 1)} className="px-2 py-1 text-neutral-400 hover:text-neutral-700 font-bold">
+          ‹
+        </button>
+        <span className="text-sm font-bold w-14 text-center">{anio}</span>
+        <button onClick={() => setAnio((a) => a + 1)} className="px-2 py-1 text-neutral-400 hover:text-neutral-700 font-bold">
+          ›
+        </button>
+      </div>
+
+      <div className="bg-white border border-neutral-200 rounded-xl overflow-hidden">
+        {cargando ? (
+          <p className="text-sm text-neutral-400 text-center py-8">Cargando...</p>
+        ) : saldos.length === 0 ? (
+          <p className="text-sm text-neutral-400 text-center py-8">No hay personas con fecha de ingreso cargada (Legajo).</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-neutral-200 text-left text-xs text-neutral-500">
+                <th className="p-3">Empleado</th>
+                <th className="p-3 text-right">Días legales {anio}</th>
+                <th className="p-3 text-right">Tomados</th>
+                <th className="p-3 text-right">Disponibles</th>
+                <th className="p-3"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {saldos.map((s) => (
+                <tr key={s.idPersona} className="border-b border-neutral-100 last:border-0">
+                  <td className="p-3">{s.nombre}</td>
+                  <td className="p-3 text-right tabular-nums">{s.diasLegales}</td>
+                  <td className="p-3 text-right tabular-nums text-neutral-500">{s.diasTomados}</td>
+                  <td className={`p-3 text-right tabular-nums font-bold ${s.diasDisponibles < 0 ? "text-red-600" : "text-emerald-600"}`}>{s.diasDisponibles}</td>
+                  <td className="p-3 text-right">
+                    <button onClick={() => setModalPersona(s)} className="text-xs font-semibold text-accent">
+                      Ver licencias →
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {modalPersona && (
+        <ModalLicenciasPersona
+          persona={modalPersona}
+          onClose={() => setModalPersona(null)}
+          onCambio={recargar}
+        />
+      )}
+    </div>
+  );
+}
+
+function ModalLicenciasPersona({ persona, onClose, onCambio }: { persona: SaldoVacaciones; onClose: () => void; onCambio: () => void }) {
+  const [licencias, setLicencias] = useState<Licencia[]>([]);
+  const [cargando, setCargando] = useState(true);
+  const [mostrarForm, setMostrarForm] = useState(false);
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function recargar() {
+    setCargando(true);
+    listarLicencias(persona.idPersona)
+      .then(setLicencias)
+      .finally(() => setCargando(false));
+  }
+
+  useEffect(recargar, [persona.idPersona]);
+
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError(null);
+    const formData = new FormData(e.currentTarget);
+    formData.set("id_persona", persona.idPersona);
+    setGuardando(true);
+    crearLicencia(formData)
+      .then((res) => {
+        if (res.error) setError(res.error);
+        else {
+          setMostrarForm(false);
+          recargar();
+          onCambio();
+        }
+      })
+      .finally(() => setGuardando(false));
+  }
+
+  function handleEliminar(l: Licencia) {
+    if (!confirm(`¿Eliminar esta licencia (${TIPO_LICENCIA_LABEL[l.tipo] ?? l.tipo}, ${l.fecha_desde} a ${l.fecha_hasta})?`)) return;
+    eliminarLicencia(l.id_licencia).then(() => {
+      recargar();
+      onCambio();
+    });
+  }
+
+  function formatearFecha(fecha: string) {
+    return new Date(`${fecha}T00:00:00`).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" });
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+      <div className="bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl p-6 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-start justify-between mb-4">
+          <div>
+            <h2 className="text-lg font-semibold text-neutral-900">Licencias</h2>
+            <p className="text-xs text-neutral-400">{persona.nombre}</p>
+          </div>
+          <button type="button" onClick={onClose} className="text-neutral-400 hover:text-neutral-700" aria-label="Cerrar">
+            ✕
+          </button>
+        </div>
+
+        {!mostrarForm ? (
+          <button onClick={() => setMostrarForm(true)} className="bg-accent hover:bg-accent-dark text-white font-medium px-3.5 py-1.5 rounded-lg text-sm mb-4">
+            + Cargar licencia
+          </button>
+        ) : (
+          <form onSubmit={handleSubmit} className="bg-accent-tint border border-accent rounded-lg p-3 mb-4">
+            {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
+            <div className="grid grid-cols-2 gap-2 mb-2">
+              <div>
+                <label className="block text-xs font-medium text-neutral-600 mb-1">Tipo</label>
+                <select name="tipo" className="w-full border border-neutral-300 rounded-lg px-2.5 py-1.5 text-sm bg-white" defaultValue="VACACIONES">
+                  {Object.entries(TIPO_LICENCIA_LABEL).map(([valor, label]) => (
+                    <option key={valor} value={valor}>{label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-end pb-1.5">
+                <label className="flex items-center gap-1.5 text-xs text-neutral-700 cursor-pointer">
+                  <input type="checkbox" name="con_goce_sueldo" defaultChecked /> Con goce de sueldo
+                </label>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-600 mb-1">Desde</label>
+                <input type="date" name="fecha_desde" required className="w-full border border-neutral-300 rounded-lg px-2.5 py-1.5 text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-600 mb-1">Hasta</label>
+                <input type="date" name="fecha_hasta" required className="w-full border border-neutral-300 rounded-lg px-2.5 py-1.5 text-sm" />
+              </div>
+              <div className="col-span-2">
+                <label className="block text-xs font-medium text-neutral-600 mb-1">Motivo (opcional)</label>
+                <input name="motivo" className="w-full border border-neutral-300 rounded-lg px-2.5 py-1.5 text-sm" />
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button type="button" onClick={() => setMostrarForm(false)} className="text-xs font-semibold text-neutral-500 px-2">
+                Cancelar
+              </button>
+              <button type="submit" disabled={guardando} className="bg-accent text-white text-xs font-bold px-3 py-1.5 rounded-md disabled:opacity-50">
+                {guardando ? "Guardando..." : "Guardar"}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {cargando ? (
+          <p className="text-sm text-neutral-400 text-center py-8">Cargando...</p>
+        ) : licencias.length === 0 ? (
+          <p className="text-sm text-neutral-400 text-center py-8">Todavía no cargaste ninguna licencia para esta persona.</p>
+        ) : (
+          <div className="space-y-2">
+            {licencias.map((l) => (
+              <div key={l.id_licencia} className="border border-neutral-200 rounded-lg px-3 py-2 flex items-center justify-between gap-2 flex-wrap">
+                <div>
+                  <span className="text-sm font-semibold text-neutral-800">{TIPO_LICENCIA_LABEL[l.tipo] ?? l.tipo}</span>
+                  <span className="text-xs text-neutral-400 ml-2">
+                    {formatearFecha(l.fecha_desde)} → {formatearFecha(l.fecha_hasta)}
+                  </span>
+                  {!l.con_goce_sueldo && <span className="text-[10px] font-bold text-red-600 bg-red-50 rounded-full px-2 py-0.5 ml-2">Sin goce de sueldo</span>}
+                  {l.motivo && <p className="text-xs text-neutral-400 mt-0.5">{l.motivo}</p>}
+                </div>
+                <button onClick={() => handleEliminar(l)} className="text-xs font-semibold text-red-500 hover:text-red-700">
+                  Eliminar
+                </button>
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </div>
