@@ -9,8 +9,11 @@ import {
   actualizarParametrosPresentismo,
   calcularPresentismoMes,
   listarPlanillaHoraria,
+  listarFichajesPendientesSalida,
+  completarSalidaManual,
   type PresentismoFila,
   type FilaPlanilla,
+  type FichajePendiente,
 } from "@/app/(app)/rrhh/actions";
 
 type UsuarioMin = { id_usuario: string; nombre: string; sueldo_base: number | null };
@@ -342,13 +345,21 @@ function TabPresentismo() {
   const [params, setParams] = useState<Record<string, number> | null>(null);
   const [guardandoConfig, setGuardandoConfig] = useState(false);
   const [modalPlanilla, setModalPlanilla] = useState<PresentismoFila | null>(null);
+  const [pendientes, setPendientes] = useState<FichajePendiente[]>([]);
+  const [cargandoPendientes, setCargandoPendientes] = useState(true);
 
   function recargar() {
     setCargando(true);
     calcularPresentismoMes(mes).then(setFilas).finally(() => setCargando(false));
   }
 
+  function recargarPendientes() {
+    setCargandoPendientes(true);
+    listarFichajesPendientesSalida().then(setPendientes).finally(() => setCargandoPendientes(false));
+  }
+
   useEffect(recargar, [mes]);
+  useEffect(recargarPendientes, []);
   useEffect(() => {
     obtenerParametrosPresentismo().then(setParams);
   }, []);
@@ -375,6 +386,16 @@ function TabPresentismo() {
 
   return (
     <div>
+      {!cargandoPendientes && pendientes.length > 0 && (
+        <FichajesPendientesSalida
+          pendientes={pendientes}
+          onCompletado={() => {
+            recargarPendientes();
+            recargar();
+          }}
+        />
+      )}
+
       <p className="text-xs text-neutral-400 mb-3">
         Solo cuenta tardanzas y faltas detectadas por fichaje — todavía no distingue ausencias autorizadas (eso llega
         con Vacaciones y Licencias). Revisá manualmente antes de aplicarlo a un pago.
@@ -459,6 +480,61 @@ function TabPresentismo() {
   );
 }
 
+function FichajesPendientesSalida({ pendientes, onCompletado }: { pendientes: FichajePendiente[]; onCompletado: () => void }) {
+  const [valores, setValores] = useState<Record<string, string>>({});
+  const [guardandoClave, setGuardandoClave] = useState<string | null>(null);
+
+  function clave(p: FichajePendiente) {
+    return `${p.idPersona}|${p.fecha}`;
+  }
+
+  function formatearFecha(fecha: string) {
+    return new Date(`${fecha}T00:00:00`).toLocaleDateString("es-AR", { weekday: "short", day: "2-digit", month: "2-digit" });
+  }
+
+  function handleCompletar(p: FichajePendiente) {
+    const hora = valores[clave(p)];
+    if (!hora) return;
+    setGuardandoClave(clave(p));
+    completarSalidaManual(p.idPersona, p.fecha, hora)
+      .then((res) => {
+        if (res.error) alert(res.error);
+        else onCompletado();
+      })
+      .finally(() => setGuardandoClave(null));
+  }
+
+  return (
+    <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-5">
+      <h2 className="text-sm font-bold text-red-800 mb-1">⚠️ Fichajes sin salida ({pendientes.length})</h2>
+      <p className="text-xs text-red-700 mb-3">Fichó entrada esos días pero nunca la salida. Cargá la hora real en que se fue.</p>
+      <div className="space-y-2">
+        {pendientes.map((p) => (
+          <div key={clave(p)} className="bg-white border border-red-200 rounded-lg px-3 py-2 flex items-center gap-2.5 flex-wrap">
+            <span className="text-sm font-medium text-neutral-800 flex-1 min-w-[160px]">
+              {p.nombre} <span className="text-neutral-400 font-normal capitalize">· {formatearFecha(p.fecha)}</span>
+            </span>
+            <span className="text-xs text-neutral-400">Entrada {p.horaEntrada}</span>
+            <input
+              type="time"
+              value={valores[clave(p)] ?? ""}
+              onChange={(e) => setValores((v) => ({ ...v, [clave(p)]: e.target.value }))}
+              className="border border-neutral-300 rounded-lg px-2 py-1 text-sm"
+            />
+            <button
+              onClick={() => handleCompletar(p)}
+              disabled={!valores[clave(p)] || guardandoClave === clave(p)}
+              className="text-xs font-bold text-white bg-red-600 hover:bg-red-700 disabled:opacity-40 px-3 py-1.5 rounded-lg"
+            >
+              {guardandoClave === clave(p) ? "..." : "Cargar salida"}
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ModalPlanillaHoraria({ fila, mes, onClose }: { fila: PresentismoFila; mes: string; onClose: () => void }) {
   const [dias, setDias] = useState<FilaPlanilla[]>([]);
   const [cargando, setCargando] = useState(true);
@@ -515,21 +591,37 @@ function ModalPlanillaHoraria({ fila, mes, onClose }: { fila: PresentismoFila; m
               <p className="text-sm text-neutral-400 text-center py-8">No hay fichajes en este mes.</p>
             ) : (
               <div className="space-y-0.5">
-                {dias.map((d) => (
-                  <div key={d.fecha} className="flex items-center justify-between text-sm py-2 border-t border-dashed border-neutral-100 first:border-0">
-                    <span className="font-semibold text-neutral-800 w-20 capitalize">{formatearFecha(d.fecha)}</span>
-                    {d.horaEntrada ? (
-                      <span className="flex items-center gap-2 text-neutral-500 tabular-nums">
-                        <span className={d.tardanza ? "font-bold text-amber-600" : ""}>{d.horaEntrada}</span>
-                        <span>→</span>
-                        <span className={d.salidaAnticipada ? "font-bold text-red-600" : ""}>{d.horaSalida ?? "—"}</span>
+                {dias.map((d) => {
+                  const badges: { label: string; clases: string }[] = [];
+                  if (!d.horaEntrada) badges.push({ label: "Sin fichaje", clases: "bg-neutral-100 text-neutral-400" });
+                  else {
+                    badges.push(d.tardanza ? { label: "Tardanza", clases: "bg-amber-100 text-amber-700" } : { label: "A tiempo", clases: "bg-emerald-100 text-emerald-700" });
+                    if (!d.horaSalida) badges.push({ label: "Sin salida", clases: "bg-red-100 text-red-700" });
+                    else if (d.salidaAnticipada) badges.push({ label: "Salida anticipada", clases: "bg-red-100 text-red-700" });
+                  }
+                  return (
+                    <div key={d.fecha} className="flex items-center justify-between gap-2 text-sm py-2 border-t border-dashed border-neutral-100 first:border-0 flex-wrap">
+                      <span className="font-semibold text-neutral-800 w-20 capitalize">{formatearFecha(d.fecha)}</span>
+                      {d.horaEntrada ? (
+                        <span className="flex items-center gap-2 text-neutral-500 tabular-nums">
+                          <span className={d.tardanza ? "font-bold text-amber-600" : ""}>{d.horaEntrada}</span>
+                          <span>→</span>
+                          <span className={d.salidaAnticipada || !d.horaSalida ? "font-bold text-red-600" : ""}>{d.horaSalida ?? "—"}</span>
+                        </span>
+                      ) : (
+                        <span className="text-xs text-neutral-300 italic">—</span>
+                      )}
+                      <span className="flex gap-1">
+                        {badges.map((b) => (
+                          <span key={b.label} className={`text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${b.clases}`}>
+                            {b.label}
+                          </span>
+                        ))}
                       </span>
-                    ) : (
-                      <span className="text-xs text-neutral-300 italic">Sin fichaje</span>
-                    )}
-                    <span className="font-bold text-neutral-800 tabular-nums w-14 text-right">{d.horasTrabajadas != null ? `${d.horasTrabajadas} hs` : "—"}</span>
-                  </div>
-                ))}
+                      <span className="font-bold text-neutral-800 tabular-nums w-14 text-right">{d.horasTrabajadas != null ? `${d.horasTrabajadas} hs` : "—"}</span>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </>

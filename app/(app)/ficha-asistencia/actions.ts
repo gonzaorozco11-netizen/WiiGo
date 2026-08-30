@@ -3,6 +3,7 @@
 import { cookies } from "next/headers";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
+import { fechaHoraArgentina, minutosDeHora } from "@/lib/horarios";
 
 async function personaActual() {
   const cookieStore = await cookies();
@@ -60,8 +61,8 @@ export async function obtenerEstadoFicha(): Promise<EstadoFicha> {
     .limit(1)
     .maybeSingle();
 
-  const hoy = new Date().toISOString().slice(0, 10);
-  const esDeHoy = !!ultimoFichaje && (ultimoFichaje.fecha_hora as string).slice(0, 10) === hoy;
+  const hoy = fechaHoraArgentina().fecha;
+  const esDeHoy = !!ultimoFichaje && fechaHoraArgentina(ultimoFichaje.fecha_hora as string).fecha === hoy;
 
   return {
     persona: { nombre: persona.nombre as string, apellido: persona.apellido as string | null },
@@ -105,10 +106,7 @@ export async function fichar(tipo: "ENTRADA" | "SALIDA"): Promise<ResultadoFicha
 
   const horaReferencia = horario ? (tipo === "ENTRADA" ? horario.hora_entrada : horario.hora_salida) : null;
   if (horario && horaReferencia) {
-    const [h, m] = horaReferencia.split(":").map(Number);
-    const referencia = new Date(ahora);
-    referencia.setHours(h, m, 0, 0);
-    const diffMin = Math.round((ahora.getTime() - referencia.getTime()) / 60000);
+    const diffMin = fechaHoraArgentina(ahora).minutosDelDia - minutosDeHora(horaReferencia);
     if (tipo === "ENTRADA") {
       estado = diffMin > horario.tolerancia_minutos ? "TARDE" : "A_TIEMPO";
       minutos = estado === "TARDE" ? diffMin : 0;
@@ -145,4 +143,39 @@ export async function fichar(tipo: "ENTRADA" | "SALIDA"): Promise<ResultadoFicha
   }
 
   return { error: null, nombre: persona.nombre as string, tipo, estado, minutos, turnoAbiertoLocal };
+}
+
+export type AvisoSalida = { debeRecordar: boolean; horaSalida: string | null };
+
+// Se llama desde el layout general (no solo desde Ficha Asistencia) para
+// que el aviso le aparezca en cualquier pantalla que esté usando pasada su
+// hora de salida — no solo si vuelve a entrar ahí.
+export async function verificarAvisoSalida(): Promise<AvisoSalida> {
+  const persona = await personaActual();
+  if (!persona || !persona.id_horario) return { debeRecordar: false, horaSalida: null };
+
+  const supabase = getSupabaseServerClient();
+  const { data: horario } = await supabase
+    .from("horarios_trabajo")
+    .select("hora_salida")
+    .eq("id_horario", persona.id_horario as string)
+    .maybeSingle();
+  const horaSalida = horario?.hora_salida as string | undefined;
+  if (!horaSalida) return { debeRecordar: false, horaSalida: null };
+
+  const { data: ultimoFichaje } = await supabase
+    .from("fichajes")
+    .select("tipo, fecha_hora")
+    .eq("id_persona", persona.id_persona as string)
+    .order("fecha_hora", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const ahora = fechaHoraArgentina();
+  const yaFichoEntradaHoySinSalida =
+    !!ultimoFichaje && fechaHoraArgentina(ultimoFichaje.fecha_hora as string).fecha === ahora.fecha && ultimoFichaje.tipo === "ENTRADA";
+  if (!yaFichoEntradaHoySinSalida) return { debeRecordar: false, horaSalida: null };
+
+  const debeRecordar = ahora.minutosDelDia >= minutosDeHora(horaSalida);
+  return { debeRecordar, horaSalida: horaSalida.slice(0, 5) };
 }

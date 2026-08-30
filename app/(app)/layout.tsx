@@ -3,7 +3,9 @@ import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 import { logout } from "@/app/login/actions";
 import { obtenerSesionConPantallas } from "@/lib/roles";
 import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos";
+import { verificarAvisoSalida } from "@/app/(app)/ficha-asistencia/actions";
 import AppNav from "@/components/AppNav";
+import AvisoSalidaBanner from "@/components/AvisoSalidaBanner";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const cookieStore = await cookies();
@@ -18,6 +20,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const sesionPermisos = await obtenerSesionConPermisos();
   const puedeVerCajaAdmin = tienePermiso(sesionPermisos, PERMISOS.VER_CAJA_ADMIN);
   const puedeGestionarNomina = tienePermiso(sesionPermisos, PERMISOS.GESTIONAR_NOMINA);
+  const avisoSalida = session ? await verificarAvisoSalida() : { debeRecordar: false, horaSalida: null };
 
   return (
     <div className="min-h-screen bg-neutral-50">
@@ -47,6 +50,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </div>
         </div>
       </header>
+      {avisoSalida.debeRecordar && <AvisoSalidaBanner horaSalida={avisoSalida.horaSalida} />}
       <main className="max-w-6xl mx-auto px-4 py-6">{children}</main>
     </div>
   );
