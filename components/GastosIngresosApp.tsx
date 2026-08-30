@@ -102,6 +102,7 @@ export default function GastosIngresosApp({
   const [monto, setMonto] = useState("");
   const [descripcion, setDescripcion] = useState("");
   const [medioPago, setMedioPago] = useState<"TRANSFERENCIA" | "EFECTIVO_ADMIN" | "MERCADO_PAGO">("TRANSFERENCIA");
+  const [tipoGasto, setTipoGasto] = useState<"FIJO" | "VARIABLE">("VARIABLE");
   const [idLocal, setIdLocal] = useState("");
   const [diaMes, setDiaMes] = useState("1");
   const [mesAnual, setMesAnual] = useState("1");
@@ -278,7 +279,7 @@ export default function GastosIngresosApp({
     if (tab === "gasto") {
       if (recurrencia === "UNICO") {
         fd.append("monto", String(montoNum));
-        fd.append("tipo", "VARIABLE");
+        fd.append("tipo", tipoGasto);
         fd.append("medio_pago", medioPago);
         if (idLocal) fd.append("id_local", idLocal);
         if (claveAdmin) fd.append("clave_admin", claveAdmin);
@@ -518,6 +519,24 @@ export default function GastosIngresosApp({
                 </select>
               </div>
             )}
+          </div>
+        )}
+
+        {tab === "gasto" && recurrencia === "UNICO" && (
+          <div className="mb-3">
+            <label className="block text-sm font-medium text-neutral-700 mb-1">Tipo de gasto</label>
+            <div className="flex gap-2">
+              {(["FIJO", "VARIABLE"] as const).map((opcion) => (
+                <label
+                  key={opcion}
+                  className={`flex-1 flex items-center justify-center gap-2 border rounded-lg px-3 py-2 text-sm cursor-pointer ${tipoGasto === opcion ? "border-accent bg-accent-tint" : "border-neutral-300"}`}
+                >
+                  <input type="radio" checked={tipoGasto === opcion} onChange={() => setTipoGasto(opcion)} />
+                  {opcion === "FIJO" ? "Fijo" : "Variable"}
+                </label>
+              ))}
+            </div>
+            <p className="text-xs text-neutral-400 mt-1.5">Fijo: lo pagás todos los meses pase lo que pase. Variable: depende de tu actividad ese mes.</p>
           </div>
         )}
 

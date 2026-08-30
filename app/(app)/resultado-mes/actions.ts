@@ -27,60 +27,53 @@ async function configuracionNumero(supabase: ReturnType<typeof getSupabaseServer
 export type ItemMonto = { nombre: string; fuente: string; monto: number };
 export type ReservaLinea = { idReserva: string | null; nombre: string; porcentaje: number; montoSupuesto: number; montoReal: number };
 
-export type TableroResultados = {
-  periodo: string;
-  estado: "ABIERTO" | "CERRADO";
-  fechaCierre: string | null;
-
+// Todo lo que se calcula en vivo mientras el mes está en curso. Al cerrar el
+// mes, este objeto entero se guarda tal cual (columna "snapshot") — así un
+// mes cerrado queda 100% fijo, no solo IIBB/Ganancias/Reservas.
+type TableroSupuesto = {
   ventasBrutas: ItemMonto[];
   totalVentasBrutas: number;
   ivaDebitoFiscal: number;
   ventasNetas: number;
-
   cmv: number;
   contribucionMarginal: number;
-
   gastosFijos: ItemMonto[];
   totalGastosFijos: number;
   gastosVariables: ItemMonto[];
   totalGastosVariables: number;
-
   impuestoCreditos: number;
   impuestoDebitos: number;
   totalRetenciones: number;
-
   comisionMp: number;
   totalGastosBancarios: number;
-
   resultadoOperativo: number;
-
   ingresosBrutosIibb: number;
   sircrebRecuperable: number;
   iibbSupuesto: number;
-  iibbReal: number | null;
-
   pctGanancias: number;
   provisionGananciasSupuesto: number;
-  provisionGananciasReal: number | null;
-
   gananciaNetaSupuesto: number;
-  gananciaNetaReal: number | null;
-
-  reservas: ReservaLinea[];
+  reservas: { idReserva: string | null; nombre: string; porcentaje: number; montoSupuesto: number }[];
   totalReservasSupuesto: number;
-  totalReservasReal: number | null;
-
   utilidadDistribuibleSupuesto: number;
+};
+
+export type TableroResultados = TableroSupuesto & {
+  periodo: string;
+  estado: "ABIERTO" | "CERRADO";
+  fechaCierre: string | null;
+  iibbReal: number | null;
+  provisionGananciasReal: number | null;
+  gananciaNetaReal: number | null;
+  reservas: ReservaLinea[];
+  totalReservasReal: number | null;
   utilidadDistribuibleReal: number | null;
 };
 
-// Arma el Tablero de Resultados completo del período. IIBB, Provisión de
-// Ganancias y Reservas son siempre "supuesto" (calculado en vivo) — si el
-// mes ya está cerrado (fila en cierres_resultado_mes con estado CERRADO),
-// además trae los valores reales cargados y el supuesto queda congelado tal
-// como estaba al momento del cierre, en vez de recalcularse con datos que
-// pudieron cambiar después.
-export async function calcularTablero(periodo: string): Promise<TableroResultados> {
+// Calcula todo el Tablero en vivo a partir de los datos actuales — nunca
+// lee ni escribe cierres_resultado_mes. Se usa mientras el mes está en
+// curso, y también para armar el snapshot en el momento de cerrar.
+async function calcularTableroEnVivo(periodo: string): Promise<TableroSupuesto> {
   const supabase = getSupabaseServerClient();
   const { desde, hasta } = rangoDelPeriodo(periodo);
 
@@ -177,9 +170,10 @@ export async function calcularTablero(periodo: string): Promise<TableroResultado
   const ventasNetas = redondear2(totalVentasBrutas - ivaDebitoFiscal);
   const contribucionMarginal = redondear2(ventasNetas - cmv);
 
-  // ===== Gastos fijos / variables por subcategoría (la categoría "Impuestos"
-  // no entra acá — los impuestos del Tablero se calculan aparte, por fórmula,
-  // para no contarlos dos veces si además los cargás como gasto) =====
+  // ===== Gastos fijos / variables por subcategoría (la categoría marcada
+  // como "es_impuestos" no entra acá — esos impuestos se calculan aparte,
+  // por fórmula, para no contarlos dos veces si además los cargás como
+  // gasto) =====
   const { data: categoriaImpuestos } = await supabase
     .from("categorias_gasto")
     .select("id_categoria")
@@ -252,13 +246,13 @@ export async function calcularTablero(periodo: string): Promise<TableroResultado
 
   const ingresosBrutosIibb = redondear2(ventasNetas * (iibbPorcentaje / 100));
   const sircrebRecuperable = redondear2(totalMp * (sircrebPorcentaje / 100));
-  const iibbSupuestoCalculado = redondear2(ingresosBrutosIibb - sircrebRecuperable);
+  const iibbSupuesto = redondear2(ingresosBrutosIibb - sircrebRecuperable);
 
   // ===== Provisión Impuesto a las Ganancias (supuesto, calculado en vivo) =====
-  const pctGananciasDefault = await configuracionNumero(supabase, "IMPUESTO_GANANCIAS_PORCENTAJE_DEFAULT", 35);
-  const baseGananciasSupuesta = redondear2(resultadoOperativo - iibbSupuestoCalculado);
-  const provisionGananciasSupuestaCalculada = redondear2(baseGananciasSupuesta * (pctGananciasDefault / 100));
-  const gananciaNetaSupuestaCalculada = redondear2(baseGananciasSupuesta - provisionGananciasSupuestaCalculada);
+  const pctGanancias = await configuracionNumero(supabase, "IMPUESTO_GANANCIAS_PORCENTAJE_DEFAULT", 35);
+  const baseGanancias = redondear2(resultadoOperativo - iibbSupuesto);
+  const provisionGananciasSupuesto = redondear2(baseGanancias * (pctGanancias / 100));
+  const gananciaNetaSupuesto = redondear2(baseGanancias - provisionGananciasSupuesto);
 
   // ===== Reservas (supuesto, calculado en vivo sobre la Ganancia Neta) =====
   const { data: reservasConfig } = await supabase
@@ -266,102 +260,102 @@ export async function calcularTablero(periodo: string): Promise<TableroResultado
     .select("id_reserva, nombre, porcentaje")
     .eq("estado", "ACTIVA")
     .order("orden");
-  const reservasSupuestasCalculadas = (reservasConfig ?? []).map((r) => ({
+  const reservas = (reservasConfig ?? []).map((r) => ({
     idReserva: r.id_reserva as string,
     nombre: r.nombre as string,
     porcentaje: r.porcentaje as number,
-    montoSupuesto: redondear2(gananciaNetaSupuestaCalculada * ((r.porcentaje as number) / 100)),
+    montoSupuesto: redondear2(gananciaNetaSupuesto * ((r.porcentaje as number) / 100)),
   }));
-  const totalReservasSupuestoCalculado = redondear2(reservasSupuestasCalculadas.reduce((acc, r) => acc + r.montoSupuesto, 0));
-
-  // ===== ¿El mes ya está cerrado? =====
-  const { data: cierre } = await supabase.from("cierres_resultado_mes").select("*").eq("periodo", periodo).maybeSingle();
-  const cerrado = cierre?.estado === "CERRADO";
-
-  const iibbSupuesto = cerrado ? (cierre!.iibb_supuesto as number) : iibbSupuestoCalculado;
-  const pctGanancias = cerrado ? (cierre!.pct_ganancias as number) : pctGananciasDefault;
-  const provisionGananciasSupuesto = cerrado ? (cierre!.provision_ganancias_supuesto as number) : provisionGananciasSupuestaCalculada;
-  const gananciaNetaSupuesto = redondear2(baseGananciasSupuesta - provisionGananciasSupuesto);
-
-  const reservasSupuestasGuardadas = cerrado
-    ? ((cierre!.reservas_supuesto as { nombre: string; porcentaje: number; monto: number }[] | null) ?? [])
-    : null;
-  const reservasRealesGuardadas = cerrado
-    ? ((cierre!.reservas_real as { nombre: string; monto: number }[] | null) ?? [])
-    : null;
-
-  const reservas: ReservaLinea[] = cerrado
-    ? reservasSupuestasGuardadas!.map((r) => ({
-        idReserva: null,
-        nombre: r.nombre,
-        porcentaje: r.porcentaje,
-        montoSupuesto: r.monto,
-        montoReal: reservasRealesGuardadas!.find((x) => x.nombre === r.nombre)?.monto ?? r.monto,
-      }))
-    : reservasSupuestasCalculadas.map((r) => ({ ...r, montoReal: r.montoSupuesto }));
-
-  const totalReservasSupuesto = cerrado ? redondear2(reservas.reduce((acc, r) => acc + r.montoSupuesto, 0)) : totalReservasSupuestoCalculado;
-  const totalReservasReal = cerrado ? redondear2(reservas.reduce((acc, r) => acc + r.montoReal, 0)) : null;
-
-  const iibbReal = cerrado ? (cierre!.iibb_real as number) : null;
-  const provisionGananciasReal = cerrado ? (cierre!.provision_ganancias_real as number) : null;
-  const gananciaNetaReal =
-    cerrado && iibbReal !== null && provisionGananciasReal !== null
-      ? redondear2(resultadoOperativo - iibbReal - provisionGananciasReal)
-      : null;
-  const utilidadDistribuibleReal =
-    cerrado && gananciaNetaReal !== null && totalReservasReal !== null ? redondear2(gananciaNetaReal - totalReservasReal) : null;
+  const totalReservasSupuesto = redondear2(reservas.reduce((acc, r) => acc + r.montoSupuesto, 0));
 
   return {
-    periodo,
-    estado: cerrado ? "CERRADO" : "ABIERTO",
-    fechaCierre: cerrado ? (cierre!.fecha_cierre as string) : null,
-
     ventasBrutas,
     totalVentasBrutas,
     ivaDebitoFiscal: redondear2(ivaDebitoFiscal),
     ventasNetas,
-
     cmv,
     contribucionMarginal,
-
     gastosFijos,
     totalGastosFijos,
     gastosVariables,
     totalGastosVariables,
-
     impuestoCreditos,
     impuestoDebitos,
     totalRetenciones,
-
     comisionMp,
     totalGastosBancarios,
-
     resultadoOperativo,
-
     ingresosBrutosIibb,
     sircrebRecuperable,
     iibbSupuesto,
-    iibbReal,
-
     pctGanancias,
     provisionGananciasSupuesto,
-    provisionGananciasReal,
-
     gananciaNetaSupuesto,
-    gananciaNetaReal,
-
     reservas,
     totalReservasSupuesto,
-    totalReservasReal,
-
     utilidadDistribuibleSupuesto: redondear2(gananciaNetaSupuesto - totalReservasSupuesto),
+  };
+}
+
+// Trae el Tablero del período. Si el mes está ABIERTO, todo se calcula en
+// vivo. Si está CERRADO, se lee tal cual quedó congelado al cerrar (columna
+// "snapshot") — nada de eso se recalcula, ni siquiera si después cambiás un
+// gasto viejo. Lo único que puede cambiar en un mes cerrado son los valores
+// reales (IIBB/Ganancias/Reservas), y solo reabriéndolo a propósito.
+export async function calcularTablero(periodo: string): Promise<TableroResultados> {
+  const supabase = getSupabaseServerClient();
+  const { data: cierre } = await supabase.from("cierres_resultado_mes").select("*").eq("periodo", periodo).maybeSingle();
+  const cerrado = cierre?.estado === "CERRADO";
+
+  if (!cerrado) {
+    const supuesto = await calcularTableroEnVivo(periodo);
+    return {
+      ...supuesto,
+      periodo,
+      estado: "ABIERTO",
+      fechaCierre: null,
+      iibbReal: null,
+      provisionGananciasReal: null,
+      gananciaNetaReal: null,
+      reservas: supuesto.reservas.map((r) => ({ ...r, montoReal: r.montoSupuesto })),
+      totalReservasReal: null,
+      utilidadDistribuibleReal: null,
+    };
+  }
+
+  const snap = cierre!.snapshot as TableroSupuesto;
+  const iibbReal = cierre!.iibb_real as number;
+  const provisionGananciasReal = cierre!.provision_ganancias_real as number;
+  const reservasReal = (cierre!.reservas_real as { nombre: string; monto: number }[] | null) ?? [];
+
+  const gananciaNetaReal = redondear2(snap.resultadoOperativo - iibbReal - provisionGananciasReal);
+  const reservas: ReservaLinea[] = snap.reservas.map((r) => ({
+    idReserva: null,
+    nombre: r.nombre,
+    porcentaje: r.porcentaje,
+    montoSupuesto: r.montoSupuesto,
+    montoReal: reservasReal.find((x) => x.nombre === r.nombre)?.monto ?? r.montoSupuesto,
+  }));
+  const totalReservasReal = redondear2(reservas.reduce((acc, r) => acc + r.montoReal, 0));
+  const utilidadDistribuibleReal = redondear2(gananciaNetaReal - totalReservasReal);
+
+  return {
+    ...snap,
+    reservas,
+    periodo,
+    estado: "CERRADO",
+    fechaCierre: cierre!.fecha_cierre as string,
+    iibbReal,
+    provisionGananciasReal,
+    gananciaNetaReal,
+    totalReservasReal,
     utilidadDistribuibleReal,
   };
 }
 
-// Congela el supuesto tal como está calculado en este momento y guarda los
-// valores reales que cargaste. A partir de acá el período queda CERRADO.
+// Congela el Tablero completo tal como está calculado en este momento y
+// guarda los valores reales que cargaste. A partir de acá el período queda
+// CERRADO y nada de lo congelado se vuelve a tocar, salvo que reabras.
 export async function cerrarMes(
   periodo: string,
   pctGanancias: number,
@@ -370,31 +364,38 @@ export async function cerrarMes(
   reservasReal: { nombre: string; monto: number }[]
 ) {
   const supabase = getSupabaseServerClient();
-  const tablero = await calcularTablero(periodo);
-  if (tablero.estado === "CERRADO") return { error: "Este mes ya está cerrado. Usá 'Reabrir para corregir'." };
+  const { data: cierreExistente } = await supabase.from("cierres_resultado_mes").select("estado").eq("periodo", periodo).maybeSingle();
+  if (cierreExistente?.estado === "CERRADO") return { error: "Este mes ya está cerrado. Usá 'Reabrir para corregir'." };
 
-  // El supuesto se recalcula acá con el % que llegó del formulario (por si
-  // se ajustó justo antes de cerrar) — resultadoOperativo e IIBB salen del
-  // Tablero recién calculado, nunca de lo que mande el cliente.
-  const baseGanancias = redondear2(tablero.resultadoOperativo - tablero.iibbSupuesto);
+  const supuesto = await calcularTableroEnVivo(periodo);
+
+  // El % que llegó del formulario puede diferir del default de
+  // configuración si se ajustó justo antes de cerrar — se recalcula la
+  // provisión y la ganancia neta supuesta con ese % antes de congelar.
+  const baseGanancias = redondear2(supuesto.resultadoOperativo - supuesto.iibbSupuesto);
   const provisionGananciasSupuesto = redondear2(baseGanancias * (pctGanancias / 100));
   const gananciaNetaSupuesto = redondear2(baseGanancias - provisionGananciasSupuesto);
-  const reservasSupuesto = tablero.reservas.map((r) => ({
-    nombre: r.nombre,
-    porcentaje: r.porcentaje,
-    monto: redondear2(gananciaNetaSupuesto * (r.porcentaje / 100)),
+  const reservas = supuesto.reservas.map((r) => ({
+    ...r,
+    montoSupuesto: redondear2(gananciaNetaSupuesto * (r.porcentaje / 100)),
   }));
+  const snapshot: TableroSupuesto = {
+    ...supuesto,
+    pctGanancias,
+    provisionGananciasSupuesto,
+    gananciaNetaSupuesto,
+    reservas,
+    totalReservasSupuesto: redondear2(reservas.reduce((acc, r) => acc + r.montoSupuesto, 0)),
+    utilidadDistribuibleSupuesto: redondear2(gananciaNetaSupuesto - reservas.reduce((acc, r) => acc + r.montoSupuesto, 0)),
+  };
 
   const { error } = await supabase.from("cierres_resultado_mes").upsert({
     periodo,
     estado: "CERRADO",
     fecha_cierre: new Date().toISOString(),
-    pct_ganancias: pctGanancias,
-    iibb_supuesto: tablero.iibbSupuesto,
+    snapshot,
     iibb_real: iibbReal,
-    provision_ganancias_supuesto: provisionGananciasSupuesto,
     provision_ganancias_real: provisionGananciasReal,
-    reservas_supuesto: reservasSupuesto,
     reservas_real: reservasReal,
     actualizado_en: new Date().toISOString(),
   });
@@ -403,7 +404,7 @@ export async function cerrarMes(
   return { error: null };
 }
 
-// Corrige los valores reales de un mes ya cerrado — el supuesto congelado
+// Corrige los valores reales de un mes ya cerrado — el snapshot congelado
 // no se toca, solo se actualiza lo real.
 export async function actualizarValoresReales(
   periodo: string,
