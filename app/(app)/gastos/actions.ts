@@ -135,7 +135,14 @@ export async function crearCategoriaGasto(nombre: string, tipoDefault: "FIJO" | 
   if (!nombre.trim()) return { error: "Poné un nombre para la categoría" };
   try {
     const supabase = getSupabaseServerClient();
-    const { error } = await supabase.from("categorias_gasto").insert({ nombre: nombre.trim(), tipo_default: tipoDefault, estado: "ACTIVA" });
+    // Si la categoría se llama "Impuestos", queda marcada automáticamente
+    // como tal — así el Tablero de Resultados sabe excluirla de Gastos
+    // fijos/variables (para no contar dos veces un impuesto que también
+    // calcula por fórmula) sin que haga falta ningún paso manual.
+    const esImpuestos = normalizarNombre(nombre) === "impuestos";
+    const { error } = await supabase
+      .from("categorias_gasto")
+      .insert({ nombre: nombre.trim(), tipo_default: tipoDefault, estado: "ACTIVA", es_impuestos: esImpuestos });
     if (error) return { error: friendlyDbError(error) };
     revalidatePath("/gastos");
     return { error: null };
