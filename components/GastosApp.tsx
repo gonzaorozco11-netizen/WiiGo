@@ -1422,7 +1422,7 @@ function TabCategorias({
     if (cantidad === 0) return;
     const etiqueta = tipoNuevo === "FIJO" ? "Fijo" : "Variable";
     const ok = confirm(
-      `Ya cargaste ${cantidad} ${cantidad === 1 ? "gasto" : "gastos"} con "${c.nombre}" (sin subcategoría). ¿Marcarlos también como ${etiqueta} ahora?`
+      `Ya cargaste ${cantidad} ${cantidad === 1 ? "gasto" : "gastos"} en "${c.nombre}" (con cualquier subcategoría). ¿Marcarlos también como ${etiqueta} ahora?`
     );
     if (!ok) return;
     aplicarTipoACategoria(c.id_categoria).then((res) => {
