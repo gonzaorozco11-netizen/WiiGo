@@ -2,6 +2,13 @@
   "name": "wiigo",
   "version": "0.1.0",
   "private": true,
+  "//browserslist": "El totem de autopedido corre Android con WebView 83 (2020) y no se puede actualizar — el fabricante bloqueó cambiar el motor. Sin esto, Next genera JavaScript moderno que ese navegador no puede ejecutar: la pantalla carga pero no responde a los toques. Bajar el target hace los bundles un poco más grandes para todos, pero es lo que permite que el totem funcione.",
+  "browserslist": [
+    "chrome >= 83",
+    "safari >= 14",
+    "firefox >= 78",
+    "edge >= 83"
+  ],
   "scripts": {
     "dev": "next dev",
     "build": "next build",
