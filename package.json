@@ -17,6 +17,8 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@csstools/postcss-cascade-layers": "^5.0.1",
+    "@csstools/postcss-oklab-function": "^4.0.7",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/qrcode": "^1.5.5",
