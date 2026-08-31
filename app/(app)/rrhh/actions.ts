@@ -719,7 +719,11 @@ export async function cerrarNomina(idPersona: string, idUsuario: string, periodo
     const presentismoFilas = await calcularPresentismoMes(periodo);
     const presentismoResultado = presentismoFilas.find((f) => f.idPersona === idPersona)?.resultado ?? "COMPLETO";
     const factor = presentismoResultado === "COMPLETO" ? 1 : presentismoResultado === "PARCIAL" ? 0.5 : 0;
-    const incentivoPresentismo = redondear2(montoBase * (params.PRESENTISMO_PORCENTAJE_INCENTIVO / 100) * factor);
+    // Se puede sacar el incentivo puntualmente en este cierre (tilde en el
+    // modal) aunque lo haya ganado por presentismo — queda a criterio de
+    // quien cierra, cierre a cierre.
+    const incluirIncentivo = formData.get("incluir_incentivo") === "on";
+    const incentivoPresentismo = incluirIncentivo ? redondear2(montoBase * (params.PRESENTISMO_PORCENTAJE_INCENTIVO / 100) * factor) : 0;
 
     const { desde, hasta } = rangoDelPeriodoStr(periodo);
     const { data: adelantosData } = await supabase

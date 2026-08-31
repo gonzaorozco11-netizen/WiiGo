@@ -372,11 +372,12 @@ function ModalCerrarNomina({
 }) {
   const [horasExtraMonto, setHorasExtraMonto] = useState("0");
   const [premiosMonto, setPremiosMonto] = useState("0");
+  const [incluirIncentivo, setIncluirIncentivo] = useState(true);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const netoPreview =
-    fila.montoBase + fila.incentivoPresentismoPreview + (Number(horasExtraMonto) || 0) + (Number(premiosMonto) || 0) - fila.adelantos;
+  const incentivoAplicado = incluirIncentivo ? fila.incentivoPresentismoPreview : 0;
+  const netoPreview = fila.montoBase + incentivoAplicado + (Number(horasExtraMonto) || 0) + (Number(premiosMonto) || 0) - fila.adelantos;
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -418,12 +419,21 @@ function ModalCerrarNomina({
             </span>
             <span className="tabular-nums font-medium">${formatearMonto(fila.montoBase)}</span>
           </div>
-          <div className="flex justify-between">
-            <span className="text-neutral-500">
+          <label className="flex items-center justify-between cursor-pointer">
+            <span className="text-neutral-500 flex items-center gap-1.5">
+              <input
+                type="checkbox"
+                name="incluir_incentivo"
+                checked={incluirIncentivo}
+                onChange={(e) => setIncluirIncentivo(e.target.checked)}
+                className="accent-accent"
+              />
               Incentivo presentismo ({RESULTADO_LABEL_NOMINA[fila.presentismoResultado]})
             </span>
-            <span className="tabular-nums font-medium">${formatearMonto(fila.incentivoPresentismoPreview)}</span>
-          </div>
+            <span className={`tabular-nums font-medium ${!incluirIncentivo ? "line-through text-neutral-300" : ""}`}>
+              ${formatearMonto(fila.incentivoPresentismoPreview)}
+            </span>
+          </label>
           {fila.adelantos > 0 && (
             <div className="flex justify-between text-red-600">
               <span>Adelantos del mes</span>
