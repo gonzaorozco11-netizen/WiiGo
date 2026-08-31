@@ -571,6 +571,7 @@ export type CierreNomina = {
   neto_a_pagar: number;
   id_gasto: string | null;
   estado: "PENDIENTE_PAGO" | "PAGADO";
+  es_estimado: boolean;
   fecha_cierre: string;
   usuario_cierre: string | null;
   fecha_pago: string | null;
@@ -683,14 +684,36 @@ export async function cerrarNomina(idPersona: string, idUsuario: string, periodo
     const supabase = getSupabaseServerClient();
     const sesion = await obtenerSesionConPermisos();
 
-    const { data: existente } = await supabase.from("nomina_cierres").select("id_cierre").eq("id_persona", idPersona).eq("periodo", periodo).maybeSingle();
-    if (existente) return { error: "Ya cerraste la nómina de esta persona en este período." };
+    // Si lo único que hay cargado es un estimado (ver estimarNomina), el
+    // cierre real lo reemplaza automáticamente: anula el gasto estimado y
+    // sigue de largo con el cálculo real — no hace falta que el usuario
+    // borre nada a mano.
+    const { data: existente } = await supabase
+      .from("nomina_cierres")
+      .select("id_cierre, id_gasto, es_estimado")
+      .eq("id_persona", idPersona)
+      .eq("periodo", periodo)
+      .maybeSingle();
+    if (existente) {
+      if (!existente.es_estimado) return { error: "Ya cerraste la nómina de esta persona en este período." };
+      if (existente.id_gasto) {
+        await supabase
+          .from("gastos")
+          .update({ anulado: true, motivo_anulacion: "Reemplazado por cierre real de nómina", anulado_en: new Date().toISOString() })
+          .eq("id_gasto", existente.id_gasto as string);
+      }
+      await supabase.from("nomina_cierres").delete().eq("id_cierre", existente.id_cierre as string);
+    }
 
     const { data: usuario } = await supabase.from("usuarios").select("sueldo_base, valor_hora, nombre").eq("id_usuario", idUsuario).maybeSingle();
     const valorHora = (usuario?.valor_hora as number) || 0;
     const esPorHora = valorHora > 0;
     if (!usuario || (!usuario.sueldo_base && !esPorHora)) return { error: "Esta persona no tiene sueldo base ni valor hora cargado." };
-    const montoBase = esPorHora ? redondear2((await totalHorasTrabajadasMes(idPersona, periodo)) * valorHora) : (usuario.sueldo_base as number);
+    // El monto real siempre sale de horas fichadas hasta hoy × valor hora —
+    // no se puede tipear a mano acá (para eso está "Estimar").
+    const montoBase = esPorHora
+      ? redondear2((await totalHorasTrabajadasMes(idPersona, periodo)) * valorHora)
+      : (usuario.sueldo_base as number);
 
     const params = await obtenerParametrosPresentismo();
     const presentismoFilas = await calcularPresentismoMes(periodo);
@@ -747,6 +770,7 @@ export async function cerrarNomina(idPersona: string, idUsuario: string, periodo
       adelantos,
       neto_a_pagar: netoAPagar,
       id_gasto: gastoCreado.id_gasto,
+      es_estimado: false,
       usuario_cierre: sesion?.nombre ?? null,
     });
     if (error) return { error: friendlyDbError(error) };
@@ -756,6 +780,94 @@ export async function cerrarNomina(idPersona: string, idUsuario: string, periodo
     return { error: null };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo cerrar la nómina" };
+  }
+}
+
+// Carga un monto estimado (a mano) para verlo reflejado ya en el Estado de
+// Resultados durante el mes, antes de tener el real — pensado sobre todo
+// para empleados por hora, donde las horas fichadas todavía no están
+// completas. cerrarNomina() lo reemplaza solo por el cálculo real cuando
+// corresponda; también se puede reemplazar por otro estimado (re-estimar)
+// o deshacer con eliminarCierreNomina.
+export async function estimarNomina(idPersona: string, idUsuario: string, periodo: string, montoEstimado: number): Promise<{ error: string | null }> {
+  const permisoError = await requireAcceso();
+  if (permisoError) return { error: permisoError };
+  if (!montoEstimado || montoEstimado <= 0) return { error: "Ingresá un monto estimado mayor a 0" };
+
+  try {
+    const supabase = getSupabaseServerClient();
+    const sesion = await obtenerSesionConPermisos();
+
+    const { data: existente } = await supabase
+      .from("nomina_cierres")
+      .select("id_cierre, id_gasto, es_estimado")
+      .eq("id_persona", idPersona)
+      .eq("periodo", periodo)
+      .maybeSingle();
+    if (existente && !existente.es_estimado) return { error: "Esta nómina ya está cerrada de forma definitiva." };
+    if (existente) {
+      if (existente.id_gasto) {
+        await supabase
+          .from("gastos")
+          .update({ anulado: true, motivo_anulacion: "Estimado de nómina reemplazado", anulado_en: new Date().toISOString() })
+          .eq("id_gasto", existente.id_gasto as string);
+      }
+      await supabase.from("nomina_cierres").delete().eq("id_cierre", existente.id_cierre as string);
+    }
+
+    const { data: usuario } = await supabase.from("usuarios").select("nombre").eq("id_usuario", idUsuario).maybeSingle();
+
+    const { desde, hasta } = rangoDelPeriodoStr(periodo);
+    const { data: adelantosData } = await supabase
+      .from("gastos")
+      .select("monto")
+      .eq("anulado", false)
+      .eq("id_usuario_adelanto", idUsuario)
+      .gte("fecha", `${desde}T00:00:00`)
+      .lte("fecha", `${hasta}T23:59:59`);
+    const adelantos = redondear2((adelantosData ?? []).reduce((acc, a) => acc + ((a.monto as number) ?? 0), 0));
+
+    const montoEstimadoRedondeado = redondear2(montoEstimado);
+    const idCategoriaSueldos = await resolveCategoriaSueldos(supabase);
+    const idSubcategoriaSueldos = await resolveSubcategoriaSueldos(supabase, idCategoriaSueldos);
+    const { data: gastoCreado, error: errorGasto } = await supabase
+      .from("gastos")
+      .insert({
+        id_categoria: idCategoriaSueldos,
+        id_subcategoria: idSubcategoriaSueldos,
+        tipo: "FIJO",
+        medio_pago: "TRANSFERENCIA",
+        monto: montoEstimadoRedondeado,
+        neto: montoEstimadoRedondeado,
+        descripcion: `Sueldo estimado — ${usuario?.nombre ?? ""} — ${periodo}`,
+        usuario: sesion?.nombre ?? null,
+      })
+      .select("id_gasto")
+      .single();
+    if (errorGasto) return { error: friendlyDbError(errorGasto) };
+
+    const { error } = await supabase.from("nomina_cierres").insert({
+      id_persona: idPersona,
+      periodo,
+      sueldo_base: montoEstimadoRedondeado,
+      presentismo_resultado: "COMPLETO",
+      incentivo_presentismo: 0,
+      horas_extra_monto: 0,
+      premios_monto: 0,
+      adelantos,
+      neto_a_pagar: redondear2(montoEstimadoRedondeado - adelantos),
+      id_gasto: gastoCreado.id_gasto,
+      estado: "PENDIENTE_PAGO",
+      es_estimado: true,
+      usuario_cierre: sesion?.nombre ?? null,
+    });
+    if (error) return { error: friendlyDbError(error) };
+
+    revalidatePath("/rrhh");
+    revalidatePath("/resultado-mes");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo cargar el estimado" };
   }
 }
 

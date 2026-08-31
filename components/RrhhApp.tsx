@@ -16,6 +16,7 @@ import {
   eliminarLicencia,
   obtenerNovedadesMes,
   cerrarNomina,
+  estimarNomina,
   eliminarCierreNomina,
   pagarNomina,
   obtenerUrlReciboSueldo,
@@ -125,6 +126,7 @@ function TabNomina({ usuarios }: { usuarios: UsuarioMin[] }) {
   const [error, setError] = useState<string | null>(null);
   const [modalCerrar, setModalCerrar] = useState<NovedadNomina | null>(null);
   const [modalPagar, setModalPagar] = useState<NovedadNomina | null>(null);
+  const [modalEstimar, setModalEstimar] = useState<NovedadNomina | null>(null);
 
   function recargar() {
     setCargando(true);
@@ -261,15 +263,36 @@ function TabNomina({ usuarios }: { usuarios: UsuarioMin[] }) {
                     <td className="p-3 text-right whitespace-nowrap">
                       {!f.cierre ? (
                         <span className="text-neutral-300 text-xs">Sin cerrar</span>
+                      ) : f.cierre.es_estimado ? (
+                        <span className="text-amber-700 tabular-nums">
+                          <span className="text-[10px] font-bold uppercase tracking-wide bg-amber-100 px-1.5 py-0.5 rounded mr-1">Estimado</span>
+                          ${formatearMonto(f.cierre.neto_a_pagar)}
+                        </span>
                       ) : (
                         <span className="font-bold tabular-nums">${formatearMonto(f.cierre.neto_a_pagar)}</span>
                       )}
                     </td>
                     <td className="p-3 text-right whitespace-nowrap">
                       {!f.cierre ? (
-                        <button onClick={() => setModalCerrar(f)} className="text-xs font-bold text-white bg-accent hover:bg-accent-dark px-3 py-1.5 rounded-lg">
-                          Cerrar nómina
-                        </button>
+                        <div className="flex items-center justify-end gap-2.5">
+                          {f.modalidad === "POR_HORA" && (
+                            <button onClick={() => setModalEstimar(f)} className="text-xs text-neutral-400 hover:text-accent">
+                              Estimar
+                            </button>
+                          )}
+                          <button onClick={() => setModalCerrar(f)} className="text-xs font-bold text-white bg-accent hover:bg-accent-dark px-3 py-1.5 rounded-lg">
+                            Cerrar nómina
+                          </button>
+                        </div>
+                      ) : f.cierre.es_estimado ? (
+                        <div className="flex items-center justify-end gap-2.5">
+                          <button onClick={() => handleDeshacerCierre(f)} className="text-xs text-neutral-400 hover:text-red-600">
+                            Deshacer
+                          </button>
+                          <button onClick={() => setModalCerrar(f)} className="text-xs font-bold text-white bg-accent hover:bg-accent-dark px-3 py-1.5 rounded-lg">
+                            Cerrar (real)
+                          </button>
+                        </div>
                       ) : f.cierre.estado === "PENDIENTE_PAGO" ? (
                         <div className="flex items-center justify-end gap-2.5">
                           <button onClick={() => handleDeshacerCierre(f)} className="text-xs text-neutral-400 hover:text-red-600">
@@ -310,6 +333,18 @@ function TabNomina({ usuarios }: { usuarios: UsuarioMin[] }) {
         />
       )}
 
+      {modalEstimar && (
+        <ModalEstimarNomina
+          fila={modalEstimar}
+          mes={mes}
+          onClose={() => setModalEstimar(null)}
+          onEstimado={() => {
+            setModalEstimar(null);
+            recargar();
+          }}
+        />
+      )}
+
       {modalPagar && modalPagar.cierre && (
         <ModalPagarNomina
           fila={modalPagar}
@@ -341,11 +376,7 @@ function ModalCerrarNomina({
   const [error, setError] = useState<string | null>(null);
 
   const netoPreview =
-    fila.montoBase +
-    fila.incentivoPresentismoPreview +
-    (Number(horasExtraMonto) || 0) +
-    (Number(premiosMonto) || 0) -
-    fila.adelantos;
+    fila.montoBase + fila.incentivoPresentismoPreview + (Number(horasExtraMonto) || 0) + (Number(premiosMonto) || 0) - fila.adelantos;
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -373,10 +404,17 @@ function ModalCerrarNomina({
 
         {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
 
+        {fila.cierre?.es_estimado && (
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+            Tenías un estimado de ${formatearMonto(fila.cierre.sueldo_base)} cargado — al confirmar, se reemplaza por
+            el cálculo real de abajo.
+          </p>
+        )}
+
         <div className="bg-neutral-50 rounded-lg p-3 mb-3 space-y-1.5 text-sm">
           <div className="flex justify-between">
             <span className="text-neutral-500">
-              {fila.modalidad === "POR_HORA" ? `Horas trabajadas (${fila.horasTrabajadasMes ?? 0} hs × $${formatearMonto(fila.valorHora ?? 0)})` : "Sueldo base"}
+              {fila.modalidad === "POR_HORA" ? `Horas fichadas hasta hoy (${fila.horasTrabajadasMes ?? 0} hs × $${formatearMonto(fila.valorHora ?? 0)})` : "Sueldo base"}
             </span>
             <span className="tabular-nums font-medium">${formatearMonto(fila.montoBase)}</span>
           </div>
@@ -430,6 +468,74 @@ function ModalCerrarNomina({
         <div className="flex justify-end">
           <button type="submit" disabled={guardando} className="bg-accent hover:bg-accent-dark disabled:opacity-50 text-white font-medium px-5 py-2 rounded-lg text-sm">
             {guardando ? "Cerrando..." : "Cerrar nómina"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function ModalEstimarNomina({
+  fila,
+  mes,
+  onClose,
+  onEstimado,
+}: {
+  fila: NovedadNomina;
+  mes: string;
+  onClose: () => void;
+  onEstimado: () => void;
+}) {
+  const [monto, setMonto] = useState(fila.cierre ? String(fila.cierre.sueldo_base) : String(fila.montoBase || ""));
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError(null);
+    const valor = Number(monto) || 0;
+    setGuardando(true);
+    estimarNomina(fila.idPersona, fila.idUsuario, mes, valor)
+      .then((res) => {
+        if (res.error) setError(res.error);
+        else onEstimado();
+      })
+      .finally(() => setGuardando(false));
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+      <form onSubmit={handleSubmit} className="bg-white w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl p-6 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-neutral-900">Estimar nómina</h2>
+          <button type="button" onClick={onClose} className="text-neutral-400 hover:text-neutral-700" aria-label="Cerrar">
+            ✕
+          </button>
+        </div>
+        <p className="text-xs text-neutral-400 -mt-2 mb-4">{fila.nombre} · {mes}</p>
+
+        {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
+
+        <p className="text-xs text-neutral-500 mb-3">
+          Cargá un monto aproximado para verlo reflejado ya en el Estado de Resultados. Sugerido según horas fichadas
+          hasta hoy: {fila.horasTrabajadasMes ?? 0} hs × ${formatearMonto(fila.valorHora ?? 0)} = ${formatearMonto(fila.montoBase)}.
+          Cuando tengas el mes completo, tocá "Cerrar (real)" y esto se reemplaza solo por el cálculo exacto.
+        </p>
+
+        <div className="mb-4">
+          <label className="block text-xs font-medium text-neutral-600 mb-1">Monto estimado ($)</label>
+          <input
+            type="number"
+            autoFocus
+            value={monto}
+            onChange={(e) => setMonto(e.target.value)}
+            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+          />
+        </div>
+
+        <div className="flex justify-end">
+          <button type="submit" disabled={guardando} className="bg-accent hover:bg-accent-dark disabled:opacity-50 text-white font-medium px-5 py-2 rounded-lg text-sm">
+            {guardando ? "Guardando..." : "Guardar estimado"}
           </button>
         </div>
       </form>
