@@ -39,8 +39,8 @@ export default async function SelfCheckoutPage({ params }: { params: Promise<{ i
   if (error) {
     return (
       <div className="max-w-md mx-auto text-center py-12">
-        <p className="text-red-600 font-medium mb-2">No se pudo cargar el self-checkout</p>
-        <p className="text-sm text-neutral-500">{error.message}</p>
+        <p className="text-[#dc2626] font-medium mb-2">No se pudo cargar el self-checkout</p>
+        <p className="text-sm text-[#737373]">{error.message}</p>
       </div>
     );
   }

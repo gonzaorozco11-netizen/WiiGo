@@ -483,7 +483,7 @@ export default function SelfCheckoutApp({
   }
 
   return (
-    <div className="min-h-screen bg-neutral-50 flex flex-col relative">
+    <div className="min-h-screen bg-[#fafafa] flex flex-col relative">
       <style>{`
         @keyframes sc-float3d {
           0%, 100% { transform: rotateX(9deg) rotateY(-11deg) translateY(0px); }
@@ -574,17 +574,17 @@ export default function SelfCheckoutApp({
         }
       `}</style>
       {paso !== "reposo" && (
-        <header className="border-b border-neutral-200 bg-white shrink-0 px-5 py-3.5 flex items-center justify-between">
-          <span className="font-extrabold tracking-tight text-neutral-900">WiiGo</span>
+        <header className="border-b border-[#e5e5e5] bg-[#ffffff] shrink-0 px-5 py-3.5 flex items-center justify-between">
+          <span className="font-extrabold tracking-tight text-foreground">WiiGo</span>
           {paso === "escaneo" || paso === "identificar" || paso === "pagar" || paso === "mp-esperando" ? (
             <button
               onClick={handleCancelarPedido}
-              className="text-xs text-neutral-400 border border-neutral-200 rounded-full px-3 py-1"
+              className="text-xs text-[#a3a3a3] border border-[#e5e5e5] rounded-full px-3 py-1"
             >
               Cancelar
             </button>
           ) : (
-            <span className="text-xs text-neutral-400 text-right leading-tight">
+            <span className="text-xs text-[#a3a3a3] text-right leading-tight">
               {local.nombre}
               <br />
               Terminal
@@ -646,12 +646,12 @@ export default function SelfCheckoutApp({
             </div>
           </div>
 
-          <h1 className="text-2xl font-extrabold text-white text-balance relative z-10">Tu compra, a tu ritmo</h1>
+          <h1 className="text-2xl font-extrabold text-[#ffffff] text-balance relative z-10">Tu compra, a tu ritmo</h1>
 
-          <div className="sc-tap-hint relative w-12 h-12 rounded-full bg-white/10 border border-white/25 flex items-center justify-center text-lg z-10">
+          <div className="sc-tap-hint relative w-12 h-12 rounded-full bg-[rgba(255,255,255,.1)] border border-[rgba(255,255,255,.25)] flex items-center justify-center text-lg z-10">
             👆
           </div>
-          <p className="text-xs font-bold uppercase tracking-widest text-white/50 -mt-2 relative z-10">
+          <p className="text-xs font-bold uppercase tracking-widest text-[rgba(255,255,255,.5)] -mt-2 relative z-10">
             Tocá la pantalla para empezar
           </p>
         </div>
@@ -659,22 +659,22 @@ export default function SelfCheckoutApp({
 
       {paso === "escaneo" && (
         <div className="flex-1 flex flex-col min-h-0">
-          <div className="bg-white border-b border-neutral-200 px-5 py-3 shrink-0">
+          <div className="bg-[#ffffff] border-b border-[#e5e5e5] px-5 py-3 shrink-0">
             <div className="relative">
-              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400">🔍</span>
+              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#a3a3a3]">🔍</span>
               <input
                 ref={searchInputRef}
                 value={busquedaTexto}
                 onChange={(e) => setBusquedaTexto(e.target.value)}
                 onKeyDown={handleBuscadorKeyDown}
                 placeholder="Buscá un producto por nombre..."
-                className="w-full rounded-xl border-[1.5px] border-accent bg-accent-tint pl-9 pr-3.5 py-3 text-sm font-medium text-neutral-900"
+                className="w-full rounded-xl border-[1.5px] border-accent bg-accent-tint pl-9 pr-3.5 py-3 text-sm font-medium text-foreground"
               />
             </div>
-            <p className="text-[11px] text-neutral-400 mt-1.5">📷 También podés escanear el código de barras en cualquier momento</p>
+            <p className="text-[11px] text-[#a3a3a3] mt-1.5">📷 También podés escanear el código de barras en cualquier momento</p>
 
             {resultadosBusqueda.length > 0 && (
-              <div className="mt-2 border border-neutral-200 rounded-xl bg-white shadow-lg overflow-hidden max-h-64 overflow-y-auto">
+              <div className="mt-2 border border-[#e5e5e5] rounded-xl bg-[#ffffff] shadow-lg overflow-hidden max-h-64 overflow-y-auto">
                 {resultadosBusqueda.map((i) => (
                   <button
                     key={i.variante.id_variante}
@@ -683,11 +683,11 @@ export default function SelfCheckoutApp({
                       setBusquedaTexto("");
                       searchInputRef.current?.focus();
                     }}
-                    className="w-full flex items-center justify-between gap-2.5 px-3.5 py-2.5 border-b border-neutral-100 last:border-0 text-left active:bg-accent-tint"
+                    className="w-full flex items-center justify-between gap-2.5 px-3.5 py-2.5 border-b border-[#f5f5f5] last:border-0 text-left active:bg-accent-tint"
                   >
                     <span className="min-w-0">
-                      <span className="block text-sm font-semibold text-neutral-900 truncate">{i.producto.nombre}</span>
-                      {i.variante.nombre !== "Único" && <span className="block text-xs text-neutral-400">{i.variante.nombre}</span>}
+                      <span className="block text-sm font-semibold text-foreground truncate">{i.producto.nombre}</span>
+                      {i.variante.nombre !== "Único" && <span className="block text-xs text-[#a3a3a3]">{i.variante.nombre}</span>}
                     </span>
                     <span className="shrink-0 font-bold text-sm text-accent-dark">${formatearMonto(i.precio)}</span>
                   </button>
@@ -695,36 +695,36 @@ export default function SelfCheckoutApp({
               </div>
             )}
             {busquedaTexto.trim() && resultadosBusqueda.length === 0 && (
-              <p className="text-center text-xs text-neutral-400 py-3">No encontramos productos con ese nombre.</p>
+              <p className="text-center text-xs text-[#a3a3a3] py-3">No encontramos productos con ese nombre.</p>
             )}
           </div>
 
           {toast && (
-            <div className="shrink-0 mx-5 mt-3 bg-emerald-50 border border-emerald-200 rounded-xl px-3.5 py-2.5 flex items-center gap-2.5">
-              <span className="text-emerald-600">✓</span>
+            <div className="shrink-0 mx-5 mt-3 bg-[#ecfdf5] border border-[#a7f3d0] rounded-xl px-3.5 py-2.5 flex items-center gap-2.5">
+              <span className="text-[#059669]">✓</span>
               <div>
-                <p className="text-sm font-bold text-emerald-800">{toast.nombre}</p>
-                <p className="text-xs text-emerald-600">Agregado · ${formatearMonto(toast.precio)}</p>
+                <p className="text-sm font-bold text-[#065f46]">{toast.nombre}</p>
+                <p className="text-xs text-[#059669]">Agregado · ${formatearMonto(toast.precio)}</p>
               </div>
             </div>
           )}
 
           {error && !toast && (
-            <div className="shrink-0 mx-5 mt-3 bg-red-50 border border-red-200 rounded-xl px-3.5 py-2.5">
-              <p className="text-sm font-semibold text-red-700">{error}</p>
+            <div className="shrink-0 mx-5 mt-3 bg-[#fef2f2] border border-[#fecaca] rounded-xl px-3.5 py-2.5">
+              <p className="text-sm font-semibold text-[#b91c1c]">{error}</p>
             </div>
           )}
 
           <div className="flex-1 flex flex-col min-h-0 mt-3">
             <div className="px-5 pb-2 flex items-baseline justify-between shrink-0">
-              <h2 className="font-extrabold text-neutral-900">Tu carrito</h2>
-              <span className="text-xs text-neutral-400">
+              <h2 className="font-extrabold text-foreground">Tu carrito</h2>
+              <span className="text-xs text-[#a3a3a3]">
                 {totalItemsCarrito} producto{totalItemsCarrito === 1 ? "" : "s"}
               </span>
             </div>
 
             {itemsCarrito.length === 0 ? (
-              <div className="flex-1 flex flex-col items-center justify-center text-center px-8 gap-2 text-neutral-400">
+              <div className="flex-1 flex flex-col items-center justify-center text-center px-8 gap-2 text-[#a3a3a3]">
                 <span className="text-3xl opacity-50">🛒</span>
                 <p className="text-sm max-w-[220px]">Todavía no escaneaste ningún producto</p>
               </div>
@@ -733,21 +733,21 @@ export default function SelfCheckoutApp({
                 {itemsCarrito.map((i) => (
                   <div
                     key={i.variante.id_variante}
-                    className="flex items-center gap-2.5 bg-white border border-neutral-200 rounded-xl px-3 py-2"
+                    className="flex items-center gap-2.5 bg-[#ffffff] border border-[#e5e5e5] rounded-xl px-3 py-2"
                   >
-                    <div className="w-9 h-9 rounded-lg bg-neutral-100 flex items-center justify-center text-sm shrink-0">
+                    <div className="w-9 h-9 rounded-lg bg-[#f5f5f5] flex items-center justify-center text-sm shrink-0">
                       📦
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-neutral-900 truncate">{i.producto.nombre}</p>
-                      <p className="text-xs text-neutral-400">
+                      <p className="text-sm font-semibold text-foreground truncate">{i.producto.nombre}</p>
+                      <p className="text-xs text-[#a3a3a3]">
                         {i.variante.nombre !== "Único" && `${i.variante.nombre} · `}${formatearMonto(i.precio)} c/u
                       </p>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
                       <button
                         onClick={() => cambiarCantidad(i.variante.id_variante, -1)}
-                        className="w-6 h-6 rounded-md border border-neutral-300 text-neutral-500 font-bold text-sm"
+                        className="w-6 h-6 rounded-md border border-[#d4d4d4] text-[#737373] font-bold text-sm"
                       >
                         −
                       </button>
@@ -755,12 +755,12 @@ export default function SelfCheckoutApp({
                       <button
                         onClick={() => cambiarCantidad(i.variante.id_variante, 1)}
                         disabled={i.cantidad >= i.cantidadDisponible}
-                        className="w-6 h-6 rounded-md border border-neutral-300 text-neutral-500 font-bold text-sm disabled:opacity-30"
+                        className="w-6 h-6 rounded-md border border-[#d4d4d4] text-[#737373] font-bold text-sm disabled:opacity-30"
                       >
                         +
                       </button>
                     </div>
-                    <p className="w-14 text-right text-sm font-bold text-neutral-900 shrink-0">
+                    <p className="w-14 text-right text-sm font-bold text-foreground shrink-0">
                       ${formatearMonto(i.precio * i.cantidad)}
                     </p>
                   </div>
@@ -768,15 +768,15 @@ export default function SelfCheckoutApp({
               </div>
             )}
 
-            <div className="shrink-0 border-t border-neutral-200 bg-white px-5 py-3.5 flex items-center justify-between gap-4">
+            <div className="shrink-0 border-t border-[#e5e5e5] bg-[#ffffff] px-5 py-3.5 flex items-center justify-between gap-4">
               <div>
-                <p className="text-xs text-neutral-400">Total</p>
-                <p className="text-lg font-extrabold text-neutral-900">${formatearMonto(subtotalCarrito)}</p>
+                <p className="text-xs text-[#a3a3a3]">Total</p>
+                <p className="text-lg font-extrabold text-foreground">${formatearMonto(subtotalCarrito)}</p>
               </div>
               <button
                 onClick={() => setPaso("identificar")}
                 disabled={itemsCarrito.length === 0}
-                className="bg-accent hover:bg-accent-dark disabled:opacity-40 text-white font-bold px-6 py-3 rounded-xl"
+                className="bg-accent hover:bg-accent-dark disabled:opacity-40 text-[#ffffff] font-bold px-6 py-3 rounded-xl"
               >
                 Ir a pagar →
               </button>
@@ -791,67 +791,67 @@ export default function SelfCheckoutApp({
             {itemsCarrito.map((i) => (
               <div
                 key={i.variante.id_variante}
-                className="flex items-center gap-2.5 bg-white border border-neutral-200 rounded-xl px-3 py-2 mb-2"
+                className="flex items-center gap-2.5 bg-[#ffffff] border border-[#e5e5e5] rounded-xl px-3 py-2 mb-2"
               >
-                <div className="w-9 h-9 rounded-lg bg-neutral-100 flex items-center justify-center text-sm shrink-0">📦</div>
-                <p className="flex-1 min-w-0 text-sm font-semibold text-neutral-900 truncate">{i.producto.nombre}</p>
-                <p className="text-sm font-bold text-neutral-900 shrink-0">${formatearMonto(i.precio * i.cantidad)}</p>
+                <div className="w-9 h-9 rounded-lg bg-[#f5f5f5] flex items-center justify-center text-sm shrink-0">📦</div>
+                <p className="flex-1 min-w-0 text-sm font-semibold text-foreground truncate">{i.producto.nombre}</p>
+                <p className="text-sm font-bold text-foreground shrink-0">${formatearMonto(i.precio * i.cantidad)}</p>
               </div>
             ))}
           </div>
 
-          <div className="absolute inset-0 bg-black/40 flex items-end">
-            <div className="bg-white rounded-t-3xl w-full max-h-[92%] flex flex-col shadow-2xl px-5 pt-5 pb-5 overflow-y-auto">
+          <div className="absolute inset-0 bg-[rgba(0,0,0,.4)] flex items-end">
+            <div className="bg-[#ffffff] rounded-t-3xl w-full max-h-[92%] flex flex-col shadow-2xl px-5 pt-5 pb-5 overflow-y-auto">
               <p className="text-[11px] font-bold text-accent uppercase tracking-wide mb-1">Paso 1 de 2</p>
-              <h2 className="font-extrabold text-lg text-neutral-900 mb-0.5">¿Sos cliente WiiGo Club?</h2>
-              <p className="text-xs text-neutral-500 mb-4">¡Acumulá puntos con cada compra! Es opcional.</p>
+              <h2 className="font-extrabold text-lg text-foreground mb-0.5">¿Sos cliente WiiGo Club?</h2>
+              <p className="text-xs text-[#737373] mb-4">¡Acumulá puntos con cada compra! Es opcional.</p>
 
-              <div className="bg-accent-tint border border-accent/30 rounded-2xl p-3.5 mb-2.5">
-                <p className="text-sm font-bold text-neutral-900">
-                  Tu DNI <span className="font-normal text-neutral-400">Opcional</span>
+              <div className="bg-accent-tint border border-[rgba(37,99,235,.3)] rounded-2xl p-3.5 mb-2.5">
+                <p className="text-sm font-bold text-foreground">
+                  Tu DNI <span className="font-normal text-[#a3a3a3]">Opcional</span>
                 </p>
                 <input
                   value={dni}
                   onChange={(e) => setDni(e.target.value)}
                   placeholder="Ingresá tu DNI"
                   inputMode="numeric"
-                  className="w-full rounded-lg border border-neutral-300 px-3 py-2.5 text-sm mt-1.5"
+                  className="w-full rounded-lg border border-[#d4d4d4] px-3 py-2.5 text-sm mt-1.5"
                 />
-                {buscandoCliente && <p className="text-xs text-neutral-400 mt-1.5">Buscando...</p>}
+                {buscandoCliente && <p className="text-xs text-[#a3a3a3] mt-1.5">Buscando...</p>}
                 {!buscandoCliente && clienteInfo?.existe && (
-                  <p className="text-xs text-emerald-600 font-semibold mt-1.5">
+                  <p className="text-xs text-[#059669] font-semibold mt-1.5">
                     ¡Hola{clienteInfo.nombre ? ` ${clienteInfo.nombre}` : ""}! Tenés {clienteInfo.puntos} puntos WiiGo.
                   </p>
                 )}
                 {!buscandoCliente && clienteInfo && !clienteInfo.existe && (
-                  <p className="text-xs text-neutral-500 font-semibold mt-1.5">
+                  <p className="text-xs text-[#737373] font-semibold mt-1.5">
                     Todavía no estás registrado — esta compra no suma puntos. Pedile a alguien del local que te registre para la próxima.
                   </p>
                 )}
               </div>
 
-              <div className="bg-neutral-50 border border-neutral-200 rounded-2xl p-3 mb-3">
-                <p className="text-xs font-bold text-neutral-900">
-                  ¿Te recomendó una profesional? <span className="font-normal text-neutral-400">Opcional</span>
+              <div className="bg-[#fafafa] border border-[#e5e5e5] rounded-2xl p-3 mb-3">
+                <p className="text-xs font-bold text-foreground">
+                  ¿Te recomendó una profesional? <span className="font-normal text-[#a3a3a3]">Opcional</span>
                 </p>
                 <input
                   value={codigoProfesional}
                   onChange={(e) => setCodigoProfesional(e.target.value)}
                   placeholder="Código de la profesional"
-                  className="w-full rounded-lg border border-neutral-300 px-2.5 py-1.5 text-xs mt-1.5"
+                  className="w-full rounded-lg border border-[#d4d4d4] px-2.5 py-1.5 text-xs mt-1.5"
                 />
-                {buscandoCodigo && <p className="text-xs text-neutral-400 mt-1.5">Buscando...</p>}
+                {buscandoCodigo && <p className="text-xs text-[#a3a3a3] mt-1.5">Buscando...</p>}
                 {!buscandoCodigo && codigoInfo?.nombre && (
-                  <p className="text-xs text-emerald-600 font-semibold mt-1.5">✓ {codigoInfo.nombre}</p>
+                  <p className="text-xs text-[#059669] font-semibold mt-1.5">✓ {codigoInfo.nombre}</p>
                 )}
                 {!buscandoCodigo && codigoInfo?.error && (
-                  <p className="text-xs text-red-600 font-semibold mt-1.5">✗ {codigoInfo.error}</p>
+                  <p className="text-xs text-[#dc2626] font-semibold mt-1.5">✗ {codigoInfo.error}</p>
                 )}
               </div>
 
               {profesional && marcasEnCarrito.length > 0 && (
-                <div className="bg-purple-50 border border-purple-200 rounded-2xl p-3.5 mb-3">
-                  <p className="text-sm font-bold text-purple-800 mb-2">🤝 {profesional.nombre}, podés pagar con tu saldo</p>
+                <div className="bg-[#faf5ff] border border-[#e9d5ff] rounded-2xl p-3.5 mb-3">
+                  <p className="text-sm font-bold text-[#6b21a8] mb-2">🤝 {profesional.nombre}, podés pagar con tu saldo</p>
                   <div className="space-y-1.5 mb-2">
                     {marcasEnCarrito.map((m) => {
                       const alcanza = m.saldo >= m.subtotalCarrito;
@@ -859,13 +859,13 @@ export default function SelfCheckoutApp({
                       return (
                         <label
                           key={m.idMarca}
-                          className="flex items-center justify-between gap-2 text-sm bg-white border border-purple-200 rounded-lg px-3 py-2 cursor-pointer"
+                          className="flex items-center justify-between gap-2 text-sm bg-[#ffffff] border border-[#e9d5ff] rounded-lg px-3 py-2 cursor-pointer"
                         >
                           <span className="flex items-center gap-2">
                             <input type="checkbox" checked={marcasCanje.has(m.idMarca)} onChange={() => toggleMarcaCanje(m.idMarca)} />
                             {m.nombreMarca} — <span className="tabular-nums">${formatearMonto(m.subtotalCarrito)}</span>
                           </span>
-                          <span className="text-xs text-purple-600 tabular-nums">
+                          <span className="text-xs text-[#9333ea] tabular-nums">
                             Saldo: ${formatearMonto(m.saldo)}
                             {!alcanza && ` (descuenta $${formatearMonto(montoAplicado)}, resto se paga normal)`}
                           </span>
@@ -881,21 +881,21 @@ export default function SelfCheckoutApp({
                       type="password"
                       inputMode="numeric"
                       maxLength={6}
-                      className="w-full rounded-lg border border-purple-300 px-3 py-2 text-sm"
+                      className="w-full rounded-lg border border-[#d8b4fe] px-3 py-2 text-sm"
                     />
                   )}
                 </div>
               )}
 
               {infoPuntos && infoPuntos.maxDescuento > 0 && (
-                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3.5 mb-3">
+                <div className="bg-[#fffbeb] border border-[#fde68a] rounded-2xl p-3.5 mb-3">
                   <label className="flex items-center justify-between gap-2 cursor-pointer">
-                    <span className="text-sm font-bold text-amber-900">
+                    <span className="text-sm font-bold text-[#78350f]">
                       ⭐ Usar mis puntos WiiGo — cubre hasta ${formatearMonto(infoPuntos.maxDescuento)}
                     </span>
                     <input type="checkbox" checked={usarPuntosWiigo} onChange={(e) => setUsarPuntosWiigo(e.target.checked)} className="w-5 h-5" />
                   </label>
-                  <p className="text-[11px] text-amber-700 mt-1">
+                  <p className="text-[11px] text-[#b45309] mt-1">
                     Usa {infoPuntos.puntosNecesarios} de tus {infoPuntos.puntosDisponibles} puntos.
                   </p>
                 </div>
@@ -904,14 +904,14 @@ export default function SelfCheckoutApp({
               <button
                 onClick={() => setPaso("pagar")}
                 disabled={marcasCanje.size > 0 && pinCanje.length < 4}
-                className="bg-accent hover:bg-accent-dark disabled:opacity-50 text-white font-bold py-3.5 rounded-2xl text-sm mt-1"
+                className="bg-accent hover:bg-accent-dark disabled:opacity-50 text-[#ffffff] font-bold py-3.5 rounded-2xl text-sm mt-1"
               >
                 Continuar
               </button>
-              <button onClick={() => setPaso("pagar")} className="text-center text-xs text-neutral-400 font-semibold py-2.5">
+              <button onClick={() => setPaso("pagar")} className="text-center text-xs text-[#a3a3a3] font-semibold py-2.5">
                 Omitir este paso
               </button>
-              <button onClick={() => setPaso("escaneo")} className="text-center text-xs text-neutral-400 font-semibold -mt-1">
+              <button onClick={() => setPaso("escaneo")} className="text-center text-xs text-[#a3a3a3] font-semibold -mt-1">
                 ‹ Volver al carrito
               </button>
             </div>
@@ -925,88 +925,88 @@ export default function SelfCheckoutApp({
             {itemsCarrito.map((i) => (
               <div
                 key={i.variante.id_variante}
-                className="flex items-center gap-2.5 bg-white border border-neutral-200 rounded-xl px-3 py-2 mb-2"
+                className="flex items-center gap-2.5 bg-[#ffffff] border border-[#e5e5e5] rounded-xl px-3 py-2 mb-2"
               >
-                <div className="w-9 h-9 rounded-lg bg-neutral-100 flex items-center justify-center text-sm shrink-0">📦</div>
-                <p className="flex-1 min-w-0 text-sm font-semibold text-neutral-900 truncate">{i.producto.nombre}</p>
-                <p className="text-sm font-bold text-neutral-900 shrink-0">${formatearMonto(i.precio * i.cantidad)}</p>
+                <div className="w-9 h-9 rounded-lg bg-[#f5f5f5] flex items-center justify-center text-sm shrink-0">📦</div>
+                <p className="flex-1 min-w-0 text-sm font-semibold text-foreground truncate">{i.producto.nombre}</p>
+                <p className="text-sm font-bold text-foreground shrink-0">${formatearMonto(i.precio * i.cantidad)}</p>
               </div>
             ))}
           </div>
 
-          <div className="absolute inset-0 bg-black/40 flex items-end">
-            <div className="bg-white rounded-t-3xl w-full max-h-[92%] flex flex-col shadow-2xl px-5 pt-5 pb-5 overflow-y-auto">
+          <div className="absolute inset-0 bg-[rgba(0,0,0,.4)] flex items-end">
+            <div className="bg-[#ffffff] rounded-t-3xl w-full max-h-[92%] flex flex-col shadow-2xl px-5 pt-5 pb-5 overflow-y-auto">
               <p className="text-[11px] font-bold text-accent uppercase tracking-wide mb-1">Paso 2 de 2</p>
-              <h2 className="font-extrabold text-lg text-neutral-900 mb-3.5">¿Cómo querés pagar?</h2>
+              <h2 className="font-extrabold text-lg text-foreground mb-3.5">¿Cómo querés pagar?</h2>
 
               <div className="flex justify-between items-center text-sm">
                 <span>Subtotal</span>
                 <span>${formatearMonto(subtotalCarrito)}</span>
               </div>
               {descuentoReferidoPreview > 0 && (
-                <div className="flex justify-between items-center text-sm text-emerald-600">
+                <div className="flex justify-between items-center text-sm text-[#059669]">
                   <span>Descuento por código de profesional</span>
                   <span>-${formatearMonto(descuentoReferidoPreview)}</span>
                 </div>
               )}
               {descuentoCanje > 0 && (
-                <div className="flex justify-between items-center text-sm text-purple-600">
+                <div className="flex justify-between items-center text-sm text-[#9333ea]">
                   <span>Pagado con saldo de profesional</span>
                   <span>-${formatearMonto(descuentoCanje)}</span>
                 </div>
               )}
               {descuentoPuntosPreview > 0 && (
-                <div className="flex justify-between items-center text-sm text-amber-700">
+                <div className="flex justify-between items-center text-sm text-[#b45309]">
                   <span>Pagado con puntos WiiGo</span>
                   <span>-${formatearMonto(descuentoPuntosPreview)}</span>
                 </div>
               )}
 
-              <div className="bg-accent-tint border border-accent/30 rounded-2xl p-4 text-center my-3.5">
+              <div className="bg-accent-tint border border-[rgba(37,99,235,.3)] rounded-2xl p-4 text-center my-3.5">
                 <p className="text-[11px] font-bold text-accent-dark uppercase tracking-wide">Total a pagar</p>
-                <p className="text-3xl font-extrabold text-neutral-900 tracking-tight">${formatearMonto(totalFinal)}</p>
+                <p className="text-3xl font-extrabold text-foreground tracking-tight">${formatearMonto(totalFinal)}</p>
               </div>
 
               <button
                 onClick={() => setMedioPagoElegido("EFECTIVO")}
                 className={`flex items-center gap-3 text-left border-2 rounded-2xl px-3.5 py-3 mb-2.5 ${
-                  medioPagoElegido === "EFECTIVO" ? "border-accent bg-accent-tint" : "border-neutral-200 bg-white"
+                  medioPagoElegido === "EFECTIVO" ? "border-accent bg-accent-tint" : "border-[#e5e5e5] bg-[#ffffff]"
                 }`}
               >
-                <span className="w-10 h-10 rounded-xl bg-white border border-neutral-200 flex items-center justify-center text-lg shrink-0">
+                <span className="w-10 h-10 rounded-xl bg-[#ffffff] border border-[#e5e5e5] flex items-center justify-center text-lg shrink-0">
                   💵
                 </span>
                 <span>
-                  <span className="block font-bold text-sm text-neutral-900">Efectivo</span>
-                  <span className="block text-xs text-neutral-500">Pagás en caja con el personal</span>
+                  <span className="block font-bold text-sm text-foreground">Efectivo</span>
+                  <span className="block text-xs text-[#737373]">Pagás en caja con el personal</span>
                 </span>
               </button>
               <button
                 onClick={() => setMedioPagoElegido("MERCADO_PAGO")}
                 className={`flex items-center gap-3 text-left border-2 rounded-2xl px-3.5 py-3 mb-2.5 ${
-                  medioPagoElegido === "MERCADO_PAGO" ? "border-accent bg-accent-tint" : "border-neutral-200 bg-white"
+                  medioPagoElegido === "MERCADO_PAGO" ? "border-accent bg-accent-tint" : "border-[#e5e5e5] bg-[#ffffff]"
                 }`}
               >
-                <span className="w-10 h-10 rounded-xl bg-white border border-neutral-200 flex items-center justify-center text-lg shrink-0">
+                <span className="w-10 h-10 rounded-xl bg-[#ffffff] border border-[#e5e5e5] flex items-center justify-center text-lg shrink-0">
                   📱
                 </span>
                 <span>
-                  <span className="block font-bold text-sm text-neutral-900">Mercado Pago</span>
-                  <span className="block text-xs text-neutral-500">Escaneás un QR y pagás desde tu celular</span>
+                  <span className="block font-bold text-sm text-foreground">Mercado Pago</span>
+                  <span className="block text-xs text-[#737373]">Escaneás un QR y pagás desde tu celular</span>
                 </span>
               </button>
-              <div className="flex items-center gap-3 text-left border-2 border-dashed border-neutral-200 rounded-2xl px-3.5 py-3 mb-1 opacity-45">
-                <span className="w-10 h-10 rounded-xl bg-white border border-neutral-200 flex items-center justify-center text-lg shrink-0">
+              <div className="flex items-center gap-3 text-left border-2 border-dashed border-[#e5e5e5] rounded-2xl px-3.5 py-3 mb-1 opacity-45">
+                <span className="w-10 h-10 rounded-xl bg-[#ffffff] border border-[#e5e5e5] flex items-center justify-center text-lg shrink-0">
                   💳
                 </span>
                 <span>
-                  <span className="block font-bold text-sm text-neutral-900">Débito / Crédito</span>
-                  <span className="block text-xs text-neutral-500">Próximamente</span>
+                  <span className="block font-bold text-sm text-foreground">Débito / Crédito</span>
+                  <span className="block text-xs text-[#737373]">Próximamente</span>
                 </span>
               </div>
 
               {error && (
-                <p className="text-sm text-red-600 mt-2.5" role="alert">
+                <p className="text-sm text-[#dc2626] mt-2.5" role="alert">
                   {error}
                 </p>
               )}
@@ -1014,11 +1014,11 @@ export default function SelfCheckoutApp({
               <button
                 onClick={() => handleConfirmar(medioPagoElegido)}
                 disabled={enviando}
-                className="bg-accent hover:bg-accent-dark disabled:opacity-50 text-white font-bold py-3.5 rounded-2xl text-sm mt-3.5"
+                className="bg-accent hover:bg-accent-dark disabled:opacity-50 text-[#ffffff] font-bold py-3.5 rounded-2xl text-sm mt-3.5"
               >
                 {enviando ? "Confirmando..." : "Confirmar y pagar"}
               </button>
-              <button onClick={() => setPaso("identificar")} className="text-center text-xs text-neutral-400 font-semibold py-2.5">
+              <button onClick={() => setPaso("identificar")} className="text-center text-xs text-[#a3a3a3] font-semibold py-2.5">
                 ‹ Volver
               </button>
             </div>
@@ -1029,15 +1029,15 @@ export default function SelfCheckoutApp({
       {paso === "efectivo-esperando" && pedido && (
         <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
           <div className="text-3xl mb-2">🧾</div>
-          <h2 className="text-xl font-extrabold text-neutral-900 mb-1.5 text-balance">Entregá el efectivo al personal</h2>
-          <p className="text-sm text-neutral-500 max-w-xs mb-4">
+          <h2 className="text-xl font-extrabold text-foreground mb-1.5 text-balance">Entregá el efectivo al personal</h2>
+          <p className="text-sm text-[#737373] max-w-xs mb-4">
             Un miembro del equipo va a revisar los productos que seleccionaste y recibir el dinero antes de que te
             retires.
           </p>
-          <p className="text-2xl font-extrabold text-neutral-900">${formatearMonto(pedido.total)}</p>
-          <p className="text-xs text-neutral-400 mb-4">Pedido #{formatearPedido(pedido.numero)}</p>
-          <div className="flex items-center gap-2 text-xs text-neutral-400">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse motion-reduce:animate-none" />
+          <p className="text-2xl font-extrabold text-foreground">${formatearMonto(pedido.total)}</p>
+          <p className="text-xs text-[#a3a3a3] mb-4">Pedido #{formatearPedido(pedido.numero)}</p>
+          <div className="flex items-center gap-2 text-xs text-[#a3a3a3]">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#10b981] animate-pulse motion-reduce:animate-none" />
             Esperando confirmación del personal...
           </div>
         </div>
@@ -1048,18 +1048,18 @@ export default function SelfCheckoutApp({
           <div className="flex items-center gap-1.5 bg-[#eef9f1] text-[#00a650] font-bold text-xs px-3.5 py-1.5 rounded-full mb-3.5">
             📱 Mercado Pago
           </div>
-          <p className="text-sm text-neutral-500 mb-3.5">Escaneá este código con la app de Mercado Pago de tu celular</p>
-          <div className="w-40 h-40 bg-white rounded-2xl border border-neutral-200 shadow-sm flex items-center justify-center mb-3.5 overflow-hidden">
+          <p className="text-sm text-[#737373] mb-3.5">Escaneá este código con la app de Mercado Pago de tu celular</p>
+          <div className="w-40 h-40 bg-[#ffffff] rounded-2xl border border-[#e5e5e5] shadow-sm flex items-center justify-center mb-3.5 overflow-hidden">
             {pedido.qrImagen ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={pedido.qrImagen} alt="Código QR de Mercado Pago" className="w-full h-full object-contain" />
             ) : (
-              <span className="text-neutral-300 text-xs px-2 text-center">No se pudo generar el QR</span>
+              <span className="text-[#d4d4d4] text-xs px-2 text-center">No se pudo generar el QR</span>
             )}
           </div>
-          <p className="text-2xl font-extrabold text-neutral-900">${formatearMonto(pedido.total)}</p>
-          <div className="flex items-center gap-2 text-xs text-neutral-400 mt-3">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse motion-reduce:animate-none" />
+          <p className="text-2xl font-extrabold text-foreground">${formatearMonto(pedido.total)}</p>
+          <div className="flex items-center gap-2 text-xs text-[#a3a3a3] mt-3">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#10b981] animate-pulse motion-reduce:animate-none" />
             Esperando el pago...
           </div>
         </div>
@@ -1068,12 +1068,12 @@ export default function SelfCheckoutApp({
       {paso === "pagado" && pedido && (
         <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
           <div className="text-4xl mb-2">✅</div>
-          <h2 className="text-2xl font-extrabold text-neutral-900 mb-1.5">¡Perfecto!</h2>
-          <p className="text-sm text-neutral-500 max-w-xs mb-2">Mostrale tu ticket al personal para controlar antes de salir.</p>
-          <p className="text-xs text-neutral-400 mb-6">Pedido #{formatearPedido(pedido.numero)} · ${formatearMonto(pedido.total)}</p>
+          <h2 className="text-2xl font-extrabold text-foreground mb-1.5">¡Perfecto!</h2>
+          <p className="text-sm text-[#737373] max-w-xs mb-2">Mostrale tu ticket al personal para controlar antes de salir.</p>
+          <p className="text-xs text-[#a3a3a3] mb-6">Pedido #{formatearPedido(pedido.numero)} · ${formatearMonto(pedido.total)}</p>
           <button
             onClick={volverAEmpezar}
-            className="border border-neutral-300 text-neutral-700 font-semibold px-7 py-3 rounded-xl text-sm"
+            className="border border-[#d4d4d4] text-[#404040] font-semibold px-7 py-3 rounded-xl text-sm"
           >
             Nueva compra
           </button>
@@ -1083,11 +1083,11 @@ export default function SelfCheckoutApp({
       {paso === "cancelado" && (
         <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
           <div className="text-3xl mb-2">✕</div>
-          <h2 className="text-xl font-extrabold text-neutral-900 mb-1.5">Pedido cancelado</h2>
-          <p className="text-sm text-neutral-500 max-w-xs mb-6">Podés empezar una compra nueva cuando quieras.</p>
+          <h2 className="text-xl font-extrabold text-foreground mb-1.5">Pedido cancelado</h2>
+          <p className="text-sm text-[#737373] max-w-xs mb-6">Podés empezar una compra nueva cuando quieras.</p>
           <button
             onClick={volverAEmpezar}
-            className="bg-accent hover:bg-accent-dark text-white font-bold px-7 py-3 rounded-xl text-sm"
+            className="bg-accent hover:bg-accent-dark text-[#ffffff] font-bold px-7 py-3 rounded-xl text-sm"
           >
             Empezar de nuevo
           </button>
