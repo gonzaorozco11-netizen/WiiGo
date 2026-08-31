@@ -126,6 +126,22 @@ export async function actualizarSueldoBase(id: string, sueldoBase: number): Prom
   return { error: null };
 }
 
+// Para empleados que cobran por hora en vez de sueldo fijo — al cerrar su
+// nómina, el monto base sale de horas trabajadas (Planilla horaria) × este
+// valor, en vez del sueldo_base fijo.
+export async function actualizarValorHora(id: string, valorHora: number): Promise<{ error: string | null }> {
+  const sesion = await obtenerSesionConPermisos();
+  if (!tienePermiso(sesion, PERMISOS.GESTIONAR_NOMINA)) {
+    return { error: "No tenés permiso para gestionar la Nómina." };
+  }
+  if (valorHora < 0) return { error: "El valor hora no puede ser negativo" };
+  const supabase = getSupabaseServerClient();
+  const { error } = await supabase.from("usuarios").update({ valor_hora: valorHora }).eq("id_usuario", id);
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath("/rrhh");
+  return { error: null };
+}
+
 // Solo admin puede tildar permisos — delegar quién puede repartir permisos
 // sería un agujero de seguridad (un operativo se podría auto-otorgar todo).
 export async function actualizarPermisosUsuario(id: string, permisos: string[]): Promise<{ error: string | null }> {

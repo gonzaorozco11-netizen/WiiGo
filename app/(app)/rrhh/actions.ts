@@ -583,16 +583,26 @@ export type NovedadNomina = {
   idPersona: string;
   idUsuario: string;
   nombre: string;
+  modalidad: "FIJO" | "POR_HORA";
   sueldoBase: number;
+  valorHora: number | null;
+  horasTrabajadasMes: number | null;
+  montoBase: number;
   presentismoResultado: "COMPLETO" | "PARCIAL" | "PERDIDO";
   incentivoPresentismoPreview: number;
   adelantos: number;
   cierre: CierreNomina | null;
 };
 
-// Consolida, por cada persona con sueldo cargado, lo necesario para cerrar
-// su nómina del mes: sueldo base, resultado de presentismo (ya calculado),
-// adelantos del período, y si ya tiene un cierre (y en qué estado).
+async function totalHorasTrabajadasMes(idPersona: string, periodo: string) {
+  const filas = await listarPlanillaHoraria(idPersona, periodo);
+  return redondear2(filas.reduce((acc, f) => acc + (f.horasTrabajadas ?? 0), 0));
+}
+
+// Consolida, por cada persona con sueldo cargado (fijo o por hora), lo
+// necesario para cerrar su nómina del mes: monto base, resultado de
+// presentismo (ya calculado), adelantos del período, y si ya tiene un
+// cierre (y en qué estado).
 export async function obtenerNovedadesMes(periodo: string): Promise<NovedadNomina[]> {
   const permisoError = await requireAcceso();
   if (permisoError) throw new Error(permisoError);
@@ -602,11 +612,10 @@ export async function obtenerNovedadesMes(periodo: string): Promise<NovedadNomin
 
   const { data: usuariosConSueldo } = await supabase
     .from("usuarios")
-    .select("id_usuario, nombre, sueldo_base, id_persona")
+    .select("id_usuario, nombre, sueldo_base, valor_hora, id_persona")
     .eq("estado", "ACTIVO")
     .not("id_persona", "is", null)
-    .not("sueldo_base", "is", null)
-    .gt("sueldo_base", 0);
+    .or("sueldo_base.gt.0,valor_hora.gt.0");
   if (!usuariosConSueldo || usuariosConSueldo.length === 0) return [];
 
   const presentismoFilas = await calcularPresentismoMes(periodo);
@@ -631,24 +640,34 @@ export async function obtenerNovedadesMes(periodo: string): Promise<NovedadNomin
   const { data: cierresExistentes } = await supabase.from("nomina_cierres").select("*").eq("periodo", periodo).in("id_persona", idsPersona);
   const cierrePorPersona = new Map((cierresExistentes ?? []).map((c) => [c.id_persona as string, c as CierreNomina]));
 
-  return usuariosConSueldo
-    .map((u) => {
+  const filas = await Promise.all(
+    usuariosConSueldo.map(async (u) => {
       const idPersona = u.id_persona as string;
-      const sueldoBase = u.sueldo_base as number;
+      const valorHora = (u.valor_hora as number) || null;
+      const esPorHora = !!valorHora && valorHora > 0;
+      const sueldoBase = (u.sueldo_base as number) || 0;
+      const horasTrabajadasMes = esPorHora ? await totalHorasTrabajadasMes(idPersona, periodo) : null;
+      const montoBase = esPorHora ? redondear2((horasTrabajadasMes ?? 0) * (valorHora as number)) : sueldoBase;
       const presentismoResultado = presentismoPorPersona.get(idPersona) ?? "COMPLETO";
       const factor = presentismoResultado === "COMPLETO" ? 1 : presentismoResultado === "PARCIAL" ? 0.5 : 0;
       return {
         idPersona,
         idUsuario: u.id_usuario as string,
         nombre: u.nombre as string,
+        modalidad: esPorHora ? ("POR_HORA" as const) : ("FIJO" as const),
         sueldoBase,
+        valorHora,
+        horasTrabajadasMes,
+        montoBase,
         presentismoResultado,
-        incentivoPresentismoPreview: redondear2(sueldoBase * (params.PRESENTISMO_PORCENTAJE_INCENTIVO / 100) * factor),
+        incentivoPresentismoPreview: redondear2(montoBase * (params.PRESENTISMO_PORCENTAJE_INCENTIVO / 100) * factor),
         adelantos: adelantoPorUsuario.get(u.id_usuario as string) ?? 0,
         cierre: cierrePorPersona.get(idPersona) ?? null,
       };
     })
-    .sort((a, b) => a.nombre.localeCompare(b.nombre));
+  );
+
+  return filas.sort((a, b) => a.nombre.localeCompare(b.nombre));
 }
 
 // Cierra la nómina de una persona para el período: calcula el incentivo de
@@ -667,15 +686,17 @@ export async function cerrarNomina(idPersona: string, idUsuario: string, periodo
     const { data: existente } = await supabase.from("nomina_cierres").select("id_cierre").eq("id_persona", idPersona).eq("periodo", periodo).maybeSingle();
     if (existente) return { error: "Ya cerraste la nómina de esta persona en este período." };
 
-    const { data: usuario } = await supabase.from("usuarios").select("sueldo_base, nombre").eq("id_usuario", idUsuario).maybeSingle();
-    if (!usuario?.sueldo_base) return { error: "Esta persona no tiene sueldo base cargado." };
-    const sueldoBase = usuario.sueldo_base as number;
+    const { data: usuario } = await supabase.from("usuarios").select("sueldo_base, valor_hora, nombre").eq("id_usuario", idUsuario).maybeSingle();
+    const valorHora = (usuario?.valor_hora as number) || 0;
+    const esPorHora = valorHora > 0;
+    if (!usuario || (!usuario.sueldo_base && !esPorHora)) return { error: "Esta persona no tiene sueldo base ni valor hora cargado." };
+    const montoBase = esPorHora ? redondear2((await totalHorasTrabajadasMes(idPersona, periodo)) * valorHora) : (usuario.sueldo_base as number);
 
     const params = await obtenerParametrosPresentismo();
     const presentismoFilas = await calcularPresentismoMes(periodo);
     const presentismoResultado = presentismoFilas.find((f) => f.idPersona === idPersona)?.resultado ?? "COMPLETO";
     const factor = presentismoResultado === "COMPLETO" ? 1 : presentismoResultado === "PARCIAL" ? 0.5 : 0;
-    const incentivoPresentismo = redondear2(sueldoBase * (params.PRESENTISMO_PORCENTAJE_INCENTIVO / 100) * factor);
+    const incentivoPresentismo = redondear2(montoBase * (params.PRESENTISMO_PORCENTAJE_INCENTIVO / 100) * factor);
 
     const { desde, hasta } = rangoDelPeriodoStr(periodo);
     const { data: adelantosData } = await supabase
@@ -692,7 +713,7 @@ export async function cerrarNomina(idPersona: string, idUsuario: string, periodo
     const premiosMonto = redondear2(Number(formData.get("premios_monto") ?? 0) || 0);
     const premiosDetalle = String(formData.get("premios_detalle") ?? "").trim() || null;
 
-    const gastoDevengado = redondear2(sueldoBase + incentivoPresentismo + horasExtraMonto + premiosMonto);
+    const gastoDevengado = redondear2(montoBase + incentivoPresentismo + horasExtraMonto + premiosMonto);
     const netoAPagar = redondear2(gastoDevengado - adelantos);
 
     const idCategoriaSueldos = await resolveCategoriaSueldos(supabase);
@@ -716,7 +737,7 @@ export async function cerrarNomina(idPersona: string, idUsuario: string, periodo
     const { error } = await supabase.from("nomina_cierres").insert({
       id_persona: idPersona,
       periodo,
-      sueldo_base: sueldoBase,
+      sueldo_base: montoBase,
       presentismo_resultado: presentismoResultado,
       incentivo_presentismo: incentivoPresentismo,
       horas_extra_monto: horasExtraMonto,

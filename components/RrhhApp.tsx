@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { actualizarSueldoBase } from "@/app/(app)/usuarios/actions";
+import { actualizarSueldoBase, actualizarValorHora } from "@/app/(app)/usuarios/actions";
 import { crearHorario, actualizarHorario, desactivarHorario, listarHorarios, type HorarioTrabajo } from "@/app/(app)/organizacion/actions";
 import {
   obtenerParametrosPresentismo,
@@ -119,7 +119,8 @@ function TabNomina({ usuarios }: { usuarios: UsuarioMin[] }) {
   const [filas, setFilas] = useState<NovedadNomina[]>([]);
   const [cargando, setCargando] = useState(true);
   const [editando, setEditando] = useState<string | null>(null);
-  const [valorEdit, setValorEdit] = useState("");
+  const [valorEditSueldo, setValorEditSueldo] = useState("");
+  const [valorEditHora, setValorEditHora] = useState("");
   const [guardandoSueldo, setGuardandoSueldo] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [modalCerrar, setModalCerrar] = useState<NovedadNomina | null>(null);
@@ -132,14 +133,15 @@ function TabNomina({ usuarios }: { usuarios: UsuarioMin[] }) {
 
   useEffect(recargar, [mes]);
 
-  function handleGuardarSueldo(idUsuario: string) {
-    const monto = Number(valorEdit.replace(/[^\d.-]/g, "")) || 0;
+  function handleGuardarPagoBase(idUsuario: string) {
+    const sueldo = Number(valorEditSueldo.replace(/[^\d.-]/g, "")) || 0;
+    const hora = Number(valorEditHora.replace(/[^\d.-]/g, "")) || 0;
     setError(null);
     setGuardandoSueldo(true);
-    actualizarSueldoBase(idUsuario, monto)
-      .then((res) => {
-        if (res.error) {
-          setError(res.error);
+    Promise.all([actualizarSueldoBase(idUsuario, sueldo), actualizarValorHora(idUsuario, hora)])
+      .then(([resSueldo, resHora]) => {
+        if (resSueldo.error || resHora.error) {
+          setError(resSueldo.error ?? resHora.error);
           return;
         }
         setEditando(null);
@@ -164,8 +166,10 @@ function TabNomina({ usuarios }: { usuarios: UsuarioMin[] }) {
   return (
     <div>
       <p className="text-xs text-neutral-400 mb-3">
-        Cerrá la nómina del mes por persona: calcula el incentivo de presentismo, sumás horas extra o premios si hubo,
-        y genera el gasto de sueldo (devengado) en el Estado de Resultados. Después registrás el pago con comprobante.
+        Cerrá la nómina por persona apenas sepas el monto (no hace falta esperar a fin de mes) — calcula el incentivo
+        de presentismo hasta ese momento y genera el gasto devengado en el Estado de Resultados. Si algo cambia
+        después, "Deshacé" el cierre y volvé a cerrar antes de pagar. En los que cobran por hora, el pago base sale
+        de sus horas trabajadas (Planilla horaria) × el valor hora que le cargues.
       </p>
 
       {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
@@ -178,14 +182,14 @@ function TabNomina({ usuarios }: { usuarios: UsuarioMin[] }) {
         {cargando ? (
           <p className="text-sm text-neutral-400 text-center py-8">Cargando...</p>
         ) : usuarios.length === 0 || filas.length === 0 ? (
-          <p className="text-sm text-neutral-400 text-center py-8">No hay usuarios activos con sueldo base cargado.</p>
+          <p className="text-sm text-neutral-400 text-center py-8">No hay usuarios activos con sueldo fijo o valor hora cargado.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-neutral-200 text-left text-xs text-neutral-500">
                   <th className="p-3">Empleado</th>
-                  <th className="p-3 text-right">Sueldo base</th>
+                  <th className="p-3 text-right">Pago base</th>
                   <th className="p-3">Presentismo</th>
                   <th className="p-3 text-right">Adelantos</th>
                   <th className="p-3 text-right">Nómina</th>
@@ -198,27 +202,48 @@ function TabNomina({ usuarios }: { usuarios: UsuarioMin[] }) {
                     <td className="p-3">{f.nombre}</td>
                     <td className="p-3 text-right tabular-nums">
                       {editando === f.idUsuario ? (
-                        <div className="flex items-center gap-1.5 justify-end">
-                          <input
-                            autoFocus
-                            value={valorEdit}
-                            onChange={(e) => setValorEdit(e.target.value)}
-                            className="w-24 border border-neutral-300 rounded-lg px-2 py-1 text-sm text-right"
-                          />
-                          <button onClick={() => handleGuardarSueldo(f.idUsuario)} disabled={guardandoSueldo} className="text-xs font-semibold text-accent">
-                            {guardandoSueldo ? "..." : "OK"}
+                        <div className="flex flex-col items-end gap-1">
+                          <div className="flex items-center gap-1">
+                            <span className="text-[10px] text-neutral-400">Fijo $</span>
+                            <input
+                              autoFocus
+                              value={valorEditSueldo}
+                              onChange={(e) => setValorEditSueldo(e.target.value)}
+                              className="w-20 border border-neutral-300 rounded-lg px-2 py-1 text-sm text-right"
+                            />
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <span className="text-[10px] text-neutral-400">Valor hora $</span>
+                            <input
+                              value={valorEditHora}
+                              onChange={(e) => setValorEditHora(e.target.value)}
+                              className="w-20 border border-neutral-300 rounded-lg px-2 py-1 text-sm text-right"
+                            />
+                          </div>
+                          <button onClick={() => handleGuardarPagoBase(f.idUsuario)} disabled={guardandoSueldo} className="text-xs font-semibold text-accent">
+                            {guardandoSueldo ? "Guardando..." : "Guardar"}
                           </button>
                         </div>
                       ) : (
                         <button
                           onClick={() => {
                             setEditando(f.idUsuario);
-                            setValorEdit(String(f.sueldoBase));
+                            setValorEditSueldo(String(f.sueldoBase));
+                            setValorEditHora(String(f.valorHora ?? 0));
                           }}
-                          className="hover:underline decoration-dotted"
-                          title="Editar sueldo base"
+                          className="hover:underline decoration-dotted text-right"
+                          title="Editar sueldo fijo / valor hora"
                         >
-                          ${formatearMonto(f.sueldoBase)}
+                          {f.modalidad === "POR_HORA" ? (
+                            <>
+                              <div>${formatearMonto(f.montoBase)}</div>
+                              <div className="text-[10.5px] text-neutral-400 font-normal">
+                                {f.horasTrabajadasMes ?? 0} hs × ${formatearMonto(f.valorHora ?? 0)}
+                              </div>
+                            </>
+                          ) : (
+                            `$${formatearMonto(f.sueldoBase)}`
+                          )}
                         </button>
                       )}
                     </td>
@@ -316,7 +341,7 @@ function ModalCerrarNomina({
   const [error, setError] = useState<string | null>(null);
 
   const netoPreview =
-    fila.sueldoBase +
+    fila.montoBase +
     fila.incentivoPresentismoPreview +
     (Number(horasExtraMonto) || 0) +
     (Number(premiosMonto) || 0) -
@@ -350,8 +375,10 @@ function ModalCerrarNomina({
 
         <div className="bg-neutral-50 rounded-lg p-3 mb-3 space-y-1.5 text-sm">
           <div className="flex justify-between">
-            <span className="text-neutral-500">Sueldo base</span>
-            <span className="tabular-nums font-medium">${formatearMonto(fila.sueldoBase)}</span>
+            <span className="text-neutral-500">
+              {fila.modalidad === "POR_HORA" ? `Horas trabajadas (${fila.horasTrabajadasMes ?? 0} hs × $${formatearMonto(fila.valorHora ?? 0)})` : "Sueldo base"}
+            </span>
+            <span className="tabular-nums font-medium">${formatearMonto(fila.montoBase)}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-neutral-500">
