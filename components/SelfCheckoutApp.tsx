@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Local, Marca, Producto, VarianteProducto, Stock } from "@/lib/supabase";
 import type { Clima } from "@/lib/clima";
+import { WIIGO_LOGO_DATA_URI } from "@/lib/wiigo-logo-data";
 import {
   confirmarPedido,
   estadoPedido,
@@ -79,6 +80,11 @@ const FOTOS_CLIMA: Record<Clima, string> = {
 // corre en ese hardware.
 // ============================================================================
 const CSS_TOTEM = `
+/* El reset de Tailwind tampoco llega a aplicarse en el totem, así que el
+   margen que traen los navegadores por defecto queda a la vista como un
+   marco blanco alrededor de todo. Se resetea acá. */
+html, body { margin: 0; padding: 0; height: 100%; background: #fafafa; }
+
 .sc-root {
   --sc-accent: #2563eb;
   --sc-accent-dark: #1d4ed8;
@@ -235,10 +241,9 @@ const CSS_TOTEM = `
   font-size: 46px;
   font-weight: 800;
   letter-spacing: -0.03em;
-  color: #6f7f3f;
+  color: #a9b498;
   line-height: 1;
 }
-.sc-logo-texto span { color: #97a85f; }
 .sc-titulo {
   font-size: 26px;
   font-weight: 800;
@@ -1190,13 +1195,11 @@ export default function SelfCheckoutApp({
             <div className="sc-logo-glow" />
             <div className="sc-logo-card">
               {logoFallo ? (
-                <p className="sc-logo-texto">
-                  Wii<span>Go</span>
-                </p>
+                <p className="sc-logo-texto">WiiGo</p>
               ) : (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
-                  src="/wiigo-logo.png"
+                  src={WIIGO_LOGO_DATA_URI}
                   alt="WiiGo"
                   onError={() => setLogoFallo(true)}
                   className="sc-logo-img"
