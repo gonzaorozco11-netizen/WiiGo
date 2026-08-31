@@ -20,12 +20,16 @@ import {
   eliminarCierreNomina,
   pagarNomina,
   obtenerUrlReciboSueldo,
+  listarFeriados,
+  crearFeriado,
+  eliminarFeriado,
   type PresentismoFila,
   type FilaPlanilla,
   type FichajePendiente,
   type SaldoVacaciones,
   type Licencia,
   type NovedadNomina,
+  type Feriado,
 } from "@/app/(app)/rrhh/actions";
 
 type UsuarioMin = { id_usuario: string; nombre: string; sueldo_base: number | null };
@@ -176,8 +180,9 @@ function TabNomina({ usuarios }: { usuarios: UsuarioMin[] }) {
 
       {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
 
-      <div className="mb-4">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <input type="month" value={mes} onChange={(e) => setMes(e.target.value)} className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-sm" />
+        <BloqueFeriados />
       </div>
 
       <div className="bg-white border border-neutral-200 rounded-xl overflow-hidden">
@@ -359,6 +364,98 @@ function TabNomina({ usuarios }: { usuarios: UsuarioMin[] }) {
   );
 }
 
+function BloqueFeriados() {
+  const [abierto, setAbierto] = useState(false);
+  const [feriados, setFeriados] = useState<Feriado[]>([]);
+  const [cargando, setCargando] = useState(false);
+  const [fecha, setFecha] = useState("");
+  const [nombre, setNombre] = useState("");
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function recargar() {
+    setCargando(true);
+    listarFeriados().then(setFeriados).finally(() => setCargando(false));
+  }
+
+  useEffect(() => {
+    if (abierto) recargar();
+  }, [abierto]);
+
+  function handleAgregar(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError(null);
+    if (!fecha || !nombre.trim()) {
+      setError("Completá la fecha y el nombre");
+      return;
+    }
+    setGuardando(true);
+    crearFeriado(fecha, nombre)
+      .then((res) => {
+        if (res.error) setError(res.error);
+        else {
+          setFecha("");
+          setNombre("");
+          recargar();
+        }
+      })
+      .finally(() => setGuardando(false));
+  }
+
+  function handleEliminar(f: Feriado) {
+    if (!confirm(`¿Eliminar "${f.nombre}" (${f.fecha}) de la lista de feriados?`)) return;
+    eliminarFeriado(f.fecha).then(() => recargar());
+  }
+
+  return (
+    <div className="relative">
+      <button onClick={() => setAbierto((v) => !v)} className="text-xs font-semibold text-accent">
+        {abierto ? "▾" : "▸"} Feriados (pago doble por hora)
+      </button>
+
+      {abierto && (
+        <div className="absolute right-0 z-10 mt-2 w-80 bg-white border border-neutral-200 rounded-xl shadow-lg p-3">
+          <p className="text-[10.5px] text-neutral-400 mb-2">
+            Los que cobran por hora cobran doble si trabajan un día de esta lista. No afecta a los de sueldo fijo.
+          </p>
+          {error && <p className="text-xs text-red-600 mb-2">{error}</p>}
+          <form onSubmit={handleAgregar} className="flex items-center gap-1.5 mb-2">
+            <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className="border border-neutral-300 rounded-lg px-2 py-1 text-xs" />
+            <input
+              value={nombre}
+              onChange={(e) => setNombre(e.target.value)}
+              placeholder="Nombre"
+              className="flex-1 min-w-0 border border-neutral-300 rounded-lg px-2 py-1 text-xs"
+            />
+            <button type="submit" disabled={guardando} className="text-xs font-bold text-white bg-accent hover:bg-accent-dark px-2.5 py-1 rounded-lg whitespace-nowrap">
+              {guardando ? "..." : "+ Agregar"}
+            </button>
+          </form>
+          <div className="max-h-48 overflow-y-auto space-y-1">
+            {cargando ? (
+              <p className="text-xs text-neutral-400 text-center py-3">Cargando...</p>
+            ) : feriados.length === 0 ? (
+              <p className="text-xs text-neutral-400 text-center py-3">No hay feriados cargados.</p>
+            ) : (
+              feriados.map((f) => (
+                <div key={f.fecha} className="flex items-center justify-between text-xs px-1.5 py-1 rounded hover:bg-neutral-50">
+                  <span>
+                    <span className="text-neutral-400 tabular-nums mr-2">{f.fecha}</span>
+                    {f.nombre}
+                  </span>
+                  <button onClick={() => handleEliminar(f)} className="text-neutral-300 hover:text-red-600">
+                    ✕
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ModalCerrarNomina({
   fila,
   mes,
@@ -373,11 +470,24 @@ function ModalCerrarNomina({
   const [horasExtraMonto, setHorasExtraMonto] = useState("0");
   const [premiosMonto, setPremiosMonto] = useState("0");
   const [incluirIncentivo, setIncluirIncentivo] = useState(true);
+  const [esFormal, setEsFormal] = useState(false);
+  const [aportesEmpleado, setAportesEmpleado] = useState("0");
+  const [contribucionesPatronales, setContribucionesPatronales] = useState("0");
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const incentivoAplicado = incluirIncentivo ? fila.incentivoPresentismoPreview : 0;
-  const netoPreview = fila.montoBase + incentivoAplicado + (Number(horasExtraMonto) || 0) + (Number(premiosMonto) || 0) - fila.adelantos;
+  const bruto = fila.montoBase + incentivoAplicado + (Number(horasExtraMonto) || 0) + (Number(premiosMonto) || 0);
+  const netoPreview = esFormal ? bruto - (Number(aportesEmpleado) || 0) - fila.adelantos : bruto - fila.adelantos;
+  const costoEmpresaPreview = esFormal ? bruto + (Number(contribucionesPatronales) || 0) : bruto;
+
+  function handleToggleFormal(checked: boolean) {
+    setEsFormal(checked);
+    if (checked) {
+      setAportesEmpleado(String(Math.round(bruto * 0.17)));
+      setContribucionesPatronales(String(Math.round(bruto * 0.24)));
+    }
+  }
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -419,6 +529,11 @@ function ModalCerrarNomina({
             </span>
             <span className="tabular-nums font-medium">${formatearMonto(fila.montoBase)}</span>
           </div>
+          {fila.modalidad === "POR_HORA" && (fila.horasFeriadoMes ?? 0) > 0 && (
+            <p className="text-[10.5px] text-amber-600">
+              Incluye {fila.horasFeriadoMes} hs en feriado, pagadas doble.
+            </p>
+          )}
           <label className="flex items-center justify-between cursor-pointer">
             <span className="text-neutral-500 flex items-center gap-1.5">
               <input
@@ -464,16 +579,63 @@ function ModalCerrarNomina({
             />
           </div>
         </div>
-        <div className="mb-4">
+        <div className="mb-3">
           <label className="block text-xs font-medium text-neutral-600 mb-1">Detalle (opcional)</label>
           <input name="horas_extra_detalle" placeholder="Ej: 8 hs extra sábado 15" className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm mb-2" />
           <input name="premios_detalle" placeholder="Ej: premio por objetivo cumplido" className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm" />
         </div>
 
-        <div className="flex items-center justify-between bg-accent-tint rounded-lg px-3 py-2.5 mb-4">
+        <label className="flex items-center gap-1.5 text-sm text-neutral-700 mb-2 cursor-pointer">
+          <input
+            type="checkbox"
+            name="es_formal"
+            checked={esFormal}
+            onChange={(e) => handleToggleFormal(e.target.checked)}
+            className="accent-accent"
+          />
+          Empleo formal (en blanco)
+        </label>
+
+        {esFormal && (
+          <div className="bg-neutral-50 rounded-lg p-3 mb-3">
+            <p className="text-[10.5px] text-neutral-400 mb-2">
+              % sugeridos (17% aportes / 24% contribuciones) son aproximados — ajustalos con lo que te confirme tu
+              contador según convenio y categoría.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-neutral-600 mb-1">Aportes empleado ($)</label>
+                <input
+                  type="number"
+                  name="aportes_empleado"
+                  value={aportesEmpleado}
+                  onChange={(e) => setAportesEmpleado(e.target.value)}
+                  className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+                />
+                <p className="text-[10px] text-neutral-400 mt-0.5">Se descuenta del neto que recibe.</p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-600 mb-1">Contribuciones patronales ($)</label>
+                <input
+                  type="number"
+                  name="contribuciones_patronales"
+                  value={contribucionesPatronales}
+                  onChange={(e) => setContribucionesPatronales(e.target.value)}
+                  className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+                />
+                <p className="text-[10px] text-neutral-400 mt-0.5">No se descuenta al empleado, es costo empresa.</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="flex items-center justify-between bg-accent-tint rounded-lg px-3 py-2.5 mb-2">
           <span className="text-sm font-semibold text-neutral-700">Neto a pagar</span>
           <span className="text-lg font-extrabold text-accent tabular-nums">${formatearMonto(netoPreview)}</span>
         </div>
+        {esFormal && (
+          <p className="text-[10.5px] text-neutral-400 mb-2 text-right">Costo total para la empresa: ${formatearMonto(costoEmpresaPreview)}</p>
+        )}
 
         <div className="flex justify-end">
           <button type="submit" disabled={guardando} className="bg-accent hover:bg-accent-dark disabled:opacity-50 text-white font-medium px-5 py-2 rounded-lg text-sm">

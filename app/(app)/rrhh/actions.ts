@@ -572,6 +572,9 @@ export type CierreNomina = {
   id_gasto: string | null;
   estado: "PENDIENTE_PAGO" | "PAGADO";
   es_estimado: boolean;
+  es_formal: boolean;
+  aportes_empleado: number;
+  contribuciones_patronales: number;
   fecha_cierre: string;
   usuario_cierre: string | null;
   fecha_pago: string | null;
@@ -588,6 +591,7 @@ export type NovedadNomina = {
   sueldoBase: number;
   valorHora: number | null;
   horasTrabajadasMes: number | null;
+  horasFeriadoMes: number | null;
   montoBase: number;
   presentismoResultado: "COMPLETO" | "PARCIAL" | "PERDIDO";
   incentivoPresentismoPreview: number;
@@ -595,9 +599,59 @@ export type NovedadNomina = {
   cierre: CierreNomina | null;
 };
 
-async function totalHorasTrabajadasMes(idPersona: string, periodo: string) {
-  const filas = await listarPlanillaHoraria(idPersona, periodo);
-  return redondear2(filas.reduce((acc, f) => acc + (f.horasTrabajadas ?? 0), 0));
+export type Feriado = { fecha: string; nombre: string };
+
+export async function listarFeriados(): Promise<Feriado[]> {
+  const supabase = getSupabaseServerClient();
+  const { data } = await supabase.from("feriados").select("fecha, nombre").order("fecha");
+  return (data ?? []) as Feriado[];
+}
+
+export async function crearFeriado(fecha: string, nombre: string): Promise<{ error: string | null }> {
+  const permisoError = await requireAcceso();
+  if (permisoError) return { error: permisoError };
+  if (!fecha || !nombre.trim()) return { error: "Completá la fecha y el nombre" };
+  const supabase = getSupabaseServerClient();
+  const { error } = await supabase.from("feriados").upsert({ fecha, nombre: nombre.trim() });
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath("/rrhh");
+  return { error: null };
+}
+
+export async function eliminarFeriado(fecha: string): Promise<{ error: string | null }> {
+  const permisoError = await requireAcceso();
+  if (permisoError) return { error: permisoError };
+  const supabase = getSupabaseServerClient();
+  const { error } = await supabase.from("feriados").delete().eq("fecha", fecha);
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath("/rrhh");
+  return { error: null };
+}
+
+// Para los que cobran por hora: si trabajaron un día que está en la lista
+// de feriados, esas horas se pagan doble (Art. 166 LCT). Solo cuenta si
+// hay horas fichadas ese día — un feriado no trabajado no genera pago para
+// alguien por hora (no tiene sueldo garantizado sin trabajar).
+async function calcularPagoPorHoraMes(idPersona: string, periodo: string, valorHora: number) {
+  const supabase = getSupabaseServerClient();
+  const [filas, { data: feriadosData }] = await Promise.all([
+    listarPlanillaHoraria(idPersona, periodo),
+    supabase.from("feriados").select("fecha"),
+  ]);
+  const feriadosSet = new Set((feriadosData ?? []).map((f) => f.fecha as string));
+
+  let horasTotales = 0;
+  let horasFeriado = 0;
+  let montoBase = 0;
+  for (const f of filas) {
+    const horas = f.horasTrabajadas ?? 0;
+    if (horas <= 0) continue;
+    horasTotales += horas;
+    const esFeriado = feriadosSet.has(f.fecha);
+    if (esFeriado) horasFeriado += horas;
+    montoBase += horas * valorHora * (esFeriado ? 2 : 1);
+  }
+  return { horasTotales: redondear2(horasTotales), horasFeriado: redondear2(horasFeriado), montoBase: redondear2(montoBase) };
 }
 
 // Consolida, por cada persona con sueldo cargado (fijo o por hora), lo
@@ -647,8 +701,10 @@ export async function obtenerNovedadesMes(periodo: string): Promise<NovedadNomin
       const valorHora = (u.valor_hora as number) || null;
       const esPorHora = !!valorHora && valorHora > 0;
       const sueldoBase = (u.sueldo_base as number) || 0;
-      const horasTrabajadasMes = esPorHora ? await totalHorasTrabajadasMes(idPersona, periodo) : null;
-      const montoBase = esPorHora ? redondear2((horasTrabajadasMes ?? 0) * (valorHora as number)) : sueldoBase;
+      const pagoPorHora = esPorHora ? await calcularPagoPorHoraMes(idPersona, periodo, valorHora as number) : null;
+      const horasTrabajadasMes = pagoPorHora?.horasTotales ?? null;
+      const horasFeriadoMes = pagoPorHora?.horasFeriado ?? null;
+      const montoBase = esPorHora ? (pagoPorHora?.montoBase ?? 0) : sueldoBase;
       const presentismoResultado = presentismoPorPersona.get(idPersona) ?? "COMPLETO";
       const factor = presentismoResultado === "COMPLETO" ? 1 : presentismoResultado === "PARCIAL" ? 0.5 : 0;
       return {
@@ -659,6 +715,7 @@ export async function obtenerNovedadesMes(periodo: string): Promise<NovedadNomin
         sueldoBase,
         valorHora,
         horasTrabajadasMes,
+        horasFeriadoMes,
         montoBase,
         presentismoResultado,
         incentivoPresentismoPreview: redondear2(montoBase * (params.PRESENTISMO_PORCENTAJE_INCENTIVO / 100) * factor),
@@ -709,11 +766,10 @@ export async function cerrarNomina(idPersona: string, idUsuario: string, periodo
     const valorHora = (usuario?.valor_hora as number) || 0;
     const esPorHora = valorHora > 0;
     if (!usuario || (!usuario.sueldo_base && !esPorHora)) return { error: "Esta persona no tiene sueldo base ni valor hora cargado." };
-    // El monto real siempre sale de horas fichadas hasta hoy × valor hora —
-    // no se puede tipear a mano acá (para eso está "Estimar").
-    const montoBase = esPorHora
-      ? redondear2((await totalHorasTrabajadasMes(idPersona, periodo)) * valorHora)
-      : (usuario.sueldo_base as number);
+    // El monto real siempre sale de horas fichadas hasta hoy × valor hora
+    // (doble en feriados trabajados) — no se puede tipear a mano acá (para
+    // eso está "Estimar").
+    const montoBase = esPorHora ? (await calcularPagoPorHoraMes(idPersona, periodo, valorHora)).montoBase : (usuario.sueldo_base as number);
 
     const params = await obtenerParametrosPresentismo();
     const presentismoFilas = await calcularPresentismoMes(periodo);
@@ -740,8 +796,18 @@ export async function cerrarNomina(idPersona: string, idUsuario: string, periodo
     const premiosMonto = redondear2(Number(formData.get("premios_monto") ?? 0) || 0);
     const premiosDetalle = String(formData.get("premios_detalle") ?? "").trim() || null;
 
-    const gastoDevengado = redondear2(montoBase + incentivoPresentismo + horasExtraMonto + premiosMonto);
-    const netoAPagar = redondear2(gastoDevengado - adelantos);
+    // Empleo formal: los aportes del empleado se descuentan del neto que
+    // recibe, las contribuciones patronales no se le descuentan a él pero sí
+    // son costo real de la empresa (van al gasto devengado). Los % son un
+    // punto de partida editable a mano — varían según convenio/categoría,
+    // por eso no se calculan fijos ni se valida contra nada.
+    const esFormal = formData.get("es_formal") === "on";
+    const aportesEmpleado = esFormal ? redondear2(Number(formData.get("aportes_empleado") ?? 0) || 0) : 0;
+    const contribucionesPatronales = esFormal ? redondear2(Number(formData.get("contribuciones_patronales") ?? 0) || 0) : 0;
+
+    const brutoDevengado = redondear2(montoBase + incentivoPresentismo + horasExtraMonto + premiosMonto);
+    const gastoDevengado = redondear2(brutoDevengado + contribucionesPatronales);
+    const netoAPagar = redondear2(brutoDevengado - aportesEmpleado - adelantos);
 
     const idCategoriaSueldos = await resolveCategoriaSueldos(supabase);
     const idSubcategoriaSueldos = await resolveSubcategoriaSueldos(supabase, idCategoriaSueldos);
@@ -775,6 +841,9 @@ export async function cerrarNomina(idPersona: string, idUsuario: string, periodo
       neto_a_pagar: netoAPagar,
       id_gasto: gastoCreado.id_gasto,
       es_estimado: false,
+      es_formal: esFormal,
+      aportes_empleado: aportesEmpleado,
+      contribuciones_patronales: contribucionesPatronales,
       usuario_cierre: sesion?.nombre ?? null,
     });
     if (error) return { error: friendlyDbError(error) };
