@@ -126,6 +126,10 @@ const CSS_TOTEM = `
 .sc-header-local { font-size: 13px; color: #a3a3a3; text-align: right; line-height: 1.25; }
 
 /* ---------- Pantalla de reposo ---------- */
+/* El degradé de cielo va dibujado por CSS detrás de la foto, no como
+   adorno: en el totem las imágenes no cargan, y sin esto la pantalla de
+   reposo quedaba en blanco con el texto flotando. Con el degradé se ve
+   como un cielo aunque la foto nunca llegue. */
 .sc-reposo {
   flex: 1 1 auto;
   position: relative;
@@ -138,6 +142,10 @@ const CSS_TOTEM = `
   padding: 0 40px;
   cursor: pointer;
 }
+.sc-cielo-soleado { background: linear-gradient(180deg, #1e6fd9 0%, #4d9ae8 45%, #a9d3f5 100%); }
+.sc-cielo-nublado { background: linear-gradient(180deg, #6d7f92 0%, #94a5b5 50%, #c3ced8 100%); }
+.sc-cielo-lluvia { background: linear-gradient(180deg, #3f5064 0%, #5d7186 55%, #8b9aa9 100%); }
+.sc-cielo-tormenta { background: linear-gradient(180deg, #1d2733 0%, #33414f 55%, #55636f 100%); }
 .sc-clima-foto {
   position: absolute;
   top: -4%; right: -4%; bottom: -4%; left: -4%;
@@ -222,6 +230,15 @@ const CSS_TOTEM = `
   45%, 100% { transform: translateX(220%) rotate(8deg); }
 }
 .sc-logo-img { width: 100%; display: block; }
+/* Respaldo cuando el archivo del logo no carga (ver .sc-reposo). */
+.sc-logo-texto {
+  font-size: 46px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: #6f7f3f;
+  line-height: 1;
+}
+.sc-logo-texto span { color: #97a85f; }
 .sc-titulo {
   font-size: 26px;
   font-weight: 800;
@@ -701,6 +718,12 @@ export default function SelfCheckoutApp({
 }) {
   const [paso, setPaso] = useState<Paso>("reposo");
 
+  // En el totem las imágenes no llegan a cargar (ver el comentario grande de
+  // CSS_TOTEM). Si fallan, se esconden y quedan el degradé de cielo y el
+  // nombre escrito — así no se ven los íconos de imagen rota.
+  const [fotoClimaFallo, setFotoClimaFallo] = useState(false);
+  const [logoFallo, setLogoFallo] = useState(false);
+
   // El totem queda prendido todo el día sin que nadie lo recargue — el
   // stock que trajo el servidor al abrirse la pestaña se iría
   // desactualizando con cada entrega, ajuste o venta que pase mientras
@@ -1132,13 +1155,16 @@ export default function SelfCheckoutApp({
       )}
 
       {paso === "reposo" && (
-        <div onClick={() => setPaso("escaneo")} className="sc-reposo">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={FOTOS_CLIMA[clima]}
-            alt=""
-            className={`sc-clima-foto${clima === "tormenta" ? " sc-tormenta-foto" : ""}`}
-          />
+        <div onClick={() => setPaso("escaneo")} className={`sc-reposo sc-cielo-${clima}`}>
+          {!fotoClimaFallo && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={FOTOS_CLIMA[clima]}
+              alt=""
+              onError={() => setFotoClimaFallo(true)}
+              className={`sc-clima-foto${clima === "tormenta" ? " sc-tormenta-foto" : ""}`}
+            />
+          )}
 
           {(clima === "lluvia" || clima === "tormenta") && (
             <>
@@ -1163,13 +1189,20 @@ export default function SelfCheckoutApp({
           <div className="sc-logo-wrap" style={{ perspective: "1100px" }}>
             <div className="sc-logo-glow" />
             <div className="sc-logo-card">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src="/wiigo-logo.png"
-                alt="WiiGo"
-                className="sc-logo-img"
-                style={{ filter: "drop-shadow(0 10px 14px rgba(30,35,20,.28))" }}
-              />
+              {logoFallo ? (
+                <p className="sc-logo-texto">
+                  Wii<span>Go</span>
+                </p>
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src="/wiigo-logo.png"
+                  alt="WiiGo"
+                  onError={() => setLogoFallo(true)}
+                  className="sc-logo-img"
+                  style={{ filter: "drop-shadow(0 10px 14px rgba(30,35,20,.28))" }}
+                />
+              )}
             </div>
           </div>
 
