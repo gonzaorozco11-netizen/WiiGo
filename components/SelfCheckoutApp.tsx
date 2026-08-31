@@ -365,7 +365,7 @@ html, body { margin: 0; padding: 0; height: 100%; background: #fafafa; }
   font-weight: 500;
   color: #171717;
 }
-.sc-buscador-ayuda { font-size: 12px; color: #a3a3a3; margin-top: 6px; }
+.sc-buscador-ayuda { font-size: 13px; color: #a3a3a3; margin-top: 14px; margin-bottom: 4px; }
 .sc-resultados {
   margin-top: 8px;
   border: 1px solid #e5e5e5;
@@ -456,47 +456,47 @@ html, body { margin: 0; padding: 0; height: 100%; background: #fafafa; }
   align-items: center;
   background: #ffffff;
   border: 1px solid #e5e5e5;
-  border-radius: 12px;
-  padding: 8px 12px;
-  margin-bottom: 8px;
+  border-radius: 14px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
 }
 .sc-item-icono {
-  width: 38px;
-  height: 38px;
-  border-radius: 10px;
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
   background: #f5f5f5;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
+  font-size: 20px;
   flex-shrink: 0;
-  margin-right: 10px;
+  margin-right: 12px;
 }
 .sc-item-info { flex: 1 1 auto; min-width: 0; }
 .sc-item-nombre {
-  font-size: 15px;
+  font-size: 18px;
   font-weight: 600;
   color: #171717;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.sc-item-detalle { font-size: 13px; color: #a3a3a3; }
-.sc-item-cant { display: flex; align-items: center; flex-shrink: 0; margin: 0 8px; }
+.sc-item-detalle { font-size: 14px; color: #a3a3a3; margin-top: 2px; }
+.sc-item-cant { display: flex; align-items: center; flex-shrink: 0; margin: 0 10px; }
 .sc-btn-cant {
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
   border: 1px solid #d4d4d4;
   background: #ffffff;
   color: #737373;
   font-weight: 700;
-  font-size: 16px;
+  font-size: 19px;
   line-height: 1;
 }
 .sc-btn-cant[disabled] { opacity: .3; }
-.sc-item-cant-num { width: 26px; text-align: center; font-weight: 700; font-size: 15px; }
-.sc-item-total { width: 66px; text-align: right; font-size: 15px; font-weight: 700; color: #171717; flex-shrink: 0; }
+.sc-item-cant-num { width: 32px; text-align: center; font-weight: 700; font-size: 18px; }
+.sc-item-total { width: 82px; text-align: right; font-size: 18px; font-weight: 700; color: #171717; flex-shrink: 0; }
 
 .sc-footer {
   flex-shrink: 0;
@@ -507,8 +507,8 @@ html, body { margin: 0; padding: 0; height: 100%; background: #fafafa; }
   align-items: center;
   justify-content: space-between;
 }
-.sc-footer-label { font-size: 13px; color: #a3a3a3; }
-.sc-footer-total { font-size: 22px; font-weight: 800; color: #171717; }
+.sc-footer-label { font-size: 14px; color: #a3a3a3; }
+.sc-footer-total { font-size: 34px; font-weight: 800; color: #171717; letter-spacing: -0.02em; line-height: 1.15; }
 
 /* ---------- Botones ---------- */
 .sc-btn-primary {
