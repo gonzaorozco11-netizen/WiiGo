@@ -17,6 +17,7 @@ const PARAMETROS_PRESENTISMO = [
   "PRESENTISMO_MAX_FALTAS",
   "PRESENTISMO_MAX_SALIDAS_ANTICIPADAS",
   "PRESENTISMO_TARDANZAS_PARA_PARCIAL",
+  "PRESENTISMO_PORCENTAJE_INCENTIVO",
 ] as const;
 
 export type ParametrosPresentismo = Record<(typeof PARAMETROS_PRESENTISMO)[number], number>;
@@ -30,6 +31,7 @@ export async function obtenerParametrosPresentismo(): Promise<ParametrosPresenti
     PRESENTISMO_MAX_FALTAS: mapa.get("PRESENTISMO_MAX_FALTAS") ?? 1,
     PRESENTISMO_MAX_SALIDAS_ANTICIPADAS: mapa.get("PRESENTISMO_MAX_SALIDAS_ANTICIPADAS") ?? 1,
     PRESENTISMO_TARDANZAS_PARA_PARCIAL: mapa.get("PRESENTISMO_TARDANZAS_PARA_PARCIAL") ?? 1,
+    PRESENTISMO_PORCENTAJE_INCENTIVO: mapa.get("PRESENTISMO_PORCENTAJE_INCENTIVO") ?? 10,
   };
 }
 
@@ -506,4 +508,325 @@ export async function eliminarLicencia(idLicencia: string): Promise<{ error: str
   if (error) return { error: friendlyDbError(error) };
   revalidatePath("/rrhh");
   return { error: null };
+}
+
+// ===================== CIERRE DE NÓMINA (RR.HH. — Fase 5) =====================
+// Devengado: al cerrar, el gasto entra al Estado de Resultados en el
+// momento del cierre (no cuando se paga) — mismo criterio que el resto del
+// sistema. El pasivo "pendiente de pago" es simplemente el cierre en estado
+// PENDIENTE_PAGO; no hace falta una tabla de pasivos genérica aparte.
+
+function redondear2(valor: number) {
+  return Math.round(valor * 100) / 100;
+}
+
+function rangoDelPeriodoStr(periodo: string) {
+  const [anio, mes] = periodo.split("-").map(Number);
+  const desde = `${periodo}-01`;
+  const ultimoDia = new Date(anio, mes, 0).getDate();
+  const hasta = `${periodo}-${String(ultimoDia).padStart(2, "0")}`;
+  return { desde, hasta };
+}
+
+function normalizarNombreCategoria(s: string) {
+  return s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().trim();
+}
+
+async function resolveCategoriaSueldos(supabase: ReturnType<typeof getSupabaseServerClient>) {
+  const { data: categorias } = await supabase.from("categorias_gasto").select("id_categoria, nombre");
+  const existente = (categorias ?? []).find((c) => normalizarNombreCategoria(c.nombre as string) === "sueldos");
+  if (existente) return existente.id_categoria as string;
+  const { data, error } = await supabase.from("categorias_gasto").insert({ nombre: "Sueldos", tipo_default: "FIJO", estado: "ACTIVA" }).select("id_categoria").single();
+  if (error) throw new Error(friendlyDbError(error));
+  return data.id_categoria as string;
+}
+
+// id_subcategoria es obligatorio en "gastos" — cada categoría auto-generada
+// necesita al menos una subcategoría "General" para poder insertar.
+async function resolveSubcategoriaSueldos(supabase: ReturnType<typeof getSupabaseServerClient>, idCategoria: string) {
+  const { data: subcategorias } = await supabase.from("subcategorias_gasto").select("id_subcategoria, nombre").eq("id_categoria", idCategoria);
+  const existente = (subcategorias ?? []).find((s) => normalizarNombreCategoria(s.nombre as string) === "general");
+  if (existente) return existente.id_subcategoria as string;
+  const { data, error } = await supabase
+    .from("subcategorias_gasto")
+    .insert({ id_categoria: idCategoria, nombre: "General", estado: "ACTIVA" })
+    .select("id_subcategoria")
+    .single();
+  if (error) throw new Error(friendlyDbError(error));
+  return data.id_subcategoria as string;
+}
+
+export type CierreNomina = {
+  id_cierre: string;
+  id_persona: string;
+  periodo: string;
+  sueldo_base: number;
+  presentismo_resultado: "COMPLETO" | "PARCIAL" | "PERDIDO";
+  incentivo_presentismo: number;
+  horas_extra_monto: number;
+  horas_extra_detalle: string | null;
+  premios_monto: number;
+  premios_detalle: string | null;
+  adelantos: number;
+  neto_a_pagar: number;
+  id_gasto: string | null;
+  estado: "PENDIENTE_PAGO" | "PAGADO";
+  fecha_cierre: string;
+  usuario_cierre: string | null;
+  fecha_pago: string | null;
+  cuenta_pago: string | null;
+  comprobante_path: string | null;
+  usuario_pago: string | null;
+};
+
+export type NovedadNomina = {
+  idPersona: string;
+  idUsuario: string;
+  nombre: string;
+  sueldoBase: number;
+  presentismoResultado: "COMPLETO" | "PARCIAL" | "PERDIDO";
+  incentivoPresentismoPreview: number;
+  adelantos: number;
+  cierre: CierreNomina | null;
+};
+
+// Consolida, por cada persona con sueldo cargado, lo necesario para cerrar
+// su nómina del mes: sueldo base, resultado de presentismo (ya calculado),
+// adelantos del período, y si ya tiene un cierre (y en qué estado).
+export async function obtenerNovedadesMes(periodo: string): Promise<NovedadNomina[]> {
+  const permisoError = await requireAcceso();
+  if (permisoError) throw new Error(permisoError);
+
+  const supabase = getSupabaseServerClient();
+  const params = await obtenerParametrosPresentismo();
+
+  const { data: usuariosConSueldo } = await supabase
+    .from("usuarios")
+    .select("id_usuario, nombre, sueldo_base, id_persona")
+    .eq("estado", "ACTIVO")
+    .not("id_persona", "is", null)
+    .not("sueldo_base", "is", null)
+    .gt("sueldo_base", 0);
+  if (!usuariosConSueldo || usuariosConSueldo.length === 0) return [];
+
+  const presentismoFilas = await calcularPresentismoMes(periodo);
+  const presentismoPorPersona = new Map(presentismoFilas.map((f) => [f.idPersona, f.resultado]));
+
+  const { desde, hasta } = rangoDelPeriodoStr(periodo);
+  const idsUsuario = usuariosConSueldo.map((u) => u.id_usuario as string);
+  const { data: adelantosData } = await supabase
+    .from("gastos")
+    .select("id_usuario_adelanto, monto")
+    .eq("anulado", false)
+    .in("id_usuario_adelanto", idsUsuario)
+    .gte("fecha", `${desde}T00:00:00`)
+    .lte("fecha", `${hasta}T23:59:59`);
+  const adelantoPorUsuario = new Map<string, number>();
+  for (const a of adelantosData ?? []) {
+    const id = a.id_usuario_adelanto as string;
+    adelantoPorUsuario.set(id, redondear2((adelantoPorUsuario.get(id) ?? 0) + ((a.monto as number) ?? 0)));
+  }
+
+  const idsPersona = usuariosConSueldo.map((u) => u.id_persona as string);
+  const { data: cierresExistentes } = await supabase.from("nomina_cierres").select("*").eq("periodo", periodo).in("id_persona", idsPersona);
+  const cierrePorPersona = new Map((cierresExistentes ?? []).map((c) => [c.id_persona as string, c as CierreNomina]));
+
+  return usuariosConSueldo
+    .map((u) => {
+      const idPersona = u.id_persona as string;
+      const sueldoBase = u.sueldo_base as number;
+      const presentismoResultado = presentismoPorPersona.get(idPersona) ?? "COMPLETO";
+      const factor = presentismoResultado === "COMPLETO" ? 1 : presentismoResultado === "PARCIAL" ? 0.5 : 0;
+      return {
+        idPersona,
+        idUsuario: u.id_usuario as string,
+        nombre: u.nombre as string,
+        sueldoBase,
+        presentismoResultado,
+        incentivoPresentismoPreview: redondear2(sueldoBase * (params.PRESENTISMO_PORCENTAJE_INCENTIVO / 100) * factor),
+        adelantos: adelantoPorUsuario.get(u.id_usuario as string) ?? 0,
+        cierre: cierrePorPersona.get(idPersona) ?? null,
+      };
+    })
+    .sort((a, b) => a.nombre.localeCompare(b.nombre));
+}
+
+// Cierra la nómina de una persona para el período: calcula el incentivo de
+// presentismo, suma horas extra/premios cargados a mano, resta los
+// adelantos ya pagados, y genera el gasto "Sueldos" en el Estado de
+// Resultados (devengado, en el momento del cierre) — reemplaza la carga
+// manual que se venía haciendo antes.
+export async function cerrarNomina(idPersona: string, idUsuario: string, periodo: string, formData: FormData): Promise<{ error: string | null }> {
+  const permisoError = await requireAcceso();
+  if (permisoError) return { error: permisoError };
+
+  try {
+    const supabase = getSupabaseServerClient();
+    const sesion = await obtenerSesionConPermisos();
+
+    const { data: existente } = await supabase.from("nomina_cierres").select("id_cierre").eq("id_persona", idPersona).eq("periodo", periodo).maybeSingle();
+    if (existente) return { error: "Ya cerraste la nómina de esta persona en este período." };
+
+    const { data: usuario } = await supabase.from("usuarios").select("sueldo_base, nombre").eq("id_usuario", idUsuario).maybeSingle();
+    if (!usuario?.sueldo_base) return { error: "Esta persona no tiene sueldo base cargado." };
+    const sueldoBase = usuario.sueldo_base as number;
+
+    const params = await obtenerParametrosPresentismo();
+    const presentismoFilas = await calcularPresentismoMes(periodo);
+    const presentismoResultado = presentismoFilas.find((f) => f.idPersona === idPersona)?.resultado ?? "COMPLETO";
+    const factor = presentismoResultado === "COMPLETO" ? 1 : presentismoResultado === "PARCIAL" ? 0.5 : 0;
+    const incentivoPresentismo = redondear2(sueldoBase * (params.PRESENTISMO_PORCENTAJE_INCENTIVO / 100) * factor);
+
+    const { desde, hasta } = rangoDelPeriodoStr(periodo);
+    const { data: adelantosData } = await supabase
+      .from("gastos")
+      .select("monto")
+      .eq("anulado", false)
+      .eq("id_usuario_adelanto", idUsuario)
+      .gte("fecha", `${desde}T00:00:00`)
+      .lte("fecha", `${hasta}T23:59:59`);
+    const adelantos = redondear2((adelantosData ?? []).reduce((acc, a) => acc + ((a.monto as number) ?? 0), 0));
+
+    const horasExtraMonto = redondear2(Number(formData.get("horas_extra_monto") ?? 0) || 0);
+    const horasExtraDetalle = String(formData.get("horas_extra_detalle") ?? "").trim() || null;
+    const premiosMonto = redondear2(Number(formData.get("premios_monto") ?? 0) || 0);
+    const premiosDetalle = String(formData.get("premios_detalle") ?? "").trim() || null;
+
+    const gastoDevengado = redondear2(sueldoBase + incentivoPresentismo + horasExtraMonto + premiosMonto);
+    const netoAPagar = redondear2(gastoDevengado - adelantos);
+
+    const idCategoriaSueldos = await resolveCategoriaSueldos(supabase);
+    const idSubcategoriaSueldos = await resolveSubcategoriaSueldos(supabase, idCategoriaSueldos);
+    const { data: gastoCreado, error: errorGasto } = await supabase
+      .from("gastos")
+      .insert({
+        id_categoria: idCategoriaSueldos,
+        id_subcategoria: idSubcategoriaSueldos,
+        tipo: "FIJO",
+        medio_pago: "TRANSFERENCIA",
+        monto: gastoDevengado,
+        neto: gastoDevengado,
+        descripcion: `Sueldo devengado — ${usuario.nombre} — ${periodo}`,
+        usuario: sesion?.nombre ?? null,
+      })
+      .select("id_gasto")
+      .single();
+    if (errorGasto) return { error: friendlyDbError(errorGasto) };
+
+    const { error } = await supabase.from("nomina_cierres").insert({
+      id_persona: idPersona,
+      periodo,
+      sueldo_base: sueldoBase,
+      presentismo_resultado: presentismoResultado,
+      incentivo_presentismo: incentivoPresentismo,
+      horas_extra_monto: horasExtraMonto,
+      horas_extra_detalle: horasExtraDetalle,
+      premios_monto: premiosMonto,
+      premios_detalle: premiosDetalle,
+      adelantos,
+      neto_a_pagar: netoAPagar,
+      id_gasto: gastoCreado.id_gasto,
+      usuario_cierre: sesion?.nombre ?? null,
+    });
+    if (error) return { error: friendlyDbError(error) };
+
+    revalidatePath("/rrhh");
+    revalidatePath("/resultado-mes");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo cerrar la nómina" };
+  }
+}
+
+// Deshace un cierre que todavía no se pagó (por si se cargó algo mal) —
+// anula el gasto que había generado, para no dejarlo suelto en el Estado
+// de Resultados.
+export async function eliminarCierreNomina(idCierre: string): Promise<{ error: string | null }> {
+  const permisoError = await requireAcceso();
+  if (permisoError) return { error: permisoError };
+
+  const supabase = getSupabaseServerClient();
+  const { data: cierre } = await supabase.from("nomina_cierres").select("estado, id_gasto").eq("id_cierre", idCierre).maybeSingle();
+  if (!cierre) return { error: "No se encontró el cierre" };
+  if (cierre.estado === "PAGADO") return { error: "Este sueldo ya está pagado — no se puede deshacer el cierre." };
+
+  if (cierre.id_gasto) {
+    await supabase
+      .from("gastos")
+      .update({ anulado: true, motivo_anulacion: "Cierre de nómina deshecho", anulado_en: new Date().toISOString() })
+      .eq("id_gasto", cierre.id_gasto as string);
+  }
+  const { error } = await supabase.from("nomina_cierres").delete().eq("id_cierre", idCierre);
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath("/rrhh");
+  revalidatePath("/resultado-mes");
+  return { error: null };
+}
+
+// Al pagar: se exige comprobante siempre. Si sale de Caja Administración,
+// además descuenta el efectivo real; si es Transferencia, solo queda
+// registrado como pagado (no hay cuentas bancarias con saldo propio en el
+// sistema todavía).
+export async function pagarNomina(idCierre: string, formData: FormData): Promise<{ error: string | null }> {
+  const permisoError = await requireAcceso();
+  if (permisoError) return { error: permisoError };
+
+  const cuentaPago = String(formData.get("cuenta_pago") ?? "");
+  if (!["CAJA_ADMIN", "TRANSFERENCIA"].includes(cuentaPago)) return { error: "Elegí de dónde sale la plata" };
+  const archivo = formData.get("comprobante") as File | null;
+  if (!archivo || archivo.size === 0) return { error: "El comprobante es obligatorio para registrar el pago." };
+
+  try {
+    const supabase = getSupabaseServerClient();
+    const sesion = await obtenerSesionConPermisos();
+
+    const { data: cierre } = await supabase.from("nomina_cierres").select("*").eq("id_cierre", idCierre).maybeSingle();
+    if (!cierre) return { error: "No se encontró el cierre" };
+    if (cierre.estado === "PAGADO") return { error: "Este sueldo ya está pagado." };
+
+    const extension = archivo.name.split(".").pop() ?? "pdf";
+    const path = `${idCierre}.${extension}`;
+    const { error: errorUpload } = await supabase.storage
+      .from("recibos-sueldo")
+      .upload(path, archivo, { upsert: true, contentType: archivo.type || undefined });
+    if (errorUpload) return { error: errorUpload.message };
+
+    if (cuentaPago === "CAJA_ADMIN") {
+      await supabase.from("movimientos_caja_admin").insert({
+        tipo: "EGRESO_GASTO",
+        monto: -(cierre.neto_a_pagar as number),
+        id_gasto: cierre.id_gasto,
+        descripcion: `Pago de sueldo — período ${cierre.periodo as string}`,
+        usuario: sesion?.nombre ?? null,
+      });
+    }
+
+    const { error } = await supabase
+      .from("nomina_cierres")
+      .update({
+        estado: "PAGADO",
+        fecha_pago: new Date().toISOString(),
+        cuenta_pago: cuentaPago,
+        comprobante_path: path,
+        usuario_pago: sesion?.nombre ?? null,
+      })
+      .eq("id_cierre", idCierre);
+    if (error) return { error: friendlyDbError(error) };
+
+    revalidatePath("/rrhh");
+    revalidatePath("/tesoreria");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo registrar el pago" };
+  }
+}
+
+export async function obtenerUrlReciboSueldo(path: string): Promise<string> {
+  const permisoError = await requireAcceso();
+  if (permisoError) throw new Error(permisoError);
+
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase.storage.from("recibos-sueldo").createSignedUrl(path, 60 * 10);
+  if (error) throw new Error(error.message);
+  return data.signedUrl;
 }

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { resumenNomina } from "@/app/(app)/gastos/actions";
 import { actualizarSueldoBase } from "@/app/(app)/usuarios/actions";
 import { crearHorario, actualizarHorario, desactivarHorario, listarHorarios, type HorarioTrabajo } from "@/app/(app)/organizacion/actions";
 import {
@@ -15,17 +14,33 @@ import {
   listarLicencias,
   crearLicencia,
   eliminarLicencia,
+  obtenerNovedadesMes,
+  cerrarNomina,
+  eliminarCierreNomina,
+  pagarNomina,
+  obtenerUrlReciboSueldo,
   type PresentismoFila,
   type FilaPlanilla,
   type FichajePendiente,
   type SaldoVacaciones,
   type Licencia,
+  type NovedadNomina,
 } from "@/app/(app)/rrhh/actions";
 
 type UsuarioMin = { id_usuario: string; nombre: string; sueldo_base: number | null };
 type PersonaMin = { id_persona: string; nombre: string; apellido: string | null };
-type NominaFila = { idUsuario: string; nombre: string; sueldoBase: number; adelantado: number; aPagar: number };
 type Tab = "nomina" | "horarios" | "presentismo" | "vacaciones";
+
+const RESULTADO_BADGE_NOMINA: Record<NovedadNomina["presentismoResultado"], string> = {
+  COMPLETO: "bg-emerald-100 text-emerald-700",
+  PARCIAL: "bg-amber-100 text-amber-700",
+  PERDIDO: "bg-red-100 text-red-700",
+};
+const RESULTADO_LABEL_NOMINA: Record<NovedadNomina["presentismoResultado"], string> = {
+  COMPLETO: "Completo",
+  PARCIAL: "Parcial",
+  PERDIDO: "Perdido",
+};
 
 const TIPO_LICENCIA_LABEL: Record<string, string> = {
   VACACIONES: "Vacaciones",
@@ -66,8 +81,8 @@ export default function RrhhApp({
     <div>
       <h1 className="text-lg font-semibold text-neutral-900 mb-1">RR.HH.</h1>
       <p className="text-sm text-neutral-500 mb-4 max-w-2xl">
-        Sueldos, horarios de trabajo, presentismo y licencias. No reemplaza un módulo de RR.HH. completo (roles
-        jerárquicos, nómina con pasivo contable) — eso se arma en fases siguientes.
+        Sueldos, horarios de trabajo, presentismo, licencias y cierre de nómina. Todavía no maneja roles jerárquicos
+        (eso queda para una fase siguiente).
       </p>
 
       <div className="inline-flex gap-1 bg-neutral-100 rounded-lg p-1 mb-4">
@@ -101,16 +116,18 @@ export default function RrhhApp({
 
 function TabNomina({ usuarios }: { usuarios: UsuarioMin[] }) {
   const [mes, setMes] = useState(mesActualISO());
-  const [filas, setFilas] = useState<NominaFila[]>([]);
-  const [cargando, setCargando] = useState(false);
+  const [filas, setFilas] = useState<NovedadNomina[]>([]);
+  const [cargando, setCargando] = useState(true);
   const [editando, setEditando] = useState<string | null>(null);
   const [valorEdit, setValorEdit] = useState("");
-  const [guardando, setGuardando] = useState(false);
+  const [guardandoSueldo, setGuardandoSueldo] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [modalCerrar, setModalCerrar] = useState<NovedadNomina | null>(null);
+  const [modalPagar, setModalPagar] = useState<NovedadNomina | null>(null);
 
   function recargar() {
     setCargando(true);
-    resumenNomina(mes).then(setFilas).finally(() => setCargando(false));
+    obtenerNovedadesMes(mes).then(setFilas).finally(() => setCargando(false));
   }
 
   useEffect(recargar, [mes]);
@@ -118,7 +135,7 @@ function TabNomina({ usuarios }: { usuarios: UsuarioMin[] }) {
   function handleGuardarSueldo(idUsuario: string) {
     const monto = Number(valorEdit.replace(/[^\d.-]/g, "")) || 0;
     setError(null);
-    setGuardando(true);
+    setGuardandoSueldo(true);
     actualizarSueldoBase(idUsuario, monto)
       .then((res) => {
         if (res.error) {
@@ -128,13 +145,27 @@ function TabNomina({ usuarios }: { usuarios: UsuarioMin[] }) {
         setEditando(null);
         recargar();
       })
-      .finally(() => setGuardando(false));
+      .finally(() => setGuardandoSueldo(false));
+  }
+
+  function handleDeshacerCierre(f: NovedadNomina) {
+    if (!f.cierre) return;
+    if (!confirm(`¿Deshacer el cierre de ${f.nombre} — ${mes}? Se anula el gasto de sueldo que generó.`)) return;
+    eliminarCierreNomina(f.cierre.id_cierre).then((res) => {
+      if (res.error) alert(res.error);
+      else recargar();
+    });
+  }
+
+  function handleVerComprobante(path: string) {
+    obtenerUrlReciboSueldo(path).then((url) => window.open(url, "_blank"));
   }
 
   return (
     <div>
       <p className="text-xs text-neutral-400 mb-3">
-        👥 Sueldo simplificado por empleado — sueldo base − adelantos del mes = a pagar.
+        Cerrá la nómina del mes por persona: calcula el incentivo de presentismo, sumás horas extra o premios si hubo,
+        y genera el gasto de sueldo (devengado) en el Estado de Resultados. Después registrás el pago con comprobante.
       </p>
 
       {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
@@ -144,14 +175,10 @@ function TabNomina({ usuarios }: { usuarios: UsuarioMin[] }) {
       </div>
 
       <div className="bg-white border border-neutral-200 rounded-xl overflow-hidden">
-        <div className="flex items-baseline justify-between px-4 py-3 border-b border-neutral-100">
-          <h2 className="text-sm font-bold text-neutral-900">Sueldos del mes</h2>
-          <span className="text-xs text-neutral-400">Sueldo base − adelantos del mes = a pagar</span>
-        </div>
         {cargando ? (
           <p className="text-sm text-neutral-400 text-center py-8">Cargando...</p>
-        ) : usuarios.length === 0 ? (
-          <p className="text-sm text-neutral-400 text-center py-8">No hay usuarios activos.</p>
+        ) : usuarios.length === 0 || filas.length === 0 ? (
+          <p className="text-sm text-neutral-400 text-center py-8">No hay usuarios activos con sueldo base cargado.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -159,8 +186,9 @@ function TabNomina({ usuarios }: { usuarios: UsuarioMin[] }) {
                 <tr className="border-b border-neutral-200 text-left text-xs text-neutral-500">
                   <th className="p-3">Empleado</th>
                   <th className="p-3 text-right">Sueldo base</th>
-                  <th className="p-3 text-right">Adelantos del mes</th>
-                  <th className="p-3 text-right">A pagar</th>
+                  <th className="p-3">Presentismo</th>
+                  <th className="p-3 text-right">Adelantos</th>
+                  <th className="p-3 text-right">Nómina</th>
                   <th className="p-3"></th>
                 </tr>
               </thead>
@@ -170,33 +198,71 @@ function TabNomina({ usuarios }: { usuarios: UsuarioMin[] }) {
                     <td className="p-3">{f.nombre}</td>
                     <td className="p-3 text-right tabular-nums">
                       {editando === f.idUsuario ? (
-                        <input
-                          autoFocus
-                          value={valorEdit}
-                          onChange={(e) => setValorEdit(e.target.value)}
-                          className="w-28 border border-neutral-300 rounded-lg px-2 py-1 text-sm text-right"
-                        />
-                      ) : (
-                        `$${formatearMonto(f.sueldoBase)}`
-                      )}
-                    </td>
-                    <td className="p-3 text-right tabular-nums text-red-600">{f.adelantado > 0 ? `-$${formatearMonto(f.adelantado)}` : "—"}</td>
-                    <td className="p-3 text-right tabular-nums font-bold">${formatearMonto(f.aPagar)}</td>
-                    <td className="p-3 text-right">
-                      {editando === f.idUsuario ? (
-                        <button onClick={() => handleGuardarSueldo(f.idUsuario)} disabled={guardando} className="text-xs font-semibold text-accent">
-                          {guardando ? "..." : "Guardar"}
-                        </button>
+                        <div className="flex items-center gap-1.5 justify-end">
+                          <input
+                            autoFocus
+                            value={valorEdit}
+                            onChange={(e) => setValorEdit(e.target.value)}
+                            className="w-24 border border-neutral-300 rounded-lg px-2 py-1 text-sm text-right"
+                          />
+                          <button onClick={() => handleGuardarSueldo(f.idUsuario)} disabled={guardandoSueldo} className="text-xs font-semibold text-accent">
+                            {guardandoSueldo ? "..." : "OK"}
+                          </button>
+                        </div>
                       ) : (
                         <button
                           onClick={() => {
                             setEditando(f.idUsuario);
                             setValorEdit(String(f.sueldoBase));
                           }}
-                          className="text-xs font-semibold text-neutral-500 hover:text-accent"
+                          className="hover:underline decoration-dotted"
+                          title="Editar sueldo base"
                         >
-                          Editar sueldo base
+                          ${formatearMonto(f.sueldoBase)}
                         </button>
+                      )}
+                    </td>
+                    <td className="p-3">
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${RESULTADO_BADGE_NOMINA[f.presentismoResultado]}`}>
+                        {RESULTADO_LABEL_NOMINA[f.presentismoResultado]}
+                      </span>
+                      <span className="text-[10.5px] text-neutral-400 ml-1.5">
+                        +${formatearMonto(f.cierre ? f.cierre.incentivo_presentismo : f.incentivoPresentismoPreview)}
+                      </span>
+                    </td>
+                    <td className="p-3 text-right tabular-nums text-red-600">
+                      {(f.cierre ? f.cierre.adelantos : f.adelantos) > 0 ? `-$${formatearMonto(f.cierre ? f.cierre.adelantos : f.adelantos)}` : "—"}
+                    </td>
+                    <td className="p-3 text-right whitespace-nowrap">
+                      {!f.cierre ? (
+                        <span className="text-neutral-300 text-xs">Sin cerrar</span>
+                      ) : (
+                        <span className="font-bold tabular-nums">${formatearMonto(f.cierre.neto_a_pagar)}</span>
+                      )}
+                    </td>
+                    <td className="p-3 text-right whitespace-nowrap">
+                      {!f.cierre ? (
+                        <button onClick={() => setModalCerrar(f)} className="text-xs font-bold text-white bg-accent hover:bg-accent-dark px-3 py-1.5 rounded-lg">
+                          Cerrar nómina
+                        </button>
+                      ) : f.cierre.estado === "PENDIENTE_PAGO" ? (
+                        <div className="flex items-center justify-end gap-2.5">
+                          <button onClick={() => handleDeshacerCierre(f)} className="text-xs text-neutral-400 hover:text-red-600">
+                            Deshacer
+                          </button>
+                          <button onClick={() => setModalPagar(f)} className="text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 rounded-lg">
+                            Pagar
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-end gap-2.5">
+                          <span className="text-xs font-semibold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">✓ Pagado</span>
+                          {f.cierre.comprobante_path && (
+                            <button onClick={() => handleVerComprobante(f.cierre!.comprobante_path!)} className="text-xs font-semibold text-accent">
+                              Ver comprobante
+                            </button>
+                          )}
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -206,6 +272,199 @@ function TabNomina({ usuarios }: { usuarios: UsuarioMin[] }) {
           </div>
         )}
       </div>
+
+      {modalCerrar && (
+        <ModalCerrarNomina
+          fila={modalCerrar}
+          mes={mes}
+          onClose={() => setModalCerrar(null)}
+          onCerrado={() => {
+            setModalCerrar(null);
+            recargar();
+          }}
+        />
+      )}
+
+      {modalPagar && modalPagar.cierre && (
+        <ModalPagarNomina
+          fila={modalPagar}
+          onClose={() => setModalPagar(null)}
+          onPagado={() => {
+            setModalPagar(null);
+            recargar();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function ModalCerrarNomina({
+  fila,
+  mes,
+  onClose,
+  onCerrado,
+}: {
+  fila: NovedadNomina;
+  mes: string;
+  onClose: () => void;
+  onCerrado: () => void;
+}) {
+  const [horasExtraMonto, setHorasExtraMonto] = useState("0");
+  const [premiosMonto, setPremiosMonto] = useState("0");
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const netoPreview =
+    fila.sueldoBase +
+    fila.incentivoPresentismoPreview +
+    (Number(horasExtraMonto) || 0) +
+    (Number(premiosMonto) || 0) -
+    fila.adelantos;
+
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError(null);
+    const formData = new FormData(e.currentTarget);
+    setGuardando(true);
+    cerrarNomina(fila.idPersona, fila.idUsuario, mes, formData)
+      .then((res) => {
+        if (res.error) setError(res.error);
+        else onCerrado();
+      })
+      .finally(() => setGuardando(false));
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+      <form onSubmit={handleSubmit} className="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-6 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-neutral-900">Cerrar nómina</h2>
+          <button type="button" onClick={onClose} className="text-neutral-400 hover:text-neutral-700" aria-label="Cerrar">
+            ✕
+          </button>
+        </div>
+        <p className="text-xs text-neutral-400 -mt-2 mb-4">{fila.nombre} · {mes}</p>
+
+        {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
+
+        <div className="bg-neutral-50 rounded-lg p-3 mb-3 space-y-1.5 text-sm">
+          <div className="flex justify-between">
+            <span className="text-neutral-500">Sueldo base</span>
+            <span className="tabular-nums font-medium">${formatearMonto(fila.sueldoBase)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-neutral-500">
+              Incentivo presentismo ({RESULTADO_LABEL_NOMINA[fila.presentismoResultado]})
+            </span>
+            <span className="tabular-nums font-medium">${formatearMonto(fila.incentivoPresentismoPreview)}</span>
+          </div>
+          {fila.adelantos > 0 && (
+            <div className="flex justify-between text-red-600">
+              <span>Adelantos del mes</span>
+              <span className="tabular-nums font-medium">-${formatearMonto(fila.adelantos)}</span>
+            </div>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <div>
+            <label className="block text-xs font-medium text-neutral-600 mb-1">Horas extra ($)</label>
+            <input
+              type="number"
+              name="horas_extra_monto"
+              value={horasExtraMonto}
+              onChange={(e) => setHorasExtraMonto(e.target.value)}
+              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-neutral-600 mb-1">Premios ($)</label>
+            <input
+              type="number"
+              name="premios_monto"
+              value={premiosMonto}
+              onChange={(e) => setPremiosMonto(e.target.value)}
+              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+            />
+          </div>
+        </div>
+        <div className="mb-4">
+          <label className="block text-xs font-medium text-neutral-600 mb-1">Detalle (opcional)</label>
+          <input name="horas_extra_detalle" placeholder="Ej: 8 hs extra sábado 15" className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm mb-2" />
+          <input name="premios_detalle" placeholder="Ej: premio por objetivo cumplido" className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm" />
+        </div>
+
+        <div className="flex items-center justify-between bg-accent-tint rounded-lg px-3 py-2.5 mb-4">
+          <span className="text-sm font-semibold text-neutral-700">Neto a pagar</span>
+          <span className="text-lg font-extrabold text-accent tabular-nums">${formatearMonto(netoPreview)}</span>
+        </div>
+
+        <div className="flex justify-end">
+          <button type="submit" disabled={guardando} className="bg-accent hover:bg-accent-dark disabled:opacity-50 text-white font-medium px-5 py-2 rounded-lg text-sm">
+            {guardando ? "Cerrando..." : "Cerrar nómina"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function ModalPagarNomina({ fila, onClose, onPagado }: { fila: NovedadNomina; onClose: () => void; onPagado: () => void }) {
+  const cierre = fila.cierre!;
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError(null);
+    const formData = new FormData(e.currentTarget);
+    setGuardando(true);
+    pagarNomina(cierre.id_cierre, formData)
+      .then((res) => {
+        if (res.error) setError(res.error);
+        else onPagado();
+      })
+      .finally(() => setGuardando(false));
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+      <form onSubmit={handleSubmit} className="bg-white w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl p-6 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-neutral-900">Registrar pago</h2>
+          <button type="button" onClick={onClose} className="text-neutral-400 hover:text-neutral-700" aria-label="Cerrar">
+            ✕
+          </button>
+        </div>
+        <p className="text-xs text-neutral-400 -mt-2 mb-1">{fila.nombre} · {cierre.periodo}</p>
+        <p className="text-2xl font-extrabold text-neutral-900 tabular-nums mb-4">${formatearMonto(cierre.neto_a_pagar)}</p>
+
+        {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
+
+        <div className="mb-3">
+          <label className="block text-xs font-medium text-neutral-600 mb-1.5">¿De dónde sale la plata? *</label>
+          <div className="flex gap-2">
+            <label className="flex-1 flex items-center gap-2 border border-neutral-300 rounded-lg px-3 py-2 text-sm cursor-pointer has-[:checked]:border-accent has-[:checked]:bg-accent-tint">
+              <input type="radio" name="cuenta_pago" value="CAJA_ADMIN" defaultChecked /> Caja Administración
+            </label>
+            <label className="flex-1 flex items-center gap-2 border border-neutral-300 rounded-lg px-3 py-2 text-sm cursor-pointer has-[:checked]:border-accent has-[:checked]:bg-accent-tint">
+              <input type="radio" name="cuenta_pago" value="TRANSFERENCIA" /> Transferencia
+            </label>
+          </div>
+        </div>
+
+        <div className="mb-4">
+          <label className="block text-xs font-medium text-neutral-600 mb-1">Comprobante *</label>
+          <input type="file" name="comprobante" required accept="image/*,.pdf" className="w-full text-sm" />
+        </div>
+
+        <div className="flex justify-end">
+          <button type="submit" disabled={guardando} className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-medium px-5 py-2 rounded-lg text-sm">
+            {guardando ? "Guardando..." : "Confirmar pago"}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }
@@ -451,6 +710,11 @@ function TabPresentismo() {
           <div>
             <label className="block text-xs font-medium text-neutral-600 mb-1">Esta cantidad de tardanzas (o más) → pérdida parcial</label>
             <input type="number" name="PRESENTISMO_TARDANZAS_PARA_PARCIAL" defaultValue={params.PRESENTISMO_TARDANZAS_PARA_PARCIAL} className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-neutral-600 mb-1">% del sueldo que es el incentivo de presentismo</label>
+            <input type="number" name="PRESENTISMO_PORCENTAJE_INCENTIVO" defaultValue={params.PRESENTISMO_PORCENTAJE_INCENTIVO} className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm" />
+            <p className="text-[10.5px] text-neutral-400 mt-1">Completo cobra el 100% de esto, Parcial la mitad, Perdido nada.</p>
           </div>
           <div className="sm:col-span-2 flex justify-end">
             <button type="submit" disabled={guardandoConfig} className="bg-accent hover:bg-accent-dark disabled:opacity-50 text-white font-medium px-4 py-1.5 rounded-lg text-sm">
