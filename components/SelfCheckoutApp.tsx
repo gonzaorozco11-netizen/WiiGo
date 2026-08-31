@@ -152,6 +152,49 @@ html, body { margin: 0; padding: 0; height: 100%; background: #fafafa; }
 .sc-cielo-nublado { background: linear-gradient(180deg, #6d7f92 0%, #94a5b5 50%, #c3ced8 100%); }
 .sc-cielo-lluvia { background: linear-gradient(180deg, #3f5064 0%, #5d7186 55%, #8b9aa9 100%); }
 .sc-cielo-tormenta { background: linear-gradient(180deg, #1d2733 0%, #33414f 55%, #55636f 100%); }
+
+/* Nubes que cruzan la pantalla. Son degradés radiales movidos con
+   transform: translateX — lo único que anima suave en la placa del totem
+   (no usar filter: blur acá, lo hace arrastrarse). */
+.sc-nubes {
+  position: absolute;
+  top: 0; right: 0; bottom: 0; left: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 1;
+}
+.sc-nube {
+  position: absolute;
+  border-radius: 999px;
+  background: radial-gradient(closest-side, rgba(255,255,255,.9), rgba(255,255,255,0));
+  animation-name: sc-nube-deriva;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+@keyframes sc-nube-deriva {
+  from { transform: translateX(-50vw); }
+  to { transform: translateX(120vw); }
+}
+.sc-cielo-nublado .sc-nube { background: radial-gradient(closest-side, rgba(255,255,255,.75), rgba(255,255,255,0)); }
+.sc-cielo-lluvia .sc-nube { background: radial-gradient(closest-side, rgba(206,216,226,.6), rgba(206,216,226,0)); }
+.sc-cielo-tormenta .sc-nube { background: radial-gradient(closest-side, rgba(150,163,177,.5), rgba(150,163,177,0)); }
+
+/* Resplandor del sol, solo con cielo despejado. */
+.sc-sol {
+  position: absolute;
+  top: -14%;
+  left: -10%;
+  width: 70%;
+  height: 45%;
+  background: radial-gradient(closest-side, rgba(255,248,214,.75), rgba(255,248,214,0));
+  pointer-events: none;
+  z-index: 1;
+  animation: sc-sol-latido 9s ease-in-out infinite;
+}
+@keyframes sc-sol-latido {
+  0%, 100% { opacity: .65; transform: scale(1); }
+  50% { opacity: .95; transform: scale(1.08); }
+}
 .sc-clima-foto {
   position: absolute;
   top: -4%; right: -4%; bottom: -4%; left: -4%;
@@ -169,20 +212,24 @@ html, body { margin: 0; padding: 0; height: 100%; background: #fafafa; }
   from { transform: translate(0, 0); }
   to { transform: translate(-30px, 900px); }
 }
+/* La lluvia va por delante de las nubes (que están en z-index 1). */
 .sc-gota {
   position: absolute;
   top: -8%;
   width: 2px;
+  z-index: 2;
   background: linear-gradient(rgba(220,235,255,0), rgba(220,235,255,.85));
   animation: sc-gota-caer linear infinite;
 }
 .sc-niebla {
   position: absolute; left: 0; right: 0; bottom: 0; height: 30%;
+  z-index: 2;
   background: linear-gradient(180deg, rgba(180,195,210,0), rgba(180,195,210,.32));
   pointer-events: none;
 }
 .sc-relampago {
   position: absolute; top: 0; right: 0; bottom: 0; left: 0;
+  z-index: 3;
   background: #d9e6ff;
   opacity: 0;
   pointer-events: none;
@@ -792,6 +839,19 @@ export default function SelfCheckoutApp({
     }));
   }, [clima]);
 
+  // Nubes de la pantalla de reposo. Igual que las gotas, se calculan una
+  // sola vez por clima para que no salten de lugar en cada render. Con
+  // tormenta van más rápido y más bajas.
+  const nubes = useMemo(() => {
+    const apuradas = clima === "tormenta";
+    return [
+      { top: 6, ancho: 62, alto: 20, dur: apuradas ? 48 : 95, delay: 0, op: 0.55 },
+      { top: 20, ancho: 44, alto: 14, dur: apuradas ? 34 : 68, delay: -22, op: 0.4 },
+      { top: 38, ancho: 78, alto: 24, dur: apuradas ? 62 : 125, delay: -50, op: 0.32 },
+      { top: 62, ancho: 52, alto: 16, dur: apuradas ? 42 : 84, delay: -12, op: 0.28 },
+    ];
+  }, [clima]);
+
   // Relámpago al azar en tormenta — cambiar la key remonta el div y
   // reinicia la animación CSS cada vez, sin necesidad de refs.
   const [flashKey, setFlashKey] = useState(0);
@@ -1170,6 +1230,25 @@ export default function SelfCheckoutApp({
               className={`sc-clima-foto${clima === "tormenta" ? " sc-tormenta-foto" : ""}`}
             />
           )}
+
+          {clima === "soleado" && <div className="sc-sol" />}
+
+          <div className="sc-nubes">
+            {nubes.map((n, i) => (
+              <span
+                key={i}
+                className="sc-nube"
+                style={{
+                  top: `${n.top}%`,
+                  width: `${n.ancho}%`,
+                  height: `${n.alto}%`,
+                  opacity: n.op,
+                  animationDuration: `${n.dur}s`,
+                  animationDelay: `${n.delay}s`,
+                }}
+              />
+            ))}
+          </div>
 
           {(clima === "lluvia" || clima === "tormenta") && (
             <>
