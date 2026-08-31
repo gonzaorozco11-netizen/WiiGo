@@ -1,14 +1,4 @@
-/* Normalmente esto sería `@import "tailwindcss";`, que envuelve todo en
-   @layer (capas de cascada). El totem de autopedido corre Android con
-   WebView 83 (2020, el fabricante lo dejó fijo y no se puede actualizar):
-   ese navegador no entiende @layer y descarta la hoja de estilos ENTERA —
-   la app carga y funciona, pero se ve como texto pelado sin diseño.
-   Importar las tres partes por separado, sin layer(...), genera el mismo
-   CSS pero sin capas. El orden importa: theme define las variables,
-   preflight resetea, utilities gana por venir último. */
-@import "tailwindcss/theme.css";
-@import "tailwindcss/preflight.css";
-@import "tailwindcss/utilities.css";
+@import "tailwindcss";
 
 :root {
   --background: #ffffff;

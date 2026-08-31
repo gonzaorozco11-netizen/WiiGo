@@ -56,6 +56,634 @@ const FOTOS_CLIMA: Record<Clima, string> = {
   tormenta: "/clima/lluvia.jpg",
 };
 
+// ============================================================================
+// Esta pantalla NO usa Tailwind — tiene su propia hoja de estilos, escrita a
+// mano acá abajo, y se inyecta tal cual en el HTML sin pasar por ningún
+// procesador.
+//
+// Por qué: el totem de autopedido es una placa Rockchip con Android 11 y
+// WebView 83 (de 2020). El fabricante dejó ese motor fijo — no se puede
+// actualizar desde Play Store ni cambiar por otro (probado: la lista de
+// "Implementación de WebView" solo ofrece la 83). Tailwind 4 genera CSS con
+// @layer y colores oklch que ese navegador no entiende, y al no entenderlos
+// descarta la hoja ENTERA: la app cargaba y funcionaba, pero se veía como
+// texto pelado sin ningún estilo.
+//
+// Reglas al tocar este archivo — todo esto NO existe en Chrome 83:
+//   - `gap` en flexbox (llegó en Chrome 84) → usar margin
+//   - `inset` como atajo (Chrome 87)        → usar top/right/bottom/left
+//   - oklch(), color-mix()                  → usar hex o rgba()
+//   - :where(), :is()                       → escribir el selector completo
+//   - aspect-ratio                          → usar alto/ancho fijos
+// Las demás pantallas del sistema sí usan Tailwind normalmente; solo esta
+// corre en ese hardware.
+// ============================================================================
+const CSS_TOTEM = `
+.sc-root {
+  --sc-accent: #2563eb;
+  --sc-accent-dark: #1d4ed8;
+  --sc-accent-tint: #eff6ff;
+  --sc-fg: #171717;
+  --sc-muted: #737373;
+  --sc-faint: #a3a3a3;
+  --sc-line: #e5e5e5;
+  --sc-line-soft: #f5f5f5;
+  --sc-bg: #fafafa;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  background: #fafafa;
+  color: #171717;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.45;
+}
+.sc-root *, .sc-root *::before, .sc-root *::after { box-sizing: border-box; }
+.sc-root p, .sc-root h1, .sc-root h2 { margin: 0; }
+.sc-root button { font-family: inherit; cursor: pointer; }
+.sc-root input { font-family: inherit; }
+
+/* ---------- Encabezado ---------- */
+.sc-header {
+  flex-shrink: 0;
+  border-bottom: 1px solid #e5e5e5;
+  background: #ffffff;
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.sc-header-brand { font-weight: 800; letter-spacing: -0.02em; color: #171717; font-size: 18px; }
+.sc-btn-cancel {
+  font-size: 13px;
+  color: #a3a3a3;
+  background: transparent;
+  border: 1px solid #e5e5e5;
+  border-radius: 999px;
+  padding: 6px 14px;
+}
+.sc-header-local { font-size: 13px; color: #a3a3a3; text-align: right; line-height: 1.25; }
+
+/* ---------- Pantalla de reposo ---------- */
+.sc-reposo {
+  flex: 1 1 auto;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 0 40px;
+  cursor: pointer;
+}
+.sc-clima-foto {
+  position: absolute;
+  top: -4%; right: -4%; bottom: -4%; left: -4%;
+  width: 108%;
+  height: 108%;
+  object-fit: cover;
+  animation: sc-kenburns 22s ease-in-out infinite alternate;
+}
+.sc-tormenta-foto { filter: brightness(0.5) contrast(1.15) saturate(0.85); }
+@keyframes sc-kenburns {
+  0% { transform: scale(1) translate(0, 0); }
+  100% { transform: scale(1.14) translate(-1.5%, -2%); }
+}
+@keyframes sc-gota-caer {
+  from { transform: translate(0, 0); }
+  to { transform: translate(-30px, 900px); }
+}
+.sc-gota {
+  position: absolute;
+  top: -8%;
+  width: 2px;
+  background: linear-gradient(rgba(220,235,255,0), rgba(220,235,255,.85));
+  animation: sc-gota-caer linear infinite;
+}
+.sc-niebla {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 30%;
+  background: linear-gradient(180deg, rgba(180,195,210,0), rgba(180,195,210,.32));
+  pointer-events: none;
+}
+.sc-relampago {
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
+  background: #d9e6ff;
+  opacity: 0;
+  pointer-events: none;
+}
+.sc-relampago.sc-flash { animation: sc-flash-anim .5s ease-out; }
+@keyframes sc-flash-anim {
+  0% { opacity: 0; }
+  8% { opacity: .8; }
+  18% { opacity: .08; }
+  26% { opacity: .55; }
+  40% { opacity: 0; }
+  100% { opacity: 0; }
+}
+.sc-logo-wrap { position: relative; z-index: 2; }
+.sc-logo-glow {
+  position: absolute;
+  top: -30px; right: -30px; bottom: -30px; left: -30px;
+  background: radial-gradient(circle, rgba(212,221,180,.5), rgba(212,221,180,0) 68%);
+  filter: blur(6px);
+  z-index: -1;
+  animation: sc-glow-pulse 6s ease-in-out infinite;
+}
+@keyframes sc-glow-pulse {
+  0%, 100% { opacity: .55; transform: scale(0.96); }
+  50% { opacity: .9; transform: scale(1.04); }
+}
+.sc-logo-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 28px;
+  padding: 32px 36px;
+  width: 250px;
+  background: linear-gradient(160deg, #ffffff 0%, #f4f5ef 100%);
+  box-shadow: 0 40px 70px -24px rgba(0,0,0,.6), 0 14px 26px -12px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.8);
+  animation: sc-float3d 6.5s ease-in-out infinite;
+}
+@keyframes sc-float3d {
+  0%, 100% { transform: rotateX(9deg) rotateY(-11deg) translateY(0px); }
+  50% { transform: rotateX(4deg) rotateY(11deg) translateY(-9px); }
+}
+.sc-logo-card::after {
+  content: "";
+  position: absolute;
+  top: -60%; left: -20%;
+  width: 60%; height: 220%;
+  background: linear-gradient(115deg, rgba(255,255,255,0) 30%, rgba(255,255,255,.55) 48%, rgba(255,255,255,0) 66%);
+  animation: sc-shine 5.5s ease-in-out infinite;
+}
+@keyframes sc-shine {
+  0% { transform: translateX(-40%) rotate(8deg); }
+  45%, 100% { transform: translateX(220%) rotate(8deg); }
+}
+.sc-logo-img { width: 100%; display: block; }
+.sc-titulo {
+  font-size: 26px;
+  font-weight: 800;
+  color: #ffffff;
+  position: relative;
+  z-index: 10;
+  margin-top: 26px;
+  text-shadow: 0 2px 12px rgba(0,0,0,.35);
+}
+.sc-tap-hint {
+  position: relative;
+  z-index: 10;
+  margin-top: 26px;
+  width: 52px;
+  height: 52px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.12);
+  border: 1px solid rgba(255,255,255,.28);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+}
+.sc-tap-hint::before {
+  content: "";
+  position: absolute;
+  top: -10px; right: -10px; bottom: -10px; left: -10px;
+  border-radius: 999px;
+  border: 2px solid rgba(255,255,255,.5);
+  animation: sc-pulse-ring 2.2s ease-out infinite;
+}
+@keyframes sc-pulse-ring {
+  0% { transform: scale(0.85); opacity: .9; }
+  100% { transform: scale(1.55); opacity: 0; }
+}
+.sc-tap-text {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  color: rgba(255,255,255,.75);
+  position: relative;
+  z-index: 10;
+  margin-top: 14px;
+  text-shadow: 0 1px 8px rgba(0,0,0,.35);
+}
+
+/* ---------- Buscador / escaneo ---------- */
+.sc-pantalla { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
+.sc-buscador-caja {
+  flex-shrink: 0;
+  background: #ffffff;
+  border-bottom: 1px solid #e5e5e5;
+  padding: 12px 20px;
+}
+.sc-buscador-wrap { position: relative; }
+.sc-buscador-icono {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  margin-top: -10px;
+  color: #a3a3a3;
+  font-size: 18px;
+}
+.sc-buscador-input {
+  width: 100%;
+  border-radius: 12px;
+  border: 2px solid #2563eb;
+  background: #eff6ff;
+  padding: 14px 14px 14px 42px;
+  font-size: 16px;
+  font-weight: 500;
+  color: #171717;
+}
+.sc-buscador-ayuda { font-size: 12px; color: #a3a3a3; margin-top: 6px; }
+.sc-resultados {
+  margin-top: 8px;
+  border: 1px solid #e5e5e5;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 10px 22px -12px rgba(0,0,0,.28);
+  overflow: hidden;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.sc-resultado-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border: 0;
+  border-bottom: 1px solid #f5f5f5;
+  background: #ffffff;
+  text-align: left;
+}
+.sc-resultado-item:last-child { border-bottom: 0; }
+.sc-resultado-item:active { background: #eff6ff; }
+.sc-resultado-texto { min-width: 0; padding-right: 10px; }
+.sc-resultado-nombre {
+  display: block;
+  font-size: 15px;
+  font-weight: 600;
+  color: #171717;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sc-resultado-variante { display: block; font-size: 13px; color: #a3a3a3; }
+.sc-resultado-precio { flex-shrink: 0; font-weight: 700; font-size: 15px; color: #1d4ed8; }
+.sc-sin-resultados { text-align: center; font-size: 13px; color: #a3a3a3; padding: 12px 0; }
+
+.sc-toast {
+  flex-shrink: 0;
+  margin: 12px 20px 0 20px;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  border-radius: 12px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+}
+.sc-toast-check { color: #059669; font-size: 18px; margin-right: 10px; }
+.sc-toast-nombre { font-size: 15px; font-weight: 700; color: #065f46; }
+.sc-toast-precio { font-size: 13px; color: #059669; }
+
+.sc-error-caja {
+  flex-shrink: 0;
+  margin: 12px 20px 0 20px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 12px;
+  padding: 10px 14px;
+}
+.sc-error-texto { font-size: 15px; font-weight: 600; color: #b91c1c; }
+
+/* ---------- Carrito ---------- */
+.sc-carrito { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; margin-top: 12px; }
+.sc-carrito-head {
+  flex-shrink: 0;
+  padding: 0 20px 8px 20px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.sc-carrito-titulo { font-weight: 800; color: #171717; font-size: 17px; }
+.sc-carrito-count { font-size: 13px; color: #a3a3a3; }
+.sc-carrito-vacio {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 0 32px;
+  color: #a3a3a3;
+}
+.sc-carrito-vacio-emoji { font-size: 34px; opacity: .5; margin-bottom: 8px; }
+.sc-carrito-vacio-texto { font-size: 15px; max-width: 220px; }
+.sc-carrito-lista { flex: 1 1 auto; overflow-y: auto; padding: 0 20px 12px 20px; }
+.sc-item {
+  display: flex;
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #e5e5e5;
+  border-radius: 12px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+}
+.sc-item-icono {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: #f5f5f5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  flex-shrink: 0;
+  margin-right: 10px;
+}
+.sc-item-info { flex: 1 1 auto; min-width: 0; }
+.sc-item-nombre {
+  font-size: 15px;
+  font-weight: 600;
+  color: #171717;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sc-item-detalle { font-size: 13px; color: #a3a3a3; }
+.sc-item-cant { display: flex; align-items: center; flex-shrink: 0; margin: 0 8px; }
+.sc-btn-cant {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid #d4d4d4;
+  background: #ffffff;
+  color: #737373;
+  font-weight: 700;
+  font-size: 16px;
+  line-height: 1;
+}
+.sc-btn-cant[disabled] { opacity: .3; }
+.sc-item-cant-num { width: 26px; text-align: center; font-weight: 700; font-size: 15px; }
+.sc-item-total { width: 66px; text-align: right; font-size: 15px; font-weight: 700; color: #171717; flex-shrink: 0; }
+
+.sc-footer {
+  flex-shrink: 0;
+  border-top: 1px solid #e5e5e5;
+  background: #ffffff;
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.sc-footer-label { font-size: 13px; color: #a3a3a3; }
+.sc-footer-total { font-size: 22px; font-weight: 800; color: #171717; }
+
+/* ---------- Botones ---------- */
+.sc-btn-primary {
+  background: #2563eb;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 16px;
+  border: 0;
+  border-radius: 12px;
+  padding: 14px 26px;
+}
+.sc-btn-primary[disabled] { opacity: .4; }
+.sc-btn-primary-full { display: block; width: 100%; border-radius: 16px; padding: 15px 0; }
+.sc-btn-outline {
+  border: 1px solid #d4d4d4;
+  background: #ffffff;
+  color: #404040;
+  font-weight: 600;
+  font-size: 15px;
+  border-radius: 12px;
+  padding: 13px 28px;
+}
+.sc-btn-link {
+  display: block;
+  width: 100%;
+  text-align: center;
+  font-size: 13px;
+  color: #a3a3a3;
+  font-weight: 600;
+  background: transparent;
+  border: 0;
+  padding: 10px 0;
+}
+
+/* ---------- Modales (identificar / pagar) ---------- */
+.sc-modal-pantalla { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; position: relative; }
+.sc-modal-fondo-lista { flex: 1 1 auto; overflow-y: auto; padding: 16px 20px; opacity: .3; pointer-events: none; }
+.sc-modal-capa {
+  position: absolute;
+  top: 0; right: 0; bottom: 0; left: 0;
+  background: rgba(0,0,0,.4);
+  display: flex;
+  align-items: flex-end;
+}
+.sc-modal {
+  background: #ffffff;
+  border-radius: 24px 24px 0 0;
+  width: 100%;
+  max-height: 92%;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 -20px 40px rgba(0,0,0,.25);
+  padding: 20px;
+  overflow-y: auto;
+}
+@media (min-width: 640px) {
+  .sc-modal-capa { align-items: center; justify-content: center; padding: 16px; }
+  .sc-modal { border-radius: 24px; max-width: 520px; }
+}
+.sc-modal-paso {
+  font-size: 12px;
+  font-weight: 700;
+  color: #2563eb;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  margin-bottom: 4px;
+}
+.sc-modal-titulo { font-weight: 800; font-size: 19px; color: #171717; margin-bottom: 2px; }
+.sc-modal-sub { font-size: 13px; color: #737373; margin-bottom: 16px; }
+
+.sc-card {
+  border-radius: 16px;
+  padding: 14px;
+  margin-bottom: 10px;
+}
+.sc-card-accent { background: #eff6ff; border: 1px solid rgba(37,99,235,.3); }
+.sc-card-neutral { background: #fafafa; border: 1px solid #e5e5e5; }
+.sc-card-purple { background: #faf5ff; border: 1px solid #e9d5ff; }
+.sc-card-amber { background: #fffbeb; border: 1px solid #fde68a; }
+.sc-card-titulo { font-size: 15px; font-weight: 700; color: #171717; }
+.sc-card-titulo-sm { font-size: 13px; font-weight: 700; color: #171717; }
+.sc-opcional { font-weight: 400; color: #a3a3a3; }
+.sc-input {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid #d4d4d4;
+  padding: 11px 12px;
+  font-size: 15px;
+  margin-top: 6px;
+  background: #ffffff;
+  color: #171717;
+}
+.sc-input-sm { padding: 7px 10px; font-size: 13px; }
+.sc-hint { font-size: 13px; margin-top: 6px; }
+.sc-hint-neutral { color: #a3a3a3; }
+.sc-hint-ok { color: #059669; font-weight: 600; }
+.sc-hint-info { color: #737373; font-weight: 600; }
+.sc-hint-error { color: #dc2626; font-weight: 600; }
+
+.sc-canje-titulo { font-size: 15px; font-weight: 700; color: #6b21a8; margin-bottom: 8px; }
+.sc-canje-fila {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 14px;
+  background: #ffffff;
+  border: 1px solid #e9d5ff;
+  border-radius: 10px;
+  padding: 8px 12px;
+  margin-bottom: 6px;
+  cursor: pointer;
+}
+.sc-canje-marca { display: flex; align-items: center; }
+.sc-canje-check { margin-right: 8px; width: 18px; height: 18px; }
+.sc-canje-saldo { font-size: 12px; color: #9333ea; text-align: right; }
+
+.sc-puntos-fila {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+}
+.sc-puntos-texto { font-size: 15px; font-weight: 700; color: #78350f; padding-right: 10px; }
+.sc-puntos-check { width: 22px; height: 22px; flex-shrink: 0; }
+.sc-puntos-detalle { font-size: 12px; color: #b45309; margin-top: 4px; }
+
+.sc-resumen-fila {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 15px;
+  margin-bottom: 4px;
+}
+.sc-resumen-desc-verde { color: #059669; }
+.sc-resumen-desc-violeta { color: #9333ea; }
+.sc-resumen-desc-ambar { color: #b45309; }
+.sc-total-box {
+  background: #eff6ff;
+  border: 1px solid rgba(37,99,235,.3);
+  border-radius: 16px;
+  padding: 16px;
+  text-align: center;
+  margin: 14px 0;
+}
+.sc-total-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #1d4ed8;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+.sc-total-monto { font-size: 34px; font-weight: 800; color: #171717; letter-spacing: -0.02em; }
+
+.sc-pago-btn {
+  display: flex;
+  align-items: center;
+  text-align: left;
+  width: 100%;
+  border: 2px solid #e5e5e5;
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+.sc-pago-btn-sel { border-color: #2563eb; background: #eff6ff; }
+.sc-pago-icono {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: #ffffff;
+  border: 1px solid #e5e5e5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+  margin-right: 12px;
+}
+.sc-pago-nombre { display: block; font-weight: 700; font-size: 15px; color: #171717; }
+.sc-pago-desc { display: block; font-size: 13px; color: #737373; }
+.sc-pago-proximamente {
+  display: flex;
+  align-items: center;
+  border: 2px dashed #e5e5e5;
+  border-radius: 16px;
+  padding: 12px 14px;
+  margin-bottom: 4px;
+  opacity: .45;
+}
+
+/* ---------- Pantallas finales ---------- */
+.sc-final {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 0 32px;
+}
+.sc-final-emoji { font-size: 40px; margin-bottom: 8px; }
+.sc-final-emoji-lg { font-size: 52px; margin-bottom: 8px; }
+.sc-final-titulo { font-size: 23px; font-weight: 800; color: #171717; margin-bottom: 6px; }
+.sc-final-texto { font-size: 15px; color: #737373; max-width: 320px; margin-bottom: 16px; }
+.sc-final-monto { font-size: 30px; font-weight: 800; color: #171717; }
+.sc-final-pedido { font-size: 13px; color: #a3a3a3; margin-bottom: 16px; }
+.sc-esperando { display: flex; align-items: center; font-size: 13px; color: #a3a3a3; }
+.sc-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #10b981;
+  margin-right: 8px;
+  animation: sc-latido 1.6s ease-in-out infinite;
+}
+@keyframes sc-latido { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+.sc-mp-badge {
+  display: flex;
+  align-items: center;
+  background: #eef9f1;
+  color: #00a650;
+  font-weight: 700;
+  font-size: 13px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  margin-bottom: 14px;
+}
+.sc-qr-box {
+  width: 190px;
+  height: 190px;
+  background: #ffffff;
+  border-radius: 16px;
+  border: 1px solid #e5e5e5;
+  box-shadow: 0 6px 16px -8px rgba(0,0,0,.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 14px;
+  overflow: hidden;
+}
+.sc-qr-img { width: 100%; height: 100%; object-fit: contain; }
+.sc-qr-error { color: #d4d4d4; font-size: 13px; padding: 0 8px; text-align: center; }
+`;
+
 export default function SelfCheckoutApp({
   local,
   productos,
@@ -483,108 +1111,18 @@ export default function SelfCheckoutApp({
   }
 
   return (
-    <div className="min-h-screen bg-[#fafafa] flex flex-col relative">
-      <style>{`
-        @keyframes sc-float3d {
-          0%, 100% { transform: rotateX(9deg) rotateY(-11deg) translateY(0px); }
-          50% { transform: rotateX(4deg) rotateY(11deg) translateY(-9px); }
-        }
-        @keyframes sc-shine {
-          0% { transform: translateX(-40%) rotate(8deg); }
-          45%, 100% { transform: translateX(220%) rotate(8deg); }
-        }
-        @keyframes sc-glow-pulse {
-          0%, 100% { opacity: .55; transform: scale(0.96); }
-          50% { opacity: .9; transform: scale(1.04); }
-        }
-        @keyframes sc-pulse-ring {
-          0% { transform: scale(0.85); opacity: .9; }
-          100% { transform: scale(1.55); opacity: 0; }
-        }
-        @keyframes sc-kenburns {
-          0% { transform: scale(1) translate(0, 0); }
-          100% { transform: scale(1.14) translate(-1.5%, -2%); }
-        }
-        .sc-clima-foto {
-          position: absolute;
-          inset: -4%;
-          width: 108%;
-          height: 108%;
-          object-fit: cover;
-          animation: sc-kenburns 22s ease-in-out infinite alternate;
-        }
-        .sc-tormenta-foto { filter: brightness(0.5) contrast(1.15) saturate(0.85); }
-        @keyframes sc-gota-caer {
-          from { transform: translate(0, 0); }
-          to { transform: translate(-30px, 900px); }
-        }
-        .sc-gota {
-          position: absolute;
-          top: -8%;
-          width: 1.5px;
-          background: linear-gradient(rgba(220,235,255,0), rgba(220,235,255,.85));
-          animation: sc-gota-caer linear infinite;
-        }
-        .sc-niebla {
-          position: absolute; left: 0; right: 0; bottom: 0; height: 30%;
-          background: linear-gradient(180deg, rgba(180,195,210,0), rgba(180,195,210,.32));
-          pointer-events: none;
-        }
-        .sc-relampago {
-          position: absolute; inset: 0;
-          background: #d9e6ff;
-          opacity: 0;
-          pointer-events: none;
-        }
-        .sc-relampago.sc-flash { animation: sc-flash-anim .5s ease-out; }
-        @keyframes sc-flash-anim {
-          0% { opacity: 0; }
-          8% { opacity: .8; }
-          18% { opacity: .08; }
-          26% { opacity: .55; }
-          40% { opacity: 0; }
-          100% { opacity: 0; }
-        }
-        .sc-logo-glow {
-          position: absolute;
-          inset: -30px;
-          background: radial-gradient(circle, rgba(212,221,180,.5), rgba(212,221,180,0) 68%);
-          filter: blur(6px);
-          z-index: -1;
-          animation: sc-glow-pulse 6s ease-in-out infinite;
-        }
-        .sc-logo-card {
-          transform-style: preserve-3d;
-          animation: sc-float3d 6.5s ease-in-out infinite;
-        }
-        .sc-logo-card::after {
-          content: "";
-          position: absolute;
-          top: -60%; left: -20%;
-          width: 60%; height: 220%;
-          background: linear-gradient(115deg, rgba(255,255,255,0) 30%, rgba(255,255,255,.55) 48%, rgba(255,255,255,0) 66%);
-          animation: sc-shine 5.5s ease-in-out infinite;
-        }
-        .sc-tap-hint::before {
-          content: "";
-          position: absolute; inset: -10px;
-          border-radius: 9999px;
-          border: 1.5px solid rgba(212,221,180,.55);
-          animation: sc-pulse-ring 2.2s ease-out infinite;
-        }
-      `}</style>
+    <div className="sc-root">
+      <style>{CSS_TOTEM}</style>
+
       {paso !== "reposo" && (
-        <header className="border-b border-[#e5e5e5] bg-[#ffffff] shrink-0 px-5 py-3.5 flex items-center justify-between">
-          <span className="font-extrabold tracking-tight text-foreground">WiiGo</span>
+        <header className="sc-header">
+          <span className="sc-header-brand">WiiGo</span>
           {paso === "escaneo" || paso === "identificar" || paso === "pagar" || paso === "mp-esperando" ? (
-            <button
-              onClick={handleCancelarPedido}
-              className="text-xs text-[#a3a3a3] border border-[#e5e5e5] rounded-full px-3 py-1"
-            >
+            <button onClick={handleCancelarPedido} className="sc-btn-cancel">
               Cancelar
             </button>
           ) : (
-            <span className="text-xs text-[#a3a3a3] text-right leading-tight">
+            <span className="sc-header-local">
               {local.nombre}
               <br />
               Terminal
@@ -594,10 +1132,7 @@ export default function SelfCheckoutApp({
       )}
 
       {paso === "reposo" && (
-        <div
-          onClick={() => setPaso("escaneo")}
-          className="flex-1 relative overflow-hidden flex flex-col items-center justify-center gap-6 text-center px-10 cursor-pointer"
-        >
+        <div onClick={() => setPaso("escaneo")} className="sc-reposo">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={FOTOS_CLIMA[clima]}
@@ -625,56 +1160,44 @@ export default function SelfCheckoutApp({
           )}
           {clima === "tormenta" && <div key={flashKey} className="sc-relampago sc-flash" />}
 
-          <div className="relative" style={{ perspective: "1100px", zIndex: 2 }}>
+          <div className="sc-logo-wrap" style={{ perspective: "1100px" }}>
             <div className="sc-logo-glow" />
-            <div
-              className="sc-logo-card relative overflow-hidden rounded-[28px] px-9 py-8"
-              style={{
-                width: 250,
-                background: "linear-gradient(160deg, #ffffff 0%, #f4f5ef 100%)",
-                boxShadow:
-                  "0 40px 70px -24px rgba(0,0,0,.6), 0 14px 26px -12px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.8), inset 0 -6px 14px -6px rgba(0,0,0,.06)",
-              }}
-            >
+            <div className="sc-logo-card">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src="/wiigo-logo.png"
                 alt="WiiGo"
-                className="w-full"
+                className="sc-logo-img"
                 style={{ filter: "drop-shadow(0 10px 14px rgba(30,35,20,.28))" }}
               />
             </div>
           </div>
 
-          <h1 className="text-2xl font-extrabold text-[#ffffff] text-balance relative z-10">Tu compra, a tu ritmo</h1>
+          <h1 className="sc-titulo">Tu compra, a tu ritmo</h1>
 
-          <div className="sc-tap-hint relative w-12 h-12 rounded-full bg-[rgba(255,255,255,.1)] border border-[rgba(255,255,255,.25)] flex items-center justify-center text-lg z-10">
-            👆
-          </div>
-          <p className="text-xs font-bold uppercase tracking-widest text-[rgba(255,255,255,.5)] -mt-2 relative z-10">
-            Tocá la pantalla para empezar
-          </p>
+          <div className="sc-tap-hint">👆</div>
+          <p className="sc-tap-text">Tocá la pantalla para empezar</p>
         </div>
       )}
 
       {paso === "escaneo" && (
-        <div className="flex-1 flex flex-col min-h-0">
-          <div className="bg-[#ffffff] border-b border-[#e5e5e5] px-5 py-3 shrink-0">
-            <div className="relative">
-              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#a3a3a3]">🔍</span>
+        <div className="sc-pantalla">
+          <div className="sc-buscador-caja">
+            <div className="sc-buscador-wrap">
+              <span className="sc-buscador-icono">🔍</span>
               <input
                 ref={searchInputRef}
                 value={busquedaTexto}
                 onChange={(e) => setBusquedaTexto(e.target.value)}
                 onKeyDown={handleBuscadorKeyDown}
                 placeholder="Buscá un producto por nombre..."
-                className="w-full rounded-xl border-[1.5px] border-accent bg-accent-tint pl-9 pr-3.5 py-3 text-sm font-medium text-foreground"
+                className="sc-buscador-input"
               />
             </div>
-            <p className="text-[11px] text-[#a3a3a3] mt-1.5">📷 También podés escanear el código de barras en cualquier momento</p>
+            <p className="sc-buscador-ayuda">📷 También podés escanear el código de barras en cualquier momento</p>
 
             {resultadosBusqueda.length > 0 && (
-              <div className="mt-2 border border-[#e5e5e5] rounded-xl bg-[#ffffff] shadow-lg overflow-hidden max-h-64 overflow-y-auto">
+              <div className="sc-resultados">
                 {resultadosBusqueda.map((i) => (
                   <button
                     key={i.variante.id_variante}
@@ -683,101 +1206,87 @@ export default function SelfCheckoutApp({
                       setBusquedaTexto("");
                       searchInputRef.current?.focus();
                     }}
-                    className="w-full flex items-center justify-between gap-2.5 px-3.5 py-2.5 border-b border-[#f5f5f5] last:border-0 text-left active:bg-accent-tint"
+                    className="sc-resultado-item"
                   >
-                    <span className="min-w-0">
-                      <span className="block text-sm font-semibold text-foreground truncate">{i.producto.nombre}</span>
-                      {i.variante.nombre !== "Único" && <span className="block text-xs text-[#a3a3a3]">{i.variante.nombre}</span>}
+                    <span className="sc-resultado-texto">
+                      <span className="sc-resultado-nombre">{i.producto.nombre}</span>
+                      {i.variante.nombre !== "Único" && <span className="sc-resultado-variante">{i.variante.nombre}</span>}
                     </span>
-                    <span className="shrink-0 font-bold text-sm text-accent-dark">${formatearMonto(i.precio)}</span>
+                    <span className="sc-resultado-precio">${formatearMonto(i.precio)}</span>
                   </button>
                 ))}
               </div>
             )}
             {busquedaTexto.trim() && resultadosBusqueda.length === 0 && (
-              <p className="text-center text-xs text-[#a3a3a3] py-3">No encontramos productos con ese nombre.</p>
+              <p className="sc-sin-resultados">No encontramos productos con ese nombre.</p>
             )}
           </div>
 
           {toast && (
-            <div className="shrink-0 mx-5 mt-3 bg-[#ecfdf5] border border-[#a7f3d0] rounded-xl px-3.5 py-2.5 flex items-center gap-2.5">
-              <span className="text-[#059669]">✓</span>
+            <div className="sc-toast">
+              <span className="sc-toast-check">✓</span>
               <div>
-                <p className="text-sm font-bold text-[#065f46]">{toast.nombre}</p>
-                <p className="text-xs text-[#059669]">Agregado · ${formatearMonto(toast.precio)}</p>
+                <p className="sc-toast-nombre">{toast.nombre}</p>
+                <p className="sc-toast-precio">Agregado · ${formatearMonto(toast.precio)}</p>
               </div>
             </div>
           )}
 
           {error && !toast && (
-            <div className="shrink-0 mx-5 mt-3 bg-[#fef2f2] border border-[#fecaca] rounded-xl px-3.5 py-2.5">
-              <p className="text-sm font-semibold text-[#b91c1c]">{error}</p>
+            <div className="sc-error-caja">
+              <p className="sc-error-texto">{error}</p>
             </div>
           )}
 
-          <div className="flex-1 flex flex-col min-h-0 mt-3">
-            <div className="px-5 pb-2 flex items-baseline justify-between shrink-0">
-              <h2 className="font-extrabold text-foreground">Tu carrito</h2>
-              <span className="text-xs text-[#a3a3a3]">
+          <div className="sc-carrito">
+            <div className="sc-carrito-head">
+              <h2 className="sc-carrito-titulo">Tu carrito</h2>
+              <span className="sc-carrito-count">
                 {totalItemsCarrito} producto{totalItemsCarrito === 1 ? "" : "s"}
               </span>
             </div>
 
             {itemsCarrito.length === 0 ? (
-              <div className="flex-1 flex flex-col items-center justify-center text-center px-8 gap-2 text-[#a3a3a3]">
-                <span className="text-3xl opacity-50">🛒</span>
-                <p className="text-sm max-w-[220px]">Todavía no escaneaste ningún producto</p>
+              <div className="sc-carrito-vacio">
+                <span className="sc-carrito-vacio-emoji">🛒</span>
+                <p className="sc-carrito-vacio-texto">Todavía no escaneaste ningún producto</p>
               </div>
             ) : (
-              <div className="flex-1 overflow-y-auto px-5 pb-3 flex flex-col gap-2">
+              <div className="sc-carrito-lista">
                 {itemsCarrito.map((i) => (
-                  <div
-                    key={i.variante.id_variante}
-                    className="flex items-center gap-2.5 bg-[#ffffff] border border-[#e5e5e5] rounded-xl px-3 py-2"
-                  >
-                    <div className="w-9 h-9 rounded-lg bg-[#f5f5f5] flex items-center justify-center text-sm shrink-0">
-                      📦
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-foreground truncate">{i.producto.nombre}</p>
-                      <p className="text-xs text-[#a3a3a3]">
+                  <div key={i.variante.id_variante} className="sc-item">
+                    <div className="sc-item-icono">📦</div>
+                    <div className="sc-item-info">
+                      <p className="sc-item-nombre">{i.producto.nombre}</p>
+                      <p className="sc-item-detalle">
                         {i.variante.nombre !== "Único" && `${i.variante.nombre} · `}${formatearMonto(i.precio)} c/u
                       </p>
                     </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <button
-                        onClick={() => cambiarCantidad(i.variante.id_variante, -1)}
-                        className="w-6 h-6 rounded-md border border-[#d4d4d4] text-[#737373] font-bold text-sm"
-                      >
+                    <div className="sc-item-cant">
+                      <button onClick={() => cambiarCantidad(i.variante.id_variante, -1)} className="sc-btn-cant">
                         −
                       </button>
-                      <span className="w-4 text-center font-bold text-sm">{i.cantidad}</span>
+                      <span className="sc-item-cant-num">{i.cantidad}</span>
                       <button
                         onClick={() => cambiarCantidad(i.variante.id_variante, 1)}
                         disabled={i.cantidad >= i.cantidadDisponible}
-                        className="w-6 h-6 rounded-md border border-[#d4d4d4] text-[#737373] font-bold text-sm disabled:opacity-30"
+                        className="sc-btn-cant"
                       >
                         +
                       </button>
                     </div>
-                    <p className="w-14 text-right text-sm font-bold text-foreground shrink-0">
-                      ${formatearMonto(i.precio * i.cantidad)}
-                    </p>
+                    <p className="sc-item-total">${formatearMonto(i.precio * i.cantidad)}</p>
                   </div>
                 ))}
               </div>
             )}
 
-            <div className="shrink-0 border-t border-[#e5e5e5] bg-[#ffffff] px-5 py-3.5 flex items-center justify-between gap-4">
+            <div className="sc-footer">
               <div>
-                <p className="text-xs text-[#a3a3a3]">Total</p>
-                <p className="text-lg font-extrabold text-foreground">${formatearMonto(subtotalCarrito)}</p>
+                <p className="sc-footer-label">Total</p>
+                <p className="sc-footer-total">${formatearMonto(subtotalCarrito)}</p>
               </div>
-              <button
-                onClick={() => setPaso("identificar")}
-                disabled={itemsCarrito.length === 0}
-                className="bg-accent hover:bg-accent-dark disabled:opacity-40 text-[#ffffff] font-bold px-6 py-3 rounded-xl"
-              >
+              <button onClick={() => setPaso("identificar")} disabled={itemsCarrito.length === 0} className="sc-btn-primary">
                 Ir a pagar →
               </button>
             </div>
@@ -786,93 +1295,86 @@ export default function SelfCheckoutApp({
       )}
 
       {paso === "identificar" && (
-        <div className="flex-1 flex flex-col min-h-0 relative">
-          <div className="flex-1 overflow-y-auto px-5 py-4 opacity-30 pointer-events-none">
+        <div className="sc-modal-pantalla">
+          <div className="sc-modal-fondo-lista">
             {itemsCarrito.map((i) => (
-              <div
-                key={i.variante.id_variante}
-                className="flex items-center gap-2.5 bg-[#ffffff] border border-[#e5e5e5] rounded-xl px-3 py-2 mb-2"
-              >
-                <div className="w-9 h-9 rounded-lg bg-[#f5f5f5] flex items-center justify-center text-sm shrink-0">📦</div>
-                <p className="flex-1 min-w-0 text-sm font-semibold text-foreground truncate">{i.producto.nombre}</p>
-                <p className="text-sm font-bold text-foreground shrink-0">${formatearMonto(i.precio * i.cantidad)}</p>
+              <div key={i.variante.id_variante} className="sc-item">
+                <div className="sc-item-icono">📦</div>
+                <p className="sc-item-nombre sc-item-info">{i.producto.nombre}</p>
+                <p className="sc-item-total">${formatearMonto(i.precio * i.cantidad)}</p>
               </div>
             ))}
           </div>
 
-          <div className="absolute inset-0 bg-[rgba(0,0,0,.4)] flex items-end">
-            <div className="bg-[#ffffff] rounded-t-3xl w-full max-h-[92%] flex flex-col shadow-2xl px-5 pt-5 pb-5 overflow-y-auto">
-              <p className="text-[11px] font-bold text-accent uppercase tracking-wide mb-1">Paso 1 de 2</p>
-              <h2 className="font-extrabold text-lg text-foreground mb-0.5">¿Sos cliente WiiGo Club?</h2>
-              <p className="text-xs text-[#737373] mb-4">¡Acumulá puntos con cada compra! Es opcional.</p>
+          <div className="sc-modal-capa">
+            <div className="sc-modal">
+              <p className="sc-modal-paso">Paso 1 de 2</p>
+              <h2 className="sc-modal-titulo">¿Sos cliente WiiGo Club?</h2>
+              <p className="sc-modal-sub">¡Acumulá puntos con cada compra! Es opcional.</p>
 
-              <div className="bg-accent-tint border border-[rgba(37,99,235,.3)] rounded-2xl p-3.5 mb-2.5">
-                <p className="text-sm font-bold text-foreground">
-                  Tu DNI <span className="font-normal text-[#a3a3a3]">Opcional</span>
+              <div className="sc-card sc-card-accent">
+                <p className="sc-card-titulo">
+                  Tu DNI <span className="sc-opcional">Opcional</span>
                 </p>
                 <input
                   value={dni}
                   onChange={(e) => setDni(e.target.value)}
                   placeholder="Ingresá tu DNI"
                   inputMode="numeric"
-                  className="w-full rounded-lg border border-[#d4d4d4] px-3 py-2.5 text-sm mt-1.5"
+                  className="sc-input"
                 />
-                {buscandoCliente && <p className="text-xs text-[#a3a3a3] mt-1.5">Buscando...</p>}
+                {buscandoCliente && <p className="sc-hint sc-hint-neutral">Buscando...</p>}
                 {!buscandoCliente && clienteInfo?.existe && (
-                  <p className="text-xs text-[#059669] font-semibold mt-1.5">
+                  <p className="sc-hint sc-hint-ok">
                     ¡Hola{clienteInfo.nombre ? ` ${clienteInfo.nombre}` : ""}! Tenés {clienteInfo.puntos} puntos WiiGo.
                   </p>
                 )}
                 {!buscandoCliente && clienteInfo && !clienteInfo.existe && (
-                  <p className="text-xs text-[#737373] font-semibold mt-1.5">
+                  <p className="sc-hint sc-hint-info">
                     Todavía no estás registrado — esta compra no suma puntos. Pedile a alguien del local que te registre para la próxima.
                   </p>
                 )}
               </div>
 
-              <div className="bg-[#fafafa] border border-[#e5e5e5] rounded-2xl p-3 mb-3">
-                <p className="text-xs font-bold text-foreground">
-                  ¿Te recomendó una profesional? <span className="font-normal text-[#a3a3a3]">Opcional</span>
+              <div className="sc-card sc-card-neutral">
+                <p className="sc-card-titulo-sm">
+                  ¿Te recomendó una profesional? <span className="sc-opcional">Opcional</span>
                 </p>
                 <input
                   value={codigoProfesional}
                   onChange={(e) => setCodigoProfesional(e.target.value)}
                   placeholder="Código de la profesional"
-                  className="w-full rounded-lg border border-[#d4d4d4] px-2.5 py-1.5 text-xs mt-1.5"
+                  className="sc-input sc-input-sm"
                 />
-                {buscandoCodigo && <p className="text-xs text-[#a3a3a3] mt-1.5">Buscando...</p>}
-                {!buscandoCodigo && codigoInfo?.nombre && (
-                  <p className="text-xs text-[#059669] font-semibold mt-1.5">✓ {codigoInfo.nombre}</p>
-                )}
-                {!buscandoCodigo && codigoInfo?.error && (
-                  <p className="text-xs text-[#dc2626] font-semibold mt-1.5">✗ {codigoInfo.error}</p>
-                )}
+                {buscandoCodigo && <p className="sc-hint sc-hint-neutral">Buscando...</p>}
+                {!buscandoCodigo && codigoInfo?.nombre && <p className="sc-hint sc-hint-ok">✓ {codigoInfo.nombre}</p>}
+                {!buscandoCodigo && codigoInfo?.error && <p className="sc-hint sc-hint-error">✗ {codigoInfo.error}</p>}
               </div>
 
               {profesional && marcasEnCarrito.length > 0 && (
-                <div className="bg-[#faf5ff] border border-[#e9d5ff] rounded-2xl p-3.5 mb-3">
-                  <p className="text-sm font-bold text-[#6b21a8] mb-2">🤝 {profesional.nombre}, podés pagar con tu saldo</p>
-                  <div className="space-y-1.5 mb-2">
-                    {marcasEnCarrito.map((m) => {
-                      const alcanza = m.saldo >= m.subtotalCarrito;
-                      const montoAplicado = Math.min(m.saldo, m.subtotalCarrito);
-                      return (
-                        <label
-                          key={m.idMarca}
-                          className="flex items-center justify-between gap-2 text-sm bg-[#ffffff] border border-[#e9d5ff] rounded-lg px-3 py-2 cursor-pointer"
-                        >
-                          <span className="flex items-center gap-2">
-                            <input type="checkbox" checked={marcasCanje.has(m.idMarca)} onChange={() => toggleMarcaCanje(m.idMarca)} />
-                            {m.nombreMarca} — <span className="tabular-nums">${formatearMonto(m.subtotalCarrito)}</span>
-                          </span>
-                          <span className="text-xs text-[#9333ea] tabular-nums">
-                            Saldo: ${formatearMonto(m.saldo)}
-                            {!alcanza && ` (descuenta $${formatearMonto(montoAplicado)}, resto se paga normal)`}
-                          </span>
-                        </label>
-                      );
-                    })}
-                  </div>
+                <div className="sc-card sc-card-purple">
+                  <p className="sc-canje-titulo">🤝 {profesional.nombre}, podés pagar con tu saldo</p>
+                  {marcasEnCarrito.map((m) => {
+                    const alcanza = m.saldo >= m.subtotalCarrito;
+                    const montoAplicado = Math.min(m.saldo, m.subtotalCarrito);
+                    return (
+                      <label key={m.idMarca} className="sc-canje-fila">
+                        <span className="sc-canje-marca">
+                          <input
+                            type="checkbox"
+                            className="sc-canje-check"
+                            checked={marcasCanje.has(m.idMarca)}
+                            onChange={() => toggleMarcaCanje(m.idMarca)}
+                          />
+                          {m.nombreMarca} — ${formatearMonto(m.subtotalCarrito)}
+                        </span>
+                        <span className="sc-canje-saldo">
+                          Saldo: ${formatearMonto(m.saldo)}
+                          {!alcanza && ` (descuenta $${formatearMonto(montoAplicado)}, resto se paga normal)`}
+                        </span>
+                      </label>
+                    );
+                  })}
                   {marcasCanje.size > 0 && (
                     <input
                       value={pinCanje}
@@ -881,21 +1383,26 @@ export default function SelfCheckoutApp({
                       type="password"
                       inputMode="numeric"
                       maxLength={6}
-                      className="w-full rounded-lg border border-[#d8b4fe] px-3 py-2 text-sm"
+                      className="sc-input"
                     />
                   )}
                 </div>
               )}
 
               {infoPuntos && infoPuntos.maxDescuento > 0 && (
-                <div className="bg-[#fffbeb] border border-[#fde68a] rounded-2xl p-3.5 mb-3">
-                  <label className="flex items-center justify-between gap-2 cursor-pointer">
-                    <span className="text-sm font-bold text-[#78350f]">
+                <div className="sc-card sc-card-amber">
+                  <label className="sc-puntos-fila">
+                    <span className="sc-puntos-texto">
                       ⭐ Usar mis puntos WiiGo — cubre hasta ${formatearMonto(infoPuntos.maxDescuento)}
                     </span>
-                    <input type="checkbox" checked={usarPuntosWiigo} onChange={(e) => setUsarPuntosWiigo(e.target.checked)} className="w-5 h-5" />
+                    <input
+                      type="checkbox"
+                      className="sc-puntos-check"
+                      checked={usarPuntosWiigo}
+                      onChange={(e) => setUsarPuntosWiigo(e.target.checked)}
+                    />
                   </label>
-                  <p className="text-[11px] text-[#b45309] mt-1">
+                  <p className="sc-puntos-detalle">
                     Usa {infoPuntos.puntosNecesarios} de tus {infoPuntos.puntosDisponibles} puntos.
                   </p>
                 </div>
@@ -904,14 +1411,14 @@ export default function SelfCheckoutApp({
               <button
                 onClick={() => setPaso("pagar")}
                 disabled={marcasCanje.size > 0 && pinCanje.length < 4}
-                className="bg-accent hover:bg-accent-dark disabled:opacity-50 text-[#ffffff] font-bold py-3.5 rounded-2xl text-sm mt-1"
+                className="sc-btn-primary sc-btn-primary-full"
               >
                 Continuar
               </button>
-              <button onClick={() => setPaso("pagar")} className="text-center text-xs text-[#a3a3a3] font-semibold py-2.5">
+              <button onClick={() => setPaso("pagar")} className="sc-btn-link">
                 Omitir este paso
               </button>
-              <button onClick={() => setPaso("escaneo")} className="text-center text-xs text-[#a3a3a3] font-semibold -mt-1">
+              <button onClick={() => setPaso("escaneo")} className="sc-btn-link">
                 ‹ Volver al carrito
               </button>
             </div>
@@ -920,93 +1427,82 @@ export default function SelfCheckoutApp({
       )}
 
       {paso === "pagar" && (
-        <div className="flex-1 flex flex-col min-h-0 relative">
-          <div className="flex-1 overflow-y-auto px-5 py-4 opacity-30 pointer-events-none">
+        <div className="sc-modal-pantalla">
+          <div className="sc-modal-fondo-lista">
             {itemsCarrito.map((i) => (
-              <div
-                key={i.variante.id_variante}
-                className="flex items-center gap-2.5 bg-[#ffffff] border border-[#e5e5e5] rounded-xl px-3 py-2 mb-2"
-              >
-                <div className="w-9 h-9 rounded-lg bg-[#f5f5f5] flex items-center justify-center text-sm shrink-0">📦</div>
-                <p className="flex-1 min-w-0 text-sm font-semibold text-foreground truncate">{i.producto.nombre}</p>
-                <p className="text-sm font-bold text-foreground shrink-0">${formatearMonto(i.precio * i.cantidad)}</p>
+              <div key={i.variante.id_variante} className="sc-item">
+                <div className="sc-item-icono">📦</div>
+                <p className="sc-item-nombre sc-item-info">{i.producto.nombre}</p>
+                <p className="sc-item-total">${formatearMonto(i.precio * i.cantidad)}</p>
               </div>
             ))}
           </div>
 
-          <div className="absolute inset-0 bg-[rgba(0,0,0,.4)] flex items-end">
-            <div className="bg-[#ffffff] rounded-t-3xl w-full max-h-[92%] flex flex-col shadow-2xl px-5 pt-5 pb-5 overflow-y-auto">
-              <p className="text-[11px] font-bold text-accent uppercase tracking-wide mb-1">Paso 2 de 2</p>
-              <h2 className="font-extrabold text-lg text-foreground mb-3.5">¿Cómo querés pagar?</h2>
+          <div className="sc-modal-capa">
+            <div className="sc-modal">
+              <p className="sc-modal-paso">Paso 2 de 2</p>
+              <h2 className="sc-modal-titulo" style={{ marginBottom: 14 }}>
+                ¿Cómo querés pagar?
+              </h2>
 
-              <div className="flex justify-between items-center text-sm">
+              <div className="sc-resumen-fila">
                 <span>Subtotal</span>
                 <span>${formatearMonto(subtotalCarrito)}</span>
               </div>
               {descuentoReferidoPreview > 0 && (
-                <div className="flex justify-between items-center text-sm text-[#059669]">
+                <div className="sc-resumen-fila sc-resumen-desc-verde">
                   <span>Descuento por código de profesional</span>
                   <span>-${formatearMonto(descuentoReferidoPreview)}</span>
                 </div>
               )}
               {descuentoCanje > 0 && (
-                <div className="flex justify-between items-center text-sm text-[#9333ea]">
+                <div className="sc-resumen-fila sc-resumen-desc-violeta">
                   <span>Pagado con saldo de profesional</span>
                   <span>-${formatearMonto(descuentoCanje)}</span>
                 </div>
               )}
               {descuentoPuntosPreview > 0 && (
-                <div className="flex justify-between items-center text-sm text-[#b45309]">
+                <div className="sc-resumen-fila sc-resumen-desc-ambar">
                   <span>Pagado con puntos WiiGo</span>
                   <span>-${formatearMonto(descuentoPuntosPreview)}</span>
                 </div>
               )}
 
-              <div className="bg-accent-tint border border-[rgba(37,99,235,.3)] rounded-2xl p-4 text-center my-3.5">
-                <p className="text-[11px] font-bold text-accent-dark uppercase tracking-wide">Total a pagar</p>
-                <p className="text-3xl font-extrabold text-foreground tracking-tight">${formatearMonto(totalFinal)}</p>
+              <div className="sc-total-box">
+                <p className="sc-total-label">Total a pagar</p>
+                <p className="sc-total-monto">${formatearMonto(totalFinal)}</p>
               </div>
 
               <button
                 onClick={() => setMedioPagoElegido("EFECTIVO")}
-                className={`flex items-center gap-3 text-left border-2 rounded-2xl px-3.5 py-3 mb-2.5 ${
-                  medioPagoElegido === "EFECTIVO" ? "border-accent bg-accent-tint" : "border-[#e5e5e5] bg-[#ffffff]"
-                }`}
+                className={`sc-pago-btn${medioPagoElegido === "EFECTIVO" ? " sc-pago-btn-sel" : ""}`}
               >
-                <span className="w-10 h-10 rounded-xl bg-[#ffffff] border border-[#e5e5e5] flex items-center justify-center text-lg shrink-0">
-                  💵
-                </span>
+                <span className="sc-pago-icono">💵</span>
                 <span>
-                  <span className="block font-bold text-sm text-foreground">Efectivo</span>
-                  <span className="block text-xs text-[#737373]">Pagás en caja con el personal</span>
+                  <span className="sc-pago-nombre">Efectivo</span>
+                  <span className="sc-pago-desc">Pagás en caja con el personal</span>
                 </span>
               </button>
               <button
                 onClick={() => setMedioPagoElegido("MERCADO_PAGO")}
-                className={`flex items-center gap-3 text-left border-2 rounded-2xl px-3.5 py-3 mb-2.5 ${
-                  medioPagoElegido === "MERCADO_PAGO" ? "border-accent bg-accent-tint" : "border-[#e5e5e5] bg-[#ffffff]"
-                }`}
+                className={`sc-pago-btn${medioPagoElegido === "MERCADO_PAGO" ? " sc-pago-btn-sel" : ""}`}
               >
-                <span className="w-10 h-10 rounded-xl bg-[#ffffff] border border-[#e5e5e5] flex items-center justify-center text-lg shrink-0">
-                  📱
-                </span>
+                <span className="sc-pago-icono">📱</span>
                 <span>
-                  <span className="block font-bold text-sm text-foreground">Mercado Pago</span>
-                  <span className="block text-xs text-[#737373]">Escaneás un QR y pagás desde tu celular</span>
+                  <span className="sc-pago-nombre">Mercado Pago</span>
+                  <span className="sc-pago-desc">Escaneás un QR y pagás desde tu celular</span>
                 </span>
               </button>
-              <div className="flex items-center gap-3 text-left border-2 border-dashed border-[#e5e5e5] rounded-2xl px-3.5 py-3 mb-1 opacity-45">
-                <span className="w-10 h-10 rounded-xl bg-[#ffffff] border border-[#e5e5e5] flex items-center justify-center text-lg shrink-0">
-                  💳
-                </span>
+              <div className="sc-pago-proximamente">
+                <span className="sc-pago-icono">💳</span>
                 <span>
-                  <span className="block font-bold text-sm text-foreground">Débito / Crédito</span>
-                  <span className="block text-xs text-[#737373]">Próximamente</span>
+                  <span className="sc-pago-nombre">Débito / Crédito</span>
+                  <span className="sc-pago-desc">Próximamente</span>
                 </span>
               </div>
 
               {error && (
-                <p className="text-sm text-[#dc2626] mt-2.5" role="alert">
+                <p className="sc-hint sc-hint-error" role="alert">
                   {error}
                 </p>
               )}
@@ -1014,11 +1510,12 @@ export default function SelfCheckoutApp({
               <button
                 onClick={() => handleConfirmar(medioPagoElegido)}
                 disabled={enviando}
-                className="bg-accent hover:bg-accent-dark disabled:opacity-50 text-[#ffffff] font-bold py-3.5 rounded-2xl text-sm mt-3.5"
+                className="sc-btn-primary sc-btn-primary-full"
+                style={{ marginTop: 14 }}
               >
                 {enviando ? "Confirmando..." : "Confirmar y pagar"}
               </button>
-              <button onClick={() => setPaso("identificar")} className="text-center text-xs text-[#a3a3a3] font-semibold py-2.5">
+              <button onClick={() => setPaso("identificar")} className="sc-btn-link">
                 ‹ Volver
               </button>
             </div>
@@ -1027,68 +1524,66 @@ export default function SelfCheckoutApp({
       )}
 
       {paso === "efectivo-esperando" && pedido && (
-        <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
-          <div className="text-3xl mb-2">🧾</div>
-          <h2 className="text-xl font-extrabold text-foreground mb-1.5 text-balance">Entregá el efectivo al personal</h2>
-          <p className="text-sm text-[#737373] max-w-xs mb-4">
+        <div className="sc-final">
+          <div className="sc-final-emoji">🧾</div>
+          <h2 className="sc-final-titulo">Entregá el efectivo al personal</h2>
+          <p className="sc-final-texto">
             Un miembro del equipo va a revisar los productos que seleccionaste y recibir el dinero antes de que te
             retires.
           </p>
-          <p className="text-2xl font-extrabold text-foreground">${formatearMonto(pedido.total)}</p>
-          <p className="text-xs text-[#a3a3a3] mb-4">Pedido #{formatearPedido(pedido.numero)}</p>
-          <div className="flex items-center gap-2 text-xs text-[#a3a3a3]">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#10b981] animate-pulse motion-reduce:animate-none" />
+          <p className="sc-final-monto">${formatearMonto(pedido.total)}</p>
+          <p className="sc-final-pedido">Pedido #{formatearPedido(pedido.numero)}</p>
+          <div className="sc-esperando">
+            <span className="sc-dot" />
             Esperando confirmación del personal...
           </div>
         </div>
       )}
 
       {paso === "mp-esperando" && pedido && (
-        <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
-          <div className="flex items-center gap-1.5 bg-[#eef9f1] text-[#00a650] font-bold text-xs px-3.5 py-1.5 rounded-full mb-3.5">
-            📱 Mercado Pago
-          </div>
-          <p className="text-sm text-[#737373] mb-3.5">Escaneá este código con la app de Mercado Pago de tu celular</p>
-          <div className="w-40 h-40 bg-[#ffffff] rounded-2xl border border-[#e5e5e5] shadow-sm flex items-center justify-center mb-3.5 overflow-hidden">
+        <div className="sc-final">
+          <div className="sc-mp-badge">📱 Mercado Pago</div>
+          <p className="sc-final-texto">Escaneá este código con la app de Mercado Pago de tu celular</p>
+          <div className="sc-qr-box">
             {pedido.qrImagen ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={pedido.qrImagen} alt="Código QR de Mercado Pago" className="w-full h-full object-contain" />
+              <img src={pedido.qrImagen} alt="Código QR de Mercado Pago" className="sc-qr-img" />
             ) : (
-              <span className="text-[#d4d4d4] text-xs px-2 text-center">No se pudo generar el QR</span>
+              <span className="sc-qr-error">No se pudo generar el QR</span>
             )}
           </div>
-          <p className="text-2xl font-extrabold text-foreground">${formatearMonto(pedido.total)}</p>
-          <div className="flex items-center gap-2 text-xs text-[#a3a3a3] mt-3">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#10b981] animate-pulse motion-reduce:animate-none" />
+          <p className="sc-final-monto">${formatearMonto(pedido.total)}</p>
+          <div className="sc-esperando" style={{ marginTop: 12 }}>
+            <span className="sc-dot" />
             Esperando el pago...
           </div>
         </div>
       )}
 
       {paso === "pagado" && pedido && (
-        <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
-          <div className="text-4xl mb-2">✅</div>
-          <h2 className="text-2xl font-extrabold text-foreground mb-1.5">¡Perfecto!</h2>
-          <p className="text-sm text-[#737373] max-w-xs mb-2">Mostrale tu ticket al personal para controlar antes de salir.</p>
-          <p className="text-xs text-[#a3a3a3] mb-6">Pedido #{formatearPedido(pedido.numero)} · ${formatearMonto(pedido.total)}</p>
-          <button
-            onClick={volverAEmpezar}
-            className="border border-[#d4d4d4] text-[#404040] font-semibold px-7 py-3 rounded-xl text-sm"
-          >
+        <div className="sc-final">
+          <div className="sc-final-emoji-lg">✅</div>
+          <h2 className="sc-final-titulo">¡Perfecto!</h2>
+          <p className="sc-final-texto" style={{ marginBottom: 8 }}>
+            Mostrale tu ticket al personal para controlar antes de salir.
+          </p>
+          <p className="sc-final-pedido" style={{ marginBottom: 24 }}>
+            Pedido #{formatearPedido(pedido.numero)} · ${formatearMonto(pedido.total)}
+          </p>
+          <button onClick={volverAEmpezar} className="sc-btn-outline">
             Nueva compra
           </button>
         </div>
       )}
 
       {paso === "cancelado" && (
-        <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
-          <div className="text-3xl mb-2">✕</div>
-          <h2 className="text-xl font-extrabold text-foreground mb-1.5">Pedido cancelado</h2>
-          <p className="text-sm text-[#737373] max-w-xs mb-6">Podés empezar una compra nueva cuando quieras.</p>
-          <button
-            onClick={volverAEmpezar}
-            className="bg-accent hover:bg-accent-dark text-[#ffffff] font-bold px-7 py-3 rounded-xl text-sm"
-          >
+        <div className="sc-final">
+          <div className="sc-final-emoji">✕</div>
+          <h2 className="sc-final-titulo">Pedido cancelado</h2>
+          <p className="sc-final-texto" style={{ marginBottom: 24 }}>
+            Podés empezar una compra nueva cuando quieras.
+          </p>
+          <button onClick={volverAEmpezar} className="sc-btn-primary">
             Empezar de nuevo
           </button>
         </div>
