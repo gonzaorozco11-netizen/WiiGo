@@ -205,7 +205,7 @@ async function calcularTableroEnVivo(periodo: string): Promise<TableroSupuesto> 
 
   const { data: gastosPeriodo } = await supabase
     .from("gastos")
-    .select("monto, tipo, id_categoria, id_subcategoria")
+    .select("monto, tipo, id_categoria, id_subcategoria, id_usuario_adelanto")
     .eq("anulado", false)
     .gte("fecha", `${desde}T00:00:00`)
     .lte("fecha", `${hasta}T23:59:59`);
@@ -220,6 +220,11 @@ async function calcularTableroEnVivo(periodo: string): Promise<TableroSupuesto> 
   const variablesPorCat = new Map<string, Map<string, number>>();
   for (const g of gastosPeriodo ?? []) {
     if (idCategoriaImpuestos && g.id_categoria === idCategoriaImpuestos) continue;
+    // Un adelanto no es un gasto nuevo — es una parte del sueldo pagada
+    // antes de fin de mes. El sueldo completo (devengado) se carga una sola
+    // vez a fin de mes; si el adelanto también contara acá, se sumaría dos
+    // veces la misma plata.
+    if (g.id_usuario_adelanto) continue;
     const idCat = g.id_categoria as string;
     const nombreSub = g.id_subcategoria ? nombreSubPorId.get(g.id_subcategoria as string) ?? "Sin subcategoría" : "Sin subcategoría";
     const mapaCat = g.tipo === "FIJO" ? fijosPorCat : variablesPorCat;
