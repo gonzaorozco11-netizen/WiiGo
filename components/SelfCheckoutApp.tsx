@@ -772,10 +772,12 @@ html, body { margin: 0; padding: 0; height: 100%; background: #fafafa; }
   align-items: center;
   justify-content: center;
   text-align: center;
-  padding: 0 32px;
+  padding: 24px 32px;
+  /* La pantalla de "listo" ahora lleva el QR y las dos opciones: en una
+     pantalla corta tiene que poder desplazarse en vez de recortarse. */
+  overflow-y: auto;
 }
 .sc-final-emoji { font-size: 40px; margin-bottom: 8px; }
-.sc-final-emoji-lg { font-size: 52px; margin-bottom: 8px; }
 .sc-final-titulo { font-size: 23px; font-weight: 800; color: #171717; margin-bottom: 6px; }
 .sc-final-texto { font-size: 15px; color: #737373; max-width: 320px; margin-bottom: 16px; }
 .sc-final-monto { font-size: 30px; font-weight: 800; color: #171717; }
@@ -817,33 +819,70 @@ html, body { margin: 0; padding: 0; height: 100%; background: #fafafa; }
 .sc-qr-img { width: 100%; height: 100%; object-fit: contain; }
 .sc-qr-error { color: #d4d4d4; font-size: 13px; padding: 0 8px; text-align: center; }
 
-/* ---------- Ticket impreso ----------
-   Fully Kiosk bloquea las URLs con esquema propio (rawbt:), así que no se
-   le puede mandar ESC/POS directo — probado con los 4 métodos del panel de
-   diagnóstico, ninguno pasa. Lo que SÍ funciona es window.print(), que va
-   por el servicio de impresión de Android hasta RawBT.
-   Por eso el ticket se arma como HTML oculto y estas reglas hacen que al
-   imprimir salga solo eso, a 72 mm (el ancho útil del papel de 80 mm). */
-.sc-ticket-print { display: none; }
-@media print {
-  html, body { margin: 0 !important; padding: 0 !important; background: #ffffff !important; }
-  body * { visibility: hidden !important; }
-  .sc-ticket-print, .sc-ticket-print * { visibility: visible !important; }
-  .sc-ticket-print {
-    display: block !important;
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 72mm;
-    margin: 0;
-    padding: 0;
-    font-family: "Courier New", Courier, monospace;
-    font-size: 2.4mm;
-    line-height: 1.35;
-    color: #000000;
-    white-space: pre;
-  }
+/* ---------- Pantalla final: comprobante ---------- */
+.sc-check-ok {
+  width: 76px;
+  height: 76px;
+  border-radius: 999px;
+  background: #ecfdf5;
+  border: 2px solid #a7f3d0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 38px;
+  margin-bottom: 14px;
 }
+.sc-sub-final { font-size: 16px; color: #737373; margin-bottom: 4px; }
+.sc-card-qr {
+  width: 100%;
+  background: #ffffff;
+  border: 1px solid #e5e5e5;
+  border-radius: 20px;
+  padding: 22px 20px 20px;
+  margin-bottom: 18px;
+  text-align: center;
+}
+.sc-card-qr-titulo { font-size: 18px; font-weight: 800; color: #171717; margin-bottom: 3px; }
+.sc-card-qr-desc { font-size: 14px; color: #737373; margin-bottom: 16px; }
+.sc-qr-img-grande { display: block; width: 190px; height: 190px; margin: 0 auto; }
+.sc-card-qr-pie { font-size: 12.5px; color: #a3a3a3; margin-top: 14px; }
+.sc-separador-o {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  color: #a3a3a3;
+  font-size: 13px;
+  margin-bottom: 18px;
+}
+.sc-separador-o::before,
+.sc-separador-o::after {
+  content: "";
+  flex: 1 1 auto;
+  height: 1px;
+  background: #e5e5e5;
+}
+.sc-separador-o span { padding: 0 12px; }
+.sc-btn-papel {
+  width: 100%;
+  background: #ffffff;
+  color: #171717;
+  border: 2px solid #e5e5e5;
+  border-radius: 16px;
+  padding: 16px 0;
+  font-size: 17px;
+  font-weight: 700;
+}
+.sc-ticket-ayuda { font-size: 12.5px; color: #a3a3a3; margin-top: 8px; }
+.sc-btn-nueva {
+  margin-top: 28px;
+  background: transparent;
+  border: 0;
+  color: #a3a3a3;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: underline;
+}
+
 
 /* Aviso antes de volver solo al inicio por inactividad. */
 .sc-inactividad {
@@ -1224,6 +1263,9 @@ export default function SelfCheckoutApp({
   } | null>(
     null
   );
+  // QR del comprobante para el celular del cliente. Lo arma el servidor
+  // cuando la venta pasa a PAGADA (ver app/api/self-checkout/estado-pedido).
+  const [qrComprobante, setQrComprobante] = useState<string | null>(null);
   const [profesional, setProfesional] = useState<{
     idProfesional: string;
     nombre: string;
@@ -1523,6 +1565,7 @@ export default function SelfCheckoutApp({
     setPinCanje("");
     setInfoPuntos(null);
     setUsarPuntosWiigo(false);
+    setQrComprobante(null);
     setPaso("reposo");
   }
 
@@ -1570,8 +1613,10 @@ export default function SelfCheckoutApp({
         .then((r) => (r.ok ? r.json() : null))
         .then((r) => {
           if (!r) return;
-          if (r.estado === "PAGADA") setPaso("pagado");
-          else if (r.estado === "CANCELADA") setPaso("cancelado");
+          if (r.estado === "PAGADA") {
+            if (r.qrComprobante) setQrComprobante(r.qrComprobante);
+            setPaso("pagado");
+          } else if (r.estado === "CANCELADA") setPaso("cancelado");
         })
         .catch(() => {});
     }, POLL_MS);
@@ -1624,19 +1669,6 @@ export default function SelfCheckoutApp({
   // se puede repetir a mano desde el botón de la pantalla final.
   const pedidoImpreso = useRef<string | null>(null);
 
-  // Contenido del ticket listo para imprimir por el diálogo de Android
-  // (window.print). Se guarda en estado porque el bloque tiene que estar
-  // dibujado en la página ANTES de pedir la impresión.
-  const [ticketLineas, setTicketLineas] = useState<string[] | null>(null);
-  const imprimirAlDibujar = useRef(false);
-
-  useEffect(() => {
-    if (!ticketLineas || !imprimirAlDibujar.current) return;
-    imprimirAlDibujar.current = false;
-    const id = setTimeout(() => window.print(), 150);
-    return () => clearTimeout(id);
-  }, [ticketLineas]);
-
   const imprimirTicket = useCallback(() => {
     if (!pedido) return;
 
@@ -1668,20 +1700,17 @@ export default function SelfCheckoutApp({
       // igual se prepara el ticket para el diálogo de impresión de Android,
       // que es el camino que sí funciona ahí.
       enviarAImpresora(construirTicketEscPos(datos));
-      // Se deja además el ticket dibujado (oculto) por si alguna vez hay que
-      // imprimirlo por el diálogo de Android — ver @media print en CSS_TOTEM.
-      setTicketLineas(construirTextoTicket(datos));
     } catch {
       // Nunca romper la pantalla del cliente por un problema de impresión.
     }
   }, [pedido, local.nombre, medioPagoElegido, itemsCarrito, subtotalCarrito, descuentoReferidoPreview, descuentoCanje, descuentoPuntosPreview]);
 
-  useEffect(() => {
-    if (paso !== "pagado" || !pedido) return;
-    if (pedidoImpreso.current === pedido.idVenta) return;
-    pedidoImpreso.current = pedido.idVenta;
-    imprimirTicket();
-  }, [paso, pedido, imprimirTicket]);
+  // A propósito NO se imprime solo al llegar a "pagado": RawBT siempre abre
+  // una ventana de confirmación (probado con todos los métodos del panel de
+  // diagnóstico), y si aparece sin que el cliente la haya pedido, le tapa la
+  // pantalla con algo que no entiende. Mejor que el toque sea suyo: la
+  // pantalla final tiene un botón claro de "Imprimir mi ticket".
+  // Cuando exista la app puente propia, esto vuelve a ser automático.
 
   // Vuelta automática al inicio por inactividad. A propósito NO se aplica
   // mientras se espera la confirmación del pago: ahí el pedido ya existe en
@@ -2230,27 +2259,39 @@ export default function SelfCheckoutApp({
 
       {paso === "pagado" && pedido && (
         <div className="sc-final">
-          <div className="sc-final-emoji-lg">✅</div>
-          <h2 className="sc-final-titulo">¡Perfecto!</h2>
-          <p className="sc-final-texto" style={{ marginBottom: 8 }}>
-            Mostrale tu ticket al personal para controlar antes de salir.
-          </p>
-          <p className="sc-final-pedido" style={{ marginBottom: 24 }}>
+          <div className="sc-check-ok">✅</div>
+          <h2 className="sc-final-titulo">¡Listo!</h2>
+          <p className="sc-sub-final">Gracias por tu compra.</p>
+          <p className="sc-final-pedido" style={{ marginBottom: 26 }}>
             Pedido #{formatearPedido(pedido.numero)} · ${formatearMonto(pedido.total)}
           </p>
-          {/* Reimprimir a mano: si se trabó el papel o se quedó sin rollo, el
-              personal no tiene que rehacer la venta para darle el ticket. */}
-          <button onClick={imprimirTicket} className="sc-btn-outline" style={{ marginBottom: 12 }}>
-            🖨️ Imprimir ticket de nuevo
+
+          {/* El QR es la vía principal: no depende de la impresora ni de la
+              ventana de confirmación de RawBT. */}
+          {qrComprobante && (
+            <div className="sc-card-qr">
+              <p className="sc-card-qr-titulo">📱 Escaneá y llevate tu comprobante</p>
+              <p className="sc-card-qr-desc">Apuntá con la cámara de tu celular</p>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={qrComprobante} alt="Código QR del comprobante" className="sc-qr-img-grande" />
+              <p className="sc-card-qr-pie">Se abre el detalle de tu compra · no hace falta instalar nada</p>
+            </div>
+          )}
+
+          <div className="sc-separador-o">
+            <span>o</span>
+          </div>
+
+          <button onClick={imprimirTicket} className="sc-btn-papel">
+            🧾 Imprimir en papel
           </button>
-          <button onClick={volverAEmpezar} className="sc-btn-outline">
+          <p className="sc-ticket-ayuda">Se abre una ventana: tocá IMPRIMIR para confirmar.</p>
+
+          <button onClick={volverAEmpezar} className="sc-btn-nueva">
             Nueva compra
           </button>
         </div>
       )}
-
-      {/* Solo se ve al imprimir (ver @media print en CSS_TOTEM). */}
-      {ticketLineas && <pre className="sc-ticket-print">{ticketLineas.join("\n")}</pre>}
 
       {mostrarDiagnostico && <PanelDiagnostico local={local.nombre} />}
 

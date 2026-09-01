@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase";
+import QRCode from "qrcode";
 
 export const dynamic = "force-dynamic";
 
@@ -30,5 +31,18 @@ export async function GET(request: NextRequest) {
   if (error) return Response.json({ error: error.message }, { status: 500 });
   if (!data) return Response.json({ error: "No se encontró el pedido" }, { status: 404 });
 
-  return Response.json({ estado: data.estado, numero: data.numero, total: data.total });
+  // El QR del comprobante se arma recién cuando la venta está pagada — no
+  // tiene sentido gastarlo en cada consulta mientras el cliente todavía
+  // espera, y el totem consulta cada 3 segundos.
+  let qrComprobante: string | undefined;
+  if (data.estado === "PAGADA") {
+    try {
+      const url = `${request.nextUrl.origin}/comprobante/${idVenta}`;
+      qrComprobante = await QRCode.toDataURL(url, { margin: 1, width: 420 });
+    } catch {
+      // Si falla, la pantalla igual ofrece el ticket en papel.
+    }
+  }
+
+  return Response.json({ estado: data.estado, numero: data.numero, total: data.total, qrComprobante });
 }

@@ -3,10 +3,12 @@ import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 
 export const config = {
   // /self-checkout y /asesor quedan públicos (los usan los clientes en el
-  // local, sin login). /api queda pública también — ahí viven los webhooks
-  // (ej. Mercado Pago), que llegan sin la cookie de sesión porque no los
-  // llama una persona logueada, los llama el servidor de Mercado Pago.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|self-checkout|asesor|login|api).*)"],
+  // local, sin login). /comprobante también: es lo que abre el cliente en su
+  // celular al escanear el QR del totem, y obviamente no está logueado.
+  // /api queda pública también — ahí viven los webhooks (ej. Mercado Pago),
+  // que llegan sin la cookie de sesión porque no los llama una persona
+  // logueada, los llama el servidor de Mercado Pago.
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|self-checkout|asesor|comprobante|login|api).*)"],
 };
 
 export async function proxy(req: NextRequest) {
