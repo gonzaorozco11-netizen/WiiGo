@@ -216,24 +216,26 @@ export function diagnosticoImpresion() {
   };
 }
 
-// `lineas` es el ticket como texto (construirTextoTicket) y `bytes` el mismo
-// ticket en ESC/POS. Se usa uno u otro según el navegador:
+// Manda el ticket a RawBT, que es quien habla con la impresora del totem.
 //
-//   - En el totem (Fully Kiosk) el único camino que llega a RawBT es
-//     fully.startIntent con "rawbt:" + el TEXTO escapado. Probado: la
-//     versión con ESC/POS en base64 no llega, porque el base64 lleva "+",
-//     "/" y "=" que rompen la dirección.
-//   - En cualquier otro navegador (Chrome del totem, un celu, una compu)
-//     funciona navegar a la URL con el ESC/POS, que sale mejor formateado.
+// En Fully Kiosk hay que pasar por `fully.startIntent` — navegar a la URL
+// directamente está bloqueado (probado con los 4 métodos del panel de
+// diagnóstico). En cualquier otro navegador (Chrome del totem, un celu, una
+// compu) la navegación normal sí funciona.
 //
-// Para que RawBT imprima sin preguntar a qué impresora, hay que tildar en
-// RawBT → Ajustes → Para "Compartir" y "Enviar":
+// IMPORTANTE — configuración necesaria en el totem, una sola vez:
+// RawBT → Ajustes → Para "Compartir" y "Enviar" → tildar
 // "Comience a imprimir automáticamente en la impresora predeterminada".
-export function enviarAImpresora(bytes: Uint8Array, lineas: string[]) {
+// Sin eso RawBT abre una ventana preguntando a qué impresora mandar y el
+// ticket queda esperando que alguien la toque. Fue lo que nos hizo creer
+// durante horas que el envío no llegaba.
+export function enviarAImpresora(bytes: Uint8Array) {
+  const url = urlImpresionRawBt(bytes);
+
   const fully = (window as unknown as { fully?: FullyKiosk }).fully;
   if (fully && typeof fully.startIntent === "function") {
     try {
-      fully.startIntent("rawbt:" + encodeURIComponent(lineas.join("\n")));
+      fully.startIntent(url);
       return;
     } catch {
       // Si falla, se intenta igual por el camino de abajo.
@@ -241,7 +243,7 @@ export function enviarAImpresora(bytes: Uint8Array, lineas: string[]) {
   }
 
   try {
-    window.location.href = urlImpresionRawBt(bytes);
+    window.location.href = url;
   } catch {
     // Sin impresora disponible — la venta ya está cerrada igual.
   }
