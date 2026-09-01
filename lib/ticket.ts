@@ -175,18 +175,18 @@ export function urlImpresionRawBt(bytes: Uint8Array): string {
   return "rawbt:base64," + btoa(binario);
 }
 
-// Se dispara desde un iframe oculto y no con window.location: si el navegador
-// no reconoce el esquema `rawbt:` (por ejemplo, alguien abre esta pantalla
-// desde una compu sin RawBT), el fallo queda encerrado en el iframe y el
-// cliente no ve ningún error ni se va de la pantalla de "pago listo".
+// Tiene que ser una navegación de la página principal. Se probó mandarlo
+// desde un iframe oculto (para aislar el fallo si no hay impresora) y NO
+// funciona: Android atiende los esquemas propios como `rawbt:` solo cuando
+// vienen del marco principal, ignora los de marcos internos.
+//
+// Navegar a `rawbt:` no cambia de página: Android intercepta la URL, se la
+// entrega a RawBT y la pantalla del cliente queda donde estaba. Si RawBT no
+// está instalado, simplemente no pasa nada.
 export function enviarAImpresora(bytes: Uint8Array) {
-  const iframe = document.createElement("iframe");
-  iframe.style.display = "none";
-  document.body.appendChild(iframe);
   try {
-    iframe.src = urlImpresionRawBt(bytes);
+    window.location.href = urlImpresionRawBt(bytes);
   } catch {
     // Sin impresora disponible — la venta ya está cerrada igual.
   }
-  setTimeout(() => iframe.remove(), 10000);
 }

@@ -1357,12 +1357,12 @@ export default function SelfCheckoutApp({
   }, [local.nombre]);
 
   // Impresión del ticket al confirmarse el pago. Se dispara una sola vez por
-  // pedido (el ref evita que se reimprima si React vuelve a renderizar).
+  // pedido (el ref evita que se reimprima si React vuelve a renderizar), pero
+  // se puede repetir a mano desde el botón de la pantalla final.
   const pedidoImpreso = useRef<string | null>(null);
-  useEffect(() => {
-    if (paso !== "pagado" || !pedido) return;
-    if (pedidoImpreso.current === pedido.idVenta) return;
-    pedidoImpreso.current = pedido.idVenta;
+
+  const imprimirTicket = useCallback(() => {
+    if (!pedido) return;
 
     const descuentos: { concepto: string; monto: number }[] = [];
     if (descuentoReferidoPreview > 0) descuentos.push({ concepto: "Descuento profesional", monto: descuentoReferidoPreview });
@@ -1390,7 +1390,14 @@ export default function SelfCheckoutApp({
     } catch {
       // Nunca romper la pantalla del cliente por un problema de impresión.
     }
-  }, [paso, pedido]);
+  }, [pedido, local.nombre, medioPagoElegido, itemsCarrito, subtotalCarrito, descuentoReferidoPreview, descuentoCanje, descuentoPuntosPreview]);
+
+  useEffect(() => {
+    if (paso !== "pagado" || !pedido) return;
+    if (pedidoImpreso.current === pedido.idVenta) return;
+    pedidoImpreso.current = pedido.idVenta;
+    imprimirTicket();
+  }, [paso, pedido, imprimirTicket]);
 
   // Vuelta automática al inicio por inactividad. A propósito NO se aplica
   // mientras se espera la confirmación del pago: ahí el pedido ya existe en
@@ -1944,6 +1951,11 @@ export default function SelfCheckoutApp({
           <p className="sc-final-pedido" style={{ marginBottom: 24 }}>
             Pedido #{formatearPedido(pedido.numero)} · ${formatearMonto(pedido.total)}
           </p>
+          {/* Reimprimir a mano: si se trabó el papel o se quedó sin rollo, el
+              personal no tiene que rehacer la venta para darle el ticket. */}
+          <button onClick={imprimirTicket} className="sc-btn-outline" style={{ marginBottom: 12 }}>
+            🖨️ Imprimir ticket de nuevo
+          </button>
           <button onClick={volverAEmpezar} className="sc-btn-outline">
             Nueva compra
           </button>
