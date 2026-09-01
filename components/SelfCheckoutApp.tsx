@@ -846,33 +846,6 @@ html, body { margin: 0; padding: 0; height: 100%; background: #fafafa; }
 .sc-card-qr-desc { font-size: 14px; color: #737373; margin-bottom: 16px; }
 .sc-qr-img-grande { display: block; width: 190px; height: 190px; margin: 0 auto; }
 .sc-card-qr-pie { font-size: 12.5px; color: #a3a3a3; margin-top: 14px; }
-.sc-separador-o {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  color: #a3a3a3;
-  font-size: 13px;
-  margin-bottom: 18px;
-}
-.sc-separador-o::before,
-.sc-separador-o::after {
-  content: "";
-  flex: 1 1 auto;
-  height: 1px;
-  background: #e5e5e5;
-}
-.sc-separador-o span { padding: 0 12px; }
-.sc-btn-papel {
-  width: 100%;
-  background: #ffffff;
-  color: #171717;
-  border: 2px solid #e5e5e5;
-  border-radius: 16px;
-  padding: 16px 0;
-  font-size: 17px;
-  font-weight: 700;
-}
-.sc-ticket-ayuda { font-size: 12.5px; color: #a3a3a3; margin-top: 8px; }
 .sc-btn-nueva {
   margin-top: 28px;
   background: transparent;
@@ -2266,9 +2239,14 @@ export default function SelfCheckoutApp({
             Pedido #{formatearPedido(pedido.numero)} · ${formatearMonto(pedido.total)}
           </p>
 
-          {/* El QR es la vía principal: no depende de la impresora ni de la
-              ventana de confirmación de RawBT. */}
-          {qrComprobante && (
+          {/* Solo se ofrece el QR. El botón de imprimir en papel se sacó a
+              propósito: RawBT siempre abre una ventana de confirmación con el
+              botón IMPRIMIR deshabilitado (ver el panel de diagnóstico y
+              lib/ticket.ts), así que para el cliente era un camino sin
+              salida. Cuando exista la app puente propia, se vuelve a poner —
+              imprimirTicket() sigue disponible y se puede probar desde el
+              panel de diagnóstico. */}
+          {qrComprobante ? (
             <div className="sc-card-qr">
               <p className="sc-card-qr-titulo">📱 Escaneá y llevate tu comprobante</p>
               <p className="sc-card-qr-desc">Apuntá con la cámara de tu celular</p>
@@ -2276,16 +2254,9 @@ export default function SelfCheckoutApp({
               <img src={qrComprobante} alt="Código QR del comprobante" className="sc-qr-img-grande" />
               <p className="sc-card-qr-pie">Se abre el detalle de tu compra · no hace falta instalar nada</p>
             </div>
+          ) : (
+            <p className="sc-final-texto">Mostrale esta pantalla al personal antes de salir.</p>
           )}
-
-          <div className="sc-separador-o">
-            <span>o</span>
-          </div>
-
-          <button onClick={imprimirTicket} className="sc-btn-papel">
-            🧾 Imprimir en papel
-          </button>
-          <p className="sc-ticket-ayuda">Se abre una ventana: tocá IMPRIMIR para confirmar.</p>
 
           <button onClick={volverAEmpezar} className="sc-btn-nueva">
             Nueva compra
