@@ -34,6 +34,13 @@ type MedioPago = "EFECTIVO" | "MERCADO_PAGO";
 const POLL_MS = 3000;
 const TOAST_MS = 2500;
 
+// El totem queda solo en el local: si alguien arma el carrito y se va sin
+// pagar, la pantalla se quedaría con SU carrito y el próximo cliente
+// encontraría productos ajenos. Se vuelve solo al inicio.
+const INACTIVIDAD_COMPRA_MS = 120000; // 2 min armando el pedido
+const INACTIVIDAD_FINAL_MS = 45000; // pantallas de "listo" / "cancelado"
+const AVISO_ANTES_MS = 20000; // se pregunta "¿seguís ahí?" antes de reiniciar
+
 function formatearMonto(valor: number) {
   return valor.toLocaleString("es-AR", { maximumFractionDigits: 0 });
 }
@@ -760,6 +767,35 @@ html, body { margin: 0; padding: 0; height: 100%; background: #fafafa; }
 }
 .sc-qr-img { width: 100%; height: 100%; object-fit: contain; }
 .sc-qr-error { color: #d4d4d4; font-size: 13px; padding: 0 8px; text-align: center; }
+
+/* Aviso antes de volver solo al inicio por inactividad. */
+.sc-inactividad {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  bottom: 16px;
+  z-index: 60;
+  background: #171717;
+  color: #ffffff;
+  border-radius: 16px;
+  padding: 14px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 18px 36px -14px rgba(0,0,0,.6);
+}
+.sc-inactividad-texto { font-size: 15px; font-weight: 600; padding-right: 14px; }
+.sc-inactividad-sub { display: block; font-size: 13px; font-weight: 400; color: #bdbdbd; margin-top: 2px; }
+.sc-inactividad-btn {
+  flex-shrink: 0;
+  background: #ffffff;
+  color: #171717;
+  font-weight: 700;
+  font-size: 15px;
+  border: 0;
+  border-radius: 10px;
+  padding: 11px 20px;
+}
 `;
 
 export default function SelfCheckoutApp({
@@ -835,7 +871,9 @@ export default function SelfCheckoutApp({
   // sola vez por clima (no en cada render) para que no "salten" de lugar.
   const gotas = useMemo(() => {
     if (clima !== "lluvia" && clima !== "tormenta") return [];
-    const cantidad = clima === "tormenta" ? 75 : 45;
+    // Pocas gotas a propósito: la placa del totem (RK3566) se arrastra si
+    // tiene que animar muchas a la vez, y visualmente no cambia nada.
+    const cantidad = clima === "tormenta" ? 30 : 20;
     const velocidad = clima === "tormenta" ? 1.6 : 0.9;
     const minLen = clima === "tormenta" ? 18 : 14;
     const maxLen = clima === "tormenta" ? 28 : 20;
@@ -1199,6 +1237,41 @@ export default function SelfCheckoutApp({
     return () => clearInterval(intervalo);
   }, [paso, pedido]);
 
+  // Vuelta automática al inicio por inactividad. A propósito NO se aplica
+  // mientras se espera la confirmación del pago: ahí el pedido ya existe en
+  // la base y lo resuelve el personal desde Cobros en Efectivo — el totem no
+  // debe tocar nada de eso solo.
+  const ultimaActividad = useRef(Date.now());
+  const [avisoInactividad, setAvisoInactividad] = useState<number | null>(null);
+
+  function registrarActividad() {
+    ultimaActividad.current = Date.now();
+    setAvisoInactividad((previo) => (previo === null ? previo : null));
+  }
+
+  useEffect(() => {
+    const armandoPedido = paso === "escaneo" || paso === "identificar" || paso === "pagar";
+    const pantallaFinal = paso === "pagado" || paso === "cancelado";
+    if (!armandoPedido && !pantallaFinal) {
+      setAvisoInactividad(null);
+      return;
+    }
+    ultimaActividad.current = Date.now();
+    setAvisoInactividad(null);
+    const limite = armandoPedido ? INACTIVIDAD_COMPRA_MS : INACTIVIDAD_FINAL_MS;
+    const id = setInterval(() => {
+      const inactivo = Date.now() - ultimaActividad.current;
+      if (inactivo >= limite) {
+        volverAEmpezar();
+        return;
+      }
+      if (armandoPedido && inactivo >= limite - AVISO_ANTES_MS) {
+        setAvisoInactividad(Math.ceil((limite - inactivo) / 1000));
+      }
+    }, 1000);
+    return () => clearInterval(id);
+  }, [paso]);
+
   function handleCancelarPedido() {
     if (!pedido) {
       volverAEmpezar();
@@ -1208,7 +1281,12 @@ export default function SelfCheckoutApp({
   }
 
   return (
-    <div className="sc-root">
+    <div
+      className="sc-root"
+      onPointerDown={registrarActividad}
+      onTouchStart={registrarActividad}
+      onKeyDown={registrarActividad}
+    >
       <style>{CSS_TOTEM}</style>
 
       {paso !== "reposo" && (
@@ -1696,6 +1774,20 @@ export default function SelfCheckoutApp({
           </p>
           <button onClick={volverAEmpezar} className="sc-btn-outline">
             Nueva compra
+          </button>
+        </div>
+      )}
+
+      {avisoInactividad !== null && (
+        <div className="sc-inactividad">
+          <span className="sc-inactividad-texto">
+            ¿Seguís ahí?
+            <span className="sc-inactividad-sub">
+              Volvemos al inicio en {avisoInactividad} segundo{avisoInactividad === 1 ? "" : "s"}.
+            </span>
+          </span>
+          <button onClick={registrarActividad} className="sc-inactividad-btn">
+            Sigo acá
           </button>
         </div>
       )}
