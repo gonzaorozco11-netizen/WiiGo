@@ -846,6 +846,16 @@ html, body { margin: 0; padding: 0; height: 100%; background: #fafafa; }
 .sc-card-qr-desc { font-size: 14px; color: #737373; margin-bottom: 16px; }
 .sc-qr-img-grande { display: block; width: 190px; height: 190px; margin: 0 auto; }
 .sc-card-qr-pie { font-size: 12.5px; color: #a3a3a3; margin-top: 14px; }
+.sc-aviso-salida {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1d4ed8;
+  background: #eff6ff;
+  border: 1px solid rgba(37,99,235,.3);
+  border-radius: 12px;
+  padding: 12px 16px;
+  width: 100%;
+}
 .sc-btn-nueva {
   margin-top: 28px;
   background: transparent;
@@ -1621,7 +1631,7 @@ export default function SelfCheckoutApp({
   // el flujo de la venta.
   useEffect(() => {
     if (!new URLSearchParams(window.location.search).has("imprimir-prueba")) return;
-    const bytes = construirTicketEscPos({
+    const datos: DatosTicket = {
       numeroPedido: "PRUEBA",
       local: local.nombre,
       medioPago: "Efectivo",
@@ -1633,57 +1643,18 @@ export default function SelfCheckoutApp({
       subtotal: 3850,
       descuentos: [],
       total: 3850,
-    });
-    enviarAImpresora(bytes);
+    };
+    enviarAImpresora(construirTicketEscPos(datos), construirTextoTicket(datos));
   }, [local.nombre]);
 
-  // Impresión del ticket al confirmarse el pago. Se dispara una sola vez por
-  // pedido (el ref evita que se reimprima si React vuelve a renderizar), pero
-  // se puede repetir a mano desde el botón de la pantalla final.
-  const pedidoImpreso = useRef<string | null>(null);
-
-  const imprimirTicket = useCallback(() => {
-    if (!pedido) return;
-
-    const descuentos: { concepto: string; monto: number }[] = [];
-    if (descuentoReferidoPreview > 0) descuentos.push({ concepto: "Descuento profesional", monto: descuentoReferidoPreview });
-    if (descuentoCanje > 0) descuentos.push({ concepto: "Saldo de profesional", monto: descuentoCanje });
-    if (descuentoPuntosPreview > 0) descuentos.push({ concepto: "Puntos WiiGo", monto: descuentoPuntosPreview });
-
-    const datos: DatosTicket = {
-      numeroPedido: formatearPedido(pedido.numero),
-      local: local.nombre,
-      medioPago: medioPagoElegido === "EFECTIVO" ? "Efectivo" : "Mercado Pago",
-      fecha: new Date(),
-      lineas: itemsCarrito.map((i) => ({
-        nombre: i.producto.nombre,
-        variante: i.variante.nombre !== "Único" ? i.variante.nombre : null,
-        cantidad: i.cantidad,
-        precioUnitario: i.precio,
-        importe: i.precio * i.cantidad,
-      })),
-      subtotal: subtotalCarrito,
-      descuentos,
-      total: pedido.total,
-    };
-
-    try {
-      // Se intenta primero el envío directo (ESC/POS): sale más rápido y
-      // corta el papel solo. En Fully está bloqueado y no hace nada, así que
-      // igual se prepara el ticket para el diálogo de impresión de Android,
-      // que es el camino que sí funciona ahí.
-      enviarAImpresora(construirTicketEscPos(datos), construirTextoTicket(datos));
-    } catch {
-      // Nunca romper la pantalla del cliente por un problema de impresión.
-    }
-  }, [pedido, local.nombre, medioPagoElegido, itemsCarrito, subtotalCarrito, descuentoReferidoPreview, descuentoCanje, descuentoPuntosPreview]);
-
-  // A propósito NO se imprime solo al llegar a "pagado": RawBT siempre abre
-  // una ventana de confirmación (probado con todos los métodos del panel de
-  // diagnóstico), y si aparece sin que el cliente la haya pedido, le tapa la
-  // pantalla con algo que no entiende. Mejor que el toque sea suyo: la
-  // pantalla final tiene un botón claro de "Imprimir mi ticket".
-  // Cuando exista la app puente propia, esto vuelve a ser automático.
+  // El totem NO imprime en papel. Se probaron todos los caminos posibles
+  // (ver el panel de diagnóstico y el comentario de enviarAImpresora en
+  // lib/ticket.ts): RawBT siempre abre una ventana de confirmación, y con el
+  // botón IMPRIMIR deshabilitado. El comprobante se entrega por QR.
+  //
+  // Todo lo necesario para volver a imprimir sigue en lib/ticket.ts
+  // (construirTicketEscPos, construirTextoTicket, enviarAImpresora) para
+  // cuando exista una app puente propia en el totem.
 
   // Vuelta automática al inicio por inactividad. A propósito NO se aplica
   // mientras se espera la confirmación del pago: ahí el pedido ya existe en
@@ -2239,23 +2210,23 @@ export default function SelfCheckoutApp({
             Pedido #{formatearPedido(pedido.numero)} · ${formatearMonto(pedido.total)}
           </p>
 
-          {/* Solo se ofrece el QR. El botón de imprimir en papel se sacó a
-              propósito: RawBT siempre abre una ventana de confirmación con el
-              botón IMPRIMIR deshabilitado (ver el panel de diagnóstico y
-              lib/ticket.ts), así que para el cliente era un camino sin
-              salida. Cuando exista la app puente propia, se vuelve a poner —
-              imprimirTicket() sigue disponible y se puede probar desde el
-              panel de diagnóstico. */}
+          {/* Solo el QR: el botón de papel se sacó porque para el cliente era
+              un camino sin salida (ver comentario más arriba). */}
           {qrComprobante ? (
-            <div className="sc-card-qr">
-              <p className="sc-card-qr-titulo">📱 Escaneá y llevate tu comprobante</p>
-              <p className="sc-card-qr-desc">Apuntá con la cámara de tu celular</p>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={qrComprobante} alt="Código QR del comprobante" className="sc-qr-img-grande" />
-              <p className="sc-card-qr-pie">Se abre el detalle de tu compra · no hace falta instalar nada</p>
-            </div>
+            <>
+              <div className="sc-card-qr">
+                <p className="sc-card-qr-titulo">📱 Escaneá y llevate tu comprobante</p>
+                <p className="sc-card-qr-desc">Apuntá con la cámara de tu celular</p>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={qrComprobante} alt="Código QR del comprobante" className="sc-qr-img-grande" />
+                <p className="sc-card-qr-pie">Se abre el detalle de tu compra · no hace falta instalar nada</p>
+              </div>
+              {/* Control de salida: mientras no haya impresora, lo que el
+                  personal revisa es el comprobante en el celular. */}
+              <p className="sc-aviso-salida">Mostralo al personal antes de salir 🙌</p>
+            </>
           ) : (
-            <p className="sc-final-texto">Mostrale esta pantalla al personal antes de salir.</p>
+            <p className="sc-final-texto">Avisale al personal antes de salir.</p>
           )}
 
           <button onClick={volverAEmpezar} className="sc-btn-nueva">

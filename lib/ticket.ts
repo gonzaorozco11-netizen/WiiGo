@@ -11,6 +11,8 @@
 // comprobante interno de control. Cuando se conecte ARCA hay que agregar
 // CAE, vencimiento del CAE, tipo y número de comprobante, y el QR oficial.
 
+import { EMISOR } from "@/lib/emisor";
+
 // 80 mm a 203 dpi = 576 puntos = 48 caracteres en fuente A.
 // (Si la impresora resultara ser de 58 mm, esto pasa a 32.)
 export const ANCHO_TICKET = 48;
@@ -32,14 +34,6 @@ export type DatosTicket = {
   subtotal: number;
   descuentos: { concepto: string; monto: number }[];
   total: number;
-};
-
-const EMISOR = {
-  razonSocial: "NUOVO IMPERO S.A.S.",
-  nombreFantasia: "WiiGo - Estaciones de Bienestar",
-  domicilio: "Aristides 256 - Ciudad",
-  cuit: "30-71865412-9",
-  condicionIva: "IVA Responsable Inscripto",
 };
 
 function centrar(texto: string) {
@@ -82,10 +76,12 @@ export function construirTextoTicket(d: DatosTicket): string[] {
   const lineas: string[] = [];
 
   lineas.push(centrar(EMISOR.razonSocial));
-  lineas.push(centrar(EMISOR.nombreFantasia));
-  lineas.push(centrar(EMISOR.domicilio));
+  lineas.push(centrar("WiiGo - Estaciones de Bienestar"));
+  lineas.push(centrar(EMISOR.domicilioComercial));
   lineas.push(centrar("CUIT " + EMISOR.cuit));
   lineas.push(centrar(EMISOR.condicionIva));
+  lineas.push(centrar("IIBB " + EMISOR.ingresosBrutos));
+  lineas.push(centrar("Inicio de actividades " + EMISOR.inicioActividades));
   lineas.push("");
   lineas.push(separador());
   lineas.push(centrar("DOCUMENTO NO VALIDO COMO FACTURA"));

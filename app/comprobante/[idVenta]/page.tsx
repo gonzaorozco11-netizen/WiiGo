@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { getSupabaseServerClient } from "@/lib/supabase";
+import { EMISOR } from "@/lib/emisor";
 
 // Página pública: es lo que se abre en el celular del cliente al escanear el
 // QR del totem. No lleva login (ver proxy.ts) — el UUID de la venta hace de
@@ -10,14 +11,6 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 // ARCA hay que agregar acá el CAE, su vencimiento, el tipo y número de
 // comprobante y el QR oficial de ARCA.
 export const dynamic = "force-dynamic";
-
-const EMISOR = {
-  razonSocial: "NUOVO IMPERO S.A.S.",
-  nombreFantasia: "WiiGo — Estaciones de Bienestar",
-  domicilio: "Arístides 256, Ciudad",
-  cuit: "30-71865412-9",
-  condicionIva: "IVA Responsable Inscripto",
-};
 
 function formatearMonto(valor: number) {
   return valor.toLocaleString("es-AR", { maximumFractionDigits: 0 });
@@ -86,9 +79,11 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
         <header className="px-6 pt-6 pb-5 text-center border-b border-dashed border-neutral-200">
           <p className="text-lg font-extrabold text-neutral-900">{EMISOR.razonSocial}</p>
           <p className="text-sm text-neutral-500">{EMISOR.nombreFantasia}</p>
-          <p className="text-xs text-neutral-400 mt-2">{EMISOR.domicilio}</p>
+          <p className="text-xs text-neutral-400 mt-2">{EMISOR.domicilioComercial}</p>
           <p className="text-xs text-neutral-400">CUIT {EMISOR.cuit}</p>
           <p className="text-xs text-neutral-400">{EMISOR.condicionIva}</p>
+          <p className="text-xs text-neutral-400">IIBB {EMISOR.ingresosBrutos}</p>
+          <p className="text-xs text-neutral-400">Inicio de actividades: {EMISOR.inicioActividades}</p>
         </header>
 
         <div className="bg-amber-50 border-b border-amber-200 px-6 py-3 text-center">
