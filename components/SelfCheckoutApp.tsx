@@ -7,7 +7,6 @@ import { WIIGO_LOGO_DATA_URI, WIIGO_ISOTIPO_DATA_URI } from "@/lib/wiigo-logo-da
 import { construirTicketEscPos, enviarAImpresora } from "@/lib/ticket";
 import {
   confirmarPedido,
-  estadoPedido,
   cancelarPedidoCliente,
   buscarProfesionalPorDniAction,
   buscarClientePorDniAction,
@@ -1320,8 +1319,13 @@ export default function SelfCheckoutApp({
   useEffect(() => {
     if ((paso !== "efectivo-esperando" && paso !== "mp-esperando") || !pedido) return;
     const intervalo = setInterval(() => {
-      estadoPedido(pedido.idVenta)
+      // Endpoint con URL fija en vez de Server Action: ver el comentario en
+      // app/api/self-checkout/estado-pedido/route.ts. El totem queda abierto
+      // días entre deploys y los Server Actions no sobreviven a eso.
+      fetch(`/api/self-checkout/estado-pedido?idVenta=${encodeURIComponent(pedido.idVenta)}`, { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
         .then((r) => {
+          if (!r) return;
           if (r.estado === "PAGADA") setPaso("pagado");
           else if (r.estado === "CANCELADA") setPaso("cancelado");
         })
@@ -1329,6 +1333,28 @@ export default function SelfCheckoutApp({
     }, POLL_MS);
     return () => clearInterval(intervalo);
   }, [paso, pedido]);
+
+  // Prueba de impresión sin tener que hacer una venta entera: abrir la misma
+  // URL del totem con ?imprimir-prueba=1 al final manda un ticket de ejemplo
+  // apenas carga. Sirve para saber si el problema está en la impresora o en
+  // el flujo de la venta.
+  useEffect(() => {
+    if (!new URLSearchParams(window.location.search).has("imprimir-prueba")) return;
+    const bytes = construirTicketEscPos({
+      numeroPedido: "PRUEBA",
+      local: local.nombre,
+      medioPago: "Efectivo",
+      fecha: new Date(),
+      lineas: [
+        { nombre: "Producto de prueba", variante: "Vainilla", cantidad: 2, precioUnitario: 1500, importe: 3000 },
+        { nombre: "Otro producto de prueba", variante: null, cantidad: 1, precioUnitario: 850, importe: 850 },
+      ],
+      subtotal: 3850,
+      descuentos: [],
+      total: 3850,
+    });
+    enviarAImpresora(bytes);
+  }, [local.nombre]);
 
   // Impresión del ticket al confirmarse el pago. Se dispara una sola vez por
   // pedido (el ref evita que se reimprima si React vuelve a renderizar).
