@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Local, Marca, Producto, VarianteProducto, Stock } from "@/lib/supabase";
 import type { Clima } from "@/lib/clima";
-import { WIIGO_LOGO_DATA_URI } from "@/lib/wiigo-logo-data";
+import { WIIGO_LOGO_DATA_URI, WIIGO_ISOTIPO_DATA_URI } from "@/lib/wiigo-logo-data";
 import {
   confirmarPedido,
   estadoPedido,
@@ -40,6 +40,16 @@ function formatearMonto(valor: number) {
 
 function formatearPedido(numero: number) {
   return `VTA-${String(numero).padStart(4, "0")}`;
+}
+
+// Isotipo de WiiGo (la "w" sola) para el encabezado. Va incrustado igual
+// que el logo completo — en el totem los archivos de imagen no llegan a
+// cargar nunca (ver el comentario grande de CSS_TOTEM).
+function IsotipoWiiGo({ alto }: { alto: number }) {
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={WIIGO_ISOTIPO_DATA_URI} alt="WiiGo" height={alto} style={{ height: alto, width: "auto", display: "block" }} />
+  );
 }
 
 function precioFinal(producto: Producto, variante: VarianteProducto) {
@@ -120,7 +130,6 @@ html, body { margin: 0; padding: 0; height: 100%; background: #fafafa; }
   align-items: center;
   justify-content: space-between;
 }
-.sc-header-brand { font-weight: 800; letter-spacing: -0.02em; color: #171717; font-size: 18px; }
 .sc-btn-cancel {
   font-size: 13px;
   color: #a3a3a3;
@@ -1204,7 +1213,7 @@ export default function SelfCheckoutApp({
 
       {paso !== "reposo" && (
         <header className="sc-header">
-          <span className="sc-header-brand">WiiGo</span>
+          <IsotipoWiiGo alto={38} />
           {paso === "escaneo" || paso === "identificar" || paso === "pagar" || paso === "mp-esperando" ? (
             <button onClick={handleCancelarPedido} className="sc-btn-cancel">
               Cancelar
