@@ -1058,6 +1058,19 @@ function PanelDiagnostico({ local }: { local: string }) {
       <button
         style={boton}
         onClick={() =>
+          probar("fully.print()", () => {
+            const fully = (window as unknown as { fully?: { print?: () => void } }).fully;
+            if (!fully?.print) throw new Error("no existe fully.print");
+            fully.print();
+          })
+        }
+      >
+        11) fully.print() (impresión propia de Fully)
+      </button>
+
+      <button
+        style={boton}
+        onClick={() =>
           probar("fully.startApplication", () => {
             const fully = (window as unknown as { fully?: { startApplication?: (p: string) => void } }).fully;
             if (!fully?.startApplication) throw new Error("no existe startApplication");
