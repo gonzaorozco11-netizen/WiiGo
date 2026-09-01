@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { Local, Venta, DetalleVenta, Producto, VarianteProducto, Cliente } from "@/lib/supabase";
 import { confirmarCobro, cancelarPedido } from "@/app/(app)/cobros-efectivo/actions";
 
@@ -78,6 +79,21 @@ export default function CobrosEfectivoApp({
   const [motivoCancelacion, setMotivoCancelacion] = useState("");
   const [procesando, setProcesando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Los pedidos del totem entran en cualquier momento. Sin esto la pantalla
+  // solo mostraba lo que había al abrirla y el empleado tenía que recargar a
+  // mano para ver un pedido nuevo — con un cliente esperando al lado.
+  // No refresca mientras hay un pedido abierto o un cobro en curso, para no
+  // moverle la pantalla justo cuando está cargando la plata.
+  const router = useRouter();
+  useEffect(() => {
+    if (tab !== "PENDIENTE") return;
+    const id = setInterval(() => {
+      if (idVentaSeleccionada || procesando || cancelando) return;
+      router.refresh();
+    }, 10000);
+    return () => clearInterval(id);
+  }, [tab, idVentaSeleccionada, procesando, cancelando, router]);
 
   const variantePorId = useMemo(() => new Map(variantes.map((v) => [v.id_variante, v])), [variantes]);
   const productoPorId = useMemo(() => new Map(productos.map((p) => [p.id_producto, p])), [productos]);

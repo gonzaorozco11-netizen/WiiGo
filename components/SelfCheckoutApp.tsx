@@ -35,11 +35,18 @@ type MedioPago = "EFECTIVO" | "MERCADO_PAGO";
 const POLL_MS = 3000;
 const TOAST_MS = 2500;
 
+// Un solo comparador reutilizado. `localeCompare` crea uno nuevo en cada
+// comparación y ordenar el catálogo con eso es lentísimo en la placa del
+// totem; con un Intl.Collator fijo es varias veces más rápido.
+const COLLATOR = new Intl.Collator("es", { sensitivity: "base" });
+
 // El totem queda solo en el local: si alguien arma el carrito y se va sin
 // pagar, la pantalla se quedaría con SU carrito y el próximo cliente
 // encontraría productos ajenos. Se vuelve solo al inicio.
 const INACTIVIDAD_COMPRA_MS = 120000; // 2 min armando el pedido
-const INACTIVIDAD_FINAL_MS = 45000; // pantallas de "listo" / "cancelado"
+// La pantalla de "listo" tiene que durar lo suficiente para que el cliente
+// lea el total, espere el ticket y lo retire de la impresora.
+const INACTIVIDAD_FINAL_MS = 100000;
 const AVISO_ANTES_MS = 20000; // se pregunta "¿seguís ahí?" antes de reiniciar
 
 function formatearMonto(valor: number) {
@@ -1055,32 +1062,68 @@ export default function SelfCheckoutApp({
   const marcaPorId = useMemo(() => new Map(marcas.map((m) => [m.id_marca, m])), [marcas]);
   const stockPorVariante = stockEnVivo;
 
-  const items = useMemo<Item[]>(() => {
+  // El catálogo ordenado se arma UNA sola vez. Antes esto se rehacía entero
+  // —incluido el .sort()— cada 8 segundos, cuando llegaba el stock nuevo:
+  // en la placa del totem eso trababa la pantalla justo mientras el cliente
+  // cargaba productos. El orden alfabético no depende del stock, así que se
+  // separa. Se guarda además el nombre en minúsculas para no recalcularlo en
+  // cada tecla del buscador.
+  const catalogoOrdenado = useMemo(() => {
     return variantes
       .map((variante) => {
         const producto = productoPorId.get(variante.id_producto);
         if (!producto) return null;
-        const cantidadDisponible = stockPorVariante.get(variante.id_variante) ?? 0;
-        if (cantidadDisponible <= 0) return null;
         return {
           variante,
           producto,
           marca: marcaPorId.get(producto.id_marca),
           precio: precioFinal(producto, variante),
-          cantidadDisponible,
+          nombreBusqueda: producto.nombre.toLowerCase(),
         };
       })
-      .filter((i): i is Item => i !== null)
-      .sort((a, b) => a.producto.nombre.localeCompare(b.producto.nombre));
-  }, [variantes, productoPorId, marcaPorId, stockPorVariante]);
+      .filter((i): i is NonNullable<typeof i> => i !== null)
+      .sort((a, b) => COLLATOR.compare(a.producto.nombre, b.producto.nombre));
+  }, [variantes, productoPorId, marcaPorId]);
+
+  // Solo esto se rehace cuando llega stock nuevo: agregar el disponible y
+  // sacar lo que quedó en cero. Sin volver a ordenar.
+  const items = useMemo<Item[]>(() => {
+    const resultado: Item[] = [];
+    for (const base of catalogoOrdenado) {
+      const cantidadDisponible = stockPorVariante.get(base.variante.id_variante) ?? 0;
+      if (cantidadDisponible <= 0) continue;
+      resultado.push({
+        variante: base.variante,
+        producto: base.producto,
+        marca: base.marca,
+        precio: base.precio,
+        cantidadDisponible,
+      });
+    }
+    return resultado;
+  }, [catalogoOrdenado, stockPorVariante]);
 
   const itemPorVariante = useMemo(() => new Map(items.map((i) => [i.variante.id_variante, i])), [items]);
 
   const resultadosBusqueda = useMemo(() => {
     const q = busquedaTexto.trim().toLowerCase();
     if (!q) return [];
-    return items.filter((i) => i.producto.nombre.toLowerCase().includes(q)).slice(0, 20);
-  }, [items, busquedaTexto]);
+    const encontrados: Item[] = [];
+    for (const base of catalogoOrdenado) {
+      if (!base.nombreBusqueda.includes(q)) continue;
+      const cantidadDisponible = stockPorVariante.get(base.variante.id_variante) ?? 0;
+      if (cantidadDisponible <= 0) continue;
+      encontrados.push({
+        variante: base.variante,
+        producto: base.producto,
+        marca: base.marca,
+        precio: base.precio,
+        cantidadDisponible,
+      });
+      if (encontrados.length >= 20) break; // corta apenas llena la lista
+    }
+    return encontrados;
+  }, [catalogoOrdenado, stockPorVariante, busquedaTexto]);
 
   const itemsCarrito = useMemo<ItemCarrito[]>(() => {
     return Object.entries(carrito)
