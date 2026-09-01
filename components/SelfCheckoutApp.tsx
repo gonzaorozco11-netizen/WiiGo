@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Local, Marca, Producto, VarianteProducto, Stock } from "@/lib/supabase";
 import type { Clima } from "@/lib/clima";
 import { WIIGO_LOGO_DATA_URI, WIIGO_ISOTIPO_DATA_URI } from "@/lib/wiigo-logo-data";
-import { construirTicketEscPos, enviarAImpresora } from "@/lib/ticket";
+import { construirTicketEscPos, enviarAImpresora, urlImpresionRawBt, diagnosticoImpresion } from "@/lib/ticket";
 import {
   confirmarPedido,
   cancelarPedidoCliente,
@@ -840,6 +840,116 @@ html, body { margin: 0; padding: 0; height: 100%; background: #fafafa; }
 }
 `;
 
+// Panel para averiguar por qué no imprime, en vez de probar a ciegas.
+// Se abre con ?diagnostico=1 en la URL. Muestra qué expone el navegador del
+// totem y deja disparar cada método de impresión por separado.
+function PanelDiagnostico({ local }: { local: string }) {
+  const [info, setInfo] = useState<ReturnType<typeof diagnosticoImpresion> | null>(null);
+  const [ultimo, setUltimo] = useState<string>("—");
+
+  useEffect(() => setInfo(diagnosticoImpresion()), []);
+
+  const ticketDePrueba = () =>
+    construirTicketEscPos({
+      numeroPedido: "PRUEBA",
+      local,
+      medioPago: "Efectivo",
+      fecha: new Date(),
+      lineas: [{ nombre: "Producto de prueba", variante: null, cantidad: 1, precioUnitario: 1000, importe: 1000 }],
+      subtotal: 1000,
+      descuentos: [],
+      total: 1000,
+    });
+
+  function probar(nombre: string, accion: () => void) {
+    try {
+      accion();
+      setUltimo(`${nombre}: ejecutado sin error`);
+    } catch (e) {
+      setUltimo(`${nombre}: ERROR — ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  const caja: React.CSSProperties = {
+    position: "fixed",
+    top: 10,
+    left: 10,
+    right: 10,
+    zIndex: 999,
+    background: "#111827",
+    color: "#f9fafb",
+    borderRadius: 12,
+    padding: 14,
+    fontSize: 13,
+    fontFamily: "monospace",
+    maxHeight: "70%",
+    overflowY: "auto",
+  };
+  const boton: React.CSSProperties = {
+    display: "block",
+    width: "100%",
+    marginTop: 8,
+    padding: "12px 10px",
+    borderRadius: 8,
+    border: 0,
+    background: "#2563eb",
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: 700,
+  };
+
+  return (
+    <div style={caja}>
+      <p style={{ fontWeight: 700, marginBottom: 8 }}>Diagnóstico de impresión</p>
+      <p>Interfaz de Fully: {info?.hayInterfazFully ? "SÍ" : "NO"}</p>
+      <p>Tiene startIntent: {info?.tieneStartIntent ? "SÍ" : "NO"}</p>
+      <p style={{ wordBreak: "break-all" }}>Funciones: {info?.funcionesFully.join(", ") || "(ninguna)"}</p>
+      <p style={{ wordBreak: "break-all", marginTop: 8, color: "#93c5fd" }}>{info?.userAgent}</p>
+      <p style={{ marginTop: 10, color: "#fde68a" }}>Último intento → {ultimo}</p>
+
+      <button
+        style={boton}
+        onClick={() =>
+          probar("fully.startIntent", () => {
+            const fully = (window as unknown as { fully?: { startIntent?: (u: string) => void } }).fully;
+            if (!fully?.startIntent) throw new Error("no existe fully.startIntent");
+            fully.startIntent(urlImpresionRawBt(ticketDePrueba()));
+          })
+        }
+      >
+        1) Probar fully.startIntent
+      </button>
+
+      <button
+        style={boton}
+        onClick={() =>
+          probar("location rawbt:", () => {
+            window.location.href = urlImpresionRawBt(ticketDePrueba());
+          })
+        }
+      >
+        2) Probar rawbt: directo
+      </button>
+
+      <button
+        style={boton}
+        onClick={() =>
+          probar("intent://", () => {
+            const b64 = urlImpresionRawBt(ticketDePrueba()).replace("rawbt:", "");
+            window.location.href = `intent:${b64}#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;`;
+          })
+        }
+      >
+        3) Probar intent:// a RawBT
+      </button>
+
+      <button style={boton} onClick={() => probar("window.print", () => window.print())}>
+        4) Probar window.print()
+      </button>
+    </div>
+  );
+}
+
 export default function SelfCheckoutApp({
   local,
   productos,
@@ -1333,6 +1443,13 @@ export default function SelfCheckoutApp({
     }, POLL_MS);
     return () => clearInterval(intervalo);
   }, [paso, pedido]);
+
+  // Panel de diagnóstico de impresión: se abre agregando ?diagnostico=1 a la
+  // URL del totem. Nunca aparece para un cliente.
+  const [mostrarDiagnostico, setMostrarDiagnostico] = useState(false);
+  useEffect(() => {
+    setMostrarDiagnostico(new URLSearchParams(window.location.search).has("diagnostico"));
+  }, []);
 
   // Prueba de impresión sin tener que hacer una venta entera: abrir la misma
   // URL del totem con ?imprimir-prueba=1 al final manda un ticket de ejemplo
@@ -1961,6 +2078,8 @@ export default function SelfCheckoutApp({
           </button>
         </div>
       )}
+
+      {mostrarDiagnostico && <PanelDiagnostico local={local.nombre} />}
 
       {avisoInactividad !== null && (
         <div className="sc-inactividad">

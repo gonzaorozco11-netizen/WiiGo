@@ -188,6 +188,26 @@ export function urlImpresionRawBt(bytes: Uint8Array): string {
 // propios que vienen de marcos internos (ya se probó).
 type FullyKiosk = { startIntent?: (url: string) => void };
 
+// Qué ofrece el navegador donde está corriendo la pantalla. Se usa desde el
+// panel de diagnóstico (?diagnostico=1) para no tener que adivinar por qué
+// una impresora no responde: dice si la interfaz de Fully está disponible y
+// qué funciones expone.
+export function diagnosticoImpresion() {
+  const fully = (window as unknown as { fully?: Record<string, unknown> }).fully;
+  const funciones: string[] = [];
+  if (fully) {
+    for (const clave in fully) {
+      if (typeof fully[clave] === "function") funciones.push(clave);
+    }
+  }
+  return {
+    hayInterfazFully: !!fully,
+    tieneStartIntent: !!fully && typeof fully.startIntent === "function",
+    funcionesFully: funciones.sort(),
+    userAgent: navigator.userAgent,
+  };
+}
+
 export function enviarAImpresora(bytes: Uint8Array) {
   const url = urlImpresionRawBt(bytes);
 
