@@ -886,17 +886,18 @@ function PanelDiagnostico({ local }: { local: string }) {
 
   useEffect(() => setInfo(diagnosticoImpresion()), []);
 
-  const ticketDePrueba = () =>
-    construirTicketEscPos({
-      numeroPedido: "PRUEBA",
-      local,
-      medioPago: "Efectivo",
-      fecha: new Date(),
-      lineas: [{ nombre: "Producto de prueba", variante: null, cantidad: 1, precioUnitario: 1000, importe: 1000 }],
-      subtotal: 1000,
-      descuentos: [],
-      total: 1000,
-    });
+  const datosDePrueba = (): DatosTicket => ({
+    numeroPedido: "PRUEBA",
+    local,
+    medioPago: "Efectivo",
+    fecha: new Date(),
+    lineas: [{ nombre: "Producto de prueba", variante: null, cantidad: 1, precioUnitario: 1000, importe: 1000 }],
+    subtotal: 1000,
+    descuentos: [],
+    total: 1000,
+  });
+
+  const ticketDePrueba = () => construirTicketEscPos(datosDePrueba());
 
   function probar(nombre: string, accion: () => void) {
     try {
@@ -1009,6 +1010,32 @@ function PanelDiagnostico({ local }: { local: string }) {
         }
       >
         6) fully.startIntentBySending
+      </button>
+
+      <button
+        style={boton}
+        onClick={() =>
+          probar("startIntentBySending(texto)", () => {
+            const fully = (window as unknown as { fully?: { startIntentBySending?: (u: string) => void } }).fully;
+            if (!fully?.startIntentBySending) throw new Error("no existe startIntentBySending");
+            fully.startIntentBySending(construirTextoTicket(datosDePrueba()).join("\n"));
+          })
+        }
+      >
+        8) Compartir el TEXTO del ticket a RawBT
+      </button>
+
+      <button
+        style={boton}
+        onClick={() =>
+          probar("startIntent(rawbt:texto)", () => {
+            const fully = (window as unknown as { fully?: { startIntent?: (u: string) => void } }).fully;
+            if (!fully?.startIntent) throw new Error("no existe fully.startIntent");
+            fully.startIntent("rawbt:" + encodeURIComponent(construirTextoTicket(datosDePrueba()).join("\n")));
+          })
+        }
+      >
+        9) startIntent con rawbt: + texto plano
       </button>
 
       <button
