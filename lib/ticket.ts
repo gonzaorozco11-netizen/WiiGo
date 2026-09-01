@@ -115,6 +115,14 @@ export function construirTextoTicket(d: DatosTicket): string[] {
     }
   }
 
+  lineas.push(fila("TOTAL", monto(d.total)));
+  lineas.push(separador());
+  lineas.push("");
+  lineas.push(centrar("Mostrale este ticket al personal"));
+  lineas.push(centrar("para controlar antes de salir."));
+  lineas.push("");
+  lineas.push(centrar("Gracias por tu compra!"));
+
   return lineas;
 }
 

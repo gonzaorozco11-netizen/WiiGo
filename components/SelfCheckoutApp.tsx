@@ -4,7 +4,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Local, Marca, Producto, VarianteProducto, Stock } from "@/lib/supabase";
 import type { Clima } from "@/lib/clima";
 import { WIIGO_LOGO_DATA_URI, WIIGO_ISOTIPO_DATA_URI } from "@/lib/wiigo-logo-data";
-import { construirTicketEscPos, enviarAImpresora, urlImpresionRawBt, diagnosticoImpresion } from "@/lib/ticket";
+import {
+  construirTicketEscPos,
+  construirTextoTicket,
+  enviarAImpresora,
+  urlImpresionRawBt,
+  diagnosticoImpresion,
+  type DatosTicket,
+} from "@/lib/ticket";
 import {
   confirmarPedido,
   cancelarPedidoCliente,
@@ -810,6 +817,34 @@ html, body { margin: 0; padding: 0; height: 100%; background: #fafafa; }
 .sc-qr-img { width: 100%; height: 100%; object-fit: contain; }
 .sc-qr-error { color: #d4d4d4; font-size: 13px; padding: 0 8px; text-align: center; }
 
+/* ---------- Ticket impreso ----------
+   Fully Kiosk bloquea las URLs con esquema propio (rawbt:), así que no se
+   le puede mandar ESC/POS directo — probado con los 4 métodos del panel de
+   diagnóstico, ninguno pasa. Lo que SÍ funciona es window.print(), que va
+   por el servicio de impresión de Android hasta RawBT.
+   Por eso el ticket se arma como HTML oculto y estas reglas hacen que al
+   imprimir salga solo eso, a 72 mm (el ancho útil del papel de 80 mm). */
+.sc-ticket-print { display: none; }
+@media print {
+  html, body { margin: 0 !important; padding: 0 !important; background: #ffffff !important; }
+  body * { visibility: hidden !important; }
+  .sc-ticket-print, .sc-ticket-print * { visibility: visible !important; }
+  .sc-ticket-print {
+    display: block !important;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 72mm;
+    margin: 0;
+    padding: 0;
+    font-family: "Courier New", Courier, monospace;
+    font-size: 2.4mm;
+    line-height: 1.35;
+    color: #000000;
+    white-space: pre;
+  }
+}
+
 /* Aviso antes de volver solo al inicio por inactividad. */
 .sc-inactividad {
   position: fixed;
@@ -839,6 +874,8 @@ html, body { margin: 0; padding: 0; height: 100%; background: #fafafa; }
   padding: 11px 20px;
 }
 `;
+
+const PAQUETE_RAWBT = "ru.a402d.rawbtprinter";
 
 // Panel para averiguar por qué no imprime, en vez de probar a ciegas.
 // Se abre con ?diagnostico=1 en la URL. Muestra qué expone el navegador del
@@ -945,6 +982,46 @@ function PanelDiagnostico({ local }: { local: string }) {
 
       <button style={boton} onClick={() => probar("window.print", () => window.print())}>
         4) Probar window.print()
+      </button>
+
+      <button
+        style={boton}
+        onClick={() =>
+          probar("fully.startIntent(intent://)", () => {
+            const fully = (window as unknown as { fully?: { startIntent?: (u: string) => void } }).fully;
+            if (!fully?.startIntent) throw new Error("no existe fully.startIntent");
+            const b64 = urlImpresionRawBt(ticketDePrueba()).replace("rawbt:", "");
+            fully.startIntent(`intent:${b64}#Intent;scheme=rawbt;package=${PAQUETE_RAWBT};end;`);
+          })
+        }
+      >
+        5) fully.startIntent con intent://
+      </button>
+
+      <button
+        style={boton}
+        onClick={() =>
+          probar("fully.startIntentBySending", () => {
+            const fully = (window as unknown as { fully?: { startIntentBySending?: (u: string) => void } }).fully;
+            if (!fully?.startIntentBySending) throw new Error("no existe startIntentBySending");
+            fully.startIntentBySending(urlImpresionRawBt(ticketDePrueba()));
+          })
+        }
+      >
+        6) fully.startIntentBySending
+      </button>
+
+      <button
+        style={boton}
+        onClick={() =>
+          probar("fully.startApplication", () => {
+            const fully = (window as unknown as { fully?: { startApplication?: (p: string) => void } }).fully;
+            if (!fully?.startApplication) throw new Error("no existe startApplication");
+            fully.startApplication(PAQUETE_RAWBT);
+          })
+        }
+      >
+        7) Abrir RawBT (verifica el nombre del paquete)
       </button>
     </div>
   );
@@ -1444,12 +1521,24 @@ export default function SelfCheckoutApp({
     return () => clearInterval(intervalo);
   }, [paso, pedido]);
 
-  // Panel de diagnóstico de impresión: se abre agregando ?diagnostico=1 a la
-  // URL del totem. Nunca aparece para un cliente.
+  // Panel de diagnóstico de impresión. Se abre de dos formas: con
+  // ?diagnostico=1 en la URL, o tocando 5 veces seguidas el logo del
+  // encabezado — esto último para no tener que editar la Start URL de Fully
+  // en el totem, que es incómodo. Un cliente no lo va a abrir de casualidad.
   const [mostrarDiagnostico, setMostrarDiagnostico] = useState(false);
   useEffect(() => {
     setMostrarDiagnostico(new URLSearchParams(window.location.search).has("diagnostico"));
   }, []);
+
+  const toquesLogo = useRef<number[]>([]);
+  function handleToqueLogo() {
+    const ahora = Date.now();
+    toquesLogo.current = [...toquesLogo.current, ahora].filter((t) => ahora - t < 3000);
+    if (toquesLogo.current.length >= 5) {
+      toquesLogo.current = [];
+      setMostrarDiagnostico((v) => !v);
+    }
+  }
 
   // Prueba de impresión sin tener que hacer una venta entera: abrir la misma
   // URL del totem con ?imprimir-prueba=1 al final manda un ticket de ejemplo
@@ -1478,6 +1567,19 @@ export default function SelfCheckoutApp({
   // se puede repetir a mano desde el botón de la pantalla final.
   const pedidoImpreso = useRef<string | null>(null);
 
+  // Contenido del ticket listo para imprimir por el diálogo de Android
+  // (window.print). Se guarda en estado porque el bloque tiene que estar
+  // dibujado en la página ANTES de pedir la impresión.
+  const [ticketLineas, setTicketLineas] = useState<string[] | null>(null);
+  const imprimirAlDibujar = useRef(false);
+
+  useEffect(() => {
+    if (!ticketLineas || !imprimirAlDibujar.current) return;
+    imprimirAlDibujar.current = false;
+    const id = setTimeout(() => window.print(), 150);
+    return () => clearTimeout(id);
+  }, [ticketLineas]);
+
   const imprimirTicket = useCallback(() => {
     if (!pedido) return;
 
@@ -1486,24 +1588,31 @@ export default function SelfCheckoutApp({
     if (descuentoCanje > 0) descuentos.push({ concepto: "Saldo de profesional", monto: descuentoCanje });
     if (descuentoPuntosPreview > 0) descuentos.push({ concepto: "Puntos WiiGo", monto: descuentoPuntosPreview });
 
+    const datos: DatosTicket = {
+      numeroPedido: formatearPedido(pedido.numero),
+      local: local.nombre,
+      medioPago: medioPagoElegido === "EFECTIVO" ? "Efectivo" : "Mercado Pago",
+      fecha: new Date(),
+      lineas: itemsCarrito.map((i) => ({
+        nombre: i.producto.nombre,
+        variante: i.variante.nombre !== "Único" ? i.variante.nombre : null,
+        cantidad: i.cantidad,
+        precioUnitario: i.precio,
+        importe: i.precio * i.cantidad,
+      })),
+      subtotal: subtotalCarrito,
+      descuentos,
+      total: pedido.total,
+    };
+
     try {
-      const bytes = construirTicketEscPos({
-        numeroPedido: formatearPedido(pedido.numero),
-        local: local.nombre,
-        medioPago: medioPagoElegido === "EFECTIVO" ? "Efectivo" : "Mercado Pago",
-        fecha: new Date(),
-        lineas: itemsCarrito.map((i) => ({
-          nombre: i.producto.nombre,
-          variante: i.variante.nombre !== "Único" ? i.variante.nombre : null,
-          cantidad: i.cantidad,
-          precioUnitario: i.precio,
-          importe: i.precio * i.cantidad,
-        })),
-        subtotal: subtotalCarrito,
-        descuentos,
-        total: pedido.total,
-      });
-      enviarAImpresora(bytes);
+      // Se intenta primero el envío directo (ESC/POS): sale más rápido y
+      // corta el papel solo. En Fully está bloqueado y no hace nada, así que
+      // igual se prepara el ticket para el diálogo de impresión de Android,
+      // que es el camino que sí funciona ahí.
+      enviarAImpresora(construirTicketEscPos(datos));
+      imprimirAlDibujar.current = true;
+      setTicketLineas(construirTextoTicket(datos));
     } catch {
       // Nunca romper la pantalla del cliente por un problema de impresión.
     }
@@ -1570,7 +1679,10 @@ export default function SelfCheckoutApp({
 
       {paso !== "reposo" && (
         <header className="sc-header">
-          <IsotipoWiiGo alto={38} />
+          {/* 5 toques seguidos acá abren el panel de diagnóstico. */}
+          <span onClick={handleToqueLogo}>
+            <IsotipoWiiGo alto={38} />
+          </span>
           {paso === "escaneo" || paso === "identificar" || paso === "pagar" || paso === "mp-esperando" ? (
             <button onClick={handleCancelarPedido} className="sc-btn-cancel">
               Cancelar
@@ -2078,6 +2190,9 @@ export default function SelfCheckoutApp({
           </button>
         </div>
       )}
+
+      {/* Solo se ve al imprimir (ver @media print en CSS_TOTEM). */}
+      {ticketLineas && <pre className="sc-ticket-print">{ticketLineas.join("\n")}</pre>}
 
       {mostrarDiagnostico && <PanelDiagnostico local={local.nombre} />}
 
