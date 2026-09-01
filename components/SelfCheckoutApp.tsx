@@ -1041,6 +1041,23 @@ function PanelDiagnostico({ local }: { local: string }) {
       <button
         style={boton}
         onClick={() =>
+          probar("startIntent(rawbt:base64 escapado)", () => {
+            const fully = (window as unknown as { fully?: { startIntent?: (u: string) => void } }).fully;
+            if (!fully?.startIntent) throw new Error("no existe fully.startIntent");
+            // El base64 lleva "+", "/" y "=", que son caracteres especiales
+            // dentro de una URL. Sin escaparlos, la dirección se corta y por
+            // eso los intentos con ESC/POS no llegaban.
+            const b64 = urlImpresionRawBt(ticketDePrueba()).replace("rawbt:base64,", "");
+            fully.startIntent("rawbt:base64," + encodeURIComponent(b64));
+          })
+        }
+      >
+        10) rawbt: + ESC/POS escapado (mejor formato)
+      </button>
+
+      <button
+        style={boton}
+        onClick={() =>
           probar("fully.startApplication", () => {
             const fully = (window as unknown as { fully?: { startApplication?: (p: string) => void } }).fully;
             if (!fully?.startApplication) throw new Error("no existe startApplication");
@@ -1637,9 +1654,9 @@ export default function SelfCheckoutApp({
       // corta el papel solo. En Fully está bloqueado y no hace nada, así que
       // igual se prepara el ticket para el diálogo de impresión de Android,
       // que es el camino que sí funciona ahí.
-      enviarAImpresora(construirTicketEscPos(datos));
-      imprimirAlDibujar.current = true;
-      setTicketLineas(construirTextoTicket(datos));
+      const lineas = construirTextoTicket(datos);
+      enviarAImpresora(construirTicketEscPos(datos), lineas);
+      setTicketLineas(lineas);
     } catch {
       // Nunca romper la pantalla del cliente por un problema de impresión.
     }
