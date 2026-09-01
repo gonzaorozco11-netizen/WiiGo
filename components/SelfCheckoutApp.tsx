@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Local, Marca, Producto, VarianteProducto, Stock } from "@/lib/supabase";
 import type { Clima } from "@/lib/clima";
 import { WIIGO_LOGO_DATA_URI, WIIGO_ISOTIPO_DATA_URI } from "@/lib/wiigo-logo-data";
+import { construirTicketEscPos, enviarAImpresora } from "@/lib/ticket";
 import {
   confirmarPedido,
   estadoPedido,
@@ -1284,6 +1285,42 @@ export default function SelfCheckoutApp({
         .catch(() => {});
     }, POLL_MS);
     return () => clearInterval(intervalo);
+  }, [paso, pedido]);
+
+  // Impresión del ticket al confirmarse el pago. Se dispara una sola vez por
+  // pedido (el ref evita que se reimprima si React vuelve a renderizar).
+  const pedidoImpreso = useRef<string | null>(null);
+  useEffect(() => {
+    if (paso !== "pagado" || !pedido) return;
+    if (pedidoImpreso.current === pedido.idVenta) return;
+    pedidoImpreso.current = pedido.idVenta;
+
+    const descuentos: { concepto: string; monto: number }[] = [];
+    if (descuentoReferidoPreview > 0) descuentos.push({ concepto: "Descuento profesional", monto: descuentoReferidoPreview });
+    if (descuentoCanje > 0) descuentos.push({ concepto: "Saldo de profesional", monto: descuentoCanje });
+    if (descuentoPuntosPreview > 0) descuentos.push({ concepto: "Puntos WiiGo", monto: descuentoPuntosPreview });
+
+    try {
+      const bytes = construirTicketEscPos({
+        numeroPedido: formatearPedido(pedido.numero),
+        local: local.nombre,
+        medioPago: medioPagoElegido === "EFECTIVO" ? "Efectivo" : "Mercado Pago",
+        fecha: new Date(),
+        lineas: itemsCarrito.map((i) => ({
+          nombre: i.producto.nombre,
+          variante: i.variante.nombre !== "Único" ? i.variante.nombre : null,
+          cantidad: i.cantidad,
+          precioUnitario: i.precio,
+          importe: i.precio * i.cantidad,
+        })),
+        subtotal: subtotalCarrito,
+        descuentos,
+        total: pedido.total,
+      });
+      enviarAImpresora(bytes);
+    } catch {
+      // Nunca romper la pantalla del cliente por un problema de impresión.
+    }
   }, [paso, pedido]);
 
   // Vuelta automática al inicio por inactividad. A propósito NO se aplica
