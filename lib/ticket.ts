@@ -229,21 +229,31 @@ export function diagnosticoImpresion() {
 // Sin eso RawBT abre una ventana preguntando a qué impresora mandar y el
 // ticket queda esperando que alguien la toque. Fue lo que nos hizo creer
 // durante horas que el envío no llegaba.
-export function enviarAImpresora(bytes: Uint8Array) {
-  const url = urlImpresionRawBt(bytes);
-
+export function enviarAImpresora(bytes: Uint8Array, lineas: string[]) {
   const fully = (window as unknown as { fully?: FullyKiosk }).fully;
+
   if (fully && typeof fully.startIntent === "function") {
+    // Va como TEXTO escapado, no como ESC/POS en base64: el base64 lleva
+    // "+", "/" y "=" que rompen la dirección al pasar entre aplicaciones.
+    // Cuando eso pasa, RawBT abre igual su ventana pero con el botón
+    // IMPRIMIR en gris, porque no pudo leer el contenido. Con texto escapado
+    // sí lo lee.
+    //
+    // Se pierde el corte automático de papel y el total en doble tamaño (son
+    // comandos ESC/POS). El corte se puede activar en RawBT →
+    // Ajustes avanzados → "Cortar papel entre páginas".
     try {
-      fully.startIntent(url);
+      fully.startIntent("rawbt:" + encodeURIComponent(lineas.join("\n")));
       return;
     } catch {
       // Si falla, se intenta igual por el camino de abajo.
     }
   }
 
+  // Fuera de Fully (Chrome del totem, un celu, una compu) sí funciona la
+  // navegación normal, y ahí conviene el ESC/POS que sale mejor formateado.
   try {
-    window.location.href = url;
+    window.location.href = urlImpresionRawBt(bytes);
   } catch {
     // Sin impresora disponible — la venta ya está cerrada igual.
   }

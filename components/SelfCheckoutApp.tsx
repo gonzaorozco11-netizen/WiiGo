@@ -1699,7 +1699,7 @@ export default function SelfCheckoutApp({
       // corta el papel solo. En Fully está bloqueado y no hace nada, así que
       // igual se prepara el ticket para el diálogo de impresión de Android,
       // que es el camino que sí funciona ahí.
-      enviarAImpresora(construirTicketEscPos(datos));
+      enviarAImpresora(construirTicketEscPos(datos), construirTextoTicket(datos));
     } catch {
       // Nunca romper la pantalla del cliente por un problema de impresión.
     }
