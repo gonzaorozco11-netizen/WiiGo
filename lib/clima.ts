@@ -6,7 +6,14 @@
 //
 // Documentación: https://open-meteo.com/en/docs
 
+import { fechaHoraArgentina } from "@/lib/horarios";
+
 export type Clima = "soleado" | "nublado" | "lluvia" | "tormenta";
+
+// Si es de día o de noche lo decide Open-Meteo con el amanecer/atardecer
+// reales de esa latitud (campo is_day), no una hora fija — así el cielo del
+// totem acompaña al de afuera todo el año sin tocar nada.
+export type EstadoCielo = { clima: Clima; esDeNoche: boolean };
 
 const LAT_MENDOZA = -32.8908;
 const LON_MENDOZA = -68.8272;
@@ -19,20 +26,29 @@ function categorizarClima(weatherCode: number): Clima {
   return "nublado"; // 3 (cubierto), 45/48 (niebla), o cualquier código no contemplado
 }
 
-export async function obtenerClimaActual(latitud: number | null, longitud: number | null): Promise<Clima> {
+// Respaldo por hora local cuando la API no responde: mejor un cielo
+// nocturno aproximado que uno de día a las 3 de la mañana.
+function esDeNochePorHora() {
+  const { minutosDelDia } = fechaHoraArgentina();
+  return minutosDelDia < 7 * 60 || minutosDelDia >= 20 * 60;
+}
+
+export async function obtenerClimaActual(latitud: number | null, longitud: number | null): Promise<EstadoCielo> {
   const lat = latitud ?? LAT_MENDOZA;
   const lon = longitud ?? LON_MENDOZA;
   try {
     const res = await fetch(
-      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=weather_code`,
+      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=weather_code,is_day`,
       { cache: "no-store" }
     );
-    if (!res.ok) return "soleado";
+    if (!res.ok) return { clima: "soleado", esDeNoche: esDeNochePorHora() };
     const data = await res.json();
     const code = data?.current?.weather_code;
-    if (typeof code !== "number") return "soleado";
-    return categorizarClima(code);
+    const isDay = data?.current?.is_day;
+    const esDeNoche = typeof isDay === "number" ? isDay === 0 : esDeNochePorHora();
+    if (typeof code !== "number") return { clima: "soleado", esDeNoche };
+    return { clima: categorizarClima(code), esDeNoche };
   } catch {
-    return "soleado";
+    return { clima: "soleado", esDeNoche: esDeNochePorHora() };
   }
 }

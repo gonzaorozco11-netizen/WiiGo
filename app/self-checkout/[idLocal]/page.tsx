@@ -45,7 +45,7 @@ export default async function SelfCheckoutPage({ params }: { params: Promise<{ i
     );
   }
 
-  const clima = await obtenerClimaActual((local as Local).latitud, (local as Local).longitud);
+  const cielo = await obtenerClimaActual((local as Local).latitud, (local as Local).longitud);
 
   return (
     <SelfCheckoutApp
@@ -54,7 +54,8 @@ export default async function SelfCheckoutPage({ params }: { params: Promise<{ i
       variantes={(variantesRes.data ?? []) as VarianteProducto[]}
       marcas={(marcasRes.data ?? []) as Marca[]}
       stock={(stockRes.data ?? []) as Stock[]}
-      clima={clima}
+      clima={cielo.clima}
+      esDeNoche={cielo.esDeNoche}
     />
   );
 }

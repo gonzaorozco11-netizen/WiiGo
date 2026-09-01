@@ -169,6 +169,41 @@ html, body { margin: 0; padding: 0; height: 100%; background: #fafafa; }
 .sc-cielo-lluvia { background: linear-gradient(180deg, #3f5064 0%, #5d7186 55%, #8b9aa9 100%); }
 .sc-cielo-tormenta { background: linear-gradient(180deg, #1d2733 0%, #33414f 55%, #55636f 100%); }
 
+/* De noche el cielo se apaga. Lo decide el amanecer/atardecer real del
+   local (Open-Meteo), no una hora fija — ver lib/clima.ts. */
+.sc-noche.sc-cielo-soleado { background: linear-gradient(180deg, #060c1e 0%, #12224a 55%, #2a4272 100%); }
+.sc-noche.sc-cielo-nublado { background: linear-gradient(180deg, #141922 0%, #232b38 55%, #3b4655 100%); }
+.sc-noche.sc-cielo-lluvia { background: linear-gradient(180deg, #0b111a 0%, #18222e 55%, #2a3644 100%); }
+.sc-noche.sc-cielo-tormenta { background: linear-gradient(180deg, #04060a 0%, #0f151d 55%, #1b232e 100%); }
+.sc-noche .sc-nube { background: radial-gradient(closest-side, rgba(255,255,255,.15), rgba(255,255,255,0)); }
+.sc-noche.sc-cielo-tormenta .sc-nube { background: radial-gradient(closest-side, rgba(150,163,177,.28), rgba(150,163,177,0)); }
+
+/* Luna y estrellas: solo con cielo despejado de noche. */
+.sc-luna {
+  position: absolute;
+  top: 7%;
+  right: 12%;
+  width: 92px;
+  height: 92px;
+  border-radius: 999px;
+  background: radial-gradient(circle at 38% 34%, #fdfbef 0%, #f0ecd6 58%, #ded8bd 100%);
+  box-shadow: 0 0 0 18px rgba(253,251,239,.07), 0 0 0 40px rgba(253,251,239,.04);
+  z-index: 1;
+  pointer-events: none;
+}
+.sc-estrella {
+  position: absolute;
+  border-radius: 999px;
+  background: #ffffff;
+  z-index: 1;
+  pointer-events: none;
+  animation: sc-titilar ease-in-out infinite alternate;
+}
+@keyframes sc-titilar {
+  from { opacity: .25; }
+  to { opacity: 1; }
+}
+
 /* Nubes que cruzan la pantalla. Son degradés radiales movidos con
    transform: translateX — lo único que anima suave en la placa del totem
    (no usar filter: blur acá, lo hace arrastrarse). */
@@ -805,6 +840,7 @@ export default function SelfCheckoutApp({
   marcas,
   stock,
   clima,
+  esDeNoche,
 }: {
   local: Local;
   productos: Producto[];
@@ -812,6 +848,7 @@ export default function SelfCheckoutApp({
   marcas: Marca[];
   stock: Stock[];
   clima: Clima;
+  esDeNoche: boolean;
 }) {
   const [paso, setPaso] = useState<Paso>("reposo");
 
@@ -898,6 +935,18 @@ export default function SelfCheckoutApp({
       { top: 62, ancho: 52, alto: 16, dur: apuradas ? 42 : 84, delay: -12, op: 0.28 },
     ];
   }, [clima]);
+
+  // Estrellas: solo con cielo despejado de noche, y calculadas una sola vez.
+  const estrellas = useMemo(() => {
+    if (!esDeNoche || clima !== "soleado") return [];
+    return Array.from({ length: 26 }, () => ({
+      left: Math.random() * 100,
+      top: Math.random() * 62,
+      tam: 2 + Math.random() * 2.5,
+      dur: 1.6 + Math.random() * 3.4,
+      delay: -Math.random() * 4,
+    }));
+  }, [esDeNoche, clima]);
 
   // Relámpago al azar en tormenta — cambiar la key remonta el div y
   // reinicia la animación CSS cada vez, sin necesidad de refs.
@@ -1307,8 +1356,10 @@ export default function SelfCheckoutApp({
       )}
 
       {paso === "reposo" && (
-        <div onClick={() => setPaso("escaneo")} className={`sc-reposo sc-cielo-${clima}`}>
-          {!fotoClimaFallo && (
+        <div onClick={() => setPaso("escaneo")} className={`sc-reposo sc-cielo-${clima}${esDeNoche ? " sc-noche" : ""}`}>
+          {/* Las fotos de clima son todas de día — de noche no van, queda el
+              degradé nocturno con la luna y las estrellas. */}
+          {!fotoClimaFallo && !esDeNoche && (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={FOTOS_CLIMA[clima]}
@@ -1318,7 +1369,22 @@ export default function SelfCheckoutApp({
             />
           )}
 
-          {clima === "soleado" && <div className="sc-sol" />}
+          {clima === "soleado" && !esDeNoche && <div className="sc-sol" />}
+          {clima === "soleado" && esDeNoche && <div className="sc-luna" />}
+          {estrellas.map((e, i) => (
+            <span
+              key={i}
+              className="sc-estrella"
+              style={{
+                left: `${e.left}%`,
+                top: `${e.top}%`,
+                width: e.tam,
+                height: e.tam,
+                animationDuration: `${e.dur}s`,
+                animationDelay: `${e.delay}s`,
+              }}
+            />
+          ))}
 
           <div className="sc-nubes">
             {nubes.map((n, i) => (
