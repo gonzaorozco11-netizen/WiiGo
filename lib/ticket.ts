@@ -175,17 +175,34 @@ export function urlImpresionRawBt(bytes: Uint8Array): string {
   return "rawbt:base64," + btoa(binario);
 }
 
-// Tiene que ser una navegación de la página principal. Se probó mandarlo
-// desde un iframe oculto (para aislar el fallo si no hay impresora) y NO
-// funciona: Android atiende los esquemas propios como `rawbt:` solo cuando
-// vienen del marco principal, ignora los de marcos internos.
+// Fully Kiosk (el navegador del totem) bloquea las URLs con esquema propio
+// como `rawbt:` — probado: en Chrome del mismo totem imprime, en Fully no.
+// Pero Fully expone una interfaz propia, `window.fully`, con la que la página
+// sí puede pedirle que abra otra app. Requiere activar en Fully:
+//   Settings → Advanced Web Settings → Enable JavaScript Interface (PLUS)
 //
-// Navegar a `rawbt:` no cambia de página: Android intercepta la URL, se la
-// entrega a RawBT y la pantalla del cliente queda donde estaba. Si RawBT no
-// está instalado, simplemente no pasa nada.
+// Si esa interfaz no está (Chrome, una compu, o el interruptor apagado), se
+// cae al método normal: navegar a la URL. Eso no cambia de página — Android
+// intercepta el esquema, se lo entrega a RawBT y la pantalla queda igual.
+// Ojo: NO sirve mandarlo desde un iframe oculto, Android ignora los esquemas
+// propios que vienen de marcos internos (ya se probó).
+type FullyKiosk = { startIntent?: (url: string) => void };
+
 export function enviarAImpresora(bytes: Uint8Array) {
+  const url = urlImpresionRawBt(bytes);
+
+  const fully = (window as unknown as { fully?: FullyKiosk }).fully;
+  if (fully && typeof fully.startIntent === "function") {
+    try {
+      fully.startIntent(url);
+      return;
+    } catch {
+      // Si falla, se intenta igual por el camino de abajo.
+    }
+  }
+
   try {
-    window.location.href = urlImpresionRawBt(bytes);
+    window.location.href = url;
   } catch {
     // Sin impresora disponible — la venta ya está cerrada igual.
   }
