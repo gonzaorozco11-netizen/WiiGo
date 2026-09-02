@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase";
+import { baseUrlPublica } from "@/lib/urlPublica";
 import QRCode from "qrcode";
 
 export const dynamic = "force-dynamic";
@@ -37,7 +38,9 @@ export async function GET(request: NextRequest) {
   let qrComprobante: string | undefined;
   if (data.estado === "PAGADA") {
     try {
-      const url = `${request.nextUrl.origin}/comprobante/${idVenta}`;
+      // Dominio fijo, no el del request: si sale la URL interna del deploy,
+      // el cliente termina en la pantalla de login de Vercel. Ver lib/urlPublica.ts.
+      const url = `${baseUrlPublica(request.nextUrl.origin)}/comprobante/${idVenta}`;
       qrComprobante = await QRCode.toDataURL(url, { margin: 1, width: 420 });
     } catch {
       // Si falla, la pantalla igual ofrece el ticket en papel.
