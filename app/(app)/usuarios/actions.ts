@@ -26,6 +26,15 @@ async function requireAdmin() {
 // Next.js redacta en producción el mensaje de un Error tirado desde una
 // Server Action (queda solo un digest genérico en el navegador) — por eso
 // estas funciones no throwean para errores esperables: devuelven { error }.
+/** Marcas activas, para elegir a cuál pertenece un usuario del portal. */
+export async function listarMarcasParaUsuarios() {
+  const permisoError = await requireAdmin();
+  if (permisoError) return [];
+  const supabase = getSupabaseServerClient();
+  const { data } = await supabase.from("marcas").select("*").eq("estado", "ACTIVA").order("nombre");
+  return data ?? [];
+}
+
 export async function crearUsuario(formData: FormData): Promise<{ error: string | null }> {
   const permisoError = await requireAdmin();
   if (permisoError) return { error: permisoError };
@@ -33,11 +42,15 @@ export async function crearUsuario(formData: FormData): Promise<{ error: string 
   const nombre = text(formData, "nombre");
   const email = text(formData, "email")?.toLowerCase() ?? null;
   const rol = text(formData, "rol") ?? "operativo";
+  const idMarca = text(formData, "id_marca");
   const password = String(formData.get("password") ?? "");
 
   if (!nombre) return { error: "El nombre es obligatorio" };
   if (!email) return { error: "El email es obligatorio" };
   if (password.length < 6) return { error: "La contraseña tiene que tener al menos 6 caracteres" };
+  // Un usuario de marca sin marca asignada no podría entrar a ningún lado:
+  // el portal lo rechaza y el sistema interno también.
+  if (rol === "marca" && !idMarca) return { error: "Elegí a qué marca pertenece este usuario." };
 
   try {
     const supabase = getSupabaseServerClient();
@@ -47,6 +60,9 @@ export async function crearUsuario(formData: FormData): Promise<{ error: string 
       nombre,
       email,
       rol,
+      // Solo los usuarios de marca la llevan; el resto queda en null para que
+      // un cambio de rol no deje colgado un vínculo viejo.
+      id_marca: rol === "marca" ? idMarca : null,
       password_hash,
       estado: "ACTIVO",
     });
@@ -66,12 +82,17 @@ export async function actualizarUsuario(id: string, formData: FormData): Promise
   const nombre = text(formData, "nombre");
   const email = text(formData, "email")?.toLowerCase() ?? null;
   const rol = text(formData, "rol") ?? "operativo";
+  const idMarca = text(formData, "id_marca");
   if (!nombre) return { error: "El nombre es obligatorio" };
   if (!email) return { error: "El email es obligatorio" };
+  if (rol === "marca" && !idMarca) return { error: "Elegí a qué marca pertenece este usuario." };
 
   try {
     const supabase = getSupabaseServerClient();
-    const { error } = await supabase.from("usuarios").update({ nombre, email, rol }).eq("id_usuario", id);
+    const { error } = await supabase
+      .from("usuarios")
+      .update({ nombre, email, rol, id_marca: rol === "marca" ? idMarca : null })
+      .eq("id_usuario", id);
     if (error) return { error: friendlyDbError(error) };
     revalidatePath("/organizacion");
     return { error: null };

@@ -1,7 +1,7 @@
 "use client";
 
-import { Fragment, useState, useTransition } from "react";
-import type { Usuario, Area } from "@/lib/supabase";
+import { Fragment, useEffect, useState, useTransition } from "react";
+import type { Usuario, Area, Marca } from "@/lib/supabase";
 import { PERMISOS_DISPONIBLES } from "@/lib/permisos-constantes";
 import type { PersonaConPuestos } from "@/app/(app)/organizacion/actions";
 import {
@@ -12,6 +12,7 @@ import {
   actualizarPermisosUsuario,
   actualizarAreasAccesoUsuario,
   actualizarPersonaUsuario,
+  listarMarcasParaUsuarios,
 } from "@/app/(app)/usuarios/actions";
 
 type UsuarioSinHash = Omit<Usuario, "password_hash">;
@@ -24,6 +25,7 @@ function formatearFecha(fechaISO: string) {
 // se muestra como "Dueño" para no confundirlo con las Áreas configurables.
 function etiquetaRolBase(rol: string | null) {
   if (rol === "admin") return "Dueño";
+  if (rol === "marca") return "Marca (portal)";
   return "Operativo";
 }
 
@@ -36,6 +38,15 @@ export default function UsuariosApp({
   areas: Area[];
   personas: PersonaConPuestos[];
 }) {
+  // Las marcas se traen acá y no por prop: solo hacen falta para el rol
+  // "marca", que es un caso puntual, y así no hay que enhebrarlas por toda
+  // la pantalla de Organización.
+  const [marcas, setMarcas] = useState<Marca[]>([]);
+  useEffect(() => {
+    listarMarcasParaUsuarios()
+      .then(setMarcas)
+      .catch(() => setMarcas([]));
+  }, []);
   const [modalOpen, setModalOpen] = useState(false);
   const [editando, setEditando] = useState<UsuarioSinHash | null>(null);
   const [cambiandoPassword, setCambiandoPassword] = useState<UsuarioSinHash | null>(null);
@@ -127,8 +138,8 @@ export default function UsuariosApp({
         )}
       </div>
 
-      {modalOpen && <NuevoUsuarioModal onClose={() => setModalOpen(false)} />}
-      {editando && <EditarUsuarioModal usuario={editando} onClose={() => setEditando(null)} />}
+      {modalOpen && <NuevoUsuarioModal marcas={marcas} onClose={() => setModalOpen(false)} />}
+      {editando && <EditarUsuarioModal usuario={editando} marcas={marcas} onClose={() => setEditando(null)} />}
       {cambiandoPassword && (
         <CambiarPasswordModal usuario={cambiandoPassword} onClose={() => setCambiandoPassword(null)} />
       )}
@@ -318,9 +329,20 @@ function SelectorAreasAcceso({ usuario, areas }: { usuario: UsuarioSinHash; area
   );
 }
 
-function EditarUsuarioModal({ usuario, onClose }: { usuario: UsuarioSinHash; onClose: () => void }) {
+function EditarUsuarioModal({
+  usuario,
+  marcas,
+  onClose,
+}: {
+  usuario: UsuarioSinHash;
+  marcas: Marca[];
+  onClose: () => void;
+}) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  // El selector de marca solo aparece con el rol "marca" — se sigue en vivo
+  // para que salga al elegirlo, sin guardar y reabrir.
+  const [rolEditado, setRolEditado] = useState(usuario.rol ?? "operativo");
 
   function handleSubmit(formData: FormData) {
     setError(null);
@@ -378,16 +400,45 @@ function EditarUsuarioModal({ usuario, onClose }: { usuario: UsuarioSinHash; onC
             <select
               id="edit-rol"
               name="rol"
-              defaultValue={usuario.rol ?? "operativo"}
+              value={rolEditado}
+              onChange={(e) => setRolEditado(e.target.value)}
               className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
             >
               <option value="admin">Dueño (acceso total)</option>
               <option value="operativo">Operativo — Persona/Áreas se manejan en "Permisos"</option>
+              <option value="marca">Marca — solo entra al portal de su marca</option>
             </select>
             <p className="text-xs text-amber-600 mt-1">
               Ojo si te estás editando a vos mismo: si te sacás "Dueño", perdés el acceso total al toque.
             </p>
           </div>
+
+          {rolEditado === "marca" && (
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="edit-id_marca">
+                ¿De qué marca es?
+              </label>
+              <select
+                id="edit-id_marca"
+                name="id_marca"
+                required
+                defaultValue={usuario.id_marca ?? ""}
+                className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+              >
+                <option value="" disabled>
+                  Elegí una marca…
+                </option>
+                {marcas.map((m) => (
+                  <option key={m.id_marca} value={m.id_marca}>
+                    {m.nombre}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-neutral-400 mt-1">
+                Solo va a ver los datos de esa marca. No entra al sistema.
+              </p>
+            </div>
+          )}
 
           {error && (
             <p className="text-sm text-red-600" role="alert">
@@ -417,9 +468,10 @@ function EditarUsuarioModal({ usuario, onClose }: { usuario: UsuarioSinHash; onC
   );
 }
 
-function NuevoUsuarioModal({ onClose }: { onClose: () => void }) {
+function NuevoUsuarioModal({ marcas, onClose }: { marcas: Marca[]; onClose: () => void }) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [rolNuevo, setRolNuevo] = useState("operativo");
 
   function handleSubmit(formData: FormData) {
     setError(null);
@@ -475,13 +527,42 @@ function NuevoUsuarioModal({ onClose }: { onClose: () => void }) {
             <select
               id="rol"
               name="rol"
-              defaultValue="operativo"
+              value={rolNuevo}
+              onChange={(e) => setRolNuevo(e.target.value)}
               className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
             >
               <option value="admin">Dueño (acceso total)</option>
               <option value="operativo">Operativo — le asignás Áreas después</option>
+              <option value="marca">Marca — solo entra al portal de su marca</option>
             </select>
           </div>
+
+          {rolNuevo === "marca" && (
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="id_marca">
+                ¿De qué marca es?
+              </label>
+              <select
+                id="id_marca"
+                name="id_marca"
+                required
+                defaultValue=""
+                className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+              >
+                <option value="" disabled>
+                  Elegí una marca…
+                </option>
+                {marcas.map((m) => (
+                  <option key={m.id_marca} value={m.id_marca}>
+                    {m.nombre}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-neutral-400 mt-1">
+                Solo va a ver los datos de esa marca. No entra al sistema.
+              </p>
+            </div>
+          )}
           <div>
             <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="password">
               Contraseña
