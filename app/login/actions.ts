@@ -54,6 +54,11 @@ export async function login(_prevState: { error?: string } | undefined, formData
     maxAge: 60 * 60 * 24 * 30, // 30 días
   });
 
+  // Cada rol a su casa. El usuario de una marca no ve el sistema interno, así
+  // que no tiene sentido mandarlo a "/" ni respetar un ?next= que apunte
+  // adentro: de ahí lo rebotaría el layout igual.
+  if (usuario.rol === "marca") redirect("/portal");
+
   redirect(next && next.startsWith("/") ? next : "/");
 }
 

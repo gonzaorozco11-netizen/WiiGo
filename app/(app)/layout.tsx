@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 import { logout } from "@/app/login/actions";
 import { obtenerSesionConPantallas } from "@/lib/roles";
@@ -11,6 +12,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
   const session = await readSessionToken(token, process.env.AUTH_SECRET ?? "");
+
+  // Los usuarios de marca no entran acá bajo ningún concepto: este árbol es
+  // el sistema interno (caja, costos, sueldos, todas las marcas). Se los
+  // manda a su portal. Es la contracara del control que hace el layout de
+  // /portal, que sí exige rol "marca" — cada lado cierra su puerta.
+  if (session?.rol === "marca") redirect("/portal");
   // Se busca fresco en la base (no en la cookie) para que un rol nuevo o
   // recién cambiado pegue al toque, sin esperar a que la persona reloguee.
   const sesionConPantallas = await obtenerSesionConPantallas();

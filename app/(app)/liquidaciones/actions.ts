@@ -6,6 +6,7 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 import { registrarMovimientoRetencion, saldosRetencionPorMarca, historialRetencionMarca } from "@/lib/retencionesMarca";
+import { obtenerSesionMarca } from "@/lib/marcaSesion";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 async function usuarioActual() {
@@ -255,6 +256,16 @@ export async function construirLineas(supabase: SupabaseClient, idMarca: string,
 // fechas, solo sobre ventas ya pagadas y todavía no incluidas en una
 // liquidación cerrada (ventas.id_liquidacion IS NULL).
 export async function calcularRendicion(idMarca: string, desde: string, hasta: string) {
+  // Un archivo "use server" expone cada función como un endpoint POST: quien
+  // esté logueado puede llamarla con el idMarca que se le ocurra. Mientras
+  // esto lo usaba solo el admin no importaba, pero desde que las marcas
+  // tienen usuario propio (ver lib/marcaSesion.ts) sin este control una
+  // marca podría pedir la rendición de otra pasando su id.
+  const sesionMarca = await obtenerSesionMarca();
+  if (sesionMarca && sesionMarca.idMarca !== idMarca) {
+    throw new Error("No tenés acceso a los datos de esa marca");
+  }
+
   const supabase = getSupabaseServerClient();
 
   const { data: detalle, error: errorDetalle } = await supabase
