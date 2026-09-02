@@ -611,9 +611,12 @@ html, body { margin: 0; padding: 0; height: 100%; background: #fafafa; }
 /* ---------- Paso del DNI para la factura ----------
    Pantalla completa y no un modal: es obligatoria, y un modal invita a
    buscarle la cruz para cerrarlo.
-   Ojo con el WebView 83: `gap` acá se usa solo dentro de grid (soportado
-   desde Chrome 66); en flexbox no anda hasta la 84, por eso los márgenes
-   del pie van a mano. */
+   Ojo con el WebView 83: la propiedad gap acá se usa solo dentro de grid
+   (soportada desde Chrome 66); en flexbox no anda hasta la 84, por eso los
+   márgenes del pie van a mano.
+   Y nada de comillas invertidas en estos comentarios: todo este CSS vive
+   dentro de un template literal de JavaScript y una comilla invertida le
+   cierra el string a la mitad. */
 .sc-dni {
   flex: 1 1 auto;
   overflow-y: auto;
