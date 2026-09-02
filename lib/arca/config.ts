@@ -43,8 +43,8 @@ export async function obtenerConfigArca(): Promise<ConfigArca> {
 }
 
 /**
- * ¿Esta venta se factura sola? Se consulta al confirmar el cobro. Si devuelve
- * false, la venta queda sin factura y se puede emitir a mano después.
+ * ¿Esta venta se factura sola? Se consulta al acreditarse el cobro. Si
+ * devuelve false, la venta queda sin factura y se emite a mano desde Ventas.
  */
 export async function debeFacturarseAutomatico(medioPago: string): Promise<boolean> {
   const config = await obtenerConfigArca();
@@ -52,4 +52,28 @@ export async function debeFacturarseAutomatico(medioPago: string): Promise<boole
   if (medioPago === "EFECTIVO") return config.autoEfectivo;
   if (medioPago === "MERCADO_PAGO") return config.autoMercadoPago;
   return false;
+}
+
+/**
+ * Factura una venta recién cobrada, si la configuración lo pide.
+ *
+ * NUNCA tira error: si ARCA está caído o rechaza, la venta ya está cobrada y
+ * cerrada, y no puede deshacerse por un problema de facturación. La venta
+ * queda sin CAE y aparece en Ventas → "Pendientes de facturar" para emitirla
+ * después. Sin esto, una caída de ARCA (que pasa seguido) dejaría al local
+ * sin poder cobrar.
+ */
+export async function facturarAlAcreditarse(idVenta: string, medioPago: string, dniCliente?: string | null) {
+  try {
+    if (!(await debeFacturarseAutomatico(medioPago))) return;
+    // Import diferido para no arrastrar node-forge y todo el cliente de ARCA
+    // en las ventas que no se facturan solas.
+    const { emitirFacturaParaVenta } = await import("@/lib/arca/emitir");
+    await emitirFacturaParaVenta(idVenta, {
+      tipo: dniCliente && dniCliente.trim() ? "DNI" : "CONSUMIDOR_FINAL",
+      numero: dniCliente?.trim() ?? "0",
+    });
+  } catch {
+    // Silencio a propósito: la venta ya está cobrada y no se toca.
+  }
 }

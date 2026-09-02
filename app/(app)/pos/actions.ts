@@ -6,6 +6,7 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 import { turnoAbiertoDeLocal } from "@/app/(app)/turnos/actions";
+import { facturarAlAcreditarse } from "@/lib/arca/config";
 import {
   calcularBeneficioReferido,
   resolverCodigoProfesional,
@@ -470,8 +471,19 @@ export async function venderPos(
       .eq("id_cliente", idCliente);
   }
 
+  // La venta del POS se cobra en el acto, así que se factura acá mismo. Si
+  // ARCA falla no pasa nada: la venta queda cobrada y aparece en Ventas como
+  // pendiente de facturar (ver lib/arca/config.ts).
+  {
+    const { data: clienteFactura } = idCliente
+      ? await supabase.from("clientes").select("dni").eq("id_cliente", idCliente).maybeSingle()
+      : { data: null };
+    await facturarAlAcreditarse(venta.id_venta as string, "EFECTIVO", clienteFactura?.dni ?? null);
+  }
+
   revalidatePath("/pos");
   revalidatePath("/stock");
+  revalidatePath("/ventas");
 
     return { error: null, venta: { numero: venta.numero as number, total, vuelto, puntosGenerados } };
   } catch (err) {

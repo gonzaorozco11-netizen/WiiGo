@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos";
 import { obtenerConfigArca } from "@/lib/arca/config";
-import { emitirFactura, guardarFacturaEnVenta, TIPO_COMPROBANTE, TIPO_DOC } from "@/lib/arca/wsfe";
+import { TIPO_COMPROBANTE } from "@/lib/arca/wsfe";
+import { emitirFacturaParaVenta, type DatosReceptor } from "@/lib/arca/emitir";
 import { generarParClaves, leerDatosCertificado, estadoCredenciales } from "@/lib/arca/credenciales";
 import { obtenerEmisor } from "@/lib/arca/emisor-db";
 import { cifrar } from "@/lib/arca/cripto";
@@ -16,19 +17,14 @@ import { cifrar } from "@/lib/arca/cripto";
 
 async function requireFacturar(): Promise<string | null> {
   const sesion = await obtenerSesionConPermisos();
-  // Emitir una factura es un acto fiscal irreversible: se exige el mismo
-  // permiso que para tocar la Configuración, no un permiso operativo.
-  if (!tienePermiso(sesion, PERMISOS.EDITAR_CONFIGURACION)) {
+  // Permiso propio y no el de Configuración: emitir una factura es un acto
+  // fiscal irreversible, y se puede querer dárselo a quien factura sin darle
+  // acceso a todos los parámetros del sistema. Los admin lo tienen siempre.
+  if (!tienePermiso(sesion, PERMISOS.EMITIR_FACTURAS)) {
     return "No tenés permiso para emitir facturas.";
   }
   return null;
 }
-
-export type DatosReceptor = {
-  /** "CONSUMIDOR_FINAL" | "DNI" | "CUIT" */
-  tipo: string;
-  numero: string;
-};
 
 export async function emitirFacturaDeVenta(
   idVenta: string,
@@ -38,53 +34,12 @@ export async function emitirFacturaDeVenta(
   if (permisoError) return { error: permisoError };
 
   try {
-    const supabase = getSupabaseServerClient();
-    const config = await obtenerConfigArca();
-    if (!config.habilitado) {
-      return { error: "La facturación electrónica está apagada. Activala en Configuración → ARCA." };
-    }
-
-    const { data: venta } = await supabase
-      .from("ventas")
-      .select("id_venta, total, estado, cae")
-      .eq("id_venta", idVenta)
-      .maybeSingle();
-    if (!venta) return { error: "No se encontró la venta" };
-    if (venta.cae) return { error: "Esta venta ya tiene factura emitida." };
-    if (venta.estado !== "PAGADA") return { error: "Solo se factura una venta ya pagada." };
-    if (!venta.total || (venta.total as number) <= 0) return { error: "La venta no tiene importe para facturar." };
-
-    // Factura A solo si el cliente es Responsable Inscripto y da su CUIT.
-    // Para todo lo demás (consumidor final, con o sin DNI) va Factura B.
-    const esCuit = receptor.tipo === "CUIT" && receptor.numero.replace(/\D/g, "").length === 11;
-    const tipoComprobante = esCuit ? TIPO_COMPROBANTE.FACTURA_A : TIPO_COMPROBANTE.FACTURA_B;
-    const tipoDoc = esCuit
-      ? TIPO_DOC.CUIT
-      : receptor.tipo === "DNI" && receptor.numero.replace(/\D/g, "").length >= 7
-        ? TIPO_DOC.DNI
-        : TIPO_DOC.CONSUMIDOR_FINAL;
-    const nroDoc = tipoDoc === TIPO_DOC.CONSUMIDOR_FINAL ? "0" : receptor.numero;
-
-    // ARCA exige identificar al comprador cuando la Factura B supera cierto
-    // importe. El tope lo fija ARCA y cambia con el tiempo, así que en vez de
-    // hardcodearlo se avisa y se deja que ARCA rechace si corresponde.
-    const resultado = await emitirFactura({
-      tipoComprobante,
-      puntoVenta: config.puntoVenta,
-      tipoDoc,
-      nroDoc,
-      total: venta.total as number,
-      porcentajeIva: config.ivaPorcentaje,
-    });
-
-    await guardarFacturaEnVenta(idVenta, resultado);
+    const resultado = await emitirFacturaParaVenta(idVenta, receptor);
+    if (resultado.error) return resultado;
 
     revalidatePath("/ventas");
     revalidatePath("/cobros-efectivo");
-    return {
-      error: null,
-      numero: `${String(resultado.puntoVenta).padStart(5, "0")}-${String(resultado.numeroComprobante).padStart(8, "0")}`,
-    };
+    return resultado;
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo emitir la factura" };
   }

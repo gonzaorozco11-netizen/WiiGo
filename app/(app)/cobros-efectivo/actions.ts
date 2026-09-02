@@ -9,6 +9,7 @@ import { turnoAbiertoDeLocal } from "@/app/(app)/turnos/actions";
 import { calcularBeneficioReferido, registrarReferido, puntosExtraPorMonto } from "@/lib/referidosProfesionales";
 import { registrarCanje, esProfesionalActivo } from "@/lib/canjesProfesionales";
 import { calcularCanjePuntos, aplicarCanjePuntos } from "@/lib/puntosWiigo";
+import { facturarAlAcreditarse } from "@/lib/arca/config";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 async function usuarioActual() {
@@ -316,8 +317,19 @@ export async function confirmarCobro(
       .eq("id_cliente", venta.id_cliente);
   }
 
+  // Recién acá se factura: el cobro ya está acreditado. Nunca tira error —
+  // si ARCA falla, la venta queda cobrada igual y aparece en Ventas como
+  // pendiente de facturar (ver lib/arca/config.ts).
+  {
+    const { data: clienteFactura } = venta.id_cliente
+      ? await supabase.from("clientes").select("dni").eq("id_cliente", venta.id_cliente).maybeSingle()
+      : { data: null };
+    await facturarAlAcreditarse(idVenta, venta.medio_pago as string, clienteFactura?.dni ?? null);
+  }
+
     revalidatePath("/cobros-efectivo");
     revalidatePath("/clientes");
+    revalidatePath("/ventas");
     return { error: null };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo confirmar el cobro" };

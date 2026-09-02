@@ -7,6 +7,7 @@ export const PERMISOS = {
   GESTIONAR_NOMINA: "gestionar_nomina",
   AUTORIZAR_GASTOS_SIN_LIMITE: "autorizar_gastos_sin_limite",
   EDITAR_CONFIGURACION: "editar_configuracion",
+  EMITIR_FACTURAS: "emitir_facturas",
 } as const;
 
 export type Permiso = (typeof PERMISOS)[keyof typeof PERMISOS];
@@ -31,5 +32,11 @@ export const PERMISOS_DISPONIBLES: { clave: Permiso; label: string; descripcion:
     clave: PERMISOS.EDITAR_CONFIGURACION,
     label: "Editar Configuración",
     descripcion: "Tasas de IVA/IIBB, comisiones de Mercado Pago, reglas de puntos, tope de gastos.",
+  },
+  {
+    clave: PERMISOS.EMITIR_FACTURAS,
+    label: "Emitir facturas",
+    descripcion:
+      "Facturar ventas ante ARCA. Va aparte de Configuración para poder dárselo a quien factura sin darle acceso a todo lo demás.",
   },
 ];
