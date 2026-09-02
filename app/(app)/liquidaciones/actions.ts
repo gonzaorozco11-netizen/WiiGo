@@ -6,7 +6,7 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 import { registrarMovimientoRetencion, saldosRetencionPorMarca, historialRetencionMarca } from "@/lib/retencionesMarca";
-import { obtenerSesionMarca } from "@/lib/marcaSesion";
+import { obtenerSesionMarca, exigirLecturaDeMarca, exigirGestionInterna } from "@/lib/marcaSesion";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 async function usuarioActual() {
@@ -404,6 +404,7 @@ export async function marcarComoLiquidada(
 }
 
 export async function historialLiquidaciones(idMarca: string) {
+  await exigirLecturaDeMarca(idMarca);
   const supabase = getSupabaseServerClient();
   const { data, error } = await supabase
     .from("liquidaciones")
@@ -448,11 +449,13 @@ export async function subirComprobante(idLiquidacion: string, formData: FormData
 // WiiGo, es lo retenido preventivamente a esta marca pendiente de
 // compensar o devolver.
 export async function saldosRetencionMarcaAction(idMarca: string) {
+  await exigirLecturaDeMarca(idMarca);
   const supabase = getSupabaseServerClient();
   return saldosRetencionPorMarca(supabase, idMarca);
 }
 
 export async function historialRetencionMarcaAction(idMarca: string) {
+  await exigirLecturaDeMarca(idMarca);
   const supabase = getSupabaseServerClient();
   const movimientos = await historialRetencionMarca(supabase, idMarca);
   return movimientos.map((m) => ({

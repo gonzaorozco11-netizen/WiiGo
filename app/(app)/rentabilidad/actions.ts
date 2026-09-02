@@ -3,6 +3,7 @@
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { calcularRendicion } from "@/app/(app)/liquidaciones/actions";
+import { exigirGestionInterna } from "@/lib/marcaSesion";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 // Coincide con `pagos.forma_pago_cliente` (ver cobros-efectivo/actions.ts)
@@ -113,6 +114,7 @@ function redondear2(valor: number) {
 // financieros de cobro + el costo impositivo directo (IIBB) — lo que
 // queda es la contribución marginal de esa venta.
 export async function calcularRentabilidad(idMarca: string, desde: string, hasta: string) {
+  await exigirGestionInterna();
   const supabase = getSupabaseServerClient();
   const tasas = await tasasRentabilidad(supabase);
 

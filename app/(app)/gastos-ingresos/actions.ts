@@ -6,6 +6,7 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
+import { exigirGestionInterna } from "@/lib/marcaSesion";
 import { registrarMovimientoComercial, anularMovimientoComercial, type TipoCargoComercial } from "@/lib/cuentaComercialMarca";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -397,6 +398,7 @@ export async function contarIngresosPorCategoria(): Promise<{ porCategoria: Reco
 // WiiGo, eso pasa después y por separado, cuando la marca paga (ver
 // registrarPagoComercial en situacion-marca/actions.ts, que sigue igual).
 export async function registrarCargoMarcaUnico(idMarca: string, formData: FormData): Promise<{ error: string | null }> {
+  await exigirGestionInterna();
   const permisoError = await requireAdmin();
   if (permisoError) return { error: permisoError };
 
@@ -452,6 +454,7 @@ export async function listarCargosRecurrentesMarca() {
 }
 
 export async function crearCargoRecurrenteMarca(idMarca: string, formData: FormData): Promise<{ error: string | null }> {
+  await exigirGestionInterna();
   const permisoError = await requireAdmin();
   if (permisoError) return { error: permisoError };
 

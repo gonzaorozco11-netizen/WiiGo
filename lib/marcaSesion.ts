@@ -93,3 +93,52 @@ export const ETIQUETA_PLAN: Record<PlanMarca, string> = {
   METAL: "Metal",
   GOLD: "Gold",
 };
+
+// ===================== CONTROLES DE ACCESO =====================
+//
+// Todo archivo con "use server" convierte cada función exportada en un
+// endpoint POST: quien esté logueado puede llamarla con los parámetros que
+// quiera. Mientras al sistema solo entraban el dueño y los empleados eso no
+// importaba, pero desde que las marcas tienen usuario propio, una función que
+// recibe `idMarca` sin controlar nada es la puerta para que una marca lea —o
+// peor, escriba— los datos de otra.
+//
+// Estos dos guardas van al principio de esas funciones. Tiran error en vez de
+// devolver vacío: un acceso indebido tiene que fallar fuerte y visible, no
+// pasar desapercibido.
+
+/** ¿Quién está logueado? Sirve para distinguir marca de usuario interno. */
+async function rolActual(): Promise<{ hay: boolean; esMarca: boolean }> {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(SESSION_COOKIE)?.value;
+  const sesion = await readSessionToken(token, process.env.AUTH_SECRET ?? "");
+  if (!sesion) return { hay: false, esMarca: false };
+  return { hay: true, esMarca: sesion.rol === "marca" };
+}
+
+/**
+ * Lectura de datos de una marca: la propia si es un usuario de marca,
+ * cualquiera si es del equipo de WiiGo.
+ */
+export async function exigirLecturaDeMarca(idMarca: string): Promise<void> {
+  const sesionMarca = await obtenerSesionMarca();
+  if (sesionMarca) {
+    if (sesionMarca.idMarca !== idMarca) {
+      throw new Error("No tenés acceso a los datos de esa marca");
+    }
+    return;
+  }
+  const { hay } = await rolActual();
+  if (!hay) throw new Error("Sesión no válida");
+}
+
+/**
+ * Operaciones que solo hace el equipo de WiiGo: registrar pagos, fees,
+ * cargos, compensaciones, cerrar liquidaciones. Ninguna marca las ejecuta,
+ * ni sobre sus propios datos.
+ */
+export async function exigirGestionInterna(): Promise<void> {
+  const { hay, esMarca } = await rolActual();
+  if (!hay) throw new Error("Sesión no válida");
+  if (esMarca) throw new Error("Esta operación es del equipo de WiiGo");
+}

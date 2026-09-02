@@ -7,6 +7,7 @@ import { friendlyDbError } from "@/lib/errors";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 import { saldoCuentaComercial, historialCuentaComercial, registrarMovimientoComercial } from "@/lib/cuentaComercialMarca";
 import { saldosRetencionPorMarca } from "@/lib/retencionesMarca";
+import { exigirLecturaDeMarca, exigirGestionInterna } from "@/lib/marcaSesion";
 import {
   type CuentaMarca,
   historialCompensaciones,
@@ -50,6 +51,7 @@ function number(formData: FormData, name: string) {
 // ===================== VENTAS DEL PERÍODO =====================
 
 export async function resumenVentasMarca(idMarca: string) {
+  await exigirLecturaDeMarca(idMarca);
   const supabase = getSupabaseServerClient();
   const inicioMes = new Date();
   inicioMes.setDate(1);
@@ -84,6 +86,7 @@ export async function resumenVentasMarca(idMarca: string) {
 // ===================== FEE DE INGRESO =====================
 
 export async function listarFeesIngreso(idMarca: string) {
+  await exigirLecturaDeMarca(idMarca);
   const supabase = getSupabaseServerClient();
   const { data, error } = await supabase
     .from("fees_ingreso_marca")
@@ -95,6 +98,7 @@ export async function listarFeesIngreso(idMarca: string) {
 }
 
 export async function registrarFeeIngreso(idMarca: string, formData: FormData): Promise<{ error: string | null }> {
+  await exigirGestionInterna();
   const permisoError = await requireAdmin();
   if (permisoError) return { error: permisoError };
 
@@ -139,6 +143,7 @@ export async function registrarFeeIngreso(idMarca: string, formData: FormData): 
 }
 
 export async function marcarFeePagado(idFee: string, idMarca: string, formData: FormData): Promise<{ error: string | null }> {
+  await exigirGestionInterna();
   const permisoError = await requireAdmin();
   if (permisoError) return { error: permisoError };
 
@@ -187,6 +192,7 @@ export async function marcarFeePagado(idFee: string, idMarca: string, formData: 
 // efectivo, etc.) sin atarlo a un fee puntual — o para cargar algo puntual
 // que no encaja en fee/gasto fijo (una promoción, un servicio).
 export async function registrarPagoComercial(idMarca: string, formData: FormData): Promise<{ error: string | null }> {
+  await exigirGestionInterna();
   const permisoError = await requireAdmin();
   if (permisoError) return { error: permisoError };
 
@@ -213,11 +219,13 @@ export async function registrarPagoComercial(idMarca: string, formData: FormData
 // ===================== LECTURA (cuenta comercial + retenciones) =====================
 
 export async function saldoComercialAction(idMarca: string) {
+  await exigirLecturaDeMarca(idMarca);
   const supabase = getSupabaseServerClient();
   return saldoCuentaComercial(supabase, idMarca);
 }
 
 export async function historialComercialAction(idMarca: string) {
+  await exigirLecturaDeMarca(idMarca);
   const supabase = getSupabaseServerClient();
   const movimientos = await historialCuentaComercial(supabase, idMarca);
   return movimientos.map((m) => ({
@@ -238,6 +246,7 @@ export async function historialComercialAction(idMarca: string) {
 // todavía no se liquidó (calcularRendicion) más lo ya liquidado pero sin
 // comprobante subido, menos lo que ya se compensó contra esta cuenta.
 export async function saldoLiquidacionesPendiente(idMarca: string) {
+  await exigirLecturaDeMarca(idMarca);
   const supabase = getSupabaseServerClient();
   const hoy = new Date().toISOString().slice(0, 10);
   const [rendicion, historial, compensado] = await Promise.all([
@@ -260,6 +269,7 @@ async function saldoDeCuenta(idMarca: string, cuenta: CuentaMarca): Promise<numb
 }
 
 export async function saldosCuentasAction(idMarca: string) {
+  await exigirLecturaDeMarca(idMarca);
   const [liquidaciones, comercial, retenciones] = await Promise.all([
     saldoDeCuenta(idMarca, "LIQUIDACIONES"),
     saldoDeCuenta(idMarca, "COMERCIAL"),
@@ -269,6 +279,7 @@ export async function saldosCuentasAction(idMarca: string) {
 }
 
 export async function historialCompensacionesAction(idMarca: string) {
+  await exigirLecturaDeMarca(idMarca);
   const supabase = getSupabaseServerClient();
   const rows = await historialCompensaciones(supabase, idMarca);
   return rows.map((r) => ({
@@ -285,6 +296,7 @@ export async function historialCompensacionesAction(idMarca: string) {
 // Nunca confía en el monto máximo que mandó el cliente — lo recalcula acá
 // a partir del saldo real de las dos cuentas elegidas, en el momento.
 export async function registrarCompensacionAction(idMarca: string, formData: FormData): Promise<{ error: string | null }> {
+  await exigirGestionInterna();
   const permisoError = await requireAdmin();
   if (permisoError) return { error: permisoError };
 

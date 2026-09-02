@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
+import { exigirGestionInterna } from "@/lib/marcaSesion";
 
 // Crear/editar/eliminar una marca (o subirle el logo) es solo para el Dueño
 // — acá se cargan el royalty, IVA y qué impuestos se le trasladan, así que
@@ -156,6 +157,7 @@ function subcategoriaFromForm(formData: FormData) {
 }
 
 export async function createSubcategoria(idMarca: string, formData: FormData): Promise<{ error: string | null }> {
+  await exigirGestionInterna();
   try {
     const data = subcategoriaFromForm(formData);
     if (!data.nombre) return { error: "El nombre es obligatorio" };
