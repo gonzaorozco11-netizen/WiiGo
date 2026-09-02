@@ -45,6 +45,9 @@ function marcaFromForm(formData: FormData) {
     email: text(formData, "email"),
     direccion: text(formData, "direccion"),
     fee_ingreso: number(formData, "fee_ingreso"),
+    // Plan del portal de marcas (ver lib/marcaSesion.ts). Define qué ve la
+    // marca cuando entra, no cambia sus condiciones comerciales.
+    plan: text(formData, "plan") ?? "BRONCE",
     royalty_porcentaje: number(formData, "royalty_porcentaje"),
     fecha_ingreso: text(formData, "fecha_ingreso"),
     estado: text(formData, "estado") ?? "ACTIVA",

@@ -97,6 +97,7 @@ export default function MarcasApp({ initialMarcas, esAdmin }: { initialMarcas: M
                   {m.contacto && <span>{m.contacto}</span>}
                   {m.email && <span>{m.email}</span>}
                   {m.royalty_porcentaje !== null && <span>Royalty {m.royalty_porcentaje}%</span>}
+                  <span className="text-neutral-400">Plan {m.plan ?? "BRONCE"}</span>
                 </div>
               </div>
               <div className="flex gap-3 shrink-0">

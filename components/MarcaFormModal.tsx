@@ -133,6 +133,27 @@ export default function MarcaFormModal({
           {tipoComercializacion === "CONSIGNACION" && (
           <>
           <Section title="Condiciones comerciales">
+            {/* El plan define qué ve la marca en su portal. El royalty sigue
+                siendo el de abajo: el plan no lo pisa, para no cambiarle las
+                condiciones a una marca sin querer al moverla de plan. */}
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="plan">
+                Plan del portal
+              </label>
+              <select
+                id="plan"
+                name="plan"
+                defaultValue={marca?.plan ?? "BRONCE"}
+                className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+              >
+                <option value="BRONCE">Bronce — sus ventas, su stock y sus liquidaciones</option>
+                <option value="METAL">Metal — además, ranking de productos y alertas de stock</option>
+                <option value="GOLD">Gold — además, comparativas, proyección y benchmark</option>
+              </select>
+              <p className="text-xs text-neutral-400 mt-1">
+                Lo que la marca ve al entrar a su portal. El royalty y el abono se cargan aparte.
+              </p>
+            </div>
             <Field
               label="Fee de ingreso"
               name="fee_ingreso"

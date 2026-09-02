@@ -105,6 +105,10 @@ export type Marca = {
   imp_debitos_porcentaje: number | null;
   trasladar_imp_debitos: boolean;
   frecuencia_liquidacion: string | null;
+  // Plan del portal de marcas: BRONCE | METAL | GOLD. Define qué ve la marca
+  // cuando entra a su tablero — ver lib/marcaSesion.ts.
+  plan: string | null;
+  plan_desde: string | null;
 };
 
 export type Subcategoria = {
