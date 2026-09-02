@@ -99,7 +99,9 @@ export async function generarParClaves(razonSocial: string, cuit: string, alias:
 /** Lee del certificado el CUIT y la fecha de vencimiento, para mostrarlos. */
 export function leerDatosCertificado(certificadoPem: string) {
   const cert = forge.pki.certificateFromPem(certificadoPem);
-  const serialNumber = cert.subject.getField({ shortName: "serialNumber" })?.value as string | undefined;
+  // Igual que al armar el CSR: serialNumber va por su código (OID 2.5.4.5),
+  // node-forge no lo encuentra por nombre.
+  const serialNumber = cert.subject.getField({ type: "2.5.4.5" })?.value as string | undefined;
   const commonName = cert.subject.getField("CN")?.value as string | undefined;
   return {
     cuit: serialNumber ? serialNumber.replace(/\D/g, "") : null,

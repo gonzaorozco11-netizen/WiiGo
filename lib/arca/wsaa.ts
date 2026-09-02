@@ -83,12 +83,18 @@ async function pedirTicketNuevo(): Promise<TicketAcceso> {
   </soapenv:Body>
 </soapenv:Envelope>`;
 
-  const res = await fetch(URLS_ARCA.wsaa, {
-    method: "POST",
-    headers: { "Content-Type": "text/xml; charset=utf-8", SOAPAction: "" },
-    body: sobre,
-    cache: "no-store",
-  });
+  let res: Response;
+  try {
+    res = await fetch(URLS_ARCA.wsaa, {
+      method: "POST",
+      headers: { "Content-Type": "text/xml; charset=utf-8", SOAPAction: "" },
+      body: sobre,
+      cache: "no-store",
+    });
+  } catch (err) {
+    const causa = err instanceof Error && err.cause ? ` (${String(err.cause)})` : "";
+    throw new Error(`No se pudo conectar con ARCA para autenticar${causa}. Probá de nuevo en unos minutos.`);
+  }
 
   const texto = await res.text();
 

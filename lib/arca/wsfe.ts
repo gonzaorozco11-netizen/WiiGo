@@ -72,9 +72,12 @@ async function llamarWsfe(accion: string, cuerpo: string) {
   // es siempre el de la empresa, que autorizó a ese certificado en ARCA.
   const emisor = await obtenerEmisor();
 
+  // SOAP 1.1 (text/xml + SOAPAction): es lo que espera wsfev1. Con SOAP 1.2
+  // la llamada ni siquiera llega a procesarse.
   const sobre = `<?xml version="1.0" encoding="UTF-8"?>
-<soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope" xmlns:ar="http://ar.gov.afip.dif.FEV1/">
-  <soap:Body>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ar="http://ar.gov.afip.dif.FEV1/">
+  <soapenv:Header/>
+  <soapenv:Body>
     <ar:${accion}>
       <ar:Auth>
         <ar:Token>${ticket.token}</ar:Token>
@@ -83,15 +86,26 @@ async function llamarWsfe(accion: string, cuerpo: string) {
       </ar:Auth>
       ${cuerpo}
     </ar:${accion}>
-  </soap:Body>
-</soap:Envelope>`;
+  </soapenv:Body>
+</soapenv:Envelope>`;
 
-  const res = await fetch(URLS_ARCA.wsfe, {
-    method: "POST",
-    headers: { "Content-Type": "application/soap+xml; charset=utf-8" },
-    body: sobre,
-    cache: "no-store",
-  });
+  let res: Response;
+  try {
+    res = await fetch(URLS_ARCA.wsfe, {
+      method: "POST",
+      headers: {
+        "Content-Type": "text/xml; charset=utf-8",
+        SOAPAction: `http://ar.gov.afip.dif.FEV1/${accion}`,
+      },
+      body: sobre,
+      cache: "no-store",
+    });
+  } catch (err) {
+    // "fetch failed" a secas no dice nada; el motivo real viene en `cause`.
+    const causa = err instanceof Error && err.cause ? ` (${String(err.cause)})` : "";
+    throw new Error(`No se pudo conectar con ARCA${causa}. Puede ser una caída momentánea del servicio: probá de nuevo en unos minutos.`);
+  }
+
   const texto = await res.text();
 
   const falla = entre(texto, "faultstring") ?? entre(texto, "soap:Text");
