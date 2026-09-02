@@ -14,7 +14,7 @@
 //      al dominio de producción (tu dominio propio si lo tenés). No hay que
 //      configurar nada.
 //   3. El origin del request, como último recurso (desarrollo local).
-export function baseUrlPublica(origenDelRequest: string): string {
+export function baseUrlPublica(origenDelRequest = ""): string {
   const manual = process.env.APP_URL?.trim();
   if (manual) return manual.replace(/\/+$/, "");
 

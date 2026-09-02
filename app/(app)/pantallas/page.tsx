@@ -2,6 +2,7 @@ import { getSupabaseServerClient, type Local } from "@/lib/supabase";
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import PantallaBloqueada from "@/components/PantallaBloqueada";
 import PantallasApp from "@/components/PantallasApp";
+import { baseUrlPublica } from "@/lib/urlPublica";
 
 export const dynamic = "force-dynamic";
 
@@ -25,5 +26,9 @@ export default async function PantallasPage() {
     );
   }
 
-  return <PantallasApp locales={(data ?? []) as Local[]} />;
+  // El dominio bueno, no aquel por el que se entró: si alguien abre el
+  // sistema por la URL interna de un deploy de Vercel, el totem heredaba esa
+  // URL y el QR del comprobante terminaba mandando al cliente a la pantalla
+  // de login de Vercel. Ver lib/urlPublica.ts.
+  return <PantallasApp locales={(data ?? []) as Local[]} baseUrl={baseUrlPublica()} />;
 }
