@@ -4,7 +4,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
-type NavItem = { href: string; label: string };
+// `permiso` marca los ítems que NO son pantallas del catálogo general y se
+// habilitan con un permiso puntual (Caja Administración, Nómina). Los que no
+// lo llevan se filtran por el sistema de "pantallas" de siempre. Hace falta
+// distinguirlo por ítem —y no por grupo— porque Tesorería mezcla las dos
+// cosas: Caja Administración va por permiso y Gastos e Ingresos por pantalla.
+type NavItem = { href: string; label: string; permiso?: "cajaAdmin" | "nomina" };
 type NavGroup = { label: string; items: NavItem[] };
 
 // Agrupado por área de trabajo (como un sistema de gestión real) en vez de
@@ -34,7 +39,6 @@ const GROUPS: NavGroup[] = [
       { href: "/ventas", label: "Ventas" },
       { href: "/cobros-efectivo", label: "Cobros en efectivo" },
       { href: "/turnos", label: "Turnos" },
-      { href: "/gastos-ingresos", label: "Gastos e Ingresos" },
     ],
   },
   {
@@ -67,11 +71,14 @@ const GROUPS: NavGroup[] = [
   },
   {
     label: "Tesorería",
-    items: [{ href: "/tesoreria", label: "Caja Administración" }],
+    items: [
+      { href: "/gastos-ingresos", label: "Gastos e Ingresos" },
+      { href: "/tesoreria", label: "Caja Administración", permiso: "cajaAdmin" },
+    ],
   },
   {
     label: "RR.HH.",
-    items: [{ href: "/rrhh", label: "Nómina" }],
+    items: [{ href: "/rrhh", label: "Nómina", permiso: "nomina" }],
   },
   {
     label: "Local",
@@ -114,15 +121,15 @@ export default function AppNav({
   // pantallas === null: sin restricción, ve todo el menú (Dueño, o un
   // operativo sin rol asignado todavía — nunca arrancar a nadie en blanco).
   const puedeVer = (href: string) => pantallas === null || pantallas.includes(clave(href));
-  // Tesorería y RR.HH. no son pantallas del catálogo general — se filtran
-  // por los permisos puntuales que llegan desde el layout, no por "pantallas".
-  const grupos = GROUPS
-    .map((g) => {
-      if (g.label === "Tesorería") return { ...g, items: puedeVerCajaAdmin ? g.items : [] };
-      if (g.label === "RR.HH.") return { ...g, items: puedeGestionarNomina ? g.items : [] };
-      return { ...g, items: g.items.filter((i) => puedeVer(i.href)) };
-    })
-    .filter((g) => g.items.length > 0);
+  // Cada ítem se filtra por lo suyo: los marcados con `permiso` usan los
+  // permisos puntuales que llegan del layout; el resto, el sistema de
+  // pantallas. Así un grupo puede mezclar los dos tipos.
+  const puedeVerItem = (item: NavItem) => {
+    if (item.permiso === "cajaAdmin") return puedeVerCajaAdmin;
+    if (item.permiso === "nomina") return puedeGestionarNomina;
+    return puedeVer(item.href);
+  };
+  const grupos = GROUPS.map((g) => ({ ...g, items: g.items.filter(puedeVerItem) })).filter((g) => g.items.length > 0);
 
   // Cerrar el desplegable al hacer click afuera o al navegar.
   useEffect(() => {

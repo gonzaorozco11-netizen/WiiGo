@@ -532,11 +532,35 @@ function normalizarNombreCategoria(s: string) {
   return s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().trim();
 }
 
+// A qué categoría de gasto van los sueldos que genera el cierre de nómina.
+//
+// Busca entre las categorías ACTIVAS la que empiece con "sueldo", así
+// respeta cómo la haya llamado cada uno ("Sueldos", "Sueldos y cargas
+// sociales", etc.) y no rompe si se desactiva una y se deja otra. Antes
+// buscaba el nombre exacto "Sueldos" e ignoraba si estaba desactivada: los
+// gastos terminaban cayendo en una categoría que ya no se usaba.
 async function resolveCategoriaSueldos(supabase: ReturnType<typeof getSupabaseServerClient>) {
-  const { data: categorias } = await supabase.from("categorias_gasto").select("id_categoria, nombre");
-  const existente = (categorias ?? []).find((c) => normalizarNombreCategoria(c.nombre as string) === "sueldos");
-  if (existente) return existente.id_categoria as string;
-  const { data, error } = await supabase.from("categorias_gasto").insert({ nombre: "Sueldos", tipo_default: "FIJO", estado: "ACTIVA" }).select("id_categoria").single();
+  const { data: categorias } = await supabase
+    .from("categorias_gasto")
+    .select("id_categoria, nombre")
+    .eq("estado", "ACTIVA");
+
+  const activas = categorias ?? [];
+  // Preferencia: el nombre exacto "sueldos"; si no, cualquiera que arranque
+  // con "sueldo" (la más corta, para no agarrar una subcategoría rara).
+  const exacta = activas.find((c) => normalizarNombreCategoria(c.nombre as string) === "sueldos");
+  if (exacta) return exacta.id_categoria as string;
+
+  const parecidas = activas
+    .filter((c) => normalizarNombreCategoria(c.nombre as string).startsWith("sueldo"))
+    .sort((a, b) => (a.nombre as string).length - (b.nombre as string).length);
+  if (parecidas.length > 0) return parecidas[0].id_categoria as string;
+
+  const { data, error } = await supabase
+    .from("categorias_gasto")
+    .insert({ nombre: "Sueldos", tipo_default: "FIJO", estado: "ACTIVA" })
+    .select("id_categoria")
+    .single();
   if (error) throw new Error(friendlyDbError(error));
   return data.id_categoria as string;
 }
