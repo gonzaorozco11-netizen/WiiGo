@@ -36,6 +36,9 @@ export type ResultadoFactura = {
   iva: number;
   total: number;
   fecha: string;
+  /** Documento del receptor tal como se informó: el QR de ARCA lo exige. */
+  tipoDoc: number;
+  nroDoc: string;
 };
 
 function cuitSinGuiones(cuit: string) {
@@ -196,6 +199,8 @@ export async function emitirFactura(datos: DatosFactura): Promise<ResultadoFactu
     iva,
     total: datos.total,
     fecha,
+    tipoDoc: datos.tipoDoc,
+    nroDoc: cuitSinGuiones(datos.nroDoc) || "0",
   };
 }
 
@@ -221,21 +226,36 @@ export async function urlQrArca(f: ResultadoFactura, tipoDoc: number, nroDoc: st
   return `https://www.afip.gob.ar/fe/qr/?p=${base64}`;
 }
 
-/** Guarda el CAE en la venta para no volver a facturarla nunca. */
+/**
+ * Guarda el CAE en la venta para no volver a facturarla nunca.
+ *
+ * Momento crítico: ARCA ya autorizó el comprobante y no hay forma de dar
+ * marcha atrás. Si este guardado fallara, la factura existiría en ARCA y no
+ * en el sistema, y la venta volvería a aparecer como facturable. Por eso, si
+ * la base todavía no tiene las columnas del documento del receptor (se
+ * agregaron después), se reintenta sin ellas en vez de perder el CAE.
+ */
 export async function guardarFacturaEnVenta(idVenta: string, f: ResultadoFactura) {
   const supabase = getSupabaseServerClient();
-  const { error } = await supabase
+
+  const basicos = {
+    cae: f.cae,
+    cae_vencimiento: f.vencimientoCae,
+    factura_tipo: f.tipoComprobante,
+    factura_punto_venta: f.puntoVenta,
+    factura_numero: f.numeroComprobante,
+    factura_neto: f.neto,
+    factura_iva: f.iva,
+    factura_fecha: `${f.fecha.slice(0, 4)}-${f.fecha.slice(4, 6)}-${f.fecha.slice(6, 8)}`,
+  };
+
+  let { error } = await supabase
     .from("ventas")
-    .update({
-      cae: f.cae,
-      cae_vencimiento: f.vencimientoCae,
-      factura_tipo: f.tipoComprobante,
-      factura_punto_venta: f.puntoVenta,
-      factura_numero: f.numeroComprobante,
-      factura_neto: f.neto,
-      factura_iva: f.iva,
-      factura_fecha: `${f.fecha.slice(0, 4)}-${f.fecha.slice(4, 6)}-${f.fecha.slice(6, 8)}`,
-    })
+    .update({ ...basicos, factura_doc_tipo: f.tipoDoc, factura_doc_nro: f.nroDoc })
     .eq("id_venta", idVenta);
+
+  if (error) {
+    ({ error } = await supabase.from("ventas").update(basicos).eq("id_venta", idVenta));
+  }
   if (error) throw new Error(error.message);
 }

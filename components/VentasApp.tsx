@@ -82,9 +82,15 @@ function CeldaFactura({ venta, onFacturada }: { venta: Venta; onFacturada: () =>
 
   if (venta.cae) {
     return (
-      <span className="text-xs font-semibold text-emerald-700 tabular-nums" title={`CAE ${venta.cae}`}>
+      <a
+        href={`/facturacion/${venta.id_venta}`}
+        target="_blank"
+        rel="noopener"
+        className="text-xs font-semibold text-emerald-700 hover:text-emerald-900 underline decoration-dotted underline-offset-2 tabular-nums"
+        title={`Ver la factura · CAE ${venta.cae}`}
+      >
         {String(venta.factura_punto_venta ?? 0).padStart(5, "0")}-{String(venta.factura_numero ?? 0).padStart(8, "0")}
-      </span>
+      </a>
     );
   }
 

@@ -572,6 +572,8 @@ export type Venta = {
   factura_neto: number | null;
   factura_iva: number | null;
   factura_fecha: string | null;
+  factura_doc_tipo: number | null;
+  factura_doc_nro: string | null;
 };
 
 // Turno de caja: abre un empleado con un fondo inicial de efectivo, todas
