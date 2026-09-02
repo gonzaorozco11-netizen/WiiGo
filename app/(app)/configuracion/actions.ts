@@ -347,9 +347,13 @@ export async function guardarConfigArca(formData: FormData): Promise<{ error: st
   const autoMercadoPago = formData.get("arca_auto_mercado_pago") === "on";
   const puntoVenta = Number(formData.get("arca_punto_venta") ?? 0);
   const iva = Number(formData.get("arca_iva_porcentaje") ?? 21);
+  const montoIdentificacion = Number(formData.get("arca_monto_identificacion") ?? 0);
 
   if (!puntoVenta || puntoVenta <= 0) return { error: "Poné el número de punto de venta habilitado en ARCA." };
   if (iva <= 0 || iva > 100) return { error: "El porcentaje de IVA no es válido." };
+  if (!Number.isFinite(montoIdentificacion) || montoIdentificacion < 0) {
+    return { error: "El monto para pedir el DNI no puede ser negativo." };
+  }
 
   const supabase = getSupabaseServerClient();
 
@@ -359,6 +363,11 @@ export async function guardarConfigArca(formData: FormData): Promise<{ error: st
     ["ARCA_AUTO_MERCADO_PAGO", autoMercadoPago ? "1" : "0", "ARCA: emitir factura sola en las ventas cobradas con Mercado Pago"],
     ["ARCA_PUNTO_VENTA", String(puntoVenta), "ARCA: punto de venta habilitado como Web Services"],
     ["ARCA_IVA_PORCENTAJE", String(iva), "ARCA: alícuota de IVA aplicada a las facturas"],
+    [
+      "ARCA_MONTO_IDENTIFICACION",
+      String(montoIdentificacion),
+      "ARCA: monto desde el cual hay que identificar al comprador (0 = nunca)",
+    ],
   ];
 
   for (const [parametro, valor, descripcion] of valores) {

@@ -62,6 +62,11 @@ export default function PosApp({
   const [dni, setDni] = useState("");
   const [codigoProfesional, setCodigoProfesional] = useState("");
   const [montoRecibido, setMontoRecibido] = useState("");
+  // A nombre de quién va la factura. Arranca siempre en consumidor final, que
+  // es lo que corresponde a la gran mayoría de las ventas: si el cliente no
+  // pide nada, es un toque y sigue.
+  const [tipoReceptor, setTipoReceptor] = useState<"CONSUMIDOR_FINAL" | "DNI" | "CUIT">("CONSUMIDOR_FINAL");
+  const [docReceptor, setDocReceptor] = useState("");
   const [medioPago, setMedioPago] = useState<MedioPago>("EFECTIVO");
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -277,6 +282,8 @@ export default function PosApp({
     setCodigoProfesional("");
     setMontoRecibido("");
     setMedioPago("EFECTIVO");
+    setTipoReceptor("CONSUMIDOR_FINAL");
+    setDocReceptor("");
     setResultado(null);
     setPedidoMp(null);
     setError(null);
@@ -317,7 +324,8 @@ export default function PosApp({
       profesional && marcasCanje.size > 0
         ? { idProfesional: profesional.idProfesional, pin: pinCanje, marcas: [...marcasCanje] }
         : undefined,
-      usarPuntosWiigo
+      usarPuntosWiigo,
+      { tipo: tipoReceptor, numero: docReceptor }
     )
       .then((r) => {
         if (r.error) setError(r.error);
@@ -680,6 +688,62 @@ export default function PosApp({
         )}
       </div>
 
+      {/* A nombre de quién va la factura. Está acá y no en el totem porque
+          hace falta alguien que le pregunte al cliente: Factura A solo
+          corresponde si es Responsable Inscripto, y eso no lo puede decidir
+          una pantalla sola. */}
+      <div className="border border-neutral-200 rounded-xl p-3.5 mb-4">
+        <p className="text-sm font-semibold text-neutral-800 mb-0.5">¿A nombre de quién va la factura?</p>
+        <p className="text-xs text-neutral-500 mb-3">
+          Preguntale al cliente si necesita factura a nombre de una empresa.
+        </p>
+
+        <div className="space-y-2">
+          {(
+            [
+              ["CONSUMIDOR_FINAL", "Consumidor final", "Lo habitual — Factura B, sin datos"],
+              ["DNI", "Con DNI", "Factura B a nombre de la persona"],
+              ["CUIT", "Factura A — empresa", "Requiere CUIT y Responsable Inscripto"],
+            ] as const
+          ).map(([valor, titulo, detalle]) => (
+            <label
+              key={valor}
+              className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 cursor-pointer ${
+                tipoReceptor === valor ? "border-accent bg-accent-tint" : "border-neutral-200"
+              }`}
+            >
+              <input
+                type="radio"
+                name="tipo_receptor"
+                checked={tipoReceptor === valor}
+                onChange={() => setTipoReceptor(valor)}
+                className="accent-accent"
+              />
+              <span className="min-w-0">
+                <span className="block text-sm font-medium text-neutral-800">{titulo}</span>
+                <span className="block text-xs text-neutral-500">{detalle}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+
+        {tipoReceptor !== "CONSUMIDOR_FINAL" && (
+          <input
+            value={docReceptor}
+            onChange={(e) => setDocReceptor(e.target.value.replace(/\D/g, ""))}
+            inputMode="numeric"
+            placeholder={tipoReceptor === "CUIT" ? "CUIT (11 números)" : "Número de documento"}
+            className="w-full mt-2.5 border border-neutral-300 rounded-lg px-3 py-2.5 text-sm"
+          />
+        )}
+
+        {tipoReceptor === "CONSUMIDOR_FINAL" && clienteEncontrado && (
+          <p className="text-xs text-accent bg-accent-tint rounded-lg px-3 py-2 mt-2.5">
+            El cliente se identificó con sus puntos WiiGo — su DNI se completa solo.
+          </p>
+        )}
+      </div>
+
       {error && (
         <p className="text-sm text-red-600 mb-3" role="alert">
           {error}
@@ -692,7 +756,10 @@ export default function PosApp({
           enviando ||
           itemsCarrito.length === 0 ||
           (marcasCanje.size > 0 && pinCanje.length < 4) ||
-          (!esMercadoPago && montoNum < totalFinal)
+          (!esMercadoPago && montoNum < totalFinal) ||
+          // Documento incompleto: mejor frenar acá que emitir mal la factura.
+          (tipoReceptor === "CUIT" && docReceptor.length !== 11) ||
+          (tipoReceptor === "DNI" && docReceptor.length < 7)
         }
         className="w-full bg-accent hover:bg-accent-dark disabled:opacity-40 text-white font-bold py-4 rounded-xl mb-8"
       >

@@ -6,7 +6,7 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 import { turnoAbiertoDeLocal } from "@/app/(app)/turnos/actions";
-import { facturarAlAcreditarse } from "@/lib/arca/config";
+import { facturarAlAcreditarse, montoQuePideDni } from "@/lib/arca/config";
 import {
   calcularBeneficioReferido,
   resolverCodigoProfesional,
@@ -161,7 +161,10 @@ export async function venderPos(
   montoRecibido: number,
   medioPago: "EFECTIVO" | "MERCADO_PAGO" = "EFECTIVO",
   canje?: { idProfesional: string; pin: string; marcas: string[] },
-  usarPuntosWiigo?: boolean
+  usarPuntosWiigo?: boolean,
+  // A nombre de quién va la factura. Lo elige la persona que cobra, que es la
+  // única que puede preguntarle al cliente. Sin esto: consumidor final.
+  receptorFactura?: { tipo: "CONSUMIDOR_FINAL" | "DNI" | "CUIT"; numero: string }
 ): Promise<{ error: string | null; venta?: ResultadoVenta; pedido?: ResultadoPedidoMp }> {
   if (items.length === 0) return { error: "El carrito está vacío" };
 
@@ -251,6 +254,35 @@ export async function venderPos(
 
   const total = Math.max(subtotal - descuentoBeneficio - descuentoCanje - descuentoPuntos, 0);
 
+  // ===== A nombre de quién va la factura =====
+  // Se estampa en la venta y no se pasa por parámetro a la facturación
+  // porque el cobro con Mercado Pago lo confirma el webhook, que no sabe
+  // nada de lo que se eligió en la pantalla (ver lib/arca/config.ts).
+  // 80 = CUIT, 96 = DNI.
+  const numeroReceptor = (receptorFactura?.numero ?? "").replace(/\D/g, "");
+  const esCuit = receptorFactura?.tipo === "CUIT";
+
+  if (esCuit && numeroReceptor.length !== 11) {
+    return { error: "Para Factura A hace falta el CUIT completo, son 11 números." };
+  }
+  if (receptorFactura?.tipo === "DNI" && numeroReceptor.length < 7) {
+    return { error: "El DNI está incompleto." };
+  }
+
+  // Si no se eligió nada, sirve el DNI que el cliente ya usó para sus puntos.
+  const documentoFacturacion = numeroReceptor || dni.trim().replace(/\D/g, "") || null;
+  const tipoDocFacturacion = documentoFacturacion ? (esCuit ? 80 : 96) : null;
+
+  // El mismo control que en el totem: arriba del monto configurado ARCA no
+  // acepta la factura sin documento, y quedaríamos con una venta cobrada que
+  // no se puede facturar.
+  const montoLimite = await montoQuePideDni();
+  if (montoLimite > 0 && total >= montoLimite && !documentoFacturacion) {
+    return { error: `Por el monto de la venta hay que cargar el DNI del cliente (desde $${montoLimite}).` };
+  }
+
+  const datosFactura = { factura_doc_tipo: tipoDocFacturacion, factura_doc_nro: documentoFacturacion };
+
   if (medioPago === "MERCADO_PAGO") {
     // Con Mercado Pago la plata se mueve apenas el cliente escanea el QR —
     // si no hay turno abierto en ese momento, la confirmación automática
@@ -286,6 +318,7 @@ export async function venderPos(
         id_codigo_profesional: codigoResuelto.idCodigo,
         id_profesional_canje: canje && canje.marcas.length > 0 ? canje.idProfesional : null,
         marcas_canje: canje && canje.marcas.length > 0 ? canje.marcas : null,
+        ...datosFactura,
       })
       .select("id_venta, numero")
       .single();
@@ -363,6 +396,7 @@ export async function venderPos(
       usuario,
       terminal: "POS",
       id_turno: idTurno,
+      ...datosFactura,
     })
     .select("id_venta, numero")
     .single();
@@ -474,12 +508,7 @@ export async function venderPos(
   // La venta del POS se cobra en el acto, así que se factura acá mismo. Si
   // ARCA falla no pasa nada: la venta queda cobrada y aparece en Ventas como
   // pendiente de facturar (ver lib/arca/config.ts).
-  {
-    const { data: clienteFactura } = idCliente
-      ? await supabase.from("clientes").select("dni").eq("id_cliente", idCliente).maybeSingle()
-      : { data: null };
-    await facturarAlAcreditarse(venta.id_venta as string, "EFECTIVO", clienteFactura?.dni ?? null);
-  }
+  await facturarAlAcreditarse(venta.id_venta as string, "EFECTIVO");
 
   revalidatePath("/pos");
   revalidatePath("/stock");

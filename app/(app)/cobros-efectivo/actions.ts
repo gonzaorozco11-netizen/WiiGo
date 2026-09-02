@@ -320,12 +320,7 @@ export async function confirmarCobro(
   // Recién acá se factura: el cobro ya está acreditado. Nunca tira error —
   // si ARCA falla, la venta queda cobrada igual y aparece en Ventas como
   // pendiente de facturar (ver lib/arca/config.ts).
-  {
-    const { data: clienteFactura } = venta.id_cliente
-      ? await supabase.from("clientes").select("dni").eq("id_cliente", venta.id_cliente).maybeSingle()
-      : { data: null };
-    await facturarAlAcreditarse(idVenta, venta.medio_pago as string, clienteFactura?.dni ?? null);
-  }
+  await facturarAlAcreditarse(idVenta, venta.medio_pago as string);
 
     revalidatePath("/cobros-efectivo");
     revalidatePath("/clientes");

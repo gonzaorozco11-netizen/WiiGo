@@ -19,6 +19,7 @@ type Props = {
   autoMercadoPago: boolean;
   puntoVenta: number;
   ivaPorcentaje: number;
+  montoIdentificacion: number;
 };
 
 function Paso({ numero, titulo, hecho, children }: { numero: number; titulo: string; hecho?: boolean; children: React.ReactNode }) {
@@ -47,6 +48,7 @@ export default function ConfiguracionArca({
   autoMercadoPago: autoMpInicial,
   puntoVenta: puntoVentaInicial,
   ivaPorcentaje: ivaInicial,
+  montoIdentificacion: montoIdentificacionInicial,
 }: Props) {
   const [pendienteFiscal, transFiscal] = useTransition();
   const [okFiscal, setOkFiscal] = useState(false);
@@ -65,6 +67,7 @@ export default function ConfiguracionArca({
   const [autoMp, setAutoMp] = useState(autoMpInicial);
   const [puntoVenta, setPuntoVenta] = useState(puntoVentaInicial);
   const [iva, setIva] = useState(ivaInicial);
+  const [montoIdentificacion, setMontoIdentificacion] = useState(montoIdentificacionInicial);
   const [pendienteConfig, transConfig] = useTransition();
   const [okConfig, setOkConfig] = useState(false);
   const [errConfig, setErrConfig] = useState<string | null>(null);
@@ -315,9 +318,34 @@ export default function ConfiguracionArca({
           </div>
         </div>
 
+        <div className="border-t border-neutral-100 pt-4 mb-4">
+          <label className={etiqueta} htmlFor="arca_monto_identificacion">
+            Pedir DNI en ventas mayores a
+          </label>
+          <div className="flex items-center gap-2">
+            <span className="text-neutral-400 text-sm">$</span>
+            <input
+              id="arca_monto_identificacion"
+              name="arca_monto_identificacion"
+              type="number"
+              min="0"
+              step="1000"
+              value={montoIdentificacion}
+              onChange={(e) => setMontoIdentificacion(Number(e.target.value))}
+              className={input}
+            />
+          </div>
+          <p className="text-xs text-neutral-400 mt-1.5">
+            Monto a partir del cual ARCA exige identificar al comprador. Arriba de esto el tótem pide el DNI antes de
+            cobrar, y en el POS es obligatorio cargarlo. En <strong>0</strong> no lo pide nunca. Confirmá el monto
+            vigente con tu contador — ARCA lo actualiza seguido.
+          </p>
+        </div>
+
         <p className="text-xs text-neutral-400 mb-4">
           El tipo de comprobante lo decide el sistema: <strong>Factura B</strong> para consumidor final y{" "}
-          <strong>Factura A</strong> si el cliente da su CUIT. No se elige a mano para no emitir el comprobante equivocado.
+          <strong>Factura A</strong> solo si en el POS se carga un CUIT. El tótem factura siempre Factura B — no ofrece
+          elegir, para que nadie emita el comprobante equivocado sin querer.
         </p>
 
         {errConfig && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-3">{errConfig}</p>}

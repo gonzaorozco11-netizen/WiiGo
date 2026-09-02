@@ -35,7 +35,7 @@ type Item = {
 
 type ItemCarrito = Item & { cantidad: number };
 
-type Paso = "reposo" | "escaneo" | "identificar" | "pagar" | "efectivo-esperando" | "mp-esperando" | "pagado" | "cancelado";
+type Paso = "reposo" | "escaneo" | "identificar" | "dni-factura" | "pagar" | "efectivo-esperando" | "mp-esperando" | "pagado" | "cancelado";
 type MedioPago = "EFECTIVO" | "MERCADO_PAGO";
 
 const POLL_MS = 3000;
@@ -608,6 +608,78 @@ html, body { margin: 0; padding: 0; height: 100%; background: #fafafa; }
   padding: 10px 0;
 }
 
+/* ---------- Paso del DNI para la factura ----------
+   Pantalla completa y no un modal: es obligatoria, y un modal invita a
+   buscarle la cruz para cerrarlo.
+   Ojo con el WebView 83: `gap` acá se usa solo dentro de grid (soportado
+   desde Chrome 66); en flexbox no anda hasta la 84, por eso los márgenes
+   del pie van a mano. */
+.sc-dni {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  text-align: center;
+  padding: 22px 20px 28px;
+}
+.sc-dni-icono { font-size: 40px; line-height: 1; }
+.sc-dni-titulo { font-size: 27px; font-weight: 800; margin-top: 10px; color: #1c2530; }
+.sc-dni-sub {
+  font-size: 15px;
+  color: #6b7681;
+  margin: 6px auto 0;
+  max-width: 420px;
+}
+.sc-dni-visor {
+  margin: 20px auto 6px;
+  max-width: 340px;
+  background: #ffffff;
+  border: 2px solid #2a78d6;
+  border-radius: 12px;
+  padding: 14px 18px;
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  color: #1c2530;
+  min-height: 62px;
+}
+.sc-dni-visor-vacio { color: #c3cad1; font-weight: 400; }
+.sc-dni-ayuda { font-size: 13px; color: #97a0a9; }
+.sc-dni-teclado {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-gap: 9px;
+  gap: 9px;
+  max-width: 340px;
+  margin: 18px auto 0;
+}
+.sc-dni-tecla {
+  background: #ffffff;
+  border: 1px solid #dfe3e7;
+  border-radius: 10px;
+  padding: 15px 0;
+  font-size: 24px;
+  font-weight: 600;
+  color: #1c2530;
+}
+.sc-dni-tecla-borrar { color: #6b7681; font-size: 20px; }
+.sc-dni-tecla-ok {
+  background: #17a866;
+  border-color: #17a866;
+  color: #ffffff;
+  font-size: 17px;
+}
+.sc-dni-tecla-ok:disabled { background: #c3cad1; border-color: #c3cad1; }
+.sc-dni-pie {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 340px;
+  margin: 20px auto 0;
+  padding-top: 14px;
+  border-top: 1px solid #e3e6e9;
+}
+.sc-dni-pie-label { font-size: 14px; color: #6b7681; }
+.sc-dni-pie-total { font-size: 19px; font-weight: 800; color: #1c2530; }
+
 /* ---------- Modales (identificar / pagar) ---------- */
 .sc-modal-pantalla { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; position: relative; }
 .sc-modal-fondo-lista { flex: 1 1 auto; overflow-y: auto; padding: 16px 20px; opacity: .3; pointer-events: none; }
@@ -1114,6 +1186,7 @@ export default function SelfCheckoutApp({
   stock,
   clima,
   esDeNoche,
+  montoPideDni,
 }: {
   local: Local;
   productos: Producto[];
@@ -1122,6 +1195,8 @@ export default function SelfCheckoutApp({
   stock: Stock[];
   clima: Clima;
   esDeNoche: boolean;
+  /** Monto a partir del cual ARCA exige el DNI del comprador. 0 = nunca. */
+  montoPideDni: number;
 }) {
   const [paso, setPaso] = useState<Paso>("reposo");
 
@@ -1232,6 +1307,10 @@ export default function SelfCheckoutApp({
 
   const [carrito, setCarrito] = useState<Record<string, number>>({});
   const [dni, setDni] = useState("");
+  // DNI para la factura. Solo se pide cuando la compra supera el monto a
+  // partir del cual ARCA obliga a identificar al comprador, y solo si el
+  // cliente no se identificó ya con sus puntos WiiGo (ahí ya tenemos el dato).
+  const [dniFactura, setDniFactura] = useState("");
   const [codigoProfesional, setCodigoProfesional] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1456,6 +1535,17 @@ export default function SelfCheckoutApp({
   const descuentoPuntosPreview = usarPuntosWiigo && infoPuntos ? infoPuntos.maxDescuento : 0;
   const totalFinal = Math.max(totalConCanje - descuentoPuntosPreview, 0);
 
+  // ¿Hay que pedirle el DNI antes de cobrar? Solo si la compra supera el
+  // monto configurado y no tenemos ya su documento por los puntos WiiGo.
+  const haceFaltaDni =
+    montoPideDni > 0 && totalFinal >= montoPideDni && dni.trim().length < 6 && dniFactura.length < 6;
+
+  // Un solo lugar decide a dónde va el botón "Continuar", así el paso del DNI
+  // no se puede saltear por ninguno de los caminos que llegan al cobro.
+  function irACobrar() {
+    setPaso(haceFaltaDni ? "dni-factura" : "pagar");
+  }
+
   // Cuánto puede cubrir con sus puntos WiiGo sobre lo que le queda por pagar
   // — solo vista previa, el server recalcula todo al confirmar el pedido.
   useEffect(() => {
@@ -1554,6 +1644,7 @@ export default function SelfCheckoutApp({
     setUsarPuntosWiigo(false);
     setQrComprobante(null);
     setFacturada(false);
+    setDniFactura("");
     setPaso("reposo");
   }
 
@@ -1574,7 +1665,8 @@ export default function SelfCheckoutApp({
       profesional && marcasCanje.size > 0
         ? { idProfesional: profesional.idProfesional, pin: pinCanje, marcas: [...marcasCanje] }
         : undefined,
-      usarPuntosWiigo
+      usarPuntosWiigo,
+      dniFactura
     )
       .then((r) => {
         if (r.error || !r.pedido) {
@@ -1675,7 +1767,8 @@ export default function SelfCheckoutApp({
   }
 
   useEffect(() => {
-    const armandoPedido = paso === "escaneo" || paso === "identificar" || paso === "pagar";
+    const armandoPedido =
+      paso === "escaneo" || paso === "identificar" || paso === "dni-factura" || paso === "pagar";
     const pantallaFinal = paso === "pagado" || paso === "cancelado";
     if (!armandoPedido && !pantallaFinal) {
       setAvisoInactividad(null);
@@ -1720,7 +1813,11 @@ export default function SelfCheckoutApp({
           <span onClick={handleToqueLogo}>
             <IsotipoWiiGo alto={38} />
           </span>
-          {paso === "escaneo" || paso === "identificar" || paso === "pagar" || paso === "mp-esperando" ? (
+          {paso === "escaneo" ||
+          paso === "identificar" ||
+          paso === "dni-factura" ||
+          paso === "pagar" ||
+          paso === "mp-esperando" ? (
             <button onClick={handleCancelarPedido} className="sc-btn-cancel">
               Cancelar
             </button>
@@ -2056,13 +2153,13 @@ export default function SelfCheckoutApp({
               )}
 
               <button
-                onClick={() => setPaso("pagar")}
+                onClick={irACobrar}
                 disabled={marcasCanje.size > 0 && pinCanje.length < 4}
                 className="sc-btn-primary sc-btn-primary-full"
               >
                 Continuar
               </button>
-              <button onClick={() => setPaso("pagar")} className="sc-btn-link">
+              <button onClick={irACobrar} className="sc-btn-link">
                 Omitir este paso
               </button>
               <button onClick={() => setPaso("escaneo")} className="sc-btn-link">
@@ -2070,6 +2167,62 @@ export default function SelfCheckoutApp({
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Paso obligatorio, sin "omitir": arriba de cierto monto ARCA no acepta
+          la factura sin el documento del comprador, y dejarlo pasar sería
+          cobrar sin poder facturar. Por debajo del monto esta pantalla no
+          aparece nunca (ver haceFaltaDni). */}
+      {paso === "dni-factura" && (
+        <div className="sc-dni">
+          <div className="sc-dni-icono">🪪</div>
+          <h2 className="sc-dni-titulo">Necesitamos tu DNI</h2>
+          <p className="sc-dni-sub">
+            Por el monto de la compra, ARCA pide identificar al comprador. Es solo el número, sin puntos.
+          </p>
+
+          <div className="sc-dni-visor">
+            {dniFactura || <span className="sc-dni-visor-vacio">—</span>}
+          </div>
+          <p className="sc-dni-ayuda">Escribí tu número de documento</p>
+
+          <div className="sc-dni-teclado">
+            {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((n) => (
+              <button
+                key={n}
+                onClick={() => setDniFactura((d) => (d.length >= 9 ? d : d + n))}
+                className="sc-dni-tecla"
+              >
+                {n}
+              </button>
+            ))}
+            <button onClick={() => setDniFactura((d) => d.slice(0, -1))} className="sc-dni-tecla sc-dni-tecla-borrar">
+              ⌫
+            </button>
+            <button
+              onClick={() => setDniFactura((d) => (d.length >= 9 ? d : d + "0"))}
+              className="sc-dni-tecla"
+            >
+              0
+            </button>
+            <button
+              onClick={() => setPaso("pagar")}
+              disabled={dniFactura.length < 7}
+              className="sc-dni-tecla sc-dni-tecla-ok"
+            >
+              Continuar
+            </button>
+          </div>
+
+          <div className="sc-dni-pie">
+            <span className="sc-dni-pie-label">Total de tu compra</span>
+            <span className="sc-dni-pie-total">${formatearMonto(totalFinal)}</span>
+          </div>
+
+          <button onClick={() => setPaso("identificar")} className="sc-btn-link">
+            ‹ Volver
+          </button>
         </div>
       )}
 

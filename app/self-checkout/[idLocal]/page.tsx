@@ -8,6 +8,7 @@ import {
   type Stock,
 } from "@/lib/supabase";
 import { obtenerClimaActual } from "@/lib/clima";
+import { montoQuePideDni } from "@/lib/arca/config";
 import SelfCheckoutApp from "@/components/SelfCheckoutApp";
 
 export const dynamic = "force-dynamic";
@@ -47,8 +48,13 @@ export default async function SelfCheckoutPage({ params }: { params: Promise<{ i
 
   const cielo = await obtenerClimaActual((local as Local).latitud, (local as Local).longitud);
 
+  // Monto a partir del cual hay que pedirle el DNI al cliente. 0 = nunca, que
+  // es como está hasta que se cargue el monto en Configuración.
+  const montoPideDni = await montoQuePideDni();
+
   return (
     <SelfCheckoutApp
+      montoPideDni={montoPideDni}
       local={local as Local}
       productos={(productosRes.data ?? []) as Producto[]}
       variantes={(variantesRes.data ?? []) as VarianteProducto[]}

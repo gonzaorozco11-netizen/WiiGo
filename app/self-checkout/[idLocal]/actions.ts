@@ -7,6 +7,7 @@ import { buscarProfesionalPorDni, verificarPinProfesional, calcularDescuentoCanj
 import { calcularCanjePuntos } from "@/lib/puntosWiigo";
 import { crearOrdenQrMp } from "@/lib/mercadopago";
 import { turnoAbiertoDeLocal } from "@/app/(app)/turnos/actions";
+import { montoQuePideDni } from "@/lib/arca/config";
 import QRCode from "qrcode";
 
 type ItemCarrito = { idVariante: string; idMarca: string | null; cantidad: number; precioUnitario: number };
@@ -111,7 +112,12 @@ export async function confirmarPedido(
   codigoProfesional: string,
   medioPago: MedioPago,
   canje?: { idProfesional: string; pin: string; marcas: string[] },
-  usarPuntosWiigo?: boolean
+  usarPuntosWiigo?: boolean,
+  // DNI que el cliente carga solo cuando la compra supera el monto a partir
+  // del cual ARCA exige identificar al comprador. No tiene nada que ver con
+  // el `dni` de arriba, que es el de los puntos WiiGo — puede venir uno, el
+  // otro, o ninguno.
+  dniFacturacion?: string
 ): Promise<{ error: string | null; pedido?: ResultadoPedido }> {
   if (itemsPedido.length === 0) return { error: "El carrito está vacío" };
 
@@ -257,6 +263,22 @@ export async function confirmarPedido(
 
   const total = Math.max(subtotal - descuentoBeneficio - descuentoCanje - descuentoPuntos, 0);
 
+  // El documento que va a la factura. No se confía en que la pantalla haya
+  // mandado algo: se valida acá, igual que el resto de los datos del totem,
+  // que es una pantalla pública. Sirve el DNI que el cliente cargó para
+  // facturar o, si no, el que ya usó para sus puntos WiiGo.
+  const documentoFacturacion =
+    (dniFacturacion ?? "").replace(/\D/g, "") || (dni ?? "").replace(/\D/g, "") || null;
+
+  // El monto lo vuelve a chequear el servidor: si la compra lo supera y no
+  // llegó ningún documento, la factura la va a rechazar ARCA. Mejor frenar
+  // acá, antes de cobrar, que quedar con una venta cobrada sin poder
+  // facturarla.
+  const montoLimite = await montoQuePideDni();
+  if (montoLimite > 0 && total >= montoLimite && !documentoFacturacion) {
+    return { error: "Por el monto de la compra necesitamos tu DNI. Volvé atrás y cargalo, por favor." };
+  }
+
   // Con Mercado Pago la plata del cliente se mueve apenas escanea el QR —
   // si en ese momento no hay turno abierto, la confirmación automática del
   // webhook se rechaza (confirmarCobro la exige) y el pedido queda
@@ -289,6 +311,12 @@ export async function confirmarPedido(
       id_codigo_profesional: codigoResuelto.idCodigo,
       id_profesional_canje: canje && canje.marcas.length > 0 ? canje.idProfesional : null,
       marcas_canje: canje && canje.marcas.length > 0 ? canje.marcas : null,
+      // Queda estampado en la venta para que la facturación lo encuentre
+      // después: el cobro lo puede confirmar el webhook de Mercado Pago, que
+      // no sabe nada de lo que se cargó en la pantalla. 96 = DNI.
+      // El totem factura siempre a consumidor final, nunca Factura A.
+      factura_doc_tipo: documentoFacturacion ? 96 : null,
+      factura_doc_nro: documentoFacturacion,
     })
     .select("id_venta, numero")
     .single();

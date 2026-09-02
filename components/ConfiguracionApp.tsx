@@ -44,6 +44,7 @@ export default function ConfiguracionApp({
   arcaAutoMercadoPago,
   arcaPuntoVenta,
   arcaIvaPorcentaje,
+  arcaMontoIdentificacion,
   emisor,
   credencialesArca,
 }: {
@@ -76,6 +77,7 @@ export default function ConfiguracionApp({
   arcaAutoMercadoPago: boolean;
   arcaPuntoVenta: number;
   arcaIvaPorcentaje: number;
+  arcaMontoIdentificacion: number;
   emisor: DatosEmisor;
   credencialesArca: EstadoCredenciales;
 }) {
@@ -755,6 +757,7 @@ export default function ConfiguracionApp({
         autoMercadoPago={arcaAutoMercadoPago}
         puntoVenta={arcaPuntoVenta}
         ivaPorcentaje={arcaIvaPorcentaje}
+        montoIdentificacion={arcaMontoIdentificacion}
       />
     </div>
   );

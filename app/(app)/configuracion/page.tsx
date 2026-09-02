@@ -52,6 +52,7 @@ export default async function ConfiguracionPage() {
       "ARCA_AUTO_MERCADO_PAGO",
       "ARCA_PUNTO_VENTA",
       "ARCA_IVA_PORCENTAJE",
+      "ARCA_MONTO_IDENTIFICACION",
     ]);
 
   const valores = new Map((data ?? []).map((c) => [c.parametro, c.valor]));
@@ -88,6 +89,7 @@ export default async function ConfiguracionPage() {
       arcaAutoMercadoPago={valores.get("ARCA_AUTO_MERCADO_PAGO") === "1"}
       arcaPuntoVenta={Number(valores.get("ARCA_PUNTO_VENTA") ?? 3)}
       arcaIvaPorcentaje={Number(valores.get("ARCA_IVA_PORCENTAJE") ?? 21)}
+      arcaMontoIdentificacion={Number(valores.get("ARCA_MONTO_IDENTIFICACION") ?? 0)}
       emisor={emisor}
       credencialesArca={credencialesArca}
     />
