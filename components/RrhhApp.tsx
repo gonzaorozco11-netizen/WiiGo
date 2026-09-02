@@ -481,6 +481,11 @@ function TabAguinaldo() {
                     <td className="p-3 text-right tabular-nums text-neutral-500">
                       {f.diasTrabajados}
                       <span className="text-neutral-300"> / 180</span>
+                      {f.sinFechaIngreso && (
+                        <span className="block text-[10.5px] text-amber-600 font-semibold whitespace-normal">
+                          Falta la fecha de ingreso — se asumió el semestre completo
+                        </span>
+                      )}
                     </td>
                     <td className="p-3 text-right whitespace-nowrap">
                       {f.cierre ? (

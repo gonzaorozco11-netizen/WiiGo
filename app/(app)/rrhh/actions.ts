@@ -1096,6 +1096,7 @@ export type FilaAguinaldo = {
   mejorRemuneracion: number;
   mesesConCierre: number;
   diasTrabajados: number;
+  sinFechaIngreso: boolean;
   montoSugerido: number;
   cierre: CierreAguinaldo | null;
 };
@@ -1168,7 +1169,11 @@ export async function obtenerAguinaldos(semestre: string): Promise<FilaAguinaldo
       const idPersona = u.id_persona as string;
       const mejorRemuneracion = mejorPorPersona.get(idPersona) ?? 0;
 
-      // Días trabajados dentro del semestre, según la fecha de ingreso.
+      // Días trabajados dentro del semestre, según la fecha de ingreso del
+      // legajo. Si esa fecha falta, se asume el semestre completo — que es
+      // lo más caro — por eso se marca con `sinFechaIngreso` y la pantalla
+      // avisa: para alguien que entró empezado el semestre, pagar 180/180
+      // es pagarle de más.
       const ingresoStr = ingresoPorPersona.get(idPersona);
       const ingreso = ingresoStr ? new Date(`${ingresoStr}T12:00:00Z`) : null;
       const arranque = ingreso && ingreso > inicioSemestre ? ingreso : inicioSemestre;
@@ -1178,6 +1183,7 @@ export async function obtenerAguinaldos(semestre: string): Promise<FilaAguinaldo
           : Math.min(180, Math.round((finSemestre.getTime() - arranque.getTime()) / 86400000) + 1);
 
       return {
+        sinFechaIngreso: !ingresoStr,
         idPersona,
         idUsuario: u.id_usuario as string,
         nombre: u.nombre as string,
