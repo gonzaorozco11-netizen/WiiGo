@@ -205,7 +205,7 @@ export async function emitirFactura(datos: DatosFactura): Promise<ResultadoFactu
 }
 
 /** Datos que ARCA exige dentro del QR de la factura (RG 4892). */
-export async function urlQrArca(f: ResultadoFactura, tipoDoc: number, nroDoc: string) {
+export async function urlQrArca(f: ResultadoFactura) {
   const emisor = await obtenerEmisor();
   const payload = {
     ver: 1,
@@ -217,8 +217,8 @@ export async function urlQrArca(f: ResultadoFactura, tipoDoc: number, nroDoc: st
     importe: f.total,
     moneda: "PES",
     ctz: 1,
-    tipoDocRec: tipoDoc,
-    nroDocRec: Number(cuitSinGuiones(nroDoc) || 0),
+    tipoDocRec: f.tipoDoc,
+    nroDocRec: Number(cuitSinGuiones(f.nroDoc) || 0),
     tipoCodAut: "E",
     codAut: Number(f.cae),
   };

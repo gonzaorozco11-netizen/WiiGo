@@ -106,21 +106,19 @@ export default async function FacturaPage({ params }: { params: Promise<{ idVent
   const baseComparacion = esFacturaA ? neto : total;
   const descuento = Math.max(sumaLineas - baseComparacion, 0);
 
-  const qr = await urlQrArca(
-    {
-      cae: venta.cae as string,
-      vencimientoCae: (venta.cae_vencimiento as string) ?? "",
-      numeroComprobante: venta.factura_numero as number,
-      tipoComprobante,
-      puntoVenta: venta.factura_punto_venta as number,
-      neto,
-      iva,
-      total,
-      fecha: ((venta.factura_fecha as string) ?? "").replace(/-/g, ""),
-    },
+  const qr = await urlQrArca({
+    cae: venta.cae as string,
+    vencimientoCae: (venta.cae_vencimiento as string) ?? "",
+    numeroComprobante: venta.factura_numero as number,
+    tipoComprobante,
+    puntoVenta: venta.factura_punto_venta as number,
+    neto,
+    iva,
+    total,
+    fecha: ((venta.factura_fecha as string) ?? "").replace(/-/g, ""),
     tipoDoc,
-    nroDoc
-  );
+    nroDoc,
+  });
   const qrImagen = await QRCode.toDataURL(qr, { margin: 1, width: 240 });
 
   return (

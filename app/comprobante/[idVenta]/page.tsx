@@ -119,21 +119,19 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
     const tipoComprobante = (venta.factura_tipo as number) ?? TIPO_COMPROBANTE.FACTURA_B;
     letra = LETRA[tipoComprobante] ?? "B";
     codigo = CODIGO[tipoComprobante] ?? "06";
-    const url = await urlQrArca(
-      {
-        cae: venta.cae as string,
-        vencimientoCae: (venta.cae_vencimiento as string) ?? "",
-        numeroComprobante: venta.factura_numero as number,
-        tipoComprobante,
-        puntoVenta: venta.factura_punto_venta as number,
-        neto: (venta.factura_neto as number) ?? total,
-        iva: (venta.factura_iva as number) ?? 0,
-        total,
-        fecha: ((venta.factura_fecha as string) ?? "").replace(/-/g, ""),
-      },
-      tipoDocReceptor,
-      nroDocReceptor
-    );
+    const url = await urlQrArca({
+      cae: venta.cae as string,
+      vencimientoCae: (venta.cae_vencimiento as string) ?? "",
+      numeroComprobante: venta.factura_numero as number,
+      tipoComprobante,
+      puntoVenta: venta.factura_punto_venta as number,
+      neto: (venta.factura_neto as number) ?? total,
+      iva: (venta.factura_iva as number) ?? 0,
+      total,
+      fecha: ((venta.factura_fecha as string) ?? "").replace(/-/g, ""),
+      tipoDoc: tipoDocReceptor,
+      nroDoc: nroDocReceptor,
+    });
     qrArca = await QRCode.toDataURL(url, { margin: 1, width: 320 });
   }
 
