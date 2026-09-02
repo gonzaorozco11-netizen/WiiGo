@@ -451,6 +451,11 @@ function TabAguinaldo() {
         <span className="text-xs text-neutral-400">{nro === 1 ? "Se paga hasta el 30 de junio" : "Se paga hasta el 18 de diciembre"}</span>
       </div>
 
+      <p className="text-xs text-neutral-500 bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2 mb-4">
+        Los días se cuentan <strong>hasta hoy</strong>, no hasta el final del semestre. Si cerrás el aguinaldo antes de
+        que termine el período, se paga solo lo trabajado hasta acá.
+      </p>
+
       <div className="bg-white border border-neutral-200 rounded-xl overflow-hidden">
         {cargando ? (
           <p className="text-sm text-neutral-400 text-center py-8">Cargando...</p>
