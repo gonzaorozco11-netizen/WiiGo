@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
   const supabase = getSupabaseServerClient();
   const { data, error } = await supabase
     .from("ventas")
-    .select("estado, numero, total")
+    .select("estado, numero, total, cae")
     .eq("id_venta", idVenta)
     .maybeSingle();
 
@@ -44,5 +44,13 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return Response.json({ estado: data.estado, numero: data.numero, total: data.total, qrComprobante });
+  // El totem no muestra la factura: solo necesita saber si detrás del QR hay
+  // una factura o un comprobante interno, para decirle al cliente lo que es.
+  return Response.json({
+    estado: data.estado,
+    numero: data.numero,
+    total: data.total,
+    qrComprobante,
+    facturada: Boolean(data.cae),
+  });
 }

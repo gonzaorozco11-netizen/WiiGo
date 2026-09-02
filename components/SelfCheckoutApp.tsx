@@ -1249,6 +1249,10 @@ export default function SelfCheckoutApp({
   // QR del comprobante para el celular del cliente. Lo arma el servidor
   // cuando la venta pasa a PAGADA (ver app/api/self-checkout/estado-pedido).
   const [qrComprobante, setQrComprobante] = useState<string | null>(null);
+  // Si la venta se facturó sola (depende del medio de pago y de lo que esté
+  // tildado en Configuración), detrás del QR hay una factura de verdad y hay
+  // que decírselo al cliente con esas palabras.
+  const [facturada, setFacturada] = useState(false);
   const [profesional, setProfesional] = useState<{
     idProfesional: string;
     nombre: string;
@@ -1549,6 +1553,7 @@ export default function SelfCheckoutApp({
     setInfoPuntos(null);
     setUsarPuntosWiigo(false);
     setQrComprobante(null);
+    setFacturada(false);
     setPaso("reposo");
   }
 
@@ -1598,6 +1603,7 @@ export default function SelfCheckoutApp({
           if (!r) return;
           if (r.estado === "PAGADA") {
             if (r.qrComprobante) setQrComprobante(r.qrComprobante);
+            setFacturada(Boolean(r.facturada));
             setPaso("pagado");
           } else if (r.estado === "CANCELADA") setPaso("cancelado");
         })
@@ -2215,11 +2221,21 @@ export default function SelfCheckoutApp({
           {qrComprobante ? (
             <>
               <div className="sc-card-qr">
-                <p className="sc-card-qr-titulo">📱 Escaneá y llevate tu comprobante</p>
+                <p className="sc-card-qr-titulo">
+                  {facturada ? "📱 Escaneá y llevate tu factura" : "📱 Escaneá y llevate tu comprobante"}
+                </p>
                 <p className="sc-card-qr-desc">Apuntá con la cámara de tu celular</p>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={qrComprobante} alt="Código QR del comprobante" className="sc-qr-img-grande" />
-                <p className="sc-card-qr-pie">Se abre el detalle de tu compra · no hace falta instalar nada</p>
+                <img
+                  src={qrComprobante}
+                  alt={facturada ? "Código QR de la factura" : "Código QR del comprobante"}
+                  className="sc-qr-img-grande"
+                />
+                <p className="sc-card-qr-pie">
+                  {facturada
+                    ? "Factura electrónica autorizada por ARCA · no hace falta instalar nada"
+                    : "Se abre el detalle de tu compra · no hace falta instalar nada"}
+                </p>
               </div>
               {/* Control de salida: mientras no haya impresora, lo que el
                   personal revisa es el comprobante en el celular. */}
