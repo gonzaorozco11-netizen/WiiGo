@@ -5,6 +5,7 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos";
 import { fechaHoraArgentina, minutosDeHora } from "@/lib/horarios";
+import { puedeCerrarseAguinaldo } from "@/lib/aguinaldo";
 
 async function requireAcceso() {
   const sesion = await obtenerSesionConPermisos();
@@ -1089,6 +1090,15 @@ export type CierreAguinaldo = {
   usuario_pago: string | null;
 };
 
+export type PagoAguinaldo = {
+  id_pago: string;
+  monto: number;
+  cuenta_pago: string;
+  comprobante_path: string | null;
+  fecha_pago: string;
+  usuario: string | null;
+};
+
 export type FilaAguinaldo = {
   idPersona: string;
   idUsuario: string;
@@ -1099,7 +1109,11 @@ export type FilaAguinaldo = {
   sinFechaIngreso: boolean;
   montoSugerido: number;
   cierre: CierreAguinaldo | null;
+  pagos: PagoAguinaldo[];
+  totalPagado: number;
+  saldo: number;
 };
+
 
 function rangoSemestre(semestre: string) {
   const [anioStr, nro] = semestre.split("-");
@@ -1131,7 +1145,7 @@ export async function obtenerAguinaldos(semestre: string): Promise<FilaAguinaldo
 
   const idsPersona = usuarios.map((u) => u.id_persona as string);
 
-  const [{ data: cierresNomina }, { data: personas }, { data: cierresAguinaldo }] = await Promise.all([
+  const [{ data: cierresNomina }, { data: personas }, { data: cierresAguinaldo }, { data: pagosTodos }] = await Promise.all([
     supabase
       .from("nomina_cierres")
       .select("id_persona, periodo, sueldo_base, incentivo_presentismo, horas_extra_monto, premios_monto, es_estimado")
@@ -1139,7 +1153,14 @@ export async function obtenerAguinaldos(semestre: string): Promise<FilaAguinaldo
       .in("id_persona", idsPersona),
     supabase.from("personas").select("id_persona, fecha_ingreso").in("id_persona", idsPersona),
     supabase.from("aguinaldo_cierres").select("*").eq("semestre", semestre).in("id_persona", idsPersona),
+    supabase.from("aguinaldo_pagos").select("*").order("fecha_pago", { ascending: true }),
   ]);
+
+  const pagosPorCierre = new Map<string, PagoAguinaldo[]>();
+  for (const p of pagosTodos ?? []) {
+    const id = p.id_cierre as string;
+    pagosPorCierre.set(id, [...(pagosPorCierre.get(id) ?? []), p as PagoAguinaldo]);
+  }
 
   const ingresoPorPersona = new Map((personas ?? []).map((p) => [p.id_persona as string, p.fecha_ingreso as string | null]));
   const cierrePorPersona = new Map((cierresAguinaldo ?? []).map((c) => [c.id_persona as string, c as CierreAguinaldo]));
@@ -1187,6 +1208,10 @@ export async function obtenerAguinaldos(semestre: string): Promise<FilaAguinaldo
       const dias =
         arranque > corte ? 0 : Math.min(180, Math.round((corte.getTime() - arranque.getTime()) / 86400000) + 1);
 
+      const cierre = cierrePorPersona.get(idPersona) ?? null;
+      const pagos = cierre ? (pagosPorCierre.get(cierre.id_cierre) ?? []) : [];
+      const totalPagado = redondear2(pagos.reduce((acc, p) => acc + (p.monto ?? 0), 0));
+
       return {
         sinFechaIngreso: !ingresoStr,
         idPersona,
@@ -1196,7 +1221,10 @@ export async function obtenerAguinaldos(semestre: string): Promise<FilaAguinaldo
         mesesConCierre: mesesPorPersona.get(idPersona) ?? 0,
         diasTrabajados: dias,
         montoSugerido: redondear2((mejorRemuneracion / 2) * (dias / 180)),
-        cierre: cierrePorPersona.get(idPersona) ?? null,
+        cierre,
+        pagos,
+        totalPagado,
+        saldo: cierre ? redondear2((cierre.monto as number) - totalPagado) : 0,
       };
     })
     .sort((a, b) => a.nombre.localeCompare(b.nombre));
@@ -1211,6 +1239,14 @@ export async function cerrarAguinaldo(
   const permisoError = await requireAcceso();
   if (permisoError) return { error: permisoError };
   if (!monto || monto <= 0) return { error: "El monto tiene que ser mayor a 0" };
+  if (!puedeCerrarseAguinaldo(semestre)) {
+    const esPrimero = semestre.endsWith("-1");
+    return {
+      error: `Todavía no se puede cerrar: el aguinaldo del ${esPrimero ? "1er" : "2do"} semestre se cierra recién en ${
+        esPrimero ? "junio" : "diciembre"
+      }, cuando termina el período.`,
+    };
+  }
 
   try {
     const supabase = getSupabaseServerClient();
@@ -1277,6 +1313,13 @@ export async function eliminarCierreAguinaldo(idCierre: string): Promise<{ error
   if (!cierre) return { error: "No se encontró el cierre" };
   if (cierre.estado === "PAGADO") return { error: "Este aguinaldo ya está pagado — no se puede deshacer." };
 
+  // Con pagos parciales hechos tampoco se deshace: habría que devolver plata
+  // ya entregada y anular movimientos de caja.
+  const { data: pagos } = await supabase.from("aguinaldo_pagos").select("id_pago").eq("id_cierre", idCierre);
+  if ((pagos ?? []).length > 0) {
+    return { error: "Ya hay pagos registrados sobre este aguinaldo — no se puede deshacer el cierre." };
+  }
+
   if (cierre.id_gasto) {
     await supabase
       .from("gastos")
@@ -1290,12 +1333,18 @@ export async function eliminarCierreAguinaldo(idCierre: string): Promise<{ error
   return { error: null };
 }
 
-export async function pagarAguinaldo(idCierre: string, formData: FormData): Promise<{ error: string | null }> {
+// El aguinaldo se puede pagar en una o varias veces (Gonzalo lo pidió así:
+// "1 o 3 cuotas depende"). En vez de un plan de cuotas fijo, se registran los
+// pagos a medida que se hacen y el sistema lleva el saldo. Cuando el saldo
+// llega a cero, el cierre pasa a PAGADO solo.
+export async function registrarPagoAguinaldo(idCierre: string, formData: FormData): Promise<{ error: string | null }> {
   const permisoError = await requireAcceso();
   if (permisoError) return { error: permisoError };
 
   const cuentaPago = String(formData.get("cuenta_pago") ?? "");
   if (!["CAJA_ADMIN", "TRANSFERENCIA"].includes(cuentaPago)) return { error: "Elegí de dónde sale la plata" };
+  const monto = redondear2(Number(formData.get("monto") ?? 0) || 0);
+  if (monto <= 0) return { error: "El monto tiene que ser mayor a 0" };
   const archivo = formData.get("comprobante") as File | null;
   if (!archivo || archivo.size === 0) return { error: "El comprobante es obligatorio para registrar el pago." };
 
@@ -1305,36 +1354,46 @@ export async function pagarAguinaldo(idCierre: string, formData: FormData): Prom
 
     const { data: cierre } = await supabase.from("aguinaldo_cierres").select("*").eq("id_cierre", idCierre).maybeSingle();
     if (!cierre) return { error: "No se encontró el cierre" };
-    if (cierre.estado === "PAGADO") return { error: "Este aguinaldo ya está pagado." };
+    if (cierre.estado === "PAGADO") return { error: "Este aguinaldo ya está pagado por completo." };
+
+    const { data: pagosPrevios } = await supabase.from("aguinaldo_pagos").select("monto").eq("id_cierre", idCierre);
+    const yaPagado = redondear2((pagosPrevios ?? []).reduce((acc, p) => acc + ((p.monto as number) ?? 0), 0));
+    const saldo = redondear2((cierre.monto as number) - yaPagado);
+    if (monto > saldo) return { error: `El monto supera el saldo pendiente ($${saldo}).` };
 
     const extension = archivo.name.split(".").pop() ?? "pdf";
-    const path = `aguinaldo-${idCierre}.${extension}`;
+    const path = `aguinaldo-${idCierre}-${Date.now()}.${extension}`;
     const { error: errorUpload } = await supabase.storage
       .from("recibos-sueldo")
       .upload(path, archivo, { upsert: true, contentType: archivo.type || undefined });
     if (errorUpload) return { error: errorUpload.message };
 
+    const { error: errorPago } = await supabase.from("aguinaldo_pagos").insert({
+      id_cierre: idCierre,
+      monto,
+      cuenta_pago: cuentaPago,
+      comprobante_path: path,
+      usuario: sesion?.nombre ?? null,
+    });
+    if (errorPago) return { error: friendlyDbError(errorPago) };
+
     if (cuentaPago === "CAJA_ADMIN") {
       await supabase.from("movimientos_caja_admin").insert({
         tipo: "EGRESO_GASTO",
-        monto: -(cierre.monto as number),
+        monto: -monto,
         id_gasto: cierre.id_gasto,
         descripcion: `Pago de aguinaldo — ${cierre.semestre as string}`,
         usuario: sesion?.nombre ?? null,
       });
     }
 
-    const { error } = await supabase
-      .from("aguinaldo_cierres")
-      .update({
-        estado: "PAGADO",
-        fecha_pago: new Date().toISOString(),
-        cuenta_pago: cuentaPago,
-        comprobante_path: path,
-        usuario_pago: sesion?.nombre ?? null,
-      })
-      .eq("id_cierre", idCierre);
-    if (error) return { error: friendlyDbError(error) };
+    // Solo se marca PAGADO cuando no queda saldo.
+    if (redondear2(yaPagado + monto) >= (cierre.monto as number)) {
+      await supabase
+        .from("aguinaldo_cierres")
+        .update({ estado: "PAGADO", fecha_pago: new Date().toISOString(), usuario_pago: sesion?.nombre ?? null })
+        .eq("id_cierre", idCierre);
+    }
 
     revalidatePath("/rrhh");
     revalidatePath("/tesoreria");

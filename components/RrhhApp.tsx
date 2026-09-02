@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { actualizarSueldoBase, actualizarValorHora } from "@/app/(app)/usuarios/actions";
+import { puedeCerrarseAguinaldo, etiquetaSemestre, semestreActual } from "@/lib/aguinaldo";
 import { crearHorario, actualizarHorario, desactivarHorario, listarHorarios, type HorarioTrabajo } from "@/app/(app)/organizacion/actions";
 import {
   obtenerParametrosPresentismo,
@@ -23,7 +24,7 @@ import {
   obtenerAguinaldos,
   cerrarAguinaldo,
   eliminarCierreAguinaldo,
-  pagarAguinaldo,
+  registrarPagoAguinaldo,
   type FilaAguinaldo,
   listarFeriados,
   crearFeriado,
@@ -373,16 +374,6 @@ function TabNomina({ usuarios }: { usuarios: UsuarioMin[] }) {
 
 // ===================== AGUINALDO =====================
 
-function semestreActual() {
-  const hoy = new Date();
-  return `${hoy.getFullYear()}-${hoy.getMonth() < 6 ? 1 : 2}`;
-}
-
-function etiquetaSemestre(semestre: string) {
-  const [anio, nro] = semestre.split("-");
-  return nro === "1" ? `1er semestre ${anio} (enero a junio)` : `2do semestre ${anio} (julio a diciembre)`;
-}
-
 function TabAguinaldo() {
   const [semestre, setSemestre] = useState(semestreActual());
   const [filas, setFilas] = useState<FilaAguinaldo[]>([]);
@@ -425,13 +416,14 @@ function TabAguinaldo() {
   }
 
   const [anio, nro] = semestre.split("-").map(Number);
+  const habilitado = puedeCerrarseAguinaldo(semestre);
 
   return (
     <div>
       <p className="text-xs text-neutral-400 mb-3">
         Medio sueldo por semestre, calculado sobre la <strong>mejor remuneración</strong> de esos meses (no el promedio),
         y en proporción a los días trabajados si la persona entró empezado el semestre. El monto es editable antes de
-        cerrar. El gasto entra completo en el mes en que lo cerrás.
+        cerrar. El gasto entra completo en el mes en que lo cerrás, y el pago se puede hacer en una o varias veces.
       </p>
 
       {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
@@ -451,10 +443,19 @@ function TabAguinaldo() {
         <span className="text-xs text-neutral-400">{nro === 1 ? "Se paga hasta el 30 de junio" : "Se paga hasta el 18 de diciembre"}</span>
       </div>
 
-      <p className="text-xs text-neutral-500 bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2 mb-4">
-        Los días se cuentan <strong>hasta hoy</strong>, no hasta el final del semestre. Si cerrás el aguinaldo antes de
-        que termine el período, se paga solo lo trabajado hasta acá.
-      </p>
+      {habilitado ? (
+        <p className="text-xs text-neutral-500 bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2 mb-4">
+          Los días se cuentan <strong>hasta hoy</strong>. Vencimiento legal de pago:{" "}
+          <strong>{nro === 1 ? "30 de junio" : "18 de diciembre"}</strong> — si lo pagás en cuotas, la última debería
+          caer antes de esa fecha.
+        </p>
+      ) : (
+        <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
+          Este semestre todavía no terminó, así que no se puede cerrar. Vas a poder hacerlo a partir de{" "}
+          <strong>{nro === 1 ? `junio de ${anio}` : `diciembre de ${anio}`}</strong>. Mientras tanto podés mirar cómo
+          viene el cálculo.
+        </p>
+      )}
 
       <div className="bg-white border border-neutral-200 rounded-xl overflow-hidden">
         {cargando ? (
@@ -494,7 +495,14 @@ function TabAguinaldo() {
                     </td>
                     <td className="p-3 text-right whitespace-nowrap">
                       {f.cierre ? (
-                        <span className="font-bold tabular-nums">${formatearMonto(f.cierre.monto)}</span>
+                        <>
+                          <span className="font-bold tabular-nums">${formatearMonto(f.cierre.monto)}</span>
+                          {f.totalPagado > 0 && f.saldo > 0 && (
+                            <span className="block text-[10.5px] text-amber-600">
+                              Pagado ${formatearMonto(f.totalPagado)} · falta ${formatearMonto(f.saldo)}
+                            </span>
+                          )}
+                        </>
                       ) : editando === f.idPersona ? (
                         <input
                           autoFocus
@@ -527,7 +535,8 @@ function TabAguinaldo() {
                               setEditando(f.idPersona);
                               setMontoEdit(String(f.montoSugerido));
                             }}
-                            disabled={f.montoSugerido <= 0}
+                            disabled={f.montoSugerido <= 0 || !habilitado}
+                            title={habilitado ? undefined : "El semestre todavía no terminó"}
                             className="text-xs font-bold text-white bg-accent hover:bg-accent-dark px-3 py-1.5 rounded-lg disabled:opacity-40"
                           >
                             Cerrar aguinaldo
@@ -535,14 +544,16 @@ function TabAguinaldo() {
                         )
                       ) : f.cierre.estado === "PENDIENTE_PAGO" ? (
                         <div className="flex items-center justify-end gap-2.5">
-                          <button onClick={() => handleDeshacer(f)} className="text-xs text-neutral-400 hover:text-red-600">
-                            Deshacer
-                          </button>
+                          {f.totalPagado === 0 && (
+                            <button onClick={() => handleDeshacer(f)} className="text-xs text-neutral-400 hover:text-red-600">
+                              Deshacer
+                            </button>
+                          )}
                           <button
                             onClick={() => setModalPagar(f)}
                             className="text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 rounded-lg"
                           >
-                            Pagar
+                            {f.totalPagado > 0 ? "Pagar saldo" : "Pagar"}
                           </button>
                         </div>
                       ) : (
@@ -573,6 +584,7 @@ function TabAguinaldo() {
 
 function ModalPagarAguinaldo({ fila, onClose, onPagado }: { fila: FilaAguinaldo; onClose: () => void; onPagado: () => void }) {
   const cierre = fila.cierre!;
+  const [monto, setMonto] = useState(String(fila.saldo));
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -580,7 +592,7 @@ function ModalPagarAguinaldo({ fila, onClose, onPagado }: { fila: FilaAguinaldo;
     e.preventDefault();
     setError(null);
     setGuardando(true);
-    pagarAguinaldo(cierre.id_cierre, new FormData(e.currentTarget))
+    registrarPagoAguinaldo(cierre.id_cierre, new FormData(e.currentTarget))
       .then((res) => {
         if (res.error) setError(res.error);
         else onPagado();
@@ -600,9 +612,26 @@ function ModalPagarAguinaldo({ fila, onClose, onPagado }: { fila: FilaAguinaldo;
         <p className="text-xs text-neutral-400 -mt-2 mb-1">
           {fila.nombre} · {etiquetaSemestre(cierre.semestre)}
         </p>
-        <p className="text-2xl font-extrabold text-neutral-900 tabular-nums mb-4">${formatearMonto(cierre.monto)}</p>
+        <p className="text-2xl font-extrabold text-neutral-900 tabular-nums">${formatearMonto(fila.saldo)}</p>
+        <p className="text-xs text-neutral-400 mb-4">
+          {fila.totalPagado > 0
+            ? `Saldo pendiente · ya pagaste $${formatearMonto(fila.totalPagado)} de $${formatearMonto(cierre.monto)}`
+            : "Podés pagarlo todo junto o en partes."}
+        </p>
 
         {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
+
+        <div className="mb-3">
+          <label className="block text-xs font-medium text-neutral-600 mb-1">Monto de este pago *</label>
+          <input
+            type="number"
+            name="monto"
+            value={monto}
+            onChange={(e) => setMonto(e.target.value)}
+            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+          />
+          <p className="text-[10.5px] text-neutral-400 mt-1">Dejalo como está para cancelar todo, o poné menos para pagar una parte.</p>
+        </div>
 
         <div className="mb-3">
           <label className="block text-xs font-medium text-neutral-600 mb-1.5">¿De dónde sale la plata? *</label>
