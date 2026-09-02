@@ -1,6 +1,8 @@
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos";
 import ConfiguracionApp from "@/components/ConfiguracionApp";
+import { obtenerEmisor } from "@/lib/arca/emisor-db";
+import { estadoCredenciales } from "@/lib/arca/credenciales";
 
 export const dynamic = "force-dynamic";
 
@@ -45,9 +47,15 @@ export default async function ConfiguracionPage() {
       "RENT_MP_IIBB",
       "RENT_MP_IMP_CREDITOS",
       "RENT_MP_COMISION",
+      "ARCA_HABILITADO",
+      "ARCA_AUTO_EFECTIVO",
+      "ARCA_AUTO_MERCADO_PAGO",
+      "ARCA_PUNTO_VENTA",
+      "ARCA_IVA_PORCENTAJE",
     ]);
 
   const valores = new Map((data ?? []).map((c) => [c.parametro, c.valor]));
+  const [emisor, credencialesArca] = await Promise.all([obtenerEmisor(), estadoCredenciales()]);
 
   return (
     <ConfiguracionApp
@@ -75,6 +83,13 @@ export default async function ConfiguracionPage() {
       rentMpIibb={(valores.get("RENT_MP_IIBB") ?? "true") === "true"}
       rentMpImpCreditos={(valores.get("RENT_MP_IMP_CREDITOS") ?? "true") === "true"}
       rentMpComision={(valores.get("RENT_MP_COMISION") ?? "true") === "true"}
+      arcaHabilitado={valores.get("ARCA_HABILITADO") === "1"}
+      arcaAutoEfectivo={valores.get("ARCA_AUTO_EFECTIVO") === "1"}
+      arcaAutoMercadoPago={valores.get("ARCA_AUTO_MERCADO_PAGO") === "1"}
+      arcaPuntoVenta={Number(valores.get("ARCA_PUNTO_VENTA") ?? 3)}
+      arcaIvaPorcentaje={Number(valores.get("ARCA_IVA_PORCENTAJE") ?? 21)}
+      emisor={emisor}
+      credencialesArca={credencialesArca}
     />
   );
 }

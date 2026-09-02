@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useMemo, useState, useTransition } from "react";
 import {
@@ -10,6 +10,9 @@ import {
   guardarConfigGastos,
   conectarMercadoPagoQR,
 } from "@/app/(app)/configuracion/actions";
+import ConfiguracionArca from "@/components/ConfiguracionArca";
+import type { DatosEmisor } from "@/lib/arca/emisor-db";
+import type { EstadoCredenciales } from "@/lib/arca/credenciales";
 
 export default function ConfiguracionApp({
   puntosActivo,
@@ -36,6 +39,13 @@ export default function ConfiguracionApp({
   rentMpIibb,
   rentMpImpCreditos,
   rentMpComision,
+  arcaHabilitado,
+  arcaAutoEfectivo,
+  arcaAutoMercadoPago,
+  arcaPuntoVenta,
+  arcaIvaPorcentaje,
+  emisor,
+  credencialesArca,
 }: {
   puntosActivo: boolean;
   puntosCadaMonto: number;
@@ -61,6 +71,13 @@ export default function ConfiguracionApp({
   rentMpIibb: boolean;
   rentMpImpCreditos: boolean;
   rentMpComision: boolean;
+  arcaHabilitado: boolean;
+  arcaAutoEfectivo: boolean;
+  arcaAutoMercadoPago: boolean;
+  arcaPuntoVenta: number;
+  arcaIvaPorcentaje: number;
+  emisor: DatosEmisor;
+  credencialesArca: EstadoCredenciales;
 }) {
   const [isPending, startTransition] = useTransition();
   const [guardado, setGuardado] = useState(false);
@@ -729,6 +746,17 @@ export default function ConfiguracionApp({
           {isPendingGastos ? "Guardando..." : "Guardar tope"}
         </button>
       </form>
+
+      <ConfiguracionArca
+        emisor={emisor}
+        credenciales={credencialesArca}
+        habilitado={arcaHabilitado}
+        autoEfectivo={arcaAutoEfectivo}
+        autoMercadoPago={arcaAutoMercadoPago}
+        puntoVenta={arcaPuntoVenta}
+        ivaPorcentaje={arcaIvaPorcentaje}
+      />
     </div>
   );
 }
+

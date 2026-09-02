@@ -303,3 +303,69 @@ export async function guardarConfigGastos(formData: FormData): Promise<{ error: 
   revalidatePath("/configuracion");
   return { error: null };
 }
+
+// Datos fiscales del emisor. Están en la base y no en el código porque una
+// vez se publicó un CUIT equivocado y hubo que corregirlo y volver a deployar.
+export async function guardarDatosFiscales(formData: FormData): Promise<{ error: string | null }> {
+  const permisoError = await requireEditarConfiguracion();
+  if (permisoError) return { error: permisoError };
+
+  const cuit = String(formData.get("emisor_cuit") ?? "").trim();
+  if (cuit.replace(/\D/g, "").length !== 11) return { error: "El CUIT tiene que tener 11 dígitos." };
+  const razonSocial = String(formData.get("emisor_razon_social") ?? "").trim();
+  if (!razonSocial) return { error: "Falta la razón social." };
+
+  const supabase = getSupabaseServerClient();
+  const valores: [string, string, string][] = [
+    ["EMISOR_RAZON_SOCIAL", razonSocial, "Datos fiscales: razón social que se imprime en la factura"],
+    ["EMISOR_CUIT", cuit, "Datos fiscales: CUIT de la empresa que emite"],
+    ["EMISOR_NOMBRE_FANTASIA", String(formData.get("emisor_nombre_fantasia") ?? "").trim(), "Datos fiscales: nombre comercial"],
+    ["EMISOR_CONDICION_IVA", String(formData.get("emisor_condicion_iva") ?? "").trim(), "Datos fiscales: condición frente al IVA"],
+    ["EMISOR_DOMICILIO_COMERCIAL", String(formData.get("emisor_domicilio") ?? "").trim(), "Datos fiscales: domicilio comercial"],
+    ["EMISOR_INGRESOS_BRUTOS", String(formData.get("emisor_iibb") ?? "").trim(), "Datos fiscales: número de Ingresos Brutos"],
+    ["EMISOR_INICIO_ACTIVIDADES", String(formData.get("emisor_inicio") ?? "").trim(), "Datos fiscales: inicio de actividades"],
+  ];
+
+  for (const [parametro, valor, descripcion] of valores) {
+    const errorParam = await guardarParametro(supabase, parametro, valor, descripcion);
+    if (errorParam) return { error: errorParam };
+  }
+
+  revalidatePath("/configuracion");
+  return { error: null };
+}
+
+// Facturación electrónica (ARCA). Todo arranca apagado: nadie debería empezar
+// a emitir facturas reales sin decidirlo a mano, y una factura mal emitida no
+// se borra — hay que hacer nota de crédito.
+export async function guardarConfigArca(formData: FormData): Promise<{ error: string | null }> {
+  const permisoError = await requireEditarConfiguracion();
+  if (permisoError) return { error: permisoError };
+
+  const habilitado = formData.get("arca_habilitado") === "on";
+  const autoEfectivo = formData.get("arca_auto_efectivo") === "on";
+  const autoMercadoPago = formData.get("arca_auto_mercado_pago") === "on";
+  const puntoVenta = Number(formData.get("arca_punto_venta") ?? 0);
+  const iva = Number(formData.get("arca_iva_porcentaje") ?? 21);
+
+  if (!puntoVenta || puntoVenta <= 0) return { error: "Poné el número de punto de venta habilitado en ARCA." };
+  if (iva <= 0 || iva > 100) return { error: "El porcentaje de IVA no es válido." };
+
+  const supabase = getSupabaseServerClient();
+
+  const valores: [string, string, string][] = [
+    ["ARCA_HABILITADO", habilitado ? "1" : "0", "ARCA: interruptor general de la facturación electrónica"],
+    ["ARCA_AUTO_EFECTIVO", autoEfectivo ? "1" : "0", "ARCA: emitir factura sola en las ventas cobradas en efectivo"],
+    ["ARCA_AUTO_MERCADO_PAGO", autoMercadoPago ? "1" : "0", "ARCA: emitir factura sola en las ventas cobradas con Mercado Pago"],
+    ["ARCA_PUNTO_VENTA", String(puntoVenta), "ARCA: punto de venta habilitado como Web Services"],
+    ["ARCA_IVA_PORCENTAJE", String(iva), "ARCA: alícuota de IVA aplicada a las facturas"],
+  ];
+
+  for (const [parametro, valor, descripcion] of valores) {
+    const errorParam = await guardarParametro(supabase, parametro, valor, descripcion);
+    if (errorParam) return { error: errorParam };
+  }
+
+  revalidatePath("/configuracion");
+  return { error: null };
+}
