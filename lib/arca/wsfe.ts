@@ -1,6 +1,7 @@
 import { getSupabaseServerClient } from "@/lib/supabase";
-import { obtenerCredencialesArca, URLS_ARCA } from "@/lib/arca/credenciales";
+import { URLS_ARCA } from "@/lib/arca/credenciales";
 import { obtenerTicketAcceso } from "@/lib/arca/wsaa";
+import { postSoap } from "@/lib/arca/http";
 import { obtenerEmisor } from "@/lib/arca/emisor-db";
 
 // WSFE: el servicio de ARCA que autoriza cada factura y devuelve el CAE.
@@ -89,24 +90,19 @@ async function llamarWsfe(accion: string, cuerpo: string) {
   </soapenv:Body>
 </soapenv:Envelope>`;
 
-  let res: Response;
+  let res: { ok: boolean; status: number; texto: string };
   try {
-    res = await fetch(URLS_ARCA.wsfe, {
-      method: "POST",
-      headers: {
-        "Content-Type": "text/xml; charset=utf-8",
-        SOAPAction: `http://ar.gov.afip.dif.FEV1/${accion}`,
-      },
-      body: sobre,
-      cache: "no-store",
+    // postSoap y no fetch: ARCA usa TLS viejo (ver lib/arca/http.ts).
+    res = await postSoap(URLS_ARCA.wsfe, sobre, {
+      "Content-Type": "text/xml; charset=utf-8",
+      SOAPAction: `http://ar.gov.afip.dif.FEV1/${accion}`,
     });
   } catch (err) {
-    // "fetch failed" a secas no dice nada; el motivo real viene en `cause`.
-    const causa = err instanceof Error && err.cause ? ` (${String(err.cause)})` : "";
+    const causa = err instanceof Error ? ` (${err.message})` : "";
     throw new Error(`No se pudo conectar con ARCA${causa}. Puede ser una caída momentánea del servicio: probá de nuevo en unos minutos.`);
   }
 
-  const texto = await res.text();
+  const texto = res.texto;
 
   const falla = entre(texto, "faultstring") ?? entre(texto, "soap:Text");
   if (falla) throw new Error(`ARCA: ${falla}`);

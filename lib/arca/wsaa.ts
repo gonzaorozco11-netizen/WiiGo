@@ -1,6 +1,7 @@
 import forge from "node-forge";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerCredencialesArca, URLS_ARCA } from "@/lib/arca/credenciales";
+import { postSoap } from "@/lib/arca/http";
 
 // WSAA: el portero de ARCA. Antes de poder facturar hay que pedirle un
 // "ticket de acceso" (token + sign) firmando un XML con el certificado.
@@ -83,20 +84,17 @@ async function pedirTicketNuevo(): Promise<TicketAcceso> {
   </soapenv:Body>
 </soapenv:Envelope>`;
 
-  let res: Response;
+  let res: { ok: boolean; status: number; texto: string };
   try {
-    res = await fetch(URLS_ARCA.wsaa, {
-      method: "POST",
-      headers: { "Content-Type": "text/xml; charset=utf-8", SOAPAction: "" },
-      body: sobre,
-      cache: "no-store",
-    });
+    // postSoap y no fetch: ARCA usa TLS viejo y hace falta un agente especial
+    // (ver lib/arca/http.ts).
+    res = await postSoap(URLS_ARCA.wsaa, sobre, { "Content-Type": "text/xml; charset=utf-8", SOAPAction: "" });
   } catch (err) {
-    const causa = err instanceof Error && err.cause ? ` (${String(err.cause)})` : "";
+    const causa = err instanceof Error ? ` (${err.message})` : "";
     throw new Error(`No se pudo conectar con ARCA para autenticar${causa}. Probá de nuevo en unos minutos.`);
   }
 
-  const texto = await res.text();
+  const texto = res.texto;
 
   const falla = entre(texto, "faultstring");
   if (falla) throw new Error(`ARCA rechazó la autenticación: ${falla}`);
