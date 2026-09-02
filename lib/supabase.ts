@@ -562,6 +562,16 @@ export type Venta = {
   motivo_cancelacion: string | null;
   fecha_cancelacion: string | null;
   id_turno: string | null;
+  // Facturación electrónica (ARCA). Quedan en null mientras la venta no se
+  // facturó — ver lib/arca/.
+  cae: string | null;
+  cae_vencimiento: string | null;
+  factura_tipo: number | null;
+  factura_punto_venta: number | null;
+  factura_numero: number | null;
+  factura_neto: number | null;
+  factura_iva: number | null;
+  factura_fecha: string | null;
 };
 
 // Turno de caja: abre un empleado con un fondo inicial de efectivo, todas

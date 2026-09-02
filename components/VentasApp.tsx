@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Local, Venta, DetalleVenta, Producto, VarianteProducto, Marca, Cliente } from "@/lib/supabase";
 import { anularVenta, listarVentasFiltradas, obtenerDetalleVenta } from "@/app/(app)/ventas/actions";
+import { emitirFacturaDeVenta } from "@/app/(app)/facturacion/actions";
 
 type FiltroFecha = "HOY" | "SEMANA" | "MES" | "TODO" | "RANGO";
 type FiltroCanal = "TODOS" | "SELF_CHECKOUT" | "POS";
 type FiltroEstado = "TODOS" | "PENDIENTE_PAGO" | "PAGADA" | "CANCELADA" | "ANULADA";
+type FiltroFactura = "TODAS" | "PENDIENTES" | "FACTURADAS";
 
 const CANAL_LABEL: Record<string, string> = {
   SELF_CHECKOUT: "Self Checkout",
@@ -67,6 +69,56 @@ function rangoParaFiltro(
   return { desde: rangoDesde || null, hasta: rangoHasta || null };
 }
 
+// Estado de facturación de una venta: el número de comprobante si ya se
+// emitió, o el botón para emitirla. Solo se muestra a quien tiene el permiso
+// de facturar (ver PERMISOS.EMITIR_FACTURAS).
+//
+// A propósito NO existe un "facturar todas": emitir es irreversible, y una
+// factura equivocada se corrige con una nota de crédito. Va de a una y con
+// confirmación.
+function CeldaFactura({ venta, onFacturada }: { venta: Venta; onFacturada: () => void }) {
+  const [emitiendo, setEmitiendo] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (venta.cae) {
+    return (
+      <span className="text-xs font-semibold text-emerald-700 tabular-nums" title={`CAE ${venta.cae}`}>
+        {String(venta.factura_punto_venta ?? 0).padStart(5, "0")}-{String(venta.factura_numero ?? 0).padStart(8, "0")}
+      </span>
+    );
+  }
+
+  if (venta.estado !== "PAGADA") return <span className="text-xs text-neutral-300">—</span>;
+
+  function facturar() {
+    const monto = (venta.total ?? 0).toLocaleString("es-AR", { maximumFractionDigits: 0 });
+    if (!confirm(`¿Emitir factura de $${monto} por la venta ${formatearPedido(venta.numero)}?\n\nUna vez emitida no se puede borrar: si está mal, hay que hacer una nota de crédito.`)) {
+      return;
+    }
+    setError(null);
+    setEmitiendo(true);
+    emitirFacturaDeVenta(venta.id_venta, { tipo: "CONSUMIDOR_FINAL", numero: "0" })
+      .then((res) => {
+        if (res.error) setError(res.error);
+        else onFacturada();
+      })
+      .finally(() => setEmitiendo(false));
+  }
+
+  return (
+    <span>
+      <button
+        onClick={facturar}
+        disabled={emitiendo}
+        className="text-xs font-bold text-white bg-accent hover:bg-accent-dark disabled:opacity-50 px-2.5 py-1 rounded-lg"
+      >
+        {emitiendo ? "Emitiendo..." : "Facturar"}
+      </button>
+      {error && <span className="block text-[10.5px] text-red-600 max-w-[220px] whitespace-normal mt-1">{error}</span>}
+    </span>
+  );
+}
+
 export default function VentasApp({
   locales,
   ventasIniciales,
@@ -74,6 +126,7 @@ export default function VentasApp({
   variantes,
   marcas,
   clientes,
+  puedeFacturar,
 }: {
   locales: Local[];
   ventasIniciales: Venta[];
@@ -81,6 +134,7 @@ export default function VentasApp({
   variantes: VarianteProducto[];
   marcas: Marca[];
   clientes: Cliente[];
+  puedeFacturar: boolean;
 }) {
   const [ventas, setVentas] = useState<Venta[]>(ventasIniciales);
   const [cargandoVentas, setCargandoVentas] = useState(false);
@@ -88,6 +142,7 @@ export default function VentasApp({
   const [idLocal, setIdLocal] = useState<string>("TODOS");
   const [filtroCanal, setFiltroCanal] = useState<FiltroCanal>("TODOS");
   const [filtroEstado, setFiltroEstado] = useState<FiltroEstado>("TODOS");
+  const [filtroFactura, setFiltroFactura] = useState<FiltroFactura>("TODAS");
   const [filtroFecha, setFiltroFecha] = useState<FiltroFecha>("SEMANA");
   const [rangoDesde, setRangoDesde] = useState(hoyISO());
   const [rangoHasta, setRangoHasta] = useState(hoyISO());
@@ -102,12 +157,9 @@ export default function VentasApp({
   // La carga inicial (ventasIniciales) ya viene filtrada por "esta semana"
   // desde el servidor — solo hay que volver a pedir cuando el filtro de
   // fecha cambia a otra cosa.
-  const primerRender = useRef(true);
-  useEffect(() => {
-    if (primerRender.current) {
-      primerRender.current = false;
-      return;
-    }
+  // Se usa también después de emitir una factura, para que la fila muestre el
+  // número de comprobante sin recargar la página entera.
+  const recargarVentas = useCallback(() => {
     const { desde, hasta } = rangoParaFiltro(filtroFecha, rangoDesde, rangoHasta);
     setCargandoVentas(true);
     listarVentasFiltradas({ desde, hasta })
@@ -119,6 +171,15 @@ export default function VentasApp({
       })
       .finally(() => setCargandoVentas(false));
   }, [filtroFecha, rangoDesde, rangoHasta]);
+
+  const primerRender = useRef(true);
+  useEffect(() => {
+    if (primerRender.current) {
+      primerRender.current = false;
+      return;
+    }
+    recargarVentas();
+  }, [recargarVentas]);
 
   useEffect(() => {
     if (!idVentaSeleccionada) {
@@ -179,9 +240,12 @@ export default function VentasApp({
       if (idLocal !== "TODOS" && v.id_local !== idLocal) return false;
       if (filtroCanal !== "TODOS" && v.canal !== filtroCanal) return false;
       if (filtroEstado !== "TODOS" && v.estado !== filtroEstado) return false;
+      // "Pendientes de facturar" son las cobradas que todavía no tienen CAE.
+      if (filtroFactura === "PENDIENTES" && (v.cae || v.estado !== "PAGADA")) return false;
+      if (filtroFactura === "FACTURADAS" && !v.cae) return false;
       return true;
     });
-  }, [ventas, idLocal, filtroCanal, filtroEstado]);
+  }, [ventas, idLocal, filtroCanal, filtroEstado, filtroFactura]);
 
   const resumen = useMemo(() => {
     const pagadas = ventasFiltradas.filter((v) => v.estado === "PAGADA");
@@ -248,6 +312,18 @@ export default function VentasApp({
           <option value="ANULADA">Anulada</option>
         </select>
 
+        {puedeFacturar && (
+          <select
+            value={filtroFactura}
+            onChange={(e) => setFiltroFactura(e.target.value as FiltroFactura)}
+            className="border border-neutral-300 rounded-lg px-3 py-2 text-sm bg-white"
+          >
+            <option value="TODAS">Facturadas y sin facturar</option>
+            <option value="PENDIENTES">Pendientes de facturar</option>
+            <option value="FACTURADAS">Ya facturadas</option>
+          </select>
+        )}
+
         {(["HOY", "SEMANA", "MES", "TODO", "RANGO"] as FiltroFecha[]).map((f) => (
           <button
             key={f}
@@ -296,6 +372,7 @@ export default function VentasApp({
                     <th className="p-3 text-right">Desc.</th>
                     <th className="p-3 text-right">Total</th>
                     <th className="p-3">Estado</th>
+                    {puedeFacturar && <th className="p-3">Factura</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -326,6 +403,11 @@ export default function VentasApp({
                           {ESTADO_LABEL[v.estado] ?? v.estado}
                         </span>
                       </td>
+                      {puedeFacturar && (
+                        <td className="p-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                          <CeldaFactura venta={v} onFacturada={recargarVentas} />
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>

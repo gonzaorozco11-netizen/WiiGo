@@ -8,6 +8,7 @@ import {
   type Cliente,
 } from "@/lib/supabase";
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
+import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos";
 import PantallaBloqueada from "@/components/PantallaBloqueada";
 import VentasApp from "@/components/VentasApp";
 
@@ -27,6 +28,10 @@ function hace7diasISO() {
 export default async function VentasPage() {
   const sesion = await obtenerSesionConPantallas();
   if (!puedeVerPantalla(sesion, "ventas")) return <PantallaBloqueada />;
+
+  // La columna y el botón de factura solo existen para quien puede emitir.
+  const sesionPermisos = await obtenerSesionConPermisos();
+  const puedeFacturar = tienePermiso(sesionPermisos, PERMISOS.EMITIR_FACTURAS);
 
   const supabase = getSupabaseServerClient();
 
@@ -64,6 +69,7 @@ export default async function VentasPage() {
       variantes={(variantesRes.data ?? []) as VarianteProducto[]}
       marcas={(marcasRes.data ?? []) as Marca[]}
       clientes={(clientesRes.data ?? []) as Cliente[]}
+      puedeFacturar={puedeFacturar}
     />
   );
 }
