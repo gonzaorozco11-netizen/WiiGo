@@ -84,7 +84,9 @@ export async function generarParClaves(razonSocial: string, cuit: string, alias:
     { name: "countryName", value: "AR" },
     { name: "organizationName", value: razonSocial },
     { name: "commonName", value: alias },
-    { shortName: "serialNumber", value: `CUIT ${cuit.replace(/\D/g, "")}` },
+    // serialNumber va por su código (OID 2.5.4.5): node-forge no lo conoce
+    // por nombre y falla con "Attribute type not specified".
+    { type: "2.5.4.5", value: `CUIT ${cuit.replace(/\D/g, "")}` },
   ]);
   csr.sign(claves.privateKey, forge.md.sha256.create());
 
