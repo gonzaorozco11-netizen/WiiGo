@@ -20,6 +20,11 @@ import {
   eliminarCierreNomina,
   pagarNomina,
   obtenerUrlReciboSueldo,
+  obtenerAguinaldos,
+  cerrarAguinaldo,
+  eliminarCierreAguinaldo,
+  pagarAguinaldo,
+  type FilaAguinaldo,
   listarFeriados,
   crearFeriado,
   eliminarFeriado,
@@ -34,7 +39,7 @@ import {
 
 type UsuarioMin = { id_usuario: string; nombre: string; sueldo_base: number | null };
 type PersonaMin = { id_persona: string; nombre: string; apellido: string | null };
-type Tab = "nomina" | "horarios" | "presentismo" | "vacaciones";
+type Tab = "nomina" | "aguinaldo" | "horarios" | "presentismo" | "vacaciones";
 
 const RESULTADO_BADGE_NOMINA: Record<NovedadNomina["presentismoResultado"], string> = {
   COMPLETO: "bg-emerald-100 text-emerald-700",
@@ -94,6 +99,7 @@ export default function RrhhApp({
         {(
           [
             ["nomina", "💰 Nómina"],
+            ["aguinaldo", "🎁 Aguinaldo"],
             ["horarios", "🕐 Horarios"],
             ["presentismo", "📋 Presentismo"],
             ["vacaciones", "🌴 Vacaciones"],
@@ -110,6 +116,7 @@ export default function RrhhApp({
       </div>
 
       {tab === "nomina" && <TabNomina usuarios={usuarios} />}
+      {tab === "aguinaldo" && <TabAguinaldo />}
       {tab === "horarios" && <TabHorarios horarios={horarios} onCambio={recargarHorarios} />}
       {tab === "presentismo" && <TabPresentismo />}
       {tab === "vacaciones" && <TabVacaciones personas={personas} />}
@@ -360,6 +367,256 @@ function TabNomina({ usuarios }: { usuarios: UsuarioMin[] }) {
           }}
         />
       )}
+    </div>
+  );
+}
+
+// ===================== AGUINALDO =====================
+
+function semestreActual() {
+  const hoy = new Date();
+  return `${hoy.getFullYear()}-${hoy.getMonth() < 6 ? 1 : 2}`;
+}
+
+function etiquetaSemestre(semestre: string) {
+  const [anio, nro] = semestre.split("-");
+  return nro === "1" ? `1er semestre ${anio} (enero a junio)` : `2do semestre ${anio} (julio a diciembre)`;
+}
+
+function TabAguinaldo() {
+  const [semestre, setSemestre] = useState(semestreActual());
+  const [filas, setFilas] = useState<FilaAguinaldo[]>([]);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [editando, setEditando] = useState<string | null>(null);
+  const [montoEdit, setMontoEdit] = useState("");
+  const [guardando, setGuardando] = useState(false);
+  const [modalPagar, setModalPagar] = useState<FilaAguinaldo | null>(null);
+
+  function recargar() {
+    setCargando(true);
+    obtenerAguinaldos(semestre).then(setFilas).finally(() => setCargando(false));
+  }
+
+  useEffect(recargar, [semestre]);
+
+  function handleCerrar(f: FilaAguinaldo) {
+    const monto = Number(montoEdit.replace(/[^\d.-]/g, "")) || 0;
+    setError(null);
+    setGuardando(true);
+    cerrarAguinaldo(f.idPersona, f.idUsuario, semestre, monto)
+      .then((res) => {
+        if (res.error) setError(res.error);
+        else {
+          setEditando(null);
+          recargar();
+        }
+      })
+      .finally(() => setGuardando(false));
+  }
+
+  function handleDeshacer(f: FilaAguinaldo) {
+    if (!f.cierre) return;
+    if (!confirm(`¿Deshacer el aguinaldo de ${f.nombre}? Se anula el gasto que generó.`)) return;
+    eliminarCierreAguinaldo(f.cierre.id_cierre).then((res) => {
+      if (res.error) alert(res.error);
+      else recargar();
+    });
+  }
+
+  const [anio, nro] = semestre.split("-").map(Number);
+
+  return (
+    <div>
+      <p className="text-xs text-neutral-400 mb-3">
+        Medio sueldo por semestre, calculado sobre la <strong>mejor remuneración</strong> de esos meses (no el promedio),
+        y en proporción a los días trabajados si la persona entró empezado el semestre. El monto es editable antes de
+        cerrar. El gasto entra completo en el mes en que lo cerrás.
+      </p>
+
+      {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
+
+      <div className="flex items-center gap-2 mb-4">
+        <select
+          value={semestre}
+          onChange={(e) => setSemestre(e.target.value)}
+          className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-sm bg-white"
+        >
+          {[anio - 1, anio, anio + 1].flatMap((a) => [`${a}-1`, `${a}-2`]).map((s) => (
+            <option key={s} value={s}>
+              {etiquetaSemestre(s)}
+            </option>
+          ))}
+        </select>
+        <span className="text-xs text-neutral-400">{nro === 1 ? "Se paga hasta el 30 de junio" : "Se paga hasta el 18 de diciembre"}</span>
+      </div>
+
+      <div className="bg-white border border-neutral-200 rounded-xl overflow-hidden">
+        {cargando ? (
+          <p className="text-sm text-neutral-400 text-center py-8">Cargando...</p>
+        ) : filas.length === 0 ? (
+          <p className="text-sm text-neutral-400 text-center py-8">No hay personas activas vinculadas a un usuario.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-neutral-200 text-left text-xs text-neutral-500">
+                  <th className="p-3">Empleado</th>
+                  <th className="p-3 text-right">Mejor sueldo del semestre</th>
+                  <th className="p-3 text-right">Días trabajados</th>
+                  <th className="p-3 text-right">Aguinaldo</th>
+                  <th className="p-3"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {filas.map((f) => (
+                  <tr key={f.idPersona} className="border-b border-neutral-100 last:border-0">
+                    <td className="p-3">
+                      {f.nombre}
+                      {f.mesesConCierre === 0 && (
+                        <span className="block text-[10.5px] text-amber-600">Sin nóminas cerradas en el semestre</span>
+                      )}
+                    </td>
+                    <td className="p-3 text-right tabular-nums">${formatearMonto(f.mejorRemuneracion)}</td>
+                    <td className="p-3 text-right tabular-nums text-neutral-500">
+                      {f.diasTrabajados}
+                      <span className="text-neutral-300"> / 180</span>
+                    </td>
+                    <td className="p-3 text-right whitespace-nowrap">
+                      {f.cierre ? (
+                        <span className="font-bold tabular-nums">${formatearMonto(f.cierre.monto)}</span>
+                      ) : editando === f.idPersona ? (
+                        <input
+                          autoFocus
+                          value={montoEdit}
+                          onChange={(e) => setMontoEdit(e.target.value)}
+                          className="w-28 border border-neutral-300 rounded-lg px-2 py-1 text-sm text-right"
+                        />
+                      ) : (
+                        <span className="tabular-nums text-neutral-500">${formatearMonto(f.montoSugerido)}</span>
+                      )}
+                    </td>
+                    <td className="p-3 text-right whitespace-nowrap">
+                      {!f.cierre ? (
+                        editando === f.idPersona ? (
+                          <div className="flex items-center justify-end gap-2.5">
+                            <button onClick={() => setEditando(null)} className="text-xs text-neutral-400">
+                              Cancelar
+                            </button>
+                            <button
+                              onClick={() => handleCerrar(f)}
+                              disabled={guardando}
+                              className="text-xs font-bold text-white bg-accent hover:bg-accent-dark px-3 py-1.5 rounded-lg disabled:opacity-50"
+                            >
+                              {guardando ? "..." : "Confirmar"}
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              setEditando(f.idPersona);
+                              setMontoEdit(String(f.montoSugerido));
+                            }}
+                            disabled={f.montoSugerido <= 0}
+                            className="text-xs font-bold text-white bg-accent hover:bg-accent-dark px-3 py-1.5 rounded-lg disabled:opacity-40"
+                          >
+                            Cerrar aguinaldo
+                          </button>
+                        )
+                      ) : f.cierre.estado === "PENDIENTE_PAGO" ? (
+                        <div className="flex items-center justify-end gap-2.5">
+                          <button onClick={() => handleDeshacer(f)} className="text-xs text-neutral-400 hover:text-red-600">
+                            Deshacer
+                          </button>
+                          <button
+                            onClick={() => setModalPagar(f)}
+                            className="text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 rounded-lg"
+                          >
+                            Pagar
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-xs font-semibold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">✓ Pagado</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {modalPagar?.cierre && (
+        <ModalPagarAguinaldo
+          fila={modalPagar}
+          onClose={() => setModalPagar(null)}
+          onPagado={() => {
+            setModalPagar(null);
+            recargar();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function ModalPagarAguinaldo({ fila, onClose, onPagado }: { fila: FilaAguinaldo; onClose: () => void; onPagado: () => void }) {
+  const cierre = fila.cierre!;
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError(null);
+    setGuardando(true);
+    pagarAguinaldo(cierre.id_cierre, new FormData(e.currentTarget))
+      .then((res) => {
+        if (res.error) setError(res.error);
+        else onPagado();
+      })
+      .finally(() => setGuardando(false));
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+      <form onSubmit={handleSubmit} className="bg-white w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl p-6 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-neutral-900">Pagar aguinaldo</h2>
+          <button type="button" onClick={onClose} className="text-neutral-400 hover:text-neutral-700" aria-label="Cerrar">
+            ✕
+          </button>
+        </div>
+        <p className="text-xs text-neutral-400 -mt-2 mb-1">
+          {fila.nombre} · {etiquetaSemestre(cierre.semestre)}
+        </p>
+        <p className="text-2xl font-extrabold text-neutral-900 tabular-nums mb-4">${formatearMonto(cierre.monto)}</p>
+
+        {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
+
+        <div className="mb-3">
+          <label className="block text-xs font-medium text-neutral-600 mb-1.5">¿De dónde sale la plata? *</label>
+          <div className="flex gap-2">
+            <label className="flex-1 flex items-center gap-2 border border-neutral-300 rounded-lg px-3 py-2 text-sm cursor-pointer has-[:checked]:border-accent has-[:checked]:bg-accent-tint">
+              <input type="radio" name="cuenta_pago" value="CAJA_ADMIN" defaultChecked /> Caja Administración
+            </label>
+            <label className="flex-1 flex items-center gap-2 border border-neutral-300 rounded-lg px-3 py-2 text-sm cursor-pointer has-[:checked]:border-accent has-[:checked]:bg-accent-tint">
+              <input type="radio" name="cuenta_pago" value="TRANSFERENCIA" /> Transferencia
+            </label>
+          </div>
+        </div>
+
+        <div className="mb-4">
+          <label className="block text-xs font-medium text-neutral-600 mb-1">Comprobante *</label>
+          <input type="file" name="comprobante" required accept="image/*,.pdf" className="w-full text-sm" />
+        </div>
+
+        <div className="flex justify-end">
+          <button type="submit" disabled={guardando} className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-medium px-5 py-2 rounded-lg text-sm">
+            {guardando ? "Guardando..." : "Confirmar pago"}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }

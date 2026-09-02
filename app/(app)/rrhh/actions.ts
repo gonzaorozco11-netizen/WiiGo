@@ -1060,3 +1060,275 @@ export async function obtenerUrlReciboSueldo(path: string): Promise<string> {
   if (error) throw new Error(error.message);
   return data.signedUrl;
 }
+
+// ===================== AGUINALDO (SAC) =====================
+// Art. 121/122 LCT: medio sueldo por semestre, tomando la MEJOR remuneración
+// mensual del semestre (no el promedio ni el último). Si la persona no
+// trabajó el semestre completo, se paga en proporción a los días trabajados
+// sobre 180.
+//
+// Decisión tomada con Gonzalo (2026-09-01): el gasto entra COMPLETO en el mes
+// en que se cierra (junio y diciembre), no provisionado mes a mes. Es más
+// fácil de seguir, a costa de que esos dos meses muestren un resultado peor
+// que el real y los otros diez, mejor.
+
+export type CierreAguinaldo = {
+  id_cierre: string;
+  id_persona: string;
+  semestre: string;
+  mejor_remuneracion: number;
+  dias_trabajados: number;
+  monto: number;
+  id_gasto: string | null;
+  estado: "PENDIENTE_PAGO" | "PAGADO";
+  fecha_cierre: string;
+  usuario_cierre: string | null;
+  fecha_pago: string | null;
+  cuenta_pago: string | null;
+  comprobante_path: string | null;
+  usuario_pago: string | null;
+};
+
+export type FilaAguinaldo = {
+  idPersona: string;
+  idUsuario: string;
+  nombre: string;
+  mejorRemuneracion: number;
+  mesesConCierre: number;
+  diasTrabajados: number;
+  montoSugerido: number;
+  cierre: CierreAguinaldo | null;
+};
+
+function rangoSemestre(semestre: string) {
+  const [anioStr, nro] = semestre.split("-");
+  const anio = Number(anioStr);
+  const esPrimero = nro === "1";
+  const meses = (esPrimero ? [1, 2, 3, 4, 5, 6] : [7, 8, 9, 10, 11, 12]).map(
+    (m) => `${anio}-${String(m).padStart(2, "0")}`
+  );
+  return {
+    desde: esPrimero ? `${anio}-01-01` : `${anio}-07-01`,
+    hasta: esPrimero ? `${anio}-06-30` : `${anio}-12-31`,
+    meses,
+  };
+}
+
+export async function obtenerAguinaldos(semestre: string): Promise<FilaAguinaldo[]> {
+  const permisoError = await requireAcceso();
+  if (permisoError) throw new Error(permisoError);
+
+  const supabase = getSupabaseServerClient();
+  const { desde, hasta, meses } = rangoSemestre(semestre);
+
+  const { data: usuarios } = await supabase
+    .from("usuarios")
+    .select("id_usuario, nombre, id_persona")
+    .eq("estado", "ACTIVO")
+    .not("id_persona", "is", null);
+  if (!usuarios || usuarios.length === 0) return [];
+
+  const idsPersona = usuarios.map((u) => u.id_persona as string);
+
+  const [{ data: cierresNomina }, { data: personas }, { data: cierresAguinaldo }] = await Promise.all([
+    supabase
+      .from("nomina_cierres")
+      .select("id_persona, periodo, sueldo_base, incentivo_presentismo, horas_extra_monto, premios_monto, es_estimado")
+      .in("periodo", meses)
+      .in("id_persona", idsPersona),
+    supabase.from("personas").select("id_persona, fecha_ingreso").in("id_persona", idsPersona),
+    supabase.from("aguinaldo_cierres").select("*").eq("semestre", semestre).in("id_persona", idsPersona),
+  ]);
+
+  const ingresoPorPersona = new Map((personas ?? []).map((p) => [p.id_persona as string, p.fecha_ingreso as string | null]));
+  const cierrePorPersona = new Map((cierresAguinaldo ?? []).map((c) => [c.id_persona as string, c as CierreAguinaldo]));
+
+  // Mejor remuneración BRUTA del semestre: sueldo + presentismo + extras.
+  // Los estimados no cuentan — no son un sueldo realmente devengado.
+  const mejorPorPersona = new Map<string, number>();
+  const mesesPorPersona = new Map<string, number>();
+  for (const c of cierresNomina ?? []) {
+    if (c.es_estimado) continue;
+    const id = c.id_persona as string;
+    const bruto = redondear2(
+      ((c.sueldo_base as number) ?? 0) +
+        ((c.incentivo_presentismo as number) ?? 0) +
+        ((c.horas_extra_monto as number) ?? 0) +
+        ((c.premios_monto as number) ?? 0)
+    );
+    if (bruto > (mejorPorPersona.get(id) ?? 0)) mejorPorPersona.set(id, bruto);
+    mesesPorPersona.set(id, (mesesPorPersona.get(id) ?? 0) + 1);
+  }
+
+  const finSemestre = new Date(`${hasta}T12:00:00Z`);
+  const inicioSemestre = new Date(`${desde}T12:00:00Z`);
+
+  return usuarios
+    .map((u) => {
+      const idPersona = u.id_persona as string;
+      const mejorRemuneracion = mejorPorPersona.get(idPersona) ?? 0;
+
+      // Días trabajados dentro del semestre, según la fecha de ingreso.
+      const ingresoStr = ingresoPorPersona.get(idPersona);
+      const ingreso = ingresoStr ? new Date(`${ingresoStr}T12:00:00Z`) : null;
+      const arranque = ingreso && ingreso > inicioSemestre ? ingreso : inicioSemestre;
+      const dias =
+        arranque > finSemestre
+          ? 0
+          : Math.min(180, Math.round((finSemestre.getTime() - arranque.getTime()) / 86400000) + 1);
+
+      return {
+        idPersona,
+        idUsuario: u.id_usuario as string,
+        nombre: u.nombre as string,
+        mejorRemuneracion,
+        mesesConCierre: mesesPorPersona.get(idPersona) ?? 0,
+        diasTrabajados: dias,
+        montoSugerido: redondear2((mejorRemuneracion / 2) * (dias / 180)),
+        cierre: cierrePorPersona.get(idPersona) ?? null,
+      };
+    })
+    .sort((a, b) => a.nombre.localeCompare(b.nombre));
+}
+
+export async function cerrarAguinaldo(
+  idPersona: string,
+  idUsuario: string,
+  semestre: string,
+  monto: number
+): Promise<{ error: string | null }> {
+  const permisoError = await requireAcceso();
+  if (permisoError) return { error: permisoError };
+  if (!monto || monto <= 0) return { error: "El monto tiene que ser mayor a 0" };
+
+  try {
+    const supabase = getSupabaseServerClient();
+    const sesion = await obtenerSesionConPermisos();
+
+    const { data: existente } = await supabase
+      .from("aguinaldo_cierres")
+      .select("id_cierre")
+      .eq("id_persona", idPersona)
+      .eq("semestre", semestre)
+      .maybeSingle();
+    if (existente) return { error: "Ya cerraste el aguinaldo de esta persona en este semestre." };
+
+    const filas = await obtenerAguinaldos(semestre);
+    const fila = filas.find((f) => f.idPersona === idPersona);
+    if (!fila) return { error: "No se encontró la persona" };
+
+    const { data: usuario } = await supabase.from("usuarios").select("nombre").eq("id_usuario", idUsuario).maybeSingle();
+
+    const montoFinal = redondear2(monto);
+    const idCategoria = await resolveCategoriaSueldos(supabase);
+    const idSubcategoria = await resolveSubcategoriaSueldos(supabase, idCategoria);
+    const { data: gasto, error: errorGasto } = await supabase
+      .from("gastos")
+      .insert({
+        id_categoria: idCategoria,
+        id_subcategoria: idSubcategoria,
+        tipo: "FIJO",
+        medio_pago: "TRANSFERENCIA",
+        monto: montoFinal,
+        neto: montoFinal,
+        descripcion: `Aguinaldo (SAC) — ${usuario?.nombre ?? ""} — ${semestre}`,
+        usuario: sesion?.nombre ?? null,
+      })
+      .select("id_gasto")
+      .single();
+    if (errorGasto) return { error: friendlyDbError(errorGasto) };
+
+    const { error } = await supabase.from("aguinaldo_cierres").insert({
+      id_persona: idPersona,
+      semestre,
+      mejor_remuneracion: fila.mejorRemuneracion,
+      dias_trabajados: fila.diasTrabajados,
+      monto: montoFinal,
+      id_gasto: gasto.id_gasto,
+      usuario_cierre: sesion?.nombre ?? null,
+    });
+    if (error) return { error: friendlyDbError(error) };
+
+    revalidatePath("/rrhh");
+    revalidatePath("/resultado-mes");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo cerrar el aguinaldo" };
+  }
+}
+
+export async function eliminarCierreAguinaldo(idCierre: string): Promise<{ error: string | null }> {
+  const permisoError = await requireAcceso();
+  if (permisoError) return { error: permisoError };
+
+  const supabase = getSupabaseServerClient();
+  const { data: cierre } = await supabase.from("aguinaldo_cierres").select("estado, id_gasto").eq("id_cierre", idCierre).maybeSingle();
+  if (!cierre) return { error: "No se encontró el cierre" };
+  if (cierre.estado === "PAGADO") return { error: "Este aguinaldo ya está pagado — no se puede deshacer." };
+
+  if (cierre.id_gasto) {
+    await supabase
+      .from("gastos")
+      .update({ anulado: true, motivo_anulacion: "Cierre de aguinaldo deshecho", anulado_en: new Date().toISOString() })
+      .eq("id_gasto", cierre.id_gasto as string);
+  }
+  const { error } = await supabase.from("aguinaldo_cierres").delete().eq("id_cierre", idCierre);
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath("/rrhh");
+  revalidatePath("/resultado-mes");
+  return { error: null };
+}
+
+export async function pagarAguinaldo(idCierre: string, formData: FormData): Promise<{ error: string | null }> {
+  const permisoError = await requireAcceso();
+  if (permisoError) return { error: permisoError };
+
+  const cuentaPago = String(formData.get("cuenta_pago") ?? "");
+  if (!["CAJA_ADMIN", "TRANSFERENCIA"].includes(cuentaPago)) return { error: "Elegí de dónde sale la plata" };
+  const archivo = formData.get("comprobante") as File | null;
+  if (!archivo || archivo.size === 0) return { error: "El comprobante es obligatorio para registrar el pago." };
+
+  try {
+    const supabase = getSupabaseServerClient();
+    const sesion = await obtenerSesionConPermisos();
+
+    const { data: cierre } = await supabase.from("aguinaldo_cierres").select("*").eq("id_cierre", idCierre).maybeSingle();
+    if (!cierre) return { error: "No se encontró el cierre" };
+    if (cierre.estado === "PAGADO") return { error: "Este aguinaldo ya está pagado." };
+
+    const extension = archivo.name.split(".").pop() ?? "pdf";
+    const path = `aguinaldo-${idCierre}.${extension}`;
+    const { error: errorUpload } = await supabase.storage
+      .from("recibos-sueldo")
+      .upload(path, archivo, { upsert: true, contentType: archivo.type || undefined });
+    if (errorUpload) return { error: errorUpload.message };
+
+    if (cuentaPago === "CAJA_ADMIN") {
+      await supabase.from("movimientos_caja_admin").insert({
+        tipo: "EGRESO_GASTO",
+        monto: -(cierre.monto as number),
+        id_gasto: cierre.id_gasto,
+        descripcion: `Pago de aguinaldo — ${cierre.semestre as string}`,
+        usuario: sesion?.nombre ?? null,
+      });
+    }
+
+    const { error } = await supabase
+      .from("aguinaldo_cierres")
+      .update({
+        estado: "PAGADO",
+        fecha_pago: new Date().toISOString(),
+        cuenta_pago: cuentaPago,
+        comprobante_path: path,
+        usuario_pago: sesion?.nombre ?? null,
+      })
+      .eq("id_cierre", idCierre);
+    if (error) return { error: friendlyDbError(error) };
+
+    revalidatePath("/rrhh");
+    revalidatePath("/tesoreria");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo registrar el pago" };
+  }
+}
