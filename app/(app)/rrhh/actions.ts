@@ -1161,8 +1161,15 @@ export async function obtenerAguinaldos(semestre: string): Promise<FilaAguinaldo
     mesesPorPersona.set(id, (mesesPorPersona.get(id) ?? 0) + 1);
   }
 
-  const finSemestre = new Date(`${hasta}T12:00:00Z`);
   const inicioSemestre = new Date(`${desde}T12:00:00Z`);
+  // El corte es HOY, no el fin del semestre: si el aguinaldo se cierra antes
+  // de que el semestre termine, hay que pagar solo los días efectivamente
+  // trabajados. Contar hasta el 31/12 estando en septiembre sería pagar días
+  // que todavía no ocurrieron. Para un semestre ya terminado, "hoy" es
+  // posterior y el corte pasa a ser el fin del semestre, como corresponde.
+  const hoyArgentina = new Date(`${fechaHoraArgentina().fecha}T12:00:00Z`);
+  const finSemestre = new Date(`${hasta}T12:00:00Z`);
+  const corte = hoyArgentina < finSemestre ? hoyArgentina : finSemestre;
 
   return usuarios
     .map((u) => {
@@ -1178,9 +1185,7 @@ export async function obtenerAguinaldos(semestre: string): Promise<FilaAguinaldo
       const ingreso = ingresoStr ? new Date(`${ingresoStr}T12:00:00Z`) : null;
       const arranque = ingreso && ingreso > inicioSemestre ? ingreso : inicioSemestre;
       const dias =
-        arranque > finSemestre
-          ? 0
-          : Math.min(180, Math.round((finSemestre.getTime() - arranque.getTime()) / 86400000) + 1);
+        arranque > corte ? 0 : Math.min(180, Math.round((corte.getTime() - arranque.getTime()) / 86400000) + 1);
 
       return {
         sinFechaIngreso: !ingresoStr,
