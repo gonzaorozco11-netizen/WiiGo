@@ -759,8 +759,23 @@ function ModalPagarNomina({ fila, onClose, onPagado }: { fila: NovedadNomina; on
           </div>
         </div>
 
+        {/* El flujo pensado: se descarga el recibo ya armado con los datos
+            del cierre, se imprime, lo firma el trabajador, y esa copia
+            firmada es la que se sube acá. */}
+        <div className="bg-accent-tint border border-accent/30 rounded-lg p-3 mb-3">
+          <p className="text-xs font-semibold text-neutral-800 mb-1">1. Descargá el recibo y hacelo firmar</p>
+          <a
+            href={`/rrhh/recibo/${cierre.id_cierre}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-block bg-white border border-accent text-accent-dark font-semibold px-3 py-1.5 rounded-lg text-sm"
+          >
+            📄 Descargar recibo
+          </a>
+        </div>
+
         <div className="mb-4">
-          <label className="block text-xs font-medium text-neutral-600 mb-1">Comprobante *</label>
+          <label className="block text-xs font-medium text-neutral-600 mb-1">2. Subí el recibo firmado *</label>
           <input type="file" name="comprobante" required accept="image/*,.pdf" className="w-full text-sm" />
         </div>
 
