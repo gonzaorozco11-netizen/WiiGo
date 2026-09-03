@@ -30,6 +30,17 @@ function pesosOGuion(v: number) {
   return v > 0 ? `-$${pesos(v)}` : "—";
 }
 
+// Con dos decimales, igual que la pantalla de Liquidaciones: son montos que
+// salen de aplicar un porcentaje, y redondeados a pesos enteros dos números
+// que deberían coincidir centavo a centavo pueden diferir en $1.
+function pesosDec(v: number) {
+  return v.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function pesosDecOGuion(v: number) {
+  return v > 0 ? `-$${pesosDec(v)}` : "—";
+}
+
 function inicioSemana(hoyISO: string) {
   const d = new Date(`${hoyISO}T12:00:00Z`);
   const diaSemana = d.getUTCDay(); // 0=domingo … 6=sábado
@@ -337,15 +348,7 @@ export default function PortalTablero({
   const principal = resumen.porMedioPago[0];
   const totalHoy = ventasHoy.filter((v) => !v.anulada).reduce((a, v) => a + v.monto, 0);
 
-  // Columnas que solo se muestran si alguna fila tiene algo que mostrar: una
-  // marca que cobra únicamente en efectivo no tiene por qué ver cuatro
-  // columnas de ceros.
   const porProducto = detalle.porProducto;
-  const porVenta = detalle.porVenta;
-  const mostrarIva = porProducto.some((p) => p.ivaComision > 0);
-  const mostrarMp = porProducto.some((p) => p.comisionMp > 0);
-  const mostrarSircreb = porProducto.some((p) => p.sircreb > 0);
-  const mostrarImpCred = porProducto.some((p) => p.impCreditos > 0);
 
   return (
     <div className="portal-lienzo" ref={raiz}>
@@ -626,58 +629,6 @@ export default function PortalTablero({
         </section>
       )}
 
-      {/* ===== CUÁNTO TE QUEDA POR PRODUCTO (Metal) ===== */}
-      {porProducto && porProducto.length > 0 && (
-        <section className="modulo">
-          <div className="modulo-cab">
-            <h2>Cuánto te queda por producto</h2>
-            <p className="desc">
-              Este mes, cada deducción por separado. Cada producto lleva su propio costo, calculado sobre lo que
-              costó exactamente ese producto en cada venta — no un promedio: si una venta incluyó varios productos
-              tuyos pagados con Mercado Pago, cada uno tiene su comisión calculada sobre su propio importe. Una
-              venta en cuotas cuesta más comisión que una en débito; en efectivo, las columnas de la derecha son
-              siempre cero.
-            </p>
-          </div>
-          <div className="tabla-scroll">
-            <table className="tabla-producto">
-              <thead>
-                <tr>
-                  <th>Producto</th>
-                  <th>Vendido</th>
-                  <th>Comisión</th>
-                  {mostrarIva && <th>IVA comisión</th>}
-                  {mostrarMp && <th>Comisión MP</th>}
-                  {mostrarSircreb && <th>SIRCREB</th>}
-                  {mostrarImpCred && <th>Imp. Créditos</th>}
-                  <th>Te queda</th>
-                  <th>%</th>
-                </tr>
-              </thead>
-              <tbody>
-                {porProducto.map((p, i) => (
-                  <tr key={i}>
-                    <td>{p.producto}</td>
-                    <td className="mono">${pesos(p.bruto)}</td>
-                    <td className="mono resta">-${pesos(p.comisionWiigo)}</td>
-                    {mostrarIva && <td className="mono resta">{p.ivaComision > 0 ? `-$${pesos(p.ivaComision)}` : "$0"}</td>}
-                    {mostrarMp && <td className="mono resta">{p.comisionMp > 0 ? `-$${pesos(p.comisionMp)}` : "$0"}</td>}
-                    {mostrarSircreb && <td className="mono resta">{p.sircreb > 0 ? `-$${pesos(p.sircreb)}` : "$0"}</td>}
-                    {mostrarImpCred && (
-                      <td className="mono resta">{p.impCreditos > 0 ? `-$${pesos(p.impCreditos)}` : "$0"}</td>
-                    )}
-                    <td className="mono">${pesos(p.neto)}</td>
-                    <td>
-                      <span className={`pct${p.porcentaje < 70 ? " bajo" : ""}`}>{p.porcentaje.toFixed(0)}%</span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
-
       {/* ===== TUS VENTAS, CON DEDUCCIONES — explorador (Metal) ===== */}
       {porProducto.length > 0 && (
         <section className="modulo">
@@ -772,26 +723,33 @@ export default function PortalTablero({
                     <th>SIRCREB</th>
                     <th>Imp. déb.</th>
                     <th>Neto a rendir</th>
+                    <th>%</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {lineasVentasFiltradas.map((l, i) => (
-                    <tr key={i}>
-                      <td className="mono">{fechaCorta(l.fecha)}</td>
-                      <td className="mono">{l.hora}</td>
-                      <td>{l.producto}</td>
-                      <td className="mono">{l.cantidad}</td>
-                      <td>{l.medioPago}</td>
-                      <td className="mono">${pesos(l.bruto)}</td>
-                      <td className="mono resta">{pesosOGuion(l.comisionWiigo)}</td>
-                      <td className="mono resta">{pesosOGuion(l.ivaComision)}</td>
-                      <td className="mono resta">{pesosOGuion(l.impCreditos)}</td>
-                      <td className="mono resta">{pesosOGuion(l.comisionMp)}</td>
-                      <td className="mono resta">{pesosOGuion(l.sircreb)}</td>
-                      <td className="mono resta">{pesosOGuion(l.impDebitos)}</td>
-                      <td className="mono">${pesos(l.neto)}</td>
-                    </tr>
-                  ))}
+                  {lineasVentasFiltradas.map((l, i) => {
+                    const porcentaje = l.bruto > 0 ? (l.neto / l.bruto) * 100 : 0;
+                    return (
+                      <tr key={i}>
+                        <td className="mono">{fechaCorta(l.fecha)}</td>
+                        <td className="mono">{l.hora}</td>
+                        <td>{l.producto}</td>
+                        <td className="mono">{l.cantidad}</td>
+                        <td>{l.medioPago}</td>
+                        <td className="mono">${pesosDec(l.bruto)}</td>
+                        <td className="mono resta">{pesosDecOGuion(l.comisionWiigo)}</td>
+                        <td className="mono resta">{pesosDecOGuion(l.ivaComision)}</td>
+                        <td className="mono resta">{pesosDecOGuion(l.impCreditos)}</td>
+                        <td className="mono resta">{pesosDecOGuion(l.comisionMp)}</td>
+                        <td className="mono resta">{pesosDecOGuion(l.sircreb)}</td>
+                        <td className="mono resta">{pesosDecOGuion(l.impDebitos)}</td>
+                        <td className="mono">${pesosDec(l.neto)}</td>
+                        <td>
+                          <span className={`pct${porcentaje < 70 ? " bajo" : ""}`}>{porcentaje.toFixed(0)}%</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
