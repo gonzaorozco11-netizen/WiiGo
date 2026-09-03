@@ -237,16 +237,18 @@ export default function PortalTablero({
   // perder lo que la marca esté mirando en "Tus ventas" (esa sección tiene
   // su propio estado, independiente de estas props).
   //
-  // No es empuje en tiempo real (para eso haría falta Supabase Realtime):
-  // es una actualización automática cada 10 segundos, más un refresco
-  // apenas la marca vuelve a la pestaña después de estar en otra.
+  // No es empuje en tiempo real (para eso haría falta Supabase Realtime, que
+  // obliga a exponer una clave al navegador y a proteger la tabla con Row
+  // Level Security): es una actualización automática cada 3 segundos, más un
+  // refresco apenas la marca vuelve a la pestaña después de estar en otra.
+  // A esa frecuencia se siente instantáneo sin tocar la seguridad de la base.
   //
   // Para que esto traiga datos frescos de verdad, el cliente de Supabase
   // pide `cache: "no-store"` en cada consulta (ver lib/supabase.ts). Sin
   // eso, Next servía la respuesta cacheada y el refresco devolvía siempre
   // lo mismo.
   useEffect(() => {
-    const intervalo = setInterval(() => router.refresh(), 10000);
+    const intervalo = setInterval(() => router.refresh(), 3000);
     function alVolver() {
       if (document.visibilityState === "visible") router.refresh();
     }
@@ -344,10 +346,10 @@ export default function PortalTablero({
     const esElValorInicial = preset === "MES" && desdeVentas === inicioMesISO(hoyISO) && hastaVentas === hoyISO;
     if (!esElValorInicial) pedir(true);
 
-    // Se actualiza sola cada 30 segundos, para el período que esté elegido
+    // Se actualiza sola cada 3 segundos, para el período que esté elegido
     // en ese momento — sin mostrar "Cargando..." para no interrumpir a
     // quien está mirando la tabla.
-    const intervalo = setInterval(() => pedir(false), 10000);
+    const intervalo = setInterval(() => pedir(false), 3000);
     return () => clearInterval(intervalo);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [desdeVentas, hastaVentas]);
