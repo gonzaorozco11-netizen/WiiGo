@@ -260,7 +260,12 @@ export async function ventasDeHoy(): Promise<VentaDelDia[]> {
   const renglones = await renglonesDeMarca(sesion.idMarca, hoyISO, hoyISO);
   const nombres = await nombresDeVariante([...new Set(renglones.map((r) => r.idVariante))]);
 
+  // Se ordena por la fecha real y recién después se formatea la hora: el
+  // texto sale en formato 12 h ("05:05 p. m."), y ordenar por ese string
+  // pone las 5 de la tarde antes que las 11 de la mañana.
   return renglones
+    .slice()
+    .sort((a, b) => b.fecha.localeCompare(a.fecha))
     .map((r) => ({
       hora: new Date(r.fecha).toLocaleTimeString("es-AR", {
         timeZone: "America/Argentina/Buenos_Aires",
@@ -273,8 +278,7 @@ export async function ventasDeHoy(): Promise<VentaDelDia[]> {
       monto: r.monto,
       medio: MEDIO_LABEL[r.medio] ?? r.medio,
       anulada: r.estado !== "PAGADA",
-    }))
-    .sort((a, b) => b.hora.localeCompare(a.hora));
+    }));
 }
 
 export type OrdenPortal = {
@@ -538,7 +542,12 @@ function esFechaValida(s: string) {
 
 /** LineaRendicion (interna, con número de venta) → lo que puede ver la marca. */
 function mapearLineasParaPortal(lineas: Awaited<ReturnType<typeof calcularRendicion>>["lineas"]): LineaVentaMarca[] {
+  // Se ordena por la fecha completa original —que incluye la hora en formato
+  // ordenable— y recién después se formatea. La hora formateada sale en 12 h
+  // ("05:05 p. m."), y ordenar por ese texto pone la tarde antes que la mañana.
   return lineas
+    .slice()
+    .sort((a, b) => b.fecha.localeCompare(a.fecha))
     .map((l) => ({
       fecha: l.fecha.slice(0, 10),
       hora: new Date(l.fecha).toLocaleTimeString("es-AR", {
@@ -557,8 +566,7 @@ function mapearLineasParaPortal(lineas: Awaited<ReturnType<typeof calcularRendic
       impCreditos: l.impCreditos,
       impDebitos: l.impDebitos,
       neto: l.netoARendir,
-    }))
-    .sort((a, b) => (b.fecha + b.hora).localeCompare(a.fecha + a.hora));
+    }));
 }
 
 /**
