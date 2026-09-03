@@ -161,6 +161,52 @@
   border-top: 1px dashed var(--borde-fuerte);
 }
 
+/* ---------- Acciones recomendadas (Metal) ---------- */
+.acciones { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+.accion {
+  display: grid; grid-template-columns: 36px 1fr; gap: 13px; align-items: center;
+  padding: 14px 15px; border-radius: 13px; border: 1px solid var(--borde); background: var(--superficie-2);
+}
+.accion .marca-ico {
+  width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center;
+  justify-content: center; font-size: 16px; background: var(--salvia-tenue);
+}
+.accion.urgente { border-color: #eccfc9; background: var(--rojo-tenue); }
+.accion.urgente .marca-ico { background: #f4dcd8; }
+.accion.media .marca-ico { background: var(--ocre-tenue); }
+.accion .t { font-size: 14px; font-weight: 600; }
+.accion .d { font-size: 12.5px; color: var(--texto-2); margin-top: 2px; }
+
+/* ---------- Ranking (Metal) ---------- */
+.rank { list-style: none; display: flex; flex-direction: column; gap: 13px; }
+.rank li { display: grid; grid-template-columns: 18px 1fr auto; gap: 11px; align-items: center; }
+.rank .pos { font-size: 11px; color: var(--texto-3); }
+.rank .nom { font-size: 13.5px; font-weight: 600; }
+.rank .barra { height: 5px; border-radius: 3px; background: var(--papel); margin-top: 6px; overflow: hidden; }
+.rank .barra i { display: block; height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--salvia), var(--salvia-media)); }
+.rank .val { font-size: 13.5px; font-weight: 700; text-align: right; }
+.rank .val .u { display: block; font-size: 11px; color: var(--texto-3); font-weight: 500; }
+
+/* ---------- Alertas (Metal) ---------- */
+.alertas { list-style: none; display: flex; flex-direction: column; gap: 9px; }
+.alertas li {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 11px 13px; border-radius: 11px; background: var(--superficie-2); border: 1px solid var(--borde);
+}
+.alertas .nom { font-size: 13.5px; font-weight: 600; }
+.alertas .det { font-size: 11.5px; color: var(--texto-3); }
+
+/* Las barras del ranking crecen desde cero al entrar en pantalla. */
+.js-anim .rank .barra i { width: 0 !important; transition: width .9s cubic-bezier(.22, .9, .28, 1); }
+.js-anim .en-vista .rank .barra i { width: var(--w) !important; }
+.js-anim .accion, .js-anim .alertas li, .js-anim .rank li {
+  opacity: 0; transform: translateY(10px);
+  transition: opacity .5s cubic-bezier(.22, .9, .28, 1), transform .5s cubic-bezier(.22, .9, .28, 1);
+}
+.js-anim .en-vista .accion,
+.js-anim .en-vista .alertas li,
+.js-anim .en-vista .rank li { opacity: 1; transform: none; }
+
 /* ---------- Reposición ---------- */
 .ordenes { list-style: none; display: flex; flex-direction: column; gap: 10px; }
 .orden { border: 1px solid var(--borde); border-radius: 13px; overflow: hidden; }

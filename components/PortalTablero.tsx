@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import type { ResumenPortal, VentaDelDia, OrdenPortal, PagoPortal, LiquidacionPortal } from "@/app/portal/actions";
+import type {
+  ResumenPortal,
+  VentaDelDia,
+  OrdenPortal,
+  PagoPortal,
+  LiquidacionPortal,
+  AnalisisPortal,
+} from "@/app/portal/actions";
 
 // Tablero del portal de marcas.
 //
@@ -114,6 +121,7 @@ export default function PortalTablero({
   ordenes,
   pagos,
   liquidaciones,
+  analisis,
   puedeVerMas,
 }: {
   resumen: ResumenPortal;
@@ -121,6 +129,8 @@ export default function PortalTablero({
   ordenes: OrdenPortal[];
   pagos: { pagos: PagoPortal[]; total: number };
   liquidaciones: LiquidacionPortal[];
+  /** Solo llega con plan Metal o superior; en Bronce viene null. */
+  analisis: AnalisisPortal | null;
   puedeVerMas: boolean;
 }) {
   const raiz = useRef<HTMLDivElement>(null);
@@ -150,7 +160,7 @@ export default function PortalTablero({
       c.setAttribute("stroke-dasharray", `0 ${d.split(" ")[1] ?? "301"}`);
     });
 
-    const HIJOS = ".nov, .venta, .pago, .orden, .liq li";
+    const HIJOS = ".nov, .venta, .pago, .orden, .liq li, .accion, .alertas li, .rank li";
     const obs = new IntersectionObserver(
       (entradas) => {
         entradas.forEach((e) => {
@@ -272,6 +282,99 @@ export default function PortalTablero({
           </>
         )}
       </section>
+
+      {/* ===== PARA HACER (Metal) ===== */}
+      {analisis && analisis.acciones.length > 0 && (
+        <section className="modulo">
+          <div className="modulo-cab">
+            <h2>Para hacer esta semana</h2>
+            <p className="desc">Ordenado por lo que más te cuesta si no lo hacés</p>
+          </div>
+          <ul className="acciones">
+            {analisis.acciones.map((a, i) => (
+              <li
+                key={i}
+                className={`accion ${a.nivel === "URGENTE" ? "urgente" : a.nivel === "MEDIA" ? "media" : "buena"}`}
+              >
+                <span className="marca-ico">{a.icono}</span>
+                <span>
+                  <span className="t">{a.titulo}</span>
+                  <span className="d">{a.detalle}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {/* ===== RANKING + ALERTAS (Metal) ===== */}
+      {analisis && (
+        <div className="fila-2">
+          <section className="modulo">
+            <div className="modulo-cab">
+              <h2>Tus productos que más facturan</h2>
+              <p className="desc">Por monto vendido en el mes</p>
+            </div>
+            {analisis.ranking.length === 0 ? (
+              <p className="vacio">Todavía no hay ventas este mes.</p>
+            ) : (
+              <ul className="rank">
+                {analisis.ranking.map((p, i) => (
+                  <li key={i}>
+                    <span className="pos mono">{String(i + 1).padStart(2, "0")}</span>
+                    <span>
+                      <span className="nom">{p.producto}</span>
+                      <span className="barra">
+                        <i
+                          style={
+                            {
+                              width: `${(p.monto / analisis.ranking[0].monto) * 100}%`,
+                              "--w": `${(p.monto / analisis.ranking[0].monto) * 100}%`,
+                            } as React.CSSProperties
+                          }
+                        />
+                      </span>
+                    </span>
+                    <span className="val mono">
+                      ${pesos(p.monto)}
+                      <span className="u">{p.unidades} u.</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="modulo">
+            <div className="modulo-cab">
+              <h2>Requiere tu atención</h2>
+              <p className="desc">Stock por agotarse y productos frenados</p>
+            </div>
+            {analisis.alertas.length === 0 ? (
+              <p className="vacio">Todo en orden: no hay stock crítico ni productos frenados.</p>
+            ) : (
+              <ul className="alertas">
+                {analisis.alertas.map((a, i) => (
+                  <li key={i}>
+                    <span>
+                      <span className="nom">{a.producto}</span>
+                      <span className="det">
+                        {a.nivel === "FRENADO"
+                          ? `${a.diasSinVender ? `Sin vender hace ${a.diasSinVender} días` : "Sin ventas registradas"} · ${a.stock} en stock` +
+                            (a.inmovilizado > 0 ? ` · $${pesos(a.inmovilizado)} parados` : "")
+                          : `Quedan ${a.stock} unidades · se venden ${a.porSemana} por semana · para ${a.diasCobertura} días`}
+                      </span>
+                    </span>
+                    <span className={`pill ${a.nivel === "CRITICO" ? "critico" : a.nivel === "AVISO" ? "aviso" : "quieto"}`}>
+                      {a.nivel === "CRITICO" ? "Repone ya" : a.nivel === "AVISO" ? "Se acaba" : "Frenado"}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
+      )}
 
       <div className="fila-2">
         {/* ===== MEDIOS DE PAGO ===== */}

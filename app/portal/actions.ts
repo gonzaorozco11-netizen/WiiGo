@@ -391,6 +391,232 @@ export async function pagosPortal(): Promise<{ pagos: PagoPortal[]; total: numbe
   return { pagos, total: pagos.reduce((acc, p) => acc + p.importe, 0) };
 }
 
+// ===================== PLAN METAL: análisis de productos =====================
+
+export type ProductoRanking = {
+  producto: string;
+  monto: number;
+  unidades: number;
+};
+
+export type AlertaStock = {
+  producto: string;
+  stock: number;
+  /** Unidades que se venden por semana, promedio de las últimas 4. */
+  porSemana: number;
+  /** Para cuántos días alcanza el stock. null si no se vende nada. */
+  diasCobertura: number | null;
+  /** Días desde la última venta. null si nunca se vendió en el período mirado. */
+  diasSinVender: number | null;
+  /** Plata parada en góndola, al precio de venta. */
+  inmovilizado: number;
+  nivel: "CRITICO" | "AVISO" | "FRENADO";
+};
+
+export type AccionSugerida = {
+  titulo: string;
+  detalle: string;
+  nivel: "URGENTE" | "MEDIA" | "BUENA";
+  icono: string;
+};
+
+export type AnalisisPortal = {
+  ranking: ProductoRanking[];
+  alertas: AlertaStock[];
+  acciones: AccionSugerida[];
+};
+
+const DIA_MS = 86400000;
+
+/**
+ * Ranking, alertas de stock y qué conviene hacer.
+ *
+ * Todo sale de dos datos que el sistema ya tiene: el stock actual y las
+ * ventas de los últimos 90 días. Las alertas no son un umbral fijo de
+ * unidades —"menos de 5"— sino días de cobertura: quedarse con 4 unidades es
+ * urgente si se venden 9 por semana y no significa nada si se vende una por
+ * mes.
+ */
+export async function analisisPortal(): Promise<AnalisisPortal | null> {
+  const sesion = await obtenerSesionMarca();
+  if (!sesion) return null;
+
+  const supabase = getSupabaseServerClient();
+  const hoyISO = fechaHoraArgentina().fecha;
+  const hoy = new Date(`${hoyISO}T12:00:00Z`);
+  const hace90 = new Date(hoy.getTime() - 90 * DIA_MS).toISOString().slice(0, 10);
+  const hace28 = new Date(hoy.getTime() - 28 * DIA_MS).toISOString().slice(0, 10);
+  const desdeMes = inicioDeMes(hoyISO);
+
+  // ===== Variantes de la marca y su stock =====
+  const { data: productos } = await supabase
+    .from("productos")
+    .select("id_producto, nombre, precio_venta")
+    .eq("id_marca", sesion.idMarca)
+    .eq("estado", "ACTIVO");
+  const idsProducto = (productos ?? []).map((p) => p.id_producto as string);
+  if (idsProducto.length === 0) return { ranking: [], alertas: [], acciones: [] };
+
+  const { data: variantes } = await supabase
+    .from("variantes_producto")
+    .select("id_variante, id_producto, nombre")
+    .in("id_producto", idsProducto)
+    .eq("estado", "ACTIVO");
+
+  const productoPorId = new Map(
+    (productos ?? []).map((p) => [p.id_producto as string, { nombre: p.nombre as string, precio: (p.precio_venta as number) ?? 0 }])
+  );
+  const infoVariante = new Map(
+    (variantes ?? []).map((v) => {
+      const p = productoPorId.get(v.id_producto as string);
+      const base = p?.nombre ?? "Producto";
+      return [
+        v.id_variante as string,
+        {
+          nombre: (v.nombre as string) !== "Único" ? `${base} — ${v.nombre}` : base,
+          precio: p?.precio ?? 0,
+        },
+      ];
+    })
+  );
+
+  const idsVariante = [...infoVariante.keys()];
+  const { data: stock } = idsVariante.length
+    ? await supabase.from("stock").select("id_variante, cantidad").in("id_variante", idsVariante)
+    : { data: [] };
+  const stockPorVariante = new Map<string, number>();
+  for (const s of stock ?? []) {
+    const id = s.id_variante as string;
+    stockPorVariante.set(id, (stockPorVariante.get(id) ?? 0) + ((s.cantidad as number) ?? 0));
+  }
+
+  // ===== Ventas de los últimos 90 días =====
+  const renglones = (await renglonesDeMarca(sesion.idMarca, hace90, hoyISO)).filter((r) => r.estado === "PAGADA");
+
+  const unidades28 = new Map<string, number>();
+  const ultimaVenta = new Map<string, string>();
+  const montoMes = new Map<string, number>();
+  const unidadesMes = new Map<string, number>();
+
+  for (const r of renglones) {
+    const dia = r.fecha.slice(0, 10);
+    if (dia >= hace28) unidades28.set(r.idVariante, (unidades28.get(r.idVariante) ?? 0) + r.cantidad);
+    const previa = ultimaVenta.get(r.idVariante);
+    if (!previa || dia > previa) ultimaVenta.set(r.idVariante, dia);
+    if (dia >= desdeMes) {
+      montoMes.set(r.idVariante, (montoMes.get(r.idVariante) ?? 0) + r.monto);
+      unidadesMes.set(r.idVariante, (unidadesMes.get(r.idVariante) ?? 0) + r.cantidad);
+    }
+  }
+
+  // ===== Ranking del mes =====
+  const ranking: ProductoRanking[] = [...montoMes.entries()]
+    .map(([id, monto]) => ({
+      producto: infoVariante.get(id)?.nombre ?? "Producto",
+      monto,
+      unidades: unidadesMes.get(id) ?? 0,
+    }))
+    .sort((a, b) => b.monto - a.monto)
+    .slice(0, 6);
+
+  // ===== Alertas =====
+  const alertas: AlertaStock[] = [];
+  for (const [id, info] of infoVariante) {
+    const enStock = stockPorVariante.get(id) ?? 0;
+    const porSemana = (unidades28.get(id) ?? 0) / 4;
+    const ultima = ultimaVenta.get(id) ?? null;
+    const diasSinVender = ultima
+      ? Math.round((hoy.getTime() - new Date(`${ultima}T12:00:00Z`).getTime()) / DIA_MS)
+      : null;
+
+    if (enStock <= 0) continue; // sin stock no hay nada que avisar acá
+
+    if (porSemana > 0) {
+      const diasCobertura = Math.floor((enStock / porSemana) * 7);
+      if (diasCobertura <= 14) {
+        alertas.push({
+          producto: info.nombre,
+          stock: enStock,
+          porSemana: Math.round(porSemana * 10) / 10,
+          diasCobertura,
+          diasSinVender,
+          inmovilizado: 0,
+          nivel: diasCobertura <= 7 ? "CRITICO" : "AVISO",
+        });
+      }
+      continue;
+    }
+
+    // Sin ventas en 4 semanas y con mercadería en góndola: está frenado.
+    if (diasSinVender === null || diasSinVender >= 30) {
+      alertas.push({
+        producto: info.nombre,
+        stock: enStock,
+        porSemana: 0,
+        diasCobertura: null,
+        diasSinVender,
+        inmovilizado: enStock * info.precio,
+        nivel: "FRENADO",
+      });
+    }
+  }
+
+  const orden = { CRITICO: 0, AVISO: 1, FRENADO: 2 };
+  alertas.sort((a, b) => {
+    if (orden[a.nivel] !== orden[b.nivel]) return orden[a.nivel] - orden[b.nivel];
+    if (a.nivel === "FRENADO") return b.inmovilizado - a.inmovilizado;
+    return (a.diasCobertura ?? 99) - (b.diasCobertura ?? 99);
+  });
+
+  // ===== Qué conviene hacer =====
+  // Cada acción dice cuánto cuesta no hacerla: es lo que la vuelve una tarea
+  // y no un dato más.
+  const acciones: AccionSugerida[] = [];
+
+  const critico = alertas.find((a) => a.nivel === "CRITICO");
+  if (critico) {
+    const precio = [...infoVariante.values()].find((v) => v.nombre === critico.producto)?.precio ?? 0;
+    const perdida = Math.round(critico.porSemana * 2 * precio);
+    acciones.push({
+      titulo: `Reponé ${critico.producto}`,
+      detalle:
+        `Quedan ${critico.stock} unidades y se venden ${critico.porSemana} por semana: alcanza para ` +
+        `${critico.diasCobertura} días.` + (perdida > 0 ? ` Quedarte sin stock dos semanas son unos $${perdida.toLocaleString("es-AR")} que dejás de vender.` : ""),
+      nivel: "URGENTE",
+      icono: "🔥",
+    });
+  }
+
+  const frenado = alertas.find((a) => a.nivel === "FRENADO");
+  if (frenado) {
+    acciones.push({
+      titulo: `Decidí qué hacer con ${frenado.producto}`,
+      detalle:
+        `${frenado.diasSinVender ? `${frenado.diasSinVender} días` : "Más de 90 días"} sin vender, con ` +
+        `${frenado.stock} unidades ocupando góndola` +
+        (frenado.inmovilizado > 0 ? `: son $${Math.round(frenado.inmovilizado).toLocaleString("es-AR")} inmovilizados.` : "."),
+      nivel: "MEDIA",
+      icono: "🐢",
+    });
+  }
+
+  if (ranking.length >= 2) {
+    const porUnidades = [...ranking].sort((a, b) => b.unidades - a.unidades)[0];
+    if (porUnidades && porUnidades.producto !== ranking[0].producto && porUnidades.unidades > ranking[0].unidades * 2) {
+      acciones.push({
+        titulo: `${porUnidades.producto} es tu producto de mayor rotación`,
+        detalle:
+          `Vende ${porUnidades.unidades} unidades contra ${ranking[0].unidades} de ${ranking[0].producto}, ` +
+          `pero factura menos. Es el que más gente lleva: sirve para hacer conocer la marca.`,
+        nivel: "BUENA",
+        icono: "📈",
+      });
+    }
+  }
+
+  return { ranking, alertas: alertas.slice(0, 6), acciones };
+}
+
 export type LiquidacionPortal = {
   periodo: string;
   neto: number;

@@ -1,20 +1,31 @@
 import { obtenerSesionMarca, sesionIncluye } from "@/lib/marcaSesion";
-import { resumenPortal, ventasDeHoy, reposicionPortal, pagosPortal, liquidacionesPortal } from "@/app/portal/actions";
+import {
+  resumenPortal,
+  ventasDeHoy,
+  reposicionPortal,
+  pagosPortal,
+  liquidacionesPortal,
+  analisisPortal,
+} from "@/app/portal/actions";
 import PortalTablero from "@/components/PortalTablero";
 
 export const dynamic = "force-dynamic";
 
 export default async function PortalPage() {
   const sesion = await obtenerSesionMarca();
+  // El análisis de productos es del plan Metal para arriba. No se calcula si
+  // no corresponde: además de no mostrarlo, no se gasta la consulta.
+  const conAnalisis = sesionIncluye(sesion, "METAL");
 
-  // Las cinco consultas son independientes: van juntas para que la pantalla
-  // no se arme de a una.
-  const [resumen, ventasHoy, ordenes, pagos, liquidaciones] = await Promise.all([
+  // Consultas independientes: van juntas para que la pantalla no se arme de
+  // a una.
+  const [resumen, ventasHoy, ordenes, pagos, liquidaciones, analisis] = await Promise.all([
     resumenPortal(),
     ventasDeHoy(),
     reposicionPortal(),
     pagosPortal(),
     liquidacionesPortal(),
+    conAnalisis ? analisisPortal() : Promise.resolve(null),
   ]);
 
   if (!sesion || !resumen) {
@@ -28,7 +39,8 @@ export default async function PortalPage() {
       ordenes={ordenes}
       pagos={pagos}
       liquidaciones={liquidaciones}
-      puedeVerMas={sesionIncluye(sesion, "METAL")}
+      analisis={analisis}
+      puedeVerMas={conAnalisis}
     />
   );
 }
