@@ -273,11 +273,6 @@ export default function PortalTablero({
     });
   }, [lineasVentas, busquedaVentas, medioVentas]);
 
-  const mostrarIvaVentas = lineasVentas.some((l) => l.ivaComision > 0);
-  const mostrarMpVentas = lineasVentas.some((l) => l.comisionMp > 0);
-  const mostrarSircrebVentas = lineasVentas.some((l) => l.sircreb > 0);
-  const mostrarImpCredVentas = lineasVentas.some((l) => l.impCreditos > 0);
-
   // Cada bloque arranca su animación cuando entra en pantalla, no todos al
   // cargar: así, mientras se baja, siempre hay algo construyéndose.
   useEffect(() => {
@@ -769,13 +764,14 @@ export default function PortalTablero({
                     <th>Producto</th>
                     <th>Cant.</th>
                     <th>Pago</th>
-                    <th>Vendido</th>
-                    <th>Comisión</th>
-                    {mostrarIvaVentas && <th>IVA comisión</th>}
-                    {mostrarMpVentas && <th>Comisión MP</th>}
-                    {mostrarSircrebVentas && <th>SIRCREB</th>}
-                    {mostrarImpCredVentas && <th>Imp. Créditos</th>}
-                    <th>Te queda</th>
+                    <th>Venta Bruta</th>
+                    <th>Comisión WiiGo</th>
+                    <th>IVA s/comisión</th>
+                    <th>Imp. créd.</th>
+                    <th>Fee MP</th>
+                    <th>SIRCREB</th>
+                    <th>Imp. déb.</th>
+                    <th>Neto a rendir</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -788,10 +784,11 @@ export default function PortalTablero({
                       <td>{l.medioPago}</td>
                       <td className="mono">${pesos(l.bruto)}</td>
                       <td className="mono resta">{pesosOGuion(l.comisionWiigo)}</td>
-                      {mostrarIvaVentas && <td className="mono resta">{pesosOGuion(l.ivaComision)}</td>}
-                      {mostrarMpVentas && <td className="mono resta">{pesosOGuion(l.comisionMp)}</td>}
-                      {mostrarSircrebVentas && <td className="mono resta">{pesosOGuion(l.sircreb)}</td>}
-                      {mostrarImpCredVentas && <td className="mono resta">{pesosOGuion(l.impCreditos)}</td>}
+                      <td className="mono resta">{pesosOGuion(l.ivaComision)}</td>
+                      <td className="mono resta">{pesosOGuion(l.impCreditos)}</td>
+                      <td className="mono resta">{pesosOGuion(l.comisionMp)}</td>
+                      <td className="mono resta">{pesosOGuion(l.sircreb)}</td>
+                      <td className="mono resta">{pesosOGuion(l.impDebitos)}</td>
                       <td className="mono">${pesos(l.neto)}</td>
                     </tr>
                   ))}
