@@ -207,6 +207,64 @@
 .js-anim .en-vista .alertas li,
 .js-anim .en-vista .rank li { opacity: 1; transform: none; }
 
+/* ---------- Benchmark (Gold) ---------- */
+.bench {
+  border-color: #ded7ea;
+  background: linear-gradient(160deg, #f0edf6, var(--superficie) 60%);
+}
+.bench-grid { display: grid; gap: 20px; }
+@media (min-width: 760px) { .bench-grid { grid-template-columns: 1.3fr 1fr; align-items: center; } }
+.bench-cifra { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.bench-cifra .n { font-size: 42px; font-weight: 700; color: #8579a3; line-height: 1; }
+.bench-cifra .t { font-size: 13.5px; color: var(--texto-2); max-width: 32ch; }
+.bench-track {
+  position: relative; height: 8px; border-radius: 4px; margin-top: 22px;
+  background: linear-gradient(90deg, #e8e6ee, #8579a3);
+}
+.bench-marca { position: absolute; top: -5px; width: 3px; height: 18px; border-radius: 2px; background: #8579a3; }
+.bench-prom { position: absolute; top: -3px; width: 2px; height: 14px; background: var(--texto-3); }
+.bench-ejes { display: flex; justify-content: space-between; margin-top: 9px; font-size: 11.5px; color: var(--texto-3); }
+.bench-nota { font-size: 12px; color: var(--texto-3); margin-top: 14px; }
+.posicion { text-align: center; background: var(--superficie); border: 1px solid #ded7ea; border-radius: 13px; padding: 18px; }
+.posicion .n { font-size: 34px; font-weight: 700; color: #8579a3; line-height: 1; }
+.posicion .t { font-size: 12.5px; color: var(--texto-2); margin-top: 4px; }
+
+/* ---------- Sucursales (Gold) ---------- */
+.suc { display: grid; gap: 10px; }
+.suc-item {
+  display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center;
+  padding: 13px 15px; border-radius: 12px; background: var(--superficie-2); border: 1px solid var(--borde);
+}
+.suc-item .n { font-size: 13.5px; font-weight: 600; }
+.suc-item .p { font-size: 11.5px; color: var(--texto-3); }
+.suc-item .v { font-size: 15px; font-weight: 700; text-align: right; }
+
+/* ---------- Cómo vender más (Gold) ---------- */
+.crecer { border-color: #dde5d4; background: linear-gradient(150deg, var(--salvia-tenue), var(--superficie) 62%); }
+.ideas { list-style: none; display: grid; gap: 11px; }
+@media (min-width: 760px) { .ideas { grid-template-columns: 1fr 1fr; } }
+.idea { background: var(--superficie); border: 1px solid var(--borde); border-radius: 13px; padding: 15px 16px; }
+.idea .et {
+  font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--salvia-fuerte); margin-bottom: 5px;
+}
+.idea .t { font-size: 14px; font-weight: 600; }
+.idea .d { font-size: 12.5px; color: var(--texto-2); margin-top: 4px; }
+
+/* Las barras del gráfico por hora se levantan desde la base. */
+.js-anim .barra-hora {
+  transform: scaleY(0); transform-box: fill-box; transform-origin: bottom;
+  transition: transform .75s cubic-bezier(.22, .9, .28, 1);
+}
+.js-anim .en-vista .barra-hora { transform: scaleY(1); }
+.js-anim .bench-marca { left: 50% !important; transition: left 1.1s cubic-bezier(.22, .9, .28, 1) .2s; }
+.js-anim .en-vista .bench-marca { left: var(--pos) !important; }
+.js-anim .idea, .js-anim .suc-item {
+  opacity: 0; transform: translateY(10px);
+  transition: opacity .5s cubic-bezier(.22, .9, .28, 1), transform .5s cubic-bezier(.22, .9, .28, 1);
+}
+.js-anim .en-vista .idea, .js-anim .en-vista .suc-item { opacity: 1; transform: none; }
+
 /* ---------- Reposición ---------- */
 .ordenes { list-style: none; display: flex; flex-direction: column; gap: 10px; }
 .orden { border: 1px solid var(--borde); border-radius: 13px; overflow: hidden; }

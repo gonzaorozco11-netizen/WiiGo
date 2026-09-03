@@ -8,6 +8,7 @@ import type {
   PagoPortal,
   LiquidacionPortal,
   AnalisisPortal,
+  GoldPortal,
 } from "@/app/portal/actions";
 
 // Tablero del portal de marcas.
@@ -96,6 +97,58 @@ function GraficoMes({ serie, serieAnterior }: { serie: number[]; serieAnterior: 
   );
 }
 
+/**
+ * Dónde cae la marca en la escala del benchmark. El promedio está en el
+ * medio: rendir el doble te pone cerca del extremo, la mitad cerca del otro.
+ */
+function posicionEnEscala(rotacion: number, promedio: number) {
+  if (promedio <= 0) return 50;
+  const relacion = rotacion / promedio;
+  // Escala logarítmica: 0,5× cae en 25%, 1× en 50%, 2× en 75%.
+  const p = 50 + (Math.log2(Math.max(0.25, Math.min(4, relacion))) / 2) * 50;
+  return Math.max(4, Math.min(96, p));
+}
+
+/** Barras de unidades por hora. La hora pico va en ocre. */
+function GraficoHoras({ datos, pico }: { datos: { hora: number; unidades: number }[]; pico: number | null }) {
+  const ANCHO = 480;
+  const ALTO = 160;
+  const maximo = Math.max(1, ...datos.map((d) => d.unidades));
+  const ancho = Math.max(8, Math.min(30, ANCHO / datos.length - 8));
+  const paso = ANCHO / datos.length;
+
+  return (
+    <svg viewBox={`0 0 ${ANCHO} ${ALTO}`} width="100%" height={ALTO} role="img" aria-label="Ventas por hora">
+      <g>
+        {datos.map((d) => {
+          const alto = Math.max(3, (d.unidades / maximo) * (ALTO - 46));
+          return (
+            <rect
+              key={d.hora}
+              className="barra-hora"
+              x={d.hora * 0 + datos.indexOf(d) * paso + (paso - ancho) / 2}
+              y={ALTO - 28 - alto}
+              width={ancho}
+              height={alto}
+              rx="5"
+              fill={d.hora === pico ? "#bd8f3e" : "#a8b49a"}
+            />
+          );
+        })}
+      </g>
+      <g fill="#8d9587" fontSize="10">
+        {datos.map((d, i) =>
+          i === 0 || i === datos.length - 1 || d.hora === pico ? (
+            <text key={d.hora} x={i * paso + paso / 2} y={ALTO - 10} textAnchor="middle">
+              {d.hora}
+            </text>
+          ) : null
+        )}
+      </g>
+    </svg>
+  );
+}
+
 function Donut({ porcentaje }: { porcentaje: number }) {
   const CIRC = 301; // 2·π·48
   const trozo = Math.max(0, Math.min(100, porcentaje)) * (CIRC / 100);
@@ -122,6 +175,7 @@ export default function PortalTablero({
   pagos,
   liquidaciones,
   analisis,
+  gold,
   puedeVerMas,
 }: {
   resumen: ResumenPortal;
@@ -131,6 +185,8 @@ export default function PortalTablero({
   liquidaciones: LiquidacionPortal[];
   /** Solo llega con plan Metal o superior; en Bronce viene null. */
   analisis: AnalisisPortal | null;
+  /** Solo llega con plan Gold; en los otros viene null. */
+  gold: GoldPortal | null;
   puedeVerMas: boolean;
 }) {
   const raiz = useRef<HTMLDivElement>(null);
@@ -160,7 +216,7 @@ export default function PortalTablero({
       c.setAttribute("stroke-dasharray", `0 ${d.split(" ")[1] ?? "301"}`);
     });
 
-    const HIJOS = ".nov, .venta, .pago, .orden, .liq li, .accion, .alertas li, .rank li";
+    const HIJOS = ".nov, .venta, .pago, .orden, .liq li, .accion, .alertas li, .rank li, .idea, .suc-item";
     const obs = new IntersectionObserver(
       (entradas) => {
         entradas.forEach((e) => {
@@ -206,6 +262,11 @@ export default function PortalTablero({
               {variacion >= 0 ? "↑" : "↓"} {Math.abs(variacion).toFixed(1)}% vs. el mes pasado
             </span>
           )}
+          {gold?.proyeccion ? (
+            <p className="pie">
+              Al ritmo actual cerrás el mes en <b>${pesos(gold.proyeccion)}</b>.
+            </p>
+          ) : null}
           <p className="pie" style={{ color: "var(--texto-3)" }}>
             {resumen.mes.unidades} unidades · {resumen.mes.operaciones} pedidos
           </p>
@@ -282,6 +343,100 @@ export default function PortalTablero({
           </>
         )}
       </section>
+
+      {/* ===== BENCHMARK (Gold) ===== */}
+      {gold?.benchmark && (
+        <section className="modulo bench">
+          <div className="modulo-cab">
+            <h2>Cómo rendís frente al resto</h2>
+            <p className="desc">
+              Rotación: unidades vendidas en 30 días sobre lo que tenés en góndola. Comparación anónima y agregada.
+            </p>
+          </div>
+          <div className="bench-grid">
+            <div>
+              <div className="bench-cifra">
+                <span className="n mono">
+                  {gold.benchmark.promedio > 0
+                    ? `${(gold.benchmark.rotacion / gold.benchmark.promedio).toFixed(1)}×`
+                    : "—"}
+                </span>
+                <span className="t">
+                  {gold.benchmark.rotacion >= gold.benchmark.promedio
+                    ? "Tus productos rotan más rápido que el promedio de las marcas de WiiGo."
+                    : "Tus productos rotan más lento que el promedio de las marcas de WiiGo."}
+                </span>
+              </div>
+              <div className="bench-track">
+                <span className="bench-prom" style={{ left: "50%" }} />
+                <span
+                  className="bench-marca"
+                  style={
+                    {
+                      left: `${posicionEnEscala(gold.benchmark.rotacion, gold.benchmark.promedio)}%`,
+                      "--pos": `${posicionEnEscala(gold.benchmark.rotacion, gold.benchmark.promedio)}%`,
+                    } as React.CSSProperties
+                  }
+                />
+              </div>
+              <div className="bench-ejes">
+                <span>Más lento</span>
+                <span>Promedio</span>
+                <span>Más rápido</span>
+              </div>
+              <p className="bench-nota">
+                Calculado sobre {gold.benchmark.marcas} marcas. Ninguna marca ve los datos de otra.
+              </p>
+            </div>
+            <div className="posicion">
+              <p className="n mono">{gold.benchmark.posicion}º</p>
+              <p className="t">de {gold.benchmark.marcas} marcas, por rotación</p>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ===== POR HORA + SUCURSALES (Gold) ===== */}
+      {gold && (gold.porHora.length > 0 || gold.porSucursal.length > 1) && (
+        <div className="fila-2">
+          {gold.porHora.length > 0 && (
+            <section className="modulo">
+              <div className="modulo-cab">
+                <h2>Cuándo se vende lo tuyo</h2>
+                <p className="desc">Unidades por hora, últimas 8 semanas</p>
+              </div>
+              <GraficoHoras datos={gold.porHora} pico={gold.horaPico} />
+              {gold.horaPico !== null && (
+                <p className="desc" style={{ marginTop: 8 }}>
+                  Tu pico es a las <b style={{ color: "var(--ocre)" }}>{gold.horaPico} h</b>.
+                </p>
+              )}
+            </section>
+          )}
+
+          {gold.porSucursal.length > 1 && (
+            <section className="modulo">
+              <div className="modulo-cab">
+                <h2>Por sucursal</h2>
+                <p className="desc">Dónde se mueve tu marca este mes</p>
+              </div>
+              <div className="suc">
+                {gold.porSucursal.map((s) => (
+                  <div key={s.local} className="suc-item">
+                    <span>
+                      <span className="n">{s.local}</span>
+                      <span className="p">
+                        {s.porcentaje.toFixed(0)}% de tus ventas · {s.unidades} unidades
+                      </span>
+                    </span>
+                    <span className="v mono">${pesos(s.monto)}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+        </div>
+      )}
 
       {/* ===== PARA HACER (Metal) ===== */}
       {analisis && analisis.acciones.length > 0 && (
@@ -526,6 +681,25 @@ export default function PortalTablero({
           ))}
         </ul>
       </section>
+
+      {/* ===== CÓMO VENDER MÁS (Gold) ===== */}
+      {gold && gold.ideas.length > 0 && (
+        <section className="modulo crecer">
+          <div className="modulo-cab">
+            <h2>Cómo vender más</h2>
+            <p className="desc">Cada idea sale de tus propios números — el dato que la respalda está abajo</p>
+          </div>
+          <ul className="ideas">
+            {gold.ideas.map((idea, i) => (
+              <li key={i} className="idea">
+                <p className="et">{idea.rotulo}</p>
+                <p className="t">{idea.titulo}</p>
+                <p className="d">{idea.detalle}</p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/* ===== UPSELL ===== */}
       {!puedeVerMas && (

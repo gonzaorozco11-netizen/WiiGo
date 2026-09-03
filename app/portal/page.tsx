@@ -6,6 +6,7 @@ import {
   pagosPortal,
   liquidacionesPortal,
   analisisPortal,
+  goldPortal,
 } from "@/app/portal/actions";
 import PortalTablero from "@/components/PortalTablero";
 
@@ -16,16 +17,18 @@ export default async function PortalPage() {
   // El análisis de productos es del plan Metal para arriba. No se calcula si
   // no corresponde: además de no mostrarlo, no se gasta la consulta.
   const conAnalisis = sesionIncluye(sesion, "METAL");
+  const conGold = sesionIncluye(sesion, "GOLD");
 
   // Consultas independientes: van juntas para que la pantalla no se arme de
   // a una.
-  const [resumen, ventasHoy, ordenes, pagos, liquidaciones, analisis] = await Promise.all([
+  const [resumen, ventasHoy, ordenes, pagos, liquidaciones, analisis, gold] = await Promise.all([
     resumenPortal(),
     ventasDeHoy(),
     reposicionPortal(),
     pagosPortal(),
     liquidacionesPortal(),
     conAnalisis ? analisisPortal() : Promise.resolve(null),
+    conGold ? goldPortal() : Promise.resolve(null),
   ]);
 
   if (!sesion || !resumen) {
@@ -40,6 +43,7 @@ export default async function PortalPage() {
       pagos={pagos}
       liquidaciones={liquidaciones}
       analisis={analisis}
+      gold={gold}
       puedeVerMas={conAnalisis}
     />
   );

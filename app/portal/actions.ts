@@ -617,6 +617,220 @@ export async function analisisPortal(): Promise<AnalisisPortal | null> {
   return { ranking, alertas: alertas.slice(0, 6), acciones };
 }
 
+// ===================== PLAN GOLD: inteligencia =====================
+
+export type GoldPortal = {
+  /** Al ritmo del mes, cuánto cerraría. null si es muy temprano para decirlo. */
+  proyeccion: number | null;
+  /** Unidades por hora del día, de las últimas 8 semanas. */
+  porHora: { hora: number; unidades: number }[];
+  horaPico: number | null;
+  porSucursal: { local: string; monto: number; unidades: number; porcentaje: number }[];
+  /**
+   * Comparación contra el resto de las marcas. Siempre agregada y anónima, y
+   * solo si hay suficientes marcas como para que el promedio no delate a
+   * ninguna en particular.
+   */
+  benchmark: { rotacion: number; promedio: number; posicion: number; marcas: number } | null;
+  /** Ideas para vender más, cada una con el dato que la respalda. */
+  ideas: { rotulo: string; titulo: string; detalle: string }[];
+};
+
+/** Mínimo de marcas en la comparación: con menos, el promedio delata al vecino. */
+const MINIMO_PARA_COMPARAR = 4;
+
+export async function goldPortal(): Promise<GoldPortal | null> {
+  const sesion = await obtenerSesionMarca();
+  if (!sesion) return null;
+
+  const supabase = getSupabaseServerClient();
+  const hoyISO = fechaHoraArgentina().fecha;
+  const hoy = new Date(`${hoyISO}T12:00:00Z`);
+  const desdeMes = inicioDeMes(hoyISO);
+  const hace56 = new Date(hoy.getTime() - 56 * DIA_MS).toISOString().slice(0, 10);
+  const hace30 = new Date(hoy.getTime() - 30 * DIA_MS).toISOString().slice(0, 10);
+
+  const [renglonesMes, renglonesLargos] = await Promise.all([
+    renglonesDeMarca(sesion.idMarca, desdeMes, hoyISO),
+    renglonesDeMarca(sesion.idMarca, hace56, hoyISO),
+  ]);
+  const pagadasMes = renglonesMes.filter((r) => r.estado === "PAGADA");
+  const pagadasLargas = renglonesLargos.filter((r) => r.estado === "PAGADA");
+
+  // ===== Proyección =====
+  const brutoMes = pagadasMes.reduce((a, r) => a + r.monto, 0);
+  const diaDeHoy = Number(hoyISO.slice(8, 10));
+  const diasDelMes = new Date(Number(hoyISO.slice(0, 4)), Number(hoyISO.slice(5, 7)), 0).getDate();
+  // Antes del día 5 la proyección es puro ruido: un solo día bueno la
+  // dispara y queda en ridículo.
+  const proyeccion = diaDeHoy >= 5 && brutoMes > 0 ? (brutoMes / diaDeHoy) * diasDelMes : null;
+
+  // ===== Por hora =====
+  const horas = new Map<number, number>();
+  for (const r of pagadasLargas) {
+    const hora = Number(
+      new Date(r.fecha).toLocaleString("es-AR", {
+        timeZone: "America/Argentina/Buenos_Aires",
+        hour: "2-digit",
+        hour12: false,
+      })
+    );
+    if (!Number.isFinite(hora)) continue;
+    horas.set(hora, (horas.get(hora) ?? 0) + r.cantidad);
+  }
+  const porHora = [...horas.entries()]
+    .map(([hora, unidades]) => ({ hora, unidades }))
+    .sort((a, b) => a.hora - b.hora);
+  const horaPico = porHora.length ? porHora.reduce((a, b) => (b.unidades > a.unidades ? b : a)).hora : null;
+
+  // ===== Por sucursal =====
+  const locales = new Map<string, { monto: number; unidades: number }>();
+  for (const r of pagadasMes) {
+    const actual = locales.get(r.idLocal) ?? { monto: 0, unidades: 0 };
+    actual.monto += r.monto;
+    actual.unidades += r.cantidad;
+    locales.set(r.idLocal, actual);
+  }
+  const { data: nombresLocal } = locales.size
+    ? await supabase.from("locales").select("id_local, nombre").in("id_local", [...locales.keys()])
+    : { data: [] };
+  const nombrePorLocal = new Map((nombresLocal ?? []).map((l) => [l.id_local as string, l.nombre as string]));
+  const totalLocales = [...locales.values()].reduce((a, l) => a + l.monto, 0);
+  const porSucursal = [...locales.entries()]
+    .map(([id, v]) => ({
+      local: nombrePorLocal.get(id) ?? "Sucursal",
+      monto: v.monto,
+      unidades: v.unidades,
+      porcentaje: totalLocales > 0 ? (v.monto / totalLocales) * 100 : 0,
+    }))
+    .sort((a, b) => b.monto - a.monto);
+
+  // ===== Benchmark: rotación propia contra el resto =====
+  // Rotación = unidades vendidas en 30 días sobre unidades en stock. Se
+  // calcula igual para todas y solo se devuelve el agregado: nunca sale de
+  // acá el dato de una marca identificable.
+  let benchmark: GoldPortal["benchmark"] = null;
+  {
+    const { data: marcas } = await supabase
+      .from("marcas")
+      .select("id_marca")
+      .eq("estado", "ACTIVA")
+      .eq("tipo_comercializacion", "CONSIGNACION");
+
+    if ((marcas ?? []).length >= MINIMO_PARA_COMPARAR) {
+      const { data: prods } = await supabase.from("productos").select("id_producto, id_marca").eq("estado", "ACTIVO");
+      const marcaPorProducto = new Map((prods ?? []).map((p) => [p.id_producto as string, p.id_marca as string]));
+      const { data: vars } = await supabase.from("variantes_producto").select("id_variante, id_producto").eq("estado", "ACTIVO");
+      const marcaPorVariante = new Map(
+        (vars ?? [])
+          .map((v) => [v.id_variante as string, marcaPorProducto.get(v.id_producto as string)])
+          .filter((p): p is [string, string] => Boolean(p[1]))
+      );
+
+      const { data: stockTodo } = await supabase.from("stock").select("id_variante, cantidad");
+      const stockPorMarca = new Map<string, number>();
+      for (const s of stockTodo ?? []) {
+        const m = marcaPorVariante.get(s.id_variante as string);
+        if (m) stockPorMarca.set(m, (stockPorMarca.get(m) ?? 0) + ((s.cantidad as number) ?? 0));
+      }
+
+      const { data: ventas30 } = await supabase
+        .from("ventas")
+        .select("id_venta")
+        .eq("estado", "PAGADA")
+        .gte("fecha", `${hace30}T00:00:00`);
+      const ids30 = (ventas30 ?? []).map((v) => v.id_venta as string);
+      const { data: det30 } = ids30.length
+        ? await supabase.from("detalle_ventas").select("id_marca, cantidad").in("id_venta", ids30)
+        : { data: [] };
+      const vendidoPorMarca = new Map<string, number>();
+      for (const d of det30 ?? []) {
+        const m = d.id_marca as string | null;
+        if (m) vendidoPorMarca.set(m, (vendidoPorMarca.get(m) ?? 0) + ((d.cantidad as number) ?? 0));
+      }
+
+      // Solo entran marcas con stock: sin mercadería la rotación no existe.
+      const rotaciones = (marcas ?? [])
+        .map((m) => {
+          const id = m.id_marca as string;
+          const enStock = stockPorMarca.get(id) ?? 0;
+          if (enStock <= 0) return null;
+          return { id, rotacion: (vendidoPorMarca.get(id) ?? 0) / enStock };
+        })
+        .filter((r): r is { id: string; rotacion: number } => r !== null);
+
+      const propia = rotaciones.find((r) => r.id === sesion.idMarca);
+      if (propia && rotaciones.length >= MINIMO_PARA_COMPARAR) {
+        const ordenadas = [...rotaciones].sort((a, b) => b.rotacion - a.rotacion);
+        const promedio = rotaciones.reduce((a, r) => a + r.rotacion, 0) / rotaciones.length;
+        benchmark = {
+          rotacion: propia.rotacion,
+          promedio,
+          posicion: ordenadas.findIndex((r) => r.id === sesion.idMarca) + 1,
+          marcas: rotaciones.length,
+        };
+      }
+    }
+  }
+
+  // ===== Ideas para vender más =====
+  // Cada una se apoya en un dato verificable de la propia marca. Nada de
+  // impactos estimados: si el número no se cumple, se pierde la confianza
+  // que el resto del tablero construye.
+  const ideas: GoldPortal["ideas"] = [];
+
+  // Qué se lleva la gente junto con el producto más vendido.
+  const nombres = await nombresDeVariante([...new Set(pagadasLargas.map((r) => r.idVariante))]);
+  const unidadesPorVariante = new Map<string, number>();
+  for (const r of pagadasLargas) unidadesPorVariante.set(r.idVariante, (unidadesPorVariante.get(r.idVariante) ?? 0) + r.cantidad);
+  const estrella = [...unidadesPorVariante.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+
+  if (estrella) {
+    const ventasConEstrella = new Set(pagadasLargas.filter((r) => r.idVariante === estrella).map((r) => r.idVenta));
+    const acompanantes = new Map<string, number>();
+    for (const r of pagadasLargas) {
+      if (r.idVariante === estrella || !ventasConEstrella.has(r.idVenta)) continue;
+      const ventasDelAcompanante = acompanantes.get(r.idVariante) ?? 0;
+      acompanantes.set(r.idVariante, ventasDelAcompanante + 1);
+    }
+    const mejor = [...acompanantes.entries()].sort((a, b) => b[1] - a[1])[0];
+    if (mejor && ventasConEstrella.size >= 5) {
+      const pct = Math.round((mejor[1] / ventasConEstrella.size) * 100);
+      if (pct >= 15) {
+        ideas.push({
+          rotulo: "Combo natural",
+          titulo: `Armá un pack de ${nombres.get(estrella) ?? "tu producto estrella"} con ${nombres.get(mejor[0]) ?? "el acompañante"}`,
+          detalle: `El ${pct}% de quienes compran el primero se llevan también el segundo en la misma venta. Juntos en un pack, se deciden más rápido.`,
+        });
+      }
+    }
+  }
+
+  if (horaPico !== null && porHora.length >= 4) {
+    const total = porHora.reduce((a, h) => a + h.unidades, 0);
+    const enPico = porHora.find((h) => h.hora === horaPico)?.unidades ?? 0;
+    const pct = total > 0 ? Math.round((enPico / total) * 100) : 0;
+    ideas.push({
+      rotulo: "Horario",
+      titulo: `Concentrá tus promos alrededor de las ${horaPico} h`,
+      detalle: `Es tu hora de mayor venta: ahí se mueve el ${pct}% de tus unidades. Es cuando más gente está frente a tu góndola.`,
+    });
+  }
+
+  if (porSucursal.length >= 2) {
+    const [primera, segunda] = porSucursal;
+    if (primera.porcentaje - segunda.porcentaje > 25) {
+      ideas.push({
+        rotulo: "Sucursales",
+        titulo: `Tu marca rinde mucho más en ${primera.local}`,
+        detalle: `Concentra el ${primera.porcentaje.toFixed(0)}% de tus ventas contra el ${segunda.porcentaje.toFixed(0)}% de ${segunda.local}. Vale revisar cómo está exhibida allá.`,
+      });
+    }
+  }
+
+  return { proyeccion, porHora, horaPico, porSucursal, benchmark, ideas };
+}
+
 export type LiquidacionPortal = {
   periodo: string;
   neto: number;
