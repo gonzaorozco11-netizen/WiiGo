@@ -16,6 +16,19 @@ export function getSupabaseServerClient() {
 
   return createClient(url, serviceRoleKey, {
     auth: { persistSession: false },
+    global: {
+      // Sin esto, Next cachea las respuestas de Supabase: dos consultas
+      // iguales dentro de la misma request devuelven lo mismo, y —lo que
+      // importa— `router.refresh()` puede traer datos viejos en vez de ir a
+      // la base. Lo dice la documentación de useRouter: "refresh() could
+      // re-produce the same result if fetch requests are cached".
+      //
+      // `force-dynamic` en la página no alcanza: eso evita que la página se
+      // pre-genere, no que cada fetch interno se sirva de la caché. Este es
+      // un sistema de gestión — el stock, la caja y las ventas tienen que
+      // ser el dato real de este segundo, nunca uno guardado.
+      fetch: (input, init) => fetch(input, { ...init, cache: "no-store" }),
+    },
   });
 }
 
