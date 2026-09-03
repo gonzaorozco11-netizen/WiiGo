@@ -140,6 +140,24 @@
 
 .vacio { font-size: 13px; color: var(--texto-3); text-align: center; padding: 26px 10px; }
 
+/* ---------- Lo que te queda ---------- */
+.cuenta { list-style: none; display: flex; flex-direction: column; }
+.cuenta li {
+  display: flex; justify-content: space-between; gap: 12px; padding: 9px 0;
+  border-top: 1px dashed var(--borde); font-size: 13.5px;
+}
+.cuenta li:first-child { border-top: 0; }
+.cuenta .k { color: var(--texto-2); }
+.cuenta .v { font-weight: 600; }
+.cuenta .v.resta { color: var(--rojo); }
+.cuenta .sub { padding-left: 14px; font-size: 12.5px; }
+.cuenta .sub .k { color: var(--texto-3); }
+.cuenta .final {
+  border-top: 2px solid var(--texto); margin-top: 6px; padding-top: 12px;
+}
+.cuenta .final .k { font-size: 14px; font-weight: 700; color: var(--texto); }
+.cuenta .final .v { font-size: 22px; color: var(--salvia-honda); }
+
 /* ---------- Ventas del día ---------- */
 .ventas-cab { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
 .ventas-total { font-size: 13px; color: var(--texto-2); }

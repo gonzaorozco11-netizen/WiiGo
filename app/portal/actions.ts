@@ -391,6 +391,69 @@ export async function pagosPortal(): Promise<{ pagos: PagoPortal[]; total: numbe
   return { pagos, total: pagos.reduce((acc, p) => acc + p.importe, 0) };
 }
 
+export type GananciaRealPortal = {
+  bruto: number;
+  comision: number;
+  netoTrasComision: number;
+  cargosDelMes: number;
+  detalleCargos: { concepto: string; importe: number }[];
+  quedaEnBolsillo: number;
+};
+
+/**
+ * "Lo que te queda este mes": junta dos números que hoy se muestran por
+ * separado (el neto tras la comisión de WiiGo, y los cargos que WiiGo le
+ * hace a la marca) en una sola cuenta con el detalle línea por línea.
+ *
+ * A propósito no se llama "rentabilidad": eso exigiría conocer el costo de
+ * fabricación o compra de la marca, que WiiGo no tiene — es dato de ella.
+ * Esto es exacto y verificable con lo que el sistema sabe.
+ */
+export async function gananciaRealPortal(): Promise<GananciaRealPortal | null> {
+  const sesion = await obtenerSesionMarca();
+  if (!sesion) return null;
+
+  const supabase = getSupabaseServerClient();
+  const hoyISO = fechaHoraArgentina().fecha;
+  const desde = inicioDeMes(hoyISO);
+
+  let bruto = 0;
+  let comision = 0;
+  let netoTrasComision = 0;
+  try {
+    const rendicion = await calcularRendicion(sesion.idMarca, desde, hoyISO);
+    bruto = rendicion.resumen.ventaBruta;
+    comision = rendicion.resumen.comisionWiigo + rendicion.resumen.ivaComision;
+    netoTrasComision = rendicion.resumen.netoARendir;
+  } catch {
+    return null; // antes de mostrar un número armado a medias, no se muestra nada
+  }
+
+  const { data: movimientos } = await supabase
+    .from("movimientos_cuenta_comercial_marca")
+    .select("tipo_cargo, importe, observaciones")
+    .eq("id_marca", sesion.idMarca)
+    .gt("importe", 0)
+    .gte("fecha", `${desde}T00:00:00`)
+    .lte("fecha", `${hoyISO}T23:59:59`);
+
+  const ETIQUETA: Record<string, string> = {
+    FEE_INGRESO: "Fee de ingreso",
+    GASTO_FIJO_MENSUAL: "Gasto fijo mensual",
+    CARGO_RECURRENTE: "Abono / cargo mensual",
+    OTRO_CARGO: "Otro cargo",
+  };
+  const porConcepto = new Map<string, number>();
+  for (const m of movimientos ?? []) {
+    const et = (m.observaciones as string) || ETIQUETA[m.tipo_cargo as string] || "Cargo";
+    porConcepto.set(et, (porConcepto.get(et) ?? 0) + ((m.importe as number) ?? 0));
+  }
+  const detalleCargos = [...porConcepto.entries()].map(([concepto, importe]) => ({ concepto, importe }));
+  const cargosDelMes = detalleCargos.reduce((a, c) => a + c.importe, 0);
+
+  return { bruto, comision, netoTrasComision, cargosDelMes, detalleCargos, quedaEnBolsillo: netoTrasComision - cargosDelMes };
+}
+
 // ===================== PLAN METAL: análisis de productos =====================
 
 export type ProductoRanking = {

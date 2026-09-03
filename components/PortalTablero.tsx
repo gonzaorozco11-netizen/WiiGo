@@ -9,6 +9,7 @@ import type {
   LiquidacionPortal,
   AnalisisPortal,
   GoldPortal,
+  GananciaRealPortal,
 } from "@/app/portal/actions";
 
 // Tablero del portal de marcas.
@@ -174,6 +175,7 @@ export default function PortalTablero({
   ordenes,
   pagos,
   liquidaciones,
+  ganancia,
   analisis,
   gold,
   puedeVerMas,
@@ -183,6 +185,7 @@ export default function PortalTablero({
   ordenes: OrdenPortal[];
   pagos: { pagos: PagoPortal[]; total: number };
   liquidaciones: LiquidacionPortal[];
+  ganancia: GananciaRealPortal | null;
   /** Solo llega con plan Metal o superior; en Bronce viene null. */
   analisis: AnalisisPortal | null;
   /** Solo llega con plan Gold; en los otros viene null. */
@@ -305,6 +308,43 @@ export default function PortalTablero({
           <p className="sub">en el mes</p>
         </div>
       </section>
+
+      {/* ===== LO QUE TE QUEDA ===== */}
+      {ganancia && (
+        <section className="modulo">
+          <div className="modulo-cab">
+            <h2>Lo que te queda este mes</h2>
+            <p className="desc">Vendido, menos la comisión de WiiGo, menos lo que le debés a WiiGo</p>
+          </div>
+          <ul className="cuenta">
+            <li>
+              <span className="k">Vendido este mes</span>
+              <span className="v mono">${pesos(ganancia.bruto)}</span>
+            </li>
+            <li>
+              <span className="k">Comisión de WiiGo</span>
+              <span className="v resta mono">-${pesos(ganancia.comision)}</span>
+            </li>
+            <li>
+              <span className="k">Neto a cobrar</span>
+              <span className="v mono">${pesos(ganancia.netoTrasComision)}</span>
+            </li>
+            {ganancia.detalleCargos.map((c, i) => (
+              <li key={i} className="sub">
+                <span className="k">− {c.concepto}</span>
+                <span className="v resta mono">-${pesos(c.importe)}</span>
+              </li>
+            ))}
+            <li className="final">
+              <span className="k">Te queda en el bolsillo</span>
+              <span className="v mono">${pesos(ganancia.quedaEnBolsillo)}</span>
+            </li>
+          </ul>
+          <p className="desc" style={{ marginTop: 12 }}>
+            No incluye tus propios costos (fabricación, compra, envíos): eso lo lleva la marca, no WiiGo.
+          </p>
+        </section>
+      )}
 
       {/* ===== VENTAS DE HOY ===== */}
       <section className="modulo">
