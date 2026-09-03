@@ -1,21 +1,29 @@
 import { redirect } from "next/navigation";
+import { Outfit, Manrope, JetBrains_Mono } from "next/font/google";
 import { logout } from "@/app/login/actions";
-import { obtenerSesionMarca, ETIQUETA_PLAN, sesionIncluye } from "@/lib/marcaSesion";
-import PortalNav from "@/components/PortalNav";
+import { obtenerSesionMarca, ETIQUETA_PLAN } from "@/lib/marcaSesion";
+import { WIIGO_LOGO_DATA_URI } from "@/lib/wiigo-logo-data";
+import "./portal.css";
+
+// Tipografías propias del portal. Outfit es geométrica y redondeada, de la
+// misma familia visual que el logo; Manrope para leer y la monoespaciada para
+// que los números aliñen en columna. Van por next/font para que se sirvan
+// desde el propio dominio: sin pedido a Google y sin el parpadeo de la fuente
+// cambiando a mitad de carga.
+const outfit = Outfit({ subsets: ["latin"], weight: ["500", "600", "700"], variable: "--f-titulo" });
+const manrope = Manrope({ subsets: ["latin"], weight: ["400", "500", "600", "700"], variable: "--f-texto" });
+const mono = JetBrains_Mono({ subsets: ["latin"], weight: ["400", "500", "600"], variable: "--f-mono" });
 
 // Portal de marcas: árbol de rutas separado del sistema interno a propósito.
 //
 // Acá adentro nadie puede consultar nada que no sea de su propia marca. El
-// control es este layout (rol "marca" o afuera) más el filtrado por
-// sesión de cada consulta — nunca esconder cosas en pantalla, porque los
-// datos igual habrían viajado al navegador.
+// control es este layout (rol "marca" o afuera) más el filtrado por sesión de
+// cada consulta — nunca esconder cosas en pantalla, porque los datos igual
+// habrían viajado al navegador.
+//
+// Tiene identidad visual propia (ver portal.css): la paleta sale del logo de
+// WiiGo. No es el sistema con otro menú, es otro producto.
 export const dynamic = "force-dynamic";
-
-const COLOR_PLAN: Record<string, string> = {
-  BRONCE: "bg-amber-50 text-amber-800 border-amber-200",
-  METAL: "bg-slate-100 text-slate-700 border-slate-300",
-  GOLD: "bg-yellow-50 text-yellow-800 border-yellow-300",
-};
 
 export default async function PortalLayout({ children }: { children: React.ReactNode }) {
   const sesion = await obtenerSesionMarca();
@@ -23,46 +31,34 @@ export default async function PortalLayout({ children }: { children: React.React
   if (!sesion) redirect("/login?next=/portal");
 
   return (
-    <div className="min-h-screen bg-neutral-50">
-      <header className="border-b border-neutral-200 bg-white">
-        <div className="max-w-6xl mx-auto px-4 py-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              {sesion.logoMarca && (
-                /* eslint-disable-next-line @next/next/no-img-element */
-                <img src={sesion.logoMarca} alt="" className="h-8 w-8 rounded object-contain shrink-0" />
-              )}
-              <div className="min-w-0">
-                <p className="font-semibold text-neutral-900 truncate">{sesion.nombreMarca}</p>
-                <p className="text-xs text-neutral-400">Portal de marcas · WiiGo</p>
-              </div>
-              <span
-                className={`text-[11px] font-bold uppercase tracking-wide border rounded-full px-2 py-0.5 shrink-0 ${
-                  COLOR_PLAN[sesion.plan] ?? COLOR_PLAN.BRONCE
-                }`}
-              >
-                {ETIQUETA_PLAN[sesion.plan]}
-              </span>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <span className="text-sm text-neutral-500 hidden sm:inline">{sesion.nombreUsuario}</span>
-              <form action={logout}>
-                <button className="text-sm text-neutral-500 hover:text-neutral-900" type="submit">
-                  Salir
-                </button>
-              </form>
+    <div className={`portal ${outfit.variable} ${manrope.variable} ${mono.variable}`}>
+      <header className="portal-top">
+        <div className="portal-top-int">
+          <div className="portal-identidad">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img className="portal-logo" src={WIIGO_LOGO_DATA_URI} alt="WiiGo — Estaciones de Bienestar" />
+            <span className="portal-divisor" />
+            <div style={{ minWidth: 0 }}>
+              <p className="portal-marca-nom">{sesion.nombreMarca}</p>
+              <p className="portal-marca-sub">Tu tablero de marca</p>
             </div>
           </div>
 
-          <PortalNav
-            verAnalisis={sesionIncluye(sesion, "METAL")}
-            verInteligencia={sesionIncluye(sesion, "GOLD")}
-          />
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span className={`plan-chip plan-${sesion.plan}`}>
+              <span className="punto" />
+              {ETIQUETA_PLAN[sesion.plan]}
+            </span>
+            <form action={logout}>
+              <button className="portal-salir" type="submit">
+                Salir
+              </button>
+            </form>
+          </div>
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-4 py-6">{children}</main>
+      {children}
     </div>
   );
 }
