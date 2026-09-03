@@ -454,6 +454,66 @@ export async function gananciaRealPortal(): Promise<GananciaRealPortal | null> {
   return { bruto, comision, netoTrasComision, cargosDelMes, detalleCargos, quedaEnBolsillo: netoTrasComision - cargosDelMes };
 }
 
+export type GananciaPorProducto = {
+  producto: string;
+  bruto: number;
+  comision: number;
+  costosDeCobro: number;
+  neto: number;
+  porcentaje: number;
+};
+
+/**
+ * Cuánto le queda a la marca por cada producto, en el mes en curso — el
+ * mismo desglose que "Lo que te queda" pero abierto por producto, con el
+ * costo de cobro real de cada venta (varía según cómo pagó el cliente: una
+ * venta en cuotas le cuesta a WiiGo más comisión de Mercado Pago que una en
+ * débito, y esa diferencia solo se ve línea por línea).
+ *
+ * Reusa el mismo motor que la liquidación (construirLineas, vía
+ * calcularRendicion) y solo agrupa lo que ya devuelve — no recalcula nada,
+ * por la misma razón de siempre: que el número coincida con la liquidación.
+ */
+export async function gananciaPorProductoPortal(): Promise<GananciaPorProducto[]> {
+  const sesion = await obtenerSesionMarca();
+  if (!sesion) return [];
+
+  const hoyISO = fechaHoraArgentina().fecha;
+  const desde = inicioDeMes(hoyISO);
+
+  let lineas;
+  try {
+    lineas = (await calcularRendicion(sesion.idMarca, desde, hoyISO)).lineas;
+  } catch {
+    return [];
+  }
+
+  const porProducto = new Map<string, { bruto: number; comision: number; costosDeCobro: number; neto: number }>();
+  for (const l of lineas) {
+    const actual = porProducto.get(l.producto) ?? { bruto: 0, comision: 0, costosDeCobro: 0, neto: 0 };
+    actual.bruto += l.ventaBruta;
+    actual.comision += l.comisionWiigo + l.ivaComision;
+    // "Costos de cobro" es todo lo que depende de cómo pagó el cliente: la
+    // comisión de Mercado Pago (que varía según débito/crédito/cuotas), más
+    // los impuestos bancarios que solo existen si la venta pasó por un
+    // medio electrónico. En efectivo, esto siempre da cero.
+    actual.costosDeCobro += l.feeMp + l.impCreditos + l.sircreb + l.impDebitos;
+    actual.neto += l.netoARendir;
+    porProducto.set(l.producto, actual);
+  }
+
+  return [...porProducto.entries()]
+    .map(([producto, v]) => ({
+      producto,
+      bruto: v.bruto,
+      comision: v.comision,
+      costosDeCobro: v.costosDeCobro,
+      neto: v.neto,
+      porcentaje: v.bruto > 0 ? (v.neto / v.bruto) * 100 : 0,
+    }))
+    .sort((a, b) => b.bruto - a.bruto);
+}
+
 // ===================== PLAN METAL: análisis de productos =====================
 
 export type ProductoRanking = {

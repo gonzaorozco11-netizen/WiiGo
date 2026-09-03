@@ -10,6 +10,7 @@ import type {
   AnalisisPortal,
   GoldPortal,
   GananciaRealPortal,
+  GananciaPorProducto,
 } from "@/app/portal/actions";
 
 // Tablero del portal de marcas.
@@ -176,6 +177,7 @@ export default function PortalTablero({
   pagos,
   liquidaciones,
   ganancia,
+  porProducto,
   analisis,
   gold,
   puedeVerMas,
@@ -186,6 +188,8 @@ export default function PortalTablero({
   pagos: { pagos: PagoPortal[]; total: number };
   liquidaciones: LiquidacionPortal[];
   ganancia: GananciaRealPortal | null;
+  /** Solo llega con plan Metal o superior; en Bronce viene []. */
+  porProducto: GananciaPorProducto[];
   /** Solo llega con plan Metal o superior; en Bronce viene null. */
   analisis: AnalisisPortal | null;
   /** Solo llega con plan Gold; en los otros viene null. */
@@ -219,7 +223,8 @@ export default function PortalTablero({
       c.setAttribute("stroke-dasharray", `0 ${d.split(" ")[1] ?? "301"}`);
     });
 
-    const HIJOS = ".nov, .venta, .pago, .orden, .liq li, .accion, .alertas li, .rank li, .idea, .suc-item";
+    const HIJOS =
+      ".nov, .venta, .pago, .orden, .liq li, .accion, .alertas li, .rank li, .idea, .suc-item, .tabla-producto tbody tr";
     const obs = new IntersectionObserver(
       (entradas) => {
         entradas.forEach((e) => {
@@ -499,6 +504,49 @@ export default function PortalTablero({
               </li>
             ))}
           </ul>
+        </section>
+      )}
+
+      {/* ===== CUÁNTO TE QUEDA POR PRODUCTO (Metal) ===== */}
+      {porProducto && porProducto.length > 0 && (
+        <section className="modulo">
+          <div className="modulo-cab">
+            <h2>Cuánto te queda por producto</h2>
+            <p className="desc">
+              Este mes. Cada producto lleva su propio costo, calculado sobre lo que costó exactamente ese producto
+              en cada venta — no un promedio. Si una venta incluyó varios productos tuyos pagados con Mercado Pago,
+              cada uno tiene su comisión calculada sobre su propio importe. Una venta en cuotas cuesta más comisión
+              que una en débito; en efectivo, los costos de cobro son siempre cero.
+            </p>
+          </div>
+          <div className="tabla-scroll">
+            <table className="tabla-producto">
+              <thead>
+                <tr>
+                  <th>Producto</th>
+                  <th>Vendido</th>
+                  <th>Comisión</th>
+                  <th>Costos de cobro</th>
+                  <th>Te queda</th>
+                  <th>%</th>
+                </tr>
+              </thead>
+              <tbody>
+                {porProducto.map((p, i) => (
+                  <tr key={i}>
+                    <td>{p.producto}</td>
+                    <td className="mono">${pesos(p.bruto)}</td>
+                    <td className="mono resta">-${pesos(p.comision)}</td>
+                    <td className="mono resta">{p.costosDeCobro > 0 ? `-$${pesos(p.costosDeCobro)}` : "$0"}</td>
+                    <td className="mono">${pesos(p.neto)}</td>
+                    <td>
+                      <span className={`pct${p.porcentaje < 70 ? " bajo" : ""}`}>{p.porcentaje.toFixed(0)}%</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </section>
       )}
 
