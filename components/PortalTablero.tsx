@@ -1,26 +1,45 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import type {
-  ResumenPortal,
-  VentaDelDia,
-  OrdenPortal,
-  PagoPortal,
-  LiquidacionPortal,
-  AnalisisPortal,
-  GoldPortal,
-  GananciaRealPortal,
-  DetalleMesPortal,
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  lineasVentaPortal,
+  type ResumenPortal,
+  type VentaDelDia,
+  type OrdenPortal,
+  type PagoPortal,
+  type LiquidacionPortal,
+  type AnalisisPortal,
+  type GoldPortal,
+  type GananciaRealPortal,
+  type DetalleMesPortal,
+  type LineaVentaMarca,
 } from "@/app/portal/actions";
 
 // Tablero del portal de marcas.
 //
-// Es un componente de cliente por una sola razón: las animaciones de entrada.
-// Todos los datos ya vienen calculados del servidor — acá no se consulta nada
-// ni se decide qué puede ver la marca, eso se resolvió antes.
+// Es un componente de cliente por dos razones: las animaciones de entrada, y
+// el explorador de ventas con filtro de fecha (pide datos nuevos al servidor
+// según lo que la marca elija). El resto de los datos ya viene calculado del
+// servidor — acá no se decide qué puede ver la marca, eso se resolvió antes.
 
 function pesos(v: number) {
   return v.toLocaleString("es-AR", { maximumFractionDigits: 0 });
+}
+
+function pesosOGuion(v: number) {
+  return v > 0 ? `-$${pesos(v)}` : "—";
+}
+
+function inicioSemana(hoyISO: string) {
+  const d = new Date(`${hoyISO}T12:00:00Z`);
+  const diaSemana = d.getUTCDay(); // 0=domingo … 6=sábado
+  const offset = diaSemana === 0 ? 6 : diaSemana - 1; // días desde el lunes
+  d.setUTCDate(d.getUTCDate() - offset);
+  return d.toISOString().slice(0, 10);
+}
+
+function inicioMesISO(hoyISO: string) {
+  return `${hoyISO.slice(0, 7)}-01`;
 }
 
 function fechaCorta(iso: string | null) {
@@ -197,6 +216,67 @@ export default function PortalTablero({
   puedeVerMas: boolean;
 }) {
   const raiz = useRef<HTMLDivElement>(null);
+
+  // ===== Explorador de ventas: Hoy / Semana / Mes / rango a medida =====
+  // Local a esta sección — el resto del tablero ("Lo que te queda",
+  // "Cuánto te queda por producto") sigue fijo al mes en curso, calculado ya
+  // en el servidor. Acá se pide un rango nuevo recién cuando la marca lo
+  // elige, para no gastar una consulta de más en cada carga de la página.
+  const hoyISO = resumen.hastaISO;
+  const [preset, setPreset] = useState<"HOY" | "SEMANA" | "MES" | "PERSONALIZADO">("MES");
+  const [desdeVentas, setDesdeVentas] = useState(inicioMesISO(hoyISO));
+  const [hastaVentas, setHastaVentas] = useState(hoyISO);
+  const [busquedaVentas, setBusquedaVentas] = useState("");
+  const [medioVentas, setMedioVentas] = useState("TODOS");
+  const [lineasVentas, setLineasVentas] = useState<LineaVentaMarca[]>(detalle.porVenta);
+  const [totalLineasVentas, setTotalLineasVentas] = useState(detalle.totalLineas);
+  const [cargandoVentas, setCargandoVentas] = useState(false);
+  const pedidoVentas = useRef(0);
+
+  function elegirPreset(p: "HOY" | "SEMANA" | "MES") {
+    setPreset(p);
+    const desde = p === "HOY" ? hoyISO : p === "SEMANA" ? inicioSemana(hoyISO) : inicioMesISO(hoyISO);
+    setDesdeVentas(desde);
+    setHastaVentas(hoyISO);
+  }
+
+  useEffect(() => {
+    // El primer valor (mes en curso) ya vino calculado del servidor — no
+    // hace falta volver a pedirlo apenas se monta el componente.
+    if (preset === "MES" && desdeVentas === inicioMesISO(hoyISO) && hastaVentas === hoyISO) return;
+
+    const idPedido = ++pedidoVentas.current;
+    setCargandoVentas(true);
+    lineasVentaPortal(desdeVentas, hastaVentas)
+      .then((r) => {
+        if (idPedido !== pedidoVentas.current) return; // llegó una respuesta vieja, se descarta
+        setLineasVentas(r.lineas);
+        setTotalLineasVentas(r.total);
+      })
+      .catch(() => {
+        if (idPedido !== pedidoVentas.current) return;
+        setLineasVentas([]);
+        setTotalLineasVentas(0);
+      })
+      .finally(() => {
+        if (idPedido === pedidoVentas.current) setCargandoVentas(false);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [desdeVentas, hastaVentas]);
+
+  const lineasVentasFiltradas = useMemo(() => {
+    const texto = busquedaVentas.trim().toLowerCase();
+    return lineasVentas.filter((l) => {
+      if (medioVentas !== "TODOS" && l.medioPago !== medioVentas) return false;
+      if (texto && !l.producto.toLowerCase().includes(texto)) return false;
+      return true;
+    });
+  }, [lineasVentas, busquedaVentas, medioVentas]);
+
+  const mostrarIvaVentas = lineasVentas.some((l) => l.ivaComision > 0);
+  const mostrarMpVentas = lineasVentas.some((l) => l.comisionMp > 0);
+  const mostrarSircrebVentas = lineasVentas.some((l) => l.sircreb > 0);
+  const mostrarImpCredVentas = lineasVentas.some((l) => l.impCreditos > 0);
 
   // Cada bloque arranca su animación cuando entra en pantalla, no todos al
   // cargar: así, mientras se baja, siempre hay algo construyéndose.
@@ -603,65 +683,126 @@ export default function PortalTablero({
         </section>
       )}
 
-      {/* ===== VENTA POR VENTA, CON DEDUCCIONES (Metal) ===== */}
-      {porVenta.length > 0 && (
+      {/* ===== TUS VENTAS, CON DEDUCCIONES — explorador (Metal) ===== */}
+      {porProducto.length > 0 && (
         <section className="modulo">
           <div className="modulo-cab">
-            <h2>Tus ventas de este mes, con el detalle</h2>
+            <h2>Tus ventas</h2>
             <p className="desc">
-              Cada línea es un producto tuyo real, dentro de una venta real, con la misma deducción que le calculó
-              la liquidación. Sumando todas estas líneas te da exactamente el resumen de arriba.
+              Cada fila es un producto tuyo real dentro de una venta real, con la misma deducción que calcula la
+              liquidación. Sin el número de venta: con la fecha y la hora alcanza para identificarla si hace falta
+              un reclamo.
             </p>
           </div>
-          <ul className="lineas-venta">
-            {porVenta.map((l, i) => (
-              <li key={i} className="linea-venta">
-                <div className="linea-venta-cab">
-                  <span className="linea-venta-fecha mono">
-                    {fechaCorta(l.fecha)} · {l.hora}
-                  </span>
-                  <span className="linea-venta-medio">{l.medioPago}</span>
-                </div>
-                <div className="linea-venta-prod">
-                  <span className="linea-venta-nom">{l.producto}</span>
-                  <span className="linea-venta-cant">{l.cantidad} unidad{l.cantidad === 1 ? "" : "es"}</span>
-                  <span className="linea-venta-bruto mono">${pesos(l.bruto)}</span>
-                </div>
-                <div className="linea-venta-deducciones">
-                  <span>
-                    Comisión WiiGo <b className="mono">-${pesos(l.comisionWiigo)}</b>
-                  </span>
-                  {l.ivaComision > 0 && (
-                    <span>
-                      IVA comisión <b className="mono">-${pesos(l.ivaComision)}</b>
-                    </span>
-                  )}
-                  {l.comisionMp > 0 && (
-                    <span>
-                      Comisión MP <b className="mono">-${pesos(l.comisionMp)}</b>
-                    </span>
-                  )}
-                  {l.sircreb > 0 && (
-                    <span>
-                      SIRCREB <b className="mono">-${pesos(l.sircreb)}</b>
-                    </span>
-                  )}
-                  {l.impCreditos > 0 && (
-                    <span>
-                      Imp. Créditos <b className="mono">-${pesos(l.impCreditos)}</b>
-                    </span>
-                  )}
-                </div>
-                <div className="linea-venta-neto">
-                  <span>Te queda</span>
-                  <span className="mono">${pesos(l.neto)}</span>
-                </div>
-              </li>
-            ))}
-          </ul>
-          {detalle.totalLineas > porVenta.length && (
+
+          <div className="filtro-barra">
+            <div className="filtro-botones">
+              {(["HOY", "SEMANA", "MES"] as const).map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  className={`filtro-boton${preset === p ? " activo" : ""}`}
+                  onClick={() => elegirPreset(p)}
+                >
+                  {p === "HOY" ? "Hoy" : p === "SEMANA" ? "Esta semana" : "Este mes"}
+                </button>
+              ))}
+            </div>
+
+            <div className="filtro-fechas">
+              <label>
+                Desde
+                <input
+                  type="date"
+                  value={desdeVentas}
+                  max={hastaVentas}
+                  onChange={(e) => {
+                    setPreset("PERSONALIZADO");
+                    setDesdeVentas(e.target.value);
+                  }}
+                />
+              </label>
+              <label>
+                Hasta
+                <input
+                  type="date"
+                  value={hastaVentas}
+                  min={desdeVentas}
+                  max={hoyISO}
+                  onChange={(e) => {
+                    setPreset("PERSONALIZADO");
+                    setHastaVentas(e.target.value);
+                  }}
+                />
+              </label>
+            </div>
+
+            <input
+              type="search"
+              className="filtro-busqueda"
+              placeholder="Buscar por producto…"
+              value={busquedaVentas}
+              onChange={(e) => setBusquedaVentas(e.target.value)}
+            />
+
+            <select className="filtro-select" value={medioVentas} onChange={(e) => setMedioVentas(e.target.value)}>
+              <option value="TODOS">Todos los pagos</option>
+              <option value="Efectivo">Efectivo</option>
+              <option value="Mercado Pago">Mercado Pago</option>
+              <option value="Transferencia">Transferencia</option>
+            </select>
+          </div>
+
+          {cargandoVentas ? (
+            <p className="vacio">Cargando…</p>
+          ) : lineasVentasFiltradas.length === 0 ? (
+            <p className="vacio">
+              {lineasVentas.length === 0 ? "No hubo ventas tuyas en ese período." : "Ninguna venta coincide con el filtro."}
+            </p>
+          ) : (
+            <div className="tabla-scroll">
+              <table className="tabla-producto">
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Hora</th>
+                    <th>Producto</th>
+                    <th>Cant.</th>
+                    <th>Pago</th>
+                    <th>Vendido</th>
+                    <th>Comisión</th>
+                    {mostrarIvaVentas && <th>IVA comisión</th>}
+                    {mostrarMpVentas && <th>Comisión MP</th>}
+                    {mostrarSircrebVentas && <th>SIRCREB</th>}
+                    {mostrarImpCredVentas && <th>Imp. Créditos</th>}
+                    <th>Te queda</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lineasVentasFiltradas.map((l, i) => (
+                    <tr key={i}>
+                      <td className="mono">{fechaCorta(l.fecha)}</td>
+                      <td className="mono">{l.hora}</td>
+                      <td>{l.producto}</td>
+                      <td className="mono">{l.cantidad}</td>
+                      <td>{l.medioPago}</td>
+                      <td className="mono">${pesos(l.bruto)}</td>
+                      <td className="mono resta">{pesosOGuion(l.comisionWiigo)}</td>
+                      {mostrarIvaVentas && <td className="mono resta">{pesosOGuion(l.ivaComision)}</td>}
+                      {mostrarMpVentas && <td className="mono resta">{pesosOGuion(l.comisionMp)}</td>}
+                      {mostrarSircrebVentas && <td className="mono resta">{pesosOGuion(l.sircreb)}</td>}
+                      {mostrarImpCredVentas && <td className="mono resta">{pesosOGuion(l.impCreditos)}</td>}
+                      <td className="mono">${pesos(l.neto)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {totalLineasVentas > lineasVentas.length && (
             <p className="desc" style={{ marginTop: 12 }}>
-              Mostrando las últimas {porVenta.length} de {detalle.totalLineas} líneas de este mes.
+              Mostrando las últimas {lineasVentas.length} de {totalLineasVentas} líneas de ese período.
             </p>
           )}
         </section>

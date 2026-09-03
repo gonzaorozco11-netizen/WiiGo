@@ -529,6 +529,65 @@ export type DetalleMesPortal = {
 };
 
 const TOPE_LINEAS_MOSTRADAS = 150;
+/** Un rango no puede pedir más de un año: evita traer un histórico entero por accidente. */
+const RANGO_MAXIMO_DIAS = 366;
+
+function esFechaValida(s: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(s);
+}
+
+/** LineaRendicion (interna, con número de venta) → lo que puede ver la marca. */
+function mapearLineasParaPortal(lineas: Awaited<ReturnType<typeof calcularRendicion>>["lineas"]): LineaVentaMarca[] {
+  return lineas
+    .map((l) => ({
+      fecha: l.fecha.slice(0, 10),
+      hora: new Date(l.fecha).toLocaleTimeString("es-AR", {
+        timeZone: "America/Argentina/Buenos_Aires",
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+      producto: l.producto,
+      cantidad: l.cantidad,
+      medioPago: MEDIO_LABEL[l.medioPago ?? ""] ?? l.medioPago ?? "—",
+      bruto: l.ventaBruta,
+      comisionWiigo: l.comisionWiigo,
+      ivaComision: l.ivaComision,
+      comisionMp: l.feeMp,
+      sircreb: l.sircreb,
+      impCreditos: l.impCreditos,
+      impDebitos: l.impDebitos,
+      neto: l.netoARendir,
+    }))
+    .sort((a, b) => (b.fecha + b.hora).localeCompare(a.fecha + a.hora));
+}
+
+/**
+ * Las líneas de venta de esta marca en cualquier rango de fechas — para el
+ * explorador con filtros (Hoy / Semana / Mes / Desde-Hasta) del tablero.
+ *
+ * Mismo motor que `detalleMesPortal` (calcularRendicion), solo que acá el
+ * rango lo elige quien mira el tablero en vez de estar fijo al mes en curso.
+ */
+export async function lineasVentaPortal(desde: string, hasta: string): Promise<{ lineas: LineaVentaMarca[]; total: number }> {
+  const sesion = await obtenerSesionMarca();
+  if (!sesion) return { lineas: [], total: 0 };
+
+  if (!esFechaValida(desde) || !esFechaValida(hasta)) throw new Error("Fechas inválidas");
+  const [d, h] = desde <= hasta ? [desde, hasta] : [hasta, desde];
+
+  const dias = Math.round((new Date(`${h}T12:00:00Z`).getTime() - new Date(`${d}T12:00:00Z`).getTime()) / DIA_MS) + 1;
+  if (dias > RANGO_MAXIMO_DIAS) throw new Error("El rango no puede superar un año");
+
+  let lineas;
+  try {
+    lineas = (await calcularRendicion(sesion.idMarca, d, h)).lineas;
+  } catch {
+    return { lineas: [], total: 0 };
+  }
+
+  const mapeadas = mapearLineasParaPortal(lineas);
+  return { lineas: mapeadas.slice(0, TOPE_LINEAS_MOSTRADAS), total: mapeadas.length };
+}
 
 /**
  * El desglose completo del mes: agrupado por producto, y línea por línea tal
@@ -591,27 +650,7 @@ export async function detalleMesPortal(): Promise<DetalleMesPortal> {
     .map(([producto, v]) => ({ producto, ...v, porcentaje: v.bruto > 0 ? (v.neto / v.bruto) * 100 : 0 }))
     .sort((a, b) => b.bruto - a.bruto);
 
-  const porVenta: LineaVentaMarca[] = lineas
-    .map((l) => ({
-      fecha: l.fecha.slice(0, 10),
-      hora: new Date(l.fecha).toLocaleTimeString("es-AR", {
-        timeZone: "America/Argentina/Buenos_Aires",
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-      producto: l.producto,
-      cantidad: l.cantidad,
-      medioPago: MEDIO_LABEL[l.medioPago ?? ""] ?? l.medioPago ?? "—",
-      bruto: l.ventaBruta,
-      comisionWiigo: l.comisionWiigo,
-      ivaComision: l.ivaComision,
-      comisionMp: l.feeMp,
-      sircreb: l.sircreb,
-      impCreditos: l.impCreditos,
-      impDebitos: l.impDebitos,
-      neto: l.netoARendir,
-    }))
-    .sort((a, b) => (b.fecha + b.hora).localeCompare(a.fecha + a.hora));
+  const porVenta = mapearLineasParaPortal(lineas);
 
   return { porProducto, porVenta: porVenta.slice(0, TOPE_LINEAS_MOSTRADAS), totalLineas: porVenta.length };
 }
