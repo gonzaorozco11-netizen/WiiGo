@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   lineasVentaPortal,
   type ResumenPortal,
@@ -227,6 +228,67 @@ export default function PortalTablero({
   puedeVerMas: boolean;
 }) {
   const raiz = useRef<HTMLDivElement>(null);
+  const router = useRouter();
+
+  // ===== Siempre actualizado =====
+  // `router.refresh()` vuelve a correr la carga del servidor (page.tsx) y le
+  // manda a este componente props frescas — hero, KPIs, "Ventas de hoy",
+  // reposición, pagos, liquidaciones, alertas — sin recargar la página ni
+  // perder lo que la marca esté mirando en "Tus ventas" (esa sección tiene
+  // su propio estado, independiente de estas props).
+  //
+  // No es empuje en tiempo real (para eso haría falta Supabase Realtime):
+  // es una actualización automática cada 30 segundos, más un refresco
+  // apenas la marca vuelve a la pestaña después de estar en otra.
+  useEffect(() => {
+    const intervalo = setInterval(() => router.refresh(), 30000);
+    function alVolver() {
+      if (document.visibilityState === "visible") router.refresh();
+    }
+    document.addEventListener("visibilitychange", alVolver);
+    return () => {
+      clearInterval(intervalo);
+      document.removeEventListener("visibilitychange", alVolver);
+    };
+  }, [router]);
+
+  // ===== Aviso de venta nueva =====
+  // "Ventas de hoy" no tiene número de venta (a propósito, ver el tipo
+  // VentaDelDia): para saber qué renglón es nuevo entre un refresco y el
+  // siguiente se arma una clave con lo que sí tiene cada uno. No hace falta
+  // que sea un id real — alcanza con que dos ventas iguales en todo (hora,
+  // producto, cantidad, importe) sean rarísimas el mismo día.
+  const [avisoVenta, setAvisoVenta] = useState<{ cantidad: number; detalle: string; monto: number } | null>(null);
+  const [kpiPulso, setKpiPulso] = useState(false);
+  const ventasHoyPrevia = useRef(ventasHoy);
+  const avisoTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  useEffect(() => {
+    const clave = (v: VentaDelDia) => `${v.hora}|${v.producto}|${v.cantidad}|${v.monto}`;
+    const antes = new Set(ventasHoyPrevia.current.map(clave));
+    // Las anuladas no se festejan.
+    const nuevas = ventasHoy.filter((v) => !v.anulada && !antes.has(clave(v)));
+    ventasHoyPrevia.current = ventasHoy;
+    if (nuevas.length === 0) return;
+
+    avisoTimers.current.forEach(clearTimeout);
+    avisoTimers.current = [];
+
+    const monto = nuevas.reduce((a, v) => a + v.monto, 0);
+    setAvisoVenta({
+      cantidad: nuevas.length,
+      detalle: nuevas.length === 1 ? nuevas[0].producto : `${nuevas.length} productos`,
+      monto,
+    });
+    setKpiPulso(true);
+    avisoTimers.current.push(
+      setTimeout(() => setAvisoVenta(null), 5000),
+      setTimeout(() => setKpiPulso(false), 1200)
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ventasHoy]);
+
+  useEffect(() => () => avisoTimers.current.forEach(clearTimeout), []);
 
   // ===== Explorador de ventas: Hoy / Semana / Mes / rango a medida =====
   // Local a esta sección — el resto del tablero ("Lo que te queda",
@@ -252,26 +314,36 @@ export default function PortalTablero({
   }
 
   useEffect(() => {
-    // El primer valor (mes en curso) ya vino calculado del servidor — no
-    // hace falta volver a pedirlo apenas se monta el componente.
-    if (preset === "MES" && desdeVentas === inicioMesISO(hoyISO) && hastaVentas === hoyISO) return;
+    function pedir(mostrarCargando: boolean) {
+      const idPedido = ++pedidoVentas.current;
+      if (mostrarCargando) setCargandoVentas(true);
+      lineasVentaPortal(desdeVentas, hastaVentas)
+        .then((r) => {
+          if (idPedido !== pedidoVentas.current) return; // llegó una respuesta vieja, se descarta
+          setLineasVentas(r.lineas);
+          setTotalLineasVentas(r.total);
+        })
+        .catch(() => {
+          if (idPedido !== pedidoVentas.current) return;
+          setLineasVentas([]);
+          setTotalLineasVentas(0);
+        })
+        .finally(() => {
+          if (idPedido === pedidoVentas.current) setCargandoVentas(false);
+        });
+    }
 
-    const idPedido = ++pedidoVentas.current;
-    setCargandoVentas(true);
-    lineasVentaPortal(desdeVentas, hastaVentas)
-      .then((r) => {
-        if (idPedido !== pedidoVentas.current) return; // llegó una respuesta vieja, se descarta
-        setLineasVentas(r.lineas);
-        setTotalLineasVentas(r.total);
-      })
-      .catch(() => {
-        if (idPedido !== pedidoVentas.current) return;
-        setLineasVentas([]);
-        setTotalLineasVentas(0);
-      })
-      .finally(() => {
-        if (idPedido === pedidoVentas.current) setCargandoVentas(false);
-      });
+    // El primer valor (mes en curso) ya vino calculado del servidor — no
+    // hace falta volver a pedirlo apenas se monta el componente. Si la marca
+    // cambió el filtro, sí se pide de una y se muestra "Cargando...".
+    const esElValorInicial = preset === "MES" && desdeVentas === inicioMesISO(hoyISO) && hastaVentas === hoyISO;
+    if (!esElValorInicial) pedir(true);
+
+    // Se actualiza sola cada 30 segundos, para el período que esté elegido
+    // en ese momento — sin mostrar "Cargando..." para no interrumpir a
+    // quien está mirando la tabla.
+    const intervalo = setInterval(() => pedir(false), 30000);
+    return () => clearInterval(intervalo);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [desdeVentas, hastaVentas]);
 
@@ -352,6 +424,20 @@ export default function PortalTablero({
 
   return (
     <div className="portal-lienzo" ref={raiz}>
+      {avisoVenta && (
+        <div className="aviso-venta" role="status">
+          <span className="ico">🎉</span>
+          <span>
+            <span className="t">
+              {avisoVenta.cantidad === 1 ? "¡Tenés una venta nueva!" : `¡Tenés ${avisoVenta.cantidad} ventas nuevas!`}
+            </span>
+            <span className="d">
+              {avisoVenta.detalle} — <span className="m mono">${pesos(avisoVenta.monto)}</span>
+            </span>
+          </span>
+        </div>
+      )}
+
       {/* ===== HERO ===== */}
       <section className="hero">
         <div>
@@ -387,7 +473,7 @@ export default function PortalTablero({
           <p className="cifra mono">${pesos(resumen.mes.neto)}</p>
           <p className="sub">Después de ${pesos(resumen.mes.royalty)} de comisión</p>
         </div>
-        <div className="kpi">
+        <div className={`kpi${kpiPulso ? " pulso" : ""}`}>
           <p className="et">Vendido hoy</p>
           <p className="cifra mono">${pesos(resumen.hoy.bruto)}</p>
           <p className="sub">
