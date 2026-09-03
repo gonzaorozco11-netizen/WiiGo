@@ -10,7 +10,7 @@ import type {
   AnalisisPortal,
   GoldPortal,
   GananciaRealPortal,
-  GananciaPorProducto,
+  DetalleMesPortal,
 } from "@/app/portal/actions";
 
 // Tablero del portal de marcas.
@@ -177,7 +177,7 @@ export default function PortalTablero({
   pagos,
   liquidaciones,
   ganancia,
-  porProducto,
+  detalle,
   analisis,
   gold,
   puedeVerMas,
@@ -188,8 +188,8 @@ export default function PortalTablero({
   pagos: { pagos: PagoPortal[]; total: number };
   liquidaciones: LiquidacionPortal[];
   ganancia: GananciaRealPortal | null;
-  /** Solo llega con plan Metal o superior; en Bronce viene []. */
-  porProducto: GananciaPorProducto[];
+  /** Solo llega con plan Metal o superior; en Bronce viene vacío. */
+  detalle: DetalleMesPortal;
   /** Solo llega con plan Metal o superior; en Bronce viene null. */
   analisis: AnalisisPortal | null;
   /** Solo llega con plan Gold; en los otros viene null. */
@@ -224,7 +224,7 @@ export default function PortalTablero({
     });
 
     const HIJOS =
-      ".nov, .venta, .pago, .orden, .liq li, .accion, .alertas li, .rank li, .idea, .suc-item, .tabla-producto tbody tr";
+      ".nov, .venta, .pago, .orden, .liq li, .accion, .alertas li, .rank li, .idea, .suc-item, .tabla-producto tbody tr, .linea-venta";
     const obs = new IntersectionObserver(
       (entradas) => {
         entradas.forEach((e) => {
@@ -232,8 +232,12 @@ export default function PortalTablero({
           const b = e.target as HTMLElement;
           b.classList.add("en-vista");
 
+          // Tope al desfasaje: con una lista larga (hasta 150 líneas de
+          // venta), escalonar cada una demoraría minutos en terminar. Las
+          // primeras 15 entran una tras otra; el resto, todas juntas apenas
+          // después — se sigue viendo "construido", sin la espera absurda.
           b.querySelectorAll<HTMLElement>(HIJOS).forEach((h, i) => {
-            h.style.transitionDelay = `${i * 70}ms`;
+            h.style.transitionDelay = `${Math.min(i, 15) * 70}ms`;
           });
           const l = b.querySelector<SVGPathElement>(".linea-mes");
           if (l) l.style.strokeDashoffset = "0";
@@ -257,6 +261,16 @@ export default function PortalTablero({
       : null;
   const principal = resumen.porMedioPago[0];
   const totalHoy = ventasHoy.filter((v) => !v.anulada).reduce((a, v) => a + v.monto, 0);
+
+  // Columnas que solo se muestran si alguna fila tiene algo que mostrar: una
+  // marca que cobra únicamente en efectivo no tiene por qué ver cuatro
+  // columnas de ceros.
+  const porProducto = detalle.porProducto;
+  const porVenta = detalle.porVenta;
+  const mostrarIva = porProducto.some((p) => p.ivaComision > 0);
+  const mostrarMp = porProducto.some((p) => p.comisionMp > 0);
+  const mostrarSircreb = porProducto.some((p) => p.sircreb > 0);
+  const mostrarImpCred = porProducto.some((p) => p.impCreditos > 0);
 
   return (
     <div className="portal-lienzo" ref={raiz}>
@@ -319,7 +333,7 @@ export default function PortalTablero({
         <section className="modulo">
           <div className="modulo-cab">
             <h2>Lo que te queda este mes</h2>
-            <p className="desc">Vendido, menos la comisión de WiiGo, menos lo que le debés a WiiGo</p>
+            <p className="desc">Cada deducción por separado — nada mezclado en un solo número</p>
           </div>
           <ul className="cuenta">
             <li>
@@ -327,9 +341,39 @@ export default function PortalTablero({
               <span className="v mono">${pesos(ganancia.bruto)}</span>
             </li>
             <li>
-              <span className="k">Comisión de WiiGo</span>
-              <span className="v resta mono">-${pesos(ganancia.comision)}</span>
+              <span className="k">Comisión WiiGo</span>
+              <span className="v resta mono">-${pesos(ganancia.comisionWiigo)}</span>
             </li>
+            {ganancia.ivaComision > 0 && (
+              <li>
+                <span className="k">IVA sobre comisión</span>
+                <span className="v resta mono">-${pesos(ganancia.ivaComision)}</span>
+              </li>
+            )}
+            {ganancia.comisionMp > 0 && (
+              <li>
+                <span className="k">Comisión Mercado Pago</span>
+                <span className="v resta mono">-${pesos(ganancia.comisionMp)}</span>
+              </li>
+            )}
+            {ganancia.sircreb > 0 && (
+              <li>
+                <span className="k">SIRCREB</span>
+                <span className="v resta mono">-${pesos(ganancia.sircreb)}</span>
+              </li>
+            )}
+            {ganancia.impCreditos > 0 && (
+              <li>
+                <span className="k">Impuesto a los Créditos y Débitos</span>
+                <span className="v resta mono">-${pesos(ganancia.impCreditos)}</span>
+              </li>
+            )}
+            {ganancia.impDebitos > 0 && (
+              <li>
+                <span className="k">Impuesto a los Débitos</span>
+                <span className="v resta mono">-${pesos(ganancia.impDebitos)}</span>
+              </li>
+            )}
             <li>
               <span className="k">Neto a cobrar</span>
               <span className="v mono">${pesos(ganancia.netoTrasComision)}</span>
@@ -513,10 +557,11 @@ export default function PortalTablero({
           <div className="modulo-cab">
             <h2>Cuánto te queda por producto</h2>
             <p className="desc">
-              Este mes. Cada producto lleva su propio costo, calculado sobre lo que costó exactamente ese producto
-              en cada venta — no un promedio. Si una venta incluyó varios productos tuyos pagados con Mercado Pago,
-              cada uno tiene su comisión calculada sobre su propio importe. Una venta en cuotas cuesta más comisión
-              que una en débito; en efectivo, los costos de cobro son siempre cero.
+              Este mes, cada deducción por separado. Cada producto lleva su propio costo, calculado sobre lo que
+              costó exactamente ese producto en cada venta — no un promedio: si una venta incluyó varios productos
+              tuyos pagados con Mercado Pago, cada uno tiene su comisión calculada sobre su propio importe. Una
+              venta en cuotas cuesta más comisión que una en débito; en efectivo, las columnas de la derecha son
+              siempre cero.
             </p>
           </div>
           <div className="tabla-scroll">
@@ -526,7 +571,10 @@ export default function PortalTablero({
                   <th>Producto</th>
                   <th>Vendido</th>
                   <th>Comisión</th>
-                  <th>Costos de cobro</th>
+                  {mostrarIva && <th>IVA comisión</th>}
+                  {mostrarMp && <th>Comisión MP</th>}
+                  {mostrarSircreb && <th>SIRCREB</th>}
+                  {mostrarImpCred && <th>Imp. Créditos</th>}
                   <th>Te queda</th>
                   <th>%</th>
                 </tr>
@@ -536,8 +584,13 @@ export default function PortalTablero({
                   <tr key={i}>
                     <td>{p.producto}</td>
                     <td className="mono">${pesos(p.bruto)}</td>
-                    <td className="mono resta">-${pesos(p.comision)}</td>
-                    <td className="mono resta">{p.costosDeCobro > 0 ? `-$${pesos(p.costosDeCobro)}` : "$0"}</td>
+                    <td className="mono resta">-${pesos(p.comisionWiigo)}</td>
+                    {mostrarIva && <td className="mono resta">{p.ivaComision > 0 ? `-$${pesos(p.ivaComision)}` : "$0"}</td>}
+                    {mostrarMp && <td className="mono resta">{p.comisionMp > 0 ? `-$${pesos(p.comisionMp)}` : "$0"}</td>}
+                    {mostrarSircreb && <td className="mono resta">{p.sircreb > 0 ? `-$${pesos(p.sircreb)}` : "$0"}</td>}
+                    {mostrarImpCred && (
+                      <td className="mono resta">{p.impCreditos > 0 ? `-$${pesos(p.impCreditos)}` : "$0"}</td>
+                    )}
                     <td className="mono">${pesos(p.neto)}</td>
                     <td>
                       <span className={`pct${p.porcentaje < 70 ? " bajo" : ""}`}>{p.porcentaje.toFixed(0)}%</span>
@@ -547,6 +600,70 @@ export default function PortalTablero({
               </tbody>
             </table>
           </div>
+        </section>
+      )}
+
+      {/* ===== VENTA POR VENTA, CON DEDUCCIONES (Metal) ===== */}
+      {porVenta.length > 0 && (
+        <section className="modulo">
+          <div className="modulo-cab">
+            <h2>Tus ventas de este mes, con el detalle</h2>
+            <p className="desc">
+              Cada línea es un producto tuyo real, dentro de una venta real, con la misma deducción que le calculó
+              la liquidación. Sumando todas estas líneas te da exactamente el resumen de arriba.
+            </p>
+          </div>
+          <ul className="lineas-venta">
+            {porVenta.map((l, i) => (
+              <li key={i} className="linea-venta">
+                <div className="linea-venta-cab">
+                  <span className="linea-venta-fecha mono">
+                    {fechaCorta(l.fecha)} · {l.hora}
+                  </span>
+                  <span className="linea-venta-medio">{l.medioPago}</span>
+                </div>
+                <div className="linea-venta-prod">
+                  <span className="linea-venta-nom">{l.producto}</span>
+                  <span className="linea-venta-cant">{l.cantidad} unidad{l.cantidad === 1 ? "" : "es"}</span>
+                  <span className="linea-venta-bruto mono">${pesos(l.bruto)}</span>
+                </div>
+                <div className="linea-venta-deducciones">
+                  <span>
+                    Comisión WiiGo <b className="mono">-${pesos(l.comisionWiigo)}</b>
+                  </span>
+                  {l.ivaComision > 0 && (
+                    <span>
+                      IVA comisión <b className="mono">-${pesos(l.ivaComision)}</b>
+                    </span>
+                  )}
+                  {l.comisionMp > 0 && (
+                    <span>
+                      Comisión MP <b className="mono">-${pesos(l.comisionMp)}</b>
+                    </span>
+                  )}
+                  {l.sircreb > 0 && (
+                    <span>
+                      SIRCREB <b className="mono">-${pesos(l.sircreb)}</b>
+                    </span>
+                  )}
+                  {l.impCreditos > 0 && (
+                    <span>
+                      Imp. Créditos <b className="mono">-${pesos(l.impCreditos)}</b>
+                    </span>
+                  )}
+                </div>
+                <div className="linea-venta-neto">
+                  <span>Te queda</span>
+                  <span className="mono">${pesos(l.neto)}</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+          {detalle.totalLineas > porVenta.length && (
+            <p className="desc" style={{ marginTop: 12 }}>
+              Mostrando las últimas {porVenta.length} de {detalle.totalLineas} líneas de este mes.
+            </p>
+          )}
         </section>
       )}
 

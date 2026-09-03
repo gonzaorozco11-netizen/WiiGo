@@ -213,6 +213,24 @@
 .tabla-producto .pct.bajo { background: var(--rojo-tenue); color: var(--rojo); }
 .tabla-scroll { overflow-x: auto; margin: -2px; padding: 2px; }
 
+/* ---------- Venta por venta, con deducciones (Metal) ---------- */
+.lineas-venta { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+.linea-venta { border: 1px solid var(--borde); border-radius: 12px; padding: 12px 14px; background: var(--superficie-2); }
+.linea-venta-cab { display: flex; justify-content: space-between; align-items: baseline; font-size: 11.5px; color: var(--texto-3); }
+.linea-venta-prod { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-top: 5px; }
+.linea-venta-nom { font-size: 14px; font-weight: 600; }
+.linea-venta-cant { font-size: 12px; color: var(--texto-3); }
+.linea-venta-bruto { margin-left: auto; font-size: 14px; font-weight: 700; }
+.linea-venta-deducciones {
+  display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 9px; padding-top: 9px;
+  border-top: 1px dashed var(--borde); font-size: 12px; color: var(--texto-2);
+}
+.linea-venta-deducciones b { color: var(--rojo); font-weight: 600; }
+.linea-venta-neto {
+  display: flex; justify-content: space-between; margin-top: 8px; padding-top: 8px;
+  border-top: 1px solid var(--borde); font-size: 13px; font-weight: 700; color: var(--salvia-honda);
+}
+
 /* ---------- Ranking (Metal) ---------- */
 .rank { list-style: none; display: flex; flex-direction: column; gap: 13px; }
 .rank li { display: grid; grid-template-columns: 18px 1fr auto; gap: 11px; align-items: center; }
@@ -235,14 +253,15 @@
 /* Las barras del ranking crecen desde cero al entrar en pantalla. */
 .js-anim .rank .barra i { width: 0 !important; transition: width .9s cubic-bezier(.22, .9, .28, 1); }
 .js-anim .en-vista .rank .barra i { width: var(--w) !important; }
-.js-anim .accion, .js-anim .alertas li, .js-anim .rank li, .js-anim .tabla-producto tbody tr {
+.js-anim .accion, .js-anim .alertas li, .js-anim .rank li, .js-anim .tabla-producto tbody tr, .js-anim .linea-venta {
   opacity: 0; transform: translateY(10px);
   transition: opacity .5s cubic-bezier(.22, .9, .28, 1), transform .5s cubic-bezier(.22, .9, .28, 1);
 }
 .js-anim .en-vista .accion,
 .js-anim .en-vista .alertas li,
 .js-anim .en-vista .rank li,
-.js-anim .en-vista .tabla-producto tbody tr { opacity: 1; transform: none; }
+.js-anim .en-vista .tabla-producto tbody tr,
+.js-anim .en-vista .linea-venta { opacity: 1; transform: none; }
 
 /* ---------- Benchmark (Gold) ---------- */
 .bench {

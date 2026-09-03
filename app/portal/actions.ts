@@ -393,7 +393,18 @@ export async function pagosPortal(): Promise<{ pagos: PagoPortal[]; total: numbe
 
 export type GananciaRealPortal = {
   bruto: number;
-  comision: number;
+  // Cada deducción por separado — no lumped. Son exactamente las mismas
+  // seis columnas que calcula la liquidación (ver construirLineas en
+  // liquidaciones/actions.ts): comisión de WiiGo, el IVA sobre esa comisión,
+  // la comisión de Mercado Pago (varía según cómo pagó el cliente: débito,
+  // crédito o cuotas cobran distinto), SIRCREB, el Impuesto a los Créditos y
+  // Débitos bancario, y el Impuesto a los Débitos si estuviera trasladado.
+  comisionWiigo: number;
+  ivaComision: number;
+  comisionMp: number;
+  sircreb: number;
+  impCreditos: number;
+  impDebitos: number;
   netoTrasComision: number;
   cargosDelMes: number;
   detalleCargos: { concepto: string; importe: number }[];
@@ -401,13 +412,15 @@ export type GananciaRealPortal = {
 };
 
 /**
- * "Lo que te queda este mes": junta dos números que hoy se muestran por
- * separado (el neto tras la comisión de WiiGo, y los cargos que WiiGo le
- * hace a la marca) en una sola cuenta con el detalle línea por línea.
+ * "Lo que te queda este mes": el detalle completo de todo lo que se
+ * descuenta entre lo que pagó el cliente y lo que la marca termina cobrando,
+ * más los cargos que WiiGo le hace aparte (fees, abono del plan).
  *
  * A propósito no se llama "rentabilidad": eso exigiría conocer el costo de
  * fabricación o compra de la marca, que WiiGo no tiene — es dato de ella.
- * Esto es exacto y verificable con lo que el sistema sabe.
+ * Esto es exacto y verificable con lo que el sistema sabe, porque cada
+ * número sale directo de `resumen` en calcularRendicion — el mismo objeto
+ * que arma el comprobante de la liquidación. No se recalcula nada acá.
  */
 export async function gananciaRealPortal(): Promise<GananciaRealPortal | null> {
   const sesion = await obtenerSesionMarca();
@@ -418,13 +431,23 @@ export async function gananciaRealPortal(): Promise<GananciaRealPortal | null> {
   const desde = inicioDeMes(hoyISO);
 
   let bruto = 0;
-  let comision = 0;
+  let comisionWiigo = 0;
+  let ivaComision = 0;
+  let comisionMp = 0;
+  let sircreb = 0;
+  let impCreditos = 0;
+  let impDebitos = 0;
   let netoTrasComision = 0;
   try {
-    const rendicion = await calcularRendicion(sesion.idMarca, desde, hoyISO);
-    bruto = rendicion.resumen.ventaBruta;
-    comision = rendicion.resumen.comisionWiigo + rendicion.resumen.ivaComision;
-    netoTrasComision = rendicion.resumen.netoARendir;
+    const r = (await calcularRendicion(sesion.idMarca, desde, hoyISO)).resumen;
+    bruto = r.ventaBruta;
+    comisionWiigo = r.comisionWiigo;
+    ivaComision = r.ivaComision;
+    comisionMp = r.feeMp;
+    sircreb = r.sircreb;
+    impCreditos = r.impCreditos;
+    impDebitos = r.impDebitos;
+    netoTrasComision = r.netoARendir;
   } catch {
     return null; // antes de mostrar un número armado a medias, no se muestra nada
   }
@@ -451,32 +474,74 @@ export async function gananciaRealPortal(): Promise<GananciaRealPortal | null> {
   const detalleCargos = [...porConcepto.entries()].map(([concepto, importe]) => ({ concepto, importe }));
   const cargosDelMes = detalleCargos.reduce((a, c) => a + c.importe, 0);
 
-  return { bruto, comision, netoTrasComision, cargosDelMes, detalleCargos, quedaEnBolsillo: netoTrasComision - cargosDelMes };
+  return {
+    bruto,
+    comisionWiigo,
+    ivaComision,
+    comisionMp,
+    sircreb,
+    impCreditos,
+    impDebitos,
+    netoTrasComision,
+    cargosDelMes,
+    detalleCargos,
+    quedaEnBolsillo: netoTrasComision - cargosDelMes,
+  };
 }
 
 export type GananciaPorProducto = {
   producto: string;
   bruto: number;
-  comision: number;
-  costosDeCobro: number;
+  comisionWiigo: number;
+  ivaComision: number;
+  comisionMp: number;
+  sircreb: number;
+  impCreditos: number;
+  impDebitos: number;
   neto: number;
   porcentaje: number;
 };
 
+/** Una línea real: un producto tuyo, dentro de una venta real. Sin el
+ * número de venta — mismo criterio que "Ventas de hoy": es correlativo y
+ * revelaría cuántas ventas hace el local en total. */
+export type LineaVentaMarca = {
+  fecha: string;
+  hora: string;
+  producto: string;
+  cantidad: number;
+  medioPago: string;
+  bruto: number;
+  comisionWiigo: number;
+  ivaComision: number;
+  comisionMp: number;
+  sircreb: number;
+  impCreditos: number;
+  impDebitos: number;
+  neto: number;
+};
+
+export type DetalleMesPortal = {
+  porProducto: GananciaPorProducto[];
+  porVenta: LineaVentaMarca[];
+  /** Cuántas líneas hay en total antes de recortar la lista a mostrar. */
+  totalLineas: number;
+};
+
+const TOPE_LINEAS_MOSTRADAS = 150;
+
 /**
- * Cuánto le queda a la marca por cada producto, en el mes en curso — el
- * mismo desglose que "Lo que te queda" pero abierto por producto, con el
- * costo de cobro real de cada venta (varía según cómo pagó el cliente: una
- * venta en cuotas le cuesta a WiiGo más comisión de Mercado Pago que una en
- * débito, y esa diferencia solo se ve línea por línea).
+ * El desglose completo del mes: agrupado por producto, y línea por línea tal
+ * como se vendió — cada producto tuyo, dentro de cada venta real, con sus
+ * seis deducciones abiertas (no lumped).
  *
- * Reusa el mismo motor que la liquidación (construirLineas, vía
- * calcularRendicion) y solo agrupa lo que ya devuelve — no recalcula nada,
- * por la misma razón de siempre: que el número coincida con la liquidación.
+ * Las dos vistas salen de la MISMA consulta a calcularRendicion, para que
+ * sumar a mano todas las líneas de abajo dé exactamente el total de arriba
+ * — es la garantía de que el detalle no puede contradecir al resumen.
  */
-export async function gananciaPorProductoPortal(): Promise<GananciaPorProducto[]> {
+export async function detalleMesPortal(): Promise<DetalleMesPortal> {
   const sesion = await obtenerSesionMarca();
-  if (!sesion) return [];
+  if (!sesion) return { porProducto: [], porVenta: [], totalLineas: 0 };
 
   const hoyISO = fechaHoraArgentina().fecha;
   const desde = inicioDeMes(hoyISO);
@@ -485,33 +550,70 @@ export async function gananciaPorProductoPortal(): Promise<GananciaPorProducto[]
   try {
     lineas = (await calcularRendicion(sesion.idMarca, desde, hoyISO)).lineas;
   } catch {
-    return [];
+    return { porProducto: [], porVenta: [], totalLineas: 0 };
   }
 
-  const porProducto = new Map<string, { bruto: number; comision: number; costosDeCobro: number; neto: number }>();
+  type Acumulado = {
+    bruto: number;
+    comisionWiigo: number;
+    ivaComision: number;
+    comisionMp: number;
+    sircreb: number;
+    impCreditos: number;
+    impDebitos: number;
+    neto: number;
+  };
+  const vacio = (): Acumulado => ({
+    bruto: 0,
+    comisionWiigo: 0,
+    ivaComision: 0,
+    comisionMp: 0,
+    sircreb: 0,
+    impCreditos: 0,
+    impDebitos: 0,
+    neto: 0,
+  });
+
+  const porProductoMapa = new Map<string, Acumulado>();
   for (const l of lineas) {
-    const actual = porProducto.get(l.producto) ?? { bruto: 0, comision: 0, costosDeCobro: 0, neto: 0 };
+    const actual = porProductoMapa.get(l.producto) ?? vacio();
     actual.bruto += l.ventaBruta;
-    actual.comision += l.comisionWiigo + l.ivaComision;
-    // "Costos de cobro" es todo lo que depende de cómo pagó el cliente: la
-    // comisión de Mercado Pago (que varía según débito/crédito/cuotas), más
-    // los impuestos bancarios que solo existen si la venta pasó por un
-    // medio electrónico. En efectivo, esto siempre da cero.
-    actual.costosDeCobro += l.feeMp + l.impCreditos + l.sircreb + l.impDebitos;
+    actual.comisionWiigo += l.comisionWiigo;
+    actual.ivaComision += l.ivaComision;
+    actual.comisionMp += l.feeMp;
+    actual.sircreb += l.sircreb;
+    actual.impCreditos += l.impCreditos;
+    actual.impDebitos += l.impDebitos;
     actual.neto += l.netoARendir;
-    porProducto.set(l.producto, actual);
+    porProductoMapa.set(l.producto, actual);
   }
-
-  return [...porProducto.entries()]
-    .map(([producto, v]) => ({
-      producto,
-      bruto: v.bruto,
-      comision: v.comision,
-      costosDeCobro: v.costosDeCobro,
-      neto: v.neto,
-      porcentaje: v.bruto > 0 ? (v.neto / v.bruto) * 100 : 0,
-    }))
+  const porProducto = [...porProductoMapa.entries()]
+    .map(([producto, v]) => ({ producto, ...v, porcentaje: v.bruto > 0 ? (v.neto / v.bruto) * 100 : 0 }))
     .sort((a, b) => b.bruto - a.bruto);
+
+  const porVenta: LineaVentaMarca[] = lineas
+    .map((l) => ({
+      fecha: l.fecha.slice(0, 10),
+      hora: new Date(l.fecha).toLocaleTimeString("es-AR", {
+        timeZone: "America/Argentina/Buenos_Aires",
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+      producto: l.producto,
+      cantidad: l.cantidad,
+      medioPago: MEDIO_LABEL[l.medioPago ?? ""] ?? l.medioPago ?? "—",
+      bruto: l.ventaBruta,
+      comisionWiigo: l.comisionWiigo,
+      ivaComision: l.ivaComision,
+      comisionMp: l.feeMp,
+      sircreb: l.sircreb,
+      impCreditos: l.impCreditos,
+      impDebitos: l.impDebitos,
+      neto: l.netoARendir,
+    }))
+    .sort((a, b) => (b.fecha + b.hora).localeCompare(a.fecha + a.hora));
+
+  return { porProducto, porVenta: porVenta.slice(0, TOPE_LINEAS_MOSTRADAS), totalLineas: porVenta.length };
 }
 
 // ===================== PLAN METAL: análisis de productos =====================

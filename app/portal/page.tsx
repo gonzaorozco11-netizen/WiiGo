@@ -8,7 +8,7 @@ import {
   analisisPortal,
   goldPortal,
   gananciaRealPortal,
-  gananciaPorProductoPortal,
+  detalleMesPortal,
 } from "@/app/portal/actions";
 import PortalTablero from "@/components/PortalTablero";
 
@@ -23,14 +23,14 @@ export default async function PortalPage() {
 
   // Consultas independientes: van juntas para que la pantalla no se arme de
   // a una.
-  const [resumen, ventasHoy, ordenes, pagos, liquidaciones, ganancia, porProducto, analisis, gold] = await Promise.all([
+  const [resumen, ventasHoy, ordenes, pagos, liquidaciones, ganancia, detalle, analisis, gold] = await Promise.all([
     resumenPortal(),
     ventasDeHoy(),
     reposicionPortal(),
     pagosPortal(),
     liquidacionesPortal(),
     gananciaRealPortal(),
-    conAnalisis ? gananciaPorProductoPortal() : Promise.resolve([]),
+    conAnalisis ? detalleMesPortal() : Promise.resolve({ porProducto: [], porVenta: [], totalLineas: 0 }),
     conAnalisis ? analisisPortal() : Promise.resolve(null),
     conGold ? goldPortal() : Promise.resolve(null),
   ]);
@@ -47,7 +47,7 @@ export default async function PortalPage() {
       pagos={pagos}
       liquidaciones={liquidaciones}
       ganancia={ganancia}
-      porProducto={porProducto}
+      detalle={detalle}
       analisis={analisis}
       gold={gold}
       puedeVerMas={conAnalisis}
