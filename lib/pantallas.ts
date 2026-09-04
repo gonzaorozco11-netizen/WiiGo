@@ -23,6 +23,7 @@ export const PANTALLAS_DISPONIBLES: PantallaDisponible[] = [
   { clave: "gastos-ingresos", label: "Gastos e Ingresos", grupo: "Tesorería" },
   { clave: "clientes", label: "Clientes", grupo: "Base de Datos" },
   { clave: "profesionales", label: "Profesionales", grupo: "Base de Datos" },
+  { clave: "aprobaciones", label: "Aprobaciones", grupo: "Marcas y Proveedores" },
   { clave: "situacion-marca", label: "Situación de marca", grupo: "Marcas y Proveedores" },
   { clave: "liquidaciones", label: "Liquidaciones", grupo: "Marcas y Proveedores" },
   { clave: "proveedores", label: "Proveedores", grupo: "Marcas y Proveedores" },

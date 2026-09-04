@@ -51,6 +51,7 @@ const GROUPS: NavGroup[] = [
   {
     label: "Marcas y Proveedores",
     items: [
+      { href: "/aprobaciones", label: "Aprobaciones" },
       { href: "/situacion-marca", label: "Situación de marca" },
       { href: "/liquidaciones", label: "Liquidaciones" },
       { href: "/proveedores", label: "Proveedores" },
@@ -108,11 +109,17 @@ export default function AppNav({
   esAdmin,
   puedeVerCajaAdmin,
   puedeGestionarNomina,
+  pendientesAprobacion = 0,
+  etiquetasVencidas = 0,
 }: {
   pantallas: string[] | null;
   esAdmin: boolean;
   puedeVerCajaAdmin: boolean;
   puedeGestionarNomina: boolean;
+  /** Solicitudes de marcas esperando respuesta. */
+  pendientesAprobacion?: number;
+  /** Etiquetas cuyo precio ya cambió y el cartel todavía no. Van en rojo. */
+  etiquetasVencidas?: number;
 }) {
   const pathname = usePathname();
   const [abierto, setAbierto] = useState<string | null>(null);
@@ -161,6 +168,19 @@ export default function AppNav({
               }`}
             >
               {grupo.label}
+              {/* El contador se ve desde afuera, con el grupo cerrado: nadie
+                  tiene que acordarse de abrir para enterarse de que hay algo
+                  esperando. En rojo si hay etiquetas vencidas, que es lo
+                  único con riesgo real. */}
+              {grupo.items.some((i) => i.href === "/aprobaciones") && pendientesAprobacion + etiquetasVencidas > 0 && (
+                <span
+                  className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                    etiquetasVencidas > 0 ? "bg-red-100 text-red-700" : "bg-neutral-200 text-neutral-700"
+                  }`}
+                >
+                  {pendientesAprobacion + etiquetasVencidas}
+                </span>
+              )}
               <span className="text-[9px] opacity-60">▾</span>
             </button>
             {grupoAbierto && (

@@ -5,6 +5,7 @@ import { logout } from "@/app/login/actions";
 import { obtenerSesionConPantallas } from "@/lib/roles";
 import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos";
 import { verificarAvisoSalida } from "@/app/(app)/ficha-asistencia/actions";
+import { contarPendientes } from "@/app/(app)/aprobaciones/actions";
 import AppNav from "@/components/AppNav";
 import AvisoSalidaBanner from "@/components/AvisoSalidaBanner";
 
@@ -28,6 +29,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const puedeVerCajaAdmin = tienePermiso(sesionPermisos, PERMISOS.VER_CAJA_ADMIN);
   const puedeGestionarNomina = tienePermiso(sesionPermisos, PERMISOS.GESTIONAR_NOMINA);
   const avisoSalida = session ? await verificarAvisoSalida() : { debeRecordar: false, horaSalida: null };
+  // Contador del menú: lo que las marcas mandaron y las etiquetas vencidas.
+  const pendientes = session ? await contarPendientes() : { solicitudes: 0, etiquetas: 0, etiquetasVencidas: 0 };
 
   return (
     <div className="min-h-screen bg-neutral-50">
@@ -40,6 +43,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               esAdmin={session?.rol === "admin"}
               puedeVerCajaAdmin={puedeVerCajaAdmin}
               puedeGestionarNomina={puedeGestionarNomina}
+              pendientesAprobacion={pendientes.solicitudes}
+              etiquetasVencidas={pendientes.etiquetasVencidas}
             />
           </div>
           <div className="flex items-center gap-3">
