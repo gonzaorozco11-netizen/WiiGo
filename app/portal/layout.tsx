@@ -3,6 +3,7 @@ import { Outfit, Manrope, JetBrains_Mono } from "next/font/google";
 import { logout } from "@/app/login/actions";
 import { obtenerSesionMarca, ETIQUETA_PLAN } from "@/lib/marcaSesion";
 import { WIIGO_LOGO_DATA_URI } from "@/lib/wiigo-logo-data";
+import PortalNav from "@/components/PortalNav";
 import "./portal.css";
 
 // Tipografías propias del portal. Outfit es geométrica y redondeada, de la
@@ -44,7 +45,8 @@ export default async function PortalLayout({ children }: { children: React.React
             </div>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <PortalNav />
             <span className={`plan-chip plan-${sesion.plan}`}>
               <span className="punto" />
               {ETIQUETA_PLAN[sesion.plan]}

@@ -10,7 +10,9 @@ import {
   obtenerPolitica,
   proximaVigencia,
   ETIQUETA_TIPO,
+  GRUPO_DE_TIPO,
   type TipoSolicitud,
+  type GrupoBandeja,
 } from "@/lib/solicitudesMarca";
 
 // Bandeja de aprobaciones — el lado de WiiGo.
@@ -22,6 +24,7 @@ export type SolicitudBandeja = {
   idSolicitud: string;
   tipo: TipoSolicitud;
   tipoEtiqueta: string;
+  grupo: GrupoBandeja;
   marca: string;
   producto: string | null;
   estado: string;
@@ -67,6 +70,7 @@ export async function listarPendientes(): Promise<SolicitudBandeja[]> {
       idSolicitud: s.id_solicitud as string,
       tipo: s.tipo as TipoSolicitud,
       tipoEtiqueta: ETIQUETA_TIPO[s.tipo as TipoSolicitud] ?? (s.tipo as string),
+      grupo: GRUPO_DE_TIPO[s.tipo as TipoSolicitud] ?? "CONTENIDO",
       marca: nombreMarca.get(s.id_marca as string) ?? "—",
       producto: s.id_producto ? nombreProducto.get(s.id_producto as string) ?? "—" : null,
       estado: s.estado as string,
@@ -156,8 +160,84 @@ export async function aprobarSolicitud(
 
   if (error) return { error: friendlyDbError(error) };
 
+  await generarTareasEtiqueta(supabase, {
+    tipo: solicitud.tipo as TipoSolicitud,
+    idProducto: (solicitud.id_producto as string) ?? null,
+    idSolicitud,
+    datos,
+    datosAnteriores: (solicitud.datos_anteriores as Record<string, unknown>) ?? {},
+    vigencia,
+  });
+
   revalidatePath("/aprobaciones");
   return { error: null };
+}
+
+/**
+ * Al aprobar un precio o una promo, se genera el trabajo del local: cambiar
+ * el cartel de góndola.
+ *
+ * La tarea vence en el mismo momento en que el precio entra al sistema. No es
+ * casual: si a esa hora la etiqueta no está cambiada, la tarea queda VENCIDA y
+ * aparece en rojo, porque desde ahí el cartel y la caja dicen cosas distintas.
+ *
+ * Una promo genera DOS tareas: poner el cartel y sacarlo. La segunda es la
+ * que más se olvida y la más cara — un cartel de oferta que sigue puesto
+ * obliga a respetar ese precio aunque la promo haya terminado.
+ */
+async function generarTareasEtiqueta(
+  supabase: ReturnType<typeof getSupabaseServerClient>,
+  s: {
+    tipo: TipoSolicitud;
+    idProducto: string | null;
+    idSolicitud: string;
+    datos: Record<string, unknown>;
+    datosAnteriores: Record<string, unknown>;
+    vigencia: Date;
+  }
+): Promise<void> {
+  if (!s.idProducto) return;
+  if (s.tipo !== "PRECIO" && s.tipo !== "DESCUENTO") return;
+
+  const precioNuevo = typeof s.datos.precio === "number" ? (s.datos.precio as number) : null;
+  const precioAnterior = typeof s.datosAnteriores.precio === "number" ? (s.datosAnteriores.precio as number) : null;
+
+  // Una tarea por local: el cartel es físico y hay uno en cada góndola.
+  const { data: locales } = await supabase.from("locales").select("id_local").eq("estado", "ACTIVO");
+  const idsLocal = (locales ?? []).map((l) => l.id_local as string);
+  if (idsLocal.length === 0) return;
+
+  const filas = idsLocal.map((idLocal) => ({
+    id_solicitud: s.idSolicitud,
+    id_producto: s.idProducto,
+    id_local: idLocal,
+    tipo: s.tipo === "DESCUENTO" ? "INICIO_PROMO" : "CAMBIO_PRECIO",
+    estado: "PENDIENTE",
+    precio_anterior: precioAnterior,
+    precio_nuevo: precioNuevo,
+    vence_el: s.vigencia.toISOString(),
+  }));
+
+  // Fin de promo: vuelve el precio de lista el día que termina.
+  if (s.tipo === "DESCUENTO" && typeof s.datos.hasta === "string") {
+    const fin = new Date(`${s.datos.hasta}T23:59:00-03:00`);
+    if (!Number.isNaN(fin.getTime())) {
+      idsLocal.forEach((idLocal) => {
+        filas.push({
+          id_solicitud: s.idSolicitud,
+          id_producto: s.idProducto,
+          id_local: idLocal,
+          tipo: "FIN_PROMO",
+          estado: "PENDIENTE",
+          precio_anterior: precioNuevo,
+          precio_nuevo: precioAnterior,
+          vence_el: fin.toISOString(),
+        });
+      });
+    }
+  }
+
+  await supabase.from("tareas_etiqueta").insert(filas);
 }
 
 export async function rechazarSolicitud(idSolicitud: string, motivo: string): Promise<{ error: string | null }> {

@@ -3,6 +3,7 @@ import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos
 import ConfiguracionApp from "@/components/ConfiguracionApp";
 import { obtenerEmisor } from "@/lib/arca/emisor-db";
 import { estadoCredenciales } from "@/lib/arca/credenciales";
+import { obtenerPolitica } from "@/lib/solicitudesMarca";
 
 export const dynamic = "force-dynamic";
 
@@ -56,7 +57,13 @@ export default async function ConfiguracionPage() {
     ]);
 
   const valores = new Map((data ?? []).map((c) => [c.parametro, c.valor]));
-  const [emisor, credencialesArca] = await Promise.all([obtenerEmisor(), estadoCredenciales()]);
+  // La política de aprobaciones se lee con el mismo helper que usa la bandeja,
+  // así la pantalla y las validaciones nunca pueden discrepar en los defaults.
+  const [emisor, credencialesArca, politicaAprobaciones] = await Promise.all([
+    obtenerEmisor(),
+    estadoCredenciales(),
+    obtenerPolitica(supabase),
+  ]);
 
   return (
     <ConfiguracionApp
@@ -92,6 +99,7 @@ export default async function ConfiguracionPage() {
       arcaMontoIdentificacion={Number(valores.get("ARCA_MONTO_IDENTIFICACION") ?? 0)}
       emisor={emisor}
       credencialesArca={credencialesArca}
+      politicaAprobaciones={politicaAprobaciones}
     />
   );
 }

@@ -11,8 +11,10 @@ import {
   conectarMercadoPagoQR,
 } from "@/app/(app)/configuracion/actions";
 import ConfiguracionArca from "@/components/ConfiguracionArca";
+import ConfiguracionAprobaciones from "@/components/ConfiguracionAprobaciones";
 import type { DatosEmisor } from "@/lib/arca/emisor-db";
 import type { EstadoCredenciales } from "@/lib/arca/credenciales";
+import type { PoliticaDescuentos } from "@/lib/solicitudesMarca";
 
 export default function ConfiguracionApp({
   puntosActivo,
@@ -47,6 +49,7 @@ export default function ConfiguracionApp({
   arcaMontoIdentificacion,
   emisor,
   credencialesArca,
+  politicaAprobaciones,
 }: {
   puntosActivo: boolean;
   puntosCadaMonto: number;
@@ -80,6 +83,7 @@ export default function ConfiguracionApp({
   arcaMontoIdentificacion: number;
   emisor: DatosEmisor;
   credencialesArca: EstadoCredenciales;
+  politicaAprobaciones: PoliticaDescuentos;
 }) {
   const [isPending, startTransition] = useTransition();
   const [guardado, setGuardado] = useState(false);
@@ -748,6 +752,8 @@ export default function ConfiguracionApp({
           {isPendingGastos ? "Guardando..." : "Guardar tope"}
         </button>
       </form>
+
+      <ConfiguracionAprobaciones politica={politicaAprobaciones} />
 
       <ConfiguracionArca
         emisor={emisor}

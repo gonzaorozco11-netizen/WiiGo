@@ -9,6 +9,9 @@ import {
   type SolicitudBandeja,
   type TareaEtiquetaPendiente,
 } from "@/app/(app)/aprobaciones/actions";
+import { ETIQUETA_GRUPO, type GrupoBandeja } from "@/lib/solicitudesMarca";
+
+const GRUPOS: GrupoBandeja[] = ["PRECIOS", "DESCUENTOS", "PRODUCTOS", "CONTENIDO"];
 
 // Bandeja de aprobaciones.
 //
@@ -193,6 +196,12 @@ export default function AprobacionesApp({
   );
   const vencidas = etiquetas.filter((e) => e.vencida).length;
 
+  // Arranca en la sub-pestaña donde está lo más viejo esperando: así lo que
+  // lleva más tiempo sin respuesta es lo primero que se ve, sin depender de
+  // que alguien se acuerde de revisar las otras.
+  const [grupo, setGrupo] = useState<GrupoBandeja>(solicitudes[0]?.grupo ?? "PRECIOS");
+  const visibles = solicitudes.filter((s) => s.grupo === grupo);
+
   return (
     <div>
       <div className="apro-cab">
@@ -229,11 +238,36 @@ export default function AprobacionesApp({
         solicitudes.length === 0 ? (
           <p className="apro-vacio">No hay nada pendiente. 🎉</p>
         ) : (
-          <ul className="sol-lista">
-            {solicitudes.map((s) => (
-              <TarjetaSolicitud key={s.idSolicitud} s={s} esAdmin={esAdmin} onResuelta={() => router.refresh()} />
-            ))}
-          </ul>
+          <>
+            {/* Sub-pestañas por tipo de decisión. Siempre se muestran las
+                cuatro, incluso vacías: si una desapareciera al quedar sin
+                items, nadie notaría que existe cuando vuelva a tener algo. */}
+            <div className="apro-subtabs">
+              {GRUPOS.map((g) => {
+                const cuantas = solicitudes.filter((s) => s.grupo === g).length;
+                return (
+                  <button
+                    key={g}
+                    className={`apro-subtab${grupo === g ? " activa" : ""}${cuantas === 0 ? " vacia" : ""}`}
+                    onClick={() => setGrupo(g)}
+                  >
+                    {ETIQUETA_GRUPO[g]}
+                    {cuantas > 0 && <span className="apro-contador">{cuantas}</span>}
+                  </button>
+                );
+              })}
+            </div>
+
+            {visibles.length === 0 ? (
+              <p className="apro-vacio">Nada pendiente en {ETIQUETA_GRUPO[grupo].toLowerCase()}.</p>
+            ) : (
+              <ul className="sol-lista">
+                {visibles.map((s) => (
+                  <TarjetaSolicitud key={s.idSolicitud} s={s} esAdmin={esAdmin} onResuelta={() => router.refresh()} />
+                ))}
+              </ul>
+            )}
+          </>
         )
       ) : etiquetas.length === 0 ? (
         <p className="apro-vacio">No hay etiquetas pendientes.</p>

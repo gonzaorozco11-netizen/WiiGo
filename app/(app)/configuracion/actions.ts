@@ -304,6 +304,97 @@ export async function guardarConfigGastos(formData: FormData): Promise<{ error: 
   return { error: null };
 }
 
+// Reglas de la bandeja de Aprobaciones: a qué hora entran los cambios de
+// precio y hasta dónde puede aprobar administración sin consultar al dueño.
+// Es la política que evita tener que mirar descuento por descuento, así que
+// vive acá y no en el código: cambiarla no debería necesitar un deploy.
+export async function guardarConfigAprobaciones(formData: FormData): Promise<{ error: string | null }> {
+  const permisoError = await requireEditarConfiguracion();
+  if (permisoError) return { error: permisoError };
+
+  const hora = String(formData.get("etiqueta_hora_aplicacion") ?? "").trim();
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(hora)) {
+    return { error: "La hora tiene que ser válida, en formato 23:00." };
+  }
+  // El proceso que aplica los cambios corre a las 23:30 (ver
+  // app/api/cron/aplicar-cambios y vercel.json). Programar un cambio para una
+  // hora que ese proceso no llega a cubrir haría que el precio entrara al día
+  // siguiente, con el local abierto y la etiqueta ya cambiada — justo lo que
+  // todo este circuito viene a evitar. Por eso se bloquea acá y no se avisa:
+  // un aviso se puede ignorar.
+  const minutos = Number(hora.slice(0, 2)) * 60 + Number(hora.slice(3));
+  if (minutos < 20 * 60 || minutos > 23 * 60 + 30) {
+    return {
+      error:
+        "La hora tiene que estar entre las 20:00 y las 23:30. El proceso que aplica los cambios corre a las 23:30, " +
+        "con el local cerrado: fuera de esa ventana el precio entraría al día siguiente en pleno horario de venta.",
+    };
+  }
+
+  const variacion = Number(formData.get("precio_variacion_alerta") ?? 0);
+  const maxSinConsulta = Number(formData.get("descuento_max_sin_consulta") ?? 0);
+  const comisionMinima = Number(formData.get("descuento_comision_minima") ?? 0);
+  const duracionMax = Number(formData.get("descuento_duracion_max_dias") ?? 0);
+  const maxProductos = Number(formData.get("descuento_max_productos_marca") ?? 0);
+  const diasEntre = Number(formData.get("descuento_dias_entre_promos") ?? 0);
+
+  const porcentajes: [number, string][] = [
+    [variacion, "El % de variación que marca en rojo"],
+    [maxSinConsulta, "El descuento máximo sin consulta"],
+    [comisionMinima, "La comisión mínima"],
+  ];
+  for (const [valor, nombre] of porcentajes) {
+    if (!Number.isFinite(valor) || valor <= 0 || valor > 100) {
+      return { error: `${nombre} tiene que estar entre 1% y 100%.` };
+    }
+  }
+  const enteros: [number, string][] = [
+    [duracionMax, "La duración máxima de una promo"],
+    [maxProductos, "La cantidad de productos en promo por marca"],
+    [diasEntre, "Los días de espera entre promos"],
+  ];
+  for (const [valor, nombre] of enteros) {
+    if (!Number.isFinite(valor) || valor <= 0) return { error: `${nombre} tiene que ser mayor a cero.` };
+  }
+
+  const supabase = getSupabaseServerClient();
+
+  const valores: [string, string, string][] = [
+    [
+      "ETIQUETA_HORA_APLICACION",
+      hora,
+      "Cambios de precio: hora (con el local cerrado) en que se aplican los cambios programados",
+    ],
+    ["PRECIO_VARIACION_ALERTA", String(variacion), "Precios: a partir de qué % de variación se marca la solicitud en rojo"],
+    [
+      "DESCUENTO_MAX_SIN_CONSULTA",
+      String(maxSinConsulta),
+      "Descuentos: % máximo que puede aprobar administración sin escalar al dueño",
+    ],
+    [
+      "DESCUENTO_COMISION_MINIMA",
+      String(comisionMinima),
+      "Descuentos: comisión mínima que le tiene que quedar a WiiGo (%). Si baja de acá, escala",
+    ],
+    ["DESCUENTO_DURACION_MAX_DIAS", String(duracionMax), "Descuentos: duración máxima de una promo en días"],
+    [
+      "DESCUENTO_MAX_PRODUCTOS_MARCA",
+      String(maxProductos),
+      "Descuentos: cuántos productos puede tener una marca en promo a la vez",
+    ],
+    ["DESCUENTO_DIAS_ENTRE_PROMOS", String(diasEntre), "Descuentos: días de espera entre dos promos del mismo producto"],
+  ];
+
+  for (const [parametro, valor, descripcion] of valores) {
+    const errorParam = await guardarParametro(supabase, parametro, valor, descripcion);
+    if (errorParam) return { error: errorParam };
+  }
+
+  revalidatePath("/configuracion");
+  revalidatePath("/aprobaciones");
+  return { error: null };
+}
+
 // Datos fiscales del emisor. Están en la base y no en el código porque una
 // vez se publicó un CUIT equivocado y hubo que corregirlo y volver a deployar.
 export async function guardarDatosFiscales(formData: FormData): Promise<{ error: string | null }> {

@@ -21,6 +21,22 @@
 }
 .apro-contador.rojo { background: #fee2e2; color: #b91c1c; }
 
+/* Sub-pestañas por tipo de decisión. Más chicas que las principales: son un
+   filtro dentro de Solicitudes, no otro nivel de navegación. */
+.apro-subtabs { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 14px; }
+.apro-subtab {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; font-weight: 500; color: #525252;
+  padding: 6px 12px; border-radius: 999px; border: 1px solid #e5e5e5;
+  background: #fff; cursor: pointer;
+}
+.apro-subtab:hover { background: #fafafa; }
+.apro-subtab.activa { background: #171717; border-color: #171717; color: #fff; font-weight: 600; }
+.apro-subtab.activa .apro-contador { background: rgba(255,255,255,.22); color: #fff; }
+/* Las vacías quedan visibles pero apagadas: si desaparecieran, nadie sabría
+   que existen cuando vuelvan a tener algo. */
+.apro-subtab.vacia { color: #a3a3a3; }
+
 .apro-alerta {
   background: #fef2f2; border: 1px solid #fecaca; color: #7f1d1d;
   border-radius: 10px; padding: 12px 14px; font-size: 13.5px; margin-bottom: 16px;

@@ -14,6 +14,7 @@ export type TipoSolicitud =
   | "COSTO"
   | "FOTO"
   | "DESCRIPCION"
+  | "NOMBRE"
   | "SUBCATEGORIA"
   | "PRODUCTO_NUEVO"
   | "BAJA_PRODUCTO"
@@ -28,11 +29,42 @@ export const ETIQUETA_TIPO: Record<TipoSolicitud, string> = {
   COSTO: "Costo",
   FOTO: "Cambio de foto",
   DESCRIPCION: "Descripción",
+  NOMBRE: "Cambio de nombre",
   SUBCATEGORIA: "Subcategoría",
   PRODUCTO_NUEVO: "Producto nuevo",
   BAJA_PRODUCTO: "Baja de producto",
   DESCUENTO: "Descuento",
   IMPORTACION: "Lista de precios",
+};
+
+// Las solicitudes se agrupan por el tipo de decisión que hay que tomar, no
+// por tipo técnico. Revisar un precio y revisar una foto son dos cabezas
+// distintas; separarlas evita el error de aprobar en piloto automático.
+//
+// A propósito son cuatro y no una por tipo: con ocho pestañas, alguna
+// quedaría sin abrir y ahí es donde algo se olvida.
+export type GrupoBandeja = "PRECIOS" | "DESCUENTOS" | "PRODUCTOS" | "CONTENIDO";
+
+export const GRUPO_DE_TIPO: Record<TipoSolicitud, GrupoBandeja> = {
+  PRECIO: "PRECIOS",
+  IMPORTACION: "PRECIOS",
+  DESCUENTO: "DESCUENTOS",
+  PRODUCTO_NUEVO: "PRODUCTOS",
+  BAJA_PRODUCTO: "PRODUCTOS",
+  SUBCATEGORIA: "PRODUCTOS",
+  DESCRIPCION: "CONTENIDO",
+  NOMBRE: "CONTENIDO",
+  FOTO: "CONTENIDO",
+  // El costo no pasa por aprobación (es dato privado de la marca), pero el
+  // tipo existe para poder registrarlo en el historial.
+  COSTO: "CONTENIDO",
+};
+
+export const ETIQUETA_GRUPO: Record<GrupoBandeja, string> = {
+  PRECIOS: "Precios",
+  DESCUENTOS: "Descuentos",
+  PRODUCTOS: "Altas y bajas",
+  CONTENIDO: "Contenido",
 };
 
 export type PoliticaDescuentos = {

@@ -494,3 +494,147 @@
     animation: none !important;
   }
 }
+
+/* ==========================================================
+   Pedir un cambio (/portal/cambios)
+   ==========================================================
+   Misma paleta que el tablero, pero esta pantalla es de trabajo y no de
+   lectura: todo lo que se toca tiene que verse tocable, y lo que ya está
+   esperando respuesta tiene que verse bloqueado sin que haya que probarlo. */
+
+.cam-cab {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 14px; flex-wrap: wrap; margin-bottom: 16px;
+}
+.cam-titulo { font-size: 22px; font-weight: 600; }
+.cam-sub { font-size: 13.5px; color: var(--texto-2); margin-top: 3px; max-width: 62ch; }
+
+.cam-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--borde); margin-bottom: 15px; }
+.cam-tab {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-family: inherit; font-size: 14px; font-weight: 500; color: var(--texto-3);
+  padding: 9px 14px; border: 0; background: none; cursor: pointer;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.cam-tab.activa { color: var(--texto); border-bottom-color: var(--salvia-fuerte); font-weight: 600; }
+.cam-cont {
+  font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 999px;
+  background: var(--salvia-tenue); color: var(--salvia-honda);
+}
+.cam-cont.fuerte { background: var(--ocre-tenue); color: var(--ocre); }
+
+.cam-buscar {
+  width: 100%; font-family: inherit; font-size: 14px; padding: 10px 13px; margin-bottom: 12px;
+  border: 1px solid var(--borde-fuerte); border-radius: 11px; background: var(--superficie); color: var(--texto);
+}
+.cam-buscar:focus { outline: 2px solid var(--salvia); outline-offset: -1px; }
+
+/* ---------- Lista de productos ---------- */
+.cam-lista { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.cam-prod { background: var(--superficie); border: 1px solid var(--borde); border-radius: 13px; overflow: hidden; }
+.cam-prod.abierto { border-color: var(--borde-fuerte); box-shadow: 0 1px 3px rgba(42, 47, 38, .05); }
+.cam-prod-cab {
+  width: 100%; display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; text-align: left;
+  font-family: inherit; padding: 13px 16px; border: 0; background: none; cursor: pointer; color: inherit;
+}
+.cam-prod-cab:hover { background: var(--superficie-2); }
+.cam-prod-nom { font-size: 14.5px; font-weight: 600; }
+.cam-prod-datos { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 13px; }
+.cam-stock { font-size: 12px; color: var(--texto-3); }
+.cam-espera {
+  font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px;
+  background: var(--ocre-tenue); color: var(--ocre);
+}
+
+.cam-panel { border-top: 1px solid var(--borde); padding: 14px 16px; background: var(--superficie-2); }
+.cam-opciones { display: flex; gap: 7px; flex-wrap: wrap; }
+.cam-op {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: inherit; font-size: 13px; font-weight: 500; color: var(--texto-2);
+  padding: 7px 13px; border-radius: 999px; border: 1px solid var(--borde-fuerte);
+  background: var(--superficie); cursor: pointer;
+}
+.cam-op:hover:not(:disabled) { border-color: var(--salvia-media); color: var(--texto); }
+.cam-op.activa { background: var(--salvia-honda); border-color: var(--salvia-honda); color: #fff; font-weight: 600; }
+/* Bloqueada = ya hay un pedido de ese tipo esperando. Se deja visible y
+   apagada, no se esconde: si desapareciera, parecería que no existe. */
+.cam-op:disabled { opacity: .5; cursor: not-allowed; }
+.cam-reloj { font-size: 11px; }
+
+/* ---------- Formularios ---------- */
+.cam-form { margin-top: 14px; display: flex; flex-direction: column; gap: 11px; }
+.cam-campos { display: flex; gap: 11px; flex-wrap: wrap; }
+.cam-campo { display: flex; flex-direction: column; gap: 4px; flex: 1 1 150px; min-width: 130px; }
+.cam-campo.ancho { flex-basis: 100%; }
+.cam-campo span { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--texto-3); }
+.cam-campo input, .cam-campo textarea {
+  font-family: inherit; font-size: 14px; padding: 9px 12px; color: var(--texto);
+  border: 1px solid var(--borde-fuerte); border-radius: 10px; background: var(--superficie); width: 100%;
+}
+.cam-campo textarea { resize: vertical; line-height: 1.45; }
+.cam-campo input:focus, .cam-campo textarea:focus { outline: 2px solid var(--salvia); outline-offset: -1px; }
+.cam-campo input:disabled { background: var(--papel); color: var(--texto-2); }
+
+.cam-var { font-size: 13px; color: var(--texto-2); }
+.cam-var.fuerte { color: var(--rojo); font-weight: 600; }
+.cam-nota { font-size: 12.5px; color: var(--texto-3); line-height: 1.5; max-width: 68ch; }
+.cam-error {
+  font-size: 13px; color: var(--rojo); background: var(--rojo-tenue);
+  border: 1px solid #eccec8; border-radius: 9px; padding: 9px 12px;
+}
+.cam-aviso {
+  font-size: 13px; color: var(--ocre); background: var(--ocre-tenue);
+  border: 1px solid #edd9ae; border-radius: 9px; padding: 9px 12px;
+}
+
+.cam-btn {
+  font-family: inherit; font-size: 13.5px; font-weight: 600; padding: 10px 18px;
+  border-radius: 10px; border: 1px solid transparent; cursor: pointer; align-self: flex-start;
+}
+.cam-btn:disabled { opacity: .45; cursor: not-allowed; }
+.cam-btn.primario { background: var(--salvia-honda); color: #fff; }
+.cam-btn.primario:hover:not(:disabled) { background: #45532f; }
+.cam-btn.plano { background: var(--superficie); border-color: var(--borde-fuerte); color: var(--texto-2); }
+.cam-btn.plano:hover:not(:disabled) { color: var(--texto); }
+
+/* ---------- Producto nuevo ---------- */
+.cam-nuevo {
+  background: var(--superficie); border: 1px solid var(--borde-fuerte); border-radius: 15px;
+  padding: 18px 20px; margin-bottom: 14px;
+}
+.cam-nuevo-cab { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.cam-nuevo-cab h2 { font-size: 16px; font-weight: 600; }
+.cam-cerrar { font-family: inherit; font-size: 13px; color: var(--texto-3); background: none; border: 0; cursor: pointer; }
+.cam-cerrar:hover { color: var(--texto); }
+
+/* ---------- Lo que mandé ---------- */
+.cam-hist { list-style: none; display: flex; flex-direction: column; gap: 9px; }
+.cam-sol { background: var(--superficie); border: 1px solid var(--borde); border-radius: 13px; padding: 14px 16px; }
+.cam-sol.esperando { border-left: 3px solid var(--ocre); }
+.cam-sol.ok { border-left: 3px solid var(--verde-ok); }
+.cam-sol.no { border-left: 3px solid var(--rojo); }
+.cam-sol-cab { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.cam-sol-tipo { font-size: 13px; font-weight: 600; }
+.cam-estado { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px; }
+.cam-estado.esperando { background: var(--ocre-tenue); color: var(--ocre); }
+.cam-estado.ok { background: var(--verde-tenue); color: var(--verde-ok); }
+.cam-estado.no { background: var(--rojo-tenue); color: var(--rojo); }
+.cam-estado.gris { background: var(--papel); color: var(--texto-3); }
+.cam-sol-prod { font-size: 14px; font-weight: 600; margin-top: 5px; }
+.cam-sol-detalle { font-size: 14px; color: var(--texto-2); margin-top: 5px; }
+.cam-motivo {
+  font-size: 13px; color: var(--rojo); background: var(--rojo-tenue);
+  border-radius: 9px; padding: 9px 12px; margin-top: 9px;
+}
+.cam-sol-pie { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 11px; }
+.cam-cuando { font-size: 12px; color: var(--texto-3); }
+
+/* ---------- Navegación del portal ---------- */
+.portal-nav { display: flex; gap: 3px; }
+.portal-nav a {
+  font-size: 13.5px; font-weight: 500; color: var(--texto-3); text-decoration: none;
+  padding: 7px 13px; border-radius: 9px;
+}
+.portal-nav a:hover { background: var(--salvia-tenue); color: var(--texto); }
+.portal-nav a.activa { background: var(--salvia-tenue); color: var(--salvia-honda); font-weight: 600; }

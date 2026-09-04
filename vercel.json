@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/cargos-recurrentes",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/aplicar-cambios",
+      "schedule": "30 2 * * *"
     }
   ]
 }
