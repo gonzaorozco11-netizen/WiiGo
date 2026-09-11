@@ -12,6 +12,7 @@ import {
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import PantallaBloqueada from "@/components/PantallaBloqueada";
 import ReposicionApp from "@/components/ReposicionApp";
+import { mercaderiaParaDevolverAMarca } from "@/app/(app)/reposicion/actions";
 
 export const dynamic = "force-dynamic";
 
@@ -73,6 +74,7 @@ export default async function ReposicionPage() {
       ordenes={(ordenesRes.data ?? []) as OrdenReposicion[]}
       detalle={(detalleRes.data ?? []) as DetalleReposicion[]}
       reclamos={(detalleRecepcionRes.data ?? []) as DetalleRecepcion[]}
+      aDevolverAMarca={await mercaderiaParaDevolverAMarca()}
     />
   );
 }

@@ -13,6 +13,110 @@ async function usuarioActual() {
   return session?.nombre ?? null;
 }
 
+// ===================== MERCADERÍA A DEVOLVER A LA MARCA =====================
+//
+// Lo que un cliente devolvió fallado, vencido o abierto no vuelve a la
+// góndola (ver registrarDevolucion en ventas/actions.ts): queda apartado en
+// el local. Sin una lista, esa pila crece en el depósito y nadie se acuerda
+// de qué había que devolverle a quién — y esa merma la termina comiendo
+// WiiGo cuando en realidad es de la marca.
+
+export type MercaderiaADevolver = {
+  idDetalleDev: string;
+  idMarca: string | null;
+  marca: string;
+  producto: string;
+  cantidad: number;
+  fecha: string;
+  motivo: string;
+  numeroVenta: number | null;
+};
+
+export async function mercaderiaParaDevolverAMarca(): Promise<MercaderiaADevolver[]> {
+  const supabase = getSupabaseServerClient();
+
+  const { data: devoluciones } = await supabase
+    .from("devoluciones")
+    .select("id_devolucion, fecha, motivo, id_venta")
+    .eq("destino", "NO_VUELVE")
+    .order("fecha", { ascending: true })
+    .limit(300);
+  if (!devoluciones || devoluciones.length === 0) return [];
+
+  const { data: renglones } = await supabase
+    .from("detalle_devoluciones")
+    .select("id_detalle_dev, id_devolucion, id_variante, id_marca, cantidad")
+    .in(
+      "id_devolucion",
+      devoluciones.map((d) => d.id_devolucion as string)
+    )
+    .is("devuelto_a_marca_el", null);
+  if (!renglones || renglones.length === 0) return [];
+
+  const devPorId = new Map(devoluciones.map((d) => [d.id_devolucion as string, d]));
+
+  const idsVariante = [...new Set(renglones.map((r) => r.id_variante as string))];
+  const { data: variantes } = await supabase
+    .from("variantes_producto")
+    .select("id_variante, id_producto, nombre")
+    .in("id_variante", idsVariante);
+  const varPorId = new Map((variantes ?? []).map((v) => [v.id_variante as string, v]));
+  const idsProducto = [...new Set((variantes ?? []).map((v) => v.id_producto as string))];
+  const { data: productos } = idsProducto.length
+    ? await supabase.from("productos").select("id_producto, nombre").in("id_producto", idsProducto)
+    : { data: [] };
+  const prodPorId = new Map((productos ?? []).map((p) => [p.id_producto as string, p.nombre as string]));
+
+  const idsMarca = [...new Set(renglones.map((r) => r.id_marca as string).filter(Boolean))];
+  const { data: marcas } = idsMarca.length
+    ? await supabase.from("marcas").select("id_marca, nombre").in("id_marca", idsMarca)
+    : { data: [] };
+  const marcaPorId = new Map((marcas ?? []).map((m) => [m.id_marca as string, m.nombre as string]));
+
+  const idsVenta = [...new Set(devoluciones.map((d) => d.id_venta as string))];
+  const { data: ventas } = await supabase.from("ventas").select("id_venta, numero").in("id_venta", idsVenta);
+  const numeroPorVenta = new Map((ventas ?? []).map((v) => [v.id_venta as string, v.numero as number]));
+
+  return renglones.map((r) => {
+    const dev = devPorId.get(r.id_devolucion as string);
+    const v = varPorId.get(r.id_variante as string);
+    const nombreProd = v ? prodPorId.get(v.id_producto as string) ?? "Producto" : "Producto";
+    const nombreVar = v && v.nombre !== "Único" ? ` — ${v.nombre}` : "";
+    return {
+      idDetalleDev: r.id_detalle_dev as string,
+      idMarca: (r.id_marca as string | null) ?? null,
+      marca: r.id_marca ? marcaPorId.get(r.id_marca as string) ?? "Sin marca" : "Sin marca",
+      producto: `${nombreProd}${nombreVar}`,
+      cantidad: (r.cantidad as number) ?? 0,
+      fecha: (dev?.fecha as string) ?? "",
+      motivo: (dev?.motivo as string) ?? "",
+      numeroVenta: dev ? numeroPorVenta.get(dev.id_venta as string) ?? null : null,
+    };
+  });
+}
+
+/** Se le entregó a la marca. Queda quién y cuándo, como todo lo demás. */
+export async function marcarDevueltaAMarca(ids: string[]): Promise<{ error: string | null }> {
+  if (ids.length === 0) return { error: "No hay nada seleccionado." };
+  try {
+    const supabase = getSupabaseServerClient();
+    const usuario = await usuarioActual();
+    const { error } = await supabase
+      .from("detalle_devoluciones")
+      .update({ devuelto_a_marca_el: new Date().toISOString(), devuelto_a_marca_por: usuario })
+      .in("id_detalle_dev", ids)
+      // Que siga pendiente: si dos personas la entregan a la vez, no se
+      // pisa la firma de quien lo hizo primero.
+      .is("devuelto_a_marca_el", null);
+    if (error) return { error: friendlyDbError(error) };
+
+    revalidatePath("/reposicion");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo registrar la entrega" };
+  }
+}
+
 // Next.js redacta en producción el mensaje de un Error tirado desde una
 // Server Action (queda solo un digest genérico en el navegador) — por eso
 // estas funciones no throwean para errores esperables: devuelven { error }.

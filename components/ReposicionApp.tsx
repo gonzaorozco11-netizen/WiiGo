@@ -13,6 +13,8 @@ import type {
 } from "@/lib/supabase";
 import NuevaOrdenModal from "@/components/NuevaOrdenModal";
 import RecepcionModal from "@/components/RecepcionModal";
+import DevolverAMarca from "@/components/DevolverAMarca";
+import type { MercaderiaADevolver } from "@/app/(app)/reposicion/actions";
 
 export type FilaVariante = { variante: VarianteProducto; producto: Producto; marca: Marca | undefined };
 
@@ -31,6 +33,7 @@ export default function ReposicionApp({
   ordenes,
   detalle,
   reclamos,
+  aDevolverAMarca,
 }: {
   marcas: Marca[];
   locales: Local[];
@@ -40,6 +43,7 @@ export default function ReposicionApp({
   ordenes: OrdenReposicion[];
   detalle: DetalleReposicion[];
   reclamos: DetalleRecepcion[];
+  aDevolverAMarca: MercaderiaADevolver[];
 }) {
   const [nuevaOrdenOpen, setNuevaOrdenOpen] = useState(false);
   const [ordenAbierta, setOrdenAbierta] = useState<OrdenReposicion | null>(null);
@@ -112,6 +116,8 @@ export default function ReposicionApp({
           + Nueva orden
         </button>
       </div>
+
+      <DevolverAMarca items={aDevolverAMarca} />
 
       {reclamos.length > 0 && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">

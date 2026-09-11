@@ -73,7 +73,14 @@ create table if not exists detalle_devoluciones (
   id_marca        uuid references marcas(id_marca),
   cantidad        integer not null,
   precio_unitario numeric(12,2) not null,
-  subtotal        numeric(12,2) not null
+  subtotal        numeric(12,2) not null,
+
+  -- Cuándo se le entregó físicamente a la marca la mercadería que no volvió a
+  -- la góndola. Mientras esté en null, sigue apilada en el local: es lo que
+  -- alimenta la lista de Abastecimiento. Sin esto la pila crece y nadie se
+  -- acuerda de qué había que devolverle a quién.
+  devuelto_a_marca_el  timestamptz,
+  devuelto_a_marca_por text
 );
 
 create index if not exists detalle_devoluciones_dev_idx on detalle_devoluciones (id_devolucion);
