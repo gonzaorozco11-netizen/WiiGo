@@ -50,6 +50,7 @@ export default function ConfiguracionApp({
   emisor,
   credencialesArca,
   politicaAprobaciones,
+  royaltiesMarcas,
 }: {
   puntosActivo: boolean;
   puntosCadaMonto: number;
@@ -84,6 +85,7 @@ export default function ConfiguracionApp({
   emisor: DatosEmisor;
   credencialesArca: EstadoCredenciales;
   politicaAprobaciones: PoliticaDescuentos;
+  royaltiesMarcas: { nombre: string; royalty: number }[];
 }) {
   const [isPending, startTransition] = useTransition();
   const [guardado, setGuardado] = useState(false);
@@ -753,7 +755,7 @@ export default function ConfiguracionApp({
         </button>
       </form>
 
-      <ConfiguracionAprobaciones politica={politicaAprobaciones} />
+      <ConfiguracionAprobaciones politica={politicaAprobaciones} royaltiesMarcas={royaltiesMarcas} />
 
       <ConfiguracionArca
         emisor={emisor}

@@ -59,10 +59,17 @@ export default async function ConfiguracionPage() {
   const valores = new Map((data ?? []).map((c) => [c.parametro, c.valor]));
   // La política de aprobaciones se lee con el mismo helper que usa la bandeja,
   // así la pantalla y las validaciones nunca pueden discrepar en los defaults.
-  const [emisor, credencialesArca, politicaAprobaciones] = await Promise.all([
+  const [emisor, credencialesArca, politicaAprobaciones, marcasActivas] = await Promise.all([
     obtenerEmisor(),
     estadoCredenciales(),
     obtenerPolitica(supabase),
+    // Los royalties reales: la pantalla muestra qué descuento habilita cada
+    // regla para cada marca, en vez de dejar el número en abstracto.
+    supabase
+      .from("marcas")
+      .select("nombre, royalty_porcentaje")
+      .eq("estado", "ACTIVA")
+      .order("nombre", { ascending: true }),
   ]);
 
   return (
@@ -100,6 +107,10 @@ export default async function ConfiguracionPage() {
       emisor={emisor}
       credencialesArca={credencialesArca}
       politicaAprobaciones={politicaAprobaciones}
+      royaltiesMarcas={(marcasActivas.data ?? []).map((m) => ({
+        nombre: m.nombre as string,
+        royalty: (m.royalty_porcentaje as number | null) ?? 0,
+      }))}
     />
   );
 }

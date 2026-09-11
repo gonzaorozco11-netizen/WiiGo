@@ -11,7 +11,71 @@ import type { PoliticaDescuentos } from "@/lib/solicitudesMarca";
 // escala lo que se sale. Por eso cada campo dice, abajo, qué pasa cuando el
 // pedido de la marca no cumple.
 
-export default function ConfiguracionAprobaciones({ politica }: { politica: PoliticaDescuentos }) {
+/**
+ * Traduce las dos reglas de descuento a la única pregunta que importa:
+ * "¿hasta cuánto puede descontar cada marca sin que me llegue a mí?".
+ *
+ * Existe porque el piso de comisión, dicho como número suelto, se lee mal: es
+ * fácil poner 10% sin darse cuenta de que con royalties del 5% eso escala
+ * absolutamente todo. Mostrando la consecuencia por marca, ese error se ve.
+ */
+function TopeQueHabilita({
+  comisionMinima,
+  maxSinConsulta,
+  marcas,
+}: {
+  comisionMinima: number;
+  maxSinConsulta: number;
+  marcas: { nombre: string; royalty: number }[];
+}) {
+  // Las marcas con el mismo royalty se agrupan: lo que cambia el resultado es
+  // el royalty, no el nombre.
+  const porRoyalty = new Map<number, string[]>();
+  marcas.forEach((m) => porRoyalty.set(m.royalty, [...(porRoyalty.get(m.royalty) ?? []), m.nombre]));
+  const grupos = [...porRoyalty.entries()].sort((a, b) => a[0] - b[0]);
+
+  if (grupos.length === 0) return null;
+
+  return (
+    <div className="mt-3 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2.5">
+      <p className="text-xs font-semibold text-neutral-700 mb-2">
+        Con estas dos reglas, hasta acá puede descontar cada marca sin que te llegue a vos:
+      </p>
+      <ul className="space-y-1.5">
+        {grupos.map(([royalty, nombres]) => {
+          // El piso de comisión se cumple mientras royalty × (1 − desc) ≥ piso.
+          const porPiso = royalty > 0 ? (1 - comisionMinima / royalty) * 100 : 0;
+          const tope = Math.min(maxSinConsulta, Math.max(0, porPiso));
+          const todoEscala = tope <= 0;
+          return (
+            <li key={royalty} className="text-xs text-neutral-600 flex justify-between gap-3">
+              <span className="truncate">
+                <b className="text-neutral-800">{royalty}%</b> de royalty
+                <span className="text-neutral-400"> — {nombres.join(", ")}</span>
+              </span>
+              <span className={`font-semibold whitespace-nowrap ${todoEscala ? "text-red-600" : "text-neutral-800"}`}>
+                {todoEscala ? "todo escala a vos" : `hasta ${Math.floor(tope)}% off`}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      {grupos.every(([royalty]) => royalty > 0 && (1 - comisionMinima / royalty) * 100 <= 0) && (
+        <p className="text-xs text-red-600 mt-2">
+          Ninguna marca llega a ese piso: con este valor te va a llegar cada descuento, uno por uno. Bajalo.
+        </p>
+      )}
+    </div>
+  );
+}
+
+export default function ConfiguracionAprobaciones({
+  politica,
+  royaltiesMarcas,
+}: {
+  politica: PoliticaDescuentos;
+  royaltiesMarcas: { nombre: string; royalty: number }[];
+}) {
   const [isPending, startTransition] = useTransition();
   const [guardado, setGuardado] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -121,9 +185,10 @@ export default function ConfiguracionAprobaciones({ politica }: { politica: Poli
             className={campo}
           />
           <p className={ayuda}>
-            Esta es la regla que importa de verdad: no cuánto descuenta la marca, sino con cuánto quedás vos después
-            del descuento. Si la promo deja tu comisión abajo de {comisionMinima}%, escala.
+            Se mide contra el precio de lista, no contra el precio con descuento: tu royalty sigue siendo el mismo
+            porcentaje, lo que baja son los pesos. Un royalty del 5% con 20% de descuento equivale a un 4%.
           </p>
+          <TopeQueHabilita comisionMinima={comisionMinima} maxSinConsulta={maxSinConsulta} marcas={royaltiesMarcas} />
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
