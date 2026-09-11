@@ -28,6 +28,7 @@ export default async function ConfiguracionPage() {
       "PUNTOS_CADA_MONTO",
       "PUNTOS_OTORGADOS",
       "PUNTOS_TOPE_CANJE_PORCENTAJE",
+      "PUNTOS_VALOR_PESOS",
       "IMP_CREDITOS_PORCENTAJE",
       "SIRCREB_PORCENTAJE",
       "IMP_DEBITOS_PORCENTAJE",
@@ -54,6 +55,7 @@ export default async function ConfiguracionPage() {
       "ARCA_PUNTO_VENTA",
       "ARCA_IVA_PORCENTAJE",
       "ARCA_MONTO_IDENTIFICACION",
+      "DEVOLUCION_DIAS_AVISO",
     ]);
 
   const valores = new Map((data ?? []).map((c) => [c.parametro, c.valor]));
@@ -78,6 +80,7 @@ export default async function ConfiguracionPage() {
       puntosCadaMonto={Number(valores.get("PUNTOS_CADA_MONTO") ?? 1000)}
       puntosOtorgados={Number(valores.get("PUNTOS_OTORGADOS") ?? 10)}
       puntosTopeCanjePorcentaje={Number(valores.get("PUNTOS_TOPE_CANJE_PORCENTAJE") ?? 0)}
+      puntosValorPesos={Number(valores.get("PUNTOS_VALOR_PESOS") ?? 0)}
       impCreditosPorcentaje={Number(valores.get("IMP_CREDITOS_PORCENTAJE") ?? 0.6)}
       sircrebPorcentaje={Number(valores.get("SIRCREB_PORCENTAJE") ?? 5)}
       impDebitosPorcentaje={Number(valores.get("IMP_DEBITOS_PORCENTAJE") ?? 0.6)}
@@ -107,6 +110,7 @@ export default async function ConfiguracionPage() {
       emisor={emisor}
       credencialesArca={credencialesArca}
       politicaAprobaciones={politicaAprobaciones}
+      devolucionDiasAviso={Number(valores.get("DEVOLUCION_DIAS_AVISO") ?? 7) || 7}
       royaltiesMarcas={(marcasActivas.data ?? []).map((m) => ({
         nombre: m.nombre as string,
         royalty: (m.royalty_porcentaje as number | null) ?? 0,

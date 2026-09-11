@@ -35,7 +35,7 @@ export default async function VentasPage() {
 
   const supabase = getSupabaseServerClient();
 
-  const [localesRes, ventasRes, productosRes, variantesRes, marcasRes, clientesRes] = await Promise.all([
+  const [localesRes, ventasRes, productosRes, variantesRes, marcasRes, clientesRes, cfgDevolucion] = await Promise.all([
     supabase.from("locales").select("*").eq("estado", "ACTIVO").order("nombre", { ascending: true }),
     supabase
       .from("ventas")
@@ -47,6 +47,7 @@ export default async function VentasPage() {
     supabase.from("variantes_producto").select("*"),
     supabase.from("marcas").select("*"),
     supabase.from("clientes").select("*"),
+    supabase.from("configuracion").select("valor").eq("parametro", "DEVOLUCION_DIAS_AVISO").maybeSingle(),
   ]);
 
   const error =
@@ -70,6 +71,7 @@ export default async function VentasPage() {
       marcas={(marcasRes.data ?? []) as Marca[]}
       clientes={(clientesRes.data ?? []) as Cliente[]}
       puedeFacturar={puedeFacturar}
+      diasDevolucion={Number(cfgDevolucion.data?.valor ?? 7) || 7}
     />
   );
 }

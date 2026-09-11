@@ -42,6 +42,23 @@ export async function guardarConfigPuntos(formData: FormData): Promise<{ error: 
   const topeCanje = Number(formData.get("puntos_tope_canje_porcentaje") ?? 0);
   if (topeCanje < 0 || topeCanje > 100) return { error: "El tope de canje tiene que estar entre 0% y 100%." };
 
+  const valorPunto = Number(formData.get("puntos_valor_pesos") ?? 0);
+  if (!Number.isFinite(valorPunto) || valorPunto < 0) return { error: "El valor del punto no puede ser negativo." };
+
+  // El cashback que resulta de las dos tasas juntas. Se frena arriba del 20%
+  // porque a esa altura ya no es un programa de fidelidad: con royalties del
+  // 5%, cada venta canjeada deja menos plata cobrada que la que hay que
+  // rendirle a la marca. Si alguna vez tiene sentido, se sube este número a
+  // propósito y con la cuenta hecha.
+  const cashback = cadaMonto > 0 ? ((otorgados * valorPunto) / cadaMonto) * 100 : 0;
+  if (cashback > 20) {
+    return {
+      error:
+        `Con esos números le estarías devolviendo el ${cashback.toFixed(1)}% de cada compra en puntos, y ese ` +
+        `descuento lo absorbe WiiGo entero (a la marca se le liquida el precio de lista). Bajá el valor del punto.`,
+    };
+  }
+
   const supabase = getSupabaseServerClient();
 
   let error = await guardarParametro(supabase, "PUNTOS_ACTIVO", String(activo), "WiiGo Club: acumulación de puntos activada o no");
@@ -67,6 +84,14 @@ export async function guardarConfigPuntos(formData: FormData): Promise<{ error: 
       "PUNTOS_TOPE_CANJE_PORCENTAJE",
       String(topeCanje),
       "WiiGo Club: qué % máximo de una compra se puede pagar con puntos"
+    );
+  }
+  if (!error) {
+    error = await guardarParametro(
+      supabase,
+      "PUNTOS_VALOR_PESOS",
+      String(valorPunto),
+      "WiiGo Club: cuántos pesos vale 1 punto al canjear. Independiente de la tasa de acumulación — en 0 el canje queda apagado"
     );
   }
   if (error) return { error };
@@ -392,6 +417,33 @@ export async function guardarConfigAprobaciones(formData: FormData): Promise<{ e
 
   revalidatePath("/configuracion");
   revalidatePath("/aprobaciones");
+  return { error: null };
+}
+
+// Plazo de devolución del local. Es una política comercial, no una regla
+// fiscal: el sistema avisa cuando alguien anula una venta más vieja que esto,
+// pero no lo frena — siempre hay un caso especial, y frenarlo llevaría a que
+// lo resuelvan por fuera del sistema.
+export async function guardarConfigDevoluciones(formData: FormData): Promise<{ error: string | null }> {
+  const permisoError = await requireEditarConfiguracion();
+  if (permisoError) return { error: permisoError };
+
+  const dias = Number(formData.get("devolucion_dias_aviso") ?? 7);
+  if (!Number.isFinite(dias) || dias < 1 || dias > 365) {
+    return { error: "El plazo tiene que estar entre 1 y 365 días." };
+  }
+
+  const supabase = getSupabaseServerClient();
+  const error = await guardarParametro(
+    supabase,
+    "DEVOLUCION_DIAS_AVISO",
+    String(Math.round(dias)),
+    "Devoluciones: días desde la venta a partir de los cuales se avisa al anular (no bloquea)"
+  );
+  if (error) return { error };
+
+  revalidatePath("/configuracion");
+  revalidatePath("/ventas");
   return { error: null };
 }
 

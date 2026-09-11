@@ -3,9 +3,25 @@
 // distinta. Acá el cliente paga parte de su propia compra con los puntos que
 // fue acumulando.
 //
-// El valor de 1 punto en pesos es la misma tasa que la de acumulación (si se
-// ganan 10 puntos cada $1.000, 1 punto vale $100 al canjear) — así hay una
-// sola regla que mantener en Configuración, no dos.
+// CUÁNTO VALE UN PUNTO — leer antes de tocar esto.
+//
+// Antes el valor salía de la propia tasa de acumulación
+// (PUNTOS_CADA_MONTO / PUNTOS_OTORGADOS). Esa fórmula devuelve SIEMPRE un
+// cashback del 100%, con cualquier número que se cargue: si se ganan 10
+// puntos cada $1.000, cada punto vale $100, y los 10 puntos ganados valen
+// exactamente los $1.000 gastados. No era un valor mal cargado, estaba
+// trabado así.
+//
+// Y el descuento lo absorbe WiiGo entero: la liquidación a la marca se
+// calcula sobre detalle_ventas.subtotal, que es el precio de lista sin
+// restar los puntos (ver construirLineas en liquidaciones/actions.ts). Con
+// un royalty del 5% y un tope de canje del 20%, cada venta canjeada dejaba
+// menos plata cobrada que la que había que rendirle a la marca.
+//
+// Ahora el valor es un parámetro propio, independiente de la acumulación.
+// Si no está cargado el canje queda APAGADO: es preferible que el cliente
+// no pueda canjear a que canjee a un valor que funde el negocio. La
+// acumulación sigue andando igual, no se pierde nada.
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type InfoCanjePuntos = {
@@ -22,9 +38,11 @@ async function tasasCanje(supabase: SupabaseClient) {
   const { data } = await supabase
     .from("configuracion")
     .select("parametro, valor")
-    .in("parametro", ["PUNTOS_CADA_MONTO", "PUNTOS_OTORGADOS", "PUNTOS_TOPE_CANJE_PORCENTAJE"]);
+    .in("parametro", ["PUNTOS_VALOR_PESOS", "PUNTOS_TOPE_CANJE_PORCENTAJE"]);
   const cfg = Object.fromEntries((data ?? []).map((r) => [r.parametro, Number(r.valor ?? 0)]));
-  const valorPorPunto = cfg.PUNTOS_OTORGADOS > 0 ? cfg.PUNTOS_CADA_MONTO / cfg.PUNTOS_OTORGADOS : 0;
+  // Sin valor cargado, 0: el canje queda apagado. Nunca se vuelve a la
+  // fórmula vieja, que regalaba el 100%.
+  const valorPorPunto = Number.isFinite(cfg.PUNTOS_VALOR_PESOS) ? Math.max(cfg.PUNTOS_VALOR_PESOS, 0) : 0;
   return { valorPorPunto, topePorcentaje: cfg.PUNTOS_TOPE_CANJE_PORCENTAJE ?? 0 };
 }
 

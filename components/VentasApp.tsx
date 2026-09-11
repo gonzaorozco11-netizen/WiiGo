@@ -139,6 +139,7 @@ export default function VentasApp({
   marcas,
   clientes,
   puedeFacturar,
+  diasDevolucion,
 }: {
   locales: Local[];
   ventasIniciales: Venta[];
@@ -147,6 +148,8 @@ export default function VentasApp({
   marcas: Marca[];
   clientes: Cliente[];
   puedeFacturar: boolean;
+  /** Días desde la venta a partir de los cuales se avisa (no se bloquea). */
+  diasDevolucion: number;
 }) {
   const [ventas, setVentas] = useState<Venta[]>(ventasIniciales);
   const [cargandoVentas, setCargandoVentas] = useState(false);
@@ -284,6 +287,14 @@ export default function VentasApp({
   // servidor lo vuelve a verificar igual (ver medioDevolucionDe).
   const medioQueCorresponde: MedioDevolucion =
     ventaSeleccionada?.medio_pago === "MERCADO_PAGO" ? "MERCADO_PAGO" : "EFECTIVO_TURNO";
+
+  // Cuántos días pasaron desde la venta. Avisa, no bloquea: la política es
+  // tuya y siempre hay un caso especial, pero nadie debería anular una venta
+  // de hace tres meses sin darse cuenta de que es de hace tres meses.
+  const diasDesdeLaVenta = ventaSeleccionada
+    ? Math.floor((Date.now() - new Date(ventaSeleccionada.fecha).getTime()) / 86400000)
+    : 0;
+  const ventaVieja = diasDesdeLaVenta > diasDevolucion;
 
   return (
     <div>
@@ -548,6 +559,13 @@ export default function VentasApp({
                           {ventaSeleccionada.cae &&
                             " Como está facturada, se emite la nota de crédito que la anula ante ARCA."}
                         </p>
+
+                        {ventaVieja && (
+                          <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2 mb-2.5">
+                            Esta venta es de hace {diasDesdeLaVenta} días, y el plazo de devolución del local es de{" "}
+                            {diasDevolucion}. Se puede anular igual, pero fijate que corresponda.
+                          </p>
+                        )}
 
                         {ventaSeleccionada.id_liquidacion && (
                           <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2 mb-2.5">

@@ -8,6 +8,7 @@ import {
   guardarConfigRentabilidadDescuentos,
   guardarConfigMercadoPago,
   guardarConfigGastos,
+  guardarConfigDevoluciones,
   conectarMercadoPagoQR,
 } from "@/app/(app)/configuracion/actions";
 import ConfiguracionArca from "@/components/ConfiguracionArca";
@@ -21,6 +22,7 @@ export default function ConfiguracionApp({
   puntosCadaMonto,
   puntosOtorgados,
   puntosTopeCanjePorcentaje,
+  puntosValorPesos,
   impCreditosPorcentaje,
   sircrebPorcentaje,
   impDebitosPorcentaje,
@@ -51,11 +53,13 @@ export default function ConfiguracionApp({
   credencialesArca,
   politicaAprobaciones,
   royaltiesMarcas,
+  devolucionDiasAviso,
 }: {
   puntosActivo: boolean;
   puntosCadaMonto: number;
   puntosOtorgados: number;
   puntosTopeCanjePorcentaje: number;
+  puntosValorPesos: number;
   impCreditosPorcentaje: number;
   sircrebPorcentaje: number;
   impDebitosPorcentaje: number;
@@ -86,6 +90,7 @@ export default function ConfiguracionApp({
   credencialesArca: EstadoCredenciales;
   politicaAprobaciones: PoliticaDescuentos;
   royaltiesMarcas: { nombre: string; royalty: number }[];
+  devolucionDiasAviso: number;
 }) {
   const [isPending, startTransition] = useTransition();
   const [guardado, setGuardado] = useState(false);
@@ -94,6 +99,7 @@ export default function ConfiguracionApp({
   const [cadaMonto, setCadaMonto] = useState(puntosCadaMonto);
   const [otorgados, setOtorgados] = useState(puntosOtorgados);
   const [topeCanje, setTopeCanje] = useState(puntosTopeCanjePorcentaje);
+  const [valorPunto, setValorPunto] = useState(puntosValorPesos);
   const [compraEjemplo, setCompraEjemplo] = useState(23500);
 
   const [isPendingLiq, startTransitionLiq] = useTransition();
@@ -148,13 +154,23 @@ export default function ConfiguracionApp({
   const [errorGastos, setErrorGastos] = useState<string | null>(null);
   const [topeGastos, setTopeGastos] = useState(gastosTopeSinAutorizacion);
 
+  const [isPendingDevoluciones, startTransitionDevoluciones] = useTransition();
+  const [guardadoDevoluciones, setGuardadoDevoluciones] = useState(false);
+  const [errorDevoluciones, setErrorDevoluciones] = useState<string | null>(null);
+  const [diasDevolucion, setDiasDevolucion] = useState(devolucionDiasAviso);
+
   const puntosCalculados = useMemo(() => {
     if (!cadaMonto || cadaMonto <= 0) return 0;
     return Math.floor((compraEjemplo / cadaMonto) * otorgados);
   }, [compraEjemplo, cadaMonto, otorgados]);
 
-  const valorPorPunto = otorgados > 0 ? cadaMonto / otorgados : 0;
-  const maxCanjeEjemplo = Math.round(compraEjemplo * (topeCanje / 100));
+  // Cuánto de cada venta se devuelve en puntos: (puntos que gana × lo que
+  // vale cada punto) sobre lo que gastó. Es el número que decide si el
+  // programa es sostenible, y es el que antes no se veía en ningún lado.
+  const cashbackPct = cadaMonto > 0 ? ((otorgados * valorPunto) / cadaMonto) * 100 : 0;
+  // El tope acota cuánto se puede usar en UNA compra, pero no cambia el
+  // cashback: los puntos se siguen acumulando para las siguientes.
+  const maxCanjeEjemplo = valorPunto > 0 ? Math.round(compraEjemplo * (topeCanje / 100)) : 0;
 
   function handleSubmit(formData: FormData) {
     setGuardado(false);
@@ -203,6 +219,16 @@ export default function ConfiguracionApp({
       const res = await guardarConfigMercadoPago(formData);
       if (res.error) setErrorMp(res.error);
       else setGuardadoMp(true);
+    });
+  }
+
+  function handleSubmitDevoluciones(formData: FormData) {
+    setGuardadoDevoluciones(false);
+    setErrorDevoluciones(null);
+    startTransitionDevoluciones(async () => {
+      const res = await guardarConfigDevoluciones(formData);
+      if (res.error) setErrorDevoluciones(res.error);
+      else setGuardadoDevoluciones(true);
     });
   }
 
@@ -317,9 +343,63 @@ export default function ConfiguracionApp({
             />
             <span className="text-sm text-neutral-500">%</span>
           </div>
-          <p className="text-xs text-neutral-400 mb-2">
-            En 0% el canje queda desactivado. 1 punto vale ${valorPorPunto.toLocaleString("es-AR", { maximumFractionDigits: 2 })} al canjear (misma tasa que la acumulación).
-          </p>
+          <p className="text-xs text-neutral-400 mb-4">En 0% el canje queda desactivado.</p>
+
+          <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="puntos_valor_pesos">
+            Cuánto vale 1 punto al canjear
+          </label>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-sm text-neutral-500">$</span>
+            <input
+              id="puntos_valor_pesos"
+              name="puntos_valor_pesos"
+              type="number"
+              min={0}
+              step="0.01"
+              value={valorPunto}
+              onChange={(e) => setValorPunto(Number(e.target.value))}
+              className="w-32 rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+          </div>
+
+          {/* El número que importa no es cuánto vale un punto, sino qué % de
+              cada venta estás regalando. Antes no se veía en ningún lado, y
+              por eso pasó desapercibido que el programa devolvía el 100%. */}
+          <div
+            className={`rounded-lg px-3 py-2.5 mb-3 border ${
+              valorPunto <= 0
+                ? "bg-neutral-50 border-neutral-200"
+                : cashbackPct > 10
+                  ? "bg-red-50 border-red-200"
+                  : cashbackPct > 5
+                    ? "bg-amber-50 border-amber-200"
+                    : "bg-emerald-50 border-emerald-200"
+            }`}
+          >
+            {valorPunto <= 0 ? (
+              <p className="text-sm text-neutral-600">
+                <b className="text-neutral-900">El canje está apagado.</b> Los clientes siguen acumulando puntos,
+                pero no los pueden usar hasta que definas cuánto vale uno.
+              </p>
+            ) : (
+              <>
+                <p className="text-xs text-neutral-500">Le estás devolviendo al cliente</p>
+                <p
+                  className={`text-2xl font-bold ${
+                    cashbackPct > 10 ? "text-red-700" : cashbackPct > 5 ? "text-amber-700" : "text-emerald-700"
+                  }`}
+                >
+                  {cashbackPct.toLocaleString("es-AR", { maximumFractionDigits: 2 })}%
+                </p>
+                <p className="text-xs text-neutral-500 mt-0.5">
+                  de todo lo que compra, en puntos. Sale entero de tu comisión: a la marca se le liquida el precio de
+                  lista igual.
+                  {cashbackPct > 5 && " Comparalo con el royalty que te cobran las marcas antes de dejarlo así."}
+                </p>
+              </>
+            )}
+          </div>
+
           <p className="text-sm text-neutral-600">
             Compra de ${compraEjemplo.toLocaleString("es-AR")} → como máximo se pueden pagar{" "}
             <strong className="text-neutral-900">${maxCanjeEjemplo.toLocaleString("es-AR")}</strong> con puntos.
@@ -752,6 +832,49 @@ export default function ConfiguracionApp({
           className="w-full rounded-lg bg-accent hover:bg-accent-dark text-white py-2 text-sm font-medium disabled:opacity-50"
         >
           {isPendingGastos ? "Guardando..." : "Guardar tope"}
+        </button>
+      </form>
+
+      <form action={handleSubmitDevoluciones} className="bg-white border border-neutral-200 rounded-xl p-5 mt-5">
+        <h2 className="text-base font-semibold text-neutral-900 mb-1">↩ Devoluciones</h2>
+        <p className="text-sm text-neutral-500 mb-4">
+          El plazo que le das al cliente para devolver. El sistema avisa cuando alguien anula una venta más vieja que
+          esto, pero no lo frena: siempre hay un caso especial, y bloquearlo haría que lo resuelvan por fuera.
+        </p>
+
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="devolucion_dias_aviso">
+            Plazo de devolución (días)
+          </label>
+          <input
+            id="devolucion_dias_aviso"
+            name="devolucion_dias_aviso"
+            type="number"
+            step="1"
+            min="1"
+            value={diasDevolucion}
+            onChange={(e) => setDiasDevolucion(Number(e.target.value))}
+            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+          />
+        </div>
+
+        {errorDevoluciones && (
+          <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-4">
+            {errorDevoluciones}
+          </p>
+        )}
+        {guardadoDevoluciones && (
+          <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 mb-4">
+            Plazo guardado.
+          </p>
+        )}
+
+        <button
+          type="submit"
+          disabled={isPendingDevoluciones}
+          className="w-full rounded-lg bg-accent hover:bg-accent-dark text-white py-2 text-sm font-medium disabled:opacity-50"
+        >
+          {isPendingDevoluciones ? "Guardando..." : "Guardar plazo"}
         </button>
       </form>
 
