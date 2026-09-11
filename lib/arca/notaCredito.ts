@@ -49,7 +49,18 @@ function aFormatoArca(fecha: string | null) {
  * bien visible, para reintentarla. Frenar la anulación dejaría al cliente
  * esperando en el mostrador por una caída de un servicio externo.
  */
-export async function emitirNotaCreditoDeVenta(idVenta: string): Promise<ResultadoNotaCredito> {
+export async function emitirNotaCreditoDeVenta(
+  idVenta: string,
+  /**
+   * Devolución parcial: importe a acreditar y dónde guardar el resultado.
+   *
+   * Sin esto se anula la factura entera y el CAE se guarda en la venta (el
+   * caso de siempre). Con esto se emite por el importe devuelto y el CAE va
+   * en la fila de esa devolución, porque una misma factura puede llegar a
+   * tener dos o tres notas de crédito distintas.
+   */
+  parcial?: { importe: number; idDevolucion: string }
+): Promise<ResultadoNotaCredito> {
   const supabase = getSupabaseServerClient();
 
   const { data } = await supabase
@@ -68,11 +79,28 @@ export async function emitirNotaCreditoDeVenta(idVenta: string): Promise<Resulta
     return { estado: "NO_CORRESPONDE", mensaje: "Esta venta no estaba facturada, así que no hace falta nota de crédito." };
   }
 
-  // Ya tiene una: no se emite dos veces. Dos notas de crédito sobre la misma
-  // factura le devolverían el IVA dos veces a ARCA.
-  if (venta.nc_cae) {
+  // Ya tiene una: no se emite dos veces. Dos notas de crédito por el mismo
+  // importe le devolverían el IVA dos veces a ARCA. En las parciales el
+  // control es por devolución, no por venta: cada devolución lleva la suya.
+  if (!parcial && venta.nc_cae) {
     return { estado: "EMITIDA", mensaje: "Esta venta ya tenía su nota de crédito emitida." };
   }
+  if (parcial) {
+    const { data: dev } = await supabase
+      .from("devoluciones")
+      .select("nc_cae")
+      .eq("id_devolucion", parcial.idDevolucion)
+      .maybeSingle();
+    if (dev?.nc_cae) {
+      return { estado: "EMITIDA", mensaje: "Esta devolución ya tenía su nota de crédito emitida." };
+    }
+  }
+
+  // Dónde se guarda el resultado: en la venta si se anula entera, en la fila
+  // de la devolución si es parcial.
+  const destino = parcial
+    ? { tabla: "devoluciones" as const, columna: "id_devolucion" as const, id: parcial.idDevolucion }
+    : { tabla: "ventas" as const, columna: "id_venta" as const, id: idVenta };
 
   const tipoNota = NOTA_CREDITO_DE[venta.factura_tipo ?? 0];
   if (!tipoNota || !venta.factura_punto_venta || !venta.factura_numero) {
@@ -82,9 +110,13 @@ export async function emitirNotaCreditoDeVenta(idVenta: string): Promise<Resulta
     };
   }
 
-  const total = venta.total ?? 0;
+  // El importe: lo devuelto si es parcial, la venta entera si no.
+  const total = parcial ? parcial.importe : venta.total ?? 0;
   if (total <= 0) {
-    return { estado: "PENDIENTE", mensaje: "La venta no tiene importe: la nota de crédito quedó pendiente." };
+    return { estado: "PENDIENTE", mensaje: "No hay importe que acreditar: la nota de crédito quedó pendiente." };
+  }
+  if (parcial && venta.total !== null && total > venta.total + 0.01) {
+    return { estado: "PENDIENTE", mensaje: "La nota de crédito no puede ser por más que la factura original." };
   }
 
   const config = await obtenerConfigArca();
@@ -92,13 +124,13 @@ export async function emitirNotaCreditoDeVenta(idVenta: string): Promise<Resulta
   // existe: queda pendiente, no "no corresponde".
   if (!config.habilitado) {
     await supabase
-      .from("ventas")
+      .from(destino.tabla)
       .update({ nc_estado: "PENDIENTE", nc_error: "La facturación electrónica está apagada en Configuración." })
-      .eq("id_venta", idVenta);
+      .eq(destino.columna, destino.id);
     return {
       estado: "PENDIENTE",
       mensaje:
-        "La venta quedó anulada, pero la facturación electrónica está apagada y esta venta tenía factura. " +
+        "La devolución quedó registrada, pero la facturación electrónica está apagada y esta venta tenía factura. " +
         "Prendela en Configuración y reintentá la nota de crédito desde Ventas.",
     };
   }
@@ -125,7 +157,7 @@ export async function emitirNotaCreditoDeVenta(idVenta: string): Promise<Resulta
     // alguien la volvería a emitir. Por eso el error se registra en vez de
     // tirarse.
     const { error } = await supabase
-      .from("ventas")
+      .from(destino.tabla)
       .update({
         nc_estado: "EMITIDA",
         nc_cae: resultado.cae,
@@ -139,7 +171,7 @@ export async function emitirNotaCreditoDeVenta(idVenta: string): Promise<Resulta
         nc_fecha: `${resultado.fecha.slice(0, 4)}-${resultado.fecha.slice(4, 6)}-${resultado.fecha.slice(6, 8)}`,
         nc_error: null,
       })
-      .eq("id_venta", idVenta);
+      .eq(destino.columna, destino.id);
 
     if (error) {
       return {
@@ -154,19 +186,21 @@ export async function emitirNotaCreditoDeVenta(idVenta: string): Promise<Resulta
       estado: "EMITIDA",
       mensaje: `Nota de crédito ${String(resultado.puntoVenta).padStart(5, "0")}-${String(
         resultado.numeroComprobante
-      ).padStart(8, "0")} emitida. La factura quedó anulada ante ARCA.`,
+      ).padStart(8, "0")} emitida. ${
+        parcial ? "Acredita lo devuelto ante ARCA." : "La factura quedó anulada ante ARCA."
+      }`,
     };
   } catch (err) {
     const detalle = err instanceof Error ? err.message : "error desconocido";
     await supabase
-      .from("ventas")
+      .from(destino.tabla)
       .update({ nc_estado: "PENDIENTE", nc_error: detalle })
-      .eq("id_venta", idVenta);
+      .eq(destino.columna, destino.id);
 
     return {
       estado: "PENDIENTE",
       mensaje:
-        "La venta quedó anulada, pero ARCA no emitió la nota de crédito: " +
+        "La devolución quedó registrada, pero ARCA no emitió la nota de crédito: " +
         detalle +
         " · Queda marcada como pendiente en Ventas para reintentarla.",
     };

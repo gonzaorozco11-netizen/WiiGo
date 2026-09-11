@@ -10,6 +10,7 @@ import {
   type MedioDevolucion,
 } from "@/app/(app)/ventas/actions";
 import { emitirFacturaDeVenta } from "@/app/(app)/facturacion/actions";
+import DevolucionPanel from "@/components/DevolucionPanel";
 
 type FiltroFecha = "HOY" | "SEMANA" | "MES" | "TODO" | "RANGO";
 type FiltroCanal = "TODOS" | "SELF_CHECKOUT" | "POS";
@@ -169,6 +170,7 @@ export default function VentasApp({
   // Arranca en el medio del cobro y solo cambia si un admin lo autoriza.
   const [medioDevolucion, setMedioDevolucion] = useState<MedioDevolucion>("EFECTIVO_TURNO");
   const [mezclarMedio, setMezclarMedio] = useState(false);
+  const [devolviendo, setDevolviendo] = useState(false);
   const [claveAdmin, setClaveAdmin] = useState("");
   const [procesandoAnular, setProcesandoAnular] = useState(false);
   const [procesandoNota, setProcesandoNota] = useState(false);
@@ -536,21 +538,51 @@ export default function VentasApp({
                   </div>
                 </div>
 
-                {ventaSeleccionada.estado === "PAGADA" && (
+                {ventaSeleccionada.estado === "PAGADA" && devolviendo && (
+                  <div className="mt-4">
+                    <DevolucionPanel
+                      idVenta={ventaSeleccionada.id_venta}
+                      medioPago={ventaSeleccionada.medio_pago}
+                      tieneFactura={Boolean(ventaSeleccionada.cae)}
+                      yaLiquidada={Boolean(ventaSeleccionada.id_liquidacion)}
+                      onCerrar={() => setDevolviendo(false)}
+                      onListo={(aviso) => {
+                        setDevolviendo(false);
+                        setMensajeAnular(aviso ? { tipo: "aviso", texto: aviso } : null);
+                      }}
+                    />
+                  </div>
+                )}
+
+                {ventaSeleccionada.estado === "PAGADA" && !devolviendo && (
                   <div className="mt-4">
                     {!anulando ? (
-                      <button
-                        onClick={() => {
-                          setAnulando(true);
-                          setMensajeAnular(null);
-                          setMedioDevolucion(medioQueCorresponde);
-                          setMezclarMedio(false);
-                          setClaveAdmin("");
-                        }}
-                        className="w-full text-sm font-semibold text-red-600 border border-red-200 rounded-lg py-2 hover:bg-red-50"
-                      >
-                        Anular venta
-                      </button>
+                      <div className="flex gap-2">
+                        {/* Devolver una parte es lo que más va a pasar en el
+                            mostrador, así que va primero y no escondido
+                            adentro de la anulación. */}
+                        <button
+                          onClick={() => {
+                            setDevolviendo(true);
+                            setMensajeAnular(null);
+                          }}
+                          className="flex-1 text-sm font-semibold text-neutral-700 border border-neutral-300 rounded-lg py-2 hover:bg-neutral-50"
+                        >
+                          Devolver productos
+                        </button>
+                        <button
+                          onClick={() => {
+                            setAnulando(true);
+                            setMensajeAnular(null);
+                            setMedioDevolucion(medioQueCorresponde);
+                            setMezclarMedio(false);
+                            setClaveAdmin("");
+                          }}
+                          className="flex-1 text-sm font-semibold text-red-600 border border-red-200 rounded-lg py-2 hover:bg-red-50"
+                        >
+                          Anular toda la venta
+                        </button>
+                      </div>
                     ) : (
                       <div className="border border-red-200 bg-red-50 rounded-xl p-3.5">
                         <p className="text-sm font-semibold text-red-700 mb-1">¿Anular esta venta?</p>

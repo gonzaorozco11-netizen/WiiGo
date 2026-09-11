@@ -45,6 +45,36 @@ async function mpFetch(path: string, init: RequestInit = {}, permitir404 = false
   return data;
 }
 
+/**
+ * Reintegro al cliente, total o parcial.
+ *
+ * Sin `monto` devuelve todo el pago; con `monto`, solo esa parte — que es lo
+ * que hace falta cuando el cliente devuelve un producto de tres.
+ *
+ * La clave de idempotencia va armada con el id del pago y el monto, así un
+ * doble clic o un reintento no le devuelven la plata dos veces. Mercado Pago
+ * reconoce la clave repetida y responde el mismo reintegro en vez de crear
+ * otro.
+ *
+ * Ojo: Mercado Pago no acepta reintegros de pagos viejos (el límite lo pone
+ * ellos, no nosotros). En ese caso tira error y hay que resolverlo por fuera.
+ */
+export async function reintegrarPagoMp(params: {
+  idPagoMp: string;
+  monto?: number;
+  referencia: string;
+}): Promise<{ id: string; monto: number }> {
+  const cuerpo = params.monto !== undefined ? JSON.stringify({ amount: Number(params.monto.toFixed(2)) }) : "{}";
+
+  const data = await mpFetch(`/v1/payments/${params.idPagoMp}/refunds`, {
+    method: "POST",
+    body: cuerpo,
+    headers: { "X-Idempotency-Key": `wiigo-dev-${params.referencia}` },
+  });
+
+  return { id: String(data?.id ?? ""), monto: Number(data?.amount ?? params.monto ?? 0) };
+}
+
 export async function obtenerUsuarioMp(): Promise<{ id: number; nickname?: string }> {
   return mpFetch("/users/me");
 }

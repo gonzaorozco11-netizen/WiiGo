@@ -272,7 +272,14 @@ export async function construirLineas(supabase: SupabaseClient, idMarca: string,
 export async function contracargoPorAnulacion(
   idVenta: string,
   motivo: string,
-  usuario: string | null
+  usuario: string | null,
+  /**
+   * Qué parte de lo vendido a cada marca se está devolviendo, de 0 a 1. Sin
+   * esto se asume 1 (la venta entera). Se puede prorratear porque todas las
+   * deducciones de la rendición son proporcionales a la venta bruta, así que
+   * multiplicar el neto da el mismo número que recalcular línea por línea.
+   */
+  factorPorMarca?: Map<string, number>
 ): Promise<{ marcas: { idMarca: string; nombre: string; importe: number }[]; error: string | null }> {
   const supabase = getSupabaseServerClient();
 
@@ -299,7 +306,9 @@ export async function contracargoPorAnulacion(
 
   for (const idMarca of idsMarca) {
     const { marca, resumen } = await construirLineas(supabase, idMarca, [ventaParaCalculo]);
-    if (resumen.netoARendir <= 0) continue;
+    const factor = factorPorMarca ? factorPorMarca.get(idMarca) ?? 0 : 1;
+    const importe = Math.round(resumen.netoARendir * factor * 100) / 100;
+    if (importe <= 0) continue;
 
     // Importe positivo = la marca le debe eso a WiiGo. Se descuenta solo de
     // su próxima liquidación, que es exactamente lo que hay que hacer: no se
@@ -308,13 +317,13 @@ export async function contracargoPorAnulacion(
       idMarca,
       idLocal: (venta.id_local as string) ?? null,
       tipoCargo: "AJUSTE",
-      importe: resumen.netoARendir,
+      importe,
       usuario,
       observaciones:
-        `Devolución de la venta #${venta.numero} — ya estaba liquidada, se descuenta de la próxima. ${motivo}`.trim(),
+        `Devolución${factor < 1 ? " parcial" : ""} de la venta #${venta.numero} — ya estaba liquidada, se descuenta de la próxima. ${motivo}`.trim(),
     });
 
-    resultado.push({ idMarca, nombre: marca, importe: resumen.netoARendir });
+    resultado.push({ idMarca, nombre: marca, importe });
   }
 
   return { marcas: resultado, error: null };

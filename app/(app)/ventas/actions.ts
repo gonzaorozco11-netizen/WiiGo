@@ -9,6 +9,15 @@ import { verifyPassword } from "@/lib/auth";
 import { emitirNotaCreditoDeVenta } from "@/lib/arca/notaCredito";
 import { contracargoPorAnulacion } from "@/app/(app)/liquidaciones/actions";
 import { turnoAbiertoDeLocal } from "@/app/(app)/turnos/actions";
+import { reintegrarPagoMp } from "@/lib/mercadopago";
+import {
+  lineasDevolvibles,
+  calcularDevolucion,
+  puntosARevertir,
+  type LineaDevolvible,
+  type PedidoDevolucion,
+  type DestinoMercaderia,
+} from "@/lib/devoluciones";
 
 async function usuarioActual() {
   const cookieStore = await cookies();
@@ -82,6 +91,295 @@ async function autorizarMedioDistinto(
   return null;
 }
 
+/** Lo que se puede devolver de una venta, para armar la pantalla. */
+export async function lineasParaDevolver(idVenta: string): Promise<LineaDevolvible[]> {
+  const supabase = getSupabaseServerClient();
+  return lineasDevolvibles(supabase, idVenta);
+}
+
+/**
+ * Devolver parte de una venta (o toda).
+ *
+ * Es el único camino: `anularVenta` delega acá con todas las líneas. Un solo
+ * mecanismo para que no haya forma de que la anulación total haga algo que la
+ * parcial no — reponer el stock, emitir la nota, descontarle a la marca.
+ *
+ * El orden importa. Primero lo que no depende de nadie (registrar, stock,
+ * puntos), después lo que puede fallar por un servicio de afuera (ARCA,
+ * Mercado Pago). Si algo de lo último falla, la devolución igual quedó hecha
+ * y lo que faltó queda marcado como pendiente: nunca se deja al cliente
+ * esperando en el mostrador por una caída ajena.
+ */
+export async function registrarDevolucion(
+  idVenta: string,
+  pedido: PedidoDevolucion[],
+  opciones: {
+    motivo: string;
+    destino: DestinoMercaderia;
+    medio?: MedioDevolucion;
+    claveAdmin?: string;
+  }
+): Promise<{ error: string | null; aviso?: string }> {
+  const motivo = opciones.motivo.trim();
+  if (!motivo) return { error: "Contá el motivo de la devolución." };
+
+  try {
+    const supabase = getSupabaseServerClient();
+    const usuario = await usuarioActual();
+
+    const { data: venta } = await supabase
+      .from("ventas")
+      .select(
+        "id_venta, numero, id_cliente, id_local, id_pago, estado, id_liquidacion, medio_pago, total, cae, puntos_generados, puntos_canjeados"
+      )
+      .eq("id_venta", idVenta)
+      .maybeSingle();
+    if (!venta) return { error: "No se encontró la venta" };
+    if (venta.estado !== "PAGADA") {
+      return { error: "Solo se puede devolver sobre una venta pagada." };
+    }
+
+    const lineas = await lineasDevolvibles(supabase, idVenta);
+    const calc = calcularDevolucion(lineas, pedido);
+    if (calc.error) return { error: calc.error };
+
+    // La plata vuelve por donde entró; salirse de eso lo firma un admin.
+    const medioQueCorresponde = medioDevolucionDe(venta.medio_pago);
+    const medio: MedioDevolucion = opciones.medio ?? medioQueCorresponde;
+    let autorizadaPor: string | null = null;
+    if (medio !== medioQueCorresponde && medio !== "PENDIENTE" && medio !== "NO_CORRESPONDE") {
+      const autorizador = await autorizarMedioDistinto(supabase, opciones.claveAdmin ?? "");
+      if (!autorizador) {
+        return {
+          error:
+            venta.medio_pago === "MERCADO_PAGO"
+              ? "Esta venta se cobró por Mercado Pago, así que el reintegro va por Mercado Pago. Devolverla en efectivo necesita la contraseña de un administrador."
+              : "Esta venta se cobró en efectivo, así que se devuelve en efectivo. Hacerlo de otra forma necesita la contraseña de un administrador.",
+        };
+      }
+      autorizadaPor = autorizador.nombre;
+    }
+
+    let idTurno: string | null = null;
+    if (medio === "EFECTIVO_TURNO" && venta.id_local) {
+      idTurno = await turnoAbiertoDeLocal(supabase, venta.id_local);
+      if (!idTurno) {
+        return {
+          error:
+            "Para devolver en efectivo tiene que haber un turno de caja abierto — si no, la plata sale del cajón y no queda en ningún arqueo. Abrí el turno y probá de nuevo.",
+        };
+      }
+    }
+
+    // ===== Registrar =====
+    const { data: dev, error: errorDev } = await supabase
+      .from("devoluciones")
+      .insert({
+        id_venta: idVenta,
+        alcance: calc.esTotal ? "TOTAL" : "PARCIAL",
+        usuario,
+        motivo,
+        total: calc.total,
+        destino: opciones.destino,
+        medio,
+        monto_devuelto: medio === "NO_CORRESPONDE" ? 0 : calc.total,
+        id_turno: idTurno,
+        autorizada_por: autorizadaPor,
+      })
+      .select("id_devolucion")
+      .single();
+    if (errorDev) return { error: friendlyDbError(errorDev) };
+    const idDevolucion = dev.id_devolucion as string;
+
+    const { error: errorDetalle } = await supabase.from("detalle_devoluciones").insert(
+      calc.renglones.map((r) => ({
+        id_devolucion: idDevolucion,
+        id_detalle: r.idDetalle,
+        id_variante: r.idVariante,
+        id_marca: r.idMarca,
+        cantidad: r.cantidad,
+        precio_unitario: r.precioUnitario,
+        subtotal: r.subtotal,
+      }))
+    );
+    if (errorDetalle) return { error: friendlyDbError(errorDetalle) };
+
+    // ===== Stock =====
+    // Si el producto no vuelve a la góndola, el stock vendible NO se toca: un
+    // producto abierto, vencido o fallado que se repone se le termina
+    // vendiendo al cliente siguiente. El movimiento se registra igual, con
+    // cantidad 0, para que quede el rastro de que entró y por qué no suma.
+    if (venta.id_local) {
+      for (const r of calc.renglones) {
+        if (opciones.destino === "VUELVE") {
+          const { data: actual } = await supabase
+            .from("stock")
+            .select("cantidad")
+            .eq("id_variante", r.idVariante)
+            .eq("id_local", venta.id_local)
+            .maybeSingle();
+          await supabase.from("stock").upsert(
+            {
+              id_variante: r.idVariante,
+              id_local: venta.id_local,
+              cantidad: (actual?.cantidad ?? 0) + r.cantidad,
+              fecha_actualizacion: new Date().toISOString(),
+            },
+            { onConflict: "id_variante,id_local" }
+          );
+        }
+
+        await supabase.from("movimientos_stock").insert({
+          id_variante: r.idVariante,
+          id_local: venta.id_local,
+          tipo: opciones.destino === "VUELVE" ? "DEVOLUCION" : "DEVOLUCION_NO_VENDIBLE",
+          cantidad: opciones.destino === "VUELVE" ? r.cantidad : 0,
+          motivo:
+            opciones.destino === "VUELVE"
+              ? `Devolución de venta #${venta.numero} — ${motivo}`
+              : `Devolución NO vendible (${r.cantidad} u.) de venta #${venta.numero} — ${motivo}`,
+          id_referencia: idVenta,
+          usuario,
+        });
+      }
+    }
+
+    // ===== Puntos =====
+    if (venta.id_cliente) {
+      const { data: cliente } = await supabase
+        .from("clientes")
+        .select("puntos")
+        .eq("id_cliente", venta.id_cliente)
+        .maybeSingle();
+      const nuevos = puntosARevertir({
+        puntosGenerados: venta.puntos_generados ?? 0,
+        puntosCanjeados: venta.puntos_canjeados ?? 0,
+        totalVenta: venta.total ?? 0,
+        totalDevuelto: calc.total,
+        saldoActual: cliente?.puntos ?? 0,
+      });
+      await supabase.from("clientes").update({ puntos: nuevos }).eq("id_cliente", venta.id_cliente);
+    }
+
+    const avisos: string[] = [];
+
+    // ===== Nota de crédito =====
+    if (venta.cae) {
+      const nota = await emitirNotaCreditoDeVenta(idVenta, { importe: calc.total, idDevolucion });
+      if (nota.mensaje) avisos.push(nota.mensaje);
+    }
+
+    // ===== Reintegro por Mercado Pago =====
+    if (medio === "MERCADO_PAGO") {
+      avisos.push(await reintegrarPorMp(supabase, venta.id_pago as string | null, calc.total, idDevolucion));
+    }
+
+    // ===== Contracargo a la marca, si ya estaba liquidada =====
+    if (venta.id_liquidacion) {
+      const factor = new Map<string, number>();
+      for (const l of lineas) {
+        if (!l.idMarca) continue;
+        const vendidoMarca = lineas
+          .filter((x) => x.idMarca === l.idMarca)
+          .reduce((a, x) => a + x.precioUnitario * x.cantidadVendida, 0);
+        const devueltoMarca = calc.renglones
+          .filter((x) => x.idMarca === l.idMarca)
+          .reduce((a, x) => a + x.subtotal, 0);
+        if (vendidoMarca > 0) factor.set(l.idMarca, Math.min(devueltoMarca / vendidoMarca, 1));
+      }
+      const r = await contracargoPorAnulacion(idVenta, motivo, usuario, factor);
+      if (r.marcas.length > 0) {
+        avisos.push(
+          `Ya estaba liquidada: se le descuenta a ${r.marcas
+            .map((c) => `${c.nombre} $${c.importe.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`)
+            .join(" y ")} en la próxima liquidación.`
+        );
+      }
+      revalidatePath("/liquidaciones");
+      revalidatePath("/marcas");
+    }
+
+    // ===== Estado de la venta =====
+    if (calc.esTotal) {
+      await revertirExtrasDeVentaAnulada(supabase, venta, motivo, usuario);
+      await supabase
+        .from("ventas")
+        .update({
+          estado: "ANULADA",
+          motivo_cancelacion: motivo,
+          fecha_cancelacion: new Date().toISOString(),
+          devolucion_medio: medio,
+          devolucion_monto: medio === "NO_CORRESPONDE" ? 0 : calc.total,
+          devolucion_turno: idTurno,
+          devolucion_fecha: new Date().toISOString(),
+          devolucion_autorizada_por: autorizadaPor,
+        })
+        .eq("id_venta", idVenta)
+        .eq("estado", "PAGADA");
+
+      // Si es la única devolución de la venta, se copia la nota de crédito a
+      // la venta para que la pantalla de siempre la muestre donde la muestra
+      // hoy. Con devoluciones previas no se copia: mostraría solo la última y
+      // haría creer que la factura se anuló entera de una.
+      const { count } = await supabase
+        .from("devoluciones")
+        .select("id_devolucion", { count: "exact", head: true })
+        .eq("id_venta", idVenta);
+      if ((count ?? 0) === 1) {
+        const { data: nc } = await supabase
+          .from("devoluciones")
+          .select("nc_estado, nc_cae, nc_cae_vencimiento, nc_tipo, nc_punto_venta, nc_numero, nc_fecha, nc_neto, nc_iva, nc_total, nc_error")
+          .eq("id_devolucion", idDevolucion)
+          .maybeSingle();
+        if (nc) await supabase.from("ventas").update(nc).eq("id_venta", idVenta);
+      }
+    } else {
+      await supabase.from("ventas").update({ devuelta_parcial: true }).eq("id_venta", idVenta);
+    }
+
+    revalidatePath("/ventas");
+    revalidatePath("/dashboard");
+    revalidatePath("/clientes");
+    revalidatePath("/stock");
+    revalidatePath("/turnos");
+
+    return { error: null, aviso: avisos.length > 0 ? avisos.join(" · ") : undefined };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo registrar la devolución" };
+  }
+}
+
+/** El reintegro por Mercado Pago. Nunca frena la devolución: devuelve el aviso. */
+async function reintegrarPorMp(
+  supabase: ReturnType<typeof getSupabaseServerClient>,
+  idPago: string | null,
+  monto: number,
+  idDevolucion: string
+): Promise<string> {
+  const { data: pago } = idPago
+    ? await supabase.from("pagos").select("id_pago_externo").eq("id_pago", idPago).maybeSingle()
+    : { data: null };
+  const idPagoMp = pago?.id_pago_externo as string | null | undefined;
+
+  if (!idPagoMp) {
+    await supabase
+      .from("devoluciones")
+      .update({ mp_error: "La venta no tiene guardado el id del pago de Mercado Pago." })
+      .eq("id_devolucion", idDevolucion);
+    return "No se pudo pedir el reintegro solo: falta el id del pago de Mercado Pago. Hacelo a mano desde Mercado Pago.";
+  }
+
+  try {
+    const r = await reintegrarPagoMp({ idPagoMp, monto, referencia: idDevolucion });
+    await supabase.from("devoluciones").update({ mp_refund_id: r.id, mp_error: null }).eq("id_devolucion", idDevolucion);
+    return "Reintegro pedido a Mercado Pago. Avisale al cliente que si pagó con tarjeta puede aparecerle recién en el resumen siguiente.";
+  } catch (err) {
+    const detalle = err instanceof Error ? err.message : "error desconocido";
+    await supabase.from("devoluciones").update({ mp_error: detalle }).eq("id_devolucion", idDevolucion);
+    return `Mercado Pago no aceptó el reintegro: ${detalle} · Hacelo a mano desde Mercado Pago.`;
+  }
+}
+
 /**
  * Reintentar la nota de crédito de una venta ya anulada.
  *
@@ -110,263 +408,119 @@ export async function reintentarNotaCredito(idVenta: string): Promise<{ error: s
   }
 }
 
+
+/**
+ * Anular una venta entera.
+ *
+ * Es una devolución de todo: delega en registrarDevolucion con todas las
+ * líneas. Antes tenía su propia copia de la reposición de stock, los puntos,
+ * la nota de crédito y el contracargo — dos copias de la misma cuenta que
+ * tarde o temprano se iban a separar.
+ *
+ * `destino` viene en "VUELVE" porque la anulación clásica es la venta cargada
+ * mal o el cliente que se arrepintió al toque. Cuando el producto no puede
+ * volver a la góndola, se usa la pantalla de devolución.
+ */
 export async function anularVenta(
   idVenta: string,
   motivo: string,
   devolucion?: { medio: MedioDevolucion; monto?: number; claveAdmin?: string }
 ): Promise<{ error: string | null; aviso?: string }> {
-  const motivoLimpio = motivo.trim();
-  if (!motivoLimpio) return { error: "Contá el motivo de la anulación." };
+  const supabase = getSupabaseServerClient();
 
-  try {
-    const supabase = getSupabaseServerClient();
+  const lineas = await lineasDevolvibles(supabase, idVenta);
+  if (lineas.length === 0) return { error: "No se encontró el detalle de esta venta." };
 
-    const { data: venta, error: errorVenta } = await supabase
-      .from("ventas")
-      .select(
-        "id_venta, id_cliente, id_local, id_pago, estado, id_liquidacion, medio_pago, total, id_turno, cae, puntos_generados, puntos_canjeados, id_codigo_profesional, id_profesional_canje, marcas_canje"
-      )
+  return registrarDevolucion(
+    idVenta,
+    lineas.filter((l) => l.disponible > 0).map((l) => ({ idDetalle: l.idDetalle, cantidad: l.disponible })),
+    {
+      motivo,
+      destino: "VUELVE",
+      medio: devolucion?.medio,
+      claveAdmin: devolucion?.claveAdmin,
+    }
+  );
+}
+
+/**
+ * Lo que solo pasa cuando la venta queda anulada entera: el referido del
+ * profesional, su canje de saldo y el estado del pago.
+ *
+ * No se hace en las parciales a propósito. Un referido o un canje son de la
+ * compra completa: si devuelve un producto de tres, la compra existió y esos
+ * beneficios se ganaron igual.
+ */
+async function revertirExtrasDeVentaAnulada(
+  supabase: ReturnType<typeof getSupabaseServerClient>,
+  venta: { id_venta: string; id_pago: string | null },
+  motivo: string,
+  usuario: string | null
+) {
+  const idVenta = venta.id_venta;
+
+  const { data: completa } = await supabase
+    .from("ventas")
+    .select("id_codigo_profesional, id_profesional_canje, marcas_canje")
+    .eq("id_venta", idVenta)
+    .maybeSingle();
+
+  // Referido de una profesional: se anula sin borrarlo (para no perder el
+  // historial) y se le devuelve el uso al código.
+  if (completa?.id_codigo_profesional) {
+    const { data: referido } = await supabase
+      .from("referidos_profesionales")
+      .select("id_referido, estado")
       .eq("id_venta", idVenta)
       .maybeSingle();
-    if (errorVenta) return { error: friendlyDbError(errorVenta) };
-    if (!venta) return { error: "No se encontró la venta" };
-    if (venta.estado !== "PAGADA") return { error: "Solo se pueden anular ventas que ya están pagadas." };
-
-    const usuario = await usuarioActual();
-    const esMercadoPago = venta.medio_pago === "MERCADO_PAGO";
-
-    // Reponer el stock vendido.
-    const { data: detalle, error: errorDetalle } = await supabase
-      .from("detalle_ventas")
-      .select("id_variante, cantidad")
-      .eq("id_venta", idVenta);
-    if (errorDetalle) return { error: friendlyDbError(errorDetalle) };
-
-    if (venta.id_local) {
-      for (const linea of detalle ?? []) {
-        const { data: stockActual } = await supabase
-          .from("stock")
-          .select("cantidad")
-          .eq("id_variante", linea.id_variante)
-          .eq("id_local", venta.id_local)
-          .maybeSingle();
-        const nuevaCantidad = (stockActual?.cantidad ?? 0) + (linea.cantidad as number);
-
-        const { error: errorStock } = await supabase
-          .from("stock")
-          .upsert(
-            {
-              id_variante: linea.id_variante,
-              id_local: venta.id_local,
-              cantidad: nuevaCantidad,
-              fecha_actualizacion: new Date().toISOString(),
-            },
-            { onConflict: "id_variante,id_local" }
-          );
-        if (errorStock) return { error: friendlyDbError(errorStock) };
-
-        await supabase.from("movimientos_stock").insert({
-          id_variante: linea.id_variante,
-          id_local: venta.id_local,
-          tipo: "ANULACION_VENTA",
-          cantidad: linea.cantidad,
-          motivo: `Anulación de venta — ${motivoLimpio}`,
-          id_referencia: idVenta,
-          usuario,
-        });
-      }
+    if (referido && referido.estado !== "ANULADO") {
+      await supabase.from("referidos_profesionales").update({ estado: "ANULADO" }).eq("id_referido", referido.id_referido);
     }
 
-    // Devolverle al cliente los puntos que gastó y sacarle los que ganó con
-    // esta venta — sin dejarlo en negativo si ya gastó esos puntos después
-    // en otra compra.
-    if (venta.id_cliente) {
-      const { data: cliente } = await supabase
-        .from("clientes")
-        .select("puntos")
-        .eq("id_cliente", venta.id_cliente)
-        .maybeSingle();
-      const puntosActuales = cliente?.puntos ?? 0;
-      const puntosNuevos = Math.max(
-        puntosActuales + (venta.puntos_canjeados ?? 0) - (venta.puntos_generados ?? 0),
-        0
-      );
-      await supabase.from("clientes").update({ puntos: puntosNuevos }).eq("id_cliente", venta.id_cliente);
-    }
-
-    // Si el pedido vino con un código de profesional referente: anular el
-    // referido (sin borrarlo, para no perder el historial) y devolverle el
-    // uso al código.
-    if (venta.id_codigo_profesional) {
-      const { data: referido } = await supabase
-        .from("referidos_profesionales")
-        .select("id_referido, estado")
-        .eq("id_venta", idVenta)
-        .maybeSingle();
-      if (referido && referido.estado !== "ANULADO") {
-        await supabase.from("referidos_profesionales").update({ estado: "ANULADO" }).eq("id_referido", referido.id_referido);
-      }
-
-      const { data: codigo } = await supabase
+    const { data: codigo } = await supabase
+      .from("codigos_profesionales")
+      .select("usos")
+      .eq("id_codigo", completa.id_codigo_profesional)
+      .maybeSingle();
+    if (codigo) {
+      await supabase
         .from("codigos_profesionales")
-        .select("usos")
-        .eq("id_codigo", venta.id_codigo_profesional)
-        .maybeSingle();
-      if (codigo) {
-        await supabase
-          .from("codigos_profesionales")
-          .update({ usos: Math.max((codigo.usos ?? 0) - 1, 0) })
-          .eq("id_codigo", venta.id_codigo_profesional);
-      }
+        .update({ usos: Math.max((codigo.usos ?? 0) - 1, 0) })
+        .eq("id_codigo", completa.id_codigo_profesional);
     }
-
-    // Si el profesional pagó parte de esta compra con su propio saldo
-    // (canje), devolverle ese saldo con un movimiento de reversión — el
-    // saldo se calcula sumando todos los movimientos, así que no hace falta
-    // tocar ningún total guardado.
-    if (venta.id_profesional_canje && venta.marcas_canje && venta.marcas_canje.length > 0) {
-      const { data: movimientosCanje } = await supabase
-        .from("movimientos_profesional_marca")
-        .select("id_marca, monto")
-        .eq("id_venta", idVenta)
-        .eq("tipo", "CANJE");
-      if (movimientosCanje && movimientosCanje.length > 0) {
-        await supabase.from("movimientos_profesional_marca").insert(
-          movimientosCanje.map((m) => ({
-            id_profesional: venta.id_profesional_canje,
-            id_marca: m.id_marca,
-            tipo: "REVERSION_CANJE",
-            monto: -(m.monto as number),
-            id_venta: idVenta,
-            usuario,
-            descripcion: `Devolución por anulación de venta — ${motivoLimpio}`,
-          }))
-        );
-      }
-    }
-
-    // Sacarle a la venta el estado "acreditado" del pago para que deje de
-    // contar en la caja del período (ver cajaPeriodo en dashboard/actions.ts)
-    // — si no se hace esto, el dashboard sigue mostrando esa plata como
-    // cobrada aunque la venta ya esté anulada.
-    if (venta.id_pago) {
-      await supabase.from("pagos").update({ estado: "ANULADO" }).eq("id_pago", venta.id_pago);
-    }
-
-    // Cómo volvió la plata.
-    //
-    // Al pasar a ANULADA, la venta sale sola del arqueo (resumenTurno solo
-    // cuenta las PAGADAS). Eso alcanza en el caso simple: venta en efectivo
-    // devuelta en efectivo, el mismo día, en el mismo turno — sale la plata
-    // del cajón y sale el importe de lo esperado, y el arqueo cierra igual.
-    //
-    // Deja de alcanzar en dos casos, que son los que hay que registrar:
-    //   · Se devuelve otro día. La venta salía del arqueo de un turno ya
-    //     cerrado, y la plata sale del cajón de hoy: hoy falta plata sin
-    //     explicación.
-    //   · Se cobró por Mercado Pago y se devuelve en efectivo. La plata entró
-    //     por un lado y sale por otro.
-    // Por eso se guarda a qué turno se le descuenta la salida (ver
-    // resumenTurno en turnos/actions.ts).
-    // La plata vuelve por donde entró (ver medioDevolucionDe). Pedir otro
-    // medio necesita la contraseña de un admin, y queda registrado quién lo
-    // autorizó.
-    const medioQueCorresponde = medioDevolucionDe(venta.medio_pago);
-    const medioPedido: MedioDevolucion = devolucion?.medio ?? medioQueCorresponde;
-    let autorizadoPor: string | null = null;
-
-    // PENDIENTE y NO_CORRESPONDE no son "otro medio": son "todavía no salió
-    // plata" y "no había plata". No hay mezcla que autorizar.
-    const esMezcla =
-      medioPedido !== medioQueCorresponde && medioPedido !== "PENDIENTE" && medioPedido !== "NO_CORRESPONDE";
-
-    if (esMezcla) {
-      const autorizador = await autorizarMedioDistinto(supabase, devolucion?.claveAdmin ?? "");
-      if (!autorizador) {
-        return {
-          error:
-            venta.medio_pago === "MERCADO_PAGO"
-              ? "Esta venta se cobró por Mercado Pago, así que el reintegro va por Mercado Pago. Devolverla en efectivo necesita la contraseña de un administrador."
-              : "Esta venta se cobró en efectivo, así que se devuelve en efectivo. Hacerlo de otra forma necesita la contraseña de un administrador.",
-        };
-      }
-      autorizadoPor = autorizador.nombre;
-    }
-
-    const medioDevolucion = medioPedido;
-    const montoDevuelto = devolucion?.monto ?? venta.total ?? 0;
-
-    let turnoDevolucion: string | null = null;
-    if (medioDevolucion === "EFECTIVO_TURNO" && venta.id_local) {
-      // Se descuenta del turno ABIERTO ahora, no del turno de la venta: la
-      // plata sale del cajón hoy, aunque la venta sea de la semana pasada.
-      turnoDevolucion = await turnoAbiertoDeLocal(supabase, venta.id_local);
-      if (!turnoDevolucion) {
-        return {
-          error:
-            "Para devolver en efectivo tiene que haber un turno de caja abierto — si no, la plata sale del cajón y no queda registrada en ningún arqueo. Abrí el turno y anulá de nuevo.",
-        };
-      }
-    }
-
-    const { error: errorUpdate } = await supabase
-      .from("ventas")
-      .update({
-        estado: "ANULADA",
-        motivo_cancelacion: motivoLimpio,
-        fecha_cancelacion: new Date().toISOString(),
-        devolucion_medio: medioDevolucion,
-        devolucion_monto: medioDevolucion === "NO_CORRESPONDE" ? 0 : montoDevuelto,
-        devolucion_turno: turnoDevolucion,
-        devolucion_fecha: new Date().toISOString(),
-        devolucion_autorizada_por: autorizadoPor,
-      })
-      .eq("id_venta", idVenta)
-      .eq("estado", "PAGADA");
-    if (errorUpdate) return { error: friendlyDbError(errorUpdate) };
-
-    // Recién ahora la nota de crédito: primero se completa la anulación
-    // interna, que no depende de nadie, y después se intenta el comprobante
-    // contra ARCA, que sí puede fallar. Si falla queda PENDIENTE y la
-    // anulación no se deshace — ver emitirNotaCreditoDeVenta.
-    const nota = venta.cae ? await emitirNotaCreditoDeVenta(idVenta) : null;
-
-    // Si la venta ya se le había liquidado a la marca, la marca ya cobró su
-    // parte de una venta que se deshizo. Antes esto frenaba la anulación
-    // entera; ahora se anula igual y queda un contracargo en su cuenta, que
-    // se descuenta solo de la próxima liquidación. Frenar era peor: dejaba al
-    // cliente sin devolución y a la factura viva en ARCA.
-    let contracargos: { nombre: string; importe: number }[] = [];
-    if (venta.id_liquidacion) {
-      const r = await contracargoPorAnulacion(idVenta, motivoLimpio, usuario);
-      contracargos = r.marcas;
-      revalidatePath("/liquidaciones");
-      revalidatePath("/marcas");
-    }
-
-    revalidatePath("/ventas");
-    revalidatePath("/dashboard");
-    revalidatePath("/clientes");
-    revalidatePath("/profesionales");
-    revalidatePath("/stock");
-    revalidatePath("/turnos");
-
-    const avisos = [
-      nota?.mensaje,
-      contracargos.length > 0
-        ? `Esta venta ya estaba liquidada, así que se le descontó a ${contracargos
-            .map((c) => `${c.nombre} $${c.importe.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`)
-            .join(" y ")} en su próxima liquidación.`
-        : null,
-      esMercadoPago && medioDevolucion !== "MERCADO_PAGO"
-        ? "Esta venta se cobró por Mercado Pago: el reintegro al cliente hay que hacerlo aparte, desde Mercado Pago. El sistema no lo hace solo."
-        : null,
-    ].filter(Boolean);
-
-    return { error: null, aviso: avisos.length > 0 ? avisos.join(" · ") : undefined };
-  } catch (err) {
-    return { error: err instanceof Error ? err.message : "No se pudo anular la venta" };
   }
+
+  // Si la profesional pagó parte con su propio saldo, se le devuelve con un
+  // movimiento de reversión: el saldo se calcula sumando movimientos, así que
+  // no hay ningún total guardado que corregir.
+  if (completa?.id_profesional_canje && completa.marcas_canje && completa.marcas_canje.length > 0) {
+    const { data: movimientosCanje } = await supabase
+      .from("movimientos_profesional_marca")
+      .select("id_marca, monto")
+      .eq("id_venta", idVenta)
+      .eq("tipo", "CANJE");
+    if (movimientosCanje && movimientosCanje.length > 0) {
+      await supabase.from("movimientos_profesional_marca").insert(
+        movimientosCanje.map((m) => ({
+          id_profesional: completa.id_profesional_canje,
+          id_marca: m.id_marca,
+          tipo: "REVERSION_CANJE",
+          monto: -(m.monto as number),
+          id_venta: idVenta,
+          usuario,
+          descripcion: `Devolución por anulación de venta — ${motivo}`,
+        }))
+      );
+    }
+  }
+
+  // Sacarle al pago el estado "acreditado" para que esa plata deje de contar
+  // en la caja del período (ver cajaPeriodo en dashboard/actions.ts).
+  if (venta.id_pago) {
+    await supabase.from("pagos").update({ estado: "ANULADO" }).eq("id_pago", venta.id_pago);
+  }
+
+  revalidatePath("/profesionales");
 }
 
 // ===================== LISTADO FILTRADO (optimización de carga) =====================
