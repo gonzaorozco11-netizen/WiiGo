@@ -591,6 +591,27 @@ export type Venta = {
   factura_fecha: string | null;
   factura_doc_tipo: number | null;
   factura_doc_nro: string | null;
+  // Nota de crédito: el comprobante que deja sin efecto la factura cuando la
+  // venta se anula. Una factura autorizada no se borra nunca — ver
+  // lib/arca/notaCredito.ts.
+  nc_estado: string | null;
+  nc_cae: string | null;
+  nc_cae_vencimiento: string | null;
+  nc_tipo: number | null;
+  nc_punto_venta: number | null;
+  nc_numero: number | null;
+  nc_fecha: string | null;
+  nc_neto: number | null;
+  nc_iva: number | null;
+  nc_total: number | null;
+  nc_error: string | null;
+  // Cómo volvió la plata al anular. Sin esto el arqueo no cierra — ver
+  // resumenTurno en app/(app)/turnos/actions.ts.
+  devolucion_medio: string | null;
+  devolucion_monto: number | null;
+  devolucion_turno: string | null;
+  devolucion_fecha: string | null;
+  devolucion_autorizada_por: string | null;
 };
 
 // Turno de caja: abre un empleado con un fondo inicial de efectivo, todas

@@ -4,6 +4,36 @@ import { useMemo, useState } from "react";
 import type { Local, Producto, Marca, Subcategoria, VarianteProducto, Stock, MovimientoStock } from "@/lib/supabase";
 import AjusteStockModal from "@/components/AjusteStockModal";
 import TransferenciaStockModal from "@/components/TransferenciaStockModal";
+import type { Cobertura } from "@/lib/cobertura";
+
+/**
+ * La celda de cobertura.
+ *
+ * Con poco historial el número igual se muestra, pero en gris: esconderlo
+ * haría pensar que el sistema no lo calcula, y mostrarlo firme haría que
+ * alguien tome una decisión de compra sobre cuatro días de datos.
+ */
+function CeldaCobertura({ c, sinDatos }: { c: Cobertura | undefined; sinDatos: boolean }) {
+  if (sinDatos || !c) return <span className="text-neutral-300">—</span>;
+
+  // Vende cero en la ventana: el stock no se mueve. No es "infinitos días",
+  // es un producto parado, y eso se dice con palabras.
+  if (c.dias === null) {
+    return <span className="text-neutral-400 text-xs">sin ventas</span>;
+  }
+
+  const dias = Math.floor(c.dias);
+  // Los cortes son de sentido común, no de fórmula: menos de una semana no da
+  // tiempo a que la marca traiga, menos de dos es para tener en el radar.
+  const color = dias < 7 ? "text-red-600 font-semibold" : dias < 14 ? "text-amber-600 font-medium" : "text-neutral-600";
+
+  return (
+    <span className={c.confiable ? color : "text-neutral-400"} title={c.confiable ? undefined : "Pocos días de ventas todavía: el número puede moverse mucho"}>
+      {dias} {dias === 1 ? "día" : "días"}
+      {!c.confiable && " ~"}
+    </span>
+  );
+}
 
 type Fila = {
   variante: VarianteProducto;
@@ -28,6 +58,10 @@ export default function StockApp({
   subcategorias,
   stock,
   movimientos,
+  cobertura,
+  diasDeHistorial,
+  coberturaSinDatos,
+  diasMinimos,
 }: {
   locales: Local[];
   variantes: VarianteProducto[];
@@ -36,6 +70,10 @@ export default function StockApp({
   subcategorias: Subcategoria[];
   stock: Stock[];
   movimientos: MovimientoStock[];
+  cobertura: Record<string, Cobertura>;
+  diasDeHistorial: number;
+  coberturaSinDatos: boolean;
+  diasMinimos: number;
 }) {
   const [idLocal, setIdLocal] = useState(locales[0]?.id_local ?? "");
   const [search, setSearch] = useState("");
@@ -180,6 +218,20 @@ export default function StockApp({
         </select>
       </div>
 
+      {/* La columna Cobertura existe desde el día uno aunque no tenga con qué
+          llenarse. Si no estuviera, nadie sabría que el sistema la va a
+          calcular — y alguien terminaría cargando mínimos a mano al pedo. */}
+      {coberturaSinDatos && (
+        <div className="mb-4 rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3">
+          <p className="text-sm font-medium text-neutral-800">La columna Cobertura todavía está vacía</p>
+          <p className="text-sm text-neutral-500 mt-0.5">
+            {diasDeHistorial === 0
+              ? "Se calcula con las ventas reales, y todavía no hay ninguna. Se enciende sola una semana después de abrir, y a las 3 semanas el número ya es firme."
+              : `Llevás ${diasDeHistorial} ${diasDeHistorial === 1 ? "día" : "días"} de ventas. A partir de ${diasMinimos} el número empieza a aparecer, y a las 3 semanas deja de ser aproximado.`}
+          </p>
+        </div>
+      )}
+
       {filtradas.length === 0 ? (
         <p className="text-sm text-neutral-500 py-12 text-center">
           {variantes.length === 0
@@ -195,6 +247,7 @@ export default function StockApp({
                 <th className="p-3">Marca</th>
                 <th className="p-3">SKU</th>
                 <th className="p-3">Cantidad</th>
+                <th className="p-3">Cobertura</th>
                 <th className="p-3">Mínimo</th>
                 <th className="p-3">Objetivo</th>
                 <th className="p-3"></th>
@@ -227,6 +280,12 @@ export default function StockApp({
                           bajo mínimo
                         </span>
                       )}
+                    </td>
+                    <td className="p-3">
+                      <CeldaCobertura
+                        c={cobertura[`${f.variante.id_variante}_${idLocal}`]}
+                        sinDatos={coberturaSinDatos}
+                      />
                     </td>
                     <td className="p-3 text-neutral-500">{f.variante.stock_minimo}</td>
                     <td className="p-3 text-neutral-500">{f.variante.stock_objetivo}</td>

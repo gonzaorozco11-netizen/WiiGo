@@ -10,6 +10,7 @@ type Resumen = {
   totalVueltoEntregado: number;
   totalGastosEfectivo: number;
   totalPagosProveedorEfectivo: number;
+  totalDevolucionesEfectivo: number;
   cantidadVentas: number;
   montoInicial: number;
   efectivoEsperado: number;
@@ -234,12 +235,25 @@ export default function TurnosApp({ locales, turnosAbiertos }: { locales: Local[
                 icono="⬆"
                 etiqueta="Salidas de caja"
                 valor={
-                  resumen.totalVueltoEntregado + resumen.totalGastosEfectivo + resumen.totalPagosProveedorEfectivo > 0
-                    ? `-$${formatearMonto(resumen.totalVueltoEntregado + resumen.totalGastosEfectivo + resumen.totalPagosProveedorEfectivo)}`
+                  resumen.totalVueltoEntregado +
+                    resumen.totalGastosEfectivo +
+                    resumen.totalPagosProveedorEfectivo +
+                    resumen.totalDevolucionesEfectivo >
+                  0
+                    ? `-$${formatearMonto(
+                        resumen.totalVueltoEntregado +
+                          resumen.totalGastosEfectivo +
+                          resumen.totalPagosProveedorEfectivo +
+                          resumen.totalDevolucionesEfectivo
+                      )}`
                     : "$0"
                 }
                 nota={`Vuelto $${formatearMonto(resumen.totalVueltoEntregado)} · Gastos $${formatearMonto(resumen.totalGastosEfectivo)}${
                   resumen.totalPagosProveedorEfectivo > 0 ? ` · Pagos a proveedores $${formatearMonto(resumen.totalPagosProveedorEfectivo)}` : ""
+                }${
+                  resumen.totalDevolucionesEfectivo > 0
+                    ? ` · Devoluciones $${formatearMonto(resumen.totalDevolucionesEfectivo)}`
+                    : ""
                 }`}
               />
               <StatCard

@@ -101,12 +101,29 @@ async function resumenTurno(supabase: SupabaseClient, idTurno: string) {
     .eq("medio_pago", "EFECTIVO_TURNO");
   const totalPagosProveedorEfectivo = (pagosProveedor ?? []).reduce((acc, m) => acc - (m.importe ?? 0), 0);
 
+  // Plata devuelta por anulaciones, contra el turno en que salió del cajón.
+  //
+  // Una venta anulada deja de sumar acá sola (arriba solo se cuentan las
+  // PAGADAS), y con eso alcanza cuando la devolución es del mismo día y del
+  // mismo medio. Los otros casos necesitan esta resta: una venta de la semana
+  // pasada devuelta hoy salía de un arqueo ya cerrado, y una venta cobrada por
+  // Mercado Pago y devuelta en efectivo nunca sumó a esta caja. Sin esto, al
+  // cerrar faltaría plata sin explicación y nadie sabría por qué.
+  const { data: devoluciones } = await supabase
+    .from("ventas")
+    .select("devolucion_monto")
+    .eq("devolucion_turno", idTurno)
+    .eq("devolucion_medio", "EFECTIVO_TURNO")
+    .eq("estado", "ANULADA");
+  const totalDevolucionesEfectivo = (devoluciones ?? []).reduce((acc, d) => acc + (d.devolucion_monto ?? 0), 0);
+
   return {
     totalEfectivo,
     totalMercadoPago,
     totalVueltoEntregado: totalRecibidoEfectivo - totalEfectivo,
     totalGastosEfectivo,
     totalPagosProveedorEfectivo,
+    totalDevolucionesEfectivo,
     cantidadVentas: (ventas ?? []).length,
   };
 }
@@ -126,7 +143,11 @@ export async function resumenTurnoAbierto(idTurno: string) {
     ...resumen,
     montoInicial: turno.monto_inicial_efectivo,
     efectivoEsperado:
-      turno.monto_inicial_efectivo + resumen.totalEfectivo - resumen.totalGastosEfectivo - resumen.totalPagosProveedorEfectivo,
+      turno.monto_inicial_efectivo +
+      resumen.totalEfectivo -
+      resumen.totalGastosEfectivo -
+      resumen.totalPagosProveedorEfectivo -
+      resumen.totalDevolucionesEfectivo,
   };
 }
 
@@ -150,7 +171,11 @@ export async function cerrarTurno(
 
     const resumen = await resumenTurno(supabase, idTurno);
     const efectivoEsperado =
-      turno.monto_inicial_efectivo + resumen.totalEfectivo - resumen.totalGastosEfectivo - resumen.totalPagosProveedorEfectivo;
+      turno.monto_inicial_efectivo +
+      resumen.totalEfectivo -
+      resumen.totalGastosEfectivo -
+      resumen.totalPagosProveedorEfectivo -
+      resumen.totalDevolucionesEfectivo;
     const usuario = await usuarioActual();
 
     const { error } = await supabase

@@ -13,8 +13,29 @@ import { obtenerEmisor } from "@/lib/arca/emisor-db";
 // el del titular del certificado (Gonzalo). Funciona porque la empresa lo
 // autorizó como representante para este servicio en ARCA.
 
-export const TIPO_COMPROBANTE = { FACTURA_A: 1, FACTURA_B: 6 } as const;
+export const TIPO_COMPROBANTE = {
+  FACTURA_A: 1,
+  FACTURA_B: 6,
+  NOTA_CREDITO_A: 3,
+  NOTA_CREDITO_B: 8,
+} as const;
 export const TIPO_DOC = { CUIT: 80, DNI: 96, CONSUMIDOR_FINAL: 99 } as const;
+
+/**
+ * Qué nota de crédito le corresponde a cada factura.
+ *
+ * Una nota de crédito no borra la factura: es otro comprobante que la deja sin
+ * efecto. Por eso tiene que ser de la misma letra que la original — a una
+ * factura B le corresponde una nota de crédito B, y ARCA rechaza la mezcla.
+ */
+export const NOTA_CREDITO_DE: Record<number, number> = {
+  [TIPO_COMPROBANTE.FACTURA_A]: TIPO_COMPROBANTE.NOTA_CREDITO_A,
+  [TIPO_COMPROBANTE.FACTURA_B]: TIPO_COMPROBANTE.NOTA_CREDITO_B,
+};
+
+export function esNotaCredito(tipo: number) {
+  return tipo === TIPO_COMPROBANTE.NOTA_CREDITO_A || tipo === TIPO_COMPROBANTE.NOTA_CREDITO_B;
+}
 
 export type DatosFactura = {
   tipoComprobante: number;
@@ -24,6 +45,17 @@ export type DatosFactura = {
   total: number;
   /** Porcentaje de IVA a aplicar (21 por defecto). */
   porcentajeIva: number;
+  /**
+   * La factura que este comprobante deja sin efecto. Obligatorio en las notas
+   * de crédito: sin esto ARCA no sabe qué venta se está anulando.
+   */
+  comprobanteAsociado?: {
+    tipo: number;
+    puntoVenta: number;
+    numero: number;
+    /** AAAAMMDD de la factura original. */
+    fecha?: string;
+  };
 };
 
 export type ResultadoFactura = {
@@ -143,6 +175,20 @@ export async function emitirFactura(datos: DatosFactura): Promise<ResultadoFactu
   // Id 5 = 21%, Id 4 = 10,5%. Se elige por el porcentaje configurado.
   const idAlicuota = datos.porcentajeIva === 10.5 ? 4 : 5;
 
+  // El orden de los elementos dentro de FECAEDetRequest no es libre: ARCA
+  // valida contra el WSDL y rechaza el pedido si uno viene fuera de lugar.
+  // CbtesAsoc va después de MonCotiz y antes de Iva — no lo muevas de ahí.
+  const a = datos.comprobanteAsociado;
+  const asociado = a
+    ? `<ar:CbtesAsoc>
+              <ar:CbteAsoc>
+                <ar:Tipo>${a.tipo}</ar:Tipo>
+                <ar:PtoVta>${a.puntoVenta}</ar:PtoVta>
+                <ar:Nro>${a.numero}</ar:Nro>${a.fecha ? `\n                <ar:CbteFch>${a.fecha}</ar:CbteFch>` : ""}
+              </ar:CbteAsoc>
+            </ar:CbtesAsoc>`
+    : "";
+
   const cuerpo = `<ar:FeCAEReq>
         <ar:FeCabReq>
           <ar:CantReg>1</ar:CantReg>
@@ -165,6 +211,7 @@ export async function emitirFactura(datos: DatosFactura): Promise<ResultadoFactu
             <ar:ImpIVA>${iva.toFixed(2)}</ar:ImpIVA>
             <ar:MonId>PES</ar:MonId>
             <ar:MonCotiz>1</ar:MonCotiz>
+            ${asociado}
             <ar:Iva>
               <ar:AlicIva>
                 <ar:Id>${idAlicuota}</ar:Id>

@@ -7,6 +7,7 @@ import { friendlyDbError } from "@/lib/errors";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 import { registrarMovimientoRetencion, saldosRetencionPorMarca, historialRetencionMarca } from "@/lib/retencionesMarca";
 import { obtenerSesionMarca, exigirLecturaDeMarca, exigirGestionInterna } from "@/lib/marcaSesion";
+import { registrarMovimientoComercial } from "@/lib/cuentaComercialMarca";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 async function usuarioActual() {
@@ -250,6 +251,73 @@ export async function construirLineas(supabase: SupabaseClient, idMarca: string,
   );
 
   return { marca: marca.nombre, lineas, resumen };
+}
+
+/**
+ * Devuelve el contracargo de una venta que se anula después de haberla
+ * liquidado.
+ *
+ * El caso: se vende el lunes, se liquida a la marca el martes (ya cobró su
+ * parte), y el cliente devuelve el miércoles. La plata volvió al cliente, pero
+ * la marca ya se llevó lo suyo. Sin esto, esa diferencia la pone WiiGo.
+ *
+ * Se calcula con el MISMO motor que la liquidación original (construirLineas),
+ * no con una fórmula repetida: si mañana cambia una tasa o una marca deja de
+ * trasladar el SIRCREB, el contracargo cambia igual que la rendición. Una
+ * segunda copia de esta cuenta se desincronizaría el primer día.
+ *
+ * Una venta puede tener productos de varias marcas, así que devuelve un
+ * movimiento por marca.
+ */
+export async function contracargoPorAnulacion(
+  idVenta: string,
+  motivo: string,
+  usuario: string | null
+): Promise<{ marcas: { idMarca: string; nombre: string; importe: number }[]; error: string | null }> {
+  const supabase = getSupabaseServerClient();
+
+  const { data: venta } = await supabase
+    .from("ventas")
+    .select("id_venta, numero, fecha, medio_pago, id_pago, id_local, id_liquidacion")
+    .eq("id_venta", idVenta)
+    .maybeSingle();
+  if (!venta) return { marcas: [], error: "No se encontró la venta" };
+
+  const { data: lineas } = await supabase.from("detalle_ventas").select("id_marca").eq("id_venta", idVenta);
+  const idsMarca = [...new Set((lineas ?? []).map((l) => l.id_marca as string).filter(Boolean))];
+  if (idsMarca.length === 0) return { marcas: [], error: null };
+
+  const ventaParaCalculo = {
+    id_venta: venta.id_venta as string,
+    numero: venta.numero as number,
+    fecha: venta.fecha as string,
+    medio_pago: venta.medio_pago as string | null,
+    id_pago: venta.id_pago as string | null,
+  };
+
+  const resultado: { idMarca: string; nombre: string; importe: number }[] = [];
+
+  for (const idMarca of idsMarca) {
+    const { marca, resumen } = await construirLineas(supabase, idMarca, [ventaParaCalculo]);
+    if (resumen.netoARendir <= 0) continue;
+
+    // Importe positivo = la marca le debe eso a WiiGo. Se descuenta solo de
+    // su próxima liquidación, que es exactamente lo que hay que hacer: no se
+    // le pide plata de vuelta, se compensa contra lo que va a cobrar.
+    await registrarMovimientoComercial(supabase, {
+      idMarca,
+      idLocal: (venta.id_local as string) ?? null,
+      tipoCargo: "AJUSTE",
+      importe: resumen.netoARendir,
+      usuario,
+      observaciones:
+        `Devolución de la venta #${venta.numero} — ya estaba liquidada, se descuenta de la próxima. ${motivo}`.trim(),
+    });
+
+    resultado.push({ idMarca, nombre: marca, importe: resumen.netoARendir });
+  }
+
+  return { marcas: resultado, error: null };
 }
 
 // Calcula la rendición línea por línea de una marca en un rango de

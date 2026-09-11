@@ -2,7 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Local, Venta, DetalleVenta, Producto, VarianteProducto, Marca, Cliente } from "@/lib/supabase";
-import { anularVenta, listarVentasFiltradas, obtenerDetalleVenta } from "@/app/(app)/ventas/actions";
+import {
+  anularVenta,
+  listarVentasFiltradas,
+  obtenerDetalleVenta,
+  reintentarNotaCredito,
+  type MedioDevolucion,
+} from "@/app/(app)/ventas/actions";
 import { emitirFacturaDeVenta } from "@/app/(app)/facturacion/actions";
 
 type FiltroFecha = "HOY" | "SEMANA" | "MES" | "TODO" | "RANGO";
@@ -157,7 +163,12 @@ export default function VentasApp({
   const [cargandoDetalle, setCargandoDetalle] = useState(false);
   const [anulando, setAnulando] = useState(false);
   const [motivoAnular, setMotivoAnular] = useState("");
+  // Arranca en el medio del cobro y solo cambia si un admin lo autoriza.
+  const [medioDevolucion, setMedioDevolucion] = useState<MedioDevolucion>("EFECTIVO_TURNO");
+  const [mezclarMedio, setMezclarMedio] = useState(false);
+  const [claveAdmin, setClaveAdmin] = useState("");
   const [procesandoAnular, setProcesandoAnular] = useState(false);
+  const [procesandoNota, setProcesandoNota] = useState(false);
   const [mensajeAnular, setMensajeAnular] = useState<{ tipo: "error" | "aviso"; texto: string } | null>(null);
 
   // La carga inicial (ventasIniciales) ya viene filtrada por "esta semana"
@@ -210,7 +221,10 @@ export default function VentasApp({
     if (!ventaSeleccionada) return;
     setProcesandoAnular(true);
     setMensajeAnular(null);
-    anularVenta(ventaSeleccionada.id_venta, motivoAnular)
+    anularVenta(ventaSeleccionada.id_venta, motivoAnular, {
+      medio: medioDevolucion,
+      claveAdmin: claveAdmin || undefined,
+    })
       .then((res) => {
         if (res.error) {
           setMensajeAnular({ tipo: "error", texto: res.error });
@@ -265,6 +279,11 @@ export default function VentasApp({
     () => ventasFiltradas.find((v) => v.id_venta === idVentaSeleccionada) ?? null,
     [ventasFiltradas, idVentaSeleccionada]
   );
+
+  // La plata vuelve por donde entró. Lo decide la venta, no quien anula — el
+  // servidor lo vuelve a verificar igual (ver medioDevolucionDe).
+  const medioQueCorresponde: MedioDevolucion =
+    ventaSeleccionada?.medio_pago === "MERCADO_PAGO" ? "MERCADO_PAGO" : "EFECTIVO_TURNO";
 
   return (
     <div>
@@ -513,6 +532,9 @@ export default function VentasApp({
                         onClick={() => {
                           setAnulando(true);
                           setMensajeAnular(null);
+                          setMedioDevolucion(medioQueCorresponde);
+                          setMezclarMedio(false);
+                          setClaveAdmin("");
                         }}
                         className="w-full text-sm font-semibold text-red-600 border border-red-200 rounded-lg py-2 hover:bg-red-50"
                       >
@@ -523,9 +545,74 @@ export default function VentasApp({
                         <p className="text-sm font-semibold text-red-700 mb-1">¿Anular esta venta?</p>
                         <p className="text-xs text-red-600 mb-2.5">
                           Se repone el stock vendido y se revierten los puntos, referidos o canjes que haya generado.
-                          {ventaSeleccionada.medio_pago === "MERCADO_PAGO" &&
-                            " El reintegro al cliente por Mercado Pago hay que hacerlo aparte, esto no lo hace solo."}
+                          {ventaSeleccionada.cae &&
+                            " Como está facturada, se emite la nota de crédito que la anula ante ARCA."}
                         </p>
+
+                        {ventaSeleccionada.id_liquidacion && (
+                          <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2 mb-2.5">
+                            Esta venta ya se le liquidó a la marca. Se le va a descontar de la próxima liquidación,
+                            automáticamente.
+                          </p>
+                        )}
+
+                        {/* Cómo vuelve la plata. No es una elección: la plata
+                            vuelve por donde entró. Se muestra como un hecho y
+                            no como un menú, porque presentarlo como opción ya
+                            invita a mezclar. */}
+                        <div className="bg-white border border-red-200 rounded-lg px-3 py-2.5 mb-2.5">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500 mb-0.5">
+                            La plata vuelve
+                          </p>
+                          <p className="text-sm font-semibold text-neutral-900">
+                            {medioQueCorresponde === "MERCADO_PAGO"
+                              ? "Por Mercado Pago"
+                              : "En efectivo, de la caja"}
+                          </p>
+                          <p className="text-[11px] text-neutral-500 mt-0.5">
+                            {medioQueCorresponde === "MERCADO_PAGO"
+                              ? "Se cobró por Mercado Pago, así que el reintegro va por ahí. Hacelo desde Mercado Pago: el sistema no lo hace solo."
+                              : "Se cobró en efectivo. Sale del turno abierto ahora y el arqueo lo descuenta solo."}
+                          </p>
+
+                          {!mezclarMedio ? (
+                            <button
+                              onClick={() => setMezclarMedio(true)}
+                              className="text-[11px] text-neutral-400 underline mt-1.5 hover:text-neutral-600"
+                            >
+                              Devolver de otra forma
+                            </button>
+                          ) : (
+                            <div className="mt-2 pt-2 border-t border-neutral-100">
+                              <p className="text-[11px] text-amber-700 mb-1.5">
+                                Devolver por un medio distinto al del cobro necesita la contraseña de un
+                                administrador, y queda registrado quién lo autorizó.
+                              </p>
+                              <select
+                                value={medioDevolucion}
+                                onChange={(e) => setMedioDevolucion(e.target.value as MedioDevolucion)}
+                                className="w-full border border-neutral-300 rounded-lg px-2.5 py-1.5 text-sm mb-1.5 bg-white"
+                              >
+                                <option value="EFECTIVO_TURNO">En efectivo, de la caja</option>
+                                <option value="MERCADO_PAGO">Reintegro por Mercado Pago</option>
+                                <option value="PENDIENTE">Todavía no se le devolvió</option>
+                                <option value="NO_CORRESPONDE">No hay plata que devolver</option>
+                              </select>
+                              {medioDevolucion !== medioQueCorresponde &&
+                                medioDevolucion !== "PENDIENTE" &&
+                                medioDevolucion !== "NO_CORRESPONDE" && (
+                                  <input
+                                    type="password"
+                                    value={claveAdmin}
+                                    onChange={(e) => setClaveAdmin(e.target.value)}
+                                    placeholder="Contraseña de administrador"
+                                    className="w-full border border-neutral-300 rounded-lg px-2.5 py-1.5 text-sm"
+                                  />
+                                )}
+                            </div>
+                          )}
+                        </div>
+
                         <textarea
                           value={motivoAnular}
                           onChange={(e) => setMotivoAnular(e.target.value)}
@@ -552,6 +639,49 @@ export default function VentasApp({
                             Cancelar
                           </button>
                         </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Una venta anulada que estaba facturada y no llegó a emitir
+                    la nota de crédito es un problema abierto con ARCA: la
+                    factura sigue viva. Se muestra fuerte y con el botón para
+                    cerrarlo, no como una nota al pie. */}
+                {ventaSeleccionada.estado === "ANULADA" && ventaSeleccionada.cae && (
+                  <div className="mt-4">
+                    {ventaSeleccionada.nc_cae ? (
+                      <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+                        Nota de crédito {String(ventaSeleccionada.nc_punto_venta ?? 0).padStart(5, "0")}-
+                        {String(ventaSeleccionada.nc_numero ?? 0).padStart(8, "0")} emitida · CAE{" "}
+                        {ventaSeleccionada.nc_cae}
+                      </p>
+                    ) : (
+                      <div className="border border-red-300 bg-red-50 rounded-xl p-3.5">
+                        <p className="text-sm font-semibold text-red-700 mb-1">Falta la nota de crédito</p>
+                        <p className="text-xs text-red-600 mb-2.5">
+                          Esta venta está anulada acá, pero la factura sigue viva en ARCA hasta que se emita la nota
+                          de crédito.
+                          {ventaSeleccionada.nc_error && ` Último intento: ${ventaSeleccionada.nc_error}`}
+                        </p>
+                        <button
+                          onClick={() => {
+                            setProcesandoNota(true);
+                            setMensajeAnular(null);
+                            reintentarNotaCredito(ventaSeleccionada.id_venta)
+                              .then((res) =>
+                                setMensajeAnular({
+                                  tipo: res.error ? "error" : "aviso",
+                                  texto: res.error ?? res.aviso ?? "Nota de crédito emitida.",
+                                })
+                              )
+                              .finally(() => setProcesandoNota(false));
+                          }}
+                          disabled={procesandoNota}
+                          className="w-full text-sm font-semibold text-white bg-red-600 rounded-lg py-2 disabled:opacity-50"
+                        >
+                          {procesandoNota ? "Emitiendo…" : "Emitir la nota de crédito ahora"}
+                        </button>
                       </div>
                     )}
                   </div>

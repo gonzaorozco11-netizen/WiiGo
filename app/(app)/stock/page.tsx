@@ -11,6 +11,7 @@ import {
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import PantallaBloqueada from "@/components/PantallaBloqueada";
 import StockApp from "@/components/StockApp";
+import { calcularCobertura, DIAS_MINIMOS, type Cobertura } from "@/lib/cobertura";
 
 export const dynamic = "force-dynamic";
 
@@ -59,8 +60,18 @@ export default async function StockPage() {
     );
   }
 
+  // La cobertura se calcula con las ventas reales. Antes de abrir el local no
+  // hay ninguna, así que la columna muestra desde cuándo va a servir en vez de
+  // quedar en blanco sin explicación.
+  const filasStock = (stockRes.data ?? []) as Stock[];
+  const cobertura = await calcularCobertura(supabase, filasStock);
+
   return (
     <StockApp
+      cobertura={Object.fromEntries(cobertura.porVarianteLocal) as Record<string, Cobertura>}
+      diasDeHistorial={cobertura.diasDeHistorial}
+      coberturaSinDatos={cobertura.sinDatos}
+      diasMinimos={DIAS_MINIMOS}
       locales={(localesRes.data ?? []) as Local[]}
       variantes={(variantesRes.data ?? []) as VarianteProducto[]}
       productos={(productosRes.data ?? []) as Producto[]}
