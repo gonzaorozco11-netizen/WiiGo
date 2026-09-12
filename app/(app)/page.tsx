@@ -1,13 +1,20 @@
 import { redirect } from "next/navigation";
-import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
+import { armarTablero } from "@/lib/tablero";
+import TableroInicio from "@/components/TableroInicio";
 
-// El Dueño sigue entrando por Marcas, como siempre. Un operativo con acceso
-// a Ficha Asistencia cae ahí directo — así nadie se olvida de fichar antes
-// de ponerse a hacer cualquier otra cosa.
+export const dynamic = "force-dynamic";
+
+// Pantalla de inicio: lo que cada uno tiene pendiente.
+//
+// Antes esto era un redirect — el Dueño caía en Marcas y un operativo con
+// Ficha Asistencia caía ahí directo, para que nadie se olvidara de fichar.
+// Ese motivo sigue valiendo, así que no se perdió: si todavía no marcó la
+// entrada, "Fichá tu entrada" es la primera tarjeta y va en rojo. La
+// diferencia es que ahora, además, ve el resto de su día.
 export default async function HomePage() {
-  const sesion = await obtenerSesionConPantallas();
-  if (sesion && sesion.rol !== "admin" && puedeVerPantalla(sesion, "ficha-asistencia")) {
-    redirect("/ficha-asistencia");
-  }
-  redirect("/marcas");
+  const tablero = await armarTablero();
+  // Sin sesión válida no hay tablero que armar: al login, como siempre.
+  if (!tablero) redirect("/login");
+
+  return <TableroInicio tablero={tablero} />;
 }
