@@ -1,4 +1,7 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "//": "cle1 = Cleveland, Ohio. La base de Supabase está en us-east-2 (Ohio), y por defecto Vercel corre en Virginia. No es una diferencia enorme, pero cada pantalla hace entre 6 y 10 consultas y cada una paga el viaje.",
+  "regions": ["cle1"],
   "crons": [
     {
       "path": "/api/cron/cargos-recurrentes",

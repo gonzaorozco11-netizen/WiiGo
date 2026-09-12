@@ -43,10 +43,14 @@ export default async function VentasPage() {
       .neq("estado", "PENDIENTE_PAGO")
       .gte("fecha", `${hace7diasISO()}T00:00:00`)
       .order("fecha", { ascending: false }),
-    supabase.from("productos").select("*"),
-    supabase.from("variantes_producto").select("*"),
-    supabase.from("marcas").select("*"),
-    supabase.from("clientes").select("*"),
+    // Solo los nombres: esta pantalla no usa nada más de estas cuatro tablas.
+    // Con select("*") viajaba al navegador la ficha completa de cada producto
+    // (descripción en tres idiomas, fotos, contenido del asesor) en cada
+    // carga y en cada refresh, para mostrar un renglón que dice el nombre.
+    supabase.from("productos").select("id_producto, nombre"),
+    supabase.from("variantes_producto").select("id_variante, id_producto, nombre"),
+    supabase.from("marcas").select("id_marca, nombre"),
+    supabase.from("clientes").select("id_cliente, nombre"),
     supabase.from("configuracion").select("valor").eq("parametro", "DEVOLUCION_DIAS_AVISO").maybeSingle(),
   ]);
 
@@ -66,10 +70,10 @@ export default async function VentasPage() {
     <VentasApp
       locales={(localesRes.data ?? []) as Local[]}
       ventasIniciales={(ventasRes.data ?? []) as Venta[]}
-      productos={(productosRes.data ?? []) as Producto[]}
-      variantes={(variantesRes.data ?? []) as VarianteProducto[]}
-      marcas={(marcasRes.data ?? []) as Marca[]}
-      clientes={(clientesRes.data ?? []) as Cliente[]}
+      productos={(productosRes.data ?? []) as Pick<Producto, "id_producto" | "nombre">[]}
+      variantes={(variantesRes.data ?? []) as Pick<VarianteProducto, "id_variante" | "id_producto" | "nombre">[]}
+      marcas={(marcasRes.data ?? []) as Pick<Marca, "id_marca" | "nombre">[]}
+      clientes={(clientesRes.data ?? []) as Pick<Cliente, "id_cliente" | "nombre">[]}
       puedeFacturar={puedeFacturar}
       diasDevolucion={Number(cfgDevolucion.data?.valor ?? 7) || 7}
     />

@@ -22,8 +22,19 @@ export default async function ReposicionPage() {
 
   const supabase = getSupabaseServerClient();
 
-  const [marcasRes, localesRes, productosRes, variantesRes, stockRes, ordenesRes, detalleRes, detalleRecepcionRes] =
-    await Promise.all([
+  // Todo junto y no una detrás de otra: son consultas independientes, y
+  // encadenarlas suma un viaje a la base por cada una.
+  const [
+    marcasRes,
+    localesRes,
+    productosRes,
+    variantesRes,
+    stockRes,
+    ordenesRes,
+    detalleRes,
+    detalleRecepcionRes,
+    aDevolver,
+  ] = await Promise.all([
       supabase.from("marcas").select("*").eq("estado", "ACTIVA").order("nombre", { ascending: true }),
       supabase.from("locales").select("*").eq("estado", "ACTIVO").order("nombre", { ascending: true }),
       supabase.from("productos").select("*").eq("estado", "ACTIVO"),
@@ -32,6 +43,7 @@ export default async function ReposicionPage() {
       supabase.from("ordenes_reposicion").select("*").order("fecha", { ascending: false }),
       supabase.from("detalle_reposicion").select("*"),
       supabase.from("detalle_recepciones").select("*").neq("estado_control", "COMPLETA"),
+      mercaderiaParaDevolverAMarca(),
     ]);
 
   const error =
@@ -74,7 +86,7 @@ export default async function ReposicionPage() {
       ordenes={(ordenesRes.data ?? []) as OrdenReposicion[]}
       detalle={(detalleRes.data ?? []) as DetalleReposicion[]}
       reclamos={(detalleRecepcionRes.data ?? []) as DetalleRecepcion[]}
-      aDevolverAMarca={await mercaderiaParaDevolverAMarca()}
+      aDevolverAMarca={aDevolver}
     />
   );
 }

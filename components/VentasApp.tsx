@@ -144,10 +144,14 @@ export default function VentasApp({
 }: {
   locales: Local[];
   ventasIniciales: Venta[];
-  productos: Producto[];
-  variantes: VarianteProducto[];
-  marcas: Marca[];
-  clientes: Cliente[];
+  // Tipos angostos a propósito: esta pantalla solo muestra nombres, y la
+  // consulta trae solo eso. Si mañana alguien necesita otro campo, TypeScript
+  // lo va a frenar acá y va a tener que agregarlo también a la consulta — en
+  // vez de recibir undefined en producción.
+  productos: Pick<Producto, "id_producto" | "nombre">[];
+  variantes: Pick<VarianteProducto, "id_variante" | "id_producto" | "nombre">[];
+  marcas: Pick<Marca, "id_marca" | "nombre">[];
+  clientes: Pick<Cliente, "id_cliente" | "nombre">[];
   puedeFacturar: boolean;
   /** Días desde la venta a partir de los cuales se avisa (no se bloquea). */
   diasDevolucion: number;
