@@ -15,6 +15,7 @@ export default function CostosRecepcionModal({
   proveedor,
   nombrePorVariante,
   costoActualPorVariante,
+  ivaActualPorVariante,
   onClose,
 }: {
   orden: OrdenCompraProveedor;
@@ -22,6 +23,8 @@ export default function CostosRecepcionModal({
   proveedor: ProveedorConSaldo | undefined;
   nombrePorVariante: Map<string, string>;
   costoActualPorVariante: Map<string, number | null>;
+  /** Alícuota que ya tiene cargada cada producto. En alimentos no todo es 21%. */
+  ivaActualPorVariante: Map<string, number>;
   onClose: () => void;
 }) {
   const [isPending, startTransition] = useTransition();
@@ -29,7 +32,19 @@ export default function CostosRecepcionModal({
   const [costos, setCostos] = useState<Record<string, string>>(
     Object.fromEntries(detalle.map((d) => [d.id_variante, String(costoActualPorVariante.get(d.id_variante) ?? "")]))
   );
+  const [alicuotas, setAlicuotas] = useState<Record<string, number>>(
+    Object.fromEntries(detalle.map((d) => [d.id_variante, ivaActualPorVariante.get(d.id_variante) ?? 21]))
+  );
   const [comprobante, setComprobante] = useState<File | null>(null);
+
+  const totales = detalle.reduce(
+    (acc, d) => {
+      const neto = (Number(costos[d.id_variante]) || 0) * (d.cantidad_recibida ?? 0);
+      const iva = neto * ((alicuotas[d.id_variante] ?? 21) / 100);
+      return { neto: acc.neto + neto, iva: acc.iva + iva };
+    },
+    { neto: 0, iva: 0 }
+  );
 
   function handleSubmit() {
     setError(null);
@@ -37,7 +52,11 @@ export default function CostosRecepcionModal({
       try {
         const res = await actualizarCostosRecepcion(
           orden.id_orden,
-          detalle.map((d) => ({ idVariante: d.id_variante, costo: Number(costos[d.id_variante]) || 0 })),
+          detalle.map((d) => ({
+            idVariante: d.id_variante,
+            costo: Number(costos[d.id_variante]) || 0,
+            iva: alicuotas[d.id_variante] ?? 21,
+          })),
           comprobante
         );
         if (res.error) setError(res.error);
@@ -78,7 +97,8 @@ export default function CostosRecepcionModal({
                   <th className="p-3">Producto</th>
                   <th className="p-3">Recibido</th>
                   <th className="p-3">Costo anterior</th>
-                  <th className="p-3">Costo de esta factura</th>
+                  <th className="p-3">Costo neto</th>
+                  <th className="p-3">IVA</th>
                   <th className="p-3">Diferencia</th>
                 </tr>
               </thead>
@@ -101,6 +121,22 @@ export default function CostosRecepcionModal({
                           className="w-24 rounded-lg border border-neutral-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
                         />
                       </td>
+                      <td className="p-2">
+                        {/* Por producto y no una sola para todo el pedido: en
+                            alimentos conviven el 21% y el 10,5%, y con la
+                            alícuota mal puesta el crédito fiscal sale mal. */}
+                        <select
+                          value={alicuotas[d.id_variante] ?? 21}
+                          onChange={(e) =>
+                            setAlicuotas((prev) => ({ ...prev, [d.id_variante]: Number(e.target.value) }))
+                          }
+                          className="rounded-lg border border-neutral-300 px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
+                        >
+                          <option value={21}>21%</option>
+                          <option value={10.5}>10,5%</option>
+                          <option value={0}>Exento</option>
+                        </select>
+                      </td>
                       <td className="p-3">
                         {diferencia == null || diferencia === 0 ? (
                           <span className="text-xs text-neutral-400">sin cambios</span>
@@ -115,6 +151,26 @@ export default function CostosRecepcionModal({
                 })}
               </tbody>
             </table>
+          </div>
+
+          <div className="bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-3">
+            <div className="flex justify-between text-sm py-0.5">
+              <span className="text-neutral-500">Costo neto del pedido</span>
+              <span className="tabular-nums">${formatearMonto(totales.neto)}</span>
+            </div>
+            <div className="flex justify-between text-sm py-0.5">
+              <span className="text-neutral-500">IVA</span>
+              <span className="tabular-nums">${formatearMonto(totales.iva)}</span>
+            </div>
+            <div className="flex justify-between text-base font-bold border-t border-neutral-200 mt-1.5 pt-2">
+              <span>Total</span>
+              <span className="tabular-nums">${formatearMonto(totales.neto + totales.iva)}</span>
+            </div>
+            <p className="text-xs text-neutral-400 mt-2">
+              El costo va <b className="text-neutral-600">sin IVA</b>: el margen se calcula restándoselo a la venta
+              neta. El IVA se informa aparte y vuelve como crédito fiscal cuando cargues la factura de la
+              liquidación.
+            </p>
           </div>
 
           <div>

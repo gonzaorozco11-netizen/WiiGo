@@ -104,6 +104,21 @@ export async function calcularIvaAPagar(periodo: string): Promise<IvaAPagar> {
     .lte("fecha_emision", hasta);
   const ivaProveedores = (facturasPeriodo ?? []).reduce((acc, f) => acc + ((f.iva as number | null) ?? 0), 0);
 
+  // ===== Crédito: liquidaciones de proveedores en consignación =====
+  // Caso Alifrut: la factura no nace de un remito sino de la liquidación del
+  // período, así que vive en liquidaciones_proveedor y no en
+  // facturas_compra_proveedor. Antes esto no se sumaba y el crédito fiscal de
+  // todo lo que se vende de ese proveedor se perdía entero.
+  const { data: liquidacionesPeriodo } = await supabase
+    .from("liquidaciones_proveedor")
+    .select("factura_iva")
+    .gte("factura_fecha", desde)
+    .lte("factura_fecha", hasta);
+  const ivaLiquidaciones = (liquidacionesPeriodo ?? []).reduce(
+    (acc, l) => acc + ((l.factura_iva as number | null) ?? 0),
+    0
+  );
+
   const debito: ItemIva[] = [
     { nombre: "Ventas marca propia", fuente: "Rentabilidad", monto: redondear2(ivaVentaPropia) },
     { nombre: "Royalty de marcas en consignación", fuente: "Liquidaciones", monto: redondear2(ivaRoyalty) },
@@ -115,6 +130,7 @@ export async function calcularIvaAPagar(periodo: string): Promise<IvaAPagar> {
   const credito: ItemIva[] = [
     { nombre: "Gastos con factura", fuente: "Gastos", monto: redondear2(ivaGastos) },
     { nombre: "Compras a proveedores", fuente: "Proveedores", monto: redondear2(ivaProveedores) },
+    { nombre: "Liquidaciones a proveedores en consignación", fuente: "Proveedores", monto: redondear2(ivaLiquidaciones) },
   ].filter((i) => i.monto !== 0);
   const totalCredito = redondear2(credito.reduce((acc, i) => acc + i.monto, 0));
 

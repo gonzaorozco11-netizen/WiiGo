@@ -2,11 +2,24 @@
 
 import { Fragment, useEffect, useState, useTransition } from "react";
 import type { ProveedorConSaldo } from "@/app/(app)/proveedores/actions";
-import type { LineaLiquidacionProveedor } from "@/lib/liquidacionesProveedor";
-import { calcularLiquidacionProveedorAction, generarLiquidacionProveedorAction } from "@/app/(app)/proveedores/actions";
+import type { DetalleLiquidacion, MedioLiquidacion } from "@/lib/liquidacionesProveedor";
+import { detalleLiquidacionProveedorAction, generarLiquidacionProveedorAction } from "@/app/(app)/proveedores/actions";
 
 function formatearMonto(valor: number) {
   return valor.toLocaleString("es-AR", { maximumFractionDigits: 0 });
+}
+
+function pct(valor: number) {
+  return valor.toLocaleString("es-AR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + "%";
+}
+
+const ETIQUETA_MEDIO: Record<MedioLiquidacion, string> = {
+  ELECTRONICO: "Mercado Pago y tarjeta",
+  EFECTIVO: "Efectivo",
+};
+
+function etiquetaIva(v: number) {
+  return v === 10.5 ? "10,5%" : `${v}%`;
 }
 
 function primerDiaDelMes() {
@@ -30,17 +43,18 @@ export default function LiquidacionProveedorModal({
   const [buscando, setBuscando] = useState(false);
   const [fechaDesde, setFechaDesde] = useState(primerDiaDelMes());
   const [fechaHasta, setFechaHasta] = useState(hoyISO());
-  const [lineas, setLineas] = useState<LineaLiquidacionProveedor[]>([]);
-  const [montoCalculado, setMontoCalculado] = useState(0);
+  const [detalle, setDetalle] = useState<DetalleLiquidacion | null>(null);
   const [montoFinal, setMontoFinal] = useState("");
   const [observaciones, setObservaciones] = useState("");
+  // Qué medio de pago está desplegado, y qué producto dentro de él.
+  const [medioAbierto, setMedioAbierto] = useState<MedioLiquidacion | null>(null);
   const [expandidas, setExpandidas] = useState<Set<string>>(new Set());
 
-  function toggleExpandida(idVariante: string) {
+  function toggleExpandida(clave: string) {
     setExpandidas((prev) => {
       const next = new Set(prev);
-      if (next.has(idVariante)) next.delete(idVariante);
-      else next.add(idVariante);
+      if (next.has(clave)) next.delete(clave);
+      else next.add(clave);
       return next;
     });
   }
@@ -48,16 +62,17 @@ export default function LiquidacionProveedorModal({
   useEffect(() => {
     if (!fechaDesde || !fechaHasta) return;
     setBuscando(true);
-    calcularLiquidacionProveedorAction(proveedor.id_proveedor, fechaDesde, fechaHasta)
-      .then((r) => {
-        setLineas(r.lineas);
-        setMontoCalculado(r.total);
-      })
+    detalleLiquidacionProveedorAction(proveedor.id_proveedor, fechaDesde, fechaHasta)
+      .then(setDetalle)
       .finally(() => setBuscando(false));
   }, [proveedor.id_proveedor, fechaDesde, fechaHasta]);
 
+  // Lo que hay que pagarle es el total CON IVA: es lo que va a decir su
+  // factura. Antes acá iba solo el neto y se le pagaba de menos.
+  const montoCalculado = detalle?.totales.total ?? 0;
   const montoNum = Number(montoFinal) || montoCalculado;
   const diferencia = montoFinal ? Number(montoFinal) - montoCalculado : 0;
+  const hayAlgo = (detalle?.totales.cantidad ?? 0) > 0;
 
   function handleSubmit() {
     setError(null);
@@ -116,84 +131,192 @@ export default function LiquidacionProveedorModal({
 
           {buscando ? (
             <p className="text-sm text-neutral-400 text-center py-6">Calculando...</p>
-          ) : lineas.length === 0 ? (
+          ) : !hayAlgo ? (
             <p className="text-sm text-neutral-500 text-center py-6 border border-dashed border-neutral-200 rounded-xl">
               No se vendió nada de sus productos en este período (o ya está todo liquidado).
             </p>
           ) : (
-            <div className="border border-neutral-200 rounded-xl overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-neutral-50 border-b border-neutral-200 text-left text-xs text-neutral-500">
-                    <th className="p-3"></th>
-                    <th className="p-3">Producto</th>
-                    <th className="p-3 text-right">Vendido</th>
-                    <th className="p-3 text-right">Costo prom.</th>
-                    <th className="p-3 text-right">Subtotal</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {lineas.map((l) => (
-                    <Fragment key={l.idVariante}>
-                      <tr
-                        onClick={() => toggleExpandida(l.idVariante)}
-                        className="border-b border-neutral-100 last:border-0 cursor-pointer hover:bg-neutral-50"
-                      >
-                        <td className="p-3 text-neutral-400 text-xs w-5">{expandidas.has(l.idVariante) ? "▾" : "▸"}</td>
-                        <td className="p-3 text-neutral-900">
-                          {l.nombreProducto}
-                          {l.estimado && (
-                            <span className="ml-2 text-[10px] font-semibold text-amber-700 bg-amber-50 rounded-full px-1.5 py-0.5">
-                              parte estimada
-                            </span>
-                          )}
-                        </td>
-                        <td className="p-3 text-right text-neutral-500">{l.cantidadVendida}</td>
-                        <td className="p-3 text-right text-neutral-500">${formatearMonto(l.costoUnitario)}</td>
-                        <td className="p-3 text-right font-medium text-neutral-900">${formatearMonto(l.subtotal)}</td>
-                      </tr>
-                      {expandidas.has(l.idVariante) && (
-                        <tr key={`${l.idVariante}-detalle`} className="border-b border-neutral-100 last:border-0 bg-neutral-50">
-                          <td></td>
-                          <td colSpan={4} className="px-3 pb-3">
-                            <p className="text-[10px] font-semibold text-neutral-400 uppercase tracking-wide mb-1">
-                              De qué remitos salió (más viejo primero)
-                            </p>
-                            <table className="w-full text-xs">
-                              <tbody>
-                                {l.lotes.map((lote, i) => (
-                                  <tr key={i}>
-                                    <td className="py-1 text-neutral-500">
-                                      {lote.idDetalleRecepcion === "ESTIMADO" ? "Sin remito registrado (estimado)" : `Remito #${lote.idDetalleRecepcion.slice(0, 8).toUpperCase()}`}
+            <>
+              {/* Cómo pagaron los clientes lo que se vendió de este proveedor.
+                  Es información para decidir, no cambia lo que se liquida:
+                  lo que le corresponde al proveedor es el total, sin importar
+                  por dónde entró la plata. */}
+              <p className="text-[10px] font-semibold text-neutral-400 uppercase tracking-wide">
+                Cómo pagaron tus clientes · tocá una para ver el detalle
+              </p>
+              <div className="grid sm:grid-cols-2 gap-2.5">
+                {detalle!.porMedio.map((g) => {
+                  const abierta = medioAbierto === g.medio;
+                  const parte = detalle!.totales.cantidad > 0
+                    ? Math.round((g.totales.cantidad / detalle!.totales.cantidad) * 100)
+                    : 0;
+                  return (
+                    <button
+                      key={g.medio}
+                      onClick={() => {
+                        setMedioAbierto(abierta ? null : g.medio);
+                        setExpandidas(new Set());
+                      }}
+                      className={`text-left border rounded-xl p-3.5 ${
+                        abierta ? "border-accent bg-accent-tint" : "border-neutral-200 hover:border-neutral-300"
+                      }`}
+                    >
+                      <p className={`text-[10.5px] font-bold uppercase tracking-wide ${abierta ? "text-accent" : "text-neutral-400"}`}>
+                        {ETIQUETA_MEDIO[g.medio]}
+                      </p>
+                      <p className="text-xs text-neutral-400">
+                        {g.totales.cantidad} unidades · {parte}% de lo vendido
+                      </p>
+                      <div className="flex justify-between text-sm mt-2">
+                        <span className="text-neutral-500">Costo neto</span>
+                        <span className="tabular-nums">${formatearMonto(g.totales.costoNeto)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-neutral-500">IVA</span>
+                        <span className="tabular-nums">${formatearMonto(g.totales.iva)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm font-bold border-t border-neutral-200 mt-1.5 pt-1.5">
+                        <span>Total</span>
+                        <span className="tabular-nums">${formatearMonto(g.totales.total)}</span>
+                      </div>
+                      <p className="text-[11.5px] font-semibold text-accent mt-2">
+                        {abierta ? "▾ Detalle abierto" : "▸ Ver los productos y el margen"}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {medioAbierto &&
+                detalle!.porMedio
+                  .filter((g) => g.medio === medioAbierto)
+                  .map((g) => (
+                    <div key={g.medio} className="border border-accent rounded-xl overflow-hidden">
+                      <div className="bg-accent-tint px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap">
+                        <p className="text-sm font-semibold text-neutral-900">
+                          {ETIQUETA_MEDIO[g.medio]} · {g.totales.cantidad} unidades
+                        </p>
+                        <button onClick={() => setMedioAbierto(null)} className="text-xs text-neutral-500">
+                          Cerrar ✕
+                        </button>
+                      </div>
+
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="bg-neutral-50 border-b border-neutral-200 text-left text-[10.5px] text-neutral-400 uppercase tracking-wide">
+                              <th className="p-2.5">Producto · tocá para ver los lotes</th>
+                              <th className="p-2.5 text-right">Unid.</th>
+                              <th className="p-2.5 text-right">Costo neto</th>
+                              <th className="p-2.5 text-right">IVA</th>
+                              <th className="p-2.5 text-right">Venta neta</th>
+                              <th className="p-2.5 text-right">Margen</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {g.lineas.map((l) => {
+                              const clave = `${g.medio}|${l.idVariante}`;
+                              const abierta = expandidas.has(clave);
+                              const margenPct = l.ventaNeta > 0 ? (l.margen / l.ventaNeta) * 100 : 0;
+                              const variosLotes = l.lotes.length > 1;
+                              return (
+                                <Fragment key={clave}>
+                                  <tr
+                                    onClick={() => toggleExpandida(clave)}
+                                    className="border-b border-neutral-100 cursor-pointer hover:bg-neutral-50"
+                                  >
+                                    <td className="p-2.5 text-neutral-900">
+                                      <span className="text-neutral-400 text-xs mr-1.5">{abierta ? "▾" : "▸"}</span>
+                                      {l.nombreProducto}
+                                      <span className="ml-2 text-[10px] text-neutral-400">
+                                        {etiquetaIva(l.ivaPorcentaje)}
+                                      </span>
                                     </td>
-                                    <td className="py-1 text-right text-neutral-500">{lote.cantidad} un.</td>
-                                    <td className="py-1 text-right text-neutral-500">${formatearMonto(lote.costoUnitario)} c/u</td>
-                                    <td className="py-1 text-right font-medium text-neutral-700">
-                                      ${formatearMonto(lote.cantidad * lote.costoUnitario)}
+                                    <td className="p-2.5 text-right text-neutral-500 tabular-nums">{l.cantidad}</td>
+                                    <td className="p-2.5 text-right tabular-nums">
+                                      ${formatearMonto(l.costoNeto)}
+                                      {variosLotes && <span className="block text-[10px] text-neutral-400">2+ lotes</span>}
+                                    </td>
+                                    <td className="p-2.5 text-right text-neutral-500 tabular-nums">${formatearMonto(l.iva)}</td>
+                                    <td className="p-2.5 text-right text-neutral-500 tabular-nums">${formatearMonto(l.ventaNeta)}</td>
+                                    <td className={`p-2.5 text-right tabular-nums font-semibold ${l.margen >= 0 ? "text-emerald-700" : "text-red-600"}`}>
+                                      ${formatearMonto(l.margen)}
+                                      <span className="block text-[10px] font-normal">{pct(margenPct)}</span>
                                     </td>
                                   </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </td>
-                        </tr>
-                      )}
-                    </Fragment>
+                                  {abierta && (
+                                    <tr className="bg-neutral-50 border-b border-neutral-100">
+                                      <td colSpan={6} className="px-4 py-2.5">
+                                        <p className="text-[10px] font-semibold text-neutral-400 uppercase tracking-wide mb-1.5">
+                                          De qué recepción salió cada unidad · más vieja primero
+                                        </p>
+                                        <table className="w-full text-xs">
+                                          <tbody>
+                                            {l.lotes.map((lote, i) => (
+                                              <tr key={i}>
+                                                <td className="py-1 text-neutral-500">
+                                                  {lote.idDetalleRecepcion === "ESTIMADO"
+                                                    ? "Sin recepción registrada (estimado)"
+                                                    : `Recibido el ${new Date(lote.fechaRecepcion).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" })}`}
+                                                </td>
+                                                <td className="py-1 text-right text-neutral-500 tabular-nums">{lote.cantidad} un.</td>
+                                                <td className="py-1 text-right text-neutral-500 tabular-nums">
+                                                  ${formatearMonto(lote.costoUnitario)} c/u
+                                                </td>
+                                                <td className="py-1 text-right font-medium text-neutral-700 tabular-nums">
+                                                  ${formatearMonto(lote.cantidad * lote.costoUnitario)}
+                                                </td>
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+                                      </td>
+                                    </tr>
+                                  )}
+                                </Fragment>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div className="bg-emerald-50 border-t border-emerald-200 px-4 py-3">
+                        <p className="text-[10.5px] font-bold uppercase tracking-wide text-emerald-700">Ganaste con esto</p>
+                        <p className="text-2xl font-bold text-emerald-700 tabular-nums">${formatearMonto(g.totales.margen)}</p>
+                        <p className="text-xs text-emerald-700/80">
+                          Vendiste ${formatearMonto(g.totales.ventaTotal)} · te costó ${formatearMonto(g.totales.costoNeto)} ·
+                          margen del {pct(g.totales.ventaNeta > 0 ? (g.totales.margen / g.totales.ventaNeta) * 100 : 0)} sobre la
+                          venta neta
+                        </p>
+                      </div>
+                    </div>
                   ))}
-                </tbody>
-              </table>
-            </div>
+
+              {detalle!.estimado && (
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  Parte del costo está estimado: hay unidades vendidas sin recepción registrada con costo. Revisá que
+                  todas las recepciones estén costeadas.
+                </p>
+              )}
+            </>
           )}
 
           <p className="text-xs text-neutral-500">
-            Lo que no se vendió (quedó en stock o se devolvió) no aparece acá — no genera ninguna deuda. Hacé clic en un
-            producto para ver de qué remitos salió el costo.
+            Lo que no se vendió (quedó en stock o se devolvió) no aparece acá — no genera ninguna deuda.
           </p>
 
           <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-3.5">
-            <div className="flex justify-between text-sm mb-2">
-              <span className="text-neutral-500">Total calculado por el sistema</span>
-              <span className="font-semibold text-neutral-900">${formatearMonto(montoCalculado)}</span>
+            <div className="flex justify-between text-sm py-0.5">
+              <span className="text-neutral-500">Costo neto de lo vendido</span>
+              <span className="tabular-nums">${formatearMonto(detalle?.totales.costoNeto ?? 0)}</span>
+            </div>
+            <div className="flex justify-between text-sm py-0.5">
+              <span className="text-neutral-500">IVA</span>
+              <span className="tabular-nums">${formatearMonto(detalle?.totales.iva ?? 0)}</span>
+            </div>
+            <div className="flex justify-between text-base font-bold border-t border-neutral-200 mt-1.5 pt-2 mb-3">
+              <span>A liquidarle</span>
+              <span className="tabular-nums">${formatearMonto(montoCalculado)}</span>
             </div>
             <label className="block text-xs font-semibold text-neutral-500 uppercase mb-1">
               Monto que dice la liquidación del proveedor (opcional, si no coincide)
@@ -241,7 +364,7 @@ export default function LiquidacionProveedorModal({
             <button
               type="button"
               onClick={handleSubmit}
-              disabled={isPending || lineas.length === 0}
+              disabled={isPending || !hayAlgo}
               className="flex-1 rounded-lg bg-accent hover:bg-accent-dark text-white py-2 text-sm font-medium disabled:opacity-50"
             >
               {isPending ? "Generando..." : `Generar liquidación por $${formatearMonto(montoNum)}`}

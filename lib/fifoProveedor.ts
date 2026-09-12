@@ -8,6 +8,96 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export type ConsumoLote = { idDetalleRecepcion: string; cantidad: number; costoUnitario: number };
 export type ResultadoFifo = { consumos: ConsumoLote[]; costoTotal: number; estimado: boolean };
 
+/** Un lote con su saldo, para consumir de a poco sin volver a la base. */
+export type LoteFifo = {
+  idDetalleRecepcion: string;
+  idRecepcion: string;
+  fechaRecepcion: string;
+  costoUnitario: number;
+  disponible: number;
+};
+
+/**
+ * Los lotes de una variante, del más viejo al más nuevo, con su saldo.
+ *
+ * Se expone para poder consumir venta por venta en orden cronológico (ver
+ * calcularLiquidacionProveedor). Cuando se consume de a una venta, cada
+ * línea se lleva el costo del lote que realmente le tocó — que es lo que
+ * permite después mostrar "5 al costo viejo, 7 al nuevo" en vez de un
+ * promedio.
+ */
+export async function lotesDeVariante(
+  supabase: SupabaseClient,
+  idProveedor: string,
+  idVariante: string
+): Promise<LoteFifo[]> {
+  const { data: recepciones } = await supabase
+    .from("recepciones_proveedor")
+    .select("id_recepcion, fecha")
+    .eq("id_proveedor", idProveedor)
+    .order("fecha", { ascending: true });
+  const idsRecepcion = (recepciones ?? []).map((r) => r.id_recepcion as string);
+  if (idsRecepcion.length === 0) return [];
+
+  const orden = new Map(idsRecepcion.map((id, i) => [id, i]));
+  const fecha = new Map((recepciones ?? []).map((r) => [r.id_recepcion as string, r.fecha as string]));
+
+  const { data: lotes } = await supabase
+    .from("detalle_recepcion_proveedor")
+    .select("id_detalle, id_recepcion, cantidad_disponible_fifo, costo_unitario")
+    .eq("id_variante", idVariante)
+    .in("id_recepcion", idsRecepcion)
+    .gt("cantidad_disponible_fifo", 0)
+    .not("costo_unitario", "is", null);
+
+  return (lotes ?? [])
+    .slice()
+    .sort((a, b) => (orden.get(a.id_recepcion as string) ?? 0) - (orden.get(b.id_recepcion as string) ?? 0))
+    .map((l) => ({
+      idDetalleRecepcion: l.id_detalle as string,
+      idRecepcion: l.id_recepcion as string,
+      fechaRecepcion: fecha.get(l.id_recepcion as string) ?? "",
+      costoUnitario: (l.costo_unitario as number) ?? 0,
+      disponible: (l.cantidad_disponible_fifo as number) ?? 0,
+    }));
+}
+
+/**
+ * Consume una cantidad de una lista de lotes en memoria, bajándoles el saldo.
+ *
+ * No toca la base: sirve para recorrer las ventas del período en orden sin
+ * pisar los saldos reales hasta que la liquidación se confirme.
+ */
+export function consumirEnMemoria(
+  lotes: LoteFifo[],
+  cantidad: number,
+  costoDeReserva: number
+): { consumos: (ConsumoLote & { fechaRecepcion: string })[]; estimado: boolean } {
+  const consumos: (ConsumoLote & { fechaRecepcion: string })[] = [];
+  let restante = cantidad;
+  let ultimoCosto = costoDeReserva;
+
+  for (const lote of lotes) {
+    if (restante <= 0) break;
+    if (lote.disponible <= 0) continue;
+    const tomar = Math.min(lote.disponible, restante);
+    lote.disponible -= tomar;
+    restante -= tomar;
+    ultimoCosto = lote.costoUnitario;
+    consumos.push({
+      idDetalleRecepcion: lote.idDetalleRecepcion,
+      cantidad: tomar,
+      costoUnitario: lote.costoUnitario,
+      fechaRecepcion: lote.fechaRecepcion,
+    });
+  }
+
+  if (restante > 0) {
+    consumos.push({ idDetalleRecepcion: "ESTIMADO", cantidad: restante, costoUnitario: ultimoCosto, fechaRecepcion: "" });
+  }
+  return { consumos, estimado: restante > 0 };
+}
+
 async function lotesDisponibles(supabase: SupabaseClient, idProveedor: string, idVariante: string) {
   const { data: recepciones } = await supabase
     .from("recepciones_proveedor")

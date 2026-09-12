@@ -140,6 +140,10 @@ export type Producto = {
   nombre_pt: string | null;
   descripcion: string | null;
   costo_informado: number | null;
+  // Alícuota de IVA del producto (21 / 10,5 / 0). En alimentos conviven las
+  // dos primeras, y de esto depende el crédito fiscal del costo y la venta
+  // neta que se usa para el margen.
+  iva_porcentaje: number | null;
   precio_venta: number | null;
   descuento_porcentaje: number | null;
   puntos: number;

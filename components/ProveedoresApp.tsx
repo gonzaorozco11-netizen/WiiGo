@@ -164,6 +164,16 @@ export default function ProveedoresApp({
     return map;
   }, [filasCatalogo]);
 
+  // 21% cuando el producto todavía no tiene alícuota cargada: es la general,
+  // y los del 10,5% se marcan a mano al costear.
+  const ivaActualPorVariante = useMemo(() => {
+    const map = new Map<string, number>();
+    filasCatalogo.forEach((f) => {
+      map.set(f.variante.id_variante, f.producto.iva_porcentaje ?? 21);
+    });
+    return map;
+  }, [filasCatalogo]);
+
   const detalleDeOrden = useMemo(() => {
     const map = new Map<string, DetalleOrdenCompra[]>();
     detalleOrdenes.forEach((d) => {
@@ -563,6 +573,7 @@ export default function ProveedoresApp({
           proveedor={proveedorPorId.get(costosOrdenAbierta.id_proveedor)}
           nombrePorVariante={nombrePorVariante}
           costoActualPorVariante={costoActualPorVariante}
+          ivaActualPorVariante={ivaActualPorVariante}
           onClose={() => setCostosOrdenAbierta(null)}
         />
       )}

@@ -6,7 +6,11 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 import { saldosPorProveedor, registrarMovimientoProveedor, historialCuentaProveedor } from "@/lib/cuentaProveedor";
-import { calcularLiquidacionProveedor, generarLiquidacionProveedor } from "@/lib/liquidacionesProveedor";
+import {
+  calcularLiquidacionProveedor,
+  generarLiquidacionProveedor,
+  detalleLiquidacionProveedor,
+} from "@/lib/liquidacionesProveedor";
 import { consumirFifo } from "@/lib/fifoProveedor";
 import { turnoAbiertoDeLocal } from "@/app/(app)/turnos/actions";
 
@@ -413,7 +417,10 @@ export async function listarDevolucionesProveedor(idProveedor: string) {
 // costeo FIFO de la liquidación por venta para calcular cuánto se le debe.
 export async function actualizarCostosRecepcion(
   idOrden: string,
-  costos: { idVariante: string; costo: number }[],
+  // `iva` es la alícuota del producto (21 / 10,5 / 0). Se carga acá porque es
+  // el momento en que se tiene el remito adelante — y sin ella el crédito
+  // fiscal de este proveedor sale mal: en alimentos no todo va al 21%.
+  costos: { idVariante: string; costo: number; iva?: number }[],
   comprobante?: File | null
 ): Promise<{ error: string | null }> {
   const permisoError = await requireAdmin();
@@ -435,7 +442,16 @@ export async function actualizarCostosRecepcion(
         .eq("id_variante", item.idVariante)
         .maybeSingle();
       if (!variante) continue;
-      const { error } = await supabase.from("productos").update({ costo_informado: item.costo }).eq("id_producto", variante.id_producto);
+
+      const cambios: Record<string, unknown> = { costo_informado: item.costo };
+      // Solo se pisa la alícuota si vino en el formulario: no queremos que
+      // un costeo hecho desde una pantalla vieja le ponga 21% a un producto
+      // que estaba bien marcado al 10,5%.
+      if (item.iva !== undefined && Number.isFinite(item.iva) && item.iva >= 0 && item.iva <= 100) {
+        cambios.iva_porcentaje = item.iva;
+      }
+
+      const { error } = await supabase.from("productos").update(cambios).eq("id_producto", variante.id_producto);
       if (error) return { error: friendlyDbError(error) };
 
       if (recepcion) {
@@ -662,6 +678,156 @@ export async function cargarFacturaCompra(params: {
 export async function calcularLiquidacionProveedorAction(idProveedor: string, fechaDesde: string, fechaHasta: string) {
   const supabase = getSupabaseServerClient();
   return calcularLiquidacionProveedor(supabase, idProveedor, fechaDesde, fechaHasta);
+}
+
+/** El detalle para la pantalla: por medio de pago, por producto y por lote. */
+export async function detalleLiquidacionProveedorAction(
+  idProveedor: string,
+  fechaDesde: string,
+  fechaHasta: string
+) {
+  const supabase = getSupabaseServerClient();
+  return detalleLiquidacionProveedor(supabase, idProveedor, fechaDesde, fechaHasta);
+}
+
+/**
+ * Corrige el costo de un lote puntual y, si hace falta, la alícuota del
+ * producto.
+ *
+ * Existe porque el error se descubre mirando la liquidación, no al costear:
+ * ahí es donde se ve que un margen no cierra. Obligar a volver a la
+ * recepción para corregirlo hace que nadie lo corrija.
+ *
+ * Solo se puede sobre lotes que todavía no se liquidaron — una vez que la
+ * liquidación se cerró, ese costo ya se pagó y cambiarlo sería reescribir el
+ * pasado.
+ */
+export async function corregirCostoLote(
+  idDetalleRecepcion: string,
+  costo: number,
+  iva?: number
+): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  if (!Number.isFinite(costo) || costo <= 0) return { error: "El costo tiene que ser mayor a cero." };
+
+  try {
+    const supabase = getSupabaseServerClient();
+
+    const { data: lote } = await supabase
+      .from("detalle_recepcion_proveedor")
+      .select("id_detalle, id_variante")
+      .eq("id_detalle", idDetalleRecepcion)
+      .maybeSingle();
+    if (!lote) return { error: "No se encontró ese lote." };
+
+    const { count } = await supabase
+      .from("detalle_liquidacion_proveedor")
+      .select("id_detalle", { count: "exact", head: true })
+      .eq("id_detalle_recepcion", idDetalleRecepcion);
+    if ((count ?? 0) > 0) {
+      return {
+        error:
+          "Ese lote ya entró en una liquidación cerrada, así que su costo no se puede cambiar. Si el precio estaba mal, se ajusta en la próxima liquidación.",
+      };
+    }
+
+    const { error } = await supabase
+      .from("detalle_recepcion_proveedor")
+      .update({ costo_unitario: costo })
+      .eq("id_detalle", idDetalleRecepcion);
+    if (error) return { error: friendlyDbError(error) };
+
+    if (iva !== undefined && Number.isFinite(iva) && iva >= 0 && iva <= 100) {
+      const { data: variante } = await supabase
+        .from("variantes_producto")
+        .select("id_producto")
+        .eq("id_variante", lote.id_variante)
+        .maybeSingle();
+      if (variante) {
+        await supabase.from("productos").update({ iva_porcentaje: iva }).eq("id_producto", variante.id_producto);
+      }
+    }
+
+    revalidatePath("/proveedores");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo corregir el costo" };
+  }
+}
+
+/**
+ * La factura que emitió el proveedor por la liquidación del período.
+ *
+ * Es lo que hace nacer el crédito fiscal: hasta que no se carga, el IVA de
+ * todo lo vendido de este proveedor no aparece en IVA a pagar (ver
+ * contabilidad/actions.ts). Se guarda lo que dice la factura de papel, que
+ * puede no coincidir con lo calculado — si no coincide, se muestra la
+ * diferencia en vez de taparla.
+ */
+export async function cargarFacturaLiquidacion(params: {
+  idLiquidacion: string;
+  numero: string;
+  neto: number;
+  iva: number;
+  fecha: string;
+}): Promise<{ error: string | null; aviso?: string }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+
+  const numero = params.numero.trim();
+  if (!numero) return { error: "Poné el número de la factura." };
+  if (!Number.isFinite(params.neto) || params.neto <= 0) return { error: "El neto tiene que ser mayor a cero." };
+  if (!Number.isFinite(params.iva) || params.iva < 0) return { error: "El IVA no puede ser negativo." };
+  if (!params.fecha) return { error: "Poné la fecha de la factura." };
+
+  try {
+    const supabase = getSupabaseServerClient();
+    const usuario = await usuarioActual();
+
+    const { data: liq } = await supabase
+      .from("liquidaciones_proveedor")
+      .select("id_liquidacion, monto_final, factura_numero")
+      .eq("id_liquidacion", params.idLiquidacion)
+      .maybeSingle();
+    if (!liq) return { error: "No se encontró la liquidación." };
+    if (liq.factura_numero) return { error: "Esta liquidación ya tiene su factura cargada." };
+
+    const total = redondear2(params.neto + params.iva);
+
+    const { error } = await supabase
+      .from("liquidaciones_proveedor")
+      .update({
+        factura_numero: numero,
+        factura_neto: redondear2(params.neto),
+        factura_iva: redondear2(params.iva),
+        factura_total: total,
+        factura_fecha: params.fecha,
+        factura_cargada_el: new Date().toISOString(),
+        factura_cargada_por: usuario,
+      })
+      .eq("id_liquidacion", params.idLiquidacion);
+    if (error) return { error: friendlyDbError(error) };
+
+    revalidatePath("/proveedores");
+    revalidatePath("/iva-a-pagar");
+
+    // La diferencia se avisa, no se corrige sola: puede ser una nota de
+    // crédito, un redondeo o un error del proveedor, y cada caso se resuelve
+    // distinto.
+    const diferencia = redondear2(total - ((liq.monto_final as number) ?? 0));
+    if (Math.abs(diferencia) >= 1) {
+      return {
+        error: null,
+        aviso:
+          `La factura dice $${total.toLocaleString("es-AR")} y la liquidación calculó $${((liq.monto_final as number) ?? 0).toLocaleString("es-AR")}. ` +
+          `Hay ${diferencia > 0 ? "de más" : "de menos"} $${Math.abs(diferencia).toLocaleString("es-AR")} — revisalo con el proveedor.`,
+      };
+    }
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo cargar la factura" };
+  }
 }
 
 export async function generarLiquidacionProveedorAction(params: {
