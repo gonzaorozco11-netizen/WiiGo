@@ -38,10 +38,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <header className="border-b border-neutral-200 bg-white">
         <div className="max-w-6xl mx-auto px-4 py-4 flex flex-wrap items-center justify-between gap-4">
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-            {/* El nombre lleva al inicio: es lo primero que toca cualquiera
-                para volver, y hasta ahora no era un link. */}
-            <Link href="/" className="text-lg font-semibold text-neutral-900 hover:text-accent">
-              WiiGo
+            {/* El logo lleva al inicio: es lo primero que toca cualquiera
+                para volver, y hasta ahora era texto suelto que no hacía nada.
+                Va el nombre sin la bajada ("estaciones de bienestar"): acá
+                adentro entra el equipo todos los días y ya sabe qué es WiiGo,
+                así que la bajada solo le comería lugar al menú. El logo
+                completo va donde la marca se presenta ante alguien de afuera
+                — login, portal de marcas y comprobante del cliente. */}
+            <Link href="/" className="shrink-0 hover:opacity-70 transition-opacity" aria-label="Ir al inicio">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/wiigo-wordmark.png" alt="WiiGo" className="h-7 w-auto block" />
             </Link>
             <AppNav
               pantallas={sesionConPantallas?.pantallas ?? null}
