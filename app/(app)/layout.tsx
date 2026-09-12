@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 import { logout } from "@/app/login/actions";
 import { obtenerSesionConPantallas } from "@/lib/roles";
@@ -37,7 +38,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <header className="border-b border-neutral-200 bg-white">
         <div className="max-w-6xl mx-auto px-4 py-4 flex flex-wrap items-center justify-between gap-4">
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-            <span className="text-lg font-semibold text-neutral-900">WiiGo</span>
+            {/* El nombre lleva al inicio: es lo primero que toca cualquiera
+                para volver, y hasta ahora no era un link. */}
+            <Link href="/" className="text-lg font-semibold text-neutral-900 hover:text-accent">
+              WiiGo
+            </Link>
             <AppNav
               pantallas={sesionConPantallas?.pantallas ?? null}
               esAdmin={session?.rol === "admin"}

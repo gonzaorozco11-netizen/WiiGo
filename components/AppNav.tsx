@@ -155,6 +155,18 @@ export default function AppNav({
 
   return (
     <nav ref={navRef} className="flex flex-wrap items-center gap-1">
+      {/* Inicio va primero y suelto, no adentro de un grupo: es la pantalla a
+          la que uno vuelve, y tener que abrir un desplegable para volver al
+          principio es exactamente lo que nadie hace. */}
+      <Link
+        href="/"
+        className={`text-sm font-semibold px-2.5 py-1.5 rounded-lg ${
+          pathname === "/" ? "text-accent bg-accent-tint" : "text-neutral-600 hover:text-neutral-900"
+        }`}
+      >
+        Inicio
+      </Link>
+
       {grupos.map((grupo) => {
         const grupoActivo = grupo.items.some((i) => esActivo(i.href));
         const grupoAbierto = abierto === grupo.label;
