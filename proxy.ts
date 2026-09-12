@@ -8,7 +8,19 @@ export const config = {
   // /api queda pública también — ahí viven los webhooks (ej. Mercado Pago),
   // que llegan sin la cookie de sesión porque no los llama una persona
   // logueada, los llama el servidor de Mercado Pago.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|self-checkout|asesor|comprobante|login|api).*)"],
+  //
+  // El `.*\..*` del final deja pasar cualquier archivo con extensión, o sea
+  // todo lo que vive en /public. Antes no estaba y el proxy los mandaba al
+  // login igual que a una pantalla: el navegador pedía /wiigo-logo.png y
+  // recibía el HTML del login, así que el logo del propio login aparecía
+  // roto. Lo mismo el manifest y los íconos, que el celular pide ANTES de
+  // que nadie se loguee — sin esto no se puede instalar la app en la tablet.
+  //
+  // Que sean públicos no filtra nada: son un logo y unos íconos. Los datos
+  // no salen por archivos estáticos.
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|self-checkout|asesor|comprobante|login|api|.*\\..*).*)",
+  ],
 };
 
 export async function proxy(req: NextRequest) {
