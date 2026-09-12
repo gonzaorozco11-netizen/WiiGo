@@ -69,6 +69,69 @@ export type ProveedorConSaldo = {
   pendientesFacturar: number;
 };
 
+/**
+ * Las marcas en consignación, para mostrarlas en la lista de proveedores.
+ *
+ * Son de solo lectura acá: se ven para tener la foto completa de quién te
+ * provee, pero se manejan en su propia pantalla. Dos lugares para hacer lo
+ * mismo terminan en que se hace mal en uno de los dos.
+ *
+ * Ojo con el signo: con una marca la relación es al revés que con un
+ * proveedor — ella te debe a vos el royalty, no vos a ella.
+ */
+export type MarcaEnLista = {
+  idMarca: string;
+  nombre: string;
+  royalty: number;
+  plan: string;
+  saldo: number;
+  solicitudesPendientes: number;
+};
+
+export async function listarMarcasParaProveedores(): Promise<MarcaEnLista[]> {
+  const supabase = getSupabaseServerClient();
+
+  const { data: marcas } = await supabase
+    .from("marcas")
+    .select("id_marca, nombre, royalty_porcentaje, plan, tipo_comercializacion")
+    .eq("estado", "ACTIVA")
+    .order("nombre", { ascending: true });
+  if (!marcas || marcas.length === 0) return [];
+
+  // La marca propia (WiiGo Dietética) no es un proveedor: es el negocio.
+  const terceras = marcas.filter((m) => m.tipo_comercializacion !== "PROPIA");
+  if (terceras.length === 0) return [];
+  const ids = terceras.map((m) => m.id_marca as string);
+
+  // Una sola consulta para todos los saldos y se agrupa acá: pedir el saldo
+  // marca por marca serían tantos viajes a la base como marcas haya.
+  const [{ data: movimientos }, { data: solicitudes }] = await Promise.all([
+    supabase.from("movimientos_cuenta_comercial_marca").select("id_marca, importe").in("id_marca", ids).eq("anulado", false),
+    supabase.from("solicitudes_marca").select("id_marca").in("id_marca", ids).eq("estado", "PENDIENTE"),
+  ]);
+
+  const saldo = new Map<string, number>();
+  (movimientos ?? []).forEach((m) => {
+    const k = m.id_marca as string;
+    saldo.set(k, (saldo.get(k) ?? 0) + ((m.importe as number) ?? 0));
+  });
+
+  const pendientes = new Map<string, number>();
+  (solicitudes ?? []).forEach((s) => {
+    const k = s.id_marca as string;
+    pendientes.set(k, (pendientes.get(k) ?? 0) + 1);
+  });
+
+  return terceras.map((m) => ({
+    idMarca: m.id_marca as string,
+    nombre: m.nombre as string,
+    royalty: (m.royalty_porcentaje as number | null) ?? 0,
+    plan: (m.plan as string | null) ?? "BRONCE",
+    saldo: Math.round((saldo.get(m.id_marca as string) ?? 0) * 100) / 100,
+    solicitudesPendientes: pendientes.get(m.id_marca as string) ?? 0,
+  }));
+}
+
 export async function listarProveedores(): Promise<ProveedorConSaldo[]> {
   const supabase = getSupabaseServerClient();
   const { data, error } = await supabase.from("proveedores").select("*").order("nombre", { ascending: true });
@@ -754,6 +817,39 @@ export async function corregirCostoLote(
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo corregir el costo" };
   }
+}
+
+export type LiquidacionSinFactura = {
+  idLiquidacion: string;
+  fechaDesde: string;
+  fechaHasta: string;
+  montoFinal: number;
+  fecha: string;
+};
+
+/**
+ * Las liquidaciones que todavía no tienen cargada la factura del proveedor.
+ *
+ * Cada una es crédito fiscal esperando: hasta que no se carga, ese IVA no
+ * entra en IVA a pagar.
+ */
+export async function liquidacionesSinFactura(idProveedor: string): Promise<LiquidacionSinFactura[]> {
+  const supabase = getSupabaseServerClient();
+  const { data } = await supabase
+    .from("liquidaciones_proveedor")
+    .select("id_liquidacion, fecha_desde, fecha_hasta, monto_final, fecha")
+    .eq("id_proveedor", idProveedor)
+    .is("factura_numero", null)
+    .order("fecha_hasta", { ascending: false })
+    .limit(24);
+
+  return (data ?? []).map((l) => ({
+    idLiquidacion: l.id_liquidacion as string,
+    fechaDesde: l.fecha_desde as string,
+    fechaHasta: l.fecha_hasta as string,
+    montoFinal: (l.monto_final as number) ?? 0,
+    fecha: (l.fecha as string) ?? "",
+  }));
 }
 
 /**

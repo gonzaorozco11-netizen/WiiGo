@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import type { Local, Producto, VarianteProducto, Stock, OrdenCompraProveedor, DetalleOrdenCompra, DetalleRecepcionProveedor } from "@/lib/supabase";
-import type { ProveedorConSaldo } from "@/app/(app)/proveedores/actions";
+import type { ProveedorConSaldo, MarcaEnLista } from "@/app/(app)/proveedores/actions";
 import {
   cambiarEstadoProveedor,
   registrarPagoProveedor,
@@ -17,6 +18,89 @@ import CostosRecepcionModal from "./CostosRecepcionModal";
 import FacturaOrdenModal from "./FacturaOrdenModal";
 import FacturaPeriodoModal from "./FacturaPeriodoModal";
 import LiquidacionProveedorModal from "./LiquidacionProveedorModal";
+import FacturaLiquidacionModal from "./FacturaLiquidacionModal";
+
+// Los tres tonos no son decoración: marcan tres relaciones de plata
+// distintas, y ayudan a no confundirse de grupo al escanear la lista.
+const TONO_GRUPO = {
+  violeta: { cab: "bg-violet-50 border-violet-200", texto: "text-violet-700" },
+  ambar: { cab: "bg-amber-50 border-amber-200", texto: "text-amber-700" },
+  azul: { cab: "bg-accent-tint border-blue-200", texto: "text-accent" },
+} as const;
+
+function GrupoProveedor({
+  tono,
+  titulo,
+  como,
+  cantidad,
+  children,
+}: {
+  tono: keyof typeof TONO_GRUPO;
+  titulo: string;
+  como: string;
+  cantidad: number;
+  children: React.ReactNode;
+}) {
+  // Un grupo vacío no se muestra: si no tenés ningún proveedor tradicional,
+  // un cartel diciéndolo todos los días es ruido.
+  if (cantidad === 0) return null;
+  const t = TONO_GRUPO[tono];
+  return (
+    <div className="border border-neutral-200 rounded-xl overflow-hidden">
+      <div className={`px-4 py-2.5 border-b flex items-center gap-2.5 flex-wrap ${t.cab}`}>
+        <span className="font-semibold text-sm text-neutral-900">{titulo}</span>
+        <span className={`text-xs flex-1 ${t.texto}`}>{como}</span>
+        <span className={`text-[11px] font-bold rounded-full px-2 py-0.5 bg-white/70 ${t.texto}`}>{cantidad}</span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function FilaProveedor({
+  p,
+  seleccionado,
+  onClick,
+  etiquetaPendiente,
+}: {
+  p: ProveedorConSaldo;
+  seleccionado: boolean;
+  onClick: () => void;
+  etiquetaPendiente: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full text-left flex items-center gap-3 flex-wrap px-4 py-3 border-t border-neutral-100 first:border-t-0 ${
+        seleccionado ? "bg-accent-tint" : "hover:bg-neutral-50"
+      }`}
+    >
+      <span className="flex-1 min-w-[190px]">
+        <span className="block font-semibold text-neutral-900">
+          {p.nombre}
+          {p.estado === "INACTIVO" && <span className="ml-2 text-xs font-normal text-neutral-400">(inactivo)</span>}
+        </span>
+        <span className="block text-xs text-neutral-400">
+          {MODO_LABEL[p.modo_facturacion] ?? p.modo_facturacion}
+          {p.condicion_pago_dias ? ` · ${p.condicion_pago_dias} días` : " · contado"}
+          {p.cuit ? ` · CUIT ${p.cuit}` : ""}
+        </span>
+      </span>
+      {p.pendientesFacturar > 0 && (
+        <span className="text-[10.5px] font-bold bg-red-50 text-red-700 border border-red-200 rounded-full px-2 py-0.5">
+          {p.pendientesFacturar} {etiquetaPendiente}
+        </span>
+      )}
+      <span className="text-right min-w-[92px]">
+        <span className={`block font-semibold tabular-nums ${p.saldo > 0 ? "text-red-600" : "text-neutral-900"}`}>
+          ${formatearMonto(p.saldo)}
+        </span>
+        <span className="block text-[10.5px] text-neutral-400">{p.saldo > 0 ? "le debés" : "al día"}</span>
+      </span>
+      <span className="text-neutral-300">›</span>
+    </button>
+  );
+}
 
 const MODO_LABEL: Record<string, string> = {
   REMITO: "Factura por orden puntual",
@@ -66,6 +150,7 @@ export default function ProveedoresApp({
   reclamos,
   recepciones,
   turnosAbiertos,
+  marcasEnLista,
 }: {
   proveedores: ProveedorConSaldo[];
   esAdmin: boolean;
@@ -78,6 +163,7 @@ export default function ProveedoresApp({
   reclamos: DetalleRecepcionProveedor[];
   recepciones: { id_orden: string; facturada: boolean }[];
   turnosAbiertos: { id_turno: string; id_local: string }[];
+  marcasEnLista: MarcaEnLista[];
 }) {
   const [tab, setTab] = useState<Tab>("CUENTAS");
 
@@ -127,6 +213,7 @@ export default function ProveedoresApp({
   const [costosOrdenAbierta, setCostosOrdenAbierta] = useState<OrdenCompraProveedor | null>(null);
   const [facturaPeriodoAbierta, setFacturaPeriodoAbierta] = useState(false);
   const [liquidacionAbierta, setLiquidacionAbierta] = useState(false);
+  const [facturaLiquidacionAbierta, setFacturaLiquidacionAbierta] = useState(false);
   const [devolucionAbierta, setDevolucionAbierta] = useState(false);
 
   const proveedorPorId = useMemo(() => new Map(proveedores.map((p) => [p.id_proveedor, p])), [proveedores]);
@@ -166,6 +253,26 @@ export default function ProveedoresApp({
 
   // 21% cuando el producto todavía no tiene alícuota cargada: es la general,
   // y los del 10,5% se marcan a mano al costear.
+  // Los dos tipos de proveedor de verdad, separados por su modo de
+  // facturación — que es lo que define cuándo se le debe la plata.
+  const porLiquidacion = useMemo(
+    () => filtrados.filter((p) => p.modo_facturacion === "LIQUIDACION_VENTA"),
+    [filtrados]
+  );
+  const tradicionales = useMemo(
+    () => filtrados.filter((p) => p.modo_facturacion !== "LIQUIDACION_VENTA"),
+    [filtrados]
+  );
+
+  // Las marcas siguen el mismo buscador que los proveedores, pero no los
+  // filtros de deuda: su saldo va al revés y "con deuda" ahí significaría
+  // otra cosa.
+  const marcasFiltradas = useMemo(() => {
+    const q = busqueda.trim().toLowerCase();
+    if (!q) return marcasEnLista;
+    return marcasEnLista.filter((m) => m.nombre.toLowerCase().includes(q));
+  }, [marcasEnLista, busqueda]);
+
   const ivaActualPorVariante = useMemo(() => {
     const map = new Map<string, number>();
     filasCatalogo.forEach((f) => {
@@ -279,56 +386,90 @@ export default function ProveedoresApp({
 
           <div className="bg-white border border-neutral-200 rounded-xl overflow-hidden">
             <div className="grid grid-cols-1 md:grid-cols-[1fr_340px] min-h-[380px]">
-              <div className="overflow-x-auto">
-                {filtrados.length === 0 ? (
-                  <p className="text-sm text-neutral-400 text-center py-16">No hay proveedores para estos filtros.</p>
+              {/* Agrupados por CÓMO se le paga a cada uno, no alfabético:
+                  lo que los diferencia no es el nombre, es en qué momento se
+                  le debe la plata. Y el signo va al revés según el grupo —
+                  las marcas te deben a vos, los proveedores les debés vos.
+                  Por eso el saldo dice "te deben" o "le debés": el número
+                  solo significa cosas opuestas. */}
+              <div className="p-3 space-y-3">
+                {marcasFiltradas.length === 0 && filtrados.length === 0 ? (
+                  <p className="text-sm text-neutral-400 text-center py-16">No hay nadie para estos filtros.</p>
                 ) : (
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-neutral-200 text-left text-xs text-neutral-500">
-                        <th className="p-3">Proveedor</th>
-                        <th className="p-3">CUIT</th>
-                        <th className="p-3">Cond. pago</th>
-                        <th className="p-3 text-right">Saldo</th>
-                        <th className="p-3">Estado</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filtrados.map((p) => (
-                        <tr
-                          key={p.id_proveedor}
-                          onClick={() => setIdSeleccionado(p.id_proveedor)}
-                          className={`border-b border-neutral-100 last:border-0 cursor-pointer ${
-                            seleccionado?.id_proveedor === p.id_proveedor ? "bg-accent-tint" : "hover:bg-neutral-50"
-                          }`}
+                  <>
+                    <GrupoProveedor
+                      tono="violeta"
+                      titulo="Marcas en consignación"
+                      como="Cobrás un royalty · el precio lo pone la marca"
+                      cantidad={marcasFiltradas.length}
+                    >
+                      {marcasFiltradas.map((m) => (
+                        <Link
+                          key={m.idMarca}
+                          href={`/marcas/${m.idMarca}`}
+                          className="flex items-center gap-3 flex-wrap px-4 py-3 border-t border-neutral-100 first:border-t-0 hover:bg-neutral-50"
                         >
-                          <td className="p-3 font-medium text-neutral-900">
-                            {p.nombre}
-                            {p.estado === "INACTIVO" && <span className="ml-2 text-xs text-neutral-400">(inactivo)</span>}
-                            {p.pendientesFacturar > 0 && (
-                              <span className="ml-2 text-xs font-semibold bg-amber-50 text-amber-700 rounded-full px-1.5 py-0.5">
-                                {p.pendientesFacturar} sin facturar
-                              </span>
-                            )}
-                          </td>
-                          <td className="p-3 text-neutral-500">{p.cuit ?? "—"}</td>
-                          <td className="p-3 text-neutral-500">{p.condicion_pago_dias ? `${p.condicion_pago_dias} días` : "Contado"}</td>
-                          <td className={`p-3 text-right tabular-nums font-semibold ${p.saldo > 0 ? "text-red-600" : "text-neutral-900"}`}>
-                            ${formatearMonto(p.saldo)}
-                          </td>
-                          <td className="p-3">
-                            <span
-                              className={`text-xs rounded-full px-2 py-0.5 ${
-                                p.saldo > 0 ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-700"
-                              }`}
-                            >
-                              {p.saldo > 0 ? "Con deuda" : "Al día"}
+                          <span className="flex-1 min-w-[190px]">
+                            <span className="block font-semibold text-neutral-900">{m.nombre}</span>
+                            <span className="block text-xs text-neutral-400">
+                              Royalty {m.royalty}% · plan {m.plan.charAt(0) + m.plan.slice(1).toLowerCase()}
                             </span>
-                          </td>
-                        </tr>
+                          </span>
+                          {m.solicitudesPendientes > 0 && (
+                            <span className="text-[10.5px] font-bold bg-amber-50 text-amber-700 border border-amber-200 rounded-full px-2 py-0.5">
+                              {m.solicitudesPendientes} {m.solicitudesPendientes === 1 ? "solicitud" : "solicitudes"}
+                            </span>
+                          )}
+                          <span className="text-right min-w-[92px]">
+                            <span className="block font-semibold tabular-nums">${formatearMonto(Math.abs(m.saldo))}</span>
+                            <span className="block text-[10.5px] text-neutral-400">
+                              {m.saldo > 0 ? "te deben" : m.saldo < 0 ? "le debés" : "sin saldo"}
+                            </span>
+                          </span>
+                          <span className="text-xs font-semibold text-accent whitespace-nowrap">Ver en Marcas →</span>
+                        </Link>
                       ))}
-                    </tbody>
-                  </table>
+                    </GrupoProveedor>
+
+                    <GrupoProveedor
+                      tono="ambar"
+                      titulo="Consignación con costo tuyo"
+                      como="Le pagás el costo de lo vendido · el precio lo ponés vos"
+                      cantidad={porLiquidacion.length}
+                    >
+                      {porLiquidacion.map((p) => (
+                        <FilaProveedor
+                          key={p.id_proveedor}
+                          p={p}
+                          seleccionado={seleccionado?.id_proveedor === p.id_proveedor}
+                          onClick={() => setIdSeleccionado(p.id_proveedor)}
+                          etiquetaPendiente="sin costear"
+                        />
+                      ))}
+                    </GrupoProveedor>
+
+                    <GrupoProveedor
+                      tono="azul"
+                      titulo="Compra tradicional"
+                      como="La mercadería es tuya desde que entra"
+                      cantidad={tradicionales.length}
+                    >
+                      {tradicionales.map((p) => (
+                        <FilaProveedor
+                          key={p.id_proveedor}
+                          p={p}
+                          seleccionado={seleccionado?.id_proveedor === p.id_proveedor}
+                          onClick={() => setIdSeleccionado(p.id_proveedor)}
+                          etiquetaPendiente="sin facturar"
+                        />
+                      ))}
+                    </GrupoProveedor>
+
+                    <p className="text-xs text-neutral-400 px-1">
+                      Las marcas se ven acá para tener la foto completa de quién te provee, pero se manejan en su
+                      propia pantalla.
+                    </p>
+                  </>
                 )}
               </div>
 
@@ -386,12 +527,25 @@ export default function ProveedoresApp({
                           </button>
                         )}
                         {seleccionado.modo_facturacion === "LIQUIDACION_VENTA" && (
-                          <button
-                            onClick={() => setLiquidacionAbierta(true)}
-                            className="w-full text-sm font-semibold text-white bg-accent hover:bg-accent-dark rounded-lg py-2"
-                          >
-                            Generar liquidación
-                          </button>
+                          <>
+                            <button
+                              onClick={() => setLiquidacionAbierta(true)}
+                              className="w-full text-sm font-semibold text-white bg-accent hover:bg-accent-dark rounded-lg py-2"
+                            >
+                              Generar liquidación
+                            </button>
+                            {/* Después de liquidar, el proveedor factura ese
+                                monto. Cargar esa factura es lo que hace nacer
+                                el crédito fiscal — sin este paso, el IVA de
+                                todo lo vendido de este proveedor no entra en
+                                IVA a pagar. */}
+                            <button
+                              onClick={() => setFacturaLiquidacionAbierta(true)}
+                              className="w-full text-sm font-semibold text-neutral-700 border border-neutral-300 rounded-lg py-2"
+                            >
+                              Cargar factura de una liquidación
+                            </button>
+                          </>
                         )}
                         <button
                           onClick={() => setDevolucionAbierta(true)}
@@ -589,6 +743,10 @@ export default function ProveedoresApp({
 
       {liquidacionAbierta && seleccionado && (
         <LiquidacionProveedorModal proveedor={seleccionado} onClose={() => setLiquidacionAbierta(false)} />
+      )}
+
+      {facturaLiquidacionAbierta && seleccionado && (
+        <FacturaLiquidacionModal proveedor={seleccionado} onClose={() => setFacturaLiquidacionAbierta(false)} />
       )}
 
       {devolucionAbierta && seleccionado && (

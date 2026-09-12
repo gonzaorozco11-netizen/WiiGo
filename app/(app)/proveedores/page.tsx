@@ -12,7 +12,7 @@ import {
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import PantallaBloqueada from "@/components/PantallaBloqueada";
 import ProveedoresApp from "@/components/ProveedoresApp";
-import { listarProveedores } from "./actions";
+import { listarProveedores, listarMarcasParaProveedores } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +33,7 @@ export default async function ProveedoresPage() {
     detalleRecepcionRes,
     recepcionesRes,
     turnosAbiertosRes,
+    marcasEnLista,
   ] = await Promise.all([
     listarProveedores(),
     supabase.from("locales").select("*").eq("estado", "ACTIVO").order("nombre", { ascending: true }),
@@ -44,6 +45,7 @@ export default async function ProveedoresPage() {
     supabase.from("detalle_recepcion_proveedor").select("*").neq("estado_control", "COMPLETA"),
     supabase.from("recepciones_proveedor").select("id_orden, facturada"),
     supabase.from("turnos").select("id_turno, id_local").eq("estado", "ABIERTO"),
+    listarMarcasParaProveedores(),
   ]);
 
   const idsMarcaPropia = (marcasPropiasRes.data ?? []).map((m) => m.id_marca);
@@ -86,6 +88,7 @@ export default async function ProveedoresPage() {
       reclamos={(detalleRecepcionRes.data ?? []) as DetalleRecepcionProveedor[]}
       recepciones={(recepcionesRes.data ?? []) as Pick<RecepcionProveedor, "id_orden" | "facturada">[]}
       turnosAbiertos={turnosAbiertosRes.data ?? []}
+      marcasEnLista={marcasEnLista}
     />
   );
 }
