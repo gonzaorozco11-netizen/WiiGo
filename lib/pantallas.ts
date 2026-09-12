@@ -13,8 +13,15 @@ export const PANTALLAS_DISPONIBLES: PantallaDisponible[] = [
   { clave: "marcas", label: "Marcas", grupo: "Catálogo" },
   { clave: "productos", label: "Productos", grupo: "Catálogo" },
   { clave: "catalogo-asesor", label: "Catálogo asesor", grupo: "Catálogo" },
+  // Compras está partido en tres a propósito: cada etapa la hace una persona
+  // distinta (administración pide, el local recibe, administración costea).
+  // Separarlas permite darle a cada una solo su pantalla — y que la operativa
+  // del local no vea costos, que con las marcas es información sensible.
+  { clave: "compras", label: "Órdenes de compra", grupo: "Compras" },
+  { clave: "compras-recepcion", label: "Recepción de mercadería", grupo: "Compras" },
+  { clave: "compras-costeo", label: "Costeo de recibidos", grupo: "Compras" },
   { clave: "stock", label: "Stock", grupo: "Stock" },
-  { clave: "reposicion", label: "Abastecimiento", grupo: "Stock" },
+  { clave: "reposicion", label: "Abastecimiento (marcas)", grupo: "Stock" },
   { clave: "pos", label: "POS", grupo: "Operaciones" },
   { clave: "ficha-asistencia", label: "Ficha Asistencia", grupo: "Operaciones" },
   { clave: "ventas", label: "Ventas", grupo: "Operaciones" },

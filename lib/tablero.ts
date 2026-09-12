@@ -81,6 +81,8 @@ export async function armarTablero(): Promise<Tablero | null> {
     ncDevolucion,
     aDevolver,
     ordenesPendientes,
+    ordenesProveedor,
+    sinCostear,
     turnosAbiertos,
     sinStock,
     ventasHoy,
@@ -122,8 +124,17 @@ export async function armarTablero(): Promise<Tablero | null> {
     puede("reposicion")
       ? supabase.from("detalle_devoluciones").select("id_detalle_dev", { count: "exact", head: true }).is("devuelto_a_marca_el", null)
       : CERO,
-    puede("reposicion")
+    puede("compras-recepcion") || puede("reposicion")
       ? supabase.from("ordenes_reposicion").select("id_orden", { count: "exact", head: true }).eq("estado", "PENDIENTE")
+      : CERO,
+    puede("compras-recepcion") || puede("proveedores")
+      ? supabase
+          .from("ordenes_compra_proveedor")
+          .select("id_orden", { count: "exact", head: true })
+          .eq("estado", "PENDIENTE")
+      : CERO,
+    puede("compras-costeo") || puede("proveedores")
+      ? supabase.from("recepciones_proveedor").select("id_recepcion", { count: "exact", head: true }).eq("facturada", false)
       : CERO,
     puede("turnos")
       ? supabase.from("turnos").select("id_turno", { count: "exact", head: true }).eq("estado", "ABIERTO")
@@ -234,13 +245,27 @@ export async function armarTablero(): Promise<Tablero | null> {
     });
   }
 
-  if (n(ordenesPendientes) > 0) {
+  const porRecepcionar = n(ordenesPendientes) + n(ordenesProveedor);
+  if (porRecepcionar > 0) {
     seguimiento.push({
       color: "azul",
-      titulo: `${plural(n(ordenesPendientes), "pedido por recepcionar", "pedidos por recepcionar")}`,
+      titulo: `${plural(porRecepcionar, "pedido por recepcionar", "pedidos por recepcionar")}`,
       detalle: "Mercadería que pediste y todavía no llegó o no se cargó",
-      valor: String(n(ordenesPendientes)),
-      href: "/reposicion",
+      valor: String(porRecepcionar),
+      href: "/compras/recepcion",
+    });
+  }
+
+  // Costear es la etapa que más se olvida, porque en el momento no se rompe
+  // nada: lo que se rompe es la liquidación del mes y el margen de todas las
+  // pantallas. Por eso va en urgente y no en seguimiento.
+  if (n(sinCostear) > 0) {
+    urgentes.push({
+      color: "ambar",
+      titulo: `${plural(n(sinCostear), "recepción sin costear", "recepciones sin costear")}`,
+      detalle: "Sin el costo cargado, la liquidación de ese proveedor sale mal",
+      valor: String(n(sinCostear)),
+      href: "/compras/costeo",
     });
   }
 

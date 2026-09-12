@@ -16,6 +16,16 @@ type NavGroup = { label: string; items: NavItem[] };
 // una lista plana de 16 links — más fácil de escanear a medida que se
 // agregan pantallas nuevas.
 const GROUPS: NavGroup[] = [
+  // Compras va primero y en orden de etapa: es un recorrido, no una lista de
+  // pantallas sueltas. Cada una la usa una persona distinta.
+  {
+    label: "Compras",
+    items: [
+      { href: "/compras", label: "🛒 Órdenes de compra" },
+      { href: "/compras/recepcion", label: "📥 Recepción" },
+      { href: "/compras/costeo", label: "🧮 Costeo de recibidos" },
+    ],
+  },
   {
     label: "Catálogo",
     items: [
@@ -28,7 +38,9 @@ const GROUPS: NavGroup[] = [
     label: "Stock",
     items: [
       { href: "/stock", label: "Stock" },
-      { href: "/reposicion", label: "Abastecimiento" },
+      // Sigue existiendo porque es donde se crea y se recepciona el pedido a
+      // una marca; Compras la muestra junto con las de proveedores.
+      { href: "/reposicion", label: "Abastecimiento (marcas)" },
     ],
   },
   {
