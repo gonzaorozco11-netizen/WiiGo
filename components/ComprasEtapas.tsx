@@ -59,7 +59,7 @@ export default function ComprasEtapas({
                   alerta ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700"
                 }`}
               >
-                {n} {e.clave === "COSTEO" ? "sin costear" : e.clave === "RECEPCION" ? "esperando" : "abiertas"}
+                {n} {e.clave === "COSTEO" ? "sin costear" : e.clave === "RECEPCION" ? "esperando" : "sin enviar"}
               </span>
             )}
           </Link>

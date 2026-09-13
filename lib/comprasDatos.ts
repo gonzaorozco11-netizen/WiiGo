@@ -1,0 +1,90 @@
+import {
+  getSupabaseServerClient,
+  type Marca,
+  type Local,
+  type Producto,
+  type VarianteProducto,
+  type Stock,
+  type OrdenReposicion,
+  type DetalleReposicion,
+  type OrdenCompraProveedor,
+  type DetalleOrdenCompra,
+} from "@/lib/supabase";
+import { listarProveedores, type ProveedorConSaldo } from "@/app/(app)/proveedores/actions";
+
+// Todo lo que las tres pantallas de Compras necesitan para abrir sus
+// formularios sin mandar a nadie a otra sección.
+//
+// Va en un solo lugar porque los formularios son los mismos que ya usan
+// Abastecimiento y Proveedores, y piden bastantes datos: el catálogo para
+// elegir productos, el stock para sugerir cantidades, y las dos tablas de
+// órdenes con su detalle. Repetir estas consultas en tres páginas sería
+// pedirle lo mismo a la base tres veces.
+
+export type DatosCompras = {
+  marcas: Marca[];
+  proveedores: ProveedorConSaldo[];
+  locales: Local[];
+  productos: Producto[];
+  variantes: VarianteProducto[];
+  stock: Stock[];
+  // `enviada_el` no está en los tipos generales porque es propio de Compras:
+  // es lo que decide en qué etapa está cada pedido.
+  ordenesMarca: (OrdenReposicion & { enviada_el: string | null })[];
+  detalleMarca: DetalleReposicion[];
+  ordenesProveedor: (OrdenCompraProveedor & { enviada_el: string | null })[];
+  detalleProveedor: DetalleOrdenCompra[];
+  /** Recepciones de proveedor sin costo cargado, para la etapa de Costeo. */
+  recepcionesSinCostear: { id_recepcion: string; id_orden: string; id_proveedor: string; fecha: string }[];
+};
+
+export async function datosCompras(): Promise<DatosCompras> {
+  const supabase = getSupabaseServerClient();
+
+  const [
+    proveedores,
+    marcasRes,
+    localesRes,
+    productosRes,
+    variantesRes,
+    stockRes,
+    ordMarcaRes,
+    detMarcaRes,
+    ordProvRes,
+    detProvRes,
+    recepRes,
+  ] = await Promise.all([
+    listarProveedores(),
+    supabase.from("marcas").select("*").eq("estado", "ACTIVA").order("nombre", { ascending: true }),
+    supabase.from("locales").select("*").eq("estado", "ACTIVO").order("nombre", { ascending: true }),
+    supabase.from("productos").select("*").eq("estado", "ACTIVO"),
+    supabase.from("variantes_producto").select("*").eq("estado", "ACTIVO"),
+    supabase.from("stock").select("*"),
+    // Solo las de los últimos meses: el histórico completo no se usa en
+    // ninguna de las tres pantallas y crece para siempre.
+    supabase.from("ordenes_reposicion").select("*").order("fecha", { ascending: false }).limit(120),
+    supabase.from("detalle_reposicion").select("*"),
+    supabase.from("ordenes_compra_proveedor").select("*").order("fecha_alta", { ascending: false }).limit(120),
+    supabase.from("detalle_orden_compra").select("*"),
+    supabase
+      .from("recepciones_proveedor")
+      .select("id_recepcion, id_orden, id_proveedor, fecha")
+      .eq("facturada", false)
+      .order("fecha", { ascending: true })
+      .limit(60),
+  ]);
+
+  return {
+    marcas: (marcasRes.data ?? []) as Marca[],
+    proveedores,
+    locales: (localesRes.data ?? []) as Local[],
+    productos: (productosRes.data ?? []) as Producto[],
+    variantes: (variantesRes.data ?? []) as VarianteProducto[],
+    stock: (stockRes.data ?? []) as Stock[],
+    ordenesMarca: (ordMarcaRes.data ?? []) as DatosCompras["ordenesMarca"],
+    detalleMarca: (detMarcaRes.data ?? []) as DetalleReposicion[],
+    ordenesProveedor: (ordProvRes.data ?? []) as DatosCompras["ordenesProveedor"],
+    detalleProveedor: (detProvRes.data ?? []) as DetalleOrdenCompra[],
+    recepcionesSinCostear: (recepRes.data ?? []) as DatosCompras["recepcionesSinCostear"],
+  };
+}
