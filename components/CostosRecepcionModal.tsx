@@ -74,16 +74,17 @@ export default function CostosRecepcionModal({
   // liquidación. Para él, todo el bloque de factura sobra.
   const pideFactura = proveedor?.modo_facturacion !== "LIQUIDACION_VENTA";
 
-  // Con factura arranca vacío a propósito: el costo guardado ya tiene los
-  // impuestos adentro, así que prellenarlo haría que al corregir se vuelvan a
-  // sumar sobre un número que ya los tenía. Con factura se copia del papel.
+  // Arranca vacío siempre, a propósito. Dos razones:
+  //
+  // 1. Precargado con el costo anterior, se puede guardar sin mirar el
+  //    remito — y queda "costeado" con un número viejo que nadie revisó.
+  // 2. El costo guardado ya tiene los impuestos prorrateados adentro, así que
+  //    reusarlo al corregir se los volvería a sumar sobre un número que ya
+  //    los tenía, inflando el costo en cada pasada.
+  //
+  // El costo anterior sigue a la vista en su columna, para comparar.
   const [costos, setCostos] = useState<Record<string, string>>(
-    Object.fromEntries(
-      lineas.map((l) => [
-        l.idVariante,
-        pideFactura ? "" : String(costoActualPorVariante.get(l.idVariante) ?? ""),
-      ])
-    )
+    Object.fromEntries(lineas.map((l) => [l.idVariante, ""]))
   );
   const [alicuotas, setAlicuotas] = useState<Record<string, number>>(
     Object.fromEntries(lineas.map((l) => [l.idVariante, ivaActualPorVariante.get(l.idVariante) ?? 21]))
@@ -214,7 +215,15 @@ export default function CostosRecepcionModal({
   // Qué falta para poder guardar. Se calcula acá y no se descubre después de
   // apretar: el botón apagado con el motivo al pasar el mouse molesta menos
   // que un error rojo tras completar todo el formulario.
-  const motivoBloqueo = !pideFactura
+  // Un renglón que llegó y quedó sin costo deja el lote ciego: el FIFO no
+  // sabe cuánto valió esa mercadería y el margen sale mal, sin avisar.
+  const sinCostear = lineas.filter((l) => l.cantidadRecibida > 0 && !(Number(costos[l.idVariante]) > 0));
+
+  const motivoBloqueo = sinCostear.length
+    ? sinCostear.length === lineas.filter((l) => l.cantidadRecibida > 0).length
+      ? "Falta cargar los costos."
+      : `Falta el costo de ${sinCostear.length} ${sinCostear.length === 1 ? "producto" : "productos"}.`
+    : !pideFactura
     ? null
     : !numero.trim()
       ? "Falta el número de factura."
@@ -822,6 +831,14 @@ export default function CostosRecepcionModal({
             {error && (
               <p className="text-sm text-red-600 mt-3" role="alert">
                 {error}
+              </p>
+            )}
+
+            {/* El motivo a la vista y no solo en el tooltip: si el botón
+                está apagado sin explicación, parece que el sistema se colgó. */}
+            {motivoBloqueo && (
+              <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3">
+                {motivoBloqueo}
               </p>
             )}
 
