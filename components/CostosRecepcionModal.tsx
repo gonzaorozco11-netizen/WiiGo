@@ -70,8 +70,16 @@ export default function CostosRecepcionModal({
   // liquidación. Para él, todo el bloque de factura sobra.
   const pideFactura = proveedor?.modo_facturacion !== "LIQUIDACION_VENTA";
 
+  // Con factura arranca vacío a propósito: el costo guardado ya tiene los
+  // impuestos adentro, así que prellenarlo haría que al corregir se vuelvan a
+  // sumar sobre un número que ya los tenía. Con factura se copia del papel.
   const [costos, setCostos] = useState<Record<string, string>>(
-    Object.fromEntries(lineas.map((l) => [l.idVariante, String(costoActualPorVariante.get(l.idVariante) ?? "")]))
+    Object.fromEntries(
+      lineas.map((l) => [
+        l.idVariante,
+        pideFactura ? "" : String(costoActualPorVariante.get(l.idVariante) ?? ""),
+      ])
+    )
   );
   const [alicuotas, setAlicuotas] = useState<Record<string, number>>(
     Object.fromEntries(lineas.map((l) => [l.idVariante, ivaActualPorVariante.get(l.idVariante) ?? 21]))
@@ -86,6 +94,13 @@ export default function CostosRecepcionModal({
   const [unidadesFactura, setUnidadesFactura] = useState("");
   const [discrepancia, setDiscrepancia] = useState(false);
   const [motivoDiscrepancia, setMotivoDiscrepancia] = useState("");
+
+  // El pie: lo que está en la factura pero no en ningún renglón.
+  const [impuestos, setImpuestos] = useState("");
+  const [retenciones, setRetenciones] = useState("");
+  const [descuentos, setDescuentos] = useState("");
+  /** null = todavía lo calcula el sistema. Un número = lo pisó una persona. */
+  const [ivaManual, setIvaManual] = useState<string | null>(null);
 
   // Las otras entregas del mismo pedido que todavía no se facturaron.
   const otras = useMemo(
@@ -118,7 +133,27 @@ export default function CostosRecepcionModal({
     },
     { neto: 0, iva: 0 }
   );
-  const totalEntrega = totales.neto + totales.iva;
+
+  // ---------- El pie ----------
+  const nImpuestos = Number(impuestos) || 0;
+  const nRetenciones = Number(retenciones) || 0;
+  const nDescuentos = Number(descuentos) || 0;
+  // El IVA sale de la alícuota de cada producto — no de una sola tasa al pie,
+  // porque en la góndola conviven el 21% y el 10,5%. Se puede pisar a mano si
+  // la factura lo discrimina distinto.
+  const ivaCalculado = totales.iva;
+  const ivaFinal = ivaManual !== null ? Number(ivaManual) || 0 : ivaCalculado;
+
+  // Impuestos y retenciones encarecen la mercadería; los descuentos la
+  // abaratan. El IVA no entra: vuelve como crédito fiscal.
+  const subtotalSinIva = totales.neto + nImpuestos + nRetenciones - nDescuentos;
+  const totalEntrega = subtotalSinIva + ivaFinal;
+
+  // Lo que realmente cuesta cada unidad, con el pie repartido proporcional al
+  // valor de cada línea. Es el número que se guarda y con el que se calcula
+  // el margen.
+  const factor = totales.neto > 0 ? subtotalSinIva / totales.neto : 1;
+  const hayPie = nImpuestos !== 0 || nRetenciones !== 0 || nDescuentos !== 0;
 
   // Control de que cuadre: unidades cubiertas contra las que dice la factura.
   const unidadesCubiertas =
@@ -187,13 +222,16 @@ export default function CostosRecepcionModal({
                 fechaEmision,
                 fechaVencimiento: vencimiento,
                 monto: Number(montoFactura) || 0,
-                iva: totales.iva > 0 ? totales.iva : null,
                 idsRecepcionCubiertas: otras.filter((e) => estaCubierta(e.idRecepcion)).map((e) => e.idRecepcion),
                 unidadesFacturadas: unidadesDeclaradas || null,
                 // Que no cuadre ya es una diferencia, aunque nadie haya
                 // tildado el casillero.
                 discrepancia: discrepancia || !cuadraPlata,
                 motivoDiscrepancia,
+                impuestos: nImpuestos,
+                retenciones: nRetenciones,
+                descuentos: nDescuentos,
+                iva: ivaFinal,
               }
             : null,
           comprobante,
@@ -296,6 +334,7 @@ export default function CostosRecepcionModal({
                     <th className="p-3 text-right">Costo anterior</th>
                     <th className="p-3 text-right">Costo neto</th>
                     <th className="p-3">IVA</th>
+                    {hayPie && <th className="p-3 text-right bg-accent-tint text-accent">Costo final</th>}
                     <th className="p-3 text-right">Variación</th>
                   </tr>
                 </thead>
@@ -303,8 +342,12 @@ export default function CostosRecepcionModal({
                   {lineas.map((l) => {
                     const costoAnterior = costoActualPorVariante.get(l.idVariante) ?? null;
                     const costoNuevo = Number(costos[l.idVariante]) || 0;
+                    // Se compara final contra final: el costo anterior ya
+                    // tiene sus impuestos adentro, así que compararlo contra
+                    // el neto de hoy mostraría una baja que no existe.
+                    const costoFinal = costoNuevo * factor;
                     const puedeComparar = costoAnterior != null && costoAnterior > 0 && costoNuevo > 0;
-                    const pct = puedeComparar ? ((costoNuevo - costoAnterior) / costoAnterior) * 100 : null;
+                    const pct = puedeComparar ? ((costoFinal - costoAnterior) / costoAnterior) * 100 : null;
                     return (
                       <tr key={l.idVariante} className="border-b border-neutral-100 last:border-0">
                         <td className="p-3 text-neutral-900">{nombrePorVariante.get(l.idVariante) ?? "—"}</td>
@@ -338,6 +381,11 @@ export default function CostosRecepcionModal({
                             <option value={0}>Exento</option>
                           </select>
                         </td>
+                        {hayPie && (
+                          <td className="p-3 text-right tabular-nums bg-accent-tint font-semibold text-accent">
+                            {costoNuevo > 0 ? `$${formatearMonto(costoFinal)}` : "—"}
+                          </td>
+                        )}
                         <td className="p-3 text-right tabular-nums">
                           {pct == null || Math.abs(pct) < 0.05 ? (
                             <span className="text-xs text-neutral-400">sin cambios</span>
@@ -354,19 +402,19 @@ export default function CostosRecepcionModal({
                 <tfoot>
                   <tr className="bg-neutral-50 border-t border-neutral-200 text-sm font-semibold tabular-nums">
                     <td className="p-3 text-xs text-neutral-500 uppercase" colSpan={3}>
-                      Neto ${formatearMonto(totales.neto)} · IVA ${formatearMonto(totales.iva)}
+                      Neto de los ítems
                     </td>
-                    <td className="p-3 text-right text-neutral-900" colSpan={3}>
-                      ${formatearMonto(totalEntrega)}
+                    <td className="p-3 text-right text-neutral-900" colSpan={hayPie ? 3 : 2}>
+                      ${formatearMonto(totales.neto)}
                     </td>
                   </tr>
                 </tfoot>
               </table>
             </div>
             <p className="text-xs text-neutral-400 mt-2.5">
-              El costo va <b className="text-neutral-600">sin IVA</b>. Cada entrega guarda el suyo: si el mismo
-              producto entró dos veces a precios distintos, el sistema no los promedia — los gasta del más viejo al
-              más nuevo.
+              Poné el <b className="text-neutral-600">neto que dice el renglón de la factura</b>, sin IVA. Cada
+              entrega guarda el suyo: si el mismo producto entró dos veces a precios distintos, el sistema no los
+              promedia — los gasta del más viejo al más nuevo.
             </p>
           </Bloque>
 
@@ -458,10 +506,84 @@ export default function CostosRecepcionModal({
           )}
 
           {/* ---------- 4. Cierre ---------- */}
-          <Bloque n={pideFactura ? 4 : 2} titulo="Cierre">
+          <Bloque n={pideFactura ? 4 : 2} titulo={pideFactura ? "Al pie de la factura" : "Cierre"}>
+            {pideFactura && (
+              <>
+                <div className="grid gap-3 sm:grid-cols-4 mb-4">
+                  <CampoPie
+                    etiqueta="Impuestos ($)"
+                    valor={impuestos}
+                    onCambio={setImpuestos}
+                    pista="Percepciones, IIBB."
+                    efecto="Entran al costo."
+                  />
+                  <CampoPie
+                    etiqueta="Retenciones ($)"
+                    valor={retenciones}
+                    onCambio={setRetenciones}
+                    efecto="Entran al costo."
+                  />
+                  <CampoPie
+                    etiqueta="Descuentos ($)"
+                    valor={descuentos}
+                    onCambio={setDescuentos}
+                    efecto="Se restan del costo."
+                  />
+                  <div>
+                    <label className="block text-[11px] font-semibold text-neutral-500 mb-1">IVA ($)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={ivaManual ?? (ivaCalculado > 0 ? ivaCalculado.toFixed(2) : "")}
+                      onChange={(e) => setIvaManual(e.target.value)}
+                      className="w-full rounded-lg border border-accent bg-accent-tint px-2.5 py-2 text-sm text-right tabular-nums font-semibold focus:outline-none focus:ring-2 focus:ring-accent"
+                    />
+                    <p className="text-[11px] text-neutral-400 mt-1 leading-snug">
+                      Sale de la alícuota de cada producto. Si la factura lo discrimina distinto, corregilo.{" "}
+                      <b className="text-neutral-600">No entra al costo: es crédito fiscal.</b>
+                      {ivaManual !== null && (
+                        <button
+                          type="button"
+                          onClick={() => setIvaManual(null)}
+                          className="block text-accent hover:underline mt-0.5"
+                        >
+                          Volver al calculado (${formatearMonto(ivaCalculado)})
+                        </button>
+                      )}
+                    </p>
+                  </div>
+                </div>
+
+                {/* La escalera. El IVA se suma al final y sobre el neto de los
+                    ítems, no sobre el subtotal: las percepciones no llevan IVA. */}
+                <div className="bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-3">
+                  <Renglon etiqueta={`Neto de los ${lineas.reduce((a, l) => a + l.cantidadRecibida, 0)} ítems`} valor={totales.neto} />
+                  {(nImpuestos !== 0 || nRetenciones !== 0) && (
+                    <Renglon etiqueta="+ Impuestos y retenciones" valor={nImpuestos + nRetenciones} />
+                  )}
+                  {nDescuentos !== 0 && <Renglon etiqueta="− Descuentos" valor={-nDescuentos} rojo />}
+                  <Renglon etiqueta="Subtotal sin IVA" valor={subtotalSinIva} fuerte />
+                  <Renglon etiqueta="+ IVA" valor={ivaFinal} />
+                  <div className="flex justify-between items-baseline border-t-2 border-neutral-200 mt-1.5 pt-2.5">
+                    <span className="text-base font-bold">Total</span>
+                    <span className="text-base font-bold tabular-nums">${formatearMonto(totalEntrega)}</span>
+                  </div>
+                  {hayPie && (
+                    <p className="text-xs text-neutral-500 mt-2.5">
+                      El costo de cada producto sube un{" "}
+                      <b className="text-neutral-700">{((factor - 1) * 100).toFixed(1)}%</b> por el pie de la
+                      factura. Esa plata se paga igual, así que va al costo — mirá la columna{" "}
+                      <b className="text-neutral-700">Costo final</b> arriba.
+                    </p>
+                  )}
+                </div>
+              </>
+            )}
+
             {pideFactura && hayMonto && (
               <div
-                className={`rounded-lg px-3.5 py-3 mb-3 text-sm tabular-nums ${
+                className={`rounded-lg px-3.5 py-3 mt-3 mb-3 text-sm tabular-nums ${
                   cuadraPlata ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"
                 }`}
               >
@@ -614,6 +736,64 @@ function Campo({
         {etiqueta} {obligatorio && <span className="text-red-500">*</span>}
       </label>
       {children}
+    </div>
+  );
+}
+
+function CampoPie({
+  etiqueta,
+  valor,
+  onCambio,
+  pista,
+  efecto,
+}: {
+  etiqueta: string;
+  valor: string;
+  onCambio: (v: string) => void;
+  pista?: string;
+  efecto: string;
+}) {
+  return (
+    <div>
+      <label className="block text-[11px] font-semibold text-neutral-500 mb-1">{etiqueta}</label>
+      <input
+        type="number"
+        min={0}
+        step="0.01"
+        value={valor}
+        onChange={(e) => onCambio(e.target.value)}
+        placeholder="0,00"
+        className="w-full rounded-lg border border-neutral-300 px-2.5 py-2 text-sm text-right tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
+      />
+      <p className="text-[11px] text-neutral-400 mt-1 leading-snug">
+        {pista && `${pista} `}
+        <b className="text-neutral-600">{efecto}</b>
+      </p>
+    </div>
+  );
+}
+
+function Renglon({
+  etiqueta,
+  valor,
+  fuerte,
+  rojo,
+}: {
+  etiqueta: string;
+  valor: number;
+  fuerte?: boolean;
+  rojo?: boolean;
+}) {
+  return (
+    <div
+      className={`flex justify-between gap-4 py-1.5 text-sm tabular-nums ${
+        fuerte ? "font-semibold border-t border-neutral-200 mt-1 pt-2" : ""
+      }`}
+    >
+      <span className={fuerte ? "text-neutral-900" : "text-neutral-500"}>{etiqueta}</span>
+      <span className={rojo ? "text-red-600 font-medium" : "text-neutral-900 font-medium"}>
+        ${formatearMonto(Math.abs(valor))}
+      </span>
     </div>
   );
 }

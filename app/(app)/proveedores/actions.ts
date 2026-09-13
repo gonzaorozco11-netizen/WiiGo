@@ -552,7 +552,6 @@ export type FacturaDeEntrega = {
   fechaEmision: string;
   fechaVencimiento: string | null;
   monto: number;
-  iva: number | null;
   /** Qué recepciones cubre. Siempre incluye la que se está costeando. */
   idsRecepcionCubiertas: string[];
   /** Unidades que dice la factura, para el control de que cuadre. */
@@ -560,7 +559,31 @@ export type FacturaDeEntrega = {
   /** El proveedor facturó algo mal: queda anotado para la nota de crédito. */
   discrepancia: boolean;
   motivoDiscrepancia: string;
+  /**
+   * El pie de la factura: lo que está en el comprobante pero no en ningún
+   * renglón. Los tres primeros entran al costo del producto (los descuentos
+   * restando); el IVA no, porque vuelve como crédito fiscal.
+   */
+  impuestos: number;
+  retenciones: number;
+  descuentos: number;
+  iva: number;
 };
+
+/**
+ * El costo real de tener el producto en la góndola.
+ *
+ * No es lo que dice el renglón de la factura: una percepción de IIBB se paga
+ * igual y encarece la mercadería. Se reparte proporcional al valor de cada
+ * línea, que es lo que corresponde cuando el cargo es sobre el total.
+ *
+ * El IVA queda afuera a propósito — ese vuelve como crédito fiscal, así que
+ * cargarlo al costo haría ver un margen peor que el real.
+ */
+function factorProrrateo(netoItems: number, impuestos: number, retenciones: number, descuentos: number) {
+  if (netoItems <= 0) return 1;
+  return (netoItems + impuestos + retenciones - descuentos) / netoItems;
+}
 
 export async function costearEntrega(params: {
   idRecepcion: string;
@@ -612,8 +635,33 @@ export async function costearEntrega(params: {
       }
     }
 
-    // ---------- Los costos, que van siempre ----------
+    // ---------- Los costos ----------
+    //
+    // Se guardan DOS números distintos por línea, y son distintos a propósito:
+    //
+    // - `precio_unitario_real` en el detalle de la factura: lo que dice el
+    //   papel. Es lo que se mira cuando alguien va a auditar.
+    // - `costo_unitario` en el lote: el costo real con las percepciones
+    //   prorrateadas. Es el que consume el FIFO y con el que se calcula el
+    //   margen, porque esa plata se pagó igual.
+    const cantidadPorVariante = new Map(
+      (lotes ?? []).map((l) => [l.id_variante as string, (l.cantidad_recibida as number) ?? 0])
+    );
+    const netoItems = params.costos.reduce(
+      (acc, c) => acc + (c.costo > 0 ? c.costo * (cantidadPorVariante.get(c.idVariante) ?? 0) : 0),
+      0
+    );
+    const factor = params.factura
+      ? factorProrrateo(
+          netoItems,
+          params.factura.impuestos || 0,
+          params.factura.retenciones || 0,
+          params.factura.descuentos || 0
+        )
+      : 1;
+
     const costoAnteriorPorVariante = new Map<string, number | null>();
+    const costoFinalPorVariante = new Map<string, number>();
     for (const item of params.costos) {
       if (item.costo <= 0) continue;
       const { data: variante } = await supabase
@@ -630,7 +678,10 @@ export async function costearEntrega(params: {
         .maybeSingle();
       costoAnteriorPorVariante.set(item.idVariante, producto?.costo_informado ?? null);
 
-      const cambios: Record<string, unknown> = { costo_informado: item.costo };
+      const costoFinal = redondear2(item.costo * factor);
+      costoFinalPorVariante.set(item.idVariante, costoFinal);
+
+      const cambios: Record<string, unknown> = { costo_informado: costoFinal };
       // Solo se pisa la alícuota si vino en el formulario: no queremos que
       // un costeo hecho desde una pantalla vieja le ponga 21% a un producto
       // que estaba bien marcado al 10,5%.
@@ -644,7 +695,7 @@ export async function costearEntrega(params: {
       // El costo del lote de ESTA entrega: es el que después consume el FIFO.
       await supabase
         .from("detalle_recepcion_proveedor")
-        .update({ costo_unitario: item.costo })
+        .update({ costo_unitario: costoFinal })
         .eq("id_recepcion", recepcion.id_recepcion)
         .eq("id_variante", item.idVariante);
     }
@@ -724,8 +775,13 @@ export async function costearEntrega(params: {
           fecha_emision: f.fechaEmision,
           fecha_vencimiento: f.fechaVencimiento || null,
           monto: f.monto,
+          // El neto es el subtotal SIN IVA, que ya incluye lo del pie: es lo
+          // que realmente costó la mercadería.
           neto: iva ? redondear2(f.monto - iva) : null,
           iva,
+          impuestos: f.impuestos || null,
+          retenciones: f.retenciones || null,
+          descuentos: f.descuentos || null,
           estado: "PENDIENTE",
           observaciones: notaDiscrepancia,
         })
@@ -754,6 +810,8 @@ export async function costearEntrega(params: {
         id_factura: idFactura,
         id_variante: lote.id_variante,
         cantidad_facturada: lote.cantidad_recibida,
+        // El del papel, sin prorrateo: es contra este número que se audita
+        // la factura. El costo real con impuestos vive en el lote.
         precio_unitario_real: costo,
         costo_anterior: costoAnteriorPorVariante.get(lote.id_variante as string) ?? null,
       });
