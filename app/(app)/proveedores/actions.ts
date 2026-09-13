@@ -556,9 +556,21 @@ export type FacturaDeEntrega = {
   idsRecepcionCubiertas: string[];
   /** Unidades que dice la factura, para el control de que cuadre. */
   unidadesFacturadas: number | null;
-  /** El proveedor facturó algo mal: queda anotado para la nota de crédito. */
-  discrepancia: boolean;
-  motivoDiscrepancia: string;
+  /**
+   * Lo que el proveedor facturó de más.
+   *
+   * Suma al total de la factura y al IVA — la deuda y el libro tienen que
+   * coincidir con lo que el proveedor ya declaró — pero NO entra al costo de
+   * los productos: esa mercadería no llegó, así que no puede encarecer la que
+   * sí llegó. De acá sale el reclamo de nota de crédito.
+   */
+  malFacturado: {
+    neto: number;
+    iva: number;
+    impuestos: number;
+    retenciones: number;
+    motivo: string;
+  } | null;
   /**
    * El pie de la factura: lo que está en el comprobante pero no en ningún
    * renglón. Los tres primeros entran al costo del producto (los descuentos
@@ -664,6 +676,10 @@ export async function costearEntrega(params: {
     const costoFinalPorVariante = new Map<string, number>();
     for (const item of params.costos) {
       if (item.costo <= 0) continue;
+      // Un renglón que no trajo nada no se costea. El lote está vacío, así
+      // que el costo no cambiaría ningún FIFO — pero sí pisaría el costo de
+      // referencia del producto con el precio de una entrega que no ocurrió.
+      if ((cantidadPorVariante.get(item.idVariante) ?? 0) <= 0) continue;
       const { data: variante } = await supabase
         .from("variantes_producto")
         .select("id_producto")
@@ -753,8 +769,18 @@ export async function costearEntrega(params: {
       .neq("estado", "ANULADA")
       .maybeSingle();
 
-    const notaDiscrepancia = f.discrepancia
-      ? `EL PROVEEDOR FACTURÓ ALGO MAL: ${f.motivoDiscrepancia.trim() || "la factura no coincide con lo recibido"}`
+    const mal = f.malFacturado;
+    const totalReclamo = mal
+      ? redondear2((mal.neto || 0) + (mal.iva || 0) + (mal.impuestos || 0) + (mal.retenciones || 0))
+      : 0;
+    if (mal && totalReclamo <= 0) {
+      return { error: "Marcaste que facturó algo mal pero no pusiste ningún importe." };
+    }
+    if (mal && !mal.motivo.trim()) {
+      return { error: "Contá qué facturó mal: sin eso el reclamo no le sirve a nadie." };
+    }
+    const notaDiscrepancia = mal
+      ? `EL PROVEEDOR FACTURÓ ALGO MAL por $${totalReclamo.toLocaleString("es-AR")}: ${mal.motivo.trim()}`
       : null;
 
     let idFactura: string;
@@ -817,10 +843,31 @@ export async function costearEntrega(params: {
       });
     }
 
-    if (notaDiscrepancia) {
+    if (mal && notaDiscrepancia) {
       marcaEntrega.resolucion_observaciones = notaDiscrepancia;
       marcaEntrega.revisado_por_administracion = false;
-      aviso = `${aviso ? aviso + " " : ""}Quedó anotada la diferencia para pedir la nota de crédito.`;
+
+      // El reclamo con su importe, para que aparezca en la lista de lo que
+      // hay que ir a cobrar. Sin esto quedaba solo un texto adentro de una
+      // factura, que nadie vuelve a mirar.
+      const { error: errorReclamo } = await supabase.from("reclamos_proveedor").insert({
+        id_proveedor: recepcion.id_proveedor,
+        id_factura: idFactura,
+        id_recepcion: recepcion.id_recepcion,
+        neto: redondear2(mal.neto || 0),
+        iva: redondear2(mal.iva || 0),
+        impuestos: redondear2(mal.impuestos || 0),
+        retenciones: redondear2(mal.retenciones || 0),
+        total: totalReclamo,
+        motivo: mal.motivo.trim(),
+        estado: "PENDIENTE",
+        usuario: await usuarioActual(),
+      });
+      if (errorReclamo) return { error: friendlyDbError(errorReclamo) };
+
+      aviso = `${aviso ? aviso + " " : ""}Queda un reclamo de nota de crédito por $${totalReclamo.toLocaleString(
+        "es-AR"
+      )}.`;
     }
 
     // Recién ahora se marcan las entregas cubiertas. Solo estas: nunca todas

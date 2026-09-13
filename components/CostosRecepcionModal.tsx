@@ -21,6 +21,10 @@ function formatearMonto(valor: number) {
   return valor.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function redondear2(v: number) {
+  return Math.round(v * 100) / 100;
+}
+
 function fechaCorta(iso: string) {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" });
@@ -92,8 +96,14 @@ export default function CostosRecepcionModal({
   const [fechaEmision, setFechaEmision] = useState(hoyISO());
   const [montoFactura, setMontoFactura] = useState("");
   const [unidadesFactura, setUnidadesFactura] = useState("");
+  // Lo que el proveedor facturó de más.
   const [discrepancia, setDiscrepancia] = useState(false);
   const [motivoDiscrepancia, setMotivoDiscrepancia] = useState("");
+  const [malNeto, setMalNeto] = useState("");
+  const [malAlicuota, setMalAlicuota] = useState(21);
+  const [malIvaManual, setMalIvaManual] = useState<string | null>(null);
+  const [malImpuestos, setMalImpuestos] = useState("");
+  const [malRetenciones, setMalRetenciones] = useState("");
 
   // El pie: lo que está en la factura pero no en ningún renglón.
   const [impuestos, setImpuestos] = useState("");
@@ -144,15 +154,26 @@ export default function CostosRecepcionModal({
   const ivaCalculado = totales.iva;
   const ivaFinal = ivaManual !== null ? Number(ivaManual) || 0 : ivaCalculado;
 
+  // ---------- Lo mal facturado ----------
+  const nMalNeto = discrepancia ? Number(malNeto) || 0 : 0;
+  const malIvaCalculado = redondear2(nMalNeto * (malAlicuota / 100));
+  const nMalIva = discrepancia ? (malIvaManual !== null ? Number(malIvaManual) || 0 : malIvaCalculado) : 0;
+  const nMalImpuestos = discrepancia ? Number(malImpuestos) || 0 : 0;
+  const nMalRetenciones = discrepancia ? Number(malRetenciones) || 0 : 0;
+  const totalReclamo = nMalNeto + nMalIva + nMalImpuestos + nMalRetenciones;
+
   // Impuestos y retenciones encarecen la mercadería; los descuentos la
   // abaratan. El IVA no entra: vuelve como crédito fiscal.
-  const subtotalSinIva = totales.neto + nImpuestos + nRetenciones - nDescuentos;
-  const totalEntrega = subtotalSinIva + ivaFinal;
+  const costoDeLoQueLlego = totales.neto + nImpuestos + nRetenciones - nDescuentos;
+  // Lo mal facturado suma al total y al IVA pero NO al costo: esa mercadería
+  // no llegó, así que no puede encarecer la que sí llegó.
+  const subtotalSinIva = costoDeLoQueLlego + nMalNeto + nMalImpuestos + nMalRetenciones;
+  const totalEntrega = subtotalSinIva + ivaFinal + nMalIva;
 
   // Lo que realmente cuesta cada unidad, con el pie repartido proporcional al
   // valor de cada línea. Es el número que se guarda y con el que se calcula
-  // el margen.
-  const factor = totales.neto > 0 ? subtotalSinIva / totales.neto : 1;
+  // el margen — por eso sale de `costoDeLoQueLlego`, sin lo mal facturado.
+  const factor = totales.neto > 0 ? costoDeLoQueLlego / totales.neto : 1;
   const hayPie = nImpuestos !== 0 || nRetenciones !== 0 || nDescuentos !== 0;
 
   // Control de que cuadre: unidades cubiertas contra las que dice la factura.
@@ -199,9 +220,13 @@ export default function CostosRecepcionModal({
       ? "Falta el número de factura."
       : montoDeclarado <= 0
         ? "Falta el total de la factura."
-        : !cuadraPlata && !motivoDiscrepancia.trim()
-          ? "Los números no cuadran: contá por qué antes de guardar."
-          : null;
+        : discrepancia && totalReclamo <= 0
+          ? "Marcaste que facturó algo mal: poné cuánto facturó de más."
+          : discrepancia && !motivoDiscrepancia.trim()
+            ? "Contá qué facturó mal."
+            : !cuadraPlata && !motivoDiscrepancia.trim()
+              ? "Los números no cuadran: contá por qué antes de guardar."
+              : null;
   const sePuedeGuardar = motivoBloqueo === null;
 
   function handleSubmit() {
@@ -224,10 +249,15 @@ export default function CostosRecepcionModal({
                 monto: Number(montoFactura) || 0,
                 idsRecepcionCubiertas: otras.filter((e) => estaCubierta(e.idRecepcion)).map((e) => e.idRecepcion),
                 unidadesFacturadas: unidadesDeclaradas || null,
-                // Que no cuadre ya es una diferencia, aunque nadie haya
-                // tildado el casillero.
-                discrepancia: discrepancia || !cuadraPlata,
-                motivoDiscrepancia,
+                malFacturado: discrepancia
+                  ? {
+                      neto: nMalNeto,
+                      iva: nMalIva,
+                      impuestos: nMalImpuestos,
+                      retenciones: nMalRetenciones,
+                      motivo: motivoDiscrepancia,
+                    }
+                  : null,
                 impuestos: nImpuestos,
                 retenciones: nRetenciones,
                 descuentos: nDescuentos,
@@ -340,6 +370,8 @@ export default function CostosRecepcionModal({
                 </thead>
                 <tbody>
                   {lineas.map((l) => {
+                    // Renglón del pedido que en esta entrega no trajo nada.
+                    const noLlego = l.cantidadRecibida <= 0;
                     const costoAnterior = costoActualPorVariante.get(l.idVariante) ?? null;
                     const costoNuevo = Number(costos[l.idVariante]) || 0;
                     // Se compara final contra final: el costo anterior ya
@@ -349,26 +381,40 @@ export default function CostosRecepcionModal({
                     const puedeComparar = costoAnterior != null && costoAnterior > 0 && costoNuevo > 0;
                     const pct = puedeComparar ? ((costoFinal - costoAnterior) / costoAnterior) * 100 : null;
                     return (
-                      <tr key={l.idVariante} className="border-b border-neutral-100 last:border-0">
+                      <tr
+                        key={l.idVariante}
+                        className={`border-b border-neutral-100 last:border-0 ${noLlego ? "opacity-50" : ""}`}
+                      >
                         <td className="p-3 text-neutral-900">{nombrePorVariante.get(l.idVariante) ?? "—"}</td>
                         <td className="p-3 text-right text-neutral-500 tabular-nums">{l.cantidadRecibida}</td>
                         <td className="p-3 text-right text-neutral-400 tabular-nums">
                           {costoAnterior != null ? `$${formatearMonto(costoAnterior)}` : "—"}
                         </td>
                         <td className="p-2 text-right">
-                          <input
-                            type="number"
-                            min={0}
-                            step="0.01"
-                            value={costos[l.idVariante] ?? ""}
-                            onChange={(e) => setCostos((prev) => ({ ...prev, [l.idVariante]: e.target.value }))}
-                            className="w-24 rounded-lg border border-accent px-2 py-1.5 text-sm text-right tabular-nums font-semibold focus:outline-none focus:ring-2 focus:ring-accent"
-                          />
+                          {noLlego ? (
+                            // Sin unidades no hay nada que costear: el lote
+                            // está vacío. Y dejarlo escribible cambiaría el
+                            // costo de referencia del producto por una
+                            // entrega que no ocurrió.
+                            <span className="text-xs text-neutral-400 px-3">no llegó</span>
+                          ) : (
+                            <input
+                              type="number"
+                              min={0}
+                              step="0.01"
+                              value={costos[l.idVariante] ?? ""}
+                              onChange={(e) => setCostos((prev) => ({ ...prev, [l.idVariante]: e.target.value }))}
+                              className="w-24 rounded-lg border border-accent px-2 py-1.5 text-sm text-right tabular-nums font-semibold focus:outline-none focus:ring-2 focus:ring-accent"
+                            />
+                          )}
                         </td>
                         <td className="p-2">
                           {/* Por producto y no una sola para todo el pedido: en
                               alimentos conviven el 21% y el 10,5%, y con la
                               alícuota mal puesta el crédito fiscal sale mal. */}
+                          {noLlego ? (
+                            <span className="text-xs text-neutral-400 px-2">—</span>
+                          ) : (
                           <select
                             value={alicuotas[l.idVariante] ?? 21}
                             onChange={(e) =>
@@ -380,6 +426,7 @@ export default function CostosRecepcionModal({
                             <option value={10.5}>10,5%</option>
                             <option value={0}>Exento</option>
                           </select>
+                          )}
                         </td>
                         {hayPie && (
                           <td className="p-3 text-right tabular-nums bg-accent-tint font-semibold text-accent">
@@ -626,8 +673,12 @@ export default function CostosRecepcionModal({
             )}
 
             {pideFactura && (
-              <>
-                <label className="flex items-start gap-2.5 cursor-pointer mb-3">
+              <div
+                className={`rounded-xl border mb-3 ${
+                  discrepancia ? "border-amber-300 bg-amber-50" : "border-neutral-200 bg-white"
+                }`}
+              >
+                <label className="flex items-start gap-2.5 cursor-pointer px-3.5 py-3">
                   <input
                     type="checkbox"
                     checked={discrepancia}
@@ -635,25 +686,127 @@ export default function CostosRecepcionModal({
                     className="mt-0.5 w-4 h-4 accent-amber-600"
                   />
                   <span className="text-sm">
-                    <b className="text-neutral-900">El proveedor facturó algo mal</b>
-                    <span className="block text-xs text-neutral-500">
-                      Mandó de más, de menos, o se equivocó en un precio. Se guarda igual, con la diferencia anotada
-                      para pedir la nota de crédito.
-                    </span>
+                    <b className={discrepancia ? "text-amber-900" : "text-neutral-900"}>
+                      ⚠ El proveedor facturó algo mal
+                    </b>
+                    {!discrepancia && (
+                      <span className="block text-xs text-neutral-500">
+                        Mandó de menos y facturó todo, se equivocó en un precio, cobró algo bonificado.
+                      </span>
+                    )}
                   </span>
                 </label>
-                {/* Si los números no cuadran ya hay un campo arriba pidiendo
-                    la explicación: repetirlo sería preguntar dos veces. */}
-                {discrepancia && cuadraPlata && (
-                  <textarea
-                    value={motivoDiscrepancia}
-                    onChange={(e) => setMotivoDiscrepancia(e.target.value)}
-                    rows={2}
-                    placeholder="Ej: el total está bien pero facturaron un producto que no es."
-                    className="w-full rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-amber-400"
-                  />
+
+                {discrepancia && (
+                  <div className="px-3.5 pb-3.5">
+                    <p className="text-xs text-amber-900 mb-3 leading-relaxed">
+                      Poné acá <b>lo que facturó de más</b>. Cuenta para el total de la factura y para el IVA — así la
+                      deuda y tu libro coinciden con lo que el proveedor ya declaró — pero{" "}
+                      <b>no entra al costo de tus productos</b>. Se abre solo el reclamo de nota de crédito.
+                    </p>
+
+                    <div className="grid gap-3 sm:grid-cols-5">
+                      <div>
+                        <label className="block text-[10.5px] font-bold text-amber-800 uppercase mb-1">
+                          Facturado de más · neto ($)
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          value={malNeto}
+                          onChange={(e) => setMalNeto(e.target.value)}
+                          placeholder="0,00"
+                          className="w-full rounded-lg border border-amber-300 bg-white px-2.5 py-2 text-sm text-right tabular-nums focus:outline-none focus:ring-2 focus:ring-amber-400"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10.5px] font-bold text-amber-800 uppercase mb-1">
+                          Alícuota de IVA
+                        </label>
+                        <select
+                          value={malAlicuota}
+                          onChange={(e) => {
+                            setMalAlicuota(Number(e.target.value));
+                            setMalIvaManual(null);
+                          }}
+                          className="w-full rounded-lg border border-amber-300 bg-white px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                        >
+                          <option value={21}>21% · general</option>
+                          <option value={10.5}>10,5%</option>
+                          <option value={0}>Exento</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[10.5px] font-bold text-amber-800 uppercase mb-1">IVA ($)</label>
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          value={malIvaManual ?? (malIvaCalculado > 0 ? malIvaCalculado.toFixed(2) : "")}
+                          onChange={(e) => setMalIvaManual(e.target.value)}
+                          placeholder="0,00"
+                          className="w-full rounded-lg border border-amber-300 bg-white px-2.5 py-2 text-sm text-right tabular-nums focus:outline-none focus:ring-2 focus:ring-amber-400"
+                        />
+                        <p className="text-[10.5px] text-amber-700 mt-1 leading-snug">
+                          Sobre el neto de ${formatearMonto(nMalNeto)}. Las percepciones no llevan IVA.
+                        </p>
+                      </div>
+                      <div>
+                        <label className="block text-[10.5px] font-bold text-amber-800 uppercase mb-1">
+                          Impuestos ($)
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          value={malImpuestos}
+                          onChange={(e) => setMalImpuestos(e.target.value)}
+                          placeholder="0,00"
+                          className="w-full rounded-lg border border-amber-300 bg-white px-2.5 py-2 text-sm text-right tabular-nums focus:outline-none focus:ring-2 focus:ring-amber-400"
+                        />
+                        <p className="text-[10.5px] text-amber-700 mt-1 leading-snug">
+                          Percepciones, IIBB sobre lo mal facturado.
+                        </p>
+                      </div>
+                      <div>
+                        <label className="block text-[10.5px] font-bold text-amber-800 uppercase mb-1">
+                          Retenciones ($)
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          value={malRetenciones}
+                          onChange={(e) => setMalRetenciones(e.target.value)}
+                          placeholder="0,00"
+                          className="w-full rounded-lg border border-amber-300 bg-white px-2.5 py-2 text-sm text-right tabular-nums focus:outline-none focus:ring-2 focus:ring-amber-400"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="mt-3">
+                      <label className="block text-[10.5px] font-bold text-amber-800 uppercase mb-1">
+                        ¿Qué facturó mal? <span className="text-red-600">*</span>
+                      </label>
+                      <textarea
+                        value={motivoDiscrepancia}
+                        onChange={(e) => setMotivoDiscrepancia(e.target.value)}
+                        rows={2}
+                        placeholder="Ej: cobraron a $10.000 la unidad que iba bonificada."
+                        className="w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                      />
+                    </div>
+
+                    {totalReclamo > 0 && (
+                      <p className="text-sm text-amber-900 mt-3 tabular-nums">
+                        <b>Reclamo de nota de crédito: ${formatearMonto(totalReclamo)}</b> — va a quedar en la lista
+                        de Reclamos hasta que el proveedor te acredite.
+                      </p>
+                    )}
+                  </div>
                 )}
-              </>
+              </div>
             )}
 
             <div>
