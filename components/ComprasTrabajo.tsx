@@ -230,46 +230,44 @@ export default function ComprasTrabajo({ etapa, datos }: { etapa: Etapa; datos: 
   // Cada pedido está en UNA etapa a la vez. Emitida y sin mandar vive en
   // Órdenes; en cuanto se marca como enviada pasa a Recepción y desaparece de
   // acá. Mostrarla en las dos era lo confuso de la versión anterior.
-  // El buscador y el origen se aplican a todo lo que se lista en Órdenes.
-  const pasaFiltro = (o: Fila) =>
-    coincide(buscarOrdenes, o.contraparte, o.idOrden) &&
-    (origenFiltro === "TODAS" || o.origen === origenFiltro);
-
+  // Lo pendiente no se filtra: son pocas filas y esconder trabajo detrás de
+  // un buscador es la forma más fácil de que un pedido se pierda.
   const sinEnviar = useMemo(
-    () =>
-      todas
-        .filter((o) => o.estado === PENDIENTE && !o.enviadaEl && pasaFiltro(o))
-        .sort((a, b) => a.fecha.localeCompare(b.fecha)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [todas, buscarOrdenes, origenFiltro]
+    () => todas.filter((o) => o.estado === PENDIENTE && !o.enviadaEl).sort((a, b) => a.fecha.localeCompare(b.fecha)),
+    [todas]
   );
   const esperandoLlegar = useMemo(
     () =>
       todas
-        .filter((o) => o.estado === PENDIENTE && o.enviadaEl && pasaFiltro(o))
+        .filter((o) => o.estado === PENDIENTE && o.enviadaEl)
         .sort((a, b) => (a.enviadaEl ?? "").localeCompare(b.enviadaEl ?? "")),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [todas, buscarOrdenes, origenFiltro]
+    [todas]
   );
   // Llegó una parte y falta el resto. Sigue siendo trabajo del local: la
   // mercadería que falta todavía está en la calle.
   const aMedias = useMemo(
     () =>
       todas
-        .filter((o) => o.estado === RECIBIDA_PARCIAL && pasaFiltro(o))
+        .filter((o) => o.estado === RECIBIDA_PARCIAL)
         .sort((a, b) => (a.enviadaEl ?? a.fecha).localeCompare(b.enviadaEl ?? b.fecha)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [todas, buscarOrdenes, origenFiltro]
+    [todas]
   );
-  // Solo acá entra el filtro de período: son pedidos terminados, y sin corte
+
+  // Los filtros son solo del historial: son pedidos terminados, y sin corte
   // la lista crece para siempre.
+  const todasCerradas = useMemo(() => todas.filter((o) => !estaAbierta(o.estado)), [todas]);
+  const hayCerradas = todasCerradas.length > 0;
   const cerradas = useMemo(
     () =>
-      todas
-        .filter((o) => !estaAbierta(o.estado) && pasaFiltro(o) && entraEnPeriodo(o.fecha, periodoCerradas))
+      todasCerradas
+        .filter(
+          (o) =>
+            coincide(buscarOrdenes, o.contraparte, o.idOrden) &&
+            (origenFiltro === "TODAS" || o.origen === origenFiltro) &&
+            entraEnPeriodo(o.fecha, periodoCerradas)
+        )
         .sort((a, b) => b.fecha.localeCompare(a.fecha)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [todas, buscarOrdenes, origenFiltro, periodoCerradas]
+    [todasCerradas, buscarOrdenes, origenFiltro, periodoCerradas]
   );
 
   function abrirRecepcion(f: Fila) {
@@ -305,30 +303,10 @@ export default function ComprasTrabajo({ etapa, datos }: { etapa: Etapa; datos: 
               </button>
             </div>
           </div>
-          <p className="text-sm text-neutral-500 mt-1 mb-3">
+          <p className="text-sm text-neutral-500 mt-1 mb-5">
             Órdenes emitidas que todavía no se mandaron. Al marcarlas como enviadas pasan a Recepción y salen de
             acá.
           </p>
-
-          {/* El buscador y el origen filtran las tres secciones. El período,
-              solo el historial de abajo: esconder trabajo pendiente detrás de
-              un filtro de fecha es la forma más fácil de que se pierda. */}
-          <div className="flex items-center gap-2 flex-wrap mb-4">
-            <Buscador
-              valor={buscarOrdenes}
-              onCambio={setBuscarOrdenes}
-              placeholder="Buscar por proveedor, marca o número de pedido..."
-            />
-            <GrupoBotones
-              opciones={[
-                { clave: "TODAS" as const, texto: "Todas" },
-                { clave: "PROVEEDOR" as const, texto: "Proveedores" },
-                { clave: "MARCA" as const, texto: "Marcas" },
-              ]}
-              valor={origenFiltro}
-              onCambio={setOrigenFiltro}
-            />
-          </div>
 
           <Seccion titulo="Emitidas · falta mandarlas" vacio="Todas las órdenes ya fueron enviadas.">
             {sinEnviar.map((f) => (
@@ -364,23 +342,50 @@ export default function ComprasTrabajo({ etapa, datos }: { etapa: Etapa; datos: 
             </Seccion>
           )}
 
-          {cerradas.length > 0 && (
+          {/* El buscador vive acá y no arriba: las secciones de trabajo
+              pendiente son cortas y se ven enteras, el historial es el que
+              crece. Mismo criterio que en Recepción y en Costeo. */}
+          {hayCerradas && (
             <div className="mb-5">
               <div className="flex items-baseline justify-between gap-3 flex-wrap mb-2">
                 <p className="text-xs font-bold uppercase tracking-wider text-neutral-400">Ya cerradas</p>
-                <div className="flex items-center gap-3 flex-wrap">
-                  <span className="text-xs text-neutral-500 tabular-nums">
-                    <b className="text-neutral-800">{cerradas.length}</b> ·{" "}
-                    {cerradas.reduce((a, f) => a + f.unidades, 0)} unidades
-                  </span>
-                  <FiltroPeriodo valor={periodoCerradas} onCambio={setPeriodoCerradas} />
+                <span className="text-xs text-neutral-500 tabular-nums">
+                  <b className="text-neutral-800">
+                    {cerradas.length} {cerradas.length === 1 ? "pedido" : "pedidos"}
+                  </b>{" "}
+                  · {cerradas.reduce((a, f) => a + f.unidades, 0)} unidades
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap mb-3">
+                <Buscador
+                  valor={buscarOrdenes}
+                  onCambio={setBuscarOrdenes}
+                  placeholder="Buscar por proveedor, marca o número de pedido..."
+                />
+                <GrupoBotones
+                  opciones={[
+                    { clave: "TODAS" as const, texto: "Todas" },
+                    { clave: "PROVEEDOR" as const, texto: "Proveedores" },
+                    { clave: "MARCA" as const, texto: "Marcas" },
+                  ]}
+                  valor={origenFiltro}
+                  onCambio={setOrigenFiltro}
+                />
+                <FiltroPeriodo valor={periodoCerradas} onCambio={setPeriodoCerradas} />
+              </div>
+
+              {cerradas.length === 0 ? (
+                <p className="text-sm text-neutral-400 text-center py-5 border border-neutral-200 rounded-xl bg-white">
+                  No hay pedidos cerrados con esos filtros.
+                </p>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {cerradas.map((f) => (
+                    <FilaOrden key={`${f.origen}-${f.idOrden}`} f={f} tenue detalle={contenidoDe(f)} />
+                  ))}
                 </div>
-              </div>
-              <div className="flex flex-col gap-2">
-                {cerradas.map((f) => (
-                  <FilaOrden key={`${f.origen}-${f.idOrden}`} f={f} tenue detalle={contenidoDe(f)} />
-                ))}
-              </div>
+              )}
             </div>
           )}
         </>
