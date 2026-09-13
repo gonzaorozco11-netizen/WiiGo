@@ -497,6 +497,34 @@ export async function actualizarCostosRecepcion(
       .eq("id_orden", idOrden)
       .maybeSingle();
 
+    // Un costo se puede corregir hasta que se liquide. Después no: esa plata
+    // ya se le pagó al proveedor, y cambiarla acá haría que la liquidación
+    // vieja y el costo del producto cuenten historias distintas. El ajuste va
+    // en la liquidación siguiente.
+    //
+    // El control va acá y no solo en la pantalla porque un archivo
+    // "use server" es un endpoint: quien esté logueado puede llamarlo con el
+    // id que quiera.
+    if (recepcion) {
+      const { data: lotes } = await supabase
+        .from("detalle_recepcion_proveedor")
+        .select("id_detalle")
+        .eq("id_recepcion", recepcion.id_recepcion);
+      const ids = (lotes ?? []).map((l) => l.id_detalle as string);
+      if (ids.length > 0) {
+        const { count } = await supabase
+          .from("detalle_liquidacion_proveedor")
+          .select("id_detalle", { count: "exact", head: true })
+          .in("id_detalle_recepcion", ids);
+        if ((count ?? 0) > 0) {
+          return {
+            error:
+              "Esta recepción ya entró en una liquidación cerrada, así que su costo no se puede cambiar. Si el precio estaba mal, se ajusta en la próxima liquidación.",
+          };
+        }
+      }
+    }
+
     for (const item of costos) {
       if (item.costo <= 0) continue;
       const { data: variante } = await supabase

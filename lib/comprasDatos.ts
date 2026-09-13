@@ -43,6 +43,15 @@ export type DatosCompras = {
   detalleProveedor: DetalleOrdenCompra[];
   /** Recepciones de proveedor sin costo cargado, para la etapa de Costeo. */
   recepcionesSinCostear: { id_recepcion: string; id_orden: string; id_proveedor: string; fecha: string }[];
+  /**
+   * Las ya costeadas que TODAVÍA no se liquidaron.
+   *
+   * Se muestran para poder corregir un costo mal cargado: hasta que no se
+   * liquida, ese número no se le pagó a nadie y cambiarlo no reescribe nada.
+   * Una vez liquidado deja de aparecer — ahí el costo ya se pagó y el ajuste
+   * va en la liquidación siguiente, no borrando el pasado.
+   */
+  recepcionesCosteadas: { id_recepcion: string; id_orden: string; id_proveedor: string; fecha: string }[];
 };
 
 export async function datosCompras(): Promise<DatosCompras> {
@@ -60,6 +69,9 @@ export async function datosCompras(): Promise<DatosCompras> {
     ordProvRes,
     detProvRes,
     recepRes,
+    costeadasRes,
+    liquidadosRes,
+    lotesRes,
   ] = await Promise.all([
     listarProveedores(),
     supabase.from("marcas").select("*").eq("estado", "ACTIVA").order("nombre", { ascending: true }),
@@ -79,9 +91,31 @@ export async function datosCompras(): Promise<DatosCompras> {
       .eq("facturada", false)
       .order("fecha", { ascending: true })
       .limit(60),
+    supabase
+      .from("recepciones_proveedor")
+      .select("id_recepcion, id_orden, id_proveedor, fecha")
+      .eq("facturada", true)
+      .order("fecha", { ascending: false })
+      .limit(40),
+    // Los lotes que ya entraron en una liquidación cerrada: esos costos ya se
+    // pagaron y no se tocan más.
+    supabase.from("detalle_liquidacion_proveedor").select("id_detalle_recepcion"),
+    supabase.from("detalle_recepcion_proveedor").select("id_detalle, id_recepcion"),
   ]);
 
   const marcas = (marcasRes.data ?? []) as Marca[];
+
+  // Una recepción se puede corregir solo si NINGUNO de sus lotes entró ya en
+  // una liquidación cerrada. Con uno solo liquidado, el costo de esa
+  // recepción ya se pagó y cambiarlo sería reescribir el pasado.
+  const lotesLiquidados = new Set(
+    (liquidadosRes.data ?? []).map((d) => d.id_detalle_recepcion as string).filter(Boolean)
+  );
+  const recepcionesConLoteLiquidado = new Set(
+    (lotesRes.data ?? [])
+      .filter((l) => lotesLiquidados.has(l.id_detalle as string))
+      .map((l) => l.id_recepcion as string)
+  );
 
   return {
     marcas,
@@ -98,5 +132,8 @@ export async function datosCompras(): Promise<DatosCompras> {
     ordenesProveedor: (ordProvRes.data ?? []) as DatosCompras["ordenesProveedor"],
     detalleProveedor: (detProvRes.data ?? []) as DetalleOrdenCompra[],
     recepcionesSinCostear: (recepRes.data ?? []) as DatosCompras["recepcionesSinCostear"],
+    recepcionesCosteadas: ((costeadasRes.data ?? []) as DatosCompras["recepcionesCosteadas"]).filter(
+      (r) => !recepcionesConLoteLiquidado.has(r.id_recepcion)
+    ),
   };
 }

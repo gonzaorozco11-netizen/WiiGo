@@ -391,6 +391,15 @@ function CosteoEtapa({
     }))
     .filter((r) => r.orden);
 
+  const costeadas = datos.recepcionesCosteadas
+    .map((r) => ({
+      ...r,
+      orden: datos.ordenesProveedor.find((o) => o.id_orden === r.id_orden),
+      proveedor: proveedorPorId.get(r.id_proveedor),
+      productos: datos.detalleProveedor.filter((d) => d.id_orden === r.id_orden).length,
+    }))
+    .filter((r) => r.orden);
+
   const vencidos = porCostear.filter((r) => r.dias > 3).length;
 
   const MODO: Record<string, string> = {
@@ -446,11 +455,48 @@ function CosteoEtapa({
         ))}
       </Seccion>
 
+      {/* Ya costeadas pero todavía sin liquidar: se pueden corregir. Es el
+          único momento en que cambiar un costo no reescribe nada — esa plata
+          todavía no se le pagó a nadie. Al liquidarse, desaparecen de acá. */}
+      {costeadas.length > 0 && (
+        <Seccion titulo="Ya costeadas · todavía se pueden corregir">
+          {costeadas.map((r) => (
+            <div
+              key={r.id_recepcion}
+              className="flex items-center gap-3 flex-wrap border border-neutral-200 border-l-[3px] border-l-emerald-500 rounded-xl px-4 py-3 bg-white"
+            >
+              <span className="flex-1 min-w-[200px]">
+                <span className="block font-semibold text-[14.5px] text-neutral-900">
+                  {r.proveedor?.nombre ?? "—"}
+                </span>
+                <span className="block text-xs text-neutral-400">
+                  Recibido el {fechaCorta(r.fecha)} · {r.productos} {r.productos === 1 ? "producto" : "productos"} ·
+                  costeado
+                </span>
+              </span>
+              <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200 whitespace-nowrap">
+                Sin liquidar
+              </span>
+              <button
+                onClick={() => r.orden && onCostear(r.orden)}
+                className="text-sm font-semibold text-neutral-700 border border-neutral-300 rounded-lg px-3 py-1.5 hover:bg-neutral-50"
+              >
+                Corregir
+              </button>
+            </div>
+          ))}
+        </Seccion>
+      )}
+
       <div className="bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-3 mt-5">
         <p className="text-xs text-neutral-500">
           <b className="text-neutral-700">La pantalla pide cosas distintas según el proveedor.</b> Con los de
           liquidación mensual alcanza con el costo — su factura llega a fin de mes y se carga contra la liquidación.
           Con los que facturan por entrega, además hay que cargar el número de factura, y ahí sí nace la deuda.
+        </p>
+        <p className="text-xs text-neutral-500 mt-2">
+          <b className="text-neutral-700">Un costo se puede corregir hasta que se liquide.</b> Después no: esa plata
+          ya se le pagó al proveedor, y el ajuste va en la liquidación siguiente en vez de borrar lo que pasó.
         </p>
       </div>
     </>
