@@ -91,11 +91,26 @@ function FilaProveedor({
           {p.pendientesFacturar} {etiquetaPendiente}
         </span>
       )}
+      {/* Con liquidación por venta el saldo es $0 hasta que se liquida, así
+          que mostrar solo eso decía "al día" aunque le hubieras vendido medio
+          depósito. Lo que se acumula va acá, al lado. */}
+      {p.vendidoSinLiquidar > 0 && (
+        <span className="text-right min-w-[104px]">
+          <span className="block font-semibold tabular-nums text-amber-700">
+            ${formatearMonto(p.vendidoSinLiquidar)}
+          </span>
+          <span className="block text-[10.5px] text-amber-700">
+            vendido · {p.unidadesSinLiquidar} un.
+          </span>
+        </span>
+      )}
       <span className="text-right min-w-[92px]">
         <span className={`block font-semibold tabular-nums ${p.saldo > 0 ? "text-red-600" : "text-neutral-900"}`}>
           ${formatearMonto(p.saldo)}
         </span>
-        <span className="block text-[10.5px] text-neutral-400">{p.saldo > 0 ? "le debés" : "al día"}</span>
+        <span className="block text-[10.5px] text-neutral-400">
+          {p.saldo > 0 ? "le debés" : p.vendidoSinLiquidar > 0 ? "sin liquidar" : "al día"}
+        </span>
       </span>
       <span className="text-neutral-300">›</span>
     </button>
@@ -508,6 +523,24 @@ export default function ProveedoresApp({
                         ${formatearMonto(seleccionado.saldo)}
                       </p>
                     </div>
+
+                    {/* Lo que se viene. Con liquidación por venta el saldo de
+                        arriba es $0 hasta que se liquida — este es el número
+                        que dice cuánto se le va a deber. */}
+                    {seleccionado.vendidoSinLiquidar > 0 && (
+                      <div className="rounded-xl p-4 mb-4 bg-amber-50 border border-amber-200">
+                        <p className="text-[11px] font-bold uppercase tracking-wide mb-0.5 text-amber-800">
+                          Vendido sin liquidar
+                        </p>
+                        <p className="text-2xl font-extrabold text-amber-800">
+                          ${formatearMonto(seleccionado.vendidoSinLiquidar)}
+                        </p>
+                        <p className="text-[11px] text-amber-700 mt-1">
+                          {seleccionado.unidadesSinLiquidar} unidades suyas ya vendidas. Todavía no es deuda: pasa al
+                          saldo cuando generes la liquidación. Aproximado — el exacto sale ahí.
+                        </p>
+                      </div>
+                    )}
 
                     {esAdmin && (
                       <div className="flex flex-col gap-2 mb-4">

@@ -68,6 +68,18 @@ export type ProveedorConSaldo = {
   // su costo) cargada — es el aviso concreto de "esto está pendiente" que
   // le faltaba a administración.
   pendientesFacturar: number;
+  /**
+   * Solo LIQUIDACION_VENTA: lo que ya se vendió y todavía no se liquidó.
+   *
+   * Sin esto, Alifrut mostraba "$0 · al día" aunque le hubieras vendido medio
+   * depósito: el saldo es la deuda formal, y con este modo no nace hasta que
+   * se genera la liquidación. El número era correcto y a la vez mentía.
+   *
+   * Es aproximado — usa el costo de referencia del producto y no el lote FIFO
+   * que le va a tocar a cada unidad. El exacto sale al abrir la liquidación.
+   */
+  vendidoSinLiquidar: number;
+  unidadesSinLiquidar: number;
 };
 
 /**
@@ -146,11 +158,86 @@ export async function listarProveedores(): Promise<ProveedorConSaldo[]> {
     pendientesPorProveedor.set(r.id_proveedor, (pendientesPorProveedor.get(r.id_proveedor) ?? 0) + 1);
   }
 
+  const acumulado = await vendidoSinLiquidarPorProveedor(
+    supabase,
+    proveedores.filter((p) => p.modo_facturacion === "LIQUIDACION_VENTA").map((p) => p.id_proveedor)
+  );
+
   return proveedores.map((p) => ({
     ...p,
     saldo: saldos.get(p.id_proveedor) ?? 0,
     pendientesFacturar: pendientesPorProveedor.get(p.id_proveedor) ?? 0,
+    vendidoSinLiquidar: acumulado.get(p.id_proveedor)?.monto ?? 0,
+    unidadesSinLiquidar: acumulado.get(p.id_proveedor)?.unidades ?? 0,
   }));
+}
+
+/**
+ * Lo vendido y todavía no liquidado, por proveedor de liquidación por venta.
+ *
+ * Usa el costo de referencia del producto en vez de correr el FIFO lote por
+ * lote: acá es una lista, y hacer la simulación completa por cada proveedor
+ * haría lenta una pantalla que se abre todo el tiempo. La diferencia aparece
+ * solo si el mismo producto entró a precios distintos, y el número exacto se
+ * ve al abrir la liquidación.
+ */
+async function vendidoSinLiquidarPorProveedor(
+  supabase: ReturnType<typeof getSupabaseServerClient>,
+  ids: string[]
+): Promise<Map<string, { monto: number; unidades: number }>> {
+  const resultado = new Map<string, { monto: number; unidades: number }>();
+  if (ids.length === 0) return resultado;
+
+  const { data: productos } = await supabase
+    .from("productos")
+    .select("id_producto, id_proveedor_liquidacion, costo_informado")
+    .in("id_proveedor_liquidacion", ids);
+  if (!productos || productos.length === 0) return resultado;
+
+  const { data: variantes } = await supabase
+    .from("variantes_producto")
+    .select("id_variante, id_producto")
+    .in(
+      "id_producto",
+      productos.map((p) => p.id_producto as string)
+    );
+  if (!variantes || variantes.length === 0) return resultado;
+
+  const productoPorId = new Map(productos.map((p) => [p.id_producto as string, p]));
+  const datosPorVariante = new Map(
+    variantes.map((v) => {
+      const p = productoPorId.get(v.id_producto as string);
+      return [
+        v.id_variante as string,
+        {
+          idProveedor: (p?.id_proveedor_liquidacion as string) ?? "",
+          costo: (p?.costo_informado as number | null) ?? 0,
+        },
+      ];
+    })
+  );
+
+  // Solo lo no liquidado: al generar la liquidación estas líneas quedan
+  // marcadas y dejan de contar acá, que es lo que hace que el número baje a
+  // cero después de liquidar.
+  const { data: lineas } = await supabase
+    .from("detalle_ventas")
+    .select("id_variante, cantidad")
+    .in("id_variante", [...datosPorVariante.keys()])
+    .is("id_liquidacion_proveedor", null);
+
+  for (const l of lineas ?? []) {
+    const d = datosPorVariante.get(l.id_variante as string);
+    if (!d?.idProveedor) continue;
+    const previo = resultado.get(d.idProveedor) ?? { monto: 0, unidades: 0 };
+    const cantidad = (l.cantidad as number) ?? 0;
+    resultado.set(d.idProveedor, {
+      monto: previo.monto + cantidad * d.costo,
+      unidades: previo.unidades + cantidad,
+    });
+  }
+
+  return resultado;
 }
 
 export async function crearProveedor(formData: FormData): Promise<{ error: string | null }> {
