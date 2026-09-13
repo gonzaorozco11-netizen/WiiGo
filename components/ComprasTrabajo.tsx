@@ -75,6 +75,9 @@ export default function ComprasTrabajo({ etapa, datos }: { etapa: Etapa; datos: 
   const [costear, setCostear] = useState<EntregaHistorial | null>(null);
   const [enviando, setEnviando] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [buscarOrdenes, setBuscarOrdenes] = useState("");
+  const [origenFiltro, setOrigenFiltro] = useState<"TODAS" | "MARCA" | "PROVEEDOR">("TODAS");
+  const [periodoCerradas, setPeriodoCerradas] = useState<Periodo>("MES");
   const router = useRouter();
 
   function enviar(f: Fila) {
@@ -227,32 +230,46 @@ export default function ComprasTrabajo({ etapa, datos }: { etapa: Etapa; datos: 
   // Cada pedido está en UNA etapa a la vez. Emitida y sin mandar vive en
   // Órdenes; en cuanto se marca como enviada pasa a Recepción y desaparece de
   // acá. Mostrarla en las dos era lo confuso de la versión anterior.
+  // El buscador y el origen se aplican a todo lo que se lista en Órdenes.
+  const pasaFiltro = (o: Fila) =>
+    coincide(buscarOrdenes, o.contraparte, o.idOrden) &&
+    (origenFiltro === "TODAS" || o.origen === origenFiltro);
+
   const sinEnviar = useMemo(
     () =>
       todas
-        .filter((o) => o.estado === PENDIENTE && !o.enviadaEl)
+        .filter((o) => o.estado === PENDIENTE && !o.enviadaEl && pasaFiltro(o))
         .sort((a, b) => a.fecha.localeCompare(b.fecha)),
-    [todas]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [todas, buscarOrdenes, origenFiltro]
   );
   const esperandoLlegar = useMemo(
     () =>
       todas
-        .filter((o) => o.estado === PENDIENTE && o.enviadaEl)
+        .filter((o) => o.estado === PENDIENTE && o.enviadaEl && pasaFiltro(o))
         .sort((a, b) => (a.enviadaEl ?? "").localeCompare(b.enviadaEl ?? "")),
-    [todas]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [todas, buscarOrdenes, origenFiltro]
   );
   // Llegó una parte y falta el resto. Sigue siendo trabajo del local: la
   // mercadería que falta todavía está en la calle.
   const aMedias = useMemo(
     () =>
       todas
-        .filter((o) => o.estado === RECIBIDA_PARCIAL)
+        .filter((o) => o.estado === RECIBIDA_PARCIAL && pasaFiltro(o))
         .sort((a, b) => (a.enviadaEl ?? a.fecha).localeCompare(b.enviadaEl ?? b.fecha)),
-    [todas]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [todas, buscarOrdenes, origenFiltro]
   );
+  // Solo acá entra el filtro de período: son pedidos terminados, y sin corte
+  // la lista crece para siempre.
   const cerradas = useMemo(
-    () => todas.filter((o) => !estaAbierta(o.estado)).sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 12),
-    [todas]
+    () =>
+      todas
+        .filter((o) => !estaAbierta(o.estado) && pasaFiltro(o) && entraEnPeriodo(o.fecha, periodoCerradas))
+        .sort((a, b) => b.fecha.localeCompare(a.fecha)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [todas, buscarOrdenes, origenFiltro, periodoCerradas]
   );
 
   function abrirRecepcion(f: Fila) {
@@ -288,10 +305,30 @@ export default function ComprasTrabajo({ etapa, datos }: { etapa: Etapa; datos: 
               </button>
             </div>
           </div>
-          <p className="text-sm text-neutral-500 mt-1 mb-5">
+          <p className="text-sm text-neutral-500 mt-1 mb-3">
             Órdenes emitidas que todavía no se mandaron. Al marcarlas como enviadas pasan a Recepción y salen de
             acá.
           </p>
+
+          {/* El buscador y el origen filtran las tres secciones. El período,
+              solo el historial de abajo: esconder trabajo pendiente detrás de
+              un filtro de fecha es la forma más fácil de que se pierda. */}
+          <div className="flex items-center gap-2 flex-wrap mb-4">
+            <Buscador
+              valor={buscarOrdenes}
+              onCambio={setBuscarOrdenes}
+              placeholder="Buscar por proveedor, marca o número de pedido..."
+            />
+            <GrupoBotones
+              opciones={[
+                { clave: "TODAS" as const, texto: "Todas" },
+                { clave: "PROVEEDOR" as const, texto: "Proveedores" },
+                { clave: "MARCA" as const, texto: "Marcas" },
+              ]}
+              valor={origenFiltro}
+              onCambio={setOrigenFiltro}
+            />
+          </div>
 
           <Seccion titulo="Emitidas · falta mandarlas" vacio="Todas las órdenes ya fueron enviadas.">
             {sinEnviar.map((f) => (
@@ -328,11 +365,23 @@ export default function ComprasTrabajo({ etapa, datos }: { etapa: Etapa; datos: 
           )}
 
           {cerradas.length > 0 && (
-            <Seccion titulo="Ya recibidas">
-              {cerradas.map((f) => (
-                <FilaOrden key={`${f.origen}-${f.idOrden}`} f={f} tenue detalle={contenidoDe(f)} />
-              ))}
-            </Seccion>
+            <div className="mb-5">
+              <div className="flex items-baseline justify-between gap-3 flex-wrap mb-2">
+                <p className="text-xs font-bold uppercase tracking-wider text-neutral-400">Ya cerradas</p>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <span className="text-xs text-neutral-500 tabular-nums">
+                    <b className="text-neutral-800">{cerradas.length}</b> ·{" "}
+                    {cerradas.reduce((a, f) => a + f.unidades, 0)} unidades
+                  </span>
+                  <FiltroPeriodo valor={periodoCerradas} onCambio={setPeriodoCerradas} />
+                </div>
+              </div>
+              <div className="flex flex-col gap-2">
+                {cerradas.map((f) => (
+                  <FilaOrden key={`${f.origen}-${f.idOrden}`} f={f} tenue detalle={contenidoDe(f)} />
+                ))}
+              </div>
+            </div>
           )}
         </>
       )}
@@ -465,6 +514,10 @@ function CosteoEtapa({
   const router = useRouter();
   const [cerrando, setCerrando] = useState<string | null>(null);
   const [errorCierre, setErrorCierre] = useState<string | null>(null);
+  // Los filtros van solo sobre las ya costeadas. "Por costear" es trabajo
+  // pendiente: esconderlo detrás de un filtro de fecha es como taparlo.
+  const [buscarCosteadas, setBuscarCosteadas] = useState("");
+  const [periodoCosteadas, setPeriodoCosteadas] = useState<Periodo>("MES");
 
   /** Cuántas unidades del pedido nunca llegaron. 0 = llegó todo. */
   function faltanteDe(idOrden: string) {
@@ -512,6 +565,21 @@ function CosteoEtapa({
     .filter((r) => r.orden && r.entrega);
 
   const vencidos = porCostear.filter((r) => r.dias > 3).length;
+
+  const costeadasVisibles = costeadas.filter(
+    (r) =>
+      entraEnPeriodo(r.fecha, periodoCosteadas) &&
+      coincide(buscarCosteadas, r.proveedor?.nombre ?? "", r.id_orden)
+  );
+  // Cuánto costó lo que se ve: el costo real ya cargado de cada entrega.
+  const montoCosteado = costeadasVisibles.reduce(
+    (acc, r) =>
+      acc +
+      datos.lineasEntrega
+        .filter((l) => l.idRecepcion === r.id_recepcion)
+        .reduce((a, l) => a + (l.costoUnitario ?? 0) * l.cantidadRecibida, 0),
+    0
+  );
 
   const MODO: Record<string, string> = {
     LIQUIDACION_VENTA: "Liquidación mensual",
@@ -606,8 +674,35 @@ function CosteoEtapa({
           único momento en que cambiar un costo no reescribe nada — esa plata
           todavía no se le pagó a nadie. Al liquidarse, desaparecen de acá. */}
       {costeadas.length > 0 && (
-        <Seccion titulo="Ya costeadas · todavía se pueden corregir">
-          {costeadas.map((r) => (
+        <div className="mb-5">
+          <div className="flex items-baseline justify-between gap-3 flex-wrap mb-2">
+            <p className="text-xs font-bold uppercase tracking-wider text-neutral-400">
+              Ya costeadas · todavía se pueden corregir
+            </p>
+            <p className="text-xs text-neutral-500 tabular-nums">
+              <b className="text-neutral-800">
+                {costeadasVisibles.length} {costeadasVisibles.length === 1 ? "entrega" : "entregas"}
+              </b>{" "}
+              · ${montoCosteado.toLocaleString("es-AR", { maximumFractionDigits: 0 })} en costo
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap mb-3">
+            <Buscador
+              valor={buscarCosteadas}
+              onCambio={setBuscarCosteadas}
+              placeholder="Buscar por proveedor o número de pedido..."
+            />
+            <FiltroPeriodo valor={periodoCosteadas} onCambio={setPeriodoCosteadas} />
+          </div>
+
+          {costeadasVisibles.length === 0 ? (
+            <p className="text-sm text-neutral-400 text-center py-5 border border-neutral-200 rounded-xl bg-white">
+              No hay entregas costeadas en este período.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {costeadasVisibles.map((r) => (
             <div
               key={r.id_recepcion}
               className="flex items-center gap-3 flex-wrap border border-neutral-200 border-l-[3px] border-l-emerald-500 rounded-xl px-4 py-3 bg-white"
@@ -631,8 +726,10 @@ function CosteoEtapa({
                 Corregir
               </button>
             </div>
-          ))}
-        </Seccion>
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
       <div className="bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-3 mt-5">
@@ -689,6 +786,76 @@ function entraEnPeriodo(iso: string, periodo: Periodo) {
   if (periodo === "TODO") return true;
   const d = dias(iso);
   return periodo === "SEMANA" ? d <= 7 : d <= 31;
+}
+
+/** El buscador, igual en las tres pantallas. */
+function Buscador({
+  valor,
+  onCambio,
+  placeholder,
+}: {
+  valor: string;
+  onCambio: (v: string) => void;
+  placeholder: string;
+}) {
+  return (
+    <div className="relative flex-1 min-w-[190px]">
+      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-400 text-xs" aria-hidden="true">
+        🔍
+      </span>
+      <input
+        value={valor}
+        onChange={(e) => onCambio(e.target.value)}
+        placeholder={placeholder}
+        className="w-full text-xs rounded-lg border border-neutral-300 pl-7 pr-7 py-1.5 bg-white text-neutral-700 focus:outline-none focus:ring-2 focus:ring-accent"
+      />
+      {valor && (
+        <button
+          onClick={() => onCambio("")}
+          className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700 text-xs"
+          aria-label="Limpiar"
+        >
+          ✕
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Botones de filtro. Oscuro el elegido, para que no compita con el azul de las acciones. */
+function GrupoBotones<T extends string>({
+  opciones,
+  valor,
+  onCambio,
+}: {
+  opciones: { clave: T; texto: string }[];
+  valor: T;
+  onCambio: (v: T) => void;
+}) {
+  return (
+    <div className="flex gap-1.5 flex-wrap">
+      {opciones.map((o) => (
+        <button
+          key={o.clave}
+          onClick={() => onCambio(o.clave)}
+          className={`text-xs font-semibold rounded-lg px-2.5 py-1 border ${
+            valor === o.clave
+              ? "bg-neutral-800 text-white border-neutral-800"
+              : "bg-white text-neutral-600 border-neutral-300 hover:bg-neutral-50"
+          }`}
+        >
+          {o.texto}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** ¿El texto buscado aparece en el nombre o en el código del pedido? */
+function coincide(q: string, contraparte: string, idOrden: string) {
+  if (!q) return true;
+  const t = q.trim().toLowerCase();
+  return contraparte.toLowerCase().includes(t) || idOrden.toLowerCase().includes(t);
 }
 
 /**
@@ -770,26 +937,7 @@ function HistorialEntregas({
 
       <div className="px-4 py-2.5 bg-neutral-50 border-b border-neutral-100 flex flex-col gap-2">
         <div className="flex items-center gap-2 flex-wrap">
-          <div className="relative flex-1 min-w-[180px]">
-            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-400 text-xs" aria-hidden="true">
-              🔍
-            </span>
-            <input
-              value={busqueda}
-              onChange={(e) => setBusqueda(e.target.value)}
-              placeholder="Buscar por proveedor o número de pedido..."
-              className="w-full text-xs rounded-lg border border-neutral-300 pl-7 pr-7 py-1.5 bg-white text-neutral-700 focus:outline-none focus:ring-2 focus:ring-accent"
-            />
-            {busqueda && (
-              <button
-                onClick={() => setBusqueda("")}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700 text-xs"
-                aria-label="Limpiar"
-              >
-                ✕
-              </button>
-            )}
-          </div>
+          <Buscador valor={busqueda} onCambio={setBusqueda} placeholder="Buscar por proveedor o número de pedido..." />
           <select
             value={quien}
             onChange={(e) => setQuien(e.target.value)}
@@ -805,21 +953,7 @@ function HistorialEntregas({
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex gap-1.5 flex-wrap">
-            {filtrosEstado.map((f) => (
-              <button
-                key={f.clave}
-                onClick={() => setEstado(f.clave)}
-                className={`text-xs font-semibold rounded-lg px-2.5 py-1 border ${
-                  estado === f.clave
-                    ? "bg-neutral-800 text-white border-neutral-800"
-                    : "bg-white text-neutral-600 border-neutral-300 hover:bg-neutral-50"
-                }`}
-              >
-                {f.texto}
-              </button>
-            ))}
-          </div>
+          <GrupoBotones opciones={filtrosEstado} valor={estado} onCambio={setEstado} />
           <span className="flex-1" />
           <FiltroPeriodo valor={periodo} onCambio={setPeriodo} />
         </div>
