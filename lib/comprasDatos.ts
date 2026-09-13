@@ -97,6 +97,8 @@ export type EntregaHistorial = {
 export type LineaEntrega = {
   idRecepcion: string;
   idVariante: string;
+  /** Lo que pedía el renglón del pedido, para poder mostrar si faltó algo. */
+  cantidadSolicitada: number;
   cantidadRecibida: number;
   /**
    * El costo con el que se costeó esta línea, si ya se costeó.
@@ -183,8 +185,10 @@ export async function datosCompras(): Promise<DatosCompras> {
       .limit(300),
     // Los renglones de cada entrega: sirven para sumar unidades en el
     // historial y, en Costeo, para saber qué llegó en esa entrega puntual.
-    supabase.from("detalle_recepcion_proveedor").select("id_recepcion, id_variante, cantidad_recibida, costo_unitario"),
-    supabase.from("detalle_recepciones").select("id_recepcion, id_variante, cantidad_recibida"),
+    supabase
+      .from("detalle_recepcion_proveedor")
+      .select("id_recepcion, id_variante, cantidad_solicitada, cantidad_recibida, costo_unitario"),
+    supabase.from("detalle_recepciones").select("id_recepcion, id_variante, cantidad_solicitada, cantidad_recibida"),
   ]);
 
   const marcas = (marcasRes.data ?? []) as Marca[];
@@ -269,12 +273,25 @@ export async function datosCompras(): Promise<DatosCompras> {
   return {
     marcas,
     entregas,
-    lineasEntrega: (lineasEntregaProvRes.data ?? []).map((l) => ({
-      idRecepcion: l.id_recepcion as string,
-      idVariante: l.id_variante as string,
-      cantidadRecibida: (l.cantidad_recibida as number) ?? 0,
-      costoUnitario: (l.costo_unitario as number | null) ?? null,
-    })),
+    // Las dos tablas juntas: el historial de Recepción muestra entregas de
+    // proveedor y de marca, y las dos se tienen que poder abrir.
+    lineasEntrega: [
+      ...(lineasEntregaProvRes.data ?? []).map((l) => ({
+        idRecepcion: l.id_recepcion as string,
+        idVariante: l.id_variante as string,
+        cantidadSolicitada: (l.cantidad_solicitada as number) ?? 0,
+        cantidadRecibida: (l.cantidad_recibida as number) ?? 0,
+        costoUnitario: (l.costo_unitario as number | null) ?? null,
+      })),
+      ...(lineasEntregaMarcaRes.data ?? []).map((l) => ({
+        idRecepcion: l.id_recepcion as string,
+        idVariante: l.id_variante as string,
+        cantidadSolicitada: (l.cantidad_solicitada as number) ?? 0,
+        cantidadRecibida: (l.cantidad_recibida as number) ?? 0,
+        // Lo de las marcas no tiene costo: no se compra.
+        costoUnitario: null,
+      })),
+    ],
     idsMarcaPropia: marcas
       .filter((m) => (m as Marca & { tipo_comercializacion?: string }).tipo_comercializacion === "PROPIA")
       .map((m) => m.id_marca),

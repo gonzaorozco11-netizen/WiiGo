@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   marcarOrdenEnviada,
@@ -8,7 +8,7 @@ import {
   cancelarOrden,
   cerrarOrdenIncompleta,
 } from "@/app/(app)/compras/actions";
-import type { DatosCompras, EntregaHistorial } from "@/lib/comprasDatos";
+import type { DatosCompras, EntregaHistorial, LineaEntrega } from "@/lib/comprasDatos";
 import {
   estaAbierta,
   etiquetaEstado,
@@ -378,7 +378,11 @@ export default function ComprasTrabajo({ etapa, datos }: { etapa: Etapa; datos: 
             </p>
           )}
 
-          <HistorialEntregas entregas={datos.entregas} />
+          <HistorialEntregas
+            entregas={datos.entregas}
+            lineas={datos.lineasEntrega}
+            nombrePorVariante={nombrePorVariante}
+          />
 
           <p className="text-xs text-neutral-400 mt-4">
             Acá no se ven costos: contar unidades no necesita saber cuánto salió cada cosa, y con las marcas es
@@ -694,24 +698,58 @@ function entraEnPeriodo(iso: string, periodo: Periodo) {
  * veces, con su "1ª de 2" y su "2ª de 2". No es un duplicado — cada entrega
  * tuvo su remito, su fecha y su factura.
  */
-function HistorialEntregas({ entregas }: { entregas: EntregaHistorial[] }) {
+type FiltroEstado = "TODAS" | "COMPLETAS" | "PARCIALES" | "PROBLEMA";
+
+function HistorialEntregas({
+  entregas,
+  lineas,
+  nombrePorVariante,
+}: {
+  entregas: EntregaHistorial[];
+  lineas: LineaEntrega[];
+  nombrePorVariante: Map<string, string>;
+}) {
   const [periodo, setPeriodo] = useState<Periodo>("MES");
   const [quien, setQuien] = useState("TODOS");
+  const [estado, setEstado] = useState<FiltroEstado>("TODAS");
+  const [busqueda, setBusqueda] = useState("");
+  /** Qué fila está abierta. Una sola por vez: abrir la siguiente cierra la anterior. */
+  const [abierta, setAbierta] = useState<string | null>(null);
 
   const contrapartes = useMemo(
     () => Array.from(new Set(entregas.map((e) => e.contraparte))).sort((a, b) => a.localeCompare(b)),
     [entregas]
   );
 
-  const visibles = useMemo(
-    () =>
-      entregas.filter(
-        (e) => entraEnPeriodo(e.fechaRecibida, periodo) && (quien === "TODOS" || e.contraparte === quien)
-      ),
-    [entregas, periodo, quien]
-  );
+  const visibles = useMemo(() => {
+    const q = busqueda.trim().toLowerCase();
+    return entregas.filter((e) => {
+      if (!entraEnPeriodo(e.fechaRecibida, periodo)) return false;
+      if (quien !== "TODOS" && e.contraparte !== quien) return false;
+      if (estado === "COMPLETAS" && e.estadoOrden !== "RECIBIDA") return false;
+      if (estado === "PARCIALES" && e.estadoOrden !== RECIBIDA_PARCIAL) return false;
+      if (
+        estado === "PROBLEMA" &&
+        e.estadoOrden !== CERRADA_INCOMPLETA &&
+        e.estadoOrden !== "RECIBIDA_CON_DIFERENCIAS"
+      ) {
+        return false;
+      }
+      // Se busca por proveedor y por código de pedido: son las dos formas en
+      // que alguien se acuerda de una entrega.
+      if (q && !e.contraparte.toLowerCase().includes(q) && !e.idOrden.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [entregas, periodo, quien, estado, busqueda]);
 
   const unidades = visibles.reduce((acc, e) => acc + e.unidades, 0);
+
+  const filtrosEstado: { clave: FiltroEstado; texto: string }[] = [
+    { clave: "TODAS", texto: "Todas" },
+    { clave: "COMPLETAS", texto: "Completas" },
+    { clave: "PARCIALES", texto: "Parciales" },
+    { clave: "PROBLEMA", texto: "Con problema" },
+  ];
 
   return (
     <div className="mt-6 border border-neutral-200 rounded-xl bg-white overflow-hidden">
@@ -730,21 +768,61 @@ function HistorialEntregas({ entregas }: { entregas: EntregaHistorial[] }) {
         </p>
       </div>
 
-      <div className="px-4 py-2.5 bg-neutral-50 border-b border-neutral-100 flex items-center gap-2 flex-wrap">
-        <select
-          value={quien}
-          onChange={(e) => setQuien(e.target.value)}
-          className="text-xs rounded-lg border border-neutral-300 px-2 py-1.5 bg-white text-neutral-700"
-        >
-          <option value="TODOS">Todos los proveedores</option>
-          {contrapartes.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
-        <span className="flex-1" />
-        <FiltroPeriodo valor={periodo} onCambio={setPeriodo} />
+      <div className="px-4 py-2.5 bg-neutral-50 border-b border-neutral-100 flex flex-col gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="relative flex-1 min-w-[180px]">
+            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-400 text-xs" aria-hidden="true">
+              🔍
+            </span>
+            <input
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              placeholder="Buscar por proveedor o número de pedido..."
+              className="w-full text-xs rounded-lg border border-neutral-300 pl-7 pr-7 py-1.5 bg-white text-neutral-700 focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+            {busqueda && (
+              <button
+                onClick={() => setBusqueda("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700 text-xs"
+                aria-label="Limpiar"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+          <select
+            value={quien}
+            onChange={(e) => setQuien(e.target.value)}
+            className="text-xs rounded-lg border border-neutral-300 px-2 py-1.5 bg-white text-neutral-700"
+          >
+            <option value="TODOS">Todos los proveedores</option>
+            {contrapartes.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex gap-1.5 flex-wrap">
+            {filtrosEstado.map((f) => (
+              <button
+                key={f.clave}
+                onClick={() => setEstado(f.clave)}
+                className={`text-xs font-semibold rounded-lg px-2.5 py-1 border ${
+                  estado === f.clave
+                    ? "bg-neutral-800 text-white border-neutral-800"
+                    : "bg-white text-neutral-600 border-neutral-300 hover:bg-neutral-50"
+                }`}
+              >
+                {f.texto}
+              </button>
+            ))}
+          </div>
+          <span className="flex-1" />
+          <FiltroPeriodo valor={periodo} onCambio={setPeriodo} />
+        </div>
       </div>
 
       {visibles.length === 0 ? (
@@ -766,25 +844,76 @@ function HistorialEntregas({ entregas }: { entregas: EntregaHistorial[] }) {
               </tr>
             </thead>
             <tbody>
-              {visibles.map((e) => (
-                <tr key={e.idRecepcion} className="border-b border-neutral-50 last:border-0">
-                  <td className="px-4 py-2.5 font-mono text-xs text-neutral-500">
-                    #{e.idOrden.slice(0, 6).toUpperCase()}
-                  </td>
-                  <td className="px-4 py-2.5 text-neutral-900">{e.contraparte}</td>
-                  <td className="px-4 py-2.5 text-neutral-500 tabular-nums">
-                    {e.fechaPedido ? fechaCorta(e.fechaPedido) : "—"}
-                  </td>
-                  <td className="px-4 py-2.5 text-neutral-700 tabular-nums">{fechaCorta(e.fechaRecibida)}</td>
-                  <td className="px-4 py-2.5 text-xs text-neutral-400">
-                    {e.totalEntregas === 1 ? "única" : `${e.numeroEntrega}ª de ${e.totalEntregas}`}
-                  </td>
-                  <td className="px-4 py-2.5 text-right tabular-nums text-neutral-900">{e.unidades}</td>
-                  <td className="px-4 py-2.5">
-                    <ChipEstado estado={e.estadoOrden} />
-                  </td>
-                </tr>
-              ))}
+              {visibles.map((e) => {
+                const suyas = lineas.filter((l) => l.idRecepcion === e.idRecepcion);
+                const estaAbierta = abierta === e.idRecepcion;
+                return (
+                  <Fragment key={e.idRecepcion}>
+                    <tr
+                      onClick={() => setAbierta(estaAbierta ? null : e.idRecepcion)}
+                      className={`border-b border-neutral-50 last:border-0 cursor-pointer hover:bg-neutral-50 ${
+                        estaAbierta ? "bg-neutral-50" : ""
+                      }`}
+                    >
+                      <td className="px-4 py-2.5 font-mono text-xs text-neutral-500 whitespace-nowrap">
+                        <span className="text-neutral-400 mr-1">{estaAbierta ? "▾" : "▸"}</span>
+                        #{e.idOrden.slice(0, 6).toUpperCase()}
+                      </td>
+                      <td className="px-4 py-2.5 text-neutral-900">{e.contraparte}</td>
+                      <td className="px-4 py-2.5 text-neutral-500 tabular-nums">
+                        {e.fechaPedido ? fechaCorta(e.fechaPedido) : "—"}
+                      </td>
+                      <td className="px-4 py-2.5 text-neutral-700 tabular-nums">{fechaCorta(e.fechaRecibida)}</td>
+                      <td className="px-4 py-2.5 text-xs text-neutral-400">
+                        {e.totalEntregas === 1 ? "única" : `${e.numeroEntrega}ª de ${e.totalEntregas}`}
+                      </td>
+                      <td className="px-4 py-2.5 text-right tabular-nums text-neutral-900">{e.unidades}</td>
+                      <td className="px-4 py-2.5">
+                        <ChipEstado estado={e.estadoOrden} />
+                      </td>
+                    </tr>
+                    {estaAbierta && (
+                      <tr>
+                        <td colSpan={7} className="px-4 pb-3 pt-0 bg-neutral-50 border-b border-neutral-100">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 mb-1.5">
+                            Qué entró en esta entrega
+                          </p>
+                          {suyas.length === 0 ? (
+                            <p className="text-xs text-neutral-400 py-1">
+                              No quedó el detalle de esta entrega. Suele pasar con las cargadas antes de septiembre.
+                            </p>
+                          ) : (
+                            <table className="w-full text-xs">
+                              <tbody>
+                                {suyas.map((l) => {
+                                  const falto = l.cantidadRecibida < l.cantidadSolicitada;
+                                  return (
+                                    <tr key={l.idVariante}>
+                                      <td className="py-1 text-neutral-700">
+                                        {nombrePorVariante.get(l.idVariante) ?? "Producto"}
+                                      </td>
+                                      <td className="py-1 text-right text-neutral-400 tabular-nums w-24">
+                                        {l.cantidadSolicitada > 0 ? `${l.cantidadSolicitada} pedidas` : ""}
+                                      </td>
+                                      <td
+                                        className={`py-1 text-right tabular-nums w-24 font-semibold ${
+                                          falto ? "text-amber-700" : "text-neutral-800"
+                                        }`}
+                                      >
+                                        {l.cantidadRecibida} llegaron
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
