@@ -167,17 +167,28 @@ export default function LiquidacionProveedorModal({
                       <p className="text-xs text-neutral-400">
                         {g.totales.cantidad} unidades · {parte}% de lo vendido
                       </p>
-                      <div className="flex justify-between text-sm mt-2">
+                      {/* Primero lo que entró por caja y recién después lo
+                          que hay que pagar. Antes la tarjeta arrancaba por el
+                          costo, y de la venta no se veía nada. */}
+                      <div className="flex justify-between text-sm mt-2 font-semibold">
+                        <span className="text-neutral-700">Vendiste</span>
+                        <span className="tabular-nums text-neutral-900">${formatearMonto(g.totales.ventaTotal)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm mt-1">
                         <span className="text-neutral-500">Costo neto</span>
-                        <span className="tabular-nums">${formatearMonto(g.totales.costoNeto)}</span>
+                        <span className="tabular-nums text-neutral-500">−${formatearMonto(g.totales.costoNeto)}</span>
                       </div>
                       <div className="flex justify-between text-sm">
-                        <span className="text-neutral-500">IVA</span>
-                        <span className="tabular-nums">${formatearMonto(g.totales.iva)}</span>
+                        <span className="text-neutral-500">IVA de la compra</span>
+                        <span className="tabular-nums text-neutral-500">${formatearMonto(g.totales.iva)}</span>
                       </div>
                       <div className="flex justify-between text-sm font-bold border-t border-neutral-200 mt-1.5 pt-1.5">
-                        <span>Total</span>
+                        <span>Le pagás</span>
                         <span className="tabular-nums">${formatearMonto(g.totales.total)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm font-bold text-emerald-700">
+                        <span>Te queda</span>
+                        <span className="tabular-nums">${formatearMonto(g.totales.margen)}</span>
                       </div>
                       <p className="text-[11.5px] font-semibold text-accent mt-2">
                         {abierta ? "▾ Detalle abierto" : "▸ Ver los productos y el margen"}
@@ -306,7 +317,20 @@ export default function LiquidacionProveedorModal({
           </p>
 
           <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-3.5">
-            <div className="flex justify-between text-sm py-0.5">
+            {/* La cuenta entera, de la venta al margen: sin la primera línea
+                esta caja contaba solo la mitad de la historia. */}
+            <div className="flex justify-between text-sm py-0.5 font-semibold">
+              <span className="text-neutral-800">
+                Vendiste {detalle?.totales.cantidad ?? 0}{" "}
+                {(detalle?.totales.cantidad ?? 0) === 1 ? "unidad" : "unidades"}
+              </span>
+              <span className="tabular-nums">${formatearMonto(detalle?.totales.ventaTotal ?? 0)}</span>
+            </div>
+            <div className="flex justify-between text-xs py-0.5">
+              <span className="text-neutral-400">Venta sin IVA</span>
+              <span className="tabular-nums text-neutral-400">${formatearMonto(detalle?.totales.ventaNeta ?? 0)}</span>
+            </div>
+            <div className="flex justify-between text-sm py-0.5 border-t border-neutral-200 mt-1.5 pt-1.5">
               <span className="text-neutral-500">Costo neto de lo vendido</span>
               <span className="tabular-nums">${formatearMonto(detalle?.totales.costoNeto ?? 0)}</span>
             </div>
@@ -314,9 +338,13 @@ export default function LiquidacionProveedorModal({
               <span className="text-neutral-500">IVA</span>
               <span className="tabular-nums">${formatearMonto(detalle?.totales.iva ?? 0)}</span>
             </div>
-            <div className="flex justify-between text-base font-bold border-t border-neutral-200 mt-1.5 pt-2 mb-3">
+            <div className="flex justify-between text-base font-bold border-t border-neutral-200 mt-1.5 pt-2">
               <span>A liquidarle</span>
               <span className="tabular-nums">${formatearMonto(montoCalculado)}</span>
+            </div>
+            <div className="flex justify-between text-base font-bold text-emerald-700 mb-3">
+              <span>Tu margen</span>
+              <span className="tabular-nums">${formatearMonto(detalle?.totales.margen ?? 0)}</span>
             </div>
             <label className="block text-xs font-semibold text-neutral-500 uppercase mb-1">
               Monto que dice la liquidación del proveedor (opcional, si no coincide)
