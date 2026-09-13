@@ -1303,9 +1303,12 @@ export async function corregirCostoLote(
       };
     }
 
+    // Los dos, para que no queden contando historias distintas: acá se está
+    // fijando el costo real del lote a mano, así que el "número del papel"
+    // deja de ser el de la factura y pasa a ser este.
     const { error } = await supabase
       .from("detalle_recepcion_proveedor")
-      .update({ costo_unitario: costo })
+      .update({ costo_unitario: costo, costo_neto_factura: costo })
       .eq("id_detalle", idDetalleRecepcion);
     if (error) return { error: friendlyDbError(error) };
 

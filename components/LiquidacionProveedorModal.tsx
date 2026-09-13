@@ -2,11 +2,138 @@
 
 import { Fragment, useEffect, useState, useTransition } from "react";
 import type { ProveedorConSaldo } from "@/app/(app)/proveedores/actions";
-import type { DetalleLiquidacion, MedioLiquidacion } from "@/lib/liquidacionesProveedor";
-import { detalleLiquidacionProveedorAction, generarLiquidacionProveedorAction } from "@/app/(app)/proveedores/actions";
+import type { DetalleLiquidacion, MedioLiquidacion, LoteDeLinea } from "@/lib/liquidacionesProveedor";
+import {
+  detalleLiquidacionProveedorAction,
+  generarLiquidacionProveedorAction,
+  corregirCostoLote,
+} from "@/app/(app)/proveedores/actions";
 
 function formatearMonto(valor: number) {
   return valor.toLocaleString("es-AR", { maximumFractionDigits: 0 });
+}
+
+/**
+ * Un lote consumido, con su costo corregible.
+ *
+ * Se corrige acá y no en el renglón del producto porque el renglón puede ser
+ * la suma de varios lotes a precios distintos: cambiarlo ahí no diría cuál de
+ * los dos está mal. El lote es un remito puntual, y no tiene ambigüedad.
+ *
+ * El candado de "liquidación cerrada" está del lado del servidor, en
+ * corregirCostoLote: esa plata ya se pagó y no se reescribe.
+ */
+function FilaLote({
+  lote,
+  ivaProducto,
+  onGuardado,
+}: {
+  lote: LoteDeLinea;
+  ivaProducto: number;
+  onGuardado: () => void;
+}) {
+  const estimado = lote.idDetalleRecepcion === "ESTIMADO";
+  const [editando, setEditando] = useState(false);
+  const [costo, setCosto] = useState(String(lote.costoUnitario));
+  const [iva, setIva] = useState(ivaProducto);
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function guardar() {
+    setError(null);
+    setGuardando(true);
+    corregirCostoLote(lote.idDetalleRecepcion, Number(costo) || 0, iva)
+      .then((r) => {
+        if (r.error) setError(r.error);
+        else {
+          setEditando(false);
+          onGuardado();
+        }
+      })
+      .finally(() => setGuardando(false));
+  }
+
+  if (estimado) {
+    return (
+      <tr>
+        <td className="py-1 text-amber-700" colSpan={2}>
+          ⚠ Sin recepción registrada — costo estimado
+        </td>
+        <td className="py-1 text-right text-amber-700 tabular-nums">
+          {lote.cantidad} un. · ${formatearMonto(lote.costoUnitario)} c/u
+        </td>
+        <td className="py-1 text-right font-medium text-amber-700 tabular-nums">
+          ${formatearMonto(lote.cantidad * lote.costoUnitario)}
+        </td>
+      </tr>
+    );
+  }
+
+  if (editando) {
+    return (
+      <tr className="bg-accent-tint">
+        <td className="py-1.5 text-neutral-600">
+          Recibido el{" "}
+          {new Date(lote.fechaRecepcion).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" })}
+          {error && <span className="block text-[11px] text-red-600 mt-0.5">{error}</span>}
+        </td>
+        <td className="py-1.5 text-right text-neutral-500 tabular-nums">{lote.cantidad} un.</td>
+        <td className="py-1.5 text-right">
+          <input
+            type="number"
+            min={0}
+            step="0.01"
+            value={costo}
+            onChange={(e) => setCosto(e.target.value)}
+            className="w-24 rounded border border-accent px-1.5 py-1 text-xs text-right tabular-nums"
+          />
+          <select
+            value={iva}
+            onChange={(e) => setIva(Number(e.target.value))}
+            className="ml-1.5 rounded border border-accent px-1 py-1 text-xs bg-white"
+          >
+            <option value={21}>21%</option>
+            <option value={10.5}>10,5%</option>
+            <option value={0}>Ex.</option>
+          </select>
+        </td>
+        <td className="py-1.5 text-right whitespace-nowrap">
+          <button
+            onClick={() => setEditando(false)}
+            className="text-[11px] text-neutral-500 border border-neutral-300 rounded px-1.5 py-1 mr-1"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={guardar}
+            disabled={guardando || !(Number(costo) > 0)}
+            className="text-[11px] font-semibold text-white bg-accent rounded px-2 py-1 disabled:opacity-50"
+          >
+            {guardando ? "..." : "Guardar"}
+          </button>
+        </td>
+      </tr>
+    );
+  }
+
+  return (
+    <tr className="group">
+      <td className="py-1 text-neutral-500">
+        Recibido el {new Date(lote.fechaRecepcion).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" })}
+      </td>
+      <td className="py-1 text-right text-neutral-500 tabular-nums">{lote.cantidad} un.</td>
+      <td className="py-1 text-right text-neutral-500 tabular-nums">${formatearMonto(lote.costoUnitario)} c/u</td>
+      <td className="py-1 text-right font-medium text-neutral-700 tabular-nums whitespace-nowrap">
+        ${formatearMonto(lote.cantidad * lote.costoUnitario)}
+        <button
+          onClick={() => setEditando(true)}
+          className="ml-2 text-[11px] font-semibold text-accent hover:underline"
+        >
+          Corregir
+        </button>
+      </td>
+    </tr>
+  );
 }
 
 function pct(valor: number) {
@@ -59,13 +186,19 @@ export default function LiquidacionProveedorModal({
     });
   }
 
+  // Se incrementa al corregir un costo, para volver a pedir el detalle: los
+  // totales y el margen cambian, y dejarlos viejos sería peor que no dejar
+  // corregir.
+  const [version, setVersion] = useState(0);
+  const recargar = () => setVersion((v) => v + 1);
+
   useEffect(() => {
     if (!fechaDesde || !fechaHasta) return;
     setBuscando(true);
     detalleLiquidacionProveedorAction(proveedor.id_proveedor, fechaDesde, fechaHasta)
       .then(setDetalle)
       .finally(() => setBuscando(false));
-  }, [proveedor.id_proveedor, fechaDesde, fechaHasta]);
+  }, [proveedor.id_proveedor, fechaDesde, fechaHasta, version]);
 
   // Lo que hay que pagarle es el total CON IVA: es lo que va a decir su
   // factura. Antes acá iba solo el neto y se le pagaba de menos.
@@ -264,23 +397,20 @@ export default function LiquidacionProveedorModal({
                                         <table className="w-full text-xs">
                                           <tbody>
                                             {l.lotes.map((lote, i) => (
-                                              <tr key={i}>
-                                                <td className="py-1 text-neutral-500">
-                                                  {lote.idDetalleRecepcion === "ESTIMADO"
-                                                    ? "Sin recepción registrada (estimado)"
-                                                    : `Recibido el ${new Date(lote.fechaRecepcion).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" })}`}
-                                                </td>
-                                                <td className="py-1 text-right text-neutral-500 tabular-nums">{lote.cantidad} un.</td>
-                                                <td className="py-1 text-right text-neutral-500 tabular-nums">
-                                                  ${formatearMonto(lote.costoUnitario)} c/u
-                                                </td>
-                                                <td className="py-1 text-right font-medium text-neutral-700 tabular-nums">
-                                                  ${formatearMonto(lote.cantidad * lote.costoUnitario)}
-                                                </td>
-                                              </tr>
+                                              <FilaLote
+                                                key={`${lote.idDetalleRecepcion}-${i}`}
+                                                lote={lote}
+                                                ivaProducto={l.ivaPorcentaje}
+                                                onGuardado={recargar}
+                                              />
                                             ))}
                                           </tbody>
                                         </table>
+                                        <p className="text-[10.5px] text-neutral-400 mt-2">
+                                          El costo se corrige por lote y no por renglón: si el mismo producto entró
+                                          dos veces a precios distintos, cambiar el renglón no diría cuál de los dos
+                                          está mal. La alícuota es del producto, así que vale para todos sus lotes.
+                                        </p>
                                       </td>
                                     </tr>
                                   )}
