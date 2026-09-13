@@ -19,6 +19,7 @@ import FacturaOrdenModal from "./FacturaOrdenModal";
 import FacturaPeriodoModal from "./FacturaPeriodoModal";
 import LiquidacionProveedorModal from "./LiquidacionProveedorModal";
 import FacturaLiquidacionModal from "./FacturaLiquidacionModal";
+import { estaAbierta, RECIBIDA_PARCIAL } from "@/lib/estadosOrden";
 
 // Los tres tonos no son decoración: marcan tres relaciones de plata
 // distintas, y ayudan a no confundirse de grupo al escanear la lista.
@@ -130,8 +131,11 @@ type TabOrdenes = "TODAS" | "PENDIENTE" | "RECIBIDA_CON_DIFERENCIAS" | "RECIBIDA
 
 export const ESTADO_ESTILO_COMPRA: Record<string, string> = {
   PENDIENTE: "bg-amber-50 text-amber-700",
+  // Llegó una parte: sigue abierto, por eso comparte el ámbar de lo pendiente.
+  RECIBIDA_PARCIAL: "bg-amber-50 text-amber-700",
   RECIBIDA: "bg-emerald-50 text-emerald-700",
   RECIBIDA_CON_DIFERENCIAS: "bg-red-50 text-red-700",
+  CERRADA_INCOMPLETA: "bg-red-50 text-red-700",
 };
 
 function formatearMonto(valor: number) {
@@ -670,7 +674,11 @@ export default function ProveedoresApp({
                         </button>
                       )}
                     <button onClick={() => setOrdenAbierta(o)} className="text-sm text-accent hover:underline">
-                      {o.estado === "PENDIENTE" ? "Recepcionar" : "Ver"}
+                      {o.estado === RECIBIDA_PARCIAL
+                        ? "Recibir el resto"
+                        : estaAbierta(o.estado)
+                          ? "Recepcionar"
+                          : "Ver"}
                     </button>
                   </div>
                 </li>

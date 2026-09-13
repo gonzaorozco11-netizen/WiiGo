@@ -52,10 +52,46 @@ export type DatosCompras = {
    * va en la liquidación siguiente, no borrando el pasado.
    */
   recepcionesCosteadas: { id_recepcion: string; id_orden: string; id_proveedor: string; fecha: string }[];
+  /**
+   * El historial de entregas, para el bloque de abajo de Recepción.
+   *
+   * Son ENTREGAS, no pedidos: un pedido que llegó en dos veces aparece dos
+   * veces, cada una con su fecha y sus unidades. No es un duplicado — cada
+   * entrega tuvo su remito y va a tener su factura.
+   */
+  entregas: EntregaHistorial[];
 };
+
+export type EntregaHistorial = {
+  idRecepcion: string;
+  origen: "MARCA" | "PROVEEDOR";
+  idOrden: string;
+  /** Marca o proveedor, ya resuelto a nombre. */
+  contraparte: string;
+  /** Cuándo se emitió la orden de compra. */
+  fechaPedido: string | null;
+  /** Cuándo entró esta entrega puntual. */
+  fechaRecibida: string;
+  unidades: number;
+  /** 1ª, 2ª… y de cuántas en total lleva ese pedido. */
+  numeroEntrega: number;
+  totalEntregas: number;
+  /** Estado del PEDIDO, no de la entrega. */
+  estadoOrden: string;
+};
+
+/** Cuántos meses de historial se traen. Ver el comentario en `datosCompras`. */
+const MESES_HISTORIAL = 3;
 
 export async function datosCompras(): Promise<DatosCompras> {
   const supabase = getSupabaseServerClient();
+
+  // El historial se corta por fecha y no por cantidad de filas. Sin este
+  // corte, dentro de un año la pantalla trae miles de entregas que nadie
+  // mira y tarda varios segundos en abrir.
+  const desde = new Date();
+  desde.setMonth(desde.getMonth() - MESES_HISTORIAL);
+  const desdeISO = desde.toISOString();
 
   const [
     proveedores,
@@ -72,6 +108,10 @@ export async function datosCompras(): Promise<DatosCompras> {
     costeadasRes,
     liquidadosRes,
     lotesRes,
+    entregasProvRes,
+    entregasMarcaRes,
+    lineasEntregaProvRes,
+    lineasEntregaMarcaRes,
   ] = await Promise.all([
     listarProveedores(),
     supabase.from("marcas").select("*").eq("estado", "ACTIVA").order("nombre", { ascending: true }),
@@ -101,6 +141,23 @@ export async function datosCompras(): Promise<DatosCompras> {
     // pagaron y no se tocan más.
     supabase.from("detalle_liquidacion_proveedor").select("id_detalle_recepcion"),
     supabase.from("detalle_recepcion_proveedor").select("id_detalle, id_recepcion"),
+    // El historial de entregas de las dos tablas de recepción.
+    supabase
+      .from("recepciones_proveedor")
+      .select("id_recepcion, id_orden, id_proveedor, fecha")
+      .gte("fecha", desdeISO)
+      .order("fecha", { ascending: false })
+      .limit(300),
+    supabase
+      .from("recepciones")
+      .select("id_recepcion, id_orden, id_marca, fecha")
+      .gte("fecha", desdeISO)
+      .order("fecha", { ascending: false })
+      .limit(300),
+    // Las unidades de cada entrega. Se suman acá y no en la base porque son
+    // pocas filas y evita una vista nueva.
+    supabase.from("detalle_recepcion_proveedor").select("id_recepcion, cantidad_recibida"),
+    supabase.from("detalle_recepciones").select("id_recepcion, cantidad_recibida"),
   ]);
 
   const marcas = (marcasRes.data ?? []) as Marca[];
@@ -117,8 +174,69 @@ export async function datosCompras(): Promise<DatosCompras> {
       .map((l) => l.id_recepcion as string)
   );
 
+  // ---------- Historial de entregas ----------
+  const unidadesPorRecepcion = new Map<string, number>();
+  for (const fila of [...(lineasEntregaProvRes.data ?? []), ...(lineasEntregaMarcaRes.data ?? [])]) {
+    const id = fila.id_recepcion as string;
+    unidadesPorRecepcion.set(id, (unidadesPorRecepcion.get(id) ?? 0) + ((fila.cantidad_recibida as number) ?? 0));
+  }
+
+  const nombreMarca = new Map(marcas.map((m) => [m.id_marca, m.nombre]));
+  const nombreProveedor = new Map(proveedores.map((p) => [p.id_proveedor, p.nombre]));
+  const ordenProv = new Map(
+    ((ordProvRes.data ?? []) as DatosCompras["ordenesProveedor"]).map((o) => [o.id_orden, o])
+  );
+  const ordenMarca = new Map(
+    ((ordMarcaRes.data ?? []) as DatosCompras["ordenesMarca"]).map((o) => [o.id_orden, o])
+  );
+
+  const crudas = [
+    ...(entregasProvRes.data ?? []).map((r) => ({
+      idRecepcion: r.id_recepcion as string,
+      origen: "PROVEEDOR" as const,
+      idOrden: r.id_orden as string,
+      contraparte: nombreProveedor.get(r.id_proveedor as string) ?? "Proveedor",
+      fechaPedido: ordenProv.get(r.id_orden as string)?.fecha_alta ?? null,
+      fechaRecibida: r.fecha as string,
+      estadoOrden: ordenProv.get(r.id_orden as string)?.estado ?? "",
+    })),
+    ...(entregasMarcaRes.data ?? []).map((r) => ({
+      idRecepcion: r.id_recepcion as string,
+      origen: "MARCA" as const,
+      idOrden: r.id_orden as string,
+      contraparte: nombreMarca.get(r.id_marca as string) ?? "Marca",
+      fechaPedido: ordenMarca.get(r.id_orden as string)?.fecha ?? null,
+      fechaRecibida: r.fecha as string,
+      estadoOrden: ordenMarca.get(r.id_orden as string)?.estado ?? "",
+    })),
+  ];
+
+  // "2ª de 3": se numeran por orden cronológico dentro de cada pedido, para
+  // que se lea como una secuencia y no como filas repetidas.
+  const porOrden = new Map<string, typeof crudas>();
+  for (const e of crudas) {
+    const lista = porOrden.get(e.idOrden);
+    if (lista) lista.push(e);
+    else porOrden.set(e.idOrden, [e]);
+  }
+  const numeroDe = new Map<string, { n: number; total: number }>();
+  for (const lista of porOrden.values()) {
+    const asc = [...lista].sort((a, b) => a.fechaRecibida.localeCompare(b.fechaRecibida));
+    asc.forEach((e, i) => numeroDe.set(e.idRecepcion, { n: i + 1, total: asc.length }));
+  }
+
+  const entregas: EntregaHistorial[] = crudas
+    .map((e) => ({
+      ...e,
+      unidades: unidadesPorRecepcion.get(e.idRecepcion) ?? 0,
+      numeroEntrega: numeroDe.get(e.idRecepcion)?.n ?? 1,
+      totalEntregas: numeroDe.get(e.idRecepcion)?.total ?? 1,
+    }))
+    .sort((a, b) => b.fechaRecibida.localeCompare(a.fechaRecibida));
+
   return {
     marcas,
+    entregas,
     idsMarcaPropia: marcas
       .filter((m) => (m as Marca & { tipo_comercializacion?: string }).tipo_comercializacion === "PROPIA")
       .map((m) => m.id_marca),

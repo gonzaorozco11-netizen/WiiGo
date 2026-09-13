@@ -1,6 +1,7 @@
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import { fechaHoraArgentina } from "@/lib/horarios";
+import { ESTADOS_ABIERTOS } from "@/lib/estadosOrden";
 
 // Tablero de inicio.
 //
@@ -124,14 +125,16 @@ export async function armarTablero(): Promise<Tablero | null> {
     puede("reposicion")
       ? supabase.from("detalle_devoluciones").select("id_detalle_dev", { count: "exact", head: true }).is("devuelto_a_marca_el", null)
       : CERO,
+    // Abiertas = sin llegar + llegadas a medias. Un pedido a medias todavía
+    // tiene mercadería en la calle, así que sigue contando como pendiente.
     puede("compras-recepcion") || puede("reposicion")
-      ? supabase.from("ordenes_reposicion").select("id_orden", { count: "exact", head: true }).eq("estado", "PENDIENTE")
+      ? supabase.from("ordenes_reposicion").select("id_orden", { count: "exact", head: true }).in("estado", ESTADOS_ABIERTOS)
       : CERO,
     puede("compras-recepcion") || puede("proveedores")
       ? supabase
           .from("ordenes_compra_proveedor")
           .select("id_orden", { count: "exact", head: true })
-          .eq("estado", "PENDIENTE")
+          .in("estado", ESTADOS_ABIERTOS)
       : CERO,
     puede("compras-costeo") || puede("proveedores")
       ? supabase.from("recepciones_proveedor").select("id_recepcion", { count: "exact", head: true }).eq("facturada", false)

@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
+import { estaAbierta, estadoSegunRecibido } from "@/lib/estadosOrden";
 
 async function usuarioActual() {
   const cookieStore = await cookies();
@@ -172,11 +173,34 @@ export async function recepcionarOrden(
 
     const { data: orden, error: errorOrdenGet } = await supabase
       .from("ordenes_reposicion")
-      .select("id_marca, id_local")
+      .select("id_marca, id_local, estado")
       .eq("id_orden", idOrden)
       .maybeSingle();
     if (errorOrdenGet) return { error: friendlyDbError(errorOrdenGet) };
     if (!orden) return { error: "No se encontró la orden" };
+    if (!estaAbierta(orden.estado as string)) {
+      return { error: "Este pedido ya está cerrado. No se le puede cargar otra entrega." };
+    }
+
+    // Lo que ya entró en entregas anteriores. Se lee de la base y no del
+    // navegador, para que dos personas cargando a la vez sumen en vez de
+    // pisarse.
+    const { data: previos, error: errorPrevios } = await supabase
+      .from("detalle_reposicion")
+      .select("id_detalle, cantidad_recibida")
+      .eq("id_orden", idOrden);
+    if (errorPrevios) return { error: friendlyDbError(errorPrevios) };
+
+    const yaRecibido = new Map(
+      (previos ?? []).map((d) => [d.id_detalle as string, (d.cantidad_recibida as number) ?? 0])
+    );
+
+    if (items.every((i) => i.cantidadRecibida <= 0)) {
+      return { error: "No cargaste ninguna unidad. Si no llegó nada, dejá el pedido como está." };
+    }
+    if (items.some((i) => i.cantidadRecibida < 0)) {
+      return { error: "No se puede recibir una cantidad negativa." };
+    }
 
     const usuario = await usuarioActual();
 
@@ -193,19 +217,21 @@ export async function recepcionarOrden(
       .single();
     if (errorRecepcion) return { error: friendlyDbError(errorRecepcion) };
 
-  let todoCompleto = true;
-
   for (const item of items) {
-    const diferencia = item.cantidadRecibida - item.cantidadSolicitada;
+    const previo = yaRecibido.get(item.idDetalle) ?? 0;
+    const acumulado = previo + item.cantidadRecibida;
+    // La diferencia se mide contra el pedido entero, no contra esta entrega.
+    const diferencia = acumulado - item.cantidadSolicitada;
     const estadoControl = diferencia === 0 ? "COMPLETA" : diferencia < 0 ? "FALTANTE" : "SOBRANTE";
-    if (diferencia !== 0) todoCompleto = false;
 
     const { error: errorUpdateDetalle } = await supabase
       .from("detalle_reposicion")
-      .update({ cantidad_recibida: item.cantidadRecibida })
+      .update({ cantidad_recibida: acumulado })
       .eq("id_detalle", item.idDetalle);
     if (errorUpdateDetalle) return { error: friendlyDbError(errorUpdateDetalle) };
 
+    // El renglón de la recepción guarda solo lo que llegó AHORA: es el
+    // registro de esta entrega puntual, con su fecha y su remito.
     const { error: errorDetalleRecepcion } = await supabase.from("detalle_recepciones").insert({
       id_recepcion: recepcion.id_recepcion,
       id_orden: idOrden,
@@ -252,9 +278,19 @@ export async function recepcionarOrden(
     }
   }
 
+    // Si todavía falta algo, el pedido queda abierto y vuelve a aparecer en
+    // Recepción esperando el resto. No lo decide quien recibe: sale de las
+    // cantidades.
+    const nuevoEstado = estadoSegunRecibido(
+      items.map((i) => ({
+        solicitada: i.cantidadSolicitada,
+        recibidaAcumulada: (yaRecibido.get(i.idDetalle) ?? 0) + i.cantidadRecibida,
+      }))
+    );
+
     const { error: errorEstado } = await supabase
       .from("ordenes_reposicion")
-      .update({ estado: todoCompleto ? "RECIBIDA" : "RECIBIDA_CON_DIFERENCIAS" })
+      .update({ estado: nuevoEstado })
       .eq("id_orden", idOrden);
     if (errorEstado) return { error: friendlyDbError(errorEstado) };
 

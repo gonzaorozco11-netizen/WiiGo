@@ -2,8 +2,15 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { marcarOrdenEnviada } from "@/app/(app)/compras/actions";
-import type { DatosCompras } from "@/lib/comprasDatos";
+import { marcarOrdenEnviada, cerrarOrdenIncompleta } from "@/app/(app)/compras/actions";
+import type { DatosCompras, EntregaHistorial } from "@/lib/comprasDatos";
+import {
+  estaAbierta,
+  etiquetaEstado,
+  PENDIENTE,
+  RECIBIDA_PARCIAL,
+  CERRADA_INCOMPLETA,
+} from "@/lib/estadosOrden";
 import type { OrdenReposicion, OrdenCompraProveedor } from "@/lib/supabase";
 import type { FilaVariante } from "@/components/ReposicionApp";
 import NuevaOrdenModal from "@/components/NuevaOrdenModal";
@@ -185,19 +192,28 @@ export default function ComprasTrabajo({ etapa, datos }: { etapa: Etapa; datos: 
   const sinEnviar = useMemo(
     () =>
       todas
-        .filter((o) => o.estado === "PENDIENTE" && !o.enviadaEl)
+        .filter((o) => o.estado === PENDIENTE && !o.enviadaEl)
         .sort((a, b) => a.fecha.localeCompare(b.fecha)),
     [todas]
   );
   const esperandoLlegar = useMemo(
     () =>
       todas
-        .filter((o) => o.estado === "PENDIENTE" && o.enviadaEl)
+        .filter((o) => o.estado === PENDIENTE && o.enviadaEl)
         .sort((a, b) => (a.enviadaEl ?? "").localeCompare(b.enviadaEl ?? "")),
     [todas]
   );
+  // Llegó una parte y falta el resto. Sigue siendo trabajo del local: la
+  // mercadería que falta todavía está en la calle.
+  const aMedias = useMemo(
+    () =>
+      todas
+        .filter((o) => o.estado === RECIBIDA_PARCIAL)
+        .sort((a, b) => (a.enviadaEl ?? a.fecha).localeCompare(b.enviadaEl ?? b.fecha)),
+    [todas]
+  );
   const cerradas = useMemo(
-    () => todas.filter((o) => o.estado !== "PENDIENTE").sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 12),
+    () => todas.filter((o) => !estaAbierta(o.estado)).sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 12),
     [todas]
   );
 
@@ -286,6 +302,23 @@ export default function ComprasTrabajo({ etapa, datos }: { etapa: Etapa; datos: 
             ))}
           </Seccion>
 
+          {/* Llegó una parte y falta el resto. No vuelve a Órdenes: sigue
+              siendo trabajo del local hasta que llegue lo que falta o
+              administración lo dé por cerrado desde Costeo. */}
+          {aMedias.length > 0 && (
+            <Seccion titulo="Llegaron a medias · falta el resto">
+              {aMedias.map((f) => (
+                <FilaOrden
+                  key={`${f.origen}-${f.idOrden}`}
+                  f={f}
+                  accion="Recibir el resto"
+                  onAccion={() => abrirRecepcion(f)}
+                  detalle={contenidoDe(f)}
+                />
+              ))}
+            </Seccion>
+          )}
+
           {sinEnviar.length > 0 && (
             <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
               Hay {sinEnviar.length} {sinEnviar.length === 1 ? "orden emitida" : "órdenes emitidas"} que todavía no se
@@ -293,13 +326,7 @@ export default function ComprasTrabajo({ etapa, datos }: { etapa: Etapa; datos: 
             </p>
           )}
 
-          {cerradas.length > 0 && (
-            <Seccion titulo="Recibidas hace poco">
-              {cerradas.map((f) => (
-                <FilaOrden key={`${f.origen}-${f.idOrden}`} f={f} tenue detalle={contenidoDe(f)} />
-              ))}
-            </Seccion>
-          )}
+          <HistorialEntregas entregas={datos.entregas} />
 
           <p className="text-xs text-neutral-400 mt-4">
             Acá no se ven costos: contar unidades no necesita saber cuánto salió cada cosa, y con las marcas es
@@ -381,6 +408,28 @@ function CosteoEtapa({
   proveedorPorId: Map<string, DatosCompras["proveedores"][number]>;
   onCostear: (orden: OrdenCompraProveedor) => void;
 }) {
+  const router = useRouter();
+  const [cerrando, setCerrando] = useState<string | null>(null);
+  const [errorCierre, setErrorCierre] = useState<string | null>(null);
+
+  /** Cuántas unidades del pedido nunca llegaron. 0 = llegó todo. */
+  function faltanteDe(idOrden: string) {
+    return datos.detalleProveedor
+      .filter((d) => d.id_orden === idOrden)
+      .reduce((acc, d) => acc + Math.max(0, (d.cantidad_solicitada ?? 0) - (d.cantidad_recibida ?? 0)), 0);
+  }
+
+  function cerrarPedido(idOrden: string) {
+    setErrorCierre(null);
+    setCerrando(idOrden);
+    cerrarOrdenIncompleta("PROVEEDOR", idOrden, "El proveedor no envía el resto")
+      .then((r) => {
+        if (r.error) setErrorCierre(r.error);
+        else router.refresh();
+      })
+      .finally(() => setCerrando(null));
+  }
+
   const porCostear = datos.recepcionesSinCostear
     .map((r) => ({
       ...r,
@@ -427,32 +476,63 @@ function CosteoEtapa({
         </div>
       )}
 
+      {errorCierre && (
+        <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-4">{errorCierre}</p>
+      )}
+
       <Seccion titulo="Por costear" vacio="Todo lo recibido tiene su costo cargado.">
-        {porCostear.map((r) => (
-          <div
-            key={r.id_recepcion}
-            className={`flex items-center gap-3 flex-wrap border border-l-[3px] rounded-xl px-4 py-3 ${
-              r.dias > 3 ? "border-red-200 border-l-red-500 bg-red-50" : "border-neutral-200 border-l-accent bg-white"
-            }`}
-          >
-            <span className="flex-1 min-w-[200px]">
-              <span className="block font-semibold text-[14.5px] text-neutral-900">{r.proveedor?.nombre ?? "—"}</span>
-              <span className="block text-xs text-neutral-400">
-                Recibido el {fechaCorta(r.fecha)} · {r.productos} {r.productos === 1 ? "producto" : "productos"} ·{" "}
-                {haceCuanto(r.dias)}
-              </span>
-            </span>
-            <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full border bg-neutral-50 text-neutral-500 border-neutral-200 whitespace-nowrap">
-              {MODO[r.proveedor?.modo_facturacion ?? ""] ?? r.proveedor?.modo_facturacion}
-            </span>
-            <button
-              onClick={() => r.orden && onCostear(r.orden)}
-              className="text-sm font-semibold bg-accent hover:bg-accent-dark text-white rounded-lg px-3 py-1.5"
+        {porCostear.map((r) => {
+          const aMedias = r.orden?.estado === RECIBIDA_PARCIAL;
+          const faltan = aMedias ? faltanteDe(r.id_orden) : 0;
+          return (
+            <div
+              key={r.id_recepcion}
+              className={`border border-l-[3px] rounded-xl ${
+                r.dias > 3 ? "border-red-200 border-l-red-500 bg-red-50" : "border-neutral-200 border-l-accent bg-white"
+              }`}
             >
-              Costear
-            </button>
-          </div>
-        ))}
+              <div className="flex items-center gap-3 flex-wrap px-4 py-3">
+                <span className="flex-1 min-w-[200px]">
+                  <span className="block font-semibold text-[14.5px] text-neutral-900">
+                    {r.proveedor?.nombre ?? "—"}
+                  </span>
+                  <span className="block text-xs text-neutral-400">
+                    Pedido el {r.orden ? fechaCorta(r.orden.fecha_alta) : "—"} · recibido el {fechaCorta(r.fecha)} ·{" "}
+                    {r.productos} {r.productos === 1 ? "producto" : "productos"} · {haceCuanto(r.dias)}
+                  </span>
+                </span>
+                <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full border bg-neutral-50 text-neutral-500 border-neutral-200 whitespace-nowrap">
+                  {MODO[r.proveedor?.modo_facturacion ?? ""] ?? r.proveedor?.modo_facturacion}
+                </span>
+                <button
+                  onClick={() => r.orden && onCostear(r.orden)}
+                  className="text-sm font-semibold bg-accent hover:bg-accent-dark text-white rounded-lg px-3 py-1.5"
+                >
+                  Costear
+                </button>
+              </div>
+
+              {/* El faltante aparece acá y no en Recepción: reclamarle a la
+                  marca es trabajo de administración, que es quien está
+                  mirando esta pantalla. El local solo cuenta lo que llegó. */}
+              {aMedias && faltan > 0 && (
+                <div className="border-t border-amber-200 bg-amber-50 px-4 py-3 flex items-center gap-3 flex-wrap rounded-b-[9px]">
+                  <span className="flex-1 min-w-[220px] text-sm text-amber-900">
+                    <b>Este pedido llegó a medias — faltan {faltan} unidades.</b> Lo que ves acá es solo esta entrega.
+                    Si el proveedor manda el resto, entra como una entrega nueva.
+                  </span>
+                  <button
+                    onClick={() => cerrarPedido(r.id_orden)}
+                    disabled={cerrando === r.id_orden}
+                    className="text-sm font-semibold text-amber-900 bg-white border border-amber-300 rounded-lg px-3 py-1.5 hover:bg-amber-100 disabled:opacity-50"
+                  >
+                    {cerrando === r.id_orden ? "Cerrando..." : "Cerrar pedido como está"}
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </Seccion>
 
       {/* Ya costeadas pero todavía sin liquidar: se pueden corregir. Es el
@@ -500,6 +580,169 @@ function CosteoEtapa({
         </p>
       </div>
     </>
+  );
+}
+
+// ---------- Historial ----------
+
+type Periodo = "SEMANA" | "MES" | "TODO";
+
+/**
+ * Arranca en "Este mes" a propósito.
+ *
+ * El historial crece para siempre: con un año de uso son miles de filas que
+ * nadie mira. "Todo" sigue disponible para el que la busca.
+ */
+function FiltroPeriodo({ valor, onCambio }: { valor: Periodo; onCambio: (p: Periodo) => void }) {
+  const opciones: { clave: Periodo; texto: string }[] = [
+    { clave: "SEMANA", texto: "Esta semana" },
+    { clave: "MES", texto: "Este mes" },
+    { clave: "TODO", texto: "Todo" },
+  ];
+  return (
+    <div className="flex gap-1.5 flex-wrap">
+      {opciones.map((o) => (
+        <button
+          key={o.clave}
+          onClick={() => onCambio(o.clave)}
+          className={`text-xs font-semibold rounded-lg px-2.5 py-1 border ${
+            valor === o.clave
+              ? "bg-accent text-white border-accent"
+              : "bg-white text-neutral-600 border-neutral-300 hover:bg-neutral-50"
+          }`}
+        >
+          {o.texto}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function entraEnPeriodo(iso: string, periodo: Periodo) {
+  if (periodo === "TODO") return true;
+  const d = dias(iso);
+  return periodo === "SEMANA" ? d <= 7 : d <= 31;
+}
+
+/**
+ * Lo que ya entró, abajo del trabajo pendiente.
+ *
+ * Son ENTREGAS, no pedidos: un pedido que llegó en dos veces aparece dos
+ * veces, con su "1ª de 2" y su "2ª de 2". No es un duplicado — cada entrega
+ * tuvo su remito, su fecha y su factura.
+ */
+function HistorialEntregas({ entregas }: { entregas: EntregaHistorial[] }) {
+  const [periodo, setPeriodo] = useState<Periodo>("MES");
+  const [quien, setQuien] = useState("TODOS");
+
+  const contrapartes = useMemo(
+    () => Array.from(new Set(entregas.map((e) => e.contraparte))).sort((a, b) => a.localeCompare(b)),
+    [entregas]
+  );
+
+  const visibles = useMemo(
+    () =>
+      entregas.filter(
+        (e) => entraEnPeriodo(e.fechaRecibida, periodo) && (quien === "TODOS" || e.contraparte === quien)
+      ),
+    [entregas, periodo, quien]
+  );
+
+  const unidades = visibles.reduce((acc, e) => acc + e.unidades, 0);
+
+  return (
+    <div className="mt-6 border border-neutral-200 rounded-xl bg-white overflow-hidden">
+      <div className="px-4 py-3 border-b border-neutral-100 flex items-baseline justify-between gap-3 flex-wrap">
+        <div>
+          <p className="text-sm font-semibold text-neutral-900">✅ Ya recibidas</p>
+          <p className="text-xs text-neutral-400 mt-0.5">
+            Lo que entró. Si algo quedó mal cargado, avisale a administración.
+          </p>
+        </div>
+        <p className="text-xs text-neutral-500 tabular-nums">
+          <b className="text-neutral-800">
+            {visibles.length} {visibles.length === 1 ? "entrega" : "entregas"}
+          </b>{" "}
+          · {unidades} unidades
+        </p>
+      </div>
+
+      <div className="px-4 py-2.5 bg-neutral-50 border-b border-neutral-100 flex items-center gap-2 flex-wrap">
+        <select
+          value={quien}
+          onChange={(e) => setQuien(e.target.value)}
+          className="text-xs rounded-lg border border-neutral-300 px-2 py-1.5 bg-white text-neutral-700"
+        >
+          <option value="TODOS">Todos los proveedores</option>
+          {contrapartes.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+        <span className="flex-1" />
+        <FiltroPeriodo valor={periodo} onCambio={setPeriodo} />
+      </div>
+
+      {visibles.length === 0 ? (
+        <p className="px-4 py-6 text-sm text-neutral-400 text-center">
+          No hay entregas en este período.
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[620px]">
+            <thead>
+              <tr className="text-left text-[11px] uppercase tracking-wide text-neutral-400 border-b border-neutral-100">
+                <th className="px-4 py-2 font-bold">Pedido</th>
+                <th className="px-4 py-2 font-bold">Proveedor / marca</th>
+                <th className="px-4 py-2 font-bold">Pedido el</th>
+                <th className="px-4 py-2 font-bold">Recibida el</th>
+                <th className="px-4 py-2 font-bold">Entrega</th>
+                <th className="px-4 py-2 font-bold text-right">Unidades</th>
+                <th className="px-4 py-2 font-bold">Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibles.map((e) => (
+                <tr key={e.idRecepcion} className="border-b border-neutral-50 last:border-0">
+                  <td className="px-4 py-2.5 font-mono text-xs text-neutral-500">
+                    #{e.idOrden.slice(0, 6).toUpperCase()}
+                  </td>
+                  <td className="px-4 py-2.5 text-neutral-900">{e.contraparte}</td>
+                  <td className="px-4 py-2.5 text-neutral-500 tabular-nums">
+                    {e.fechaPedido ? fechaCorta(e.fechaPedido) : "—"}
+                  </td>
+                  <td className="px-4 py-2.5 text-neutral-700 tabular-nums">{fechaCorta(e.fechaRecibida)}</td>
+                  <td className="px-4 py-2.5 text-xs text-neutral-400">
+                    {e.totalEntregas === 1 ? "única" : `${e.numeroEntrega}ª de ${e.totalEntregas}`}
+                  </td>
+                  <td className="px-4 py-2.5 text-right tabular-nums text-neutral-900">{e.unidades}</td>
+                  <td className="px-4 py-2.5">
+                    <ChipEstado estado={e.estadoOrden} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ChipEstado({ estado }: { estado: string }) {
+  const estilo =
+    estado === RECIBIDA_PARCIAL
+      ? "bg-amber-50 text-amber-700 border-amber-200"
+      : estado === CERRADA_INCOMPLETA
+        ? "bg-red-50 text-red-700 border-red-200"
+        : estado === "RECIBIDA"
+          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+          : "bg-neutral-50 text-neutral-500 border-neutral-200";
+  return (
+    <span className={`text-[10.5px] font-bold px-2 py-0.5 rounded-full border whitespace-nowrap ${estilo}`}>
+      {estado === RECIBIDA_PARCIAL ? "Parcial" : etiquetaEstado(estado, true)}
+    </span>
   );
 }
 
@@ -551,7 +794,7 @@ function FilaOrden({
   const [abierta, setAbierta] = useState(false);
   // Una orden emitida hace más de dos días y todavía sin mandar es el caso
   // que este tablero viene a evitar: el pedido que nunca sale.
-  const demorado = f.estado === "PENDIENTE" && !f.enviadaEl && f.dias > 2;
+  const demorado = f.estado === PENDIENTE && !f.enviadaEl && f.dias > 2;
 
   const abrible = Boolean(detalle && detalle.length > 0);
 
@@ -587,20 +830,14 @@ function FilaOrden({
 
       <span className="text-right min-w-[100px]">
         <span
-          className={`block text-[13px] font-semibold ${demorado ? "text-amber-700" : "text-neutral-700"}`}
+          className={`block text-[13px] font-semibold ${
+            demorado ? "text-amber-700" : f.estado === RECIBIDA_PARCIAL ? "text-amber-700" : "text-neutral-700"
+          }`}
         >
-          {f.estado === "PENDIENTE"
-            ? f.enviadaEl
-              ? "Enviada"
-              : "Sin enviar"
-            : f.estado === "RECIBIDA"
-              ? "Completa"
-              : f.estado === "CANCELADA"
-                ? "Cancelada"
-                : "Con diferencias"}
+          {etiquetaEstado(f.estado, Boolean(f.enviadaEl))}
         </span>
         <span className={`block text-[11px] ${demorado ? "text-amber-700 font-semibold" : "text-neutral-400"}`}>
-          {f.enviadaEl && f.estado === "PENDIENTE"
+          {f.enviadaEl && estaAbierta(f.estado)
             ? `mandada ${haceCuanto(dias(f.enviadaEl))}`
             : `pedida ${haceCuanto(f.dias)}`}
         </span>

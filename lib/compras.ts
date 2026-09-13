@@ -1,4 +1,5 @@
 import { getSupabaseServerClient } from "@/lib/supabase";
+import { ESTADOS_ABIERTOS } from "@/lib/estadosOrden";
 
 // Los contadores de las tres etapas de Compras.
 //
@@ -34,15 +35,18 @@ export async function contadoresCompras(): Promise<{
       .select("id_orden", { count: "exact", head: true })
       .eq("estado", "PENDIENTE")
       .is("enviada_el", null),
+    // Esperando en Recepción: las enviadas que no llegaron, MÁS las que
+    // llegaron a medias. Un pedido a medias sigue siendo trabajo del local
+    // hasta que llegue el resto o administración lo cierre.
     supabase
       .from("ordenes_reposicion")
       .select("id_orden", { count: "exact", head: true })
-      .eq("estado", "PENDIENTE")
+      .in("estado", ESTADOS_ABIERTOS)
       .not("enviada_el", "is", null),
     supabase
       .from("ordenes_compra_proveedor")
       .select("id_orden", { count: "exact", head: true })
-      .eq("estado", "PENDIENTE")
+      .in("estado", ESTADOS_ABIERTOS)
       .not("enviada_el", "is", null),
     supabase.from("recepciones_proveedor").select("id_recepcion, fecha").eq("facturada", false).limit(100),
   ]);

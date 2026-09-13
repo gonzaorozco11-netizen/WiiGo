@@ -12,6 +12,7 @@ import {
   detalleLiquidacionProveedor,
 } from "@/lib/liquidacionesProveedor";
 import { consumirFifo } from "@/lib/fifoProveedor";
+import { estaAbierta, estadoSegunRecibido } from "@/lib/estadosOrden";
 import { turnoAbiertoDeLocal } from "@/app/(app)/turnos/actions";
 
 function redondear2(valor: number) {
@@ -279,6 +280,16 @@ export async function crearOrdenCompra(
 // lo REALMENTE recibido (nunca con lo pedido) y marca diferencias línea por
 // línea — no genera ningún movimiento de plata, eso nace recién con la
 // factura.
+/**
+ * Cargar una entrega contra una orden de compra.
+ *
+ * Puede correr VARIAS VECES sobre la misma orden: si el proveedor manda 8 de
+ * 12 el lunes y los 4 que faltan el jueves, son dos entregas del mismo
+ * pedido. Por eso las cantidades se SUMAN a lo que ya había — antes se
+ * pisaban, y la segunda entrega borraba la primera.
+ *
+ * `cantidadRecibida` es siempre lo que llegó AHORA, no el acumulado.
+ */
 export async function recepcionarOrdenCompra(
   idOrden: string,
   items: { idDetalle: string; idVariante: string; cantidadSolicitada: number; cantidadRecibida: number }[],
@@ -289,14 +300,41 @@ export async function recepcionarOrdenCompra(
 
     const { data: orden, error: errorOrdenGet } = await supabase
       .from("ordenes_compra_proveedor")
-      .select("id_proveedor, id_local")
+      .select("id_proveedor, id_local, estado")
       .eq("id_orden", idOrden)
       .maybeSingle();
     if (errorOrdenGet) return { error: friendlyDbError(errorOrdenGet) };
     if (!orden) return { error: "No se encontró la orden" };
+    if (!estaAbierta(orden.estado as string)) {
+      return { error: "Este pedido ya está cerrado. No se le puede cargar otra entrega." };
+    }
+
+    // Lo ya recibido en entregas anteriores. Se lee de la base y no del
+    // navegador: si dos personas abren la misma orden a la vez, el que
+    // guarda segundo tiene que sumar sobre lo que guardó el primero.
+    const { data: previos, error: errorPrevios } = await supabase
+      .from("detalle_orden_compra")
+      .select("id_detalle, cantidad_solicitada, cantidad_recibida")
+      .eq("id_orden", idOrden);
+    if (errorPrevios) return { error: friendlyDbError(errorPrevios) };
+
+    const yaRecibido = new Map(
+      (previos ?? []).map((d) => [d.id_detalle as string, (d.cantidad_recibida as number) ?? 0])
+    );
+
+    if (items.every((i) => i.cantidadRecibida <= 0)) {
+      return { error: "No cargaste ninguna unidad. Si no llegó nada, dejá el pedido como está." };
+    }
+    if (items.some((i) => i.cantidadRecibida < 0)) {
+      return { error: "No se puede recibir una cantidad negativa." };
+    }
 
     const usuario = await usuarioActual();
-    const tieneDiferencias = items.some((i) => i.cantidadRecibida !== i.cantidadSolicitada);
+    // Para esta entrega puntual: ¿lo que llegó ahora coincide con lo que
+    // faltaba? Es lo que decide si el remito de HOY tuvo diferencias.
+    const tieneDiferencias = items.some(
+      (i) => i.cantidadRecibida !== Math.max(0, i.cantidadSolicitada - (yaRecibido.get(i.idDetalle) ?? 0))
+    );
 
     const { data: recepcion, error: errorRecepcion } = await supabase
       .from("recepciones_proveedor")
@@ -313,15 +351,21 @@ export async function recepcionarOrdenCompra(
     if (errorRecepcion) return { error: friendlyDbError(errorRecepcion) };
 
     for (const item of items) {
-      const diferencia = item.cantidadRecibida - item.cantidadSolicitada;
+      const previo = yaRecibido.get(item.idDetalle) ?? 0;
+      const acumulado = previo + item.cantidadRecibida;
+      // La diferencia se mide contra el pedido completo, no contra esta
+      // entrega: es lo que le importa a quien después reclama.
+      const diferencia = acumulado - item.cantidadSolicitada;
       const estadoControl = diferencia === 0 ? "COMPLETA" : diferencia < 0 ? "FALTANTE" : "SOBRANTE";
 
       const { error: errorUpdateDetalle } = await supabase
         .from("detalle_orden_compra")
-        .update({ cantidad_recibida: item.cantidadRecibida })
+        .update({ cantidad_recibida: acumulado })
         .eq("id_detalle", item.idDetalle);
       if (errorUpdateDetalle) return { error: friendlyDbError(errorUpdateDetalle) };
 
+      // El lote FIFO es de ESTA entrega: solo lo que llegó ahora, con el
+      // costo que traiga su propia factura. Por eso acá no va el acumulado.
       const { error: errorDetalleRecepcion } = await supabase.from("detalle_recepcion_proveedor").insert({
         id_recepcion: recepcion.id_recepcion,
         id_variante: item.idVariante,
@@ -371,9 +415,19 @@ export async function recepcionarOrdenCompra(
       }
     }
 
+    // El estado sale de las cantidades, no de una decisión de quien recibe:
+    // si después de esta entrega todavía falta algo, el pedido sigue abierto
+    // y vuelve a aparecer en Recepción esperando el resto.
+    const nuevoEstado = estadoSegunRecibido(
+      items.map((i) => ({
+        solicitada: i.cantidadSolicitada,
+        recibidaAcumulada: (yaRecibido.get(i.idDetalle) ?? 0) + i.cantidadRecibida,
+      }))
+    );
+
     const { error: errorEstado } = await supabase
       .from("ordenes_compra_proveedor")
-      .update({ estado: tieneDiferencias ? "RECIBIDA_CON_DIFERENCIAS" : "RECIBIDA" })
+      .update({ estado: nuevoEstado })
       .eq("id_orden", idOrden);
     if (errorEstado) return { error: friendlyDbError(errorEstado) };
 

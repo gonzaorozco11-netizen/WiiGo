@@ -15,13 +15,17 @@ import NuevaOrdenModal from "@/components/NuevaOrdenModal";
 import RecepcionModal from "@/components/RecepcionModal";
 import DevolverAMarca from "@/components/DevolverAMarca";
 import type { MercaderiaADevolver } from "@/app/(app)/reposicion/actions";
+import { estaAbierta, RECIBIDA_PARCIAL } from "@/lib/estadosOrden";
 
 export type FilaVariante = { variante: VarianteProducto; producto: Producto; marca: Marca | undefined };
 
 export const ESTADO_ESTILO: Record<string, string> = {
   PENDIENTE: "bg-amber-50 text-amber-700",
+  // Llegó una parte: sigue abierto, por eso comparte el ámbar de lo pendiente.
+  RECIBIDA_PARCIAL: "bg-amber-50 text-amber-700",
   RECIBIDA: "bg-emerald-50 text-emerald-700",
   RECIBIDA_CON_DIFERENCIAS: "bg-red-50 text-red-700",
+  CERRADA_INCOMPLETA: "bg-red-50 text-red-700",
 };
 
 export default function ReposicionApp({
@@ -176,7 +180,7 @@ export default function ReposicionApp({
                 </p>
               </div>
               <button onClick={() => setOrdenAbierta(o)} className="text-sm text-accent hover:underline shrink-0">
-                {o.estado === "PENDIENTE" ? "Recepcionar" : "Ver"}
+                {o.estado === RECIBIDA_PARCIAL ? "Recibir el resto" : estaAbierta(o.estado) ? "Recepcionar" : "Ver"}
               </button>
             </li>
           ))}
