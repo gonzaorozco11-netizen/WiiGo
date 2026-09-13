@@ -41,6 +41,7 @@ function sumarDias(iso: string, dias: number) {
 export default function CostosRecepcionModal({
   entrega,
   lineas,
+  todasLasLineas,
   entregasDelPedido,
   proveedor,
   nombrePorVariante,
@@ -51,6 +52,8 @@ export default function CostosRecepcionModal({
   entrega: EntregaHistorial;
   /** Lo que llegó en ESTA entrega. */
   lineas: LineaEntrega[];
+  /** Las de todas las entregas del pedido, para poder sumar lo que ya se costeó. */
+  todasLasLineas: LineaEntrega[];
   /** Todas las entregas del mismo pedido, para elegir cuáles cubre la factura. */
   entregasDelPedido: EntregaHistorial[];
   proveedor: ProveedorConSaldo | undefined;
@@ -125,6 +128,47 @@ export default function CostosRecepcionModal({
   const cuadranUnidades = unidadesDeclaradas > 0 && unidadesDeclaradas === unidadesCubiertas;
   const hayDeclaracion = unidadesDeclaradas > 0;
 
+  // Lo que aportan las OTRAS entregas cubiertas, con el costo que ya tienen
+  // cargado. Si alguna todavía no se costeó, suma 0 y el aviso lo dice.
+  const otrasCubiertas = otras.filter((e) => estaCubierta(e.idRecepcion));
+  const totalOtras = otrasCubiertas.reduce((acc, e) => {
+    const suyas = todasLasLineas.filter((l) => l.idRecepcion === e.idRecepcion);
+    return (
+      acc +
+      suyas.reduce((a, l) => {
+        const neto = (l.costoUnitario ?? 0) * l.cantidadRecibida;
+        return a + neto * (1 + (ivaActualPorVariante.get(l.idVariante) ?? 21) / 100);
+      }, 0)
+    );
+  }, 0);
+  const hayOtrasSinCostear = otrasCubiertas.some((e) =>
+    todasLasLineas.filter((l) => l.idRecepcion === e.idRecepcion).some((l) => l.costoUnitario == null)
+  );
+
+  // El control que importa: la suma de los ítems contra el total de la
+  // factura. Sin esto, un error de tipeo en el total se convierte en deuda
+  // real y en crédito fiscal calculado sobre otra cosa.
+  const totalCubierto = totalEntrega + totalOtras;
+  const montoDeclarado = Number(montoFactura) || 0;
+  const diferencia = montoDeclarado - totalCubierto;
+  // Un peso de tolerancia: los redondeos del proveedor no son un error.
+  const cuadraPlata = Math.abs(diferencia) <= 1;
+  const hayMonto = montoDeclarado > 0;
+
+  // Qué falta para poder guardar. Se calcula acá y no se descubre después de
+  // apretar: el botón apagado con el motivo al pasar el mouse molesta menos
+  // que un error rojo tras completar todo el formulario.
+  const motivoBloqueo = !pideFactura
+    ? null
+    : !numero.trim()
+      ? "Falta el número de factura."
+      : montoDeclarado <= 0
+        ? "Falta el total de la factura."
+        : !cuadraPlata && !motivoDiscrepancia.trim()
+          ? "Los números no cuadran: contá por qué antes de guardar."
+          : null;
+  const sePuedeGuardar = motivoBloqueo === null;
+
   function handleSubmit() {
     setError(null);
     startTransition(async () => {
@@ -146,7 +190,9 @@ export default function CostosRecepcionModal({
                 iva: totales.iva > 0 ? totales.iva : null,
                 idsRecepcionCubiertas: otras.filter((e) => estaCubierta(e.idRecepcion)).map((e) => e.idRecepcion),
                 unidadesFacturadas: unidadesDeclaradas || null,
-                discrepancia,
+                // Que no cuadre ya es una diferencia, aunque nadie haya
+                // tildado el casillero.
+                discrepancia: discrepancia || !cuadraPlata,
                 motivoDiscrepancia,
               }
             : null,
@@ -413,6 +459,50 @@ export default function CostosRecepcionModal({
 
           {/* ---------- 4. Cierre ---------- */}
           <Bloque n={pideFactura ? 4 : 2} titulo="Cierre">
+            {pideFactura && hayMonto && (
+              <div
+                className={`rounded-lg px-3.5 py-3 mb-3 text-sm tabular-nums ${
+                  cuadraPlata ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"
+                }`}
+              >
+                <div className="flex items-center gap-3 flex-wrap">
+                  <span>
+                    Suma de los ítems <b>${formatearMonto(totalCubierto)}</b> · Total de la factura{" "}
+                    <b>${formatearMonto(montoDeclarado)}</b>
+                  </span>
+                  <span className="flex-1" />
+                  <b>
+                    {cuadraPlata
+                      ? "✓ Cuadra"
+                      : `✕ ${diferencia > 0 ? "Faltan" : "Sobran"} $${formatearMonto(Math.abs(diferencia))}`}
+                  </b>
+                </div>
+                {!cuadraPlata && hayOtrasSinCostear && (
+                  <p className="text-xs mt-1.5 opacity-90">
+                    Ojo: alguna de las entregas que tildaste todavía no tiene costo cargado, así que no suma nada
+                    acá.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {pideFactura && hayMonto && !cuadraPlata && (
+              <div className="rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-3 mb-3">
+                <p className="text-sm text-amber-900 mb-2">
+                  <b>No cuadra. Contá por qué antes de guardar.</b> Puede ser que el proveedor haya facturado mal, o
+                  que la factura traiga percepciones o un descuento al pie que no están en los ítems. Las dos cosas
+                  son válidas — lo que no puede pasar es que la diferencia se pierda.
+                </p>
+                <textarea
+                  value={motivoDiscrepancia}
+                  onChange={(e) => setMotivoDiscrepancia(e.target.value)}
+                  rows={2}
+                  placeholder="Ej: facturaron 24 aguas que nunca entraron. / Trae percepción de IIBB de $2.900."
+                  className="w-full rounded-lg border border-amber-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                />
+              </div>
+            )}
+
             {pideFactura && (
               <>
                 <label className="flex items-start gap-2.5 cursor-pointer mb-3">
@@ -430,12 +520,14 @@ export default function CostosRecepcionModal({
                     </span>
                   </span>
                 </label>
-                {discrepancia && (
+                {/* Si los números no cuadran ya hay un campo arriba pidiendo
+                    la explicación: repetirlo sería preguntar dos veces. */}
+                {discrepancia && cuadraPlata && (
                   <textarea
                     value={motivoDiscrepancia}
                     onChange={(e) => setMotivoDiscrepancia(e.target.value)}
                     rows={2}
-                    placeholder="Ej: facturaron 24 aguas que nunca entraron."
+                    placeholder="Ej: el total está bien pero facturaron un producto que no es."
                     className="w-full rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-amber-400"
                   />
                 )}
@@ -479,7 +571,8 @@ export default function CostosRecepcionModal({
               <button
                 type="button"
                 onClick={handleSubmit}
-                disabled={isPending}
+                disabled={isPending || !sePuedeGuardar}
+                title={motivoBloqueo ?? undefined}
                 className="flex-1 rounded-lg bg-accent hover:bg-accent-dark text-white py-2 text-sm font-medium disabled:opacity-50"
               >
                 {isPending ? "Guardando..." : "Guardar costeo"}

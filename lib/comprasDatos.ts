@@ -98,6 +98,13 @@ export type LineaEntrega = {
   idRecepcion: string;
   idVariante: string;
   cantidadRecibida: number;
+  /**
+   * El costo con el que se costeó esta línea, si ya se costeó.
+   *
+   * Hace falta para el control de que la factura cuadre cuando cubre más de
+   * una entrega: sin esto no se puede saber cuánta plata aportan las otras.
+   */
+  costoUnitario: number | null;
 };
 
 /** Cuántos meses de historial se traen. Ver el comentario en `datosCompras`. */
@@ -176,7 +183,7 @@ export async function datosCompras(): Promise<DatosCompras> {
       .limit(300),
     // Los renglones de cada entrega: sirven para sumar unidades en el
     // historial y, en Costeo, para saber qué llegó en esa entrega puntual.
-    supabase.from("detalle_recepcion_proveedor").select("id_recepcion, id_variante, cantidad_recibida"),
+    supabase.from("detalle_recepcion_proveedor").select("id_recepcion, id_variante, cantidad_recibida, costo_unitario"),
     supabase.from("detalle_recepciones").select("id_recepcion, id_variante, cantidad_recibida"),
   ]);
 
@@ -266,6 +273,7 @@ export async function datosCompras(): Promise<DatosCompras> {
       idRecepcion: l.id_recepcion as string,
       idVariante: l.id_variante as string,
       cantidadRecibida: (l.cantidad_recibida as number) ?? 0,
+      costoUnitario: (l.costo_unitario as number | null) ?? null,
     })),
     idsMarcaPropia: marcas
       .filter((m) => (m as Marca & { tipo_comercializacion?: string }).tipo_comercializacion === "PROPIA")

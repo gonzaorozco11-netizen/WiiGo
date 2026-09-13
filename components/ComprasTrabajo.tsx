@@ -2,7 +2,12 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { marcarOrdenEnviada, cerrarOrdenIncompleta } from "@/app/(app)/compras/actions";
+import {
+  marcarOrdenEnviada,
+  desmarcarOrdenEnviada,
+  cancelarOrden,
+  cerrarOrdenIncompleta,
+} from "@/app/(app)/compras/actions";
 import type { DatosCompras, EntregaHistorial } from "@/lib/comprasDatos";
 import {
   estaAbierta,
@@ -76,6 +81,34 @@ export default function ComprasTrabajo({ etapa, datos }: { etapa: Etapa; datos: 
     setError(null);
     setEnviando(`${f.origen}-${f.idOrden}`);
     marcarOrdenEnviada(f.origen, f.idOrden)
+      .then((r) => {
+        if (r.error) setError(r.error);
+        else router.refresh();
+      })
+      .finally(() => setEnviando(null));
+  }
+
+  /** Se marcó como enviada por error y todavía no llegó nada: vuelve a Órdenes. */
+  function deshacerEnvio(f: Fila) {
+    setError(null);
+    setEnviando(`${f.origen}-${f.idOrden}`);
+    desmarcarOrdenEnviada(f.origen, f.idOrden)
+      .then((r) => {
+        if (r.error) setError(r.error);
+        else router.refresh();
+      })
+      .finally(() => setEnviando(null));
+  }
+
+  function anular(f: Fila) {
+    const motivo = window.prompt(
+      `Vas a anular el pedido a ${f.contraparte} de ${f.unidades} unidades.\n\n¿Por qué? (queda anotado)`,
+      "Cargado por error"
+    );
+    if (motivo === null) return;
+    setError(null);
+    setEnviando(`${f.origen}-${f.idOrden}`);
+    cancelarOrden(f.origen, f.idOrden, motivo)
       .then((r) => {
         if (r.error) setError(r.error);
         else router.refresh();
@@ -268,6 +301,10 @@ export default function ComprasTrabajo({ etapa, datos }: { etapa: Etapa; datos: 
                 accion="Marcar como enviada"
                 onAccion={() => enviar(f)}
                 trabajando={enviando === `${f.origen}-${f.idOrden}`}
+                // Mientras no se mandó, el pedido se puede tirar sin
+                // consecuencias: no hay mercadería ni deuda de por medio.
+                secundaria="Anular"
+                onSecundaria={() => anular(f)}
               />
             ))}
           </Seccion>
@@ -275,7 +312,17 @@ export default function ComprasTrabajo({ etapa, datos }: { etapa: Etapa; datos: 
           {esperandoLlegar.length > 0 && (
             <Seccion titulo="Ya enviadas · esperando en Recepción">
               {esperandoLlegar.map((f) => (
-                <FilaOrden key={`${f.origen}-${f.idOrden}`} f={f} tenue detalle={contenidoDe(f)} />
+                <FilaOrden
+                  key={`${f.origen}-${f.idOrden}`}
+                  f={f}
+                  tenue
+                  detalle={contenidoDe(f)}
+                  // Se marcó como enviada de más. Mientras no haya llegado
+                  // nada, se puede volver atrás sin romper nada.
+                  secundaria="Deshacer envío"
+                  onSecundaria={() => deshacerEnvio(f)}
+                  trabajando={enviando === `${f.origen}-${f.idOrden}`}
+                />
               ))}
             </Seccion>
           )}
@@ -387,6 +434,7 @@ export default function ComprasTrabajo({ etapa, datos }: { etapa: Etapa; datos: 
         <CostosRecepcionModal
           entrega={costear}
           lineas={datos.lineasEntrega.filter((l) => l.idRecepcion === costear.idRecepcion)}
+          todasLasLineas={datos.lineasEntrega}
           entregasDelPedido={datos.entregas.filter((e) => e.idOrden === costear.idOrden)}
           proveedor={proveedorDeEntrega(costear)}
           nombrePorVariante={nombrePorVariante}
@@ -792,6 +840,8 @@ function FilaOrden({
   f,
   accion,
   onAccion,
+  secundaria,
+  onSecundaria,
   tenue,
   trabajando,
   detalle,
@@ -799,6 +849,9 @@ function FilaOrden({
   f: Fila;
   accion?: string;
   onAccion?: () => void;
+  /** La salida de emergencia: deshacer o anular. Siempre en gris, nunca en azul. */
+  secundaria?: string;
+  onSecundaria?: () => void;
   tenue?: boolean;
   trabajando?: boolean;
   /** Qué traía el pedido. Si viene, la fila se puede abrir. */
@@ -857,6 +910,19 @@ function FilaOrden({
             : `pedida ${haceCuanto(f.dias)}`}
         </span>
       </span>
+
+      {secundaria && onSecundaria && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onSecundaria();
+          }}
+          disabled={trabajando}
+          className="text-xs font-semibold text-neutral-500 border border-neutral-300 rounded-lg px-2.5 py-1.5 hover:bg-neutral-50 hover:text-neutral-700 disabled:opacity-50"
+        >
+          {secundaria}
+        </button>
+      )}
 
       {accion && onAccion && (
         <button

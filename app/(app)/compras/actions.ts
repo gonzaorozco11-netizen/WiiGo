@@ -5,7 +5,8 @@ import { cookies } from "next/headers";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
-import { RECIBIDA_PARCIAL, CERRADA_INCOMPLETA } from "@/lib/estadosOrden";
+import { RECIBIDA_PARCIAL, CERRADA_INCOMPLETA, PENDIENTE, CANCELADA } from "@/lib/estadosOrden";
+import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 
 // Compras funciona como una cinta: un pedido está en una sola etapa a la vez.
 // Marcarlo como enviado es lo que lo saca de Órdenes y lo pone en Recepción.
@@ -21,6 +22,22 @@ async function usuarioActual() {
   return session?.nombre ?? null;
 }
 
+/**
+ * Mover un pedido de etapa es trabajo de quien tiene la pantalla de Órdenes.
+ *
+ * El control va acá y no solo en el botón: un archivo "use server" es un
+ * endpoint público, así que cualquiera que esté logueado puede llamar a estas
+ * funciones con el id que se le ocurra. Esconder el botón no alcanza.
+ */
+async function requierePantalla(...claves: string[]) {
+  const sesion = await obtenerSesionConPantallas();
+  if (claves.some((c) => puedeVerPantalla(sesion, c))) return null;
+  return "No tenés permiso para esto — lo maneja administración desde Compras.";
+}
+
+/** Mover pedidos entre etapas: pantalla de Órdenes de compra. */
+const requierePantallaOrdenes = () => requierePantalla("compras");
+
 export type OrigenOrden = "MARCA" | "PROVEEDOR";
 
 function tablaDe(origen: OrigenOrden) {
@@ -31,6 +48,8 @@ export async function marcarOrdenEnviada(
   origen: OrigenOrden,
   idOrden: string
 ): Promise<{ error: string | null }> {
+  const sinPermiso = await requierePantallaOrdenes();
+  if (sinPermiso) return { error: sinPermiso };
   try {
     const supabase = getSupabaseServerClient();
     const usuario = await usuarioActual();
@@ -54,7 +73,7 @@ export async function marcarOrdenEnviada(
 }
 
 /**
- * Deshacer: se marcó por error y todavía no llegó nada.
+ * Deshacer: se marcó como enviada por error y todavía no llegó nada.
  *
  * Vuelve a Órdenes. No se puede si el pedido ya se recepcionó — ahí el
  * problema es otro y se resuelve en la recepción, no acá.
@@ -63,6 +82,8 @@ export async function desmarcarOrdenEnviada(
   origen: OrigenOrden,
   idOrden: string
 ): Promise<{ error: string | null }> {
+  const sinPermiso = await requierePantallaOrdenes();
+  if (sinPermiso) return { error: sinPermiso };
   try {
     const supabase = getSupabaseServerClient();
 
@@ -72,7 +93,7 @@ export async function desmarcarOrdenEnviada(
       .eq("id_orden", idOrden)
       .maybeSingle();
     if (!orden) return { error: "No se encontró la orden" };
-    if (orden.estado !== "PENDIENTE") {
+    if (orden.estado !== PENDIENTE) {
       return { error: "Este pedido ya se recepcionó, así que no se puede volver atrás desde acá." };
     }
 
@@ -91,6 +112,62 @@ export async function desmarcarOrdenEnviada(
 }
 
 /**
+ * Anular un pedido mal hecho.
+ *
+ * Solo si NO llegó nada todavía: si ya entró mercadería, esa mercadería está
+ * en el local y en el stock, y borrar el pedido dejaría stock sin explicación.
+ * Ese caso se cierra con "cerrar pedido como está", que sí deja el rastro.
+ *
+ * No se borra la fila: queda como CANCELADA con el motivo. Un pedido que
+ * desaparece es un pedido sobre el que nadie puede preguntar después.
+ */
+export async function cancelarOrden(
+  origen: OrigenOrden,
+  idOrden: string,
+  motivo: string
+): Promise<{ error: string | null }> {
+  const sinPermiso = await requierePantallaOrdenes();
+  if (sinPermiso) return { error: sinPermiso };
+  try {
+    const supabase = getSupabaseServerClient();
+    const usuario = await usuarioActual();
+
+    const { data: orden } = await supabase
+      .from(tablaDe(origen))
+      .select("estado, observaciones")
+      .eq("id_orden", idOrden)
+      .maybeSingle();
+    if (!orden) return { error: "No se encontró la orden" };
+    if (orden.estado !== PENDIENTE) {
+      return {
+        error:
+          "Este pedido ya recibió mercadería, así que no se puede anular. Si no va a llegar el resto, usá «Cerrar pedido como está» desde Costeo.",
+      };
+    }
+
+    const nota = `Anulada por ${usuario ?? "administración"}: ${motivo.trim() || "sin motivo"}`;
+
+    const { error } = await supabase
+      .from(tablaDe(origen))
+      .update({
+        estado: CANCELADA,
+        observaciones: orden.observaciones ? `${orden.observaciones}\n${nota}` : nota,
+      })
+      .eq("id_orden", idOrden)
+      // Que siga pendiente: si en el medio alguien recepcionó, no se anula.
+      .eq("estado", PENDIENTE);
+    if (error) return { error: friendlyDbError(error) };
+
+    revalidatePath("/compras");
+    revalidatePath("/compras/recepcion");
+    revalidatePath("/");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo anular el pedido" };
+  }
+}
+
+/**
  * Dar por terminado un pedido que llegó a medias.
  *
  * El proveedor avisó que no manda el resto, o pasó demasiado tiempo. Lo
@@ -105,6 +182,9 @@ export async function cerrarOrdenIncompleta(
   idOrden: string,
   motivo: string
 ): Promise<{ error: string | null }> {
+  // El botón vive en Costeo, así que alcanza con cualquiera de las dos.
+  const sinPermiso = await requierePantalla("compras", "compras-costeo");
+  if (sinPermiso) return { error: sinPermiso };
   try {
     const supabase = getSupabaseServerClient();
     const usuario = await usuarioActual();
