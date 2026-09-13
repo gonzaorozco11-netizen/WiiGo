@@ -65,7 +65,9 @@ export default function ComprasTrabajo({ etapa, datos }: { etapa: Etapa; datos: 
   const [nuevaProveedor, setNuevaProveedor] = useState(false);
   const [recibirMarca, setRecibirMarca] = useState<OrdenReposicion | null>(null);
   const [recibirProveedor, setRecibirProveedor] = useState<OrdenCompraProveedor | null>(null);
-  const [costear, setCostear] = useState<OrdenCompraProveedor | null>(null);
+  // Se costea una ENTREGA, no un pedido: dos entregas del mismo pedido
+  // pueden traer precios distintos y cada una es su propio lote.
+  const [costear, setCostear] = useState<EntregaHistorial | null>(null);
   const [enviando, setEnviando] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
@@ -138,6 +140,9 @@ export default function ComprasTrabajo({ etapa, datos }: { etapa: Etapa; datos: 
     filas.forEach((f) => map.set(f.variante.id_variante, f.producto.iva_porcentaje ?? 21));
     return map;
   }, [filas]);
+
+  /** Solo tiene sentido para entregas de proveedor — las de marca no se costean. */
+  const proveedorDeEntrega = (e: EntregaHistorial) => proveedorPorId.get(e.idContraparte);
 
   const detalleMarcaDe = (idOrden: string) => datos.detalleMarca.filter((d) => d.id_orden === idOrden);
   const detalleProveedorDe = (idOrden: string) => datos.detalleProveedor.filter((d) => d.id_orden === idOrden);
@@ -336,11 +341,7 @@ export default function ComprasTrabajo({ etapa, datos }: { etapa: Etapa; datos: 
       )}
 
       {etapa === "COSTEO" && (
-        <CosteoEtapa
-          datos={datos}
-          proveedorPorId={proveedorPorId}
-          onCostear={(orden) => setCostear(orden)}
-        />
+        <CosteoEtapa datos={datos} proveedorPorId={proveedorPorId} onCostear={(e) => setCostear(e)} />
       )}
 
       {/* ---------- Los formularios de siempre, montados acá ---------- */}
@@ -384,9 +385,10 @@ export default function ComprasTrabajo({ etapa, datos }: { etapa: Etapa; datos: 
       )}
       {costear && (
         <CostosRecepcionModal
-          orden={costear}
-          detalle={detalleProveedorDe(costear.id_orden)}
-          proveedor={proveedorPorId.get(costear.id_proveedor)}
+          entrega={costear}
+          lineas={datos.lineasEntrega.filter((l) => l.idRecepcion === costear.idRecepcion)}
+          entregasDelPedido={datos.entregas.filter((e) => e.idOrden === costear.idOrden)}
+          proveedor={proveedorDeEntrega(costear)}
           nombrePorVariante={nombrePorVariante}
           costoActualPorVariante={costoActualPorVariante}
           ivaActualPorVariante={ivaActualPorVariante}
@@ -406,7 +408,7 @@ function CosteoEtapa({
 }: {
   datos: DatosCompras;
   proveedorPorId: Map<string, DatosCompras["proveedores"][number]>;
-  onCostear: (orden: OrdenCompraProveedor) => void;
+  onCostear: (entrega: EntregaHistorial) => void;
 }) {
   const router = useRouter();
   const [cerrando, setCerrando] = useState<string | null>(null);
@@ -430,24 +432,32 @@ function CosteoEtapa({
       .finally(() => setCerrando(null));
   }
 
+  // Por ENTREGA. Un pedido que llegó en dos veces aparece dos veces, cada una
+  // con su propia factura y su propio costo.
+  const entregaPorId = new Map(datos.entregas.map((e) => [e.idRecepcion, e]));
+  const productosDe = (idRecepcion: string) =>
+    datos.lineasEntrega.filter((l) => l.idRecepcion === idRecepcion).length;
+
   const porCostear = datos.recepcionesSinCostear
     .map((r) => ({
       ...r,
+      entrega: entregaPorId.get(r.id_recepcion),
       orden: datos.ordenesProveedor.find((o) => o.id_orden === r.id_orden),
       proveedor: proveedorPorId.get(r.id_proveedor),
       dias: dias(r.fecha),
-      productos: datos.detalleProveedor.filter((d) => d.id_orden === r.id_orden).length,
+      productos: productosDe(r.id_recepcion),
     }))
-    .filter((r) => r.orden);
+    .filter((r) => r.orden && r.entrega);
 
   const costeadas = datos.recepcionesCosteadas
     .map((r) => ({
       ...r,
+      entrega: entregaPorId.get(r.id_recepcion),
       orden: datos.ordenesProveedor.find((o) => o.id_orden === r.id_orden),
       proveedor: proveedorPorId.get(r.id_proveedor),
-      productos: datos.detalleProveedor.filter((d) => d.id_orden === r.id_orden).length,
+      productos: productosDe(r.id_recepcion),
     }))
-    .filter((r) => r.orden);
+    .filter((r) => r.orden && r.entrega);
 
   const vencidos = porCostear.filter((r) => r.dias > 3).length;
 
@@ -495,6 +505,11 @@ function CosteoEtapa({
                 <span className="flex-1 min-w-[200px]">
                   <span className="block font-semibold text-[14.5px] text-neutral-900">
                     {r.proveedor?.nombre ?? "—"}
+                    {r.entrega && r.entrega.totalEntregas > 1 && (
+                      <span className="ml-2 text-[10.5px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 align-middle">
+                        {r.entrega.numeroEntrega}ª de {r.entrega.totalEntregas}
+                      </span>
+                    )}
                   </span>
                   <span className="block text-xs text-neutral-400">
                     Pedido el {r.orden ? fechaCorta(r.orden.fecha_alta) : "—"} · recibido el {fechaCorta(r.fecha)} ·{" "}
@@ -505,7 +520,7 @@ function CosteoEtapa({
                   {MODO[r.proveedor?.modo_facturacion ?? ""] ?? r.proveedor?.modo_facturacion}
                 </span>
                 <button
-                  onClick={() => r.orden && onCostear(r.orden)}
+                  onClick={() => r.entrega && onCostear(r.entrega)}
                   className="text-sm font-semibold bg-accent hover:bg-accent-dark text-white rounded-lg px-3 py-1.5"
                 >
                   Costear
@@ -558,7 +573,7 @@ function CosteoEtapa({
                 Sin liquidar
               </span>
               <button
-                onClick={() => r.orden && onCostear(r.orden)}
+                onClick={() => r.entrega && onCostear(r.entrega)}
                 className="text-sm font-semibold text-neutral-700 border border-neutral-300 rounded-lg px-3 py-1.5 hover:bg-neutral-50"
               >
                 Corregir

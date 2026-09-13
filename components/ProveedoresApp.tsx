@@ -14,7 +14,6 @@ import ProveedorFormModal from "./ProveedorFormModal";
 import NuevaOrdenCompraModal from "./NuevaOrdenCompraModal";
 import RecepcionCompraModal from "./RecepcionCompraModal";
 import DevolucionProveedorModal from "./DevolucionProveedorModal";
-import CostosRecepcionModal from "./CostosRecepcionModal";
 import FacturaOrdenModal from "./FacturaOrdenModal";
 import FacturaPeriodoModal from "./FacturaPeriodoModal";
 import LiquidacionProveedorModal from "./LiquidacionProveedorModal";
@@ -214,7 +213,6 @@ export default function ProveedoresApp({
   const [nuevaOrdenAbierta, setNuevaOrdenAbierta] = useState(false);
   const [ordenAbierta, setOrdenAbierta] = useState<OrdenCompraProveedor | null>(null);
   const [facturaOrdenAbierta, setFacturaOrdenAbierta] = useState<OrdenCompraProveedor | null>(null);
-  const [costosOrdenAbierta, setCostosOrdenAbierta] = useState<OrdenCompraProveedor | null>(null);
   const [facturaPeriodoAbierta, setFacturaPeriodoAbierta] = useState(false);
   const [liquidacionAbierta, setLiquidacionAbierta] = useState(false);
   const [facturaLiquidacionAbierta, setFacturaLiquidacionAbierta] = useState(false);
@@ -665,13 +663,17 @@ export default function ProveedoresApp({
                           Facturar
                         </button>
                       )}
-                    {o.estado !== "PENDIENTE" &&
+                    {/* Costear se hace en Compras → Costeo y solo ahí.
+                        Desde que un pedido puede llegar en varias entregas,
+                        "costear la orden" ya no significa nada: cada entrega
+                        tiene su costo y su factura. */}
+                    {!estaAbierta(o.estado) &&
                       !facturadaPorOrden.get(o.id_orden) &&
                       esAdmin &&
                       proveedorPorId.get(o.id_proveedor)?.modo_facturacion === "LIQUIDACION_VENTA" && (
-                        <button onClick={() => setCostosOrdenAbierta(o)} className="text-sm text-accent hover:underline">
-                          Cargar factura
-                        </button>
+                        <Link href="/compras/costeo" className="text-sm text-accent hover:underline">
+                          Costear
+                        </Link>
                       )}
                     <button onClick={() => setOrdenAbierta(o)} className="text-sm text-accent hover:underline">
                       {o.estado === RECIBIDA_PARCIAL
@@ -728,17 +730,6 @@ export default function ProveedoresApp({
         />
       )}
 
-      {costosOrdenAbierta && (
-        <CostosRecepcionModal
-          orden={costosOrdenAbierta}
-          detalle={detalleDeOrden.get(costosOrdenAbierta.id_orden) ?? []}
-          proveedor={proveedorPorId.get(costosOrdenAbierta.id_proveedor)}
-          nombrePorVariante={nombrePorVariante}
-          costoActualPorVariante={costoActualPorVariante}
-          ivaActualPorVariante={ivaActualPorVariante}
-          onClose={() => setCostosOrdenAbierta(null)}
-        />
-      )}
 
       {facturaPeriodoAbierta && seleccionado && (
         <FacturaPeriodoModal

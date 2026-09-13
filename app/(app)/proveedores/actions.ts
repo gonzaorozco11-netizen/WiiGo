@@ -524,32 +524,67 @@ export async function listarDevolucionesProveedor(idProveedor: string) {
   return data ?? [];
 }
 
-// ===================== COSTOS (modo LIQUIDACION_VENTA) =====================
-// Alifrut no factura por entrega — pero el costo de cada pedido sí puede
-// variar, así que después de recepcionar hay que poder cargarlo igual. A
-// diferencia de cargarFacturaCompra, esto NUNCA genera factura ni movimiento
-// de cuenta corriente — actualiza productos.costo_informado (para mostrar el
-// costo "actual" en pantalla) y además el costo real de este lote puntual
-// (detalle_recepcion_proveedor.costo_unitario), que es lo que usa el
-// costeo FIFO de la liquidación por venta para calcular cuánto se le debe.
-export async function actualizarCostosRecepcion(
-  idOrden: string,
+// ===================== COSTEAR UNA ENTREGA =====================
+//
+// El paso 3 de Compras, para las dos formas de comprar:
+//
+// - **Alifrut** (LIQUIDACION_VENTA): solo costo + IVA. No nace deuda: se le
+//   paga lo que se venda, no lo que entregó.
+// - **Coca-Cola** (REMITO): costo + la factura, que sí genera deuda.
+//
+// Va por ENTREGA y no por orden. Desde que un pedido puede llegar en varias
+// veces, "el costo del pedido" no existe: cada entrega trae su propio precio
+// y su propio lote FIFO. La versión anterior buscaba la recepción de la orden
+// con .maybeSingle() y, con dos entregas, fallaba.
+
+/**
+ * Una factura puede cubrir varias entregas.
+ *
+ * El caso que obliga a esto: el proveedor factura el pedido completo el
+ * viernes y entrega en dos veces, viernes y sábado. Hay una sola deuda.
+ * Al revés también existe (dos entregas, dos facturas). El sistema no puede
+ * adivinar cuál de los dos es — lo elige quien tiene la factura adelante.
+ */
+export type FacturaDeEntrega = {
+  numero: string;
+  tipoComprobante: string;
+  /** Manda el período de IVA y desde acá corre el plazo de pago. */
+  fechaEmision: string;
+  fechaVencimiento: string | null;
+  monto: number;
+  iva: number | null;
+  /** Qué recepciones cubre. Siempre incluye la que se está costeando. */
+  idsRecepcionCubiertas: string[];
+  /** Unidades que dice la factura, para el control de que cuadre. */
+  unidadesFacturadas: number | null;
+  /** El proveedor facturó algo mal: queda anotado para la nota de crédito. */
+  discrepancia: boolean;
+  motivoDiscrepancia: string;
+};
+
+export async function costearEntrega(params: {
+  idRecepcion: string;
   // `iva` es la alícuota del producto (21 / 10,5 / 0). Se carga acá porque es
   // el momento en que se tiene el remito adelante — y sin ella el crédito
   // fiscal de este proveedor sale mal: en alimentos no todo va al 21%.
-  costos: { idVariante: string; costo: number; iva?: number }[],
-  comprobante?: File | null
-): Promise<{ error: string | null }> {
+  costos: { idVariante: string; costo: number; iva?: number }[];
+  /** null para los proveedores que no facturan por entrega. */
+  factura?: FacturaDeEntrega | null;
+  comprobante?: File | null;
+}): Promise<{ error: string | null; aviso?: string }> {
   const permisoError = await requireAdmin();
   if (permisoError) return { error: permisoError };
 
   try {
     const supabase = getSupabaseServerClient();
-    const { data: recepcion } = await supabase
+
+    const { data: recepcion, error: errorRecepcion } = await supabase
       .from("recepciones_proveedor")
-      .select("id_recepcion")
-      .eq("id_orden", idOrden)
+      .select("id_recepcion, id_orden, id_proveedor")
+      .eq("id_recepcion", params.idRecepcion)
       .maybeSingle();
+    if (errorRecepcion) return { error: friendlyDbError(errorRecepcion) };
+    if (!recepcion) return { error: "No se encontró esa entrega" };
 
     // Un costo se puede corregir hasta que se liquide. Después no: esa plata
     // ya se le pagó al proveedor, y cambiarla acá haría que la liquidación
@@ -559,27 +594,27 @@ export async function actualizarCostosRecepcion(
     // El control va acá y no solo en la pantalla porque un archivo
     // "use server" es un endpoint: quien esté logueado puede llamarlo con el
     // id que quiera.
-    if (recepcion) {
-      const { data: lotes } = await supabase
-        .from("detalle_recepcion_proveedor")
-        .select("id_detalle")
-        .eq("id_recepcion", recepcion.id_recepcion);
-      const ids = (lotes ?? []).map((l) => l.id_detalle as string);
-      if (ids.length > 0) {
-        const { count } = await supabase
-          .from("detalle_liquidacion_proveedor")
-          .select("id_detalle", { count: "exact", head: true })
-          .in("id_detalle_recepcion", ids);
-        if ((count ?? 0) > 0) {
-          return {
-            error:
-              "Esta recepción ya entró en una liquidación cerrada, así que su costo no se puede cambiar. Si el precio estaba mal, se ajusta en la próxima liquidación.",
-          };
-        }
+    const { data: lotes } = await supabase
+      .from("detalle_recepcion_proveedor")
+      .select("id_detalle, id_variante, cantidad_recibida")
+      .eq("id_recepcion", recepcion.id_recepcion);
+    const idsLote = (lotes ?? []).map((l) => l.id_detalle as string);
+    if (idsLote.length > 0) {
+      const { count } = await supabase
+        .from("detalle_liquidacion_proveedor")
+        .select("id_detalle", { count: "exact", head: true })
+        .in("id_detalle_recepcion", idsLote);
+      if ((count ?? 0) > 0) {
+        return {
+          error:
+            "Esta entrega ya entró en una liquidación cerrada, así que su costo no se puede cambiar. Si el precio estaba mal, se ajusta en la próxima liquidación.",
+        };
       }
     }
 
-    for (const item of costos) {
+    // ---------- Los costos, que van siempre ----------
+    const costoAnteriorPorVariante = new Map<string, number | null>();
+    for (const item of params.costos) {
       if (item.costo <= 0) continue;
       const { data: variante } = await supabase
         .from("variantes_producto")
@@ -587,6 +622,13 @@ export async function actualizarCostosRecepcion(
         .eq("id_variante", item.idVariante)
         .maybeSingle();
       if (!variante) continue;
+
+      const { data: producto } = await supabase
+        .from("productos")
+        .select("costo_informado")
+        .eq("id_producto", variante.id_producto)
+        .maybeSingle();
+      costoAnteriorPorVariante.set(item.idVariante, producto?.costo_informado ?? null);
 
       const cambios: Record<string, unknown> = { costo_informado: item.costo };
       // Solo se pisa la alícuota si vino en el formulario: no queremos que
@@ -599,38 +641,145 @@ export async function actualizarCostosRecepcion(
       const { error } = await supabase.from("productos").update(cambios).eq("id_producto", variante.id_producto);
       if (error) return { error: friendlyDbError(error) };
 
-      if (recepcion) {
-        await supabase
-          .from("detalle_recepcion_proveedor")
-          .update({ costo_unitario: item.costo })
-          .eq("id_recepcion", recepcion.id_recepcion)
-          .eq("id_variante", item.idVariante);
-      }
+      // El costo del lote de ESTA entrega: es el que después consume el FIFO.
+      await supabase
+        .from("detalle_recepcion_proveedor")
+        .update({ costo_unitario: item.costo })
+        .eq("id_recepcion", recepcion.id_recepcion)
+        .eq("id_variante", item.idVariante);
     }
 
-    // Marca la recepción como procesada — es lo que hace que deje de
-    // aparecer en "pendientes de facturar" para administración. El
-    // comprobante se guarda acá mismo (y no en facturas_compra_proveedor)
-    // porque en este modo nunca nace una factura financiera real.
-    const updateRecepcion: Record<string, unknown> = { facturada: true };
-
-    const extension = comprobante?.name.split(".").pop();
-    if (comprobante && comprobante.size > 0) {
-      const path = `recepcion-${idOrden}.${extension ?? "jpg"}`;
+    // ---------- El comprobante ----------
+    const marcaEntrega: Record<string, unknown> = { facturada: true };
+    if (params.comprobante && params.comprobante.size > 0) {
+      const extension = params.comprobante.name.split(".").pop() ?? "jpg";
+      // Por recepción y no por orden: dos entregas del mismo pedido tienen
+      // remitos distintos y antes el segundo pisaba al primero.
+      const path = `recepcion-${recepcion.id_recepcion}.${extension}`;
       const { error: errorUpload } = await supabase.storage
         .from("comprobantes-proveedor")
-        .upload(path, comprobante, { upsert: true, contentType: comprobante.type || undefined });
+        .upload(path, params.comprobante, { upsert: true, contentType: params.comprobante.type || undefined });
       // No bloquea el guardado si falla la subida — se puede reintentar después.
-      if (!errorUpload) updateRecepcion.comprobante_path = path;
+      if (!errorUpload) marcaEntrega.comprobante_path = path;
     }
 
-    await supabase.from("recepciones_proveedor").update(updateRecepcion).eq("id_orden", idOrden);
+    // ---------- Sin factura: termina acá (caso Alifrut) ----------
+    if (!params.factura) {
+      await supabase.from("recepciones_proveedor").update(marcaEntrega).eq("id_recepcion", recepcion.id_recepcion);
+      revalidatePath("/compras/costeo");
+      revalidatePath("/proveedores");
+      revalidatePath("/productos");
+      return { error: null };
+    }
 
+    // ---------- Con factura ----------
+    const f = params.factura;
+    if (!f.numero.trim()) return { error: "Falta el número de factura" };
+    if (!f.fechaEmision) return { error: "Falta la fecha de la factura" };
+    if (f.monto <= 0) return { error: "El total de la factura tiene que ser mayor a 0" };
+
+    // Las entregas cubiertas tienen que ser de este mismo proveedor: si no,
+    // una factura podría marcar como pagada la mercadería de otro.
+    const cubiertas = Array.from(new Set([...f.idsRecepcionCubiertas, recepcion.id_recepcion]));
+    const { data: validas } = await supabase
+      .from("recepciones_proveedor")
+      .select("id_recepcion")
+      .in("id_recepcion", cubiertas)
+      .eq("id_proveedor", recepcion.id_proveedor);
+    const idsValidos = (validas ?? []).map((r) => r.id_recepcion as string);
+    if (idsValidos.length !== cubiertas.length) {
+      return { error: "Alguna de las entregas seleccionadas no es de este proveedor." };
+    }
+
+    // ¿Esta factura ya está cargada? Entonces esta entrega se suma a la que
+    // ya existe: se vincula, no se vuelve a deber. Es el caso de "una sola
+    // factura para dos entregas".
+    const { data: yaCargada } = await supabase
+      .from("facturas_compra_proveedor")
+      .select("id_factura")
+      .eq("id_proveedor", recepcion.id_proveedor)
+      .eq("numero_factura", f.numero.trim())
+      .neq("estado", "ANULADA")
+      .maybeSingle();
+
+    const notaDiscrepancia = f.discrepancia
+      ? `EL PROVEEDOR FACTURÓ ALGO MAL: ${f.motivoDiscrepancia.trim() || "la factura no coincide con lo recibido"}`
+      : null;
+
+    let idFactura: string;
+    let aviso: string | undefined;
+
+    if (yaCargada) {
+      idFactura = yaCargada.id_factura as string;
+      aviso = `La factura ${f.numero.trim()} ya estaba cargada: esta entrega se sumó a ella y no se generó deuda nueva.`;
+    } else {
+      const iva = f.iva && f.iva > 0 ? redondear2(f.iva) : null;
+      const { data: creada, error: errorFactura } = await supabase
+        .from("facturas_compra_proveedor")
+        .insert({
+          id_proveedor: recepcion.id_proveedor,
+          id_orden: recepcion.id_orden,
+          numero_factura: f.numero.trim(),
+          tipo_comprobante: f.tipoComprobante || null,
+          fecha_emision: f.fechaEmision,
+          fecha_vencimiento: f.fechaVencimiento || null,
+          monto: f.monto,
+          neto: iva ? redondear2(f.monto - iva) : null,
+          iva,
+          estado: "PENDIENTE",
+          observaciones: notaDiscrepancia,
+        })
+        .select("id_factura")
+        .single();
+      if (errorFactura) return { error: friendlyDbError(errorFactura) };
+      idFactura = creada.id_factura as string;
+
+      // La deuda nace acá, una sola vez por factura.
+      await registrarMovimientoProveedor(supabase, {
+        idProveedor: recepcion.id_proveedor,
+        tipoMovimiento: "FACTURA_COMPRA",
+        importe: f.monto,
+        idFactura,
+        usuario: await usuarioActual(),
+        observaciones: `Factura ${f.numero.trim()}`,
+      });
+    }
+
+    // El detalle de lo que aporta ESTA entrega a la factura. Sirve para el
+    // control de que la suma de las entregas cuadre con el total facturado.
+    for (const lote of lotes ?? []) {
+      const costo = params.costos.find((c) => c.idVariante === lote.id_variante)?.costo ?? 0;
+      if (costo <= 0) continue;
+      await supabase.from("detalle_factura_compra").insert({
+        id_factura: idFactura,
+        id_variante: lote.id_variante,
+        cantidad_facturada: lote.cantidad_recibida,
+        precio_unitario_real: costo,
+        costo_anterior: costoAnteriorPorVariante.get(lote.id_variante as string) ?? null,
+      });
+    }
+
+    if (notaDiscrepancia) {
+      marcaEntrega.resolucion_observaciones = notaDiscrepancia;
+      marcaEntrega.revisado_por_administracion = false;
+      aviso = `${aviso ? aviso + " " : ""}Quedó anotada la diferencia para pedir la nota de crédito.`;
+    }
+
+    // Recién ahora se marcan las entregas cubiertas. Solo estas: nunca todas
+    // las del pedido, que es lo que hacía que facturar la primera entrega
+    // tapara la segunda y esa mercadería quedara sin costo, en silencio.
+    await supabase.from("recepciones_proveedor").update(marcaEntrega).eq("id_recepcion", recepcion.id_recepcion);
+    const otras = idsValidos.filter((id) => id !== recepcion.id_recepcion);
+    if (otras.length > 0) {
+      await supabase.from("recepciones_proveedor").update({ facturada: true }).in("id_recepcion", otras);
+    }
+
+    revalidatePath("/compras/costeo");
     revalidatePath("/proveedores");
     revalidatePath("/productos");
-    return { error: null };
+    return { error: null, aviso };
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "No se pudieron actualizar los costos" };
+    return { error: err instanceof Error ? err.message : "No se pudo guardar el costeo" };
   }
 }
 
@@ -779,8 +928,17 @@ export async function cargarFacturaCompra(params: {
 
     // Marca lo cubierto como ya facturado, para que deje de aparecer como
     // pendiente — por orden puntual (REMITO) o por rango de fechas (PERIODO).
+    //
+    // El corte por fecha importa desde que un pedido puede llegar en varias
+    // entregas: una factura no puede cubrir mercadería que entró después de
+    // emitirla. Sin esto, facturar la primera entrega tapaba la segunda y esa
+    // mercadería quedaba sin costo, en silencio.
     if (params.idOrden) {
-      await supabase.from("recepciones_proveedor").update({ facturada: true }).eq("id_orden", params.idOrden);
+      await supabase
+        .from("recepciones_proveedor")
+        .update({ facturada: true })
+        .eq("id_orden", params.idOrden)
+        .lte("fecha", `${params.fechaEmision}T23:59:59`);
     }
     if (params.fechaPeriodoDesde && params.fechaPeriodoHasta) {
       await supabase

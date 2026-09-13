@@ -60,6 +60,8 @@ export type DatosCompras = {
    * entrega tuvo su remito y va a tener su factura.
    */
   entregas: EntregaHistorial[];
+  /** Los renglones de cada entrega, para la pantalla de Costeo. */
+  lineasEntrega: LineaEntrega[];
 };
 
 export type EntregaHistorial = {
@@ -68,6 +70,8 @@ export type EntregaHistorial = {
   idOrden: string;
   /** Marca o proveedor, ya resuelto a nombre. */
   contraparte: string;
+  /** El id, para poder abrir la ficha del proveedor al costear. */
+  idContraparte: string;
   /** Cuándo se emitió la orden de compra. */
   fechaPedido: string | null;
   /** Cuándo entró esta entrega puntual. */
@@ -78,6 +82,22 @@ export type EntregaHistorial = {
   totalEntregas: number;
   /** Estado del PEDIDO, no de la entrega. */
   estadoOrden: string;
+  /** Ya tiene costo/factura cargada. Es lo que la saca de "Por costear". */
+  facturada: boolean;
+};
+
+/**
+ * Los renglones reales de una entrega.
+ *
+ * Costear la 2ª entrega tiene que mostrar lo que llegó EN ESA entrega, no
+ * los renglones del pedido: si el pedido traía 4 productos y en la segunda
+ * vuelta llegó uno solo, poner los cuatro es pedirle a administración que
+ * ponga precio a mercadería que no tiene adelante.
+ */
+export type LineaEntrega = {
+  idRecepcion: string;
+  idVariante: string;
+  cantidadRecibida: number;
 };
 
 /** Cuántos meses de historial se traen. Ver el comentario en `datosCompras`. */
@@ -144,7 +164,7 @@ export async function datosCompras(): Promise<DatosCompras> {
     // El historial de entregas de las dos tablas de recepción.
     supabase
       .from("recepciones_proveedor")
-      .select("id_recepcion, id_orden, id_proveedor, fecha")
+      .select("id_recepcion, id_orden, id_proveedor, fecha, facturada")
       .gte("fecha", desdeISO)
       .order("fecha", { ascending: false })
       .limit(300),
@@ -154,10 +174,10 @@ export async function datosCompras(): Promise<DatosCompras> {
       .gte("fecha", desdeISO)
       .order("fecha", { ascending: false })
       .limit(300),
-    // Las unidades de cada entrega. Se suman acá y no en la base porque son
-    // pocas filas y evita una vista nueva.
-    supabase.from("detalle_recepcion_proveedor").select("id_recepcion, cantidad_recibida"),
-    supabase.from("detalle_recepciones").select("id_recepcion, cantidad_recibida"),
+    // Los renglones de cada entrega: sirven para sumar unidades en el
+    // historial y, en Costeo, para saber qué llegó en esa entrega puntual.
+    supabase.from("detalle_recepcion_proveedor").select("id_recepcion, id_variante, cantidad_recibida"),
+    supabase.from("detalle_recepciones").select("id_recepcion, id_variante, cantidad_recibida"),
   ]);
 
   const marcas = (marcasRes.data ?? []) as Marca[];
@@ -196,18 +216,23 @@ export async function datosCompras(): Promise<DatosCompras> {
       origen: "PROVEEDOR" as const,
       idOrden: r.id_orden as string,
       contraparte: nombreProveedor.get(r.id_proveedor as string) ?? "Proveedor",
+      idContraparte: r.id_proveedor as string,
       fechaPedido: ordenProv.get(r.id_orden as string)?.fecha_alta ?? null,
       fechaRecibida: r.fecha as string,
       estadoOrden: ordenProv.get(r.id_orden as string)?.estado ?? "",
+      facturada: Boolean(r.facturada),
     })),
     ...(entregasMarcaRes.data ?? []).map((r) => ({
       idRecepcion: r.id_recepcion as string,
       origen: "MARCA" as const,
       idOrden: r.id_orden as string,
       contraparte: nombreMarca.get(r.id_marca as string) ?? "Marca",
+      idContraparte: r.id_marca as string,
       fechaPedido: ordenMarca.get(r.id_orden as string)?.fecha ?? null,
       fechaRecibida: r.fecha as string,
       estadoOrden: ordenMarca.get(r.id_orden as string)?.estado ?? "",
+      // Lo de las marcas no se costea nunca: no hay factura que cargar.
+      facturada: true,
     })),
   ];
 
@@ -237,6 +262,11 @@ export async function datosCompras(): Promise<DatosCompras> {
   return {
     marcas,
     entregas,
+    lineasEntrega: (lineasEntregaProvRes.data ?? []).map((l) => ({
+      idRecepcion: l.id_recepcion as string,
+      idVariante: l.id_variante as string,
+      cantidadRecibida: (l.cantidad_recibida as number) ?? 0,
+    })),
     idsMarcaPropia: marcas
       .filter((m) => (m as Marca & { tipo_comercializacion?: string }).tipo_comercializacion === "PROPIA")
       .map((m) => m.id_marca),
