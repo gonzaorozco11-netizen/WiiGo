@@ -1,5 +1,17 @@
 import type { Metadata, Viewport } from "next";
+import { Archivo } from "next/font/google";
 import "./globals.css";
+
+// Solo para títulos y números del sistema interno (ver .app-shell en
+// globals.css). `preload: false` a propósito: el totem y el asesor no la
+// usan, y en esa placa cada archivo que se baja de más se siente.
+const archivo = Archivo({
+  subsets: ["latin"],
+  weight: ["600", "700"],
+  variable: "--font-archivo",
+  display: "swap",
+  preload: false,
+});
 
 export const metadata: Metadata = {
   title: "WiiGo",
@@ -23,7 +35,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="es" className="h-full antialiased">
+    <html lang="es" className={`h-full antialiased ${archivo.variable}`}>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );

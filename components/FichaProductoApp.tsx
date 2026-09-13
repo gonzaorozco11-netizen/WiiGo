@@ -261,7 +261,7 @@ function Cifra({ titulo, valor, sufijo, pie }: { titulo: string; valor: string; 
   return (
     <div className="bg-white px-4 py-3">
       <p className="text-[10.5px] font-bold uppercase tracking-wide text-neutral-400">{titulo}</p>
-      <p className="text-xl font-bold text-neutral-900 tabular-nums">
+      <p className="tipo-titulo text-2xl font-bold text-neutral-900 tabular-nums">
         {valor}
         {sufijo && <span className="text-xs font-normal text-neutral-400 ml-1">{sufijo}</span>}
       </p>

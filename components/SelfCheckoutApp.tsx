@@ -1274,12 +1274,27 @@ export default function SelfCheckoutApp({
   // pasa cada 10 minutos y solo en reposo — una tarde ocupada podía quedarse
   // toda con el precio viejo.
   const [preciosEnVivo, setPreciosEnVivo] = useState<PreciosEnVivo | null>(null);
+  // Se prende cuando aparece o desaparece un producto. Eso sí necesita
+  // rearmar la página, y es lo único que la necesita.
+  const [hayCatalogoNuevo, setHayCatalogoNuevo] = useState(false);
+  const idsCargados = useMemo(() => new Set(variantes.map((v) => v.id_variante)), [variantes]);
+
   useEffect(() => {
     let cancelado = false;
     async function actualizar() {
       try {
         const p = await obtenerPreciosLocal();
         if (cancelado || p.variantes.length === 0) return;
+
+        // La misma consulta sirve para detectar altas y bajas: si la lista de
+        // productos activos ya no es la que se cargó al abrir, hay catálogo
+        // nuevo. Comparar tamaños no alcanza — un alta y una baja a la vez
+        // dejarían el mismo total.
+        const distinto =
+          p.variantes.length !== idsCargados.size ||
+          p.variantes.some((v) => !idsCargados.has(v.idVariante));
+        if (distinto) setHayCatalogoNuevo(true);
+
         setPreciosEnVivo((prev) => {
           // Si no cambió ningún precio no se toca el estado. En la placa del
           // totem un re-render de más se nota, y lo normal es que estos
@@ -1306,14 +1321,33 @@ export default function SelfCheckoutApp({
       cancelado = true;
       clearInterval(id);
     };
-  }, []);
+  }, [idsCargados]);
 
-  // La recarga completa sigue, pero ya no es la que trae los precios: queda
-  // para lo que sí necesita rearmar la página — productos nuevos, bajas,
-  // cambios de nombre. Solo en reposo, nunca en medio de una compra.
+  // La recarga completa ya no va por reloj.
+  //
+  // Antes se recargaba cada 10 minutos pasara lo que pasara: en la placa del
+  // totem eso son unos segundos de pantalla en blanco, 144 veces por día, y
+  // desde afuera parece que se rompió. Ahora recarga solo cuando hay un
+  // producto nuevo o dado de baja — lo único que de verdad necesita rearmar
+  // la página, porque los precios ya se actualizan solos.
+  //
+  // Y siempre en reposo: nunca en medio de una compra.
   useEffect(() => {
-    if (paso !== "reposo") return;
-    const id = setInterval(() => window.location.reload(), 10 * 60 * 1000);
+    if (!hayCatalogoNuevo || paso !== "reposo") return;
+    // Un respiro antes de recargar, por si alguien acaba de tocar la pantalla
+    // y el paso está por cambiar.
+    const id = setTimeout(() => window.location.reload(), 4000);
+    return () => clearTimeout(id);
+  }, [hayCatalogoNuevo, paso]);
+
+  // Red de seguridad: una vez por día, de madrugada, para levantar cambios
+  // que no cambian la lista de productos (un nombre, una foto). A esa hora el
+  // local está cerrado y el parpadeo no lo ve nadie.
+  useEffect(() => {
+    const id = setInterval(() => {
+      const hora = new Date().getHours();
+      if (hora === 4 && paso === "reposo") window.location.reload();
+    }, 10 * 60 * 1000);
     return () => clearInterval(id);
   }, [paso]);
 

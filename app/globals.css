@@ -6,6 +6,11 @@
   --accent: #2563eb;
   --accent-dark: #1d4ed8;
   --accent-tint: #eff6ff;
+  /* El fondo del sistema interno. Gris frío en vez del neutral-50 cálido de
+     antes: contra este azulado las tarjetas blancas se despegan y la pantalla
+     deja de verse plana. No toca el totem, el asesor ni el login, que tienen
+     su propio fondo. */
+  --fondo-app: #f1f3f7;
 }
 
 @theme inline {
@@ -14,6 +19,20 @@
   --color-accent: var(--accent);
   --color-accent-dark: var(--accent-dark);
   --color-accent-tint: var(--accent-tint);
+  --color-fondo-app: var(--fondo-app);
+}
+
+/* Los títulos y los números grandes del sistema interno van en Archivo: es
+   más angosta y firme que la del cuerpo, así que un número de seis cifras
+   entra sin apretarse y se lee de un vistazo.
+   Va acotado a .app-shell a propósito — el totem corre en una placa lenta y
+   no tiene por qué bajar una fuente que no usa. */
+.app-shell h1,
+.app-shell h2,
+.app-shell h3,
+.app-shell .tipo-titulo {
+  font-family: var(--font-archivo), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  letter-spacing: -0.015em;
 }
 
 body {

@@ -34,7 +34,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const pendientes = session ? await contarPendientes() : { solicitudes: 0, etiquetas: 0, etiquetasVencidas: 0 };
 
   return (
-    <div className="min-h-screen bg-neutral-50">
+    <div className="app-shell min-h-screen bg-fondo-app">
       <header className="border-b border-neutral-200 bg-white">
         <div className="max-w-6xl mx-auto px-4 py-4 flex flex-wrap items-center justify-between gap-4">
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2">

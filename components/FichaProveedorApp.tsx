@@ -369,7 +369,7 @@ function Cifra({
   return (
     <div className="bg-white px-4 py-3">
       <p className="text-[10px] font-bold uppercase tracking-wide text-neutral-400">{titulo}</p>
-      <p className={`text-lg font-bold tabular-nums ${color}`}>{valor}</p>
+      <p className={`tipo-titulo text-xl font-bold tabular-nums ${color}`}>{valor}</p>
       {pie && <p className="text-[11px] text-neutral-400">{pie}</p>}
     </div>
   );
