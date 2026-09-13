@@ -26,6 +26,38 @@ export async function obtenerStockLocal(idLocal: string): Promise<{ idVariante: 
   return (data ?? []).map((s) => ({ idVariante: s.id_variante as string, cantidad: s.cantidad as number }));
 }
 
+/**
+ * Los precios de venta, para que un cambio impacte en el acto.
+ *
+ * Antes el precio solo cambiaba cuando el totem recargaba la página entera, y
+ * eso pasa cada 10 minutos y únicamente estando en reposo — así que un precio
+ * modificado podía tardar, o quedarse viejo toda una tarde ocupada.
+ *
+ * Va aparte del catálogo completo a propósito: son dos columnas y un id. La
+ * placa del totem no aguanta rearmar todo el catálogo cada pocos segundos,
+ * pero esto sí.
+ */
+export async function obtenerPreciosLocal(): Promise<{
+  variantes: { idVariante: string; precio: number | null }[];
+  productos: { idProducto: string; precio: number | null }[];
+}> {
+  const supabase = getSupabaseServerClient();
+  const [v, p] = await Promise.all([
+    supabase.from("variantes_producto").select("id_variante, precio_venta").eq("estado", "ACTIVO"),
+    supabase.from("productos").select("id_producto, precio_venta").eq("estado", "ACTIVO"),
+  ]);
+  return {
+    variantes: (v.data ?? []).map((r) => ({
+      idVariante: r.id_variante as string,
+      precio: (r.precio_venta as number | null) ?? null,
+    })),
+    productos: (p.data ?? []).map((r) => ({
+      idProducto: r.id_producto as string,
+      precio: (r.precio_venta as number | null) ?? null,
+    })),
+  };
+}
+
 // Next.js redacta en producción el mensaje de un Error tirado desde una
 // Server Action (queda solo un digest genérico en el navegador) — por eso
 // esta función no throwea para errores esperables: devuelve { error }.

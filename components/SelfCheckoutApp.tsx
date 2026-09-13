@@ -21,9 +21,14 @@ import {
   previsualizarDescuentoReferidoAction,
   infoCanjePuntosAction,
   obtenerStockLocal,
+  obtenerPreciosLocal,
 } from "@/app/self-checkout/[idLocal]/actions";
 
 const STOCK_POLL_MS = 8000;
+// Más espaciado que el stock: los precios cambian de vez en cuando, el stock
+// con cada venta. 15 segundos igual se siente instantáneo para quien acaba de
+// cambiar un precio y va a mirar el totem.
+const PRECIOS_POLL_MS = 15000;
 
 type Item = {
   variante: VarianteProducto;
@@ -73,11 +78,29 @@ function IsotipoWiiGo({ alto }: { alto: number }) {
   );
 }
 
-function precioFinal(producto: Producto, variante: VarianteProducto) {
-  const base = variante.precio_venta ?? producto.precio_venta ?? 0;
+/**
+ * El precio de góndola.
+ *
+ * `precios` son los que llegaron en la última consulta en vivo. Si todavía no
+ * llegó ninguna, o ese producto no vino en ella, se usa el que trajo el
+ * servidor al abrir la página — así el totem nunca se queda sin precio por un
+ * problema de red.
+ */
+function precioFinal(producto: Producto, variante: VarianteProducto, precios?: PreciosEnVivo) {
+  const deVariante = precios?.variantes.get(variante.id_variante);
+  const deProducto = precios?.productos.get(producto.id_producto);
+  const base =
+    (deVariante !== undefined ? deVariante : variante.precio_venta) ??
+    (deProducto !== undefined ? deProducto : producto.precio_venta) ??
+    0;
   const descuento = producto.descuento_porcentaje ?? 0;
   return descuento > 0 ? Math.round(base * (1 - descuento / 100)) : base;
 }
+
+type PreciosEnVivo = {
+  variantes: Map<string, number | null>;
+  productos: Map<string, number | null>;
+};
 
 // Tormenta reusa la misma foto de lluvia, oscurecida por CSS (ver
 // .sc-tormenta-foto) — no hace falta una cuarta foto para eso.
@@ -1246,9 +1269,48 @@ export default function SelfCheckoutApp({
     };
   }, [local.id_local]);
 
-  // El catálogo (productos/variantes/precios nuevos) sí necesita una
-  // recarga completa — pero solo mientras está en reposo, nunca en medio
-  // de una compra.
+  // Los PRECIOS se actualizan solos, como el stock: un cambio impacta en el
+  // acto y sin recargar. Antes había que esperar la recarga de abajo, que
+  // pasa cada 10 minutos y solo en reposo — una tarde ocupada podía quedarse
+  // toda con el precio viejo.
+  const [preciosEnVivo, setPreciosEnVivo] = useState<PreciosEnVivo | null>(null);
+  useEffect(() => {
+    let cancelado = false;
+    async function actualizar() {
+      try {
+        const p = await obtenerPreciosLocal();
+        if (cancelado || p.variantes.length === 0) return;
+        setPreciosEnVivo((prev) => {
+          // Si no cambió ningún precio no se toca el estado. En la placa del
+          // totem un re-render de más se nota, y lo normal es que estos
+          // números no cambien en todo el día.
+          if (
+            prev &&
+            p.variantes.every((v) => prev.variantes.get(v.idVariante) === v.precio) &&
+            p.productos.every((x) => prev.productos.get(x.idProducto) === x.precio)
+          ) {
+            return prev;
+          }
+          return {
+            variantes: new Map(p.variantes.map((v) => [v.idVariante, v.precio])),
+            productos: new Map(p.productos.map((x) => [x.idProducto, x.precio])),
+          };
+        });
+      } catch {
+        // Falla de red pasajera — se mantienen los últimos precios buenos.
+      }
+    }
+    actualizar();
+    const id = setInterval(actualizar, PRECIOS_POLL_MS);
+    return () => {
+      cancelado = true;
+      clearInterval(id);
+    };
+  }, []);
+
+  // La recarga completa sigue, pero ya no es la que trae los precios: queda
+  // para lo que sí necesita rearmar la página — productos nuevos, bajas,
+  // cambios de nombre. Solo en reposo, nunca en medio de una compra.
   useEffect(() => {
     if (paso !== "reposo") return;
     const id = setInterval(() => window.location.reload(), 10 * 60 * 1000);
@@ -1431,13 +1493,15 @@ export default function SelfCheckoutApp({
           variante,
           producto,
           marca: marcaPorId.get(producto.id_marca),
-          precio: precioFinal(producto, variante),
+          precio: precioFinal(producto, variante, preciosEnVivo ?? undefined),
           nombreBusqueda: producto.nombre.toLowerCase(),
         };
       })
       .filter((i): i is NonNullable<typeof i> => i !== null)
       .sort((a, b) => COLLATOR.compare(a.producto.nombre, b.producto.nombre));
-  }, [variantes, productoPorId, marcaPorId]);
+    // `preciosEnVivo` solo cambia de identidad cuando algún precio cambió de
+    // verdad (ver el poll), así que esta lista no se rearma al pedo.
+  }, [variantes, productoPorId, marcaPorId, preciosEnVivo]);
 
   // Solo esto se rehace cuando llega stock nuevo: agregar el disponible y
   // sacar lo que quedó en cero. Sin volver a ordenar.
