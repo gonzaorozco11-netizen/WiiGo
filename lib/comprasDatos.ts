@@ -23,6 +23,13 @@ import { listarProveedores, type ProveedorConSaldo } from "@/app/(app)/proveedor
 
 export type DatosCompras = {
   marcas: Marca[];
+  /**
+   * A un proveedor solo se le compra mercadería de marca propia: lo de las
+   * marcas en consignación te lo mandan ellas y no se compra. Sin esta lista,
+   * el formulario de orden a proveedor ofrece productos de Star Nutrition,
+   * que es imposible comprarle a Alifrut.
+   */
+  idsMarcaPropia: string[];
   proveedores: ProveedorConSaldo[];
   locales: Local[];
   productos: Producto[];
@@ -74,8 +81,13 @@ export async function datosCompras(): Promise<DatosCompras> {
       .limit(60),
   ]);
 
+  const marcas = (marcasRes.data ?? []) as Marca[];
+
   return {
-    marcas: (marcasRes.data ?? []) as Marca[],
+    marcas,
+    idsMarcaPropia: marcas
+      .filter((m) => (m as Marca & { tipo_comercializacion?: string }).tipo_comercializacion === "PROPIA")
+      .map((m) => m.id_marca),
     proveedores,
     locales: (localesRes.data ?? []) as Local[],
     productos: (productosRes.data ?? []) as Producto[],

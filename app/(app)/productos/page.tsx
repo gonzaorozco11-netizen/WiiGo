@@ -46,7 +46,15 @@ export default async function ProductosPage() {
     supabase.from("configuracion").select("valor").eq("parametro", "MARGEN_MINIMO_PORCENTAJE").maybeSingle(),
     listarProveedores(),
   ]);
-  const proveedoresLiquidacion = proveedores.filter((p) => p.modo_facturacion === "LIQUIDACION_VENTA" && p.estado === "ACTIVO");
+  // TODOS los proveedores activos, no solo los de liquidación mensual.
+  //
+  // El campo nació para el caso Alifrut (de ahí el nombre
+  // `id_proveedor_liquidacion`), pero lo que responde es "quién me provee
+  // este producto" — y eso vale igual para uno que te factura por remito.
+  // Mientras solo se ofrecían los de liquidación, a un producto de Coca Cola
+  // no había forma de asignarle su proveedor, y por eso la orden de compra
+  // no podía sugerir nada.
+  const proveedoresLiquidacion = proveedores.filter((p) => p.estado === "ACTIVO");
 
   const error = productosRes.error || marcasRes.error || subcategoriasRes.error;
   if (error) {

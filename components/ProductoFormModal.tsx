@@ -82,6 +82,11 @@ export default function ProductoFormModal({
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [idMarca, setIdMarca] = useState(producto?.id_marca ?? marcas[0]?.id_marca ?? "");
+  // Controlado para poder explicar abajo qué implica el proveedor elegido:
+  // con uno de liquidación mensual la plata funciona distinto que con uno
+  // que te factura por entrega.
+  const [idProveedorProducto, setIdProveedorProducto] = useState(producto?.id_proveedor_liquidacion ?? "");
+  const proveedorElegido = proveedoresLiquidacion.find((p) => p.id_proveedor === idProveedorProducto);
   const [nuevaSubcategoria, setNuevaSubcategoria] = useState(false);
   const [variantes, setVariantes] = useState<VarianteForm[]>(
     variantesIniciales.length > 0
@@ -241,13 +246,20 @@ export default function ProductoFormModal({
 
           {marcaSeleccionada?.tipo_comercializacion === "PROPIA" && proveedoresLiquidacion.length > 0 && (
             <div>
+              {/* Antes decía "Se liquida por venta a" y solo ofrecía los
+                  proveedores de liquidación mensual. La pregunta real es
+                  quién te provee este producto: sin eso, la orden de compra
+                  no sabe qué sugerirle a cada proveedor. Lo que cambia según
+                  el modo es qué pasa después, y eso lo aclara el texto de
+                  abajo. */}
               <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="id_proveedor_liquidacion">
-                Se liquida por venta a (opcional)
+                Proveedor de este producto (opcional)
               </label>
               <select
                 id="id_proveedor_liquidacion"
                 name="id_proveedor_liquidacion"
-                defaultValue={producto?.id_proveedor_liquidacion ?? ""}
+                value={idProveedorProducto}
+                onChange={(e) => setIdProveedorProducto(e.target.value)}
                 className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
               >
                 <option value="">Ninguno</option>
@@ -258,8 +270,11 @@ export default function ProductoFormModal({
                 ))}
               </select>
               <p className="text-xs text-neutral-400 mt-1">
-                Si lo elegís, a fin de mes se le paga a este proveedor el costo de lo que se vendió de este producto — no lo
-                que se le compró.
+                {proveedorElegido?.modo_facturacion === "LIQUIDACION_VENTA"
+                  ? "A fin de mes se le paga el costo de lo que se vendió de este producto, no lo que se le compró. Y al armar una orden de compra para este proveedor, el producto se sugiere solo."
+                  : proveedorElegido
+                    ? "Al armar una orden de compra para este proveedor, este producto se sugiere solo si está por debajo del mínimo. La deuda nace cuando cargás su factura."
+                    : "Sirve para que al pedirle a ese proveedor, el sistema sepa qué ofrecerte sin que lo busques a mano."}
               </p>
             </div>
           )}

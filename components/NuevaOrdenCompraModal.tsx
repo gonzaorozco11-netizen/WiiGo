@@ -34,11 +34,25 @@ export default function NuevaOrdenCompraModal({
   const proveedor = proveedores.find((p) => p.id_proveedor === idProveedor);
   const local = locales.find((l) => l.id_local === idLocal);
 
-  // A diferencia de Reposición, acá no se sugiere en base a una marca — es
-  // el mismo catálogo de marca propia sin importar a qué proveedor se le
-  // termine comprando cada cosa.
+  // Los productos que este proveedor te vende, según lo que tenga cargado
+  // cada producto en su ficha (`id_proveedor_liquidacion`).
+  //
+  // Antes esto no filtraba y ofrecía el catálogo entero: pedirle a Alifrut
+  // una proteína de Star Nutrition, que ni siquiera se compra. Los que no
+  // tienen proveedor asignado se pueden agregar a mano, pero no se sugieren
+  // solos — sugerirle a un proveedor algo que no vende es peor que no
+  // sugerirle nada.
+  const filasDelProveedor = useMemo(
+    () => filas.filter((f) => f.producto.id_proveedor_liquidacion === idProveedor),
+    [filas, idProveedor]
+  );
+  const sinProveedorAsignado = useMemo(
+    () => filas.filter((f) => !f.producto.id_proveedor_liquidacion),
+    [filas]
+  );
+
   useEffect(() => {
-    const sugeridos = filas
+    const sugeridos = filasDelProveedor
       .map((f) => {
         const cantidadActual = cantidadPorClave.get(`${f.variante.id_variante}_${idLocal}`) ?? 0;
         if (cantidadActual >= f.variante.stock_minimo) return null;
@@ -47,7 +61,7 @@ export default function NuevaOrdenCompraModal({
       })
       .filter((l): l is Linea => l !== null);
     setLineas(sugeridos);
-  }, [idLocal, filas, cantidadPorClave]);
+  }, [idLocal, filasDelProveedor, cantidadPorClave]);
 
   const nombreVariante = (idVariante: string) => {
     const f = filas.find((x) => x.variante.id_variante === idVariante);
@@ -55,9 +69,15 @@ export default function NuevaOrdenCompraModal({
     return `${f.producto.nombre}${f.variante.nombre !== "Único" ? ` — ${f.variante.nombre}` : ""}`;
   };
 
+  // Para agregar a mano: los de este proveedor primero, y después los que no
+  // tienen proveedor asignado — así no queda bloqueado si algo está sin
+  // clasificar, pero lo suyo aparece arriba.
   const disponiblesParaAgregar = useMemo(
-    () => filas.filter((f) => !lineas.some((l) => l.idVariante === f.variante.id_variante)),
-    [filas, lineas]
+    () =>
+      [...filasDelProveedor, ...sinProveedorAsignado].filter(
+        (f) => !lineas.some((l) => l.idVariante === f.variante.id_variante)
+      ),
+    [filasDelProveedor, sinProveedorAsignado, lineas]
   );
 
   const totalUnidades = lineas.reduce((acc, l) => acc + (Number(l.cantidad) || 0), 0);
@@ -146,10 +166,18 @@ export default function NuevaOrdenCompraModal({
           </div>
 
           <div>
-            <p className="text-xs text-neutral-500 mb-2">
-              Se sugieren solos los productos de marca propia por debajo del mínimo en este local. Podés sacar
-              alguno o agregar otro a mano.
-            </p>
+            {filasDelProveedor.length === 0 ? (
+              <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-2">
+                <b>{proveedor?.nombre ?? "Este proveedor"} no tiene productos asignados.</b> Podés agregarlos a mano
+                acá abajo, pero conviene marcarlos en la ficha de cada producto (campo “proveedor”) para que la
+                próxima vez se sugieran solos.
+              </p>
+            ) : (
+              <p className="text-xs text-neutral-500 mb-2">
+                Se sugieren solos los productos de {proveedor?.nombre ?? "este proveedor"} que están por debajo del
+                mínimo en este local. Podés sacar alguno o agregar otro a mano.
+              </p>
+            )}
 
             <div className="border border-neutral-200 rounded-xl overflow-hidden">
               <table className="w-full text-sm">

@@ -95,6 +95,14 @@ export default function ComprasTrabajo({ etapa, datos }: { etapa: Etapa; datos: 
     [datos.variantes, productoPorId, marcaPorId]
   );
 
+  // A un proveedor solo se le compra marca propia. Lo de las marcas en
+  // consignación te lo mandan ellas: ofrecerlo en una orden de compra es
+  // ofrecer algo que no se puede comprar.
+  const filasPropias = useMemo(
+    () => filas.filter((f) => datos.idsMarcaPropia.includes(f.producto.id_marca)),
+    [filas, datos.idsMarcaPropia]
+  );
+
   const cantidadPorClave = useMemo(() => {
     const map = new Map<string, number>();
     datos.stock.forEach((s) => map.set(`${s.id_variante}_${s.id_local}`, s.cantidad));
@@ -126,6 +134,23 @@ export default function ComprasTrabajo({ etapa, datos }: { etapa: Etapa; datos: 
 
   const detalleMarcaDe = (idOrden: string) => datos.detalleMarca.filter((d) => d.id_orden === idOrden);
   const detalleProveedorDe = (idOrden: string) => datos.detalleProveedor.filter((d) => d.id_orden === idOrden);
+
+  /** Qué traía un pedido, para poder abrir las filas ya cerradas. */
+  function contenidoDe(f: Fila) {
+    const lineas =
+      f.origen === "MARCA"
+        ? detalleMarcaDe(f.idOrden).map((d) => ({
+            nombre: nombrePorVariante.get(d.id_variante) ?? "Producto",
+            pedidas: d.cantidad_solicitada ?? 0,
+            recibidas: d.cantidad_recibida ?? 0,
+          }))
+        : detalleProveedorDe(f.idOrden).map((d) => ({
+            nombre: nombrePorVariante.get(d.id_variante) ?? "Producto",
+            pedidas: d.cantidad_solicitada ?? 0,
+            recibidas: d.cantidad_recibida ?? 0,
+          }));
+    return lineas;
+  }
 
   // ---------- Las dos tablas en una sola lista ----------
   const todas = useMemo<Fila[]>(() => {
@@ -229,7 +254,7 @@ export default function ComprasTrabajo({ etapa, datos }: { etapa: Etapa; datos: 
           {esperandoLlegar.length > 0 && (
             <Seccion titulo="Ya enviadas · esperando en Recepción">
               {esperandoLlegar.map((f) => (
-                <FilaOrden key={`${f.origen}-${f.idOrden}`} f={f} tenue />
+                <FilaOrden key={`${f.origen}-${f.idOrden}`} f={f} tenue detalle={contenidoDe(f)} />
               ))}
             </Seccion>
           )}
@@ -237,7 +262,7 @@ export default function ComprasTrabajo({ etapa, datos }: { etapa: Etapa; datos: 
           {cerradas.length > 0 && (
             <Seccion titulo="Ya recibidas">
               {cerradas.map((f) => (
-                <FilaOrden key={`${f.origen}-${f.idOrden}`} f={f} tenue />
+                <FilaOrden key={`${f.origen}-${f.idOrden}`} f={f} tenue detalle={contenidoDe(f)} />
               ))}
             </Seccion>
           )}
@@ -271,7 +296,7 @@ export default function ComprasTrabajo({ etapa, datos }: { etapa: Etapa; datos: 
           {cerradas.length > 0 && (
             <Seccion titulo="Recibidas hace poco">
               {cerradas.map((f) => (
-                <FilaOrden key={`${f.origen}-${f.idOrden}`} f={f} tenue />
+                <FilaOrden key={`${f.origen}-${f.idOrden}`} f={f} tenue detalle={contenidoDe(f)} />
               ))}
             </Seccion>
           )}
@@ -305,7 +330,7 @@ export default function ComprasTrabajo({ etapa, datos }: { etapa: Etapa; datos: 
         <NuevaOrdenCompraModal
           proveedores={datos.proveedores}
           locales={datos.locales}
-          filas={filas}
+          filas={filasPropias}
           cantidadPorClave={cantidadPorClave}
           onClose={() => setNuevaProveedor(false)}
         />
@@ -465,25 +490,40 @@ function FilaOrden({
   onAccion,
   tenue,
   trabajando,
+  detalle,
 }: {
   f: Fila;
   accion?: string;
   onAccion?: () => void;
   tenue?: boolean;
   trabajando?: boolean;
+  /** Qué traía el pedido. Si viene, la fila se puede abrir. */
+  detalle?: { nombre: string; pedidas: number; recibidas: number }[];
 }) {
+  // Las filas ya cerradas se pueden abrir para ver qué traían: si no, son
+  // renglones muertos que ocupan lugar y no responden al clic.
+  const [abierta, setAbierta] = useState(false);
   // Una orden emitida hace más de dos días y todavía sin mandar es el caso
   // que este tablero viene a evitar: el pedido que nunca sale.
   const demorado = f.estado === "PENDIENTE" && !f.enviadaEl && f.dias > 2;
 
+  const abrible = Boolean(detalle && detalle.length > 0);
+
   return (
     <div
-      className={`flex items-center gap-3 flex-wrap border border-neutral-200 border-l-[3px] rounded-xl px-4 py-3 bg-white ${
+      className={`border border-neutral-200 border-l-[3px] rounded-xl bg-white ${
         f.origen === "MARCA" ? "border-l-violet-500" : "border-l-accent"
-      } ${tenue ? "opacity-70" : ""}`}
+      } ${tenue && !abierta ? "opacity-70" : ""}`}
+    >
+    <div
+      className={`flex items-center gap-3 flex-wrap px-4 py-3 ${abrible ? "cursor-pointer" : ""}`}
+      onClick={abrible ? () => setAbierta((v) => !v) : undefined}
     >
       <span className="flex-1 min-w-[200px]">
-        <span className="block font-semibold text-[14.5px] text-neutral-900">{f.contraparte}</span>
+        <span className="block font-semibold text-[14.5px] text-neutral-900">
+          {abrible && <span className="text-neutral-400 text-xs mr-1.5">{abierta ? "▾" : "▸"}</span>}
+          {f.contraparte}
+        </span>
         <span className="block text-xs text-neutral-400">
           Pedida el {fechaCorta(f.fecha)} · {f.unidades} unidades · {f.local}
         </span>
@@ -522,13 +562,43 @@ function FilaOrden({
 
       {accion && onAccion && (
         <button
-          onClick={onAccion}
+          onClick={(e) => {
+            e.stopPropagation();
+            onAccion();
+          }}
           disabled={trabajando}
           className="text-sm font-semibold bg-accent hover:bg-accent-dark text-white rounded-lg px-3 py-1.5 disabled:opacity-50"
         >
           {trabajando ? "..." : accion}
         </button>
       )}
+    </div>
+
+    {abierta && detalle && (
+      <div className="border-t border-neutral-100 px-4 py-3 bg-neutral-50">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 mb-1.5">Qué traía</p>
+        <table className="w-full text-xs">
+          <tbody>
+            {detalle.map((d, i) => {
+              const falto = d.recibidas < d.pedidas;
+              return (
+                <tr key={i}>
+                  <td className="py-1 text-neutral-600">{d.nombre}</td>
+                  <td className="py-1 text-right text-neutral-400 tabular-nums w-20">{d.pedidas} pedidas</td>
+                  <td
+                    className={`py-1 text-right tabular-nums w-24 ${
+                      falto ? "text-red-600 font-semibold" : "text-neutral-700"
+                    }`}
+                  >
+                    {d.recibidas} llegaron
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    )}
     </div>
   );
 }

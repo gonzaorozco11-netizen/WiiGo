@@ -69,7 +69,10 @@ export default function CostosRecepcionModal({
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
-      <div className="bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl max-h-[92vh] overflow-y-auto">
+      {/* Más ancho que los otros modales: esta tabla tiene seis columnas con
+          campos editables adentro, y en sm:max-w-lg los números quedaban
+          cortados. */}
+      <div className="bg-white w-full sm:max-w-3xl rounded-t-2xl sm:rounded-2xl max-h-[92vh] overflow-y-auto">
         <div className="px-6 pt-6 pb-4 border-b border-neutral-200 flex items-start justify-between">
           <div>
             <p className="text-xs font-semibold tracking-wide text-accent uppercase">WiiGo</p>
@@ -90,8 +93,10 @@ export default function CostosRecepcionModal({
             pero sirve para ver si el costo subió y dejarlo actualizado para calcular bien la próxima liquidación.
           </p>
 
-          <div className="border border-neutral-200 rounded-xl overflow-hidden">
-            <table className="w-full text-sm">
+          {/* overflow-x-auto y no hidden: en el celular la tabla no entra, y
+              cortarla esconde los números en vez de dejar arrastrarla. */}
+          <div className="border border-neutral-200 rounded-xl overflow-x-auto">
+            <table className="w-full text-sm min-w-[620px]">
               <thead>
                 <tr className="bg-neutral-50 border-b border-neutral-200 text-left text-xs text-neutral-500">
                   <th className="p-3">Producto</th>
