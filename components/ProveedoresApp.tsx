@@ -495,13 +495,23 @@ export default function ProveedoresApp({
                   <p className="text-sm text-neutral-400 text-center py-10">Elegí un proveedor de la lista.</p>
                 ) : (
                   <div>
-                    <div className="flex items-baseline justify-between mb-1">
+                    <div className="flex items-baseline justify-between mb-1 gap-2">
                       <h3 className="font-bold text-neutral-900">{seleccionado.nombre}</h3>
-                      {esAdmin && (
-                        <button onClick={() => setModalAbierto("EDITAR")} className="text-xs font-semibold text-accent">
-                          Editar
-                        </button>
-                      )}
+                      <span className="flex items-center gap-2.5 shrink-0">
+                        {/* Todo lo suyo junto: entregas con su costo, qué le
+                            comprás y la cuenta. Hoy eso está en tres lados. */}
+                        <Link
+                          href={`/proveedor/${seleccionado.id_proveedor}`}
+                          className="text-xs font-semibold text-accent"
+                        >
+                          Ver ficha
+                        </Link>
+                        {esAdmin && (
+                          <button onClick={() => setModalAbierto("EDITAR")} className="text-xs font-semibold text-accent">
+                            Editar
+                          </button>
+                        )}
+                      </span>
                     </div>
                     <p className="text-xs text-neutral-500 mb-1">
                       {seleccionado.cuit ? `CUIT ${seleccionado.cuit}` : "Sin CUIT cargado"} ·{" "}
