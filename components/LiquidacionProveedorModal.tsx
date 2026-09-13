@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useState, useTransition } from "react";
+import Link from "next/link";
 import type { ProveedorConSaldo } from "@/app/(app)/proveedores/actions";
 import type { DetalleLiquidacion, MedioLiquidacion, LoteDeLinea } from "@/lib/liquidacionesProveedor";
 import {
@@ -375,6 +376,16 @@ export default function LiquidacionProveedorModal({
                                       <span className="ml-2 text-[10px] text-neutral-400">
                                         {etiquetaIva(l.ivaPorcentaje)}
                                       </span>
+                                      {/* La ficha es la prueba cuando el
+                                          proveedor discute un número. */}
+                                      <Link
+                                        href={`/producto/${l.idVariante}`}
+                                        target="_blank"
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="ml-2 text-[10.5px] font-semibold text-accent hover:underline"
+                                      >
+                                        ficha ↗
+                                      </Link>
                                     </td>
                                     <td className="p-2.5 text-right text-neutral-500 tabular-nums">{l.cantidad}</td>
                                     <td className="p-2.5 text-right tabular-nums">

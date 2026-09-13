@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import type { Local, Producto, Marca, Subcategoria, VarianteProducto, Stock, MovimientoStock } from "@/lib/supabase";
 import AjusteStockModal from "@/components/AjusteStockModal";
 import TransferenciaStockModal from "@/components/TransferenciaStockModal";
@@ -289,7 +290,15 @@ export default function StockApp({
                     </td>
                     <td className="p-3 text-neutral-500">{f.variante.stock_minimo}</td>
                     <td className="p-3 text-neutral-500">{f.variante.stock_objetivo}</td>
-                    <td className="p-3 text-right">
+                    <td className="p-3 text-right whitespace-nowrap">
+                      {/* La ficha antes que Ajustar: mirar por qué el número
+                          es el que es debería venir antes que cambiarlo. */}
+                      <Link
+                        href={`/producto/${f.variante.id_variante}`}
+                        className="text-sm text-accent hover:underline mr-3"
+                      >
+                        Ver ficha
+                      </Link>
                       <button
                         onClick={() => setAjuste(f)}
                         className="text-sm text-accent hover:underline"
