@@ -597,6 +597,76 @@ function factorProrrateo(netoItems: number, impuestos: number, retenciones: numb
   return (netoItems + impuestos + retenciones - descuentos) / netoItems;
 }
 
+/**
+ * Lo que ya se cargó de una entrega, para reabrir el costeo sin perder nada.
+ *
+ * Devuelve el costo del PAPEL, no el real: el real tiene las percepciones
+ * prorrateadas adentro y volver a usarlo se las sumaría por segunda vez.
+ */
+export async function costeoGuardadoDeEntrega(idRecepcion: string): Promise<{
+  costos: { idVariante: string; costo: number }[];
+  factura: {
+    numero: string;
+    tipoComprobante: string;
+    fechaEmision: string;
+    monto: number;
+    impuestos: number;
+    retenciones: number;
+    descuentos: number;
+    iva: number;
+  } | null;
+}> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { costos: [], factura: null };
+
+  const supabase = getSupabaseServerClient();
+
+  const { data: lotes } = await supabase
+    .from("detalle_recepcion_proveedor")
+    .select("id_variante, costo_neto_factura, costo_unitario")
+    .eq("id_recepcion", idRecepcion);
+
+  const costos = (lotes ?? [])
+    .map((l) => ({
+      idVariante: l.id_variante as string,
+      // Si es un costeo viejo, de antes de guardar el neto, se cae al real.
+      // No es exacto cuando había percepciones, pero es mucho mejor que
+      // dejar el campo vacío y obligar a tipear todo de nuevo.
+      costo: (l.costo_neto_factura as number | null) ?? (l.costo_unitario as number | null) ?? 0,
+    }))
+    .filter((c) => c.costo > 0);
+
+  const { data: recepcion } = await supabase
+    .from("recepciones_proveedor")
+    .select("id_factura")
+    .eq("id_recepcion", idRecepcion)
+    .maybeSingle();
+
+  if (!recepcion?.id_factura) return { costos, factura: null };
+
+  const { data: f } = await supabase
+    .from("facturas_compra_proveedor")
+    .select("numero_factura, tipo_comprobante, fecha_emision, monto, impuestos, retenciones, descuentos, iva")
+    .eq("id_factura", recepcion.id_factura as string)
+    .maybeSingle();
+
+  if (!f) return { costos, factura: null };
+
+  return {
+    costos,
+    factura: {
+      numero: (f.numero_factura as string) ?? "",
+      tipoComprobante: (f.tipo_comprobante as string) ?? "A",
+      fechaEmision: ((f.fecha_emision as string) ?? "").slice(0, 10),
+      monto: (f.monto as number) ?? 0,
+      impuestos: (f.impuestos as number | null) ?? 0,
+      retenciones: (f.retenciones as number | null) ?? 0,
+      descuentos: (f.descuentos as number | null) ?? 0,
+      iva: (f.iva as number | null) ?? 0,
+    },
+  };
+}
+
 export async function costearEntrega(params: {
   idRecepcion: string;
   // `iva` es la alícuota del producto (21 / 10,5 / 0). Se carga acá porque es
@@ -708,10 +778,12 @@ export async function costearEntrega(params: {
       const { error } = await supabase.from("productos").update(cambios).eq("id_producto", variante.id_producto);
       if (error) return { error: friendlyDbError(error) };
 
-      // El costo del lote de ESTA entrega: es el que después consume el FIFO.
+      // Los dos números: el real (con el pie prorrateado) que consume el
+      // FIFO, y el del papel, que es el que hay que volver a mostrar cuando
+      // alguien entra a corregir este costeo.
       await supabase
         .from("detalle_recepcion_proveedor")
-        .update({ costo_unitario: costoFinal })
+        .update({ costo_unitario: costoFinal, costo_neto_factura: item.costo })
         .eq("id_recepcion", recepcion.id_recepcion)
         .eq("id_variante", item.idVariante);
     }
@@ -873,10 +945,14 @@ export async function costearEntrega(params: {
     // Recién ahora se marcan las entregas cubiertas. Solo estas: nunca todas
     // las del pedido, que es lo que hacía que facturar la primera entrega
     // tapara la segunda y esa mercadería quedara sin costo, en silencio.
+    marcaEntrega.id_factura = idFactura;
     await supabase.from("recepciones_proveedor").update(marcaEntrega).eq("id_recepcion", recepcion.id_recepcion);
     const otras = idsValidos.filter((id) => id !== recepcion.id_recepcion);
     if (otras.length > 0) {
-      await supabase.from("recepciones_proveedor").update({ facturada: true }).in("id_recepcion", otras);
+      await supabase
+        .from("recepciones_proveedor")
+        .update({ facturada: true, id_factura: idFactura })
+        .in("id_recepcion", otras);
     }
 
     revalidatePath("/compras/costeo");

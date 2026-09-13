@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import type { ProveedorConSaldo } from "@/app/(app)/proveedores/actions";
-import { costearEntrega } from "@/app/(app)/proveedores/actions";
+import { costearEntrega, costeoGuardadoDeEntrega } from "@/app/(app)/proveedores/actions";
 import type { EntregaHistorial, LineaEntrega } from "@/lib/comprasDatos";
 
 // Costear una entrega.
@@ -91,6 +91,10 @@ export default function CostosRecepcionModal({
   );
   const [comprobante, setComprobante] = useState<File | null>(null);
 
+  /** Ya se costeó antes: esto es una corrección, no una carga nueva. */
+  const esCorreccion = entrega.facturada;
+  const [cargando, setCargando] = useState(esCorreccion);
+
   // --- Factura ---
   const [numero, setNumero] = useState("");
   const [tipoComprobante, setTipoComprobante] = useState("A");
@@ -112,6 +116,44 @@ export default function CostosRecepcionModal({
   const [descuentos, setDescuentos] = useState("");
   /** null = todavía lo calcula el sistema. Un número = lo pisó una persona. */
   const [ivaManual, setIvaManual] = useState<string | null>(null);
+
+  // Al abrir una corrección se trae lo que se había cargado. Vacío está bien
+  // para costear por primera vez — obliga a mirar el remito — pero acá haría
+  // que corregir un número te obligue a tipear todos los demás de nuevo.
+  //
+  // Los costos vienen del PAPEL, no del costo real: el real tiene las
+  // percepciones prorrateadas adentro y reusarlo se las sumaría de nuevo.
+  useEffect(() => {
+    if (!esCorreccion) return;
+    let vigente = true;
+    costeoGuardadoDeEntrega(entrega.idRecepcion)
+      .then((g) => {
+        if (!vigente) return;
+        if (g.costos.length > 0) {
+          setCostos((prev) => {
+            const copia = { ...prev };
+            g.costos.forEach((c) => (copia[c.idVariante] = String(c.costo)));
+            return copia;
+          });
+        }
+        if (g.factura) {
+          setNumero(g.factura.numero);
+          setTipoComprobante(g.factura.tipoComprobante || "A");
+          if (g.factura.fechaEmision) setFechaEmision(g.factura.fechaEmision);
+          setMontoFactura(g.factura.monto ? String(g.factura.monto) : "");
+          if (g.factura.impuestos) setImpuestos(String(g.factura.impuestos));
+          if (g.factura.retenciones) setRetenciones(String(g.factura.retenciones));
+          if (g.factura.descuentos) setDescuentos(String(g.factura.descuentos));
+          if (g.factura.iva) setIvaManual(String(g.factura.iva));
+        }
+      })
+      .finally(() => {
+        if (vigente) setCargando(false);
+      });
+    return () => {
+      vigente = false;
+    };
+  }, [esCorreccion, entrega.idRecepcion]);
 
   // Las otras entregas del mismo pedido que todavía no se facturaron.
   const otras = useMemo(
@@ -219,7 +261,9 @@ export default function CostosRecepcionModal({
   // sabe cuánto valió esa mercadería y el margen sale mal, sin avisar.
   const sinCostear = lineas.filter((l) => l.cantidadRecibida > 0 && !(Number(costos[l.idVariante]) > 0));
 
-  const motivoBloqueo = sinCostear.length
+  const motivoBloqueo = cargando
+    ? "Buscando lo que ya habías cargado..."
+    : sinCostear.length
     ? sinCostear.length === lineas.filter((l) => l.cantidadRecibida > 0).length
       ? "Falta cargar los costos."
       : `Falta el costo de ${sinCostear.length} ${sinCostear.length === 1 ? "producto" : "productos"}.`
@@ -292,7 +336,9 @@ export default function CostosRecepcionModal({
         <div className="px-6 pt-6 pb-4 border-b border-neutral-200 flex items-start justify-between">
           <div>
             <p className="text-xs font-semibold tracking-wide text-accent uppercase">WiiGo</p>
-            <h2 className="text-xl font-semibold text-neutral-900">Costear entrega</h2>
+            <h2 className="text-xl font-semibold text-neutral-900">
+              {esCorreccion ? "Corregir costeo" : "Costear entrega"}
+            </h2>
             <p className="text-xs text-neutral-400 mt-0.5">
               {proveedor?.nombre ?? "—"} · Pedido #{entrega.idOrden.slice(0, 8).toUpperCase()} ·{" "}
               <b className="text-neutral-500">{etiquetaEntrega}</b>, del {fechaCorta(entrega.fechaRecibida)}
