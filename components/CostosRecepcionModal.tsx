@@ -809,17 +809,7 @@ export default function CostosRecepcionModal({
               </div>
             )}
 
-            <div>
-              <label className="block text-xs font-semibold text-neutral-500 uppercase mb-1">
-                Foto del remito o la factura (opcional)
-              </label>
-              <input
-                type="file"
-                accept="image/*,.pdf"
-                onChange={(e) => setComprobante(e.target.files?.[0] ?? null)}
-                className="w-full text-sm"
-              />
-            </div>
+            <SubirComprobante archivo={comprobante} onCambio={setComprobante} />
 
             {!pideFactura && (
               <p className="text-xs text-neutral-400 mt-3">
@@ -889,6 +879,72 @@ function Campo({
         {etiqueta} {obligatorio && <span className="text-red-500">*</span>}
       </label>
       {children}
+    </div>
+  );
+}
+
+/**
+ * Subir el remito o la factura.
+ *
+ * Va como botón y no como el `<input type="file">` pelado: ese renderiza
+ * "Seleccionar archivo · Ningún archivo seleccionado" en gris chiquito, que
+ * en una pantalla llena de números no se ve. Y sacarle la foto al remito es
+ * justo lo que después salva una discusión con el proveedor.
+ */
+function SubirComprobante({
+  archivo,
+  onCambio,
+}: {
+  archivo: File | null;
+  onCambio: (f: File | null) => void;
+}) {
+  const pesoKb = archivo ? Math.round(archivo.size / 1024) : 0;
+  return (
+    <div>
+      <p className="text-xs font-semibold text-neutral-500 uppercase mb-1.5">Comprobante</p>
+      {archivo ? (
+        <div className="flex items-center gap-3 rounded-xl border border-emerald-300 bg-emerald-50 px-3.5 py-3">
+          <span className="text-lg" aria-hidden="true">
+            📄
+          </span>
+          <span className="flex-1 min-w-0">
+            <span className="block text-sm font-medium text-emerald-900 truncate">{archivo.name}</span>
+            <span className="block text-xs text-emerald-700">
+              {pesoKb >= 1024 ? `${(pesoKb / 1024).toFixed(1)} MB` : `${pesoKb} KB`} · listo para subir
+            </span>
+          </span>
+          <button
+            type="button"
+            onClick={() => onCambio(null)}
+            className="text-xs font-semibold text-emerald-800 border border-emerald-300 rounded-lg px-2.5 py-1.5 hover:bg-emerald-100"
+          >
+            Quitar
+          </button>
+        </div>
+      ) : (
+        <label className="flex items-center gap-3 rounded-xl border-2 border-dashed border-neutral-300 px-3.5 py-3 cursor-pointer hover:border-accent hover:bg-accent-tint">
+          <span className="text-lg" aria-hidden="true">
+            📎
+          </span>
+          <span className="flex-1">
+            <span className="block text-sm font-semibold text-neutral-800">
+              Subir foto del remito o la factura
+            </span>
+            <span className="block text-xs text-neutral-500">
+              Sacale una foto con el celular, o elegí un PDF. Es opcional, pero después no se puede recuperar.
+            </span>
+          </span>
+          <span className="text-xs font-semibold text-white bg-accent rounded-lg px-3 py-1.5 whitespace-nowrap">
+            Elegir archivo
+          </span>
+          <input
+            type="file"
+            accept="image/*,.pdf"
+            onChange={(e) => onCambio(e.target.files?.[0] ?? null)}
+            className="hidden"
+          />
+        </label>
+      )}
     </div>
   );
 }
