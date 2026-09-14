@@ -112,6 +112,86 @@ export async function desmarcarOrdenEnviada(
 }
 
 /**
+ * Corregir un pedido recién hecho.
+ *
+ * Solo mientras NO se envió. Una vez que salió, el proveedor tiene tu pedido
+ * en la mano: editarlo de tu lado dejaría tu orden y la suya diciendo cosas
+ * distintas, y nadie se enteraría hasta que llegue el camión. Para eso está
+ * "Deshacer envío" — un paso consciente antes de poder tocarlo.
+ *
+ * Y si ya se recibió algo, ni con deshacer: hay mercadería en el stock y
+ * lotes con costo, y cambiar lo pedido dejaría números que no cierran.
+ *
+ * Reemplaza los renglones enteros en vez de ir comparando cuál cambió: son
+ * pocas filas, nada cuelga de ellas todavía, y una sola forma de guardar es
+ * más difícil de romper que tres caminos según qué se tocó.
+ */
+export async function editarOrden(
+  origen: OrigenOrden,
+  idOrden: string,
+  items: { idVariante: string; cantidad: number }[],
+  observaciones: string
+): Promise<{ error: string | null }> {
+  const sinPermiso = await requierePantallaOrdenes();
+  if (sinPermiso) return { error: sinPermiso };
+
+  const validos = items.filter((i) => i.cantidad > 0);
+  if (validos.length === 0) return { error: "El pedido tiene que tener al menos un producto." };
+
+  try {
+    const supabase = getSupabaseServerClient();
+    const tabla = tablaDe(origen);
+    const tablaDetalle = origen === "MARCA" ? "detalle_reposicion" : "detalle_orden_compra";
+
+    const { data: orden } = await supabase
+      .from(tabla)
+      .select("estado, enviada_el")
+      .eq("id_orden", idOrden)
+      .maybeSingle();
+    if (!orden) return { error: "No se encontró la orden" };
+    if (orden.estado !== PENDIENTE) {
+      return { error: "Este pedido ya recibió mercadería, así que no se puede editar." };
+    }
+    if (orden.enviada_el) {
+      return {
+        error: "Este pedido ya se envió. Usá «Deshacer envío» primero, y avisale al proveedor del cambio.",
+      };
+    }
+
+    const { error: errorBorrar } = await supabase.from(tablaDetalle).delete().eq("id_orden", idOrden);
+    if (errorBorrar) return { error: friendlyDbError(errorBorrar) };
+
+    const { error: errorInsertar } = await supabase.from(tablaDetalle).insert(
+      validos.map((i) => ({
+        id_orden: idOrden,
+        id_variante: i.idVariante,
+        cantidad_solicitada: i.cantidad,
+        cantidad_recibida: 0,
+      }))
+    );
+    if (errorInsertar) return { error: friendlyDbError(errorInsertar) };
+
+    const { error: errorTotal } = await supabase
+      .from(tabla)
+      .update({
+        total_unidades: validos.reduce((a, i) => a + i.cantidad, 0),
+        observaciones: observaciones || null,
+      })
+      .eq("id_orden", idOrden)
+      // Que siga sin enviar: si alguien la mandó mientras se editaba, no se
+      // pisa — el guardado falla y se vuelve a mirar.
+      .is("enviada_el", null);
+    if (errorTotal) return { error: friendlyDbError(errorTotal) };
+
+    revalidatePath("/compras");
+    revalidatePath("/proveedores");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo guardar el pedido" };
+  }
+}
+
+/**
  * Anular un pedido mal hecho.
  *
  * Solo si NO llegó nada todavía: si ya entró mercadería, esa mercadería está

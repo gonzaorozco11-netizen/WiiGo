@@ -19,7 +19,7 @@ import {
 import type { OrdenReposicion, OrdenCompraProveedor } from "@/lib/supabase";
 import type { FilaVariante } from "@/components/ReposicionApp";
 import NuevaOrdenModal from "@/components/NuevaOrdenModal";
-import NuevaOrdenCompraModal from "@/components/NuevaOrdenCompraModal";
+import NuevaOrdenCompraModal, { type OrdenParaEditar } from "@/components/NuevaOrdenCompraModal";
 import RecepcionModal from "@/components/RecepcionModal";
 import RecepcionCompraModal from "@/components/RecepcionCompraModal";
 import CostosRecepcionModal from "@/components/CostosRecepcionModal";
@@ -68,6 +68,7 @@ type Fila = {
 export default function ComprasTrabajo({ etapa, datos }: { etapa: Etapa; datos: DatosCompras }) {
   const [nuevaMarca, setNuevaMarca] = useState(false);
   const [nuevaProveedor, setNuevaProveedor] = useState(false);
+  const [editando, setEditando] = useState<OrdenParaEditar | null>(null);
   const [recibirMarca, setRecibirMarca] = useState<OrdenReposicion | null>(null);
   const [recibirProveedor, setRecibirProveedor] = useState<OrdenCompraProveedor | null>(null);
   // Se costea una ENTREGA, no un pedido: dos entregas del mismo pedido
@@ -101,6 +102,22 @@ export default function ComprasTrabajo({ etapa, datos }: { etapa: Etapa; datos: 
         else router.refresh();
       })
       .finally(() => setEnviando(null));
+  }
+
+  /** Corregir un pedido a proveedor que todavía no salió. */
+  function abrirEdicion(f: Fila) {
+    const orden = datos.ordenesProveedor.find((o) => o.id_orden === f.idOrden);
+    if (!orden) return;
+    setEditando({
+      idOrden: orden.id_orden,
+      idProveedor: orden.id_proveedor,
+      idLocal: orden.id_local,
+      observaciones: orden.observaciones ?? "",
+      lineas: detalleProveedorDe(orden.id_orden).map((d) => ({
+        idVariante: d.id_variante,
+        cantidad: d.cantidad_solicitada ?? 0,
+      })),
+    });
   }
 
   function anular(f: Fila) {
@@ -316,8 +333,10 @@ export default function ComprasTrabajo({ etapa, datos }: { etapa: Etapa; datos: 
                 accion="Marcar como enviada"
                 onAccion={() => enviar(f)}
                 trabajando={enviando === `${f.origen}-${f.idOrden}`}
-                // Mientras no se mandó, el pedido se puede tirar sin
-                // consecuencias: no hay mercadería ni deuda de por medio.
+                // Mientras no se mandó, el pedido se puede corregir o tirar
+                // sin consecuencias: no hay mercadería ni deuda de por medio.
+                terciaria={f.origen === "PROVEEDOR" ? "Editar" : undefined}
+                onTerciaria={f.origen === "PROVEEDOR" ? () => abrirEdicion(f) : undefined}
                 secundaria="Anular"
                 onSecundaria={() => anular(f)}
               />
@@ -466,6 +485,21 @@ export default function ComprasTrabajo({ etapa, datos }: { etapa: Etapa; datos: 
           filas={filasPropias}
           cantidadPorClave={cantidadPorClave}
           onClose={() => setNuevaProveedor(false)}
+        />
+      )}
+      {/* El mismo formulario, con el pedido adentro. No hay una pantalla de
+          edición aparte: dos formularios para lo mismo terminan divergiendo. */}
+      {editando && (
+        <NuevaOrdenCompraModal
+          proveedores={datos.proveedores}
+          locales={datos.locales}
+          filas={filasPropias}
+          cantidadPorClave={cantidadPorClave}
+          editar={editando}
+          onClose={() => {
+            setEditando(null);
+            router.refresh();
+          }}
         />
       )}
       {recibirMarca && (
@@ -1110,6 +1144,8 @@ function FilaOrden({
   onAccion,
   secundaria,
   onSecundaria,
+  terciaria,
+  onTerciaria,
   tenue,
   trabajando,
   detalle,
@@ -1120,6 +1156,9 @@ function FilaOrden({
   /** La salida de emergencia: deshacer o anular. Siempre en gris, nunca en azul. */
   secundaria?: string;
   onSecundaria?: () => void;
+  /** Corregir. También en gris: no es el camino normal. */
+  terciaria?: string;
+  onTerciaria?: () => void;
   tenue?: boolean;
   trabajando?: boolean;
   /** Qué traía el pedido. Si viene, la fila se puede abrir. */
@@ -1178,6 +1217,19 @@ function FilaOrden({
             : `pedida ${haceCuanto(f.dias)}`}
         </span>
       </span>
+
+      {terciaria && onTerciaria && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onTerciaria();
+          }}
+          disabled={trabajando}
+          className="text-xs font-semibold text-neutral-500 border border-neutral-300 rounded-lg px-2.5 py-1.5 hover:bg-neutral-50 hover:text-neutral-700 disabled:opacity-50"
+        >
+          {terciaria}
+        </button>
+      )}
 
       {secundaria && onSecundaria && (
         <button

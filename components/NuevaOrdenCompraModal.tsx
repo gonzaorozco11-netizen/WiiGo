@@ -4,9 +4,19 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import type { Local, Producto, VarianteProducto } from "@/lib/supabase";
 import type { ProveedorConSaldo } from "@/app/(app)/proveedores/actions";
 import { crearOrdenCompra } from "@/app/(app)/proveedores/actions";
+import { editarOrden } from "@/app/(app)/compras/actions";
 
 type FilaVariante = { variante: VarianteProducto; producto: Producto };
 type Linea = { idVariante: string; cantidad: number; sugerida: boolean };
+
+/** Un pedido ya existente, para corregirlo con el mismo formulario. */
+export type OrdenParaEditar = {
+  idOrden: string;
+  idProveedor: string;
+  idLocal: string;
+  observaciones: string;
+  lineas: { idVariante: string; cantidad: number }[];
+};
 
 export default function NuevaOrdenCompraModal({
   proveedores,
@@ -14,6 +24,7 @@ export default function NuevaOrdenCompraModal({
   filas,
   cantidadPorClave,
   proveedorInicial,
+  editar,
   onClose,
 }: {
   proveedores: ProveedorConSaldo[];
@@ -21,14 +32,20 @@ export default function NuevaOrdenCompraModal({
   filas: FilaVariante[];
   cantidadPorClave: Map<string, number>;
   proveedorInicial?: string;
+  /** Si viene, el formulario corrige ese pedido en vez de crear uno nuevo. */
+  editar?: OrdenParaEditar;
   onClose: () => void;
 }) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [idProveedor, setIdProveedor] = useState(proveedorInicial ?? proveedores[0]?.id_proveedor ?? "");
-  const [idLocal, setIdLocal] = useState(locales[0]?.id_local ?? "");
-  const [observaciones, setObservaciones] = useState("");
-  const [lineas, setLineas] = useState<Linea[]>([]);
+  const [idProveedor, setIdProveedor] = useState(
+    editar?.idProveedor ?? proveedorInicial ?? proveedores[0]?.id_proveedor ?? ""
+  );
+  const [idLocal, setIdLocal] = useState(editar?.idLocal ?? locales[0]?.id_local ?? "");
+  const [observaciones, setObservaciones] = useState(editar?.observaciones ?? "");
+  const [lineas, setLineas] = useState<Linea[]>(
+    editar?.lineas.map((l) => ({ ...l, sugerida: false })) ?? []
+  );
   const [agregarSeleccion, setAgregarSeleccion] = useState("");
 
   const proveedor = proveedores.find((p) => p.id_proveedor === idProveedor);
@@ -51,7 +68,11 @@ export default function NuevaOrdenCompraModal({
     [filas]
   );
 
+  // La sugerencia automática no corre cuando se está corrigiendo un pedido:
+  // pisaría lo que la persona ya había cargado, que es justo lo que viene a
+  // arreglar.
   useEffect(() => {
+    if (editar) return;
     const sugeridos = filasDelProveedor
       .map((f) => {
         const cantidadActual = cantidadPorClave.get(`${f.variante.id_variante}_${idLocal}`) ?? 0;
@@ -61,7 +82,7 @@ export default function NuevaOrdenCompraModal({
       })
       .filter((l): l is Linea => l !== null);
     setLineas(sugeridos);
-  }, [idLocal, filasDelProveedor, cantidadPorClave]);
+  }, [idLocal, filasDelProveedor, cantidadPorClave, editar]);
 
   const nombreVariante = (idVariante: string) => {
     const f = filas.find((x) => x.variante.id_variante === idVariante);
@@ -99,14 +120,12 @@ export default function NuevaOrdenCompraModal({
 
   function handleSubmit() {
     setError(null);
+    const items = lineas.map((l) => ({ idVariante: l.idVariante, cantidad: Number(l.cantidad) }));
     startTransition(async () => {
       try {
-        const res = await crearOrdenCompra(
-          idProveedor,
-          idLocal,
-          lineas.map((l) => ({ idVariante: l.idVariante, cantidad: Number(l.cantidad) })),
-          observaciones
-        );
+        const res = editar
+          ? await editarOrden("PROVEEDOR", editar.idOrden, items, observaciones)
+          : await crearOrdenCompra(idProveedor, idLocal, items, observaciones);
         if (res.error) setError(res.error);
         else onClose();
       } catch (e) {
@@ -121,9 +140,17 @@ export default function NuevaOrdenCompraModal({
         <div className="px-6 pt-6 pb-4 border-b border-neutral-200 flex items-start justify-between">
           <div>
             <p className="text-xs font-semibold tracking-wide text-accent uppercase">WiiGo</p>
-            <h2 className="text-xl font-semibold text-neutral-900">Orden de Compra</h2>
+            <h2 className="text-xl font-semibold text-neutral-900">
+              {editar ? "Corregir pedido" : "Orden de Compra"}
+            </h2>
             <p className="text-xs text-neutral-400 mt-0.5">
-              {new Date().toLocaleDateString("es-AR", { day: "2-digit", month: "long", year: "numeric" })} — sin precio, es un remito
+              {editar
+                ? `#${editar.idOrden.slice(0, 8).toUpperCase()} — todavía no se envió, se puede cambiar`
+                : `${new Date().toLocaleDateString("es-AR", {
+                    day: "2-digit",
+                    month: "long",
+                    year: "numeric",
+                  })} — sin precio, es un remito`}
             </p>
           </div>
           <button onClick={onClose} className="text-neutral-400 hover:text-neutral-700" aria-label="Cerrar">
@@ -135,10 +162,15 @@ export default function NuevaOrdenCompraModal({
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-neutral-500 uppercase mb-1">Proveedor</label>
+              {/* Al corregir no se cambia de proveedor ni de local: los
+                  productos cargados son de ese proveedor y el pedido ya tiene
+                  destino. Si te equivocaste en eso, es otro pedido — anulá
+                  este y hacé el correcto. */}
               <select
                 value={idProveedor}
                 onChange={(e) => setIdProveedor(e.target.value)}
-                className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-accent"
+                disabled={Boolean(editar)}
+                className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-accent disabled:bg-neutral-100 disabled:text-neutral-500"
               >
                 {proveedores.map((p) => (
                   <option key={p.id_proveedor} value={p.id_proveedor}>
@@ -153,7 +185,8 @@ export default function NuevaOrdenCompraModal({
               <select
                 value={idLocal}
                 onChange={(e) => setIdLocal(e.target.value)}
-                className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-accent"
+                disabled={Boolean(editar)}
+                className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-accent disabled:bg-neutral-100 disabled:text-neutral-500"
               >
                 {locales.map((l) => (
                   <option key={l.id_local} value={l.id_local}>
@@ -301,7 +334,7 @@ export default function NuevaOrdenCompraModal({
               disabled={isPending || lineas.length === 0 || !idProveedor}
               className="flex-1 rounded-lg bg-accent hover:bg-accent-dark text-white py-2 text-sm font-medium disabled:opacity-50"
             >
-              {isPending ? "Creando..." : "Crear orden"}
+              {isPending ? "Guardando..." : editar ? "Guardar cambios" : "Crear orden"}
             </button>
           </div>
         </div>
