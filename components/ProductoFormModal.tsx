@@ -674,27 +674,39 @@ function VariantesSection({
   idLocalInicial: string;
   setIdLocalInicial: (id: string) => void;
 }) {
+  // "Único" es plomería: el stock, el SKU y el código de barras cuelgan de
+  // una variante, así que un producto sin variaciones necesita una igual.
+  // Pero eso es problema del sistema, no de quien carga el producto — con una
+  // sola variante el campo del nombre ni se muestra, y la sección deja de
+  // hablar de variantes.
+  const sinVariaciones = variantes.length <= 1;
+
   return (
     <div className="border border-neutral-200 rounded-xl p-4">
       <div className="flex items-center justify-between mb-1">
-        <h3 className="text-sm font-semibold text-neutral-900">Variantes</h3>
+        <h3 className="text-sm font-semibold text-neutral-900">
+          {sinVariaciones ? "Stock y códigos" : "Variantes"}
+        </h3>
         <button
           type="button"
           onClick={() =>
             setVariantes((prev) => [
-              ...prev,
+              // Al pasar de una sola a varias, la que estaba deja de ser
+              // "Único" y hay que ponerle nombre: si no, quedarían dos filas
+              // y una llamada Único, que no significa nada.
+              ...prev.map((x, i) => (i === 0 && prev.length === 1 ? { ...x, nombre: "" } : x)),
               { id: "", nombre: "", sku: null, stockMinimo: 0, stockObjetivo: 0, stockInicial: 0 },
             ])
           }
           className="text-xs text-accent"
         >
-          + Agregar variante
+          + Este producto tiene variantes
         </button>
       </div>
       <p className="text-xs text-neutral-500 mb-3">
-        Sabores, tamaños, etc. Cada variante tiene su propio SKU, código de barras y stock (el
-        código se genera solo). Si el producto no tiene variaciones, dejá una sola fila — se va a
-        llamar "Único".
+        {sinVariaciones
+          ? "El código de barras y el SKU se generan solos. Si el producto viene en sabores o tamaños distintos, agregá variantes acá arriba."
+          : "Sabores, tamaños, etc. Cada variante tiene su propio SKU, código de barras y stock. Poneles un nombre a todas."}
       </p>
 
       {mostrarStockInicial && locales.length > 0 && (
@@ -722,15 +734,21 @@ function VariantesSection({
         {variantes.map((v, i) => (
           <div key={i} className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
             <input type="hidden" name="variante_id" value={v.id} />
-            <input
-              name="variante_nombre"
-              value={v.nombre}
-              onChange={(e) =>
-                setVariantes((prev) => prev.map((x, j) => (j === i ? { ...x, nombre: e.target.value } : x)))
-              }
-              placeholder="Único"
-              className="flex-1 min-w-[120px] rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-            />
+            {sinVariaciones ? (
+              // El nombre viaja igual en el envío; simplemente no se muestra.
+              // Vacío el servidor lo guarda como "Único", que es lo correcto.
+              <input type="hidden" name="variante_nombre" value={v.nombre} />
+            ) : (
+              <input
+                name="variante_nombre"
+                value={v.nombre}
+                onChange={(e) =>
+                  setVariantes((prev) => prev.map((x, j) => (j === i ? { ...x, nombre: e.target.value } : x)))
+                }
+                placeholder="Ej: Frutilla, 1 kg..."
+                className="flex-1 min-w-[120px] rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+              />
+            )}
             {mostrarStockInicial && (
               <div className="flex items-center gap-1 shrink-0">
                 <label className="text-xs text-neutral-500" htmlFor={`variante_stock_inicial_${i}`}>

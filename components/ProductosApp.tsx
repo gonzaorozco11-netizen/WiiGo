@@ -223,10 +223,15 @@ export default function ProductosApp({
                             </span>
                           )}
                         </div>
-                        <p className="text-xs text-neutral-400 mt-0.5">
-                          {(variantesPorProducto[p.id_producto] ?? []).length}{" "}
-                          {(variantesPorProducto[p.id_producto] ?? []).length === 1 ? "variante" : "variantes"}
-                        </p>
+                        {/* Solo cuando hay más de una. "1 variante" es
+                            plomería del sistema asomándose: todo producto
+                            tiene al menos una, así que decirlo no informa
+                            nada y ensucia la lista entera. */}
+                        {(variantesPorProducto[p.id_producto] ?? []).length > 1 && (
+                          <p className="text-xs text-neutral-400 mt-0.5">
+                            {(variantesPorProducto[p.id_producto] ?? []).length} variantes
+                          </p>
+                        )}
                       </td>
                       <td className="p-3 text-right tabular-nums text-neutral-500">
                         {p.costo_informado !== null ? `$${formatearMonto(p.costo_informado)}` : "—"}
