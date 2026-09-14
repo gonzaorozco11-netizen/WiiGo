@@ -178,6 +178,23 @@ async function cargarStockInicial(
 // al menos una variante para tener stock. `idLocalInicial` solo se pasa
 // al crear un producto nuevo — al editar nunca se toca el stock acá,
 // eso se maneja desde /stock.
+/**
+ * El nombre de la variante, con "Único" siempre escrito igual.
+ *
+ * Media docena de pantallas esconden el sufijo comparando contra "Único"
+ * exacto. Un "Unico" sin tilde se les escapa a todas y el producto aparece
+ * como "Agua sin gas — Unico" en el POS, en las órdenes y en el tótem. En vez
+ * de corregir 25 comparaciones, se corrige el dato al entrar.
+ */
+function normalizarNombreVariante(valor: string) {
+  const limpio = (valor ?? "").trim();
+  const sinTildes = limpio
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase();
+  return sinTildes === "unico" || sinTildes === "unica" ? "Único" : limpio;
+}
+
 async function sincronizarVariantes(
   supabase: SupabaseClient,
   idProducto: string,
@@ -207,7 +224,7 @@ async function sincronizarVariantes(
   }
 
   for (let i = 0; i < nombres.length; i++) {
-    const nombre = nombres[i].trim();
+    const nombre = normalizarNombreVariante(nombres[i]);
     if (!nombre) continue;
     const id = ids[i];
     const stockMinimo = Number.isFinite(stocksMinimos[i]) ? stocksMinimos[i] : 0;
@@ -251,9 +268,20 @@ async function sincronizarVariantes(
   if (!count) {
     const sku = await generarSkuVariante(supabase, idMarca);
     const codigoBarras = await generarCodigoBarrasVariante(supabase);
+    // El mínimo y el objetivo del formulario también acá: este camino se usa
+    // justo cuando el producto no tiene variaciones y no se le puso nombre —
+    // que es el caso normal. Sin esto, quien cargaba mínimo 5 y objetivo 15
+    // terminaba con 0 y 0, y el producto nunca se sugería para reponer.
     const { data: unica, error } = await supabase
       .from("variantes_producto")
-      .insert({ id_producto: idProducto, nombre: "Único", sku, codigo_barras: codigoBarras })
+      .insert({
+        id_producto: idProducto,
+        nombre: "Único",
+        sku,
+        codigo_barras: codigoBarras,
+        stock_minimo: Number.isFinite(stocksMinimos[0]) ? stocksMinimos[0] : 0,
+        stock_objetivo: Number.isFinite(stocksObjetivo[0]) ? stocksObjetivo[0] : 0,
+      })
       .select("id_variante")
       .single();
     if (error) throw new Error(friendlyDbError(error));

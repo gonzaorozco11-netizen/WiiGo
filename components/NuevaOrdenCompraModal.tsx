@@ -90,15 +90,28 @@ export default function NuevaOrdenCompraModal({
     return `${f.producto.nombre}${f.variante.nombre !== "Único" ? ` — ${f.variante.nombre}` : ""}`;
   };
 
-  // Para agregar a mano: los de este proveedor primero, y después los que no
-  // tienen proveedor asignado — así no queda bloqueado si algo está sin
-  // clasificar, pero lo suyo aparece arriba.
+  // Para agregar a mano, SOLO lo de este proveedor.
+  //
+  // Antes también se ofrecían los que no tienen proveedor asignado, y como
+  // casi ninguno lo tiene cargado todavía, la lista terminaba siendo el
+  // catálogo entero: elegías Alifrut y te ofrecía Coca-Cola. Los sin asignar
+  // quedan detrás de un link, para no dejar a nadie trabado pero tampoco
+  // ensuciar la lista de todos los días.
+  const [mostrarSinAsignar, setMostrarSinAsignar] = useState(false);
+  const yaEnLaOrden = (f: FilaVariante) => lineas.some((l) => l.idVariante === f.variante.id_variante);
+
   const disponiblesParaAgregar = useMemo(
     () =>
-      [...filasDelProveedor, ...sinProveedorAsignado].filter(
-        (f) => !lineas.some((l) => l.idVariante === f.variante.id_variante)
+      (mostrarSinAsignar ? [...filasDelProveedor, ...sinProveedorAsignado] : filasDelProveedor).filter(
+        (f) => !yaEnLaOrden(f)
       ),
-    [filasDelProveedor, sinProveedorAsignado, lineas]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filasDelProveedor, sinProveedorAsignado, lineas, mostrarSinAsignar]
+  );
+  const cuantosSinAsignar = useMemo(
+    () => sinProveedorAsignado.filter((f) => !yaEnLaOrden(f)).length,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sinProveedorAsignado, lineas]
   );
 
   const totalUnidades = lineas.reduce((acc, l) => acc + (Number(l.cantidad) || 0), 0);
@@ -283,7 +296,9 @@ export default function NuevaOrdenCompraModal({
                   onChange={(e) => setAgregarSeleccion(e.target.value)}
                   className="flex-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
                 >
-                  <option value="">Agregar otro producto...</option>
+                  <option value="">
+                    Agregar otro producto de {proveedor?.nombre ?? "este proveedor"}...
+                  </option>
                   {disponiblesParaAgregar.map((f) => (
                     <option key={f.variante.id_variante} value={f.variante.id_variante}>
                       {f.producto.nombre}
@@ -300,6 +315,26 @@ export default function NuevaOrdenCompraModal({
                   Agregar
                 </button>
               </div>
+            )}
+
+            {/* La salida para lo que todavía no está clasificado. Detrás de un
+                click y con el número adelante, así se ve cuánto falta cargar
+                en vez de esconderlo. */}
+            {cuantosSinAsignar > 0 && !mostrarSinAsignar && (
+              <button
+                type="button"
+                onClick={() => setMostrarSinAsignar(true)}
+                className="text-xs text-accent hover:underline mt-2"
+              >
+                Hay {cuantosSinAsignar} {cuantosSinAsignar === 1 ? "producto" : "productos"} sin proveedor asignado —
+                mostrarlos también
+              </button>
+            )}
+            {mostrarSinAsignar && (
+              <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-2">
+                Se están mostrando también los productos sin proveedor asignado. Conviene marcarles el proveedor en su
+                ficha: así la próxima vez aparecen solos y no hay que buscarlos.
+              </p>
             )}
           </div>
 
