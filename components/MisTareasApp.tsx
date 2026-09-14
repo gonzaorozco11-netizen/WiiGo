@@ -36,16 +36,14 @@ export default function MisTareasApp({ tablero }: { tablero: Tablero }) {
 
   return (
     <div className="max-w-3xl mx-auto">
+      {/* Sin saludo: el "buen día" es de Inicio, que es la pantalla a la que
+          uno llega. Acá ya estás adentro y venís a trabajar. */}
       <div className="mb-5">
-        <h1 className="text-xl font-semibold text-neutral-900">Buen día, {tablero.nombre}</h1>
-        <p className="text-sm text-neutral-500 capitalize">
-          {tablero.fecha}
-          {total > 0 && (
-            <span className="normal-case">
-              {" · "}
-              {total} {total === 1 ? "cosa esperándote" : "cosas esperándote"}
-            </span>
-          )}
+        <h1 className="text-xl font-semibold text-neutral-900">Mis tareas</h1>
+        <p className="text-sm text-neutral-500">
+          {total === 0
+            ? "No tenés nada pendiente"
+            : `${total} ${total === 1 ? "cosa esperándote" : "cosas esperándote"}`}
         </p>
       </div>
 
