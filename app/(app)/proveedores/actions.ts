@@ -690,21 +690,32 @@ function factorProrrateo(netoItems: number, impuestos: number, retenciones: numb
  * Devuelve el costo del PAPEL, no el real: el real tiene las percepciones
  * prorrateadas adentro y volver a usarlo se las sumaría por segunda vez.
  */
+export type FacturaGuardada = {
+  numero: string;
+  tipoComprobante: string;
+  fechaEmision: string;
+  monto: number;
+  impuestos: number;
+  retenciones: number;
+  descuentos: number;
+  iva: number;
+};
+
 export async function costeoGuardadoDeEntrega(idRecepcion: string): Promise<{
   costos: { idVariante: string; costo: number }[];
-  factura: {
-    numero: string;
-    tipoComprobante: string;
-    fechaEmision: string;
-    monto: number;
-    impuestos: number;
-    retenciones: number;
-    descuentos: number;
-    iva: number;
-  } | null;
+  factura: FacturaGuardada | null;
+  /**
+   * La factura que ya cargó OTRA entrega del mismo pedido.
+   *
+   * El caso: el proveedor factura el pedido entero el viernes y entrega en
+   * dos veces. Al costear la segunda, los datos de la factura tienen que
+   * venir puestos y el costo de la primera tiene que sumar — si no, la suma
+   * de los ítems nunca va a llegar al total y no se puede cerrar.
+   */
+  facturaHermana: (FacturaGuardada & { idsRecepcion: string[] }) | null;
 }> {
   const permisoError = await requireAdmin();
-  if (permisoError) return { costos: [], factura: null };
+  if (permisoError) return { costos: [], factura: null, facturaHermana: null };
 
   const supabase = getSupabaseServerClient();
 
@@ -725,23 +736,19 @@ export async function costeoGuardadoDeEntrega(idRecepcion: string): Promise<{
 
   const { data: recepcion } = await supabase
     .from("recepciones_proveedor")
-    .select("id_factura")
+    .select("id_factura, id_orden")
     .eq("id_recepcion", idRecepcion)
     .maybeSingle();
+  if (!recepcion) return { costos, factura: null, facturaHermana: null };
 
-  if (!recepcion?.id_factura) return { costos, factura: null };
-
-  const { data: f } = await supabase
-    .from("facturas_compra_proveedor")
-    .select("numero_factura, tipo_comprobante, fecha_emision, monto, impuestos, retenciones, descuentos, iva")
-    .eq("id_factura", recepcion.id_factura as string)
-    .maybeSingle();
-
-  if (!f) return { costos, factura: null };
-
-  return {
-    costos,
-    factura: {
+  async function leerFactura(idFactura: string): Promise<FacturaGuardada | null> {
+    const { data: f } = await supabase
+      .from("facturas_compra_proveedor")
+      .select("numero_factura, tipo_comprobante, fecha_emision, monto, impuestos, retenciones, descuentos, iva")
+      .eq("id_factura", idFactura)
+      .maybeSingle();
+    if (!f) return null;
+    return {
       numero: (f.numero_factura as string) ?? "",
       tipoComprobante: (f.tipo_comprobante as string) ?? "A",
       fechaEmision: ((f.fecha_emision as string) ?? "").slice(0, 10),
@@ -750,6 +757,38 @@ export async function costeoGuardadoDeEntrega(idRecepcion: string): Promise<{
       retenciones: (f.retenciones as number | null) ?? 0,
       descuentos: (f.descuentos as number | null) ?? 0,
       iva: (f.iva as number | null) ?? 0,
+    };
+  }
+
+  // Esta entrega ya tiene su factura: es una corrección.
+  if (recepcion.id_factura) {
+    return { costos, factura: await leerFactura(recepcion.id_factura as string), facturaHermana: null };
+  }
+
+  // No la tiene, pero puede tenerla otra entrega del mismo pedido.
+  const { data: hermanas } = await supabase
+    .from("recepciones_proveedor")
+    .select("id_recepcion, id_factura")
+    .eq("id_orden", recepcion.id_orden as string)
+    .neq("id_recepcion", idRecepcion)
+    .not("id_factura", "is", null);
+
+  const idFacturaHermana = (hermanas ?? [])[0]?.id_factura as string | undefined;
+  if (!idFacturaHermana) return { costos, factura: null, facturaHermana: null };
+
+  const f = await leerFactura(idFacturaHermana);
+  if (!f) return { costos, factura: null, facturaHermana: null };
+
+  return {
+    costos,
+    factura: null,
+    facturaHermana: {
+      ...f,
+      // Solo las que cuelgan de ESA factura: un pedido podría tener dos
+      // facturas distintas y mezclarlas daría un total inventado.
+      idsRecepcion: (hermanas ?? [])
+        .filter((h) => h.id_factura === idFacturaHermana)
+        .map((h) => h.id_recepcion as string),
     },
   };
 }

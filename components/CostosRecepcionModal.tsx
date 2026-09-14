@@ -93,7 +93,12 @@ export default function CostosRecepcionModal({
 
   /** Ya se costeó antes: esto es una corrección, no una carga nueva. */
   const esCorreccion = entrega.facturada;
-  const [cargando, setCargando] = useState(esCorreccion);
+  // Siempre se consulta: aunque sea una carga nueva, otra entrega del mismo
+  // pedido puede tener ya la factura cargada y hay que traerla.
+  const [cargando, setCargando] = useState(true);
+  /** Entregas que ya cuelgan de la misma factura: su costo suma al total. */
+  const [yaCubiertas, setYaCubiertas] = useState<string[]>([]);
+  const [facturaHeredada, setFacturaHeredada] = useState(false);
 
   // --- Factura ---
   const [numero, setNumero] = useState("");
@@ -124,7 +129,6 @@ export default function CostosRecepcionModal({
   // Los costos vienen del PAPEL, no del costo real: el real tiene las
   // percepciones prorrateadas adentro y reusarlo se las sumaría de nuevo.
   useEffect(() => {
-    if (!esCorreccion) return;
     let vigente = true;
     costeoGuardadoDeEntrega(entrega.idRecepcion)
       .then((g) => {
@@ -136,15 +140,21 @@ export default function CostosRecepcionModal({
             return copia;
           });
         }
-        if (g.factura) {
-          setNumero(g.factura.numero);
-          setTipoComprobante(g.factura.tipoComprobante || "A");
-          if (g.factura.fechaEmision) setFechaEmision(g.factura.fechaEmision);
-          setMontoFactura(g.factura.monto ? String(g.factura.monto) : "");
-          if (g.factura.impuestos) setImpuestos(String(g.factura.impuestos));
-          if (g.factura.retenciones) setRetenciones(String(g.factura.retenciones));
-          if (g.factura.descuentos) setDescuentos(String(g.factura.descuentos));
-          if (g.factura.iva) setIvaManual(String(g.factura.iva));
+        // La propia (corrección) o la de una entrega hermana del mismo pedido.
+        const f = g.factura ?? g.facturaHermana;
+        if (f) {
+          setNumero(f.numero);
+          setTipoComprobante(f.tipoComprobante || "A");
+          if (f.fechaEmision) setFechaEmision(f.fechaEmision);
+          setMontoFactura(f.monto ? String(f.monto) : "");
+          if (f.impuestos) setImpuestos(String(f.impuestos));
+          if (f.retenciones) setRetenciones(String(f.retenciones));
+          if (f.descuentos) setDescuentos(String(f.descuentos));
+          if (f.iva) setIvaManual(String(f.iva));
+        }
+        if (g.facturaHermana) {
+          setFacturaHeredada(true);
+          setYaCubiertas(g.facturaHermana.idsRecepcion);
         }
       })
       .finally(() => {
@@ -153,7 +163,7 @@ export default function CostosRecepcionModal({
     return () => {
       vigente = false;
     };
-  }, [esCorreccion, entrega.idRecepcion]);
+  }, [entrega.idRecepcion]);
 
   // Las otras entregas del mismo pedido que todavía no se facturaron.
   const otras = useMemo(
@@ -229,7 +239,15 @@ export default function CostosRecepcionModal({
 
   // Lo que aportan las OTRAS entregas cubiertas, con el costo que ya tienen
   // cargado. Si alguna todavía no se costeó, suma 0 y el aviso lo dice.
-  const otrasCubiertas = otras.filter((e) => estaCubierta(e.idRecepcion));
+  //
+  // Son de dos clases: las que se tildan acá, y las que ya cuelgan de esta
+  // misma factura porque se costearon antes. Las segundas no se eligen —
+  // están cubiertas por definición y su plata tiene que sumar, o el total
+  // nunca llegaría al de la factura.
+  const cubiertasPrevias = entregasDelPedido.filter(
+    (e) => e.idRecepcion !== entrega.idRecepcion && yaCubiertas.includes(e.idRecepcion)
+  );
+  const otrasCubiertas = [...otras.filter((e) => estaCubierta(e.idRecepcion)), ...cubiertasPrevias];
   const totalOtras = otrasCubiertas.reduce((acc, e) => {
     const suyas = todasLasLineas.filter((l) => l.idRecepcion === e.idRecepcion);
     return (
@@ -353,6 +371,17 @@ export default function CostosRecepcionModal({
           {/* ---------- 1. La factura ---------- */}
           {pideFactura && (
             <Bloque n={1} titulo="La factura">
+              {/* Vino de otra entrega del mismo pedido. Decirlo evita que
+                  alguien piense que el sistema se inventó los datos. */}
+              {facturaHeredada && (
+                <div className="flex gap-2.5 bg-accent-tint text-accent-dark rounded-lg px-3.5 py-2.5 mb-3 text-sm">
+                  <span aria-hidden="true">📄</span>
+                  <p>
+                    Esta factura ya se había cargado con una entrega anterior de este mismo pedido.{" "}
+                    <b>Completá los costos de esta entrega y el total va a cuadrar solo.</b>
+                  </p>
+                </div>
+              )}
               <div className="grid gap-3 sm:grid-cols-4">
                 <Campo etiqueta="Nº de factura" obligatorio>
                   <input
@@ -521,7 +550,7 @@ export default function CostosRecepcionModal({
           </Bloque>
 
           {/* ---------- 3. Qué entregas cubre ---------- */}
-          {pideFactura && otras.length > 0 && (
+          {pideFactura && (otras.length > 0 || cubiertasPrevias.length > 0) && (
             <Bloque n={3} titulo="Qué entregas cubre esta factura">
               <div className="flex flex-col gap-2">
                 <EntregaFija
@@ -529,6 +558,16 @@ export default function CostosRecepcionModal({
                   detalle="la que estás costeando"
                   unidades={lineas.reduce((a, l) => a + l.cantidadRecibida, 0)}
                 />
+                {/* Las que ya se costearon con esta misma factura. No se
+                    destildan: están cubiertas por definición. */}
+                {cubiertasPrevias.map((e) => (
+                  <EntregaFija
+                    key={e.idRecepcion}
+                    titulo={`${e.numeroEntrega}ª entrega · ${fechaCorta(e.fechaRecibida)}`}
+                    detalle="ya costeada con esta misma factura"
+                    unidades={e.unidades}
+                  />
+                ))}
                 {otras.map((e) => {
                   const on = estaCubierta(e.idRecepcion);
                   return (
