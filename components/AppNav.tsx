@@ -29,7 +29,6 @@ const GROUPS: NavGroup[] = [
   {
     label: "Catálogo",
     items: [
-      { href: "/marcas", label: "Marcas" },
       { href: "/productos", label: "Productos" },
       { href: "/catalogo-asesor", label: "Catálogo asesor" },
     ],
@@ -60,12 +59,16 @@ const GROUPS: NavGroup[] = [
       { href: "/profesionales", label: "Profesionales" },
     ],
   },
+  // Acá va todo lo que tenga que ver con tus contrapartes. Marcas vivía en
+  // Catálogo, que es para lo que vendés — una marca no es un producto, es
+  // con quién trabajás, y verla en otro grupo hacía parecer que había dos.
   {
     label: "Marcas y Proveedores",
     items: [
+      { href: "/proveedores", label: "Proveedores" },
+      { href: "/marcas", label: "Marcas" },
       { href: "/situacion-marca", label: "Situación de marca" },
       { href: "/liquidaciones", label: "Liquidaciones" },
-      { href: "/proveedores", label: "Proveedores" },
     ],
   },
   {

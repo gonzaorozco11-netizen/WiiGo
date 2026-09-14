@@ -10,7 +10,6 @@
 export type PantallaDisponible = { clave: string; label: string; grupo: string };
 
 export const PANTALLAS_DISPONIBLES: PantallaDisponible[] = [
-  { clave: "marcas", label: "Marcas", grupo: "Catálogo" },
   { clave: "productos", label: "Productos", grupo: "Catálogo" },
   { clave: "catalogo-asesor", label: "Catálogo asesor", grupo: "Catálogo" },
   // Compras está partido en tres a propósito: cada etapa la hace una persona
@@ -34,9 +33,13 @@ export const PANTALLAS_DISPONIBLES: PantallaDisponible[] = [
   // entrada con contador, y además junta solicitudes de marca con etiquetas
   // vencidas — no es solo cosa de marcas.
   { clave: "aprobaciones", label: "Aprobaciones", grupo: "Aprobaciones" },
+  { clave: "proveedores", label: "Proveedores", grupo: "Marcas y Proveedores" },
+  // Vivía en Catálogo, que es para lo que vendés. Una marca no es un
+  // producto: es con quién trabajás. La clave no cambia, así que nadie pierde
+  // el acceso — solo cambia bajo qué título se lista.
+  { clave: "marcas", label: "Marcas", grupo: "Marcas y Proveedores" },
   { clave: "situacion-marca", label: "Situación de marca", grupo: "Marcas y Proveedores" },
   { clave: "liquidaciones", label: "Liquidaciones", grupo: "Marcas y Proveedores" },
-  { clave: "proveedores", label: "Proveedores", grupo: "Marcas y Proveedores" },
   { clave: "dashboard", label: "Dashboard", grupo: "Finanzas" },
   { clave: "resumen-ventas", label: "Resumen de ventas", grupo: "Finanzas" },
   { clave: "resultado-mes", label: "Estado de Resultados", grupo: "Finanzas" },
