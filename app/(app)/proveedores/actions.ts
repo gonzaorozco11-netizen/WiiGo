@@ -5,7 +5,12 @@ import { cookies } from "next/headers";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
-import { saldosPorProveedor, registrarMovimientoProveedor, historialCuentaProveedor } from "@/lib/cuentaProveedor";
+import {
+  saldosPorProveedor,
+  saldoCuentaProveedor,
+  registrarMovimientoProveedor,
+  historialCuentaProveedor,
+} from "@/lib/cuentaProveedor";
 import {
   calcularLiquidacionProveedor,
   generarLiquidacionProveedor,
@@ -791,6 +796,141 @@ export async function costeoGuardadoDeEntrega(idRecepcion: string): Promise<{
         .map((h) => h.id_recepcion as string),
     },
   };
+}
+
+/**
+ * Deshacer un costeo.
+ *
+ * Es para cuando el costeo no tendría que haber pasado — se costeó la entrega
+ * equivocada, o se cargó una factura que no existía. Para un número mal
+ * puesto está "Corregir", que es mucho menos ruidoso.
+ *
+ * La deuda NO se borra: se cancela con un movimiento contrario. Quedan los
+ * dos renglones en la cuenta del proveedor, y por eso el saldo se puede
+ * explicar. Borrar el original haría que la plata se moviera sin que nadie
+ * pueda decir por qué.
+ */
+export async function anularCosteo(
+  idRecepcion: string,
+  motivo: string
+): Promise<{ error: string | null; aviso?: string }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  if (!motivo.trim()) return { error: "Contá por qué lo anulás: queda en el historial." };
+
+  try {
+    const supabase = getSupabaseServerClient();
+    const usuario = await usuarioActual();
+
+    const { data: recepcion } = await supabase
+      .from("recepciones_proveedor")
+      .select("id_recepcion, id_orden, id_proveedor, id_factura, facturada")
+      .eq("id_recepcion", idRecepcion)
+      .maybeSingle();
+    if (!recepcion) return { error: "No se encontró esa entrega" };
+    if (!recepcion.facturada) return { error: "Esta entrega todavía no está costeada." };
+
+    // El candado de siempre: si esa mercadería ya se liquidó, la plata se
+    // pagó y deshacerlo dejaría la liquidación y el costo contando historias
+    // distintas.
+    const { data: lotes } = await supabase
+      .from("detalle_recepcion_proveedor")
+      .select("id_detalle")
+      .eq("id_recepcion", idRecepcion);
+    const idsLote = (lotes ?? []).map((l) => l.id_detalle as string);
+    if (idsLote.length > 0) {
+      const { count } = await supabase
+        .from("detalle_liquidacion_proveedor")
+        .select("id_detalle", { count: "exact", head: true })
+        .in("id_detalle_recepcion", idsLote);
+      if ((count ?? 0) > 0) {
+        return {
+          error:
+            "Esta entrega ya entró en una liquidación cerrada: esa plata se le pagó al proveedor y el costeo no se puede deshacer. Si el precio estaba mal, el ajuste va en la liquidación siguiente.",
+        };
+      }
+    }
+
+    // 1) Los lotes vuelven a quedar sin costo.
+    await supabase
+      .from("detalle_recepcion_proveedor")
+      .update({ costo_unitario: null, costo_neto_factura: null })
+      .eq("id_recepcion", idRecepcion);
+
+    // 2) La entrega vuelve a "Por costear".
+    await supabase
+      .from("recepciones_proveedor")
+      .update({
+        facturada: false,
+        id_factura: null,
+        resolucion_observaciones: `Costeo anulado por ${usuario ?? "administración"}: ${motivo.trim()}`,
+      })
+      .eq("id_recepcion", idRecepcion);
+
+    // 3) El reclamo que hubiera nacido de este costeo deja de esperar.
+    await supabase
+      .from("reclamos_proveedor")
+      .update({
+        estado: "DESCARTADO",
+        resuelto_el: new Date().toISOString(),
+        resuelto_por: usuario,
+      })
+      .eq("id_recepcion", idRecepcion)
+      .eq("estado", "PENDIENTE");
+
+    let aviso: string | undefined;
+
+    // 4) La factura y la deuda.
+    if (recepcion.id_factura) {
+      const { data: hermanas } = await supabase
+        .from("recepciones_proveedor")
+        .select("id_recepcion")
+        .eq("id_factura", recepcion.id_factura as string);
+
+      if ((hermanas ?? []).length > 0) {
+        // La factura cubre otras entregas: es un papel real que el proveedor
+        // emitió por todas. Se desengancha solo esta y la deuda queda igual.
+        aviso =
+          "Esa factura también cubre otras entregas, así que sigue vigente y la deuda no cambió. Solo se desenganchó esta entrega.";
+      } else {
+        const { data: factura } = await supabase
+          .from("facturas_compra_proveedor")
+          .select("monto, numero_factura")
+          .eq("id_factura", recepcion.id_factura as string)
+          .maybeSingle();
+
+        await supabase
+          .from("facturas_compra_proveedor")
+          .update({ estado: "ANULADA" })
+          .eq("id_factura", recepcion.id_factura as string);
+
+        if (factura && (factura.monto as number) > 0) {
+          // La contrapartida. No se borra el asiento original: se le pone al
+          // lado el que lo cancela, y el saldo queda explicado.
+          await registrarMovimientoProveedor(supabase, {
+            idProveedor: recepcion.id_proveedor as string,
+            tipoMovimiento: "AJUSTE",
+            importe: -(factura.monto as number),
+            idFactura: recepcion.id_factura as string,
+            usuario,
+            observaciones: `Anulación de la factura ${factura.numero_factura ?? ""}: ${motivo.trim()}`,
+          });
+          const saldo = await saldoCuentaProveedor(supabase, recepcion.id_proveedor as string);
+          if (saldo < 0) {
+            aviso = `El saldo quedó a favor tuyo por $${Math.abs(saldo).toLocaleString(
+              "es-AR"
+            )} — le pagaste algo que ahora quedó anulado.`;
+          }
+        }
+      }
+    }
+
+    revalidatePath("/compras/costeo");
+    revalidatePath("/proveedores");
+    return { error: null, aviso };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo anular el costeo" };
+  }
 }
 
 export async function costearEntrega(params: {

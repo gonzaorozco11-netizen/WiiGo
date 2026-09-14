@@ -8,6 +8,7 @@ import {
   cancelarOrden,
   cerrarOrdenIncompleta,
 } from "@/app/(app)/compras/actions";
+import { anularCosteo } from "@/app/(app)/proveedores/actions";
 import type { DatosCompras, EntregaHistorial, LineaEntrega } from "@/lib/comprasDatos";
 import {
   estaAbierta,
@@ -552,6 +553,7 @@ function CosteoEtapa({
 }) {
   const router = useRouter();
   const [cerrando, setCerrando] = useState<string | null>(null);
+  const [anulando, setAnulando] = useState<string | null>(null);
   const [errorCierre, setErrorCierre] = useState<string | null>(null);
   // Los filtros van solo sobre las ya costeadas. "Por costear" es trabajo
   // pendiente: esconderlo detrás de un filtro de fecha es como taparlo.
@@ -563,6 +565,31 @@ function CosteoEtapa({
     return datos.detalleProveedor
       .filter((d) => d.id_orden === idOrden)
       .reduce((acc, d) => acc + Math.max(0, (d.cantidad_solicitada ?? 0) - (d.cantidad_recibida ?? 0)), 0);
+  }
+
+  /**
+   * Deshacer un costeo entero. Para un número mal puesto está Corregir; esto
+   * es para cuando el costeo no tendría que haber pasado.
+   */
+  function anularEsteCosteo(idRecepcion: string, proveedor: string) {
+    const motivo = window.prompt(
+      `Vas a anular el costeo de esta entrega de ${proveedor}.\n\n` +
+        "La entrega vuelve a Por costear y la deuda se cancela con un movimiento contrario.\n\n" +
+        "¿Por qué lo anulás? (queda en el historial)",
+      ""
+    );
+    if (motivo === null) return;
+    setErrorCierre(null);
+    setAnulando(idRecepcion);
+    anularCosteo(idRecepcion, motivo)
+      .then((r) => {
+        if (r.error) setErrorCierre(r.error);
+        else {
+          if (r.aviso) window.alert(r.aviso);
+          router.refresh();
+        }
+      })
+      .finally(() => setAnulando(null));
   }
 
   function cerrarPedido(idOrden: string) {
@@ -758,6 +785,15 @@ function CosteoEtapa({
               <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200 whitespace-nowrap">
                 Sin liquidar
               </span>
+              {/* Anular antes que Corregir en el código, pero a la izquierda
+                  y en gris: Corregir es lo que se usa casi siempre. */}
+              <button
+                onClick={() => anularEsteCosteo(r.id_recepcion, r.proveedor?.nombre ?? "")}
+                disabled={anulando === r.id_recepcion}
+                className="text-xs font-semibold text-neutral-500 border border-neutral-300 rounded-lg px-2.5 py-1.5 hover:bg-neutral-50 hover:text-neutral-700 disabled:opacity-50"
+              >
+                {anulando === r.id_recepcion ? "..." : "Anular"}
+              </button>
               <button
                 onClick={() => r.entrega && onCostear(r.entrega)}
                 className="text-sm font-semibold text-neutral-700 border border-neutral-300 rounded-lg px-3 py-1.5 hover:bg-neutral-50"
