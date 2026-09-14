@@ -30,7 +30,10 @@ export const PANTALLAS_DISPONIBLES: PantallaDisponible[] = [
   { clave: "gastos-ingresos", label: "Gastos e Ingresos", grupo: "Tesorería" },
   { clave: "clientes", label: "Clientes", grupo: "Base de Datos" },
   { clave: "profesionales", label: "Profesionales", grupo: "Base de Datos" },
-  { clave: "aprobaciones", label: "Aprobaciones", grupo: "Marcas y Proveedores" },
+  // Suelta y adelante en el menú, no adentro de un grupo: es una bandeja de
+  // entrada con contador, y además junta solicitudes de marca con etiquetas
+  // vencidas — no es solo cosa de marcas.
+  { clave: "aprobaciones", label: "Aprobaciones", grupo: "Aprobaciones" },
   { clave: "situacion-marca", label: "Situación de marca", grupo: "Marcas y Proveedores" },
   { clave: "liquidaciones", label: "Liquidaciones", grupo: "Marcas y Proveedores" },
   { clave: "proveedores", label: "Proveedores", grupo: "Marcas y Proveedores" },

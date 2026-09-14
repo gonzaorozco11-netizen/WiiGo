@@ -63,7 +63,6 @@ const GROUPS: NavGroup[] = [
   {
     label: "Marcas y Proveedores",
     items: [
-      { href: "/aprobaciones", label: "Aprobaciones" },
       { href: "/situacion-marca", label: "Situación de marca" },
       { href: "/liquidaciones", label: "Liquidaciones" },
       { href: "/proveedores", label: "Proveedores" },
@@ -105,6 +104,15 @@ const GROUPS: NavGroup[] = [
     items: [{ href: "/organizacion", label: "Organización" }],
   },
 ];
+
+// Mis Tareas va suelto y adelante, al lado de Inicio.
+//
+// Es la bandeja de entrada de cada uno: lo que tiene que hacer hoy, con su
+// contador a la vista sin abrir nada. Absorbió a Aprobaciones, que era una
+// parte de esto (cosas esperando respuesta) disfrazada de pantalla aparte —
+// y que además nunca fue solo de marcas: junta solicitudes con etiquetas
+// vencidas. A /aprobaciones se sigue llegando desde adentro de Mis Tareas.
+const MIS_TAREAS: NavItem = { href: "/mis-tareas", label: "Mis Tareas" };
 
 const SUELTO: NavItem = { href: "/configuracion", label: "Configuración" };
 
@@ -179,6 +187,29 @@ export default function AppNav({
         Inicio
       </Link>
 
+      {/* Sin filtro de pantalla: todo el mundo tiene tareas, y la lista ya
+          viene recortada a lo que cada uno puede ver. */}
+      <Link
+        href={MIS_TAREAS.href}
+        className={`flex items-center gap-1.5 text-sm font-semibold px-2.5 py-1.5 rounded-lg ${
+          esActivo(MIS_TAREAS.href) ? "text-accent bg-accent-tint" : "text-neutral-600 hover:text-neutral-900"
+        }`}
+      >
+        {MIS_TAREAS.label}
+        {/* El contador a la vista, sin abrir nada. En rojo si hay etiquetas
+            vencidas, que es lo único con riesgo real: el precio ya cambió y
+            el cartel de la góndola todavía dice otra cosa. */}
+        {pendientesAprobacion + etiquetasVencidas > 0 && (
+          <span
+            className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+              etiquetasVencidas > 0 ? "bg-red-100 text-red-700" : "bg-neutral-200 text-neutral-700"
+            }`}
+            >
+            {pendientesAprobacion + etiquetasVencidas}
+          </span>
+        )}
+      </Link>
+
       {grupos.map((grupo) => {
         const grupoActivo = grupo.items.some((i) => esActivo(i.href));
         const grupoAbierto = abierto === grupo.label;
@@ -192,19 +223,6 @@ export default function AppNav({
               }`}
             >
               {grupo.label}
-              {/* El contador se ve desde afuera, con el grupo cerrado: nadie
-                  tiene que acordarse de abrir para enterarse de que hay algo
-                  esperando. En rojo si hay etiquetas vencidas, que es lo
-                  único con riesgo real. */}
-              {grupo.items.some((i) => i.href === "/aprobaciones") && pendientesAprobacion + etiquetasVencidas > 0 && (
-                <span
-                  className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                    etiquetasVencidas > 0 ? "bg-red-100 text-red-700" : "bg-neutral-200 text-neutral-700"
-                  }`}
-                >
-                  {pendientesAprobacion + etiquetasVencidas}
-                </span>
-              )}
               <span className="text-[9px] opacity-60">▾</span>
             </button>
             {grupoAbierto && (
