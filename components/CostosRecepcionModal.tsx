@@ -258,9 +258,13 @@ export default function CostosRecepcionModal({
       }, 0)
     );
   }, 0);
-  const hayOtrasSinCostear = otrasCubiertas.some((e) =>
+  // Entregas que esta factura cubre pero que todavía no se costearon: su
+  // plata no existe en el sistema todavía, así que el total NO PUEDE cuadrar.
+  // No es un error de nadie — es información que falta.
+  const sinCostearAun = otrasCubiertas.filter((e) =>
     todasLasLineas.filter((l) => l.idRecepcion === e.idRecepcion).some((l) => l.costoUnitario == null)
   );
+  const hayOtrasSinCostear = sinCostearAun.length > 0;
 
   // El control que importa: la suma de los ítems contra el total de la
   // factura. Sin esto, un error de tipeo en el total se convierte en deuda
@@ -271,6 +275,10 @@ export default function CostosRecepcionModal({
   // Un peso de tolerancia: los redondeos del proveedor no son un error.
   const cuadraPlata = Math.abs(diferencia) <= 1;
   const hayMonto = montoDeclarado > 0;
+  // Con entregas sin costear, la diferencia no significa nada todavía: falta
+  // plata que va a aparecer cuando se carguen. Bloquear acá sería pedir que
+  // cierre una cuenta a la que le faltan renglones.
+  const sePuedeVerificar = !hayOtrasSinCostear;
 
   // Qué falta para poder guardar. Se calcula acá y no se descubre después de
   // apretar: el botón apagado con el motivo al pasar el mouse molesta menos
@@ -295,7 +303,7 @@ export default function CostosRecepcionModal({
           ? "Marcaste que facturó algo mal: poné cuánto facturó de más."
           : discrepancia && !motivoDiscrepancia.trim()
             ? "Contá qué facturó mal."
-            : !cuadraPlata && !motivoDiscrepancia.trim()
+            : sePuedeVerificar && !cuadraPlata && !motivoDiscrepancia.trim()
               ? "Los números no cuadran: contá por qué antes de guardar."
               : null;
   const sePuedeGuardar = motivoBloqueo === null;
@@ -725,7 +733,11 @@ export default function CostosRecepcionModal({
             {pideFactura && hayMonto && (
               <div
                 className={`rounded-lg px-3.5 py-3 mt-3 mb-3 text-sm tabular-nums ${
-                  cuadraPlata ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"
+                  !sePuedeVerificar
+                    ? "bg-accent-tint text-accent-dark"
+                    : cuadraPlata
+                      ? "bg-emerald-50 text-emerald-700"
+                      : "bg-red-50 text-red-700"
                 }`}
               >
                 <div className="flex items-center gap-3 flex-wrap">
@@ -735,21 +747,24 @@ export default function CostosRecepcionModal({
                   </span>
                   <span className="flex-1" />
                   <b>
-                    {cuadraPlata
-                      ? "✓ Cuadra"
-                      : `✕ ${diferencia > 0 ? "Faltan" : "Sobran"} $${formatearMonto(Math.abs(diferencia))}`}
+                    {!sePuedeVerificar
+                      ? "⏳ Falta costear"
+                      : cuadraPlata
+                        ? "✓ Cuadra"
+                        : `✕ ${diferencia > 0 ? "Faltan" : "Sobran"} $${formatearMonto(Math.abs(diferencia))}`}
                   </b>
                 </div>
-                {!cuadraPlata && hayOtrasSinCostear && (
+                {!sePuedeVerificar && (
                   <p className="text-xs mt-1.5 opacity-90">
-                    Ojo: alguna de las entregas que tildaste todavía no tiene costo cargado, así que no suma nada
-                    acá.
+                    Esta factura cubre {sinCostearAun.length}{" "}
+                    {sinCostearAun.length === 1 ? "entrega que todavía no tiene" : "entregas que todavía no tienen"}{" "}
+                    su costo cargado. <b>Guardá igual</b> — el total va a cuadrar solo cuando las costees.
                   </p>
                 )}
               </div>
             )}
 
-            {pideFactura && hayMonto && !cuadraPlata && (
+            {pideFactura && hayMonto && sePuedeVerificar && !cuadraPlata && (
               <div className="rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-3 mb-3">
                 <p className="text-sm text-amber-900 mb-2">
                   <b>No cuadra. Contá por qué antes de guardar.</b> Puede ser que el proveedor haya facturado mal, o
