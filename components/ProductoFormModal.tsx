@@ -129,7 +129,11 @@ export default function ProductoFormModal({
     [subcategorias, idMarca]
   );
 
-  function handleSubmit(formData: FormData) {
+  // Qué paso se está viendo. Clickeable y no un asistente rígido: al editar
+  // un precio se va derecho al 2 y se guarda, sin pasar por el 1.
+  const [paso, setPaso] = useState(1);
+
+    function handleSubmit(formData: FormData) {
     setError(null);
     startTransition(async () => {
       try {
@@ -154,7 +158,14 @@ export default function ProductoFormModal({
           </button>
         </div>
 
+        <Pasos paso={paso} onPaso={setPaso} />
+
+        {/* Los tres pasos están SIEMPRE armados: lo que cambia es cuál se ve.
+            Si se desmontaran, sus campos saldrían del envío y el guardado los
+            pisaría con vacío — editar un precio te borraría la ficha
+            nutricional entera. Por eso se esconden con CSS y no con JSX. */}
         <form action={handleSubmit} className="space-y-3">
+          <div className={paso === 1 ? "space-y-3" : "hidden"}>
           <Field label="Nombre *" name="nombre" defaultValue={producto?.nombre} required />
           <div className="grid grid-cols-2 gap-3">
             <Field label="Nombre (inglés)" name="nombre_en" defaultValue={producto?.nombre_en ?? ""} />
@@ -217,15 +228,6 @@ export default function ProductoFormModal({
             </div>
           </div>
 
-          <VariantesSection
-            variantes={variantes}
-            setVariantes={setVariantes}
-            mostrarStockInicial={!isEditing}
-            locales={locales}
-            idLocalInicial={idLocalInicial}
-            setIdLocalInicial={setIdLocalInicial}
-          />
-
           <div>
             <label className="block text-sm font-medium text-neutral-700 mb-1">Descripción</label>
             <textarea
@@ -235,6 +237,18 @@ export default function ProductoFormModal({
               className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
             />
           </div>
+          </div>
+
+          {/* ---------- 2 · Precio y stock ---------- */}
+          <div className={paso === 2 ? "space-y-3" : "hidden"}>
+          <VariantesSection
+            variantes={variantes}
+            setVariantes={setVariantes}
+            mostrarStockInicial={!isEditing}
+            locales={locales}
+            idLocalInicial={idLocalInicial}
+            setIdLocalInicial={setIdLocalInicial}
+          />
 
           <PrecioCalculadora
             costoInicial={producto?.costo_informado ?? null}
@@ -279,6 +293,11 @@ export default function ProductoFormModal({
             </div>
           )}
 
+          </div>
+
+          {/* Sigue el paso 1: la foto y el estado son parte de qué es el
+              producto, aunque en el código vengan después del precio. */}
+          <div className={paso === 1 ? "space-y-3" : "hidden"}>
           <div>
             <label className="block text-sm font-medium text-neutral-700 mb-1">Imagen</label>
             {isEditing ? (
@@ -319,7 +338,10 @@ export default function ProductoFormModal({
               <option value="INACTIVO">INACTIVO</option>
             </select>
           </div>
+          </div>
 
+          {/* ---------- 3 · Ficha del asesor ---------- */}
+          <div className={paso === 3 ? "space-y-3" : "hidden"}>
           <FichaSection ficha={ficha} producto={producto} />
 
           <CheckboxSection
@@ -339,6 +361,7 @@ export default function ProductoFormModal({
             seleccionados={filtrosAsignados}
             vacio="Todavía no cargaste filtros. Andá a Catálogo asesor para crear alguno."
           />
+          </div>
 
           {error && (
             <p className="text-sm text-red-600" role="alert">
@@ -346,14 +369,25 @@ export default function ProductoFormModal({
             </p>
           )}
 
-          <div className="flex gap-2 pt-2">
+          {/* Un solo Guardar para los tres pasos, abajo y siempre visible.
+              Uno por paso haría pensar que hay que guardar tres veces. */}
+          <div className="flex gap-2 pt-2 border-t border-neutral-100 mt-2">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 rounded-lg border border-neutral-300 py-2 text-sm font-medium text-neutral-700"
+              className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700"
             >
               Cancelar
             </button>
+            {paso < 3 && (
+              <button
+                type="button"
+                onClick={() => setPaso(paso + 1)}
+                className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+              >
+                Siguiente →
+              </button>
+            )}
             <button
               type="submit"
               disabled={isPending}
@@ -364,6 +398,54 @@ export default function ProductoFormModal({
           </div>
         </form>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Los tres pasos del formulario, clickeables.
+ *
+ * No es un asistente que obliga a pasar por los tres: son pestañas
+ * numeradas. El número ordena cuando estás creando; el click salva cuando
+ * venís a cambiar una sola cosa.
+ */
+function Pasos({ paso, onPaso }: { paso: number; onPaso: (n: number) => void }) {
+  const items = [
+    { n: 1, titulo: "El producto", pie: "Nombre, marca, foto" },
+    { n: 2, titulo: "Precio y stock", pie: "Costo, precio, variantes" },
+    { n: 3, titulo: "Ficha del asesor", pie: "Opcional" },
+  ];
+  return (
+    <div className="grid grid-cols-3 gap-1.5 mb-4">
+      {items.map((i) => {
+        const activo = paso === i.n;
+        return (
+          <button
+            key={i.n}
+            type="button"
+            onClick={() => onPaso(i.n)}
+            className={`text-left rounded-xl border px-3 py-2.5 ${
+              activo ? "border-accent bg-accent-tint" : "border-neutral-200 bg-white hover:bg-neutral-50"
+            }`}
+          >
+            <span className="flex items-center gap-2">
+              <span
+                className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 ${
+                  activo ? "bg-accent text-white" : "bg-neutral-200 text-neutral-600"
+                }`}
+              >
+                {i.n}
+              </span>
+              <span
+                className={`text-[13px] font-semibold truncate ${activo ? "text-accent" : "text-neutral-700"}`}
+              >
+                {i.titulo}
+              </span>
+            </span>
+            <span className="block text-[11px] text-neutral-400 mt-0.5 truncate">{i.pie}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }
