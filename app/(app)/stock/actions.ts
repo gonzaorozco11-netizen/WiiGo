@@ -5,7 +5,7 @@ import { cookies } from "next/headers";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { simularConsumoFifo } from "@/lib/fifoProveedor";
-import type { DuenioMerma } from "@/lib/mermas";
+import { MOTIVOS_MERMA, type DuenioMerma, type MotivoMerma } from "@/lib/mermas";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 
 async function usuarioActual() {
@@ -78,9 +78,6 @@ export async function ajustarStock(
 // se le liquida igual que una venta, porque el acuerdo es que la absorbe
 // WiiGo. Con un botón solo para las dos cosas, el sistema no puede saber
 // cuál de las dos pasó, y la mercadería rota terminaba sin pagarla nadie.
-
-export const MOTIVOS_MERMA = ["ROTURA", "VENCIMIENTO", "ROBO", "OTRO"] as const;
-export type MotivoMerma = (typeof MOTIVOS_MERMA)[number];
 
 /**
  * Qué va a costar una merma antes de registrarla.

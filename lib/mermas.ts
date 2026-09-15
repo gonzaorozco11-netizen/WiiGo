@@ -15,6 +15,18 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 
 export type DuenioMerma = "LIQUIDACION" | "PROPIA" | "CONSIGNACION";
 
+/**
+ * Los motivos válidos.
+ *
+ * Viven acá y no en `app/(app)/stock/actions.ts` por una razón concreta: ese
+ * archivo tiene `"use server"`, y Next solo deja exportar funciones async de
+ * un módulo así. Una constante exportada rompe el módulo entero en el
+ * servidor, y las dos acciones dejan de responder sin ningún error visible en
+ * el build.
+ */
+export const MOTIVOS_MERMA = ["ROTURA", "VENCIMIENTO", "ROBO", "OTRO"] as const;
+export type MotivoMerma = (typeof MOTIVOS_MERMA)[number];
+
 export type MermaListada = {
   idMerma: string;
   fecha: string;
