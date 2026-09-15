@@ -91,13 +91,30 @@ export default function ComprasTrabajo({
   const [periodoCerradas, setPeriodoCerradas] = useState<Periodo>("MES");
   const router = useRouter();
 
+  /**
+   * Mandar el pedido: abre el papel y lo marca como enviado.
+   *
+   * Las dos cosas en un click porque son un solo acto — cuando alguien aprieta
+   * "Enviar a proveedor" está mandando el pedido, no preparándose para hacerlo.
+   * Si se aprieta por error, "Deshacer envío" lo devuelve a Órdenes.
+   *
+   * La pestaña se abre ANTES del await: los navegadores bloquean un
+   * window.open que llega después de una respuesta del servidor, porque ya no
+   * lo ven como consecuencia directa del click.
+   */
   function enviar(f: Fila) {
     setError(null);
+    const papel = window.open(`/compras/pedido/${f.origen}/${f.idOrden}`, "_blank");
     setEnviando(`${f.origen}-${f.idOrden}`);
     marcarOrdenEnviada(f.origen, f.idOrden)
       .then((r) => {
-        if (r.error) setError(r.error);
-        else router.refresh();
+        if (r.error) {
+          setError(r.error);
+          // No quedó enviado, así que el papel tampoco corresponde.
+          papel?.close();
+        } else {
+          router.refresh();
+        }
       })
       .finally(() => setEnviando(null));
   }
@@ -374,8 +391,8 @@ export default function ComprasTrabajo({
             </div>
           </div>
           <p className="text-sm text-neutral-500 mt-1 mb-5">
-            Órdenes emitidas que todavía no se mandaron. Al marcarlas como enviadas pasan a Recepción y salen de
-            acá.
+            Órdenes emitidas que todavía no se mandaron. Al enviarlas se abre el pedido en papel para pasárselo
+            al proveedor, y pasan a Recepción.
           </p>
 
           {/* Lo que hay que hacer: tarjetas grandes, con sombra y botón. */}
@@ -407,7 +424,11 @@ export default function ComprasTrabajo({
                     {f.origen === "PROVEEDOR" && <BotonSuave onClick={() => abrirEdicion(f)}>Editar</BotonSuave>}
                     <BotonSuave onClick={() => anular(f)}>Anular</BotonSuave>
                     <BotonPrincipal onClick={() => enviar(f)} disabled={enviando === clave}>
-                      {enviando === clave ? "..." : "Marcar como enviada →"}
+                      {enviando === clave
+                        ? "..."
+                        : f.origen === "PROVEEDOR"
+                          ? "Enviar a proveedor →"
+                          : "Enviar a la marca →"}
                     </BotonPrincipal>
                   </TarjetaTrabajo>
                 );
