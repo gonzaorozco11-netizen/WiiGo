@@ -275,7 +275,9 @@ export async function cerrarOrdenIncompleta(
    */
   facturado?: { neto: number; iva: number } | null
 ): Promise<{ error: string | null; aviso?: string }> {
-  // El botón vive en Costeo, así que alcanza con cualquiera de las dos.
+  // El botón vive en Costeo y en Recepción, así que alcanza con cualquiera
+  // de las dos. En Recepción la pantalla además lo esconde si el usuario solo
+  // tiene el permiso del local: cerrar un pedido es decisión de compras.
   const sinPermiso = await requierePantalla("compras", "compras-costeo");
   if (sinPermiso) return { error: sinPermiso };
   try {

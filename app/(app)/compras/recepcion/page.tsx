@@ -26,7 +26,15 @@ export default async function RecepcionPage() {
           )
         }
       />
-      <ComprasTrabajo etapa="RECEPCION" datos={datos} />
+      {/* Dar por cerrado un pedido incompleto es decisión de administración,
+          no del local: la operativa cuenta lo que hay en la caja, no negocia
+          con el proveedor. Por eso el botón aparece solo si además tiene
+          Costeo u Órdenes. */}
+      <ComprasTrabajo
+        etapa="RECEPCION"
+        datos={datos}
+        puedeCerrarPedidos={puedeVerPantalla(sesion, "compras-costeo") || puedeVerPantalla(sesion, "compras")}
+      />
     </div>
   );
 }

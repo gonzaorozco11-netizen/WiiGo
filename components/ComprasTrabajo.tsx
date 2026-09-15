@@ -66,7 +66,16 @@ type Fila = {
   enviadaEl: string | null;
 };
 
-export default function ComprasTrabajo({ etapa, datos }: { etapa: Etapa; datos: DatosCompras }) {
+export default function ComprasTrabajo({
+  etapa,
+  datos,
+  puedeCerrarPedidos = true,
+}: {
+  etapa: Etapa;
+  datos: DatosCompras;
+  /** Cerrar un pedido incompleto es decisión de administración, no del local. */
+  puedeCerrarPedidos?: boolean;
+}) {
   const [nuevaMarca, setNuevaMarca] = useState(false);
   const [nuevaProveedor, setNuevaProveedor] = useState(false);
   const [editando, setEditando] = useState<OrdenParaEditar | null>(null);
@@ -101,6 +110,56 @@ export default function ComprasTrabajo({ etapa, datos }: { etapa: Etapa; datos: 
       .then((r) => {
         if (r.error) setError(r.error);
         else router.refresh();
+      })
+      .finally(() => setEnviando(null));
+  }
+
+  /** Cuántas unidades del pedido nunca llegaron. */
+  const faltanteDePedido = (f: Fila) =>
+    (f.origen === "MARCA" ? detalleMarcaDe(f.idOrden) : detalleProveedorDe(f.idOrden)).reduce(
+      (acc, d) => acc + Math.max(0, (d.cantidad_solicitada ?? 0) - (d.cantidad_recibida ?? 0)),
+      0
+    );
+
+  /**
+   * Dar por cerrado un pedido a medias, desde Recepción.
+   *
+   * Mismo flujo que el de Costeo — pregunta el motivo y si eso estaba
+   * facturado — porque es la misma decisión. Lo que cambia es dónde se toma:
+   * acá es donde uno ve que el pedido quedó colgado.
+   */
+  function cerrarPedidoDesdeRecepcion(f: Fila, faltan: number) {
+    const motivo = window.prompt(
+      `Vas a dar por cerrado el pedido a ${f.contraparte} con ${faltan} unidades sin recibir.\n\n¿Por qué?`,
+      "El proveedor no envía el resto"
+    );
+    if (motivo === null) return;
+
+    const netoTexto = window.prompt(
+      "¿Esa mercadería que no llegó ya estaba facturada?\n\n" +
+        "Si te la cobraron, poné el NETO facturado de más (sin IVA) y queda un reclamo de nota de crédito.\n\n" +
+        "Si no estaba facturada, dejalo en 0.",
+      "0"
+    );
+    if (netoTexto === null) return;
+    const neto = Number(netoTexto) || 0;
+
+    let iva = 0;
+    if (neto > 0) {
+      const ivaTexto = window.prompt(`IVA de esos $${neto.toLocaleString("es-AR")}:`, String(Math.round(neto * 0.21)));
+      if (ivaTexto === null) return;
+      iva = Number(ivaTexto) || 0;
+    }
+
+    setError(null);
+    setEnviando(`${f.origen}-${f.idOrden}`);
+    cerrarOrdenIncompleta("PROVEEDOR", f.idOrden, motivo, neto > 0 ? { neto, iva } : null)
+      .then((r) => {
+        if (r.error) setError(r.error);
+        else {
+          if (r.aviso) window.alert(r.aviso);
+          router.refresh();
+        }
       })
       .finally(() => setEnviando(null));
   }
@@ -451,24 +510,40 @@ export default function ComprasTrabajo({ etapa, datos }: { etapa: Etapa; datos: 
             <div className="flex flex-col gap-2.5">
               {/* Llegó una parte y falta el resto. Va primero y en ámbar:
                   es lo que tiene mercadería en la calle hace más tiempo. */}
-              {aMedias.map((f) => (
-                <TarjetaTrabajo
-                  key={`${f.origen}-${f.idOrden}`}
-                  icono="⏳"
-                  tono="ambar"
-                  titulo={f.contraparte}
-                  detalle={
-                    <>
-                      Llegó a medias · mandada {haceCuanto(dias(f.enviadaEl ?? f.fecha))} · {f.local}
-                    </>
-                  }
-                  etiqueta={<EtiquetaOrigen origen={f.origen} />}
-                >
-                  <BotonPrincipal tono="ambar" onClick={() => abrirRecepcion(f)}>
-                    Recibir el resto →
-                  </BotonPrincipal>
-                </TarjetaTrabajo>
-              ))}
+              {aMedias.map((f) => {
+                const faltan = faltanteDePedido(f);
+                return (
+                  <TarjetaTrabajo
+                    key={`${f.origen}-${f.idOrden}`}
+                    icono="⏳"
+                    tono="ambar"
+                    titulo={f.contraparte}
+                    detalle={
+                      <>
+                        {faltan > 0 ? `Faltan ${faltan} unidades` : "Llegó a medias"} · mandada{" "}
+                        {haceCuanto(dias(f.enviadaEl ?? f.fecha))} · {f.local}
+                      </>
+                    }
+                    etiqueta={<EtiquetaOrigen origen={f.origen} />}
+                  >
+                    {/* "No las van a mandar más" se decide acá también, no
+                        solo en Costeo: este es el lugar donde uno VE que el
+                        pedido quedó a medias, y buscarlo en otra pantalla es
+                        lo que hace que quede abierto para siempre. */}
+                    {puedeCerrarPedidos && f.origen === "PROVEEDOR" && (
+                      <BotonSuave
+                        onClick={() => cerrarPedidoDesdeRecepcion(f, faltan)}
+                        disabled={enviando === `${f.origen}-${f.idOrden}`}
+                      >
+                        No lo mandan más
+                      </BotonSuave>
+                    )}
+                    <BotonPrincipal tono="ambar" onClick={() => abrirRecepcion(f)}>
+                      Recibir el resto →
+                    </BotonPrincipal>
+                  </TarjetaTrabajo>
+                );
+              })}
 
               {esperandoLlegar.map((f) => (
                 <TarjetaTrabajo
@@ -879,6 +954,18 @@ function CosteoEtapa({
                           ${costo.toLocaleString("es-AR", { maximumFractionDigits: 0 })}
                         </td>
                         <td className={`${TD} text-right whitespace-nowrap`}>
+                          {/* Si el pedido sigue a medias, acá también se
+                              puede dar por cerrado: costear la entrega no
+                              tendría que hacer desaparecer esa decisión. */}
+                          {r.orden?.estado === RECIBIDA_PARCIAL && faltanteDe(r.id_orden) > 0 && (
+                            <button
+                              onClick={() => cerrarPedido(r.id_orden, faltanteDe(r.id_orden))}
+                              disabled={cerrando === r.id_orden}
+                              className="text-[11px] font-semibold text-amber-700 hover:underline mr-3 disabled:opacity-50"
+                            >
+                              {cerrando === r.id_orden ? "..." : "No lo mandan más"}
+                            </button>
+                          )}
                           {/* Anular a la izquierda y en gris: Corregir es lo
                               que se usa casi siempre. */}
                           <button
