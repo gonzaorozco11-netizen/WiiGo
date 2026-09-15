@@ -951,11 +951,17 @@ export async function costearEntrega(params: {
 
     const { data: recepcion, error: errorRecepcion } = await supabase
       .from("recepciones_proveedor")
-      .select("id_recepcion, id_orden, id_proveedor")
+      .select("id_recepcion, id_orden, id_proveedor, id_factura, facturada")
       .eq("id_recepcion", params.idRecepcion)
       .maybeSingle();
     if (errorRecepcion) return { error: friendlyDbError(errorRecepcion) };
     if (!recepcion) return { error: "No se encontró esa entrega" };
+
+    // Ya se había costeado: esto es una corrección. Hay que reemplazar lo
+    // anterior en vez de apilar encima — los renglones de la factura, el
+    // reclamo y, si cambió el total, la deuda.
+    const esCorreccion = Boolean(recepcion.facturada);
+    const facturaPrevia = (recepcion.id_factura as string | null) ?? null;
 
     // Un costo se puede corregir hasta que se liquide. Después no: esa plata
     // ya se le pagó al proveedor, y cambiarla acá haría que la liquidación
@@ -1126,7 +1132,54 @@ export async function costearEntrega(params: {
 
     if (yaCargada) {
       idFactura = yaCargada.id_factura as string;
-      aviso = `La factura ${f.numero.trim()} ya estaba cargada: esta entrega se sumó a ella y no se generó deuda nueva.`;
+
+      if (esCorreccion && facturaPrevia === idFactura) {
+        // Corrección de la MISMA factura. Si le cambiaron el total, hay que
+        // actualizar el papel y mover la diferencia en la cuenta: antes el
+        // cambio se guardaba en los costos pero la deuda quedaba con el
+        // número viejo, sin que nadie se enterara.
+        const { data: anterior } = await supabase
+          .from("facturas_compra_proveedor")
+          .select("monto")
+          .eq("id_factura", idFactura)
+          .maybeSingle();
+        const montoAnterior = (anterior?.monto as number | null) ?? 0;
+        const ivaNuevo = f.iva && f.iva > 0 ? redondear2(f.iva) : null;
+
+        await supabase
+          .from("facturas_compra_proveedor")
+          .update({
+            numero_factura: f.numero.trim(),
+            tipo_comprobante: f.tipoComprobante || null,
+            fecha_emision: f.fechaEmision,
+            fecha_vencimiento: f.fechaVencimiento || null,
+            monto: f.monto,
+            neto: ivaNuevo ? redondear2(f.monto - ivaNuevo) : null,
+            iva: ivaNuevo,
+            impuestos: f.impuestos || null,
+            retenciones: f.retenciones || null,
+            descuentos: f.descuentos || null,
+            observaciones: notaDiscrepancia,
+          })
+          .eq("id_factura", idFactura);
+
+        const diferencia = redondear2(f.monto - montoAnterior);
+        if (Math.abs(diferencia) >= 0.01) {
+          await registrarMovimientoProveedor(supabase, {
+            idProveedor: recepcion.id_proveedor,
+            tipoMovimiento: "AJUSTE",
+            importe: diferencia,
+            idFactura,
+            usuario: await usuarioActual(),
+            observaciones: `Corrección de la factura ${f.numero.trim()}: de $${montoAnterior.toLocaleString(
+              "es-AR"
+            )} a $${f.monto.toLocaleString("es-AR")}`,
+          });
+          aviso = `La deuda se ajustó en $${Math.abs(diferencia).toLocaleString("es-AR")} — quedó el movimiento de corrección en la cuenta.`;
+        }
+      } else {
+        aviso = `La factura ${f.numero.trim()} ya estaba cargada: esta entrega se sumó a ella y no se generó deuda nueva.`;
+      }
     } else {
       const iva = f.iva && f.iva > 0 ? redondear2(f.iva) : null;
       const { data: creada, error: errorFactura } = await supabase
@@ -1167,11 +1220,25 @@ export async function costearEntrega(params: {
 
     // El detalle de lo que aporta ESTA entrega a la factura. Sirve para el
     // control de que la suma de las entregas cuadre con el total facturado.
+    //
+    // Se borran los suyos antes de poner los nuevos: sin esto, cada corrección
+    // dejaba los renglones duplicados y la factura parecía tener el doble de
+    // mercadería. Por id_recepcion y no por producto — la factura puede cubrir
+    // otra entrega con el mismo producto y esa no se toca.
+    if (esCorreccion) {
+      await supabase
+        .from("detalle_factura_compra")
+        .delete()
+        .eq("id_factura", idFactura)
+        .eq("id_recepcion", recepcion.id_recepcion);
+    }
+
     for (const lote of lotes ?? []) {
       const costo = params.costos.find((c) => c.idVariante === lote.id_variante)?.costo ?? 0;
       if (costo <= 0) continue;
       await supabase.from("detalle_factura_compra").insert({
         id_factura: idFactura,
+        id_recepcion: recepcion.id_recepcion,
         id_variante: lote.id_variante,
         cantidad_facturada: lote.cantidad_recibida,
         // El del papel, sin prorrateo: es contra este número que se audita
@@ -1179,6 +1246,17 @@ export async function costearEntrega(params: {
         precio_unitario_real: costo,
         costo_anterior: costoAnteriorPorVariante.get(lote.id_variante as string) ?? null,
       });
+    }
+
+    // El reclamo anterior de esta entrega, si lo había y sigue abierto, se
+    // reemplaza. Corregir dos veces no puede dejar dos reclamos por la misma
+    // plata — el proveedor debe una sola vez.
+    if (esCorreccion) {
+      await supabase
+        .from("reclamos_proveedor")
+        .delete()
+        .eq("id_recepcion", recepcion.id_recepcion)
+        .eq("estado", "PENDIENTE");
     }
 
     if (mal && notaDiscrepancia) {
