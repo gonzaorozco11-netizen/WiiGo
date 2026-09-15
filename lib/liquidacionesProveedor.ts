@@ -457,6 +457,173 @@ export async function detalleLiquidacionProveedor(
   return { porMedio, totales, estimado };
 }
 
+// ===================== EL COMPROBANTE =====================
+//
+// Lo que se guardó de una liquidación ya cerrada, para poder imprimirlo y
+// mostrárselo al proveedor. No recalcula nada: lee el detalle tal como quedó
+// congelado al confirmar. Si el costo de un lote se corrigió después, este
+// papel sigue diciendo lo que se liquidó ese día — que es el punto de tener
+// un comprobante.
+
+export type LineaComprobante = {
+  producto: string;
+  /** Cuándo entró el lote del que salieron estas unidades. */
+  fechaRecepcion: string | null;
+  cantidad: number;
+  costoUnitario: number;
+  subtotal: number;
+};
+
+export type LineaMermaComprobante = {
+  producto: string;
+  motivo: string;
+  fecha: string;
+  cantidad: number;
+  costoUnitario: number;
+  subtotal: number;
+};
+
+export type ComprobanteLiquidacionProveedor = {
+  idLiquidacion: string;
+  proveedor: { nombre: string; cuit: string | null; modoFacturacion: string };
+  fechaDesde: string;
+  fechaHasta: string;
+  fecha: string;
+  usuario: string | null;
+  vendidas: LineaComprobante[];
+  mermas: LineaMermaComprobante[];
+  /** El costo de la merma sale del subtotal guardado menos lo vendido. */
+  netoVendido: number;
+  netoMerma: number;
+  montoFinal: number;
+  facturaNumero: string | null;
+  facturaIva: number | null;
+};
+
+export async function comprobanteLiquidacionProveedor(
+  supabase: SupabaseClient,
+  idLiquidacion: string
+): Promise<ComprobanteLiquidacionProveedor | null> {
+  const { data: liq } = await supabase
+    .from("liquidaciones_proveedor")
+    .select("*")
+    .eq("id_liquidacion", idLiquidacion)
+    .maybeSingle();
+  if (!liq) return null;
+
+  const [provRes, detalleRes, mermasRes] = await Promise.all([
+    supabase
+      .from("proveedores")
+      .select("nombre, cuit, modo_facturacion")
+      .eq("id_proveedor", liq.id_proveedor as string)
+      .maybeSingle(),
+    supabase
+      .from("detalle_liquidacion_proveedor")
+      .select("id_variante, id_detalle_recepcion, cantidad_vendida, costo_unitario, subtotal")
+      .eq("id_liquidacion", idLiquidacion),
+    supabase
+      .from("mermas")
+      .select("id_variante, cantidad, motivo, fecha, costo_unitario")
+      .eq("id_liquidacion_proveedor", idLiquidacion)
+      .order("fecha", { ascending: true }),
+  ]);
+
+  const detalle = detalleRes.data ?? [];
+  const mermas = mermasRes.data ?? [];
+
+  // Nombres de producto para las dos listas.
+  const idsVariante = [
+    ...new Set([...detalle, ...mermas].map((d) => d.id_variante as string).filter(Boolean)),
+  ];
+  const { data: variantes } = idsVariante.length
+    ? await supabase.from("variantes_producto").select("id_variante, id_producto, nombre").in("id_variante", idsVariante)
+    : { data: [] as Record<string, unknown>[] };
+  const idsProducto = [...new Set((variantes ?? []).map((v) => v.id_producto as string))];
+  const { data: productos } = idsProducto.length
+    ? await supabase.from("productos").select("id_producto, nombre").in("id_producto", idsProducto)
+    : { data: [] as Record<string, unknown>[] };
+
+  const nombreProducto = new Map((productos ?? []).map((p) => [p.id_producto as string, p.nombre as string]));
+  const nombreVariante = new Map(
+    (variantes ?? []).map((v) => {
+      const base = nombreProducto.get(v.id_producto as string) ?? "Producto";
+      return [v.id_variante as string, v.nombre !== "Único" ? `${base} — ${v.nombre}` : base];
+    })
+  );
+
+  // La fecha del lote: es lo que deja decirle al proveedor de qué remito
+  // salió cada unidad si discute el costo.
+  const idsLote = [
+    ...new Set(detalle.map((d) => d.id_detalle_recepcion as string | null).filter((x): x is string => Boolean(x))),
+  ];
+  const { data: lotes } = idsLote.length
+    ? await supabase.from("detalle_recepcion_proveedor").select("id_detalle, id_recepcion").in("id_detalle", idsLote)
+    : { data: [] as Record<string, unknown>[] };
+  const idsRecepcion = [...new Set((lotes ?? []).map((l) => l.id_recepcion as string))];
+  const { data: recepciones } = idsRecepcion.length
+    ? await supabase.from("recepciones_proveedor").select("id_recepcion, fecha").in("id_recepcion", idsRecepcion)
+    : { data: [] as Record<string, unknown>[] };
+  const fechaRecepcion = new Map((recepciones ?? []).map((r) => [r.id_recepcion as string, r.fecha as string]));
+  const fechaDeLote = new Map(
+    (lotes ?? []).map((l) => [l.id_detalle as string, fechaRecepcion.get(l.id_recepcion as string) ?? null])
+  );
+
+  const vendidas: LineaComprobante[] = detalle
+    .map((d) => ({
+      producto: nombreVariante.get(d.id_variante as string) ?? "Producto",
+      fechaRecepcion: d.id_detalle_recepcion ? fechaDeLote.get(d.id_detalle_recepcion as string) ?? null : null,
+      cantidad: (d.cantidad_vendida as number) ?? 0,
+      costoUnitario: (d.costo_unitario as number) ?? 0,
+      subtotal: (d.subtotal as number) ?? 0,
+    }))
+    .sort((a, b) => a.producto.localeCompare(b.producto) || (a.fechaRecepcion ?? "").localeCompare(b.fechaRecepcion ?? ""));
+
+  const lineasMerma: LineaMermaComprobante[] = mermas.map((m) => {
+    const cantidad = (m.cantidad as number) ?? 0;
+    // El costo quedó congelado cuando se registró la merma — es el mismo
+    // número que la pantalla mostró antes de confirmarla. Guardarlo ahí y no
+    // recalcularlo acá es lo que hace que el papel y lo que se dijo en el
+    // momento digan siempre lo mismo.
+    const costoUnitario = (m.costo_unitario as number | null) ?? 0;
+    return {
+      producto: nombreVariante.get(m.id_variante as string) ?? "Producto",
+      motivo: (m.motivo as string) ?? "OTRO",
+      fecha: m.fecha as string,
+      cantidad,
+      costoUnitario,
+      subtotal: redondear2(cantidad * costoUnitario),
+    };
+  });
+
+  // El detalle guardado suma vendido + merma en un renglón por lote: al
+  // liquidar, las unidades de merma se sumaron a las vendidas para consumir
+  // el FIFO una sola vez. Acá se vuelve a partir restando la merma, que sí
+  // tiene su costo propio guardado.
+  const totalGuardado = detalle.reduce((a, d) => a + ((d.subtotal as number) ?? 0), 0);
+  const netoMerma = redondear2(lineasMerma.reduce((a, m) => a + m.subtotal, 0));
+  const netoVendido = redondear2(totalGuardado - netoMerma);
+
+  return {
+    idLiquidacion,
+    proveedor: {
+      nombre: (provRes.data?.nombre as string) ?? "Proveedor",
+      cuit: (provRes.data?.cuit as string | null) ?? null,
+      modoFacturacion: (provRes.data?.modo_facturacion as string) ?? "",
+    },
+    fechaDesde: liq.fecha_desde as string,
+    fechaHasta: liq.fecha_hasta as string,
+    fecha: (liq.fecha as string) ?? "",
+    usuario: (liq.usuario as string | null) ?? null,
+    vendidas,
+    mermas: lineasMerma,
+    netoVendido,
+    netoMerma,
+    montoFinal: (liq.monto_final as number) ?? 0,
+    facturaNumero: (liq.factura_numero as string | null) ?? null,
+    facturaIva: (liq.factura_iva as number | null) ?? null,
+  };
+}
+
 export async function generarLiquidacionProveedor(
   supabase: SupabaseClient,
   params: {

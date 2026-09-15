@@ -298,6 +298,57 @@ export default function FichaProveedorApp({ ficha }: { ficha: FichaProveedor }) 
         </div>
       )}
 
+      {/* ---------- Liquidaciones ----------
+          Solo con proveedores por liquidación: los otros no tienen. Se ponen
+          antes de la cuenta porque cada una explica uno de sus movimientos. */}
+      {ficha.liquidaciones.length > 0 && (
+        <div className="border border-neutral-200 rounded-xl bg-white overflow-hidden">
+          <div className="px-4 py-3 border-b border-neutral-100 flex items-baseline justify-between gap-3 flex-wrap">
+            <p className="text-sm font-semibold text-neutral-900">Liquidaciones</p>
+            <p className="text-xs text-neutral-500">{ficha.liquidaciones.length}</p>
+          </div>
+          {ficha.liquidaciones.map((l) => (
+            <div
+              key={l.idLiquidacion}
+              className="px-4 py-3 border-b border-neutral-100 last:border-0 flex items-center gap-3 flex-wrap"
+            >
+              <div className="flex-1 min-w-[180px]">
+                <p className="text-sm font-semibold text-neutral-900">
+                  {fechaCorta(l.fechaDesde)} al {fechaCorta(l.fechaHasta)}
+                </p>
+                <p className="text-[11px] text-neutral-400">
+                  {l.unidades} unidades
+                  {l.unidadesMerma > 0 && ` · ${l.unidadesMerma} de merma`}
+                </p>
+              </div>
+              {/* La chapita no es decoración: sin factura del proveedor, el
+                  IVA de todo lo que se le liquidó no entra como crédito
+                  fiscal, y no había ninguna pantalla que lo dijera. */}
+              {l.facturaNumero ? (
+                <span className="text-[10px] font-bold uppercase tracking-wide bg-emerald-50 text-emerald-700 rounded-full px-2 py-0.5 whitespace-nowrap">
+                  Factura #{l.facturaNumero}
+                </span>
+              ) : (
+                <span className="text-[10px] font-bold uppercase tracking-wide bg-amber-50 text-amber-700 border border-amber-200 rounded-full px-2 py-0.5 whitespace-nowrap">
+                  Sin factura{l.diasDesde > 0 && ` · ${l.diasDesde}d`}
+                </span>
+              )}
+              <span className="text-right min-w-[92px] tabular-nums">
+                <span className="block text-sm font-bold text-neutral-900">${monto(l.montoFinal)}</span>
+                <span className="block text-[10px] text-neutral-400">con IVA</span>
+              </span>
+              <Link
+                href={`/proveedores/liquidacion/${l.idLiquidacion}/comprobante`}
+                target="_blank"
+                className="text-xs font-semibold text-accent hover:underline whitespace-nowrap"
+              >
+                Ver comprobante ↗
+              </Link>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* ---------- La cuenta ---------- */}
       <div className="border border-neutral-200 rounded-xl bg-white overflow-hidden">
         <div className="px-4 py-3 border-b border-neutral-100 flex items-baseline justify-between gap-3 flex-wrap">

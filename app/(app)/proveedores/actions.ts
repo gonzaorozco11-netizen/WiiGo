@@ -1620,6 +1620,74 @@ export async function liquidacionesSinFactura(idProveedor: string): Promise<Liqu
   }));
 }
 
+export type LiquidacionDelHistorial = {
+  idLiquidacion: string;
+  fechaDesde: string;
+  fechaHasta: string;
+  fecha: string;
+  montoFinal: number;
+  unidades: number;
+  unidadesMerma: number;
+  /** null mientras el proveedor no haya emitido su factura. */
+  facturaNumero: string | null;
+  facturaIva: number | null;
+};
+
+/**
+ * Todas las liquidaciones de un proveedor, para la ficha.
+ *
+ * `liquidacionesSinFactura` es la lista corta que alimenta el modal de cargar
+ * factura; ésta es el historial completo, incluidas las ya facturadas.
+ */
+export async function historialLiquidacionesProveedor(
+  idProveedor: string
+): Promise<LiquidacionDelHistorial[]> {
+  const supabase = getSupabaseServerClient();
+  const { data } = await supabase
+    .from("liquidaciones_proveedor")
+    .select("id_liquidacion, fecha_desde, fecha_hasta, fecha, monto_final, factura_numero, factura_iva")
+    .eq("id_proveedor", idProveedor)
+    .order("fecha_hasta", { ascending: false })
+    .limit(36);
+
+  const ids = (data ?? []).map((l) => l.id_liquidacion as string);
+  if (ids.length === 0) return [];
+
+  // Las unidades salen del detalle y de las mermas por separado: el número
+  // de la lista dice "34 unidades · 2 de merma", y esa segunda parte es la
+  // que interesa mirar mes a mes.
+  const [detalleRes, mermasRes] = await Promise.all([
+    supabase.from("detalle_liquidacion_proveedor").select("id_liquidacion, cantidad_vendida").in("id_liquidacion", ids),
+    supabase.from("mermas").select("id_liquidacion_proveedor, cantidad").in("id_liquidacion_proveedor", ids),
+  ]);
+
+  const unidadesPorLiq = new Map<string, number>();
+  for (const d of detalleRes.data ?? []) {
+    const id = d.id_liquidacion as string;
+    unidadesPorLiq.set(id, (unidadesPorLiq.get(id) ?? 0) + ((d.cantidad_vendida as number) ?? 0));
+  }
+  const mermaPorLiq = new Map<string, number>();
+  for (const m of mermasRes.data ?? []) {
+    const id = m.id_liquidacion_proveedor as string;
+    mermaPorLiq.set(id, (mermaPorLiq.get(id) ?? 0) + ((m.cantidad as number) ?? 0));
+  }
+
+  return (data ?? []).map((l) => {
+    const id = l.id_liquidacion as string;
+    return {
+      idLiquidacion: id,
+      fechaDesde: l.fecha_desde as string,
+      fechaHasta: l.fecha_hasta as string,
+      fecha: (l.fecha as string) ?? "",
+      montoFinal: (l.monto_final as number) ?? 0,
+      unidades: unidadesPorLiq.get(id) ?? 0,
+      unidadesMerma: mermaPorLiq.get(id) ?? 0,
+      facturaNumero: (l.factura_numero as string | null) ?? null,
+      facturaIva: (l.factura_iva as number | null) ?? null,
+    };
+  });
+}
+
 /**
  * La factura que emitió el proveedor por la liquidación del período.
  *

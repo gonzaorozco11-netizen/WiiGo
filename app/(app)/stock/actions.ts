@@ -164,12 +164,18 @@ export async function registrarMerma(
 
     const usuario = await usuarioActual();
 
+    // El costo se congela acá, con el mismo cálculo que vio en pantalla antes
+    // de confirmar. Si se recalculara al liquidar, el comprobante podría
+    // decir un número distinto del que se le mostró a quien la cargó.
+    const costo = await costoDeMerma(idVariante, cantidad);
+
     const { error: errorMerma } = await supabase.from("mermas").insert({
       id_variante: idVariante,
       id_local: idLocal,
       cantidad,
       motivo,
       detalle: detalle.trim() || null,
+      costo_unitario: costo ? Math.round((costo.costo / cantidad) * 100) / 100 : null,
       usuario,
     });
     if (errorMerma) return { error: friendlyDbError(errorMerma) };

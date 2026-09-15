@@ -69,6 +69,9 @@ export async function armarTablero(): Promise<Tablero | null> {
   const hoyISO = ahora.fecha;
   const ahoraISO = new Date().toISOString();
   const inicioDeHoy = `${hoyISO}T00:00:00-03:00`;
+  // Una semana: el corte a partir del cual no tener la factura del proveedor
+  // ya es un olvido y no una espera razonable.
+  const haceUnaSemana = new Date(Date.now() - 7 * 86400000).toISOString();
 
   // Todo junto: son independientes entre sí, y encadenarlas sumaría un viaje
   // a la base por cada una.
@@ -87,6 +90,7 @@ export async function armarTablero(): Promise<Tablero | null> {
     turnosAbiertos,
     sinStock,
     ventasHoy,
+    liquidacionesSinFactura,
     fichajesHoy,
   ] = await Promise.all([
     puede("aprobaciones")
@@ -148,6 +152,19 @@ export async function armarTablero(): Promise<Tablero | null> {
     puede("ventas") || puede("pos")
       ? supabase.from("ventas").select("total, medio_pago").eq("estado", "PAGADA").gte("fecha", inicioDeHoy)
       : { data: [] as { total: number | null; medio_pago: string | null }[] },
+    // Liquidaciones a proveedor que todavía no tienen su factura. Cada una es
+    // crédito fiscal parado: hasta que no se carga, ese IVA no entra en IVA a
+    // pagar. Se piden con más de una semana a propósito — el día que liquidás
+    // el proveedor todavía no te mandó nada, y una tarea ahí sería ruido.
+    puede("proveedores")
+      ? supabase
+          .from("liquidaciones_proveedor")
+          .select("id_liquidacion, id_proveedor, monto_final, fecha_hasta")
+          .is("factura_numero", null)
+          .lte("fecha", haceUnaSemana)
+          .order("fecha_hasta", { ascending: true })
+          .limit(20)
+      : { data: [] as { id_liquidacion: string; id_proveedor: string; monto_final: number | null; fecha_hasta: string }[] },
     // El fichaje se mira siempre que la persona tenga esa pantalla: es lo
     // primero que hay que hacer al llegar.
     puede("ficha-asistencia") ? fichajesDeHoy(supabase, sesion.idUsuario, hoyISO) : Promise.resolve(null),
@@ -222,6 +239,25 @@ export async function armarTablero(): Promise<Tablero | null> {
       detalle: "Se aplican solos con el local cerrado",
       valor: String(n(precioEstaNoche)),
       href: "/aprobaciones",
+    });
+  }
+
+  // ---------- Facturas de liquidación que no llegaron ----------
+  // El número que se muestra es la PLATA, no la cantidad: "falta una factura"
+  // no mueve a nadie, "$16.695 de IVA parado" sí. Es lo único que hace que
+  // alguien levante el teléfono y se lo reclame al proveedor.
+  const liqSinFactura = liquidacionesSinFactura.data ?? [];
+  if (liqSinFactura.length > 0) {
+    const total = liqSinFactura.reduce((a, l) => a + ((l.monto_final as number) ?? 0), 0);
+    // El IVA sale del total con la alícuota general: es un orden de magnitud
+    // para que se entienda qué está en juego, no el número de la declaración.
+    const ivaAproximado = Math.round(total - total / 1.21);
+    urgentes.push({
+      color: "ambar",
+      titulo: `${plural(liqSinFactura.length, "liquidación sin factura", "liquidaciones sin factura")}`,
+      detalle: `Unos $${ivaAproximado.toLocaleString("es-AR")} de IVA que todavía no podés computar`,
+      valor: String(liqSinFactura.length),
+      href: "/proveedores",
     });
   }
 

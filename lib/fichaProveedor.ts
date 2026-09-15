@@ -58,6 +58,21 @@ export type FichaProveedor = {
   totalComprado: number;
   totalUnidades: number;
   vendidoSinLiquidar: number;
+  /** Solo tiene contenido con proveedores por liquidación (caso Alifrut). */
+  liquidaciones: LiquidacionDeFicha[];
+};
+
+export type LiquidacionDeFicha = {
+  idLiquidacion: string;
+  fechaDesde: string;
+  fechaHasta: string;
+  montoFinal: number;
+  unidades: number;
+  unidadesMerma: number;
+  /** null = el proveedor todavía no emitió su factura. Es IVA parado. */
+  facturaNumero: string | null;
+  /** Cuánto lleva esperando esa factura. */
+  diasDesde: number;
 };
 
 function dias(iso: string) {
@@ -264,6 +279,53 @@ export async function fichaDeProveedor(idProveedor: string, meses = 3): Promise<
     }
   }
 
+  // ---------- Liquidaciones ----------
+  const { data: liqRes } = await supabase
+    .from("liquidaciones_proveedor")
+    .select("id_liquidacion, fecha_desde, fecha_hasta, fecha, monto_final, factura_numero")
+    .eq("id_proveedor", idProveedor)
+    .order("fecha_hasta", { ascending: false })
+    .limit(24);
+
+  const idsLiq = (liqRes ?? []).map((l) => l.id_liquidacion as string);
+  const [detLiqRes, mermasLiqRes] = idsLiq.length
+    ? await Promise.all([
+        supabase
+          .from("detalle_liquidacion_proveedor")
+          .select("id_liquidacion, cantidad_vendida")
+          .in("id_liquidacion", idsLiq),
+        supabase
+          .from("mermas")
+          .select("id_liquidacion_proveedor, cantidad")
+          .in("id_liquidacion_proveedor", idsLiq),
+      ])
+    : [{ data: [] as Record<string, unknown>[] }, { data: [] as Record<string, unknown>[] }];
+
+  const unidadesLiq = new Map<string, number>();
+  for (const d of detLiqRes.data ?? []) {
+    const id = d.id_liquidacion as string;
+    unidadesLiq.set(id, (unidadesLiq.get(id) ?? 0) + ((d.cantidad_vendida as number) ?? 0));
+  }
+  const mermaLiq = new Map<string, number>();
+  for (const m of mermasLiqRes.data ?? []) {
+    const id = m.id_liquidacion_proveedor as string;
+    mermaLiq.set(id, (mermaLiq.get(id) ?? 0) + ((m.cantidad as number) ?? 0));
+  }
+
+  const liquidaciones: LiquidacionDeFicha[] = (liqRes ?? []).map((l) => {
+    const id = l.id_liquidacion as string;
+    return {
+      idLiquidacion: id,
+      fechaDesde: l.fecha_desde as string,
+      fechaHasta: l.fecha_hasta as string,
+      montoFinal: (l.monto_final as number) ?? 0,
+      unidades: unidadesLiq.get(id) ?? 0,
+      unidadesMerma: mermaLiq.get(id) ?? 0,
+      facturaNumero: (l.factura_numero as string | null) ?? null,
+      diasDesde: dias((l.fecha as string) ?? (l.fecha_hasta as string)),
+    };
+  });
+
   return {
     idProveedor,
     nombre: proveedor.nombre as string,
@@ -286,5 +348,6 @@ export async function fichaDeProveedor(idProveedor: string, meses = 3): Promise<
     totalComprado: entregas.reduce((a, e) => a + (e.costo ?? 0), 0),
     totalUnidades: entregas.reduce((a, e) => a + e.unidades, 0),
     vendidoSinLiquidar,
+    liquidaciones,
   };
 }

@@ -20,6 +20,12 @@ create table if not exists mermas (
   -- después, por qué faltaban tres bolsas ese martes.
   detalle       text,
 
+  -- El costo del lote del que salieron, congelado al registrarla. Es el mismo
+  -- número que la pantalla mostró antes de confirmar; recalcularlo después
+  -- haría que el comprobante y lo que se dijo en el momento no coincidan.
+  -- Null cuando el producto no es de un proveedor por liquidación.
+  costo_unitario numeric(14,2),
+
   fecha         timestamptz not null default now(),
   usuario       text,
 
