@@ -240,6 +240,19 @@ export default function ComprasTrabajo({
   const detalleMarcaDe = (idOrden: string) => datos.detalleMarca.filter((d) => d.id_orden === idOrden);
   const detalleProveedorDe = (idOrden: string) => datos.detalleProveedor.filter((d) => d.id_orden === idOrden);
 
+  /**
+   * Los renglones de TODAS las entregas de un pedido, y de ninguno más.
+   *
+   * `datos.lineasEntrega` trae las de los últimos meses enteras. Pasarlas sin
+   * filtrar hace que el mismo producto comprado en otro pedido se confunda
+   * con éste — que fue exactamente el bug de "ya costeado" en un producto que
+   * no se había costeado.
+   */
+  const lineasDelPedido = (idOrden: string) => {
+    const suyas = new Set(datos.entregas.filter((e) => e.idOrden === idOrden).map((e) => e.idRecepcion));
+    return datos.lineasEntrega.filter((l) => suyas.has(l.idRecepcion));
+  };
+
   /** Qué traía un pedido, para poder abrir las filas ya cerradas. */
   function contenidoDe(f: Fila) {
     const lineas =
@@ -630,7 +643,7 @@ export default function ComprasTrabajo({
         <CostosRecepcionModal
           entrega={costear}
           lineas={datos.lineasEntrega.filter((l) => l.idRecepcion === costear.idRecepcion)}
-          todasLasLineas={datos.lineasEntrega}
+          todasLasLineas={lineasDelPedido(costear.idOrden)}
           entregasDelPedido={datos.entregas.filter((e) => e.idOrden === costear.idOrden)}
           proveedor={proveedorDeEntrega(costear)}
           nombrePorVariante={nombrePorVariante}

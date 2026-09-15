@@ -56,7 +56,13 @@ export default function CostosRecepcionModal({
   entrega: EntregaHistorial;
   /** Lo que llegó en ESTA entrega. */
   lineas: LineaEntrega[];
-  /** Las de todas las entregas del pedido, para poder sumar lo que ya se costeó. */
+  /**
+   * Los renglones de todas las entregas de ESTE pedido — y de ninguno más.
+   *
+   * Solo de este pedido, en serio: el mismo producto comprado en otra orden
+   * tiene su propio costo y su propia entrega, y mezclarlos hace que la
+   * pantalla afirme cosas falsas sobre lo que ya se costeó.
+   */
   todasLasLineas: LineaEntrega[];
   /** Todas las entregas del mismo pedido, para elegir cuáles cubre la factura. */
   entregasDelPedido: EntregaHistorial[];
