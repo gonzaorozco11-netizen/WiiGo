@@ -428,7 +428,10 @@ export default function ProveedoresApp({
           </div>
 
           <div className="bg-white border border-neutral-200 rounded-xl overflow-hidden">
-            <div className="grid grid-cols-1 md:grid-cols-[1fr_340px] min-h-[380px]">
+            {/* El panel de la derecha más ancho que la lista, no al revés: la
+                lista son nombres cortos, y el panel es donde está todo lo que
+                hay que leer. En 340px los movimientos no entraban. */}
+            <div className="grid grid-cols-1 md:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] min-h-[380px]">
               {/* Agrupados por CÓMO se le paga a cada uno, no alfabético:
                   lo que los diferencia no es el nombre, es en qué momento se
                   le debe la plata. Y el signo va al revés según el grupo —
@@ -1124,60 +1127,56 @@ function HistorialProveedor({ idProveedor, recargar }: { idProveedor: string; re
           Todavía no hay movimientos. Nacen con la primera factura o liquidación.
         </p>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs min-w-[420px]">
-            <thead>
-              <tr className="text-left text-neutral-400 border-b border-neutral-200 bg-white">
-                <th className="p-2.5 font-semibold">Movimiento</th>
-                <th className="p-2.5 text-right font-semibold">Importe</th>
-                <th className="p-2.5 text-right font-semibold">Saldo</th>
-              </tr>
-            </thead>
-            <tbody>
-              {historial.map((m) => (
-                <tr key={m.idMovimiento} className="border-b border-neutral-100 last:border-0 align-top">
-                  <td className="p-2.5">
-                    <span className="font-semibold text-neutral-900">
-                      {TIPO_MOVIMIENTO_LABEL[m.tipoMovimiento] ?? m.tipoMovimiento}
-                      {m.numeroFactura && ` ${m.tipoComprobante ?? ""} #${m.numeroFactura}`}
-                    </span>
-                    {/* El papel, o el aviso de que falta. Que se note cuál no
-                        lo tiene es el punto: así se sabe qué ir a buscar
-                        antes de que lo pida el contador. */}
-                    {m.comprobantePath ? (
-                      <button
-                        onClick={() => handleVerComprobante(m.comprobantePath!)}
-                        className="ml-1.5 text-[10.5px] font-semibold text-accent bg-accent-tint rounded-full px-2 py-0.5 whitespace-nowrap"
-                      >
-                        📎 Ver
-                      </button>
-                    ) : (
-                      <span className="ml-1.5 text-[10.5px] text-neutral-300 whitespace-nowrap">sin adjunto</span>
-                    )}
-                    <span className="block text-[11px] text-neutral-400 mt-0.5">
-                      {new Date(m.fecha).toLocaleDateString("es-AR")}
-                      {m.medioPago && ` · ${MEDIO_PAGO_LABEL[m.medioPago] ?? m.medioPago}`}
-                      {m.vencimiento && ` · vence ${new Date(`${m.vencimiento}T12:00:00`).toLocaleDateString("es-AR")}`}
-                      {m.usuario && ` · ${m.usuario}`}
-                    </span>
-                    {m.observaciones && (
-                      <span className="block text-[11px] text-neutral-400">{m.observaciones}</span>
-                    )}
-                  </td>
-                  <td
-                    className={`p-2.5 text-right tabular-nums font-semibold whitespace-nowrap ${
-                      m.importe >= 0 ? "text-red-600" : "text-emerald-600"
-                    }`}
+        /* Bloques apilados y no una tabla: tres columnas en un panel angosto
+           se cortan de costado, y lo primero que sale de pantalla es el
+           importe — que es lo único que se mira. Apilado entra a cualquier
+           ancho, en el celular también. */
+        <div>
+          {historial.map((m) => (
+            <div key={m.idMovimiento} className="px-3.5 py-2.5 border-b border-neutral-100 last:border-0">
+              <div className="flex items-baseline justify-between gap-2.5">
+                <span className="text-[13px] font-semibold text-neutral-900">
+                  {TIPO_MOVIMIENTO_LABEL[m.tipoMovimiento] ?? m.tipoMovimiento}
+                  {m.numeroFactura && ` ${m.tipoComprobante ?? ""} #${m.numeroFactura}`}
+                </span>
+                <span
+                  className={`text-[13.5px] font-bold tabular-nums whitespace-nowrap ${
+                    m.importe >= 0 ? "text-red-600" : "text-emerald-600"
+                  }`}
+                >
+                  {m.importe >= 0 ? "+" : ""}${formatearMonto(m.importe)}
+                </span>
+              </div>
+
+              <p className="text-[11px] text-neutral-400 mt-0.5">
+                {new Date(m.fecha).toLocaleDateString("es-AR")}
+                {m.medioPago && ` · ${MEDIO_PAGO_LABEL[m.medioPago] ?? m.medioPago}`}
+                {m.vencimiento && ` · vence ${new Date(`${m.vencimiento}T12:00:00`).toLocaleDateString("es-AR")}`}
+                {m.usuario && ` · ${m.usuario}`}
+              </p>
+              {m.observaciones && <p className="text-[11px] text-neutral-400">{m.observaciones}</p>}
+
+              <div className="flex items-center justify-between gap-2.5 mt-1.5">
+                {/* El papel, o el aviso de que falta. Que se note cuál no lo
+                    tiene es el punto: así se sabe qué ir a buscar antes de
+                    que lo pida el contador. */}
+                {m.comprobantePath ? (
+                  <button
+                    onClick={() => handleVerComprobante(m.comprobantePath!)}
+                    className="text-[10.5px] font-semibold text-accent bg-accent-tint rounded-full px-2 py-0.5 whitespace-nowrap"
                   >
-                    {m.importe >= 0 ? "+" : ""}${formatearMonto(m.importe)}
-                  </td>
-                  <td className="p-2.5 text-right tabular-nums font-bold text-neutral-900 whitespace-nowrap">
-                    ${formatearMonto(m.saldoNuevo)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    📎 Ver
+                  </button>
+                ) : (
+                  <span className="text-[10.5px] text-neutral-300 whitespace-nowrap">sin adjunto</span>
+                )}
+                <span className="text-[11px] text-neutral-400 whitespace-nowrap">
+                  saldo{" "}
+                  <b className="text-neutral-900 font-bold tabular-nums">${formatearMonto(m.saldoNuevo)}</b>
+                </span>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
