@@ -147,10 +147,15 @@ export default function CostosRecepcionModal({
           setTipoComprobante(f.tipoComprobante || "A");
           if (f.fechaEmision) setFechaEmision(f.fechaEmision);
           setMontoFactura(f.monto ? String(f.monto) : "");
-          if (f.impuestos) setImpuestos(String(f.impuestos));
-          if (f.retenciones) setRetenciones(String(f.retenciones));
-          if (f.descuentos) setDescuentos(String(f.descuentos));
-          if (f.iva) setIvaManual(String(f.iva));
+        }
+        // El pie solo cuando es SU factura. Si viene de una entrega hermana,
+        // esas percepciones ya se repartieron en el costo de aquella — volver
+        // a cargarlas acá las contaría dos veces y el total nunca cerraría.
+        if (g.factura) {
+          if (g.factura.impuestos) setImpuestos(String(g.factura.impuestos));
+          if (g.factura.retenciones) setRetenciones(String(g.factura.retenciones));
+          if (g.factura.descuentos) setDescuentos(String(g.factura.descuentos));
+          if (g.factura.iva) setIvaManual(String(g.factura.iva));
         }
         if (g.facturaHermana) {
           setFacturaHeredada(true);
@@ -253,8 +258,15 @@ export default function CostosRecepcionModal({
     return (
       acc +
       suyas.reduce((a, l) => {
-        const neto = (l.costoUnitario ?? 0) * l.cantidadRecibida;
-        return a + neto * (1 + (ivaActualPorVariante.get(l.idVariante) ?? 21) / 100);
+        // Los dos pedazos por separado, porque llevan IVA distinto:
+        // el neto del papel paga IVA, y la percepción que se le prorrateó
+        // encima NO. Sumando el costo real y aplicándole IVA a todo se le
+        // cobraba IVA a la percepción, y el total de la factura quedaba
+        // siempre unos pesos por encima del papel.
+        const real = (l.costoUnitario ?? 0) * l.cantidadRecibida;
+        const neto = (l.costoNetoFactura ?? l.costoUnitario ?? 0) * l.cantidadRecibida;
+        const pie = real - neto;
+        return a + neto * (1 + (ivaActualPorVariante.get(l.idVariante) ?? 21) / 100) + pie;
       }, 0)
     );
   }, 0);

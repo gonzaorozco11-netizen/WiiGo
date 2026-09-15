@@ -592,13 +592,41 @@ function CosteoEtapa({
       .finally(() => setAnulando(null));
   }
 
-  function cerrarPedido(idOrden: string) {
+  function cerrarPedido(idOrden: string, faltan: number) {
+    const motivo = window.prompt(
+      `Vas a dar por cerrado este pedido con ${faltan} unidades sin recibir.\n\n¿Por qué?`,
+      "El proveedor no envía el resto"
+    );
+    if (motivo === null) return;
+
+    // La pregunta que decide si nace un reclamo. Se pregunta y no se calcula:
+    // el sistema sabe cuántas faltaron, pero no si el proveedor las facturó
+    // ni a qué precio.
+    const netoTexto = window.prompt(
+      "¿Esa mercadería que no llegó ya estaba facturada?\n\n" +
+        "Si te la cobraron, poné el NETO que te facturaron de más (sin IVA) y queda un reclamo de nota de crédito.\n\n" +
+        "Si no estaba facturada, dejalo en 0.",
+      "0"
+    );
+    if (netoTexto === null) return;
+    const neto = Number(netoTexto) || 0;
+
+    let iva = 0;
+    if (neto > 0) {
+      const ivaTexto = window.prompt(`IVA de esos $${neto.toLocaleString("es-AR")}:`, String(Math.round(neto * 0.21)));
+      if (ivaTexto === null) return;
+      iva = Number(ivaTexto) || 0;
+    }
+
     setErrorCierre(null);
     setCerrando(idOrden);
-    cerrarOrdenIncompleta("PROVEEDOR", idOrden, "El proveedor no envía el resto")
+    cerrarOrdenIncompleta("PROVEEDOR", idOrden, motivo, neto > 0 ? { neto, iva } : null)
       .then((r) => {
         if (r.error) setErrorCierre(r.error);
-        else router.refresh();
+        else {
+          if (r.aviso) window.alert(r.aviso);
+          router.refresh();
+        }
       })
       .finally(() => setCerrando(null));
   }
@@ -723,7 +751,7 @@ function CosteoEtapa({
                     Si el proveedor manda el resto, entra como una entrega nueva.
                   </span>
                   <button
-                    onClick={() => cerrarPedido(r.id_orden)}
+                    onClick={() => cerrarPedido(r.id_orden, faltan)}
                     disabled={cerrando === r.id_orden}
                     className="text-sm font-semibold text-amber-900 bg-white border border-amber-300 rounded-lg px-3 py-1.5 hover:bg-amber-100 disabled:opacity-50"
                   >

@@ -24,6 +24,7 @@ const GROUPS: NavGroup[] = [
       { href: "/compras", label: "🛒 Órdenes de compra" },
       { href: "/compras/recepcion", label: "📥 Recepción" },
       { href: "/compras/costeo", label: "🧮 Costeo de recibidos" },
+      { href: "/compras/reclamos", label: "⚠️ Reclamos" },
     ],
   },
   {

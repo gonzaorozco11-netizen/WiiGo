@@ -40,6 +40,10 @@ const requierePantallaOrdenes = () => requierePantalla("compras");
 
 export type OrigenOrden = "MARCA" | "PROVEEDOR";
 
+function redondear2(v: number) {
+  return Math.round(v * 100) / 100;
+}
+
 function tablaDe(origen: OrigenOrden) {
   return origen === "MARCA" ? "ordenes_reposicion" : "ordenes_compra_proveedor";
 }
@@ -260,8 +264,17 @@ export async function cancelarOrden(
 export async function cerrarOrdenIncompleta(
   origen: OrigenOrden,
   idOrden: string,
-  motivo: string
-): Promise<{ error: string | null }> {
+  motivo: string,
+  /**
+   * Si esa mercadería que no llegó ya estaba facturada, cuánto te cobraron
+   * de más. Nace un reclamo de nota de crédito con ese importe.
+   *
+   * Se pregunta en vez de calcularse: el sistema sabe cuántas unidades
+   * faltaron, pero no si el proveedor las facturó ni a qué precio. Adivinarlo
+   * daría un número que nadie puede defender frente al proveedor.
+   */
+  facturado?: { neto: number; iva: number } | null
+): Promise<{ error: string | null; aviso?: string }> {
   // El botón vive en Costeo, así que alcanza con cualquiera de las dos.
   const sinPermiso = await requierePantalla("compras", "compras-costeo");
   if (sinPermiso) return { error: sinPermiso };
@@ -295,11 +308,54 @@ export async function cerrarOrdenIncompleta(
       .eq("estado", RECIBIDA_PARCIAL);
     if (error) return { error: friendlyDbError(error) };
 
+    // Si eso que no llegó ya estaba facturado, es plata que pagaste por
+    // mercadería que no tenés. Nace el reclamo para ir a buscarla.
+    let aviso: string | undefined;
+    const totalReclamo = facturado ? redondear2((facturado.neto || 0) + (facturado.iva || 0)) : 0;
+    if (origen === "PROVEEDOR" && totalReclamo > 0) {
+      const { data: ordenProv } = await supabase
+        .from("ordenes_compra_proveedor")
+        .select("id_proveedor")
+        .eq("id_orden", idOrden)
+        .maybeSingle();
+
+      if (ordenProv) {
+        // Se cuelga de la última entrega del pedido: es la que tiene la
+        // factura asociada y la que da el hilo para seguirlo después.
+        const { data: ultima } = await supabase
+          .from("recepciones_proveedor")
+          .select("id_recepcion, id_factura")
+          .eq("id_orden", idOrden)
+          .order("fecha", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        const { error: errorReclamo } = await supabase.from("reclamos_proveedor").insert({
+          id_proveedor: ordenProv.id_proveedor,
+          id_factura: (ultima?.id_factura as string | null) ?? null,
+          id_recepcion: (ultima?.id_recepcion as string | null) ?? null,
+          neto: redondear2(facturado?.neto ?? 0),
+          iva: redondear2(facturado?.iva ?? 0),
+          impuestos: 0,
+          retenciones: 0,
+          total: totalReclamo,
+          motivo: `Pedido cerrado incompleto — facturaron mercadería que no entró: ${
+            motivo.trim() || "el proveedor no envía el resto"
+          }`,
+          estado: "PENDIENTE",
+          usuario,
+        });
+        if (errorReclamo) return { error: friendlyDbError(errorReclamo) };
+        aviso = `Queda un reclamo de nota de crédito por $${totalReclamo.toLocaleString("es-AR")} en Compras → Reclamos.`;
+      }
+    }
+
     revalidatePath("/compras");
     revalidatePath("/compras/recepcion");
     revalidatePath("/compras/costeo");
+    revalidatePath("/compras/reclamos");
     revalidatePath("/");
-    return { error: null };
+    return { error: null, aviso };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo cerrar el pedido" };
   }

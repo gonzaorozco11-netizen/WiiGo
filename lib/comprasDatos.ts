@@ -101,12 +101,21 @@ export type LineaEntrega = {
   cantidadSolicitada: number;
   cantidadRecibida: number;
   /**
-   * El costo con el que se costeó esta línea, si ya se costeó.
+   * El costo real con el que se costeó esta línea, si ya se costeó: el del
+   * papel más la parte de percepciones que le tocó.
    *
    * Hace falta para el control de que la factura cuadre cuando cubre más de
    * una entrega: sin esto no se puede saber cuánta plata aportan las otras.
    */
   costoUnitario: number | null;
+  /**
+   * Lo que decía el renglón de la factura, sin las percepciones repartidas.
+   *
+   * Los dos números, y no uno, porque el IVA se calcula sobre este y las
+   * percepciones no llevan IVA. Con solo el costo real se le cobraría IVA a
+   * la percepción y el total de la factura nunca cerraría exacto.
+   */
+  costoNetoFactura: number | null;
 };
 
 /** Cuántos meses de historial se traen. Ver el comentario en `datosCompras`. */
@@ -187,7 +196,7 @@ export async function datosCompras(): Promise<DatosCompras> {
     // historial y, en Costeo, para saber qué llegó en esa entrega puntual.
     supabase
       .from("detalle_recepcion_proveedor")
-      .select("id_recepcion, id_variante, cantidad_solicitada, cantidad_recibida, costo_unitario"),
+      .select("id_recepcion, id_variante, cantidad_solicitada, cantidad_recibida, costo_unitario, costo_neto_factura"),
     supabase.from("detalle_recepciones").select("id_recepcion, id_variante, cantidad_solicitada, cantidad_recibida"),
   ]);
 
@@ -282,6 +291,7 @@ export async function datosCompras(): Promise<DatosCompras> {
         cantidadSolicitada: (l.cantidad_solicitada as number) ?? 0,
         cantidadRecibida: (l.cantidad_recibida as number) ?? 0,
         costoUnitario: (l.costo_unitario as number | null) ?? null,
+        costoNetoFactura: (l.costo_neto_factura as number | null) ?? null,
       })),
       ...(lineasEntregaMarcaRes.data ?? []).map((l) => ({
         idRecepcion: l.id_recepcion as string,
@@ -290,6 +300,7 @@ export async function datosCompras(): Promise<DatosCompras> {
         cantidadRecibida: (l.cantidad_recibida as number) ?? 0,
         // Lo de las marcas no tiene costo: no se compra.
         costoUnitario: null,
+        costoNetoFactura: null,
       })),
     ],
     idsMarcaPropia: marcas

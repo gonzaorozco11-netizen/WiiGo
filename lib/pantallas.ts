@@ -19,6 +19,9 @@ export const PANTALLAS_DISPONIBLES: PantallaDisponible[] = [
   { clave: "compras", label: "Órdenes de compra", grupo: "Compras" },
   { clave: "compras-recepcion", label: "Recepción de mercadería", grupo: "Compras" },
   { clave: "compras-costeo", label: "Costeo de recibidos", grupo: "Compras" },
+  // La cuarta etapa. Aparte del costeo porque acá se mueve plata: cargar una
+  // nota de crédito baja la cuenta corriente y el crédito fiscal.
+  { clave: "compras-reclamos", label: "Reclamos", grupo: "Compras" },
   { clave: "stock", label: "Stock", grupo: "Stock" },
   { clave: "reposicion", label: "Abastecimiento (marcas)", grupo: "Stock" },
   { clave: "pos", label: "POS", grupo: "Operaciones" },
