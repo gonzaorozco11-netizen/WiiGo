@@ -1817,15 +1817,39 @@ export async function obtenerUrlComprobanteProveedor(path: string) {
 export async function historialProveedorAction(idProveedor: string) {
   const supabase = getSupabaseServerClient();
   const movimientos = await historialCuentaProveedor(supabase, idProveedor);
-  return movimientos.map((m) => ({
-    idMovimiento: m.id_movimiento as string,
-    tipoMovimiento: m.tipo_movimiento as string,
-    importe: m.importe as number,
-    saldoNuevo: m.saldo_nuevo as number,
-    medioPago: m.medio_pago as string | null,
-    comprobantePath: m.comprobante_path as string | null,
-    usuario: m.usuario as string | null,
-    observaciones: m.observaciones as string | null,
-    fecha: m.fecha as string,
-  }));
+
+  // El adjunto de un pago vive en el movimiento; el de una factura vive en la
+  // factura. Sin este cruce, la fila de la factura queda sin papel aunque la
+  // foto esté guardada desde el costeo — que es exactamente lo que pasaba:
+  // el archivo estaba en la base y no había ninguna pantalla que lo abriera.
+  const idsFactura = [
+    ...new Set(movimientos.map((m) => m.id_factura as string | null).filter((x): x is string => Boolean(x))),
+  ];
+  const { data: facturas } = idsFactura.length
+    ? await supabase
+        .from("facturas_compra_proveedor")
+        .select("id_factura, numero_factura, tipo_comprobante, comprobante_path, fecha_vencimiento")
+        .in("id_factura", idsFactura)
+    : { data: [] as Record<string, unknown>[] };
+  const facturaPorId = new Map((facturas ?? []).map((f) => [f.id_factura as string, f]));
+
+  return movimientos.map((m) => {
+    const factura = m.id_factura ? facturaPorId.get(m.id_factura as string) : undefined;
+    return {
+      idMovimiento: m.id_movimiento as string,
+      tipoMovimiento: m.tipo_movimiento as string,
+      importe: m.importe as number,
+      saldoNuevo: m.saldo_nuevo as number,
+      medioPago: m.medio_pago as string | null,
+      // El del pago, o el de la factura si el movimiento nació de una.
+      comprobantePath:
+        (m.comprobante_path as string | null) ?? ((factura?.comprobante_path as string | null) ?? null),
+      numeroFactura: (factura?.numero_factura as string | null) ?? null,
+      tipoComprobante: (factura?.tipo_comprobante as string | null) ?? null,
+      vencimiento: (factura?.fecha_vencimiento as string | null) ?? null,
+      usuario: m.usuario as string | null,
+      observaciones: m.observaciones as string | null,
+      fecha: m.fecha as string,
+    };
+  });
 }

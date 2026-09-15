@@ -193,6 +193,9 @@ export default function ProveedoresApp({
   const [modalAbierto, setModalAbierto] = useState<"NUEVO" | "EDITAR" | null>(null);
   const [nuevaOrdenPara, setNuevaOrdenPara] = useState<string | null>(null);
   const [mostrarPagoForm, setMostrarPagoForm] = useState(false);
+  // Sube al guardar un pago: es la señal para que la lista de movimientos
+  // vuelva a pedir los datos y el pago recién hecho aparezca al toque.
+  const [versionHistorial, setVersionHistorial] = useState(0);
 
   const filtrados = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
@@ -210,6 +213,9 @@ export default function ProveedoresApp({
 
   const deudaTotal = proveedores.reduce((acc, p) => acc + Math.max(p.saldo, 0), 0);
   const conDeuda = proveedores.filter((p) => p.saldo > 0).length;
+  // En las marcas el signo va al revés: saldo positivo es plata que te deben.
+  const aFavorMarcas = marcasEnLista.reduce((acc, m) => acc + Math.max(m.saldo, 0), 0);
+  const marcasConSaldo = marcasEnLista.filter((m) => m.saldo > 0).length;
   const totalPendientesFacturar = proveedores.reduce((acc, p) => acc + p.pendientesFacturar, 0);
 
   const facturadaPorOrden = useMemo(() => {
@@ -344,16 +350,36 @@ export default function ProveedoresApp({
           </button>
         )}
       </div>
-      <div className="mb-4">
-        <p className="text-sm text-neutral-500">
-          {conDeuda} proveedor{conDeuda === 1 ? "" : "es"} con deuda · ${formatearMonto(deudaTotal)} en total
-        </p>
-        {totalPendientesFacturar > 0 && (
-          <p className="text-sm font-semibold text-amber-700">
-            ⚠ {totalPendientesFacturar} recepción{totalPendientesFacturar === 1 ? "" : "es"} sin facturar todavía
+      {/* La plata partida en dos. Antes acá iba un solo renglón con la deuda a
+          proveedores, y lo que las marcas te deben —que suele ser mucho más—
+          no aparecía en ningún total, aunque las marcas estén en esta misma
+          lista. Son dos plata que van en direcciones opuestas y no se pueden
+          sumar ni leer juntas. */}
+      <div className="grid sm:grid-cols-2 gap-2.5 mb-4">
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+          <p className="text-[10.5px] font-bold uppercase tracking-wide text-red-700">Le debés a proveedores</p>
+          <p className="text-2xl font-extrabold text-red-700 tabular-nums">${formatearMonto(deudaTotal)}</p>
+          <p className="text-xs text-red-700/70">
+            {conDeuda === 0
+              ? "Ninguno con deuda"
+              : `${conDeuda} proveedor${conDeuda === 1 ? "" : "es"}`}
           </p>
-        )}
+        </div>
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+          <p className="text-[10.5px] font-bold uppercase tracking-wide text-emerald-700">Te deben las marcas</p>
+          <p className="text-2xl font-extrabold text-emerald-700 tabular-nums">${formatearMonto(aFavorMarcas)}</p>
+          <p className="text-xs text-emerald-700/70">
+            {marcasConSaldo === 0
+              ? "Ninguna con saldo"
+              : `${marcasConSaldo} marca${marcasConSaldo === 1 ? "" : "s"} en consignación`}
+          </p>
+        </div>
       </div>
+      {totalPendientesFacturar > 0 && (
+        <p className="text-sm font-semibold text-amber-700 mb-4">
+          ⚠ {totalPendientesFacturar} recepción{totalPendientesFacturar === 1 ? "" : "es"} sin facturar todavía
+        </p>
+      )}
 
       <div className="flex gap-2 mb-4">
         <TabButton activo={tab === "CUENTAS"} onClick={() => setTab("CUENTAS")}>
@@ -554,15 +580,10 @@ export default function ProveedoresApp({
 
                     {esAdmin && (
                       <div className="flex flex-col gap-2 mb-4">
-                        <button
-                          onClick={() => {
-                            setNuevaOrdenPara(seleccionado.id_proveedor);
-                            setNuevaOrdenAbierta(true);
-                          }}
-                          className="w-full text-sm font-semibold text-accent border border-accent/30 bg-accent-tint rounded-lg py-2"
-                        >
-                          + Orden de compra
-                        </button>
+                        {/* "Orden de compra" vivía acá y se fue a Compras →
+                            Órdenes de compra, que es su lugar desde que
+                            existe ese módulo. Dos puertas para lo mismo
+                            terminan en que nadie sabe cuál es la buena. */}
                         {seleccionado.modo_facturacion === "PERIODO" && (
                           <button
                             onClick={() => setFacturaPeriodoAbierta(true)}
@@ -592,36 +613,30 @@ export default function ProveedoresApp({
                             </button>
                           </>
                         )}
+                        {/* La única acción que mueve plata va primero y sola.
+                            En modal y no acá adentro: en esta columna angosta
+                            los medios de pago quedaban apilados en radios
+                            minúsculos, con el monto peleando por lugar. */}
+                        <button
+                          onClick={() => setMostrarPagoForm(true)}
+                          className="w-full text-sm font-semibold text-white bg-accent hover:bg-accent-dark rounded-lg py-2.5"
+                        >
+                          Registrar pago
+                        </button>
                         <button
                           onClick={() => setDevolucionAbierta(true)}
-                          className="w-full text-sm font-semibold text-neutral-600 border border-neutral-300 rounded-lg py-2"
+                          className="w-full text-xs font-semibold text-neutral-500 border border-neutral-300 rounded-lg py-1.5 hover:bg-neutral-50"
                         >
-                          + Devolución
+                          Devolución
                         </button>
-
-                        <div>
-                          <button
-                            onClick={() => setMostrarPagoForm((v) => !v)}
-                            className={`w-full text-sm font-semibold text-accent bg-white border-[1.5px] border-dashed border-accent py-2 ${
-                              mostrarPagoForm ? "rounded-t-lg border-b-0" : "rounded-lg"
-                            }`}
-                          >
-                            {mostrarPagoForm ? "− Cancelar" : "+ Registrar pago"}
-                          </button>
-                          {mostrarPagoForm && (
-                            <PagoProveedorForm
-                              key={seleccionado.id_proveedor}
-                              idProveedor={seleccionado.id_proveedor}
-                              locales={locales}
-                              turnosAbiertos={turnosAbiertos}
-                              onGuardado={() => setMostrarPagoForm(false)}
-                            />
-                          )}
-                        </div>
                       </div>
                     )}
 
-                    <HistorialProveedor key={`hist-${seleccionado.id_proveedor}`} idProveedor={seleccionado.id_proveedor} />
+                    <HistorialProveedor
+                      key={`hist-${seleccionado.id_proveedor}`}
+                      idProveedor={seleccionado.id_proveedor}
+                      recargar={versionHistorial}
+                    />
 
                     {seleccionado.contacto || seleccionado.telefono || seleccionado.email ? (
                       <div className="text-xs text-neutral-500 space-y-1 mb-4">
@@ -799,6 +814,42 @@ export default function ProveedoresApp({
           onClose={() => setDevolucionAbierta(false)}
         />
       )}
+
+      {mostrarPagoForm && seleccionado && (
+        <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+          <div className="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl max-h-[92vh] overflow-y-auto">
+            <div className="px-6 pt-6 pb-4 border-b border-neutral-200 flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-neutral-900">Registrar pago</h2>
+                <p className="text-sm text-neutral-500 mt-0.5">
+                  {seleccionado.nombre}
+                  {seleccionado.saldo > 0
+                    ? ` · le debés $${formatearMonto(seleccionado.saldo)}`
+                    : " · está al día"}
+                </p>
+              </div>
+              <button
+                onClick={() => setMostrarPagoForm(false)}
+                className="text-neutral-400 hover:text-neutral-700 text-xl leading-none"
+                aria-label="Cerrar"
+              >
+                ✕
+              </button>
+            </div>
+            <PagoProveedorForm
+              key={seleccionado.id_proveedor}
+              idProveedor={seleccionado.id_proveedor}
+              saldo={seleccionado.saldo}
+              locales={locales}
+              turnosAbiertos={turnosAbiertos}
+              onGuardado={() => {
+                setMostrarPagoForm(false);
+                setVersionHistorial((v) => v + 1);
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -821,10 +872,13 @@ const OPCIONES_MEDIO_PAGO = ["EFECTIVO_TURNO", "EFECTIVO_ADMIN", "TRANSFERENCIA"
 function PagoProveedorForm({
   idProveedor,
   locales,
+  saldo,
   turnosAbiertos,
   onGuardado,
 }: {
   idProveedor: string;
+  /** Lo que se le debe hoy, para el botón "Todo" y el saldo que queda. */
+  saldo: number;
   locales: Local[];
   turnosAbiertos: { id_turno: string; id_local: string }[];
   onGuardado: () => void;
@@ -857,74 +911,160 @@ function PagoProveedorForm({
       .finally(() => setGuardando(false));
   }
 
+  const montoNum = Number(monto) || 0;
+  const quedaDespues = saldo - montoNum;
+
   return (
-    <form onSubmit={handleSubmit} className="p-3 bg-accent-tint border-[1.5px] border-accent rounded-b-lg space-y-2">
-      {error && <p className="text-xs text-red-600">{error}</p>}
-      <input
-        type="number"
-        min={0}
-        required
-        value={monto}
-        onChange={(e) => setMonto(e.target.value)}
-        placeholder="Monto"
-        className="w-full border border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs bg-white"
-      />
-      <div className="flex flex-col gap-1.5">
-        {OPCIONES_MEDIO_PAGO.map((opcion) => (
-          <label
-            key={opcion}
-            className={`flex items-center gap-2 border rounded-lg px-2.5 py-1.5 text-xs cursor-pointer bg-white ${
-              medioPago === opcion ? "border-accent" : "border-neutral-300"
-            } ${opcion === "EFECTIVO_TURNO" && !turnoAbiertoDelLocal ? "opacity-40 cursor-not-allowed" : ""}`}
-          >
-            <input
-              type="radio"
-              name="medio_pago_proveedor"
-              checked={medioPago === opcion}
-              disabled={opcion === "EFECTIVO_TURNO" && !turnoAbiertoDelLocal}
-              onChange={() => setMedioPago(opcion)}
-            />
-            {MEDIO_PAGO_LABEL[opcion]}
-            {opcion === "EFECTIVO_TURNO" && !turnoAbiertoDelLocal && " — no hay turno abierto en ese local"}
+    <form onSubmit={handleSubmit}>
+      <div className="p-6 space-y-5">
+        {error && (
+          <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>
+        )}
+
+        <div>
+          <label className="block text-[10.5px] font-bold uppercase tracking-wide text-neutral-400 mb-1.5">
+            Cuánto le pagás
           </label>
-        ))}
+          <div className="flex gap-2 items-center">
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              required
+              autoFocus
+              value={monto}
+              onChange={(e) => setMonto(e.target.value)}
+              placeholder="0,00"
+              className="flex-1 border border-neutral-300 rounded-lg px-3 py-2.5 text-lg font-bold text-right tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+            {/* Pagar todo es lo que se hace casi siempre, y obligar a copiar
+                el saldo a mano es la forma más fácil de que se pague de menos
+                por un dígito. */}
+            {saldo > 0 && (
+              <button
+                type="button"
+                onClick={() => setMonto(String(saldo))}
+                className="text-xs font-bold text-accent bg-accent-tint rounded-lg px-3 py-2.5 whitespace-nowrap"
+              >
+                Todo
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-[10.5px] font-bold uppercase tracking-wide text-neutral-400 mb-1.5">
+            De dónde sale
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            {OPCIONES_MEDIO_PAGO.map((opcion) => {
+              const bloqueada = opcion === "EFECTIVO_TURNO" && !turnoAbiertoDelLocal;
+              return (
+                <button
+                  key={opcion}
+                  type="button"
+                  disabled={bloqueada}
+                  onClick={() => setMedioPago(opcion)}
+                  className={`text-left border rounded-lg px-3 py-2.5 text-xs font-semibold ${
+                    medioPago === opcion
+                      ? "border-accent bg-accent-tint text-accent"
+                      : "border-neutral-300 text-neutral-600 hover:border-neutral-400"
+                  } ${bloqueada ? "opacity-40 cursor-not-allowed" : ""}`}
+                >
+                  {MEDIO_PAGO_LABEL[opcion]}
+                  {/* Si toca la caja o no es la diferencia real entre elegir
+                      uno u otro, y era lo único que no se decía. */}
+                  <span className="block text-[10px] font-normal opacity-70 mt-0.5">
+                    {bloqueada
+                      ? "no hay turno abierto"
+                      : opcion === "EFECTIVO_TURNO"
+                        ? "sale de la caja del local"
+                        : opcion === "EFECTIVO_ADMIN"
+                          ? "sale de la caja chica"
+                          : "no toca caja"}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {medioPago === "EFECTIVO_TURNO" && (
+          <div>
+            <label className="block text-[10.5px] font-bold uppercase tracking-wide text-neutral-400 mb-1.5">
+              De qué local
+            </label>
+            <select
+              value={idLocal}
+              onChange={(e) => setIdLocal(e.target.value)}
+              className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm bg-white"
+            >
+              {locales.map((l) => (
+                <option key={l.id_local} value={l.id_local}>
+                  {l.nombre}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        <div>
+          <label className="block text-[10.5px] font-bold uppercase tracking-wide text-neutral-400 mb-1.5">
+            Descripción <span className="font-normal normal-case tracking-normal">(opcional)</span>
+          </label>
+          <input
+            value={descripcion}
+            onChange={(e) => setDescripcion(e.target.value)}
+            placeholder="Pago factura A1"
+            className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+          />
+        </div>
+
+        <label className="flex items-center gap-2 border border-dashed border-neutral-300 rounded-lg px-3 py-2.5 text-sm bg-white cursor-pointer hover:border-neutral-400">
+          📎
+          <span className="truncate text-neutral-500">
+            {comprobante ? comprobante.name : "Adjuntar comprobante (opcional)"}
+          </span>
+          <input
+            type="file"
+            accept="image/*,.pdf"
+            className="hidden"
+            onChange={(e) => setComprobante(e.target.files?.[0] ?? null)}
+          />
+        </label>
+
+        {montoNum > 0 && saldo > 0 && (
+          <p
+            className={`rounded-lg px-3.5 py-2.5 text-sm font-semibold ${
+              quedaDespues <= 0 ? "bg-emerald-50 text-emerald-800" : "bg-neutral-100 text-neutral-700"
+            }`}
+          >
+            {quedaDespues <= 0
+              ? quedaDespues < 0
+                ? `Le pagás $${formatearMonto(-quedaDespues)} de más: le va a quedar saldo a favor.`
+                : "Después de este pago el saldo queda en $0."
+              : `Después de este pago le vas a seguir debiendo $${formatearMonto(quedaDespues)}.`}
+          </p>
+        )}
       </div>
-      {medioPago === "EFECTIVO_TURNO" && (
-        <select
-          value={idLocal}
-          onChange={(e) => setIdLocal(e.target.value)}
-          className="w-full border border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs bg-white"
+
+      <div className="px-6 pb-6 flex gap-2.5">
+        <button
+          type="button"
+          onClick={onGuardado}
+          disabled={guardando}
+          className="flex-1 rounded-lg border border-neutral-300 px-4 py-2.5 text-sm font-semibold text-neutral-600 hover:bg-neutral-50 disabled:opacity-50"
         >
-          {locales.map((l) => (
-            <option key={l.id_local} value={l.id_local}>
-              {l.nombre}
-            </option>
-          ))}
-        </select>
-      )}
-      <input
-        value={descripcion}
-        onChange={(e) => setDescripcion(e.target.value)}
-        placeholder="Descripción (opcional)"
-        className="w-full border border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs bg-white"
-      />
-      <label className="flex items-center gap-2 border border-dashed border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs bg-white cursor-pointer">
-        📎
-        <span className="truncate">{comprobante ? comprobante.name : "Adjuntar comprobante (opcional)"}</span>
-        <input
-          type="file"
-          accept="image/*,.pdf"
-          className="hidden"
-          onChange={(e) => setComprobante(e.target.files?.[0] ?? null)}
-        />
-      </label>
-      <button
-        type="submit"
-        disabled={guardando}
-        className="text-xs font-bold text-white bg-accent hover:bg-accent-dark disabled:opacity-40 px-3 py-1.5 rounded-lg"
-      >
-        {guardando ? "Guardando..." : "Registrar pago"}
-      </button>
+          Cancelar
+        </button>
+        <button
+          type="submit"
+          disabled={guardando}
+          className="flex-1 rounded-lg bg-accent hover:bg-accent-dark px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+        >
+          {guardando ? "Guardando..." : "Registrar pago"}
+        </button>
+      </div>
     </form>
   );
 }
@@ -935,76 +1075,109 @@ type MovimientoHistorial = {
   importe: number;
   saldoNuevo: number;
   medioPago: string | null;
+  /** El del pago, o el de la factura si el movimiento nació de una. */
   comprobantePath: string | null;
+  numeroFactura: string | null;
+  tipoComprobante: string | null;
+  vencimiento: string | null;
   usuario: string | null;
   observaciones: string | null;
   fecha: string;
 };
 
-function HistorialProveedor({ idProveedor }: { idProveedor: string }) {
-  const [mostrar, setMostrar] = useState(false);
-  const [cargando, setCargando] = useState(false);
+/**
+ * La cuenta corriente propiamente dicha.
+ *
+ * Abierta por defecto, y no detrás de un "▸ Historial": una cuenta corriente
+ * sin los movimientos no es una cuenta corriente. El saldo solo dice cuánto;
+ * estos renglones dicen por qué, que es lo que hace falta cuando el proveedor
+ * discute un número.
+ */
+function HistorialProveedor({ idProveedor, recargar }: { idProveedor: string; recargar: number }) {
+  const [cargando, setCargando] = useState(true);
   const [historial, setHistorial] = useState<MovimientoHistorial[]>([]);
 
   useEffect(() => {
-    if (!mostrar) return;
     setCargando(true);
     historialProveedorAction(idProveedor)
       .then(setHistorial)
       .finally(() => setCargando(false));
-  }, [mostrar, idProveedor]);
+  }, [idProveedor, recargar]);
 
   function handleVerComprobante(path: string) {
     obtenerUrlComprobanteProveedor(path).then((url) => window.open(url, "_blank"));
   }
 
   return (
-    <div className="mb-4">
-      <button onClick={() => setMostrar((v) => !v)} className="text-xs font-semibold text-accent">
-        {mostrar ? "▾" : "▸"} Historial de movimientos
-      </button>
-      {mostrar && (
-        <div className="overflow-x-auto mt-2">
-          {cargando ? (
-            <p className="text-xs text-neutral-400 text-center py-4">Cargando...</p>
-          ) : historial.length === 0 ? (
-            <p className="text-xs text-neutral-400 text-center py-4">Todavía no hay movimientos.</p>
-          ) : (
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-left text-neutral-400 border-b border-neutral-200">
-                  <th className="p-2">Fecha</th>
-                  <th className="p-2">Tipo</th>
-                  <th className="p-2 text-right">Importe</th>
-                  <th className="p-2 text-right">Saldo</th>
-                  <th className="p-2">Observaciones</th>
+    <div className="border border-neutral-200 rounded-xl overflow-hidden">
+      <div className="px-3.5 py-2.5 bg-neutral-50 border-b border-neutral-200 flex items-center justify-between gap-3">
+        <p className="text-[11px] font-bold uppercase tracking-wide text-neutral-500">Movimientos</p>
+        {historial.length > 0 && (
+          <span className="text-[11px] text-neutral-400">{historial.length}</span>
+        )}
+      </div>
+
+      {cargando ? (
+        <p className="text-xs text-neutral-400 text-center py-6">Cargando...</p>
+      ) : historial.length === 0 ? (
+        <p className="text-xs text-neutral-400 text-center py-6">
+          Todavía no hay movimientos. Nacen con la primera factura o liquidación.
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs min-w-[420px]">
+            <thead>
+              <tr className="text-left text-neutral-400 border-b border-neutral-200 bg-white">
+                <th className="p-2.5 font-semibold">Movimiento</th>
+                <th className="p-2.5 text-right font-semibold">Importe</th>
+                <th className="p-2.5 text-right font-semibold">Saldo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {historial.map((m) => (
+                <tr key={m.idMovimiento} className="border-b border-neutral-100 last:border-0 align-top">
+                  <td className="p-2.5">
+                    <span className="font-semibold text-neutral-900">
+                      {TIPO_MOVIMIENTO_LABEL[m.tipoMovimiento] ?? m.tipoMovimiento}
+                      {m.numeroFactura && ` ${m.tipoComprobante ?? ""} #${m.numeroFactura}`}
+                    </span>
+                    {/* El papel, o el aviso de que falta. Que se note cuál no
+                        lo tiene es el punto: así se sabe qué ir a buscar
+                        antes de que lo pida el contador. */}
+                    {m.comprobantePath ? (
+                      <button
+                        onClick={() => handleVerComprobante(m.comprobantePath!)}
+                        className="ml-1.5 text-[10.5px] font-semibold text-accent bg-accent-tint rounded-full px-2 py-0.5 whitespace-nowrap"
+                      >
+                        📎 Ver
+                      </button>
+                    ) : (
+                      <span className="ml-1.5 text-[10.5px] text-neutral-300 whitespace-nowrap">sin adjunto</span>
+                    )}
+                    <span className="block text-[11px] text-neutral-400 mt-0.5">
+                      {new Date(m.fecha).toLocaleDateString("es-AR")}
+                      {m.medioPago && ` · ${MEDIO_PAGO_LABEL[m.medioPago] ?? m.medioPago}`}
+                      {m.vencimiento && ` · vence ${new Date(`${m.vencimiento}T12:00:00`).toLocaleDateString("es-AR")}`}
+                      {m.usuario && ` · ${m.usuario}`}
+                    </span>
+                    {m.observaciones && (
+                      <span className="block text-[11px] text-neutral-400">{m.observaciones}</span>
+                    )}
+                  </td>
+                  <td
+                    className={`p-2.5 text-right tabular-nums font-semibold whitespace-nowrap ${
+                      m.importe >= 0 ? "text-red-600" : "text-emerald-600"
+                    }`}
+                  >
+                    {m.importe >= 0 ? "+" : ""}${formatearMonto(m.importe)}
+                  </td>
+                  <td className="p-2.5 text-right tabular-nums font-bold text-neutral-900 whitespace-nowrap">
+                    ${formatearMonto(m.saldoNuevo)}
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {historial.map((m) => (
-                  <tr key={m.idMovimiento} className="border-b border-neutral-100 last:border-0">
-                    <td className="p-2 whitespace-nowrap text-neutral-500">{new Date(m.fecha).toLocaleDateString("es-AR")}</td>
-                    <td className="p-2 whitespace-nowrap">{TIPO_MOVIMIENTO_LABEL[m.tipoMovimiento] ?? m.tipoMovimiento}</td>
-                    <td className={`p-2 text-right tabular-nums font-semibold ${m.importe >= 0 ? "text-amber-700" : "text-emerald-600"}`}>
-                      {m.importe >= 0 ? "+" : ""}${formatearMonto(m.importe)}
-                    </td>
-                    <td className="p-2 text-right tabular-nums">${formatearMonto(m.saldoNuevo)}</td>
-                    <td className="p-2 text-neutral-400">
-                      {m.observaciones ?? "—"}
-                      {m.comprobantePath && (
-                        <>
-                          {" · "}
-                          <button onClick={() => handleVerComprobante(m.comprobantePath!)} className="text-accent font-semibold">
-                            📎 Ver comprobante
-                          </button>
-                        </>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
