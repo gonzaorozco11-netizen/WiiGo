@@ -188,6 +188,13 @@ export default function ResultadoMesApp() {
 
         <FilaSimple nombre="Costo de Mercadería Vendida" monto={-datos.cmv} pctSub={pct(-datos.cmv, datos.ventasNetas)} />
 
+        {/* Aparece solo si hubo. Un renglón en $0 todos los meses se deja de
+            leer, y el mes que haya merma de verdad pasaría inadvertido entre
+            los que estaban en cero. */}
+        {datos.merma > 0 && (
+          <FilaSimple nombre="Merma" monto={-datos.merma} pctSub={pct(-datos.merma, datos.ventasNetas)} />
+        )}
+
         <FilaHito color="purple" nombre="= Contribución Marginal" monto={datos.contribucionMarginal} pctSub={pct(datos.contribucionMarginal, datos.ventasNetas)} />
 
         <BloqueGastosCategoria titulo="Gastos fijos operativos" total={-datos.totalGastosFijos} items={datos.gastosFijos} pctVentas={pct(-datos.totalGastosFijos, datos.ventasNetas)} />

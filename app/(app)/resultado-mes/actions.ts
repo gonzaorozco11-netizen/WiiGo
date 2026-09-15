@@ -36,6 +36,14 @@ type TableroSupuesto = {
   ivaDebitoFiscal: number;
   ventasNetas: number;
   cmv: number;
+  /**
+   * Mercadería propia que se rompió, venció o se perdió.
+   *
+   * Va aparte del CMV y no adentro: el CMV es lo que costó lo que SÍ se
+   * vendió, y mezclarlos haría que el margen de las ventas se vea peor de lo
+   * que es. Son dos problemas distintos y se arreglan distinto.
+   */
+  merma: number;
   contribucionMarginal: number;
   gastosFijos: ItemCategoriaGasto[];
   totalGastosFijos: number;
@@ -108,18 +116,21 @@ async function calcularTableroEnVivo(periodo: string): Promise<TableroSupuesto> 
 
   let ventaBrutaPropia = 0;
   let cmv = 0;
+  let merma = 0;
   let impuestoCreditosPropia = 0;
   let comisionMpPropia = 0;
   let ivaVentaPropia = 0;
   for (const { lineas, resumen } of resultadosPropia) {
     ventaBrutaPropia += lineas.reduce((acc, l) => acc + l.ventaBruta, 0);
     cmv += resumen.cmv;
+    merma += resumen.merma;
     impuestoCreditosPropia += resumen.impuestoCreditos;
     comisionMpPropia += resumen.comisionMp;
     ivaVentaPropia += resumen.iva;
   }
   ventaBrutaPropia = redondear2(ventaBrutaPropia);
   cmv = redondear2(cmv);
+  merma = redondear2(merma);
 
   let royaltyNeto = 0;
   let ivaRoyalty = 0;
@@ -190,7 +201,10 @@ async function calcularTableroEnVivo(periodo: string): Promise<TableroSupuesto> 
   // duplicaba el tiempo de espera de toda la pantalla =====
   const ivaDebitoFiscal = redondear2(ivaVentaPropia + ivaRoyalty + ivaCargosMarca + ivaOtrosIngresos);
   const ventasNetas = redondear2(totalVentasBrutas - ivaDebitoFiscal);
-  const contribucionMarginal = redondear2(ventasNetas - cmv);
+  // La merma resta acá, junto al CMV: es mercadería que entró al negocio y se
+  // perdió antes de facturarse. Dejarla más abajo, entre los gastos, la haría
+  // parecer un costo de estructura, y no lo es.
+  const contribucionMarginal = redondear2(ventasNetas - cmv - merma);
 
   // ===== Gastos fijos / variables por subcategoría (la categoría marcada
   // como "es_impuestos" no entra acá — esos impuestos se calculan aparte,
@@ -321,6 +335,7 @@ async function calcularTableroEnVivo(periodo: string): Promise<TableroSupuesto> 
     ivaDebitoFiscal: redondear2(ivaDebitoFiscal),
     ventasNetas,
     cmv,
+    merma,
     contribucionMarginal,
     gastosFijos,
     totalGastosFijos,
