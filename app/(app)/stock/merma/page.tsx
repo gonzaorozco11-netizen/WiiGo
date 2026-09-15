@@ -26,8 +26,13 @@ export default async function MermaPage({
 }: {
   searchParams: Promise<{ desde?: string; hasta?: string; local?: string }>;
 }) {
+  // Pide el permiso de costos y no el de Stock: los tres números de arriba son
+  // plata, y el detalle dice cuánto vale cada cosa que se rompió. Quien carga
+  // la merma en el local no necesita ese dato para cargarla.
   const sesion = await obtenerSesionConPantallas();
-  if (!puedeVerPantalla(sesion, "stock")) return <PantallaBloqueada />;
+  const puedeVerCostos =
+    puedeVerPantalla(sesion, "compras-costeo") || puedeVerPantalla(sesion, "proveedores");
+  if (!puedeVerCostos) return <PantallaBloqueada />;
 
   const sp = await searchParams;
   const desde = sp.desde || primerDiaDelMes();

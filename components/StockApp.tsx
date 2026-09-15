@@ -65,6 +65,7 @@ export default function StockApp({
   diasDeHistorial,
   coberturaSinDatos,
   diasMinimos,
+  puedeVerCostos,
 }: {
   locales: Local[];
   variantes: VarianteProducto[];
@@ -77,6 +78,8 @@ export default function StockApp({
   diasDeHistorial: number;
   coberturaSinDatos: boolean;
   diasMinimos: number;
+  /** El costo de la mercadería es cosa de administración, no del local. */
+  puedeVerCostos: boolean;
 }) {
   const [idLocal, setIdLocal] = useState(locales[0]?.id_local ?? "");
   const [search, setSearch] = useState("");
@@ -154,13 +157,16 @@ export default function StockApp({
         <div className="flex items-center gap-2 flex-wrap">
           {/* La merma se carga producto por producto, pero se mira junta: es
               la otra cara de esta pantalla — cuánta mercadería dejó de haber
-              sin pasar por la caja. */}
-          <Link
-            href="/stock/merma"
-            className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
-          >
-            Ver merma
-          </Link>
+              sin pasar por la caja. Solo para quien ve costos: ese reporte
+              son tres números de plata. */}
+          {puedeVerCostos && (
+            <Link
+              href="/stock/merma"
+              className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+            >
+              Ver merma
+            </Link>
+          )}
           <button
             onClick={() => setTransferenciaOpen(true)}
             className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700"
@@ -408,6 +414,7 @@ export default function StockApp({
           idVariante={merma.variante.id_variante}
           idLocal={idLocal}
           cantidadActual={cantidadPorClave.get(`${merma.variante.id_variante}_${idLocal}`) ?? 0}
+          puedeVerCostos={puedeVerCostos}
           onClose={() => setMerma(null)}
         />
       )}

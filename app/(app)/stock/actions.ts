@@ -6,6 +6,7 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { simularConsumoFifo } from "@/lib/fifoProveedor";
 import { MOTIVOS_MERMA, type DuenioMerma, type MotivoMerma } from "@/lib/mermas";
+import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 
 async function usuarioActual() {
@@ -87,16 +88,22 @@ export async function ajustarStock(
  * estimación parecida. Devuelve null si el producto no es de un proveedor
  * por liquidación: ahí la merma no le cuesta nada a nadie.
  */
-export async function costoDeMerma(
-  idVariante: string,
-  cantidad: number
-): Promise<{
+type CostoMerma = {
   costo: number;
   /** De quién era la mercadería: decide quién absorbe la pérdida. */
   duenio: DuenioMerma;
   deQuien: string;
   estimado: boolean;
-} | null> {
+};
+
+/**
+ * Cuánto cuesta una merma. **Sin control de permisos a propósito.**
+ *
+ * La usa `registrarMerma` para congelar el costo, que tiene que guardarse
+ * siempre —lo cargue quien lo cargue—. El control vive en `costoDeMerma`, que
+ * es la que se expone al navegador.
+ */
+async function calcularCostoMerma(idVariante: string, cantidad: number): Promise<CostoMerma | null> {
   if (cantidad <= 0) return null;
   const supabase = getSupabaseServerClient();
 
@@ -156,6 +163,21 @@ export async function costoDeMerma(
   };
 }
 
+/**
+ * Lo que el navegador puede preguntar.
+ *
+ * Cuánto le pagás a un proveedor es información de administración: quien
+ * carga la merma en el local no tiene por qué saber cuánto vale la bolsa que
+ * se le cayó. Devuelve null sin permiso — esconder el cartel en la pantalla
+ * no alcanza, porque esta función es un endpoint público como cualquier otra
+ * server action.
+ */
+export async function costoDeMerma(idVariante: string, cantidad: number): Promise<CostoMerma | null> {
+  const sesion = await obtenerSesionConPantallas();
+  if (!puedeVerPantalla(sesion, "compras-costeo") && !puedeVerPantalla(sesion, "proveedores")) return null;
+  return calcularCostoMerma(idVariante, cantidad);
+}
+
 export async function registrarMerma(
   idVariante: string,
   idLocal: string,
@@ -191,7 +213,7 @@ export async function registrarMerma(
     // El costo se congela acá, con el mismo cálculo que vio en pantalla antes
     // de confirmar. Si se recalculara al liquidar, el comprobante podría
     // decir un número distinto del que se le mostró a quien la cargó.
-    const costo = await costoDeMerma(idVariante, cantidad);
+    const costo = await calcularCostoMerma(idVariante, cantidad);
 
     const { error: errorMerma } = await supabase.from("mermas").insert({
       id_variante: idVariante,

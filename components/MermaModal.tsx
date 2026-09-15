@@ -26,12 +26,15 @@ export default function MermaModal({
   idVariante,
   idLocal,
   cantidadActual,
+  puedeVerCostos,
   onClose,
 }: {
   nombre: string;
   idVariante: string;
   idLocal: string;
   cantidadActual: number;
+  /** Cuánto le pagás a un proveedor es cosa de administración, no del local. */
+  puedeVerCostos: boolean;
   onClose: () => void;
 }) {
   const [isPending, startTransition] = useTransition();
@@ -55,7 +58,8 @@ export default function MermaModal({
   // reales. Es el mismo cálculo que hace la liquidación, así que el número
   // que se ve acá es el que se va a pagar — no una aproximación.
   useEffect(() => {
-    if (!valida) {
+    // Sin permiso ni se pregunta: además de no mostrarlo, el dato no viaja.
+    if (!valida || !puedeVerCostos) {
       setCosto(null);
       return;
     }
@@ -71,7 +75,7 @@ export default function MermaModal({
     return () => {
       vigente = false;
     };
-  }, [idVariante, n, valida]);
+  }, [idVariante, n, valida, puedeVerCostos]);
 
   function handleSubmit() {
     setError(null);
@@ -156,7 +160,17 @@ export default function MermaModal({
           {/* El mismo hecho cuesta cosas distintas según de quién era la
               mercadería. Decirlo acá, antes de confirmar, es lo que evita que
               alguien cargue una merma de Alifrut pensando que es gratis. */}
-          {valida && (
+          {/* Sin permiso para ver costos, la confirmación igual tiene que
+              existir: lo que cambia es que habla de unidades y no de plata.
+              Un modal que no confirma nada se aprieta sin leer. */}
+          {valida && !puedeVerCostos && (
+            <div className="rounded-xl px-4 py-3 text-sm border bg-neutral-50 border-neutral-200 text-neutral-600">
+              Se descuentan <b>{n}</b> {n === 1 ? "unidad" : "unidades"} del stock de este local. Queda registrado
+              con tu nombre, la fecha y el motivo.
+            </div>
+          )}
+
+          {valida && puedeVerCostos && (
             <div
               className={`rounded-xl px-4 py-3 text-sm border ${
                 costo?.duenio === "CONSIGNACION"

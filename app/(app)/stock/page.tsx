@@ -79,6 +79,12 @@ export default async function StockPage() {
       subcategorias={(subcategoriasRes.data ?? []) as Subcategoria[]}
       stock={(stockRes.data ?? []) as Stock[]}
       movimientos={(movimientosRes.data ?? []) as MovimientoStock[]}
+      // Cuánto cuesta la mercadería es información de administración: el
+      // local carga la merma, pero no tiene por qué saber cuánto le pagás al
+      // proveedor por lo que se rompió.
+      puedeVerCostos={
+        puedeVerPantalla(sesion, "compras-costeo") || puedeVerPantalla(sesion, "proveedores")
+      }
     />
   );
 }
