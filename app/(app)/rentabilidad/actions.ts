@@ -4,6 +4,7 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { calcularRendicion } from "@/app/(app)/liquidaciones/actions";
 import { exigirGestionInterna } from "@/lib/marcaSesion";
+import { listarMermas } from "@/lib/mermas";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 // Coincide con `pagos.forma_pago_cliente` (ver cobros-efectivo/actions.ts)
@@ -101,6 +102,10 @@ function vacioResumenRent() {
     gastosFinancieros: 0,
     costoImpositivo: 0,
     contribucionNeta: 0,
+    // La mercadería que se perdió antes de venderse. No sale de ninguna línea
+    // —no hubo venta— pero se comió margen igual, y sin esto la contribución
+    // del mes se lee mejor de lo que fue.
+    merma: 0,
   };
 }
 
@@ -132,7 +137,8 @@ export async function calcularRentabilidad(idMarca: string, desde: string, hasta
     .eq("id_marca", idMarca);
   const productoPorId = new Map((productos ?? []).map((p) => [p.id_producto, p]));
   const idsProducto = (productos ?? []).map((p) => p.id_producto);
-  if (idsProducto.length === 0) return { marca: marca.nombre, lineas: [] as LineaRentabilidad[], resumen: vacioResumenRent() };
+  if (idsProducto.length === 0)
+    return { marca: marca.nombre, lineas: [] as LineaRentabilidad[], resumen: vacioResumenRent() };
 
   const { data: variantes } = await supabase
     .from("variantes_producto")
@@ -232,9 +238,17 @@ export async function calcularRentabilidad(idMarca: string, desde: string, hasta
       gastosFinancieros: redondear2(acc.gastosFinancieros + l.gastosFinancieros),
       costoImpositivo: redondear2(acc.costoImpositivo + l.costoImpositivo),
       contribucionNeta: redondear2(acc.contribucionNeta + l.contribucionNeta),
+      merma: 0,
     }),
     vacioResumenRent()
   );
+
+  // La merma del período de esta marca. Se resta al final y no línea por
+  // línea porque no pertenece a ninguna venta: es mercadería que nunca llegó
+  // a venderse.
+  const { resumen: mermaResumen } = await listarMermas({ desde, hasta, idMarca });
+  resumen.merma = mermaResumen.perdidaPropia;
+  resumen.contribucionNeta = redondear2(resumen.contribucionNeta - resumen.merma);
 
   return { marca: marca.nombre, lineas, resumen };
 }

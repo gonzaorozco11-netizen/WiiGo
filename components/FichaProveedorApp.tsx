@@ -92,7 +92,7 @@ export default function FichaProveedorApp({ ficha }: { ficha: FichaProveedor }) 
       </div>
 
       {/* ---------- Los números ---------- */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-px bg-neutral-200 border border-neutral-200 rounded-xl overflow-hidden mb-5">
+      <div className="grid grid-cols-2 sm:grid-cols-6 gap-px bg-neutral-200 border border-neutral-200 rounded-xl overflow-hidden mb-5">
         <Cifra titulo="Entregas" valor={`${ficha.entregas.length}`} pie="en el período" />
         <Cifra titulo="Unidades" valor={`${ficha.totalUnidades}`} pie="recibidas" />
         <Cifra titulo="Le compraste" valor={`$${monto(ficha.totalComprado)}`} pie="costo neto" />
@@ -101,6 +101,22 @@ export default function FichaProveedorApp({ ficha }: { ficha: FichaProveedor }) 
           valor={`$${monto(ficha.vendidoSinLiquidar)}`}
           pie="ya vendido"
           tono={ficha.vendidoSinLiquidar > 0 ? "ambar" : undefined}
+        />
+        {/* La merma va al lado de lo comprado a propósito: es mercadería suya
+            que entró y nunca llegó a venderse. Leerla acá, contra las
+            unidades recibidas, es lo que muestra si el problema es de este
+            proveedor puntual. */}
+        <Cifra
+          titulo="Merma"
+          valor={`$${monto(ficha.merma.costo)}`}
+          pie={
+            ficha.merma.unidades === 0
+              ? "sin pérdidas"
+              : ficha.merma.pendiente > 0
+                ? `${ficha.merma.unidades} un. · $${monto(ficha.merma.pendiente)} sin liquidar`
+                : `${ficha.merma.unidades} unidades`
+          }
+          tono={ficha.merma.costo > 0 ? "ambar" : undefined}
         />
         <Cifra
           titulo="Saldo"

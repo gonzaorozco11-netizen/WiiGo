@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { simularConsumoFifo } from "@/lib/fifoProveedor";
+import type { DuenioMerma } from "@/lib/mermas";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 
 async function usuarioActual() {
@@ -92,7 +93,13 @@ export type MotivoMerma = (typeof MOTIVOS_MERMA)[number];
 export async function costoDeMerma(
   idVariante: string,
   cantidad: number
-): Promise<{ costo: number; proveedor: string | null; estimado: boolean } | null> {
+): Promise<{
+  costo: number;
+  /** De quién era la mercadería: decide quién absorbe la pérdida. */
+  duenio: DuenioMerma;
+  deQuien: string;
+  estimado: boolean;
+} | null> {
   if (cantidad <= 0) return null;
   const supabase = getSupabaseServerClient();
 
@@ -105,30 +112,50 @@ export async function costoDeMerma(
 
   const { data: producto } = await supabase
     .from("productos")
-    .select("id_proveedor_liquidacion, costo_informado")
+    .select("id_marca, id_proveedor_liquidacion, costo_informado")
     .eq("id_producto", variante.id_producto)
     .maybeSingle();
-  const idProveedor = producto?.id_proveedor_liquidacion as string | null;
-  if (!idProveedor) return null;
+  if (!producto) return null;
 
-  const { data: proveedor } = await supabase
-    .from("proveedores")
-    .select("nombre")
-    .eq("id_proveedor", idProveedor)
-    .maybeSingle();
+  const idProveedor = producto.id_proveedor_liquidacion as string | null;
+  const costoInformado = (producto.costo_informado as number | null) ?? 0;
 
-  const r = await simularConsumoFifo(
-    supabase,
-    idProveedor,
-    idVariante,
-    cantidad,
-    (producto?.costo_informado as number | null) ?? null
-  );
+  // ---------- Alifrut: se le paga por FIFO ----------
+  if (idProveedor) {
+    const { data: proveedor } = await supabase
+      .from("proveedores")
+      .select("nombre")
+      .eq("id_proveedor", idProveedor)
+      .maybeSingle();
 
+    const r = await simularConsumoFifo(supabase, idProveedor, idVariante, cantidad, costoInformado || null);
+    return {
+      costo: Math.round(r.costoTotal),
+      duenio: "LIQUIDACION",
+      deQuien: (proveedor?.nombre as string | null) ?? "el proveedor",
+      estimado: r.estimado,
+    };
+  }
+
+  const { data: marca } = producto.id_marca
+    ? await supabase
+        .from("marcas")
+        .select("nombre, tipo_comercializacion")
+        .eq("id_marca", producto.id_marca as string)
+        .maybeSingle()
+    : { data: null };
+
+  const esPropia = (marca?.tipo_comercializacion as string | undefined) === "PROPIA";
+
+  // ---------- Coca Cola y marcas de consignación ----------
+  // No hay FIFO que consumir: el costo que se muestra —y se guarda— es el
+  // informado del producto. En marca propia sirve para saber cuánto perdiste;
+  // en consignación es apenas de referencia, porque no lo pagás vos.
   return {
-    costo: Math.round(r.costoTotal),
-    proveedor: (proveedor?.nombre as string | null) ?? null,
-    estimado: r.estimado,
+    costo: Math.round(costoInformado * cantidad),
+    duenio: esPropia ? "PROPIA" : "CONSIGNACION",
+    deQuien: (marca?.nombre as string | null) ?? "—",
+    estimado: costoInformado <= 0,
   };
 }
 

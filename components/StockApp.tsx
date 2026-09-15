@@ -149,14 +149,25 @@ export default function StockApp({
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
         <h1 className="text-lg font-semibold text-neutral-900">Stock</h1>
-        <button
-          onClick={() => setTransferenciaOpen(true)}
-          className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700"
-        >
-          Transferir entre locales
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* La merma se carga producto por producto, pero se mira junta: es
+              la otra cara de esta pantalla — cuánta mercadería dejó de haber
+              sin pasar por la caja. */}
+          <Link
+            href="/stock/merma"
+            className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+          >
+            Ver merma
+          </Link>
+          <button
+            onClick={() => setTransferenciaOpen(true)}
+            className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700"
+          >
+            Transferir entre locales
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3 mb-3">

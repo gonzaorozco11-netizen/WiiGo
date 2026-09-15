@@ -13,6 +13,8 @@ type Resumen = {
   gastosFinancieros: number;
   costoImpositivo: number;
   contribucionNeta: number;
+  /** Mercadería propia perdida en el período. Ya viene restada de la contribución. */
+  merma: number;
 };
 
 type Auditoria = {
@@ -232,6 +234,10 @@ export default function RentabilidadApp({ marcas }: { marcas: Marca[] }) {
                       <ResumenCampo etiqueta="Imp. Créditos" valor={-resultado.resumen.impuestoCreditos} />
                       <ResumenCampo etiqueta="Comisión MP" valor={-resultado.resumen.comisionMp} />
                       <ResumenCampo etiqueta="IIBB" valor={-resultado.resumen.costoImpositivo} />
+                      {/* La merma no sale de ninguna línea —no hubo venta—
+                          pero se comió margen igual. Sin este renglón la
+                          contribución se lee mejor de lo que fue. */}
+                      <ResumenCampo etiqueta="Merma" valor={-resultado.resumen.merma} />
                       <ResumenCampo etiqueta="Contribución marginal" valor={resultado.resumen.contribucionNeta} destacado />
                     </div>
                     <div className="bg-white border-2 rounded-xl p-4" style={{ borderColor: "var(--color-accent)" }}>

@@ -1,5 +1,6 @@
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { saldoCuentaProveedor, historialCuentaProveedor } from "@/lib/cuentaProveedor";
+import { listarMermas } from "@/lib/mermas";
 
 // La ficha de un proveedor: todo lo suyo en una pantalla.
 //
@@ -60,6 +61,8 @@ export type FichaProveedor = {
   vendidoSinLiquidar: number;
   /** Solo tiene contenido con proveedores por liquidación (caso Alifrut). */
   liquidaciones: LiquidacionDeFicha[];
+  /** Mercadería suya que se perdió en el período de la ficha. */
+  merma: { unidades: number; costo: number; pendiente: number };
 };
 
 export type LiquidacionDeFicha = {
@@ -326,6 +329,17 @@ export async function fichaDeProveedor(idProveedor: string, meses = 3): Promise<
     };
   });
 
+  // ---------- Merma de su mercadería ----------
+  // `pendiente` es lo que todavía no entró en una liquidación: es la parte
+  // que se le va a cobrar en la próxima, y la única que aún se puede discutir.
+  const { mermas: mermasProv } = await listarMermas({ idProveedor, limite: 200 });
+  const merma = {
+    unidades: mermasProv.reduce((a, m) => a + m.cantidad, 0),
+    costo: Math.round(mermasProv.reduce((a, m) => a + (m.costoTotal ?? 0), 0) * 100) / 100,
+    pendiente:
+      Math.round(mermasProv.filter((m) => !m.liquidada).reduce((a, m) => a + (m.costoTotal ?? 0), 0) * 100) / 100,
+  };
+
   return {
     idProveedor,
     nombre: proveedor.nombre as string,
@@ -349,5 +363,6 @@ export async function fichaDeProveedor(idProveedor: string, meses = 3): Promise<
     totalUnidades: entregas.reduce((a, e) => a + e.unidades, 0),
     vendidoSinLiquidar,
     liquidaciones,
+    merma,
   };
 }

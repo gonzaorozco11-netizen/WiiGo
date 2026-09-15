@@ -40,7 +40,12 @@ export default function MermaModal({
   const [motivo, setMotivo] = useState("ROTURA");
   const [detalle, setDetalle] = useState("");
 
-  const [costo, setCosto] = useState<{ costo: number; proveedor: string | null; estimado: boolean } | null>(null);
+  const [costo, setCosto] = useState<{
+    costo: number;
+    duenio: "LIQUIDACION" | "PROPIA" | "CONSIGNACION";
+    deQuien: string;
+    estimado: boolean;
+  } | null>(null);
   const [calculando, setCalculando] = useState(false);
 
   const n = Number(cantidad) || 0;
@@ -148,19 +153,23 @@ export default function MermaModal({
 
           {/* Lo que cuesta. Aparece solo cuando hay una cantidad válida: un
               recuadro en $0 mientras se escribe distrae más de lo que informa. */}
+          {/* El mismo hecho cuesta cosas distintas según de quién era la
+              mercadería. Decirlo acá, antes de confirmar, es lo que evita que
+              alguien cargue una merma de Alifrut pensando que es gratis. */}
           {valida && (
             <div
               className={`rounded-xl px-4 py-3 text-sm border ${
-                costo ? "bg-amber-50 border-amber-200 text-amber-900" : "bg-neutral-50 border-neutral-200 text-neutral-500"
+                costo?.duenio === "CONSIGNACION"
+                  ? "bg-neutral-50 border-neutral-200 text-neutral-600"
+                  : "bg-amber-50 border-amber-200 text-amber-900"
               }`}
             >
-              {calculando ? (
-                "Calculando de qué lote salen…"
-              ) : costo ? (
+              {calculando || !costo ? (
+                "Calculando cuánto cuesta…"
+              ) : costo.duenio === "LIQUIDACION" ? (
                 <>
-                  Se le van a pagar <b>${formatearMonto(costo.costo)} + IVA</b> a{" "}
-                  <b>{costo.proveedor ?? "el proveedor"}</b> en la próxima liquidación, igual que si se hubieran
-                  vendido.
+                  Se le van a pagar <b>${formatearMonto(costo.costo)} + IVA</b> a <b>{costo.deQuien}</b> en la
+                  próxima liquidación, igual que si se hubieran vendido.
                   {costo.estimado && (
                     <span className="block mt-1.5 text-[12px] font-semibold">
                       Ojo: no hay lotes con costo suficientes para estas unidades, así que una parte sale a costo
@@ -168,10 +177,20 @@ export default function MermaModal({
                     </span>
                   )}
                 </>
+              ) : costo.duenio === "PROPIA" ? (
+                <>
+                  Perdés <b>${formatearMonto(costo.costo)}</b>. Esta mercadería ya era tuya, así que{" "}
+                  <b>no genera ningún pago nuevo</b> — ya la pagaste con la factura del proveedor.
+                  {costo.estimado && (
+                    <span className="block mt-1.5 text-[12px] font-semibold">
+                      Este producto no tiene costo cargado, así que la pérdida figura en $0.
+                    </span>
+                  )}
+                </>
               ) : (
                 <>
-                  Este producto no es de un proveedor por liquidación, así que <b>no genera ningún pago</b>. Solo baja
-                  el stock y queda registrado.
+                  Esta mercadería es de <b>{costo.deQuien}</b>, así que <b>no te cuesta plata</b>: el riesgo es de la
+                  marca. Se descuenta del stock y queda registrado con el motivo.
                 </>
               )}
             </div>
