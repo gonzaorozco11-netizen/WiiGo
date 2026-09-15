@@ -326,87 +326,111 @@ export default function ComprasTrabajo({ etapa, datos }: { etapa: Etapa; datos: 
             acá.
           </p>
 
-          <Seccion titulo="Emitidas · falta mandarlas" vacio="Todas las órdenes ya fueron enviadas.">
-            {sinEnviar.map((f) => (
-              <FilaOrden
-                key={`${f.origen}-${f.idOrden}`}
-                f={f}
-                accion="Marcar como enviada"
-                onAccion={() => enviar(f)}
-                trabajando={enviando === `${f.origen}-${f.idOrden}`}
-                // Mientras no se mandó, el pedido se puede corregir o tirar
-                // sin consecuencias: no hay mercadería ni deuda de por medio.
-                terciaria={f.origen === "PROVEEDOR" ? "Editar" : undefined}
-                onTerciaria={f.origen === "PROVEEDOR" ? () => abrirEdicion(f) : undefined}
-                secundaria="Anular"
-                onSecundaria={() => anular(f)}
-              />
-            ))}
-          </Seccion>
-
-          {esperandoLlegar.length > 0 && (
-            <Seccion titulo="Ya enviadas · esperando en Recepción">
-              {esperandoLlegar.map((f) => (
-                <FilaOrden
-                  key={`${f.origen}-${f.idOrden}`}
-                  f={f}
-                  tenue
-                  detalle={contenidoDe(f)}
-                  // Se marcó como enviada de más. Mientras no haya llegado
-                  // nada, se puede volver atrás sin romper nada.
-                  secundaria="Deshacer envío"
-                  onSecundaria={() => deshacerEnvio(f)}
-                  trabajando={enviando === `${f.origen}-${f.idOrden}`}
-                />
-              ))}
-            </Seccion>
+          {/* Lo que hay que hacer: tarjetas grandes, con sombra y botón. */}
+          {sinEnviar.length === 0 ? (
+            <p className="bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl px-4 py-4 text-sm font-medium text-center">
+              ✓ Todas las órdenes ya fueron enviadas.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-2.5">
+              {sinEnviar.map((f) => {
+                const clave = `${f.origen}-${f.idOrden}`;
+                const demorado = f.dias > 2;
+                return (
+                  <TarjetaTrabajo
+                    key={clave}
+                    icono="📤"
+                    tono={demorado ? "ambar" : "azul"}
+                    titulo={f.contraparte}
+                    detalle={
+                      <>
+                        {f.unidades} unidades · {f.local} · pedida {haceCuanto(f.dias)}
+                        {demorado && <b className="text-amber-700"> · todavía sin mandar</b>}
+                      </>
+                    }
+                    etiqueta={<EtiquetaOrigen origen={f.origen} />}
+                  >
+                    {/* Mientras no se mandó, el pedido se puede corregir o
+                        tirar sin consecuencias: no hay mercadería ni deuda. */}
+                    {f.origen === "PROVEEDOR" && <BotonSuave onClick={() => abrirEdicion(f)}>Editar</BotonSuave>}
+                    <BotonSuave onClick={() => anular(f)}>Anular</BotonSuave>
+                    <BotonPrincipal onClick={() => enviar(f)} disabled={enviando === clave}>
+                      {enviando === clave ? "..." : "Marcar como enviada →"}
+                    </BotonPrincipal>
+                  </TarjetaTrabajo>
+                );
+              })}
+            </div>
           )}
 
-          {/* El buscador vive acá y no arriba: las secciones de trabajo
-              pendiente son cortas y se ven enteras, el historial es el que
-              crece. Mismo criterio que en Recepción y en Costeo. */}
-          {hayCerradas && (
-            <div className="mb-5">
-              <div className="flex items-baseline justify-between gap-3 flex-wrap mb-2">
-                <p className="text-xs font-bold uppercase tracking-wider text-neutral-400">Ya cerradas</p>
-                <span className="text-xs text-neutral-500 tabular-nums">
-                  <b className="text-neutral-800">
-                    {cerradas.length} {cerradas.length === 1 ? "pedido" : "pedidos"}
-                  </b>{" "}
-                  · {cerradas.reduce((a, f) => a + f.unidades, 0)} unidades
-                </span>
+          {/* En camino: ni trabajo ni archivo. Filas livianas, sin sombra. */}
+          {esperandoLlegar.length > 0 && (
+            <div className="mt-5">
+              <p className="text-[10.5px] font-bold uppercase tracking-wider text-neutral-400 mb-2">
+                Ya enviadas · esperando en Recepción
+              </p>
+              <div className="flex flex-col gap-1.5">
+                {esperandoLlegar.map((f) => {
+                  const clave = `${f.origen}-${f.idOrden}`;
+                  return (
+                    <div
+                      key={clave}
+                      className="flex items-center gap-3 flex-wrap border border-neutral-200 rounded-lg px-3.5 py-2 bg-white"
+                    >
+                      <span className="flex-1 min-w-[160px] text-[13px]">
+                        <b className="font-semibold text-neutral-800">{f.contraparte}</b>
+                        <span className="text-neutral-400">
+                          {" "}
+                          · {f.unidades} un. · mandada {haceCuanto(dias(f.enviadaEl ?? f.fecha))}
+                        </span>
+                      </span>
+                      <BotonSuave onClick={() => deshacerEnvio(f)} disabled={enviando === clave}>
+                        Deshacer envío
+                      </BotonSuave>
+                    </div>
+                  );
+                })}
               </div>
-
-              <div className="flex items-center gap-2 flex-wrap mb-3">
-                <Buscador
-                  valor={buscarOrdenes}
-                  onCambio={setBuscarOrdenes}
-                  placeholder="Buscar por proveedor, marca o número de pedido..."
-                />
-                <GrupoBotones
-                  opciones={[
-                    { clave: "TODAS" as const, texto: "Todas" },
-                    { clave: "PROVEEDOR" as const, texto: "Proveedores" },
-                    { clave: "MARCA" as const, texto: "Marcas" },
-                  ]}
-                  valor={origenFiltro}
-                  onCambio={setOrigenFiltro}
-                />
-                <FiltroPeriodo valor={periodoCerradas} onCambio={setPeriodoCerradas} />
-              </div>
-
-              {cerradas.length === 0 ? (
-                <p className="text-sm text-neutral-400 text-center py-5 border border-neutral-200 rounded-xl bg-white">
-                  No hay pedidos cerrados con esos filtros.
-                </p>
-              ) : (
-                <div className="flex flex-col gap-2">
-                  {cerradas.map((f) => (
-                    <FilaOrden key={`${f.origen}-${f.idOrden}`} f={f} tenue detalle={contenidoDe(f)} />
-                  ))}
-                </div>
-              )}
             </div>
+          )}
+
+          {hayCerradas && (
+            <>
+              <Corte />
+              <CajaHistorial
+                titulo="Pedidos cerrados"
+                resumen={
+                  <>
+                    <b className="text-neutral-800">
+                      {cerradas.length} {cerradas.length === 1 ? "pedido" : "pedidos"}
+                    </b>{" "}
+                    · {cerradas.reduce((a, f) => a + f.unidades, 0)} unidades
+                  </>
+                }
+                filtros={
+                  <>
+                    <Buscador
+                      valor={buscarOrdenes}
+                      onCambio={setBuscarOrdenes}
+                      placeholder="Buscar por proveedor, marca o número de pedido..."
+                    />
+                    <GrupoBotones
+                      opciones={[
+                        { clave: "TODAS" as const, texto: "Todas" },
+                        { clave: "PROVEEDOR" as const, texto: "Proveedores" },
+                        { clave: "MARCA" as const, texto: "Marcas" },
+                      ]}
+                      valor={origenFiltro}
+                      onCambio={setOrigenFiltro}
+                    />
+                    <FiltroPeriodo valor={periodoCerradas} onCambio={setPeriodoCerradas} />
+                  </>
+                }
+                vacio={cerradas.length === 0 ? "No hay pedidos cerrados con esos filtros." : undefined}
+              >
+                <TablaPedidos filas={cerradas} contenidoDe={contenidoDe} />
+              </CajaHistorial>
+            </>
           )}
         </>
       )}
@@ -419,38 +443,59 @@ export default function ComprasTrabajo({ etapa, datos }: { etapa: Etapa; datos: 
             falta algo, queda el reclamo hecho solo.
           </p>
 
-          <Seccion
-            titulo="Esperando llegar · lo que se mandó primero"
-            vacio="No hay nada esperando. Todo lo que se mandó ya llegó."
-          >
-            {esperandoLlegar.map((f) => (
-              <FilaOrden key={`${f.origen}-${f.idOrden}`} f={f} accion="Recepcionar" onAccion={() => abrirRecepcion(f)} />
-            ))}
-          </Seccion>
-
-          {/* Llegó una parte y falta el resto. No vuelve a Órdenes: sigue
-              siendo trabajo del local hasta que llegue lo que falta o
-              administración lo dé por cerrado desde Costeo. */}
-          {aMedias.length > 0 && (
-            <Seccion titulo="Llegaron a medias · falta el resto">
+          {esperandoLlegar.length === 0 && aMedias.length === 0 ? (
+            <p className="bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl px-4 py-4 text-sm font-medium text-center">
+              ✓ No hay nada esperando. Todo lo que se mandó ya llegó.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-2.5">
+              {/* Llegó una parte y falta el resto. Va primero y en ámbar:
+                  es lo que tiene mercadería en la calle hace más tiempo. */}
               {aMedias.map((f) => (
-                <FilaOrden
+                <TarjetaTrabajo
                   key={`${f.origen}-${f.idOrden}`}
-                  f={f}
-                  accion="Recibir el resto"
-                  onAccion={() => abrirRecepcion(f)}
-                  detalle={contenidoDe(f)}
-                />
+                  icono="⏳"
+                  tono="ambar"
+                  titulo={f.contraparte}
+                  detalle={
+                    <>
+                      Llegó a medias · mandada {haceCuanto(dias(f.enviadaEl ?? f.fecha))} · {f.local}
+                    </>
+                  }
+                  etiqueta={<EtiquetaOrigen origen={f.origen} />}
+                >
+                  <BotonPrincipal tono="ambar" onClick={() => abrirRecepcion(f)}>
+                    Recibir el resto →
+                  </BotonPrincipal>
+                </TarjetaTrabajo>
               ))}
-            </Seccion>
+
+              {esperandoLlegar.map((f) => (
+                <TarjetaTrabajo
+                  key={`${f.origen}-${f.idOrden}`}
+                  icono="📥"
+                  titulo={f.contraparte}
+                  detalle={
+                    <>
+                      {f.unidades} unidades · {f.local} · mandada {haceCuanto(dias(f.enviadaEl ?? f.fecha))}
+                    </>
+                  }
+                  etiqueta={<EtiquetaOrigen origen={f.origen} />}
+                >
+                  <BotonPrincipal onClick={() => abrirRecepcion(f)}>Recepcionar →</BotonPrincipal>
+                </TarjetaTrabajo>
+              ))}
+            </div>
           )}
 
           {sinEnviar.length > 0 && (
-            <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
+            <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-4">
               Hay {sinEnviar.length} {sinEnviar.length === 1 ? "orden emitida" : "órdenes emitidas"} que todavía no se
               mandaron. No aparecen acá hasta que administración las marque como enviadas.
             </p>
           )}
+
+          <Corte />
 
           <HistorialEntregas
             entregas={datos.entregas}
@@ -704,135 +749,160 @@ function CosteoEtapa({
         <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-4">{errorCierre}</p>
       )}
 
-      <Seccion titulo="Por costear" vacio="Todo lo recibido tiene su costo cargado.">
-        {porCostear.map((r) => {
-          const aMedias = r.orden?.estado === RECIBIDA_PARCIAL;
-          const faltan = aMedias ? faltanteDe(r.id_orden) : 0;
-          return (
-            <div
-              key={r.id_recepcion}
-              className={`border border-l-[3px] rounded-xl ${
-                r.dias > 3 ? "border-red-200 border-l-red-500 bg-red-50" : "border-neutral-200 border-l-accent bg-white"
-              }`}
-            >
-              <div className="flex items-center gap-3 flex-wrap px-4 py-3">
-                <span className="flex-1 min-w-[200px]">
-                  <span className="block font-semibold text-[14.5px] text-neutral-900">
+      {porCostear.length === 0 ? (
+        <p className="bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl px-4 py-4 text-sm font-medium text-center">
+          ✓ Todo lo recibido tiene su costo cargado.
+        </p>
+      ) : (
+        <div className="flex flex-col gap-2.5">
+          {porCostear.map((r) => {
+            const aMedias = r.orden?.estado === RECIBIDA_PARCIAL;
+            const faltan = aMedias ? faltanteDe(r.id_orden) : 0;
+            return (
+              <TarjetaTrabajo
+                key={r.id_recepcion}
+                icono="🧮"
+                tono={r.dias > 3 ? "rojo" : "azul"}
+                titulo={
+                  <>
                     {r.proveedor?.nombre ?? "—"}
                     {r.entrega && r.entrega.totalEntregas > 1 && (
                       <span className="ml-2 text-[10.5px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 align-middle">
                         {r.entrega.numeroEntrega}ª de {r.entrega.totalEntregas}
                       </span>
                     )}
-                  </span>
-                  <span className="block text-xs text-neutral-400">
+                  </>
+                }
+                detalle={
+                  <>
                     Pedido el {r.orden ? fechaCorta(r.orden.fecha_alta) : "—"} · recibido el {fechaCorta(r.fecha)} ·{" "}
-                    {r.productos} {r.productos === 1 ? "producto" : "productos"} · {haceCuanto(r.dias)}
+                    {r.productos} {r.productos === 1 ? "producto" : "productos"}
+                    {r.dias > 3 ? (
+                      <b className="text-red-700"> · {haceCuanto(r.dias)}, sin costear</b>
+                    ) : (
+                      <> · {haceCuanto(r.dias)}</>
+                    )}
+                  </>
+                }
+                etiqueta={
+                  <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full border bg-neutral-50 text-neutral-500 border-neutral-200 whitespace-nowrap">
+                    {MODO[r.proveedor?.modo_facturacion ?? ""] ?? r.proveedor?.modo_facturacion}
                   </span>
-                </span>
-                <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full border bg-neutral-50 text-neutral-500 border-neutral-200 whitespace-nowrap">
-                  {MODO[r.proveedor?.modo_facturacion ?? ""] ?? r.proveedor?.modo_facturacion}
-                </span>
-                <button
-                  onClick={() => r.entrega && onCostear(r.entrega)}
-                  className="text-sm font-semibold bg-accent hover:bg-accent-dark text-white rounded-lg px-3 py-1.5"
-                >
-                  Costear
-                </button>
-              </div>
-
-              {/* El faltante aparece acá y no en Recepción: reclamarle a la
-                  marca es trabajo de administración, que es quien está
-                  mirando esta pantalla. El local solo cuenta lo que llegó. */}
-              {aMedias && faltan > 0 && (
-                <div className="border-t border-amber-200 bg-amber-50 px-4 py-3 flex items-center gap-3 flex-wrap rounded-b-[9px]">
-                  <span className="flex-1 min-w-[220px] text-sm text-amber-900">
-                    <b>Este pedido llegó a medias — faltan {faltan} unidades.</b> Lo que ves acá es solo esta entrega.
-                    Si el proveedor manda el resto, entra como una entrega nueva.
-                  </span>
-                  <button
-                    onClick={() => cerrarPedido(r.id_orden, faltan)}
-                    disabled={cerrando === r.id_orden}
-                    className="text-sm font-semibold text-amber-900 bg-white border border-amber-300 rounded-lg px-3 py-1.5 hover:bg-amber-100 disabled:opacity-50"
-                  >
-                    {cerrando === r.id_orden ? "Cerrando..." : "Cerrar pedido como está"}
-                  </button>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </Seccion>
+                }
+                /* El faltante aparece acá y no en Recepción: reclamarle a la
+                   marca es trabajo de administración, que es quien está
+                   mirando esta pantalla. El local solo cuenta lo que llegó. */
+                pie={
+                  aMedias && faltan > 0 ? (
+                    <div className="border-t border-amber-200 bg-amber-50 px-4 py-3 flex items-center gap-3 flex-wrap rounded-b-[11px]">
+                      <span className="flex-1 min-w-[220px] text-sm text-amber-900">
+                        <b>Este pedido llegó a medias — faltan {faltan} unidades.</b> Lo que ves acá es solo esta
+                        entrega. Si el proveedor manda el resto, entra como una entrega nueva.
+                      </span>
+                      <button
+                        onClick={() => cerrarPedido(r.id_orden, faltan)}
+                        disabled={cerrando === r.id_orden}
+                        className="text-sm font-semibold text-amber-900 bg-white border border-amber-300 rounded-lg px-3 py-1.5 hover:bg-amber-100 disabled:opacity-50"
+                      >
+                        {cerrando === r.id_orden ? "Cerrando..." : "Cerrar pedido como está"}
+                      </button>
+                    </div>
+                  ) : undefined
+                }
+              >
+                <BotonPrincipal onClick={() => r.entrega && onCostear(r.entrega)}>Costear →</BotonPrincipal>
+              </TarjetaTrabajo>
+            );
+          })}
+        </div>
+      )}
 
       {/* Ya costeadas pero todavía sin liquidar: se pueden corregir. Es el
           único momento en que cambiar un costo no reescribe nada — esa plata
           todavía no se le pagó a nadie. Al liquidarse, desaparecen de acá. */}
       {costeadas.length > 0 && (
-        <div className="mb-5">
-          <div className="flex items-baseline justify-between gap-3 flex-wrap mb-2">
-            <p className="text-xs font-bold uppercase tracking-wider text-neutral-400">
-              Ya costeadas · todavía se pueden corregir
-            </p>
-            <p className="text-xs text-neutral-500 tabular-nums">
-              <b className="text-neutral-800">
-                {costeadasVisibles.length} {costeadasVisibles.length === 1 ? "entrega" : "entregas"}
-              </b>{" "}
-              · ${montoCosteado.toLocaleString("es-AR", { maximumFractionDigits: 0 })} en costo
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2 flex-wrap mb-3">
-            <Buscador
-              valor={buscarCosteadas}
-              onCambio={setBuscarCosteadas}
-              placeholder="Buscar por proveedor o número de pedido..."
-            />
-            <FiltroPeriodo valor={periodoCosteadas} onCambio={setPeriodoCosteadas} />
-          </div>
-
-          {costeadasVisibles.length === 0 ? (
-            <p className="text-sm text-neutral-400 text-center py-5 border border-neutral-200 rounded-xl bg-white">
-              No hay entregas costeadas en este período.
-            </p>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {costeadasVisibles.map((r) => (
-            <div
-              key={r.id_recepcion}
-              className="flex items-center gap-3 flex-wrap border border-neutral-200 border-l-[3px] border-l-emerald-500 rounded-xl px-4 py-3 bg-white"
-            >
-              <span className="flex-1 min-w-[200px]">
-                <span className="block font-semibold text-[14.5px] text-neutral-900">
-                  {r.proveedor?.nombre ?? "—"}
-                </span>
-                <span className="block text-xs text-neutral-400">
-                  Recibido el {fechaCorta(r.fecha)} · {r.productos} {r.productos === 1 ? "producto" : "productos"} ·
-                  costeado
-                </span>
-              </span>
-              <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200 whitespace-nowrap">
-                Sin liquidar
-              </span>
-              {/* Anular antes que Corregir en el código, pero a la izquierda
-                  y en gris: Corregir es lo que se usa casi siempre. */}
-              <button
-                onClick={() => anularEsteCosteo(r.id_recepcion, r.proveedor?.nombre ?? "")}
-                disabled={anulando === r.id_recepcion}
-                className="text-xs font-semibold text-neutral-500 border border-neutral-300 rounded-lg px-2.5 py-1.5 hover:bg-neutral-50 hover:text-neutral-700 disabled:opacity-50"
-              >
-                {anulando === r.id_recepcion ? "..." : "Anular"}
-              </button>
-              <button
-                onClick={() => r.entrega && onCostear(r.entrega)}
-                className="text-sm font-semibold text-neutral-700 border border-neutral-300 rounded-lg px-3 py-1.5 hover:bg-neutral-50"
-              >
-                Corregir
-              </button>
+        <>
+          <Corte />
+          <CajaHistorial
+            titulo="Ya costeadas · todavía se pueden corregir"
+            resumen={
+              <>
+                <b className="text-neutral-800">
+                  {costeadasVisibles.length} {costeadasVisibles.length === 1 ? "entrega" : "entregas"}
+                </b>{" "}
+                · ${montoCosteado.toLocaleString("es-AR", { maximumFractionDigits: 0 })} en costo
+              </>
+            }
+            filtros={
+              <>
+                <Buscador
+                  valor={buscarCosteadas}
+                  onCambio={setBuscarCosteadas}
+                  placeholder="Buscar por proveedor o número de pedido..."
+                />
+                <FiltroPeriodo valor={periodoCosteadas} onCambio={setPeriodoCosteadas} />
+              </>
+            }
+            vacio={costeadasVisibles.length === 0 ? "No hay entregas costeadas en este período." : undefined}
+          >
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[560px]">
+                <thead>
+                  <tr className="bg-neutral-50 border-b border-neutral-200">
+                    <th className={THEAD}>Pedido</th>
+                    <th className={THEAD}>Proveedor</th>
+                    <th className={THEAD}>Recibido el</th>
+                    <th className={`${THEAD} text-right`}>Costo</th>
+                    <th className={`${THEAD} text-right`}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {costeadasVisibles.map((r) => {
+                    const costo = datos.lineasEntrega
+                      .filter((l) => l.idRecepcion === r.id_recepcion)
+                      .reduce((a, l) => a + (l.costoUnitario ?? 0) * l.cantidadRecibida, 0);
+                    return (
+                      <tr key={r.id_recepcion} className="hover:bg-neutral-50">
+                        <td className={`${TD} font-mono text-[11px] text-neutral-400 whitespace-nowrap`}>
+                          #{r.id_orden.slice(0, 6).toUpperCase()}
+                        </td>
+                        <td className={`${TD} text-neutral-800`}>
+                          {r.proveedor?.nombre ?? "—"}
+                          {r.entrega && r.entrega.totalEntregas > 1 && (
+                            <span className="ml-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700">
+                              {r.entrega.numeroEntrega}ª de {r.entrega.totalEntregas}
+                            </span>
+                          )}
+                        </td>
+                        <td className={`${TD} tabular-nums`}>{fechaCorta(r.fecha)}</td>
+                        <td className={`${TD} text-right tabular-nums text-neutral-800`}>
+                          ${costo.toLocaleString("es-AR", { maximumFractionDigits: 0 })}
+                        </td>
+                        <td className={`${TD} text-right whitespace-nowrap`}>
+                          {/* Anular a la izquierda y en gris: Corregir es lo
+                              que se usa casi siempre. */}
+                          <button
+                            onClick={() => anularEsteCosteo(r.id_recepcion, r.proveedor?.nombre ?? "")}
+                            disabled={anulando === r.id_recepcion}
+                            className="text-[11px] font-semibold text-neutral-400 hover:text-neutral-700 mr-3 disabled:opacity-50"
+                          >
+                            {anulando === r.id_recepcion ? "..." : "Anular"}
+                          </button>
+                          <button
+                            onClick={() => r.entrega && onCostear(r.entrega)}
+                            className="text-[11px] font-bold text-accent hover:underline"
+                          >
+                            Corregir
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
-              ))}
-            </div>
-          )}
-        </div>
+          </CajaHistorial>
+        </>
       )}
 
       <div className="bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-3 mt-5">
@@ -1177,176 +1247,248 @@ function ChipEstado({ estado }: { estado: string }) {
 
 // ---------- Piezas compartidas ----------
 
-function Seccion({
+function EtiquetaOrigen({ origen }: { origen: "MARCA" | "PROVEEDOR" }) {
+  return (
+    <span
+      className={`text-[10.5px] font-bold px-2 py-0.5 rounded-full border whitespace-nowrap ${
+        origen === "MARCA"
+          ? "bg-violet-50 text-violet-700 border-violet-200"
+          : "bg-accent-tint text-accent border-blue-200"
+      }`}
+    >
+      {origen === "MARCA" ? "Marca" : "Proveedor"}
+    </span>
+  );
+}
+
+/**
+ * El corte entre lo que hay que hacer y lo que ya pasó.
+ *
+ * Una línea que cruza la pantalla, no otro subtítulo en gris. La diferencia
+ * entre trabajo y archivo tiene que verse de reojo, sin leer: arriba tarjetas
+ * con sombra y botón azul, abajo una tabla plana.
+ */
+function Corte({ texto = "Historial" }: { texto?: string }) {
+  return (
+    <div className="flex items-center gap-3 my-6">
+      <span className="h-px bg-neutral-200 flex-1" />
+      <span className="text-[10.5px] font-bold uppercase tracking-[0.1em] text-neutral-400">{texto}</span>
+      <span className="h-px bg-neutral-200 flex-1" />
+    </div>
+  );
+}
+
+/** Lo que hay que hacer. Grande, con ícono y sombra — no se confunde con una fila. */
+function TarjetaTrabajo({
+  icono,
   titulo,
+  detalle,
+  etiqueta,
+  tono = "azul",
+  children,
+  pie,
+}: {
+  icono: string;
+  titulo: React.ReactNode;
+  detalle: React.ReactNode;
+  etiqueta?: React.ReactNode;
+  tono?: "azul" | "ambar" | "rojo";
+  /** Los botones. */
+  children?: React.ReactNode;
+  /** Una franja debajo, para avisos pegados a la tarjeta. */
+  pie?: React.ReactNode;
+}) {
+  const borde =
+    tono === "ambar" ? "border-l-amber-500" : tono === "rojo" ? "border-l-red-500" : "border-l-accent";
+  const fondoIcono =
+    tono === "ambar" ? "bg-amber-50" : tono === "rojo" ? "bg-red-50" : "bg-accent-tint";
+  const sombra =
+    tono === "ambar"
+      ? "shadow-[0_2px_8px_-4px_rgba(180,83,9,.35)]"
+      : tono === "rojo"
+        ? "shadow-[0_2px_8px_-4px_rgba(185,28,28,.35)]"
+        : "shadow-[0_2px_8px_-4px_rgba(37,99,235,.35)]";
+
+  return (
+    <div className={`border border-neutral-200 border-l-4 ${borde} rounded-xl bg-white ${sombra}`}>
+      <div className="flex items-center gap-3.5 px-4 py-3.5 flex-wrap">
+        <span className={`w-9 h-9 rounded-xl ${fondoIcono} flex items-center justify-center text-[17px] shrink-0`}>
+          {icono}
+        </span>
+        <span className="flex-1 min-w-[170px]">
+          <span className="tipo-titulo block text-[16px] font-semibold text-neutral-900">{titulo}</span>
+          <span className="block text-[12.5px] text-neutral-500">{detalle}</span>
+        </span>
+        {etiqueta}
+        {children && <span className="flex items-center gap-2 flex-wrap">{children}</span>}
+      </div>
+      {pie}
+    </div>
+  );
+}
+
+function BotonPrincipal({
+  children,
+  onClick,
+  disabled,
+  tono = "azul",
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  tono?: "azul" | "ambar";
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`text-sm font-semibold text-white rounded-lg px-4 py-2 disabled:opacity-50 ${
+        tono === "ambar" ? "bg-amber-600 hover:bg-amber-700" : "bg-accent hover:bg-accent-dark"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function BotonSuave({
+  children,
+  onClick,
+  disabled,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="text-xs font-semibold text-neutral-500 border border-neutral-300 rounded-lg px-2.5 py-1.5 hover:bg-neutral-50 hover:text-neutral-700 disabled:opacity-50"
+    >
+      {children}
+    </button>
+  );
+}
+
+/** La caja del historial: encabezado con el contador, filtros y la tabla. */
+function CajaHistorial({
+  titulo,
+  resumen,
+  filtros,
   vacio,
   children,
 }: {
   titulo: string;
+  resumen: React.ReactNode;
+  filtros?: React.ReactNode;
   vacio?: string;
   children: React.ReactNode;
 }) {
-  const hay = Array.isArray(children) ? children.length > 0 : Boolean(children);
-  if (!hay && !vacio) return null;
   return (
-    <div className="mb-5">
-      <p className="text-xs font-bold uppercase tracking-wider text-neutral-400 mb-2">{titulo}</p>
-      {hay ? (
-        <div className="flex flex-col gap-2">{children}</div>
-      ) : (
-        <p className="bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl px-4 py-4 text-sm font-medium text-center">
-          ✓ {vacio}
-        </p>
+    <div className="border border-neutral-200 rounded-xl bg-white overflow-hidden">
+      <div className="px-4 py-2.5 border-b border-neutral-100 flex items-baseline justify-between gap-3 flex-wrap">
+        <p className="text-[12.5px] font-semibold text-neutral-800">{titulo}</p>
+        <p className="text-[11.5px] text-neutral-500 tabular-nums">{resumen}</p>
+      </div>
+      {filtros && (
+        <div className="px-4 py-2 bg-neutral-50 border-b border-neutral-100 flex items-center gap-2 flex-wrap">
+          {filtros}
+        </div>
       )}
+      {vacio ? <p className="px-4 py-6 text-sm text-neutral-400 text-center">{vacio}</p> : children}
     </div>
   );
 }
 
-function FilaOrden({
-  f,
-  accion,
-  onAccion,
-  secundaria,
-  onSecundaria,
-  terciaria,
-  onTerciaria,
-  tenue,
-  trabajando,
-  detalle,
+const THEAD = "text-left text-[9.5px] uppercase tracking-[0.06em] text-neutral-400 font-bold px-4 py-1.5";
+const TD = "px-4 py-1.5 text-[12px] text-neutral-600 border-b border-neutral-50";
+
+/** Los pedidos ya cerrados, como tabla. Cada fila se abre para ver qué traía. */
+function TablaPedidos({
+  filas,
+  contenidoDe,
 }: {
-  f: Fila;
-  accion?: string;
-  onAccion?: () => void;
-  /** La salida de emergencia: deshacer o anular. Siempre en gris, nunca en azul. */
-  secundaria?: string;
-  onSecundaria?: () => void;
-  /** Corregir. También en gris: no es el camino normal. */
-  terciaria?: string;
-  onTerciaria?: () => void;
-  tenue?: boolean;
-  trabajando?: boolean;
-  /** Qué traía el pedido. Si viene, la fila se puede abrir. */
-  detalle?: { nombre: string; pedidas: number; recibidas: number }[];
+  filas: Fila[];
+  contenidoDe: (f: Fila) => { nombre: string; pedidas: number; recibidas: number }[];
 }) {
-  // Las filas ya cerradas se pueden abrir para ver qué traían: si no, son
-  // renglones muertos que ocupan lugar y no responden al clic.
-  const [abierta, setAbierta] = useState(false);
-  // Una orden emitida hace más de dos días y todavía sin mandar es el caso
-  // que este tablero viene a evitar: el pedido que nunca sale.
-  const demorado = f.estado === PENDIENTE && !f.enviadaEl && f.dias > 2;
-
-  const abrible = Boolean(detalle && detalle.length > 0);
-
+  const [abierta, setAbierta] = useState<string | null>(null);
   return (
-    <div
-      className={`border border-neutral-200 border-l-[3px] rounded-xl bg-white ${
-        f.origen === "MARCA" ? "border-l-violet-500" : "border-l-accent"
-      } ${tenue && !abierta ? "opacity-70" : ""}`}
-    >
-    <div
-      className={`flex items-center gap-3 flex-wrap px-4 py-3 ${abrible ? "cursor-pointer" : ""}`}
-      onClick={abrible ? () => setAbierta((v) => !v) : undefined}
-    >
-      <span className="flex-1 min-w-[200px]">
-        <span className="block font-semibold text-[14.5px] text-neutral-900">
-          {abrible && <span className="text-neutral-400 text-xs mr-1.5">{abierta ? "▾" : "▸"}</span>}
-          {f.contraparte}
-        </span>
-        <span className="block text-xs text-neutral-400">
-          Pedida el {fechaCorta(f.fecha)} · {f.unidades} unidades · {f.local}
-        </span>
-      </span>
-
-      <span
-        className={`text-[10.5px] font-bold px-2 py-0.5 rounded-full border whitespace-nowrap ${
-          f.origen === "MARCA"
-            ? "bg-violet-50 text-violet-700 border-violet-200"
-            : "bg-accent-tint text-accent border-blue-200"
-        }`}
-      >
-        {f.origen === "MARCA" ? "Marca" : "Proveedor"}
-      </span>
-
-      <span className="text-right min-w-[100px]">
-        <span
-          className={`block text-[13px] font-semibold ${
-            demorado ? "text-amber-700" : f.estado === RECIBIDA_PARCIAL ? "text-amber-700" : "text-neutral-700"
-          }`}
-        >
-          {etiquetaEstado(f.estado, Boolean(f.enviadaEl))}
-        </span>
-        <span className={`block text-[11px] ${demorado ? "text-amber-700 font-semibold" : "text-neutral-400"}`}>
-          {f.enviadaEl && estaAbierta(f.estado)
-            ? `mandada ${haceCuanto(dias(f.enviadaEl))}`
-            : `pedida ${haceCuanto(f.dias)}`}
-        </span>
-      </span>
-
-      {terciaria && onTerciaria && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onTerciaria();
-          }}
-          disabled={trabajando}
-          className="text-xs font-semibold text-neutral-500 border border-neutral-300 rounded-lg px-2.5 py-1.5 hover:bg-neutral-50 hover:text-neutral-700 disabled:opacity-50"
-        >
-          {terciaria}
-        </button>
-      )}
-
-      {secundaria && onSecundaria && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onSecundaria();
-          }}
-          disabled={trabajando}
-          className="text-xs font-semibold text-neutral-500 border border-neutral-300 rounded-lg px-2.5 py-1.5 hover:bg-neutral-50 hover:text-neutral-700 disabled:opacity-50"
-        >
-          {secundaria}
-        </button>
-      )}
-
-      {accion && onAccion && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onAccion();
-          }}
-          disabled={trabajando}
-          className="text-sm font-semibold bg-accent hover:bg-accent-dark text-white rounded-lg px-3 py-1.5 disabled:opacity-50"
-        >
-          {trabajando ? "..." : accion}
-        </button>
-      )}
-    </div>
-
-    {abierta && detalle && (
-      <div className="border-t border-neutral-100 px-4 py-3 bg-neutral-50">
-        <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 mb-1.5">Qué traía</p>
-        <table className="w-full text-xs">
-          <tbody>
-            {detalle.map((d, i) => {
-              const falto = d.recibidas < d.pedidas;
-              return (
-                <tr key={i}>
-                  <td className="py-1 text-neutral-600">{d.nombre}</td>
-                  <td className="py-1 text-right text-neutral-400 tabular-nums w-20">{d.pedidas} pedidas</td>
-                  <td
-                    className={`py-1 text-right tabular-nums w-24 ${
-                      falto ? "text-red-600 font-semibold" : "text-neutral-700"
-                    }`}
-                  >
-                    {d.recibidas} llegaron
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[540px]">
+        <thead>
+          <tr className="bg-neutral-50 border-b border-neutral-200">
+            <th className={THEAD}>Pedido</th>
+            <th className={THEAD}>Quién</th>
+            <th className={THEAD}>Pedido el</th>
+            <th className={`${THEAD} text-right`}>Unid.</th>
+            <th className={THEAD}>Estado</th>
+          </tr>
+        </thead>
+        <tbody>
+          {filas.map((f) => {
+            const clave = `${f.origen}-${f.idOrden}`;
+            const esta = abierta === clave;
+            const detalle = contenidoDe(f);
+            return (
+              <Fragment key={clave}>
+                <tr
+                  onClick={() => setAbierta(esta ? null : clave)}
+                  className={`cursor-pointer hover:bg-neutral-50 ${esta ? "bg-neutral-50" : ""}`}
+                >
+                  <td className={`${TD} font-mono text-[11px] text-neutral-400 whitespace-nowrap`}>
+                    {esta ? "▾" : "▸"} #{f.idOrden.slice(0, 6).toUpperCase()}
+                  </td>
+                  <td className={`${TD} text-neutral-800`}>
+                    {f.contraparte}
+                    <span
+                      className={`ml-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
+                        f.origen === "MARCA" ? "bg-violet-50 text-violet-700" : "bg-accent-tint text-accent-dark"
+                      }`}
+                    >
+                      {f.origen === "MARCA" ? "Marca" : "Prov."}
+                    </span>
+                  </td>
+                  <td className={`${TD} tabular-nums`}>{fechaCorta(f.fecha)}</td>
+                  <td className={`${TD} text-right tabular-nums`}>{f.unidades}</td>
+                  <td className={TD}>
+                    <ChipEstado estado={f.estado} />
                   </td>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    )}
+                {esta && (
+                  <tr>
+                    <td colSpan={5} className="px-4 pb-3 pt-1 bg-neutral-50 border-b border-neutral-100">
+                      <p className="text-[9.5px] font-bold uppercase tracking-wider text-neutral-400 mb-1">
+                        Qué traía
+                      </p>
+                      <table className="w-full text-[11.5px]">
+                        <tbody>
+                          {detalle.map((d, i) => (
+                            <tr key={i}>
+                              <td className="py-0.5 text-neutral-600">{d.nombre}</td>
+                              <td className="py-0.5 text-right text-neutral-400 tabular-nums w-20">
+                                {d.pedidas} pedidas
+                              </td>
+                              <td
+                                className={`py-0.5 text-right tabular-nums w-24 font-semibold ${
+                                  d.recibidas < d.pedidas ? "text-amber-700" : "text-neutral-700"
+                                }`}
+                              >
+                                {d.recibidas} llegaron
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
+

@@ -48,16 +48,22 @@ export default function ReclamosApp({ reclamos }: { reclamos: Reclamo[] }) {
   const pendientes = reclamos.filter((r) => r.estado === "PENDIENTE");
   const aFavor = pendientes.reduce((a, r) => a + r.total, 0);
 
+  // Arriba solo lo que hay que reclamar; abajo, el archivo. Misma jerarquía
+  // que las otras tres etapas de Compras: tarjeta para trabajar, tabla para
+  // consultar.
+  const cerrados = useMemo(
+    () => reclamos.filter((r) => r.estado !== "PENDIENTE"),
+    [reclamos]
+  );
   const visibles = useMemo(
-    () => (filtro === "TODOS" ? reclamos : reclamos.filter((r) => r.estado === filtro)),
-    [reclamos, filtro]
+    () => (filtro === "TODOS" ? cerrados : cerrados.filter((r) => r.estado === filtro)),
+    [cerrados, filtro]
   );
 
   const filtros: { clave: Filtro; texto: string }[] = [
-    { clave: "PENDIENTE", texto: `Sin resolver (${pendientes.length})` },
+    { clave: "TODOS", texto: "Todos" },
     { clave: "ACREDITADO", texto: "Acreditados" },
     { clave: "DESCARTADO", texto: "Descartados" },
-    { clave: "TODOS", texto: "Todos" },
   ];
 
   function descartar(r: Reclamo) {
@@ -98,65 +104,35 @@ export default function ReclamosApp({ reclamos }: { reclamos: Reclamo[] }) {
         <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-4">{error}</p>
       )}
 
-      <div className="flex gap-1.5 flex-wrap mb-4">
-        {filtros.map((f) => (
-          <button
-            key={f.clave}
-            onClick={() => setFiltro(f.clave)}
-            className={`text-xs font-semibold rounded-lg px-2.5 py-1 border ${
-              filtro === f.clave
-                ? "bg-neutral-800 text-white border-neutral-800"
-                : "bg-white text-neutral-600 border-neutral-300 hover:bg-neutral-50"
-            }`}
-          >
-            {f.texto}
-          </button>
-        ))}
-      </div>
-
-      {visibles.length === 0 ? (
-        <p className="bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl px-4 py-6 text-sm font-medium text-center">
-          ✓ {filtro === "PENDIENTE" ? "No hay nada para reclamar. Todo al día." : "No hay reclamos en este estado."}
+      {/* ---------- Lo que hay que reclamar ---------- */}
+      {pendientes.length === 0 ? (
+        <p className="bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl px-4 py-4 text-sm font-medium text-center">
+          ✓ No hay nada para reclamar. Todo al día.
         </p>
       ) : (
-        <div className="flex flex-col gap-2">
-          {visibles.map((r) => {
+        <div className="flex flex-col gap-2.5">
+          {pendientes.map((r) => {
             const o = origen(r.motivo);
-            const cerrado = r.estado !== "PENDIENTE";
             return (
               <div
                 key={r.idReclamo}
-                className={`border border-l-[3px] rounded-xl px-4 py-3 flex gap-3 items-start flex-wrap ${
-                  cerrado ? "border-neutral-200 border-l-neutral-300 bg-neutral-50" : "border-amber-200 border-l-amber-500 bg-white"
-                }`}
+                className="border border-neutral-200 border-l-4 border-l-amber-500 rounded-xl bg-white shadow-[0_2px_8px_-4px_rgba(180,83,9,.35)] px-4 py-3.5 flex gap-3.5 items-center flex-wrap"
               >
-                <span className="text-lg shrink-0" aria-hidden="true">
-                  {r.estado === "ACREDITADO" ? "✓" : r.estado === "DESCARTADO" ? "—" : o.icono}
+                <span className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center text-[17px] shrink-0">
+                  {o.icono}
                 </span>
 
-                <span className="flex-1 min-w-[210px]">
-                  <span className="block font-semibold text-[14.5px] text-neutral-900">
+                <span className="flex-1 min-w-[200px]">
+                  <span className="tipo-titulo block text-[16px] font-semibold text-neutral-900">
                     {r.proveedor}
-                    <span
-                      className={`ml-2 text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                        r.estado === "ACREDITADO"
-                          ? "bg-emerald-50 text-emerald-700"
-                          : r.estado === "DESCARTADO"
-                            ? "bg-neutral-100 text-neutral-500"
-                            : "bg-amber-50 text-amber-700"
-                      }`}
-                    >
-                      {r.estado === "ACREDITADO" ? "Acreditado" : r.estado === "DESCARTADO" ? "Descartado" : o.etiqueta}
+                    <span className="ml-2 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 align-middle">
+                      {o.etiqueta}
                     </span>
                   </span>
-                  <span className="block text-xs text-neutral-400">
+                  <span className="block text-[12.5px] text-neutral-500">
                     {r.numeroFactura ? `Factura ${r.numeroFactura} · ` : ""}
                     {r.idOrden ? `pedido #${r.idOrden.slice(0, 6).toUpperCase()} · ` : ""}
-                    {r.estado === "ACREDITADO"
-                      ? `NC ${r.ncNumero} del ${fechaCorta(r.ncFecha)}`
-                      : r.dias === 0
-                        ? "hoy"
-                        : `hace ${r.dias} días`}
+                    {r.dias === 0 ? "hoy" : `hace ${r.dias} días`}
                   </span>
                   {/* El motivo en las palabras de quien lo escribió: dentro de
                       un mes es lo único que explica por qué se reclamó. */}
@@ -164,39 +140,120 @@ export default function ReclamosApp({ reclamos }: { reclamos: Reclamo[] }) {
                 </span>
 
                 <span className="text-right tabular-nums shrink-0">
-                  <span
-                    className={`tipo-titulo block text-xl font-bold ${
-                      r.estado === "ACREDITADO" ? "text-emerald-700" : cerrado ? "text-neutral-400" : "text-amber-700"
-                    }`}
-                  >
-                    ${monto(r.estado === "ACREDITADO" ? r.ncMonto ?? r.total : r.total)}
-                  </span>
+                  <span className="tipo-titulo block text-xl font-bold text-amber-700">${monto(r.total)}</span>
                   <span className="block text-[10.5px] text-neutral-400">
                     neto ${monto(r.neto)} + IVA ${monto(r.iva)}
                   </span>
                 </span>
 
-                {!cerrado && (
-                  <span className="flex items-center gap-2 self-center shrink-0">
-                    <button
-                      onClick={() => descartar(r)}
-                      disabled={trabajando === r.idReclamo}
-                      className="text-xs font-semibold text-neutral-500 border border-neutral-300 rounded-lg px-2.5 py-1.5 hover:bg-neutral-50 disabled:opacity-50"
-                    >
-                      Descartar
-                    </button>
-                    <button
-                      onClick={() => setAbierto(r)}
-                      className="text-xs font-bold text-white bg-accent hover:bg-accent-dark rounded-lg px-3 py-1.5"
-                    >
-                      Cargar nota de crédito
-                    </button>
-                  </span>
-                )}
+                <span className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => descartar(r)}
+                    disabled={trabajando === r.idReclamo}
+                    className="text-xs font-semibold text-neutral-500 border border-neutral-300 rounded-lg px-2.5 py-1.5 hover:bg-neutral-50 disabled:opacity-50"
+                  >
+                    Descartar
+                  </button>
+                  <button
+                    onClick={() => setAbierto(r)}
+                    className="text-sm font-semibold text-white bg-accent hover:bg-accent-dark rounded-lg px-4 py-2"
+                  >
+                    Cargar nota de crédito →
+                  </button>
+                </span>
               </div>
             );
           })}
         </div>
+      )}
+
+      {/* ---------- El archivo ---------- */}
+      {cerrados.length > 0 && (
+        <>
+          <div className="flex items-center gap-3 my-6">
+            <span className="h-px bg-neutral-200 flex-1" />
+            <span className="text-[10.5px] font-bold uppercase tracking-[0.1em] text-neutral-400">Historial</span>
+            <span className="h-px bg-neutral-200 flex-1" />
+          </div>
+
+          <div className="border border-neutral-200 rounded-xl bg-white overflow-hidden">
+            <div className="px-4 py-2.5 border-b border-neutral-100 flex items-baseline justify-between gap-3 flex-wrap">
+              <p className="text-[12.5px] font-semibold text-neutral-800">Reclamos cerrados</p>
+              <p className="text-[11.5px] text-neutral-500 tabular-nums">
+                <b className="text-neutral-800">{visibles.length}</b> · $
+                {monto(visibles.reduce((a, r) => a + (r.ncMonto ?? r.total), 0))}
+              </p>
+            </div>
+            <div className="px-4 py-2 bg-neutral-50 border-b border-neutral-100 flex gap-1.5 flex-wrap">
+              {filtros.map((f) => (
+                <button
+                  key={f.clave}
+                  onClick={() => setFiltro(f.clave)}
+                  className={`text-[10.5px] font-semibold rounded-md px-2 py-1 border ${
+                    filtro === f.clave
+                      ? "bg-neutral-800 text-white border-neutral-800"
+                      : "bg-white text-neutral-600 border-neutral-300 hover:bg-neutral-50"
+                  }`}
+                >
+                  {f.texto}
+                </button>
+              ))}
+            </div>
+
+            {visibles.length === 0 ? (
+              <p className="px-4 py-6 text-sm text-neutral-400 text-center">No hay reclamos en este estado.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[560px]">
+                  <thead>
+                    <tr className="bg-neutral-50 border-b border-neutral-200">
+                      <th className="text-left text-[9.5px] uppercase tracking-[0.06em] text-neutral-400 font-bold px-4 py-1.5">
+                        Proveedor
+                      </th>
+                      <th className="text-left text-[9.5px] uppercase tracking-[0.06em] text-neutral-400 font-bold px-4 py-1.5">
+                        Motivo
+                      </th>
+                      <th className="text-left text-[9.5px] uppercase tracking-[0.06em] text-neutral-400 font-bold px-4 py-1.5">
+                        Cómo cerró
+                      </th>
+                      <th className="text-right text-[9.5px] uppercase tracking-[0.06em] text-neutral-400 font-bold px-4 py-1.5">
+                        Importe
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visibles.map((r) => (
+                      <tr key={r.idReclamo} className="hover:bg-neutral-50">
+                        <td className="px-4 py-1.5 text-[12px] text-neutral-800 border-b border-neutral-50">
+                          {r.proveedor}
+                        </td>
+                        <td className="px-4 py-1.5 text-[12px] text-neutral-500 border-b border-neutral-50">
+                          {r.motivo.split("\n")[0]}
+                        </td>
+                        <td className="px-4 py-1.5 text-[12px] border-b border-neutral-50 whitespace-nowrap">
+                          {r.estado === "ACREDITADO" ? (
+                            <span className="text-emerald-700 font-semibold">
+                              NC {r.ncNumero} · {fechaCorta(r.ncFecha)}
+                            </span>
+                          ) : (
+                            <span className="text-neutral-400">Descartado</span>
+                          )}
+                        </td>
+                        <td
+                          className={`px-4 py-1.5 text-[12px] text-right tabular-nums font-semibold border-b border-neutral-50 ${
+                            r.estado === "ACREDITADO" ? "text-emerald-700" : "text-neutral-400"
+                          }`}
+                        >
+                          ${monto(r.ncMonto ?? r.total)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
       )}
 
       <p className="text-xs text-neutral-400 mt-5">
