@@ -4,9 +4,6 @@ import {
   type Producto,
   type VarianteProducto,
   type Stock,
-  type OrdenCompraProveedor,
-  type DetalleOrdenCompra,
-  type DetalleRecepcionProveedor,
   type RecepcionProveedor,
 } from "@/lib/supabase";
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
@@ -28,9 +25,6 @@ export default async function ProveedoresPage() {
     marcasPropiasRes,
     variantesRes,
     stockRes,
-    ordenesRes,
-    detalleOrdenesRes,
-    detalleRecepcionRes,
     recepcionesRes,
     turnosAbiertosRes,
     marcasEnLista,
@@ -40,9 +34,9 @@ export default async function ProveedoresPage() {
     supabase.from("marcas").select("id_marca").eq("tipo_comercializacion", "PROPIA"),
     supabase.from("variantes_producto").select("*").eq("estado", "ACTIVO"),
     supabase.from("stock").select("*"),
-    supabase.from("ordenes_compra_proveedor").select("*").order("fecha_alta", { ascending: false }),
-    supabase.from("detalle_orden_compra").select("*"),
-    supabase.from("detalle_recepcion_proveedor").select("*").neq("estado_control", "COMPLETA"),
+    // Las órdenes de compra y sus diferencias ya no se consultan acá: esa
+    // pestaña se mudó entera a Compras. Eran tres consultas a tablas grandes
+    // en cada carga de una pantalla que ahora solo muestra cuentas.
     supabase.from("recepciones_proveedor").select("id_orden, facturada"),
     supabase.from("turnos").select("id_turno, id_local").eq("estado", "ABIERTO"),
     listarMarcasParaProveedores(),
@@ -60,9 +54,6 @@ export default async function ProveedoresPage() {
     productosRes.error ||
     variantesRes.error ||
     stockRes.error ||
-    ordenesRes.error ||
-    detalleOrdenesRes.error ||
-    detalleRecepcionRes.error ||
     recepcionesRes.error ||
     turnosAbiertosRes.error;
 
@@ -83,9 +74,6 @@ export default async function ProveedoresPage() {
       productos={(productosRes.data ?? []) as Producto[]}
       variantes={(variantesRes.data ?? []) as VarianteProducto[]}
       stock={(stockRes.data ?? []) as Stock[]}
-      ordenes={(ordenesRes.data ?? []) as OrdenCompraProveedor[]}
-      detalleOrdenes={(detalleOrdenesRes.data ?? []) as DetalleOrdenCompra[]}
-      reclamos={(detalleRecepcionRes.data ?? []) as DetalleRecepcionProveedor[]}
       recepciones={(recepcionesRes.data ?? []) as Pick<RecepcionProveedor, "id_orden" | "facturada">[]}
       turnosAbiertos={turnosAbiertosRes.data ?? []}
       marcasEnLista={marcasEnLista}
