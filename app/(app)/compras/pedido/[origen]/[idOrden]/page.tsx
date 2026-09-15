@@ -121,8 +121,8 @@ export default async function PedidoImprimiblePage({
           display: flex; justify-content: space-between; gap: 24px; flex-wrap: wrap;
           padding-bottom: 16px; border-bottom: 2px solid #16191f;
         }
-        .pedido-marca { font-size: 22px; font-weight: 700; letter-spacing: -.02em; }
-        .pedido-razon { font-size: 12px; color: #6b7488; margin-top: 2px; }
+        .pedido-logo { height: 42px; width: auto; display: block; }
+        .pedido-razon { font-size: 12px; color: #6b7488; margin-top: 8px; }
         .pedido-fiscal { font-size: 11.5px; color: #6b7488; margin-top: 6px; }
         .pedido-doc { text-align: right; }
         .pedido-tipo { font-size: 12.5px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
@@ -138,8 +138,11 @@ export default async function PedidoImprimiblePage({
         .pedido-det { font-size: 12px; color: #6b7488; margin-top: 2px; }
         /* Resaltado a propósito: con dos locales, "dónde entregar" es el dato
            que más se lee mal, y la mercadería termina en el local equivocado. */
+        /* El borde completo, y no solo el fondo, porque Chrome imprime sin
+           "gráficos de fondo" por defecto: si el resalte dependiera del color
+           de relleno, en el papel no se vería nada. */
         .pedido-entrega {
-          background: #f4f7fc; border-left: 3px solid #2a6fd6;
+          background: #f4f7fc; border: 1px solid #c9d8ef; border-left: 3px solid #2a6fd6;
           padding: 10px 12px; border-radius: 0 6px 6px 0;
         }
 
@@ -185,7 +188,11 @@ export default async function PedidoImprimiblePage({
       <div className="pedido-hoja">
         <div className="pedido-top">
           <div>
-            <div className="pedido-marca">WiiGo</div>
+            {/* El logo completo (con la bajada), no el wordmark del menú: este
+                papel se presenta ante alguien de afuera, que es justo cuando
+                corresponde la marca entera. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/wiigo-logo.png" alt="WiiGo" className="pedido-logo" />
             <div className="pedido-razon">{EMISOR.razonSocial}</div>
             <div className="pedido-fiscal">
               CUIT {EMISOR.cuit} · {EMISOR.condicionIva}

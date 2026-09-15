@@ -35,7 +35,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="app-shell min-h-screen bg-fondo-app">
-      <header className="border-b border-neutral-200 bg-white">
+      {/* `print:hidden`: el menú no va en ningún papel. Las páginas pensadas
+          para imprimir (el pedido al proveedor, el recibo) viven adentro de
+          este layout, y sin esto el PDF sale con la barra de navegación y el
+          "Salir" arriba de todo — y ese papel se lo mandás al proveedor. */}
+      <header className="border-b border-neutral-200 bg-white print:hidden">
         <div className="max-w-6xl mx-auto px-4 py-4 flex flex-wrap items-center justify-between gap-4">
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
             {/* El logo lleva al inicio: es lo primero que toca cualquiera
@@ -73,8 +77,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </div>
         </div>
       </header>
-      {avisoSalida.debeRecordar && <AvisoSalidaBanner horaSalida={avisoSalida.horaSalida} />}
-      <main className="max-w-6xl mx-auto px-4 py-6">{children}</main>
+      {avisoSalida.debeRecordar && (
+        <div className="print:hidden">
+          <AvisoSalidaBanner horaSalida={avisoSalida.horaSalida} />
+        </div>
+      )}
+      {/* Sin márgenes ni ancho máximo al imprimir: la hoja define los suyos. */}
+      <main className="max-w-6xl mx-auto px-4 py-6 print:max-w-none print:p-0">{children}</main>
     </div>
   );
 }
