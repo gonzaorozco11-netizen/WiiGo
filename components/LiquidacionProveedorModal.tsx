@@ -144,6 +144,7 @@ function pct(valor: number) {
 const ETIQUETA_MEDIO: Record<MedioLiquidacion, string> = {
   ELECTRONICO: "Mercado Pago y tarjeta",
   EFECTIVO: "Efectivo",
+  MERMA: "Merma · mercadería perdida",
 };
 
 function etiquetaIva(v: number) {
@@ -276,14 +277,21 @@ export default function LiquidacionProveedorModal({
                   lo que le corresponde al proveedor es el total, sin importar
                   por dónde entró la plata. */}
               <p className="text-[10px] font-semibold text-neutral-400 uppercase tracking-wide">
-                Cómo pagaron tus clientes · tocá una para ver el detalle
+                De dónde sale lo que le pagás · tocá una para ver el detalle
               </p>
               <div className="grid sm:grid-cols-2 gap-2.5">
-                {detalle!.porMedio.map((g) => {
+                {detalle!.porMedio
+                  // La tarjeta de merma solo aparece si hubo merma. Un mes sin
+                  // nada roto no tiene por qué mostrar un recuadro en cero: la
+                  // ausencia de pérdida no es información que haya que leer.
+                  .filter((g) => g.medio !== "MERMA" || g.totales.cantidad > 0)
+                  .map((g) => {
                   const abierta = medioAbierto === g.medio;
-                  const parte = detalle!.totales.cantidad > 0
-                    ? Math.round((g.totales.cantidad / detalle!.totales.cantidad) * 100)
-                    : 0;
+                  const esMerma = g.medio === "MERMA";
+                  const vendidas = detalle!.porMedio
+                    .filter((x) => x.medio !== "MERMA")
+                    .reduce((a, x) => a + x.totales.cantidad, 0);
+                  const parte = vendidas > 0 ? Math.round((g.totales.cantidad / vendidas) * 100) : 0;
                   return (
                     <button
                       key={g.medio}
@@ -292,22 +300,41 @@ export default function LiquidacionProveedorModal({
                         setExpandidas(new Set());
                       }}
                       className={`text-left border rounded-xl p-3.5 ${
-                        abierta ? "border-accent bg-accent-tint" : "border-neutral-200 hover:border-neutral-300"
+                        abierta
+                          ? esMerma
+                            ? "border-amber-400 bg-amber-50"
+                            : "border-accent bg-accent-tint"
+                          : esMerma
+                            ? "border-amber-200 bg-amber-50/40 hover:border-amber-300"
+                            : "border-neutral-200 hover:border-neutral-300"
                       }`}
                     >
-                      <p className={`text-[10.5px] font-bold uppercase tracking-wide ${abierta ? "text-accent" : "text-neutral-400"}`}>
+                      <p
+                        className={`text-[10.5px] font-bold uppercase tracking-wide ${
+                          esMerma ? "text-amber-700" : abierta ? "text-accent" : "text-neutral-400"
+                        }`}
+                      >
                         {ETIQUETA_MEDIO[g.medio]}
                       </p>
-                      <p className="text-xs text-neutral-400">
-                        {g.totales.cantidad} unidades · {parte}% de lo vendido
+                      <p className={`text-xs ${esMerma ? "text-amber-700/70" : "text-neutral-400"}`}>
+                        {g.totales.cantidad} unidades
+                        {esMerma ? " que nunca se vendieron" : ` · ${parte}% de lo vendido`}
                       </p>
+
                       {/* Primero lo que entró por caja y recién después lo
                           que hay que pagar. Antes la tarjeta arrancaba por el
-                          costo, y de la venta no se veía nada. */}
-                      <div className="flex justify-between text-sm mt-2 font-semibold">
-                        <span className="text-neutral-700">Vendiste</span>
-                        <span className="tabular-nums text-neutral-900">${formatearMonto(g.totales.ventaTotal)}</span>
-                      </div>
+                          costo, y de la venta no se veía nada.
+                          En merma no hay nada que haya entrado, así que ese
+                          renglón se reemplaza en vez de mostrar un $0 que
+                          parece un error de cálculo. */}
+                      {esMerma ? (
+                        <div className="text-sm mt-2 font-semibold text-amber-800">No entró plata por esto</div>
+                      ) : (
+                        <div className="flex justify-between text-sm mt-2 font-semibold">
+                          <span className="text-neutral-700">Vendiste</span>
+                          <span className="tabular-nums text-neutral-900">${formatearMonto(g.totales.ventaTotal)}</span>
+                        </div>
+                      )}
                       <div className="flex justify-between text-sm mt-1">
                         <span className="text-neutral-500">Costo neto</span>
                         <span className="tabular-nums text-neutral-500">−${formatearMonto(g.totales.costoNeto)}</span>
@@ -320,12 +347,12 @@ export default function LiquidacionProveedorModal({
                         <span>Le pagás</span>
                         <span className="tabular-nums">${formatearMonto(g.totales.total)}</span>
                       </div>
-                      <div className="flex justify-between text-sm font-bold text-emerald-700">
-                        <span>Te queda</span>
+                      <div className={`flex justify-between text-sm font-bold ${esMerma ? "text-red-700" : "text-emerald-700"}`}>
+                        <span>{esMerma ? "Lo perdés" : "Te queda"}</span>
                         <span className="tabular-nums">${formatearMonto(g.totales.margen)}</span>
                       </div>
-                      <p className="text-[11.5px] font-semibold text-accent mt-2">
-                        {abierta ? "▾ Detalle abierto" : "▸ Ver los productos y el margen"}
+                      <p className={`text-[11.5px] font-semibold mt-2 ${esMerma ? "text-amber-700" : "text-accent"}`}>
+                        {abierta ? "▾ Detalle abierto" : esMerma ? "▸ Ver qué se perdió" : "▸ Ver los productos y el margen"}
                       </p>
                     </button>
                   );
@@ -376,6 +403,15 @@ export default function LiquidacionProveedorModal({
                                       <span className="ml-2 text-[10px] text-neutral-400">
                                         {etiquetaIva(l.ivaPorcentaje)}
                                       </span>
+                                      {/* Por qué se perdió. Sin esto la línea
+                                          de merma es un número sin historia, y
+                                          es justo la que hay que poder
+                                          explicar seis meses después. */}
+                                      {l.motivos && (
+                                        <span className="ml-2 text-[10px] font-semibold text-amber-700">
+                                          {l.motivos}
+                                        </span>
+                                      )}
                                       {/* La ficha es la prueba cuando el
                                           proveedor discute un número. */}
                                       <Link
@@ -393,10 +429,17 @@ export default function LiquidacionProveedorModal({
                                       {variosLotes && <span className="block text-[10px] text-neutral-400">2+ lotes</span>}
                                     </td>
                                     <td className="p-2.5 text-right text-neutral-500 tabular-nums">${formatearMonto(l.iva)}</td>
-                                    <td className="p-2.5 text-right text-neutral-500 tabular-nums">${formatearMonto(l.ventaNeta)}</td>
+                                    <td className="p-2.5 text-right text-neutral-500 tabular-nums">
+                                      {g.medio === "MERMA" ? <span className="text-neutral-300">—</span> : `$${formatearMonto(l.ventaNeta)}`}
+                                    </td>
                                     <td className={`p-2.5 text-right tabular-nums font-semibold ${l.margen >= 0 ? "text-emerald-700" : "text-red-600"}`}>
                                       ${formatearMonto(l.margen)}
-                                      <span className="block text-[10px] font-normal">{pct(margenPct)}</span>
+                                      {/* En merma el porcentaje sería −100% en
+                                          todas las filas: no dice nada que el
+                                          número en rojo no diga mejor. */}
+                                      {g.medio !== "MERMA" && (
+                                        <span className="block text-[10px] font-normal">{pct(margenPct)}</span>
+                                      )}
                                     </td>
                                   </tr>
                                   {abierta && (

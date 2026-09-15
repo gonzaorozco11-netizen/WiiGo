@@ -30,7 +30,13 @@ import {
 // daría el mismo costo total, pero no permitiría decir qué venta salió de
 // qué lote — que es justo lo que hay que mostrar.
 
-export type MedioLiquidacion = "ELECTRONICO" | "EFECTIVO";
+// MERMA no es un medio de pago — es mercadería que se perdió y que igual hay
+// que pagarle al proveedor. Viaja como un "medio" más porque recorre
+// exactamente el mismo camino que una venta (consume lotes FIFO, suma costo,
+// lleva IVA); lo único que cambia es que del otro lado no hay plata que entró.
+// Meterla en un grupo propio es lo que permite verla separada en pantalla en
+// vez de disfrazada de menor margen.
+export type MedioLiquidacion = "ELECTRONICO" | "EFECTIVO" | "MERMA";
 
 export type LoteDeLinea = {
   idDetalleRecepcion: string;
@@ -51,6 +57,8 @@ export type LineaDetalle = {
   ventaTotal: number;
   margen: number;
   lotes: LoteDeLinea[];
+  /** Solo en las líneas de merma: por qué se perdió. "3 rotura · 1 vencimiento". */
+  motivos?: string;
 };
 
 export type TotalesDetalle = {
@@ -85,6 +93,56 @@ function acumular(t: TotalesDetalle, l: LineaDetalle) {
   t.ventaNeta = redondear2(t.ventaNeta + l.ventaNeta);
   t.ventaTotal = redondear2(t.ventaTotal + l.ventaTotal);
   t.margen = redondear2(t.margen + l.margen);
+}
+
+/** Una merma pendiente de pagarle al proveedor. */
+export type MermaPendiente = {
+  idMerma: string;
+  idVariante: string;
+  cantidad: number;
+  motivo: string;
+  fecha: string;
+};
+
+/**
+ * La merma sin liquidar de las variantes de un proveedor, dentro del período.
+ *
+ * Se filtra por fecha igual que las ventas: una merma de marzo no tiene por
+ * qué aparecer en la liquidación de abril sin que nadie lo haya decidido.
+ */
+export async function mermasSinLiquidar(
+  supabase: SupabaseClient,
+  varianteIds: string[],
+  fechaDesde: string,
+  fechaHasta: string
+): Promise<MermaPendiente[]> {
+  if (varianteIds.length === 0) return [];
+  const { data } = await supabase
+    .from("mermas")
+    .select("id_merma, id_variante, cantidad, motivo, fecha")
+    .in("id_variante", varianteIds)
+    .is("id_liquidacion_proveedor", null)
+    .gte("fecha", `${fechaDesde}T00:00:00`)
+    .lte("fecha", `${fechaHasta}T23:59:59`)
+    .order("fecha", { ascending: true });
+
+  return (data ?? []).map((m) => ({
+    idMerma: m.id_merma as string,
+    idVariante: m.id_variante as string,
+    cantidad: (m.cantidad as number) ?? 0,
+    motivo: (m.motivo as string) ?? "OTRO",
+    fecha: m.fecha as string,
+  }));
+}
+
+/** "3 rotura · 1 vencimiento", para mostrar al lado de la línea. */
+function resumirMotivos(mermas: MermaPendiente[]) {
+  const porMotivo = new Map<string, number>();
+  for (const m of mermas) porMotivo.set(m.motivo, (porMotivo.get(m.motivo) ?? 0) + m.cantidad);
+  return [...porMotivo.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([motivo, cantidad]) => `${cantidad} ${motivo.toLowerCase()}`)
+    .join(" · ");
 }
 
 export type LineaLiquidacionProveedor = {
@@ -129,14 +187,22 @@ export async function calcularLiquidacionProveedor(
     .gte("fecha", `${fechaDesde}T00:00:00`)
     .lte("fecha", `${fechaHasta}T23:59:59`);
   const idsVenta = (ventasDelPeriodo ?? []).map((v) => v.id_venta as string);
-  if (idsVenta.length === 0) return { lineas: [], total: 0 };
 
-  const { data: detalle } = await supabase
-    .from("detalle_ventas")
-    .select("id_variante, cantidad")
-    .in("id_venta", idsVenta)
-    .in("id_variante", varianteIds)
-    .is("id_liquidacion_proveedor", null);
+  // La merma se paga igual que lo vendido, así que entra al mismo cálculo.
+  // Se lee antes del corte por "no hay ventas": un mes sin una sola venta
+  // pero con mercadería rota le debe plata a Alifrut lo mismo.
+  const mermas = await mermasSinLiquidar(supabase, varianteIds, fechaDesde, fechaHasta);
+
+  const { data: detalle } = idsVenta.length
+    ? await supabase
+        .from("detalle_ventas")
+        .select("id_variante, cantidad")
+        .in("id_venta", idsVenta)
+        .in("id_variante", varianteIds)
+        .is("id_liquidacion_proveedor", null)
+    : { data: [] as { id_variante: string; cantidad: number }[] };
+
+  if ((detalle ?? []).length === 0 && mermas.length === 0) return { lineas: [], total: 0 };
 
   const nombrePorVariante = new Map<string, string>();
   const costoReservaPorVariante = new Map<string, number>();
@@ -150,6 +216,11 @@ export async function calcularLiquidacionProveedor(
   const cantidadPorVariante = new Map<string, number>();
   for (const d of detalle ?? []) {
     cantidadPorVariante.set(d.id_variante, (cantidadPorVariante.get(d.id_variante) ?? 0) + (d.cantidad ?? 0));
+  }
+  // Las unidades de merma se suman a las vendidas: para el FIFO son lo mismo,
+  // mercadería que salió del lote y hay que pagar.
+  for (const m of mermas) {
+    cantidadPorVariante.set(m.idVariante, (cantidadPorVariante.get(m.idVariante) ?? 0) + m.cantidad);
   }
 
   const lineas: LineaLiquidacionProveedor[] = [];
@@ -191,6 +262,7 @@ export async function detalleLiquidacionProveedor(
     porMedio: [
       { medio: "ELECTRONICO", lineas: [], totales: totalesVacios() },
       { medio: "EFECTIVO", lineas: [], totales: totalesVacios() },
+      { medio: "MERMA", lineas: [], totales: totalesVacios() },
     ],
     totales: totalesVacios(),
     estimado: false,
@@ -218,26 +290,60 @@ export async function detalleLiquidacionProveedor(
     .gte("fecha", `${fechaDesde}T00:00:00`)
     .lte("fecha", `${fechaHasta}T23:59:59`)
     .order("fecha", { ascending: true });
-  if (!ventas || ventas.length === 0) return vacio;
-  const ventaPorId = new Map(ventas.map((v) => [v.id_venta as string, v]));
+  const ventaPorId = new Map((ventas ?? []).map((v) => [v.id_venta as string, v]));
 
-  const { data: detalle } = await supabase
-    .from("detalle_ventas")
-    .select("id_venta, id_variante, cantidad, precio_unitario, subtotal")
-    .in("id_venta", [...ventaPorId.keys()])
-    .in("id_variante", [...variantePorId.keys()])
-    .is("id_liquidacion_proveedor", null);
-  if (!detalle || detalle.length === 0) return vacio;
+  const mermas = await mermasSinLiquidar(supabase, [...variantePorId.keys()], fechaDesde, fechaHasta);
 
-  // Mismo orden que las ventas, para que el FIFO sea el real.
-  const ordenVenta = new Map([...ventaPorId.keys()].map((id, i) => [id, i]));
-  const lineasOrdenadas = detalle
-    .slice()
-    .sort((a, b) => (ordenVenta.get(a.id_venta as string) ?? 0) - (ordenVenta.get(b.id_venta as string) ?? 0));
+  const { data: detalle } = ventaPorId.size
+    ? await supabase
+        .from("detalle_ventas")
+        .select("id_venta, id_variante, cantidad, precio_unitario, subtotal")
+        .in("id_venta", [...ventaPorId.keys()])
+        .in("id_variante", [...variantePorId.keys()])
+        .is("id_liquidacion_proveedor", null)
+    : { data: [] as Record<string, unknown>[] };
+
+  if ((detalle ?? []).length === 0 && mermas.length === 0) return vacio;
+
+  // Ventas y mermas en una sola línea de tiempo.
+  //
+  // Van mezcladas y ordenadas por fecha porque el FIFO depende del orden: si
+  // el día 3 se rompió una bolsa del lote viejo y el día 10 se vendió otra,
+  // la rota salió del lote viejo y la vendida del nuevo. Procesando primero
+  // todas las ventas y después todas las mermas, los costos se cruzarían.
+  type Evento = {
+    fecha: string;
+    idVariante: string;
+    cantidad: number;
+    medio: MedioLiquidacion;
+    /** Lo que entró por esa venta. En una merma es 0: no entró nada. */
+    subtotalVenta: number;
+  };
+
+  const eventos: Evento[] = [
+    ...(detalle ?? []).map((d) => {
+      const venta = ventaPorId.get(d.id_venta as string);
+      const cantidad = (d.cantidad as number) ?? 0;
+      return {
+        fecha: (venta?.fecha as string) ?? "",
+        idVariante: d.id_variante as string,
+        cantidad,
+        medio: (venta?.medio_pago === "EFECTIVO" ? "EFECTIVO" : "ELECTRONICO") as MedioLiquidacion,
+        subtotalVenta: (d.subtotal as number | null) ?? ((d.precio_unitario as number) ?? 0) * cantidad,
+      };
+    }),
+    ...mermas.map((m) => ({
+      fecha: m.fecha,
+      idVariante: m.idVariante,
+      cantidad: m.cantidad,
+      medio: "MERMA" as MedioLiquidacion,
+      subtotalVenta: 0,
+    })),
+  ].sort((a, b) => a.fecha.localeCompare(b.fecha));
 
   // Los lotes se cargan una vez por variante y se van gastando en memoria.
   const lotesPorVariante = new Map<string, Awaited<ReturnType<typeof lotesDeVariante>>>();
-  for (const idVariante of new Set(lineasOrdenadas.map((d) => d.id_variante as string))) {
+  for (const idVariante of new Set(eventos.map((e) => e.idVariante))) {
     lotesPorVariante.set(idVariante, await lotesDeVariante(supabase, idProveedor, idVariante));
   }
 
@@ -245,17 +351,16 @@ export async function detalleLiquidacionProveedor(
   const acumulado = new Map<string, LineaDetalle & { _lotes: Map<string, LoteDeLinea> }>();
   let estimado = false;
 
-  for (const d of lineasOrdenadas) {
-    const cantidad = (d.cantidad as number) ?? 0;
+  for (const ev of eventos) {
+    const cantidad = ev.cantidad;
     if (cantidad <= 0) continue;
 
-    const idVariante = d.id_variante as string;
+    const idVariante = ev.idVariante;
     const v = variantePorId.get(idVariante);
     const p = v ? productoPorId.get(v.id_producto as string) : undefined;
     if (!v || !p) continue;
 
-    const medio: MedioLiquidacion =
-      ventaPorId.get(d.id_venta as string)?.medio_pago === "EFECTIVO" ? "EFECTIVO" : "ELECTRONICO";
+    const medio = ev.medio;
 
     const r = consumirEnMemoria(
       lotesPorVariante.get(idVariante) ?? [],
@@ -287,11 +392,11 @@ export async function detalleLiquidacionProveedor(
 
     // El precio de venta se muestra como el unitario real de la línea. Si en
     // el período se vendió a distintos precios, queda el promedio ponderado
-    // — el que importa para el margen.
-    const subtotalVenta = (d.subtotal as number | null) ?? (d.precio_unitario as number) * cantidad;
+    // — el que importa para el margen. En una merma queda en 0, que es la
+    // verdad: esa mercadería no se vendió a ningún precio.
     linea.cantidad += cantidad;
-    linea.ventaTotal = redondear2(linea.ventaTotal + subtotalVenta);
-    linea.precioVenta = redondear2(linea.ventaTotal / linea.cantidad);
+    linea.ventaTotal = redondear2(linea.ventaTotal + ev.subtotalVenta);
+    linea.precioVenta = linea.cantidad > 0 ? redondear2(linea.ventaTotal / linea.cantidad) : 0;
 
     for (const c of r.consumos) {
       const k = c.idDetalleRecepcion;
@@ -308,7 +413,14 @@ export async function detalleLiquidacionProveedor(
     }
   }
 
-  const porMedio = (["ELECTRONICO", "EFECTIVO"] as MedioLiquidacion[]).map((medio) => {
+  // Los motivos de merma, agrupados por producto, para poder mostrar
+  // "3 rotura · 1 vencimiento" al lado de la línea.
+  const mermasPorVariante = new Map<string, MermaPendiente[]>();
+  for (const m of mermas) {
+    mermasPorVariante.set(m.idVariante, [...(mermasPorVariante.get(m.idVariante) ?? []), m]);
+  }
+
+  const porMedio = (["ELECTRONICO", "EFECTIVO", "MERMA"] as MedioLiquidacion[]).map((medio) => {
     const lineas: LineaDetalle[] = [];
     const totales = totalesVacios();
 
@@ -322,11 +434,15 @@ export async function detalleLiquidacionProveedor(
         lotes: [..._lotes.values()].sort((a, b) => a.fechaRecepcion.localeCompare(b.fechaRecepcion)),
         iva: redondear2(acc.costoNeto * (acc.ivaPorcentaje / 100)),
         // El precio de góndola incluye IVA: se le saca para poder compararlo
-        // contra el costo, que va neto.
+        // contra el costo, que va neto. En merma es 0 y el margen queda en
+        // menos el costo entero, que es exactamente lo que se perdió.
         ventaNeta: redondear2(acc.ventaTotal / (1 + acc.ivaPorcentaje / 100)),
         margen: 0,
       };
       l.margen = redondear2(l.ventaNeta - l.costoNeto);
+      if (medio === "MERMA") {
+        l.motivos = resumirMotivos(mermasPorVariante.get(acc.idVariante) ?? []);
+      }
       lineas.push(l);
       acumular(totales, l);
     }
@@ -414,6 +530,16 @@ export async function generarLiquidacionProveedor(
         .in("id_variante", varianteIds)
         .is("id_liquidacion_proveedor", null);
     }
+
+    // Lo mismo con la merma. Sin esto, la mercadería rota se le pagaría a
+    // Alifrut todos los meses hasta el fin de los tiempos.
+    await supabase
+      .from("mermas")
+      .update({ id_liquidacion_proveedor: liquidacion.id_liquidacion })
+      .in("id_variante", varianteIds)
+      .is("id_liquidacion_proveedor", null)
+      .gte("fecha", `${params.fechaDesde}T00:00:00`)
+      .lte("fecha", `${params.fechaHasta}T23:59:59`);
   }
 
   return liquidacion.id_liquidacion as string;

@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { Local, Producto, Marca, Subcategoria, VarianteProducto, Stock, MovimientoStock } from "@/lib/supabase";
 import AjusteStockModal from "@/components/AjusteStockModal";
+import MermaModal from "@/components/MermaModal";
 import TransferenciaStockModal from "@/components/TransferenciaStockModal";
 import type { Cobertura } from "@/lib/cobertura";
 
@@ -45,7 +46,8 @@ type Fila = {
 type Orden = "nombre" | "mayor" | "menor";
 
 const TIPO_LABEL: Record<string, string> = {
-  AJUSTE: "Ajuste manual",
+  AJUSTE: "Corrección de conteo",
+  MERMA: "Merma",
   TRANSFERENCIA_SALIDA: "Transferencia (salida)",
   TRANSFERENCIA_ENTRADA: "Transferencia (entrada)",
   RECEPCION: "Recepción de mercadería",
@@ -82,6 +84,7 @@ export default function StockApp({
   const [idSubcategoriaFiltro, setIdSubcategoriaFiltro] = useState("");
   const [orden, setOrden] = useState<Orden>("nombre");
   const [ajuste, setAjuste] = useState<Fila | null>(null);
+  const [merma, setMerma] = useState<Fila | null>(null);
   const [transferenciaOpen, setTransferenciaOpen] = useState(false);
   const [historialAbierto, setHistorialAbierto] = useState(false);
 
@@ -291,19 +294,33 @@ export default function StockApp({
                     <td className="p-3 text-neutral-500">{f.variante.stock_minimo}</td>
                     <td className="p-3 text-neutral-500">{f.variante.stock_objetivo}</td>
                     <td className="p-3 text-right whitespace-nowrap">
-                      {/* La ficha antes que Ajustar: mirar por qué el número
-                          es el que es debería venir antes que cambiarlo. */}
+                      {/* La ficha antes que los botones que cambian el
+                          número: mirar por qué es el que es debería venir
+                          antes que corregirlo. */}
                       <Link
                         href={`/producto/${f.variante.id_variante}`}
                         className="text-sm text-accent hover:underline mr-3"
                       >
                         Ver ficha
                       </Link>
+                      {/* "Ajustar" pasó a "Corregir conteo" para que se
+                          distinga de la merma. Los dos bajan el stock, pero
+                          uno dice "conté mal" y el otro "se perdió", y con un
+                          proveedor por liquidación eso cuesta plata distinta. */}
                       <button
                         onClick={() => setAjuste(f)}
-                        className="text-sm text-accent hover:underline"
+                        className="text-sm text-accent hover:underline mr-3"
                       >
-                        Ajustar
+                        Corregir conteo
+                      </button>
+                      {/* Se apaga sin stock: no se puede perder lo que no hay,
+                          y el servidor lo rechaza igual. */}
+                      <button
+                        onClick={() => setMerma(f)}
+                        disabled={cantidad <= 0}
+                        className="text-sm text-amber-700 hover:underline disabled:text-neutral-300 disabled:no-underline"
+                      >
+                        Merma
                       </button>
                     </td>
                   </tr>
@@ -371,6 +388,16 @@ export default function StockApp({
           idLocal={idLocal}
           cantidadActual={cantidadPorClave.get(`${ajuste.variante.id_variante}_${idLocal}`) ?? 0}
           onClose={() => setAjuste(null)}
+        />
+      )}
+
+      {merma && (
+        <MermaModal
+          nombre={`${merma.producto.nombre}${merma.variante.nombre !== "Único" ? ` — ${merma.variante.nombre}` : ""}`}
+          idVariante={merma.variante.id_variante}
+          idLocal={idLocal}
+          cantidadActual={cantidadPorClave.get(`${merma.variante.id_variante}_${idLocal}`) ?? 0}
+          onClose={() => setMerma(null)}
         />
       )}
 

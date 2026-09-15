@@ -35,7 +35,8 @@ const TIPO_LABEL: Record<string, string> = {
   DEVOLUCION: "Devolución de cliente",
   DEVOLUCION_NO_VENDIBLE: "Devolución fallada",
   DEVOLUCION_PROVEEDOR: "Devolución al proveedor",
-  AJUSTE: "Ajuste manual",
+  AJUSTE: "Corrección de conteo",
+  MERMA: "Merma",
   CARGA_INICIAL: "Carga inicial",
   TRANSFERENCIA_SALIDA: "Transferencia · salió",
   TRANSFERENCIA_ENTRADA: "Transferencia · entró",
@@ -50,7 +51,11 @@ export default function FichaProductoApp({ ficha }: { ficha: FichaProducto }) {
     if (filtro === "TODO") return ficha.movimientos;
     if (filtro === "ENTRADAS") return ficha.movimientos.filter((m) => m.cantidad > 0);
     if (filtro === "VENTAS") return ficha.movimientos.filter((m) => m.tipo === "VENTA");
-    return ficha.movimientos.filter((m) => m.tipo === "AJUSTE" || m.tipo === "CARGA_INICIAL");
+    // La merma entra acá: cuando alguien busca "por qué falta stock que no se
+    // vendió", la mercadería rota es media respuesta y el ajuste la otra.
+    return ficha.movimientos.filter(
+      (m) => m.tipo === "AJUSTE" || m.tipo === "MERMA" || m.tipo === "CARGA_INICIAL"
+    );
   }, [ficha.movimientos, filtro]);
 
   const hayAjusteManual = ficha.movimientos.some((m) => m.tipo === "AJUSTE");
@@ -59,7 +64,7 @@ export default function FichaProductoApp({ ficha }: { ficha: FichaProducto }) {
     { clave: "TODO", texto: "Todo" },
     { clave: "ENTRADAS", texto: "Solo entradas" },
     { clave: "VENTAS", texto: "Solo ventas" },
-    { clave: "AJUSTES", texto: "Ajustes" },
+    { clave: "AJUSTES", texto: "Ajustes y merma" },
   ];
 
   return (
