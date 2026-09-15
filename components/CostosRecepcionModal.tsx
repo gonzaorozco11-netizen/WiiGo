@@ -115,6 +115,10 @@ export default function CostosRecepcionModal({
   // Lo que el proveedor facturó de más.
   const [discrepancia, setDiscrepancia] = useState(false);
   const [motivoDiscrepancia, setMotivoDiscrepancia] = useState("");
+  // El neto mal facturado se arma con unidades × precio. Arranca en 1 para
+  // que quien solo sabe el importe total lo pueda escribir derecho en el
+  // precio y no tenga que pelear con un campo que no le sirve.
+  const [malUnidades, setMalUnidades] = useState("1");
   const [malNeto, setMalNeto] = useState("");
   const [malAlicuota, setMalAlicuota] = useState(21);
   const [malIvaManual, setMalIvaManual] = useState<string | null>(null);
@@ -241,7 +245,10 @@ export default function CostosRecepcionModal({
   const ivaFinal = ivaManual !== null ? Number(ivaManual) || 0 : ivaCalculado;
 
   // ---------- Lo mal facturado ----------
-  const nMalNeto = discrepancia ? Number(malNeto) || 0 : 0;
+  // `malNeto` guarda el precio por unidad; el neto sale de multiplicarlo.
+  const nMalNeto = discrepancia
+    ? redondear2((Number(malUnidades) || 0) * (Number(malNeto) || 0))
+    : 0;
   const malIvaCalculado = redondear2(nMalNeto * (malAlicuota / 100));
   const nMalIva = discrepancia ? (malIvaManual !== null ? Number(malIvaManual) || 0 : malIvaCalculado) : 0;
   const nMalImpuestos = discrepancia ? Number(malImpuestos) || 0 : 0;
@@ -879,10 +886,31 @@ export default function CostosRecepcionModal({
                       <b>no entra al costo de tus productos</b>. Se abre solo el reclamo de nota de crédito.
                     </p>
 
-                    <div className="grid gap-3 sm:grid-cols-5">
+                    {/* Unidades × precio, y no un neto suelto.
+                        Lo que uno tiene adelante es "me facturaron 10 aguas a
+                        $500", no "$5.000": obligar a multiplicar de cabeza es
+                        pedir un error de un cero justo en el número que
+                        después se le reclama al proveedor. */}
+                    <div className="grid gap-3 sm:grid-cols-3 mb-3">
                       <div>
                         <label className="block text-[10.5px] font-bold text-amber-800 uppercase mb-1">
-                          Facturado de más · neto ($)
+                          Unidades de más
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          step="1"
+                          value={malUnidades}
+                          onChange={(e) => setMalUnidades(e.target.value)}
+                          className="w-full rounded-lg border border-amber-300 bg-white px-2.5 py-2 text-sm text-right tabular-nums focus:outline-none focus:ring-2 focus:ring-amber-400"
+                        />
+                        <p className="text-[10.5px] text-amber-700 mt-1 leading-snug">
+                          Dejá 1 si no son unidades (un precio mal puesto, por ejemplo).
+                        </p>
+                      </div>
+                      <div>
+                        <label className="block text-[10.5px] font-bold text-amber-800 uppercase mb-1">
+                          Precio c/u sin IVA ($)
                         </label>
                         <input
                           type="number"
@@ -894,6 +922,22 @@ export default function CostosRecepcionModal({
                           className="w-full rounded-lg border border-amber-300 bg-white px-2.5 py-2 text-sm text-right tabular-nums focus:outline-none focus:ring-2 focus:ring-amber-400"
                         />
                       </div>
+                      <div>
+                        <label className="block text-[10.5px] font-bold text-amber-800 uppercase mb-1">
+                          Neto facturado de más
+                        </label>
+                        <div className="rounded-lg border border-amber-300 bg-amber-100/60 px-2.5 py-2 text-sm text-right tabular-nums font-bold text-amber-900">
+                          ${formatearMonto(nMalNeto)}
+                        </div>
+                        <p className="text-[10.5px] text-amber-700 mt-1 leading-snug">
+                          {malUnidades && Number(malUnidades) !== 1
+                            ? `${malUnidades} × $${formatearMonto(Number(malNeto) || 0)}`
+                            : "Lo calcula solo."}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-4">
                       <div>
                         <label className="block text-[10.5px] font-bold text-amber-800 uppercase mb-1">
                           Alícuota de IVA
