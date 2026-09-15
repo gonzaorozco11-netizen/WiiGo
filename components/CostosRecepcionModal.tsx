@@ -193,6 +193,28 @@ export default function CostosRecepcionModal({
     ? sumarDias(fechaEmision, proveedor.condicion_pago_dias)
     : null;
 
+  /**
+   * Cuánto de cada producto entró en las OTRAS entregas del mismo pedido.
+   *
+   * La tabla muestra los renglones del pedido entero, así que en la 2ª
+   * entrega aparecen también los productos que ya habían llegado en la 1ª,
+   * con 0 unidades. Sin esto los dos casos se ven iguales — "0 recibido" —
+   * y no hay forma de distinguir "esto ya lo tenés, se costeó aparte" de
+   * "esto el proveedor nunca lo mandó", que son cosas muy distintas.
+   */
+  const entroEnOtraEntrega = useMemo(() => {
+    const map = new Map<string, { unidades: number; costeado: boolean }>();
+    for (const l of todasLasLineas) {
+      if (l.idRecepcion === entrega.idRecepcion || l.cantidadRecibida <= 0) continue;
+      const previo = map.get(l.idVariante) ?? { unidades: 0, costeado: false };
+      map.set(l.idVariante, {
+        unidades: previo.unidades + l.cantidadRecibida,
+        costeado: previo.costeado || (l.costoUnitario ?? 0) > 0,
+      });
+    }
+    return map;
+  }, [todasLasLineas, entrega.idRecepcion]);
+
   const totales = lineas.reduce(
     (acc, l) => {
       const neto = (Number(costos[l.idVariante]) || 0) * l.cantidadRecibida;
@@ -476,6 +498,11 @@ export default function CostosRecepcionModal({
                   {lineas.map((l) => {
                     // Renglón del pedido que en esta entrega no trajo nada.
                     const noLlego = l.cantidadRecibida <= 0;
+                    // Dos motivos distintos para el mismo 0: o ya llegó en
+                    // otra entrega, o el proveedor no lo mandó nunca.
+                    const otra = entroEnOtraEntrega.get(l.idVariante);
+                    const yaEntroAntes = otra?.unidades ?? 0;
+                    const yaEstaba = noLlego && yaEntroAntes > 0;
                     const costoAnterior = costoActualPorVariante.get(l.idVariante) ?? null;
                     const costoNuevo = Number(costos[l.idVariante]) || 0;
                     // Se compara final contra final: el costo anterior ya
@@ -489,7 +516,20 @@ export default function CostosRecepcionModal({
                         key={l.idVariante}
                         className={`border-b border-neutral-100 last:border-0 ${noLlego ? "opacity-50" : ""}`}
                       >
-                        <td className="p-3 text-neutral-900">{nombrePorVariante.get(l.idVariante) ?? "—"}</td>
+                        <td className="p-3 text-neutral-900">
+                          {nombrePorVariante.get(l.idVariante) ?? "—"}
+                          {yaEstaba && (
+                            <span className="block text-[11px] text-neutral-400">
+                              Ya entró en otra entrega ({yaEntroAntes} u.) —{" "}
+                              {otra?.costeado ? "su costo se cargó ahí" : "se costea en esa entrega"}
+                            </span>
+                          )}
+                          {noLlego && !yaEstaba && (
+                            <span className="block text-[11px] text-amber-700">
+                              El proveedor todavía no lo mandó
+                            </span>
+                          )}
+                        </td>
                         <td className="p-3 text-right text-neutral-500 tabular-nums">{l.cantidadRecibida}</td>
                         <td className="p-3 text-right text-neutral-400 tabular-nums">
                           {costoAnterior != null ? `$${formatearMonto(costoAnterior)}` : "—"}
@@ -500,7 +540,9 @@ export default function CostosRecepcionModal({
                             // está vacío. Y dejarlo escribible cambiaría el
                             // costo de referencia del producto por una
                             // entrega que no ocurrió.
-                            <span className="text-xs text-neutral-400 px-3">no llegó</span>
+                            <span className="text-xs text-neutral-400 px-3">
+                              {yaEstaba ? (otra?.costeado ? "ya costeado" : "en otra entrega") : "no vino"}
+                            </span>
                           ) : (
                             <input
                               type="number"
@@ -538,7 +580,12 @@ export default function CostosRecepcionModal({
                           </td>
                         )}
                         <td className="p-3 text-right tabular-nums">
-                          {pct == null || Math.abs(pct) < 0.05 ? (
+                          {/* Sin unidades no hay costo nuevo que comparar:
+                              decir "sin cambios" ahí suena a que se revisó
+                              el precio y dio igual, y no se revisó nada. */}
+                          {noLlego ? (
+                            <span className="text-xs text-neutral-300">—</span>
+                          ) : pct == null || Math.abs(pct) < 0.05 ? (
                             <span className="text-xs text-neutral-400">sin cambios</span>
                           ) : pct > 0 ? (
                             <span className="text-xs font-semibold text-red-600">▲ +{pct.toFixed(1)}%</span>
