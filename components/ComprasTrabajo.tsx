@@ -124,36 +124,16 @@ export default function ComprasTrabajo({
   /**
    * Dar por cerrado un pedido a medias, desde Recepción.
    *
-   * Mismo flujo que el de Costeo — pregunta el motivo y si eso estaba
-   * facturado — porque es la misma decisión. Lo que cambia es dónde se toma:
-   * acá es donde uno ve que el pedido quedó colgado.
+   * Es la misma decisión que la de Costeo y usa el mismo diálogo — lo que
+   * cambia es dónde se toma: acá es donde uno ve el pedido colgado.
    */
   function cerrarPedidoDesdeRecepcion(f: Fila, faltan: number) {
-    const motivo = window.prompt(
-      `Vas a dar por cerrado el pedido a ${f.contraparte} con ${faltan} unidades sin recibir.\n\n¿Por qué?`,
-      "El proveedor no envía el resto"
-    );
-    if (motivo === null) return;
-
-    const netoTexto = window.prompt(
-      "¿Esa mercadería que no llegó ya estaba facturada?\n\n" +
-        "Si te la cobraron, poné el NETO facturado de más (sin IVA) y queda un reclamo de nota de crédito.\n\n" +
-        "Si no estaba facturada, dejalo en 0.",
-      "0"
-    );
-    if (netoTexto === null) return;
-    const neto = Number(netoTexto) || 0;
-
-    let iva = 0;
-    if (neto > 0) {
-      const ivaTexto = window.prompt(`IVA de esos $${neto.toLocaleString("es-AR")}:`, String(Math.round(neto * 0.21)));
-      if (ivaTexto === null) return;
-      iva = Number(ivaTexto) || 0;
-    }
+    const datos = pedirDatosDeCierre(faltan, f.contraparte);
+    if (!datos) return;
 
     setError(null);
     setEnviando(`${f.origen}-${f.idOrden}`);
-    cerrarOrdenIncompleta("PROVEEDOR", f.idOrden, motivo, neto > 0 ? { neto, iva } : null)
+    cerrarOrdenIncompleta("PROVEEDOR", f.idOrden, datos.motivo, datos.facturado)
       .then((r) => {
         if (r.error) setError(r.error);
         else {
@@ -526,16 +506,19 @@ export default function ComprasTrabajo({
                     }
                     etiqueta={<EtiquetaOrigen origen={f.origen} />}
                   >
-                    {/* "No las van a mandar más" se decide acá también, no
-                        solo en Costeo: este es el lugar donde uno VE que el
-                        pedido quedó a medias, y buscarlo en otra pantalla es
-                        lo que hace que quede abierto para siempre. */}
+                    {/* Que el resto no viene se decide acá también, no solo
+                        en Costeo: este es el lugar donde uno VE que el pedido
+                        quedó a medias, y buscarlo en otra pantalla es lo que
+                        hace que quede abierto para siempre.
+                        Mismo texto que en Costeo a propósito: es la misma
+                        acción, y dos nombres distintos se leen como dos
+                        cosas distintas. */}
                     {puedeCerrarPedidos && f.origen === "PROVEEDOR" && (
                       <BotonSuave
                         onClick={() => cerrarPedidoDesdeRecepcion(f, faltan)}
                         disabled={enviando === `${f.origen}-${f.idOrden}`}
                       >
-                        No lo mandan más
+                        Cerrar pedido como está
                       </BotonSuave>
                     )}
                     <BotonPrincipal tono="ambar" onClick={() => abrirRecepcion(f)}>
@@ -712,35 +695,13 @@ function CosteoEtapa({
       .finally(() => setAnulando(null));
   }
 
-  function cerrarPedido(idOrden: string, faltan: number) {
-    const motivo = window.prompt(
-      `Vas a dar por cerrado este pedido con ${faltan} unidades sin recibir.\n\n¿Por qué?`,
-      "El proveedor no envía el resto"
-    );
-    if (motivo === null) return;
-
-    // La pregunta que decide si nace un reclamo. Se pregunta y no se calcula:
-    // el sistema sabe cuántas faltaron, pero no si el proveedor las facturó
-    // ni a qué precio.
-    const netoTexto = window.prompt(
-      "¿Esa mercadería que no llegó ya estaba facturada?\n\n" +
-        "Si te la cobraron, poné el NETO que te facturaron de más (sin IVA) y queda un reclamo de nota de crédito.\n\n" +
-        "Si no estaba facturada, dejalo en 0.",
-      "0"
-    );
-    if (netoTexto === null) return;
-    const neto = Number(netoTexto) || 0;
-
-    let iva = 0;
-    if (neto > 0) {
-      const ivaTexto = window.prompt(`IVA de esos $${neto.toLocaleString("es-AR")}:`, String(Math.round(neto * 0.21)));
-      if (ivaTexto === null) return;
-      iva = Number(ivaTexto) || 0;
-    }
+  function cerrarPedido(idOrden: string, faltan: number, contraparte?: string) {
+    const datos = pedirDatosDeCierre(faltan, contraparte);
+    if (!datos) return;
 
     setErrorCierre(null);
     setCerrando(idOrden);
-    cerrarOrdenIncompleta("PROVEEDOR", idOrden, motivo, neto > 0 ? { neto, iva } : null)
+    cerrarOrdenIncompleta("PROVEEDOR", idOrden, datos.motivo, datos.facturado)
       .then((r) => {
         if (r.error) setErrorCierre(r.error);
         else {
@@ -875,7 +836,7 @@ function CosteoEtapa({
                         entrega. Si el proveedor manda el resto, entra como una entrega nueva.
                       </span>
                       <button
-                        onClick={() => cerrarPedido(r.id_orden, faltan)}
+                        onClick={() => cerrarPedido(r.id_orden, faltan, r.proveedor?.nombre)}
                         disabled={cerrando === r.id_orden}
                         className="text-sm font-semibold text-amber-900 bg-white border border-amber-300 rounded-lg px-3 py-1.5 hover:bg-amber-100 disabled:opacity-50"
                       >
@@ -959,11 +920,11 @@ function CosteoEtapa({
                               tendría que hacer desaparecer esa decisión. */}
                           {r.orden?.estado === RECIBIDA_PARCIAL && faltanteDe(r.id_orden) > 0 && (
                             <button
-                              onClick={() => cerrarPedido(r.id_orden, faltanteDe(r.id_orden))}
+                              onClick={() => cerrarPedido(r.id_orden, faltanteDe(r.id_orden), r.proveedor?.nombre)}
                               disabled={cerrando === r.id_orden}
                               className="text-[11px] font-semibold text-amber-700 hover:underline mr-3 disabled:opacity-50"
                             >
-                              {cerrando === r.id_orden ? "..." : "No lo mandan más"}
+                              {cerrando === r.id_orden ? "..." : "Cerrar pedido como está"}
                             </button>
                           )}
                           {/* Anular a la izquierda y en gris: Corregir es lo
@@ -1436,6 +1397,47 @@ function BotonPrincipal({
       {children}
     </button>
   );
+}
+
+/**
+ * Las preguntas de "cerrar pedido como está".
+ *
+ * Una sola copia porque el botón vive en dos pantallas (Recepción y Costeo) y
+ * es la MISMA decisión. Con el texto duplicado, tocar uno y olvidar el otro
+ * termina en dos diálogos que preguntan distinto para lo mismo.
+ *
+ * Devuelve null si se arrepintió en cualquier paso.
+ */
+function pedirDatosDeCierre(
+  faltan: number,
+  contraparte?: string
+): { motivo: string; facturado: { neto: number; iva: number } | null } | null {
+  const aQuien = contraparte ? ` a ${contraparte}` : "";
+  const motivo = window.prompt(
+    `Vas a dar por cerrado el pedido${aQuien} con ${faltan} unidades sin recibir.\n\n¿Por qué?`,
+    "El proveedor no envía el resto"
+  );
+  if (motivo === null) return null;
+
+  // Se pregunta y no se calcula: el sistema sabe cuántas unidades faltaron,
+  // pero no si el proveedor las facturó ni a qué precio. Adivinarlo daría un
+  // número que nadie puede defender frente al proveedor.
+  const netoTexto = window.prompt(
+    "¿Esa mercadería que no llegó ya estaba facturada?\n\n" +
+      "Si te la cobraron, poné el NETO que te facturaron de más (sin IVA) y queda un reclamo de nota de crédito.\n\n" +
+      "Si no estaba facturada, dejalo en 0.",
+    "0"
+  );
+  if (netoTexto === null) return null;
+  const neto = Number(netoTexto) || 0;
+  if (neto <= 0) return { motivo, facturado: null };
+
+  const ivaTexto = window.prompt(
+    `IVA de esos $${neto.toLocaleString("es-AR")}:`,
+    String(Math.round(neto * 0.21))
+  );
+  if (ivaTexto === null) return null;
+  return { motivo, facturado: { neto, iva: Number(ivaTexto) || 0 } };
 }
 
 function BotonSuave({
