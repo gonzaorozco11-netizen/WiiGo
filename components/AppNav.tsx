@@ -66,6 +66,8 @@ const GROUPS: NavGroup[] = [
   {
     label: "Marcas y Proveedores",
     items: [
+      // Primero del grupo: es la vista de arriba de las otras cuatro.
+      { href: "/panel-proveedores", label: "Panel" },
       { href: "/proveedores", label: "Proveedores" },
       { href: "/marcas", label: "Marcas" },
       { href: "/situacion-marca", label: "Situación de marca" },

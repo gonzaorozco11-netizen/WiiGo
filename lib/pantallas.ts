@@ -36,6 +36,10 @@ export const PANTALLAS_DISPONIBLES: PantallaDisponible[] = [
   // entrada con contador, y además junta solicitudes de marca con etiquetas
   // vencidas — no es solo cosa de marcas.
   { clave: "aprobaciones", label: "Aprobaciones", grupo: "Aprobaciones" },
+  // Primero del grupo: es la vista de arriba de las otras cuatro. Pantalla
+  // propia y no un bloque adentro de Proveedores porque la mitad de lo que
+  // muestra es de marcas.
+  { clave: "panel-proveedores", label: "Panel", grupo: "Marcas y Proveedores" },
   { clave: "proveedores", label: "Proveedores", grupo: "Marcas y Proveedores" },
   // Vivía en Catálogo, que es para lo que vendés. Una marca no es un
   // producto: es con quién trabajás. La clave no cambia, así que nadie pierde
