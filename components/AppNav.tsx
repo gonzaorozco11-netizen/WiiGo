@@ -100,9 +100,11 @@ const GROUPS: NavGroup[] = [
     // porque cada una se usa en un momento distinto: la planilla todo el mes,
     // los sueldos el día 1, el legajo casi nunca.
     items: [
+      { href: "/rrhh", label: "Dashboard", permiso: "nomina" },
       { href: "/rrhh/personal", label: "Personal", permiso: "nomina" },
       { href: "/rrhh/planilla", label: "Planilla", permiso: "nomina" },
       { href: "/rrhh/sueldos", label: "Sueldos", permiso: "nomina" },
+      { href: "/rrhh/adelantos", label: "Adelantos", permiso: "nomina" },
     ],
   },
   {

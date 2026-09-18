@@ -1,11 +1,10 @@
-import { redirect } from "next/navigation";
+import PantallaRrhh from "./pantalla";
 
-// RR.HH. se partió en tres pantallas (Personal, Planilla y Sueldos) y en el
-// menú ya no hay una entrada suelta a /rrhh. Esto queda para que los links
-// viejos y los favoritos de Gonzalo sigan funcionando: caen en Sueldos, que
-// es lo que antes se abría primero.
-//
-// Cuando exista el Dashboard de RR.HH. va a vivir acá y este redirect se va.
+// El dashboard de RR.HH. vive en la raíz del módulo: es lo primero que se abre
+// y lo que contesta las tres preguntas del día — quién está, cuánto debo y qué
+// está trabado. Los links viejos a /rrhh caen acá, que es lo correcto.
+export const dynamic = "force-dynamic";
+
 export default function RrhhPage() {
-  redirect("/rrhh/sueldos");
+  return <PantallaRrhh vista="DASHBOARD" />;
 }

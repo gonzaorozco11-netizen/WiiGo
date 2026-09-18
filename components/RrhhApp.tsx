@@ -14,6 +14,12 @@ import {
   listarSaldosVacaciones,
   listarPersonalRrhh,
   type PersonaDeRrhh,
+  armarDashboardRrhh,
+  type DashboardRrhh,
+  listarAdelantos,
+  registrarAdelanto,
+  anularAdelanto,
+  type AdelantoListado,
   listarLicencias,
   crearLicencia,
   eliminarLicencia,
@@ -52,37 +58,56 @@ type PersonaMin = { id_persona: string; nombre: string; apellido: string | null 
  * bloques comparten tipos, helpers y modales, y separarlos en archivos habría
  * sido mover mil líneas para que la pantalla se vea igual.
  */
-export type VistaRrhh = "SUELDOS" | "PLANILLA" | "PERSONAL";
+export type VistaRrhh = "DASHBOARD" | "PERSONAL" | "PLANILLA" | "SUELDOS" | "ADELANTOS";
 
-type Sub = "nomina" | "aguinaldo" | "feriados" | "planilla" | "presentismo" | "horarios" | "vacaciones";
+type Sub =
+  | "dashboard"
+  | "nomina"
+  | "aguinaldo"
+  | "feriados"
+  | "planilla"
+  | "presentismo"
+  | "horarios"
+  | "vacaciones"
+  | "adelantos";
 
 /** Qué sub-secciones tiene cada pantalla, y con qué nombre. */
 const SUBS: Record<VistaRrhh, { clave: Sub; etiqueta: string }[]> = {
-  SUELDOS: [
-    { clave: "nomina", etiqueta: "Del mes" },
-    { clave: "aguinaldo", etiqueta: "Aguinaldo" },
-    { clave: "feriados", etiqueta: "Feriados" },
-  ],
+  DASHBOARD: [{ clave: "dashboard", etiqueta: "Hoy" }],
+  PERSONAL: [{ clave: "vacaciones", etiqueta: "Personal" }],
   PLANILLA: [
     { clave: "planilla", etiqueta: "Horas del mes" },
     { clave: "presentismo", etiqueta: "Presentismo" },
     { clave: "horarios", etiqueta: "Horarios" },
   ],
-  PERSONAL: [{ clave: "vacaciones", etiqueta: "Vacaciones y licencias" }],
+  SUELDOS: [
+    { clave: "nomina", etiqueta: "Del mes" },
+    { clave: "aguinaldo", etiqueta: "Aguinaldo" },
+    { clave: "feriados", etiqueta: "Feriados" },
+  ],
+  ADELANTOS: [{ clave: "adelantos", etiqueta: "Adelantos" }],
 };
 
 const TITULO: Record<VistaRrhh, { h1: string; bajada: string }> = {
-  SUELDOS: {
-    h1: "Sueldos",
-    bajada: "El cierre del mes: cuánto hay que pagar, cuánto salió y qué falta. Acá adentro también el aguinaldo y los feriados, que se pagan al doble a la gente por hora.",
+  DASHBOARD: {
+    h1: "RR.HH.",
+    bajada: "Quién está trabajando, cuánto llevás del mes en sueldos y qué está trabado.",
+  },
+  PERSONAL: {
+    h1: "Personal",
+    bajada: "La gente que trabaja con vos, por sucursal: sus vacaciones y qué le falta a cada legajo. Los datos personales se cargan en Equipo → Organización.",
   },
   PLANILLA: {
     h1: "Planilla",
     bajada: "Las horas de cada uno y lo que lleva ganado. Tocá a alguien para ver su planilla día por día.",
   },
-  PERSONAL: {
-    h1: "Personal",
-    bajada: "La gente que trabaja con vos: sus vacaciones y licencias. Los datos del legajo todavía viven en Equipo → Organización.",
+  SUELDOS: {
+    h1: "Sueldos",
+    bajada: "El cierre del mes: cuánto hay que pagar, cuánto salió y qué falta. Acá adentro también el aguinaldo y los feriados, que se pagan al doble a la gente por hora.",
+  },
+  ADELANTOS: {
+    h1: "Adelantos",
+    bajada: "Lo que ya le diste a cada uno este mes. Se descuenta solo del neto cuando cerrás la nómina.",
   },
 };
 
@@ -158,6 +183,7 @@ export default function RrhhApp({
         </div>
       )}
 
+      {sub === "dashboard" && <TabDashboard />}
       {sub === "nomina" && <TabNomina usuarios={usuarios} />}
       {sub === "aguinaldo" && <TabAguinaldo />}
       {sub === "feriados" && <BloqueFeriados />}
@@ -165,6 +191,166 @@ export default function RrhhApp({
       {sub === "presentismo" && <TabPresentismo />}
       {sub === "horarios" && <TabHorarios horarios={horarios} onCambio={recargarHorarios} />}
       {sub === "vacaciones" && <TabVacaciones personas={personas} />}
+      {sub === "adelantos" && <TabAdelantos usuarios={usuarios} />}
+    </div>
+  );
+}
+
+// ===================== DASHBOARD =====================
+
+const TIPO_LIC_CORTO: Record<string, string> = {
+  VACACIONES: "vacaciones",
+  MATERNIDAD: "maternidad",
+  EXAMEN: "examen",
+  PARTICULAR: "licencia",
+  ENFERMEDAD: "enfermedad",
+  OTRO: "licencia",
+};
+
+function TabDashboard() {
+  const [d, setD] = useState<DashboardRrhh | null>(null);
+  const [cargando, setCargando] = useState(true);
+
+  useEffect(() => {
+    armarDashboardRrhh()
+      .then(setD)
+      .finally(() => setCargando(false));
+  }, []);
+
+  if (cargando || !d) return <p className="text-sm text-neutral-400 text-center py-10">Cargando...</p>;
+
+  const cosas = [
+    {
+      ico: "⏰",
+      titulo: "Fichajes sin salida",
+      detalle: d.fichajesSinSalida === 0 ? "Todos los días cerrados" : "Esos días cuentan 0 horas",
+      n: d.fichajesSinSalida,
+      href: "/rrhh/planilla",
+    },
+    {
+      ico: "💰",
+      titulo: "Nóminas sin cerrar",
+      detalle: d.sueldos.sinCerrar === 0 ? "Todas cerradas" : "Falta calcular el sueldo",
+      n: d.sueldos.sinCerrar,
+      href: "/rrhh/sueldos",
+    },
+    {
+      ico: "🚫",
+      titulo: "No pueden cobrar",
+      detalle: d.noPuedenCobrar === 0 ? "Todos pueden" : "Les falta usuario o sueldo",
+      n: d.noPuedenCobrar,
+      href: "/rrhh/personal",
+    },
+    {
+      ico: "👔",
+      titulo: "Legajos incompletos",
+      detalle: d.legajosIncompletos === 0 ? "Todos completos" : "Falta algún dato",
+      n: d.legajosIncompletos,
+      href: "/rrhh/personal",
+    },
+  ];
+
+  return (
+    <div>
+      <div className="grid sm:grid-cols-2 gap-2.5 mb-2.5">
+        <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3.5">
+          <p className="text-[10.5px] font-bold uppercase tracking-wide text-neutral-500">Trabajando ahora</p>
+          <p className="text-3xl font-extrabold text-neutral-900 tabular-nums leading-tight">
+            {d.trabajando.length}
+            <span className="text-base font-semibold text-neutral-400"> de {d.totalActivos}</span>
+          </p>
+          {/* Los nombres y no solo el número: "3 de 5" no te dice quién
+              falta, que es lo único accionable. */}
+          <div className="text-xs text-neutral-500 mt-1.5 space-y-0.5">
+            {d.trabajando.map((t) => (
+              <p key={t.idPersona}>
+                <span className="text-emerald-600">●</span> {t.nombre}{" "}
+                <span className="text-neutral-400">desde {t.desde}</span>
+              </p>
+            ))}
+            {d.deLicenciaHoy.map((l, i) => (
+              <p key={`lic-${i}`} className="text-neutral-400">
+                ○ {l.nombre} · de {TIPO_LIC_CORTO[l.tipo] ?? "licencia"}
+              </p>
+            ))}
+            {d.sinFichar.map((n) => (
+              <p key={`sf-${n}`} className="text-amber-700">
+                ○ {n} · <span className="opacity-80">no fichó</span>
+              </p>
+            ))}
+            {d.trabajando.length === 0 && d.deLicenciaHoy.length === 0 && d.sinFichar.length === 0 && (
+              <p className="text-neutral-400">Todavía no hay nadie cargado.</p>
+            )}
+          </div>
+        </div>
+
+        <div
+          className={`rounded-xl border px-4 py-3.5 ${
+            d.sueldos.falta > 0 ? "border-amber-200 bg-amber-50" : "border-emerald-200 bg-emerald-50"
+          }`}
+        >
+          <p
+            className={`text-[10.5px] font-bold uppercase tracking-wide ${
+              d.sueldos.falta > 0 ? "text-amber-700" : "text-emerald-700"
+            }`}
+          >
+            Sueldos del mes
+          </p>
+          <p
+            className={`text-3xl font-extrabold tabular-nums leading-tight ${
+              d.sueldos.falta > 0 ? "text-amber-700" : "text-emerald-700"
+            }`}
+          >
+            ${formatearMonto(d.sueldos.total)}
+          </p>
+          <p className={`text-xs mt-1 ${d.sueldos.falta > 0 ? "text-amber-700/80" : "text-emerald-700/80"}`}>
+            {d.sueldos.falta > 0 ? `$${formatearMonto(d.sueldos.falta)} sin pagar` : "Todo pagado"}
+          </p>
+          {d.adelantosDelMes.cantidad > 0 && (
+            <p className="text-xs text-neutral-500 mt-1.5 pt-1.5 border-t border-black/5">
+              ${formatearMonto(d.adelantosDelMes.total)} en adelantos ·{" "}
+              {d.adelantosDelMes.cantidad} {d.adelantosDelMes.cantidad === 1 ? "entregado" : "entregados"}
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-2.5">
+        {cosas.map((c) => (
+          <a
+            key={c.titulo}
+            href={c.href}
+            className={`flex gap-3 items-start border rounded-xl px-4 py-3 ${
+              c.n > 0
+                ? "bg-amber-50 border-amber-200 hover:border-amber-300"
+                : "bg-white border-neutral-200 opacity-60 hover:opacity-100"
+            }`}
+          >
+            <span
+              className={`shrink-0 w-[28px] h-[28px] rounded-lg flex items-center justify-center text-[13px] ${
+                c.n > 0 ? "bg-amber-100 text-amber-700" : "bg-neutral-100 text-neutral-400"
+              }`}
+            >
+              {c.n > 0 ? c.ico : "✓"}
+            </span>
+            <span className="min-w-0">
+              <span className={`block text-[13px] font-semibold ${c.n > 0 ? "text-amber-800" : "text-neutral-700"}`}>
+                {c.titulo}
+              </span>
+              <span className={`block text-[11.5px] ${c.n > 0 ? "text-amber-700/80" : "text-neutral-400"}`}>
+                {c.detalle}
+              </span>
+            </span>
+            <span
+              className={`ml-auto text-lg font-bold tabular-nums leading-tight ${
+                c.n > 0 ? "text-amber-700" : "text-neutral-300"
+              }`}
+            >
+              {c.n}
+            </span>
+          </a>
+        ))}
+      </div>
     </div>
   );
 }
@@ -1357,6 +1543,314 @@ function ModalHorario({ horario, onClose, onGuardado }: { horario: HorarioTrabaj
 }
 
 // ===================== PRESENTISMO =====================
+
+// ===================== ADELANTOS =====================
+//
+// Es una lista de control, no un formulario: cuando alguien te pide plata,
+// lo primero que querés saber es cuánto ya se le dio este mes.
+//
+// El adelanto se sigue pudiendo cargar desde Gastos e Ingresos como siempre;
+// esta pantalla agrega el botón sin salir de RR.HH. y, sobre todo, la lista
+// — que hasta ahora no existía en ningún lado.
+
+const MEDIO_ADELANTO: { valor: string; etiqueta: string; nota: string }[] = [
+  { valor: "EFECTIVO_ADMIN", etiqueta: "Caja Administración", nota: "sale de la caja chica" },
+  { valor: "TRANSFERENCIA", etiqueta: "Transferencia", nota: "no toca caja" },
+  { valor: "MERCADO_PAGO", etiqueta: "Mercado Pago", nota: "no toca caja" },
+];
+
+function TabAdelantos({ usuarios }: { usuarios: UsuarioMin[] }) {
+  const [mes, setMes] = useState(mesActualISO());
+  const [filas, setFilas] = useState<AdelantoListado[]>([]);
+  const [cargando, setCargando] = useState(true);
+  const [nuevo, setNuevo] = useState(false);
+
+  function recargar() {
+    setCargando(true);
+    listarAdelantos(mes)
+      .then(setFilas)
+      .finally(() => setCargando(false));
+  }
+  useEffect(recargar, [mes]);
+
+  const total = filas.reduce((a, f) => a + f.monto, 0);
+  // Por persona: es la pregunta real cuando alguien te pide otro.
+  const porPersona = new Map<string, { nombre: string; total: number; veces: number }>();
+  for (const f of filas) {
+    const acc = porPersona.get(f.idUsuario) ?? { nombre: f.nombre, total: 0, veces: 0 };
+    acc.total += f.monto;
+    acc.veces += 1;
+    porPersona.set(f.idUsuario, acc);
+  }
+
+  function handleAnular(f: AdelantoListado) {
+    if (f.descontado) {
+      alert(
+        "Este adelanto ya entró en una nómina cerrada de este mes. Deshacé el cierre en Sueldos antes de anularlo, " +
+          "si no el neto que pagaste y el que figura no van a coincidir."
+      );
+      return;
+    }
+    const motivo = window.prompt(`Anular el adelanto de ${f.nombre} por $${formatearMonto(f.monto)}.\n\n¿Por qué?`, "Se cargó por error");
+    if (motivo === null) return;
+    anularAdelanto(f.idGasto, motivo).then((res) => {
+      if (res.error) alert(res.error);
+      else recargar();
+    });
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <input
+          type="month"
+          value={mes}
+          onChange={(e) => setMes(e.target.value)}
+          className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-sm"
+        />
+        <button
+          onClick={() => setNuevo(true)}
+          className="bg-accent hover:bg-accent-dark text-white text-sm font-semibold px-3.5 py-2 rounded-lg"
+        >
+          + Registrar adelanto
+        </button>
+      </div>
+
+      {!cargando && filas.length > 0 && (
+        <div className="grid sm:grid-cols-2 gap-2.5 mb-4">
+          <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3">
+            <p className="text-[10.5px] font-bold uppercase tracking-wide text-neutral-500">Adelantado este mes</p>
+            <p className="text-2xl font-extrabold text-neutral-900 tabular-nums">${formatearMonto(total)}</p>
+            <p className="text-xs text-neutral-400">
+              {filas.length} {filas.length === 1 ? "adelanto" : "adelantos"} a {porPersona.size}{" "}
+              {porPersona.size === 1 ? "persona" : "personas"}
+            </p>
+          </div>
+          <div className="rounded-xl border border-neutral-200 bg-white px-4 py-3">
+            <p className="text-[10.5px] font-bold uppercase tracking-wide text-neutral-500">Por persona</p>
+            <div className="mt-1 space-y-0.5">
+              {[...porPersona.values()]
+                .sort((a, b) => b.total - a.total)
+                .map((p) => (
+                  <div key={p.nombre} className="flex justify-between gap-3 text-[13px] tabular-nums">
+                    <span className="text-neutral-700 truncate">
+                      {p.nombre}
+                      {p.veces > 1 && <span className="text-neutral-400 text-xs"> · {p.veces} veces</span>}
+                    </span>
+                    <span className="font-semibold whitespace-nowrap">${formatearMonto(p.total)}</span>
+                  </div>
+                ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="bg-white border border-neutral-200 rounded-xl overflow-hidden">
+        {cargando ? (
+          <p className="text-sm text-neutral-400 text-center py-8">Cargando...</p>
+        ) : filas.length === 0 ? (
+          <p className="text-sm text-neutral-400 text-center py-10">
+            Nadie pidió un adelanto este mes.
+          </p>
+        ) : (
+          filas.map((f) => (
+            <div
+              key={f.idGasto}
+              className="flex items-center gap-3 flex-wrap px-4 py-3 border-b border-neutral-100 last:border-0"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block text-[14px] font-semibold text-neutral-900">{f.nombre}</span>
+                <span className="block text-[11.5px] text-neutral-400">
+                  {new Date(`${f.fecha.slice(0, 10)}T12:00:00`).toLocaleDateString("es-AR")}
+                  {f.medioPago && ` · ${MEDIO_PAGO_CORTO[f.medioPago] ?? f.medioPago}`}
+                  {f.descripcion && ` · ${f.descripcion}`}
+                </span>
+              </span>
+              {/* Si ya se descontó, esa plata salió del neto de una nómina
+                  cerrada: anularlo sin deshacer el cierre deja los números
+                  contando historias distintas. */}
+              <span
+                className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full whitespace-nowrap ${
+                  f.descontado ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+                }`}
+              >
+                {f.descontado ? "Ya descontado" : "Se descuenta al cerrar"}
+              </span>
+              <span className="text-base font-bold tabular-nums whitespace-nowrap">${formatearMonto(f.monto)}</span>
+              <button
+                onClick={() => handleAnular(f)}
+                className="text-[11px] font-semibold text-neutral-400 hover:text-red-600"
+              >
+                Anular
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+
+      {nuevo && (
+        <ModalAdelanto
+          usuarios={usuarios}
+          onClose={() => setNuevo(false)}
+          onGuardado={() => {
+            setNuevo(false);
+            recargar();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+const MEDIO_PAGO_CORTO: Record<string, string> = {
+  EFECTIVO_ADMIN: "caja administración",
+  EFECTIVO_TURNO: "efectivo del turno",
+  TRANSFERENCIA: "transferencia",
+  MERCADO_PAGO: "Mercado Pago",
+};
+
+function ModalAdelanto({
+  usuarios,
+  onClose,
+  onGuardado,
+}: {
+  usuarios: UsuarioMin[];
+  onClose: () => void;
+  onGuardado: () => void;
+}) {
+  const [idUsuario, setIdUsuario] = useState("");
+  const [monto, setMonto] = useState("");
+  const [medioPago, setMedioPago] = useState("EFECTIVO_ADMIN");
+  const [descripcion, setDescripcion] = useState("");
+  const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10));
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function handleGuardar() {
+    setError(null);
+    setGuardando(true);
+    registrarAdelanto({ idUsuario, monto: Number(monto) || 0, medioPago, descripcion, fecha })
+      .then((res) => {
+        if (res.error) setError(res.error);
+        else onGuardado();
+      })
+      .finally(() => setGuardando(false));
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+      <div className="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl max-h-[92vh] overflow-y-auto">
+        <div className="px-6 pt-6 pb-4 border-b border-neutral-200">
+          <h2 className="text-lg font-semibold text-neutral-900">Registrar adelanto</h2>
+          <p className="text-sm text-neutral-500 mt-0.5">
+            Se descuenta solo del neto cuando cierres la nómina del mes.
+          </p>
+        </div>
+
+        <div className="p-6 space-y-4">
+          {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
+
+          <div>
+            <label className="block text-[10.5px] font-bold uppercase tracking-wide text-neutral-400 mb-1.5">
+              A quién
+            </label>
+            <select
+              value={idUsuario}
+              onChange={(e) => setIdUsuario(e.target.value)}
+              className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm bg-white"
+            >
+              <option value="">Elegí a alguien…</option>
+              {usuarios.map((u) => (
+                <option key={u.id_usuario} value={u.id_usuario}>
+                  {u.nombre}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[10.5px] font-bold uppercase tracking-wide text-neutral-400 mb-1.5">
+                Cuánto
+              </label>
+              <input
+                type="number"
+                min={0}
+                value={monto}
+                onChange={(e) => setMonto(e.target.value)}
+                placeholder="0"
+                className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm text-right tabular-nums font-semibold"
+              />
+            </div>
+            <div>
+              <label className="block text-[10.5px] font-bold uppercase tracking-wide text-neutral-400 mb-1.5">
+                Cuándo
+              </label>
+              <input
+                type="date"
+                value={fecha}
+                onChange={(e) => setFecha(e.target.value)}
+                className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[10.5px] font-bold uppercase tracking-wide text-neutral-400 mb-1.5">
+              De dónde sale
+            </label>
+            <div className="grid grid-cols-1 gap-2">
+              {MEDIO_ADELANTO.map((m) => (
+                <button
+                  key={m.valor}
+                  type="button"
+                  onClick={() => setMedioPago(m.valor)}
+                  className={`text-left border rounded-lg px-3 py-2 text-[13px] font-semibold ${
+                    medioPago === m.valor
+                      ? "border-accent bg-accent-tint text-accent"
+                      : "border-neutral-300 text-neutral-600 hover:border-neutral-400"
+                  }`}
+                >
+                  {m.etiqueta}
+                  <span className="block text-[10.5px] font-normal opacity-70">{m.nota}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[10.5px] font-bold uppercase tracking-wide text-neutral-400 mb-1.5">
+              Nota <span className="font-normal normal-case tracking-normal">(opcional)</span>
+            </label>
+            <input
+              value={descripcion}
+              onChange={(e) => setDescripcion(e.target.value)}
+              placeholder="Adelanto de sueldo"
+              className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm"
+            />
+          </div>
+        </div>
+
+        <div className="px-6 pb-6 flex gap-2.5">
+          <button
+            onClick={onClose}
+            disabled={guardando}
+            className="flex-1 rounded-lg border border-neutral-300 px-4 py-2.5 text-sm font-semibold text-neutral-600 hover:bg-neutral-50 disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleGuardar}
+            disabled={guardando || !idUsuario || !(Number(monto) > 0)}
+            className="flex-1 rounded-lg bg-accent hover:bg-accent-dark px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            {guardando ? "Guardando…" : "Registrar"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ===================== PLANILLA =====================
 //

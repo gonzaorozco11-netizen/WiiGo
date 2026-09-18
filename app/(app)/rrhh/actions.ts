@@ -494,6 +494,284 @@ export async function listarPersonalRrhh(): Promise<PersonaDeRrhh[]> {
   });
 }
 
+// ===================== DASHBOARD =====================
+//
+// Tres preguntas y nada más: quién está, cuánto debo y qué está trabado.
+// Sin gráficos de evolución a propósito: con cinco empleados una línea de
+// tendencia dibuja una historia que no existe.
+
+export type DashboardRrhh = {
+  hoy: string;
+  /** Fichó entrada y todavía no salió. */
+  trabajando: { idPersona: string; nombre: string; desde: string }[];
+  totalActivos: number;
+  deLicenciaHoy: { nombre: string; tipo: string; hasta: string }[];
+  /** Tiene horario hoy, no está de licencia y no fichó. */
+  sinFichar: string[];
+  sueldos: { total: number; falta: number; pagado: number; sinCerrar: number; sinPagar: number };
+  fichajesSinSalida: number;
+  legajosIncompletos: number;
+  noPuedenCobrar: number;
+  adelantosDelMes: { total: number; cantidad: number };
+};
+
+export async function armarDashboardRrhh(): Promise<DashboardRrhh> {
+  const permisoError = await requireAcceso();
+  if (permisoError) throw new Error(permisoError);
+
+  const supabase = getSupabaseServerClient();
+  const ahora = fechaHoraArgentina();
+  const hoy = ahora.fecha;
+  const periodo = hoy.slice(0, 7);
+
+  const [novedades, gente, pendientes, adelantos, licenciasRes, fichajesRes] = await Promise.all([
+    obtenerNovedadesMes(periodo),
+    listarPersonalRrhh(),
+    listarFichajesPendientesSalida(),
+    listarAdelantos(periodo),
+    supabase
+      .from("licencias")
+      .select("id_persona, tipo, fecha_desde, fecha_hasta")
+      .lte("fecha_desde", hoy)
+      .gte("fecha_hasta", hoy),
+    supabase
+      .from("fichajes")
+      .select("id_persona, tipo, fecha_hora")
+      .gte("fecha_hora", `${hoy}T00:00:00Z`)
+      .lte("fecha_hora", `${hoy}T23:59:59Z`)
+      .order("fecha_hora", { ascending: true }),
+  ]);
+
+  const nombrePorPersona = new Map(gente.map((p) => [p.idPersona, p.nombre]));
+
+  // Quién está adentro: último fichaje del día es una ENTRADA.
+  const ultimoDelDia = new Map<string, { tipo: string; hora: string }>();
+  for (const f of fichajesRes.data ?? []) {
+    ultimoDelDia.set(f.id_persona as string, {
+      tipo: f.tipo as string,
+      hora: new Date(f.fecha_hora as string).toLocaleTimeString("es-AR", {
+        timeZone: "America/Argentina/Buenos_Aires",
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+    });
+  }
+  const trabajando = [...ultimoDelDia.entries()]
+    .filter(([, f]) => f.tipo === "ENTRADA")
+    .map(([idPersona, f]) => ({
+      idPersona,
+      nombre: nombrePorPersona.get(idPersona) ?? "—",
+      desde: f.hora,
+    }));
+
+  const deLicencia = (licenciasRes.data ?? []).map((l) => ({
+    idPersona: l.id_persona as string,
+    nombre: nombrePorPersona.get(l.id_persona as string) ?? "—",
+    tipo: (l.tipo as string) ?? "OTRO",
+    hasta: l.fecha_hasta as string,
+  }));
+  const idsLicencia = new Set(deLicencia.map((l) => l.idPersona));
+
+  // No fichó = no aparece en los fichajes de hoy y no está de licencia. No se
+  // mira si le tocaba trabajar: el horario dice los días de la semana, pero
+  // un franco puntual no está en ningún lado, así que esto es un aviso para
+  // mirar, no una falta.
+  const sinFichar = gente
+    .filter((p) => !ultimoDelDia.has(p.idPersona) && !idsLicencia.has(p.idPersona))
+    .map((p) => p.nombre);
+
+  const sueldos = novedades.reduce(
+    (acc, f) => {
+      const monto = f.cierre ? f.cierre.neto_a_pagar : f.montoBase;
+      acc.total += monto;
+      if (f.cierre?.estado === "PAGADO") acc.pagado += monto;
+      else {
+        acc.falta += monto;
+        if (f.cierre) acc.sinPagar += 1;
+        else acc.sinCerrar += 1;
+      }
+      return acc;
+    },
+    { total: 0, falta: 0, pagado: 0, sinCerrar: 0, sinPagar: 0 }
+  );
+
+  return {
+    hoy,
+    trabajando,
+    totalActivos: gente.length,
+    deLicenciaHoy: deLicencia.map(({ nombre, tipo, hasta }) => ({ nombre, tipo, hasta })),
+    sinFichar,
+    sueldos,
+    fichajesSinSalida: pendientes.length,
+    legajosIncompletos: gente.filter((p) => p.problema === "SIN_INGRESO" || p.problema === "INCOMPLETO").length,
+    noPuedenCobrar: gente.filter((p) => p.problema === "NO_COBRA" || p.problema === "SIN_SUELDO").length,
+    adelantosDelMes: {
+      total: adelantos.reduce((a, x) => a + x.monto, 0),
+      cantidad: adelantos.length,
+    },
+  };
+}
+
+// ===================== ADELANTOS =====================
+//
+// Un adelanto no tiene tabla propia: es una fila de `gastos` con
+// `id_usuario_adelanto`. Y no es un gasto más — se excluye del Estado de
+// Resultados a propósito (ver calcularTableroEnVivo), porque el sueldo entero
+// ya se devenga al cerrar la nómina y contarlo dos veces fue un error viejo.
+// El adelanto solo baja el neto a pagar.
+
+export type AdelantoListado = {
+  idGasto: string;
+  idUsuario: string;
+  nombre: string;
+  monto: number;
+  fecha: string;
+  descripcion: string | null;
+  medioPago: string | null;
+  /** Ya entró en una nómina cerrada: esa plata ya se descontó. */
+  descontado: boolean;
+};
+
+export async function listarAdelantos(periodo: string): Promise<AdelantoListado[]> {
+  const permisoError = await requireAcceso();
+  if (permisoError) throw new Error(permisoError);
+
+  const supabase = getSupabaseServerClient();
+  const [anio, mes] = periodo.split("-").map(Number);
+  const ultimoDia = new Date(anio, mes, 0).getDate();
+
+  const { data } = await supabase
+    .from("gastos")
+    .select("id_gasto, id_usuario_adelanto, monto, fecha, descripcion, medio_pago")
+    .not("id_usuario_adelanto", "is", null)
+    .eq("anulado", false)
+    .gte("fecha", `${periodo}-01`)
+    .lte("fecha", `${periodo}-${String(ultimoDia).padStart(2, "0")}T23:59:59`)
+    .order("fecha", { ascending: false });
+
+  const filas = data ?? [];
+  if (filas.length === 0) return [];
+
+  const idsUsuario = [...new Set(filas.map((g) => g.id_usuario_adelanto as string))];
+  const [{ data: usuarios }, { data: cierres }] = await Promise.all([
+    supabase.from("usuarios").select("id_usuario, nombre, id_persona").in("id_usuario", idsUsuario),
+    supabase.from("nomina_cierres").select("id_persona").eq("periodo", periodo),
+  ]);
+
+  const usuarioPorId = new Map((usuarios ?? []).map((u) => [u.id_usuario as string, u]));
+  const personasCerradas = new Set((cierres ?? []).map((c) => c.id_persona as string));
+
+  return filas.map((g) => {
+    const usuario = usuarioPorId.get(g.id_usuario_adelanto as string);
+    const idPersona = (usuario?.id_persona as string | null) ?? null;
+    return {
+      idGasto: g.id_gasto as string,
+      idUsuario: g.id_usuario_adelanto as string,
+      nombre: (usuario?.nombre as string) ?? "—",
+      monto: (g.monto as number) ?? 0,
+      fecha: g.fecha as string,
+      descripcion: (g.descripcion as string | null) ?? null,
+      medioPago: (g.medio_pago as string | null) ?? null,
+      descontado: Boolean(idPersona && personasCerradas.has(idPersona)),
+    };
+  });
+}
+
+/**
+ * Registrar un adelanto desde RR.HH.
+ *
+ * Hasta ahora había que salir a Gastos e Ingresos para cargarlo. Es el mismo
+ * insert, con la categoría de sueldos resuelta igual que en el cierre de
+ * nómina para que caiga en el mismo lugar del Estado de Resultados.
+ */
+export async function registrarAdelanto(params: {
+  idUsuario: string;
+  monto: number;
+  medioPago: string;
+  descripcion: string;
+  fecha: string;
+}): Promise<{ error: string | null }> {
+  const permisoError = await requireAcceso();
+  if (permisoError) return { error: permisoError };
+  if (!params.idUsuario) return { error: "Elegí a quién le das el adelanto." };
+  if (!Number.isFinite(params.monto) || params.monto <= 0) return { error: "El monto tiene que ser mayor a cero." };
+  if (!params.fecha) return { error: "Poné la fecha." };
+
+  try {
+    const supabase = getSupabaseServerClient();
+    const sesion = await obtenerSesionConPermisos();
+
+    const { data: usuario } = await supabase
+      .from("usuarios")
+      .select("nombre")
+      .eq("id_usuario", params.idUsuario)
+      .maybeSingle();
+
+    const idCategoria = await resolveCategoriaSueldos(supabase);
+    const idSubcategoria = await resolveSubcategoriaSueldos(supabase, idCategoria);
+
+    const { data: gasto, error } = await supabase
+      .from("gastos")
+      .insert({
+        id_categoria: idCategoria,
+        id_subcategoria: idSubcategoria,
+        tipo: "FIJO",
+        medio_pago: params.medioPago,
+        monto: params.monto,
+        neto: params.monto,
+        descripcion:
+          params.descripcion.trim() || `Adelanto de sueldo — ${(usuario?.nombre as string) ?? ""}`.trim(),
+        fecha: params.fecha,
+        id_usuario_adelanto: params.idUsuario,
+        usuario: sesion?.nombre ?? null,
+      })
+      .select("id_gasto")
+      .single();
+    if (error) return { error: friendlyDbError(error) };
+
+    // Si sale de la caja chica, el egreso tiene que verse ahí también.
+    if (params.medioPago === "EFECTIVO_ADMIN") {
+      await supabase.from("movimientos_caja_admin").insert({
+        tipo: "EGRESO_GASTO",
+        monto: -params.monto,
+        id_gasto: gasto.id_gasto,
+        descripcion: `Adelanto de sueldo — ${(usuario?.nombre as string) ?? ""}`.trim(),
+        usuario: sesion?.nombre ?? null,
+      });
+    }
+
+    revalidatePath("/rrhh/adelantos");
+    revalidatePath("/rrhh/sueldos");
+    revalidatePath("/gastos-ingresos");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo registrar el adelanto" };
+  }
+}
+
+export async function anularAdelanto(idGasto: string, motivo: string): Promise<{ error: string | null }> {
+  const permisoError = await requireAcceso();
+  if (permisoError) return { error: permisoError };
+
+  const supabase = getSupabaseServerClient();
+  const sesion = await obtenerSesionConPermisos();
+  const { error } = await supabase
+    .from("gastos")
+    .update({
+      anulado: true,
+      motivo_anulacion: motivo.trim() || "Anulado desde RR.HH.",
+      anulado_en: new Date().toISOString(),
+    })
+    .eq("id_gasto", idGasto)
+    .eq("anulado", false);
+  if (error) return { error: friendlyDbError(error) };
+
+  void sesion;
+  revalidatePath("/rrhh/adelantos");
+  revalidatePath("/rrhh/sueldos");
+  return { error: null };
+}
+
 export type SaldoVacaciones = {
   idPersona: string;
   nombre: string;
