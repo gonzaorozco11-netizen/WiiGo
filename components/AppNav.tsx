@@ -96,7 +96,14 @@ const GROUPS: NavGroup[] = [
   },
   {
     label: "RR.HH.",
-    items: [{ href: "/rrhh", label: "Nómina", permiso: "nomina" }],
+    // Era una sola entrada ("Nómina") con cinco solapas adentro. Se partió
+    // porque cada una se usa en un momento distinto: la planilla todo el mes,
+    // los sueldos el día 1, el legajo casi nunca.
+    items: [
+      { href: "/rrhh/personal", label: "Personal", permiso: "nomina" },
+      { href: "/rrhh/planilla", label: "Planilla", permiso: "nomina" },
+      { href: "/rrhh/sueldos", label: "Sueldos", permiso: "nomina" },
+    ],
   },
   {
     label: "Local",

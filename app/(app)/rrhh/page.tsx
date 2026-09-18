@@ -1,21 +1,11 @@
-import { getSupabaseServerClient } from "@/lib/supabase";
-import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos";
-import { listarHorarios } from "@/app/(app)/organizacion/actions";
-import PantallaBloqueada from "@/components/PantallaBloqueada";
-import RrhhApp from "@/components/RrhhApp";
+import { redirect } from "next/navigation";
 
-export const dynamic = "force-dynamic";
-
-export default async function RrhhPage() {
-  const sesion = await obtenerSesionConPermisos();
-  if (!tienePermiso(sesion, PERMISOS.GESTIONAR_NOMINA)) return <PantallaBloqueada />;
-
-  const supabase = getSupabaseServerClient();
-  const [{ data: usuarios }, horarios, { data: personas }] = await Promise.all([
-    supabase.from("usuarios").select("id_usuario, nombre, sueldo_base").eq("estado", "ACTIVO").order("nombre", { ascending: true }),
-    listarHorarios(),
-    supabase.from("personas").select("id_persona, nombre, apellido").eq("estado", "ACTIVO").order("nombre", { ascending: true }),
-  ]);
-
-  return <RrhhApp usuarios={usuarios ?? []} horariosIniciales={horarios} personas={personas ?? []} />;
+// RR.HH. se partió en tres pantallas (Personal, Planilla y Sueldos) y en el
+// menú ya no hay una entrada suelta a /rrhh. Esto queda para que los links
+// viejos y los favoritos de Gonzalo sigan funcionando: caen en Sueldos, que
+// es lo que antes se abría primero.
+//
+// Cuando exista el Dashboard de RR.HH. va a vivir acá y este redirect se va.
+export default function RrhhPage() {
+  redirect("/rrhh/sueldos");
 }
