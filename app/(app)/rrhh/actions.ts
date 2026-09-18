@@ -393,6 +393,107 @@ function diasEntre(desdeStr: string, hastaStr: string) {
   return Math.max(0, Math.floor((hasta.getTime() - desde.getTime()) / 86400000) + 1);
 }
 
+// ===================== PERSONAL =====================
+//
+// La gente, agrupada por sucursal, con lo que falta de cada uno.
+//
+// Existe aparte de `listarPersonas` (que es de Organización) porque RR.HH.
+// necesita algo que ahí no se mira: si esa persona puede cobrar. El sueldo
+// vive en `usuarios` y el legajo en `personas`, y se puede tener un legajo
+// perfecto sin el vínculo entre los dos — esa persona no aparece nunca en la
+// nómina y nadie se entera hasta que se cierra el mes.
+
+export type PersonaDeRrhh = {
+  idPersona: string;
+  nombre: string;
+  idLocal: string | null;
+  local: string;
+  puesto: string | null;
+  fechaIngreso: string | null;
+  /** Null si no tiene usuario vinculado: sin esto no puede cobrar. */
+  idUsuario: string | null;
+  sueldoBase: number | null;
+  valorHora: number | null;
+  /** Lo que le falta al legajo, en orden de importancia. */
+  faltantes: string[];
+  /** El más grave de los faltantes, o null si está completo. */
+  problema: "NO_COBRA" | "SIN_SUELDO" | "SIN_INGRESO" | "INCOMPLETO" | null;
+};
+
+export async function listarPersonalRrhh(): Promise<PersonaDeRrhh[]> {
+  const permisoError = await requireAcceso();
+  if (permisoError) throw new Error(permisoError);
+
+  const supabase = getSupabaseServerClient();
+  const [personasRes, usuariosRes, localesRes, asignacionesRes, puestosRes] = await Promise.all([
+    supabase
+      .from("personas")
+      .select("id_persona, nombre, apellido, id_local, fecha_ingreso, dni, cuil")
+      .eq("estado", "ACTIVO")
+      .order("nombre", { ascending: true }),
+    supabase.from("usuarios").select("id_usuario, id_persona, sueldo_base, valor_hora").eq("estado", "ACTIVO"),
+    supabase.from("locales").select("id_local, nombre"),
+    supabase.from("persona_puestos").select("id_persona, id_puesto, es_principal"),
+    supabase.from("puestos").select("id_puesto, nombre"),
+  ]);
+
+  const usuarioPorPersona = new Map(
+    (usuariosRes.data ?? []).filter((u) => u.id_persona).map((u) => [u.id_persona as string, u])
+  );
+  const localPorId = new Map((localesRes.data ?? []).map((l) => [l.id_local as string, l.nombre as string]));
+  const nombrePuesto = new Map((puestosRes.data ?? []).map((p) => [p.id_puesto as string, p.nombre as string]));
+  const puestoPorPersona = new Map<string, string>();
+  for (const a of asignacionesRes.data ?? []) {
+    const nombre = nombrePuesto.get(a.id_puesto as string);
+    if (!nombre) continue;
+    // El principal gana; si no hay ninguno marcado, queda el primero.
+    if (a.es_principal || !puestoPorPersona.has(a.id_persona as string)) {
+      puestoPorPersona.set(a.id_persona as string, nombre);
+    }
+  }
+
+  return (personasRes.data ?? []).map((p) => {
+    const idPersona = p.id_persona as string;
+    const usuario = usuarioPorPersona.get(idPersona);
+    const sueldoBase = (usuario?.sueldo_base as number | null) ?? null;
+    const valorHora = (usuario?.valor_hora as number | null) ?? null;
+    const cobra = Boolean(usuario) && ((sueldoBase ?? 0) > 0 || (valorHora ?? 0) > 0);
+
+    const faltantes: string[] = [];
+    if (!usuario) faltantes.push("usuario vinculado");
+    else if (!cobra) faltantes.push("sueldo o valor hora");
+    if (!p.fecha_ingreso) faltantes.push("fecha de ingreso");
+    if (!p.cuil) faltantes.push("CUIL");
+    if (!p.dni) faltantes.push("DNI");
+
+    // El orden importa: el primero es el que se muestra en la chapita, y los
+    // dos de arriba significan que esa persona no cobra.
+    const problema: PersonaDeRrhh["problema"] = !usuario
+      ? "NO_COBRA"
+      : !cobra
+        ? "SIN_SUELDO"
+        : !p.fecha_ingreso
+          ? "SIN_INGRESO"
+          : faltantes.length > 0
+            ? "INCOMPLETO"
+            : null;
+
+    return {
+      idPersona,
+      nombre: [p.nombre, p.apellido].filter(Boolean).join(" "),
+      idLocal: (p.id_local as string | null) ?? null,
+      local: p.id_local ? localPorId.get(p.id_local as string) ?? "Sucursal" : "Sin sucursal asignada",
+      puesto: puestoPorPersona.get(idPersona) ?? null,
+      fechaIngreso: (p.fecha_ingreso as string | null) ?? null,
+      idUsuario: (usuario?.id_usuario as string | null) ?? null,
+      sueldoBase,
+      valorHora,
+      faltantes,
+      problema,
+    };
+  });
+}
+
 export type SaldoVacaciones = {
   idPersona: string;
   nombre: string;

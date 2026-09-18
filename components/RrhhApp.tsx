@@ -12,6 +12,8 @@ import {
   listarFichajesPendientesSalida,
   completarSalidaManual,
   listarSaldosVacaciones,
+  listarPersonalRrhh,
+  type PersonaDeRrhh,
   listarLicencias,
   crearLicencia,
   eliminarLicencia,
@@ -1808,27 +1810,77 @@ function anioActual() {
   return new Date().getFullYear();
 }
 
+const PROBLEMA_CHIP: Record<NonNullable<PersonaDeRrhh["problema"]>, { texto: string; clase: string }> = {
+  NO_COBRA: { texto: "No puede cobrar", clase: "bg-red-100 text-red-700" },
+  SIN_SUELDO: { texto: "Sin sueldo cargado", clase: "bg-red-100 text-red-700" },
+  SIN_INGRESO: { texto: "Falta fecha de ingreso", clase: "bg-amber-100 text-amber-700" },
+  INCOMPLETO: { texto: "Legajo incompleto", clase: "bg-amber-100 text-amber-700" },
+};
+
+/**
+ * La gente, agrupada por sucursal.
+ *
+ * Reemplazó a la tabla de vacaciones sueltas por dos razones. La primera es
+ * que esa tabla **escondía** a quien no tuviera fecha de ingreso cargada: si
+ * te faltaba ese dato, la persona no existía en la pantalla. La segunda es
+ * que las vacaciones son un dato DE la persona, no una lista aparte — mejor
+ * verlas adentro de cada una.
+ */
 function TabVacaciones({ personas }: { personas: PersonaMin[] }) {
   const [anio, setAnio] = useState(anioActual());
+  const [gente, setGente] = useState<PersonaDeRrhh[]>([]);
   const [saldos, setSaldos] = useState<SaldoVacaciones[]>([]);
   const [cargando, setCargando] = useState(true);
   const [modalPersona, setModalPersona] = useState<SaldoVacaciones | null>(null);
 
   function recargar() {
     setCargando(true);
-    listarSaldosVacaciones(anio).then(setSaldos).finally(() => setCargando(false));
+    Promise.all([listarPersonalRrhh(), listarSaldosVacaciones(anio)])
+      .then(([g, s]) => {
+        setGente(g);
+        setSaldos(s);
+      })
+      .finally(() => setCargando(false));
   }
 
   useEffect(recargar, [anio]);
 
+  const saldoPorPersona = new Map(saldos.map((s) => [s.idPersona, s]));
+
+  // Agrupado por sucursal, con los que no tienen ninguna al final: son los
+  // que hay que ir a asignar, no los primeros que querés ver.
+  const porLocal = new Map<string, PersonaDeRrhh[]>();
+  for (const p of gente) {
+    const lista = porLocal.get(p.local) ?? [];
+    lista.push(p);
+    porLocal.set(p.local, lista);
+  }
+  const grupos = [...porLocal.entries()].sort((a, b) => {
+    if (a[0] === "Sin sucursal asignada") return 1;
+    if (b[0] === "Sin sucursal asignada") return -1;
+    return a[0].localeCompare(b[0]);
+  });
+
+  const conProblema = gente.filter((p) => p.problema === "NO_COBRA" || p.problema === "SIN_SUELDO").length;
+
   return (
     <div>
-      <p className="text-xs text-neutral-400 mb-3">
-        Días legales según antigüedad (Art. 150/151 LCT) — no suma días extra que tu convenio colectivo pudiera dar
-        por encima del mínimo. Vos cargás la licencia ya definida, no hay pantalla de solicitud para el empleado.
-      </p>
+      {/* El aviso va arriba y en rojo: es el único problema de esta pantalla
+          que cuesta plata. Se puede tener un legajo impecable y que esa
+          persona no aparezca nunca en la nómina. */}
+      {!cargando && conProblema > 0 && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 mb-3">
+          <p className="text-sm font-semibold text-red-800">
+            {conProblema === 1 ? "1 persona no puede cobrar" : `${conProblema} personas no pueden cobrar`}
+          </p>
+          <p className="text-xs text-red-700 mt-0.5">
+            Les falta el usuario vinculado o el sueldo. No van a aparecer cuando cierres la nómina, y los adelantos
+            que les des tampoco se les descuentan. Se arregla en Equipo → Usuarios.
+          </p>
+        </div>
+      )}
 
-      <div className="flex items-center gap-2 mb-3">
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
         <button onClick={() => setAnio((a) => a - 1)} className="px-2 py-1 text-neutral-400 hover:text-neutral-700 font-bold">
           ‹
         </button>
@@ -1836,49 +1888,109 @@ function TabVacaciones({ personas }: { personas: PersonaMin[] }) {
         <button onClick={() => setAnio((a) => a + 1)} className="px-2 py-1 text-neutral-400 hover:text-neutral-700 font-bold">
           ›
         </button>
+        <span className="text-xs text-neutral-400 ml-2">
+          Días legales por antigüedad (Art. 150/151 LCT), sin los extra que pueda dar tu convenio.
+        </span>
       </div>
 
-      <div className="bg-white border border-neutral-200 rounded-xl overflow-hidden">
-        {cargando ? (
-          <p className="text-sm text-neutral-400 text-center py-8">Cargando...</p>
-        ) : saldos.length === 0 ? (
-          <p className="text-sm text-neutral-400 text-center py-8">No hay personas con fecha de ingreso cargada (Legajo).</p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-neutral-200 text-left text-xs text-neutral-500">
-                <th className="p-3">Empleado</th>
-                <th className="p-3 text-right">Días legales {anio}</th>
-                <th className="p-3 text-right">Tomados</th>
-                <th className="p-3 text-right">Disponibles</th>
-                <th className="p-3"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {saldos.map((s) => (
-                <tr key={s.idPersona} className="border-b border-neutral-100 last:border-0">
-                  <td className="p-3">{s.nombre}</td>
-                  <td className="p-3 text-right tabular-nums">{s.diasLegales}</td>
-                  <td className="p-3 text-right tabular-nums text-neutral-500">{s.diasTomados}</td>
-                  <td className={`p-3 text-right tabular-nums font-bold ${s.diasDisponibles < 0 ? "text-red-600" : "text-emerald-600"}`}>{s.diasDisponibles}</td>
-                  <td className="p-3 text-right">
-                    <button onClick={() => setModalPersona(s)} className="text-xs font-semibold text-accent">
-                      Ver licencias →
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+      {cargando ? (
+        <p className="text-sm text-neutral-400 text-center py-8">Cargando...</p>
+      ) : gente.length === 0 ? (
+        <p className="text-sm text-neutral-400 text-center py-8">
+          Todavía no hay personas activas. Se cargan en Equipo → Organización.
+        </p>
+      ) : (
+        grupos.map(([local, lista]) => (
+          <div key={local} className="mb-4">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 mb-2">
+              {local} · {lista.length}
+            </p>
+            <div className="space-y-2">
+              {lista.map((p) => {
+                const saldo = saldoPorPersona.get(p.idPersona);
+                const chip = p.problema ? PROBLEMA_CHIP[p.problema] : null;
+                const iniciales = p.nombre
+                  .split(" ")
+                  .slice(0, 2)
+                  .map((x) => x[0]?.toUpperCase() ?? "")
+                  .join("");
+                return (
+                  <div
+                    key={p.idPersona}
+                    className="flex items-center gap-3 flex-wrap border border-neutral-200 rounded-xl bg-white px-3.5 py-3"
+                  >
+                    <span className="shrink-0 w-[38px] h-[38px] rounded-full bg-accent-tint text-accent flex items-center justify-center text-sm font-bold">
+                      {iniciales}
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-[14.5px] font-semibold text-neutral-900">{p.nombre}</span>
+                      <span className="block text-[11.5px] text-neutral-400">
+                        {[
+                          p.puesto,
+                          (p.valorHora ?? 0) > 0
+                            ? `por hora $${formatearMonto(p.valorHora ?? 0)}`
+                            : (p.sueldoBase ?? 0) > 0
+                              ? `fijo $${formatearMonto(p.sueldoBase ?? 0)}`
+                              : null,
+                          p.fechaIngreso
+                            ? `desde ${new Date(`${p.fechaIngreso}T12:00:00`).toLocaleDateString("es-AR", {
+                                month: "2-digit",
+                                year: "numeric",
+                              })}`
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ") || "Sin datos cargados"}
+                      </span>
+                    </span>
+
+                    {chip && (
+                      <span
+                        className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full whitespace-nowrap ${chip.clase}`}
+                        title={p.faltantes.length > 0 ? `Falta: ${p.faltantes.join(", ")}` : undefined}
+                      >
+                        {chip.texto}
+                      </span>
+                    )}
+
+                    {/* Las vacaciones solo si hay fecha de ingreso: sin ese
+                        dato no se pueden calcular los días legales. */}
+                    {saldo ? (
+                      <span className="ml-auto flex items-center gap-3">
+                        <span className="text-right tabular-nums">
+                          <span
+                            className={`block text-[17px] font-extrabold leading-tight ${
+                              saldo.diasDisponibles < 0 ? "text-red-600" : "text-emerald-600"
+                            }`}
+                          >
+                            {saldo.diasDisponibles}
+                          </span>
+                          <span className="block text-[10px] text-neutral-400">
+                            de {saldo.diasLegales} días
+                          </span>
+                        </span>
+                        <button
+                          onClick={() => setModalPersona(saldo)}
+                          className="text-xs font-semibold text-accent whitespace-nowrap"
+                        >
+                          Licencias →
+                        </button>
+                      </span>
+                    ) : (
+                      <span className="ml-auto text-[11px] text-neutral-300 whitespace-nowrap">
+                        sin vacaciones calculadas
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))
+      )}
 
       {modalPersona && (
-        <ModalLicenciasPersona
-          persona={modalPersona}
-          onClose={() => setModalPersona(null)}
-          onCambio={recargar}
-        />
+        <ModalLicenciasPersona persona={modalPersona} onClose={() => setModalPersona(null)} onCambio={recargar} />
       )}
     </div>
   );
