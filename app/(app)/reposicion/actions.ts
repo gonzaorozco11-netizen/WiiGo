@@ -111,7 +111,9 @@ export async function marcarDevueltaAMarca(ids: string[]): Promise<{ error: stri
       .is("devuelto_a_marca_el", null);
     if (error) return { error: friendlyDbError(error) };
 
-    revalidatePath("/reposicion");
+    // Estas acciones se llaman desde Compras: /reposicion ya solo redirige.
+    revalidatePath("/compras");
+    revalidatePath("/compras/recepcion");
     return { error: null };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo registrar la entrega" };
@@ -156,7 +158,9 @@ export async function crearOrden(
     const { error: errorDetalle } = await supabase.from("detalle_reposicion").insert(filas);
     if (errorDetalle) return { error: friendlyDbError(errorDetalle) };
 
-    revalidatePath("/reposicion");
+    // Estas acciones se llaman desde Compras: /reposicion ya solo redirige.
+    revalidatePath("/compras");
+    revalidatePath("/compras/recepcion");
     return { error: null };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo crear la orden" };
@@ -294,7 +298,9 @@ export async function recepcionarOrden(
       .eq("id_orden", idOrden);
     if (errorEstado) return { error: friendlyDbError(errorEstado) };
 
-    revalidatePath("/reposicion");
+    // Estas acciones se llaman desde Compras: /reposicion ya solo redirige.
+    revalidatePath("/compras");
+    revalidatePath("/compras/recepcion");
     revalidatePath("/stock");
     return { error: null };
   } catch (err) {

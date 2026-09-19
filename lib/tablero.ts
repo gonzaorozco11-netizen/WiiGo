@@ -126,12 +126,15 @@ export async function armarTablero(): Promise<Tablero | null> {
     puede("ventas")
       ? supabase.from("devoluciones").select("id_devolucion", { count: "exact", head: true }).eq("nc_estado", "PENDIENTE")
       : CERO,
-    puede("reposicion")
+    // La mercadería a devolver se entrega en Compras → Recepción desde que
+    // se retiró "Abastecimiento (marcas)": el permiso que la habilita pasó a
+    // ser el de esa pantalla.
+    puede("compras-recepcion")
       ? supabase.from("detalle_devoluciones").select("id_detalle_dev", { count: "exact", head: true }).is("devuelto_a_marca_el", null)
       : CERO,
     // Abiertas = sin llegar + llegadas a medias. Un pedido a medias todavía
     // tiene mercadería en la calle, así que sigue contando como pendiente.
-    puede("compras-recepcion") || puede("reposicion")
+    puede("compras-recepcion")
       ? supabase.from("ordenes_reposicion").select("id_orden", { count: "exact", head: true }).in("estado", ESTADOS_ABIERTOS)
       : CERO,
     puede("compras-recepcion") || puede("proveedores")
@@ -280,7 +283,7 @@ export async function armarTablero(): Promise<Tablero | null> {
       titulo: "Mercadería para devolverle a las marcas",
       detalle: "Productos que volvieron fallados o vencidos y están apartados",
       valor: String(n(aDevolver)),
-      href: "/reposicion",
+      href: "/compras/recepcion",
     });
   }
 

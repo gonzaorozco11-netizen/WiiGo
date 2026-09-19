@@ -17,7 +17,6 @@ const ICONO: Record<string, string> = {
   "/ficha-asistencia": "🕘",
   "/aprobaciones": "📋",
   "/ventas": "🧾",
-  "/reposicion": "↩️",
   "/compras/recepcion": "📥",
   "/compras/costeo": "🧮",
   "/stock": "📦",

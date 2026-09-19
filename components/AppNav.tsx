@@ -36,12 +36,12 @@ const GROUPS: NavGroup[] = [
   },
   {
     label: "Stock",
-    items: [
-      { href: "/stock", label: "Stock" },
-      // Sigue existiendo porque es donde se crea y se recepciona el pedido a
-      // una marca; Compras la muestra junto con las de proveedores.
-      { href: "/reposicion", label: "Abastecimiento (marcas)" },
-    ],
+    // "Abastecimiento (marcas)" vivía acá y se fue. No era una pantalla
+    // parecida a Compras: montaba LOS MISMOS modales y llamaba a LAS MISMAS
+    // funciones para crear y recepcionar un pedido a una marca. Lo único
+    // propio que tenía —devolverle mercadería fallada a la marca— se mudó a
+    // Compras → Recepción, que es el mismo momento y la misma persona.
+    items: [{ href: "/stock", label: "Stock" }],
   },
   {
     label: "Operaciones",

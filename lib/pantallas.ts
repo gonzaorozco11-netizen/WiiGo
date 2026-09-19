@@ -23,7 +23,13 @@ export const PANTALLAS_DISPONIBLES: PantallaDisponible[] = [
   // nota de crédito baja la cuenta corriente y el crédito fiscal.
   { clave: "compras-reclamos", label: "Reclamos", grupo: "Compras" },
   { clave: "stock", label: "Stock", grupo: "Stock" },
-  { clave: "reposicion", label: "Abastecimiento (marcas)", grupo: "Stock" },
+  // "reposicion" (Abastecimiento de marcas) se retiró: era la misma pantalla
+  // que Compras por otra puerta — montaba los mismos modales y llamaba a las
+  // mismas funciones. Quien la tenía asignada ahora necesita
+  // "compras-recepcion", que es donde quedó lo suyo.
+  //
+  // La clave puede seguir guardada en áreas viejas de la base: ahí queda
+  // inerte, no rompe nada y desaparece la próxima vez que se edite el área.
   { clave: "pos", label: "POS", grupo: "Operaciones" },
   { clave: "ficha-asistencia", label: "Ficha Asistencia", grupo: "Operaciones" },
   { clave: "ventas", label: "Ventas", grupo: "Operaciones" },
