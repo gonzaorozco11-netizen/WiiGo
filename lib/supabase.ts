@@ -157,6 +157,32 @@ export type Producto = {
   fecha_actualizacion: string;
 };
 
+// Lo único que puede salir a /asesor y /self-checkout, que son páginas
+// PÚBLICAS (sin login, cualquiera con el link entra). Todo lo que no esté
+// acá —el costo informado, sobre todo— se quedaría en el HTML de la página al
+// alcance de cualquier cliente o competidor, así que no se selecciona.
+export type ProductoPublico = Pick<
+  Producto,
+  | "id_producto"
+  | "id_marca"
+  | "id_subcategoria"
+  | "nombre"
+  | "nombre_en"
+  | "nombre_pt"
+  | "imagen"
+  | "precio_venta"
+  | "descuento_porcentaje"
+>;
+
+export const COLUMNAS_PRODUCTO_PUBLICO =
+  "id_producto,id_marca,id_subcategoria,nombre,nombre_en,nombre_pt,imagen,precio_venta,descuento_porcentaje";
+
+// Idem para las variantes: el SKU, el código de barras y los umbrales de
+// stock son datos internos y no hacen falta para mostrar un sabor.
+export type VarianteProductoPublica = Pick<VarianteProducto, "id_variante" | "id_producto" | "nombre" | "orden">;
+
+export const COLUMNAS_VARIANTE_PUBLICA = "id_variante,id_producto,nombre,orden";
+
 // El SKU, código de barras y stock viven en la variante (sabor, tamaño...),
 // no en el producto. Todo producto tiene al menos una (aunque no tenga
 // variaciones reales, en cuyo caso queda una sola llamada "Único").

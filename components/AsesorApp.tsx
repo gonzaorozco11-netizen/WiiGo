@@ -6,8 +6,8 @@ import { Fredoka, Bodoni_Moda } from "next/font/google";
 import type {
   Local,
   Marca,
-  Producto,
-  VarianteProducto,
+  ProductoPublico,
+  VarianteProductoPublica,
   Objetivo,
   FiltroProducto,
   FichaProducto,
@@ -170,7 +170,7 @@ function formatoPrecio(precio: number | null) {
   return "$" + new Intl.NumberFormat("es-AR").format(Math.round(precio));
 }
 
-function precioConDescuento(p: Producto) {
+function precioConDescuento(p: ProductoPublico) {
   const base = p.precio_venta ?? 0;
   const descuento = p.descuento_porcentaje ?? 0;
   return descuento > 0 ? Math.round(base * (1 - descuento / 100)) : base;
@@ -288,8 +288,8 @@ export default function AsesorApp({
 }: {
   local: Local;
   marcas: Marca[];
-  productos: Producto[];
-  variantesPorProducto: Record<string, VarianteProducto[]>;
+  productos: ProductoPublico[];
+  variantesPorProducto: Record<string, VarianteProductoPublica[]>;
   subcategorias: Subcategoria[];
   profesionales: Profesional[];
   fortalezasPorProfesional: Record<string, { nombre: string; principal: boolean }[]>;
@@ -623,7 +623,7 @@ export default function AsesorApp({
     });
   }, [productos, busqueda, objetivoId, filtrosSeleccionados, marcaPorId, objetivosPorProducto, filtrosPorProducto]);
 
-  function porQue(p: Producto): { texto: string; tag: string } {
+  function porQue(p: ProductoPublico): { texto: string; tag: string } {
     const propios = filtrosPorProducto[p.id_producto] ?? [];
     const nombresFiltros = propios
       .filter((id) => filtrosSeleccionados.size === 0 || filtrosSeleccionados.has(id))
@@ -1796,10 +1796,10 @@ function ProductoDetalleModal({
   idioma,
   onClose,
 }: {
-  producto: Producto;
+  producto: ProductoPublico;
   marca: Marca | undefined;
   ficha: FichaProducto | null;
-  variantes: VarianteProducto[];
+  variantes: VarianteProductoPublica[];
   idioma: Idioma;
   onClose: () => void;
 }) {

@@ -9,7 +9,10 @@ import {
   type FormacionProfesional,
   type TrayectoriaProfesional,
   type ConocemeSlide,
-  type VarianteProducto,
+  type ProductoPublico,
+  type VarianteProductoPublica,
+  COLUMNAS_PRODUCTO_PUBLICO,
+  COLUMNAS_VARIANTE_PUBLICA,
 } from "@/lib/supabase";
 import { fetchContenidoAsesor } from "@/lib/contenidoAsesor";
 import AsesorApp from "@/components/AsesorApp";
@@ -46,8 +49,8 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
     contenido,
   ] = await Promise.all([
     supabase.from("marcas").select("*").eq("estado", "ACTIVA").eq("visible_asesor", true),
-    supabase.from("productos").select("*").eq("estado", "ACTIVO").eq("visible_asesor", true),
-    supabase.from("variantes_producto").select("*").eq("estado", "ACTIVO"),
+    supabase.from("productos").select(COLUMNAS_PRODUCTO_PUBLICO).eq("estado", "ACTIVO").eq("visible_asesor", true),
+    supabase.from("variantes_producto").select(COLUMNAS_VARIANTE_PUBLICA).eq("estado", "ACTIVO"),
     supabase.from("subcategorias").select("*").eq("estado", "ACTIVA"),
     supabase.from("profesionales").select("*").eq("estado", "ACTIVO").eq("publicado", true).order("orden", { ascending: true }),
     supabase.from("fortalezas_profesional").select("*").eq("estado", "ACTIVA"),
@@ -112,9 +115,9 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
   // Los sabores/presentaciones que se muestran en la ficha. Se agrupan acá y
   // no en el cliente para no mandarle al tótem variantes de productos que ni
   // siquiera están visibles en el asesor.
-  const idsVisibles = new Set((productosRes.data ?? []).map((p: Producto) => p.id_producto));
-  const variantesPorProducto: Record<string, VarianteProducto[]> = {};
-  (variantesRes.data ?? []).forEach((v: VarianteProducto) => {
+  const idsVisibles = new Set((productosRes.data ?? []).map((p: ProductoPublico) => p.id_producto));
+  const variantesPorProducto: Record<string, VarianteProductoPublica[]> = {};
+  ((variantesRes.data ?? []) as VarianteProductoPublica[]).forEach((v) => {
     if (!idsVisibles.has(v.id_producto)) return;
     (variantesPorProducto[v.id_producto] ??= []).push(v);
   });
@@ -131,7 +134,7 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
     <AsesorApp
       local={local as Local}
       marcas={(marcasRes.data ?? []) as Marca[]}
-      productos={(productosRes.data ?? []) as Producto[]}
+      productos={(productosRes.data ?? []) as ProductoPublico[]}
       variantesPorProducto={variantesPorProducto}
       subcategorias={(subcategoriasRes.data ?? []) as Subcategoria[]}
       profesionales={(profesionalesRes.data ?? []) as Profesional[]}
