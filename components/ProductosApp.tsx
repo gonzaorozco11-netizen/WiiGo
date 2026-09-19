@@ -158,6 +158,15 @@ export default function ProductosApp({
             Importar precios
           </button>
         )}
+        {/* Sin filtro de marca, a diferencia de los precios: las fotos se
+            importan buscando el producto por nombre, así que una misma lista
+            puede mezclar marcas. */}
+        <Link
+          href="/productos/fotos"
+          className="rounded-lg border border-neutral-300 text-neutral-700 hover:bg-neutral-50 px-4 py-2 text-sm font-medium whitespace-nowrap"
+        >
+          Importar fotos
+        </Link>
         <button
           onClick={openNew}
           className="rounded-lg bg-accent hover:bg-accent-dark text-white px-4 py-2 text-sm font-medium whitespace-nowrap"

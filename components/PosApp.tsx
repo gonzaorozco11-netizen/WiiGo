@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { Local, Marca, Producto, VarianteProducto, Stock } from "@/lib/supabase";
+import { precioDe } from "@/lib/precios";
 import {
   venderPos,
   estadoVentaPos,
@@ -29,12 +30,6 @@ function formatearMonto(valor: number) {
 
 function formatearPedido(numero: number) {
   return `VTA-${String(numero).padStart(4, "0")}`;
-}
-
-function precioFinal(producto: Producto, variante: VarianteProducto) {
-  const base = variante.precio_venta ?? producto.precio_venta ?? 0;
-  const descuento = producto.descuento_porcentaje ?? 0;
-  return descuento > 0 ? Math.round(base * (1 - descuento / 100)) : base;
 }
 
 type MedioPago = "EFECTIVO" | "MERCADO_PAGO";
@@ -156,13 +151,16 @@ export default function PosApp({
           variante,
           producto,
           marca: marcaPorId.get(producto.id_marca),
-          precio: precioFinal(producto, variante),
+          // Depende del medio de pago: en efectivo puede haber otro precio.
+          // Por eso `medioPago` está en las dependencias — al cambiarlo se
+          // recalcula el carrito entero, que es justo lo que tiene que pasar.
+          precio: precioDe(producto, variante, medioPago === "EFECTIVO" ? "EFECTIVO" : "OTRO"),
           cantidadDisponible,
         };
       })
       .filter((i): i is Item => i !== null)
       .sort((a, b) => a.producto.nombre.localeCompare(b.producto.nombre));
-  }, [variantes, productoPorId, marcaPorId, stockPorClave, idLocal]);
+  }, [variantes, productoPorId, marcaPorId, stockPorClave, idLocal, medioPago]);
 
   const itemPorVariante = useMemo(() => new Map(items.map((i) => [i.variante.id_variante, i])), [items]);
 
@@ -182,6 +180,19 @@ export default function PosApp({
   }, [carrito, itemPorVariante]);
 
   const subtotal = itemsCarrito.reduce((acc, i) => acc + i.precio * i.cantidad, 0);
+
+  // Los dos totales, para poder mostrarlos en los botones de medio de pago.
+  // Se recalculan desde el producto y no desde `i.precio`, que ya viene con
+  // el medio elegido aplicado.
+  const totalEfectivo = itemsCarrito.reduce(
+    (acc, i) => acc + precioDe(i.producto, i.variante, "EFECTIVO") * i.cantidad,
+    0
+  );
+  const totalLista = itemsCarrito.reduce(
+    (acc, i) => acc + precioDe(i.producto, i.variante, "OTRO") * i.cantidad,
+    0
+  );
+  const hayDiferenciaDePrecio = totalEfectivo !== totalLista;
 
   // Marcas presentes en el carrito con el saldo del profesional para cada
   // una — si el saldo no cubre todo el importe de esa marca, se aplica como
@@ -607,24 +618,37 @@ export default function PosApp({
         </div>
       )}
 
+      {/* Con dos precios, elegir el medio de pago cambia el total. El monto
+          va en el botón para que se vea ANTES de tocarlo — si el cliente duda
+          entre efectivo y tarjeta, el número lo decide en el mostrador. */}
       <div className="grid grid-cols-2 gap-2 mb-4">
         <button
           onClick={() => setMedioPago("EFECTIVO")}
-          className={`flex flex-col items-center gap-1 py-3 rounded-xl border-2 ${
+          className={`flex flex-col items-center gap-0.5 py-3 rounded-xl border-2 ${
             medioPago === "EFECTIVO" ? "border-accent bg-accent-tint" : "border-neutral-200 bg-white"
           }`}
         >
           <span>💵</span>
           <span className="font-bold text-sm">Efectivo</span>
+          {hayDiferenciaDePrecio && (
+            <span className="text-xs font-bold text-emerald-700 tabular-nums">
+              ${formatearMonto(totalEfectivo)}
+            </span>
+          )}
         </button>
         <button
           onClick={() => setMedioPago("MERCADO_PAGO")}
-          className={`flex flex-col items-center gap-1 py-3 rounded-xl border-2 ${
+          className={`flex flex-col items-center gap-0.5 py-3 rounded-xl border-2 ${
             medioPago === "MERCADO_PAGO" ? "border-accent bg-accent-tint" : "border-neutral-200 bg-white"
           }`}
         >
           <span>📱</span>
           <span className="font-bold text-sm">Mercado Pago</span>
+          {hayDiferenciaDePrecio && (
+            <span className="text-xs font-bold text-neutral-600 tabular-nums">
+              ${formatearMonto(totalLista)}
+            </span>
+          )}
         </button>
       </div>
 

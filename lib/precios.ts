@@ -1,0 +1,57 @@
+// El precio de un producto, en un solo lugar.
+//
+// Hasta ahora esta cuenta estaba copiada en PosApp, SelfCheckoutApp y
+// AsesorApp. Mientras fue una línea no molestó; con dos precios por medio de
+// pago, tres copias son tres formas de cobrar distinto por lo mismo.
+//
+// Hay dos precios y son los dos "el precio", no uno con descuento:
+//
+//   precio_venta     lo que se cobra con tarjeta o Mercado Pago
+//   precio_efectivo  lo que se cobra pagando en efectivo
+//
+// Y aparte está `descuento_porcentaje`, que SÍ es una oferta: se aplica sobre
+// cualquiera de los dos y es lo que pinta el cartelito "-20%" en el catálogo.
+
+export type MedioDePago = "EFECTIVO" | "OTRO";
+
+type ConPrecio = {
+  precio_venta: number | null;
+  precio_efectivo?: number | null;
+};
+
+/**
+ * El precio base, antes de la oferta.
+ *
+ * La variante pisa al producto, y el efectivo pisa al de lista. Si una
+ * variante tiene precio propio pero no precio de efectivo, en efectivo se
+ * cobra el suyo de lista — no el del producto, que sería de otro sabor.
+ */
+function base(producto: ConPrecio, variante: ConPrecio | null, medio: MedioDePago): number {
+  const fuente = variante && (variante.precio_venta != null || variante.precio_efectivo != null) ? variante : producto;
+  if (medio === "EFECTIVO" && fuente.precio_efectivo != null) return fuente.precio_efectivo;
+  return fuente.precio_venta ?? 0;
+}
+
+export function precioDe(
+  producto: ConPrecio & { descuento_porcentaje?: number | null },
+  variante: ConPrecio | null,
+  medio: MedioDePago
+): number {
+  const b = base(producto, variante, medio);
+  const descuento = producto.descuento_porcentaje ?? 0;
+  return descuento > 0 ? Math.round(b * (1 - descuento / 100)) : b;
+}
+
+/**
+ * Los dos precios juntos, para mostrarlos antes de que el cliente elija cómo
+ * paga. `ahorro` es null cuando no hay precio de efectivo cargado: ahí se
+ * cobra lo mismo en los dos casos y mostrar "ahorrás $0" sería ruido.
+ */
+export function ambosPrecios(
+  producto: ConPrecio & { descuento_porcentaje?: number | null },
+  variante: ConPrecio | null
+): { lista: number; efectivo: number; ahorro: number | null } {
+  const lista = precioDe(producto, variante, "OTRO");
+  const efectivo = precioDe(producto, variante, "EFECTIVO");
+  return { lista, efectivo, ahorro: efectivo < lista ? lista - efectivo : null };
+}
