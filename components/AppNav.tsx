@@ -135,8 +135,19 @@ const SUELTO: NavItem = { href: "/configuracion", label: "Configuración" };
 // se movió de plata en Fases 1 a 6, nunca delegable a un rol configurable.
 const AUDITORIA: NavItem = { href: "/auditoria", label: "🔍 Auditoría" };
 
+/**
+ * De una ruta a la clave de pantalla con la que se guarda el permiso.
+ *
+ * Las barras van a guion porque el catálogo (lib/pantallas.ts) las guarda
+ * así: `/compras/recepcion` ↔ `compras-recepcion`. Sin esta conversión, las
+ * tres pantallas de Compras que tienen sub-ruta NUNCA aparecían en el menú de
+ * nadie que tuviera una lista de pantallas asignada — el Dueño las veía
+ * porque su lista es `null`, y por eso pasó desapercibido. Las páginas sí
+ * dejaban entrar por URL, así que el permiso estaba bien: lo que fallaba era
+ * solo el menú.
+ */
 function clave(href: string) {
-  return href.replace(/^\//, "");
+  return href.replace(/^\//, "").replace(/\//g, "-");
 }
 
 export default function AppNav({
