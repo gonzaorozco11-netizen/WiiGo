@@ -97,6 +97,8 @@ const HOME_I18N = {
     preferenciaTitulo: "¿Tenés alguna preferencia?",
     preferenciaVacio: "Todavía no cargaste preferencias en Catálogo asesor.",
     sinResultados: "No encontramos productos con esa combinación — probá sacando alguna preferencia.",
+    borrar: "Borrar",
+    todas: "Todas",
   },
   en: {
     eyebrow: "🌿 Advisors",
@@ -123,6 +125,8 @@ const HOME_I18N = {
     preferenciaTitulo: "Do you have any preference?",
     preferenciaVacio: "No preferences loaded in Advisor Catalog yet.",
     sinResultados: "We couldn't find products matching that combination — try removing a preference.",
+    borrar: "Clear",
+    todas: "All",
   },
   pt: {
     eyebrow: "🌿 Consultores",
@@ -149,6 +153,8 @@ const HOME_I18N = {
     preferenciaTitulo: "Você tem alguma preferência?",
     preferenciaVacio: "Ainda não há preferências cadastradas no Catálogo consultor.",
     sinResultados: "Não encontramos produtos com essa combinação — tente remover alguma preferência.",
+    borrar: "Limpar",
+    todas: "Todas",
   },
 } as const;
 
@@ -268,6 +274,139 @@ function Navbar({ onVolver, onInicio, idioma }: { onVolver: () => void; onInicio
   );
 }
 
+/** Botón de marca en los resultados, con cuántos productos tiene. */
+function ChipMarca({
+  activo,
+  onClick,
+  nombre,
+  cantidad,
+}: {
+  activo: boolean;
+  onClick: () => void;
+  nombre: string;
+  cantidad: number;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="rounded-full border-[1.5px] px-3.5 py-2 text-[12px] font-extrabold transition-colors flex items-center gap-1.5"
+      style={
+        activo
+          ? { background: "#22301d", borderColor: "#22301d", color: "#fff" }
+          : { background: "#fff", borderColor: "#d8d8d8", color: "#4b5243" }
+      }
+    >
+      {nombre}
+      <span className="tabular-nums font-bold" style={{ opacity: 0.55 }}>
+        {cantidad}
+      </span>
+    </button>
+  );
+}
+
+/**
+ * Tarjeta de producto en los resultados.
+ *
+ * `compacta` es la versión de una sola fila que se usa con el teclado abierto:
+ * mismo contenido, ancho fijo para que la fila se pueda correr con el dedo.
+ */
+function TarjetaResultado({
+  producto,
+  marca,
+  etiqueta,
+  nombre,
+  onClick,
+  compacta = false,
+}: {
+  producto: ProductoPublico;
+  marca: Marca | undefined;
+  etiqueta: string;
+  nombre: string;
+  onClick: () => void;
+  compacta?: boolean;
+}) {
+  return (
+    <div
+      onClick={onClick}
+      className={`rounded-2xl bg-white overflow-hidden shadow-sm flex flex-col cursor-pointer ${
+        compacta ? "w-[146px] shrink-0" : ""
+      }`}
+    >
+      <div
+        className={`relative flex items-center justify-center ${compacta ? "h-[104px]" : "h-[88px]"} ${
+          producto.imagen ? "bg-white" : "bg-gradient-to-br from-[#f0f2ec] to-[#d8d8d8]"
+        }`}
+      >
+        {marca && (
+          <span
+            className="absolute top-1.5 left-1.5 text-[7.5px] font-extrabold uppercase tracking-wide bg-white/85 px-1.5 py-0.5 rounded-full"
+            style={{ color: SAGE_DARK }}
+          >
+            {marca.nombre}
+          </span>
+        )}
+        {producto.imagen ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={producto.imagen} alt="" className="w-full h-full object-contain p-1" />
+        ) : (
+          <span style={{ color: SAGE_DARK }}>
+            <IconoBolsa className="w-6 h-6" />
+          </span>
+        )}
+      </div>
+      <div className="p-2.5 flex flex-col gap-1">
+        <p className="text-[12px] font-bold leading-tight line-clamp-2">{nombre}</p>
+        {etiqueta && !compacta && (
+          <span
+            className="self-start text-[8px] font-extrabold px-2 py-0.5 rounded-full"
+            style={{ background: "#cfe8a6", color: "#3d5c2a" }}
+          >
+            {etiqueta}
+          </span>
+        )}
+        <span className={`${fredoka.className} text-[13.5px] font-semibold mt-0.5`}>
+          {formatoPrecio(producto.precio_venta)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Cuánto de la pantalla queda realmente a la vista.
+ *
+ * En el tótem del local el teclado de Android se dibuja ENCIMA de la página:
+ * la ventana sigue midiendo lo mismo, así que `100vh` miente y la mitad de
+ * abajo queda tapada. `visualViewport` es lo único que avisa cuánto quedó
+ * visible de verdad, y se adapta solo a cualquier teclado y cualquier monitor.
+ *
+ * Devuelve el alto visible en píxeles cuando el teclado está abierto, y null
+ * cuando está cerrado (ahí la pantalla se comporta como siempre).
+ */
+function useAltoVisible(): number | null {
+  const [alto, setAlto] = useState<number | null>(null);
+
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const medir = () => {
+      const tapado = window.innerHeight - vv.height - vv.offsetTop;
+      // Menos de 120px es la barra del navegador apareciendo o desapareciendo,
+      // no un teclado.
+      setAlto(tapado > 120 ? vv.height : null);
+    };
+    medir();
+    vv.addEventListener("resize", medir);
+    vv.addEventListener("scroll", medir);
+    return () => {
+      vv.removeEventListener("resize", medir);
+      vv.removeEventListener("scroll", medir);
+    };
+  }, []);
+
+  return alto;
+}
+
 export default function AsesorApp({
   local,
   marcas,
@@ -319,6 +458,12 @@ export default function AsesorApp({
   const [productoAbierto, setProductoAbierto] = useState<string | null>(null);
   const [idioma, setIdioma] = useState<Idioma>("es");
   const [selectorIdiomaAbierto, setSelectorIdiomaAbierto] = useState(false);
+  // Filtro por marca dentro de los resultados. Es aparte de `marcaId`, que es
+  // la marca que se está mirando en la pantalla de Marcas.
+  const [marcaResultado, setMarcaResultado] = useState<string | null>(null);
+
+  const altoVisible = useAltoVisible();
+  const tecladoAbierto = altoVisible !== null;
 
   // Detecta el idioma del navegador/dispositivo al abrir la pantalla — si no
   // es ninguno de los 3 soportados, arranca en español. Solo corre una vez.
@@ -508,6 +653,7 @@ export default function AsesorApp({
     setObjetivoId(id);
     setBusqueda("");
     setFiltrosSeleccionados(new Set());
+    setMarcaResultado(null);
     setPantalla("resultado");
   }
 
@@ -515,6 +661,7 @@ export default function AsesorApp({
     if (!busqueda.trim()) return;
     setObjetivoId(null);
     setFiltrosSeleccionados(new Set());
+    setMarcaResultado(null);
     setPantalla("resultado");
   }
 
@@ -523,6 +670,7 @@ export default function AsesorApp({
     setBusqueda("");
     setObjetivoId(null);
     setFiltrosSeleccionados(new Set());
+    setMarcaResultado(null);
     setMarcaId(null);
     setSubcategoriaId(null);
     setMarcaOfertaId(null);
@@ -604,7 +752,11 @@ export default function AsesorApp({
     });
   }
 
-  const productosFiltrados = useMemo(() => {
+  // Se filtra en dos pasos a propósito: el primero deja todo menos la marca, y
+  // con eso se calcula cuántos productos tiene cada marca para mostrarlo en su
+  // botón. Si la marca entrara en el mismo filtro, los números de las otras
+  // marcas darían siempre cero apenas elegís una.
+  const productosSinFiltroMarca = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
     return productos.filter((p) => {
       if (q) {
@@ -622,6 +774,25 @@ export default function AsesorApp({
       return true;
     });
   }, [productos, busqueda, objetivoId, filtrosSeleccionados, marcaPorId, objetivosPorProducto, filtrosPorProducto]);
+
+  const productosFiltrados = useMemo(
+    () =>
+      marcaResultado
+        ? productosSinFiltroMarca.filter((p) => p.id_marca === marcaResultado)
+        : productosSinFiltroMarca,
+    [productosSinFiltroMarca, marcaResultado]
+  );
+
+  const conteoPorMarca = useMemo(() => {
+    const conteo: Record<string, number> = {};
+    for (const p of productosSinFiltroMarca) conteo[p.id_marca] = (conteo[p.id_marca] ?? 0) + 1;
+    return conteo;
+  }, [productosSinFiltroMarca]);
+
+  const marcasConResultados = useMemo(
+    () => marcas.filter((m) => (conteoPorMarca[m.id_marca] ?? 0) > 0),
+    [marcas, conteoPorMarca]
+  );
 
   function porQue(p: ProductoPublico): { texto: string; tag: string } {
     const propios = filtrosPorProducto[p.id_producto] ?? [];
@@ -1056,95 +1227,123 @@ export default function AsesorApp({
       )}
 
       {pantalla === "resultado" && (
-        <div className="flex-1 flex flex-col">
+        // Con el teclado abierto la pantalla pasa a medir lo que quedó a la
+        // vista y no crece más: así nada de lo que importa queda debajo del
+        // teclado. Cerrado, se comporta como cualquier otra pantalla.
+        <div
+          className="flex-1 flex flex-col min-h-0"
+          style={altoVisible ? { height: altoVisible, flex: "none", overflow: "hidden" } : undefined}
+        >
           <Navbar onVolver={volverDesdeResultado} onInicio={volverAInicio} idioma={idioma} />
-          <div className="flex-1 px-6 pt-6 pb-10 max-w-3xl mx-auto w-full">
-            <div className="flex items-center gap-3 rounded-full border border-[#d8d8d8] bg-white px-3 py-3 shadow-sm mb-6">
+          <div
+            className={`flex-1 min-h-0 w-full mx-auto flex flex-col ${
+              tecladoAbierto ? "px-5 pt-2 pb-2 gap-2.5" : "px-6 pt-6 pb-10 gap-4 max-w-5xl"
+            }`}
+          >
+            <div className="flex items-center gap-3 rounded-full border border-[#d8d8d8] bg-white px-3 py-3 shadow-sm shrink-0">
               <span className="flex items-center justify-center w-8 h-8 rounded-full shrink-0" style={{ background: SAGE_TINT, color: SAGE_DARK }}>
                 <IconoBuscar className="w-4 h-4" />
               </span>
               <input
-                autoFocus
+                // Si llegó tocando un objetivo no hace falta abrirle el teclado
+                // en la cara: no vino a escribir, vino a mirar.
+                autoFocus={!objetivoId}
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
                 placeholder={t("buscarPlaceholder")}
-                className="flex-1 bg-transparent outline-none text-[14px] font-medium text-[#2d2d2d] placeholder:text-[#a8a8a8]"
+                className="flex-1 bg-transparent outline-none text-[15px] font-medium text-[#2d2d2d] placeholder:text-[#a8a8a8]"
               />
+              {busqueda && (
+                // La tecla de borrar del teclado es diminuta para usarla parado
+                // frente a la pantalla.
+                <button
+                  onClick={() => setBusqueda("")}
+                  className="shrink-0 rounded-full px-3.5 py-1.5 text-[12px] font-extrabold"
+                  style={{ background: "#f0f3ea", color: "#6b7263" }}
+                >
+                  ✕ {t("borrar")}
+                </button>
+              )}
             </div>
 
-            <p className="text-[11px] font-extrabold uppercase tracking-wide text-[#8a8a8a] mb-2">{t("preferenciaTitulo")}</p>
-            <div className="flex flex-wrap gap-2 mb-6">
-              {filtros.length === 0 && <p className="text-[#686868] text-sm">{t("preferenciaVacio")}</p>}
-              {filtros.map((f) => {
-                const on = filtrosSeleccionados.has(f.id_filtro);
-                return (
-                  <button
-                    key={f.id_filtro}
-                    onClick={() => toggleFiltro(f.id_filtro)}
-                    className="rounded-full border-[1.5px] px-3.5 py-2 text-[12px] font-bold transition-colors"
-                    style={on ? { background: SAGE_DARK, borderColor: SAGE_DARK, color: "#fff" } : { background: "#fff", borderColor: "#d8d8d8", color: "#8a8a8a" }}
-                  >
-                    {tr(f.nombre, f.nombre_en, f.nombre_pt)}
-                  </button>
-                );
-              })}
-            </div>
+            {marcasConResultados.length > 1 && (
+              <div className="flex flex-wrap gap-2 shrink-0">
+                {/* Tocar una marca es más rápido que escribirla. */}
+                <ChipMarca
+                  activo={marcaResultado === null}
+                  onClick={() => setMarcaResultado(null)}
+                  nombre={t("todas")}
+                  cantidad={productosSinFiltroMarca.length}
+                />
+                {marcasConResultados.map((m) => (
+                  <ChipMarca
+                    key={m.id_marca}
+                    activo={marcaResultado === m.id_marca}
+                    onClick={() => setMarcaResultado(marcaResultado === m.id_marca ? null : m.id_marca)}
+                    nombre={m.nombre}
+                    cantidad={conteoPorMarca[m.id_marca] ?? 0}
+                  />
+                ))}
+              </div>
+            )}
 
-            <h3 className={`${bodoniModa.className} italic text-[21px] mb-1`}>{t("resultadoTitulo")}</h3>
-            <p className="text-[13px] text-[#8a8a8a] mb-5">
-              {contarProductos(productosFiltrados.length, idioma, "disponibles")}
-            </p>
+            {filtros.length > 0 && (
+              <div className="flex flex-wrap gap-2 shrink-0">
+                {filtros.map((f) => {
+                  const on = filtrosSeleccionados.has(f.id_filtro);
+                  return (
+                    <button
+                      key={f.id_filtro}
+                      onClick={() => toggleFiltro(f.id_filtro)}
+                      className="rounded-full border-[1.5px] px-3.5 py-2 text-[12px] font-bold transition-colors"
+                      style={on ? { background: SAGE_DARK, borderColor: SAGE_DARK, color: "#fff" } : { background: "#fff", borderColor: "#d8d8d8", color: "#8a8a8a" }}
+                    >
+                      {tr(f.nombre, f.nombre_en, f.nombre_pt)}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {!tecladoAbierto && (
+              <div className="shrink-0">
+                <h3 className={`${bodoniModa.className} italic text-[21px]`}>{t("resultadoTitulo")}</h3>
+                <p className="text-[13px] text-[#8a8a8a] mt-0.5">
+                  {contarProductos(productosFiltrados.length, idioma, "disponibles")}
+                </p>
+              </div>
+            )}
 
             {productosFiltrados.length === 0 ? (
               <p className="text-[#686868] text-sm text-center py-12">{t("sinResultados")}</p>
+            ) : tecladoAbierto ? (
+              // Con el teclado abierto entra una sola fila. No se esconde nada:
+              // lo que no entra se corre al costado con el dedo.
+              <div className="flex-1 min-h-0 flex gap-2.5 overflow-x-auto pb-1">
+                {productosFiltrados.map((p) => (
+                  <TarjetaResultado
+                    key={p.id_producto}
+                    producto={p}
+                    marca={marcaPorId[p.id_marca]}
+                    etiqueta={porQue(p).texto}
+                    nombre={tr(p.nombre, p.nombre_en, p.nombre_pt)}
+                    onClick={() => setProductoAbierto(p.id_producto)}
+                    compacta
+                  />
+                ))}
+              </div>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {productosFiltrados.map((p) => {
-                  const { texto } = porQue(p);
-                  const marca = marcaPorId[p.id_marca];
-                  return (
-                    <div
-                      key={p.id_producto}
-                      onClick={() => setProductoAbierto(p.id_producto)}
-                      className="rounded-2xl bg-white overflow-hidden shadow-sm flex flex-col cursor-pointer"
-                    >
-                      <div
-                        className={`relative h-[88px] flex items-center justify-center ${
-                          p.imagen ? "bg-white" : "bg-gradient-to-br from-[#f0f2ec] to-[#d8d8d8]"
-                        }`}
-                      >
-                        {marca && (
-                          <span
-                            className="absolute top-1.5 left-1.5 text-[7.5px] font-extrabold uppercase tracking-wide bg-white/85 px-1.5 py-0.5 rounded-full"
-                            style={{ color: SAGE_DARK }}
-                          >
-                            {marca.nombre}
-                          </span>
-                        )}
-                        {p.imagen ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={p.imagen} alt="" className="w-full h-full object-contain p-1" />
-                        ) : (
-                          <span style={{ color: SAGE_DARK }}>
-                            <IconoBolsa className="w-6 h-6" />
-                          </span>
-                        )}
-                      </div>
-                      <div className="p-2.5 flex flex-col gap-1">
-                        <p className="text-[12px] font-bold leading-tight line-clamp-2">{tr(p.nombre, p.nombre_en, p.nombre_pt)}</p>
-                        {texto && (
-                          <span
-                            className="self-start text-[8px] font-extrabold px-2 py-0.5 rounded-full"
-                            style={{ background: "#cfe8a6", color: "#3d5c2a" }}
-                          >
-                            {texto}
-                          </span>
-                        )}
-                        <span className={`${fredoka.className} text-[13.5px] font-semibold mt-0.5`}>{formatoPrecio(p.precio_venta)}</span>
-                      </div>
-                    </div>
-                  );
-                })}
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3">
+                {productosFiltrados.map((p) => (
+                  <TarjetaResultado
+                    key={p.id_producto}
+                    producto={p}
+                    marca={marcaPorId[p.id_marca]}
+                    etiqueta={porQue(p).texto}
+                    nombre={tr(p.nombre, p.nombre_en, p.nombre_pt)}
+                    onClick={() => setProductoAbierto(p.id_producto)}
+                  />
+                ))}
               </div>
             )}
           </div>
