@@ -9,6 +9,7 @@ import {
   type FormacionProfesional,
   type TrayectoriaProfesional,
   type ConocemeSlide,
+  type VarianteProducto,
 } from "@/lib/supabase";
 import { fetchContenidoAsesor } from "@/lib/contenidoAsesor";
 import AsesorApp from "@/components/AsesorApp";
@@ -31,6 +32,7 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
   const [
     marcasRes,
     productosRes,
+    variantesRes,
     subcategoriasRes,
     profesionalesRes,
     fortalezasRes,
@@ -45,6 +47,7 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
   ] = await Promise.all([
     supabase.from("marcas").select("*").eq("estado", "ACTIVA").eq("visible_asesor", true),
     supabase.from("productos").select("*").eq("estado", "ACTIVO").eq("visible_asesor", true),
+    supabase.from("variantes_producto").select("*").eq("estado", "ACTIVO"),
     supabase.from("subcategorias").select("*").eq("estado", "ACTIVA"),
     supabase.from("profesionales").select("*").eq("estado", "ACTIVO").eq("publicado", true).order("orden", { ascending: true }),
     supabase.from("fortalezas_profesional").select("*").eq("estado", "ACTIVA"),
@@ -106,6 +109,19 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
     (formacionPorProfesional[f.id_profesional] ??= []).push(f);
   });
 
+  // Los sabores/presentaciones que se muestran en la ficha. Se agrupan acá y
+  // no en el cliente para no mandarle al tótem variantes de productos que ni
+  // siquiera están visibles en el asesor.
+  const idsVisibles = new Set((productosRes.data ?? []).map((p: Producto) => p.id_producto));
+  const variantesPorProducto: Record<string, VarianteProducto[]> = {};
+  (variantesRes.data ?? []).forEach((v: VarianteProducto) => {
+    if (!idsVisibles.has(v.id_producto)) return;
+    (variantesPorProducto[v.id_producto] ??= []).push(v);
+  });
+  Object.values(variantesPorProducto).forEach((lista) =>
+    lista.sort((a, b) => (a.orden ?? 9999) - (b.orden ?? 9999) || a.nombre.localeCompare(b.nombre, "es"))
+  );
+
   const trayectoriaPorProfesional: Record<string, TrayectoriaProfesional[]> = {};
   (trayectoriaRes.data ?? []).forEach((t: TrayectoriaProfesional) => {
     (trayectoriaPorProfesional[t.id_profesional] ??= []).push(t);
@@ -116,6 +132,7 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
       local={local as Local}
       marcas={(marcasRes.data ?? []) as Marca[]}
       productos={(productosRes.data ?? []) as Producto[]}
+      variantesPorProducto={variantesPorProducto}
       subcategorias={(subcategoriasRes.data ?? []) as Subcategoria[]}
       profesionales={(profesionalesRes.data ?? []) as Profesional[]}
       fortalezasPorProfesional={fortalezasPorProfesional}

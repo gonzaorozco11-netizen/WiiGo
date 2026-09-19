@@ -7,6 +7,7 @@ import type {
   Local,
   Marca,
   Producto,
+  VarianteProducto,
   Objetivo,
   FiltroProducto,
   FichaProducto,
@@ -271,6 +272,7 @@ export default function AsesorApp({
   local,
   marcas,
   productos,
+  variantesPorProducto,
   subcategorias,
   profesionales,
   fortalezasPorProfesional,
@@ -287,6 +289,7 @@ export default function AsesorApp({
   local: Local;
   marcas: Marca[];
   productos: Producto[];
+  variantesPorProducto: Record<string, VarianteProducto[]>;
   subcategorias: Subcategoria[];
   profesionales: Profesional[];
   fortalezasPorProfesional: Record<string, { nombre: string; principal: boolean }[]>;
@@ -1709,6 +1712,7 @@ export default function AsesorApp({
               producto={p}
               marca={marcaPorId[p.id_marca]}
               ficha={fichaPorProducto[p.id_producto] ?? null}
+              variantes={variantesPorProducto[p.id_producto] ?? []}
               idioma={idioma}
               onClose={() => setProductoAbierto(null)}
             />
@@ -1788,12 +1792,14 @@ function ProductoDetalleModal({
   producto,
   marca,
   ficha,
+  variantes,
   idioma,
   onClose,
 }: {
   producto: Producto;
   marca: Marca | undefined;
   ficha: FichaProducto | null;
+  variantes: VarianteProducto[];
   idioma: Idioma;
   onClose: () => void;
 }) {
@@ -1805,6 +1811,12 @@ function ProductoDetalleModal({
   const [macroActiva, setMacroActiva] = useState<string | null>(null);
   const [ingredientesAbierto, setIngredientesAbierto] = useState(false);
   const [micronutrientesAbierto, setMicronutrientesAbierto] = useState(false);
+  const [saborActivo, setSaborActivo] = useState<string | null>(null);
+
+  // Todo producto tiene al menos una variante; cuando no viene en sabores esa
+  // única se llama "Único" y mostrarla como opción sería ruido.
+  const sabores =
+    variantes.length === 1 && /^\s*(único|unico)\s*$/i.test(variantes[0].nombre) ? [] : variantes;
 
   // El anillo se dibuja solo al abrir — arranca en 0% y un instante después
   // pasa al valor final, la transición CSS de --p hace el resto.
@@ -1961,6 +1973,41 @@ function ProductoDetalleModal({
             >
               {traducir(idioma, ficha.descripcion_publica, ficha.descripcion_publica_en, ficha.descripcion_publica_pt)}
             </p>
+          )}
+
+          {sabores.length > 0 && (
+            <div
+              className="flex flex-col gap-2"
+              style={{
+                opacity: abierto ? 1 : 0,
+                transform: abierto ? "translateY(0)" : "translateY(10px)",
+                transition: "all .5s ease .28s",
+              }}
+            >
+              <p className="text-[10.5px] font-bold uppercase tracking-widest text-[#8a8a8a]">
+                {idioma === "en" ? "Flavours" : "Sabores"}
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {sabores.map((v) => {
+                  const activo = v.id_variante === saborActivo;
+                  return (
+                    <button
+                      key={v.id_variante}
+                      onClick={() => setSaborActivo(activo ? null : v.id_variante)}
+                      className="text-[12px] px-3 py-1.5 rounded-full border transition-colors"
+                      style={{
+                        background: activo ? SAGE_DARK : "#fff",
+                        borderColor: activo ? SAGE_DARK : "#dcdfd4",
+                        color: activo ? "#fff" : "#4a4f43",
+                        fontWeight: activo ? 600 : 500,
+                      }}
+                    >
+                      {v.nombre}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           )}
 
           <div
