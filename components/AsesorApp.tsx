@@ -921,10 +921,14 @@ export default function AsesorApp({
                           onClick={() => setProductoAbierto(p.id_producto)}
                           className="rounded-xl border border-[#d8d8d8] bg-white overflow-hidden shadow-sm flex flex-col cursor-pointer"
                         >
-                          <div className="h-20 bg-gradient-to-br from-[#f0f2ec] to-[#d8d8d8] flex items-center justify-center">
+                          <div
+                            className={`h-20 flex items-center justify-center ${
+                              p.imagen ? "bg-white" : "bg-gradient-to-br from-[#f0f2ec] to-[#d8d8d8]"
+                            }`}
+                          >
                             {p.imagen ? (
                               // eslint-disable-next-line @next/next/no-img-element
-                              <img src={p.imagen} alt="" className="w-full h-full object-cover" />
+                              <img src={p.imagen} alt="" className="w-full h-full object-contain p-1" />
                             ) : (
                               <span style={{ color: SAGE_DARK }}>
                                 <IconoBolsa className="w-6 h-6" />
@@ -1101,7 +1105,11 @@ export default function AsesorApp({
                       onClick={() => setProductoAbierto(p.id_producto)}
                       className="rounded-2xl bg-white overflow-hidden shadow-sm flex flex-col cursor-pointer"
                     >
-                      <div className="relative h-[88px] bg-gradient-to-br from-[#f0f2ec] to-[#d8d8d8] flex items-center justify-center">
+                      <div
+                        className={`relative h-[88px] flex items-center justify-center ${
+                          p.imagen ? "bg-white" : "bg-gradient-to-br from-[#f0f2ec] to-[#d8d8d8]"
+                        }`}
+                      >
                         {marca && (
                           <span
                             className="absolute top-1.5 left-1.5 text-[7.5px] font-extrabold uppercase tracking-wide bg-white/85 px-1.5 py-0.5 rounded-full"
@@ -1112,7 +1120,7 @@ export default function AsesorApp({
                         )}
                         {p.imagen ? (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img src={p.imagen} alt="" className="w-full h-full object-cover" />
+                          <img src={p.imagen} alt="" className="w-full h-full object-contain p-1" />
                         ) : (
                           <span style={{ color: SAGE_DARK }}>
                             <IconoBolsa className="w-6 h-6" />
@@ -1830,9 +1838,11 @@ function ProductoDetalleModal({
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="relative h-52 overflow-hidden">
+        <div className={`relative h-64 overflow-hidden ${fotoActiva ? "bg-white" : ""}`}>
           <div
-            className="absolute inset-0 bg-gradient-to-br from-[#f0f2ec] to-[#d8d8d8] flex items-center justify-center"
+            className={`absolute inset-0 flex items-center justify-center ${
+              fotoActiva ? "bg-white" : "bg-gradient-to-br from-[#f0f2ec] to-[#d8d8d8]"
+            }`}
             style={{
               transform: abierto ? "scale(1)" : "scale(1.12)",
               transition: "transform .9s cubic-bezier(.2,.8,.2,1)",
@@ -1840,21 +1850,28 @@ function ProductoDetalleModal({
           >
             {fotoActiva ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={fotoActiva} alt="" className="w-full h-full object-cover" />
+              <img src={fotoActiva} alt="" className="w-full h-full object-contain p-3" />
             ) : (
               <span style={{ color: SAGE_DARK }}>
                 <IconoBolsa className="w-10 h-10" />
               </span>
             )}
           </div>
-          <div
-            className="absolute inset-x-0 bottom-0 h-2/3 pointer-events-none"
-            style={{ background: "linear-gradient(to top, rgba(20,17,13,.45), transparent)" }}
-          />
+          {/* El velo oscuro es para una foto ambiente a sangre. Las fotos de
+              producto vienen recortadas sobre blanco: ahí solo ensucia. */}
+          {!fotoActiva && (
+            <div
+              className="absolute inset-x-0 bottom-0 h-2/3 pointer-events-none"
+              style={{ background: "linear-gradient(to top, rgba(20,17,13,.45), transparent)" }}
+            />
+          )}
           {ficha?.origen && (
             <span
               className="absolute top-3.5 left-3.5 text-white text-[10.5px] font-medium px-3 py-1.5 rounded-full"
-              style={{ background: "rgba(255,255,255,.28)", backdropFilter: "blur(6px)" }}
+              style={{
+                background: fotoActiva ? "rgba(20,17,13,.55)" : "rgba(255,255,255,.28)",
+                backdropFilter: "blur(6px)",
+              }}
             >
               📍 {traducir(idioma, ficha.origen, ficha.origen_en, ficha.origen_pt)}
             </span>
@@ -1862,7 +1879,10 @@ function ProductoDetalleModal({
           <button
             onClick={onClose}
             className="absolute top-3.5 right-3.5 w-8 h-8 rounded-full text-white font-bold flex items-center justify-center"
-            style={{ background: "rgba(255,255,255,.28)", backdropFilter: "blur(6px)" }}
+            style={{
+              background: fotoActiva ? "rgba(20,17,13,.55)" : "rgba(255,255,255,.28)",
+              backdropFilter: "blur(6px)",
+            }}
           >
             ✕
           </button>
