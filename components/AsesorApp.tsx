@@ -1159,7 +1159,7 @@ export default function AsesorApp({
             {/* En el monitor de 27" el logo tiene que leerse desde lejos: crece
                 con la pantalla en vez de quedarse en un tamaño fijo de celular. */}
             <div
-              className="w-full max-w-[300px] sm:max-w-[460px] md:max-w-[640px] lg:max-w-[820px] mx-auto"
+              className="w-full max-w-[240px] sm:max-w-[340px] md:max-w-[450px] lg:max-w-[580px] mx-auto"
               style={{ animation: "asesorLogoFlotar 4.5s ease-in-out infinite", willChange: "transform" }}
             >
               <Image
@@ -1167,7 +1167,7 @@ export default function AsesorApp({
                 alt="WiiGo — Estaciones de bienestar"
                 width={2172}
                 height={448}
-                sizes="(min-width: 1024px) 820px, (min-width: 768px) 640px, 460px"
+                sizes="(min-width: 1024px) 580px, (min-width: 768px) 450px, 340px"
                 className="w-full h-auto"
                 priority
               />
