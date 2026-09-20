@@ -42,33 +42,55 @@ body {
     Arial, sans-serif;
 }
 
-/* Permite animar el degradé del anillo de kcal en la ficha ampliada del
-   Asesor (components/AsesorApp.tsx) — sin esto un conic-gradient no se
-   puede transicionar con CSS. */
-@property --p {
-  syntax: "<percentage>";
-  inherits: false;
-  initial-value: 0%;
-}
+/* ---------------------------------------------------------------------------
+   Movimiento del Asesor (components/AsesorApp.tsx)
 
-/* Pantalla de inicio del Asesor (components/AsesorApp.tsx) — fondo con
-   movimiento ambiental lento y logo flotando, para que la pantalla no se
-   vea estática mientras nadie la toca. */
-@keyframes asesorFondoDeriva {
-  0%, 100% { background-position: 15% 25%; }
-  50% { background-position: 85% 75%; }
-}
+   La pantalla corre en la all-in-one Android del local, que tiene una placa
+   modesta. Ahí no hay que elegir entre "con movimiento" y "que ande": hay que
+   elegir BIEN QUÉ se anima.
+
+   Barato  — `transform` y `opacity`: los resuelve la placa de video sola, sin
+             volver a dibujar nada. Es lo que usan las animaciones de partículas
+             (la lluvia del tótem, por ejemplo) y por eso van fluidas.
+   Caro    — `background-position`, `filter`, `backdrop-filter`, `box-shadow` o
+             un degradé que se recalcula: obligan al procesador a repintar el
+             área entera en cada cuadro.
+
+   Por eso acá todo se mueve con `transform`, y las formas difusas se dibujan
+   con degradés radiales en vez de con desenfoque.
+   --------------------------------------------------------------------------- */
+
+/* `translate3d` en vez de `translate` obliga a que cada figura tenga su propia
+   capa en la placa de video: se mueve sin repintar el fondo. */
 @keyframes asesorLogoFlotar {
-  0%, 100% { transform: translateY(0) rotate(0deg); }
-  50% { transform: translateY(-14px) rotate(-1deg); }
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(0, -12px, 0); }
 }
-/* El pan de fondo de arriba es casi imperceptible por sí solo — estas dos
-   formas flotantes son las que realmente se notan en movimiento. */
 @keyframes asesorBlob1 {
-  0%, 100% { transform: translate(0, 0); }
-  50% { transform: translate(-30px, 40px); }
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(-30px, 40px, 0) scale(1.06); }
 }
 @keyframes asesorBlob2 {
-  0%, 100% { transform: translate(0, 0); }
-  50% { transform: translate(35px, -35px); }
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(35px, -35px, 0) scale(1.08); }
+}
+/* Reemplaza al viejo fondo que se corría: en vez de mover el degradé —que
+   repinta toda la pantalla— se mueve una sola forma grande y difusa. */
+@keyframes asesorBlob3 {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(48px, 28px, 0) scale(1.12); }
+}
+
+/* El anillo de kcal se llena animando el trazo de un círculo SVG. Antes se
+   animaba un conic-gradient, que hay que recalcular entero en cada cuadro. */
+@keyframes asesorAnillo {
+  from { stroke-dashoffset: var(--largo); }
+  to { stroke-dashoffset: var(--resto); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [class*="asesor"],
+  [style*="asesor"] {
+    animation: none !important;
+  }
 }

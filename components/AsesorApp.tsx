@@ -35,6 +35,9 @@ const C4 = "#5f92a8"; // profesionales
 /** Pestaña que junta los productos de la marca a los que nadie les puso rubro. */
 const SIN_RUBRO = "__sin_rubro__";
 
+/** Vuelta completa del anillo de kcal (2πr con r = 59). */
+const ANILLO_LARGO = 2 * Math.PI * 59;
+
 /**
  * Cada puerta de la principal tiñe la pantalla a la que lleva.
  *
@@ -449,6 +452,22 @@ function TarjetaResultado({
         </span>
       </div>
     </div>
+  );
+}
+
+/**
+ * Una de las formas difusas que se mueven de fondo en la principal.
+ *
+ * `willChange: transform` le pide al navegador que le dé su propia capa en la
+ * placa de video: así se mueve sin que nada se repinte.
+ */
+function Mancha({ estilo }: { estilo: React.CSSProperties }) {
+  return (
+    <div
+      className="absolute rounded-full pointer-events-none"
+      style={{ willChange: "transform", ...estilo }}
+      aria-hidden
+    />
   );
 }
 
@@ -1045,28 +1064,52 @@ export default function AsesorApp({
           tocar lo que quiera. */}
       {pantalla === "home" && (
         <div
-          // Fondo quieto. Antes era un degradé del doble del tamaño de la
-          // pantalla corriéndose sin parar: en la placa Android de la all-in-one
-          // eso obliga a redibujar todo, todo el día, y hace que el resto vaya
-          // a los tirones. Las manchas ahora se dibujan ya difusas en el mismo
-          // degradé, sin desenfoque ni animación: se ven igual y salen gratis.
+          // El fondo es un degradé quieto y el movimiento lo ponen las tres
+          // formas de abajo, que se mueven con `transform` —lo resuelve la placa
+          // de video, igual que la lluvia del tótem—. Antes se animaba la
+          // posición del degradé, que obliga al procesador a repintar la
+          // pantalla entera en cada cuadro: eso es lo que la frenaba.
           className="relative flex-1 flex flex-col items-center justify-center px-6 py-10 text-center overflow-hidden"
-          style={{
-            backgroundImage:
-              "radial-gradient(circle at 88% 16%, rgba(182,188,162,.55), transparent 42%)," +
-              "radial-gradient(circle at 6% 84%, rgba(111,160,80,.3), transparent 40%)," +
-              "linear-gradient(160deg, #fbfbfb, #e2e6da)",
-          }}
+          style={{ background: "linear-gradient(160deg, #fbfbfb, #e2e6da)" }}
         >
+          {/* Difusas por degradé radial, no por desenfoque: el desenfoque en
+              Android lo hace el procesador y cuesta carísimo. */}
+          <Mancha
+            estilo={{
+              width: 420, height: 420, top: "-12%", right: "-9%",
+              background: "radial-gradient(circle, rgba(182,188,162,.85), transparent 68%)",
+              animation: "asesorBlob1 7s ease-in-out infinite",
+            }}
+          />
+          <Mancha
+            estilo={{
+              width: 300, height: 300, bottom: "-8%", left: "-6%",
+              background: "radial-gradient(circle, rgba(111,160,80,.5), transparent 68%)",
+              animation: "asesorBlob2 8.5s ease-in-out infinite",
+              animationDelay: "-1.5s",
+            }}
+          />
+          <Mancha
+            estilo={{
+              width: 560, height: 560, top: "22%", left: "28%",
+              background: "radial-gradient(circle, rgba(207,232,166,.4), transparent 70%)",
+              animation: "asesorBlob3 21s ease-in-out infinite",
+              animationDelay: "-6s",
+            }}
+          />
+
           <div className="relative w-full max-w-5xl flex flex-col items-center gap-6 md:gap-8">
-            {/* Sin animación y sin filtro de color: un elemento que se mueve y
-                además tiene filtro, Android lo dibuja una vez en una capa y
-                después la estira — por eso el logo se veía lavado. `sizes` le
-                avisa al navegador el ancho real para que no baje el archivo
-                grande y lo achique. */}
-            <div className="w-full max-w-[200px] md:max-w-[260px]">
+            {/* Sigue flotando, pero sin filtro encima: un elemento con filtro
+                Y movimiento, Android lo dibuja una vez en una capa y después la
+                estira — por eso se veía lavado. El archivo ya viene negro, así
+                que el filtro no aportaba nada. `sizes` evita que baje el archivo
+                grande para mostrarlo chico. */}
+            <div
+              className="w-full max-w-[200px] md:max-w-[260px]"
+              style={{ animation: "asesorLogoFlotar 4.5s ease-in-out infinite", willChange: "transform" }}
+            >
               <Image
-                src="/wiigo-logo.png"
+                src="/wiigo-logo-negro.png"
                 alt="WiiGo — Estaciones de bienestar"
                 width={2172}
                 height={448}
@@ -2400,16 +2443,33 @@ function ProductoDetalleModal({
             {(hayKcal || macros.length > 0) && (
               <div className="flex flex-col items-center gap-4">
                 {hayKcal && (
-                  <div
-                    // El anillo se dibuja ya completo. Animarlo obligaba a
-                    // recalcular el degradé circular entero en cada cuadro, que
-                    // en Android se ve peor que no animarlo.
-                    className="w-[132px] h-[132px] rounded-full flex items-center justify-center shrink-0"
-                    style={{
-                      background: "conic-gradient(from -90deg, #6fa050 0%, #cfe8a6 72%, #e3e7dc 72%)",
-                    }}
-                  >
-                    <div className="w-[102px] h-[102px] rounded-full bg-white flex flex-col items-center justify-center">
+                  <div className="relative w-[132px] h-[132px] shrink-0 grid place-items-center">
+                    {/* El anillo se llena animando el trazo de un círculo SVG.
+                        Antes se animaba un degradé circular, que hay que
+                        recalcular entero en cada cuadro; esto lo dibuja la placa
+                        de video y va fluido hasta en la all-in-one. */}
+                    <svg className="absolute inset-0 -rotate-90" viewBox="0 0 132 132" aria-hidden>
+                      <circle cx="66" cy="66" r="59" fill="none" stroke="#e3e7dc" strokeWidth="14" />
+                      <circle
+                        cx="66"
+                        cy="66"
+                        r="59"
+                        fill="none"
+                        stroke="#6fa050"
+                        strokeWidth="14"
+                        strokeLinecap="round"
+                        strokeDasharray={ANILLO_LARGO}
+                        style={
+                          {
+                            "--largo": `${ANILLO_LARGO}`,
+                            "--resto": `${ANILLO_LARGO * (1 - 0.72)}`,
+                            strokeDashoffset: ANILLO_LARGO,
+                            animation: "asesorAnillo 1.1s cubic-bezier(.2,.8,.2,1) .35s forwards",
+                          } as React.CSSProperties
+                        }
+                      />
+                    </svg>
+                    <div className="relative w-[102px] h-[102px] rounded-full bg-white flex flex-col items-center justify-center">
                       <span className={`${fredoka.className} text-[26px] font-semibold`}>{ficha?.kcal_100g}</span>
                       <span className="text-[9px] tracking-[.2em] text-[#8a9180] mt-0.5">KCAL</span>
                     </div>
