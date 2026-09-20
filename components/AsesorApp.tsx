@@ -844,6 +844,10 @@ export default function AsesorApp({
     setMostrarComoAyuda(false);
     setSlideIndex(0);
     setModalidadTurno(null);
+    // La ficha del producto vive por encima de las pantallas: si no se cierra
+    // acá, el que se va dejando abierto un producto hace que el siguiente
+    // cliente se encuentre el inicio tapado por la ficha del anterior.
+    setProductoAbierto(null);
   }
 
   function limpiarTimersInactividad() {
@@ -1149,7 +1153,7 @@ export default function AsesorApp({
             <p className="text-[#686868] text-sm text-center py-16">{t("marcasVacio")}</p>
           ) : (
             <>
-              <div className="bg-white border-b border-[#e2e6da] px-4 md:px-7 pt-3 pb-3 flex gap-2 md:gap-4 overflow-x-auto">
+              <div className="shrink-0 bg-white border-b border-[#e2e6da] px-4 md:px-7 pt-3 pb-3 flex gap-2 md:gap-4 overflow-x-auto">
                 {marcasOrdenadas.map((m) => (
                   <DiscoMarca
                     key={m.id_marca}
@@ -1165,8 +1169,10 @@ export default function AsesorApp({
                 ))}
               </div>
 
-              <div className="flex-1 min-h-0 flex flex-col overflow-y-auto">
-                <div className="px-5 md:px-7 pt-4 md:pt-5 pb-3 border-b border-[#e2e6da] flex flex-col gap-2.5">
+              {/* Solo la grilla se desliza: marcas, rubros y preferencias
+                  quedan quietos arriba. */}
+              <div className="flex-1 min-h-0 flex flex-col">
+                <div className="shrink-0 px-5 md:px-7 pt-4 md:pt-5 pb-3 border-b border-[#e2e6da] flex flex-col gap-2.5">
                   {(subcategoriasDeMarca.length > 0 || sinRubroDeMarca > 0) && (
                     <div className="flex flex-wrap gap-1.5">
                       {subcategoriasDeMarca.map((s) => (
@@ -1215,7 +1221,7 @@ export default function AsesorApp({
                   )}
                 </div>
 
-                <div className="flex-1 min-w-0 px-5 md:px-7 py-5 md:py-6">
+                <div className="flex-1 min-h-0 min-w-0 overflow-y-auto px-5 md:px-7 py-5 md:py-6">
                   <div className="flex items-end justify-between gap-4 mb-4">
                     <h2 className={`${bodoniModa.className} italic text-[clamp(21px,2.6vw,34px)] leading-tight`}>
                       {marcaId ? (marcaPorId[marcaId]?.nombre ?? t("marcasTitulo")) : t("marcasTitulo")}
