@@ -92,7 +92,6 @@ const HOME_I18N = {
     ctaMarcas: "Marcas y<br />productos",
     ctaOfertas: "Ofertas en<br />la tienda",
     ctaProfesionales: "Profesionales",
-    buscarPlaceholder: "Buscar producto o marca...",
     objetivoTitulo: "¿Cuál es tu objetivo hoy?",
     resultadoTitulo: "Te recomendamos",
     ctaEyebrow: "Recomendado",
@@ -107,7 +106,6 @@ const HOME_I18N = {
     preferenciaTitulo: "¿Tenés alguna preferencia?",
     preferenciaVacio: "Todavía no cargaste preferencias en Catálogo asesor.",
     sinResultados: "No encontramos productos con esa combinación — probá sacando alguna preferencia.",
-    borrar: "Borrar",
     todas: "Todas",
     descMarcas: "Mirá las marcas que están en la tienda y todo lo que traen",
     descOfertas: "Los combos y descuentos que hay hoy en el local",
@@ -127,7 +125,6 @@ const HOME_I18N = {
     ctaMarcas: "Brands &<br />products",
     ctaOfertas: "Offers in<br />the store",
     ctaProfesionales: "Professionals",
-    buscarPlaceholder: "Search product or brand...",
     objetivoTitulo: "What's your goal today?",
     resultadoTitulo: "We recommend",
     ctaEyebrow: "Recommended",
@@ -142,7 +139,6 @@ const HOME_I18N = {
     preferenciaTitulo: "Do you have any preference?",
     preferenciaVacio: "No preferences loaded in Advisor Catalog yet.",
     sinResultados: "We couldn't find products matching that combination — try removing a preference.",
-    borrar: "Clear",
     todas: "All",
     descMarcas: "See the brands in the store and everything they carry",
     descOfertas: "The combos and discounts available today in store",
@@ -162,7 +158,6 @@ const HOME_I18N = {
     ctaMarcas: "Marcas e<br />produtos",
     ctaOfertas: "Ofertas<br />da loja",
     ctaProfesionales: "Profissionais",
-    buscarPlaceholder: "Buscar produto ou marca...",
     objetivoTitulo: "Qual é o seu objetivo hoje?",
     resultadoTitulo: "Recomendamos",
     ctaEyebrow: "Recomendado",
@@ -177,7 +172,6 @@ const HOME_I18N = {
     preferenciaTitulo: "Você tem alguma preferência?",
     preferenciaVacio: "Ainda não há preferências cadastradas no Catálogo consultor.",
     sinResultados: "Não encontramos produtos com essa combinação — tente remover alguma preferência.",
-    borrar: "Limpar",
     todas: "Todas",
     descMarcas: "Veja as marcas da loja e tudo o que elas trazem",
     descOfertas: "Os combos e descontos de hoje na loja",
@@ -217,15 +211,6 @@ function precioConDescuento(p: ProductoPublico) {
   return descuento > 0 ? Math.round(base * (1 - descuento / 100)) : base;
 }
 
-function IconoBuscar({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="10.5" cy="10.5" r="6.8" />
-      <circle cx="10.5" cy="10.5" r="2.6" />
-      <line x1="15.3" y1="15.3" x2="20.5" y2="20.5" />
-    </svg>
-  );
-}
 function IconoBolsa({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round">
@@ -371,35 +356,6 @@ function Navbar({ onVolver, onInicio, idioma }: { onVolver: () => void; onInicio
 }
 
 /** Botón de marca en los resultados, con cuántos productos tiene. */
-function ChipMarca({
-  activo,
-  onClick,
-  nombre,
-  cantidad,
-}: {
-  activo: boolean;
-  onClick: () => void;
-  nombre: string;
-  cantidad: number;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className="rounded-full border-[1.5px] px-3.5 py-2 text-[12px] font-extrabold transition-colors flex items-center gap-1.5"
-      style={
-        activo
-          ? { background: "#22301d", borderColor: "#22301d", color: "#fff" }
-          : { background: "#fff", borderColor: "#d8d8d8", color: "#4b5243" }
-      }
-    >
-      {nombre}
-      <span className="tabular-nums font-bold" style={{ opacity: 0.55 }}>
-        {cantidad}
-      </span>
-    </button>
-  );
-}
-
 /**
  * Tarjeta de producto en los resultados.
  *
@@ -555,40 +511,9 @@ function OpcionRail({
   );
 }
 
-/**
- * Cuánto de la pantalla queda realmente a la vista.
- *
- * En el tótem del local el teclado de Android se dibuja ENCIMA de la página:
- * la ventana sigue midiendo lo mismo, así que `100vh` miente y la mitad de
- * abajo queda tapada. `visualViewport` es lo único que avisa cuánto quedó
- * visible de verdad, y se adapta solo a cualquier teclado y cualquier monitor.
- *
- * Devuelve el alto visible en píxeles cuando el teclado está abierto, y null
- * cuando está cerrado (ahí la pantalla se comporta como siempre).
- */
-function useAltoVisible(): number | null {
-  const [alto, setAlto] = useState<number | null>(null);
-
-  useEffect(() => {
-    const vv = window.visualViewport;
-    if (!vv) return;
-    const medir = () => {
-      const tapado = window.innerHeight - vv.height - vv.offsetTop;
-      // Menos de 120px es la barra del navegador apareciendo o desapareciendo,
-      // no un teclado.
-      setAlto(tapado > 120 ? vv.height : null);
-    };
-    medir();
-    vv.addEventListener("resize", medir);
-    vv.addEventListener("scroll", medir);
-    return () => {
-      vv.removeEventListener("resize", medir);
-      vv.removeEventListener("scroll", medir);
-    };
-  }, []);
-
-  return alto;
-}
+// El asesor no tiene buscador a propósito: en el tótem el teclado de Android
+// tapa media pantalla y su botón de configuración es una forma de salirse del
+// modo kiosco. Se navega tocando: objetivos, marcas y rubros.
 
 export default function AsesorApp({
   local,
@@ -626,7 +551,6 @@ export default function AsesorApp({
   filtrosPorProducto: Record<string, string[]>;
 }) {
   const [pantalla, setPantalla] = useState<Pantalla>("home");
-  const [busqueda, setBusqueda] = useState("");
   const [objetivoId, setObjetivoId] = useState<string | null>(null);
   const [filtrosSeleccionados, setFiltrosSeleccionados] = useState<Set<string>>(new Set());
   const [marcaId, setMarcaId] = useState<string | null>(null);
@@ -642,9 +566,6 @@ export default function AsesorApp({
   // Filtro por marca dentro de los resultados. Es aparte de `marcaId`, que es
   // la marca que se está mirando en la pantalla de Marcas.
   const [marcaResultado, setMarcaResultado] = useState<string | null>(null);
-
-  const altoVisible = useAltoVisible();
-  const tecladoAbierto = altoVisible !== null;
 
   // Detecta el idioma del navegador/dispositivo al abrir la pantalla — si no
   // es ninguno de los 3 soportados, arranca en español. Solo corre una vez.
@@ -805,7 +726,6 @@ export default function AsesorApp({
   }
 
   function irAObjetivo() {
-    setBusqueda("");
     setObjetivoId(null);
     setFiltrosSeleccionados(new Set());
     setPantalla("objetivo");
@@ -856,15 +776,6 @@ export default function AsesorApp({
 
   function elegirObjetivo(id: string) {
     setObjetivoId(id);
-    setBusqueda("");
-    setFiltrosSeleccionados(new Set());
-    setMarcaResultado(null);
-    setPantalla("resultado");
-  }
-
-  function buscar() {
-    if (!busqueda.trim()) return;
-    setObjetivoId(null);
     setFiltrosSeleccionados(new Set());
     setMarcaResultado(null);
     setPantalla("resultado");
@@ -872,7 +783,6 @@ export default function AsesorApp({
 
   function volverAInicio() {
     setPantalla("home");
-    setBusqueda("");
     setObjetivoId(null);
     setFiltrosSeleccionados(new Set());
     setMarcaResultado(null);
@@ -921,12 +831,9 @@ export default function AsesorApp({
   }, [pantalla]);
 
   function volverDesdeResultado() {
-    if (busqueda.trim()) {
-      setBusqueda("");
-      setPantalla("home");
-    } else {
-      setPantalla("objetivo");
-    }
+    // A los resultados solo se llega eligiendo un objetivo, así que atrás
+    // siempre es la pantalla de objetivos.
+    setPantalla("objetivo");
   }
 
   function toggleFiltro(id: string) {
@@ -943,14 +850,8 @@ export default function AsesorApp({
   // botón. Si la marca entrara en el mismo filtro, los números de las otras
   // marcas darían siempre cero apenas elegís una.
   const productosSinFiltroMarca = useMemo(() => {
-    const q = busqueda.trim().toLowerCase();
     return productos.filter((p) => {
-      if (q) {
-        const nombreMarca = marcaPorId[p.id_marca]?.nombre ?? "";
-        if (!p.nombre.toLowerCase().includes(q) && !nombreMarca.toLowerCase().includes(q)) return false;
-      } else if (objetivoId) {
-        if (!(objetivosPorProducto[p.id_producto] ?? []).includes(objetivoId)) return false;
-      }
+      if (objetivoId && !(objetivosPorProducto[p.id_producto] ?? []).includes(objetivoId)) return false;
       if (filtrosSeleccionados.size > 0) {
         const propios = filtrosPorProducto[p.id_producto] ?? [];
         for (const f of filtrosSeleccionados) {
@@ -959,7 +860,7 @@ export default function AsesorApp({
       }
       return true;
     });
-  }, [productos, busqueda, objetivoId, filtrosSeleccionados, marcaPorId, objetivosPorProducto, filtrosPorProducto]);
+  }, [productos, objetivoId, filtrosSeleccionados, objetivosPorProducto, filtrosPorProducto]);
 
   const productosFiltrados = useMemo(
     () =>
@@ -1131,26 +1032,6 @@ export default function AsesorApp({
               />
             </div>
 
-            <div className="w-full max-w-2xl flex items-center gap-3 rounded-full border border-[#d8d8d8] bg-white px-4 py-3.5 md:py-4 shadow-sm">
-              <span className="flex items-center justify-center w-9 h-9 rounded-full shrink-0" style={{ background: SAGE_TINT, color: SAGE_DARK }}>
-                <IconoBuscar className="w-4 h-4" />
-              </span>
-              <input
-                value={busqueda}
-                onChange={(e) => {
-                  const valor = e.target.value;
-                  setBusqueda(valor);
-                  if (valor.trim()) {
-                    setObjetivoId(null);
-                    setFiltrosSeleccionados(new Set());
-                    setMarcaResultado(null);
-                    setPantalla("resultado");
-                  }
-                }}
-                placeholder={t("buscarPlaceholder")}
-                className="flex-1 bg-transparent outline-none text-[15px] md:text-[17px] font-medium text-[#2d2d2d] placeholder:text-[#a8a8a8]"
-              />
-            </div>
           </div>
         </div>
       )}
@@ -1407,92 +1288,10 @@ export default function AsesorApp({
       )}
 
       {pantalla === "resultado" && (
-        // Con el teclado abierto la pantalla pasa a medir lo que quedó a la
-        // vista y no crece más: así nada de lo que importa queda debajo del
-        // teclado. Cerrado, se comporta como cualquier otra pantalla.
-        <div
-          className="flex-1 flex flex-col min-h-0"
-          style={altoVisible ? { height: altoVisible, flex: "none", overflow: "hidden" } : undefined}
-        >
+        <div className="flex-1 flex flex-col min-h-0">
           <Navbar onVolver={volverDesdeResultado} onInicio={volverAInicio} idioma={idioma} />
-          <div
-            className={`flex-1 min-h-0 w-full mx-auto flex flex-col ${
-              tecladoAbierto ? "px-5 pt-2 pb-2 gap-2.5" : "px-5 md:px-7 pt-5 pb-6 gap-4 max-w-7xl"
-            }`}
-          >
-            <div className="flex items-center gap-3 rounded-full border border-[#d8d8d8] bg-white px-3 py-3 shadow-sm shrink-0">
-              <span className="flex items-center justify-center w-8 h-8 rounded-full shrink-0" style={{ background: SAGE_TINT, color: SAGE_DARK }}>
-                <IconoBuscar className="w-4 h-4" />
-              </span>
-              <input
-                // Si llegó tocando un objetivo no hace falta abrirle el teclado
-                // en la cara: no vino a escribir, vino a mirar.
-                autoFocus={!objetivoId}
-                value={busqueda}
-                onChange={(e) => setBusqueda(e.target.value)}
-                placeholder={t("buscarPlaceholder")}
-                className="flex-1 bg-transparent outline-none text-[15px] font-medium text-[#2d2d2d] placeholder:text-[#a8a8a8]"
-              />
-              {busqueda && (
-                // La tecla de borrar del teclado es diminuta para usarla parado
-                // frente a la pantalla.
-                <button
-                  onClick={() => setBusqueda("")}
-                  className="shrink-0 rounded-full px-3.5 py-1.5 text-[12px] font-extrabold"
-                  style={{ background: "#f0f3ea", color: "#6b7263" }}
-                >
-                  ✕ {t("borrar")}
-                </button>
-              )}
-            </div>
-
-            {tecladoAbierto ? (
-              // ---- Escribiendo: todo compacto y arriba del teclado ----
-              <>
-                {marcasConResultados.length > 1 && (
-                  <div className="flex flex-wrap gap-2 shrink-0">
-                    {/* Tocar una marca es más rápido que escribirla. */}
-                    <ChipMarca
-                      activo={marcaResultado === null}
-                      onClick={() => setMarcaResultado(null)}
-                      nombre={t("todas")}
-                      cantidad={productosSinFiltroMarca.length}
-                    />
-                    {marcasConResultados.map((m) => (
-                      <ChipMarca
-                        key={m.id_marca}
-                        activo={marcaResultado === m.id_marca}
-                        onClick={() => setMarcaResultado(marcaResultado === m.id_marca ? null : m.id_marca)}
-                        nombre={m.nombre}
-                        cantidad={conteoPorMarca[m.id_marca] ?? 0}
-                      />
-                    ))}
-                  </div>
-                )}
-
-                {productosFiltrados.length === 0 ? (
-                  <p className="text-[#686868] text-sm text-center py-8">{t("sinResultados")}</p>
-                ) : (
-                  // Una sola fila. No se esconde nada: lo que no entra se corre
-                  // al costado con el dedo.
-                  <div className="flex-1 min-h-0 flex gap-2.5 overflow-x-auto pb-1">
-                    {productosFiltrados.map((p) => (
-                      <TarjetaResultado
-                        key={p.id_producto}
-                        producto={p}
-                        marca={marcaPorId[p.id_marca]}
-                        etiqueta=""
-                        nombre={tr(p.nombre, p.nombre_en, p.nombre_pt)}
-                        onClick={() => setProductoAbierto(p.id_producto)}
-                        compacta
-                      />
-                    ))}
-                  </div>
-                )}
-              </>
-            ) : (
-              // ---- Sin teclado: logos arriba, filtros al costado ----
-              <div className="flex-1 min-h-0 flex flex-col">
+          <div className="flex-1 min-h-0 w-full mx-auto flex flex-col px-5 md:px-7 pt-5 pb-6 max-w-7xl">
+            <div className="flex-1 min-h-0 flex flex-col">
                 {marcasConResultados.length > 1 && (
                   <div className="flex gap-2 md:gap-4 overflow-x-auto pb-3 mb-3 border-b border-[#e2e6da] shrink-0">
                     <DiscoMarca
@@ -1517,9 +1316,7 @@ export default function AsesorApp({
 
                 <div className="flex-1 min-h-0 flex flex-col md:flex-row gap-5 md:gap-7">
                   <div className="md:w-[212px] shrink-0 flex flex-row md:flex-col gap-6 md:gap-7 overflow-x-auto md:overflow-y-auto">
-                    {/* Con una búsqueda escrita el objetivo no se aplica, así
-                        que mostrarlo sería mentirle al cliente. */}
-                    {!busqueda.trim() && objetivos.length > 0 && (
+                    {objetivos.length > 0 && (
                       <GrupoRail titulo={t("railObjetivo")}>
                         {objetivos.map((o) => (
                           <OpcionRail
@@ -1579,8 +1376,7 @@ export default function AsesorApp({
                     )}
                   </div>
                 </div>
-              </div>
-            )}
+            </div>
           </div>
         </div>
       )}
