@@ -87,7 +87,6 @@ function contarProductos(n: number, idioma: Idioma, sufijo?: "descuento" | "disp
 }
 const HOME_I18N = {
   es: {
-    eyebrow: "🌿 Asesores",
     pregunta: "¿Qué estás buscando hoy?",
     ctaObjetivo: "Encontrar<br />productos para mí",
     ctaMarcas: "Marcas y<br />productos",
@@ -96,8 +95,6 @@ const HOME_I18N = {
     buscarPlaceholder: "Buscar producto o marca...",
     objetivoTitulo: "¿Cuál es tu objetivo hoy?",
     resultadoTitulo: "Te recomendamos",
-    reposoSub: "Tocá la pantalla para descubrir qué te conviene hoy",
-    reposoHint: "Tocá para empezar",
     ctaEyebrow: "Recomendado",
     ctaDescripcion: "Contanos qué buscás y te mostramos lo que mejor te queda",
     objetivoSubtitulo: "Elegí uno y te recomendamos lo que mejor te queda",
@@ -112,8 +109,6 @@ const HOME_I18N = {
     sinResultados: "No encontramos productos con esa combinación — probá sacando alguna preferencia.",
     borrar: "Borrar",
     todas: "Todas",
-    reposoPregunta: "¿No sabés qué comprar?",
-    reposoRespuesta: "Preguntame.",
     descMarcas: "Mirá las marcas que están en la tienda y todo lo que traen",
     descOfertas: "Los combos y descuentos que hay hoy en el local",
     descProfesionales: "Conocelos y sacá tu turno desde acá",
@@ -127,7 +122,6 @@ const HOME_I18N = {
     verFicha: "Ver más",
   },
   en: {
-    eyebrow: "🌿 Advisors",
     pregunta: "What are you looking for today?",
     ctaObjetivo: "Find<br />products for me",
     ctaMarcas: "Brands &<br />products",
@@ -136,8 +130,6 @@ const HOME_I18N = {
     buscarPlaceholder: "Search product or brand...",
     objetivoTitulo: "What's your goal today?",
     resultadoTitulo: "We recommend",
-    reposoSub: "Tap the screen to find what's best for you today",
-    reposoHint: "Tap to start",
     ctaEyebrow: "Recommended",
     ctaDescripcion: "Tell us what you need and we'll show you what fits best",
     objetivoSubtitulo: "Pick one and we'll recommend what fits best",
@@ -152,8 +144,6 @@ const HOME_I18N = {
     sinResultados: "We couldn't find products matching that combination — try removing a preference.",
     borrar: "Clear",
     todas: "All",
-    reposoPregunta: "Not sure what to buy?",
-    reposoRespuesta: "Just ask me.",
     descMarcas: "See the brands in the store and everything they carry",
     descOfertas: "The combos and discounts available today in store",
     descProfesionales: "Meet them and book your appointment right here",
@@ -167,7 +157,6 @@ const HOME_I18N = {
     verFicha: "See more",
   },
   pt: {
-    eyebrow: "🌿 Consultores",
     pregunta: "O que você está procurando hoje?",
     ctaObjetivo: "Encontrar<br />produtos pra mim",
     ctaMarcas: "Marcas e<br />produtos",
@@ -176,8 +165,6 @@ const HOME_I18N = {
     buscarPlaceholder: "Buscar produto ou marca...",
     objetivoTitulo: "Qual é o seu objetivo hoje?",
     resultadoTitulo: "Recomendamos",
-    reposoSub: "Toque na tela para descobrir o que é melhor pra você hoje",
-    reposoHint: "Toque para começar",
     ctaEyebrow: "Recomendado",
     ctaDescripcion: "Conte o que você precisa e mostramos o que combina com você",
     objetivoSubtitulo: "Escolha um e recomendamos o que combina melhor com você",
@@ -192,8 +179,6 @@ const HOME_I18N = {
     sinResultados: "Não encontramos produtos com essa combinação — tente remover alguma preferência.",
     borrar: "Limpar",
     todas: "Todas",
-    reposoPregunta: "Não sabe o que comprar?",
-    reposoRespuesta: "Pergunte pra mim.",
     descMarcas: "Veja as marcas da loja e tudo o que elas trazem",
     descOfertas: "Os combos e descontos de hoje na loja",
     descProfesionales: "Conheça-os e marque seu horário aqui",
@@ -641,7 +626,6 @@ export default function AsesorApp({
   filtrosPorProducto: Record<string, string[]>;
 }) {
   const [pantalla, setPantalla] = useState<Pantalla>("home");
-  const [reposoActivo, setReposoActivo] = useState(true);
   const [busqueda, setBusqueda] = useState("");
   const [objetivoId, setObjetivoId] = useState<string | null>(null);
   const [filtrosSeleccionados, setFiltrosSeleccionados] = useState<Set<string>>(new Set());
@@ -939,24 +923,6 @@ export default function AsesorApp({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pantalla]);
 
-  // La pantalla de Inicio (buscador + tarjetas) vuelve sola a Reposo después
-  // de un rato sin uso — así el totem siempre "descansa" en la pantalla de
-  // bienvenida en vez de quedarse con el buscador abierto indefinidamente.
-  useEffect(() => {
-    if (pantalla !== "home" || reposoActivo) return;
-    let timer = setTimeout(() => setReposoActivo(true), IDLE_WARNING_MS);
-    const reiniciar = () => {
-      clearTimeout(timer);
-      timer = setTimeout(() => setReposoActivo(true), IDLE_WARNING_MS);
-    };
-    const eventos: (keyof WindowEventMap)[] = ["pointerdown", "keydown"];
-    eventos.forEach((ev) => window.addEventListener(ev, reiniciar));
-    return () => {
-      clearTimeout(timer);
-      eventos.forEach((ev) => window.removeEventListener(ev, reiniciar));
-    };
-  }, [pantalla, reposoActivo]);
-
   function volverDesdeResultado() {
     if (busqueda.trim()) {
       setBusqueda("");
@@ -1085,77 +1051,10 @@ export default function AsesorApp({
         )}
       </div>
 
-      {/* La vidriera: lo que se ve desde la vereda. Oscura para que se lea de
-          lejos y de noche la pantalla se vea encendida. */}
-      {pantalla === "home" && reposoActivo && (
-        <div
-          className="relative flex-1 flex flex-col items-center justify-center px-8 py-10 text-center overflow-hidden gap-8 md:gap-10"
-          style={{ background: "radial-gradient(ellipse at 50% 42%, #2c3d26, #141c11 72%)" }}
-          onClick={() => setReposoActivo(false)}
-        >
-          <div
-            className="absolute rounded-full pointer-events-none"
-            style={{
-              width: "46%", aspectRatio: "1", top: "-14%", left: "-10%",
-              background: "radial-gradient(circle, rgba(111,160,80,.32), transparent 62%)",
-              animation: "asesorBlob1 7s ease-in-out infinite",
-            }}
-          />
-          <div
-            className="absolute rounded-full pointer-events-none"
-            style={{
-              width: "36%", aspectRatio: "1", bottom: "-12%", right: "-8%",
-              background: "radial-gradient(circle, rgba(207,232,166,.18), transparent 64%)",
-              animation: "asesorBlob2 8.5s ease-in-out infinite",
-              animationDelay: "-1.5s",
-            }}
-          />
-
-          <p
-            className={`${bodoniModa.className} italic relative text-[#f2f4ea] leading-[1.1] text-[clamp(30px,5.4vw,68px)]`}
-          >
-            {t("reposoPregunta")}
-            <br />
-            <span className="not-italic font-semibold" style={{ color: "#cfe8a6" }}>
-              {t("reposoRespuesta")}
-            </span>
-          </p>
-
-          <div
-            className="relative w-full max-w-[220px] md:max-w-[340px]"
-            style={{ animation: "asesorLogoFlotar 4.5s ease-in-out infinite" }}
-          >
-            <Image
-              src="/wiigo-logo.png"
-              alt="WiiGo — Estaciones de bienestar"
-              width={2172}
-              height={448}
-              className="w-full h-auto"
-              // El logo es negro: sobre el fondo oscuro hay que darlo vuelta.
-              style={{ filter: "brightness(0) invert(1) drop-shadow(0 14px 30px rgba(0,0,0,.5))" }}
-              priority
-            />
-          </div>
-
-          <div className="relative flex flex-col items-center gap-3.5">
-            <span
-              className="grid place-items-center rounded-full border-2 w-[62px] h-[62px] md:w-[86px] md:h-[86px] text-[26px] md:text-[36px] motion-safe:animate-pulse"
-              style={{ borderColor: "rgba(207,232,166,.7)", color: "#cfe8a6" }}
-            >
-              ☝
-            </span>
-            <span
-              className="text-[11px] md:text-[14px] font-extrabold uppercase tracking-[.2em]"
-              style={{ color: "#cfe8a6" }}
-            >
-              {t("reposoHint")}
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* La principal: las cuatro puertas, todas del mismo peso. */}
-      {pantalla === "home" && !reposoActivo && (
+      {/* La principal: las cuatro puertas, todas del mismo peso. Es la primera
+          pantalla: no hay vidriera intermedia, el cliente entra y ya puede
+          tocar lo que quiera. */}
+      {pantalla === "home" && (
         <div
           className="relative flex-1 flex flex-col items-center justify-center px-6 py-10 text-center overflow-hidden"
           style={{
