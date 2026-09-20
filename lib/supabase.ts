@@ -122,6 +122,9 @@ export type Marca = {
   // cuando entra a su tablero — ver lib/marcaSesion.ts.
   plan: string | null;
   plan_desde: string | null;
+  // Posición en el Asesor, elegida a mano. Menor primero; null va al final,
+  // alfabético — ver sql/orden-marcas.sql.
+  orden: number | null;
 };
 
 export type Subcategoria = {
@@ -161,6 +164,14 @@ export type Producto = {
 // PÚBLICAS (sin login, cualquiera con el link entra). Todo lo que no esté
 // acá —el costo informado, sobre todo— se quedaría en el HTML de la página al
 // alcance de cualquier cliente o competidor, así que no se selecciona.
+// Lo que el Asesor necesita saber de una marca para mostrarla arriba.
+export type MarcaPublica = Pick<Marca, "id_marca" | "nombre" | "logo"> & {
+  /** Posición elegida a mano. Menor primero; null va al final. */
+  orden: number | null;
+};
+
+export const COLUMNAS_MARCA_PUBLICA = "id_marca,nombre,logo,orden";
+
 export type ProductoPublico = Pick<
   Producto,
   | "id_producto"

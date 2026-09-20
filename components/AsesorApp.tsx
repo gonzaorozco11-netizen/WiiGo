@@ -45,6 +45,9 @@ const IDLE_COUNTDOWN_S = 10; // después del aviso, segundos para volver sola al
    --------------------------------------------------------------------------- */
 const CHEQUEO_MS = 3000;
 const QUIETO_MS = 4000; // hace cuánto que nadie toca la pantalla
+// Para recargar la página entera se pide mucho más silencio: es lo único que
+// parpadea, así que tiene que pasar cuando no hay nadie adelante.
+const QUIETO_RECARGA_MS = 60000;
 const RED_MAX_FALLOS = 20; // si se cae internet, deja de insistir tan seguido
 // Red de seguridad: la huella cubre lo que se cambia seguido, pero no todo.
 // Cada tanto refresca igual, por si tocaste algo que no está contemplado.
@@ -742,6 +745,7 @@ export default function AsesorApp({
 
     let huella: string | null = null;
     let despliegue: string | null = null;
+    let despliegueCandidato: string | null = null;
     let fallos = 0;
     let vivo = true;
 
@@ -764,9 +768,20 @@ export default function AsesorApp({
           return;
         }
         if (datos.despliegue !== despliegue) {
-          // Subimos una versión nueva: hay que traer la app, no solo los datos.
-          window.location.reload();
-          return;
+          // Recargar la página entera hace un parpadeo feo, así que se hace lo
+          // menos posible: solo con la app realmente nueva —el valor tiene que
+          // repetirse dos veces seguidas, para no picar en un deploy a medio
+          // publicar— y con la pantalla bien quieta, para que nadie lo vea.
+          if (datos.despliegue === despliegueCandidato) {
+            if (Date.now() - ultimoToqueRef.current > QUIETO_RECARGA_MS) {
+              window.location.reload();
+              return;
+            }
+          } else {
+            despliegueCandidato = datos.despliegue;
+          }
+        } else {
+          despliegueCandidato = null;
         }
         if (datos.huella !== huella) {
           huella = datos.huella;
@@ -816,8 +831,17 @@ export default function AsesorApp({
 
   const objetivoSeleccionado = objetivoId ? objetivos.find((o) => o.id_objetivo === objetivoId) ?? null : null;
 
+  // El orden lo elige Gonzalo desde la base (columna `orden` de marcas): la
+  // marca propia primero y las demás como convenga. Las que no tengan número
+  // van al final, alfabéticas entre ellas — así una marca nueva no se mete
+  // adelante hasta que se le asigne lugar.
   const marcasOrdenadas = useMemo(
-    () => [...marcas].sort((a, b) => a.nombre.localeCompare(b.nombre)),
+    () =>
+      [...marcas].sort((a, b) => {
+        const oa = a.orden ?? Number.MAX_SAFE_INTEGER;
+        const ob = b.orden ?? Number.MAX_SAFE_INTEGER;
+        return oa !== ob ? oa - ob : a.nombre.localeCompare(b.nombre, "es");
+      }),
     [marcas]
   );
 
