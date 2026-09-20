@@ -32,6 +32,9 @@ const C2 = "#d99a5b"; // marcas y productos
 const C3 = "#d97561"; // ofertas
 const C4 = "#5f92a8"; // profesionales
 
+/** Pestaña que junta los productos de la marca a los que nadie les puso rubro. */
+const SIN_RUBRO = "__sin_rubro__";
+
 // Los objetivos los carga Gonzalo desde el sistema y pueden ser cualquier
 // cantidad, así que el color sale de esta rueda por posición y no de un nombre
 // fijo: si mañana agrega uno, se pinta solo.
@@ -113,7 +116,7 @@ const HOME_I18N = {
     railRubro: "Rubro",
     railSin: "Sin…",
     railObjetivo: "Objetivo",
-    todo: "Todo",
+    otros: "Otros",
     profesionalesTitulo: "Nuestros profesionales",
     profesionalesSub: "Conocelos y pedí tu turno presencial o por videollamada",
     profesionalesVacio: "Todavía no hay profesionales cargados acá.",
@@ -146,7 +149,7 @@ const HOME_I18N = {
     railRubro: "Category",
     railSin: "Free from…",
     railObjetivo: "Goal",
-    todo: "All",
+    otros: "Other",
     profesionalesTitulo: "Our professionals",
     profesionalesSub: "Meet them and book in person or by video call",
     profesionalesVacio: "No professionals loaded here yet.",
@@ -179,7 +182,7 @@ const HOME_I18N = {
     railRubro: "Categoria",
     railSin: "Sem…",
     railObjetivo: "Objetivo",
-    todo: "Tudo",
+    otros: "Outros",
     profesionalesTitulo: "Nossos profissionais",
     profesionalesSub: "Conheça-os e marque presencial ou por videochamada",
     profesionalesVacio: "Ainda não há profissionais cadastrados aqui.",
@@ -662,14 +665,20 @@ export default function AsesorApp({
     [productosConPreferencia, marcaId]
   );
 
-  // Los rubros son propios de cada marca, así que con "Todas" elegida no hay
-  // rubros que mostrar.
   const subcategoriasDeMarca = useMemo(() => {
     if (!marcaId) return [];
     return subcategorias
       .filter((s) => s.id_marca === marcaId)
       .sort((a, b) => a.nombre.localeCompare(b.nombre));
   }, [subcategorias, marcaId]);
+
+  // Sin la pestaña "Todo", un producto al que nadie le puso rubro no tendría
+  // dónde aparecer. La pestaña "Otros" los junta para que no se pierdan —hoy
+  // son 4 de WiiGo Dietética— y de paso se ve de una que falta clasificarlos.
+  const sinRubroDeMarca = useMemo(
+    () => productosDeMarcaSinRubro.filter((p) => !p.id_subcategoria).length,
+    [productosDeMarcaSinRubro]
+  );
 
   const conteoPorSubcategoria = useMemo(() => {
     const mapa: Record<string, number> = {};
@@ -679,13 +688,20 @@ export default function AsesorApp({
     return mapa;
   }, [productosDeMarcaSinRubro]);
 
-  const productosDeMarca = useMemo(
-    () =>
-      subcategoriaId
-        ? productosDeMarcaSinRubro.filter((p) => p.id_subcategoria === subcategoriaId)
-        : productosDeMarcaSinRubro,
-    [productosDeMarcaSinRubro, subcategoriaId]
-  );
+  const productosDeMarca = useMemo(() => {
+    if (subcategoriaId === SIN_RUBRO) return productosDeMarcaSinRubro.filter((p) => !p.id_subcategoria);
+    if (subcategoriaId) return productosDeMarcaSinRubro.filter((p) => p.id_subcategoria === subcategoriaId);
+    return productosDeMarcaSinRubro;
+  }, [productosDeMarcaSinRubro, subcategoriaId]);
+
+  /** El rubro que queda elegido al entrar a una marca: el primero que tenga. */
+  function primerRubroDe(idMarca: string): string | null {
+    const suyas = subcategorias
+      .filter((s) => s.id_marca === idMarca)
+      .sort((a, b) => a.nombre.localeCompare(b.nombre));
+    if (suyas.length > 0) return suyas[0].id_subcategoria;
+    return productos.some((p) => p.id_marca === idMarca && !p.id_subcategoria) ? SIN_RUBRO : null;
+  }
 
   const productosEnOferta = useMemo(
     () => productos.filter((p) => (p.descuento_porcentaje ?? 0) > 0),
@@ -768,10 +784,11 @@ export default function AsesorApp({
   }
 
   function irAMarcas() {
-    // Entra con la primera marca ya elegida: sin "Todas" no tiene sentido
-    // mostrar una pantalla vacía esperando que el cliente toque algo.
-    setMarcaId(marcasOrdenadas[0]?.id_marca ?? null);
-    setSubcategoriaId(null);
+    // Entra con la primera marca y su primer rubro ya elegidos: sin "Todas" ni
+    // "Todo" no tiene sentido mostrar una pantalla vacía esperando un toque.
+    const primera = marcasOrdenadas[0]?.id_marca ?? null;
+    setMarcaId(primera);
+    setSubcategoriaId(primera ? primerRubroDe(primera) : null);
     // Las preferencias son compartidas con la pantalla de resultados: si no se
     // limpian, el que viene de buscar entra a Marcas con filtros puestos que no
     // pidió y le parece que faltan productos.
@@ -786,10 +803,6 @@ export default function AsesorApp({
   function toggleMarca(id: string) {
     setSubcategoriaId(null);
     setMarcaId((actual) => (actual === id ? null : id));
-  }
-
-  function toggleSubcategoria(id: string) {
-    setSubcategoriaId((actual) => (actual === id ? null : id));
   }
 
   function toggleCategoriaProf(categoria: string) {
@@ -1145,8 +1158,8 @@ export default function AsesorApp({
                     cantidad={conteoProductosPorMarca[m.id_marca] ?? 0}
                     activo={marcaId === m.id_marca}
                     onClick={() => {
-                      setSubcategoriaId(null);
                       setMarcaId(m.id_marca);
+                      setSubcategoriaId(primerRubroDe(m.id_marca));
                     }}
                   />
                 ))}
@@ -1154,23 +1167,25 @@ export default function AsesorApp({
 
               <div className="flex-1 min-h-0 flex flex-col overflow-y-auto">
                 <div className="px-5 md:px-7 pt-4 md:pt-5 pb-3 border-b border-[#e2e6da] flex flex-col gap-2.5">
-                  {subcategoriasDeMarca.length > 0 && (
+                  {(subcategoriasDeMarca.length > 0 || sinRubroDeMarca > 0) && (
                     <div className="flex flex-wrap gap-1.5">
-                      <PestanaRubro
-                        nombre={t("todo")}
-                        cantidad={productosDeMarcaSinRubro.length}
-                        activo={subcategoriaId === null}
-                        onClick={() => setSubcategoriaId(null)}
-                      />
                       {subcategoriasDeMarca.map((s) => (
                         <PestanaRubro
                           key={s.id_subcategoria}
                           nombre={s.nombre}
                           cantidad={conteoPorSubcategoria[s.id_subcategoria] ?? 0}
                           activo={subcategoriaId === s.id_subcategoria}
-                          onClick={() => toggleSubcategoria(s.id_subcategoria)}
+                          onClick={() => setSubcategoriaId(s.id_subcategoria)}
                         />
                       ))}
+                      {sinRubroDeMarca > 0 && (
+                        <PestanaRubro
+                          nombre={t("otros")}
+                          cantidad={sinRubroDeMarca}
+                          activo={subcategoriaId === SIN_RUBRO}
+                          onClick={() => setSubcategoriaId(SIN_RUBRO)}
+                        />
+                      )}
                     </div>
                   )}
 
