@@ -1058,8 +1058,12 @@ export default function AsesorApp({
   const tema = TEMAS[pantalla] ?? TEMA_POR_DEFECTO;
 
   return (
+    // Alto fijo de pantalla y sin scroll propio: si la página entera pudiera
+    // deslizarse, el "Volver" y los logos de las marcas se irían para arriba al
+    // bajar por los productos. Cada pantalla se encarga de deslizar su propio
+    // contenido y deja el marco quieto.
     <div
-      className="min-h-screen text-[#2d2d2d] flex flex-col"
+      className="h-screen overflow-hidden text-[#2d2d2d] flex flex-col"
       // El acento viaja como variable CSS para que cada pieza de adentro lo
       // tome sola, sin tener que pasárselo de mano en mano.
       style={{
@@ -1106,7 +1110,9 @@ export default function AsesorApp({
           // de video, igual que la lluvia del tótem—. Antes se animaba la
           // posición del degradé, que obliga al procesador a repintar la
           // pantalla entera en cada cuadro: eso es lo que la frenaba.
-          className="relative flex-1 flex flex-col items-center justify-center px-6 py-10 text-center overflow-hidden"
+          // `overflow-hidden` recorta las manchas que se salen por los bordes;
+          // el contenido que pudiera no entrar se desliza en su propia caja.
+          className="relative flex-1 min-h-0 flex flex-col items-center justify-center px-6 py-10 text-center overflow-hidden"
           style={{ background: "linear-gradient(160deg, #fbfbfb, #e2e6da)" }}
         >
           {/* Difusas por degradé radial, no por desenfoque: el desenfoque en
@@ -1135,7 +1141,7 @@ export default function AsesorApp({
             }}
           />
 
-          <div className="relative w-full max-w-5xl flex flex-col items-center gap-6 md:gap-8">
+          <div className="relative w-full max-w-5xl max-h-full overflow-y-auto flex flex-col items-center gap-6 md:gap-8 py-2">
             {/* Sigue flotando, pero sin filtro encima: un elemento con filtro
                 Y movimiento, Android lo dibuja una vez en una capa y después la
                 estira — por eso se veía lavado. El archivo ya viene negro, así
@@ -1205,7 +1211,7 @@ export default function AsesorApp({
       {pantalla === "objetivo" && (
         <div className="flex-1 flex flex-col">
           <Navbar onVolver={volverAInicio} onInicio={volverAInicio} idioma={idioma} />
-          <div className="flex-1 flex flex-col items-center justify-center px-6 pt-4 pb-10 gap-6 md:gap-8">
+          <div className="flex-1 min-h-0 overflow-y-auto flex flex-col items-center justify-center px-6 pt-4 pb-10 gap-6 md:gap-8">
             <div className="text-center">
               <h2 className={`${bodoniModa.className} italic text-[clamp(26px,3.4vw,44px)] leading-tight`}>
                 {t("objetivoTitulo")}
@@ -1375,7 +1381,7 @@ export default function AsesorApp({
       {pantalla === "ofertas" && (
         <div className="flex-1 flex flex-col">
           <Navbar onVolver={volverAInicio} onInicio={volverAInicio} idioma={idioma} />
-          <div className="flex-1 px-5 md:px-8 pt-5 pb-10 max-w-7xl mx-auto w-full">
+          <div className="flex-1 min-h-0 overflow-y-auto px-5 md:px-8 pt-5 pb-10 max-w-7xl mx-auto w-full">
             <div className="flex items-end justify-between gap-4 mb-5">
               <h2 className={`${bodoniModa.className} italic text-[clamp(23px,2.8vw,38px)] leading-tight`}>
                 {t("ofertasTitulo")}
@@ -1571,7 +1577,7 @@ export default function AsesorApp({
       {pantalla === "profesionales" && (
         <div className="flex-1 flex flex-col">
           <Navbar onVolver={volverAInicio} onInicio={volverAInicio} idioma={idioma} />
-          <div className="flex-1 px-5 md:px-8 pt-5 pb-10 max-w-6xl mx-auto w-full flex flex-col items-center gap-5 md:gap-7">
+          <div className="flex-1 min-h-0 overflow-y-auto px-5 md:px-8 pt-5 pb-10 max-w-6xl mx-auto w-full flex flex-col items-center gap-5 md:gap-7">
             <div className="text-center">
               <h2 className={`${bodoniModa.className} italic text-[clamp(24px,3vw,40px)] leading-tight`}>
                 {t("profesionalesTitulo")}
@@ -1669,7 +1675,7 @@ export default function AsesorApp({
       {pantalla === "fichaProfesional" && profesionalActual && (
         <div className="flex-1 flex flex-col">
           <Navbar onVolver={() => setPantalla("profesionales")} onInicio={volverAInicio} idioma={idioma} />
-          <div className="flex-1 px-6 pt-4 pb-10 max-w-md mx-auto w-full flex flex-col">
+          <div className="flex-1 min-h-0 overflow-y-auto px-6 pt-4 pb-10 max-w-md mx-auto w-full flex flex-col">
             <div
               className="relative w-full rounded-2xl overflow-hidden mb-4"
               style={{ minHeight: 190, background: `linear-gradient(155deg, #8fa584 0%, ${SAGE_DARK} 100%)` }}
@@ -1780,7 +1786,7 @@ export default function AsesorApp({
       {pantalla === "reservarTurno" && profesionalActual && (
         <div className="flex-1 flex flex-col">
           <Navbar onVolver={() => setPantalla("fichaProfesional")} onInicio={volverAInicio} idioma={idioma} />
-          <div className="flex-1 px-6 pt-4 pb-6 max-w-md mx-auto w-full flex flex-col">
+          <div className="flex-1 min-h-0 overflow-y-auto px-6 pt-4 pb-6 max-w-md mx-auto w-full flex flex-col">
             {eligiendoModalidadTurno && (
               <>
                 <h2 className={`${bodoniModa.className} italic text-[22px] mb-1`}>Reservar turno</h2>
@@ -1898,7 +1904,7 @@ export default function AsesorApp({
             }
           `}</style>
 
-          <div className="flex-1 px-6 pt-5 pb-4 flex flex-col max-w-md mx-auto w-full">
+          <div className="flex-1 min-h-0 overflow-y-auto px-6 pt-5 pb-4 flex flex-col max-w-md mx-auto w-full">
             <button
               onClick={() => setPantalla("fichaProfesional")}
               className="self-start text-[10.5px] font-bold text-[#a8a8a8] mb-3"
