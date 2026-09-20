@@ -25,25 +25,27 @@ const IDLE_WARNING_MS = 45000; // sin tocar nada
 const IDLE_COUNTDOWN_S = 10; // después del aviso, segundos para volver sola al inicio
 
 /* ---------------------------------------------------------------------------
-   Mantener la pantalla al día
+   Mantener la pantalla al día, al instante
 
-   El tótem abre la página a la mañana y queda prendido todo el día. La página
-   trae los datos del servidor al cargarse, así que sin esto un precio que
-   cambiás al mediodía no aparece hasta que alguien recarga a mano.
+   El tótem abre la página a la mañana y queda prendido todo el día, así que sin
+   esto un precio que cambiás al mediodía no aparece hasta que alguien recarga.
 
-   Dos relojes, uno rápido y uno lento:
-   - Cada 2 minutos, si nadie tocó nada, pide de nuevo los datos al servidor.
-     Es una recarga interna: no parpadea y el cliente no nota nada.
-   - Cada 30 minutos, si nadie tocó nada, recarga la página entera. Eso también
-     trae la versión nueva de la app cuando subimos cambios, cosa que la
-     recarga interna no hace.
+   El truco para que sea inmediato sin reventar el servidor: cada 3 segundos
+   pregunta *si cambió algo* —tres consultas de contar, un pedido diminuto— y
+   recién cuando la respuesta cambia pide los datos de verdad. Recargar todo
+   cada 3 segundos serían catorce mil pedidos por día con trece consultas cada
+   uno; así son catorce mil pedidos que no traen nada, y dos o tres recargas
+   completas al día, cuando de verdad tocaste algo.
 
-   Las dos esperan a que la pantalla esté sin usar: nunca se le mueve nada
-   debajo de la mano a un cliente que está mirando.
+   Si lo que cambió es la versión de la app —subiste cambios— recarga la página
+   entera en vez de solo los datos.
+
+   Todo espera a que nadie esté tocando la pantalla: nunca se le mueve nada
+   debajo de la mano a un cliente que está mirando un producto.
    --------------------------------------------------------------------------- */
-const REFRESCO_DATOS_MS = 2 * 60 * 1000;
-const RECARGA_COMPLETA_MS = 30 * 60 * 1000;
-const QUIETO_MS = 20000; // cuánto hace que nadie toca la pantalla
+const CHEQUEO_MS = 3000;
+const QUIETO_MS = 4000; // hace cuánto que nadie toca la pantalla
+const RED_MAX_FALLOS = 20; // si se cae internet, deja de insistir tan seguido
 
 const SAGE = "#b6bca2";
 const SAGE_DARK = "#646759";
@@ -735,20 +737,59 @@ export default function AsesorApp({
     const eventos: (keyof WindowEventMap)[] = ["pointerdown", "keydown"];
     eventos.forEach((ev) => window.addEventListener(ev, marcarToque));
 
-    const quieto = () => Date.now() - ultimoToqueRef.current > QUIETO_MS;
+    let huella: string | null = null;
+    let despliegue: string | null = null;
+    let fallos = 0;
+    let vivo = true;
 
-    const refresco = setInterval(() => {
-      if (quieto()) router.refresh();
-    }, REFRESCO_DATOS_MS);
+    async function chequear() {
+      // Si alguien está usando la pantalla, se espera: el cambio entra al
+      // próximo chequeo, apenas suelte.
+      if (Date.now() - ultimoToqueRef.current < QUIETO_MS) return;
+      if (document.hidden) return;
 
-    const recarga = setInterval(() => {
-      if (quieto()) window.location.reload();
-    }, RECARGA_COMPLETA_MS);
+      try {
+        const r = await fetch("/api/asesor/version", { cache: "no-store" });
+        if (!r.ok) throw new Error(String(r.status));
+        const datos = (await r.json()) as { huella: string; despliegue: string };
+        fallos = 0;
+
+        // Primera vuelta: solo anota contra qué comparar.
+        if (huella === null) {
+          huella = datos.huella;
+          despliegue = datos.despliegue;
+          return;
+        }
+        if (datos.despliegue !== despliegue) {
+          // Subimos una versión nueva: hay que traer la app, no solo los datos.
+          window.location.reload();
+          return;
+        }
+        if (datos.huella !== huella) {
+          huella = datos.huella;
+          router.refresh();
+        }
+      } catch {
+        // Sin internet no tiene sentido seguir golpeando cada 3 segundos.
+        fallos += 1;
+      }
+    }
+
+    const reloj = setInterval(() => {
+      if (!vivo) return;
+      if (fallos >= RED_MAX_FALLOS && fallos % 20 !== 0) {
+        fallos += 1;
+        return;
+      }
+      void chequear();
+    }, CHEQUEO_MS);
+
+    void chequear();
 
     return () => {
+      vivo = false;
       eventos.forEach((ev) => window.removeEventListener(ev, marcarToque));
-      clearInterval(refresco);
-      clearInterval(recarga);
+      clearInterval(reloj);
     };
   }, [router]);
 
