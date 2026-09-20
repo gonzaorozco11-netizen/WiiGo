@@ -468,6 +468,42 @@ function DiscoMarca({
   );
 }
 
+/**
+ * Una pestaña de rubro.
+ *
+ * Bajan de renglón en vez de correrse de costado: con 25 rubros —WiiGo
+ * Dietética va para ahí— una fila que se corre esconde la mitad, y lo que el
+ * cliente no ve, no existe. Prefiero que ocupe tres líneas y estén todos.
+ */
+function PestanaRubro({
+  nombre,
+  cantidad,
+  activo,
+  onClick,
+}: {
+  nombre: string;
+  cantidad: number;
+  activo: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="rounded-lg px-3 py-2 text-[12.5px] md:text-[13px] font-bold flex items-baseline gap-1.5 whitespace-nowrap border transition-colors"
+      style={
+        activo
+          ? { background: "#22301d", borderColor: "#22301d", color: "#fff" }
+          : { background: "#fff", borderColor: "#e2e6da", color: "#5c6353" }
+      }
+    >
+      {nombre}
+      <span className="text-[10.5px] tabular-nums font-semibold" style={{ opacity: activo ? 0.7 : 0.45 }}>
+        {cantidad}
+      </span>
+    </button>
+  );
+}
+
 /** Un bloque del panel de filtros de la izquierda. */
 function GrupoRail({ titulo, children }: { titulo: string; children: React.ReactNode }) {
   return (
@@ -732,7 +768,9 @@ export default function AsesorApp({
   }
 
   function irAMarcas() {
-    setMarcaId(null);
+    // Entra con la primera marca ya elegida: sin "Todas" no tiene sentido
+    // mostrar una pantalla vacía esperando que el cliente toque algo.
+    setMarcaId(marcasOrdenadas[0]?.id_marca ?? null);
     setSubcategoriaId(null);
     // Las preferencias son compartidas con la pantalla de resultados: si no se
     // limpian, el que viene de buscar entra a Marcas con filtros puestos que no
@@ -1099,16 +1137,6 @@ export default function AsesorApp({
           ) : (
             <>
               <div className="bg-white border-b border-[#e2e6da] px-4 md:px-7 pt-3 pb-3 flex gap-2 md:gap-4 overflow-x-auto">
-                <DiscoMarca
-                  nombre={t("todas")}
-                  logo={null}
-                  cantidad={productosConPreferencia.length}
-                  activo={marcaId === null}
-                  onClick={() => {
-                    setMarcaId(null);
-                    setSubcategoriaId(null);
-                  }}
-                />
                 {marcasOrdenadas.map((m) => (
                   <DiscoMarca
                     key={m.id_marca}
@@ -1116,23 +1144,26 @@ export default function AsesorApp({
                     logo={m.logo}
                     cantidad={conteoProductosPorMarca[m.id_marca] ?? 0}
                     activo={marcaId === m.id_marca}
-                    onClick={() => toggleMarca(m.id_marca)}
+                    onClick={() => {
+                      setSubcategoriaId(null);
+                      setMarcaId(m.id_marca);
+                    }}
                   />
                 ))}
               </div>
 
-              <div className="flex-1 min-h-0 flex flex-col md:flex-row">
-                <div className="bg-white md:border-r border-b md:border-b-0 border-[#e2e6da] px-5 py-4 md:py-6 md:w-[236px] shrink-0 flex flex-row md:flex-col gap-6 md:gap-7 overflow-x-auto md:overflow-y-auto">
+              <div className="flex-1 min-h-0 flex flex-col overflow-y-auto">
+                <div className="px-5 md:px-7 pt-4 md:pt-5 pb-3 border-b border-[#e2e6da] flex flex-col gap-2.5">
                   {subcategoriasDeMarca.length > 0 && (
-                    <GrupoRail titulo={t("railRubro")}>
-                      <OpcionRail
+                    <div className="flex flex-wrap gap-1.5">
+                      <PestanaRubro
                         nombre={t("todo")}
                         cantidad={productosDeMarcaSinRubro.length}
                         activo={subcategoriaId === null}
                         onClick={() => setSubcategoriaId(null)}
                       />
                       {subcategoriasDeMarca.map((s) => (
-                        <OpcionRail
+                        <PestanaRubro
                           key={s.id_subcategoria}
                           nombre={s.nombre}
                           cantidad={conteoPorSubcategoria[s.id_subcategoria] ?? 0}
@@ -1140,23 +1171,36 @@ export default function AsesorApp({
                           onClick={() => toggleSubcategoria(s.id_subcategoria)}
                         />
                       ))}
-                    </GrupoRail>
+                    </div>
                   )}
+
                   {filtros.length > 0 && (
-                    <GrupoRail titulo={t("railSin")}>
-                      {filtros.map((f) => (
-                        <OpcionRail
-                          key={f.id_filtro}
-                          nombre={tr(f.nombre, f.nombre_en, f.nombre_pt)}
-                          activo={filtrosSeleccionados.has(f.id_filtro)}
-                          onClick={() => toggleFiltro(f.id_filtro)}
-                        />
-                      ))}
-                    </GrupoRail>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-[9.5px] font-extrabold uppercase tracking-[.2em] text-[#98a08b] mr-1">
+                        {t("railSin")}
+                      </span>
+                      {filtros.map((f) => {
+                        const on = filtrosSeleccionados.has(f.id_filtro);
+                        return (
+                          <button
+                            key={f.id_filtro}
+                            onClick={() => toggleFiltro(f.id_filtro)}
+                            className="rounded-full px-3 py-1.5 text-[12px] font-bold border transition-colors"
+                            style={
+                              on
+                                ? { background: SAGE_DARK, borderColor: SAGE_DARK, color: "#fff" }
+                                : { background: "#fff", borderColor: "#e2e6da", color: "#5c6353" }
+                            }
+                          >
+                            {tr(f.nombre, f.nombre_en, f.nombre_pt)}
+                          </button>
+                        );
+                      })}
+                    </div>
                   )}
                 </div>
 
-                <div className="flex-1 min-w-0 px-5 md:px-7 py-5 md:py-6 overflow-y-auto">
+                <div className="flex-1 min-w-0 px-5 md:px-7 py-5 md:py-6">
                   <div className="flex items-end justify-between gap-4 mb-4">
                     <h2 className={`${bodoniModa.className} italic text-[clamp(21px,2.6vw,34px)] leading-tight`}>
                       {marcaId ? (marcaPorId[marcaId]?.nombre ?? t("marcasTitulo")) : t("marcasTitulo")}
@@ -1169,12 +1213,13 @@ export default function AsesorApp({
                   {productosDeMarca.length === 0 ? (
                     <p className="text-[#686868] text-sm text-center py-12">{t("marcasSinProductos")}</p>
                   ) : (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                    // Sin panel al costado entran seis por fila en vez de cinco.
+                    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
                       {productosDeMarca.map((p) => (
                         <TarjetaResultado
                           key={p.id_producto}
                           producto={p}
-                          marca={marcaId ? undefined : marcaPorId[p.id_marca]}
+                          marca={undefined}
                           etiqueta=""
                           nombre={tr(p.nombre, p.nombre_en, p.nombre_pt)}
                           onClick={() => setProductoAbierto(p.id_producto)}
