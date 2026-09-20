@@ -50,18 +50,25 @@ const ANILLO_LARGO = 2 * Math.PI * 59;
  * degradé animado o un desenfoque cuestan carísimo y un color liso no cuesta
  * nada.
  */
-const TEMAS: Record<string, { fondo: string; acento: string }> = {
-  objetivo: { fondo: "#eef3e6", acento: "#4d7635" },
-  resultado: { fondo: "#eef3e6", acento: "#4d7635" },
-  marcas: { fondo: "#f8f1e7", acento: "#8d5726" },
-  ofertas: { fondo: "#faeee8", acento: "#96492b" },
-  profesionales: { fondo: "#e9f1f2", acento: "#2d585b" },
-  fichaProfesional: { fondo: "#e9f1f2", acento: "#2d585b" },
-  conoceme: { fondo: "#e9f1f2", acento: "#2d585b" },
-  reservarTurno: { fondo: "#e9f1f2", acento: "#2d585b" },
+type Tema = { fondo: string; acento: string; barra: string; barraAcento: string };
+
+const TEMAS: Record<string, Tema> = {
+  objetivo: { fondo: "#eef3e6", acento: "#4d7635", barra: "#1e2a18", barraAcento: "#cfe8a6" },
+  resultado: { fondo: "#eef3e6", acento: "#4d7635", barra: "#1e2a18", barraAcento: "#cfe8a6" },
+  marcas: { fondo: "#f8f1e7", acento: "#8d5726", barra: "#2b2419", barraAcento: "#e0a259" },
+  ofertas: { fondo: "#faeee8", acento: "#96492b", barra: "#2e1c14", barraAcento: "#e59a72" },
+  profesionales: { fondo: "#e9f1f2", acento: "#2d585b", barra: "#16262b", barraAcento: "#8fc9cf" },
+  fichaProfesional: { fondo: "#e9f1f2", acento: "#2d585b", barra: "#16262b", barraAcento: "#8fc9cf" },
+  conoceme: { fondo: "#e9f1f2", acento: "#2d585b", barra: "#16262b", barraAcento: "#8fc9cf" },
+  reservarTurno: { fondo: "#e9f1f2", acento: "#2d585b", barra: "#16262b", barraAcento: "#8fc9cf" },
 };
 
-const TEMA_POR_DEFECTO = { fondo: "#ededed", acento: "#4d7635" };
+const TEMA_POR_DEFECTO: Tema = {
+  fondo: "#ededed",
+  acento: "#4d7635",
+  barra: "#1e2a18",
+  barraAcento: "#cfe8a6",
+};
 
 // Los objetivos los carga Gonzalo desde el sistema y pueden ser cualquier
 // cantidad, así que el color sale de esta rueda por posición y no de un nombre
@@ -142,7 +149,7 @@ const HOME_I18N = {
     descOfertas: "Los combos y descuentos que hay hoy en el local",
     descProfesionales: "Conocelos y sacá tu turno desde acá",
     railRubro: "Rubro",
-    railSin: "Sin…",
+    railSin: "Preferencias",
     railObjetivo: "Objetivo",
     otros: "Otros",
     profesionalesTitulo: "Nuestros profesionales",
@@ -175,7 +182,7 @@ const HOME_I18N = {
     descOfertas: "The combos and discounts available today in store",
     descProfesionales: "Meet them and book your appointment right here",
     railRubro: "Category",
-    railSin: "Free from…",
+    railSin: "Preferences",
     railObjetivo: "Goal",
     otros: "Other",
     profesionalesTitulo: "Our professionals",
@@ -208,7 +215,7 @@ const HOME_I18N = {
     descOfertas: "Os combos e descontos de hoje na loja",
     descProfesionales: "Conheça-os e marque seu horário aqui",
     railRubro: "Categoria",
-    railSin: "Sem…",
+    railSin: "Preferências",
     railObjetivo: "Objetivo",
     otros: "Outros",
     profesionalesTitulo: "Nossos profissionais",
@@ -555,7 +562,10 @@ function PestanaRubro({
 function GrupoRail({ titulo, children }: { titulo: string; children: React.ReactNode }) {
   return (
     <div>
-      <p className="text-[9.5px] md:text-[10.5px] font-extrabold uppercase tracking-[.2em] text-[#98a08b] mb-2">
+      <p
+        className="text-[9.5px] md:text-[10.5px] font-extrabold uppercase tracking-[.2em] mb-2 px-2.5"
+        style={{ color: "var(--barra-acento, #cfe8a6)", opacity: 0.6 }}
+      >
         {titulo}
       </p>
       <div className="flex flex-col">{children}</div>
@@ -563,36 +573,58 @@ function GrupoRail({ titulo, children }: { titulo: string; children: React.React
   );
 }
 
-/** Una opción dentro de un bloque de filtros, con cuántos productos deja. */
+/**
+ * Una opción del panel oscuro de la izquierda, con cuántos productos deja.
+ *
+ * `casilla` la dibuja con el cuadradito de tildar —para las preferencias, que
+ * se pueden combinar— y sin él para los rubros, donde se elige uno solo.
+ */
 function OpcionRail({
   nombre,
   cantidad,
   activo,
+  casilla = false,
   onClick,
 }: {
   nombre: string;
   cantidad?: number;
   activo: boolean;
+  casilla?: boolean;
   onClick: () => void;
 }) {
   return (
-    <button onClick={onClick} className="flex items-center gap-2.5 py-1.5 text-left w-full">
-      <span
-        className="w-[15px] h-[15px] rounded-[4px] border-[1.5px] shrink-0 transition-colors"
-        style={
-          activo
-            ? { background: "var(--acento, #4d7635)", borderColor: "var(--acento, #4d7635)" }
-            : { borderColor: "rgba(0,0,0,.2)" }
-        }
-      />
+    <button
+      onClick={onClick}
+      className="flex items-center gap-2.5 py-2 px-2.5 text-left w-full rounded-lg transition-colors"
+      style={
+        activo
+          ? { background: "var(--barra-acento, #cfe8a6)", color: "var(--barra, #1e2a18)" }
+          : { color: "rgba(255,255,255,.62)" }
+      }
+    >
+      {casilla && (
+        <span
+          className="w-[15px] h-[15px] rounded-[4px] border-[1.5px] shrink-0"
+          style={
+            activo
+              ? { background: "var(--barra, #1e2a18)", borderColor: "var(--barra, #1e2a18)" }
+              : { borderColor: "rgba(255,255,255,.28)" }
+          }
+        />
+      )}
       <span
         className="text-[12.5px] md:text-[13.5px] leading-tight flex-1"
-        style={{ color: activo ? "#1f2419" : "#4b5243", fontWeight: activo ? 800 : 600 }}
+        style={{ fontWeight: activo ? 800 : 600 }}
       >
         {nombre}
       </span>
       {cantidad !== undefined && (
-        <span className="text-[11px] tabular-nums text-[#a3aa95] font-semibold shrink-0">{cantidad}</span>
+        <span
+          className="text-[11px] tabular-nums font-semibold shrink-0"
+          style={{ opacity: activo ? 0.62 : 0.45 }}
+        >
+          {cantidad}
+        </span>
       )}
     </button>
   );
@@ -1030,7 +1062,12 @@ export default function AsesorApp({
       className="min-h-screen text-[#2d2d2d] flex flex-col"
       // El acento viaja como variable CSS para que cada pieza de adentro lo
       // tome sola, sin tener que pasárselo de mano en mano.
-      style={{ background: tema.fondo, ["--acento" as string]: tema.acento }}
+      style={{
+        background: tema.fondo,
+        ["--acento" as string]: tema.acento,
+        ["--barra" as string]: tema.barra,
+        ["--barra-acento" as string]: tema.barraAcento,
+      }}
     >
       <div className={`fixed right-3.5 z-50 text-right ${pantalla === "home" ? "top-3.5" : "top-16"}`}>
         <button
@@ -1104,8 +1141,10 @@ export default function AsesorApp({
                 estira — por eso se veía lavado. El archivo ya viene negro, así
                 que el filtro no aportaba nada. `sizes` evita que baje el archivo
                 grande para mostrarlo chico. */}
+            {/* En el monitor de 27" el logo tiene que leerse desde lejos: crece
+                con la pantalla en vez de quedarse en un tamaño fijo de celular. */}
             <div
-              className="w-full max-w-[200px] md:max-w-[260px]"
+              className="w-full max-w-[260px] sm:max-w-[360px] md:max-w-[480px] lg:max-w-[600px]"
               style={{ animation: "asesorLogoFlotar 4.5s ease-in-out infinite", willChange: "transform" }}
             >
               <Image
@@ -1113,7 +1152,7 @@ export default function AsesorApp({
                 alt="WiiGo — Estaciones de bienestar"
                 width={2172}
                 height={448}
-                sizes="260px"
+                sizes="(min-width: 1024px) 600px, (min-width: 768px) 480px, 360px"
                 className="w-full h-auto"
                 priority
               />
@@ -1239,14 +1278,18 @@ export default function AsesorApp({
                 ))}
               </div>
 
-              {/* Solo la grilla se desliza: marcas, rubros y preferencias
-                  quedan quietos arriba. */}
-              <div className="flex-1 min-h-0 flex flex-col">
-                <div className="shrink-0 px-5 md:px-7 pt-4 md:pt-5 pb-3 border-b border-[#e2e6da] flex flex-col gap-2.5">
+              {/* El menú a la izquierda cuesta ancho, que sobra, y nada de alto,
+                  que es lo que falta en un monitor acostado. Solo la grilla se
+                  desliza; las marcas de arriba y la barra quedan quietas. */}
+              <div className="flex-1 min-h-0 flex flex-col md:flex-row">
+                <div
+                  className="shrink-0 md:w-[248px] px-3 py-4 md:py-5 flex flex-row md:flex-col gap-5 md:gap-6 overflow-x-auto md:overflow-y-auto"
+                  style={{ background: "var(--barra, #1e2a18)" }}
+                >
                   {(subcategoriasDeMarca.length > 0 || sinRubroDeMarca > 0) && (
-                    <div className="flex flex-wrap gap-1.5">
+                    <GrupoRail titulo={t("railRubro")}>
                       {subcategoriasDeMarca.map((s) => (
-                        <PestanaRubro
+                        <OpcionRail
                           key={s.id_subcategoria}
                           nombre={s.nombre}
                           cantidad={conteoPorSubcategoria[s.id_subcategoria] ?? 0}
@@ -1255,43 +1298,28 @@ export default function AsesorApp({
                         />
                       ))}
                       {sinRubroDeMarca > 0 && (
-                        <PestanaRubro
+                        <OpcionRail
                           nombre={t("otros")}
                           cantidad={sinRubroDeMarca}
                           activo={subcategoriaId === SIN_RUBRO}
                           onClick={() => setSubcategoriaId(SIN_RUBRO)}
                         />
                       )}
-                    </div>
+                    </GrupoRail>
                   )}
 
                   {filtros.length > 0 && (
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="text-[9.5px] font-extrabold uppercase tracking-[.2em] text-[#98a08b] mr-1">
-                        {t("railSin")}
-                      </span>
-                      {filtros.map((f) => {
-                        const on = filtrosSeleccionados.has(f.id_filtro);
-                        return (
-                          <button
-                            key={f.id_filtro}
-                            onClick={() => toggleFiltro(f.id_filtro)}
-                            className="rounded-full px-3 py-1.5 text-[12px] font-bold border transition-colors"
-                            style={
-                              on
-                                ? {
-                                    background: "var(--acento, #4d7635)",
-                                    borderColor: "var(--acento, #4d7635)",
-                                    color: "#fff",
-                                  }
-                                : { background: "#fff", borderColor: "rgba(0,0,0,.09)", color: "#5c6353" }
-                            }
-                          >
-                            {tr(f.nombre, f.nombre_en, f.nombre_pt)}
-                          </button>
-                        );
-                      })}
-                    </div>
+                    <GrupoRail titulo={t("railSin")}>
+                      {filtros.map((f) => (
+                        <OpcionRail
+                          key={f.id_filtro}
+                          nombre={tr(f.nombre, f.nombre_en, f.nombre_pt)}
+                          activo={filtrosSeleccionados.has(f.id_filtro)}
+                          casilla
+                          onClick={() => toggleFiltro(f.id_filtro)}
+                        />
+                      ))}
+                    </GrupoRail>
                   )}
                 </div>
 
@@ -1467,8 +1495,11 @@ export default function AsesorApp({
                   </div>
                 )}
 
-                <div className="flex-1 min-h-0 flex flex-col md:flex-row gap-5 md:gap-7">
-                  <div className="md:w-[212px] shrink-0 flex flex-row md:flex-col gap-6 md:gap-7 overflow-x-auto md:overflow-y-auto">
+                <div className="flex-1 min-h-0 flex flex-col md:flex-row gap-0 md:gap-7">
+                  <div
+                    className="md:w-[248px] shrink-0 rounded-2xl px-3 py-4 md:py-5 flex flex-row md:flex-col gap-5 md:gap-6 overflow-x-auto md:overflow-y-auto"
+                    style={{ background: "var(--barra, #1e2a18)" }}
+                  >
                     {objetivos.length > 0 && (
                       <GrupoRail titulo={t("railObjetivo")}>
                         {objetivos.map((o) => (
@@ -1489,6 +1520,7 @@ export default function AsesorApp({
                             key={f.id_filtro}
                             nombre={tr(f.nombre, f.nombre_en, f.nombre_pt)}
                             activo={filtrosSeleccionados.has(f.id_filtro)}
+                            casilla
                             onClick={() => toggleFiltro(f.id_filtro)}
                           />
                         ))}
@@ -1496,7 +1528,7 @@ export default function AsesorApp({
                     )}
                   </div>
 
-                  <div className="flex-1 min-w-0 overflow-y-auto">
+                  <div className="flex-1 min-w-0 overflow-y-auto pt-5 md:pt-0">
                     <div className="flex items-end justify-between gap-4 mb-4">
                       <h3 className={`${bodoniModa.className} italic text-[clamp(21px,2.6vw,34px)] leading-tight`}>
                         {objetivoId
