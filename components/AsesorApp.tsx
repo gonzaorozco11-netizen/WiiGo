@@ -735,9 +735,6 @@ export default function AsesorApp({
     [productos]
   );
 
-  // Cuántas ofertas hacen falta para que valga la pena mostrar la puerta.
-  const MINIMO_OFERTAS = 3;
-  const mostrarOfertas = productosEnOferta.length >= MINIMO_OFERTAS;
 
   const marcasConOferta = useMemo(
     () => [...new Set(productosEnOferta.map((p) => p.id_marca))],
@@ -1100,13 +1097,9 @@ export default function AsesorApp({
               {t("pregunta")}
             </p>
 
-            {/* Todas del mismo tamaño: el que ya sabe qué quiere no tiene por
-                qué pasar por la primera. */}
-            <div
-              className={`w-full grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4 ${
-                mostrarOfertas ? "lg:grid-cols-4" : "lg:grid-cols-3"
-              }`}
-            >
+            {/* Las cuatro del mismo tamaño: el que ya sabe qué quiere no tiene
+                por qué pasar por la primera. */}
+            <div className="w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
               <Puerta
                 onClick={irAObjetivo}
                 fondo="linear-gradient(150deg, #4d7635, #335023)"
@@ -1122,18 +1115,13 @@ export default function AsesorApp({
                 titulo={t("ctaMarcas")}
                 descripcion={t("descMarcas")}
               />
-              {/* Con una o dos ofertas sueltas, esta puerta juega en contra: el
-                  cliente la toca, ve que no hay nada y no la vuelve a tocar.
-                  Aparece sola cuando hay con qué llenarla. */}
-              {mostrarOfertas && (
-                <Puerta
-                  onClick={irAOfertas}
-                  fondo="linear-gradient(150deg, #c06a45, #96492b)"
-                  icono={<IconoEtiqueta className="w-6 h-6 md:w-7 md:h-7" />}
-                  titulo={t("ctaOfertas")}
-                  descripcion={t("descOfertas")}
-                />
-              )}
+              <Puerta
+                onClick={irAOfertas}
+                fondo="linear-gradient(150deg, #c06a45, #96492b)"
+                icono={<IconoEtiqueta className="w-6 h-6 md:w-7 md:h-7" />}
+                titulo={t("ctaOfertas")}
+                descripcion={t("descOfertas")}
+              />
               <Puerta
                 onClick={() => setPantalla("profesionales")}
                 fondo="linear-gradient(150deg, #42797c, #2d585b)"
