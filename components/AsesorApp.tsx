@@ -35,6 +35,31 @@ const C4 = "#5f92a8"; // profesionales
 /** Pestaña que junta los productos de la marca a los que nadie les puso rubro. */
 const SIN_RUBRO = "__sin_rubro__";
 
+/**
+ * Cada puerta de la principal tiñe la pantalla a la que lleva.
+ *
+ * `fondo` es el color de la pantalla —el mismo de la puerta pero muy lavado— y
+ * `acento` el fuerte, que se usa en lo que está elegido: la marca activa, el
+ * rubro activo, las preferencias puestas y los títulos. Así el cliente sabe
+ * dónde está por el color, sin leer.
+ *
+ * Son colores planos a propósito: en la placa Android de la all-in-one un
+ * degradé animado o un desenfoque cuestan carísimo y un color liso no cuesta
+ * nada.
+ */
+const TEMAS: Record<string, { fondo: string; acento: string }> = {
+  objetivo: { fondo: "#eef3e6", acento: "#4d7635" },
+  resultado: { fondo: "#eef3e6", acento: "#4d7635" },
+  marcas: { fondo: "#f8f1e7", acento: "#8d5726" },
+  ofertas: { fondo: "#faeee8", acento: "#96492b" },
+  profesionales: { fondo: "#e9f1f2", acento: "#2d585b" },
+  fichaProfesional: { fondo: "#e9f1f2", acento: "#2d585b" },
+  conoceme: { fondo: "#e9f1f2", acento: "#2d585b" },
+  reservarTurno: { fondo: "#e9f1f2", acento: "#2d585b" },
+};
+
+const TEMA_POR_DEFECTO = { fondo: "#ededed", acento: "#4d7635" };
+
 // Los objetivos los carga Gonzalo desde el sistema y pueden ser cualquier
 // cantidad, así que el color sale de esta rueda por posición y no de un nombre
 // fijo: si mañana agrega uno, se pinta solo.
@@ -395,7 +420,7 @@ function TarjetaResultado({
         {marca && (
           <span
             className="absolute top-1.5 left-1.5 text-[7.5px] font-extrabold uppercase tracking-wide bg-white/85 px-1.5 py-0.5 rounded-full"
-            style={{ color: SAGE_DARK }}
+            style={{ color: "var(--acento, #4d7635)" }}
           >
             {marca.nombre}
           </span>
@@ -446,16 +471,16 @@ function DiscoMarca({
       <span
         className="rounded-full overflow-hidden grid place-items-center w-14 h-14 md:w-[72px] md:h-[72px] border-[3px] transition-all"
         style={{
-          borderColor: activo ? SAGE_DARK : "transparent",
-          background: "#f1f4ec",
-          boxShadow: activo ? "0 8px 18px -10px rgba(77,118,53,.7)" : "none",
+          borderColor: activo ? "var(--acento, #4d7635)" : "transparent",
+          background: "#fff",
+          boxShadow: activo ? "0 8px 18px -10px rgba(0,0,0,.45)" : "none",
         }}
       >
         {logo ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={logo} alt="" className="w-full h-full object-cover" />
         ) : (
-          <span className="font-extrabold text-[18px] md:text-[22px]" style={{ color: SAGE_DARK }}>
+          <span className="font-extrabold text-[18px] md:text-[22px]" style={{ color: "var(--acento, #4d7635)" }}>
             {nombre.charAt(0).toUpperCase()}
           </span>
         )}
@@ -495,8 +520,8 @@ function PestanaRubro({
       className="rounded-lg px-3 py-2 text-[12.5px] md:text-[13px] font-bold flex items-baseline gap-1.5 whitespace-nowrap border transition-colors"
       style={
         activo
-          ? { background: "#22301d", borderColor: "#22301d", color: "#fff" }
-          : { background: "#fff", borderColor: "#e2e6da", color: "#5c6353" }
+          ? { background: "var(--acento, #4d7635)", borderColor: "var(--acento, #4d7635)", color: "#fff" }
+          : { background: "#fff", borderColor: "rgba(0,0,0,.09)", color: "#5c6353" }
       }
     >
       {nombre}
@@ -535,7 +560,11 @@ function OpcionRail({
     <button onClick={onClick} className="flex items-center gap-2.5 py-1.5 text-left w-full">
       <span
         className="w-[15px] h-[15px] rounded-[4px] border-[1.5px] shrink-0 transition-colors"
-        style={activo ? { background: SAGE_DARK, borderColor: SAGE_DARK } : { borderColor: "#c4cbb7" }}
+        style={
+          activo
+            ? { background: "var(--acento, #4d7635)", borderColor: "var(--acento, #4d7635)" }
+            : { borderColor: "rgba(0,0,0,.2)" }
+        }
       />
       <span
         className="text-[12.5px] md:text-[13.5px] leading-tight flex-1"
@@ -975,8 +1004,15 @@ export default function AsesorApp({
     return { texto: marca ?? "", tag: marca ?? "" };
   }
 
+  const tema = TEMAS[pantalla] ?? TEMA_POR_DEFECTO;
+
   return (
-    <div className="min-h-screen bg-[#ededed] text-[#2d2d2d] flex flex-col">
+    <div
+      className="min-h-screen text-[#2d2d2d] flex flex-col"
+      // El acento viaja como variable CSS para que cada pieza de adentro lo
+      // tome sola, sin tener que pasárselo de mano en mano.
+      style={{ background: tema.fondo, ["--acento" as string]: tema.acento }}
+    >
       <div className={`fixed right-3.5 z-50 text-right ${pantalla === "home" ? "top-3.5" : "top-16"}`}>
         <button
           onClick={() => setSelectorIdiomaAbierto((v) => !v)}
@@ -1009,42 +1045,33 @@ export default function AsesorApp({
           tocar lo que quiera. */}
       {pantalla === "home" && (
         <div
+          // Fondo quieto. Antes era un degradé del doble del tamaño de la
+          // pantalla corriéndose sin parar: en la placa Android de la all-in-one
+          // eso obliga a redibujar todo, todo el día, y hace que el resto vaya
+          // a los tirones. Las manchas ahora se dibujan ya difusas en el mismo
+          // degradé, sin desenfoque ni animación: se ven igual y salen gratis.
           className="relative flex-1 flex flex-col items-center justify-center px-6 py-10 text-center overflow-hidden"
           style={{
             backgroundImage:
-              "radial-gradient(circle at 25% 20%, rgba(182,188,162,.55), transparent 55%), radial-gradient(circle at 80% 75%, rgba(111,160,80,.35), transparent 55%), linear-gradient(160deg, #fbfbfb, #e2e6da)",
-            backgroundSize: "220% 220%",
-            animation: "asesorFondoDeriva 16s ease-in-out infinite",
+              "radial-gradient(circle at 88% 16%, rgba(182,188,162,.55), transparent 42%)," +
+              "radial-gradient(circle at 6% 84%, rgba(111,160,80,.3), transparent 40%)," +
+              "linear-gradient(160deg, #fbfbfb, #e2e6da)",
           }}
         >
-          <div
-            className="absolute rounded-full pointer-events-none"
-            style={{
-              width: 220, height: 220, top: "8%", right: "-60px", background: SAGE,
-              opacity: 0.5, filter: "blur(2px)", animation: "asesorBlob1 7s ease-in-out infinite",
-            }}
-          />
-          <div
-            className="absolute rounded-full pointer-events-none"
-            style={{
-              width: 150, height: 150, bottom: "14%", left: "-50px", background: "#6fa050",
-              opacity: 0.35, filter: "blur(2px)", animation: "asesorBlob2 8.5s ease-in-out infinite",
-              animationDelay: "-1.5s",
-            }}
-          />
-
           <div className="relative w-full max-w-5xl flex flex-col items-center gap-6 md:gap-8">
-            <div
-              className="w-full max-w-[200px] md:max-w-[260px]"
-              style={{ animation: "asesorLogoFlotar 4.5s ease-in-out infinite" }}
-            >
+            {/* Sin animación y sin filtro de color: un elemento que se mueve y
+                además tiene filtro, Android lo dibuja una vez en una capa y
+                después la estira — por eso el logo se veía lavado. `sizes` le
+                avisa al navegador el ancho real para que no baje el archivo
+                grande y lo achique. */}
+            <div className="w-full max-w-[200px] md:max-w-[260px]">
               <Image
                 src="/wiigo-logo.png"
                 alt="WiiGo — Estaciones de bienestar"
                 width={2172}
                 height={448}
+                sizes="260px"
                 className="w-full h-auto"
-                style={{ filter: "brightness(0) drop-shadow(0 14px 24px rgba(0,0,0,.18))" }}
                 priority
               />
             </div>
@@ -1209,8 +1236,12 @@ export default function AsesorApp({
                             className="rounded-full px-3 py-1.5 text-[12px] font-bold border transition-colors"
                             style={
                               on
-                                ? { background: SAGE_DARK, borderColor: SAGE_DARK, color: "#fff" }
-                                : { background: "#fff", borderColor: "#e2e6da", color: "#5c6353" }
+                                ? {
+                                    background: "var(--acento, #4d7635)",
+                                    borderColor: "var(--acento, #4d7635)",
+                                    color: "#fff",
+                                  }
+                                : { background: "#fff", borderColor: "rgba(0,0,0,.09)", color: "#5c6353" }
                             }
                           >
                             {tr(f.nombre, f.nombre_en, f.nombre_pt)}
@@ -1223,9 +1254,22 @@ export default function AsesorApp({
 
                 <div className="flex-1 min-h-0 min-w-0 overflow-y-auto px-5 md:px-7 py-5 md:py-6">
                   <div className="flex items-end justify-between gap-4 mb-4">
-                    <h2 className={`${bodoniModa.className} italic text-[clamp(21px,2.6vw,34px)] leading-tight`}>
-                      {marcaId ? (marcaPorId[marcaId]?.nombre ?? t("marcasTitulo")) : t("marcasTitulo")}
-                    </h2>
+                    <div>
+                      <p
+                        className="text-[10px] md:text-[11px] font-extrabold uppercase tracking-[.22em]"
+                        style={{ color: "var(--acento, #4d7635)" }}
+                      >
+                        {marcaId ? (marcaPorId[marcaId]?.nombre ?? t("marcasTitulo")) : t("marcasTitulo")}
+                      </p>
+                      <h2
+                        className={`${bodoniModa.className} italic text-[clamp(21px,2.6vw,34px)] leading-tight mt-0.5`}
+                      >
+                        {subcategoriaId === SIN_RUBRO
+                          ? t("otros")
+                          : (subcategoriasDeMarca.find((s) => s.id_subcategoria === subcategoriaId)?.nombre ??
+                            t("marcasTitulo"))}
+                      </h2>
+                    </div>
                     <span className="text-[12px] md:text-[13px] text-[#8a9180] font-semibold shrink-0">
                       {contarProductos(productosDeMarca.length, idioma)}
                     </span>
@@ -1503,7 +1547,7 @@ export default function AsesorApp({
                   >
                     <span
                       className="aspect-[4/3] w-full flex items-center justify-center font-extrabold text-[34px] text-white overflow-hidden"
-                      style={{ background: "linear-gradient(150deg, #4d7635, #2a3a22)" }}
+                      style={{ background: "var(--acento, #4d7635)" }}
                     >
                       {prof.foto ? (
                         // eslint-disable-next-line @next/next/no-img-element
@@ -1519,7 +1563,7 @@ export default function AsesorApp({
                       {(prof.titulo || prof.especialidad) && (
                         <p
                           className="text-[10px] md:text-[11px] font-extrabold uppercase tracking-[.13em] leading-snug"
-                          style={{ color: "#4d7635" }}
+                          style={{ color: "var(--acento, #4d7635)" }}
                         >
                           {[prof.titulo, prof.especialidad].filter(Boolean).join(" · ")}
                         </p>
@@ -1532,7 +1576,10 @@ export default function AsesorApp({
                             .join(" · ")}
                         </p>
                       )}
-                      <span className="text-[11px] font-extrabold mt-auto pt-2.5" style={{ color: SAGE_DARK }}>
+                      <span
+                        className="text-[11px] font-extrabold mt-auto pt-2.5"
+                        style={{ color: "var(--acento, #4d7635)" }}
+                      >
                         {t("verFicha")} ›
                       </span>
                     </div>
@@ -2200,7 +2247,10 @@ function ProductoDetalleModal({
         <button
           onClick={onClose}
           className="absolute top-3.5 right-3.5 z-20 w-9 h-9 rounded-full text-white font-bold flex items-center justify-center"
-          style={{ background: "rgba(20,17,13,.55)", backdropFilter: "blur(6px)" }}
+          // Sin `backdrop-filter`: copiar y desenfocar lo que hay detrás en cada
+          // cuadro es de lo más caro que hay en Android. Un fondo sólido se ve
+          // igual y no cuesta nada.
+          style={{ background: "rgba(20,17,13,.72)" }}
         >
           ✕
         </button>
@@ -2227,7 +2277,7 @@ function ProductoDetalleModal({
             {ficha?.origen && (
               <span
                 className="absolute top-4 left-5 text-white text-[10.5px] font-medium px-3 py-1.5 rounded-full"
-                style={{ background: "rgba(20,17,13,.55)", backdropFilter: "blur(6px)" }}
+                style={{ background: "rgba(20,17,13,.72)" }}
               >
                 📍 {traducir(idioma, ficha.origen, ficha.origen_en, ficha.origen_pt)}
               </span>
@@ -2351,14 +2401,13 @@ function ProductoDetalleModal({
               <div className="flex flex-col items-center gap-4">
                 {hayKcal && (
                   <div
+                    // El anillo se dibuja ya completo. Animarlo obligaba a
+                    // recalcular el degradé circular entero en cada cuadro, que
+                    // en Android se ve peor que no animarlo.
                     className="w-[132px] h-[132px] rounded-full flex items-center justify-center shrink-0"
-                    style={
-                      {
-                        "--p": abierto ? "72%" : "0%",
-                        background: `conic-gradient(from -90deg, #6fa050 0%, #cfe8a6 var(--p), #e3e7dc var(--p))`,
-                        transition: "--p 1.1s cubic-bezier(.2,.8,.2,1) .45s",
-                      } as React.CSSProperties
-                    }
+                    style={{
+                      background: "conic-gradient(from -90deg, #6fa050 0%, #cfe8a6 72%, #e3e7dc 72%)",
+                    }}
                   >
                     <div className="w-[102px] h-[102px] rounded-full bg-white flex flex-col items-center justify-center">
                       <span className={`${fredoka.className} text-[26px] font-semibold`}>{ficha?.kcal_100g}</span>
