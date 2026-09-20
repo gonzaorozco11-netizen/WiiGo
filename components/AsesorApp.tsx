@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Fredoka, Bodoni_Moda } from "next/font/google";
 import type {
@@ -22,6 +23,27 @@ type Pantalla = "home" | "objetivo" | "resultado" | "marcas" | "ofertas" | "prof
 
 const IDLE_WARNING_MS = 45000; // sin tocar nada
 const IDLE_COUNTDOWN_S = 10; // después del aviso, segundos para volver sola al inicio
+
+/* ---------------------------------------------------------------------------
+   Mantener la pantalla al día
+
+   El tótem abre la página a la mañana y queda prendido todo el día. La página
+   trae los datos del servidor al cargarse, así que sin esto un precio que
+   cambiás al mediodía no aparece hasta que alguien recarga a mano.
+
+   Dos relojes, uno rápido y uno lento:
+   - Cada 2 minutos, si nadie tocó nada, pide de nuevo los datos al servidor.
+     Es una recarga interna: no parpadea y el cliente no nota nada.
+   - Cada 30 minutos, si nadie tocó nada, recarga la página entera. Eso también
+     trae la versión nueva de la app cuando subimos cambios, cosa que la
+     recarga interna no hace.
+
+   Las dos esperan a que la pantalla esté sin usar: nunca se le mueve nada
+   debajo de la mano a un cliente que está mirando.
+   --------------------------------------------------------------------------- */
+const REFRESCO_DATOS_MS = 2 * 60 * 1000;
+const RECARGA_COMPLETA_MS = 30 * 60 * 1000;
+const QUIETO_MS = 20000; // cuánto hace que nadie toca la pantalla
 
 const SAGE = "#b6bca2";
 const SAGE_DARK = "#646759";
@@ -701,6 +723,34 @@ export default function AsesorApp({
   const [idleCountdown, setIdleCountdown] = useState(IDLE_COUNTDOWN_S);
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const idleIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ---- mantener la pantalla al día (ver las constantes de arriba) ----
+  const router = useRouter();
+  const ultimoToqueRef = useRef(Date.now());
+
+  useEffect(() => {
+    const marcarToque = () => {
+      ultimoToqueRef.current = Date.now();
+    };
+    const eventos: (keyof WindowEventMap)[] = ["pointerdown", "keydown"];
+    eventos.forEach((ev) => window.addEventListener(ev, marcarToque));
+
+    const quieto = () => Date.now() - ultimoToqueRef.current > QUIETO_MS;
+
+    const refresco = setInterval(() => {
+      if (quieto()) router.refresh();
+    }, REFRESCO_DATOS_MS);
+
+    const recarga = setInterval(() => {
+      if (quieto()) window.location.reload();
+    }, RECARGA_COMPLETA_MS);
+
+    return () => {
+      eventos.forEach((ev) => window.removeEventListener(ev, marcarToque));
+      clearInterval(refresco);
+      clearInterval(recarga);
+    };
+  }, [router]);
 
   const marcaPorId = useMemo(() => {
     const mapa: Record<string, Marca> = {};
