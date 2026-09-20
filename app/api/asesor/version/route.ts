@@ -18,7 +18,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const supabase = getSupabaseServerClient();
 
-  const [ultimo, productos, marcas] = await Promise.all([
+  const [ultimo, productos, marcas, subcategorias, profesionales] = await Promise.all([
     supabase
       .from("productos")
       .select("fecha_actualizacion")
@@ -26,13 +26,20 @@ export async function GET() {
       .limit(1)
       .maybeSingle(),
     supabase.from("productos").select("id_producto", { count: "exact", head: true }).eq("estado", "ACTIVO"),
-    supabase.from("marcas").select("id_marca", { count: "exact", head: true }).eq("estado", "ACTIVA"),
+    // De marcas se traen los campos, no un conteo: la tabla no tiene fecha de
+    // modificación, así que cambiar un logo o renombrar una marca no movería
+    // ningún número. Son tres o cuatro filas de texto corto.
+    supabase.from("marcas").select("nombre,logo,estado,visible_asesor").order("nombre"),
+    supabase.from("subcategorias").select("nombre,estado").order("nombre"),
+    supabase.from("profesionales").select("id_profesional", { count: "exact", head: true }).eq("publicado", true),
   ]);
 
   const huella = [
     ultimo.data?.fecha_actualizacion ?? "0",
     productos.count ?? 0,
-    marcas.count ?? 0,
+    (marcas.data ?? []).map((m) => `${m.nombre}${m.logo ?? ""}${m.estado}${m.visible_asesor}`).join(","),
+    (subcategorias.data ?? []).map((s) => `${s.nombre}${s.estado}`).join(","),
+    profesionales.count ?? 0,
   ].join("|");
 
   return NextResponse.json(

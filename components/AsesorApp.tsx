@@ -46,6 +46,9 @@ const IDLE_COUNTDOWN_S = 10; // después del aviso, segundos para volver sola al
 const CHEQUEO_MS = 3000;
 const QUIETO_MS = 4000; // hace cuánto que nadie toca la pantalla
 const RED_MAX_FALLOS = 20; // si se cae internet, deja de insistir tan seguido
+// Red de seguridad: la huella cubre lo que se cambia seguido, pero no todo.
+// Cada tanto refresca igual, por si tocaste algo que no está contemplado.
+const REFRESCO_SEGURIDAD_MS = 10 * 60 * 1000;
 
 const SAGE = "#b6bca2";
 const SAGE_DARK = "#646759";
@@ -784,12 +787,18 @@ export default function AsesorApp({
       void chequear();
     }, CHEQUEO_MS);
 
+    const seguridad = setInterval(() => {
+      if (Date.now() - ultimoToqueRef.current < QUIETO_MS) return;
+      router.refresh();
+    }, REFRESCO_SEGURIDAD_MS);
+
     void chequear();
 
     return () => {
       vivo = false;
       eventos.forEach((ev) => window.removeEventListener(ev, marcarToque));
       clearInterval(reloj);
+      clearInterval(seguridad);
     };
   }, [router]);
 
