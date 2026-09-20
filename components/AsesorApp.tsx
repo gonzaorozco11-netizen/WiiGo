@@ -2093,345 +2093,344 @@ function ProductoDetalleModal({
 
   const macroSeleccionada = macros.find((m) => m.label === macroActiva);
 
+  const hayKcal = ficha?.kcal_100g !== null && ficha?.kcal_100g !== undefined;
+  // Si el producto no tiene nada de información nutricional cargada, la hoja
+  // derecha quedaría en blanco: en ese caso se abre de una sola hoja.
+  const hayNutricional =
+    hayKcal ||
+    macros.length > 0 ||
+    Boolean(ficha?.ingredientes) ||
+    Boolean(ficha?.micronutrientes) ||
+    Boolean(ficha?.porcion) ||
+    Boolean(ficha?.video);
+
+  const tituloNutricional =
+    idioma === "en"
+      ? "Nutrition facts · per 100 g"
+      : idioma === "pt"
+        ? "Informação nutricional · a cada 100 g"
+        : "Información nutricional · cada 100 g";
+
   return (
     <div
-      className="fixed inset-0 z-40 flex items-end sm:items-center justify-center"
+      className="fixed inset-0 z-40 flex items-end sm:items-center justify-center p-0 sm:p-6"
       style={{ background: "rgba(20,17,13,.55)" }}
       onClick={onClose}
     >
+      {/* Se abre como un libro: la hoja izquierda es el producto, la derecha la
+          información nutricional. En celular se apilan. */}
       <div
-        className="w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl max-h-[94vh] overflow-y-auto"
+        className={`relative w-full rounded-t-3xl sm:rounded-3xl overflow-hidden max-h-[94vh] sm:max-h-[88vh] grid ${
+          hayNutricional ? "sm:max-w-5xl md:grid-cols-2" : "sm:max-w-xl"
+        }`}
         style={{
-          background: "#e9ede0",
+          background: "#fff",
           transform: abierto ? "translateY(0)" : "translateY(24px)",
           transition: "transform .4s cubic-bezier(.2,.8,.2,1)",
+          boxShadow: "0 40px 80px -40px rgba(20,28,14,.7)",
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className={`relative h-64 overflow-hidden ${fotoActiva ? "bg-white" : ""}`}>
-          <div
-            className={`absolute inset-0 flex items-center justify-center ${
-              fotoActiva ? "bg-white" : "bg-gradient-to-br from-[#f0f2ec] to-[#d8d8d8]"
-            }`}
-            style={{
-              transform: abierto ? "scale(1)" : "scale(1.12)",
-              transition: "transform .9s cubic-bezier(.2,.8,.2,1)",
-            }}
-          >
-            {fotoActiva ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={fotoActiva} alt="" className="w-full h-full object-contain p-3" />
-            ) : (
-              <span style={{ color: SAGE_DARK }}>
-                <IconoBolsa className="w-10 h-10" />
+        <button
+          onClick={onClose}
+          className="absolute top-3.5 right-3.5 z-20 w-9 h-9 rounded-full text-white font-bold flex items-center justify-center"
+          style={{ background: "rgba(20,17,13,.55)", backdropFilter: "blur(6px)" }}
+        >
+          ✕
+        </button>
+
+        {/* ---------- hoja izquierda: el producto ---------- */}
+        <div className="bg-white overflow-y-auto flex flex-col">
+          <div className="relative bg-white px-5 pt-5">
+            <div
+              className="relative w-full aspect-square max-h-[38vh] sm:max-h-none flex items-center justify-center"
+              style={{
+                transform: abierto ? "scale(1)" : "scale(1.06)",
+                transition: "transform .9s cubic-bezier(.2,.8,.2,1)",
+              }}
+            >
+              {fotoActiva ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={fotoActiva} alt="" className="w-full h-full object-contain" />
+              ) : (
+                <span style={{ color: SAGE_DARK }}>
+                  <IconoBolsa className="w-12 h-12" />
+                </span>
+              )}
+            </div>
+            {ficha?.origen && (
+              <span
+                className="absolute top-4 left-5 text-white text-[10.5px] font-medium px-3 py-1.5 rounded-full"
+                style={{ background: "rgba(20,17,13,.55)", backdropFilter: "blur(6px)" }}
+              >
+                📍 {traducir(idioma, ficha.origen, ficha.origen_en, ficha.origen_pt)}
               </span>
             )}
           </div>
-          {/* El velo oscuro es para una foto ambiente a sangre. Las fotos de
-              producto vienen recortadas sobre blanco: ahí solo ensucia. */}
-          {!fotoActiva && (
-            <div
-              className="absolute inset-x-0 bottom-0 h-2/3 pointer-events-none"
-              style={{ background: "linear-gradient(to top, rgba(20,17,13,.45), transparent)" }}
-            />
-          )}
-          {ficha?.origen && (
-            <span
-              className="absolute top-3.5 left-3.5 text-white text-[10.5px] font-medium px-3 py-1.5 rounded-full"
-              style={{
-                background: fotoActiva ? "rgba(20,17,13,.55)" : "rgba(255,255,255,.28)",
-                backdropFilter: "blur(6px)",
-              }}
-            >
-              📍 {traducir(idioma, ficha.origen, ficha.origen_en, ficha.origen_pt)}
-            </span>
-          )}
-          <button
-            onClick={onClose}
-            className="absolute top-3.5 right-3.5 w-8 h-8 rounded-full text-white font-bold flex items-center justify-center"
-            style={{
-              background: fotoActiva ? "rgba(20,17,13,.55)" : "rgba(255,255,255,.28)",
-              backdropFilter: "blur(6px)",
-            }}
-          >
-            ✕
-          </button>
-          {ficha?.clasificacion && (
-            <div
-              className="absolute left-4 -bottom-7 w-16 h-16 rounded-full bg-white flex flex-col items-center justify-center text-center"
-              style={{
-                border: `2px solid ${SAGE_DARK}`,
-                boxShadow: "0 8px 20px -8px rgba(0,0,0,.35)",
-                opacity: abierto ? 1 : 0,
-                transform: abierto ? "translateY(0) scale(1)" : "translateY(6px) scale(.85)",
-                transition: "all .5s cubic-bezier(.2,.8,.2,1) .35s",
-              }}
-            >
-              <span className="text-[15px] leading-none">🌿</span>
-              <span className="text-[6.5px] font-extrabold tracking-wide mt-0.5" style={{ color: SAGE_DARK }}>
-                {ficha.clasificacion}
-              </span>
+
+          {fotos.length > 1 && (
+            <div className="flex gap-2 px-5 pt-3 justify-center">
+              {fotos.map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setFotoActiva(f)}
+                  className="w-12 h-12 rounded-lg overflow-hidden border-2 shrink-0 bg-white"
+                  style={{ borderColor: f === fotoActiva ? SAGE_DARK : "#e5e5e5" }}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={f} alt="" className="w-full h-full object-contain" />
+                </button>
+              ))}
             </div>
           )}
-        </div>
 
-        {fotos.length > 1 && (
-          <div className="flex gap-2 px-4 pt-3">
-            {fotos.map((f) => (
-              <button
-                key={f}
-                onClick={() => setFotoActiva(f)}
-                className="w-11 h-11 rounded-lg overflow-hidden border-2 shrink-0"
-                style={{ borderColor: f === fotoActiva ? SAGE_DARK : "#e5e5e5" }}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={f} alt="" className="w-full h-full object-cover" />
-              </button>
-            ))}
-          </div>
-        )}
-
-        <div className="pt-9 pb-5 px-4 flex flex-col gap-4">
           <div
+            className="px-6 pt-5 pb-6 flex flex-col gap-4"
             style={{
               opacity: abierto ? 1 : 0,
               transform: abierto ? "translateY(0)" : "translateY(10px)",
               transition: "all .5s ease .15s",
             }}
           >
-            {marca && (
-              <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: SAGE_DARK }}>
-                {marca.nombre}
-              </p>
-            )}
-            <h3 className={`${bodoniModa.className} italic text-2xl leading-tight mt-0.5`}>
-              {traducir(idioma, producto.nombre, producto.nombre_en, producto.nombre_pt)}
-            </h3>
-            <div className="flex items-baseline gap-2 mt-1.5">
-              <span
-                className={`${fredoka.className} text-lg font-semibold`}
-                style={{ color: (producto.descuento_porcentaje ?? 0) > 0 ? C3 : "#2d2d2d" }}
-              >
-                {formatoPrecio(precioConDescuento(producto))}
-              </span>
-              {(producto.descuento_porcentaje ?? 0) > 0 && (
-                <span className="text-sm text-[#a8a8a8] line-through">{formatoPrecio(producto.precio_venta)}</span>
-              )}
-            </div>
-          </div>
-
-          {ficha?.descripcion_publica && (
-            <p
-              className="text-[13.5px] leading-relaxed text-[#686868]"
-              style={{
-                opacity: abierto ? 1 : 0,
-                transform: abierto ? "translateY(0)" : "translateY(10px)",
-                transition: "all .5s ease .25s",
-              }}
-            >
-              {traducir(idioma, ficha.descripcion_publica, ficha.descripcion_publica_en, ficha.descripcion_publica_pt)}
-            </p>
-          )}
-
-          {sabores.length > 0 && (
-            <div
-              className="flex flex-col gap-2"
-              style={{
-                opacity: abierto ? 1 : 0,
-                transform: abierto ? "translateY(0)" : "translateY(10px)",
-                transition: "all .5s ease .28s",
-              }}
-            >
-              <p className="text-[10.5px] font-bold uppercase tracking-widest text-[#8a8a8a]">
-                {idioma === "en" ? "Flavours" : "Sabores"}
-              </p>
-              <div className="flex flex-wrap gap-1.5">
-                {sabores.map((v) => {
-                  const activo = v.id_variante === saborActivo;
-                  return (
-                    <button
-                      key={v.id_variante}
-                      onClick={() => setSaborActivo(activo ? null : v.id_variante)}
-                      className="text-[12px] px-3 py-1.5 rounded-full border transition-colors"
-                      style={{
-                        background: activo ? SAGE_DARK : "#fff",
-                        borderColor: activo ? SAGE_DARK : "#dcdfd4",
-                        color: activo ? "#fff" : "#4a4f43",
-                        fontWeight: activo ? 600 : 500,
-                      }}
-                    >
-                      {v.nombre}
-                    </button>
-                  );
-                })}
+            <div>
+              <div className="flex items-start justify-between gap-3">
+                {marca && (
+                  <p className="text-[10.5px] font-extrabold uppercase tracking-[.2em]" style={{ color: "#4d7635" }}>
+                    {marca.nombre}
+                  </p>
+                )}
+                {ficha?.clasificacion && (
+                  <span
+                    className="shrink-0 text-[9px] font-extrabold uppercase tracking-wide px-2.5 py-1 rounded-full"
+                    style={{ background: SAGE_TINT, color: SAGE_DARK }}
+                  >
+                    🌿 {ficha.clasificacion}
+                  </span>
+                )}
+              </div>
+              <h3 className={`${bodoniModa.className} italic text-[26px] md:text-[32px] leading-tight mt-1`}>
+                {traducir(idioma, producto.nombre, producto.nombre_en, producto.nombre_pt)}
+              </h3>
+              <div className="flex items-baseline gap-2.5 mt-2">
+                <span
+                  className={`${fredoka.className} text-[24px] md:text-[28px] font-semibold`}
+                  style={{ color: (producto.descuento_porcentaje ?? 0) > 0 ? C3 : "#2d2d2d" }}
+                >
+                  {formatoPrecio(precioConDescuento(producto))}
+                </span>
+                {(producto.descuento_porcentaje ?? 0) > 0 && (
+                  <span className="text-[15px] text-[#a8a8a8] line-through">
+                    {formatoPrecio(producto.precio_venta)}
+                  </span>
+                )}
               </div>
             </div>
-          )}
 
-          <div
-            className="h-px"
-            style={{ background: `linear-gradient(to right, transparent, ${SAGE_DARK}80, transparent)` }}
-          />
-
-          {(ficha?.kcal_100g !== null && ficha?.kcal_100g !== undefined) || macros.length > 0 ? (
-            <div
-              className="flex flex-col items-center gap-3.5"
-              style={{
-                opacity: abierto ? 1 : 0,
-                transform: abierto ? "translateY(0)" : "translateY(10px)",
-                transition: "all .5s ease .3s",
-              }}
-            >
-              <p className="text-[10.5px] font-bold uppercase tracking-widest text-[#8a8a8a] self-start">
-                {idioma === "en"
-                  ? "Nutrition facts · per 100 g"
-                  : idioma === "pt"
-                    ? "Informação nutricional · a cada 100 g"
-                    : "Información nutricional · cada 100 g"}
-              </p>
-
-              {ficha?.kcal_100g !== null && ficha?.kcal_100g !== undefined && (
-                <div
-                  className="w-[124px] h-[124px] rounded-full flex items-center justify-center"
-                  style={
-                    {
-                      "--p": abierto ? "72%" : "0%",
-                      background: `conic-gradient(from -90deg, #6fa050 0%, #cfe8a6 var(--p), #ededed var(--p))`,
-                      transition: "--p 1.1s cubic-bezier(.2,.8,.2,1) .45s",
-                    } as React.CSSProperties
-                  }
-                >
-                  <div className="w-[96px] h-[96px] rounded-full bg-white flex flex-col items-center justify-center">
-                    <span className={`${fredoka.className} text-2xl font-semibold`}>{ficha.kcal_100g}</span>
-                    <span className="text-[9px] tracking-widest text-[#8a8a8a] mt-0.5">KCAL</span>
-                  </div>
-                </div>
-              )}
-
-              {macros.length > 0 && (
-                <div className="flex gap-2 flex-wrap justify-center">
-                  {macros.map((m) => {
-                    const info = MACROS_INFO[m.label];
-                    const activa = macroActiva === m.label;
+            {sabores.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <p className="text-[10.5px] font-extrabold uppercase tracking-[.2em] text-[#98a08b]">
+                  {idioma === "en" ? "Flavours" : "Sabores"}
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {sabores.map((v) => {
+                    const activo = v.id_variante === saborActivo;
                     return (
                       <button
-                        key={m.label}
-                        onClick={() => setMacroActiva(activa ? null : m.label)}
-                        className="w-16 rounded-2xl bg-white border border-[#e5e5e5] flex flex-col items-center gap-0.5 py-2"
+                        key={v.id_variante}
+                        onClick={() => setSaborActivo(activo ? null : v.id_variante)}
+                        className="text-[12.5px] px-3.5 py-2 rounded-full border transition-colors"
                         style={{
-                          transform: activa ? "scale(1.08)" : "scale(1)",
-                          boxShadow: activa ? "0 8px 18px -8px rgba(0,0,0,.25)" : "none",
-                          borderColor: activa ? "transparent" : "#e5e5e5",
-                          opacity: macroActiva && !activa ? 0.45 : 1,
-                          transition: "all .2s ease",
+                          background: activo ? SAGE_DARK : "#fff",
+                          borderColor: activo ? SAGE_DARK : "#dcdfd4",
+                          color: activo ? "#fff" : "#4a4f43",
+                          fontWeight: activo ? 700 : 500,
                         }}
                       >
-                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: info.fuerte }} />
-                        <span className={`${fredoka.className} text-xs font-semibold`}>{m.valor}g</span>
-                        <span className="text-[8px] text-[#8a8a8a] text-center leading-tight">{info.label[idioma]}</span>
+                        {v.nombre}
                       </button>
                     );
                   })}
                 </div>
-              )}
+              </div>
+            )}
 
-              <div
-                className="w-full rounded-2xl overflow-hidden"
-                style={{
-                  maxHeight: macroSeleccionada ? 80 : 0,
-                  padding: macroSeleccionada ? "10px 14px" : "0 14px",
-                  background: macroSeleccionada ? MACROS_INFO[macroSeleccionada.label].claro : "transparent",
-                  transition: "max-height .35s ease, padding .35s ease",
-                }}
-              >
-                {macroSeleccionada && (
-                  <p className="text-[11.5px] leading-relaxed text-[#2d2d2d] m-0">
-                    {MACROS_INFO[macroSeleccionada.label].explicacion(macroSeleccionada.valor, idioma)}
-                  </p>
+            {ficha?.descripcion_publica && (
+              <p className="text-[14px] leading-relaxed text-[#686868]">
+                {traducir(
+                  idioma,
+                  ficha.descripcion_publica,
+                  ficha.descripcion_publica_en,
+                  ficha.descripcion_publica_pt
                 )}
-              </div>
-            </div>
-          ) : null}
+              </p>
+            )}
+          </div>
+        </div>
 
-          {ficha?.ingredientes && (
-            <div className="border-t border-[#ededed]">
-              <button
-                onClick={() => setIngredientesAbierto((v) => !v)}
-                className="w-full flex items-center justify-between py-3.5"
-              >
-                <span className="text-[13px] font-bold">
-                  {idioma === "en" ? "Ingredients" : idioma === "pt" ? "Ingredientes" : "Ingredientes"}
-                </span>
-                <span
-                  className="text-[#8a8a8a]"
-                  style={{ transition: "transform .3s ease", transform: ingredientesAbierto ? "rotate(180deg)" : "none" }}
-                >
-                  ⌄
-                </span>
-              </button>
-              <div
-                className="overflow-hidden"
-                style={{ maxHeight: ingredientesAbierto ? 160 : 0, transition: "max-height .35s ease" }}
-              >
-                <p className="text-[12.5px] leading-relaxed text-[#3d3d3d] pb-3.5">
-                  {traducir(idioma, ficha.ingredientes, ficha.ingredientes_en, ficha.ingredientes_pt)}
-                </p>
-              </div>
-            </div>
-          )}
+        {/* ---------- hoja derecha: la información nutricional ---------- */}
+        {hayNutricional && (
+          <div
+            className="overflow-y-auto px-6 py-6 md:py-7 flex flex-col gap-4 border-t md:border-t-0 md:border-l border-[#dfe3d6]"
+            style={{
+              background: "#eef1e7",
+              opacity: abierto ? 1 : 0,
+              transition: "opacity .5s ease .25s",
+            }}
+          >
+            <p className="text-[10.5px] font-extrabold uppercase tracking-[.2em] text-[#8a9180]">
+              {tituloNutricional}
+            </p>
 
-          {ficha?.micronutrientes && (
-            <div className="border-t border-[#ededed]">
-              <button
-                onClick={() => setMicronutrientesAbierto((v) => !v)}
-                className="w-full flex items-center justify-between py-3.5"
-              >
-                <span className="text-[13px] font-bold">
-                  {idioma === "en" ? "Micronutrients" : "Micronutrientes"}
-                </span>
-                <span
-                  className="text-[#8a8a8a]"
+            {(hayKcal || macros.length > 0) && (
+              <div className="flex flex-col items-center gap-4">
+                {hayKcal && (
+                  <div
+                    className="w-[132px] h-[132px] rounded-full flex items-center justify-center shrink-0"
+                    style={
+                      {
+                        "--p": abierto ? "72%" : "0%",
+                        background: `conic-gradient(from -90deg, #6fa050 0%, #cfe8a6 var(--p), #e3e7dc var(--p))`,
+                        transition: "--p 1.1s cubic-bezier(.2,.8,.2,1) .45s",
+                      } as React.CSSProperties
+                    }
+                  >
+                    <div className="w-[102px] h-[102px] rounded-full bg-white flex flex-col items-center justify-center">
+                      <span className={`${fredoka.className} text-[26px] font-semibold`}>{ficha?.kcal_100g}</span>
+                      <span className="text-[9px] tracking-[.2em] text-[#8a9180] mt-0.5">KCAL</span>
+                    </div>
+                  </div>
+                )}
+
+                {macros.length > 0 && (
+                  <div className="flex gap-2 flex-wrap justify-center">
+                    {macros.map((m) => {
+                      const info = MACROS_INFO[m.label];
+                      const activa = macroActiva === m.label;
+                      return (
+                        <button
+                          key={m.label}
+                          onClick={() => setMacroActiva(activa ? null : m.label)}
+                          className="w-[70px] rounded-2xl bg-white border flex flex-col items-center gap-0.5 py-2.5"
+                          style={{
+                            transform: activa ? "scale(1.06)" : "scale(1)",
+                            boxShadow: activa ? "0 8px 18px -8px rgba(0,0,0,.25)" : "none",
+                            borderColor: activa ? "transparent" : "#e2e6da",
+                            opacity: macroActiva && !activa ? 0.45 : 1,
+                            transition: "all .2s ease",
+                          }}
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full" style={{ background: info.fuerte }} />
+                          <span className={`${fredoka.className} text-[14px] font-semibold`}>{m.valor}g</span>
+                          <span className="text-[8.5px] text-[#8a9180] text-center leading-tight">
+                            {info.label[idioma]}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <div
+                  className="w-full rounded-2xl overflow-hidden"
                   style={{
-                    transition: "transform .3s ease",
-                    transform: micronutrientesAbierto ? "rotate(180deg)" : "none",
+                    maxHeight: macroSeleccionada ? 90 : 0,
+                    padding: macroSeleccionada ? "11px 15px" : "0 15px",
+                    background: macroSeleccionada ? MACROS_INFO[macroSeleccionada.label].claro : "transparent",
+                    transition: "max-height .35s ease, padding .35s ease",
                   }}
                 >
-                  ⌄
-                </span>
-              </button>
-              <div
-                className="overflow-hidden"
-                style={{ maxHeight: micronutrientesAbierto ? 160 : 0, transition: "max-height .35s ease" }}
-              >
-                <p className="text-[12.5px] leading-relaxed text-[#3d3d3d] pb-3.5">
-                  {traducir(idioma, ficha.micronutrientes, ficha.micronutrientes_en, ficha.micronutrientes_pt)}
-                </p>
+                  {macroSeleccionada && (
+                    <p className="text-[12px] leading-relaxed text-[#2d2d2d] m-0">
+                      {MACROS_INFO[macroSeleccionada.label].explicacion(macroSeleccionada.valor, idioma)}
+                    </p>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {ficha?.porcion && (
-            <span
-              className="self-start text-[10px] font-bold px-3 py-1.5 rounded-full"
-              style={{ background: SAGE_TINT, color: SAGE_DARK }}
-            >
-              {idioma === "en" ? "Suggested serving" : idioma === "pt" ? "Porção sugerida" : "Porción sugerida"}:{" "}
-              {traducir(idioma, ficha.porcion, ficha.porcion_en, ficha.porcion_pt)}
-            </span>
-          )}
+            {ficha?.porcion && (
+              <span
+                className="self-start text-[11px] font-bold px-3 py-1.5 rounded-full"
+                style={{ background: "#fff", color: SAGE_DARK }}
+              >
+                {idioma === "en" ? "Suggested serving" : idioma === "pt" ? "Porção sugerida" : "Porción sugerida"}:{" "}
+                {traducir(idioma, ficha.porcion, ficha.porcion_en, ficha.porcion_pt)}
+              </span>
+            )}
 
-          {ficha?.video && (
-            <a
-              href={ficha.video}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[12px] font-bold underline"
-              style={{ color: SAGE_DARK }}
-            >
-              Ver video ↗
-            </a>
-          )}
-        </div>
+            {ficha?.ingredientes && (
+              <div className="border-t border-[#dfe3d6]">
+                <button
+                  onClick={() => setIngredientesAbierto((v) => !v)}
+                  className="w-full flex items-center justify-between py-3.5"
+                >
+                  <span className="text-[13.5px] font-bold">
+                    {idioma === "en" ? "Ingredients" : "Ingredientes"}
+                  </span>
+                  <span
+                    className="text-[#8a9180]"
+                    style={{
+                      transition: "transform .3s ease",
+                      transform: ingredientesAbierto ? "rotate(180deg)" : "none",
+                    }}
+                  >
+                    ⌄
+                  </span>
+                </button>
+                <div
+                  className="overflow-hidden"
+                  style={{ maxHeight: ingredientesAbierto ? 200 : 0, transition: "max-height .35s ease" }}
+                >
+                  <p className="text-[13px] leading-relaxed text-[#3d3d3d] pb-3.5">
+                    {traducir(idioma, ficha.ingredientes, ficha.ingredientes_en, ficha.ingredientes_pt)}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {ficha?.micronutrientes && (
+              <div className="border-t border-[#dfe3d6]">
+                <button
+                  onClick={() => setMicronutrientesAbierto((v) => !v)}
+                  className="w-full flex items-center justify-between py-3.5"
+                >
+                  <span className="text-[13.5px] font-bold">
+                    {idioma === "en" ? "Micronutrients" : "Micronutrientes"}
+                  </span>
+                  <span
+                    className="text-[#8a9180]"
+                    style={{
+                      transition: "transform .3s ease",
+                      transform: micronutrientesAbierto ? "rotate(180deg)" : "none",
+                    }}
+                  >
+                    ⌄
+                  </span>
+                </button>
+                <div
+                  className="overflow-hidden"
+                  style={{ maxHeight: micronutrientesAbierto ? 200 : 0, transition: "max-height .35s ease" }}
+                >
+                  <p className="text-[13px] leading-relaxed text-[#3d3d3d] pb-3.5">
+                    {traducir(idioma, ficha.micronutrientes, ficha.micronutrientes_en, ficha.micronutrientes_pt)}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {ficha?.video && (
+              <a
+                href={ficha.video}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[12.5px] font-bold underline mt-auto"
+                style={{ color: SAGE_DARK }}
+              >
+                Ver video ↗
+              </a>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
