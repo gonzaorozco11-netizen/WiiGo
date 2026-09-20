@@ -99,6 +99,11 @@ const HOME_I18N = {
     sinResultados: "No encontramos productos con esa combinación — probá sacando alguna preferencia.",
     borrar: "Borrar",
     todas: "Todas",
+    reposoPregunta: "¿No sabés qué comprar?",
+    reposoRespuesta: "Preguntame.",
+    descMarcas: "Mirá las marcas que están en la tienda y todo lo que traen",
+    descOfertas: "Los combos y descuentos que hay hoy en el local",
+    descProfesionales: "Conocelos y sacá tu turno desde acá",
   },
   en: {
     eyebrow: "🌿 Advisors",
@@ -127,6 +132,11 @@ const HOME_I18N = {
     sinResultados: "We couldn't find products matching that combination — try removing a preference.",
     borrar: "Clear",
     todas: "All",
+    reposoPregunta: "Not sure what to buy?",
+    reposoRespuesta: "Just ask me.",
+    descMarcas: "See the brands in the store and everything they carry",
+    descOfertas: "The combos and discounts available today in store",
+    descProfesionales: "Meet them and book your appointment right here",
   },
   pt: {
     eyebrow: "🌿 Consultores",
@@ -155,6 +165,11 @@ const HOME_I18N = {
     sinResultados: "Não encontramos produtos com essa combinação — tente remover alguma preferência.",
     borrar: "Limpar",
     todas: "Todas",
+    reposoPregunta: "Não sabe o que comprar?",
+    reposoRespuesta: "Pergunte pra mim.",
+    descMarcas: "Veja as marcas da loja e tudo o que elas trazem",
+    descOfertas: "Os combos e descontos de hoje na loja",
+    descProfesionales: "Conheça-os e marque seu horário aqui",
   },
 } as const;
 
@@ -213,6 +228,67 @@ function IconoPersona({ className }: { className?: string }) {
       <circle cx="12" cy="7.8" r="3.3" />
       <path d="M5.3 20c0-3.7 3-6.2 6.7-6.2s6.7 2.5 6.7 6.2" />
     </svg>
+  );
+}
+function IconoBrujula({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="8.6" />
+      <path d="M15.4 8.6l-1.9 4.9-4.9 1.9 1.9-4.9 4.9-1.9z" />
+    </svg>
+  );
+}
+
+/**
+ * Una de las cuatro puertas de la pantalla principal. Todas del mismo tamaño
+ * a propósito: el que ya sabe qué quiere no tiene que pasar por la primera.
+ */
+function Puerta({
+  onClick,
+  fondo,
+  icono,
+  titulo,
+  descripcion,
+  destacada,
+}: {
+  onClick: () => void;
+  fondo: string;
+  icono: React.ReactNode;
+  /** Puede traer <br /> desde los textos traducidos. */
+  titulo: string;
+  descripcion: string;
+  destacada?: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="relative overflow-hidden rounded-3xl p-5 md:p-6 text-left text-white flex flex-col gap-3 min-h-[148px] md:min-h-[190px] transition-transform active:scale-[.98]"
+      style={{ background: fondo, boxShadow: "0 18px 34px -22px rgba(20,28,14,.6)" }}
+    >
+      <span
+        className="absolute rounded-full pointer-events-none"
+        style={{ width: 130, height: 130, right: -34, bottom: -48, background: "rgba(255,255,255,.09)" }}
+      />
+      {destacada && (
+        <span
+          className="absolute top-3.5 right-3.5 text-[8.5px] md:text-[9.5px] font-extrabold uppercase tracking-[.14em] px-2.5 py-1 rounded-full"
+          style={{ background: "rgba(255,255,255,.22)" }}
+        >
+          {destacada}
+        </span>
+      )}
+      <span
+        className="relative grid place-items-center rounded-full w-11 h-11 md:w-14 md:h-14 shrink-0"
+        style={{ background: "rgba(255,255,255,.18)" }}
+      >
+        {icono}
+      </span>
+      <span
+        className="relative text-[16px] md:text-[20px] font-extrabold leading-tight"
+        dangerouslySetInnerHTML={{ __html: titulo }}
+      />
+      <span className="relative text-[11px] md:text-[12.5px] leading-snug opacity-80 mt-auto">{descripcion}</span>
+    </button>
   );
 }
 
@@ -844,51 +920,45 @@ export default function AsesorApp({
         )}
       </div>
 
-      {pantalla === "home" && (
+      {/* La vidriera: lo que se ve desde la vereda. Oscura para que se lea de
+          lejos y de noche la pantalla se vea encendida. */}
+      {pantalla === "home" && reposoActivo && (
         <div
-          className="relative flex-1 flex flex-col items-center px-6 pt-14 pb-8 text-center overflow-hidden"
-          style={{
-            backgroundImage:
-              "radial-gradient(circle at 25% 20%, rgba(182,188,162,.55), transparent 55%), radial-gradient(circle at 80% 75%, rgba(111,160,80,.35), transparent 55%), linear-gradient(160deg, #fbfbfb, #e2e6da)",
-            backgroundSize: "220% 220%",
-            animation: "asesorFondoDeriva 16s ease-in-out infinite",
-          }}
-          onClick={reposoActivo ? () => setReposoActivo(false) : undefined}
+          className="relative flex-1 flex flex-col items-center justify-center px-8 py-10 text-center overflow-hidden gap-8 md:gap-10"
+          style={{ background: "radial-gradient(ellipse at 50% 42%, #2c3d26, #141c11 72%)" }}
+          onClick={() => setReposoActivo(false)}
         >
           <div
             className="absolute rounded-full pointer-events-none"
             style={{
-              width: 220,
-              height: 220,
-              top: "8%",
-              right: "-60px",
-              background: SAGE,
-              opacity: 0.5,
-              filter: "blur(2px)",
+              width: "46%", aspectRatio: "1", top: "-14%", left: "-10%",
+              background: "radial-gradient(circle, rgba(111,160,80,.32), transparent 62%)",
               animation: "asesorBlob1 7s ease-in-out infinite",
             }}
           />
           <div
             className="absolute rounded-full pointer-events-none"
             style={{
-              width: 150,
-              height: 150,
-              bottom: "14%",
-              left: "-50px",
-              background: "#6fa050",
-              opacity: 0.35,
-              filter: "blur(2px)",
+              width: "36%", aspectRatio: "1", bottom: "-12%", right: "-8%",
+              background: "radial-gradient(circle, rgba(207,232,166,.18), transparent 64%)",
               animation: "asesorBlob2 8.5s ease-in-out infinite",
               animationDelay: "-1.5s",
             }}
           />
-          <span
-            className="relative text-[10px] font-extrabold uppercase tracking-[.16em] text-[#646759] bg-white/55 backdrop-blur px-4 py-1.5 rounded-full mb-6"
-            dangerouslySetInnerHTML={{ __html: t("eyebrow") }}
-          />
+
+          <p
+            className={`${bodoniModa.className} italic relative text-[#f2f4ea] leading-[1.1] text-[clamp(30px,5.4vw,68px)]`}
+          >
+            {t("reposoPregunta")}
+            <br />
+            <span className="not-italic font-semibold" style={{ color: "#cfe8a6" }}>
+              {t("reposoRespuesta")}
+            </span>
+          </p>
+
           <div
-            className={reposoActivo ? "w-full max-w-[280px] mb-8" : "w-full max-w-xs mb-8"}
-            style={{ animation: "asesorLogoFlotar 4.5s ease-in-out infinite", transition: "max-width .4s ease" }}
+            className="relative w-full max-w-[220px] md:max-w-[340px]"
+            style={{ animation: "asesorLogoFlotar 4.5s ease-in-out infinite" }}
           >
             <Image
               src="/wiigo-logo.png"
@@ -896,81 +966,131 @@ export default function AsesorApp({
               width={2172}
               height={448}
               className="w-full h-auto"
-              style={{ filter: "brightness(0) drop-shadow(0 14px 24px rgba(0,0,0,.18))" }}
+              // El logo es negro: sobre el fondo oscuro hay que darlo vuelta.
+              style={{ filter: "brightness(0) invert(1) drop-shadow(0 14px 30px rgba(0,0,0,.5))" }}
               priority
             />
           </div>
 
-          {reposoActivo ? (
-            <>
-              <p className="text-[15px] font-bold text-[#686868] mb-6 max-w-xs">{t("reposoSub")}</p>
-              <span
-                className="text-[11px] font-extrabold uppercase tracking-[.1em] px-5 py-2.5 rounded-full border-[1.5px] motion-safe:animate-pulse"
-                style={{ color: SAGE_DARK, borderColor: SAGE_DARK }}
-              >
-                {t("reposoHint")}
-              </span>
-            </>
-          ) : (
-            <>
-              <p className="text-[15px] font-bold text-[#686868] mb-6">{t("pregunta")}</p>
+          <div className="relative flex flex-col items-center gap-3.5">
+            <span
+              className="grid place-items-center rounded-full border-2 w-[62px] h-[62px] md:w-[86px] md:h-[86px] text-[26px] md:text-[36px] motion-safe:animate-pulse"
+              style={{ borderColor: "rgba(207,232,166,.7)", color: "#cfe8a6" }}
+            >
+              ☝
+            </span>
+            <span
+              className="text-[11px] md:text-[14px] font-extrabold uppercase tracking-[.2em]"
+              style={{ color: "#cfe8a6" }}
+            >
+              {t("reposoHint")}
+            </span>
+          </div>
+        </div>
+      )}
 
-              <button
+      {/* La principal: las cuatro puertas, todas del mismo peso. */}
+      {pantalla === "home" && !reposoActivo && (
+        <div
+          className="relative flex-1 flex flex-col items-center justify-center px-6 py-10 text-center overflow-hidden"
+          style={{
+            backgroundImage:
+              "radial-gradient(circle at 25% 20%, rgba(182,188,162,.55), transparent 55%), radial-gradient(circle at 80% 75%, rgba(111,160,80,.35), transparent 55%), linear-gradient(160deg, #fbfbfb, #e2e6da)",
+            backgroundSize: "220% 220%",
+            animation: "asesorFondoDeriva 16s ease-in-out infinite",
+          }}
+        >
+          <div
+            className="absolute rounded-full pointer-events-none"
+            style={{
+              width: 220, height: 220, top: "8%", right: "-60px", background: SAGE,
+              opacity: 0.5, filter: "blur(2px)", animation: "asesorBlob1 7s ease-in-out infinite",
+            }}
+          />
+          <div
+            className="absolute rounded-full pointer-events-none"
+            style={{
+              width: 150, height: 150, bottom: "14%", left: "-50px", background: "#6fa050",
+              opacity: 0.35, filter: "blur(2px)", animation: "asesorBlob2 8.5s ease-in-out infinite",
+              animationDelay: "-1.5s",
+            }}
+          />
+
+          <div className="relative w-full max-w-5xl flex flex-col items-center gap-6 md:gap-8">
+            <div
+              className="w-full max-w-[200px] md:max-w-[260px]"
+              style={{ animation: "asesorLogoFlotar 4.5s ease-in-out infinite" }}
+            >
+              <Image
+                src="/wiigo-logo.png"
+                alt="WiiGo — Estaciones de bienestar"
+                width={2172}
+                height={448}
+                className="w-full h-auto"
+                style={{ filter: "brightness(0) drop-shadow(0 14px 24px rgba(0,0,0,.18))" }}
+                priority
+              />
+            </div>
+
+            <p className={`${bodoniModa.className} italic text-[clamp(22px,3.2vw,40px)] leading-tight text-[#2a3324]`}>
+              {t("pregunta")}
+            </p>
+
+            {/* Las cuatro del mismo tamaño: el que ya sabe qué quiere no tiene
+                por qué pasar por la primera. */}
+            <div className="w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+              <Puerta
                 onClick={irAObjetivo}
-                className="relative w-full max-w-sm rounded-3xl p-6 text-left text-white overflow-hidden"
-                style={{ background: `linear-gradient(135deg, ${SAGE_DARK}, #4d5245)` }}
-              >
-                <p className="text-[10px] font-extrabold uppercase tracking-[.1em] opacity-85">{t("ctaEyebrow")}</p>
-                <h3
-                  className="text-[19px] font-extrabold leading-tight mt-1 mb-1.5"
-                  dangerouslySetInnerHTML={{ __html: t("ctaObjetivo") }}
-                />
-                <p className="text-[12px] opacity-90 max-w-[210px]">{t("ctaDescripcion")}</p>
-                <span className="absolute right-5 bottom-5 text-[22px]">→</span>
-              </button>
+                fondo="linear-gradient(150deg, #4d7635, #335023)"
+                icono={<IconoBrujula className="w-6 h-6 md:w-7 md:h-7" />}
+                titulo={t("ctaObjetivo")}
+                descripcion={t("ctaDescripcion")}
+                destacada={t("ctaEyebrow")}
+              />
+              <Puerta
+                onClick={irAMarcas}
+                fondo="linear-gradient(150deg, #b5763c, #8d5726)"
+                icono={<IconoBolsa className="w-6 h-6 md:w-7 md:h-7" />}
+                titulo={t("ctaMarcas")}
+                descripcion={t("descMarcas")}
+              />
+              <Puerta
+                onClick={irAOfertas}
+                fondo="linear-gradient(150deg, #c06a45, #96492b)"
+                icono={<IconoEtiqueta className="w-6 h-6 md:w-7 md:h-7" />}
+                titulo={t("ctaOfertas")}
+                descripcion={t("descOfertas")}
+              />
+              <Puerta
+                onClick={() => setPantalla("profesionales")}
+                fondo="linear-gradient(150deg, #42797c, #2d585b)"
+                icono={<IconoPersona className="w-6 h-6 md:w-7 md:h-7" />}
+                titulo={t("ctaProfesionales")}
+                descripcion={t("descProfesionales")}
+              />
+            </div>
 
-              <div className="flex gap-2 w-full max-w-sm mt-3">
-                <button onClick={irAMarcas} className="flex-1 flex flex-col items-center gap-2 rounded-2xl border border-[#d8d8d8] bg-white p-3.5">
-                  <span className="flex items-center justify-center w-9 h-9 rounded-full text-white shrink-0" style={{ background: C2 }}>
-                    <IconoBolsa className="w-4.5 h-4.5" />
-                  </span>
-                  <span className="text-[11px] font-bold leading-tight text-center" dangerouslySetInnerHTML={{ __html: t("ctaMarcas") }} />
-                </button>
-                <button onClick={irAOfertas} className="flex-1 flex flex-col items-center gap-2 rounded-2xl border border-[#d8d8d8] bg-white p-3.5">
-                  <span className="flex items-center justify-center w-9 h-9 rounded-full text-white shrink-0" style={{ background: C3 }}>
-                    <IconoEtiqueta className="w-4.5 h-4.5" />
-                  </span>
-                  <span className="text-[11px] font-bold leading-tight text-center" dangerouslySetInnerHTML={{ __html: t("ctaOfertas") }} />
-                </button>
-                <button onClick={() => setPantalla("profesionales")} className="flex-1 flex flex-col items-center gap-2 rounded-2xl border border-[#d8d8d8] bg-white p-3.5">
-                  <span className="flex items-center justify-center w-9 h-9 rounded-full text-white shrink-0" style={{ background: C4 }}>
-                    <IconoPersona className="w-4.5 h-4.5" />
-                  </span>
-                  <span className="text-[11px] font-bold leading-tight text-center">{t("ctaProfesionales")}</span>
-                </button>
-              </div>
-
-              <div className="w-full max-w-sm mt-6 flex items-center gap-3 rounded-full border border-[#d8d8d8] bg-white px-3 py-3 shadow-sm">
-                <span className="flex items-center justify-center w-8 h-8 rounded-full shrink-0" style={{ background: SAGE_TINT, color: SAGE_DARK }}>
-                  <IconoBuscar className="w-4 h-4" />
-                </span>
-                <input
-                  value={busqueda}
-                  onChange={(e) => {
-                    const valor = e.target.value;
-                    setBusqueda(valor);
-                    if (valor.trim()) {
-                      setObjetivoId(null);
-                      setFiltrosSeleccionados(new Set());
-                      setPantalla("resultado");
-                    }
-                  }}
-                  placeholder={t("buscarPlaceholder")}
-                  className="flex-1 bg-transparent outline-none text-[14px] font-medium text-[#2d2d2d] placeholder:text-[#a8a8a8]"
-                />
-              </div>
-            </>
-          )}
+            <div className="w-full max-w-2xl flex items-center gap-3 rounded-full border border-[#d8d8d8] bg-white px-4 py-3.5 md:py-4 shadow-sm">
+              <span className="flex items-center justify-center w-9 h-9 rounded-full shrink-0" style={{ background: SAGE_TINT, color: SAGE_DARK }}>
+                <IconoBuscar className="w-4 h-4" />
+              </span>
+              <input
+                value={busqueda}
+                onChange={(e) => {
+                  const valor = e.target.value;
+                  setBusqueda(valor);
+                  if (valor.trim()) {
+                    setObjetivoId(null);
+                    setFiltrosSeleccionados(new Set());
+                    setMarcaResultado(null);
+                    setPantalla("resultado");
+                  }
+                }}
+                placeholder={t("buscarPlaceholder")}
+                className="flex-1 bg-transparent outline-none text-[15px] md:text-[17px] font-medium text-[#2d2d2d] placeholder:text-[#a8a8a8]"
+              />
+            </div>
+          </div>
         </div>
       )}
 
