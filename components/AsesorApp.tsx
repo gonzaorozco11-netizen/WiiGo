@@ -1110,11 +1110,18 @@ export default function AsesorApp({
           // de video, igual que la lluvia del tótem—. Antes se animaba la
           // posición del degradé, que obliga al procesador a repintar la
           // pantalla entera en cada cuadro: eso es lo que la frenaba.
-          // `overflow-hidden` recorta las manchas que se salen por los bordes;
-          // el contenido que pudiera no entrar se desliza en su propia caja.
           className="relative flex-1 min-h-0 flex flex-col items-center justify-center px-6 py-10 text-center overflow-hidden"
           style={{ background: "linear-gradient(160deg, #fbfbfb, #e2e6da)" }}
         >
+          {/* La pantalla muestra 8 bits por color y un degradé grande se le
+              escalona en franjas —esa es la línea que cruza la pantalla—. Este
+              mosaico de grano de 96x96 la rompe. Es una imagen que se repite, no
+              un filtro: para la placa cuesta lo mismo que un color plano. */}
+          <div
+            className="absolute inset-0 pointer-events-none"
+            style={{ backgroundImage: "url(/grano.png)", backgroundRepeat: "repeat" }}
+            aria-hidden
+          />
           {/* Difusas por degradé radial, no por desenfoque: el desenfoque en
               Android lo hace el procesador y cuesta carísimo. */}
           <Mancha
@@ -1141,7 +1148,9 @@ export default function AsesorApp({
             }}
           />
 
-          <div className="relative w-full max-w-5xl max-h-full overflow-y-auto flex flex-col items-center gap-6 md:gap-8 py-2">
+          {/* Sin `overflow` acá: recortaba las sombras de las cuatro puertas
+              justo en el borde y dejaba una línea dura debajo de los cuadros. */}
+          <div className="relative w-full max-w-6xl flex flex-col items-center gap-7 md:gap-10">
             {/* Sigue flotando, pero sin filtro encima: un elemento con filtro
                 Y movimiento, Android lo dibuja una vez en una capa y después la
                 estira — por eso se veía lavado. El archivo ya viene negro, así
@@ -1150,7 +1159,7 @@ export default function AsesorApp({
             {/* En el monitor de 27" el logo tiene que leerse desde lejos: crece
                 con la pantalla en vez de quedarse en un tamaño fijo de celular. */}
             <div
-              className="w-full max-w-[260px] sm:max-w-[360px] md:max-w-[480px] lg:max-w-[600px]"
+              className="w-full max-w-[280px] sm:max-w-[420px] md:max-w-[580px] lg:max-w-[720px] mx-auto"
               style={{ animation: "asesorLogoFlotar 4.5s ease-in-out infinite", willChange: "transform" }}
             >
               <Image
@@ -1158,7 +1167,7 @@ export default function AsesorApp({
                 alt="WiiGo — Estaciones de bienestar"
                 width={2172}
                 height={448}
-                sizes="(min-width: 1024px) 600px, (min-width: 768px) 480px, 360px"
+                sizes="(min-width: 1024px) 720px, (min-width: 768px) 580px, 420px"
                 className="w-full h-auto"
                 priority
               />
