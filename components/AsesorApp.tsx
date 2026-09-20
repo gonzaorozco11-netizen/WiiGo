@@ -493,11 +493,13 @@ function DiscoMarca({
   onClick: () => void;
 }) {
   return (
-    <button onClick={onClick} className="flex flex-col items-center gap-1.5 shrink-0 w-[82px] md:w-[104px]">
+    <button onClick={onClick} className="flex flex-col items-center gap-1.5 shrink-0 w-[86px] md:w-[116px]">
       <span
-        className="rounded-full overflow-hidden grid place-items-center w-14 h-14 md:w-[72px] md:h-[72px] border-[3px] transition-all"
+        // El aro gris tenue en las no elegidas evita que un logo con fondo
+        // blanco se funda con la barra y parezca que falta.
+        className="rounded-full overflow-hidden grid place-items-center w-16 h-16 md:w-[92px] md:h-[92px] border-[3px] transition-all"
         style={{
-          borderColor: activo ? "var(--acento, #4d7635)" : "transparent",
+          borderColor: activo ? "var(--acento, #4d7635)" : "rgba(0,0,0,.08)",
           background: "#fff",
           boxShadow: activo ? "0 8px 18px -10px rgba(0,0,0,.45)" : "none",
         }}
@@ -506,18 +508,18 @@ function DiscoMarca({
           // eslint-disable-next-line @next/next/no-img-element
           <img src={logo} alt="" className="w-full h-full object-cover" />
         ) : (
-          <span className="font-extrabold text-[18px] md:text-[22px]" style={{ color: "var(--acento, #4d7635)" }}>
+          <span className="font-extrabold text-[20px] md:text-[26px]" style={{ color: "var(--acento, #4d7635)" }}>
             {nombre.charAt(0).toUpperCase()}
           </span>
         )}
       </span>
       <span
-        className="text-[10.5px] md:text-[12px] leading-tight text-center"
+        className="text-[11px] md:text-[13px] leading-tight text-center"
         style={{ color: activo ? "#1f2419" : "#5c6353", fontWeight: activo ? 800 : 700 }}
       >
         {nombre}
       </span>
-      <span className="text-[9.5px] md:text-[10.5px] font-semibold tabular-nums text-[#a3aa95]">{cantidad}</span>
+      <span className="text-[10px] md:text-[11px] font-semibold tabular-nums text-[#a3aa95]">{cantidad}</span>
     </button>
   );
 }
