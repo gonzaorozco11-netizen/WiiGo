@@ -32,6 +32,20 @@ const C2 = "#d99a5b"; // marcas y productos
 const C3 = "#d97561"; // ofertas
 const C4 = "#5f92a8"; // profesionales
 
+// Los objetivos los carga Gonzalo desde el sistema y pueden ser cualquier
+// cantidad, así que el color sale de esta rueda por posición y no de un nombre
+// fijo: si mañana agrega uno, se pinta solo.
+const TONOS_OBJETIVO = [
+  "linear-gradient(145deg, #4d7635, #375526)",
+  "linear-gradient(145deg, #c08a3e, #9a6a29)",
+  "linear-gradient(145deg, #3f7d80, #2c5c5f)",
+  "linear-gradient(145deg, #3d4a7a, #2a3357)",
+  "linear-gradient(145deg, #b0643f, #8a4a2c)",
+  "linear-gradient(145deg, #6e7f3a, #535f28)",
+  "linear-gradient(145deg, #5a4a78, #372c4d)",
+  "linear-gradient(145deg, #2f6b52, #1f4a38)",
+];
+
 // Solo para la ficha ampliada de producto (ProductoDetalleModal) — el resto
 // del Asesor sigue con Manrope (ver app/asesor/layout.tsx).
 const fredoka = Fredoka({ subsets: ["latin"], weight: ["500", "600", "700"] });
@@ -90,7 +104,6 @@ const HOME_I18N = {
     objetivoVacio: "Todavía no cargaste objetivos en Catálogo asesor.",
     marcasTitulo: "Marcas y productos",
     marcasVacio: "Todavía no hay marcas visibles en el Asesor.",
-    marcasElegir: "Elegí una marca para ver sus productos.",
     marcasSinProductos: "Todavía no hay productos visibles acá.",
     ofertasTitulo: "Ofertas",
     ofertasVacio: "Por ahora no hay productos con descuento cargado.",
@@ -104,6 +117,14 @@ const HOME_I18N = {
     descMarcas: "Mirá las marcas que están en la tienda y todo lo que traen",
     descOfertas: "Los combos y descuentos que hay hoy en el local",
     descProfesionales: "Conocelos y sacá tu turno desde acá",
+    railRubro: "Rubro",
+    railSin: "Sin…",
+    railObjetivo: "Objetivo",
+    todo: "Todo",
+    profesionalesTitulo: "Nuestros profesionales",
+    profesionalesSub: "Conocelos y pedí tu turno presencial o por videollamada",
+    profesionalesVacio: "Todavía no hay profesionales cargados acá.",
+    verFicha: "Ver más",
   },
   en: {
     eyebrow: "🌿 Advisors",
@@ -123,7 +144,6 @@ const HOME_I18N = {
     objetivoVacio: "No goals loaded in Advisor Catalog yet.",
     marcasTitulo: "Brands & products",
     marcasVacio: "No brands are visible in the Advisor yet.",
-    marcasElegir: "Choose a brand to see its products.",
     marcasSinProductos: "No products visible here yet.",
     ofertasTitulo: "Offers",
     ofertasVacio: "No discounted products loaded yet.",
@@ -137,6 +157,14 @@ const HOME_I18N = {
     descMarcas: "See the brands in the store and everything they carry",
     descOfertas: "The combos and discounts available today in store",
     descProfesionales: "Meet them and book your appointment right here",
+    railRubro: "Category",
+    railSin: "Free from…",
+    railObjetivo: "Goal",
+    todo: "All",
+    profesionalesTitulo: "Our professionals",
+    profesionalesSub: "Meet them and book in person or by video call",
+    profesionalesVacio: "No professionals loaded here yet.",
+    verFicha: "See more",
   },
   pt: {
     eyebrow: "🌿 Consultores",
@@ -156,7 +184,6 @@ const HOME_I18N = {
     objetivoVacio: "Ainda não há objetivos cadastrados no Catálogo consultor.",
     marcasTitulo: "Marcas e produtos",
     marcasVacio: "Ainda não há marcas visíveis no Consultor.",
-    marcasElegir: "Escolha uma marca para ver seus produtos.",
     marcasSinProductos: "Ainda não há produtos visíveis aqui.",
     ofertasTitulo: "Ofertas",
     ofertasVacio: "Por enquanto não há produtos com desconto cadastrados.",
@@ -170,6 +197,14 @@ const HOME_I18N = {
     descMarcas: "Veja as marcas da loja e tudo o que elas trazem",
     descOfertas: "Os combos e descontos de hoje na loja",
     descProfesionales: "Conheça-os e marque seu horário aqui",
+    railRubro: "Categoria",
+    railSin: "Sem…",
+    railObjetivo: "Objetivo",
+    todo: "Tudo",
+    profesionalesTitulo: "Nossos profissionais",
+    profesionalesSub: "Conheça-os e marque presencial ou por videochamada",
+    profesionalesVacio: "Ainda não há profissionais cadastrados aqui.",
+    verFicha: "Ver mais",
   },
 } as const;
 
@@ -448,6 +483,93 @@ function TarjetaResultado({
   );
 }
 
+/** Un logo de marca en la fila de arriba de la pantalla de productos. */
+function DiscoMarca({
+  nombre,
+  logo,
+  cantidad,
+  activo,
+  onClick,
+}: {
+  nombre: string;
+  logo: string | null;
+  cantidad: number;
+  activo: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button onClick={onClick} className="flex flex-col items-center gap-1.5 shrink-0 w-[82px] md:w-[104px]">
+      <span
+        className="rounded-full overflow-hidden grid place-items-center w-14 h-14 md:w-[72px] md:h-[72px] border-[3px] transition-all"
+        style={{
+          borderColor: activo ? SAGE_DARK : "transparent",
+          background: "#f1f4ec",
+          boxShadow: activo ? "0 8px 18px -10px rgba(77,118,53,.7)" : "none",
+        }}
+      >
+        {logo ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={logo} alt="" className="w-full h-full object-cover" />
+        ) : (
+          <span className="font-extrabold text-[18px] md:text-[22px]" style={{ color: SAGE_DARK }}>
+            {nombre.charAt(0).toUpperCase()}
+          </span>
+        )}
+      </span>
+      <span
+        className="text-[10.5px] md:text-[12px] leading-tight text-center"
+        style={{ color: activo ? "#1f2419" : "#5c6353", fontWeight: activo ? 800 : 700 }}
+      >
+        {nombre}
+      </span>
+      <span className="text-[9.5px] md:text-[10.5px] font-semibold tabular-nums text-[#a3aa95]">{cantidad}</span>
+    </button>
+  );
+}
+
+/** Un bloque del panel de filtros de la izquierda. */
+function GrupoRail({ titulo, children }: { titulo: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <p className="text-[9.5px] md:text-[10.5px] font-extrabold uppercase tracking-[.2em] text-[#98a08b] mb-2">
+        {titulo}
+      </p>
+      <div className="flex flex-col">{children}</div>
+    </div>
+  );
+}
+
+/** Una opción dentro de un bloque de filtros, con cuántos productos deja. */
+function OpcionRail({
+  nombre,
+  cantidad,
+  activo,
+  onClick,
+}: {
+  nombre: string;
+  cantidad?: number;
+  activo: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button onClick={onClick} className="flex items-center gap-2.5 py-1.5 text-left w-full">
+      <span
+        className="w-[15px] h-[15px] rounded-[4px] border-[1.5px] shrink-0 transition-colors"
+        style={activo ? { background: SAGE_DARK, borderColor: SAGE_DARK } : { borderColor: "#c4cbb7" }}
+      />
+      <span
+        className="text-[12.5px] md:text-[13.5px] leading-tight flex-1"
+        style={{ color: activo ? "#1f2419" : "#4b5243", fontWeight: activo ? 800 : 600 }}
+      >
+        {nombre}
+      </span>
+      {cantidad !== undefined && (
+        <span className="text-[11px] tabular-nums text-[#a3aa95] font-semibold shrink-0">{cantidad}</span>
+      )}
+    </button>
+  );
+}
+
 /**
  * Cuánto de la pantalla queda realmente a la vista.
  *
@@ -525,7 +647,6 @@ export default function AsesorApp({
   const [filtrosSeleccionados, setFiltrosSeleccionados] = useState<Set<string>>(new Set());
   const [marcaId, setMarcaId] = useState<string | null>(null);
   const [subcategoriaId, setSubcategoriaId] = useState<string | null>(null);
-  const [marcaOfertaId, setMarcaOfertaId] = useState<string | null>(null);
   const [categoriaProf, setCategoriaProf] = useState<string | null>(null);
   const [profesionalId, setProfesionalId] = useState<string | null>(null);
   const [slideIndex, setSlideIndex] = useState(0);
@@ -569,19 +690,39 @@ export default function AsesorApp({
 
   const objetivoSeleccionado = objetivoId ? objetivos.find((o) => o.id_objetivo === objetivoId) ?? null : null;
 
-  const conteoProductosPorMarca = useMemo(() => {
-    const mapa: Record<string, number> = {};
-    productos.forEach((p) => {
-      mapa[p.id_marca] = (mapa[p.id_marca] ?? 0) + 1;
-    });
-    return mapa;
-  }, [productos]);
-
   const marcasOrdenadas = useMemo(
     () => [...marcas].sort((a, b) => a.nombre.localeCompare(b.nombre)),
     [marcas]
   );
 
+  // La pantalla de Marcas filtra en tres pasos —preferencia, marca, rubro— y en
+  // ese orden. Cada paso se guarda aparte porque de ahí salen los números que
+  // van al lado de cada marca y de cada rubro: si se filtrara todo junto, apenas
+  // elegís una marca las demás mostrarían cero.
+  const productosConPreferencia = useMemo(() => {
+    if (filtrosSeleccionados.size === 0) return productos;
+    return productos.filter((p) => {
+      const propios = filtrosPorProducto[p.id_producto] ?? [];
+      for (const f of filtrosSeleccionados) if (!propios.includes(f)) return false;
+      return true;
+    });
+  }, [productos, filtrosSeleccionados, filtrosPorProducto]);
+
+  const conteoProductosPorMarca = useMemo(() => {
+    const mapa: Record<string, number> = {};
+    productosConPreferencia.forEach((p) => {
+      mapa[p.id_marca] = (mapa[p.id_marca] ?? 0) + 1;
+    });
+    return mapa;
+  }, [productosConPreferencia]);
+
+  const productosDeMarcaSinRubro = useMemo(
+    () => (marcaId ? productosConPreferencia.filter((p) => p.id_marca === marcaId) : productosConPreferencia),
+    [productosConPreferencia, marcaId]
+  );
+
+  // Los rubros son propios de cada marca, así que con "Todas" elegida no hay
+  // rubros que mostrar.
   const subcategoriasDeMarca = useMemo(() => {
     if (!marcaId) return [];
     return subcategorias
@@ -589,17 +730,30 @@ export default function AsesorApp({
       .sort((a, b) => a.nombre.localeCompare(b.nombre));
   }, [subcategorias, marcaId]);
 
-  const productosDeMarca = useMemo(() => {
-    if (!marcaId) return [];
-    return productos.filter(
-      (p) => p.id_marca === marcaId && (!subcategoriaId || p.id_subcategoria === subcategoriaId)
-    );
-  }, [productos, marcaId, subcategoriaId]);
+  const conteoPorSubcategoria = useMemo(() => {
+    const mapa: Record<string, number> = {};
+    productosDeMarcaSinRubro.forEach((p) => {
+      if (p.id_subcategoria) mapa[p.id_subcategoria] = (mapa[p.id_subcategoria] ?? 0) + 1;
+    });
+    return mapa;
+  }, [productosDeMarcaSinRubro]);
+
+  const productosDeMarca = useMemo(
+    () =>
+      subcategoriaId
+        ? productosDeMarcaSinRubro.filter((p) => p.id_subcategoria === subcategoriaId)
+        : productosDeMarcaSinRubro,
+    [productosDeMarcaSinRubro, subcategoriaId]
+  );
 
   const productosEnOferta = useMemo(
     () => productos.filter((p) => (p.descuento_porcentaje ?? 0) > 0),
     [productos]
   );
+
+  // Cuántas ofertas hacen falta para que valga la pena mostrar la puerta.
+  const MINIMO_OFERTAS = 3;
+  const mostrarOfertas = productosEnOferta.length >= MINIMO_OFERTAS;
 
   const marcasConOferta = useMemo(
     () => [...new Set(productosEnOferta.map((p) => p.id_marca))],
@@ -613,11 +767,6 @@ export default function AsesorApp({
     });
     return mapa;
   }, [productosEnOferta]);
-
-  const productosEnOfertaFiltrados = useMemo(() => {
-    if (!marcaOfertaId) return productosEnOferta;
-    return productosEnOferta.filter((p) => p.id_marca === marcaOfertaId);
-  }, [productosEnOferta, marcaOfertaId]);
 
   const categoriasProf = useMemo(() => {
     const set = new Set<string>();
@@ -684,11 +833,14 @@ export default function AsesorApp({
   function irAMarcas() {
     setMarcaId(null);
     setSubcategoriaId(null);
+    // Las preferencias son compartidas con la pantalla de resultados: si no se
+    // limpian, el que viene de buscar entra a Marcas con filtros puestos que no
+    // pidió y le parece que faltan productos.
+    setFiltrosSeleccionados(new Set());
     setPantalla("marcas");
   }
 
   function irAOfertas() {
-    setMarcaOfertaId(null);
     setPantalla("ofertas");
   }
 
@@ -699,10 +851,6 @@ export default function AsesorApp({
 
   function toggleSubcategoria(id: string) {
     setSubcategoriaId((actual) => (actual === id ? null : id));
-  }
-
-  function toggleMarcaOferta(id: string) {
-    setMarcaOfertaId((actual) => (actual === id ? null : id));
   }
 
   function toggleCategoriaProf(categoria: string) {
@@ -749,7 +897,6 @@ export default function AsesorApp({
     setMarcaResultado(null);
     setMarcaId(null);
     setSubcategoriaId(null);
-    setMarcaOfertaId(null);
     setCategoriaProf(null);
     setProfesionalId(null);
     setMostrarComoAyuda(false);
@@ -869,6 +1016,24 @@ export default function AsesorApp({
     () => marcas.filter((m) => (conteoPorMarca[m.id_marca] ?? 0) > 0),
     [marcas, conteoPorMarca]
   );
+
+  // Cuántos productos deja cada objetivo con la marca y las preferencias que ya
+  // están puestas. Se cuenta sin mirar el objetivo elegido, para que el número
+  // de los demás no se caiga a cero al elegir uno.
+  const conteoPorObjetivo = useMemo(() => {
+    const mapa: Record<string, number> = {};
+    for (const p of productos) {
+      if (marcaResultado && p.id_marca !== marcaResultado) continue;
+      if (filtrosSeleccionados.size > 0) {
+        const propios = filtrosPorProducto[p.id_producto] ?? [];
+        let pasa = true;
+        for (const f of filtrosSeleccionados) if (!propios.includes(f)) pasa = false;
+        if (!pasa) continue;
+      }
+      for (const id of objetivosPorProducto[p.id_producto] ?? []) mapa[id] = (mapa[id] ?? 0) + 1;
+    }
+    return mapa;
+  }, [productos, marcaResultado, filtrosSeleccionados, filtrosPorProducto, objetivosPorProducto]);
 
   function porQue(p: ProductoPublico): { texto: string; tag: string } {
     const propios = filtrosPorProducto[p.id_producto] ?? [];
@@ -1036,9 +1201,13 @@ export default function AsesorApp({
               {t("pregunta")}
             </p>
 
-            {/* Las cuatro del mismo tamaño: el que ya sabe qué quiere no tiene
-                por qué pasar por la primera. */}
-            <div className="w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+            {/* Todas del mismo tamaño: el que ya sabe qué quiere no tiene por
+                qué pasar por la primera. */}
+            <div
+              className={`w-full grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4 ${
+                mostrarOfertas ? "lg:grid-cols-4" : "lg:grid-cols-3"
+              }`}
+            >
               <Puerta
                 onClick={irAObjetivo}
                 fondo="linear-gradient(150deg, #4d7635, #335023)"
@@ -1054,13 +1223,18 @@ export default function AsesorApp({
                 titulo={t("ctaMarcas")}
                 descripcion={t("descMarcas")}
               />
-              <Puerta
-                onClick={irAOfertas}
-                fondo="linear-gradient(150deg, #c06a45, #96492b)"
-                icono={<IconoEtiqueta className="w-6 h-6 md:w-7 md:h-7" />}
-                titulo={t("ctaOfertas")}
-                descripcion={t("descOfertas")}
-              />
+              {/* Con una o dos ofertas sueltas, esta puerta juega en contra: el
+                  cliente la toca, ve que no hay nada y no la vuelve a tocar.
+                  Aparece sola cuando hay con qué llenarla. */}
+              {mostrarOfertas && (
+                <Puerta
+                  onClick={irAOfertas}
+                  fondo="linear-gradient(150deg, #c06a45, #96492b)"
+                  icono={<IconoEtiqueta className="w-6 h-6 md:w-7 md:h-7" />}
+                  titulo={t("ctaOfertas")}
+                  descripcion={t("descOfertas")}
+                />
+              )}
               <Puerta
                 onClick={() => setPantalla("profesionales")}
                 fondo="linear-gradient(150deg, #42797c, #2d585b)"
@@ -1094,34 +1268,48 @@ export default function AsesorApp({
         </div>
       )}
 
+      {/* Solo la pregunta. Las preferencias viven en la pantalla de productos,
+          que es donde el cliente ya tiene cosas delante para filtrar. */}
       {pantalla === "objetivo" && (
         <div className="flex-1 flex flex-col">
           <Navbar onVolver={volverAInicio} onInicio={volverAInicio} idioma={idioma} />
-          <div className="flex-1 px-6 pt-6 pb-10">
-            <h2 className={`${bodoniModa.className} italic text-[26px] leading-tight mb-1`}>{t("objetivoTitulo")}</h2>
-            <p className="text-[12.5px] text-[#8a8a8a] mb-5">{t("objetivoSubtitulo")}</p>
+          <div className="flex-1 flex flex-col items-center justify-center px-6 pt-4 pb-10 gap-6 md:gap-8">
+            <div className="text-center">
+              <h2 className={`${bodoniModa.className} italic text-[clamp(26px,3.4vw,44px)] leading-tight`}>
+                {t("objetivoTitulo")}
+              </h2>
+              <p className="text-[13px] md:text-[15px] text-[#8a8a8a] mt-1.5">{t("objetivoSubtitulo")}</p>
+            </div>
             {objetivos.length === 0 ? (
               <p className="text-[#686868] text-sm text-center py-8">{t("objetivoVacio")}</p>
             ) : (
-              <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 max-w-2xl mx-auto">
-                {objetivos.map((o) => (
+              <div className="w-full max-w-5xl grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 md:gap-4">
+                {objetivos.map((o, i) => (
                   <button
                     key={o.id_objetivo}
                     onClick={() => elegirObjetivo(o.id_objetivo)}
-                    className="flex flex-col items-center gap-2 rounded-2xl bg-white p-3 pb-3.5 shadow-sm"
+                    className="relative overflow-hidden rounded-3xl p-4 md:p-5 text-left text-white flex flex-col justify-between gap-3 min-h-[124px] md:min-h-[168px] transition-transform active:scale-[.97]"
+                    style={{
+                      background: TONOS_OBJETIVO[i % TONOS_OBJETIVO.length],
+                      boxShadow: "0 16px 30px -20px rgba(20,28,14,.6)",
+                    }}
                   >
                     <span
-                      className="w-full aspect-square max-w-16 rounded-2xl flex items-center justify-center font-extrabold text-xl overflow-hidden"
-                      style={{ background: `linear-gradient(135deg, ${SAGE_TINT}, #d8d8d8)`, color: SAGE_DARK }}
-                    >
+                      className="absolute rounded-full pointer-events-none"
+                      style={{ width: 96, height: 96, right: -26, bottom: -36, background: "rgba(255,255,255,.1)" }}
+                    />
+                    <span className="relative w-10 h-10 md:w-12 md:h-12 rounded-2xl overflow-hidden grid place-items-center shrink-0"
+                          style={{ background: "rgba(255,255,255,.18)" }}>
                       {o.imagen ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={o.imagen} alt="" className="w-full h-full object-cover" />
                       ) : (
-                        o.nombre.charAt(0).toUpperCase()
+                        <span className="font-extrabold text-[17px] md:text-[20px]">
+                          {o.nombre.charAt(0).toUpperCase()}
+                        </span>
                       )}
                     </span>
-                    <span className="text-[12px] font-bold text-center leading-tight">
+                    <span className="relative text-[14px] md:text-[17px] font-extrabold leading-tight">
                       {tr(o.nombre, o.nombre_en, o.nombre_pt)}
                     </span>
                   </button>
@@ -1132,214 +1320,199 @@ export default function AsesorApp({
         </div>
       )}
 
+      {/* Una sola pantalla: los logos arriba, los rubros y las preferencias al
+          costado, los productos a la derecha. Se cambia de marca sin salir. */}
       {pantalla === "marcas" && (
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col min-h-0">
           <Navbar onVolver={volverAInicio} onInicio={volverAInicio} idioma={idioma} />
-          <div className="flex-1 px-6 pt-6 pb-10 max-w-3xl mx-auto w-full">
-            <h2 className="text-2xl font-extrabold mb-4">{t("marcasTitulo")}</h2>
 
-            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-5">
-              {marcasOrdenadas.length === 0 && <p className="text-[#686868] text-sm">{t("marcasVacio")}</p>}
-              {marcasOrdenadas.map((m) => {
-                const on = marcaId === m.id_marca;
-                return (
-                  <button
+          {marcasOrdenadas.length === 0 ? (
+            <p className="text-[#686868] text-sm text-center py-16">{t("marcasVacio")}</p>
+          ) : (
+            <>
+              <div className="bg-white border-b border-[#e2e6da] px-4 md:px-7 pt-3 pb-3 flex gap-2 md:gap-4 overflow-x-auto">
+                <DiscoMarca
+                  nombre={t("todas")}
+                  logo={null}
+                  cantidad={productosConPreferencia.length}
+                  activo={marcaId === null}
+                  onClick={() => {
+                    setMarcaId(null);
+                    setSubcategoriaId(null);
+                  }}
+                />
+                {marcasOrdenadas.map((m) => (
+                  <DiscoMarca
                     key={m.id_marca}
+                    nombre={m.nombre}
+                    logo={m.logo}
+                    cantidad={conteoProductosPorMarca[m.id_marca] ?? 0}
+                    activo={marcaId === m.id_marca}
                     onClick={() => toggleMarca(m.id_marca)}
-                    className="flex flex-col items-center gap-1.5 rounded-2xl border p-2 pb-2.5 transition-colors"
-                    style={on ? { background: SAGE_DARK, borderColor: SAGE_DARK } : { background: "#fff", borderColor: "#d8d8d8" }}
-                  >
-                    <span
-                      className="w-full aspect-square rounded-xl flex items-center justify-center font-extrabold text-xl overflow-hidden"
-                      style={
-                        on
-                          ? { background: "rgba(255,255,255,.2)", color: "#fff" }
-                          : { background: `linear-gradient(135deg, ${SAGE_TINT}, #d8d8d8)`, color: SAGE_DARK }
-                      }
-                    >
-                      {m.logo ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={m.logo} alt="" className="w-full h-full object-cover" />
-                      ) : (
-                        m.nombre.charAt(0).toUpperCase()
-                      )}
-                    </span>
-                    <span className="text-[10.5px] font-bold text-center leading-tight" style={{ color: on ? "#fff" : "#2d2d2d" }}>
-                      {m.nombre}
-                    </span>
-                    <span className="text-[9px] font-medium" style={{ color: on ? "rgba(255,255,255,.75)" : "#8a8a8a" }}>
-                      {conteoProductosPorMarca[m.id_marca] ?? 0}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+                  />
+                ))}
+              </div>
 
-            {!marcaId ? (
-              <p className="text-[#686868] text-sm text-center py-12">{t("marcasElegir")}</p>
-            ) : (
-              <>
-                {subcategoriasDeMarca.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mb-6">
-                    {subcategoriasDeMarca.map((s) => {
-                      const on = subcategoriaId === s.id_subcategoria;
-                      return (
-                        <button
+              <div className="flex-1 min-h-0 flex flex-col md:flex-row">
+                <div className="bg-white md:border-r border-b md:border-b-0 border-[#e2e6da] px-5 py-4 md:py-6 md:w-[236px] shrink-0 flex flex-row md:flex-col gap-6 md:gap-7 overflow-x-auto md:overflow-y-auto">
+                  {subcategoriasDeMarca.length > 0 && (
+                    <GrupoRail titulo={t("railRubro")}>
+                      <OpcionRail
+                        nombre={t("todo")}
+                        cantidad={productosDeMarcaSinRubro.length}
+                        activo={subcategoriaId === null}
+                        onClick={() => setSubcategoriaId(null)}
+                      />
+                      {subcategoriasDeMarca.map((s) => (
+                        <OpcionRail
                           key={s.id_subcategoria}
+                          nombre={s.nombre}
+                          cantidad={conteoPorSubcategoria[s.id_subcategoria] ?? 0}
+                          activo={subcategoriaId === s.id_subcategoria}
                           onClick={() => toggleSubcategoria(s.id_subcategoria)}
-                          className="rounded-full border px-3.5 py-1.5 text-[12px] font-bold"
-                          style={
-                            on
-                              ? { background: SAGE_DARK, borderColor: SAGE_DARK, color: "#fff" }
-                              : { background: "#fff", borderColor: "#d8d8d8", color: "#686868" }
-                          }
-                        >
-                          {s.nombre}
-                        </button>
-                      );
-                    })}
+                        />
+                      ))}
+                    </GrupoRail>
+                  )}
+                  {filtros.length > 0 && (
+                    <GrupoRail titulo={t("railSin")}>
+                      {filtros.map((f) => (
+                        <OpcionRail
+                          key={f.id_filtro}
+                          nombre={tr(f.nombre, f.nombre_en, f.nombre_pt)}
+                          activo={filtrosSeleccionados.has(f.id_filtro)}
+                          onClick={() => toggleFiltro(f.id_filtro)}
+                        />
+                      ))}
+                    </GrupoRail>
+                  )}
+                </div>
+
+                <div className="flex-1 min-w-0 px-5 md:px-7 py-5 md:py-6 overflow-y-auto">
+                  <div className="flex items-end justify-between gap-4 mb-4">
+                    <h2 className={`${bodoniModa.className} italic text-[clamp(21px,2.6vw,34px)] leading-tight`}>
+                      {marcaId ? (marcaPorId[marcaId]?.nombre ?? t("marcasTitulo")) : t("marcasTitulo")}
+                    </h2>
+                    <span className="text-[12px] md:text-[13px] text-[#8a9180] font-semibold shrink-0">
+                      {contarProductos(productosDeMarca.length, idioma)}
+                    </span>
                   </div>
-                )}
 
-                <p className="text-[13px] text-[#686868] mb-4">{contarProductos(productosDeMarca.length, idioma)}</p>
-
-                {productosDeMarca.length === 0 ? (
-                  <p className="text-[#686868] text-sm text-center py-12">{t("marcasSinProductos")}</p>
-                ) : (
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {productosDeMarca.map((p) => {
-                      const ficha = fichaPorProducto[p.id_producto];
-                      return (
-                        <div
+                  {productosDeMarca.length === 0 ? (
+                    <p className="text-[#686868] text-sm text-center py-12">{t("marcasSinProductos")}</p>
+                  ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                      {productosDeMarca.map((p) => (
+                        <TarjetaResultado
                           key={p.id_producto}
+                          producto={p}
+                          marca={marcaId ? undefined : marcaPorId[p.id_marca]}
+                          etiqueta=""
+                          nombre={tr(p.nombre, p.nombre_en, p.nombre_pt)}
                           onClick={() => setProductoAbierto(p.id_producto)}
-                          className="rounded-xl border border-[#d8d8d8] bg-white overflow-hidden shadow-sm flex flex-col cursor-pointer"
-                        >
-                          <div
-                            className={`h-20 flex items-center justify-center ${
-                              p.imagen ? "bg-white" : "bg-gradient-to-br from-[#f0f2ec] to-[#d8d8d8]"
-                            }`}
-                          >
-                            {p.imagen ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img src={p.imagen} alt="" className="w-full h-full object-contain p-1" />
-                            ) : (
-                              <span style={{ color: SAGE_DARK }}>
-                                <IconoBolsa className="w-6 h-6" />
-                              </span>
-                            )}
-                          </div>
-                          <div className="p-2.5 flex flex-col gap-1">
-                            <p className="text-[12px] font-extrabold leading-tight line-clamp-2">{tr(p.nombre, p.nombre_en, p.nombre_pt)}</p>
-                            {ficha?.descripcion_publica && (
-                              <p className="text-[10px] text-[#686868] leading-snug line-clamp-2">
-                                {tr(ficha.descripcion_publica, ficha.descripcion_publica_en, ficha.descripcion_publica_pt)}
-                              </p>
-                            )}
-                            <span className="text-[13px] font-extrabold mt-1">{formatoPrecio(p.precio_venta)}</span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
 
+      {/* Agrupadas por marca, no todo mezclado: así se entiende de quién es
+          cada promo. */}
       {pantalla === "ofertas" && (
         <div className="flex-1 flex flex-col">
           <Navbar onVolver={volverAInicio} onInicio={volverAInicio} idioma={idioma} />
-          <div className="flex-1 px-6 pt-6 pb-10 max-w-3xl mx-auto w-full">
-            <h2 className="text-2xl font-extrabold mb-4">{t("ofertasTitulo")}</h2>
+          <div className="flex-1 px-5 md:px-8 pt-5 pb-10 max-w-7xl mx-auto w-full">
+            <div className="flex items-end justify-between gap-4 mb-5">
+              <h2 className={`${bodoniModa.className} italic text-[clamp(23px,2.8vw,38px)] leading-tight`}>
+                {t("ofertasTitulo")}
+              </h2>
+              <span className="text-[12px] md:text-[13px] text-[#8a9180] font-semibold shrink-0">
+                {contarProductos(productosEnOferta.length, idioma, "descuento")}
+              </span>
+            </div>
 
-            {marcasConOferta.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-5">
+            {productosEnOferta.length === 0 ? (
+              <p className="text-[#686868] text-sm text-center py-16">{t("ofertasVacio")}</p>
+            ) : (
+              <div className="flex flex-col gap-7">
                 {marcasOrdenadas
                   .filter((m) => marcasConOferta.includes(m.id_marca))
-                  .map((m) => {
-                    const on = marcaOfertaId === m.id_marca;
-                    return (
-                      <button
-                        key={m.id_marca}
-                        onClick={() => toggleMarcaOferta(m.id_marca)}
-                        className="flex items-center gap-2 rounded-full border px-3 py-2 shadow-sm transition-colors"
-                        style={
-                          on
-                            ? { background: C3, borderColor: C3, color: "#fff" }
-                            : { background: "#fff", borderColor: "#d8d8d8", color: "#2d2d2d" }
-                        }
-                      >
-                        <span
-                          className="flex items-center justify-center w-7 h-7 rounded-full font-extrabold text-[12px] shrink-0 overflow-hidden"
-                          style={on ? { background: "rgba(255,255,255,.3)", color: "#fff" } : { background: SAGE_TINT, color: SAGE_DARK }}
-                        >
+                  .map((m) => (
+                    <div key={m.id_marca} className="flex flex-col gap-3">
+                      <div className="flex items-center gap-3">
+                        <span className="w-9 h-9 md:w-10 md:h-10 rounded-full overflow-hidden grid place-items-center shrink-0"
+                              style={{ background: "#f1f4ec" }}>
                           {m.logo ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img src={m.logo} alt="" className="w-full h-full object-cover" />
                           ) : (
-                            m.nombre.charAt(0).toUpperCase()
+                            <span className="font-extrabold text-[14px]" style={{ color: SAGE_DARK }}>
+                              {m.nombre.charAt(0).toUpperCase()}
+                            </span>
                           )}
                         </span>
-                        <span className="text-[13px] font-extrabold">{m.nombre}</span>
-                        <span className="text-[11px] font-medium opacity-70">
+                        <span className="text-[12px] md:text-[13.5px] font-extrabold uppercase tracking-[.14em]"
+                              style={{ color: "#4d7635" }}>
+                          {m.nombre}
+                        </span>
+                        <span className="flex-1 h-px" style={{ background: "#e2e6da" }} />
+                        <span className="text-[11.5px] text-[#a3aa95] font-semibold tabular-nums shrink-0">
                           {conteoOfertasPorMarca[m.id_marca] ?? 0}
                         </span>
-                      </button>
-                    );
-                  })}
-              </div>
-            )}
-
-            <p className="text-[13px] text-[#686868] mb-4">
-              {contarProductos(productosEnOfertaFiltrados.length, idioma, "descuento")}
-            </p>
-
-            {productosEnOfertaFiltrados.length === 0 ? (
-              <p className="text-[#686868] text-sm text-center py-12">{t("ofertasVacio")}</p>
-            ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {productosEnOfertaFiltrados.map((p) => {
-                  const marca = marcaPorId[p.id_marca];
-                  return (
-                    <div
-                      key={p.id_producto}
-                      onClick={() => setProductoAbierto(p.id_producto)}
-                      className="relative rounded-2xl bg-white overflow-hidden shadow-sm flex flex-col cursor-pointer"
-                    >
-                      <span
-                        className="absolute top-2 left-2 z-10 text-[10px] font-extrabold px-2 py-0.5 rounded-full text-white"
-                        style={{ background: C3 }}
-                      >
-                        -{p.descuento_porcentaje}%
-                      </span>
-                      <div className="h-20 bg-gradient-to-br from-[#f0f2ec] to-[#d8d8d8] flex items-center justify-center">
-                        {p.imagen ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={p.imagen} alt="" className="w-full h-full object-cover" />
-                        ) : (
-                          <span style={{ color: SAGE_DARK }}>
-                            <IconoEtiqueta className="w-6 h-6" />
-                          </span>
-                        )}
                       </div>
-                      <div className="p-2.5 flex flex-col gap-1">
-                        {marca && (
-                          <p className="text-[9.5px] font-medium text-[#8a8a8a]">{marca.nombre}</p>
-                        )}
-                        <p className="text-[12px] font-extrabold leading-tight line-clamp-2">{tr(p.nombre, p.nombre_en, p.nombre_pt)}</p>
-                        <div className="flex items-baseline gap-1.5 mt-1">
-                          <span className={`text-[13px] font-extrabold ${fredoka.className}`} style={{ color: C3 }}>
-                            {formatoPrecio(precioConDescuento(p))}
-                          </span>
-                          <span className="text-[10px] text-[#a8a8a8] line-through">{formatoPrecio(p.precio_venta)}</span>
-                        </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                        {productosEnOferta
+                          .filter((p) => p.id_marca === m.id_marca)
+                          .map((p) => (
+                            <div
+                              key={p.id_producto}
+                              onClick={() => setProductoAbierto(p.id_producto)}
+                              className="relative rounded-2xl bg-white overflow-hidden shadow-sm flex flex-col cursor-pointer"
+                            >
+                              <span
+                                className="absolute top-2 left-2 z-10 text-[10px] font-extrabold px-2 py-0.5 rounded-full text-white"
+                                style={{ background: C3 }}
+                              >
+                                -{p.descuento_porcentaje}%
+                              </span>
+                              <div
+                                className={`h-[88px] flex items-center justify-center ${
+                                  p.imagen ? "bg-white" : "bg-gradient-to-br from-[#f0f2ec] to-[#d8d8d8]"
+                                }`}
+                              >
+                                {p.imagen ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img src={p.imagen} alt="" className="w-full h-full object-contain p-1" />
+                                ) : (
+                                  <span style={{ color: SAGE_DARK }}>
+                                    <IconoEtiqueta className="w-6 h-6" />
+                                  </span>
+                                )}
+                              </div>
+                              <div className="p-2.5 flex flex-col gap-1">
+                                <p className="text-[12px] font-extrabold leading-tight line-clamp-2">
+                                  {tr(p.nombre, p.nombre_en, p.nombre_pt)}
+                                </p>
+                                <div className="flex items-baseline gap-1.5 mt-1">
+                                  <span className={`text-[13.5px] font-semibold ${fredoka.className}`} style={{ color: C3 }}>
+                                    {formatoPrecio(precioConDescuento(p))}
+                                  </span>
+                                  <span className="text-[10px] text-[#a8a8a8] line-through">
+                                    {formatoPrecio(p.precio_venta)}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
                       </div>
                     </div>
-                  );
-                })}
+                  ))}
               </div>
             )}
           </div>
@@ -1357,7 +1530,7 @@ export default function AsesorApp({
           <Navbar onVolver={volverDesdeResultado} onInicio={volverAInicio} idioma={idioma} />
           <div
             className={`flex-1 min-h-0 w-full mx-auto flex flex-col ${
-              tecladoAbierto ? "px-5 pt-2 pb-2 gap-2.5" : "px-6 pt-6 pb-10 gap-4 max-w-5xl"
+              tecladoAbierto ? "px-5 pt-2 pb-2 gap-2.5" : "px-5 md:px-7 pt-5 pb-6 gap-4 max-w-7xl"
             }`}
           >
             <div className="flex items-center gap-3 rounded-full border border-[#d8d8d8] bg-white px-3 py-3 shadow-sm shrink-0">
@@ -1386,105 +1559,167 @@ export default function AsesorApp({
               )}
             </div>
 
-            {marcasConResultados.length > 1 && (
-              <div className="flex flex-wrap gap-2 shrink-0">
-                {/* Tocar una marca es más rápido que escribirla. */}
-                <ChipMarca
-                  activo={marcaResultado === null}
-                  onClick={() => setMarcaResultado(null)}
-                  nombre={t("todas")}
-                  cantidad={productosSinFiltroMarca.length}
-                />
-                {marcasConResultados.map((m) => (
-                  <ChipMarca
-                    key={m.id_marca}
-                    activo={marcaResultado === m.id_marca}
-                    onClick={() => setMarcaResultado(marcaResultado === m.id_marca ? null : m.id_marca)}
-                    nombre={m.nombre}
-                    cantidad={conteoPorMarca[m.id_marca] ?? 0}
-                  />
-                ))}
-              </div>
-            )}
+            {tecladoAbierto ? (
+              // ---- Escribiendo: todo compacto y arriba del teclado ----
+              <>
+                {marcasConResultados.length > 1 && (
+                  <div className="flex flex-wrap gap-2 shrink-0">
+                    {/* Tocar una marca es más rápido que escribirla. */}
+                    <ChipMarca
+                      activo={marcaResultado === null}
+                      onClick={() => setMarcaResultado(null)}
+                      nombre={t("todas")}
+                      cantidad={productosSinFiltroMarca.length}
+                    />
+                    {marcasConResultados.map((m) => (
+                      <ChipMarca
+                        key={m.id_marca}
+                        activo={marcaResultado === m.id_marca}
+                        onClick={() => setMarcaResultado(marcaResultado === m.id_marca ? null : m.id_marca)}
+                        nombre={m.nombre}
+                        cantidad={conteoPorMarca[m.id_marca] ?? 0}
+                      />
+                    ))}
+                  </div>
+                )}
 
-            {filtros.length > 0 && (
-              <div className="flex flex-wrap gap-2 shrink-0">
-                {filtros.map((f) => {
-                  const on = filtrosSeleccionados.has(f.id_filtro);
-                  return (
-                    <button
-                      key={f.id_filtro}
-                      onClick={() => toggleFiltro(f.id_filtro)}
-                      className="rounded-full border-[1.5px] px-3.5 py-2 text-[12px] font-bold transition-colors"
-                      style={on ? { background: SAGE_DARK, borderColor: SAGE_DARK, color: "#fff" } : { background: "#fff", borderColor: "#d8d8d8", color: "#8a8a8a" }}
-                    >
-                      {tr(f.nombre, f.nombre_en, f.nombre_pt)}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-
-            {!tecladoAbierto && (
-              <div className="shrink-0">
-                <h3 className={`${bodoniModa.className} italic text-[21px]`}>{t("resultadoTitulo")}</h3>
-                <p className="text-[13px] text-[#8a8a8a] mt-0.5">
-                  {contarProductos(productosFiltrados.length, idioma, "disponibles")}
-                </p>
-              </div>
-            )}
-
-            {productosFiltrados.length === 0 ? (
-              <p className="text-[#686868] text-sm text-center py-12">{t("sinResultados")}</p>
-            ) : tecladoAbierto ? (
-              // Con el teclado abierto entra una sola fila. No se esconde nada:
-              // lo que no entra se corre al costado con el dedo.
-              <div className="flex-1 min-h-0 flex gap-2.5 overflow-x-auto pb-1">
-                {productosFiltrados.map((p) => (
-                  <TarjetaResultado
-                    key={p.id_producto}
-                    producto={p}
-                    marca={marcaPorId[p.id_marca]}
-                    etiqueta={porQue(p).texto}
-                    nombre={tr(p.nombre, p.nombre_en, p.nombre_pt)}
-                    onClick={() => setProductoAbierto(p.id_producto)}
-                    compacta
-                  />
-                ))}
-              </div>
+                {productosFiltrados.length === 0 ? (
+                  <p className="text-[#686868] text-sm text-center py-8">{t("sinResultados")}</p>
+                ) : (
+                  // Una sola fila. No se esconde nada: lo que no entra se corre
+                  // al costado con el dedo.
+                  <div className="flex-1 min-h-0 flex gap-2.5 overflow-x-auto pb-1">
+                    {productosFiltrados.map((p) => (
+                      <TarjetaResultado
+                        key={p.id_producto}
+                        producto={p}
+                        marca={marcaPorId[p.id_marca]}
+                        etiqueta=""
+                        nombre={tr(p.nombre, p.nombre_en, p.nombre_pt)}
+                        onClick={() => setProductoAbierto(p.id_producto)}
+                        compacta
+                      />
+                    ))}
+                  </div>
+                )}
+              </>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3">
-                {productosFiltrados.map((p) => (
-                  <TarjetaResultado
-                    key={p.id_producto}
-                    producto={p}
-                    marca={marcaPorId[p.id_marca]}
-                    etiqueta={porQue(p).texto}
-                    nombre={tr(p.nombre, p.nombre_en, p.nombre_pt)}
-                    onClick={() => setProductoAbierto(p.id_producto)}
-                  />
-                ))}
+              // ---- Sin teclado: logos arriba, filtros al costado ----
+              <div className="flex-1 min-h-0 flex flex-col">
+                {marcasConResultados.length > 1 && (
+                  <div className="flex gap-2 md:gap-4 overflow-x-auto pb-3 mb-3 border-b border-[#e2e6da] shrink-0">
+                    <DiscoMarca
+                      nombre={t("todas")}
+                      logo={null}
+                      cantidad={productosSinFiltroMarca.length}
+                      activo={marcaResultado === null}
+                      onClick={() => setMarcaResultado(null)}
+                    />
+                    {marcasConResultados.map((m) => (
+                      <DiscoMarca
+                        key={m.id_marca}
+                        nombre={m.nombre}
+                        logo={m.logo}
+                        cantidad={conteoPorMarca[m.id_marca] ?? 0}
+                        activo={marcaResultado === m.id_marca}
+                        onClick={() => setMarcaResultado(marcaResultado === m.id_marca ? null : m.id_marca)}
+                      />
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex-1 min-h-0 flex flex-col md:flex-row gap-5 md:gap-7">
+                  <div className="md:w-[212px] shrink-0 flex flex-row md:flex-col gap-6 md:gap-7 overflow-x-auto md:overflow-y-auto">
+                    {/* Con una búsqueda escrita el objetivo no se aplica, así
+                        que mostrarlo sería mentirle al cliente. */}
+                    {!busqueda.trim() && objetivos.length > 0 && (
+                      <GrupoRail titulo={t("railObjetivo")}>
+                        {objetivos.map((o) => (
+                          <OpcionRail
+                            key={o.id_objetivo}
+                            nombre={tr(o.nombre, o.nombre_en, o.nombre_pt)}
+                            cantidad={conteoPorObjetivo[o.id_objetivo] ?? 0}
+                            activo={objetivoId === o.id_objetivo}
+                            onClick={() => setObjetivoId(objetivoId === o.id_objetivo ? null : o.id_objetivo)}
+                          />
+                        ))}
+                      </GrupoRail>
+                    )}
+                    {filtros.length > 0 && (
+                      <GrupoRail titulo={t("railSin")}>
+                        {filtros.map((f) => (
+                          <OpcionRail
+                            key={f.id_filtro}
+                            nombre={tr(f.nombre, f.nombre_en, f.nombre_pt)}
+                            activo={filtrosSeleccionados.has(f.id_filtro)}
+                            onClick={() => toggleFiltro(f.id_filtro)}
+                          />
+                        ))}
+                      </GrupoRail>
+                    )}
+                  </div>
+
+                  <div className="flex-1 min-w-0 overflow-y-auto">
+                    <div className="flex items-end justify-between gap-4 mb-4">
+                      <h3 className={`${bodoniModa.className} italic text-[clamp(21px,2.6vw,34px)] leading-tight`}>
+                        {objetivoId
+                          ? (() => {
+                              const o = objetivos.find((x) => x.id_objetivo === objetivoId);
+                              return o ? tr(o.nombre, o.nombre_en, o.nombre_pt) : t("resultadoTitulo");
+                            })()
+                          : t("resultadoTitulo")}
+                      </h3>
+                      <span className="text-[12px] md:text-[13px] text-[#8a9180] font-semibold shrink-0">
+                        {contarProductos(productosFiltrados.length, idioma, "disponibles")}
+                      </span>
+                    </div>
+
+                    {productosFiltrados.length === 0 ? (
+                      <p className="text-[#686868] text-sm text-center py-12">{t("sinResultados")}</p>
+                    ) : (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                        {productosFiltrados.map((p) => (
+                          <TarjetaResultado
+                            key={p.id_producto}
+                            producto={p}
+                            marca={marcaResultado ? undefined : marcaPorId[p.id_marca]}
+                            etiqueta={porQue(p).texto}
+                            nombre={tr(p.nombre, p.nombre_en, p.nombre_pt)}
+                            onClick={() => setProductoAbierto(p.id_producto)}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
           </div>
         </div>
       )}
 
+      {/* La grilla se acomoda sola: con una profesional sale centrada y grande,
+          con ocho sale en dos filas. */}
       {pantalla === "profesionales" && (
         <div className="flex-1 flex flex-col">
           <Navbar onVolver={volverAInicio} onInicio={volverAInicio} idioma={idioma} />
-          <div className="flex-1 px-6 pt-6 pb-10 max-w-3xl mx-auto w-full">
-            <h2 className={`text-2xl mb-4 ${bodoniModa.className} italic`}>Profesionales</h2>
+          <div className="flex-1 px-5 md:px-8 pt-5 pb-10 max-w-6xl mx-auto w-full flex flex-col items-center gap-5 md:gap-7">
+            <div className="text-center">
+              <h2 className={`${bodoniModa.className} italic text-[clamp(24px,3vw,40px)] leading-tight`}>
+                {t("profesionalesTitulo")}
+              </h2>
+              <p className="text-[13px] md:text-[15px] text-[#8a8a8a] mt-1.5">{t("profesionalesSub")}</p>
+            </div>
 
             {categoriasProf.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-5">
+              <div className="flex flex-wrap gap-2 justify-center">
                 {categoriasProf.map((cat) => {
                   const on = categoriaProf === cat;
                   return (
                     <button
                       key={cat}
                       onClick={() => toggleCategoriaProf(cat)}
-                      className="rounded-full border-[1.5px] px-3.5 py-2 text-[12px] font-bold"
+                      className="rounded-full border-[1.5px] px-4 py-2 text-[12.5px] font-bold transition-colors"
                       style={
                         on
                           ? { background: SAGE_DARK, borderColor: SAGE_DARK, color: "#fff" }
@@ -1499,18 +1734,28 @@ export default function AsesorApp({
             )}
 
             {profesionalesFiltrados.length === 0 ? (
-              <p className="text-[#686868] text-sm text-center py-12">
-                Todav&iacute;a no hay profesionales cargados ac&aacute;.
-              </p>
+              <p className="text-[#686868] text-sm text-center py-12">{t("profesionalesVacio")}</p>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div
+                className={`w-full grid gap-4 md:gap-5 ${
+                  profesionalesFiltrados.length === 1
+                    ? "grid-cols-1 max-w-[320px]"
+                    : profesionalesFiltrados.length === 2
+                      ? "grid-cols-2 max-w-[660px]"
+                      : "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4"
+                }`}
+              >
                 {profesionalesFiltrados.map((prof) => (
                   <button
                     key={prof.id_profesional}
                     onClick={() => irAFichaProfesional(prof.id_profesional)}
-                    className="rounded-2xl bg-white overflow-hidden shadow-sm text-left"
+                    className="rounded-3xl bg-white overflow-hidden text-left flex flex-col transition-transform active:scale-[.98]"
+                    style={{ boxShadow: "0 16px 32px -24px rgba(20,28,14,.55)" }}
                   >
-                    <span className="aspect-square w-full flex items-center justify-center font-extrabold text-[26px]" style={{ background: `linear-gradient(135deg, ${SAGE_TINT}, #d8d8d8)`, color: SAGE_DARK }}>
+                    <span
+                      className="aspect-[4/3] w-full flex items-center justify-center font-extrabold text-[34px] text-white overflow-hidden"
+                      style={{ background: "linear-gradient(150deg, #4d7635, #2a3a22)" }}
+                    >
                       {prof.foto ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={prof.foto} alt="" className="w-full h-full object-cover" />
@@ -1518,17 +1763,28 @@ export default function AsesorApp({
                         `${prof.nombre.charAt(0)}${prof.apellido ? prof.apellido.charAt(0) : ""}`.toUpperCase()
                       )}
                     </span>
-                    <div className="p-2.5 flex flex-col gap-0.5">
-                      <p className="text-[13px] font-extrabold leading-tight">
+                    <div className="p-3.5 md:p-4 flex flex-col gap-1 flex-1">
+                      <p className="text-[15px] md:text-[17px] font-extrabold leading-tight">
                         {prof.nombre} {prof.apellido ?? ""}
                       </p>
                       {(prof.titulo || prof.especialidad) && (
-                        <p className="text-[10px] font-bold leading-snug" style={{ color: SAGE_DARK }}>
+                        <p
+                          className="text-[10px] md:text-[11px] font-extrabold uppercase tracking-[.13em] leading-snug"
+                          style={{ color: "#4d7635" }}
+                        >
                           {[prof.titulo, prof.especialidad].filter(Boolean).join(" · ")}
                         </p>
                       )}
-                      <span className="text-[9.5px] font-extrabold mt-1" style={{ color: SAGE_DARK }}>
-                        Ver más ›
+                      {(fortalezasPorProfesional[prof.id_profesional] ?? []).length > 0 && (
+                        <p className="text-[11.5px] md:text-[12.5px] text-[#7d8571] leading-snug mt-1">
+                          {(fortalezasPorProfesional[prof.id_profesional] ?? [])
+                            .slice(0, 3)
+                            .map((f) => f.nombre)
+                            .join(" · ")}
+                        </p>
+                      )}
+                      <span className="text-[11px] font-extrabold mt-auto pt-2.5" style={{ color: SAGE_DARK }}>
+                        {t("verFicha")} ›
                       </span>
                     </div>
                   </button>
