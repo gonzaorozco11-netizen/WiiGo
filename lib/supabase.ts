@@ -148,6 +148,10 @@ export type Producto = {
   // neta que se usa para el margen.
   iva_porcentaje: number | null;
   precio_venta: number | null;
+  // Los dos son "el precio", no uno con descuento: `precio_venta` es lo que se
+  // cobra con tarjeta o Mercado Pago y `precio_efectivo` lo que se cobra
+  // pagando en efectivo. La cuenta vive en lib/precios.ts.
+  precio_efectivo: number | null;
   descuento_porcentaje: number | null;
   puntos: number;
   imagen: string | null;
@@ -182,11 +186,12 @@ export type ProductoPublico = Pick<
   | "nombre_pt"
   | "imagen"
   | "precio_venta"
+  | "precio_efectivo"
   | "descuento_porcentaje"
 >;
 
 export const COLUMNAS_PRODUCTO_PUBLICO =
-  "id_producto,id_marca,id_subcategoria,nombre,nombre_en,nombre_pt,imagen,precio_venta,descuento_porcentaje";
+  "id_producto,id_marca,id_subcategoria,nombre,nombre_en,nombre_pt,imagen,precio_venta,precio_efectivo,descuento_porcentaje";
 
 // Idem para las variantes: el SKU, el código de barras y los umbrales de
 // stock son datos internos y no hacen falta para mostrar un sabor.

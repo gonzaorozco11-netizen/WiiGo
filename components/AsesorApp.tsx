@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import { ambosPrecios } from "@/lib/precios";
 import { Fredoka, Bodoni_Moda } from "next/font/google";
 import type {
   Local,
@@ -425,6 +426,38 @@ function Navbar({ onVolver, onInicio, idioma }: { onVolver: () => void; onInicio
 
 /** Botón de marca en los resultados, con cuántos productos tiene. */
 /**
+ * Los dos precios de un producto en la tarjeta.
+ *
+ * Arriba el de lista —lo que se cobra con tarjeta o Mercado Pago— y debajo, en
+ * verde, el de efectivo. El de efectivo solo aparece si está cargado y es más
+ * barato: cuando la marca todavía no lo cargó se muestra un precio solo, sin
+ * huecos ni "ahorrás $0".
+ */
+function PrecioTarjeta({ producto }: { producto: ProductoPublico }) {
+  const { lista, efectivo, ahorro } = ambosPrecios(producto, null);
+  return (
+    <div className="mt-0.5 flex flex-col gap-0.5">
+      <span className={`${fredoka.className} text-[13.5px] font-semibold leading-none`}>
+        {formatoPrecio(lista)}
+      </span>
+      {ahorro !== null && (
+        <span
+          className="self-start inline-flex items-baseline gap-1 rounded px-1.5 py-0.5"
+          style={{ background: "#eaf3dc" }}
+        >
+          <span className="text-[7.5px] font-extrabold uppercase tracking-[.1em]" style={{ color: "#6e8f52" }}>
+            Efectivo
+          </span>
+          <span className={`${fredoka.className} text-[11px] font-semibold`} style={{ color: "#3d6b28" }}>
+            {formatoPrecio(efectivo)}
+          </span>
+        </span>
+      )}
+    </div>
+  );
+}
+
+/**
  * Tarjeta de producto en los resultados.
  *
  * `compacta` es la versión de una sola fila que se usa con el teclado abierto:
@@ -484,9 +517,7 @@ function TarjetaResultado({
             {etiqueta}
           </span>
         )}
-        <span className={`${fredoka.className} text-[13.5px] font-semibold mt-0.5`}>
-          {formatoPrecio(producto.precio_venta)}
-        </span>
+        <PrecioTarjeta producto={producto} />
       </div>
     </div>
   );
@@ -1597,6 +1628,25 @@ export default function AsesorApp({
                                     {formatoPrecio(p.precio_venta)}
                                   </span>
                                 </div>
+                                {ambosPrecios(p, null).ahorro !== null && (
+                                  <span
+                                    className="self-start inline-flex items-baseline gap-1 rounded px-1.5 py-0.5 mt-0.5"
+                                    style={{ background: "#eaf3dc" }}
+                                  >
+                                    <span
+                                      className="text-[7.5px] font-extrabold uppercase tracking-[.1em]"
+                                      style={{ color: "#6e8f52" }}
+                                    >
+                                      Efectivo
+                                    </span>
+                                    <span
+                                      className={`${fredoka.className} text-[11px] font-semibold`}
+                                      style={{ color: "#3d6b28" }}
+                                    >
+                                      {formatoPrecio(ambosPrecios(p, null).efectivo)}
+                                    </span>
+                                  </span>
+                                )}
                               </div>
                             </div>
                           ))}
@@ -2421,6 +2471,7 @@ function ProductoDetalleModal({
   ].filter((m): m is { label: string; valor: number } => m.valor !== null);
 
   const macroSeleccionada = macros.find((m) => m.label === macroActiva);
+  const precios = ambosPrecios(producto, null);
 
   const hayKcal = ficha?.kcal_100g !== null && ficha?.kcal_100g !== undefined;
   // Si el producto no tiene nada de información nutricional cargada, la hoja
@@ -2543,17 +2594,47 @@ function ProductoDetalleModal({
               <h3 className={`${bodoniModa.className} italic text-[26px] md:text-[32px] leading-tight mt-1`}>
                 {traducir(idioma, producto.nombre, producto.nombre_en, producto.nombre_pt)}
               </h3>
-              <div className="flex items-baseline gap-2.5 mt-2">
-                <span
-                  className={`${fredoka.className} text-[24px] md:text-[28px] font-semibold`}
-                  style={{ color: (producto.descuento_porcentaje ?? 0) > 0 ? C3 : "#2d2d2d" }}
-                >
-                  {formatoPrecio(precioConDescuento(producto))}
-                </span>
-                {(producto.descuento_porcentaje ?? 0) > 0 && (
-                  <span className="text-[15px] text-[#a8a8a8] line-through">
-                    {formatoPrecio(producto.precio_venta)}
+              <div className="mt-2.5 flex flex-wrap items-end gap-x-4 gap-y-2">
+                <div className="flex items-baseline gap-2.5">
+                  <span
+                    className={`${fredoka.className} text-[24px] md:text-[28px] font-semibold`}
+                    style={{ color: (producto.descuento_porcentaje ?? 0) > 0 ? C3 : "#2d2d2d" }}
+                  >
+                    {formatoPrecio(precios.lista)}
                   </span>
+                  {(producto.descuento_porcentaje ?? 0) > 0 && (
+                    <span className="text-[15px] text-[#a8a8a8] line-through">
+                      {formatoPrecio(producto.precio_venta)}
+                    </span>
+                  )}
+                </div>
+
+                {/* El precio de efectivo es un argumento de venta, no un
+                    detalle: va con el ahorro en pesos al lado, que es lo que
+                    termina de convencer. */}
+                {precios.ahorro !== null && (
+                  <div
+                    className="flex flex-col rounded-xl px-3 py-2"
+                    style={{ background: "#eaf3dc" }}
+                  >
+                    <span
+                      className="text-[9px] font-extrabold uppercase tracking-[.16em]"
+                      style={{ color: "#6e8f52" }}
+                    >
+                      {idioma === "en" ? "Paying cash" : idioma === "pt" ? "Pagando em dinheiro" : "Pagando en efectivo"}
+                    </span>
+                    <div className="flex items-baseline gap-2">
+                      <span
+                        className={`${fredoka.className} text-[20px] md:text-[23px] font-semibold leading-tight`}
+                        style={{ color: "#3d6b28" }}
+                      >
+                        {formatoPrecio(precios.efectivo)}
+                      </span>
+                      <span className="text-[11.5px] font-bold" style={{ color: "#6e8f52" }}>
+                        −{formatoPrecio(precios.ahorro)}
+                      </span>
+                    </div>
+                  </div>
                 )}
               </div>
             </div>
