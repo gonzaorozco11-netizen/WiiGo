@@ -75,6 +75,9 @@ function productoFromForm(formData: FormData, idMarca: string, idSubcategoria: s
     descripcion: text(formData, "descripcion"),
     costo_informado: number(formData, "costo_informado"),
     precio_venta: number(formData, "precio_venta"),
+    // Vacío queda en null a propósito: null significa "en efectivo se cobra lo
+    // mismo que con tarjeta", que es distinto de un 0 —que sería regalarlo—.
+    precio_efectivo: number(formData, "precio_efectivo"),
     descuento_porcentaje: number(formData, "descuento_porcentaje"),
     id_proveedor_liquidacion: text(formData, "id_proveedor_liquidacion"),
     imagen: text(formData, "imagen"),

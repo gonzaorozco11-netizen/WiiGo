@@ -254,6 +254,7 @@ export default function ProductoFormModal({
             costoInicial={producto?.costo_informado ?? null}
             precioInicial={producto?.precio_venta ?? null}
             descuentoInicial={producto?.descuento_porcentaje ?? null}
+            precioEfectivoInicial={producto?.precio_efectivo ?? null}
             labelCosto={marcaSeleccionada?.tipo_comercializacion === "PROPIA" ? "Costo (CMV, sin IVA)" : "Costo informado"}
             margenMinimo={margenMinimo}
           />
@@ -512,12 +513,14 @@ function PrecioCalculadora({
   costoInicial,
   precioInicial,
   descuentoInicial,
+  precioEfectivoInicial,
   labelCosto,
   margenMinimo,
 }: {
   costoInicial: number | null;
   precioInicial: number | null;
   descuentoInicial: number | null;
+  precioEfectivoInicial: number | null;
   labelCosto: string;
   margenMinimo: number;
 }) {
@@ -532,6 +535,26 @@ function PrecioCalculadora({
       : 0
   );
   const [descuento, setDescuento] = useState(descuentoInicial ?? 0);
+
+  // Los dos van de la mano: se escribe uno y el otro se completa. Se guardan
+  // por separado para que escribir "14" no le pise los decimales al monto ni
+  // al revés.
+  const [efectivo, setEfectivo] = useState(precioEfectivoInicial ?? 0);
+  const [offEfectivo, setOffEfectivo] = useState(() =>
+    precioInicial && precioEfectivoInicial && precioInicial > 0
+      ? ((precioInicial - precioEfectivoInicial) / precioInicial) * 100
+      : 0
+  );
+
+  function cambiarEfectivoPorMonto(nuevo: number) {
+    setEfectivo(nuevo);
+    setOffEfectivo(precio > 0 && nuevo > 0 ? ((precio - nuevo) / precio) * 100 : 0);
+  }
+
+  function cambiarEfectivoPorPorcentaje(pct: number) {
+    setOffEfectivo(pct);
+    setEfectivo(pct > 0 && precio > 0 ? Math.round(precio * (1 - pct / 100)) : 0);
+  }
 
   function recalcularDesdeCosto(nuevoCosto: number) {
     setCosto(nuevoCosto);
@@ -564,6 +587,7 @@ function PrecioCalculadora({
   }
 
   const precioRedondeado = Math.round(precio * 100) / 100;
+  const efectivoRedondeado = Math.round(efectivo * 100) / 100;
   const margenBajo = precioRedondeado > 0 && margen < margenMinimo;
 
   return (
@@ -655,6 +679,62 @@ function PrecioCalculadora({
           IIBB, costos financieros de cobro y un colchón operativo — ajustable en Configuración).
         </p>
       )}
+
+      {/* El precio en efectivo no es un descuento: es el otro precio del
+          producto. Se escribe el monto o el %, lo que sea más cómodo, y el otro
+          se completa solo. Vacío = se cobra lo mismo en efectivo. */}
+      <div className="border-t border-neutral-200 pt-3 space-y-2">
+        <h4 className="text-sm font-semibold text-neutral-900">💵 Precio pagando en efectivo</h4>
+        <p className="text-xs text-neutral-500">
+          Lo que se cobra si el cliente paga en efectivo. Lo de arriba es lo que se cobra con tarjeta o Mercado Pago.
+          Dejalo vacío si en ese producto cobrás lo mismo de las dos formas.
+        </p>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="precio_efectivo_visible">
+              Precio en efectivo
+            </label>
+            <input
+              id="precio_efectivo_visible"
+              type="number"
+              step="0.01"
+              value={efectivo || ""}
+              onChange={(e) => cambiarEfectivoPorMonto(Number(e.target.value) || 0)}
+              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+            <input type="hidden" name="precio_efectivo" value={efectivo > 0 ? efectivoRedondeado : ""} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="efectivo_off">
+              Es un % menos
+              <Ayuda texto="Atajo: escribí acá cuánto más barato es en efectivo y el monto se calcula solo. En Animal Fitt, por ejemplo, es 14%." />
+            </label>
+            <input
+              id="efectivo_off"
+              type="number"
+              step="0.1"
+              value={offEfectivo || ""}
+              onChange={(e) => cambiarEfectivoPorPorcentaje(Number(e.target.value) || 0)}
+              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+          </div>
+        </div>
+
+        {efectivoRedondeado > 0 && precioRedondeado > 0 && (
+          <p
+            className={`text-xs rounded-lg px-3 py-2 ${
+              efectivoRedondeado >= precioRedondeado
+                ? "text-amber-700 bg-amber-50 border border-amber-200"
+                : "text-emerald-800 bg-emerald-50 border border-emerald-200"
+            }`}
+          >
+            {efectivoRedondeado >= precioRedondeado
+              ? "⚠️ El precio en efectivo no es más barato que el de lista — revisalo, porque el cliente no va a ver ningún ahorro."
+              : `El cliente ahorra $${(precioRedondeado - efectivoRedondeado).toLocaleString("es-AR")} pagando en efectivo (${offEfectivo.toFixed(1)}% menos).`}
+          </p>
+        )}
+      </div>
     </div>
   );
 }
