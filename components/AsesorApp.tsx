@@ -2497,11 +2497,13 @@ function ProductoDetalleModal({
       style={{ background: "rgba(20,17,13,.55)" }}
       onClick={onClose}
     >
-      {/* Se abre como un libro: la hoja izquierda es el producto, la derecha la
-          información nutricional. En celular se apilan. */}
+      {/* Se abre como un libro: la foto a la izquierda y todo lo que se lee a la
+          derecha. Siempre en dos hojas, aunque el producto no tenga información
+          nutricional: apilado en una sola columna el precio y los sabores
+          quedaban abajo de todo y se cortaban. En celular sí se apilan. */}
       <div
-        className={`relative w-full rounded-t-3xl sm:rounded-3xl overflow-hidden max-h-[94vh] sm:max-h-[88vh] grid ${
-          hayNutricional ? "sm:max-w-5xl md:grid-cols-2" : "sm:max-w-xl"
+        className={`relative w-full rounded-t-3xl sm:rounded-3xl overflow-hidden max-h-[94vh] sm:max-h-[88vh] grid md:grid-cols-2 ${
+          hayNutricional ? "sm:max-w-5xl" : "sm:max-w-3xl"
         }`}
         style={{
           background: "#fff",
@@ -2522,11 +2524,13 @@ function ProductoDetalleModal({
           ✕
         </button>
 
-        {/* ---------- hoja izquierda: el producto ---------- */}
-        <div className="bg-white overflow-y-auto flex flex-col">
+        {/* ---------- hoja izquierda: la foto ---------- */}
+        <div className="bg-white overflow-y-auto flex flex-col min-h-0">
           <div className="relative bg-white px-5 pt-5">
+            {/* Techo al alto de la foto: si crece libre empuja el precio fuera
+                de la ficha y hay que buscarlo deslizando. */}
             <div
-              className="relative w-full aspect-square max-h-[38vh] sm:max-h-none flex items-center justify-center"
+              className="relative w-full aspect-square max-h-[34vh] md:max-h-[46vh] flex items-center justify-center"
               style={{
                 transform: abierto ? "scale(1)" : "scale(1.06)",
                 transition: "transform .9s cubic-bezier(.2,.8,.2,1)",
@@ -2552,7 +2556,7 @@ function ProductoDetalleModal({
           </div>
 
           {fotos.length > 1 && (
-            <div className="flex gap-2 px-5 pt-3 justify-center">
+            <div className="flex gap-2 px-5 py-3 justify-center">
               {fotos.map((f) => (
                 <button
                   key={f}
@@ -2566,7 +2570,13 @@ function ProductoDetalleModal({
               ))}
             </div>
           )}
+        </div>
 
+        {/* ---------- hoja derecha: todo lo que se lee ---------- */}
+        <div
+          className="overflow-y-auto min-h-0 flex flex-col border-t md:border-t-0 md:border-l border-[#e8eade]"
+          style={{ background: hayNutricional ? "#f7f9f2" : "#fff" }}
+        >
           <div
             className="px-6 pt-5 pb-6 flex flex-col gap-4"
             style={{
@@ -2678,21 +2688,15 @@ function ProductoDetalleModal({
               </p>
             )}
           </div>
-        </div>
 
-        {/* ---------- hoja derecha: la información nutricional ---------- */}
-        {hayNutricional && (
-          <div
-            className="overflow-y-auto px-6 py-6 md:py-7 flex flex-col gap-4 border-t md:border-t-0 md:border-l border-[#dfe3d6]"
-            style={{
-              background: "#eef1e7",
-              opacity: abierto ? 1 : 0,
-              transition: "opacity .5s ease .25s",
-            }}
-          >
-            <p className="text-[10.5px] font-extrabold uppercase tracking-[.2em] text-[#8a9180]">
-              {tituloNutricional}
-            </p>
+          {hayNutricional && (
+            <div
+              className="px-6 pt-5 pb-6 flex flex-col gap-4 border-t border-[#e2e6da]"
+              style={{ opacity: abierto ? 1 : 0, transition: "opacity .5s ease .25s" }}
+            >
+              <p className="text-[10.5px] font-extrabold uppercase tracking-[.2em] text-[#8a9180]">
+                {tituloNutricional}
+              </p>
 
             {(hayKcal || macros.length > 0) && (
               <div className="flex flex-col items-center gap-4">
@@ -2847,19 +2851,20 @@ function ProductoDetalleModal({
               </div>
             )}
 
-            {ficha?.video && (
-              <a
-                href={ficha.video}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[12.5px] font-bold underline mt-auto"
-                style={{ color: SAGE_DARK }}
-              >
-                Ver video ↗
-              </a>
-            )}
-          </div>
-        )}
+              {ficha?.video && (
+                <a
+                  href={ficha.video}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[12.5px] font-bold underline self-start"
+                  style={{ color: SAGE_DARK }}
+                >
+                  Ver video ↗
+                </a>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
