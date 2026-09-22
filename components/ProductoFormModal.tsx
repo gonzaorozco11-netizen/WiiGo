@@ -615,6 +615,7 @@ function PrecioCalculadora({
         <div>
           <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="descuento_porcentaje">
             Descuento %
+            <Ayuda texto="La oferta que pinta el cartelito «-20%» en el catálogo. Se aplica sobre el precio de tarjeta. Si el producto también tiene precio en efectivo, los descuentos no se suman: el cliente paga el más barato de los dos. Ver la ayuda del bloque de efectivo, más abajo." />
           </label>
           <input
             id="descuento_porcentaje"
@@ -684,7 +685,10 @@ function PrecioCalculadora({
           producto. Se escribe el monto o el %, lo que sea más cómodo, y el otro
           se completa solo. Vacío = se cobra lo mismo en efectivo. */}
       <div className="border-t border-neutral-200 pt-3 space-y-2">
-        <h4 className="text-sm font-semibold text-neutral-900">💵 Precio pagando en efectivo</h4>
+        <h4 className="text-sm font-semibold text-neutral-900">
+          💵 Precio pagando en efectivo
+          <Ayuda texto="Los descuentos NO se suman. La oferta se aplica al precio de tarjeta, y el que paga en efectivo se lleva el más barato de los dos. Ejemplo con lista $3.000 y efectivo $2.700: sin oferta paga $2.700; con oferta del 5% paga $2.700 (gana el de efectivo); con oferta del 20% paga $2.400 (gana el de oferta). Así el efectivo nunca sale más caro, y una oferta grande no termina siendo un descuento del 30% que nadie decidió." />
+        </h4>
         <p className="text-xs text-neutral-500">
           Lo que se cobra si el cliente paga en efectivo. Lo de arriba es lo que se cobra con tarjeta o Mercado Pago.
           Dejalo vacío si en ese producto cobrás lo mismo de las dos formas.
