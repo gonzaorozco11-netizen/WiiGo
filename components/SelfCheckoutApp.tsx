@@ -116,6 +116,35 @@ function precioFinal(
   );
 }
 
+/**
+ * La foto del producto en las listas del totem.
+ *
+ * Con el nombre solo, dos sabores de la misma proteína se leen casi igual y el
+ * cliente no sabe cuál agregó. La foto lo resuelve de un vistazo.
+ *
+ * `loading="lazy"` y `decoding="async"` para la placa del totem: el carrito
+ * puede tener varios productos y no hay que frenar la pantalla por las fotos.
+ * Si el producto no tiene foto cargada queda el cajoncito, sin hueco raro.
+ */
+function FotoItem({ producto }: { producto: Producto }) {
+  return (
+    <div className="sc-item-icono">
+      {producto.imagen ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={producto.imagen}
+          alt=""
+          className="sc-item-foto"
+          loading="lazy"
+          decoding="async"
+        />
+      ) : (
+        "📦"
+      )}
+    </div>
+  );
+}
+
 type PrecioPar = { venta: number | null; efectivo: number | null };
 
 type PreciosEnVivo = {
@@ -570,16 +599,29 @@ html, body { margin: 0; padding: 0; height: 100%; background: #fafafa; }
   margin-bottom: 10px;
 }
 .sc-item-icono {
-  width: 46px;
-  height: 46px;
+  width: 56px;
+  height: 56px;
   border-radius: 12px;
-  background: #f5f5f5;
+  background: #ffffff;
+  border: 1px solid #ececec;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 20px;
   flex-shrink: 0;
   margin-right: 12px;
+  overflow: hidden;
+}
+/* La foto del producto en el carrito. Entra entera en vez de recortada: las
+   fotos vienen cuadradas con fondo blanco y el envase recortado, y al
+   recortarlas se les perdería la etiqueta — que es justo lo que el cliente mira
+   para reconocer cuál agregó. */
+.sc-item-foto {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 3px;
+  box-sizing: border-box;
 }
 .sc-item-info { flex: 1 1 auto; min-width: 0; }
 .sc-item-nombre {
@@ -2198,7 +2240,7 @@ export default function SelfCheckoutApp({
               <div className="sc-carrito-lista">
                 {itemsCarrito.map((i) => (
                   <div key={i.variante.id_variante} className="sc-item">
-                    <div className="sc-item-icono">📦</div>
+                    <FotoItem producto={i.producto} />
                     <div className="sc-item-info">
                       <p className="sc-item-nombre">{i.producto.nombre}</p>
                       <p className="sc-item-detalle">
@@ -2264,7 +2306,7 @@ export default function SelfCheckoutApp({
           <div className="sc-modal-fondo-lista">
             {itemsCarrito.map((i) => (
               <div key={i.variante.id_variante} className="sc-item">
-                <div className="sc-item-icono">📦</div>
+                <FotoItem producto={i.producto} />
                 <p className="sc-item-nombre sc-item-info">{i.producto.nombre}</p>
                 <p className="sc-item-total">${formatearMonto(i.precio * i.cantidad)}</p>
               </div>
@@ -2452,7 +2494,7 @@ export default function SelfCheckoutApp({
           <div className="sc-modal-fondo-lista">
             {itemsCarrito.map((i) => (
               <div key={i.variante.id_variante} className="sc-item">
-                <div className="sc-item-icono">📦</div>
+                <FotoItem producto={i.producto} />
                 <p className="sc-item-nombre sc-item-info">{i.producto.nombre}</p>
                 <p className="sc-item-total">${formatearMonto(i.precio * i.cantidad)}</p>
               </div>
