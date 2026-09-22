@@ -209,6 +209,9 @@ export type VarianteProducto = {
   sku: string | null;
   codigo_barras: string | null;
   precio_venta: number | null;
+  // Si la variante tiene precio propio, pisa al del producto — también en
+  // efectivo. Ver lib/precios.ts.
+  precio_efectivo: number | null;
   stock_minimo: number;
   stock_objetivo: number;
   orden: number | null;

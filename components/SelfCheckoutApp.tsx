@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Local, Marca, Producto, VarianteProducto, Stock } from "@/lib/supabase";
+import { precioDe, type MedioDePago } from "@/lib/precios";
 import type { Clima } from "@/lib/clima";
 import { WIIGO_LOGO_DATA_URI, WIIGO_ISOTIPO_DATA_URI } from "@/lib/wiigo-logo-data";
 import {
@@ -34,7 +35,11 @@ type Item = {
   variante: VarianteProducto;
   producto: Producto;
   marca: Marca | undefined;
+  /** Lo que se cobra pagando con Mercado Pago. */
   precio: number;
+  /** Lo que se cobra pagando en efectivo. Queda igual al de lista cuando la
+   *  marca todavía no cargó precio de efectivo para ese producto. */
+  precioEfectivo: number;
   cantidadDisponible: number;
 };
 
@@ -86,20 +91,36 @@ function IsotipoWiiGo({ alto }: { alto: number }) {
  * servidor al abrir la página — así el totem nunca se queda sin precio por un
  * problema de red.
  */
-function precioFinal(producto: Producto, variante: VarianteProducto, precios?: PreciosEnVivo) {
-  const deVariante = precios?.variantes.get(variante.id_variante);
-  const deProducto = precios?.productos.get(producto.id_producto);
-  const base =
-    (deVariante !== undefined ? deVariante : variante.precio_venta) ??
-    (deProducto !== undefined ? deProducto : producto.precio_venta) ??
-    0;
-  const descuento = producto.descuento_porcentaje ?? 0;
-  return descuento > 0 ? Math.round(base * (1 - descuento / 100)) : base;
+function precioFinal(
+  producto: Producto,
+  variante: VarianteProducto,
+  medio: MedioDePago,
+  precios?: PreciosEnVivo
+) {
+  const vVivo = precios?.variantes.get(variante.id_variante);
+  const pVivo = precios?.productos.get(producto.id_producto);
+  // La cuenta —variante pisa a producto, efectivo pisa a lista, y encima la
+  // oferta— vive en lib/precios.ts y la comparten el POS, el asesor y el
+  // servidor del totem. Acá solo se arma con los valores más frescos que haya.
+  return precioDe(
+    {
+      precio_venta: pVivo !== undefined ? pVivo.venta : producto.precio_venta,
+      precio_efectivo: pVivo !== undefined ? pVivo.efectivo : producto.precio_efectivo,
+      descuento_porcentaje: producto.descuento_porcentaje,
+    },
+    {
+      precio_venta: vVivo !== undefined ? vVivo.venta : variante.precio_venta,
+      precio_efectivo: vVivo !== undefined ? vVivo.efectivo : variante.precio_efectivo,
+    },
+    medio
+  );
 }
 
+type PrecioPar = { venta: number | null; efectivo: number | null };
+
 type PreciosEnVivo = {
-  variantes: Map<string, number | null>;
-  productos: Map<string, number | null>;
+  variantes: Map<string, PrecioPar>;
+  productos: Map<string, PrecioPar>;
 };
 
 // Tormenta reusa la misma foto de lluvia, oscurecida por CSS (ver
@@ -824,8 +845,31 @@ html, body { margin: 0; padding: 0; height: 100%; background: #fafafa; }
   letter-spacing: .06em;
 }
 .sc-total-monto { font-size: 34px; font-weight: 800; color: #171717; letter-spacing: -0.02em; }
+/* Cuando el total que se va a cobrar es el de efectivo, la caja se pone verde:
+   el color confirma la decisión que acaba de tomar. */
+.sc-total-box-efvo { background: #ecfdf3; border-color: rgba(5,150,105,.35); }
+.sc-total-box-efvo .sc-total-label { color: #047857; }
+
+/* El aviso del carrito: aparece mientras carga productos, antes de decidir. */
+.sc-efvo-aviso {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #ecfdf3;
+  border: 1px solid rgba(5,150,105,.3);
+  border-radius: 16px;
+  padding: 12px 14px;
+  margin-top: 10px;
+}
+.sc-efvo-emoji { font-size: 26px; flex-shrink: 0; }
+.sc-efvo-tx { flex: 1; min-width: 0; }
+.sc-efvo-titulo { font-size: 16px; font-weight: 800; color: #065f46; line-height: 1.25; }
+.sc-efvo-sub { font-size: 13px; color: #047857; margin-top: 2px; }
+.sc-efvo-pct { font-size: 22px; font-weight: 800; color: #065f46; flex-shrink: 0; }
+.sc-item-efvo { color: #047857; font-weight: 600; }
 
 .sc-pago-btn {
+  position: relative;
   display: flex;
   align-items: center;
   text-align: left;
@@ -837,6 +881,22 @@ html, body { margin: 0; padding: 0; height: 100%; background: #fafafa; }
   margin-bottom: 10px;
 }
 .sc-pago-btn-sel { border-color: #2563eb; background: #eff6ff; }
+/* El monto de cada forma de pago, a la derecha del nombre. */
+.sc-pago-monto { margin-left: auto; text-align: right; flex-shrink: 0; padding-left: 10px; }
+.sc-pago-monto-nro { display: block; font-size: 21px; font-weight: 800; color: #171717; letter-spacing: -0.02em; }
+.sc-pago-monto-antes { display: block; font-size: 12px; color: #737373; margin-top: 1px; }
+.sc-pago-tag {
+  position: absolute;
+  top: -10px;
+  left: 14px;
+  background: #059669;
+  color: #ffffff;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 3px 10px;
+  letter-spacing: .03em;
+}
 .sc-pago-icono {
   width: 42px;
   height: 42px;
@@ -1299,16 +1359,22 @@ export default function SelfCheckoutApp({
           // Si no cambió ningún precio no se toca el estado. En la placa del
           // totem un re-render de más se nota, y lo normal es que estos
           // números no cambien en todo el día.
+          const igual = (a: PrecioPar | undefined, venta: number | null, efectivo: number | null) =>
+            a !== undefined && a.venta === venta && a.efectivo === efectivo;
           if (
             prev &&
-            p.variantes.every((v) => prev.variantes.get(v.idVariante) === v.precio) &&
-            p.productos.every((x) => prev.productos.get(x.idProducto) === x.precio)
+            p.variantes.every((v) => igual(prev.variantes.get(v.idVariante), v.precio, v.precioEfectivo)) &&
+            p.productos.every((x) => igual(prev.productos.get(x.idProducto), x.precio, x.precioEfectivo))
           ) {
             return prev;
           }
           return {
-            variantes: new Map(p.variantes.map((v) => [v.idVariante, v.precio])),
-            productos: new Map(p.productos.map((x) => [x.idProducto, x.precio])),
+            variantes: new Map(
+              p.variantes.map((v) => [v.idVariante, { venta: v.precio, efectivo: v.precioEfectivo }])
+            ),
+            productos: new Map(
+              p.productos.map((x) => [x.idProducto, { venta: x.precio, efectivo: x.precioEfectivo }])
+            ),
           };
         });
       } catch {
@@ -1527,7 +1593,8 @@ export default function SelfCheckoutApp({
           variante,
           producto,
           marca: marcaPorId.get(producto.id_marca),
-          precio: precioFinal(producto, variante, preciosEnVivo ?? undefined),
+          precio: precioFinal(producto, variante, "OTRO", preciosEnVivo ?? undefined),
+          precioEfectivo: precioFinal(producto, variante, "EFECTIVO", preciosEnVivo ?? undefined),
           nombreBusqueda: producto.nombre.toLowerCase(),
         };
       })
@@ -1549,6 +1616,7 @@ export default function SelfCheckoutApp({
         producto: base.producto,
         marca: base.marca,
         precio: base.precio,
+        precioEfectivo: base.precioEfectivo,
         cantidadDisponible,
       });
     }
@@ -1570,6 +1638,7 @@ export default function SelfCheckoutApp({
         producto: base.producto,
         marca: base.marca,
         precio: base.precio,
+        precioEfectivo: base.precioEfectivo,
         cantidadDisponible,
       });
       if (encontrados.length >= 20) break; // corta apenas llena la lista
@@ -1587,7 +1656,26 @@ export default function SelfCheckoutApp({
   }, [carrito, itemPorVariante]);
 
   const totalItemsCarrito = itemsCarrito.reduce((acc, i) => acc + i.cantidad, 0);
-  const subtotalCarrito = itemsCarrito.reduce((acc, i) => acc + i.precio * i.cantidad, 0);
+
+  // Tres números distintos y cada uno tiene su lugar:
+  //   subtotalLista    lo que sale pagando con Mercado Pago
+  //   subtotalEfvo     lo que sale pagando en efectivo
+  //   subtotalCarrito  el que manda: sigue al medio de pago elegido, y es sobre
+  //                    el que se calculan descuentos, canje y puntos
+  //
+  // En el carrito se muestra el de lista aunque arranque elegido "efectivo": el
+  // cliente todavía no decidió nada y bajarle el total de entrada haría que
+  // después "suba" si elige Mercado Pago. El de efectivo se muestra al lado,
+  // como lo que es, una promesa.
+  const subtotalLista = itemsCarrito.reduce((acc, i) => acc + i.precio * i.cantidad, 0);
+  const subtotalEfvo = itemsCarrito.reduce((acc, i) => acc + i.precioEfectivo * i.cantidad, 0);
+  const ahorroEfectivo = Math.max(subtotalLista - subtotalEfvo, 0);
+  const subtotalCarrito = medioPagoElegido === "EFECTIVO" ? subtotalEfvo : subtotalLista;
+
+  /** El precio de una línea según cómo se está pagando. */
+  function precioSegunMedio(i: ItemCarrito) {
+    return medioPagoElegido === "EFECTIVO" ? i.precioEfectivo : i.precio;
+  }
 
   // Marcas presentes en el carrito con el saldo del profesional para cada
   // una — si el saldo no cubre todo el importe de esa marca, se aplica como
@@ -1596,7 +1684,10 @@ export default function SelfCheckoutApp({
     const subtotalPorMarca = new Map<string, number>();
     for (const i of itemsCarrito) {
       if (!i.producto.id_marca) continue;
-      subtotalPorMarca.set(i.producto.id_marca, (subtotalPorMarca.get(i.producto.id_marca) ?? 0) + i.precio * i.cantidad);
+      subtotalPorMarca.set(
+        i.producto.id_marca,
+        (subtotalPorMarca.get(i.producto.id_marca) ?? 0) + precioSegunMedio(i) * i.cantidad
+      );
     }
     if (!profesional) return [];
     return profesional.saldosPorMarca
@@ -1622,12 +1713,17 @@ export default function SelfCheckoutApp({
     const timeout = setTimeout(() => {
       previsualizarDescuentoReferidoAction(
         codigoLimpio,
-        itemsCarrito.map((i) => ({ idMarca: i.producto.id_marca, cantidad: i.cantidad, precioUnitario: i.precio })),
+        itemsCarrito.map((i) => ({
+          idMarca: i.producto.id_marca,
+          cantidad: i.cantidad,
+          precioUnitario: precioSegunMedio(i),
+        })),
         dni
       ).then(setDescuentoReferidoPreview);
     }, 400);
     return () => clearTimeout(timeout);
-  }, [codigoProfesional, itemsCarrito, dni]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [codigoProfesional, itemsCarrito, dni, medioPagoElegido]);
 
   // Mismo orden que confirmarPedido: primero el descuento de referido,
   // después el canje con saldo propio del profesional, y recién sobre lo
@@ -1758,7 +1854,9 @@ export default function SelfCheckoutApp({
         idVariante: i.variante.id_variante,
         idMarca: i.producto.id_marca,
         cantidad: i.cantidad,
-        precioUnitario: i.precio,
+        // Informativo: el servidor recalcula el precio contra la base según el
+        // medio de pago y no confía en este número.
+        precioUnitario: medioPago === "EFECTIVO" ? i.precioEfectivo : i.precio,
       })),
       dni,
       codigoProfesional,
@@ -2105,6 +2203,9 @@ export default function SelfCheckoutApp({
                       <p className="sc-item-nombre">{i.producto.nombre}</p>
                       <p className="sc-item-detalle">
                         {i.variante.nombre !== "Único" && `${i.variante.nombre} · `}${formatearMonto(i.precio)} c/u
+                        {i.precioEfectivo < i.precio && (
+                          <span className="sc-item-efvo"> · en efectivo ${formatearMonto(i.precioEfectivo)}</span>
+                        )}
                       </p>
                     </div>
                     <div className="sc-item-cant">
@@ -2126,10 +2227,29 @@ export default function SelfCheckoutApp({
               </div>
             )}
 
+            {/* El ahorro aparece acá y no recién al elegir el medio de pago: el
+                que trajo efectivo tiene que enterarse temprano, antes de haber
+                decidido mentalmente pagar con tarjeta. Va el monto en pesos,
+                que mueve más que el porcentaje. */}
+            {ahorroEfectivo > 0 && (
+              <div className="sc-efvo-aviso">
+                <span className="sc-efvo-emoji">💵</span>
+                <div className="sc-efvo-tx">
+                  <p className="sc-efvo-titulo">
+                    Pagando en efectivo te llevás todo por ${formatearMonto(subtotalEfvo)}
+                  </p>
+                  <p className="sc-efvo-sub">Te ahorrás ${formatearMonto(ahorroEfectivo)} en esta compra</p>
+                </div>
+                <span className="sc-efvo-pct">
+                  −{Math.round((ahorroEfectivo / subtotalLista) * 100)}%
+                </span>
+              </div>
+            )}
+
             <div className="sc-footer">
               <div>
                 <p className="sc-footer-label">Total</p>
-                <p className="sc-footer-total">${formatearMonto(subtotalCarrito)}</p>
+                <p className="sc-footer-total">${formatearMonto(subtotalLista)}</p>
               </div>
               <button onClick={() => setPaso("identificar")} disabled={itemsCarrito.length === 0} className="sc-btn-primary">
                 Ir a pagar →
@@ -2369,19 +2489,26 @@ export default function SelfCheckoutApp({
                 </div>
               )}
 
-              <div className="sc-total-box">
-                <p className="sc-total-label">Total a pagar</p>
-                <p className="sc-total-monto">${formatearMonto(totalFinal)}</p>
-              </div>
-
+              {/* Cada forma de pago muestra su propio monto: el cliente no
+                  tiene que hacer la cuenta ni confiar en un cartel, ve los dos
+                  números enfrentados. */}
               <button
                 onClick={() => setMedioPagoElegido("EFECTIVO")}
                 className={`sc-pago-btn${medioPagoElegido === "EFECTIVO" ? " sc-pago-btn-sel" : ""}`}
               >
+                {ahorroEfectivo > 0 && (
+                  <span className="sc-pago-tag">Te ahorrás ${formatearMonto(ahorroEfectivo)}</span>
+                )}
                 <span className="sc-pago-icono">💵</span>
                 <span>
                   <span className="sc-pago-nombre">Efectivo</span>
                   <span className="sc-pago-desc">Pagás en caja con el personal</span>
+                </span>
+                <span className="sc-pago-monto">
+                  <span className="sc-pago-monto-nro">${formatearMonto(subtotalEfvo)}</span>
+                  {ahorroEfectivo > 0 && (
+                    <span className="sc-pago-monto-antes">en vez de ${formatearMonto(subtotalLista)}</span>
+                  )}
                 </span>
               </button>
               <button
@@ -2393,6 +2520,9 @@ export default function SelfCheckoutApp({
                   <span className="sc-pago-nombre">Mercado Pago</span>
                   <span className="sc-pago-desc">Escaneás un QR y pagás desde tu celular</span>
                 </span>
+                <span className="sc-pago-monto">
+                  <span className="sc-pago-monto-nro">${formatearMonto(subtotalLista)}</span>
+                </span>
               </button>
               <div className="sc-pago-proximamente">
                 <span className="sc-pago-icono">💳</span>
@@ -2400,6 +2530,17 @@ export default function SelfCheckoutApp({
                   <span className="sc-pago-nombre">Débito / Crédito</span>
                   <span className="sc-pago-desc">Próximamente</span>
                 </span>
+              </div>
+
+              {/* El total va después de elegir, no antes: así el número grande
+                  ya es el que va a pagar y se ve el costo de la decisión. */}
+              <div className={`sc-total-box${medioPagoElegido === "EFECTIVO" && ahorroEfectivo > 0 ? " sc-total-box-efvo" : ""}`}>
+                <p className="sc-total-label">
+                  {medioPagoElegido === "EFECTIVO" && ahorroEfectivo > 0
+                    ? "Total a pagar en efectivo"
+                    : "Total a pagar"}
+                </p>
+                <p className="sc-total-monto">${formatearMonto(totalFinal)}</p>
               </div>
 
               {error && (

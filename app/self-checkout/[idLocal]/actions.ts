@@ -6,6 +6,7 @@ import { calcularBeneficioReferido, resolverCodigoProfesional } from "@/lib/refe
 import { buscarProfesionalPorDni, verificarPinProfesional, calcularDescuentoCanje, esProfesionalActivo } from "@/lib/canjesProfesionales";
 import { calcularCanjePuntos } from "@/lib/puntosWiigo";
 import { crearOrdenQrMp } from "@/lib/mercadopago";
+import { precioDe } from "@/lib/precios";
 import { turnoAbiertoDeLocal } from "@/app/(app)/turnos/actions";
 import { montoQuePideDni } from "@/lib/arca/config";
 import QRCode from "qrcode";
@@ -38,22 +39,24 @@ export async function obtenerStockLocal(idLocal: string): Promise<{ idVariante: 
  * pero esto sí.
  */
 export async function obtenerPreciosLocal(): Promise<{
-  variantes: { idVariante: string; precio: number | null }[];
-  productos: { idProducto: string; precio: number | null }[];
+  variantes: { idVariante: string; precio: number | null; precioEfectivo: number | null }[];
+  productos: { idProducto: string; precio: number | null; precioEfectivo: number | null }[];
 }> {
   const supabase = getSupabaseServerClient();
   const [v, p] = await Promise.all([
-    supabase.from("variantes_producto").select("id_variante, precio_venta").eq("estado", "ACTIVO"),
-    supabase.from("productos").select("id_producto, precio_venta").eq("estado", "ACTIVO"),
+    supabase.from("variantes_producto").select("id_variante, precio_venta, precio_efectivo").eq("estado", "ACTIVO"),
+    supabase.from("productos").select("id_producto, precio_venta, precio_efectivo").eq("estado", "ACTIVO"),
   ]);
   return {
     variantes: (v.data ?? []).map((r) => ({
       idVariante: r.id_variante as string,
       precio: (r.precio_venta as number | null) ?? null,
+      precioEfectivo: (r.precio_efectivo as number | null) ?? null,
     })),
     productos: (p.data ?? []).map((r) => ({
       idProducto: r.id_producto as string,
       precio: (r.precio_venta as number | null) ?? null,
+      precioEfectivo: (r.precio_efectivo as number | null) ?? null,
     })),
   };
 }
@@ -164,14 +167,14 @@ export async function confirmarPedido(
     const idsVariante = [...new Set(itemsPedido.map((i) => i.idVariante))];
     const { data: variantesDb, error: errorVariantes } = await supabase
       .from("variantes_producto")
-      .select("id_variante, id_producto, precio_venta, estado")
+      .select("id_variante, id_producto, precio_venta, precio_efectivo, estado")
       .in("id_variante", idsVariante);
     if (errorVariantes) return { error: friendlyDbError(errorVariantes) };
 
     const idsProducto = [...new Set((variantesDb ?? []).map((v) => v.id_producto as string))];
     const { data: productosDb, error: errorProductos } = await supabase
       .from("productos")
-      .select("id_producto, id_marca, precio_venta, descuento_porcentaje, estado")
+      .select("id_producto, id_marca, precio_venta, precio_efectivo, descuento_porcentaje, estado")
       .in("id_producto", idsProducto);
     if (errorProductos) return { error: friendlyDbError(errorProductos) };
 
@@ -206,9 +209,23 @@ export async function confirmarPedido(
         };
       }
 
-      const base = (variante.precio_venta as number | null) ?? (producto.precio_venta as number | null) ?? 0;
-      const descuento = (producto.descuento_porcentaje as number | null) ?? 0;
-      const precioReal = descuento > 0 ? Math.round(base * (1 - descuento / 100)) : base;
+      // El precio depende de cómo paga: en efectivo se cobra `precio_efectivo`
+      // y con Mercado Pago el de lista. Se recalcula acá contra la base y no se
+      // confía en lo que mandó el navegador —el totem es una pantalla pública—,
+      // así que cambiar el medio de pago en el cliente no puede cambiar lo que
+      // se cobra. La cuenta es la misma que usan el POS y el asesor.
+      const precioReal = precioDe(
+        {
+          precio_venta: producto.precio_venta as number | null,
+          precio_efectivo: producto.precio_efectivo as number | null,
+          descuento_porcentaje: producto.descuento_porcentaje as number | null,
+        },
+        {
+          precio_venta: variante.precio_venta as number | null,
+          precio_efectivo: variante.precio_efectivo as number | null,
+        },
+        medioPago === "EFECTIVO" ? "EFECTIVO" : "OTRO"
+      );
 
       items.push({
         idVariante: itemPedido.idVariante,
