@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { esCodigoInterno, limpiarCodigoBarras, formatearCodigo } from "@/lib/codigos";
 import { guardarCodigoBarras, volverAEtiquetaWiigo } from "@/app/(app)/codigos/actions";
+import type { EntradaPendiente } from "@/lib/entradas";
 import EscanerCodigo from "@/components/EscanerCodigo";
 import CodigoDeBarras from "@/components/CodigoDeBarras";
 
@@ -51,8 +52,17 @@ function nombreParaEtiqueta(item: ItemCodigo) {
   return sinMarca.length >= 12 ? sinMarca : item.producto;
 }
 
-export default function CodigosApp({ items }: { items: ItemCodigo[] }) {
-  const [tab, setTab] = useState<"revisar" | "imprimir">("revisar");
+export default function CodigosApp({
+  items,
+  entradas = [],
+}: {
+  items: ItemCodigo[];
+  entradas?: EntradaPendiente[];
+}) {
+  // Si acaba de entrar mercadería que hay que etiquetar, la pantalla arranca
+  // en Imprimir: es a lo que vino la operativa. Si no, arranca en Revisar, que
+  // es lo primero que hay que hacer con un catálogo nuevo.
+  const [tab, setTab] = useState<"revisar" | "imprimir">(entradas.length > 0 ? "imprimir" : "revisar");
   const [busqueda, setBusqueda] = useState("");
   const [soloFaltan, setSoloFaltan] = useState(false);
   const [escaneando, setEscaneando] = useState<ItemCodigo | "libre" | null>(null);
@@ -147,7 +157,7 @@ export default function CodigosApp({ items }: { items: ItemCodigo[] }) {
           onAviso={setAviso}
         />
       ) : (
-        <Imprimir items={conEtiqueta} />
+        <Imprimir items={conEtiqueta} entradas={entradas} />
       )}
 
       {escaneando && (
@@ -424,29 +434,13 @@ function EscanerDeLista({
 /*  Pestaña 2: imprimir la hoja                                        */
 /* ------------------------------------------------------------------ */
 
-function Imprimir({ items }: { items: ItemCodigo[] }) {
-  const [plancha, setPlancha] = useState<Plancha>(PLANCHAS[0]);
-  const [desde, setDesde] = useState(1);
-  const [elegidos, setElegidos] = useState<Set<string>>(() => new Set(items.map((i) => i.idVariante)));
-  const [copias, setCopias] = useState(1);
-
-  const porHoja = plancha.cols * plancha.filas;
-  const aImprimir = useMemo(
-    () => items.filter((i) => elegidos.has(i.idVariante)).flatMap((i) => Array(copias).fill(i) as ItemCodigo[]),
-    [items, elegidos, copias]
+function Imprimir({ items, entradas }: { items: ItemCodigo[]; entradas: EntradaPendiente[] }) {
+  const porVariante = useMemo(() => new Map(entradas.map((e) => [e.idVariante, e])), [entradas]);
+  const recibidos = useMemo(
+    () => items.filter((i) => porVariante.has(i.idVariante)),
+    [items, porVariante]
   );
-  // Los casilleros que se saltean al empezar más abajo cuentan como usados.
-  const hojas = Math.ceil((aImprimir.length + desde - 1) / porHoja) || 0;
-  const porMarca = useMemo(() => agruparPorMarca(items), [items]);
-
-  function alternar(id: string) {
-    setElegidos((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
+  const [modo, setModo] = useState<"recibido" | "todo">(recibidos.length > 0 ? "recibido" : "todo");
 
   if (items.length === 0) {
     return (
@@ -456,146 +450,220 @@ function Imprimir({ items }: { items: ItemCodigo[] }) {
     );
   }
 
+  const visibles = modo === "recibido" ? recibidos : items;
+  const unidades = (i: ItemCodigo) =>
+    modo === "recibido" ? porVariante.get(i.idVariante)?.cantidad ?? 1 : 1;
+
   return (
     <>
+      {/* Este bloque desaparece al imprimir; la hoja, que va adentro de
+          ConfigurarImpresion, no — por eso no se puede envolver todo junto:
+          `print:hidden` es display:none y se lleva puesto lo que tenga adentro. */}
       <div className="print:hidden">
+        {recibidos.length > 0 && (
+          <div className="inline-flex gap-1 bg-neutral-100 rounded-xl p-1 mb-3">
+            {(
+              [
+                ["recibido", `Lo que entró · ${recibidos.length}`],
+                ["todo", `Todo lo que falta · ${items.length}`],
+              ] as const
+            ).map(([id, texto]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setModo(id)}
+                className={`px-3.5 py-1.5 text-xs rounded-lg ${
+                  modo === id ? "bg-white shadow-sm font-semibold" : "text-neutral-600"
+                }`}
+              >
+                {texto}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* La duda aparece sola la primera vez, así que se contesta sin que haya
             que preguntar: el cartel de precio de la góndola es otra cosa. */}
         <p className="text-xs text-neutral-500 mb-3 leading-relaxed max-w-2xl">
-          Estos stickers llevan el nombre y el código de barras, <b>no el precio</b> — el precio se
-          imprime aparte, en el cartelito de góndola. Así un aumento no te obliga a despegar y
-          repegar todo.
-        </p>
-
-        <div className="border border-neutral-200 rounded-xl overflow-hidden bg-white mb-4">
-          {porMarca.map(([marca, deLaMarca]) => {
-            const todosMarcados = deLaMarca.every((i) => elegidos.has(i.idVariante));
-            return (
-              <div key={marca}>
-                <div className="flex items-center gap-2 bg-neutral-50 px-4 py-2 border-b border-neutral-200">
-                  <input
-                    type="checkbox"
-                    checked={todosMarcados}
-                    onChange={() =>
-                      setElegidos((prev) => {
-                        const next = new Set(prev);
-                        deLaMarca.forEach((i) =>
-                          todosMarcados ? next.delete(i.idVariante) : next.add(i.idVariante)
-                        );
-                        return next;
-                      })
-                    }
-                    className="w-4 h-4 accent-accent"
-                  />
-                  <span className="text-[11px] uppercase tracking-wider font-bold text-neutral-400">
-                    {marca} · {deLaMarca.length}
-                  </span>
-                </div>
-                {deLaMarca.map((i) => (
-                  <label
-                    key={i.idVariante}
-                    className="flex items-center gap-3 px-4 py-2 border-b border-neutral-100 last:border-b-0 cursor-pointer hover:bg-neutral-50"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={elegidos.has(i.idVariante)}
-                      onChange={() => alternar(i.idVariante)}
-                      className="w-4 h-4 accent-accent"
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-sm truncate">
-                        {i.producto}
-                        {i.variante && <span className="text-neutral-500"> — {i.variante}</span>}
-                      </span>
-                      <span className="block text-xs text-neutral-400">{i.sku ?? "sin SKU"}</span>
-                    </span>
-                    <span className="text-xs font-mono text-neutral-400 shrink-0">
-                      {i.codigo ? formatearCodigo(i.codigo) : "se genera al guardar"}
-                    </span>
-                  </label>
-                ))}
-              </div>
-            );
-          })}
-        </div>
-
-        <div className="rounded-xl bg-neutral-50 border border-neutral-200 p-4 flex flex-wrap items-end gap-4">
-          <div>
-            <label className="block text-xs text-neutral-500 mb-1" htmlFor="plancha">
-              Plancha de etiquetas
-            </label>
-            <select
-              id="plancha"
-              value={plancha.id}
-              onChange={(e) => {
-                const p = PLANCHAS.find((x) => x.id === e.target.value);
-                if (p) {
-                  setPlancha(p);
-                  setDesde(1);
-                }
-              }}
-              className="rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
-            >
-              {PLANCHAS.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.nombre}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-xs text-neutral-500 mb-1" htmlFor="desde">
-              Empezar en el casillero
-            </label>
-            <input
-              id="desde"
-              type="number"
-              min={1}
-              max={porHoja}
-              value={desde}
-              onChange={(e) => setDesde(Math.min(Math.max(1, Number(e.target.value) || 1), porHoja))}
-              className="w-24 rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs text-neutral-500 mb-1" htmlFor="copias">
-              Copias de cada una
-            </label>
-            <input
-              id="copias"
-              type="number"
-              min={1}
-              max={20}
-              value={copias}
-              onChange={(e) => setCopias(Math.min(Math.max(1, Number(e.target.value) || 1), 20))}
-              className="w-24 rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
-            />
-          </div>
-
-          <span className="text-sm text-neutral-600 mr-auto">
-            <b className="text-neutral-900">{aImprimir.length}</b> etiquetas ·{" "}
-            <b className="text-neutral-900">{hojas}</b> {hojas === 1 ? "hoja" : "hojas"}
-          </span>
-
-          <button
-            type="button"
-            onClick={() => window.print()}
-            disabled={aImprimir.length === 0}
-            className="rounded-lg bg-accent text-white px-4 py-2.5 text-sm font-semibold hover:bg-accent-dark disabled:opacity-40"
-          >
-            🖨️ Imprimir
-          </button>
-        </div>
-
-        <p className="text-xs text-neutral-500 mt-3 leading-relaxed max-w-2xl">
-          Al imprimir, poné el tamaño en <b>A4</b> y los márgenes en <b>ninguno</b>, y desactivá
-          &ldquo;ajustar al papel&rdquo; — si el navegador achica la página, las etiquetas salen
-          corridas y se arruina la plancha entera. Hacé una prueba en papel común y ponela sobre la
-          plancha a contraluz antes de gastar la primera.
+          {modo === "recibido"
+            ? "Lo que entró por recepción en los últimos 7 días y todavía no tiene código del envase. La cantidad ya viene puesta: es la que se recibió."
+            : "Todos los productos que necesitan que les imprimas el código."}{" "}
+          Los stickers llevan el nombre y el código de barras, <b>no el precio</b> — el precio se
+          imprime aparte, en el cartelito de góndola.
         </p>
       </div>
+
+      {/* El `key` remonta la lista al cambiar de modo: las cantidades se
+          recalculan solas en vez de arrastrar las del modo anterior. */}
+      <ConfigurarImpresion key={modo} items={visibles} unidadesIniciales={unidades} />
+    </>
+  );
+}
+
+function ConfigurarImpresion({
+  items,
+  unidadesIniciales,
+}: {
+  items: ItemCodigo[];
+  unidadesIniciales: (i: ItemCodigo) => number;
+}) {
+  const [plancha, setPlancha] = useState<Plancha>(PLANCHAS[0]);
+  const [desde, setDesde] = useState(1);
+  const [cantidades, setCantidades] = useState<Record<string, number>>(() =>
+    Object.fromEntries(items.map((i) => [i.idVariante, unidadesIniciales(i)]))
+  );
+
+  const porHoja = plancha.cols * plancha.filas;
+  const aImprimir = useMemo(
+    () =>
+      items.flatMap((i) => Array(Math.max(0, cantidades[i.idVariante] ?? 0)).fill(i) as ItemCodigo[]),
+    [items, cantidades]
+  );
+  // Los casilleros que se saltean al empezar más abajo cuentan como usados.
+  const hojas = Math.ceil((aImprimir.length + desde - 1) / porHoja) || 0;
+  const porMarca = useMemo(() => agruparPorMarca(items), [items]);
+
+  function poner(id: string, n: number) {
+    setCantidades((prev) => ({ ...prev, [id]: Math.min(Math.max(0, n), 99) }));
+  }
+
+  return (
+    <>
+      <div className="print:hidden border border-neutral-200 rounded-xl overflow-hidden bg-white mb-4">
+        {porMarca.map(([marca, deLaMarca]) => {
+          const totalMarca = deLaMarca.reduce((a, i) => a + (cantidades[i.idVariante] ?? 0), 0);
+          return (
+            <div key={marca}>
+              <div className="flex items-center justify-between gap-2 bg-neutral-50 px-4 py-2 border-b border-neutral-200">
+                <span className="text-[11px] uppercase tracking-wider font-bold text-neutral-400">
+                  {marca} · {deLaMarca.length} productos
+                </span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCantidades((prev) => {
+                      const next = { ...prev };
+                      // Si ya hay alguno marcado, el botón apaga la marca entera.
+                      const apagar = totalMarca > 0;
+                      deLaMarca.forEach((i) => (next[i.idVariante] = apagar ? 0 : unidadesIniciales(i)));
+                      return next;
+                    })
+                  }
+                  className="text-xs text-accent"
+                >
+                  {totalMarca > 0 ? "Ninguno" : "Todos"}
+                </button>
+              </div>
+              {deLaMarca.map((i) => (
+                <div
+                  key={i.idVariante}
+                  className="flex items-center gap-3 px-4 py-2 border-b border-neutral-100 last:border-b-0"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm truncate">
+                      {i.producto}
+                      {i.variante && <span className="text-neutral-500"> — {i.variante}</span>}
+                    </span>
+                    <span className="block text-xs text-neutral-400">
+                      {i.sku ?? "sin SKU"} ·{" "}
+                      <span className="font-mono">
+                        {i.codigo ? formatearCodigo(i.codigo) : "se genera al guardar"}
+                      </span>
+                    </span>
+                  </span>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => poner(i.idVariante, (cantidades[i.idVariante] ?? 0) - 1)}
+                      className="w-7 h-7 rounded-lg border border-neutral-300 text-neutral-600 hover:bg-neutral-50"
+                    >
+                      −
+                    </button>
+                    <input
+                      type="number"
+                      min={0}
+                      max={99}
+                      value={cantidades[i.idVariante] ?? 0}
+                      onChange={(e) => poner(i.idVariante, Number(e.target.value))}
+                      aria-label={`Cuántos stickers de ${i.producto}`}
+                      className="w-14 text-center rounded-lg border border-neutral-300 px-1 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => poner(i.idVariante, (cantidades[i.idVariante] ?? 0) + 1)}
+                      className="w-7 h-7 rounded-lg border border-neutral-300 text-neutral-600 hover:bg-neutral-50"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="print:hidden rounded-xl bg-neutral-50 border border-neutral-200 p-4 flex flex-wrap items-end gap-4">
+        <div>
+          <label className="block text-xs text-neutral-500 mb-1" htmlFor="plancha">
+            Plancha de etiquetas
+          </label>
+          <select
+            id="plancha"
+            value={plancha.id}
+            onChange={(e) => {
+              const p = PLANCHAS.find((x) => x.id === e.target.value);
+              if (p) {
+                setPlancha(p);
+                setDesde(1);
+              }
+            }}
+            className="rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
+          >
+            {PLANCHAS.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.nombre}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-xs text-neutral-500 mb-1" htmlFor="desde">
+            Empezar en el casillero
+          </label>
+          <input
+            id="desde"
+            type="number"
+            min={1}
+            max={porHoja}
+            value={desde}
+            onChange={(e) => setDesde(Math.min(Math.max(1, Number(e.target.value) || 1), porHoja))}
+            className="w-24 rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
+          />
+        </div>
+
+        <span className="text-sm text-neutral-600 mr-auto">
+          <b className="text-neutral-900">{aImprimir.length}</b> stickers ·{" "}
+          <b className="text-neutral-900">{hojas}</b> {hojas === 1 ? "hoja" : "hojas"}
+        </span>
+
+        <button
+          type="button"
+          onClick={() => window.print()}
+          disabled={aImprimir.length === 0}
+          className="rounded-lg bg-accent text-white px-4 py-2.5 text-sm font-semibold hover:bg-accent-dark disabled:opacity-40"
+        >
+          🖨️ Imprimir
+        </button>
+      </div>
+
+      <p className="print:hidden text-xs text-neutral-500 mt-3 leading-relaxed max-w-2xl">
+        Al imprimir, poné el tamaño en <b>A4</b> y los márgenes en <b>ninguno</b>, y desactivá
+        &ldquo;ajustar al papel&rdquo; — si el navegador achica la página, las etiquetas salen
+        corridas y se arruina la plancha entera. Hacé una prueba en papel común y ponela sobre la
+        plancha a contraluz antes de gastar la primera.
+      </p>
 
       <HojaDeEtiquetas plancha={plancha} desde={desde} items={aImprimir} />
     </>

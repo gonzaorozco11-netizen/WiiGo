@@ -1,5 +1,6 @@
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
+import { entradasQueNecesitanCodigo } from "@/lib/entradas";
 import PantallaBloqueada from "@/components/PantallaBloqueada";
 import CodigosApp, { type ItemCodigo } from "@/components/CodigosApp";
 
@@ -10,6 +11,8 @@ export default async function CodigosPage() {
   if (!puedeVerPantalla(sesion, "codigos")) return <PantallaBloqueada />;
 
   const supabase = getSupabaseServerClient();
+
+  const entradas = await entradasQueNecesitanCodigo();
 
   const [variantesRes, productosRes, marcasRes] = await Promise.all([
     supabase
@@ -69,5 +72,5 @@ export default async function CodigosPage() {
     })
     .sort((a, b) => a.producto.localeCompare(b.producto, "es"));
 
-  return <CodigosApp items={items} />;
+  return <CodigosApp items={items} entradas={entradas} />;
 }

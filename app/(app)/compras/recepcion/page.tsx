@@ -6,6 +6,7 @@ import { mercaderiaParaDevolverAMarca } from "@/app/(app)/reposicion/actions";
 import ComprasEtapas from "@/components/ComprasEtapas";
 import ComprasTrabajo from "@/components/ComprasTrabajo";
 import DevolverAMarca from "@/components/DevolverAMarca";
+import AvisoCodigosPendientes from "@/components/AvisoCodigosPendientes";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +33,10 @@ export default async function RecepcionPage() {
           )
         }
       />
+
+      {/* Lo primero que se ve después de recepcionar: qué códigos hay que
+          imprimir y pegar. Solo aparece si hay algo pendiente. */}
+      {puedeVerPantalla(sesion, "codigos") && <AvisoCodigosPendientes />}
 
       {/* Lo que hay que devolverle a la marca, arriba de lo que está por
           llegar. Vivía en Abastecimiento, que era la misma pantalla de
