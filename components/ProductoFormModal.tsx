@@ -13,7 +13,13 @@ import type {
 } from "@/lib/supabase";
 import { createProducto, updateProducto, subirFotoProducto, subirFotoFichaProducto } from "@/app/(app)/productos/actions";
 import type { ProveedorConSaldo } from "@/app/(app)/proveedores/actions";
-import { esCodigoInterno, limpiarCodigoBarras, digitoVerificadorOk, largoDeCodigoConocido } from "@/lib/codigos";
+import {
+  esCodigoInterno,
+  limpiarCodigoBarras,
+  digitoVerificadorOk,
+  largoDeCodigoConocido,
+  formatearCodigo,
+} from "@/lib/codigos";
 import EscanerCodigo from "@/components/EscanerCodigo";
 
 type VarianteForm = {
@@ -817,8 +823,8 @@ function VariantesSection({
       </div>
       <p className="text-xs text-neutral-500 mb-3">
         {sinVariaciones
-          ? "Si el envase ya trae código de barras, escaneálo acá abajo y listo. Si no trae, el sistema le genera uno para imprimir en etiqueta. Si el producto viene en sabores o tamaños distintos, agregá variantes acá arriba."
-          : "Sabores, tamaños, etc. Cada variante tiene su propio SKU, código de barras y stock — el código se escanea del envase de cada una. Poneles un nombre a todas."}
+          ? "Si el envase ya trae código de barras, escaneálo y listo. Si no trae, el sistema le genera uno para imprimir en etiqueta."
+          : "Sabores, tamaños, etc. Cada variante tiene su propio stock y su propio código de barras — se escanea del envase de cada una. Poneles un nombre a todas."}
       </p>
 
       {mostrarStockInicial && locales.length > 0 && (
@@ -842,104 +848,251 @@ function VariantesSection({
         </div>
       )}
 
-      <div className="space-y-2">
-        {variantes.map((v, i) => (
-          <div key={i} className="rounded-lg bg-neutral-50 border border-neutral-200 p-3 space-y-3">
-            <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+      <div className="space-y-3">
+        {variantes.map((v, i) => {
+          const cambiar = (cambio: Partial<VarianteForm>) =>
+            setVariantes((prev) => prev.map((x, j) => (j === i ? { ...x, ...cambio } : x)));
+
+          return (
+            <div
+              key={i}
+              // Con una sola variante las bandas van sueltas: encerrarlas en otra
+              // caja sería una caja dentro de una caja dentro del modal. Con
+              // varias sí hace falta el marco, para que se vea dónde termina una
+              // variante y empieza la otra.
+              className={
+                sinVariaciones ? "space-y-2" : "rounded-xl border border-neutral-200 overflow-hidden"
+              }
+            >
               <input type="hidden" name="variante_id" value={v.id} />
               {sinVariaciones ? (
                 // El nombre viaja igual en el envío; simplemente no se muestra.
                 // Vacío el servidor lo guarda como "Único", que es lo correcto.
                 <input type="hidden" name="variante_nombre" value={v.nombre} />
               ) : (
-                <input
-                  name="variante_nombre"
-                  value={v.nombre}
-                  onChange={(e) =>
-                    setVariantes((prev) => prev.map((x, j) => (j === i ? { ...x, nombre: e.target.value } : x)))
-                  }
-                  placeholder="Ej: Frutilla, 1 kg..."
-                  className="flex-1 min-w-[120px] rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
-                />
-              )}
-              {mostrarStockInicial && (
-                <div className="flex items-center gap-1 shrink-0">
-                  <label className="text-xs text-neutral-500" htmlFor={`variante_stock_inicial_${i}`}>
-                    Inicial
-                  </label>
+                <div className="flex items-center gap-2 px-3 py-2.5 bg-neutral-50 border-b border-neutral-200">
                   <input
-                    id={`variante_stock_inicial_${i}`}
-                    name="variante_stock_inicial"
-                    type="number"
-                    min={0}
-                    value={v.stockInicial}
-                    onChange={(e) =>
-                      setVariantes((prev) =>
-                        prev.map((x, j) => (j === i ? { ...x, stockInicial: Number(e.target.value) } : x))
-                      )
-                    }
-                    className="w-16 rounded-lg border border-neutral-300 px-2 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
+                    name="variante_nombre"
+                    value={v.nombre}
+                    onChange={(e) => cambiar({ nombre: e.target.value })}
+                    placeholder="Ej: Frutilla, 1 kg..."
+                    className="flex-1 min-w-[120px] max-w-xs rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
                   />
+                  {v.sku && (
+                    <span className="ml-auto hidden sm:inline">
+                      <ChipCodigo>{v.sku}</ChipCodigo>
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setVariantes((prev) => prev.filter((_, j) => j !== i))}
+                    className="text-sm text-red-500 shrink-0"
+                  >
+                    Borrar
+                  </button>
                 </div>
               )}
-              <div className="flex items-center gap-1 shrink-0">
-                <label className="text-xs text-neutral-500" htmlFor={`variante_stock_minimo_${i}`}>
-                  Mín.
-                </label>
-                <input
-                  id={`variante_stock_minimo_${i}`}
-                  name="variante_stock_minimo"
-                  type="number"
-                  min={0}
-                  value={v.stockMinimo}
-                  onChange={(e) =>
-                    setVariantes((prev) =>
-                      prev.map((x, j) => (j === i ? { ...x, stockMinimo: Number(e.target.value) } : x))
-                    )
-                  }
-                  className="w-16 rounded-lg border border-neutral-300 px-2 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
-                />
-              </div>
-              <div className="flex items-center gap-1 shrink-0">
-                <label className="text-xs text-neutral-500" htmlFor={`variante_stock_objetivo_${i}`}>
-                  Obj.
-                </label>
-                <input
-                  id={`variante_stock_objetivo_${i}`}
-                  name="variante_stock_objetivo"
-                  type="number"
-                  min={0}
-                  value={v.stockObjetivo}
-                  onChange={(e) =>
-                    setVariantes((prev) =>
-                      prev.map((x, j) => (j === i ? { ...x, stockObjetivo: Number(e.target.value) } : x))
-                    )
-                  }
-                  className="w-16 rounded-lg border border-neutral-300 px-2 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
-                />
-              </div>
-              {v.sku && (
-                <span className="text-xs font-mono text-neutral-400 whitespace-nowrap hidden lg:inline">
-                  {v.sku}
-                </span>
-              )}
-              <button
-                type="button"
-                onClick={() => setVariantes((prev) => prev.filter((_, j) => j !== i))}
-                className="text-sm text-red-500 shrink-0"
-              >
-                Borrar
-              </button>
-            </div>
 
-            <CodigoBarrasVariante
-              variante={v}
-              onCambio={(cambio) =>
-                setVariantes((prev) => prev.map((x, j) => (j === i ? { ...x, ...cambio } : x)))
-              }
-            />
-          </div>
-        ))}
+              <div className={sinVariaciones ? "space-y-2" : "p-3"}>
+                <Banda
+                  plano={!sinVariaciones}
+                  icono="📦"
+                  titulo="Stock"
+                  bajada="Cuándo avisarte que se está por acabar"
+                >
+                  <div
+                    className={`grid gap-3 max-w-lg ${
+                      mostrarStockInicial ? "sm:grid-cols-3" : "sm:grid-cols-2"
+                    }`}
+                  >
+                    <CampoStock
+                      id={`variante_stock_minimo_${i}`}
+                      name="variante_stock_minimo"
+                      etiqueta="Avisar cuando baje de"
+                      valor={v.stockMinimo}
+                      onCambio={(n) => cambiar({ stockMinimo: n })}
+                    />
+                    <CampoStock
+                      id={`variante_stock_objetivo_${i}`}
+                      name="variante_stock_objetivo"
+                      etiqueta="Tener siempre"
+                      valor={v.stockObjetivo}
+                      onCambio={(n) => cambiar({ stockObjetivo: n })}
+                    />
+                    {mostrarStockInicial && (
+                      <CampoStock
+                        id={`variante_stock_inicial_${i}`}
+                        name="variante_stock_inicial"
+                        etiqueta="Entra ahora"
+                        valor={v.stockInicial}
+                        onCambio={(n) => cambiar({ stockInicial: n })}
+                      />
+                    )}
+                  </div>
+                </Banda>
+
+                <Banda
+                  plano={!sinVariaciones}
+                  icono="🏷️"
+                  titulo="Código de barras"
+                  bajada="Lo que lee el tótem cuando el cliente escanea"
+                >
+                  <CodigoBarrasVariante variante={v} onCambio={cambiar} />
+                </Banda>
+
+                {sinVariaciones && (
+                  <Banda
+                    icono="🔖"
+                    titulo="Identificación interna"
+                    bajada="Para buscarlo en el sistema y en las órdenes"
+                  >
+                    {v.sku ? (
+                      <ChipCodigo>{v.sku}</ChipCodigo>
+                    ) : (
+                      <p className="text-xs text-neutral-400">Se genera solo al guardar.</p>
+                    )}
+                  </Banda>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Un tema del bloque, con su título y su explicación de una línea.
+ *
+ * `plano` saca el marco: adentro de una variante ya hay un marco (el de la
+ * variante) y anidar cajas hace que no se entienda cuál contiene a cuál.
+ */
+function Banda({
+  icono,
+  titulo,
+  bajada,
+  plano = false,
+  children,
+}: {
+  icono: string;
+  titulo: string;
+  bajada: string;
+  plano?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className={
+        plano
+          ? "pt-3 mt-3 border-t border-neutral-200 first:pt-0 first:mt-0 first:border-t-0"
+          : "rounded-xl border border-neutral-200 bg-white p-3.5"
+      }
+    >
+      <div className="flex items-center gap-2.5 mb-3">
+        <span
+          aria-hidden
+          className="w-7 h-7 rounded-lg bg-neutral-100 grid place-items-center text-sm shrink-0"
+        >
+          {icono}
+        </span>
+        <div className="min-w-0">
+          <h4 className="text-[13px] font-semibold text-neutral-900 leading-tight">{titulo}</h4>
+          <p className="text-xs text-neutral-400 leading-tight">{bajada}</p>
+        </div>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function ChipCodigo({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="inline-block font-mono text-xs text-neutral-600 bg-neutral-100 border border-neutral-200 rounded px-2 py-1 whitespace-nowrap">
+      {children}
+    </span>
+  );
+}
+
+/** Un número de stock con su unidad adentro, para que "15" no quede solo. */
+function CampoStock({
+  id,
+  name,
+  etiqueta,
+  valor,
+  onCambio,
+}: {
+  id: string;
+  name: string;
+  etiqueta: string;
+  valor: number;
+  onCambio: (n: number) => void;
+}) {
+  return (
+    <div>
+      <label className="block text-xs text-neutral-500 mb-1" htmlFor={id}>
+        {etiqueta}
+      </label>
+      <div className="relative">
+        <input
+          id={id}
+          name={name}
+          type="number"
+          min={0}
+          value={valor}
+          onChange={(e) => onCambio(Number(e.target.value))}
+          // Sin esto las flechitas del navegador se montan sobre "unidades".
+          className="w-full rounded-lg border border-neutral-300 pl-3 pr-[60px] py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+        />
+        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-neutral-400 pointer-events-none">
+          unidades
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * El cartelito de color que dice si ese producto dejó trabajo pendiente.
+ *
+ * Verde: se escanea del envase, no hay nada que hacer. Ámbar: hay que imprimir
+ * la etiqueta y pegarla. Es el mismo código de colores que va a usar la
+ * pantalla de Etiquetas, así que lo que se ve acá es lo que se va a ver allá.
+ */
+function Estado({
+  tono,
+  titulo,
+  codigo,
+  children,
+}: {
+  tono: "verde" | "ambar";
+  titulo: string;
+  codigo?: string;
+  children: React.ReactNode;
+}) {
+  const verde = tono === "verde";
+  return (
+    <div
+      className={`mt-3 flex gap-3 rounded-xl border p-3 ${
+        verde ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"
+      }`}
+    >
+      <span
+        aria-hidden
+        className={`w-5 h-5 mt-0.5 rounded-full grid place-items-center text-[11px] font-bold text-white shrink-0 ${
+          verde ? "bg-emerald-600" : "bg-amber-600"
+        }`}
+      >
+        {verde ? "✓" : "!"}
+      </span>
+      <div className="min-w-0">
+        <strong className={`block text-[13px] font-semibold ${verde ? "text-emerald-700" : "text-amber-700"}`}>
+          {titulo}
+        </strong>
+        {codigo && (
+          <span className="block font-mono text-[15px] tracking-wider text-neutral-800 my-1">{codigo}</span>
+        )}
+        <span className="block text-xs text-neutral-600 leading-relaxed">{children}</span>
       </div>
     </div>
   );
@@ -966,11 +1119,10 @@ function CodigoBarrasVariante({
   const codigo = limpiarCodigoBarras(variante.codigoPropio);
   // Solo se avisa cuando el largo es de un formato conocido: un código de 9
   // dígitos no es "inválido", es que todavía lo están tipeando.
-  const revisarDigito = largoDeCodigoConocido(codigo);
-  const digitoOk = revisarDigito && digitoVerificadorOk(codigo);
+  const digitoSospechoso = largoDeCodigoConocido(codigo) && !digitoVerificadorOk(codigo);
 
   return (
-    <div className="pt-2 border-t border-neutral-200">
+    <div>
       {/* Lo que realmente viaja al servidor. Vacío = "no tiene código propio",
           y el servidor se encarga de darle uno interno. */}
       <input
@@ -980,7 +1132,7 @@ function CodigoBarrasVariante({
       />
 
       <div className="flex items-center gap-3 flex-wrap">
-        <span className="text-xs text-neutral-600">¿El envase ya trae código de barras?</span>
+        <span className="text-xs text-neutral-600">¿El envase ya trae el suyo impreso?</span>
         <div className="inline-flex rounded-lg border border-neutral-300 overflow-hidden bg-white">
           {[
             { valor: true, texto: "Sí, tiene" },
@@ -1003,8 +1155,8 @@ function CodigoBarrasVariante({
       </div>
 
       {variante.tienePropio ? (
-        <div className="mt-2 space-y-1">
-          <div className="flex items-center gap-2">
+        <>
+          <div className="flex items-center gap-2 mt-3">
             <input
               value={variante.codigoPropio}
               onChange={(e) => onCambio({ codigoPropio: limpiarCodigoBarras(e.target.value) })}
@@ -1020,31 +1172,34 @@ function CodigoBarrasVariante({
             <button
               type="button"
               onClick={() => setEscaneando(true)}
-              className="shrink-0 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-xs font-medium hover:bg-neutral-100"
+              className="shrink-0 rounded-lg bg-accent text-white px-3.5 py-2 text-xs font-semibold hover:bg-accent-dark"
             >
               📷 Escanear
             </button>
           </div>
-          {codigo && (
-            <p className={`text-xs ${revisarDigito && !digitoOk ? "text-amber-600" : "text-neutral-500"}`}>
-              {revisarDigito && !digitoOk
-                ? "Revisá el número: no cierra con el dígito de control. Si lo escaneaste, está bien igual — hay envases importados con códigos raros."
-                : "Listo. Este producto se escanea en el tótem con su propio envase, no hay que imprimirle nada."}
-            </p>
-          )}
-        </div>
+
+          {codigo &&
+            (digitoSospechoso ? (
+              <Estado tono="ambar" titulo="Revisá el número">
+                No cierra con el dígito de control, así que puede haber un número mal tipeado. Si lo
+                escaneaste con la cámara está bien igual — hay envases importados con códigos raros.
+              </Estado>
+            ) : (
+              <Estado tono="verde" titulo="Se escanea del propio envase">
+                No hay que imprimir ni pegar nada. Este producto ya se puede pasar por el tótem.
+              </Estado>
+            ))}
+        </>
       ) : (
-        <p className="mt-2 text-xs text-neutral-500">
-          {variante.codigoInterno ? (
-            <>
-              Etiqueta WiiGo:{" "}
-              <span className="font-mono text-neutral-700">{variante.codigoInterno}</span> — hay que
-              imprimirla y pegarla en el producto.
-            </>
-          ) : (
-            "El sistema le va a generar un código al guardar. Después se imprime en etiqueta y se pega."
-          )}
-        </p>
+        <Estado
+          tono="ambar"
+          titulo="Falta pegarle la etiqueta"
+          codigo={variante.codigoInterno ? formatearCodigo(variante.codigoInterno) : undefined}
+        >
+          {variante.codigoInterno
+            ? "El sistema le generó este código. Se imprime desde Etiquetas y se pega en el producto cuando entra la mercadería."
+            : "Al guardar, el sistema le va a generar un código para imprimir en etiqueta y pegar en el producto."}
+        </Estado>
       )}
 
       {escaneando && (

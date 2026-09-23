@@ -21,6 +21,16 @@ export function limpiarCodigoBarras(valor: string): string {
   return (valor ?? "").replace(/\D/g, "");
 }
 
+/**
+ * Agrupa los dígitos para poder leerlos en voz alta o compararlos contra una
+ * etiqueta impresa. Once dígitos corridos son imposibles de chequear a ojo.
+ */
+export function formatearCodigo(codigo: string | null | undefined): string {
+  const c = limpiarCodigoBarras(codigo ?? "");
+  if (c.length !== 11) return c;
+  return `${c.slice(0, 2)} ${c.slice(2, 5)} ${c.slice(5, 8)} ${c.slice(8)}`;
+}
+
 /** ¿Es uno de los códigos que generamos nosotros (y por lo tanto hay que imprimir)? */
 export function esCodigoInterno(codigo: string | null | undefined): boolean {
   return /^20\d{9}$/.test((codigo ?? "").trim());
