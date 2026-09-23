@@ -1056,8 +1056,8 @@ function CampoStock({
  * El cartelito de color que dice si ese producto dejó trabajo pendiente.
  *
  * Verde: se escanea del envase, no hay nada que hacer. Ámbar: hay que imprimir
- * la etiqueta y pegarla. Es el mismo código de colores que va a usar la
- * pantalla de Etiquetas, así que lo que se ve acá es lo que se va a ver allá.
+ * el código y pegarlo. Es el mismo código de colores que usa la pantalla de
+ * Códigos de barras, así que lo que se ve acá es lo que se va a ver allá.
  */
 function Estado({
   tono,
@@ -1193,12 +1193,12 @@ function CodigoBarrasVariante({
       ) : (
         <Estado
           tono="ambar"
-          titulo="Falta pegarle la etiqueta"
+          titulo="Hay que imprimirle el código y pegarlo"
           codigo={variante.codigoInterno ? formatearCodigo(variante.codigoInterno) : undefined}
         >
           {variante.codigoInterno
-            ? "El sistema le generó este código. Se imprime desde Etiquetas y se pega en el producto cuando entra la mercadería."
-            : "Al guardar, el sistema le va a generar un código para imprimir en etiqueta y pegar en el producto."}
+            ? "El sistema le generó este código. Se imprime en sticker desde Catálogo → Códigos de barras y se pega en el producto cuando entra la mercadería. No lleva precio."
+            : "Al guardar, el sistema le va a generar un código para imprimir en sticker y pegar en el producto."}
         </Estado>
       )}
 

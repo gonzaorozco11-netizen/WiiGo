@@ -78,8 +78,8 @@ export default function CodigosApp({ items }: { items: ItemCodigo[] }) {
         <div>
           <h1 className="text-2xl font-semibold text-neutral-900">Códigos de barras</h1>
           <p className="text-sm text-neutral-500 mt-1">
-            {items.length} productos · {conEnvase} con el código del envase · {conEtiqueta.length} con
-            etiqueta WiiGo
+            {items.length} productos · {conEnvase} se escanean del envase · {conEtiqueta.length} hay
+            que imprimirlos y pegarlos
           </p>
         </div>
         <button
@@ -97,8 +97,8 @@ export default function CodigosApp({ items }: { items: ItemCodigo[] }) {
           <div className="text-sm text-neutral-700 leading-relaxed">
             <strong className="block text-amber-700 mb-1">Antes de imprimir, revisá los envases</strong>
             Todavía no hay ningún producto con el código de su envase cargado, así que el sistema les
-            quiere imprimir etiqueta a todos. La mayoría de lo que viene envasado de fábrica ya trae
-            el suyo: si imprimís ahora, vas a estar pegando etiquetas encima de códigos que ya
+            quiere imprimir un código a todos. La mayoría de lo que viene envasado de fábrica ya trae
+            el suyo: si imprimís ahora, vas a estar pegando stickers encima de códigos que ya
             funcionaban.
           </div>
         </div>
@@ -107,8 +107,10 @@ export default function CodigosApp({ items }: { items: ItemCodigo[] }) {
       <div className="inline-flex gap-1 bg-neutral-100 rounded-xl p-1 mb-4">
         {(
           [
-            ["revisar", "Revisar códigos"],
-            ["imprimir", `Imprimir etiquetas · ${conEtiqueta.length}`],
+            ["revisar", "Revisar envases"],
+            // No dice "etiquetas": en Aprobaciones esa palabra ya es el cartel
+            // de precio de la góndola, que es otra cosa y lleva plata impresa.
+            ["imprimir", `Imprimir códigos · ${conEtiqueta.length}`],
           ] as const
         ).map(([id, texto]) => (
           <button
@@ -241,7 +243,7 @@ function FilaProducto({
       const res = await volverAEtiquetaWiigo(item.idVariante);
       if (res.error) onAviso({ texto: res.error, tono: "mal" });
       else {
-        onAviso({ texto: `${item.producto} vuelve a llevar etiqueta WiiGo.`, tono: "ok" });
+        onAviso({ texto: `${item.producto} vuelve a llevar código WiiGo para imprimir.`, tono: "ok" });
         router.refresh();
       }
     });
@@ -289,7 +291,7 @@ function FilaProducto({
           type="button"
           onClick={quitar}
           disabled={pendiente}
-          title="Sacarle el código del envase y volver a la etiqueta WiiGo"
+          title="Sacarle el código del envase y volver al código WiiGo para imprimir"
           className="shrink-0 text-xs text-neutral-400 hover:text-red-500 disabled:opacity-40"
         >
           ✕
@@ -449,8 +451,7 @@ function Imprimir({ items }: { items: ItemCodigo[] }) {
   if (items.length === 0) {
     return (
       <p className="text-sm text-neutral-500 py-16 text-center">
-        No hay ningún producto con etiqueta WiiGo pendiente. Todos tienen el código de su envase
-        cargado.
+        No hay nada para imprimir: todos los productos tienen el código de su propio envase cargado.
       </p>
     );
   }
@@ -458,6 +459,14 @@ function Imprimir({ items }: { items: ItemCodigo[] }) {
   return (
     <>
       <div className="print:hidden">
+        {/* La duda aparece sola la primera vez, así que se contesta sin que haya
+            que preguntar: el cartel de precio de la góndola es otra cosa. */}
+        <p className="text-xs text-neutral-500 mb-3 leading-relaxed max-w-2xl">
+          Estos stickers llevan el nombre y el código de barras, <b>no el precio</b> — el precio se
+          imprime aparte, en el cartelito de góndola. Así un aumento no te obliga a despegar y
+          repegar todo.
+        </p>
+
         <div className="border border-neutral-200 rounded-xl overflow-hidden bg-white mb-4">
           {porMarca.map(([marca, deLaMarca]) => {
             const todosMarcados = deLaMarca.every((i) => elegidos.has(i.idVariante));
