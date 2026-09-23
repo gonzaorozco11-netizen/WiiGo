@@ -11,6 +11,9 @@ export type PantallaDisponible = { clave: string; label: string; grupo: string }
 
 export const PANTALLAS_DISPONIBLES: PantallaDisponible[] = [
   { clave: "productos", label: "Productos", grupo: "Catálogo" },
+  // La operativa necesita esta pantalla para recibir mercadería nueva sin tener
+  // que entrar a editar cada producto, así que se puede dar sola.
+  { clave: "codigos", label: "Códigos de barras", grupo: "Catálogo" },
   { clave: "catalogo-asesor", label: "Catálogo asesor", grupo: "Catálogo" },
   // Compras está partido en tres a propósito: cada etapa la hace una persona
   // distinta (administración pide, el local recibe, administración costea).
