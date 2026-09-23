@@ -39,6 +39,31 @@ const PLANCHAS = [
 type Plancha = (typeof PLANCHAS)[number];
 
 /**
+ * Los rollos de una impresora térmica de etiquetas.
+ *
+ * Es otra forma de imprimir, no otra medida: acá cada etiqueta es una página
+ * suya y la impresora corta sola. No hay plancha que desperdiciar —seis
+ * stickers son seis etiquetas— y el código sale mucho más nítido, porque la
+ * térmica quema el papel en vez de tirarle tinta encima. Las rayitas finas con
+ * tinta se engordan y ahí es donde el lector deja de enganchar.
+ *
+ * Para que ande desde la tablet, la impresora tiene que ser de red o WiFi:
+ * Android la ve como impresora y el botón de imprimir del navegador la
+ * encuentra. Las térmicas solo-Bluetooth funcionan nada más que desde la app
+ * del fabricante y desde el navegador no hay forma de usarlas.
+ */
+const ROLLOS = [
+  { id: "r50x25", nombre: "50 × 25 mm", ancho: 50, alto: 25 },
+  { id: "r40x30", nombre: "40 × 30 mm", ancho: 40, alto: 30 },
+  { id: "r58x40", nombre: "58 × 40 mm", ancho: 58, alto: 40 },
+  { id: "r60x40", nombre: "60 × 40 mm", ancho: 60, alto: 40 },
+  { id: "r70x35", nombre: "70 × 35 mm", ancho: 70, alto: 35 },
+  { id: "r30x20", nombre: "30 × 20 mm", ancho: 30, alto: 20 },
+] as const;
+
+type Rollo = (typeof ROLLOS)[number];
+
+/**
  * El nombre como va impreso en la etiqueta.
  *
  * Los productos de suplementos traen la marca metida en el propio nombre
@@ -507,7 +532,9 @@ function ConfigurarImpresion({
   items: ItemCodigo[];
   unidadesIniciales: (i: ItemCodigo) => number;
 }) {
+  const [papel, setPapel] = useState<"plancha" | "rollo">("plancha");
   const [plancha, setPlancha] = useState<Plancha>(PLANCHAS[0]);
+  const [rollo, setRollo] = useState<Rollo>(ROLLOS[0]);
   const [desde, setDesde] = useState(1);
   const [cantidades, setCantidades] = useState<Record<string, number>>(() =>
     Object.fromEntries(items.map((i) => [i.idVariante, unidadesIniciales(i)]))
@@ -605,47 +632,95 @@ function ConfigurarImpresion({
 
       <div className="print:hidden rounded-xl bg-neutral-50 border border-neutral-200 p-4 flex flex-wrap items-end gap-4">
         <div>
-          <label className="block text-xs text-neutral-500 mb-1" htmlFor="plancha">
-            Plancha de etiquetas
+          <label className="block text-xs text-neutral-500 mb-1" htmlFor="papel">
+            Cómo imprimís
           </label>
           <select
-            id="plancha"
-            value={plancha.id}
+            id="papel"
+            value={papel}
             onChange={(e) => {
-              const p = PLANCHAS.find((x) => x.id === e.target.value);
-              if (p) {
-                setPlancha(p);
-                setDesde(1);
-              }
+              setPapel(e.target.value as "plancha" | "rollo");
+              setDesde(1);
             }}
             className="rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
           >
-            {PLANCHAS.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.nombre}
-              </option>
-            ))}
+            <option value="plancha">Hoja A4 de etiquetas</option>
+            <option value="rollo">Impresora térmica (rollo)</option>
           </select>
         </div>
 
-        <div>
-          <label className="block text-xs text-neutral-500 mb-1" htmlFor="desde">
-            Empezar en el casillero
-          </label>
-          <input
-            id="desde"
-            type="number"
-            min={1}
-            max={porHoja}
-            value={desde}
-            onChange={(e) => setDesde(Math.min(Math.max(1, Number(e.target.value) || 1), porHoja))}
-            className="w-24 rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
-          />
-        </div>
+        {papel === "plancha" ? (
+          <>
+            <div>
+              <label className="block text-xs text-neutral-500 mb-1" htmlFor="plancha">
+                Plancha de etiquetas
+              </label>
+              <select
+                id="plancha"
+                value={plancha.id}
+                onChange={(e) => {
+                  const p = PLANCHAS.find((x) => x.id === e.target.value);
+                  if (p) {
+                    setPlancha(p);
+                    setDesde(1);
+                  }
+                }}
+                className="rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
+              >
+                {PLANCHAS.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.nombre}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs text-neutral-500 mb-1" htmlFor="desde">
+                Empezar en el casillero
+              </label>
+              <input
+                id="desde"
+                type="number"
+                min={1}
+                max={porHoja}
+                value={desde}
+                onChange={(e) => setDesde(Math.min(Math.max(1, Number(e.target.value) || 1), porHoja))}
+                className="w-24 rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
+              />
+            </div>
+          </>
+        ) : (
+          <div>
+            <label className="block text-xs text-neutral-500 mb-1" htmlFor="rollo">
+              Medida del rollo
+            </label>
+            <select
+              id="rollo"
+              value={rollo.id}
+              onChange={(e) => {
+                const r = ROLLOS.find((x) => x.id === e.target.value);
+                if (r) setRollo(r);
+              }}
+              className="rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
+            >
+              {ROLLOS.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.nombre}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <span className="text-sm text-neutral-600 mr-auto">
-          <b className="text-neutral-900">{aImprimir.length}</b> stickers ·{" "}
-          <b className="text-neutral-900">{hojas}</b> {hojas === 1 ? "hoja" : "hojas"}
+          <b className="text-neutral-900">{aImprimir.length}</b> stickers
+          {papel === "plancha" && (
+            <>
+              {" · "}
+              <b className="text-neutral-900">{hojas}</b> {hojas === 1 ? "hoja" : "hojas"}
+            </>
+          )}
         </span>
 
         <button
@@ -659,13 +734,28 @@ function ConfigurarImpresion({
       </div>
 
       <p className="print:hidden text-xs text-neutral-500 mt-3 leading-relaxed max-w-2xl">
-        Al imprimir, poné el tamaño en <b>A4</b> y los márgenes en <b>ninguno</b>, y desactivá
-        &ldquo;ajustar al papel&rdquo; — si el navegador achica la página, las etiquetas salen
-        corridas y se arruina la plancha entera. Hacé una prueba en papel común y ponela sobre la
-        plancha a contraluz antes de gastar la primera.
+        {papel === "plancha" ? (
+          <>
+            Al imprimir, poné el tamaño en <b>A4</b> y los márgenes en <b>ninguno</b>, y desactivá
+            &ldquo;ajustar al papel&rdquo; — si el navegador achica la página, las etiquetas salen
+            corridas y se arruina la plancha entera. Hacé una prueba en papel común y ponela sobre la
+            plancha a contraluz antes de gastar la primera.
+          </>
+        ) : (
+          <>
+            Cada sticker sale como una etiqueta suya y la impresora corta sola. Elegí la térmica en
+            el menú de impresión de la tablet y poné los márgenes en <b>ninguno</b> y la escala en{" "}
+            <b>100%</b>. Si la impresora no aparece en ese menú, es que es solo-Bluetooth: esas
+            andan nada más que con la app del fabricante.
+          </>
+        )}
       </p>
 
-      <HojaDeEtiquetas plancha={plancha} desde={desde} items={aImprimir} />
+      {papel === "plancha" ? (
+        <HojaDeEtiquetas plancha={plancha} desde={desde} items={aImprimir} />
+      ) : (
+        <TiraDeEtiquetas rollo={rollo} items={aImprimir} />
+      )}
     </>
   );
 }
@@ -738,7 +828,7 @@ function HojaDeEtiquetas({
         >
           {hoja.map((item, i) =>
             item ? (
-              <Etiqueta key={i} item={item} plancha={plancha} />
+              <Etiqueta key={i} item={item} medida={plancha} />
             ) : (
               <div key={i} className="etq-casillero" />
             )
@@ -749,18 +839,58 @@ function HojaDeEtiquetas({
   );
 }
 
-function Etiqueta({ item, plancha }: { item: ItemCodigo; plancha: Plancha }) {
+/**
+ * Lo mismo pero para una impresora térmica: cada sticker es una página suya y
+ * la impresora corta sola. No hay grilla ni casilleros que desperdiciar.
+ */
+function TiraDeEtiquetas({ rollo, items }: { rollo: Rollo; items: ItemCodigo[] }) {
+  return (
+    <div className="hoja-etiquetas">
+      <style>{`
+        @media print {
+          @page { size: ${rollo.ancho}mm ${rollo.alto}mm; margin: 0; }
+          body * { visibility: hidden; }
+          .hoja-etiquetas, .hoja-etiquetas * { visibility: visible; }
+          .hoja-etiquetas { position: absolute; left: 0; top: 0; }
+          .etq-rollo { page-break-after: always; }
+          .etq-rollo:last-child { page-break-after: auto; }
+        }
+        @media screen {
+          .hoja-etiquetas { margin-top: 28px; display: flex; flex-wrap: wrap; gap: 10px; }
+          .etq-rollo {
+            border: 1px solid #e5e5e5; border-radius: 3px;
+            box-shadow: 0 1px 4px rgba(20,26,34,.08);
+          }
+        }
+      `}</style>
+
+      {items.map((item, i) => (
+        <div
+          key={i}
+          className="etq-rollo bg-white"
+          style={{ width: `${rollo.ancho}mm`, height: `${rollo.alto}mm`, overflow: "hidden" }}
+        >
+          <Etiqueta item={item} medida={rollo} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Etiqueta({ item, medida }: { item: ItemCodigo; medida: { ancho: number; alto: number } }) {
   const nombre = nombreParaEtiqueta(item);
-  // En las planchas chicas no entra el mismo cuerpo de letra. Y dentro de una
-  // misma plancha, un nombre largo tiene que achicarse o se corta a la mitad.
-  const escala = plancha.ancho < 50 ? 0.72 : 1;
+  // En las etiquetas chicas no entra el mismo cuerpo de letra. Y dentro de una
+  // misma medida, un nombre largo tiene que achicarse o se corta a la mitad.
+  const escala = medida.ancho < 50 ? 0.72 : 1;
   const cuerpo = (nombre.length > 40 ? 2.5 : nombre.length > 26 ? 2.85 : 3.2) * escala;
-  const chica = plancha.alto < 30;
+  const chica = medida.alto < 30;
 
   return (
     <div
       className="etq-casillero"
       style={{
+        width: "100%",
+        height: "100%",
         padding: `${chica ? 1.4 : 2.4}mm ${chica ? 1.6 : 3}mm`,
         display: "flex",
         flexDirection: "column",
@@ -795,7 +925,7 @@ function Etiqueta({ item, plancha }: { item: ItemCodigo; plancha: Plancha }) {
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: ".4mm" }}>
         <CodigoDeBarras
           valor={item.codigo ?? ""}
-          ancho={`${plancha.ancho * 0.8}mm`}
+          ancho={`${medida.ancho * 0.8}mm`}
           alto={`${chica ? 5.5 : 9}mm`}
         />
         <div
