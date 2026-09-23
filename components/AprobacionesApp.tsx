@@ -113,10 +113,61 @@ function TarjetaSolicitud({
         </div>
       )}
 
-      {s.tipo === "DESCRIPCION" && (
+      {s.tipo === "PRECIO_EFECTIVO" && (
+        <div className="sol-comparacion">
+          <span className="sol-valor">
+            <span className="et">Efectivo ahora</span>
+            <span className="v mono">
+              {s.datosAnteriores.precio_efectivo == null
+                ? "sin cargar"
+                : pesos(s.datosAnteriores.precio_efectivo as number)}
+            </span>
+          </span>
+          <span className="sol-flecha">→</span>
+          <span className="sol-valor nuevo">
+            <span className="et">Pasa a</span>
+            <span className="v mono">{pesos(s.datos.precio_efectivo as number)}</span>
+          </span>
+          {typeof s.datosAnteriores.precio_venta === "number" && (
+            <span className="sol-variacion">
+              con tarjeta {pesos(s.datosAnteriores.precio_venta as number)}
+            </span>
+          )}
+        </div>
+      )}
+
+      {s.tipo === "FOTO" && (
+        // Aprobar una foto sin verla no es aprobar nada.
+        <div className="sol-fotos">
+          <span className="sol-foto">
+            <span className="et">Ahora</span>
+            {s.datosAnteriores.imagen ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={String(s.datosAnteriores.imagen)} alt="" />
+            ) : (
+              <span className="sol-foto-vacia">sin foto</span>
+            )}
+          </span>
+          <span className="sol-flecha">→</span>
+          <span className="sol-foto">
+            <span className="et">Pasa a</span>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={String(s.datos.imagen ?? "")} alt="" />
+          </span>
+        </div>
+      )}
+
+      {(s.tipo === "DESCRIPCION" || s.tipo === "NOMBRE") && (
         <div className="sol-texto">
-          <p className="sol-texto-antes">{String(s.datosAnteriores.descripcion ?? "— sin descripción —")}</p>
-          <p className="sol-texto-nuevo">{String(s.datos.descripcion ?? "")}</p>
+          <p className="sol-texto-antes">
+            {String(
+              (s.tipo === "NOMBRE" ? s.datosAnteriores.nombre : s.datosAnteriores.descripcion) ??
+                "— vacío —"
+            )}
+          </p>
+          <p className="sol-texto-nuevo">
+            {String((s.tipo === "NOMBRE" ? s.datos.nombre : s.datos.descripcion) ?? "")}
+          </p>
         </div>
       )}
 

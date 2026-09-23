@@ -42,7 +42,7 @@ async function productoPropio(
 ) {
   const { data } = await supabase
     .from("productos")
-    .select("id_producto, id_marca, nombre, descripcion, precio_venta, estado")
+    .select("id_producto, id_marca, nombre, descripcion, precio_venta, precio_efectivo, imagen, estado")
     .eq("id_producto", idProducto)
     .eq("id_marca", idMarca)
     .maybeSingle();
@@ -106,6 +106,9 @@ export type ProductoPropio = {
   nombre: string;
   descripcion: string | null;
   precio: number | null;
+  /** Lo que se cobra pagando en efectivo. null = todavía no lo cargó nadie. */
+  precioEfectivo: number | null;
+  imagen: string | null;
   stock: number;
   /** Tipos que ya tienen una solicitud esperando: se deshabilitan en pantalla. */
   esperando: TipoSolicitud[];
@@ -117,7 +120,7 @@ export async function misProductos(): Promise<ProductoPropio[]> {
 
   const { data: productos } = await supabase
     .from("productos")
-    .select("id_producto, nombre, descripcion, precio_venta")
+    .select("id_producto, nombre, descripcion, precio_venta, precio_efectivo, imagen")
     .eq("id_marca", sesion.idMarca)
     .eq("estado", "ACTIVO")
     .order("nombre", { ascending: true });
@@ -165,6 +168,8 @@ export async function misProductos(): Promise<ProductoPropio[]> {
     nombre: p.nombre as string,
     descripcion: (p.descripcion as string | null) ?? null,
     precio: (p.precio_venta as number | null) ?? null,
+    precioEfectivo: (p.precio_efectivo as number | null) ?? null,
+    imagen: (p.imagen as string | null) ?? null,
     stock: stockPorProducto.get(p.id_producto as string) ?? 0,
     esperando: esperandoPorProducto.get(p.id_producto as string) ?? [],
   }));
@@ -254,6 +259,110 @@ export async function pedirCambioPrecio(idProducto: string, precio: number): Pro
     datos: { precio },
     datosAnteriores: { precio: actual },
     validacion,
+  });
+}
+
+/**
+ * El precio pagando en efectivo.
+ *
+ * Es decisión de la marca y no de WiiGo porque el descuento del efectivo lo
+ * absorbe casi entero la marca: WiiGo solo resigna su royalty sobre esa
+ * diferencia. Por eso no pasa por la política de precios —que limita cuánto
+ * puede moverse el precio de lista— sino por una regla más simple: tiene que
+ * ser menor o igual al de lista, o el cartel de góndola quedaría prometiendo
+ * un ahorro que no existe.
+ */
+export async function pedirPrecioEfectivo(idProducto: string, precio: number): Promise<Resultado> {
+  const sesion = await sesionOError();
+  const supabase = getSupabaseServerClient();
+
+  const producto = await productoPropio(supabase, idProducto, sesion.idMarca);
+  if (!producto) return { error: "Ese producto no es tuyo." };
+
+  const lista = (producto.precio_venta as number | null) ?? null;
+  const actual = (producto.precio_efectivo as number | null) ?? null;
+
+  if (!Number.isFinite(precio) || precio <= 0) return { error: "Poné un precio mayor a cero." };
+  if (lista !== null && precio > lista) {
+    return { error: `El precio en efectivo no puede ser mayor al de lista ($${lista.toLocaleString("es-AR")}).` };
+  }
+  if (actual !== null && precio === actual) {
+    return { error: "Ese ya es el precio en efectivo que tiene el producto." };
+  }
+
+  if (await yaHayPendiente(supabase, sesion.idMarca, "PRECIO_EFECTIVO", idProducto)) {
+    return { error: "Ya mandaste un precio en efectivo para este producto y todavía está esperando respuesta." };
+  }
+
+  // Un descuento muy grande casi siempre es un cero de más al tipear, así que
+  // se avisa sin frenar: puede ser una decisión real de la marca.
+  const alertas: Record<string, string> = {};
+  if (lista) {
+    const off = Math.round(((lista - precio) / lista) * 100);
+    if (off >= 30) alertas.descuento = `Son ${off}% menos que el precio de lista. ¿Es lo que querías poner?`;
+  }
+
+  return crear(supabase, {
+    idMarca: sesion.idMarca,
+    idUsuario: sesion.idUsuario,
+    tipo: "PRECIO_EFECTIVO",
+    idProducto,
+    datos: { precio_efectivo: precio },
+    datosAnteriores: { precio_efectivo: actual, precio_venta: lista },
+    validacion: { frena: null, alertas },
+  });
+}
+
+/**
+ * La marca propone una foto nueva para su producto.
+ *
+ * La foto se sube al momento y la solicitud guarda su URL; el producto recién
+ * la toma cuando la aprobás. Es al revés de lo que parece natural —guardar el
+ * archivo solo si se aprueba— pero no hay dónde dejar un archivo "en espera"
+ * sin subirlo, y sobre todo: así podés VER la foto antes de decidir. Aprobar
+ * una foto sin verla no es aprobar nada.
+ *
+ * Si la rechazás, el archivo queda en el depósito sin que lo use nadie. Pesa
+ * unos cientos de KB y nadie lo ve: es más barato que la alternativa.
+ */
+export async function pedirCambioFoto(
+  idProducto: string,
+  formData: FormData
+): Promise<Resultado> {
+  const sesion = await sesionOError();
+  const supabase = getSupabaseServerClient();
+
+  const producto = await productoPropio(supabase, idProducto, sesion.idMarca);
+  if (!producto) return { error: "Ese producto no es tuyo." };
+
+  const archivo = formData.get("archivo") as File | null;
+  if (!archivo || archivo.size === 0) return { error: "Elegí una foto primero." };
+  if (!archivo.type.startsWith("image/")) return { error: "Eso no es una imagen." };
+  // 8 MB: una foto de celular sin comprimir entra, un video no.
+  if (archivo.size > 8 * 1024 * 1024) return { error: "La foto no puede pesar más de 8 MB." };
+
+  if (await yaHayPendiente(supabase, sesion.idMarca, "FOTO", idProducto)) {
+    return { error: "Ya mandaste una foto para este producto y todavía está esperando respuesta." };
+  }
+
+  const extension = (archivo.name.split(".").pop() ?? "jpg").toLowerCase().slice(0, 5);
+  const path = `propuestas/${idProducto}-${Date.now()}.${extension}`;
+
+  const { error: errorSubida } = await supabase.storage
+    .from("fotos-productos")
+    .upload(path, archivo, { upsert: true, contentType: archivo.type || undefined });
+  if (errorSubida) return { error: errorSubida.message };
+
+  const { data: publica } = supabase.storage.from("fotos-productos").getPublicUrl(path);
+
+  return crear(supabase, {
+    idMarca: sesion.idMarca,
+    idUsuario: sesion.idUsuario,
+    tipo: "FOTO",
+    idProducto,
+    datos: { imagen: publica.publicUrl },
+    datosAnteriores: { imagen: (producto.imagen as string | null) ?? null },
+    validacion: { frena: null, alertas: {} },
   });
 }
 

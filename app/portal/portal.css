@@ -564,6 +564,20 @@
 
 /* ---------- Formularios ---------- */
 .cam-form { margin-top: 14px; display: flex; flex-direction: column; gap: 11px; }
+
+/* La foto de hoy y la propuesta, lado a lado: la marca compara antes de
+   mandarla, y en Aprobaciones se compara antes de aceptarla. Aprobar una foto
+   sin verla no es aprobar nada. */
+.cam-fotos { display: flex; gap: 14px; flex-wrap: wrap; }
+.cam-foto { display: flex; flex-direction: column; gap: 5px; }
+.cam-foto > span { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--texto-3); }
+.cam-foto img,
+.cam-foto-vacia {
+  width: 116px; height: 116px; border-radius: 10px; object-fit: contain;
+  background: var(--papel); border: 1px solid var(--borde-fuerte);
+}
+.cam-foto-vacia { display: grid; place-items: center; font-size: 12px; color: var(--texto-3); }
+
 .cam-campos { display: flex; gap: 11px; flex-wrap: wrap; }
 .cam-campo { display: flex; flex-direction: column; gap: 4px; flex: 1 1 150px; min-width: 130px; }
 .cam-campo.ancho { flex-basis: 100%; }

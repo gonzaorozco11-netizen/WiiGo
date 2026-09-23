@@ -6,6 +6,7 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 import { esCodigoInterno, limpiarCodigoBarras } from "@/lib/codigos";
+import { generarSkuVariante, generarCodigoBarrasVariante } from "@/lib/codigosVariante";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 async function usuarioActual() {
@@ -87,62 +88,10 @@ function productoFromForm(formData: FormData, idMarca: string, idSubcategoria: s
   };
 }
 
-// Prefijo de 3 letras a partir del nombre de la marca (sin tildes ni
-// símbolos), para armar un SKU legible: BLO-0001, BLO-0002...
-function prefijoDesdeNombre(nombre: string) {
-  const soloLetras = nombre
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .replace(/[^a-zA-Z]/g, "")
-    .toUpperCase();
-  return soloLetras.slice(0, 3) || "PRD";
-}
-
-async function generarSkuVariante(supabase: SupabaseClient, idMarca: string) {
-  const { data: marca } = await supabase
-    .from("marcas")
-    .select("nombre")
-    .eq("id_marca", idMarca)
-    .maybeSingle();
-  const prefijo = prefijoDesdeNombre(marca?.nombre ?? "PRD");
-
-  const { data: productosDeLaMarca } = await supabase
-    .from("productos")
-    .select("id_producto")
-    .eq("id_marca", idMarca);
-  const idsProductos = (productosDeLaMarca ?? []).map((p: { id_producto: string }) => p.id_producto);
-
-  let mayor = 0;
-  if (idsProductos.length > 0) {
-    const { data: existentes } = await supabase
-      .from("variantes_producto")
-      .select("sku")
-      .in("id_producto", idsProductos)
-      .like("sku", `${prefijo}-%`);
-    (existentes ?? []).forEach((row: { sku: string | null }) => {
-      const m = row.sku?.match(new RegExp(`^${prefijo}-(\\d+)$`));
-      if (m) mayor = Math.max(mayor, parseInt(m[1], 10));
-    });
-  }
-
-  return `${prefijo}-${String(mayor + 1).padStart(4, "0")}`;
-}
-
-// Código interno de 11 dígitos empezando en "20...", el rango que el
-// estándar EAN reserva para uso interno/en tienda (no es un código
-// registrado globalmente, pero sirve igual para escanear en Self Checkout).
-async function generarCodigoBarrasVariante(supabase: SupabaseClient) {
-  const BASE = 20000000000;
-  const { data: existentes } = await supabase.from("variantes_producto").select("codigo_barras");
-
-  let mayor = BASE;
-  (existentes ?? []).forEach((row: { codigo_barras: string | null }) => {
-    const n = Number(row.codigo_barras);
-    if (Number.isFinite(n) && n > mayor) mayor = n;
-  });
-
-  return String(mayor + 1);
-}
+// El SKU y el código de barras viven en lib/codigosVariante.ts: los usan esta
+// pantalla y también la aprobación de un alta que mandó una marca desde su
+// portal. Si cada camino numerara por su cuenta, dos productos podrían
+// terminar con el mismo código.
 
 /**
  * Se fija que nadie más esté usando ese código.

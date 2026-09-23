@@ -4,6 +4,8 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   pedirCambioPrecio,
+  pedirPrecioEfectivo,
+  pedirCambioFoto,
   pedirCambioTexto,
   pedirPromo,
   pedirProductoNuevo,
@@ -49,7 +51,7 @@ const ESTADO_TEXTO: Record<string, { rotulo: string; clase: string }> = {
   CANCELADA: { rotulo: "Lo cancelaste", clase: "gris" },
 };
 
-type Formulario = "PRECIO" | "NOMBRE" | "DESCRIPCION" | "DESCUENTO" | "BAJA" | null;
+type Formulario = "PRECIO" | "EFECTIVO" | "FOTO" | "NOMBRE" | "DESCRIPCION" | "DESCUENTO" | "BAJA" | null;
 
 export default function PortalCambios({
   productos,
@@ -184,6 +186,12 @@ function FilaProducto({
             <Opcion activa={form === "PRECIO"} bloqueada={esperando("PRECIO")} onClick={() => setForm(form === "PRECIO" ? null : "PRECIO")}>
               Cambiar precio
             </Opcion>
+            <Opcion activa={form === "EFECTIVO"} bloqueada={esperando("PRECIO_EFECTIVO")} onClick={() => setForm(form === "EFECTIVO" ? null : "EFECTIVO")}>
+              Precio en efectivo
+            </Opcion>
+            <Opcion activa={form === "FOTO"} bloqueada={esperando("FOTO")} onClick={() => setForm(form === "FOTO" ? null : "FOTO")}>
+              Foto
+            </Opcion>
             <Opcion activa={form === "DESCUENTO"} bloqueada={esperando("DESCUENTO")} onClick={() => setForm(form === "DESCUENTO" ? null : "DESCUENTO")}>
               Proponer promo
             </Opcion>
@@ -205,6 +213,8 @@ function FilaProducto({
           )}
 
           {form === "PRECIO" && <FormPrecio p={p} politica={politica} onListo={onListo} />}
+          {form === "EFECTIVO" && <FormEfectivo p={p} onListo={onListo} />}
+          {form === "FOTO" && <FormFoto p={p} onListo={onListo} />}
           {form === "DESCUENTO" && <FormPromo p={p} politica={politica} onListo={onListo} />}
           {form === "DESCRIPCION" && <FormTexto p={p} tipo="DESCRIPCION" onListo={onListo} />}
           {form === "NOMBRE" && <FormTexto p={p} tipo="NOMBRE" onListo={onListo} />}
@@ -329,6 +339,134 @@ function FormPrecio({ p, politica, onListo }: { p: ProductoPropio; politica: Pol
             " — es un salto grande, revisá que no te haya quedado un cero de más."}
         </p>
       )}
+    </Envio>
+  );
+}
+
+/**
+ * El precio pagando en efectivo.
+ *
+ * Es de la marca y no de WiiGo porque el descuento lo absorbe casi entero
+ * ella. Por eso el formulario muestra en pesos cuánto ahorra el cliente: es el
+ * número que va impreso en el cartel de góndola y el que decide la compra.
+ */
+function FormEfectivo({ p, onListo }: { p: ProductoPropio; onListo: () => void }) {
+  const [precio, setPrecio] = useState("");
+  const valor = Number(precio);
+  const valido = Number.isFinite(valor) && valor > 0 && (!p.precio || valor <= p.precio);
+  const ahorro = valido && p.precio ? p.precio - valor : null;
+  const off = ahorro !== null && p.precio ? (ahorro / p.precio) * 100 : null;
+
+  return (
+    <Envio
+      texto="Mandar el precio en efectivo"
+      deshabilitado={!valido}
+      onEnviar={async () => {
+        const r = await pedirPrecioEfectivo(p.idProducto, valor);
+        if (!r.error) onListo();
+        return r;
+      }}
+      pie={
+        <p className="cam-nota">
+          Es lo que paga el cliente en efectivo. Va impreso en el cartel de góndola al lado del precio de
+          lista, así que es lo que decide la compra. Este descuento lo absorbe la marca, por eso lo elegís vos.
+        </p>
+      }
+    >
+      <div className="cam-campos">
+        <label className="cam-campo">
+          <span>Con tarjeta o QR</span>
+          <input className="mono" value={pesos(p.precio)} disabled />
+        </label>
+        <label className="cam-campo">
+          <span>{p.precioEfectivo !== null ? "Efectivo de hoy" : "En efectivo"}</span>
+          {p.precioEfectivo !== null ? (
+            <input className="mono" value={pesos(p.precioEfectivo)} disabled />
+          ) : (
+            <input className="mono" value="sin cargar" disabled />
+          )}
+        </label>
+        <label className="cam-campo">
+          <span>Efectivo nuevo</span>
+          <input
+            type="number"
+            step="0.01"
+            value={precio}
+            onChange={(e) => setPrecio(e.target.value)}
+            placeholder="0,00"
+            autoFocus
+          />
+        </label>
+      </div>
+      {precio !== "" && !valido && p.precio && valor > p.precio && (
+        <p className="cam-var fuerte">
+          No puede ser mayor al precio de lista — el cartel prometería un ahorro que no existe.
+        </p>
+      )}
+      {ahorro !== null && ahorro > 0 && (
+        <p className={`cam-var${off !== null && off >= 30 ? " fuerte" : ""}`}>
+          El cliente ahorra {pesos(ahorro)} ({off?.toFixed(1)}% menos)
+          {off !== null && off >= 30 && " — es mucho, revisá que no te haya quedado un cero de más."}
+        </p>
+      )}
+    </Envio>
+  );
+}
+
+/** La foto del producto. Se sube al mandarla para que se pueda ver antes de aprobar. */
+function FormFoto({ p, onListo }: { p: ProductoPropio; onListo: () => void }) {
+  const [archivo, setArchivo] = useState<File | null>(null);
+  const [vista, setVista] = useState<string | null>(null);
+
+  return (
+    <Envio
+      texto="Mandar la foto"
+      deshabilitado={!archivo}
+      onEnviar={async () => {
+        if (!archivo) return { error: "Elegí una foto." };
+        const fd = new FormData();
+        fd.set("archivo", archivo);
+        const r = await pedirCambioFoto(p.idProducto, fd);
+        if (!r.error) onListo();
+        return r;
+      }}
+      pie={
+        <p className="cam-nota">
+          Es la foto que ve el cliente en la pantalla del local y en el tótem. Que sea del producto solo,
+          sobre fondo claro y sin texto encima — las que tienen precios o logos pegados quedan viejas
+          enseguida.
+        </p>
+      }
+    >
+      <div className="cam-fotos">
+        <div className="cam-foto">
+          <span>La de hoy</span>
+          {p.imagen ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={p.imagen} alt="" />
+          ) : (
+            <div className="cam-foto-vacia">sin foto</div>
+          )}
+        </div>
+        <div className="cam-foto">
+          <span>La nueva</span>
+          {vista ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={vista} alt="" />
+          ) : (
+            <div className="cam-foto-vacia">elegí una</div>
+          )}
+        </div>
+      </div>
+      <input
+        type="file"
+        accept="image/*"
+        onChange={(e) => {
+          const f = e.target.files?.[0] ?? null;
+          setArchivo(f);
+          setVista(f ? URL.createObjectURL(f) : null);
+        }}
+      />
     </Envio>
   );
 }

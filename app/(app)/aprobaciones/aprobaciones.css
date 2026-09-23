@@ -62,6 +62,22 @@
   display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
   margin-top: 12px; padding: 12px 14px; background: #fafafa; border-radius: 10px;
 }
+/* La foto de hoy y la propuesta, lado a lado. Aprobar una foto sin verla no
+   es aprobar nada, así que la comparación va entera en la bandeja y no detrás
+   de un clic. */
+.sol-fotos {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  margin-top: 12px; padding: 12px 14px; background: #fafafa; border-radius: 10px;
+}
+.sol-foto { display: flex; flex-direction: column; gap: 5px; }
+.sol-foto .et { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: #a3a3a3; font-weight: 600; }
+.sol-foto img,
+.sol-foto-vacia {
+  width: 108px; height: 108px; border-radius: 9px; object-fit: contain;
+  background: #fff; border: 1px solid #e5e5e5;
+}
+.sol-foto-vacia { display: grid; place-items: center; font-size: 12px; color: #a3a3a3; }
+
 .sol-valor { display: flex; flex-direction: column; }
 .sol-valor .et { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: #a3a3a3; font-weight: 600; }
 .sol-valor .v { font-size: 19px; font-weight: 600; color: #525252; }

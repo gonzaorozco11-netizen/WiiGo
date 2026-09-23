@@ -6,6 +6,7 @@ import { friendlyDbError } from "@/lib/errors";
 import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos";
 import { exigirGestionInterna } from "@/lib/marcaSesion";
 import { fechaHoraArgentina } from "@/lib/horarios";
+import { generarSkuVariante, generarCodigoBarrasVariante } from "@/lib/codigosVariante";
 import {
   obtenerPolitica,
   proximaVigencia,
@@ -378,30 +379,113 @@ export async function aplicarCambiosProgramados(): Promise<{ aplicadas: number; 
 
   for (const s of pendientes ?? []) {
     try {
+      const datos = (s.datos as Record<string, unknown>) ?? {};
+      const idProducto = s.id_producto as string | null;
+      const ahoraIso = new Date().toISOString();
+
       if (s.tipo === "PRECIO") {
-        const precio = Number((s.datos as Record<string, unknown>)?.precio);
+        const precio = Number(datos.precio);
         if (!Number.isFinite(precio) || precio <= 0) throw new Error("precio inválido");
 
         const { data: producto } = await supabase
           .from("productos")
           .select("precio_venta")
-          .eq("id_producto", s.id_producto as string)
+          .eq("id_producto", idProducto as string)
           .maybeSingle();
         const anterior = (producto?.precio_venta as number) ?? null;
 
         await supabase
           .from("productos")
-          .update({ precio_venta: precio, fecha_actualizacion: new Date().toISOString() })
-          .eq("id_producto", s.id_producto as string);
+          .update({ precio_venta: precio, fecha_actualizacion: ahoraIso })
+          .eq("id_producto", idProducto as string);
 
         await supabase.from("historial_precios").insert({
-          id_producto: s.id_producto,
+          id_producto: idProducto,
           precio_anterior: anterior,
           precio_nuevo: precio,
           id_solicitud: s.id_solicitud,
           cambiado_por: s.resuelta_por,
           motivo: s.motivo,
         });
+      } else if (s.tipo === "PRECIO_EFECTIVO") {
+        // El precio de efectivo no va al historial de precios: ese historial es
+        // del precio de lista, que es contra el que se mide la liquidación.
+        const precio = Number(datos.precio_efectivo);
+        if (!Number.isFinite(precio) || precio <= 0) throw new Error("precio de efectivo inválido");
+        await supabase
+          .from("productos")
+          .update({ precio_efectivo: precio, fecha_actualizacion: ahoraIso })
+          .eq("id_producto", idProducto as string);
+      } else if (s.tipo === "DESCRIPCION") {
+        const texto = String(datos.descripcion ?? "").trim();
+        if (!texto) throw new Error("descripción vacía");
+        await supabase
+          .from("productos")
+          .update({ descripcion: texto, fecha_actualizacion: ahoraIso })
+          .eq("id_producto", idProducto as string);
+      } else if (s.tipo === "NOMBRE") {
+        const nombre = String(datos.nombre ?? "").trim();
+        if (!nombre) throw new Error("nombre vacío");
+        await supabase
+          .from("productos")
+          .update({ nombre, fecha_actualizacion: ahoraIso })
+          .eq("id_producto", idProducto as string);
+      } else if (s.tipo === "FOTO") {
+        const url = String(datos.imagen ?? "").trim();
+        if (!url) throw new Error("foto vacía");
+        await supabase
+          .from("productos")
+          .update({ imagen: url, fecha_actualizacion: ahoraIso })
+          .eq("id_producto", idProducto as string);
+      } else if (s.tipo === "DESCUENTO") {
+        const porcentaje = Number(datos.porcentaje);
+        if (!Number.isFinite(porcentaje) || porcentaje <= 0) throw new Error("porcentaje inválido");
+        await supabase
+          .from("productos")
+          .update({ descuento_porcentaje: porcentaje, fecha_actualizacion: ahoraIso })
+          .eq("id_producto", idProducto as string);
+      } else if (s.tipo === "BAJA_PRODUCTO") {
+        // Baja lógica: el producto sale de la góndola pero su historial de
+        // ventas y su stock siguen existiendo para la liquidación.
+        await supabase
+          .from("productos")
+          .update({ estado: "INACTIVO", fecha_actualizacion: ahoraIso })
+          .eq("id_producto", idProducto as string);
+      } else if (s.tipo === "PRODUCTO_NUEVO") {
+        const nombre = String(datos.nombre ?? "").trim();
+        if (!nombre) throw new Error("nombre vacío");
+        const { data: creado, error: errorAlta } = await supabase
+          .from("productos")
+          .insert({
+            id_marca: s.id_marca,
+            nombre,
+            precio_venta: Number(datos.precio) || null,
+            costo_informado: Number(datos.costo) || null,
+            descripcion: (datos.descripcion as string | null) ?? null,
+            estado: "ACTIVO",
+            visible_asesor: true,
+          })
+          .select("id_producto")
+          .single();
+        if (errorAlta) throw new Error(errorAlta.message);
+
+        // Todo producto necesita al menos una variante para tener stock. Sin
+        // esto el producto entra pero no se puede recibir ni vender. El SKU y
+        // el código salen del mismo generador que usa la pantalla de
+        // Productos, para que no se repitan entre los dos caminos.
+        await supabase.from("variantes_producto").insert({
+          id_producto: creado.id_producto,
+          nombre: "Único",
+          sku: await generarSkuVariante(supabase, s.id_marca as string),
+          codigo_barras: await generarCodigoBarrasVariante(supabase),
+          stock_minimo: 0,
+          stock_objetivo: 0,
+        });
+
+        await supabase
+          .from("solicitudes_marca")
+          .update({ id_producto: creado.id_producto })
+          .eq("id_solicitud", s.id_solicitud);
       }
 
       await supabase

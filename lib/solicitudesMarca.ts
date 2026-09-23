@@ -11,6 +11,10 @@ import { fechaHoraArgentina } from "@/lib/horarios";
 
 export type TipoSolicitud =
   | "PRECIO"
+  // El precio pagando en efectivo. Va aparte del de lista porque es otra
+  // decisión: el descuento del efectivo lo absorbe casi entero la marca, así
+  // que es suyo decidirlo, y puede cambiarlo sin tocar el precio de lista.
+  | "PRECIO_EFECTIVO"
   | "COSTO"
   | "FOTO"
   | "DESCRIPCION"
@@ -26,6 +30,7 @@ export type EstadoSolicitud = "PENDIENTE" | "APROBADA" | "RECHAZADA" | "APLICADA
 /** Etiquetas para pantalla — un solo lugar, así no se escriben distinto en cada una. */
 export const ETIQUETA_TIPO: Record<TipoSolicitud, string> = {
   PRECIO: "Cambio de precio",
+  PRECIO_EFECTIVO: "Precio en efectivo",
   COSTO: "Costo",
   FOTO: "Cambio de foto",
   DESCRIPCION: "Descripción",
@@ -47,6 +52,7 @@ export type GrupoBandeja = "PRECIOS" | "DESCUENTOS" | "PRODUCTOS" | "CONTENIDO";
 
 export const GRUPO_DE_TIPO: Record<TipoSolicitud, GrupoBandeja> = {
   PRECIO: "PRECIOS",
+  PRECIO_EFECTIVO: "PRECIOS",
   IMPORTACION: "PRECIOS",
   DESCUENTO: "DESCUENTOS",
   PRODUCTO_NUEVO: "PRODUCTOS",
