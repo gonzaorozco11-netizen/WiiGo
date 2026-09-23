@@ -176,6 +176,43 @@ export type MarcaPublica = Pick<Marca, "id_marca" | "nombre" | "logo"> & {
 
 export const COLUMNAS_MARCA_PUBLICA = "id_marca,nombre,logo,orden";
 
+// Sin la columna `orden`, que se agregó después y puede no estar todavía.
+const COLUMNAS_MARCA_SIN_ORDEN = "id_marca,nombre,logo";
+
+/**
+ * Las marcas que puede ver una pantalla pública (Asesor y tótem).
+ *
+ * Trae solo el nombre y el logo: con `select("*")` viajaban al navegador el
+ * royalty, el fee de ingreso, el plan y el contacto de cada marca — las
+ * condiciones comerciales de cada contrato, en una pantalla sin login.
+ *
+ * Lo del reintento: `orden` la agrega sql/orden-marcas.sql, que se corre a mano
+ * en Supabase. Si todavía no se corrió, pedir esa columna devuelve error y la
+ * pantalla se quedaría sin ninguna marca. Entonces se vuelve a pedir sin ella y
+ * las marcas salen alfabéticas, como salían antes; el orden elegido se enciende
+ * solo cuando el SQL esté corrido.
+ */
+export async function traerMarcasPublicas(
+  supabase: ReturnType<typeof getSupabaseServerClient>,
+  { soloVisiblesEnAsesor = false } = {}
+): Promise<{ marcas: MarcaPublica[]; error: string | null }> {
+  const consultar = (columnas: string) => {
+    const q = supabase.from("marcas").select(columnas).eq("estado", "ACTIVA");
+    return soloVisiblesEnAsesor ? q.eq("visible_asesor", true) : q;
+  };
+
+  const conOrden = await consultar(COLUMNAS_MARCA_PUBLICA);
+  if (!conOrden.error) {
+    return { marcas: (conOrden.data ?? []) as unknown as MarcaPublica[], error: null };
+  }
+
+  const sinOrden = await consultar(COLUMNAS_MARCA_SIN_ORDEN);
+  if (sinOrden.error) return { marcas: [], error: sinOrden.error.message };
+
+  const filas = (sinOrden.data ?? []) as unknown as Omit<MarcaPublica, "orden">[];
+  return { marcas: filas.map((m) => ({ ...m, orden: null })), error: null };
+}
+
 export type ProductoPublico = Pick<
   Producto,
   | "id_producto"
@@ -198,6 +235,18 @@ export const COLUMNAS_PRODUCTO_PUBLICO =
 export type VarianteProductoPublica = Pick<VarianteProducto, "id_variante" | "id_producto" | "nombre" | "orden">;
 
 export const COLUMNAS_VARIANTE_PUBLICA = "id_variante,id_producto,nombre,orden";
+
+// El tótem necesita dos cosas más que el Asesor: el código de barras, porque
+// es con lo que el cliente escanea, y los precios de la variante, porque un
+// sabor puede tener precio propio. El código de barras no es un secreto —
+// está impreso en el envase que el cliente tiene en la mano.
+export type VarianteTotem = Pick<
+  VarianteProducto,
+  "id_variante" | "id_producto" | "nombre" | "codigo_barras" | "precio_venta" | "precio_efectivo"
+>;
+
+export const COLUMNAS_VARIANTE_TOTEM =
+  "id_variante,id_producto,nombre,codigo_barras,precio_venta,precio_efectivo";
 
 // El SKU, código de barras y stock viven en la variante (sabor, tamaño...),
 // no en el producto. Todo producto tiene al menos una (aunque no tenga

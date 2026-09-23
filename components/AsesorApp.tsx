@@ -7,7 +7,7 @@ import { ambosPrecios } from "@/lib/precios";
 import { Fredoka, Bodoni_Moda } from "next/font/google";
 import type {
   Local,
-  Marca,
+  MarcaPublica,
   ProductoPublico,
   VarianteProductoPublica,
   Objetivo,
@@ -472,7 +472,7 @@ function TarjetaResultado({
   compacta = false,
 }: {
   producto: ProductoPublico;
-  marca: Marca | undefined;
+  marca: MarcaPublica | undefined;
   etiqueta: string;
   nombre: string;
   onClick: () => void;
@@ -716,7 +716,7 @@ export default function AsesorApp({
   filtrosPorProducto,
 }: {
   local: Local;
-  marcas: Marca[];
+  marcas: MarcaPublica[];
   productos: ProductoPublico[];
   variantesPorProducto: Record<string, VarianteProductoPublica[]>;
   subcategorias: Subcategoria[];
@@ -849,7 +849,7 @@ export default function AsesorApp({
   }, [router]);
 
   const marcaPorId = useMemo(() => {
-    const mapa: Record<string, Marca> = {};
+    const mapa: Record<string, MarcaPublica> = {};
     marcas.forEach((m) => (mapa[m.id_marca] = m));
     return mapa;
   }, [marcas]);
@@ -2434,7 +2434,7 @@ function ProductoDetalleModal({
   onClose,
 }: {
   producto: ProductoPublico;
-  marca: Marca | undefined;
+  marca: MarcaPublica | undefined;
   ficha: FichaProducto | null;
   variantes: VarianteProductoPublica[];
   idioma: Idioma;

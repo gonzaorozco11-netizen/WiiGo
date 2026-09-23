@@ -1,7 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Local, Marca, Producto, VarianteProducto, Stock } from "@/lib/supabase";
+import type { Local, MarcaPublica, ProductoPublico, VarianteTotem, Stock } from "@/lib/supabase";
+
+/** Del stock solo hacen falta estas dos columnas para saber cuánto queda. */
+type StockTotem = Pick<Stock, "id_variante" | "cantidad">;
 import { precioDe, type MedioDePago } from "@/lib/precios";
 import type { Clima } from "@/lib/clima";
 import { WIIGO_LOGO_DATA_URI, WIIGO_ISOTIPO_DATA_URI } from "@/lib/wiigo-logo-data";
@@ -32,9 +35,9 @@ const STOCK_POLL_MS = 8000;
 const PRECIOS_POLL_MS = 15000;
 
 type Item = {
-  variante: VarianteProducto;
-  producto: Producto;
-  marca: Marca | undefined;
+  variante: VarianteTotem;
+  producto: ProductoPublico;
+  marca: MarcaPublica | undefined;
   /** Lo que se cobra pagando con Mercado Pago. */
   precio: number;
   /** Lo que se cobra pagando en efectivo. Queda igual al de lista cuando la
@@ -92,8 +95,8 @@ function IsotipoWiiGo({ alto }: { alto: number }) {
  * problema de red.
  */
 function precioFinal(
-  producto: Producto,
-  variante: VarianteProducto,
+  producto: ProductoPublico,
+  variante: VarianteTotem,
   medio: MedioDePago,
   precios?: PreciosEnVivo
 ) {
@@ -126,7 +129,7 @@ function precioFinal(
  * puede tener varios productos y no hay que frenar la pantalla por las fotos.
  * Si el producto no tiene foto cargada queda el cajoncito, sin hueco raro.
  */
-function FotoItem({ producto }: { producto: Producto }) {
+function FotoItem({ producto }: { producto: ProductoPublico }) {
   return (
     <div className="sc-item-icono">
       {producto.imagen ? (
@@ -1317,10 +1320,12 @@ export default function SelfCheckoutApp({
   montoPideDni,
 }: {
   local: Local;
-  productos: Producto[];
-  variantes: VarianteProducto[];
-  marcas: Marca[];
-  stock: Stock[];
+  // Tipos recortados a propósito: esta pantalla es pública y solo recibe las
+  // columnas que puede mostrar. Ver app/self-checkout/[idLocal]/page.tsx.
+  productos: ProductoPublico[];
+  variantes: VarianteTotem[];
+  marcas: MarcaPublica[];
+  stock: StockTotem[];
   clima: Clima;
   esDeNoche: boolean;
   /** Monto a partir del cual ARCA exige el DNI del comprador. 0 = nunca. */

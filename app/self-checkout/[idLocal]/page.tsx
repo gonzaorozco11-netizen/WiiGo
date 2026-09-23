@@ -1,10 +1,13 @@
 import { notFound } from "next/navigation";
 import {
   getSupabaseServerClient,
+  COLUMNAS_PRODUCTO_PUBLICO,
+  COLUMNAS_VARIANTE_TOTEM,
+  traerMarcasPublicas,
   type Local,
-  type Marca,
-  type Producto,
-  type VarianteProducto,
+  type MarcaPublica,
+  type ProductoPublico,
+  type VarianteTotem,
   type Stock,
 } from "@/lib/supabase";
 import { obtenerClimaActual } from "@/lib/clima";
@@ -26,22 +29,32 @@ export default async function SelfCheckoutPage({ params }: { params: Promise<{ i
 
   if (!local) notFound();
 
+  // Columnas explícitas, no "*": esta pantalla es PÚBLICA (el tótem no tiene
+  // login y cualquiera con el link entra desde su celular). Con "*" viajaban al
+  // navegador el costo informado de cada producto y, peor, el royalty, el fee
+  // de ingreso y el contacto de cada marca — las condiciones comerciales de los
+  // contratos. Todo eso se quedaba en el HTML, al alcance de un cliente o de la
+  // competencia.
   const [productosRes, variantesRes, marcasRes, stockRes] = await Promise.all([
-    supabase.from("productos").select("*").eq("estado", "ACTIVO"),
-    supabase.from("variantes_producto").select("*").eq("estado", "ACTIVO"),
-    supabase.from("marcas").select("*").eq("estado", "ACTIVA"),
-    supabase.from("stock").select("*").eq("id_local", idLocal),
+    supabase.from("productos").select(COLUMNAS_PRODUCTO_PUBLICO).eq("estado", "ACTIVO"),
+    supabase.from("variantes_producto").select(COLUMNAS_VARIANTE_TOTEM).eq("estado", "ACTIVO"),
+    traerMarcasPublicas(supabase),
+    supabase.from("stock").select("id_variante,cantidad").eq("id_local", idLocal),
   ]);
 
   // Si esta consulta falla y no se avisa, la pantalla queda con stock vacío
   // (todos los productos "sin stock" sin ningún error visible) en vez de
   // mostrar claramente que algo se rompió.
-  const error = productosRes.error || variantesRes.error || marcasRes.error || stockRes.error;
+  const error =
+    productosRes.error?.message ||
+    variantesRes.error?.message ||
+    marcasRes.error ||
+    stockRes.error?.message;
   if (error) {
     return (
       <div className="max-w-md mx-auto text-center py-12">
         <p className="text-red-600 font-medium mb-2">No se pudo cargar el self-checkout</p>
-        <p className="text-sm text-neutral-500">{error.message}</p>
+        <p className="text-sm text-neutral-500">{error}</p>
       </div>
     );
   }
@@ -56,10 +69,10 @@ export default async function SelfCheckoutPage({ params }: { params: Promise<{ i
     <SelfCheckoutApp
       montoPideDni={montoPideDni}
       local={local as Local}
-      productos={(productosRes.data ?? []) as Producto[]}
-      variantes={(variantesRes.data ?? []) as VarianteProducto[]}
-      marcas={(marcasRes.data ?? []) as Marca[]}
-      stock={(stockRes.data ?? []) as Stock[]}
+      productos={(productosRes.data ?? []) as unknown as ProductoPublico[]}
+      variantes={(variantesRes.data ?? []) as unknown as VarianteTotem[]}
+      marcas={marcasRes.marcas}
+      stock={(stockRes.data ?? []) as unknown as Pick<Stock, "id_variante" | "cantidad">[]}
       clima={cielo.clima}
       esDeNoche={cielo.esDeNoche}
     />

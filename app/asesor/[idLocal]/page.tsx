@@ -2,7 +2,6 @@ import { notFound } from "next/navigation";
 import {
   getSupabaseServerClient,
   type Local,
-  type Marca,
   type Producto,
   type Subcategoria,
   type Profesional,
@@ -13,6 +12,7 @@ import {
   type VarianteProductoPublica,
   COLUMNAS_PRODUCTO_PUBLICO,
   COLUMNAS_VARIANTE_PUBLICA,
+  traerMarcasPublicas,
 } from "@/lib/supabase";
 import { fetchContenidoAsesor } from "@/lib/contenidoAsesor";
 import AsesorApp from "@/components/AsesorApp";
@@ -48,7 +48,9 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
     trayectoriaRes,
     contenido,
   ] = await Promise.all([
-    supabase.from("marcas").select("*").eq("estado", "ACTIVA").eq("visible_asesor", true),
+    // Columnas explícitas: con "*" viajaban al navegador el royalty, el fee de
+    // ingreso, el plan y el contacto de cada marca. Esta pantalla es pública.
+    traerMarcasPublicas(supabase, { soloVisiblesEnAsesor: true }),
     supabase.from("productos").select(COLUMNAS_PRODUCTO_PUBLICO).eq("estado", "ACTIVO").eq("visible_asesor", true),
     supabase.from("variantes_producto").select(COLUMNAS_VARIANTE_PUBLICA).eq("estado", "ACTIVO"),
     supabase.from("subcategorias").select("*").eq("estado", "ACTIVA"),
@@ -133,7 +135,7 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
   return (
     <AsesorApp
       local={local as Local}
-      marcas={(marcasRes.data ?? []) as Marca[]}
+      marcas={marcasRes.marcas}
       productos={(productosRes.data ?? []) as ProductoPublico[]}
       variantesPorProducto={variantesPorProducto}
       subcategorias={(subcategoriasRes.data ?? []) as Subcategoria[]}
