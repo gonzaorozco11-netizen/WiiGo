@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
+import { esCodigoInterno, limpiarCodigoBarras } from "@/lib/codigos";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 async function usuarioActual() {
@@ -143,6 +144,63 @@ async function generarCodigoBarrasVariante(supabase: SupabaseClient) {
   return String(mayor + 1);
 }
 
+/**
+ * Se fija que nadie más esté usando ese código.
+ *
+ * Dos productos con el mismo código en el tótem son un problema serio: el
+ * cliente escanea uno y se le carga el otro. Pasa fácil cuando alguien escanea
+ * la caja en vez de la unidad, o cuando copia y pega el número del producto de
+ * al lado. Mejor frenar acá y decir con cuál choca.
+ */
+async function codigoLibre(supabase: SupabaseClient, codigo: string, idVarianteActual: string | null) {
+  const { data } = await supabase
+    .from("variantes_producto")
+    .select("id_variante, nombre, productos(nombre)")
+    .eq("codigo_barras", codigo)
+    .limit(2);
+
+  const choque = (data ?? []).find(
+    (v: { id_variante: string }) => v.id_variante !== idVarianteActual
+  ) as { nombre: string; productos?: { nombre?: string } | { nombre?: string }[] } | undefined;
+  if (!choque) return;
+
+  const prod = Array.isArray(choque.productos) ? choque.productos[0] : choque.productos;
+  const quien = [prod?.nombre, choque.nombre !== "Único" ? choque.nombre : null].filter(Boolean).join(" — ");
+  throw new Error(
+    `El código ${codigo} ya está usado por ${quien || "otro producto"}. Revisá que hayas escaneado el envase correcto.`
+  );
+}
+
+/**
+ * Decide con qué código se guarda la variante.
+ *
+ * Si el envase trae el suyo, se usa ese. Si no trae, se conserva el código
+ * interno que ya tenía —porque puede haber etiquetas impresas dando vueltas con
+ * ese número— y solo se genera uno nuevo cuando no hay ninguno.
+ */
+async function resolverCodigoBarras(
+  supabase: SupabaseClient,
+  idVariante: string | null,
+  propuesto: string
+) {
+  if (propuesto) {
+    await codigoLibre(supabase, propuesto, idVariante);
+    return propuesto;
+  }
+
+  if (idVariante) {
+    const { data } = await supabase
+      .from("variantes_producto")
+      .select("codigo_barras")
+      .eq("id_variante", idVariante)
+      .single();
+    const actual = (data?.codigo_barras as string | null) ?? null;
+    if (esCodigoInterno(actual)) return actual as string;
+  }
+
+  return generarCodigoBarrasVariante(supabase);
+}
+
 // Carga el stock físico inicial de una variante recién creada, con su
 // movimiento de auditoría — mismo patrón que ajustarStock en
 // app/(app)/stock/actions.ts, pero sin pasar por esa función porque acá
@@ -211,6 +269,9 @@ async function sincronizarVariantes(
   const stocksMinimos = formData.getAll("variante_stock_minimo").map(Number);
   const stocksObjetivo = formData.getAll("variante_stock_objetivo").map(Number);
   const stocksIniciales = formData.getAll("variante_stock_inicial").map(Number);
+  // Vacío quiere decir "el envase no trae código": abajo se le genera uno
+  // interno para imprimir en etiqueta.
+  const codigosPropios = formData.getAll("variante_codigo_barras").map((c) => limpiarCodigoBarras(String(c)));
 
   const { data: existentes } = await supabase
     .from("variantes_producto")
@@ -234,14 +295,20 @@ async function sincronizarVariantes(
     const stockObjetivo = Number.isFinite(stocksObjetivo[i]) ? stocksObjetivo[i] : 0;
 
     if (id) {
+      const codigoBarras = await resolverCodigoBarras(supabase, id, codigosPropios[i] ?? "");
       const { error } = await supabase
         .from("variantes_producto")
-        .update({ nombre, stock_minimo: stockMinimo, stock_objetivo: stockObjetivo })
+        .update({
+          nombre,
+          stock_minimo: stockMinimo,
+          stock_objetivo: stockObjetivo,
+          codigo_barras: codigoBarras,
+        })
         .eq("id_variante", id);
       if (error) throw new Error(friendlyDbError(error));
     } else {
       const sku = await generarSkuVariante(supabase, idMarca);
-      const codigoBarras = await generarCodigoBarrasVariante(supabase);
+      const codigoBarras = await resolverCodigoBarras(supabase, null, codigosPropios[i] ?? "");
       const { data: nueva, error } = await supabase
         .from("variantes_producto")
         .insert({
@@ -270,7 +337,7 @@ async function sincronizarVariantes(
 
   if (!count) {
     const sku = await generarSkuVariante(supabase, idMarca);
-    const codigoBarras = await generarCodigoBarrasVariante(supabase);
+    const codigoBarras = await resolverCodigoBarras(supabase, null, codigosPropios[0] ?? "");
     // El mínimo y el objetivo del formulario también acá: este camino se usa
     // justo cuando el producto no tiene variaciones y no se le puso nombre —
     // que es el caso normal. Sin esto, quien cargaba mínimo 5 y objetivo 15

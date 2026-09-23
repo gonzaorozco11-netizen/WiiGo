@@ -13,6 +13,8 @@ import type {
 } from "@/lib/supabase";
 import { createProducto, updateProducto, subirFotoProducto, subirFotoFichaProducto } from "@/app/(app)/productos/actions";
 import type { ProveedorConSaldo } from "@/app/(app)/proveedores/actions";
+import { esCodigoInterno, limpiarCodigoBarras, digitoVerificadorOk, largoDeCodigoConocido } from "@/lib/codigos";
+import EscanerCodigo from "@/components/EscanerCodigo";
 
 type VarianteForm = {
   id: string;
@@ -21,6 +23,24 @@ type VarianteForm = {
   stockMinimo: number;
   stockObjetivo: number;
   stockInicial: number;
+  /** El código que generamos nosotros, para imprimir en etiqueta. */
+  codigoInterno: string | null;
+  /** Si el envase ya trae su propio código impreso de fábrica. */
+  tienePropio: boolean;
+  /** El código del envase, escaneado o tipeado. Vacío si no tiene. */
+  codigoPropio: string;
+};
+
+const VARIANTE_VACIA: VarianteForm = {
+  id: "",
+  nombre: "",
+  sku: null,
+  stockMinimo: 0,
+  stockObjetivo: 0,
+  stockInicial: 0,
+  codigoInterno: null,
+  tienePropio: false,
+  codigoPropio: "",
 };
 
 // Con ~1000 fotos para cargar, subir la foto tal cual sale del celular (varios
@@ -90,15 +110,23 @@ export default function ProductoFormModal({
   const [nuevaSubcategoria, setNuevaSubcategoria] = useState(false);
   const [variantes, setVariantes] = useState<VarianteForm[]>(
     variantesIniciales.length > 0
-      ? variantesIniciales.map((v) => ({
-          id: v.id_variante,
-          nombre: v.nombre,
-          sku: v.sku,
-          stockMinimo: v.stock_minimo,
-          stockObjetivo: v.stock_objetivo,
-          stockInicial: 0,
-        }))
-      : [{ id: "", nombre: "", sku: null, stockMinimo: 0, stockObjetivo: 0, stockInicial: 0 }]
+      ? variantesIniciales.map((v) => {
+          // Un código que arranca en "20" es de los nuestros: quiere decir que
+          // el envase no traía ninguno. Cualquier otro salió del paquete.
+          const propio = Boolean(v.codigo_barras) && !esCodigoInterno(v.codigo_barras);
+          return {
+            id: v.id_variante,
+            nombre: v.nombre,
+            sku: v.sku,
+            stockMinimo: v.stock_minimo,
+            stockObjetivo: v.stock_objetivo,
+            stockInicial: 0,
+            codigoInterno: propio ? null : v.codigo_barras,
+            tienePropio: propio,
+            codigoPropio: propio ? (v.codigo_barras as string) : "",
+          };
+        })
+      : [{ ...VARIANTE_VACIA }]
   );
   const [idLocalInicial, setIdLocalInicial] = useState(locales[0]?.id_local ?? "");
   const [fotoProducto, setFotoProducto] = useState(producto?.imagen ?? "");
@@ -779,7 +807,7 @@ function VariantesSection({
               // "Único" y hay que ponerle nombre: si no, quedarían dos filas
               // y una llamada Único, que no significa nada.
               ...prev.map((x, i) => (i === 0 && prev.length === 1 ? { ...x, nombre: "" } : x)),
-              { id: "", nombre: "", sku: null, stockMinimo: 0, stockObjetivo: 0, stockInicial: 0 },
+              { ...VARIANTE_VACIA },
             ])
           }
           className="text-xs text-accent"
@@ -789,8 +817,8 @@ function VariantesSection({
       </div>
       <p className="text-xs text-neutral-500 mb-3">
         {sinVariaciones
-          ? "El código de barras y el SKU se generan solos. Si el producto viene en sabores o tamaños distintos, agregá variantes acá arriba."
-          : "Sabores, tamaños, etc. Cada variante tiene su propio SKU, código de barras y stock. Poneles un nombre a todas."}
+          ? "Si el envase ya trae código de barras, escaneálo acá abajo y listo. Si no trae, el sistema le genera uno para imprimir en etiqueta. Si el producto viene en sabores o tamaños distintos, agregá variantes acá arriba."
+          : "Sabores, tamaños, etc. Cada variante tiene su propio SKU, código de barras y stock — el código se escanea del envase de cada una. Poneles un nombre a todas."}
       </p>
 
       {mostrarStockInicial && locales.length > 0 && (
@@ -816,94 +844,218 @@ function VariantesSection({
 
       <div className="space-y-2">
         {variantes.map((v, i) => (
-          <div key={i} className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
-            <input type="hidden" name="variante_id" value={v.id} />
-            {sinVariaciones ? (
-              // El nombre viaja igual en el envío; simplemente no se muestra.
-              // Vacío el servidor lo guarda como "Único", que es lo correcto.
-              <input type="hidden" name="variante_nombre" value={v.nombre} />
-            ) : (
-              <input
-                name="variante_nombre"
-                value={v.nombre}
-                onChange={(e) =>
-                  setVariantes((prev) => prev.map((x, j) => (j === i ? { ...x, nombre: e.target.value } : x)))
-                }
-                placeholder="Ej: Frutilla, 1 kg..."
-                className="flex-1 min-w-[120px] rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-              />
-            )}
-            {mostrarStockInicial && (
+          <div key={i} className="rounded-lg bg-neutral-50 border border-neutral-200 p-3 space-y-3">
+            <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+              <input type="hidden" name="variante_id" value={v.id} />
+              {sinVariaciones ? (
+                // El nombre viaja igual en el envío; simplemente no se muestra.
+                // Vacío el servidor lo guarda como "Único", que es lo correcto.
+                <input type="hidden" name="variante_nombre" value={v.nombre} />
+              ) : (
+                <input
+                  name="variante_nombre"
+                  value={v.nombre}
+                  onChange={(e) =>
+                    setVariantes((prev) => prev.map((x, j) => (j === i ? { ...x, nombre: e.target.value } : x)))
+                  }
+                  placeholder="Ej: Frutilla, 1 kg..."
+                  className="flex-1 min-w-[120px] rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
+                />
+              )}
+              {mostrarStockInicial && (
+                <div className="flex items-center gap-1 shrink-0">
+                  <label className="text-xs text-neutral-500" htmlFor={`variante_stock_inicial_${i}`}>
+                    Inicial
+                  </label>
+                  <input
+                    id={`variante_stock_inicial_${i}`}
+                    name="variante_stock_inicial"
+                    type="number"
+                    min={0}
+                    value={v.stockInicial}
+                    onChange={(e) =>
+                      setVariantes((prev) =>
+                        prev.map((x, j) => (j === i ? { ...x, stockInicial: Number(e.target.value) } : x))
+                      )
+                    }
+                    className="w-16 rounded-lg border border-neutral-300 px-2 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
+                  />
+                </div>
+              )}
               <div className="flex items-center gap-1 shrink-0">
-                <label className="text-xs text-neutral-500" htmlFor={`variante_stock_inicial_${i}`}>
-                  Inicial
+                <label className="text-xs text-neutral-500" htmlFor={`variante_stock_minimo_${i}`}>
+                  Mín.
                 </label>
                 <input
-                  id={`variante_stock_inicial_${i}`}
-                  name="variante_stock_inicial"
+                  id={`variante_stock_minimo_${i}`}
+                  name="variante_stock_minimo"
                   type="number"
                   min={0}
-                  value={v.stockInicial}
+                  value={v.stockMinimo}
                   onChange={(e) =>
                     setVariantes((prev) =>
-                      prev.map((x, j) => (j === i ? { ...x, stockInicial: Number(e.target.value) } : x))
+                      prev.map((x, j) => (j === i ? { ...x, stockMinimo: Number(e.target.value) } : x))
                     )
                   }
-                  className="w-16 rounded-lg border border-neutral-300 px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                  className="w-16 rounded-lg border border-neutral-300 px-2 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
                 />
               </div>
-            )}
-            <div className="flex items-center gap-1 shrink-0">
-              <label className="text-xs text-neutral-500" htmlFor={`variante_stock_minimo_${i}`}>
-                Mín.
-              </label>
-              <input
-                id={`variante_stock_minimo_${i}`}
-                name="variante_stock_minimo"
-                type="number"
-                min={0}
-                value={v.stockMinimo}
-                onChange={(e) =>
-                  setVariantes((prev) =>
-                    prev.map((x, j) => (j === i ? { ...x, stockMinimo: Number(e.target.value) } : x))
-                  )
-                }
-                className="w-16 rounded-lg border border-neutral-300 px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-              />
+              <div className="flex items-center gap-1 shrink-0">
+                <label className="text-xs text-neutral-500" htmlFor={`variante_stock_objetivo_${i}`}>
+                  Obj.
+                </label>
+                <input
+                  id={`variante_stock_objetivo_${i}`}
+                  name="variante_stock_objetivo"
+                  type="number"
+                  min={0}
+                  value={v.stockObjetivo}
+                  onChange={(e) =>
+                    setVariantes((prev) =>
+                      prev.map((x, j) => (j === i ? { ...x, stockObjetivo: Number(e.target.value) } : x))
+                    )
+                  }
+                  className="w-16 rounded-lg border border-neutral-300 px-2 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
+                />
+              </div>
+              {v.sku && (
+                <span className="text-xs font-mono text-neutral-400 whitespace-nowrap hidden lg:inline">
+                  {v.sku}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => setVariantes((prev) => prev.filter((_, j) => j !== i))}
+                className="text-sm text-red-500 shrink-0"
+              >
+                Borrar
+              </button>
             </div>
-            <div className="flex items-center gap-1 shrink-0">
-              <label className="text-xs text-neutral-500" htmlFor={`variante_stock_objetivo_${i}`}>
-                Obj.
-              </label>
-              <input
-                id={`variante_stock_objetivo_${i}`}
-                name="variante_stock_objetivo"
-                type="number"
-                min={0}
-                value={v.stockObjetivo}
-                onChange={(e) =>
-                  setVariantes((prev) =>
-                    prev.map((x, j) => (j === i ? { ...x, stockObjetivo: Number(e.target.value) } : x))
-                  )
-                }
-                className="w-16 rounded-lg border border-neutral-300 px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-              />
-            </div>
-            {v.sku && (
-              <span className="text-xs font-mono text-neutral-400 whitespace-nowrap hidden lg:inline">
-                {v.sku}
-              </span>
-            )}
-            <button
-              type="button"
-              onClick={() => setVariantes((prev) => prev.filter((_, j) => j !== i))}
-              className="text-sm text-red-500 shrink-0"
-            >
-              Borrar
-            </button>
+
+            <CodigoBarrasVariante
+              variante={v}
+              onCambio={(cambio) =>
+                setVariantes((prev) => prev.map((x, j) => (j === i ? { ...x, ...cambio } : x)))
+              }
+            />
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+/**
+ * La pregunta que decide si hay que imprimir una etiqueta o no.
+ *
+ * La mayoría de los productos de marca ya traen su código impreso: para esos,
+ * escanear el envase una vez y listo. Los que no traen (fraccionados, a granel)
+ * usan el código que el sistema genera solo, y esos sí hay que etiquetarlos.
+ *
+ * Se pregunta acá, al cargar el producto, porque es el único momento en que
+ * alguien tiene el envase en la mano.
+ */
+function CodigoBarrasVariante({
+  variante,
+  onCambio,
+}: {
+  variante: VarianteForm;
+  onCambio: (cambio: Partial<VarianteForm>) => void;
+}) {
+  const [escaneando, setEscaneando] = useState(false);
+  const codigo = limpiarCodigoBarras(variante.codigoPropio);
+  // Solo se avisa cuando el largo es de un formato conocido: un código de 9
+  // dígitos no es "inválido", es que todavía lo están tipeando.
+  const revisarDigito = largoDeCodigoConocido(codigo);
+  const digitoOk = revisarDigito && digitoVerificadorOk(codigo);
+
+  return (
+    <div className="pt-2 border-t border-neutral-200">
+      {/* Lo que realmente viaja al servidor. Vacío = "no tiene código propio",
+          y el servidor se encarga de darle uno interno. */}
+      <input
+        type="hidden"
+        name="variante_codigo_barras"
+        value={variante.tienePropio ? codigo : ""}
+      />
+
+      <div className="flex items-center gap-3 flex-wrap">
+        <span className="text-xs text-neutral-600">¿El envase ya trae código de barras?</span>
+        <div className="inline-flex rounded-lg border border-neutral-300 overflow-hidden bg-white">
+          {[
+            { valor: true, texto: "Sí, tiene" },
+            { valor: false, texto: "No tiene" },
+          ].map((op) => (
+            <button
+              key={String(op.valor)}
+              type="button"
+              onClick={() => onCambio({ tienePropio: op.valor })}
+              className={`px-3 py-1.5 text-xs font-medium ${
+                variante.tienePropio === op.valor
+                  ? "bg-neutral-900 text-white"
+                  : "text-neutral-600 hover:bg-neutral-100"
+              }`}
+            >
+              {op.texto}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {variante.tienePropio ? (
+        <div className="mt-2 space-y-1">
+          <div className="flex items-center gap-2">
+            <input
+              value={variante.codigoPropio}
+              onChange={(e) => onCambio({ codigoPropio: limpiarCodigoBarras(e.target.value) })}
+              // Un lector USB termina de "tipear" el código con un Enter. Sin
+              // este freno, ese Enter guarda el producto a medio cargar.
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.preventDefault();
+              }}
+              inputMode="numeric"
+              placeholder="Escaneá el envase o escribí el número"
+              className="flex-1 min-w-[140px] rounded-lg border border-neutral-300 px-3 py-2 text-sm font-mono bg-white focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+            <button
+              type="button"
+              onClick={() => setEscaneando(true)}
+              className="shrink-0 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-xs font-medium hover:bg-neutral-100"
+            >
+              📷 Escanear
+            </button>
+          </div>
+          {codigo && (
+            <p className={`text-xs ${revisarDigito && !digitoOk ? "text-amber-600" : "text-neutral-500"}`}>
+              {revisarDigito && !digitoOk
+                ? "Revisá el número: no cierra con el dígito de control. Si lo escaneaste, está bien igual — hay envases importados con códigos raros."
+                : "Listo. Este producto se escanea en el tótem con su propio envase, no hay que imprimirle nada."}
+            </p>
+          )}
+        </div>
+      ) : (
+        <p className="mt-2 text-xs text-neutral-500">
+          {variante.codigoInterno ? (
+            <>
+              Etiqueta WiiGo:{" "}
+              <span className="font-mono text-neutral-700">{variante.codigoInterno}</span> — hay que
+              imprimirla y pegarla en el producto.
+            </>
+          ) : (
+            "El sistema le va a generar un código al guardar. Después se imprime en etiqueta y se pega."
+          )}
+        </p>
+      )}
+
+      {escaneando && (
+        <EscanerCodigo
+          onCerrar={() => setEscaneando(false)}
+          onLeido={(valor) => {
+            onCambio({ tienePropio: true, codigoPropio: limpiarCodigoBarras(valor) });
+            setEscaneando(false);
+          }}
+        />
+      )}
     </div>
   );
 }

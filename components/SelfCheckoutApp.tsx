@@ -1833,6 +1833,22 @@ export default function SelfCheckoutApp({
     if (agregado) mostrarToast(item.producto.nombre, item.precio);
   }
 
+  // Compara dos códigos tolerando la diferencia UPC/EAN.
+  //
+  // Un envase importado de EEUU trae 12 dígitos (UPC-A) y el mismo producto
+  // figura en muchos catálogos con 13 (el EAN, que es el UPC con un 0 adelante).
+  // Según el lector, uno lee una cosa y otro la otra. Rellenando con ceros a la
+  // izquierda los dos quedan iguales y el cliente no se queda con un producto
+  // que "no lo toma".
+  function mismoCodigo(guardado: string | null, leido: string) {
+    if (!guardado) return false;
+    const a = guardado.replace(/\D/g, "");
+    const b = leido.replace(/\D/g, "");
+    if (!a || !b) return false;
+    const largo = Math.max(a.length, b.length, 13);
+    return a.padStart(largo, "0") === b.padStart(largo, "0");
+  }
+
   // El lector de código de barras conecta como teclado: "escribe" el
   // código leído y remata con Enter, todo en milisegundos, en el mismo
   // buscador de arriba. Si lo que se tipeó matchea un código de barras
@@ -1843,7 +1859,7 @@ export default function SelfCheckoutApp({
     if (e.key !== "Enter") return;
     const valor = e.currentTarget.value.trim();
     if (!valor) return;
-    const coincidencia = items.find((i) => i.variante.codigo_barras === valor);
+    const coincidencia = items.find((i) => mismoCodigo(i.variante.codigo_barras, valor));
     if (coincidencia) {
       agregarAlCarrito(coincidencia.variante.id_variante);
       setBusquedaTexto("");
