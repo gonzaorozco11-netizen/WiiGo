@@ -1191,6 +1191,22 @@ export default function AsesorApp({
     return mapa;
   }, [productos, marcaResultado, filtrosSeleccionados, filtrosPorProducto, objetivosPorProducto]);
 
+  // Un objetivo sin ningún producto detrás no se le muestra al cliente.
+  //
+  // Tocarlo y que no aparezca nada se lee como que la pantalla está rota, y en
+  // una tienda eso es peor que ofrecer un camino menos. El objetivo sigue
+  // existiendo en el sistema: aparece solo cuando tenga productos asignados.
+  //
+  // Se cuenta sin los filtros de marca y preferencias a propósito: esta lista
+  // es la de la portada, antes de que el cliente haya elegido nada.
+  const objetivosConProductos = useMemo(() => {
+    const conAlgo = new Set<string>();
+    for (const p of productos) {
+      for (const id of objetivosPorProducto[p.id_producto] ?? []) conAlgo.add(id);
+    }
+    return objetivos.filter((o) => conAlgo.has(o.id_objetivo));
+  }, [objetivos, productos, objetivosPorProducto]);
+
   function porQue(p: ProductoPublico): { texto: string; tag: string } {
     const propios = filtrosPorProducto[p.id_producto] ?? [];
     const nombresFiltros = propios
@@ -1384,11 +1400,11 @@ export default function AsesorApp({
               </h2>
               <p className="text-[13px] md:text-[15px] text-[#8a8a8a] mt-1.5">{t("objetivoSubtitulo")}</p>
             </div>
-            {objetivos.length === 0 ? (
+            {objetivosConProductos.length === 0 ? (
               <p className="text-[#686868] text-sm text-center py-8">{t("objetivoVacio")}</p>
             ) : (
               <div className="w-full max-w-5xl grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 md:gap-4">
-                {objetivos.map((o, i) => (
+                {objetivosConProductos.map((o, i) => (
                   <button
                     key={o.id_objetivo}
                     onClick={() => elegirObjetivo(o.id_objetivo)}
@@ -1691,9 +1707,9 @@ export default function AsesorApp({
                     className="md:w-[248px] shrink-0 rounded-2xl px-3 py-4 md:py-5 flex flex-row md:flex-col gap-5 md:gap-6 overflow-x-auto md:overflow-y-auto"
                     style={{ background: "var(--barra, #1e2a18)" }}
                   >
-                    {objetivos.length > 0 && (
+                    {objetivosConProductos.length > 0 && (
                       <GrupoRail titulo={t("railObjetivo")}>
-                        {objetivos.map((o) => (
+                        {objetivosConProductos.map((o) => (
                           <OpcionRail
                             key={o.id_objetivo}
                             nombre={tr(o.nombre, o.nombre_en, o.nombre_pt)}

@@ -17,6 +17,7 @@ export const PANTALLAS_DISPONIBLES: PantallaDisponible[] = [
   // Muestra precios de venta, no costos: la puede tener el local sin ver la
   // rentabilidad de nada.
   { clave: "carteles", label: "Carteles de góndola", grupo: "Catálogo" },
+  { clave: "objetivos", label: "Objetivos del asesor", grupo: "Catálogo" },
   { clave: "catalogo-asesor", label: "Catálogo asesor", grupo: "Catálogo" },
   // Compras está partido en tres a propósito: cada etapa la hace una persona
   // distinta (administración pide, el local recibe, administración costea).
