@@ -66,6 +66,22 @@ body {
   0%, 100% { transform: translate3d(0, 0, 0); }
   50% { transform: translate3d(0, -12px, 0); }
 }
+
+/* La foto de la profesional, yendo y viniendo en 26 segundos. Tan lento que no
+   se la ve moverse, pero la pantalla deja de parecer un cartel. Crece desde
+   arriba (transform-origin en el componente): desde el centro le comería la
+   cara. Solo transform, como todo lo demás acá. */
+@keyframes asesorRespirar {
+  from { transform: scale(1) translate3d(0, 0, 0); }
+  to { transform: scale(1.07) translate3d(0, -1.2%, 0); }
+}
+
+/* Los datos de la ficha entrando uno detrás de otro al abrirla. Medio segundo
+   en total y se ve una sola vez. */
+@keyframes asesorEntrar {
+  from { opacity: 0; transform: translate3d(0, 14px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
 @keyframes asesorBlob1 {
   0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
   50% { transform: translate3d(-30px, 40px, 0) scale(1.06); }

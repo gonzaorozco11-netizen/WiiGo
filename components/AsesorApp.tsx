@@ -191,6 +191,9 @@ const HOME_I18N = {
     formacionTitulo: "Formación",
     trayectoriaTitulo: "Trayectoria",
     hoy: "hoy",
+    matricula: "Matrícula",
+    presencial: "Presencial",
+    online: "Online",
   },
   en: {
     pregunta: "What are you looking for today?",
@@ -228,6 +231,9 @@ const HOME_I18N = {
     formacionTitulo: "Education",
     trayectoriaTitulo: "Experience",
     hoy: "today",
+    matricula: "License",
+    presencial: "In person",
+    online: "Online",
   },
   pt: {
     pregunta: "O que você está procurando hoje?",
@@ -265,6 +271,9 @@ const HOME_I18N = {
     formacionTitulo: "Formação",
     trayectoriaTitulo: "Trajetória",
     hoy: "hoje",
+    matricula: "Registro",
+    presencial: "Presencial",
+    online: "Online",
   },
 } as const;
 
@@ -475,10 +484,59 @@ function PrecioTarjeta({ producto }: { producto: ProductoPublico }) {
  * `compacta` es la versión de una sola fila que se usa con el teclado abierto:
  * mismo contenido, ancho fijo para que la fila se pueda correr con el dedo.
  */
-/** Un tramo de la hoja derecha de la ficha: historia, formación, trayectoria. */
-function BloqueHistoria({ titulo, children }: { titulo: string; children: React.ReactNode }) {
+/**
+ * Un tramo de la hoja derecha de la ficha: historia, formación, trayectoria.
+ *
+ * Aparece cuando entra en pantalla, no de entrada. Leído de corrido, un panel
+ * con todo puesto se parece a un formulario; apareciendo de a uno se lee como
+ * alguien contando algo. El que no desliza no se pierde nada: el primero ya
+ * está visible apenas se abre.
+ */
+function BloqueHistoria({
+  titulo,
+  contenedor,
+  children,
+}: {
+  titulo: string;
+  /** El panel que se desliza: es contra él que se mide, no contra la ventana. */
+  contenedor: React.RefObject<HTMLDivElement | null>;
+  children: React.ReactNode;
+}) {
+  const propio = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const el = propio.current;
+    if (!el) return;
+    // Sin IntersectionObserver —un navegador viejo del tótem— se muestra todo
+    // de una: mejor sin animación que sin contenido.
+    if (typeof IntersectionObserver === "undefined") {
+      setVisible(true);
+      return;
+    }
+    const io = new IntersectionObserver(
+      (entradas) => {
+        if (entradas.some((e) => e.isIntersecting)) {
+          setVisible(true);
+          io.disconnect();
+        }
+      },
+      { root: contenedor.current ?? null, threshold: 0.2 }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [contenedor]);
+
   return (
-    <div className="mb-6 last:mb-0">
+    <div
+      ref={propio}
+      className="mb-6 last:mb-0"
+      style={{
+        opacity: visible ? 1 : 0,
+        transform: visible ? "translate3d(0,0,0)" : "translate3d(0,18px,0)",
+        transition: "opacity .55s ease, transform .55s cubic-bezier(.2,.8,.2,1)",
+      }}
+    >
       <p className="text-[10px] font-extrabold uppercase tracking-[.2em] text-[#969d88] mb-2.5">{titulo}</p>
       {children}
     </div>
@@ -1025,6 +1083,21 @@ export default function AsesorApp({
     return [...set].sort((a, b) => a.localeCompare(b));
   }, [profesionales]);
 
+  /**
+   * El botón del filtro habla de un grupo, no de una persona.
+   *
+   * En la ficha de cada una la profesión va en singular —"Nutricionista"— y
+   * está bien. Pero el filtro agrupa a todas, así que en plural. Se pluraliza
+   * acá y no en la base para no obligar a cargar la palabra dos veces.
+   */
+  const enPlural = (palabra: string) => {
+    const p = palabra.trim();
+    if (/[sx]$/i.test(p)) return p; // "Kinesiólogos" ya viene así
+    if (/[aeiou]$/i.test(p)) return `${p}s`;
+    if (/z$/i.test(p)) return `${p.slice(0, -1)}ces`;
+    return `${p}es`;
+  };
+
   const profesionalesFiltrados = useMemo(() => {
     if (!categoriaProf) return profesionales;
     return profesionales.filter((p) => p.categoria === categoriaProf);
@@ -1059,6 +1132,10 @@ export default function AsesorApp({
     () => [...formacionDelProfesionalActual].sort((a, b) => (a.anio ?? 0) - (b.anio ?? 0)),
     [formacionDelProfesionalActual]
   );
+
+  // El panel que se desliza. Los bloques de la historia se miden contra él y
+  // no contra la ventana: lo que se mueve es el panel.
+  const hojaHistoria = useRef<HTMLDivElement>(null);
 
   // ¿Hay algo para poner en la hoja derecha de la ficha? Si no, se abre de una
   // sola hoja: media ficha vacía se lee como que la pantalla está a medio hacer.
@@ -1869,7 +1946,7 @@ export default function AsesorApp({
                           : { background: "#fff", borderColor: "#d8d8d8", color: "#686868" }
                       }
                     >
-                      {cat}
+                      {enPlural(cat)}
                     </button>
                   );
                 })}
@@ -1895,36 +1972,71 @@ export default function AsesorApp({
                     className="rounded-3xl bg-white overflow-hidden text-left flex flex-col transition-transform active:scale-[.98]"
                     style={{ boxShadow: "0 16px 32px -24px rgba(20,28,14,.55)" }}
                   >
+                    {/* Retrato y no apaisado: las fotos de las profesionales
+                        son de medio cuerpo, y en una caja apaisada la caja les
+                        corta la cabeza. Anclada arriba, la cara entra siempre. */}
                     <span
-                      className="aspect-[4/3] w-full flex items-center justify-center font-extrabold text-[34px] text-white overflow-hidden"
+                      className="relative aspect-[3/4] w-full flex items-center justify-center font-extrabold text-[34px] text-white overflow-hidden"
                       style={{ background: "var(--acento, #4d7635)" }}
                     >
                       {prof.foto ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={prof.foto} alt="" className="w-full h-full object-cover" />
+                        <img src={prof.foto} alt="" className="w-full h-full object-cover object-top" />
                       ) : (
                         `${prof.nombre.charAt(0)}${prof.apellido ? prof.apellido.charAt(0) : ""}`.toUpperCase()
                       )}
-                    </span>
-                    <div className="p-3.5 md:p-4 flex flex-col gap-1 flex-1">
-                      <p className="text-[15px] md:text-[17px] font-extrabold leading-tight">
-                        {prof.nombre} {prof.apellido ?? ""}
-                      </p>
-                      {(prof.titulo || prof.especialidad) && (
-                        <p
-                          className="text-[10px] md:text-[11px] font-extrabold uppercase tracking-[.13em] leading-snug"
-                          style={{ color: "var(--acento, #4d7635)" }}
+
+                      {/* La matrícula como sello. En un rubro donde cualquiera
+                          se dice "coach nutricional", el número matriculado es
+                          la diferencia — y hasta ahora no se veía en ningún
+                          lado. */}
+                      {prof.matricula && (
+                        <span
+                          className="absolute top-2.5 left-2.5 flex items-center gap-1.5 rounded-full pl-1.5 pr-2.5 py-1 text-[9.5px] font-extrabold tracking-wide"
+                          style={{ background: "rgba(255,255,255,.94)", color: SAGE_DARK }}
                         >
-                          {[prof.titulo, prof.especialidad].filter(Boolean).join(" · ")}
-                        </p>
+                          <span
+                            className="w-3.5 h-3.5 rounded-full grid place-items-center text-[8px] text-white"
+                            style={{ background: SAGE_DARK }}
+                          >
+                            ✓
+                          </span>
+                          {prof.matricula}
+                        </span>
                       )}
+
+                      <span
+                        className="absolute inset-0 pointer-events-none"
+                        style={{ background: "linear-gradient(180deg, rgba(0,0,0,0) 45%, rgba(20,24,16,.78) 100%)" }}
+                      />
+                      <span className="absolute left-0 right-0 bottom-0 p-3 text-left">
+                        <span className={`${bodoniModa.className} block italic text-[19px] md:text-[21px] text-white leading-tight`}>
+                          {prof.nombre} {prof.apellido ?? ""}
+                        </span>
+                        {(prof.titulo || prof.especialidad) && (
+                          <span className="block text-[9px] md:text-[9.5px] font-extrabold uppercase tracking-[.14em] text-white/90 mt-1 leading-snug">
+                            {[prof.titulo, prof.especialidad].filter(Boolean).join(" · ")}
+                          </span>
+                        )}
+                      </span>
+                    </span>
+                    <div className="p-3.5 md:p-4 flex flex-col gap-2 flex-1">
                       {(fortalezasPorProfesional[prof.id_profesional] ?? []).length > 0 && (
-                        <p className="text-[11.5px] md:text-[12.5px] text-[#7d8571] leading-snug mt-1">
-                          {(fortalezasPorProfesional[prof.id_profesional] ?? [])
-                            .slice(0, 3)
-                            .map((f) => f.nombre)
-                            .join(" · ")}
-                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {(fortalezasPorProfesional[prof.id_profesional] ?? []).slice(0, 3).map((f) => (
+                            <span
+                              key={f.nombre}
+                              className="text-[9.5px] font-bold px-2.5 py-1 rounded-full"
+                              style={
+                                f.principal
+                                  ? { background: "#f7ece1", color: CLAY }
+                                  : { background: SAGE_TINT, color: SAGE_DARK }
+                              }
+                            >
+                              {f.nombre}
+                            </span>
+                          ))}
+                        </div>
                       )}
                       <span
                         className="text-[11px] font-extrabold mt-auto pt-2.5"
@@ -1967,8 +2079,23 @@ export default function AsesorApp({
               }}
             >
               {profesionalActual.foto && (
+                // El vaivén lento: la foto crece y se achica en 26 segundos.
+                // Es tan lento que no se la ve moverse, pero la pantalla deja
+                // de parecer un cartel. Crece DESDE ARRIBA — desde el centro le
+                // comería la cara, que es lo que estamos arreglando.
+                // Solo transform: es lo único que la placa de la all-in-one
+                // dibuja sin tocar el procesador, igual que la lluvia del tótem.
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={profesionalActual.foto} alt="" className="absolute inset-0 w-full h-full object-cover opacity-95" />
+                <img
+                  src={profesionalActual.foto}
+                  alt=""
+                  className="absolute inset-0 w-full h-full object-cover object-top opacity-95"
+                  style={{
+                    transformOrigin: "top center",
+                    willChange: "transform",
+                    animation: "asesorRespirar 26s ease-in-out infinite alternate",
+                  }}
+                />
               )}
               <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, rgba(0,0,0,0) 35%, rgba(0,0,0,.5) 100%)" }} />
               {!profesionalActual.foto && (
@@ -1988,15 +2115,36 @@ export default function AsesorApp({
               </div>
             </div>
 
-            <div className="flex-1 flex flex-col justify-center">
+            {/* Los datos entran uno detrás de otro al abrir la ficha, en medio
+                segundo. Se ve una sola vez y es lo que hace que la pantalla se
+                sienta despierta sin distraer del precio. */}
+            <div className="flex-1 flex flex-col justify-center gap-3" style={{ animation: "asesorEntrar .5s cubic-bezier(.2,.8,.2,1) .10s both" }}>
+              {profesionalActual.matricula && (
+                <span
+                  className="self-start flex items-center gap-1.5 rounded-full pl-1.5 pr-3 py-1 text-[10px] font-extrabold tracking-wide"
+                  style={{ background: SAGE_TINT, color: SAGE_DARK, animation: "asesorEntrar .5s cubic-bezier(.2,.8,.2,1) .18s both" }}
+                >
+                  <span
+                    className="w-4 h-4 rounded-full grid place-items-center text-[9px] text-white"
+                    style={{ background: SAGE_DARK }}
+                  >
+                    ✓
+                  </span>
+                  {t("matricula")} {profesionalActual.matricula}
+                </span>
+              )}
+
               {profesionalActual.bio && (
-                <p className="text-[13px] italic leading-relaxed mb-3.5 pl-3 border-l-2" style={{ borderColor: CLAY, color: "#2d2d2d" }}>
+                <p
+                  className="text-[13px] italic leading-relaxed pl-3 border-l-2"
+                  style={{ borderColor: CLAY, color: "#2d2d2d", animation: "asesorEntrar .5s cubic-bezier(.2,.8,.2,1) .26s both" }}
+                >
                   {profesionalActual.bio}
                 </p>
               )}
 
               {fortalezasDelProfesionalActual.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
+                <div className="flex flex-wrap gap-1.5" style={{ animation: "asesorEntrar .5s cubic-bezier(.2,.8,.2,1) .34s both" }}>
                   {fortalezasDelProfesionalActual.map((f) => (
                     <span
                       key={f.nombre}
@@ -2016,7 +2164,37 @@ export default function AsesorApp({
               )}
             </div>
 
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2" style={{ animation: "asesorEntrar .5s cubic-bezier(.2,.8,.2,1) .42s both" }}>
+              {/* Los precios al lado del botón, que es donde se deciden. Están
+                  cargados en el sistema desde siempre y no se veían en ningún
+                  lado. */}
+              {(profesionalActual.precio_presencial || profesionalActual.precio_online) && (
+                <div className="flex gap-2 mb-1">
+                  {profesionalActual.precio_presencial && (
+                    <span
+                      className="flex-1 text-center text-[10px] font-bold rounded-xl py-2 leading-tight"
+                      style={{ background: SAGE_TINT, color: SAGE_DARK }}
+                    >
+                      {t("presencial")}
+                      <span className={`${fredoka.className} block text-[15px]`}>
+                        {formatoPrecio(profesionalActual.precio_presencial)}
+                      </span>
+                    </span>
+                  )}
+                  {profesionalActual.precio_online && (
+                    <span
+                      className="flex-1 text-center text-[10px] font-bold rounded-xl py-2 leading-tight"
+                      style={{ background: SAGE_TINT, color: SAGE_DARK }}
+                    >
+                      {t("online")}
+                      <span className={`${fredoka.className} block text-[15px]`}>
+                        {formatoPrecio(profesionalActual.precio_online)}
+                      </span>
+                    </span>
+                  )}
+                </div>
+              )}
+
               {tieneReservaPresencial || tieneReservaOnline ? (
                 <button
                   onClick={irAReservarTurno}
@@ -2070,11 +2248,12 @@ export default function AsesorApp({
           {/* ---------- hoja derecha: su historia ---------- */}
           {tieneHistoria && (
             <div
+              ref={hojaHistoria}
               className="min-h-0 overflow-y-auto px-6 pt-5 pb-10 border-t md:border-t-0 md:border-l border-[#e8eade]"
               style={{ background: "#f7f9f2" }}
             >
               {profesionalActual.biografia_completa && (
-                <BloqueHistoria titulo={t("historiaTitulo")}>
+                <BloqueHistoria titulo={t("historiaTitulo")} contenedor={hojaHistoria}>
                   <p className="text-[13.5px] leading-relaxed text-[#4a4f43] whitespace-pre-line">
                     {profesionalActual.biografia_completa}
                   </p>
@@ -2082,7 +2261,7 @@ export default function AsesorApp({
               )}
 
               {formacionOrdenada.length > 0 && (
-                <BloqueHistoria titulo={t("formacionTitulo")}>
+                <BloqueHistoria titulo={t("formacionTitulo")} contenedor={hojaHistoria}>
                   <LineaDeTiempo
                     items={formacionOrdenada.map((f) => ({
                       id: f.id_formacion,
@@ -2095,7 +2274,7 @@ export default function AsesorApp({
               )}
 
               {trayectoriaOrdenada.length > 0 && (
-                <BloqueHistoria titulo={t("trayectoriaTitulo")}>
+                <BloqueHistoria titulo={t("trayectoriaTitulo")} contenedor={hojaHistoria}>
                   <LineaDeTiempo
                     items={trayectoriaOrdenada.map((x) => ({
                       id: x.id_trayectoria,
