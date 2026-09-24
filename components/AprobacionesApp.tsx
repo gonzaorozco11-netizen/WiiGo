@@ -157,6 +157,44 @@ function TarjetaSolicitud({
         </div>
       )}
 
+      {s.tipo === "FICHA" && (
+        // Los valores nuevos al lado de los que había, para poder aprobar de un
+        // vistazo. En verde lo que cambia.
+        <div className="sol-ficha">
+          {(
+            [
+              ["kcal_100g", "kcal", ""],
+              ["proteinas", "Proteínas", "g"],
+              ["carbohidratos", "Carbohid.", "g"],
+              ["grasas", "Grasas", "g"],
+              ["fibra", "Fibra", "g"],
+              ["sodio", "Sodio", "mg"],
+              ["porcion", "Porción", ""],
+              ["origen", "Origen", ""],
+              ["ingredientes", "Ingredientes", ""],
+              ["micronutrientes", "Micros", ""],
+            ] as const
+          )
+            .filter(([k]) => s.datos[k] !== null && s.datos[k] !== undefined)
+            .map(([k, label, unidad]) => {
+              const antes = s.datosAnteriores[k];
+              const cambia = String(antes ?? "") !== String(s.datos[k]);
+              return (
+                <span key={k} className={`sol-ficha-dato${cambia ? " cambia" : ""}`}>
+                  <span className="et">{label}</span>
+                  <span className="v">
+                    {String(s.datos[k])}
+                    {unidad}
+                  </span>
+                  {cambia && antes !== null && antes !== undefined && (
+                    <span className="antes">antes {String(antes)}{unidad}</span>
+                  )}
+                </span>
+              );
+            })}
+        </div>
+      )}
+
       {(s.tipo === "DESCRIPCION" || s.tipo === "NOMBRE") && (
         <div className="sol-texto">
           <p className="sol-texto-antes">

@@ -18,6 +18,9 @@ export type TipoSolicitud =
   | "COSTO"
   | "FOTO"
   | "DESCRIPCION"
+  // La información nutricional: calorías, macros, ingredientes. Está impresa
+  // en el envase de la marca, así que el dato es suyo.
+  | "FICHA"
   | "NOMBRE"
   | "SUBCATEGORIA"
   | "PRODUCTO_NUEVO"
@@ -34,6 +37,7 @@ export const ETIQUETA_TIPO: Record<TipoSolicitud, string> = {
   COSTO: "Costo",
   FOTO: "Cambio de foto",
   DESCRIPCION: "Descripción",
+  FICHA: "Información nutricional",
   NOMBRE: "Cambio de nombre",
   SUBCATEGORIA: "Subcategoría",
   PRODUCTO_NUEVO: "Producto nuevo",
@@ -59,6 +63,7 @@ export const GRUPO_DE_TIPO: Record<TipoSolicitud, GrupoBandeja> = {
   BAJA_PRODUCTO: "PRODUCTOS",
   SUBCATEGORIA: "PRODUCTOS",
   DESCRIPCION: "CONTENIDO",
+  FICHA: "CONTENIDO",
   NOMBRE: "CONTENIDO",
   FOTO: "CONTENIDO",
   // El costo no pasa por aprobación (es dato privado de la marca), pero el

@@ -430,6 +430,31 @@ export async function aplicarCambiosProgramados(): Promise<{ aplicadas: number; 
           .from("productos")
           .update({ nombre, fecha_actualizacion: ahoraIso })
           .eq("id_producto", idProducto as string);
+      } else if (s.tipo === "FICHA") {
+        // Solo se pisan los campos que la marca mandó: si dejó en blanco los
+        // micronutrientes, no se borran los que ya estaban cargados.
+        const campos = [
+          "kcal_100g",
+          "proteinas",
+          "carbohidratos",
+          "grasas",
+          "fibra",
+          "sodio",
+          "porcion",
+          "ingredientes",
+          "micronutrientes",
+          "origen",
+        ] as const;
+        const cambio: Record<string, unknown> = {};
+        for (const c of campos) if (datos[c] !== null && datos[c] !== undefined) cambio[c] = datos[c];
+        if (Object.keys(cambio).length === 0) throw new Error("ficha vacía");
+
+        // Todo producto tiene su fila de ficha, pero se usa upsert por si el
+        // producto entró por un camino que no la creó.
+        const { error: errorFicha } = await supabase
+          .from("ficha_producto")
+          .upsert({ id_producto: idProducto, ...cambio }, { onConflict: "id_producto" });
+        if (errorFicha) throw new Error(errorFicha.message);
       } else if (s.tipo === "FOTO") {
         const url = String(datos.imagen ?? "").trim();
         if (!url) throw new Error("foto vacía");

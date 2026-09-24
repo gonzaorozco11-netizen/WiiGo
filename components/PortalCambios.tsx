@@ -6,6 +6,7 @@ import {
   pedirCambioPrecio,
   pedirPrecioEfectivo,
   pedirCambioFoto,
+  pedirFicha,
   pedirCambioTexto,
   pedirPromo,
   pedirProductoNuevo,
@@ -51,7 +52,8 @@ const ESTADO_TEXTO: Record<string, { rotulo: string; clase: string }> = {
   CANCELADA: { rotulo: "Lo cancelaste", clase: "gris" },
 };
 
-type Formulario = "PRECIO" | "EFECTIVO" | "FOTO" | "NOMBRE" | "DESCRIPCION" | "DESCUENTO" | "BAJA" | null;
+type Formulario =
+  | "PRECIO" | "EFECTIVO" | "FOTO" | "FICHA" | "NOMBRE" | "DESCRIPCION" | "DESCUENTO" | "BAJA" | null;
 
 export default function PortalCambios({
   productos,
@@ -192,6 +194,9 @@ function FilaProducto({
             <Opcion activa={form === "FOTO"} bloqueada={esperando("FOTO")} onClick={() => setForm(form === "FOTO" ? null : "FOTO")}>
               Foto
             </Opcion>
+            <Opcion activa={form === "FICHA"} bloqueada={esperando("FICHA")} onClick={() => setForm(form === "FICHA" ? null : "FICHA")}>
+              Info nutricional
+            </Opcion>
             <Opcion activa={form === "DESCUENTO"} bloqueada={esperando("DESCUENTO")} onClick={() => setForm(form === "DESCUENTO" ? null : "DESCUENTO")}>
               Proponer promo
             </Opcion>
@@ -215,6 +220,7 @@ function FilaProducto({
           {form === "PRECIO" && <FormPrecio p={p} politica={politica} onListo={onListo} />}
           {form === "EFECTIVO" && <FormEfectivo p={p} onListo={onListo} />}
           {form === "FOTO" && <FormFoto p={p} onListo={onListo} />}
+          {form === "FICHA" && <FormFicha p={p} onListo={onListo} />}
           {form === "DESCUENTO" && <FormPromo p={p} politica={politica} onListo={onListo} />}
           {form === "DESCRIPCION" && <FormTexto p={p} tipo="DESCRIPCION" onListo={onListo} />}
           {form === "NOMBRE" && <FormTexto p={p} tipo="NOMBRE" onListo={onListo} />}
@@ -409,6 +415,124 @@ function FormEfectivo({ p, onListo }: { p: ProductoPropio; onListo: () => void }
           {off !== null && off >= 30 && " — es mucho, revisá que no te haya quedado un cero de más."}
         </p>
       )}
+    </Envio>
+  );
+}
+
+/**
+ * La información nutricional, tal como está impresa en el envase.
+ *
+ * Los números van por 100 g y no por porción: es la única forma de que el
+ * cliente pueda comparar dos productos en la pantalla del local. Casi todas
+ * las etiquetas traen las dos columnas, y copiar la equivocada es el error más
+ * común — por eso el formulario lo dice en cada campo y el servidor lo frena
+ * si los macros suman más de 100 g.
+ */
+function FormFicha({ p, onListo }: { p: ProductoPropio; onListo: () => void }) {
+  const [f, setF] = useState(() => ({
+    kcal_100g: p.ficha.kcal_100g?.toString() ?? "",
+    proteinas: p.ficha.proteinas?.toString() ?? "",
+    carbohidratos: p.ficha.carbohidratos?.toString() ?? "",
+    grasas: p.ficha.grasas?.toString() ?? "",
+    fibra: p.ficha.fibra?.toString() ?? "",
+    sodio: p.ficha.sodio?.toString() ?? "",
+    porcion: p.ficha.porcion ?? "",
+    ingredientes: p.ficha.ingredientes ?? "",
+    micronutrientes: p.ficha.micronutrientes ?? "",
+    origen: p.ficha.origen ?? "",
+  }));
+
+  const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+    setF((v) => ({ ...v, [k]: e.target.value }));
+  const n = (s: string) => (s.trim() === "" ? null : Number(s.replace(",", ".")));
+
+  const suma =
+    (n(f.proteinas) ?? 0) + (n(f.carbohidratos) ?? 0) + (n(f.grasas) ?? 0) + (n(f.fibra) ?? 0);
+  const algo = Object.values(f).some((v) => v.trim() !== "");
+
+  const NUMS: [keyof typeof f, string][] = [
+    ["kcal_100g", "Calorías (kcal)"],
+    ["proteinas", "Proteínas (g)"],
+    ["carbohidratos", "Carbohidratos (g)"],
+    ["grasas", "Grasas (g)"],
+    ["fibra", "Fibra (g)"],
+    ["sodio", "Sodio (mg)"],
+  ];
+
+  return (
+    <Envio
+      texto="Mandar la información nutricional"
+      deshabilitado={!algo || suma > 100}
+      onEnviar={async () => {
+        const r = await pedirFicha(p.idProducto, {
+          kcal_100g: n(f.kcal_100g),
+          proteinas: n(f.proteinas),
+          carbohidratos: n(f.carbohidratos),
+          grasas: n(f.grasas),
+          fibra: n(f.fibra),
+          sodio: n(f.sodio),
+          porcion: f.porcion || null,
+          ingredientes: f.ingredientes || null,
+          micronutrientes: f.micronutrientes || null,
+          origen: f.origen || null,
+        });
+        if (!r.error) onListo();
+        return r;
+      }}
+      pie={
+        <p className="cam-nota">
+          Todo <strong>cada 100 g o 100 ml</strong>, como en la etiqueta. Si tu envase trae las dos
+          columnas, copiá la de 100 — la de porción va aparte, en “Porción sugerida”. Lo que no sepas,
+          dejalo vacío: se puede completar después.
+        </p>
+      }
+    >
+      <div className="cam-nutri">
+        {NUMS.map(([k, label]) => (
+          <label className="cam-campo" key={k}>
+            <span>{label}</span>
+            <input type="number" step="0.1" min="0" value={f[k]} onChange={set(k)} placeholder="—" />
+          </label>
+        ))}
+      </div>
+
+      {suma > 100 && (
+        <p className="cam-var fuerte">
+          Proteínas, carbohidratos, grasas y fibra suman {suma.toFixed(1)} g cada 100 g. ¿No copiaste
+          los valores por porción?
+        </p>
+      )}
+
+      <div className="cam-campos">
+        <label className="cam-campo">
+          <span>Porción sugerida</span>
+          <input value={f.porcion} onChange={set("porcion")} placeholder="30 g (un puñado)" />
+        </label>
+        <label className="cam-campo">
+          <span>Origen</span>
+          <input value={f.origen} onChange={set("origen")} placeholder="Mendoza, Argentina" />
+        </label>
+      </div>
+
+      <label className="cam-campo ancho">
+        <span>Ingredientes</span>
+        <textarea
+          rows={3}
+          value={f.ingredientes}
+          onChange={set("ingredientes")}
+          placeholder="Como figura en el envase, separados por coma."
+        />
+      </label>
+
+      <label className="cam-campo ancho">
+        <span>Micronutrientes</span>
+        <textarea
+          rows={2}
+          value={f.micronutrientes}
+          onChange={set("micronutrientes")}
+          placeholder="Vitamina B6, Zinc, Magnesio…"
+        />
+      </label>
     </Envio>
   );
 }

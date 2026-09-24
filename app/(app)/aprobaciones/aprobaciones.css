@@ -78,6 +78,22 @@
 }
 .sol-foto-vacia { display: grid; place-items: center; font-size: 12px; color: #a3a3a3; }
 
+/* La ficha nutricional entra en muchos campos chicos, así que se muestra como
+   fichitas y no como una tabla: se aprueba mirando, no leyendo. */
+.sol-ficha {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  margin-top: 12px; padding: 12px 14px; background: #fafafa; border-radius: 10px;
+}
+.sol-ficha-dato {
+  display: flex; flex-direction: column; gap: 1px;
+  padding: 6px 10px; background: #fff; border: 1px solid #e5e5e5; border-radius: 8px;
+  max-width: 100%;
+}
+.sol-ficha-dato.cambia { border-color: #bbf7d0; background: #f0fdf4; }
+.sol-ficha-dato .et { font-size: 9.5px; text-transform: uppercase; letter-spacing: .06em; color: #a3a3a3; font-weight: 700; }
+.sol-ficha-dato .v { font-size: 14px; font-weight: 600; color: #171717; overflow-wrap: anywhere; }
+.sol-ficha-dato .antes { font-size: 10.5px; color: #a3a3a3; text-decoration: line-through; }
+
 .sol-valor { display: flex; flex-direction: column; }
 .sol-valor .et { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: #a3a3a3; font-weight: 600; }
 .sol-valor .v { font-size: 19px; font-weight: 600; color: #525252; }

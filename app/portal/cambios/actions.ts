@@ -109,6 +109,8 @@ export type ProductoPropio = {
   /** Lo que se cobra pagando en efectivo. null = todavía no lo cargó nadie. */
   precioEfectivo: number | null;
   imagen: string | null;
+  /** Lo nutricional que ya está cargado, para precargar el formulario. */
+  ficha: FichaDeMarca;
   stock: number;
   /** Tipos que ya tienen una solicitud esperando: se deshabilitan en pantalla. */
   esperando: TipoSolicitud[];
@@ -151,6 +153,12 @@ export async function misProductos(): Promise<ProductoPropio[]> {
     });
   }
 
+  const { data: fichas } = await supabase
+    .from("ficha_producto")
+    .select("id_producto,kcal_100g,proteinas,carbohidratos,grasas,fibra,sodio,porcion,ingredientes,micronutrientes,origen")
+    .in("id_producto", ids);
+  const fichaDe = new Map((fichas ?? []).map((f) => [f.id_producto as string, f]));
+
   const { data: pendientes } = await supabase
     .from("solicitudes_marca")
     .select("tipo, id_producto")
@@ -170,6 +178,19 @@ export async function misProductos(): Promise<ProductoPropio[]> {
     precio: (p.precio_venta as number | null) ?? null,
     precioEfectivo: (p.precio_efectivo as number | null) ?? null,
     imagen: (p.imagen as string | null) ?? null,
+    ficha: {
+      kcal_100g: null,
+      proteinas: null,
+      carbohidratos: null,
+      grasas: null,
+      fibra: null,
+      sodio: null,
+      porcion: null,
+      ingredientes: null,
+      micronutrientes: null,
+      origen: null,
+      ...(fichaDe.get(p.id_producto as string) ?? {}),
+    } as FichaDeMarca,
     stock: stockPorProducto.get(p.id_producto as string) ?? 0,
     esperando: esperandoPorProducto.get(p.id_producto as string) ?? [],
   }));
@@ -310,6 +331,101 @@ export async function pedirPrecioEfectivo(idProducto: string, precio: number): P
     datos: { precio_efectivo: precio },
     datosAnteriores: { precio_efectivo: actual, precio_venta: lista },
     validacion: { frena: null, alertas },
+  });
+}
+
+/**
+ * Los campos de la ficha que carga la marca.
+ *
+ * Es un subconjunto de la tabla a propósito: acá van solo los datos que están
+ * impresos en el envase. La clasificación ("natural", "sin TACC") no entra
+ * porque es una decisión editorial de WiiGo sobre cómo agrupar la góndola, no
+ * un dato del producto.
+ */
+export type FichaDeMarca = {
+  kcal_100g: number | null;
+  proteinas: number | null;
+  carbohidratos: number | null;
+  grasas: number | null;
+  fibra: number | null;
+  sodio: number | null;
+  porcion: string | null;
+  ingredientes: string | null;
+  micronutrientes: string | null;
+  origen: string | null;
+};
+
+/**
+ * La marca manda la información nutricional de su producto.
+ *
+ * Se manda la ficha entera y no campo por campo: el envase se lee de una vez y
+ * los valores se validan entre ellos —no puede haber más de 100 g de macros en
+ * 100 g de producto—, lo que solo se puede hacer mirándolos juntos.
+ */
+export async function pedirFicha(idProducto: string, ficha: FichaDeMarca): Promise<Resultado> {
+  const sesion = await sesionOError();
+  const supabase = getSupabaseServerClient();
+
+  const producto = await productoPropio(supabase, idProducto, sesion.idMarca);
+  if (!producto) return { error: "Ese producto no es tuyo." };
+
+  const num = (v: number | null) => (v === null || !Number.isFinite(v) ? null : v);
+  const texto = (v: string | null) => {
+    const t = (v ?? "").trim();
+    return t ? t : null;
+  };
+
+  const limpia: FichaDeMarca = {
+    kcal_100g: num(ficha.kcal_100g),
+    proteinas: num(ficha.proteinas),
+    carbohidratos: num(ficha.carbohidratos),
+    grasas: num(ficha.grasas),
+    fibra: num(ficha.fibra),
+    sodio: num(ficha.sodio),
+    porcion: texto(ficha.porcion),
+    ingredientes: texto(ficha.ingredientes),
+    micronutrientes: texto(ficha.micronutrientes),
+    origen: texto(ficha.origen),
+  };
+
+  if (Object.values(limpia).every((v) => v === null)) return { error: "Cargá al menos un dato." };
+
+  for (const [campo, valor] of Object.entries(limpia)) {
+    if (typeof valor === "number" && valor < 0) return { error: `${campo} no puede ser negativo.` };
+  }
+  // 900 kcal en 100 g es más que el aceite puro: seguro sobra un dígito.
+  if (limpia.kcal_100g !== null && limpia.kcal_100g > 900) {
+    return { error: "Más de 900 kcal cada 100 g es imposible. Revisá el número." };
+  }
+
+  // Los macros de 100 g no pueden sumar más de 100 g. Es el error más común al
+  // copiar de la etiqueta: poner los valores por porción en la columna de 100.
+  const suma =
+    (limpia.proteinas ?? 0) + (limpia.carbohidratos ?? 0) + (limpia.grasas ?? 0) + (limpia.fibra ?? 0);
+  if (suma > 100) {
+    return {
+      error: `Proteínas, carbohidratos, grasas y fibra suman ${suma.toFixed(1)} g cada 100 g. ¿No copiaste los valores por porción?`,
+    };
+  }
+
+  if (await yaHayPendiente(supabase, sesion.idMarca, "FICHA", idProducto)) {
+    return { error: "Ya mandaste la información nutricional de este producto y está esperando respuesta." };
+  }
+
+  const { data: actual } = await supabase
+    .from("ficha_producto")
+    .select("kcal_100g,proteinas,carbohidratos,grasas,fibra,sodio,porcion,ingredientes,micronutrientes,origen")
+    .eq("id_producto", idProducto)
+    .maybeSingle();
+
+  return crear(supabase, {
+    idMarca: sesion.idMarca,
+    idUsuario: sesion.idUsuario,
+    tipo: "FICHA",
+    idProducto,
+    datos: limpia as unknown as Record<string, unknown>,
+    datosAnteriores: (actual ?? {}) as Record<string, unknown>,
+    validacion: { frena: null, alertas: {} },
   });
 }
 
