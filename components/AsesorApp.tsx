@@ -486,7 +486,9 @@ function TarjetaResultado({
       }`}
     >
       <div
-        className={`relative flex items-center justify-center ${compacta ? "h-[104px]" : "h-[88px]"} ${
+        // La foto es lo que vende: en una pantalla táctil de 27" 88px de alto
+        // es una miniatura, no un producto. Crece con el ancho disponible.
+        className={`relative flex items-center justify-center ${compacta ? "h-[104px] lg:h-[132px]" : "h-[88px] lg:h-[124px] xl:h-[150px]"} ${
           producto.imagen ? "bg-white" : "bg-gradient-to-br from-[#f0f2ec] to-[#d8d8d8]"
         }`}
       >
@@ -1603,7 +1605,7 @@ export default function AsesorApp({
                         </span>
                       </div>
 
-                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-3 md:gap-4">
                         {productosEnOferta
                           .filter((p) => p.id_marca === m.id_marca)
                           .map((p) => (
@@ -1619,7 +1621,7 @@ export default function AsesorApp({
                                 -{p.descuento_porcentaje}%
                               </span>
                               <div
-                                className={`h-[88px] flex items-center justify-center ${
+                                className={`h-[88px] lg:h-[124px] xl:h-[150px] flex items-center justify-center ${
                                   p.imagen ? "bg-white" : "bg-gradient-to-br from-[#f0f2ec] to-[#d8d8d8]"
                                 }`}
                               >
@@ -1753,7 +1755,10 @@ export default function AsesorApp({
                     {productosFiltrados.length === 0 ? (
                       <p className="text-[#686868] text-sm text-center py-12">{t("sinResultados")}</p>
                     ) : (
-                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                      // Cuatro y no cinco: descontando la barra lateral, con cinco
+                      // columnas cada tarjeta queda del ancho de un dedo y la foto no
+                      // se ve. Recién arriba de 1536px entra una quinta sin achicar.
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-3 md:gap-4">
                         {productosFiltrados.map((p) => (
                           <TarjetaResultado
                             key={p.id_producto}
@@ -2507,6 +2512,122 @@ function ProductoDetalleModal({
         ? "Informação nutricional · a cada 100 g"
         : "Información nutricional · cada 100 g";
 
+  /**
+   * Qué es y cuánto sale: marca, nombre, los dos precios, sabores y la
+   * explicación.
+   *
+   * Va en una hoja o en la otra según el producto. Cuando hay información
+   * nutricional, acompaña a la foto en la hoja izquierda y la derecha queda
+   * entera para los números — así el libro se lee como un libro: a la
+   * izquierda qué es, a la derecha qué tiene. Cuando no hay nutricional, la
+   * hoja derecha quedaría vacía, así que este bloque la ocupa él.
+   */
+  const bloqueIdentidad = (
+    <div
+      className="px-6 pt-5 pb-6 flex flex-col gap-4"
+      style={{
+        opacity: abierto ? 1 : 0,
+        transform: abierto ? "translateY(0)" : "translateY(10px)",
+        transition: "all .5s ease .15s",
+      }}
+    >
+      <div>
+        <div className="flex items-start justify-between gap-3">
+          {marca && (
+            <p className="text-[10.5px] font-extrabold uppercase tracking-[.2em]" style={{ color: "#4d7635" }}>
+              {marca.nombre}
+            </p>
+          )}
+          {ficha?.clasificacion && (
+            <span
+              className="shrink-0 text-[9px] font-extrabold uppercase tracking-wide px-2.5 py-1 rounded-full"
+              style={{ background: SAGE_TINT, color: SAGE_DARK }}
+            >
+              🌿 {ficha.clasificacion}
+            </span>
+          )}
+        </div>
+        <h3 className={`${bodoniModa.className} italic text-[26px] md:text-[32px] leading-tight mt-1`}>
+          {traducir(idioma, producto.nombre, producto.nombre_en, producto.nombre_pt)}
+        </h3>
+        <div className="mt-2.5 flex flex-wrap items-end gap-x-4 gap-y-2">
+          <div className="flex items-baseline gap-2.5">
+            <span
+              className={`${fredoka.className} text-[24px] md:text-[28px] font-semibold`}
+              style={{ color: (producto.descuento_porcentaje ?? 0) > 0 ? C3 : "#2d2d2d" }}
+            >
+              {formatoPrecio(precios.lista)}
+            </span>
+            {(producto.descuento_porcentaje ?? 0) > 0 && (
+              <span className="text-[15px] text-[#a8a8a8] line-through">
+                {formatoPrecio(producto.precio_venta)}
+              </span>
+            )}
+          </div>
+
+          {/* El precio de efectivo es un argumento de venta, no un detalle: va
+              con el ahorro en pesos al lado, que es lo que termina de
+              convencer. */}
+          {precios.ahorro !== null && (
+            <div className="flex flex-col rounded-xl px-3 py-2" style={{ background: "#eaf3dc" }}>
+              <span
+                className="text-[9px] font-extrabold uppercase tracking-[.16em]"
+                style={{ color: "#6e8f52" }}
+              >
+                {idioma === "en" ? "Paying cash" : idioma === "pt" ? "Pagando em dinheiro" : "Pagando en efectivo"}
+              </span>
+              <div className="flex items-baseline gap-2">
+                <span
+                  className={`${fredoka.className} text-[20px] md:text-[23px] font-semibold leading-tight`}
+                  style={{ color: "#3d6b28" }}
+                >
+                  {formatoPrecio(precios.efectivo)}
+                </span>
+                <span className="text-[11.5px] font-bold" style={{ color: "#6e8f52" }}>
+                  −{formatoPrecio(precios.ahorro)}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {sabores.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <p className="text-[10.5px] font-extrabold uppercase tracking-[.2em] text-[#98a08b]">
+            {idioma === "en" ? "Flavours" : "Sabores"}
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {sabores.map((v) => {
+              const activo = v.id_variante === saborActivo;
+              return (
+                <button
+                  key={v.id_variante}
+                  onClick={() => setSaborActivo(activo ? null : v.id_variante)}
+                  className="text-[12.5px] px-3.5 py-2 rounded-full border transition-colors"
+                  style={{
+                    background: activo ? SAGE_DARK : "#fff",
+                    borderColor: activo ? SAGE_DARK : "#dcdfd4",
+                    color: activo ? "#fff" : "#4a4f43",
+                    fontWeight: activo ? 700 : 500,
+                  }}
+                >
+                  {v.nombre}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {ficha?.descripcion_publica && (
+        <p className="text-[14px] leading-relaxed text-[#686868]">
+          {traducir(idioma, ficha.descripcion_publica, ficha.descripcion_publica_en, ficha.descripcion_publica_pt)}
+        </p>
+      )}
+    </div>
+  );
+
   return (
     <div
       className="fixed inset-0 z-40 flex items-end sm:items-center justify-center p-0 sm:p-6"
@@ -2586,6 +2707,8 @@ function ProductoDetalleModal({
               ))}
             </div>
           )}
+
+          {hayNutricional && bloqueIdentidad}
         </div>
 
         {/* ---------- hoja derecha: todo lo que se lee ---------- */}
@@ -2593,121 +2716,11 @@ function ProductoDetalleModal({
           className="overflow-y-auto min-h-0 flex flex-col border-t md:border-t-0 md:border-l border-[#e8eade]"
           style={{ background: hayNutricional ? "#f7f9f2" : "#fff" }}
         >
-          <div
-            className="px-6 pt-5 pb-6 flex flex-col gap-4"
-            style={{
-              opacity: abierto ? 1 : 0,
-              transform: abierto ? "translateY(0)" : "translateY(10px)",
-              transition: "all .5s ease .15s",
-            }}
-          >
-            <div>
-              <div className="flex items-start justify-between gap-3">
-                {marca && (
-                  <p className="text-[10.5px] font-extrabold uppercase tracking-[.2em]" style={{ color: "#4d7635" }}>
-                    {marca.nombre}
-                  </p>
-                )}
-                {ficha?.clasificacion && (
-                  <span
-                    className="shrink-0 text-[9px] font-extrabold uppercase tracking-wide px-2.5 py-1 rounded-full"
-                    style={{ background: SAGE_TINT, color: SAGE_DARK }}
-                  >
-                    🌿 {ficha.clasificacion}
-                  </span>
-                )}
-              </div>
-              <h3 className={`${bodoniModa.className} italic text-[26px] md:text-[32px] leading-tight mt-1`}>
-                {traducir(idioma, producto.nombre, producto.nombre_en, producto.nombre_pt)}
-              </h3>
-              <div className="mt-2.5 flex flex-wrap items-end gap-x-4 gap-y-2">
-                <div className="flex items-baseline gap-2.5">
-                  <span
-                    className={`${fredoka.className} text-[24px] md:text-[28px] font-semibold`}
-                    style={{ color: (producto.descuento_porcentaje ?? 0) > 0 ? C3 : "#2d2d2d" }}
-                  >
-                    {formatoPrecio(precios.lista)}
-                  </span>
-                  {(producto.descuento_porcentaje ?? 0) > 0 && (
-                    <span className="text-[15px] text-[#a8a8a8] line-through">
-                      {formatoPrecio(producto.precio_venta)}
-                    </span>
-                  )}
-                </div>
-
-                {/* El precio de efectivo es un argumento de venta, no un
-                    detalle: va con el ahorro en pesos al lado, que es lo que
-                    termina de convencer. */}
-                {precios.ahorro !== null && (
-                  <div
-                    className="flex flex-col rounded-xl px-3 py-2"
-                    style={{ background: "#eaf3dc" }}
-                  >
-                    <span
-                      className="text-[9px] font-extrabold uppercase tracking-[.16em]"
-                      style={{ color: "#6e8f52" }}
-                    >
-                      {idioma === "en" ? "Paying cash" : idioma === "pt" ? "Pagando em dinheiro" : "Pagando en efectivo"}
-                    </span>
-                    <div className="flex items-baseline gap-2">
-                      <span
-                        className={`${fredoka.className} text-[20px] md:text-[23px] font-semibold leading-tight`}
-                        style={{ color: "#3d6b28" }}
-                      >
-                        {formatoPrecio(precios.efectivo)}
-                      </span>
-                      <span className="text-[11.5px] font-bold" style={{ color: "#6e8f52" }}>
-                        −{formatoPrecio(precios.ahorro)}
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {sabores.length > 0 && (
-              <div className="flex flex-col gap-2">
-                <p className="text-[10.5px] font-extrabold uppercase tracking-[.2em] text-[#98a08b]">
-                  {idioma === "en" ? "Flavours" : "Sabores"}
-                </p>
-                <div className="flex flex-wrap gap-1.5">
-                  {sabores.map((v) => {
-                    const activo = v.id_variante === saborActivo;
-                    return (
-                      <button
-                        key={v.id_variante}
-                        onClick={() => setSaborActivo(activo ? null : v.id_variante)}
-                        className="text-[12.5px] px-3.5 py-2 rounded-full border transition-colors"
-                        style={{
-                          background: activo ? SAGE_DARK : "#fff",
-                          borderColor: activo ? SAGE_DARK : "#dcdfd4",
-                          color: activo ? "#fff" : "#4a4f43",
-                          fontWeight: activo ? 700 : 500,
-                        }}
-                      >
-                        {v.nombre}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {ficha?.descripcion_publica && (
-              <p className="text-[14px] leading-relaxed text-[#686868]">
-                {traducir(
-                  idioma,
-                  ficha.descripcion_publica,
-                  ficha.descripcion_publica_en,
-                  ficha.descripcion_publica_pt
-                )}
-              </p>
-            )}
-          </div>
+          {!hayNutricional && bloqueIdentidad}
 
           {hayNutricional && (
             <div
-              className="px-6 pt-5 pb-6 flex flex-col gap-4 border-t border-[#e2e6da]"
+              className="px-6 pt-5 pb-6 flex flex-col gap-4"
               style={{ opacity: abierto ? 1 : 0, transition: "opacity .5s ease .25s" }}
             >
               <p className="text-[10.5px] font-extrabold uppercase tracking-[.2em] text-[#8a9180]">
