@@ -187,6 +187,10 @@ const HOME_I18N = {
     profesionalesSub: "Conocelos y pedí tu turno presencial o por videollamada",
     profesionalesVacio: "Todavía no hay profesionales cargados acá.",
     verFicha: "Ver más",
+    historiaTitulo: "Su historia",
+    formacionTitulo: "Formación",
+    trayectoriaTitulo: "Trayectoria",
+    hoy: "hoy",
   },
   en: {
     pregunta: "What are you looking for today?",
@@ -220,6 +224,10 @@ const HOME_I18N = {
     profesionalesSub: "Meet them and book in person or by video call",
     profesionalesVacio: "No professionals loaded here yet.",
     verFicha: "See more",
+    historiaTitulo: "Her story",
+    formacionTitulo: "Education",
+    trayectoriaTitulo: "Experience",
+    hoy: "today",
   },
   pt: {
     pregunta: "O que você está procurando hoje?",
@@ -253,6 +261,10 @@ const HOME_I18N = {
     profesionalesSub: "Conheça-os e marque presencial ou por videochamada",
     profesionalesVacio: "Ainda não há profissionais cadastrados aqui.",
     verFicha: "Ver mais",
+    historiaTitulo: "Sua história",
+    formacionTitulo: "Formação",
+    trayectoriaTitulo: "Trajetória",
+    hoy: "hoje",
   },
 } as const;
 
@@ -463,6 +475,50 @@ function PrecioTarjeta({ producto }: { producto: ProductoPublico }) {
  * `compacta` es la versión de una sola fila que se usa con el teclado abierto:
  * mismo contenido, ancho fijo para que la fila se pueda correr con el dedo.
  */
+/** Un tramo de la hoja derecha de la ficha: historia, formación, trayectoria. */
+function BloqueHistoria({ titulo, children }: { titulo: string; children: React.ReactNode }) {
+  return (
+    <div className="mb-6 last:mb-0">
+      <p className="text-[10px] font-extrabold uppercase tracking-[.2em] text-[#969d88] mb-2.5">{titulo}</p>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * Formación y trayectoria, en línea de tiempo.
+ *
+ * En lista suelta, "Licenciatura en Nutrición" y "Nutricionista del club" se
+ * leen como dos ítems sueltos. En línea de tiempo se lee un recorrido, que es
+ * lo que genera confianza: no son títulos, es una carrera.
+ */
+function LineaDeTiempo({
+  items,
+}: {
+  items: { id: string; cuando: string; que: string; donde: string | null }[];
+}) {
+  return (
+    <div className="relative pl-5">
+      <span className="absolute left-[4px] top-1.5 bottom-1.5 w-[2px] rounded" style={{ background: "#dde3d3" }} />
+      {items.map((i) => (
+        <div key={i.id} className="relative mb-3.5 last:mb-0">
+          <span
+            className="absolute -left-5 top-1.5 w-2.5 h-2.5 rounded-full border-2"
+            style={{ background: SAGE_DARK, borderColor: "#f7f9f2" }}
+          />
+          {i.cuando && (
+            <p className="text-[10.5px] font-extrabold tracking-wide" style={{ color: SAGE_DARK }}>
+              {i.cuando}
+            </p>
+          )}
+          <p className="text-[13.5px] font-semibold leading-snug">{i.que}</p>
+          {i.donde && <p className="text-[12px] text-[#7d8472]">{i.donde}</p>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function TarjetaResultado({
   producto,
   marca,
@@ -1003,6 +1059,13 @@ export default function AsesorApp({
     () => [...formacionDelProfesionalActual].sort((a, b) => (a.anio ?? 0) - (b.anio ?? 0)),
     [formacionDelProfesionalActual]
   );
+
+  // ¿Hay algo para poner en la hoja derecha de la ficha? Si no, se abre de una
+  // sola hoja: media ficha vacía se lee como que la pantalla está a medio hacer.
+  const tieneHistoria =
+    Boolean(profesionalActual?.biografia_completa) ||
+    formacionDelProfesionalActual.length > 0 ||
+    trayectoriaDelProfesionalActual.length > 0;
   const trayectoriaOrdenada = useMemo(
     () => [...trayectoriaDelProfesionalActual].sort((a, b) => (a.anio_desde ?? 0) - (b.anio_desde ?? 0)),
     [trayectoriaDelProfesionalActual]
@@ -1879,12 +1942,29 @@ export default function AsesorApp({
       )}
 
       {pantalla === "fichaProfesional" && profesionalActual && (
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col min-h-0">
           <Navbar onVolver={() => setPantalla("profesionales")} onInicio={volverAInicio} idioma={idioma} />
-          <div className="flex-1 min-h-0 overflow-y-auto px-6 pt-4 pb-10 max-w-md mx-auto w-full flex flex-col">
+          {/* Se abre como un libro, igual que la ficha de producto: a la
+              izquierda quién es y el botón de turno —que no se mueve nunca—, a
+              la derecha su historia, que se desliza. Antes era una sola columna
+              de 448px en una pantalla de 27": el botón de reservar quedaba al
+              final y había que volver a subir para tocarlo.
+
+              Sin historia cargada no hay hoja derecha: media ficha en blanco se
+              lee como que falta algo, y es el caso de las dos hasta que carguen
+              formación y trayectoria. */}
+          <div
+            className={`flex-1 min-h-0 w-full mx-auto grid ${
+              tieneHistoria ? "max-w-5xl md:grid-cols-2" : "max-w-md"
+            }`}
+          >
+          <div className="min-h-0 overflow-y-auto px-6 pt-4 pb-10 w-full flex flex-col">
             <div
               className="relative w-full rounded-2xl overflow-hidden mb-4"
-              style={{ minHeight: 190, background: `linear-gradient(155deg, #8fa584 0%, ${SAGE_DARK} 100%)` }}
+              style={{
+                minHeight: tieneHistoria ? 290 : 190,
+                background: `linear-gradient(155deg, #8fa584 0%, ${SAGE_DARK} 100%)`,
+              }}
             >
               {profesionalActual.foto && (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -1985,6 +2065,53 @@ export default function AsesorApp({
                 </>
               )}
             </div>
+          </div>
+
+          {/* ---------- hoja derecha: su historia ---------- */}
+          {tieneHistoria && (
+            <div
+              className="min-h-0 overflow-y-auto px-6 pt-5 pb-10 border-t md:border-t-0 md:border-l border-[#e8eade]"
+              style={{ background: "#f7f9f2" }}
+            >
+              {profesionalActual.biografia_completa && (
+                <BloqueHistoria titulo={t("historiaTitulo")}>
+                  <p className="text-[13.5px] leading-relaxed text-[#4a4f43] whitespace-pre-line">
+                    {profesionalActual.biografia_completa}
+                  </p>
+                </BloqueHistoria>
+              )}
+
+              {formacionOrdenada.length > 0 && (
+                <BloqueHistoria titulo={t("formacionTitulo")}>
+                  <LineaDeTiempo
+                    items={formacionOrdenada.map((f) => ({
+                      id: f.id_formacion,
+                      cuando: f.anio ? String(f.anio) : "",
+                      que: f.titulo,
+                      donde: f.institucion,
+                    }))}
+                  />
+                </BloqueHistoria>
+              )}
+
+              {trayectoriaOrdenada.length > 0 && (
+                <BloqueHistoria titulo={t("trayectoriaTitulo")}>
+                  <LineaDeTiempo
+                    items={trayectoriaOrdenada.map((x) => ({
+                      id: x.id_trayectoria,
+                      // "2018 — hoy" dice más que "2018": el cliente quiere
+                      // saber si sigue ahí, no cuándo empezó.
+                      cuando: x.anio_desde
+                        ? `${x.anio_desde}${x.anio_hasta ? ` — ${x.anio_hasta}` : ` — ${t("hoy")}`}`
+                        : "",
+                      que: x.titulo,
+                      donde: x.lugar,
+                    }))}
+                  />
+                </BloqueHistoria>
+              )}
+            </div>
+          )}
           </div>
         </div>
       )}
