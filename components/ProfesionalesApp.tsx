@@ -891,6 +891,50 @@ function FormNuevoProfesional({ onCreado }: { onCreado: () => void }) {
 
 const OPCIONES_TIPO_FORMACION = ["Carrera universitaria", "Posgrado", "Especialización", "Diplomatura", "Curso", "Certificación"];
 
+/**
+ * El corte entre lo que hace falta para publicar y lo que suma.
+ *
+ * La ficha pide seis cosas, pero la pantalla mostraba diez secciones seguidas
+ * sin distinguir cuáles eran. Así parecía que había veinte cosas por cargar y
+ * nadie terminaba ninguna. Con el corte, se ve dónde termina lo obligatorio.
+ */
+function CorteFormulario({ titulo, bajada }: { titulo: string; bajada: string }) {
+  return (
+    <div className="mt-7 mb-3 pt-4 border-t-2 border-dashed border-neutral-200">
+      <p className="text-sm font-bold text-neutral-900">{titulo}</p>
+      <p className="text-xs text-neutral-500 mt-0.5">{bajada}</p>
+    </div>
+  );
+}
+
+/**
+ * Una sección opcional, cerrada por default.
+ *
+ * Es un <details> y no un estado de React a propósito: adentro hay formularios
+ * que se guardan solos, y cerrarlos no tiene que desmontarlos ni perder lo que
+ * alguien estaba escribiendo.
+ */
+function Plegable({
+  titulo,
+  resumen,
+  children,
+}: {
+  titulo: string;
+  resumen: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <details className="group border border-neutral-200 rounded-xl mb-2 bg-white">
+      <summary className="flex items-center gap-2 px-4 py-3 cursor-pointer list-none select-none">
+        <span className="text-neutral-400 text-xs transition-transform group-open:rotate-90">▶</span>
+        <span className="text-sm font-semibold text-neutral-800">{titulo}</span>
+        <span className="text-xs text-neutral-400 ml-auto hidden sm:block">{resumen}</span>
+      </summary>
+      <div className="px-4 pb-4 border-t border-neutral-100 pt-3">{children}</div>
+    </details>
+  );
+}
+
 function SeccionFormLabel({ children }: { children: React.ReactNode }) {
   return <p className="text-xs font-bold uppercase tracking-wide text-accent-dark mt-5 mb-2 first:mt-0">{children}</p>;
 }
@@ -1024,9 +1068,20 @@ function FormEditarProfesional({
 
       {(() => {
         const completitud = calcularCompletitud({ ...profesional, foto }, fortalezasSeleccionadas.size > 0, objetivosSeleccionados.size > 0);
+        const faltan = completitud.items.filter((i) => !i.ok);
+        // Un porcentaje no dice qué hacer. Lo que sirve es la cuenta de lo que
+        // falta y el nombre de cada cosa: son seis, y con esas seis se publica.
         return (
-          <div className="bg-accent-tint border border-accent rounded-lg p-3 mb-4">
-            <p className="text-sm font-bold text-neutral-900 mb-1.5">Perfil completado: {completitud.porcentaje}%</p>
+          <div
+            className={`rounded-lg p-3 mb-4 border ${
+              faltan.length === 0 ? "bg-emerald-50 border-emerald-300" : "bg-accent-tint border-accent"
+            }`}
+          >
+            <p className="text-sm font-bold text-neutral-900 mb-1.5">
+              {faltan.length === 0
+                ? "✓ Lista para publicar"
+                : `Para publicarla ${faltan.length === 1 ? "falta 1 cosa" : `faltan ${faltan.length} cosas`} de 6`}
+            </p>
             <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
               {completitud.items.map((item) => (
                 <p key={item.label} className={`text-xs ${item.ok ? "text-emerald-700" : "text-amber-700"}`}>
@@ -1034,6 +1089,11 @@ function FormEditarProfesional({
                 </p>
               ))}
             </div>
+            {faltan.length === 0 && (
+              <p className="text-xs text-emerald-700 mt-1.5">
+                Lo de más abajo —formación, trayectoria, fotos— es opcional y suma, pero ya podés publicarla así.
+              </p>
+            )}
           </div>
         );
       })()}
@@ -1075,9 +1135,6 @@ function FormEditarProfesional({
       </div>
       <p className="text-[11px] text-neutral-400 mt-2">🔒 Estos campos son administrativos — nunca se muestran en el kiosco ni en la ficha del cliente.</p>
 
-      <SeccionFormLabel>🎓 Formación</SeccionFormLabel>
-      <SeccionFormacion idProfesional={profesional.id_profesional} />
-
       <SeccionFormLabel>⭐ Perfil profesional</SeccionFormLabel>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
         <div>
@@ -1086,18 +1143,34 @@ function FormEditarProfesional({
         </div>
         <div>
           <label className="block text-xs font-medium text-neutral-600 mb-1">Especialidad principal</label>
-          <input name="especialidad" defaultValue={profesional.especialidad ?? ""} className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
+          <input name="especialidad" defaultValue={profesional.especialidad ?? ""} placeholder="Ej: Nutrición deportiva" className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
         </div>
       </div>
       <div className="mb-3">
         <label className="block text-xs font-medium text-neutral-600 mb-1">Presentación corta — aparece al tocar su foto en el kiosco</label>
-        <textarea name="bio" rows={2} defaultValue={profesional.bio ?? ""} className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
+        <textarea
+          name="bio"
+          rows={2}
+          defaultValue={profesional.bio ?? ""}
+          placeholder="Dos o tres renglones, como si se lo contaras a un cliente. Ej: Acompaño a deportistas y a personas que quieren mejorar su alimentación sin dietas imposibles. Trabajo con planes que se adaptan a tu rutina, no al revés."
+          className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm"
+        />
+        <p className="text-[11px] text-neutral-400 mt-1">
+          Es lo primero que lee el cliente. Que hable de lo que le va a pasar a él, no de los títulos de ella
+          — esos ya se ven arriba.
+        </p>
       </div>
       <div className="mb-3">
         <label className="block text-xs font-medium text-neutral-600 mb-1">
-          Biografía completa — se guarda ya, se va a mostrar cuando armemos "Conóceme"
+          Biografía completa — opcional, aparece en &ldquo;Conóceme&rdquo;
         </label>
-        <textarea name="biografia_completa" rows={3} defaultValue={profesional.biografia_completa ?? ""} className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
+        <textarea
+          name="biografia_completa"
+          rows={3}
+          defaultValue={profesional.biografia_completa ?? ""}
+          placeholder="La versión larga: cómo llegó a la nutrición, con qué tipo de paciente trabaja mejor, qué la diferencia. Se puede dejar vacía."
+          className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm"
+        />
       </div>
 
       <SeccionFormLabel>💪 ¿En qué se destaca?</SeccionFormLabel>
@@ -1174,16 +1247,6 @@ function FormEditarProfesional({
         Son los mismos objetivos de "Encontrar productos para mí" — así el Asesor puede recomendar a este profesional según lo que busca el cliente.
       </p>
 
-      <SeccionFormLabel>🏆 Trayectoria</SeccionFormLabel>
-      <SeccionTrayectoria idProfesional={profesional.id_profesional} />
-
-      <SeccionFormLabel>📸 Fotos y videos</SeccionFormLabel>
-      <SeccionGaleria idProfesional={profesional.id_profesional} />
-      <SeccionVideos idProfesional={profesional.id_profesional} />
-
-      <SeccionFormLabel>🎞️ Conóceme</SeccionFormLabel>
-      <SeccionConoceme idProfesional={profesional.id_profesional} />
-
       <SeccionFormLabel>📅 Atención y reserva</SeccionFormLabel>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
         <div>
@@ -1225,6 +1288,28 @@ function FormEditarProfesional({
           </p>
         </div>
       </div>
+
+      <CorteFormulario
+        titulo="Hasta acá, con esto ya se publica"
+        bajada="Lo de abajo es opcional. Suma mucho, pero podés dejarlo para después y la ficha ya funciona."
+      />
+
+      <Plegable titulo="🎓 Formación" resumen="Títulos, posgrados, cursos">
+        <SeccionFormacion idProfesional={profesional.id_profesional} />
+      </Plegable>
+
+      <Plegable titulo="🏆 Trayectoria" resumen="Dónde trabajó, desde cuándo">
+        <SeccionTrayectoria idProfesional={profesional.id_profesional} />
+      </Plegable>
+
+      <Plegable titulo="📸 Fotos y videos" resumen="Del consultorio, trabajando, atendiendo">
+        <SeccionGaleria idProfesional={profesional.id_profesional} />
+        <SeccionVideos idProfesional={profesional.id_profesional} />
+      </Plegable>
+
+      <Plegable titulo="🎞️ Conóceme" resumen="Las filminas que ve el cliente en el kiosco">
+        <SeccionConoceme idProfesional={profesional.id_profesional} />
+      </Plegable>
 
       <SeccionFormLabel>👁️ Publicación</SeccionFormLabel>
       <label className="flex items-center gap-2 text-sm text-neutral-700 mb-3">
