@@ -2021,7 +2021,11 @@ export default function AsesorApp({
                       </span>
                     </span>
                     <div className="p-3.5 md:p-4 flex flex-col gap-2 flex-1">
-                      {(fortalezasPorProfesional[prof.id_profesional] ?? []).length > 0 && (
+                      {/* Sin fortalezas cargadas la tarjeta quedaba con un
+                          hueco blanco al lado de otra que sí las tiene, y se
+                          leía como un error de la pantalla. La especialidad
+                          ocupa ese lugar hasta que se carguen. */}
+                      {(fortalezasPorProfesional[prof.id_profesional] ?? []).length > 0 ? (
                         <div className="flex flex-wrap gap-1.5">
                           {(fortalezasPorProfesional[prof.id_profesional] ?? []).slice(0, 3).map((f) => (
                             <span
@@ -2037,6 +2041,17 @@ export default function AsesorApp({
                             </span>
                           ))}
                         </div>
+                      ) : (
+                        prof.especialidad && (
+                          <div className="flex flex-wrap gap-1.5">
+                            <span
+                              className="text-[9.5px] font-bold px-2.5 py-1 rounded-full"
+                              style={{ background: SAGE_TINT, color: SAGE_DARK }}
+                            >
+                              {prof.especialidad}
+                            </span>
+                          </div>
+                        )
                       )}
                       <span
                         className="text-[11px] font-extrabold mt-auto pt-2.5"
