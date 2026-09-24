@@ -2071,10 +2071,15 @@ export default function AsesorApp({
             }`}
           >
           <div className="min-h-0 overflow-y-auto px-6 pt-4 pb-10 w-full flex flex-col">
+            {/* Vertical y grande: la foto es de medio cuerpo y en una caja baja
+                queda una tira con la cara apretada arriba. El tope en vh es
+                para que en una pantalla corta no empuje el botón de turno
+                fuera de vista. */}
             <div
-              className="relative w-full rounded-2xl overflow-hidden mb-4"
+              className="relative w-full rounded-2xl overflow-hidden mb-4 shrink-0"
               style={{
-                minHeight: tieneHistoria ? 290 : 190,
+                aspectRatio: tieneHistoria ? "4 / 5" : "16 / 10",
+                maxHeight: tieneHistoria ? "48vh" : "26vh",
                 background: `linear-gradient(155deg, #8fa584 0%, ${SAGE_DARK} 100%)`,
               }}
             >
@@ -2103,22 +2108,26 @@ export default function AsesorApp({
                   {profesionalActual.nombre.charAt(0).toUpperCase()}
                 </span>
               )}
-              <div className="relative flex flex-col justify-end h-full min-h-[190px] p-4">
-                <p className={`${bodoniModa.className} italic text-[24px] text-white leading-tight`}>
+              <div className="absolute inset-x-0 bottom-0 p-4">
+                <p className={`${bodoniModa.className} italic text-[26px] md:text-[30px] text-white leading-tight`}>
                   {profesionalActual.nombre} {profesionalActual.apellido ?? ""}
                 </p>
                 {(profesionalActual.titulo || profesionalActual.especialidad) && (
-                  <p className="text-[11px] font-bold text-white/90">
+                  <p className="text-[10px] font-extrabold uppercase tracking-[.14em] text-white/90 mt-1 leading-snug">
                     {[profesionalActual.titulo, profesionalActual.especialidad].filter(Boolean).join(" · ")}
                   </p>
                 )}
               </div>
             </div>
 
-            {/* Los datos entran uno detrás de otro al abrir la ficha, en medio
-                segundo. Se ve una sola vez y es lo que hace que la pantalla se
-                sienta despierta sin distraer del precio. */}
-            <div className="flex-1 flex flex-col justify-center gap-3" style={{ animation: "asesorEntrar .5s cubic-bezier(.2,.8,.2,1) .10s both" }}>
+            {/* Sin `justify-center`: cuando la columna es más alta que el
+                contenido, centrar abría un hueco arriba y otro abajo y la ficha
+                quedaba desarmada. Ahora todo baja desde la foto y el único
+                espacio libre queda antes del botón, que va pegado al pie.
+
+                Los datos entran uno detrás de otro al abrirla, en medio
+                segundo. Se ve una sola vez. */}
+            <div className="flex flex-col gap-3" style={{ animation: "asesorEntrar .5s cubic-bezier(.2,.8,.2,1) .10s both" }}>
               {profesionalActual.matricula && (
                 <span
                   className="self-start flex items-center gap-1.5 rounded-full pl-1.5 pr-3 py-1 text-[10px] font-extrabold tracking-wide"
@@ -2164,7 +2173,10 @@ export default function AsesorApp({
               )}
             </div>
 
-            <div className="flex flex-col gap-2" style={{ animation: "asesorEntrar .5s cubic-bezier(.2,.8,.2,1) .42s both" }}>
+            <div
+              className="flex flex-col gap-2 mt-auto pt-5"
+              style={{ animation: "asesorEntrar .5s cubic-bezier(.2,.8,.2,1) .42s both" }}
+            >
               {/* Los precios al lado del botón, que es donde se deciden. Están
                   cargados en el sistema desde siempre y no se veían en ningún
                   lado. */}
