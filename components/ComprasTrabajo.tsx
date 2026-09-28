@@ -222,6 +222,20 @@ export default function ComprasTrabajo({
     [filas, datos.idsMarcaPropia]
   );
 
+  /**
+   * Y al revés: a una marca propia no se le pide reposición.
+   *
+   * Un pedido a una marca es "mandame mercadería en consignación". A la marca
+   * propia no se le pide nada — sus productos se le compran a un proveedor
+   * (Alifrut) con una orden de compra, que es la otra puerta de esta misma
+   * pantalla. Tenerla en la lista invitaba a hacerse un pedido a uno mismo:
+   * una orden abierta que nunca va a llegar y que después hay que cancelar.
+   */
+  const marcasEnConsignacion = useMemo(
+    () => datos.marcas.filter((m) => !datos.idsMarcaPropia.includes(m.id_marca)),
+    [datos.marcas, datos.idsMarcaPropia]
+  );
+
   const cantidadPorClave = useMemo(() => {
     const map = new Map<string, number>();
     datos.stock.forEach((s) => map.set(`${s.id_variante}_${s.id_local}`, s.cantidad));
@@ -382,12 +396,16 @@ export default function ComprasTrabajo({
               >
                 + Pedir a un proveedor
               </button>
-              <button
-                onClick={() => setNuevaMarca(true)}
-                className="text-sm font-semibold text-violet-700 bg-violet-50 border border-violet-200 rounded-lg px-3.5 py-2"
-              >
-                + Pedir a una marca
-              </button>
+              {/* Si no hay ninguna marca en consignación, el botón abriría un
+                  formulario con la lista vacía. Mejor que no esté. */}
+              {marcasEnConsignacion.length > 0 && (
+                <button
+                  onClick={() => setNuevaMarca(true)}
+                  className="text-sm font-semibold text-violet-700 bg-violet-50 border border-violet-200 rounded-lg px-3.5 py-2"
+                >
+                  + Pedir a una marca
+                </button>
+              )}
             </div>
           </div>
           <p className="text-sm text-neutral-500 mt-1 mb-5">
@@ -609,7 +627,7 @@ export default function ComprasTrabajo({
       {/* ---------- Los formularios de siempre, montados acá ---------- */}
       {nuevaMarca && (
         <NuevaOrdenModal
-          marcas={datos.marcas}
+          marcas={marcasEnConsignacion}
           locales={datos.locales}
           filas={filas}
           cantidadPorClave={cantidadPorClave}
