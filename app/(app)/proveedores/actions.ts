@@ -1549,14 +1549,21 @@ export async function corregirCostoLote(
       .maybeSingle();
     if (!lote) return { error: "No se encontró ese lote." };
 
+    // Solo traba si la liquidación está PAGADA: ahí la plata ya salió de la
+    // caja y cambiar el costo sería reescribir un movimiento que ocurrió. Una
+    // GENERADA es un borrador que todavía se está revisando —justo el momento
+    // en que aparece un costo mal cargado— y una ANULADA no pagó nada. Este es
+    // el que de verdad frena el guardado: las consultas de comprasDatos y
+    // fichaProducto solo deciden si el campo se ve editable.
     const { count } = await supabase
       .from("detalle_liquidacion_proveedor")
-      .select("id_detalle", { count: "exact", head: true })
-      .eq("id_detalle_recepcion", idDetalleRecepcion);
+      .select("id_detalle, liquidaciones_proveedor!inner(estado)", { count: "exact", head: true })
+      .eq("id_detalle_recepcion", idDetalleRecepcion)
+      .eq("liquidaciones_proveedor.estado", "PAGADA");
     if ((count ?? 0) > 0) {
       return {
         error:
-          "Ese lote ya entró en una liquidación cerrada, así que su costo no se puede cambiar. Si el precio estaba mal, se ajusta en la próxima liquidación.",
+          "Ese lote ya entró en una liquidación que le pagaste, así que su costo no se puede cambiar. Si el precio estaba mal, se ajusta en la próxima liquidación.",
       };
     }
 
