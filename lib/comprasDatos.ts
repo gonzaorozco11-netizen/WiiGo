@@ -175,9 +175,16 @@ export async function datosCompras(): Promise<DatosCompras> {
       .eq("facturada", true)
       .order("fecha", { ascending: false })
       .limit(40),
-    // Los lotes que ya entraron en una liquidación cerrada: esos costos ya se
-    // pagaron y no se tocan más.
-    supabase.from("detalle_liquidacion_proveedor").select("id_detalle_recepcion"),
+    // Los lotes de una liquidación PAGADA: esos costos ya salieron de la caja
+    // y no se tocan más. Una GENERADA es un borrador en revisión —el momento
+    // en que uno descubre que un costo entró mal— y una ANULADA no pagó nada;
+    // trabar en esos dos casos dejaba el costo equivocado sin forma de
+    // corregirlo. El resto del módulo ya filtraba por PAGADA, esta consulta
+    // era la única que no.
+    supabase
+      .from("detalle_liquidacion_proveedor")
+      .select("id_detalle_recepcion, liquidaciones_proveedor!inner(estado)")
+      .eq("liquidaciones_proveedor.estado", "PAGADA"),
     supabase.from("detalle_recepcion_proveedor").select("id_detalle, id_recepcion"),
     // El historial de entregas de las dos tablas de recepción.
     supabase

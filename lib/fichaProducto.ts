@@ -137,12 +137,19 @@ export async function fichaDeProducto(
 
   // ---------- Lotes, con lo que queda calculado en vivo ----------
   const idsLote = (lotesRes.data ?? []).map((l) => l.id_detalle as string);
+  // Un lote se traba solo cuando su liquidación está PAGADA: ahí el costo ya
+  // salió de la caja y cambiarlo sería reescribir plata que se movió. Una
+  // liquidación GENERADA es un borrador que todavía se está revisando —
+  // justamente el momento en que uno descubre que un costo entró mal— y una
+  // ANULADA no pagó nada. Trabar en esos dos casos dejaba un costo equivocado
+  // sin forma de corregirlo.
   const liquidados = new Set<string>();
   if (idsLote.length > 0) {
     const { data } = await supabase
       .from("detalle_liquidacion_proveedor")
-      .select("id_detalle_recepcion")
-      .in("id_detalle_recepcion", idsLote);
+      .select("id_detalle_recepcion, liquidaciones_proveedor!inner(estado)")
+      .in("id_detalle_recepcion", idsLote)
+      .eq("liquidaciones_proveedor.estado", "PAGADA");
     (data ?? []).forEach((d) => liquidados.add(d.id_detalle_recepcion as string));
   }
 
