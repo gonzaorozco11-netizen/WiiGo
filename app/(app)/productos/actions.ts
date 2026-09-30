@@ -76,6 +76,9 @@ function productoFromForm(formData: FormData, idMarca: string, idSubcategoria: s
     nombre_pt: text(formData, "nombre_pt"),
     descripcion: text(formData, "descripcion"),
     costo_informado: number(formData, "costo_informado"),
+    // La bolsita y la etiqueta. Suman al costo para calcular el precio, pero no
+    // son parte de lo que se le paga al proveedor — por eso van aparte.
+    costos_extra: number(formData, "costos_extra") ?? 0,
     precio_venta: number(formData, "precio_venta"),
     // Vacío queda en null a propósito: null significa "en efectivo se cobra lo
     // mismo que con tarjeta", que es distinto de un 0 —que sería regalarlo—.
@@ -86,6 +89,22 @@ function productoFromForm(formData: FormData, idMarca: string, idSubcategoria: s
     estado: text(formData, "estado") ?? "ACTIVO",
     fecha_actualizacion: new Date().toISOString(),
   };
+}
+
+// `costos_extra` es una columna que llegó después (sql/costos-extra.sql). Si el
+// SQL todavía no se corrió, Postgres rechaza el guardado entero por una columna
+// que no conoce — y no se podría dar de alta ningún producto. Antes que eso, se
+// guarda sin ella: se pierde la bolsita, no el producto.
+function faltaLaColumna(error: { code?: string; message?: string }, columna: string): boolean {
+  return (
+    (error.code === "42703" || error.code === "PGRST204") && (error.message ?? "").includes(columna)
+  );
+}
+
+function sinCostosExtra<T extends object>(data: T): T {
+  const copia = { ...data };
+  delete (copia as Record<string, unknown>).costos_extra;
+  return copia;
 }
 
 // El SKU y el código de barras viven en lib/codigosVariante.ts: los usan esta
@@ -405,12 +424,13 @@ export async function createProducto(formData: FormData): Promise<{ error: strin
     const idSubcategoria = await resolveSubcategoria(supabase, formData, idMarca);
     const data = productoFromForm(formData, idMarca, idSubcategoria);
 
-    const { data: inserted, error } = await supabase
-      .from("productos")
-      .insert(data)
-      .select("id_producto")
-      .single();
-    if (error) return { error: friendlyDbError(error) };
+    const insertar = (payload: typeof data) =>
+      supabase.from("productos").insert(payload).select("id_producto").single();
+
+    let res = await insertar(data);
+    if (res.error && faltaLaColumna(res.error, "costos_extra")) res = await insertar(sinCostosExtra(data));
+    if (res.error) return { error: friendlyDbError(res.error) };
+    const inserted = res.data;
 
     const idLocalInicial = text(formData, "id_local_inicial");
     const usuario = await usuarioActual();
@@ -436,8 +456,12 @@ export async function updateProducto(id: string, formData: FormData): Promise<{ 
     const idSubcategoria = await resolveSubcategoria(supabase, formData, idMarca);
     const data = productoFromForm(formData, idMarca, idSubcategoria);
 
-    const { error } = await supabase.from("productos").update(data).eq("id_producto", id);
-    if (error) return { error: friendlyDbError(error) };
+    const actualizar = (payload: typeof data) =>
+      supabase.from("productos").update(payload).eq("id_producto", id);
+
+    let res = await actualizar(data);
+    if (res.error && faltaLaColumna(res.error, "costos_extra")) res = await actualizar(sinCostosExtra(data));
+    if (res.error) return { error: friendlyDbError(res.error) };
 
     // Al editar nunca se toca el stock desde acá (idLocalInicial null) — eso
     // se maneja desde /stock, para no pisar cantidades reales sin querer.

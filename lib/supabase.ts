@@ -143,6 +143,11 @@ export type Producto = {
   nombre_pt: string | null;
   descripcion: string | null;
   costo_informado: number | null;
+  // Lo que cuesta la unidad además de la mercadería: la bolsita, la etiqueta.
+  // Aparte de `costo_informado` porque ese es lo que se le paga al proveedor —
+  // el envase no se le liquida a nadie, pero sí tiene que estar en el precio.
+  // Ver sql/costos-extra.sql.
+  costos_extra: number | null;
   // Alícuota de IVA del producto (21 / 10,5 / 0). En alimentos conviven las
   // dos primeras, y de esto depende el crédito fiscal del costo y la venta
   // neta que se usa para el margen.

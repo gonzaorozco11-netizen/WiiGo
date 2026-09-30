@@ -26,6 +26,9 @@ export default function ProductosApp({
   subcategorias,
   locales,
   margenMinimo,
+  otrosCostos,
+  otrosCostosEfectivo,
+  ivaGeneral,
   stockPorVariante,
   stockOptimoPorVariante,
   diasCobertura,
@@ -42,6 +45,12 @@ export default function ProductosApp({
   subcategorias: Subcategoria[];
   locales: Local[];
   margenMinimo: number;
+  /** % de la venta neta que se va en IIBB, Mercado Pago e impuesto al cheque. */
+  otrosCostos: number;
+  /** Lo mismo pero cobrando en efectivo: sin la comisión de Mercado Pago. */
+  otrosCostosEfectivo: number;
+  /** IVA que se usa cuando el producto no tiene el suyo cargado. */
+  ivaGeneral: number;
   stockPorVariante: Record<string, number>;
   stockOptimoPorVariante: Record<string, number>;
   diasCobertura: number;
@@ -300,6 +309,9 @@ export default function ProductosApp({
           subcategorias={subcategorias}
           locales={locales}
           margenMinimo={margenMinimo}
+          otrosCostos={otrosCostos}
+          otrosCostosEfectivo={otrosCostosEfectivo}
+          ivaGeneral={ivaGeneral}
           objetivosGlobales={objetivosGlobales}
           filtrosGlobales={filtrosGlobales}
           ficha={editing ? fichaPorProducto[editing.id_producto] ?? null : null}

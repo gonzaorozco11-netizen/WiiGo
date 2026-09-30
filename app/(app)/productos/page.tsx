@@ -43,7 +43,15 @@ export default async function ProductosPage() {
     supabase.from("locales").select("*").eq("estado", "ACTIVO").order("nombre", { ascending: true }),
     supabase.from("stock").select("id_variante, cantidad"),
     supabase.from("ventas").select("id_venta").eq("estado", "PAGADA").gte("fecha", cutoff.toISOString()),
-    supabase.from("configuracion").select("valor").eq("parametro", "MARGEN_MINIMO_PORCENTAJE").maybeSingle(),
+    supabase
+      .from("configuracion")
+      .select("parametro, valor")
+      .in("parametro", [
+        "MARGEN_MINIMO_PORCENTAJE",
+        "OTROS_COSTOS_PORCENTAJE",
+        "OTROS_COSTOS_EFECTIVO_PORCENTAJE",
+        "IVA_GENERAL_PORCENTAJE",
+      ]),
     listarProveedores(),
   ]);
   // TODOS los proveedores activos, no solo los de liquidación mensual.
@@ -55,6 +63,8 @@ export default async function ProductosPage() {
   // no había forma de asignarle su proveedor, y por eso la orden de compra
   // no podía sugerir nada.
   const proveedoresLiquidacion = proveedores.filter((p) => p.estado === "ACTIVO");
+
+  const config = new Map((configRes.data ?? []).map((c) => [c.parametro as string, c.valor as string]));
 
   const error = productosRes.error || marcasRes.error || subcategoriasRes.error;
   if (error) {
@@ -104,7 +114,10 @@ export default async function ProductosPage() {
       marcas={(marcasRes.data ?? []) as Marca[]}
       subcategorias={(subcategoriasRes.data ?? []) as Subcategoria[]}
       locales={(localesRes.data ?? []) as Local[]}
-      margenMinimo={Number(configRes.data?.valor ?? 15)}
+      margenMinimo={Number(config.get("MARGEN_MINIMO_PORCENTAJE") ?? 15)}
+      otrosCostos={Number(config.get("OTROS_COSTOS_PORCENTAJE") ?? 0)}
+      otrosCostosEfectivo={Number(config.get("OTROS_COSTOS_EFECTIVO_PORCENTAJE") ?? 0)}
+      ivaGeneral={Number(config.get("IVA_GENERAL_PORCENTAJE") ?? 21)}
       stockPorVariante={stockPorVariante}
       stockOptimoPorVariante={stockOptimoPorVariante}
       diasCobertura={DIAS_COBERTURA}

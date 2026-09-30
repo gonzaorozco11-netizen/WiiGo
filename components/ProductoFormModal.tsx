@@ -82,6 +82,9 @@ export default function ProductoFormModal({
   subcategorias,
   locales = [],
   margenMinimo = 15,
+  otrosCostos = 0,
+  otrosCostosEfectivo = 0,
+  ivaGeneral = 21,
   objetivosGlobales = [],
   filtrosGlobales = [],
   ficha = null,
@@ -96,6 +99,12 @@ export default function ProductoFormModal({
   subcategorias: Subcategoria[];
   locales?: Local[];
   margenMinimo?: number;
+  /** % de la venta neta que se va en IIBB, Mercado Pago e impuesto al cheque. */
+  otrosCostos?: number;
+  /** Lo mismo pero cobrando en efectivo: sin la comisión de Mercado Pago. */
+  otrosCostosEfectivo?: number;
+  /** IVA que se usa cuando el producto no tiene el suyo cargado. */
+  ivaGeneral?: number;
   objetivosGlobales?: Objetivo[];
   filtrosGlobales?: FiltroProducto[];
   ficha?: FichaProducto | null;
@@ -286,11 +295,15 @@ export default function ProductoFormModal({
 
           <PrecioCalculadora
             costoInicial={producto?.costo_informado ?? null}
+            costosExtraInicial={producto?.costos_extra ?? null}
             precioInicial={producto?.precio_venta ?? null}
             descuentoInicial={producto?.descuento_porcentaje ?? null}
             precioEfectivoInicial={producto?.precio_efectivo ?? null}
             labelCosto={marcaSeleccionada?.tipo_comercializacion === "PROPIA" ? "Costo (CMV, sin IVA)" : "Costo informado"}
             margenMinimo={margenMinimo}
+            otrosCostos={otrosCostos}
+            otrosCostosEfectivo={otrosCostosEfectivo}
+            iva={producto?.iva_porcentaje ?? ivaGeneral}
           />
 
           {marcaSeleccionada?.tipo_comercializacion === "PROPIA" && proveedoresLiquidacion.length > 0 && (
@@ -540,35 +553,104 @@ function Ayuda({ texto }: { texto: string }) {
   );
 }
 
-// Costo + cualquiera de los tres (Precio, Markup o Margen) alcanza para
-// derivar los otros dos. Los tres campos están siempre editables — el que
-// se toca recalcula los otros dos en el momento, no hay que elegir modo.
+// Una línea del reparto del precio. Al lado del monto va el % del precio final,
+// que es lo que deja comparar dos productos de precios distintos.
+function Reparto({
+  etiqueta,
+  monto,
+  total,
+  pesos,
+  destacado = false,
+}: {
+  etiqueta: string;
+  monto: number;
+  total: number;
+  pesos: (n: number) => string;
+  destacado?: boolean;
+}) {
+  const share = total > 0 ? (monto / total) * 100 : 0;
+  return (
+    <div className="flex items-baseline justify-between gap-3 text-xs">
+      <span className={destacado ? "font-semibold text-emerald-800" : "text-neutral-600"}>{etiqueta}</span>
+      <span className="flex items-baseline gap-2 tabular-nums">
+        <span className="text-[11px] text-neutral-400">{share.toFixed(1)}%</span>
+        <span className={destacado ? "font-semibold text-emerald-800" : "text-neutral-800"}>${pesos(monto)}</span>
+      </span>
+    </div>
+  );
+}
+
+// Entre el costo de la mercadería y lo que paga el cliente hay tres cosas más:
+// la bolsita, lo que se va en cobrar (IIBB, Mercado Pago, impuesto al cheque) y
+// el IVA. La cuenta es:
+//
+//   costo  = mercadería + bolsita
+//   neto   = costo / (1 − otrosCostos% − margen%)
+//   precio = neto × (1 + IVA%)        ← lo que ve el cliente en la góndola
+//
+// Así el margen que se escribe es el que queda de verdad. La cuenta anterior
+// —precio = costo / (1 − margen)— dividía un costo SIN IVA para llegar a un
+// precio CON IVA, y devolvía la mitad del margen que declaraba: con costo
+// $3.702 y margen 30% daba $5.288, que sobre la venta neta son 15,3%.
+//
+// Los tres siguen editables (Margen, Markup o Precio): se escribe cualquiera y
+// los otros dos se recalculan, no hay que elegir modo.
 function PrecioCalculadora({
   costoInicial,
+  costosExtraInicial,
   precioInicial,
   descuentoInicial,
   precioEfectivoInicial,
   labelCosto,
   margenMinimo,
+  otrosCostos,
+  otrosCostosEfectivo,
+  iva,
 }: {
   costoInicial: number | null;
+  costosExtraInicial: number | null;
   precioInicial: number | null;
   descuentoInicial: number | null;
   precioEfectivoInicial: number | null;
   labelCosto: string;
   margenMinimo: number;
+  otrosCostos: number;
+  otrosCostosEfectivo: number;
+  iva: number;
 }) {
   const [costo, setCosto] = useState(costoInicial ?? 0);
+  const [extra, setExtra] = useState(costosExtraInicial ?? 0);
   const [precio, setPrecio] = useState(precioInicial ?? 0);
+  const [descuento, setDescuento] = useState(descuentoInicial ?? 0);
+
+  const fIva = 1 + iva / 100;
+  const pOtros = otrosCostos / 100;
+
+  // Las cuatro son la misma cuenta leída en distinto orden. Reciben el costo
+  // total por parámetro porque quien las llama suele tener un valor más nuevo
+  // que el del estado (React actualiza recién en el próximo render).
+  function precioDeMargen(m: number, costoTotal: number) {
+    // Margen + otros costos llegando a 100% sería precio infinito.
+    const resto = 1 - pOtros - Math.min(m, 99) / 100;
+    return resto > 0.0001 ? (costoTotal / resto) * fIva : 0;
+  }
+  function margenDePrecio(p: number, costoTotal: number) {
+    const neto = p / fIva;
+    return neto > 0 ? (1 - pOtros - costoTotal / neto) * 100 : 0;
+  }
+  function markupDePrecio(p: number, costoTotal: number) {
+    return costoTotal > 0 ? (p / costoTotal - 1) * 100 : 0;
+  }
+  function precioDeMarkup(mk: number, costoTotal: number) {
+    return costoTotal * (1 + mk / 100);
+  }
+
   const [markup, setMarkup] = useState(() =>
-    costoInicial && precioInicial && costoInicial > 0 ? ((precioInicial - costoInicial) / costoInicial) * 100 : 0
+    markupDePrecio(precioInicial ?? 0, (costoInicial ?? 0) + (costosExtraInicial ?? 0))
   );
   const [margen, setMargen] = useState(() =>
-    precioInicial && costoInicial !== null && precioInicial > 0
-      ? ((precioInicial - costoInicial) / precioInicial) * 100
-      : 0
+    margenDePrecio(precioInicial ?? 0, (costoInicial ?? 0) + (costosExtraInicial ?? 0))
   );
-  const [descuento, setDescuento] = useState(descuentoInicial ?? 0);
 
   // Los dos van de la mano: se escribe uno y el otro se completa. Se guardan
   // por separado para que escribir "14" no le pise los decimales al monto ni
@@ -590,45 +672,72 @@ function PrecioCalculadora({
     setEfectivo(pct > 0 && precio > 0 ? Math.round(precio * (1 - pct / 100)) : 0);
   }
 
+  // Tocar un costo deja el precio quieto: lo que cambia es cuánto margen deja
+  // ese precio ahora. Si se recalculara el precio, cargar el costo real de una
+  // lista nueva movería los precios de la góndola sin que nadie lo pida.
   function recalcularDesdeCosto(nuevoCosto: number) {
     setCosto(nuevoCosto);
-    // El precio se deja fijo — lo que cambia es cuánto margen/markup deja
-    // ese precio con el costo nuevo.
-    setMarkup(nuevoCosto > 0 ? ((precio - nuevoCosto) / nuevoCosto) * 100 : 0);
-    setMargen(precio > 0 ? ((precio - nuevoCosto) / precio) * 100 : 0);
+    setMarkup(markupDePrecio(precio, nuevoCosto + extra));
+    setMargen(margenDePrecio(precio, nuevoCosto + extra));
+  }
+
+  function recalcularDesdeExtra(nuevoExtra: number) {
+    setExtra(nuevoExtra);
+    setMarkup(markupDePrecio(precio, costo + nuevoExtra));
+    setMargen(margenDePrecio(precio, costo + nuevoExtra));
   }
 
   function recalcularDesdePrecio(nuevoPrecio: number) {
     setPrecio(nuevoPrecio);
-    setMarkup(costo > 0 ? ((nuevoPrecio - costo) / costo) * 100 : 0);
-    setMargen(nuevoPrecio > 0 ? ((nuevoPrecio - costo) / nuevoPrecio) * 100 : 0);
+    setMarkup(markupDePrecio(nuevoPrecio, costo + extra));
+    setMargen(margenDePrecio(nuevoPrecio, costo + extra));
   }
 
   function recalcularDesdeMarkup(nuevoMarkup: number) {
     setMarkup(nuevoMarkup);
-    const nuevoPrecio = costo * (1 + nuevoMarkup / 100);
+    const nuevoPrecio = precioDeMarkup(nuevoMarkup, costo + extra);
     setPrecio(Math.round(nuevoPrecio * 100) / 100);
-    setMargen(nuevoPrecio > 0 ? ((nuevoPrecio - costo) / nuevoPrecio) * 100 : 0);
+    setMargen(margenDePrecio(nuevoPrecio, costo + extra));
   }
 
   function recalcularDesdeMargen(nuevoMargen: number) {
     setMargen(nuevoMargen);
-    // Un margen de 100% o más implicaría precio infinito, no tiene sentido.
-    const g = Math.min(nuevoMargen, 99);
-    const nuevoPrecio = g < 100 ? costo / (1 - g / 100) : 0;
+    const nuevoPrecio = precioDeMargen(nuevoMargen, costo + extra);
     setPrecio(Math.round(nuevoPrecio * 100) / 100);
-    setMarkup(costo > 0 ? ((nuevoPrecio - costo) / costo) * 100 : 0);
+    setMarkup(markupDePrecio(nuevoPrecio, costo + extra));
   }
 
+  const costoTotal = costo + extra;
   const precioRedondeado = Math.round(precio * 100) / 100;
   const efectivoRedondeado = Math.round(efectivo * 100) / 100;
   const margenBajo = precioRedondeado > 0 && margen < margenMinimo;
 
+  // A dónde va cada peso de lo que paga el cliente.
+  const neto = precioRedondeado / fIva;
+  const montoIva = precioRedondeado - neto;
+  const costosDeCobrar = neto * pOtros;
+  const ganancia = neto - costoTotal - costosDeCobrar;
+
+  // En efectivo no se paga la comisión de Mercado Pago, así que hay un descuento
+  // que deja la misma ganancia que cobrando con tarjeta. Todo lo que se dé por
+  // encima de ese % sale del margen.
+  const netoMismaGanancia = (costoTotal + ganancia) / (1 - otrosCostosEfectivo / 100);
+  const precioMismaGanancia = netoMismaGanancia * fIva;
+  const offGratis =
+    precioRedondeado > 0 ? Math.max(0, (1 - precioMismaGanancia / precioRedondeado) * 100) : 0;
+
+  const netoEfectivo = efectivoRedondeado / fIva;
+  const gananciaEfectivo =
+    efectivoRedondeado > 0 ? netoEfectivo * (1 - otrosCostosEfectivo / 100) - costoTotal : 0;
+
+  const pesos = (n: number) =>
+    n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
   return (
     <div className="border border-neutral-200 rounded-xl p-4 space-y-3">
-      <h3 className="text-sm font-semibold text-neutral-900">💲 Precio y rentabilidad</h3>
+      <h3 className="text-sm font-semibold text-neutral-900">📦 Costo por unidad</h3>
       <p className="text-xs text-neutral-500 -mt-2">
-        Completá cualquiera de los tres de abajo (Precio, Markup o Margen) — los otros dos se recalculan solos.
+        Lo que te sale poner una unidad en la góndola, sin IVA.
       </p>
 
       <div className="grid grid-cols-2 gap-3">
@@ -645,73 +754,179 @@ function PrecioCalculadora({
             onChange={(e) => recalcularDesdeCosto(Number(e.target.value) || 0)}
             className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
           />
+          <p className="text-[11px] text-neutral-400 mt-1">Lo que te cobra el proveedor por una unidad</p>
         </div>
         <div>
-          <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="descuento_porcentaje">
-            Descuento %
-            <Ayuda texto="La oferta que pinta el cartelito «-20%» en el catálogo. Se aplica sobre el precio de tarjeta. Si el producto también tiene precio en efectivo, los descuentos no se suman: el cliente paga el más barato de los dos. Ver la ayuda del bloque de efectivo, más abajo." />
+          <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="costos_extra">
+            Costos extra por unidad
+            <Ayuda texto="La bolsita, la etiqueta, el precinto: lo que gastás por unidad y no le pagás al proveedor. Va una bolsita entera por paquete, no un pedazo. Se suma al costo solo para calcular el precio — a la marca o al proveedor se le sigue liquidando el costo de arriba." />
           </label>
           <input
-            id="descuento_porcentaje"
-            name="descuento_porcentaje"
+            id="costos_extra"
+            name="costos_extra"
             type="number"
             step="0.01"
-            value={descuento || ""}
-            onChange={(e) => setDescuento(Number(e.target.value) || 0)}
+            value={extra || ""}
+            onChange={(e) => recalcularDesdeExtra(Number(e.target.value) || 0)}
             className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
           />
+          <p className="text-[11px] text-neutral-400 mt-1">Bolsita, etiqueta</p>
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
-        <div>
-          <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="precio_venta_visible">
-            Precio de venta
-          </label>
-          <input
-            id="precio_venta_visible"
-            type="number"
-            step="0.01"
-            value={precio || ""}
-            onChange={(e) => recalcularDesdePrecio(Number(e.target.value) || 0)}
-            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-          />
-          <input type="hidden" name="precio_venta" value={precioRedondeado || 0} />
+      {costoTotal > 0 && (
+        <p className="text-xs text-neutral-600">
+          Costo total de la unidad: <span className="font-semibold text-neutral-900">${pesos(costoTotal)}</span>
+        </p>
+      )}
+
+      <div className="border-t border-neutral-200 pt-3 space-y-3">
+        <h3 className="text-sm font-semibold text-neutral-900">💲 Precio y rentabilidad</h3>
+        <p className="text-xs text-neutral-500 -mt-2">
+          Escribí el margen que querés ganar y sale el precio. O escribí el precio y te dice qué margen deja. Los
+          otros dos se recalculan solos.
+        </p>
+
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-1">
+              Margen que quiero %
+              <Ayuda texto="Lo que te queda de verdad: después de la mercadería, la bolsita, Ingresos Brutos y lo que te cobran por cobrar. Antes del alquiler y los sueldos. Margen = Ganancia / Venta neta × 100." />
+            </label>
+            <input
+              type="number"
+              step="0.01"
+              value={Math.round(margen * 10) / 10 || ""}
+              onChange={(e) => recalcularDesdeMargen(Number(e.target.value) || 0)}
+              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-1">
+              Otros costos %
+              <Ayuda texto="Ingresos Brutos, la comisión de Mercado Pago y el impuesto al débito y crédito. Es igual para todos los productos y se cambia en Configuración, no acá." />
+            </label>
+            <input
+              type="text"
+              value={`${otrosCostos.toLocaleString("es-AR")} %`}
+              readOnly
+              className="w-full rounded-lg border border-dashed border-neutral-300 bg-neutral-50 px-3 py-2 text-sm text-neutral-600"
+            />
+            <p className="text-[11px] text-neutral-400 mt-1">Viene de Configuración</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-1">
+              IVA %
+              <Ayuda texto="La alícuota del producto. El precio de góndola ya lo incluye, porque es lo que paga el cliente." />
+            </label>
+            <input
+              type="text"
+              value={`${iva.toLocaleString("es-AR")} %`}
+              readOnly
+              className="w-full rounded-lg border border-dashed border-neutral-300 bg-neutral-50 px-3 py-2 text-sm text-neutral-600"
+            />
+            <p className="text-[11px] text-neutral-400 mt-1">Del producto</p>
+          </div>
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-neutral-700 mb-1">
-            Markup
-            <Ayuda texto="Cuánto le sumás al costo para llegar al precio. Markup = (Precio − Costo) / Costo × 100. Ej: costo $100, precio $150 → markup 50%." />
-          </label>
-          <input
-            type="number"
-            step="0.01"
-            value={Math.round(markup * 10) / 10 || ""}
-            onChange={(e) => recalcularDesdeMarkup(Number(e.target.value) || 0)}
-            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-          />
+        <div className="rounded-xl border border-accent bg-accent-tint px-4 py-3 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-semibold text-blue-800 uppercase tracking-wide">
+              Precio de góndola · con IVA · tarjeta o QR
+            </p>
+            <p className="text-3xl font-semibold text-blue-900 tabular-nums leading-none mt-1">
+              ${pesos(precioRedondeado)}
+            </p>
+          </div>
+          {precioRedondeado > 0 && (
+            <div className="text-right text-[11px] text-blue-800 leading-snug">
+              sugerido para el cartel
+              <span className="block text-base font-semibold tabular-nums">
+                ${(Math.ceil(precioRedondeado / 100) * 100).toLocaleString("es-AR")}
+              </span>
+            </div>
+          )}
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-neutral-700 mb-1">
-            Margen
-            <Ayuda texto="De todo lo que factura ese producto, qué % es ganancia real. Margen = (Precio − Costo) / Precio × 100. Sirve para analizar rentabilidad." />
-          </label>
-          <input
-            type="number"
-            step="0.01"
-            value={Math.round(margen * 10) / 10 || ""}
-            onChange={(e) => recalcularDesdeMargen(Number(e.target.value) || 0)}
-            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-          />
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="precio_venta_visible">
+              Precio de góndola
+              <Ayuda texto="Si el precio te lo pone la competencia, escribilo acá: el margen se recalcula al revés y te dice cuánto te queda con ese precio." />
+            </label>
+            <input
+              id="precio_venta_visible"
+              type="number"
+              step="0.01"
+              value={precio || ""}
+              onChange={(e) => recalcularDesdePrecio(Number(e.target.value) || 0)}
+              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+            <input type="hidden" name="precio_venta" value={precioRedondeado || 0} />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-1">
+              Markup
+              <Ayuda texto="Cuántas veces el costo es el precio final. Markup = Precio de góndola / Costo total − 1, en porcentaje. Ej: costo $100, precio $213 → markup 113%." />
+            </label>
+            <input
+              type="number"
+              step="0.01"
+              value={Math.round(markup * 10) / 10 || ""}
+              onChange={(e) => recalcularDesdeMarkup(Number(e.target.value) || 0)}
+              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="descuento_porcentaje">
+              Descuento oferta %
+              <Ayuda texto="La oferta que pinta el cartelito «-20%» en el catálogo. Se aplica sobre el precio de tarjeta. Si el producto también tiene precio en efectivo, los descuentos no se suman: el cliente paga el más barato de los dos. Ver la ayuda del bloque de efectivo, más abajo." />
+            </label>
+            <input
+              id="descuento_porcentaje"
+              name="descuento_porcentaje"
+              type="number"
+              step="0.01"
+              value={descuento || ""}
+              onChange={(e) => setDescuento(Number(e.target.value) || 0)}
+              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+          </div>
         </div>
+
+        {precioRedondeado > 0 && costoTotal > 0 && (
+          <div className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 space-y-1">
+            <p className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wide">
+              De los ${pesos(precioRedondeado)} que paga el cliente
+            </p>
+            <Reparto etiqueta="Mercadería" monto={costo} total={precioRedondeado} pesos={pesos} />
+            {extra > 0 && (
+              <Reparto etiqueta="Bolsita y etiqueta" monto={extra} total={precioRedondeado} pesos={pesos} />
+            )}
+            <Reparto
+              etiqueta="Costos de cobrar"
+              monto={costosDeCobrar}
+              total={precioRedondeado}
+              pesos={pesos}
+            />
+            <Reparto etiqueta="IVA" monto={montoIva} total={precioRedondeado} pesos={pesos} />
+            <Reparto
+              etiqueta="Te queda a vos"
+              monto={ganancia}
+              total={precioRedondeado}
+              pesos={pesos}
+              destacado
+            />
+          </div>
+        )}
       </div>
 
       {margenBajo && (
         <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-          ⚠️ Margen bajo: {margen.toFixed(1)}%. El mínimo recomendado para no perder plata es {margenMinimo}% (cubre
-          IIBB, costos financieros de cobro y un colchón operativo — ajustable en Configuración).
+          ⚠️ Margen bajo: {margen.toFixed(1)}%. Te quedan ${pesos(ganancia)} por unidad. El mínimo recomendado es{" "}
+          {margenMinimo}% para que el producto aguante el alquiler, los sueldos y la luz — ajustable en Configuración.
         </p>
       )}
 
@@ -727,6 +942,18 @@ function PrecioCalculadora({
           Lo que se cobra si el cliente paga en efectivo. Lo de arriba es lo que se cobra con tarjeta o Mercado Pago.
           Dejalo vacío si en ese producto cobrás lo mismo de las dos formas.
         </p>
+
+        {/* En efectivo no se paga la comisión de Mercado Pago. Ese ahorro alcanza
+            para un descuento que deja la misma ganancia que la tarjeta: saberlo
+            es la diferencia entre elegir el descuento y adivinarlo. */}
+        {precioRedondeado > 0 && costoTotal > 0 && offGratis > 0 && (
+          <p className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+            Hasta <span className="font-semibold">{offGratis.toFixed(1)}%</span> de descuento (${pesos(
+              precioMismaGanancia
+            )}) ganás lo mismo que cobrando con tarjeta, porque en efectivo no pagás la comisión. Más que eso sale de
+            tu margen.
+          </p>
+        )}
 
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -770,6 +997,20 @@ function PrecioCalculadora({
             {efectivoRedondeado >= precioRedondeado
               ? "⚠️ El precio en efectivo no es más barato que el de lista — revisalo, porque el cliente no va a ver ningún ahorro."
               : `El cliente ahorra $${(precioRedondeado - efectivoRedondeado).toLocaleString("es-AR")} pagando en efectivo (${offEfectivo.toFixed(1)}% menos).`}
+          </p>
+        )}
+
+        {efectivoRedondeado > 0 && efectivoRedondeado < precioRedondeado && costoTotal > 0 && (
+          <p
+            className={`text-xs rounded-lg px-3 py-2 ${
+              gananciaEfectivo >= ganancia - 0.5
+                ? "text-emerald-800 bg-emerald-50 border border-emerald-200"
+                : "text-amber-700 bg-amber-50 border border-amber-200"
+            }`}
+          >
+            {gananciaEfectivo >= ganancia - 0.5
+              ? `Con ese precio ganás $${pesos(gananciaEfectivo)} en efectivo contra $${pesos(ganancia)} con tarjeta: este descuento no te cuesta nada.`
+              : `⚠️ Con ese precio ganás $${pesos(gananciaEfectivo)} en efectivo contra $${pesos(ganancia)} con tarjeta — $${pesos(ganancia - gananciaEfectivo)} menos por unidad. El descuento que sale gratis es ${offGratis.toFixed(1)}%.`}
           </p>
         )}
       </div>
