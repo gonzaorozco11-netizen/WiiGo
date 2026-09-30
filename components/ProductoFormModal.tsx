@@ -690,6 +690,18 @@ function PrecioCalculadora({
     setEfectivo(pct > 0 && precio > 0 ? redondear(precio * (1 - pct / 100)) : 0);
   }
 
+  // El precio en efectivo se define contra el de lista, así que cuando el de
+  // lista cambia tiene que seguirlo. Si se quedaba en los pesos viejos, el % que
+  // se había elegido se desdibujaba solo: se ponía 10% menos, se subía la
+  // góndola y el efectivo terminaba en un 6% que no decidió nadie.
+  //
+  // Manda el %, no el monto: es lo que se negocia con la marca ("Animalfit da
+  // 14%") y lo que se quiere sostener cuando cambia el precio.
+  function reajustarEfectivo(nuevoPrecio: number) {
+    if (offEfectivo <= 0 || nuevoPrecio <= 0) return;
+    setEfectivo(redondear(nuevoPrecio * (1 - offEfectivo / 100)));
+  }
+
   // Tocar un costo deja el precio quieto: lo que cambia es cuánto margen deja
   // ese precio ahora. Si se recalculara el precio, cargar el costo real de una
   // lista nueva movería los precios de la góndola sin que nadie lo pida.
@@ -709,6 +721,7 @@ function PrecioCalculadora({
     setPrecio(nuevoPrecio);
     setMarkup(markupDePrecio(nuevoPrecio, costo + extra));
     setMargen(margenDePrecio(nuevoPrecio, costo + extra));
+    reajustarEfectivo(nuevoPrecio);
   }
 
   function recalcularDesdeMarkup(nuevoMarkup: number) {
@@ -716,6 +729,7 @@ function PrecioCalculadora({
     const nuevoPrecio = redondear(precioDeMarkup(nuevoMarkup, costo + extra));
     setPrecio(nuevoPrecio);
     setMargen(margenDePrecio(nuevoPrecio, costo + extra));
+    reajustarEfectivo(nuevoPrecio);
   }
 
   // No se pisa el margen que se está escribiendo: al redondear el precio para
@@ -727,6 +741,7 @@ function PrecioCalculadora({
     const nuevoPrecio = redondear(precioDeMargen(nuevoMargen, costo + extra));
     setPrecio(nuevoPrecio);
     setMarkup(markupDePrecio(nuevoPrecio, costo + extra));
+    reajustarEfectivo(nuevoPrecio);
   }
 
   const costoTotal = costo + extra;
