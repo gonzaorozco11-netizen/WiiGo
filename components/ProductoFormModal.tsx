@@ -85,6 +85,7 @@ export default function ProductoFormModal({
   otrosCostos = 0,
   otrosCostosEfectivo = 0,
   ivaGeneral = 21,
+  redondeoPrecio = 0,
   objetivosGlobales = [],
   filtrosGlobales = [],
   ficha = null,
@@ -105,6 +106,8 @@ export default function ProductoFormModal({
   otrosCostosEfectivo?: number;
   /** IVA que se usa cuando el producto no tiene el suyo cargado. */
   ivaGeneral?: number;
+  /** Múltiplo al que se redondea el precio calculado. 0 = no redondear. */
+  redondeoPrecio?: number;
   objetivosGlobales?: Objetivo[];
   filtrosGlobales?: FiltroProducto[];
   ficha?: FichaProducto | null;
@@ -304,6 +307,7 @@ export default function ProductoFormModal({
             otrosCostos={otrosCostos}
             otrosCostosEfectivo={otrosCostosEfectivo}
             iva={producto?.iva_porcentaje ?? ivaGeneral}
+            redondeo={redondeoPrecio}
           />
 
           {marcaSeleccionada?.tipo_comercializacion === "PROPIA" && proveedoresLiquidacion.length > 0 && (
@@ -606,6 +610,7 @@ function PrecioCalculadora({
   otrosCostos,
   otrosCostosEfectivo,
   iva,
+  redondeo,
 }: {
   costoInicial: number | null;
   costosExtraInicial: number | null;
@@ -617,6 +622,7 @@ function PrecioCalculadora({
   otrosCostos: number;
   otrosCostosEfectivo: number;
   iva: number;
+  redondeo: number;
 }) {
   const [costo, setCosto] = useState(costoInicial ?? 0);
   const [extra, setExtra] = useState(costosExtraInicial ?? 0);
@@ -645,6 +651,18 @@ function PrecioCalculadora({
     return costoTotal * (1 + mk / 100);
   }
 
+  // El precio que se guarda tiene que ser el mismo que se imprime en el cartel:
+  // si el tótem cobra $7.274,82 y la góndola dice $7.300, el cliente ve dos
+  // precios distintos y alguno de los dos está mal. Por eso el redondeo no es
+  // una sugerencia al costado, es el precio.
+  //
+  // Para arriba y no al más cercano: redondear para abajo se come margen sin
+  // avisar. Y solo sobre los precios que calcula el sistema — si se escribe uno
+  // a mano se respeta tal cual, que para eso se escribió.
+  function redondear(p: number) {
+    return redondeo > 0 && p > 0 ? Math.ceil(p / redondeo) * redondeo : p;
+  }
+
   const [markup, setMarkup] = useState(() =>
     markupDePrecio(precioInicial ?? 0, (costoInicial ?? 0) + (costosExtraInicial ?? 0))
   );
@@ -669,7 +687,7 @@ function PrecioCalculadora({
 
   function cambiarEfectivoPorPorcentaje(pct: number) {
     setOffEfectivo(pct);
-    setEfectivo(pct > 0 && precio > 0 ? Math.round(precio * (1 - pct / 100)) : 0);
+    setEfectivo(pct > 0 && precio > 0 ? redondear(precio * (1 - pct / 100)) : 0);
   }
 
   // Tocar un costo deja el precio quieto: lo que cambia es cuánto margen deja
@@ -695,22 +713,34 @@ function PrecioCalculadora({
 
   function recalcularDesdeMarkup(nuevoMarkup: number) {
     setMarkup(nuevoMarkup);
-    const nuevoPrecio = precioDeMarkup(nuevoMarkup, costo + extra);
-    setPrecio(Math.round(nuevoPrecio * 100) / 100);
+    const nuevoPrecio = redondear(precioDeMarkup(nuevoMarkup, costo + extra));
+    setPrecio(nuevoPrecio);
     setMargen(margenDePrecio(nuevoPrecio, costo + extra));
   }
 
+  // No se pisa el margen que se está escribiendo: al redondear el precio para
+  // arriba, el margen real queda un poco por encima del que se pidió, y
+  // escribirlo de vuelta en el campo pelearía con quien está tipeando. La
+  // diferencia se muestra debajo del precio.
   function recalcularDesdeMargen(nuevoMargen: number) {
     setMargen(nuevoMargen);
-    const nuevoPrecio = precioDeMargen(nuevoMargen, costo + extra);
-    setPrecio(Math.round(nuevoPrecio * 100) / 100);
+    const nuevoPrecio = redondear(precioDeMargen(nuevoMargen, costo + extra));
+    setPrecio(nuevoPrecio);
     setMarkup(markupDePrecio(nuevoPrecio, costo + extra));
   }
 
   const costoTotal = costo + extra;
   const precioRedondeado = Math.round(precio * 100) / 100;
   const efectivoRedondeado = Math.round(efectivo * 100) / 100;
-  const margenBajo = precioRedondeado > 0 && margen < margenMinimo;
+
+  // Cuánto margen deja de verdad el precio que quedó, que después de redondear
+  // para arriba es un poco más que el pedido. Es el número honesto: el campo
+  // "Margen que quiero" guarda lo que se escribió, esto es lo que pasa.
+  const margenReal = margenDePrecio(precioRedondeado, costoTotal);
+  const precioSinRedondear = precioDeMargen(margen, costoTotal);
+  const seRedondeo =
+    redondeo > 0 && precioSinRedondear > 0 && Math.abs(precioRedondeado - precioSinRedondear) > 0.5;
+  const margenBajo = precioRedondeado > 0 && margenReal < margenMinimo;
 
   // A dónde va cada peso de lo que paga el cliente.
   const neto = precioRedondeado / fIva;
@@ -722,13 +752,20 @@ function PrecioCalculadora({
   // que deja la misma ganancia que cobrando con tarjeta. Todo lo que se dé por
   // encima de ese % sale del margen.
   const netoMismaGanancia = (costoTotal + ganancia) / (1 - otrosCostosEfectivo / 100);
-  const precioMismaGanancia = netoMismaGanancia * fIva;
+  // Redondeado igual que el de góndola, y para arriba: así el precio que sugiere
+  // es uno que se puede poner en el cartel, y de paso queda del lado seguro.
+  const precioMismaGanancia = redondear(netoMismaGanancia * fIva);
   const offGratis =
     precioRedondeado > 0 ? Math.max(0, (1 - precioMismaGanancia / precioRedondeado) * 100) : 0;
 
   const netoEfectivo = efectivoRedondeado / fIva;
   const gananciaEfectivo =
     efectivoRedondeado > 0 ? netoEfectivo * (1 - otrosCostosEfectivo / 100) - costoTotal : 0;
+  // El % que terminó quedando después de redondear, no el que se escribió.
+  const offReal =
+    precioRedondeado > 0 && efectivoRedondeado > 0
+      ? ((precioRedondeado - efectivoRedondeado) / precioRedondeado) * 100
+      : 0;
 
   const pesos = (n: number) =>
     n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -829,22 +866,20 @@ function PrecioCalculadora({
           </div>
         </div>
 
-        <div className="rounded-xl border border-accent bg-accent-tint px-4 py-3 flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <p className="text-[11px] font-semibold text-blue-800 uppercase tracking-wide">
-              Precio de góndola · con IVA · tarjeta o QR
+        <div className="rounded-xl border border-accent bg-accent-tint px-4 py-3">
+          <p className="text-[11px] font-semibold text-blue-800 uppercase tracking-wide">
+            Precio de góndola · con IVA · tarjeta o QR
+          </p>
+          <p className="text-3xl font-semibold text-blue-900 tabular-nums leading-none mt-1">
+            ${pesos(precioRedondeado)}
+          </p>
+          {precioRedondeado > 0 && costoTotal > 0 && (
+            <p className="text-[11px] text-blue-800 mt-1.5 leading-snug">
+              {seRedondeo
+                ? `Redondeado para arriba desde $${pesos(precioSinRedondear)} — el margen queda en ${margenReal.toFixed(1)}%.`
+                : `Margen real ${margenReal.toFixed(1)}%.`}{" "}
+              Es el mismo precio que va a cobrar el tótem y el que sale en el cartel.
             </p>
-            <p className="text-3xl font-semibold text-blue-900 tabular-nums leading-none mt-1">
-              ${pesos(precioRedondeado)}
-            </p>
-          </div>
-          {precioRedondeado > 0 && (
-            <div className="text-right text-[11px] text-blue-800 leading-snug">
-              sugerido para el cartel
-              <span className="block text-base font-semibold tabular-nums">
-                ${(Math.ceil(precioRedondeado / 100) * 100).toLocaleString("es-AR")}
-              </span>
-            </div>
           )}
         </div>
 
@@ -979,7 +1014,7 @@ function PrecioCalculadora({
               id="efectivo_off"
               type="number"
               step="0.1"
-              value={offEfectivo || ""}
+              value={Math.round(offEfectivo * 10) / 10 || ""}
               onChange={(e) => cambiarEfectivoPorPorcentaje(Number(e.target.value) || 0)}
               className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
             />
@@ -996,7 +1031,7 @@ function PrecioCalculadora({
           >
             {efectivoRedondeado >= precioRedondeado
               ? "⚠️ El precio en efectivo no es más barato que el de lista — revisalo, porque el cliente no va a ver ningún ahorro."
-              : `El cliente ahorra $${(precioRedondeado - efectivoRedondeado).toLocaleString("es-AR")} pagando en efectivo (${offEfectivo.toFixed(1)}% menos).`}
+              : `El cliente ahorra $${pesos(precioRedondeado - efectivoRedondeado)} pagando en efectivo (${offReal.toFixed(1)}% menos).`}
           </p>
         )}
 

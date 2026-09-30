@@ -51,6 +51,7 @@ export default async function ProductosPage() {
         "OTROS_COSTOS_PORCENTAJE",
         "OTROS_COSTOS_EFECTIVO_PORCENTAJE",
         "IVA_GENERAL_PORCENTAJE",
+        "REDONDEO_PRECIO",
       ]),
     listarProveedores(),
   ]);
@@ -118,6 +119,7 @@ export default async function ProductosPage() {
       otrosCostos={Number(config.get("OTROS_COSTOS_PORCENTAJE") ?? 0)}
       otrosCostosEfectivo={Number(config.get("OTROS_COSTOS_EFECTIVO_PORCENTAJE") ?? 0)}
       ivaGeneral={Number(config.get("IVA_GENERAL_PORCENTAJE") ?? 21)}
+      redondeoPrecio={Number(config.get("REDONDEO_PRECIO") ?? 0)}
       stockPorVariante={stockPorVariante}
       stockOptimoPorVariante={stockOptimoPorVariante}
       diasCobertura={DIAS_COBERTURA}

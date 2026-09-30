@@ -29,6 +29,7 @@ export default function ProductosApp({
   otrosCostos,
   otrosCostosEfectivo,
   ivaGeneral,
+  redondeoPrecio,
   stockPorVariante,
   stockOptimoPorVariante,
   diasCobertura,
@@ -51,6 +52,8 @@ export default function ProductosApp({
   otrosCostosEfectivo: number;
   /** IVA que se usa cuando el producto no tiene el suyo cargado. */
   ivaGeneral: number;
+  /** Múltiplo al que se redondea el precio calculado. 0 = no redondear. */
+  redondeoPrecio: number;
   stockPorVariante: Record<string, number>;
   stockOptimoPorVariante: Record<string, number>;
   diasCobertura: number;
@@ -312,6 +315,7 @@ export default function ProductosApp({
           otrosCostos={otrosCostos}
           otrosCostosEfectivo={otrosCostosEfectivo}
           ivaGeneral={ivaGeneral}
+          redondeoPrecio={redondeoPrecio}
           objetivosGlobales={objetivosGlobales}
           filtrosGlobales={filtrosGlobales}
           ficha={editing ? fichaPorProducto[editing.id_producto] ?? null : null}
