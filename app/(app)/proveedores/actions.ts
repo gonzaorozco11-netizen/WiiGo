@@ -18,6 +18,7 @@ import {
 } from "@/lib/liquidacionesProveedor";
 import { consumirFifo } from "@/lib/fifoProveedor";
 import { estaAbierta, estadoSegunRecibido } from "@/lib/estadosOrden";
+import { guardarRemito } from "@/lib/remitoRecepcion";
 import { turnoAbiertoDeLocal } from "@/app/(app)/turnos/actions";
 
 function redondear2(valor: number) {
@@ -385,8 +386,10 @@ export async function crearOrdenCompra(
 export async function recepcionarOrdenCompra(
   idOrden: string,
   items: { idDetalle: string; idVariante: string; cantidadSolicitada: number; cantidadRecibida: number }[],
-  observaciones: string
-): Promise<{ error: string | null }> {
+  observaciones: string,
+  /** El remito o la factura que trajo el camión. Opcional. */
+  comprobante?: File | null
+): Promise<{ error: string | null; aviso?: string }> {
   try {
     const supabase = getSupabaseServerClient();
 
@@ -523,9 +526,16 @@ export async function recepcionarOrdenCompra(
       .eq("id_orden", idOrden);
     if (errorEstado) return { error: friendlyDbError(errorEstado) };
 
+    // El remito va AL FINAL y no frena nada: del otro lado hay alguien con una
+    // tablet y un camión esperando. Si la foto no sube —señal mala, archivo
+    // grande—, la mercadería igual tiene que quedar contada y en el stock. Se
+    // avisa y se puede volver a adjuntar desde la misma pantalla.
+    const aviso = await guardarRemito(supabase, "recepciones_proveedor", recepcion.id_recepcion, comprobante);
+
     revalidatePath("/proveedores");
+    revalidatePath("/compras/recepcion");
     revalidatePath("/stock");
-    return { error: null };
+    return { error: null, aviso };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo registrar la recepción" };
   }

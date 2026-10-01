@@ -84,6 +84,11 @@ export type EntregaHistorial = {
   estadoOrden: string;
   /** Ya tiene costo/factura cargada. Es lo que la saca de "Por costear". */
   facturada: boolean;
+  /**
+   * El remito que subió quien recibió la mercadería. Null = no subió ninguno,
+   * o la columna todavía no existe (sql/remito-recepcion.sql).
+   */
+  comprobanteRecepcion: string | null;
 };
 
 /**
@@ -120,6 +125,36 @@ export type LineaEntrega = {
 
 /** Cuántos meses de historial se traen. Ver el comentario en `datosCompras`. */
 const MESES_HISTORIAL = 3;
+
+/**
+ * Las entregas de una de las dos tablas de recepción, con el remito si lo hay.
+ *
+ * Reintenta sin la columna del remito: si sql/remito-recepcion.sql todavía no
+ * se corrió, Postgres rechaza el select entero y el historial de entregas se
+ * vaciaría de golpe, sin ningún error a la vista. Es el mismo problema que
+ * tuvimos con marcas.orden.
+ */
+async function entregasDe(
+  supabase: ReturnType<typeof getSupabaseServerClient>,
+  tabla: "recepciones_proveedor" | "recepciones",
+  columnasPropias: string,
+  desdeISO: string
+): Promise<{ data: Record<string, unknown>[] }> {
+  const base = `id_recepcion, id_orden, fecha, ${columnasPropias}`;
+  const traer = async (cols: string) => {
+    const r = await supabase
+      .from(tabla)
+      .select(cols)
+      .gte("fecha", desdeISO)
+      .order("fecha", { ascending: false })
+      .limit(300);
+    return { data: (r.data ?? []) as unknown as Record<string, unknown>[], error: r.error };
+  };
+
+  const conRemito = await traer(`${base}, comprobante_recepcion_path`);
+  if (!conRemito.error) return { data: conRemito.data };
+  return { data: (await traer(base)).data };
+}
 
 export async function datosCompras(): Promise<DatosCompras> {
   const supabase = getSupabaseServerClient();
@@ -187,18 +222,8 @@ export async function datosCompras(): Promise<DatosCompras> {
       .eq("liquidaciones_proveedor.estado", "PAGADA"),
     supabase.from("detalle_recepcion_proveedor").select("id_detalle, id_recepcion"),
     // El historial de entregas de las dos tablas de recepción.
-    supabase
-      .from("recepciones_proveedor")
-      .select("id_recepcion, id_orden, id_proveedor, fecha, facturada")
-      .gte("fecha", desdeISO)
-      .order("fecha", { ascending: false })
-      .limit(300),
-    supabase
-      .from("recepciones")
-      .select("id_recepcion, id_orden, id_marca, fecha")
-      .gte("fecha", desdeISO)
-      .order("fecha", { ascending: false })
-      .limit(300),
+    entregasDe(supabase, "recepciones_proveedor", "id_proveedor, facturada", desdeISO),
+    entregasDe(supabase, "recepciones", "id_marca", desdeISO),
     // Los renglones de cada entrega: sirven para sumar unidades en el
     // historial y, en Costeo, para saber qué llegó en esa entrega puntual.
     supabase
@@ -248,6 +273,7 @@ export async function datosCompras(): Promise<DatosCompras> {
       fechaRecibida: r.fecha as string,
       estadoOrden: ordenProv.get(r.id_orden as string)?.estado ?? "",
       facturada: Boolean(r.facturada),
+      comprobanteRecepcion: (r.comprobante_recepcion_path as string | null) ?? null,
     })),
     ...(entregasMarcaRes.data ?? []).map((r) => ({
       idRecepcion: r.id_recepcion as string,
@@ -260,6 +286,7 @@ export async function datosCompras(): Promise<DatosCompras> {
       estadoOrden: ordenMarca.get(r.id_orden as string)?.estado ?? "",
       // Lo de las marcas no se costea nunca: no hay factura que cargar.
       facturada: true,
+      comprobanteRecepcion: (r.comprobante_recepcion_path as string | null) ?? null,
     })),
   ];
 

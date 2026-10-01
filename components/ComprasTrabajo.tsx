@@ -23,6 +23,7 @@ import NuevaOrdenModal from "@/components/NuevaOrdenModal";
 import NuevaOrdenCompraModal, { type OrdenParaEditar } from "@/components/NuevaOrdenCompraModal";
 import RecepcionModal from "@/components/RecepcionModal";
 import RecepcionCompraModal from "@/components/RecepcionCompraModal";
+import { VerRemito } from "@/components/RemitoRecepcion";
 import CostosRecepcionModal from "@/components/CostosRecepcionModal";
 
 // Las tres etapas de Compras, con los formularios adentro.
@@ -898,6 +899,17 @@ function CosteoEtapa({
                   ) : undefined
                 }
               >
+                {/* El remito que sacó la operativa al recibir. Va al lado del
+                    botón de costear porque es el papel que hay que mirar para
+                    cargar la factura, no un dato de archivo. */}
+                {r.entrega && (
+                  <VerRemito
+                    origen="PROVEEDOR"
+                    idRecepcion={r.id_recepcion}
+                    path={r.entrega.comprobanteRecepcion}
+                    compacto
+                  />
+                )}
                 <BotonPrincipal onClick={() => r.entrega && onCostear(r.entrega)}>Costear →</BotonPrincipal>
               </TarjetaTrabajo>
             );
@@ -1282,6 +1294,17 @@ function HistorialEntregas({
                     {estaAbierta && (
                       <tr>
                         <td colSpan={7} className="px-4 pb-3 pt-0 bg-neutral-50 border-b border-neutral-100">
+                          {/* El papel que trajo el camión. Acá y no en una
+                              columna de la tabla: se busca cuando se busca,
+                              no se mira en cada fila. */}
+                          <div className="flex justify-end pb-1.5">
+                            <VerRemito
+                              origen={e.origen}
+                              idRecepcion={e.idRecepcion}
+                              path={e.comprobanteRecepcion}
+                              compacto
+                            />
+                          </div>
                           <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 mb-1.5">
                             Qué entró en esta entrega
                           </p>

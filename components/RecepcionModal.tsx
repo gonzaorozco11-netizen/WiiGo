@@ -5,6 +5,7 @@ import type { Marca, Local, OrdenReposicion, DetalleReposicion } from "@/lib/sup
 import { recepcionarOrden } from "@/app/(app)/reposicion/actions";
 import { ESTADO_ESTILO } from "@/components/ReposicionApp";
 import { estaAbierta, etiquetaEstado, RECIBIDA_PARCIAL } from "@/lib/estadosOrden";
+import { CampoRemito } from "@/components/RemitoRecepcion";
 
 // El gemelo de RecepcionCompraModal, para lo que mandan las marcas.
 // Mismas reglas: se carga lo que llegó AHORA, y si falta algo el pedido
@@ -28,6 +29,7 @@ export default function RecepcionModal({
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [observaciones, setObservaciones] = useState("");
+  const [remito, setRemito] = useState<File | null>(null);
 
   const abierta = estaAbierta(orden.estado);
   const esSegundaVuelta = orden.estado === RECIBIDA_PARCIAL;
@@ -62,10 +64,14 @@ export default function RecepcionModal({
             cantidadSolicitada: d.cantidad_solicitada,
             cantidadRecibida: recibidos[d.id_detalle] ?? 0,
           })),
-          observaciones
+          observaciones,
+          remito
         );
         if (res.error) setError(res.error);
-        else onClose();
+        else {
+          if (res.aviso) window.alert(res.aviso);
+          onClose();
+        }
       } catch (e) {
         setError(e instanceof Error ? e.message : "Algo salió mal");
       }
@@ -202,6 +208,10 @@ export default function RecepcionModal({
                   className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
                 />
               </div>
+
+              {/* Acá el remito es el único comprobante que va a existir: un
+                  pedido a una marca no pasa por Costeo. */}
+              <CampoRemito archivo={remito} onElegir={setRemito} />
 
               {quedaAbierto ? (
                 <div className="flex gap-2.5 bg-amber-50 border border-amber-200 rounded-lg px-3.5 py-3">

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import type { ProveedorConSaldo } from "@/app/(app)/proveedores/actions";
 import { costearEntrega, costeoGuardadoDeEntrega } from "@/app/(app)/proveedores/actions";
 import type { EntregaHistorial, LineaEntrega } from "@/lib/comprasDatos";
+import { VerRemito } from "@/components/RemitoRecepcion";
 
 // Costear una entrega.
 //
@@ -468,6 +469,17 @@ export default function CostosRecepcionModal({
               {proveedor?.nombre ?? "—"} · Pedido #{entrega.idOrden.slice(0, 8).toUpperCase()} ·{" "}
               <b className="text-neutral-500">{etiquetaEntrega}</b>, del {fechaCorta(entrega.fechaRecibida)}
             </p>
+            {/* El remito que sacó la operativa al recibir. Va acá arriba porque
+                es el papel contra el que se controla la factura que se está por
+                cargar: tenerlo a mano evita ir a buscarlo a otra pantalla. */}
+            <div className="mt-1.5">
+              <VerRemito
+                origen="PROVEEDOR"
+                idRecepcion={entrega.idRecepcion}
+                path={entrega.comprobanteRecepcion}
+                compacto
+              />
+            </div>
           </div>
           <button onClick={onClose} className="text-neutral-400 hover:text-neutral-700" aria-label="Cerrar">
             ✕

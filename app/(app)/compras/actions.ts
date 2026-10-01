@@ -6,6 +6,7 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 import { RECIBIDA_PARCIAL, CERRADA_INCOMPLETA, PENDIENTE, CANCELADA } from "@/lib/estadosOrden";
+import { guardarRemito, BUCKET_COMPROBANTES } from "@/lib/remitoRecepcion";
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 
 // Compras funciona como una cinta: un pedido está en una sola etapa a la vez.
@@ -46,6 +47,62 @@ function redondear2(v: number) {
 
 function tablaDe(origen: OrigenOrden) {
   return origen === "MARCA" ? "ordenes_reposicion" : "ordenes_compra_proveedor";
+}
+
+/**
+ * El remito de una entrega, para verlo.
+ *
+ * Link firmado y con vencimiento, pedido en el momento de abrirlo: el bucket es
+ * privado y una URL guardada de antemano llegaría muerta.
+ *
+ * Lo puede ver cualquiera que entre a Recepción o a Costeo — es el papel de la
+ * mercadería, no un dato comercial.
+ */
+export async function urlRemitoRecepcion(path: string): Promise<{ url: string | null; error: string | null }> {
+  const sinPermiso = await requierePantalla("compras", "compras-recepcion", "compras-costeo");
+  if (sinPermiso) return { url: null, error: sinPermiso };
+  try {
+    const supabase = getSupabaseServerClient();
+    const { data, error } = await supabase.storage
+      .from(BUCKET_COMPROBANTES)
+      .createSignedUrl(path, 60 * 10);
+    if (error) return { url: null, error: error.message };
+    return { url: data.signedUrl, error: null };
+  } catch (err) {
+    return { url: null, error: err instanceof Error ? err.message : "No se pudo abrir el comprobante" };
+  }
+}
+
+/**
+ * Adjuntar el remito después, o reemplazar el que se subió mal.
+ *
+ * Hace falta porque la recepción nunca se frena por el archivo: si la foto no
+ * subió en el momento, esta es la forma de completarla sin tocar las
+ * cantidades, que ya están bien.
+ */
+export async function adjuntarRemitoRecepcion(
+  origen: OrigenOrden,
+  idRecepcion: string,
+  formData: FormData
+): Promise<{ error: string | null }> {
+  const sinPermiso = await requierePantalla("compras", "compras-recepcion", "compras-costeo");
+  if (sinPermiso) return { error: sinPermiso };
+
+  const archivo = formData.get("archivo") as File | null;
+  if (!archivo || archivo.size === 0) return { error: "Elegí un archivo primero." };
+
+  try {
+    const supabase = getSupabaseServerClient();
+    const tabla = origen === "MARCA" ? "recepciones" : "recepciones_proveedor";
+    const aviso = await guardarRemito(supabase, tabla, idRecepcion, archivo);
+    if (aviso) return { error: aviso };
+
+    revalidatePath("/compras/recepcion");
+    revalidatePath("/compras/costeo");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo adjuntar el comprobante" };
+  }
 }
 
 export async function marcarOrdenEnviada(

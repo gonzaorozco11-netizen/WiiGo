@@ -6,6 +6,7 @@ import type { ProveedorConSaldo } from "@/app/(app)/proveedores/actions";
 import { recepcionarOrdenCompra } from "@/app/(app)/proveedores/actions";
 import { ESTADO_ESTILO_COMPRA } from "@/components/ProveedoresApp";
 import { estaAbierta, etiquetaEstado, RECIBIDA_PARCIAL } from "@/lib/estadosOrden";
+import { CampoRemito } from "@/components/RemitoRecepcion";
 
 // Recibir mercadería, una entrega por vez.
 //
@@ -34,6 +35,7 @@ export default function RecepcionCompraModal({
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [observaciones, setObservaciones] = useState("");
+  const [remito, setRemito] = useState<File | null>(null);
 
   const abierta = estaAbierta(orden.estado);
   const esSegundaVuelta = orden.estado === RECIBIDA_PARCIAL;
@@ -69,10 +71,16 @@ export default function RecepcionCompraModal({
             // Lo que llegó AHORA. El servidor lo suma a lo que ya había.
             cantidadRecibida: recibidos[d.id_detalle] ?? 0,
           })),
-          observaciones
+          observaciones,
+          remito
         );
         if (res.error) setError(res.error);
-        else onClose();
+        else {
+          // El remito nunca frena la recepción: si no subió, la mercadería ya
+          // quedó cargada y lo que corresponde es avisar, no deshacer.
+          if (res.aviso) window.alert(res.aviso);
+          onClose();
+        }
       } catch (e) {
         setError(e instanceof Error ? e.message : "Algo salió mal");
       }
@@ -209,6 +217,8 @@ export default function RecepcionCompraModal({
                   className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
                 />
               </div>
+
+              <CampoRemito archivo={remito} onElegir={setRemito} />
 
               {quedaAbierto ? (
                 <div className="flex gap-2.5 bg-amber-50 border border-amber-200 rounded-lg px-3.5 py-3">

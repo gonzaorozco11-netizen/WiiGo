@@ -6,6 +6,7 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 import { estaAbierta, estadoSegunRecibido } from "@/lib/estadosOrden";
+import { guardarRemito } from "@/lib/remitoRecepcion";
 
 async function usuarioActual() {
   const cookieStore = await cookies();
@@ -170,8 +171,10 @@ export async function crearOrden(
 export async function recepcionarOrden(
   idOrden: string,
   items: { idDetalle: string; idVariante: string; cantidadSolicitada: number; cantidadRecibida: number }[],
-  observaciones: string
-): Promise<{ error: string | null }> {
+  observaciones: string,
+  /** El remito que trajo la marca. Opcional. */
+  comprobante?: File | null
+): Promise<{ error: string | null; aviso?: string }> {
   try {
     const supabase = getSupabaseServerClient();
 
@@ -298,11 +301,16 @@ export async function recepcionarOrden(
       .eq("id_orden", idOrden);
     if (errorEstado) return { error: friendlyDbError(errorEstado) };
 
+    // Al final y sin frenar nada, igual que en la recepción a proveedor: acá
+    // el remito es además el ÚNICO comprobante que va a existir, porque un
+    // pedido a una marca no pasa por Costeo.
+    const aviso = await guardarRemito(supabase, "recepciones", recepcion.id_recepcion, comprobante);
+
     // Estas acciones se llaman desde Compras: /reposicion ya solo redirige.
     revalidatePath("/compras");
     revalidatePath("/compras/recepcion");
     revalidatePath("/stock");
-    return { error: null };
+    return { error: null, aviso };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo registrar la recepción" };
   }
