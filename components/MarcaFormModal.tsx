@@ -180,6 +180,14 @@ export default function MarcaFormModal({
               name="trasladar_iva_comision"
               defaultChecked={marca?.trasladar_iva_comision}
             />
+            {/* El matiz que se negocia marca por marca: cobrarle el royalty
+                pelado cuando el cliente pagó en efectivo. Sin marca nueva, el
+                default es "sí" — o sea, igual que antes. */}
+            <Checkbox
+              label="…también en las ventas en efectivo"
+              name="trasladar_iva_comision_efectivo"
+              defaultChecked={marca ? marca.trasladar_iva_comision_efectivo !== false : true}
+            />
             <Field
               label="Frecuencia de liquidación"
               name="frecuencia_liquidacion"

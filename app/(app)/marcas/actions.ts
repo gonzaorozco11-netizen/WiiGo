@@ -55,6 +55,7 @@ function marcaFromForm(formData: FormData) {
     iva_royalty_porcentaje: number(formData, "iva_royalty_porcentaje"),
     trasladar_comision_cobro: bool(formData, "trasladar_comision_cobro"),
     trasladar_iva_comision: bool(formData, "trasladar_iva_comision"),
+    trasladar_iva_comision_efectivo: bool(formData, "trasladar_iva_comision_efectivo"),
     trasladar_sircreb: bool(formData, "trasladar_sircreb"),
     trasladar_imp_creditos: bool(formData, "trasladar_imp_creditos"),
     trasladar_otras_retenciones: bool(formData, "trasladar_otras_retenciones"),
@@ -62,6 +63,22 @@ function marcaFromForm(formData: FormData) {
     trasladar_imp_debitos: bool(formData, "trasladar_imp_debitos"),
     frecuencia_liquidacion: text(formData, "frecuencia_liquidacion"),
   };
+}
+
+// `trasladar_iva_comision_efectivo` es una columna que llegó después
+// (sql/iva-royalty-efectivo.sql). Si el SQL todavía no se corrió, Postgres
+// rechaza el guardado entero por una columna que no conoce y no se podría
+// editar ninguna marca. Antes que eso, se guarda sin ella.
+function faltaLaColumna(error: { code?: string; message?: string }, columna: string): boolean {
+  return (
+    (error.code === "42703" || error.code === "PGRST204") && (error.message ?? "").includes(columna)
+  );
+}
+
+function sinIvaEfectivo<T extends object>(data: T): T {
+  const copia = { ...data };
+  delete (copia as Record<string, unknown>).trasladar_iva_comision_efectivo;
+  return copia;
 }
 
 // Next.js redacta en producción el mensaje de un throw new Error() en una
@@ -76,7 +93,10 @@ export async function createMarca(formData: FormData): Promise<{ error: string |
     if (!data.nombre) return { error: "El nombre es obligatorio" };
 
     const supabase = getSupabaseServerClient();
-    const { error } = await supabase.from("marcas").insert(data);
+    let { error } = await supabase.from("marcas").insert(data);
+    if (error && faltaLaColumna(error, "trasladar_iva_comision_efectivo")) {
+      ({ error } = await supabase.from("marcas").insert(sinIvaEfectivo(data)));
+    }
     if (error) return { error: error.message };
     revalidatePath("/marcas");
     return { error: null };
@@ -94,7 +114,10 @@ export async function updateMarca(id: string, formData: FormData): Promise<{ err
     if (!data.nombre) return { error: "El nombre es obligatorio" };
 
     const supabase = getSupabaseServerClient();
-    const { error } = await supabase.from("marcas").update(data).eq("id_marca", id);
+    let { error } = await supabase.from("marcas").update(data).eq("id_marca", id);
+    if (error && faltaLaColumna(error, "trasladar_iva_comision_efectivo")) {
+      ({ error } = await supabase.from("marcas").update(sinIvaEfectivo(data)).eq("id_marca", id));
+    }
     if (error) return { error: error.message };
     revalidatePath("/marcas");
     revalidatePath(`/marcas/${id}`);

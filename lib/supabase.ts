@@ -111,6 +111,10 @@ export type Marca = {
   iva_royalty_porcentaje: number | null;
   trasladar_comision_cobro: boolean;
   trasladar_iva_comision: boolean;
+  // Matiz del anterior: si ese IVA también se le cobra en las ventas cobradas
+  // en efectivo. Null = la columna todavía no existe y se asume true, que es
+  // lo que el sistema hacía antes. Ver sql/iva-royalty-efectivo.sql.
+  trasladar_iva_comision_efectivo: boolean | null;
   trasladar_sircreb: boolean;
   trasladar_imp_creditos: boolean;
   trasladar_otras_retenciones: boolean;

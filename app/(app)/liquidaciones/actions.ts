@@ -110,7 +110,7 @@ export async function construirLineas(supabase: SupabaseClient, idMarca: string,
   const { data: marca, error: errorMarca } = await supabase
     .from("marcas")
     .select(
-      "nombre, royalty_porcentaje, iva_royalty_porcentaje, trasladar_iva_comision, trasladar_comision_cobro, trasladar_sircreb, trasladar_imp_creditos, trasladar_imp_debitos"
+      "nombre, royalty_porcentaje, iva_royalty_porcentaje, trasladar_iva_comision, trasladar_iva_comision_efectivo, trasladar_comision_cobro, trasladar_sircreb, trasladar_imp_creditos, trasladar_imp_debitos"
     )
     .eq("id_marca", idMarca)
     .maybeSingle();
@@ -122,6 +122,11 @@ export async function construirLineas(supabase: SupabaseClient, idMarca: string,
   const tasas = await tasasGenerales(supabase);
   const royalty = marca.royalty_porcentaje ?? 0;
   const ivaRoyalty = marca.trasladar_iva_comision ? marca.iva_royalty_porcentaje ?? 0 : 0;
+  // El IVA del royalty puede cobrarse solo en las ventas electrónicas: hay
+  // marcas con las que se negocia que en efectivo se les cobra el royalty
+  // pelado. Si la columna todavía no existe (sql/iva-royalty-efectivo.sql sin
+  // correr) se asume true, que es lo que el sistema hacía hasta ahora.
+  const ivaRoyaltyEnEfectivo = marca.trasladar_iva_comision_efectivo ?? true;
   const ventaPorId = new Map(ventasFiltradas.map((v) => [v.id_venta, v]));
 
   const { data: detalle, error: errorDetalle } = await supabase
@@ -171,7 +176,8 @@ export async function construirLineas(supabase: SupabaseClient, idMarca: string,
     const formaPagoMp = venta.id_pago ? formaPagoPorIdPago.get(venta.id_pago) ?? null : null;
     const ventaBruta = redondear2(linea.subtotal ?? linea.precio_unitario * linea.cantidad);
     const comisionWiigo = redondear2(ventaBruta * (royalty / 100));
-    const ivaComision = redondear2(comisionWiigo * (ivaRoyalty / 100));
+    const ivaComision =
+      esEfectivo && !ivaRoyaltyEnEfectivo ? 0 : redondear2(comisionWiigo * (ivaRoyalty / 100));
     // El Impuesto a los Créditos es bancario: no corresponde si se le va a
     // entregar el efectivo en mano, sin pasar por una cuenta. Lo mismo la
     // comisión de Mercado Pago, que solo existe si cobró por esa vía — y

@@ -16,28 +16,34 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 async function royaltyConsignacionPeriodo(supabase: SupabaseClient, desde: string, hasta: string) {
   const { data: marcas, error: errorMarcas } = await supabase
     .from("marcas")
-    .select("id_marca, royalty_porcentaje, iva_royalty_porcentaje, trasladar_iva_comision")
+    .select(
+      "id_marca, royalty_porcentaje, iva_royalty_porcentaje, trasladar_iva_comision, trasladar_iva_comision_efectivo"
+    )
     .eq("tipo_comercializacion", "CONSIGNACION");
   if (errorMarcas) throw new Error(errorMarcas.message);
   const marcaPorId = new Map((marcas ?? []).map((m) => [m.id_marca, m]));
   if (marcaPorId.size === 0) return 0;
 
+  // El medio de pago viaja hasta acá porque de él depende si corresponde el IVA
+  // del royalty (ver trasladar_iva_comision_efectivo). Sin esto el tablero
+  // mostraría un ingreso y la liquidación otro, que es peor que no mostrarlo.
   const { data: ventas, error: errorVentas } = await supabase
     .from("ventas")
-    .select("id_venta")
+    .select("id_venta, medio_pago")
     .eq("estado", "PAGADA")
     .gte("fecha", `${desde}T00:00:00`)
     .lte("fecha", `${hasta}T23:59:59`);
   if (errorVentas) throw new Error(errorVentas.message);
   const idsVenta = (ventas ?? []).map((v) => v.id_venta);
   if (idsVenta.length === 0) return 0;
+  const esEfectivoPorVenta = new Map((ventas ?? []).map((v) => [v.id_venta, v.medio_pago === "EFECTIVO"]));
 
   // Se filtra la marca del lado de JS (en vez de un segundo .in()) para no
   // depender de cómo Postgrest combine dos filtros .in() en la misma
   // consulta — más simple de confiar y de depurar.
   const { data: detalle, error: errorDetalle } = await supabase
     .from("detalle_ventas")
-    .select("id_marca, subtotal, precio_unitario, cantidad")
+    .select("id_venta, id_marca, subtotal, precio_unitario, cantidad")
     .in("id_venta", idsVenta);
   if (errorDetalle) throw new Error(errorDetalle.message);
 
@@ -47,7 +53,12 @@ async function royaltyConsignacionPeriodo(supabase: SupabaseClient, desde: strin
     if (!marca) continue;
     const importe = d.subtotal ?? d.precio_unitario * d.cantidad;
     const comision = importe * ((marca.royalty_porcentaje ?? 0) / 100);
-    const ivaComision = marca.trasladar_iva_comision ? comision * ((marca.iva_royalty_porcentaje ?? 0) / 100) : 0;
+    const sinIvaPorEfectivo =
+      esEfectivoPorVenta.get(d.id_venta) === true && (marca.trasladar_iva_comision_efectivo ?? true) === false;
+    const ivaComision =
+      marca.trasladar_iva_comision && !sinIvaPorEfectivo
+        ? comision * ((marca.iva_royalty_porcentaje ?? 0) / 100)
+        : 0;
     royalty += comision + ivaComision;
   }
   return Math.round(royalty);
@@ -184,15 +195,18 @@ export async function rentabilidadPorMarca(desde: string, hasta: string) {
   const supabase = getSupabaseServerClient();
   const { data: marcas } = await supabase
     .from("marcas")
-    .select("id_marca, nombre, tipo_comercializacion, royalty_porcentaje, iva_royalty_porcentaje, trasladar_iva_comision");
+    .select(
+      "id_marca, nombre, tipo_comercializacion, royalty_porcentaje, iva_royalty_porcentaje, trasladar_iva_comision, trasladar_iva_comision_efectivo"
+    );
 
   const { data: ventas } = await supabase
     .from("ventas")
-    .select("id_venta")
+    .select("id_venta, medio_pago")
     .eq("estado", "PAGADA")
     .gte("fecha", `${desde}T00:00:00`)
     .lte("fecha", `${hasta}T23:59:59`);
   const idsVenta = (ventas ?? []).map((v) => v.id_venta);
+  const esEfectivoPorVenta = new Map((ventas ?? []).map((v) => [v.id_venta, v.medio_pago === "EFECTIVO"]));
 
   const filas: Omit<FilaRentabilidadMarca, "pct">[] = [];
   let totalIngresoReal = 0;
@@ -200,13 +214,19 @@ export async function rentabilidadPorMarca(desde: string, hasta: string) {
   if (idsVenta.length > 0) {
     const { data: detalle } = await supabase
       .from("detalle_ventas")
-      .select("id_marca, subtotal, precio_unitario, cantidad")
+      .select("id_venta, id_marca, subtotal, precio_unitario, cantidad")
       .in("id_venta", idsVenta);
 
+    // Separado por medio de pago porque el IVA del royalty puede no
+    // corresponder en efectivo (ver trasladar_iva_comision_efectivo).
     const ventasPorMarca = new Map<string, number>();
+    const efectivoPorMarca = new Map<string, number>();
     for (const d of detalle ?? []) {
       const importe = d.subtotal ?? d.precio_unitario * d.cantidad;
       ventasPorMarca.set(d.id_marca, (ventasPorMarca.get(d.id_marca) ?? 0) + importe);
+      if (esEfectivoPorVenta.get(d.id_venta)) {
+        efectivoPorMarca.set(d.id_marca, (efectivoPorMarca.get(d.id_marca) ?? 0) + importe);
+      }
     }
 
     for (const m of marcas ?? []) {
@@ -216,7 +236,15 @@ export async function rentabilidadPorMarca(desde: string, hasta: string) {
       let ingresoReal = 0;
       if (m.tipo_comercializacion === "CONSIGNACION") {
         const comision = ventasMarca * ((m.royalty_porcentaje ?? 0) / 100);
-        const ivaComision = m.trasladar_iva_comision ? comision * ((m.iva_royalty_porcentaje ?? 0) / 100) : 0;
+        // La parte de la comisión que lleva IVA: todas las ventas, o solo las
+        // electrónicas si a esta marca en efectivo se le cobra el royalty pelado.
+        const baseConIva =
+          (m.trasladar_iva_comision_efectivo ?? true)
+            ? ventasMarca
+            : ventasMarca - (efectivoPorMarca.get(m.id_marca) ?? 0);
+        const ivaComision = m.trasladar_iva_comision
+          ? baseConIva * ((m.royalty_porcentaje ?? 0) / 100) * ((m.iva_royalty_porcentaje ?? 0) / 100)
+          : 0;
         ingresoReal = Math.round(comision + ivaComision);
       } else {
         const r = await calcularRentabilidad(m.id_marca, desde, hasta);
