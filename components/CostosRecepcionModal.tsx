@@ -234,6 +234,58 @@ export default function CostosRecepcionModal({
     { neto: 0, iva: 0 }
   );
 
+  // ---------- Lo que no llegó ----------
+  //
+  // El dato ya venía en cada renglón (lo pedido contra lo recibido) pero no se
+  // mostraba en ningún lado, y esta pantalla es el único momento en que alguien
+  // tiene la factura adelante. Si el proveedor facturó lo que no entregó y
+  // nadie lo mira acá, esa plata entra como deuda y se paga.
+  const faltantes = lineas
+    .map((l) => ({ ...l, falta: l.cantidadSolicitada - l.cantidadRecibida }))
+    .filter((l) => l.falta > 0);
+  const sobrantes = lineas
+    .map((l) => ({ ...l, sobra: l.cantidadRecibida - l.cantidadSolicitada }))
+    .filter((l) => l.sobra > 0);
+
+  // Cuánto valdría lo que no llegó, al costo que se está cargando ahora. Es
+  // una estimación para que el número no haya que sacarlo a mano — manda
+  // siempre lo que diga la factura.
+  const netoFaltante = redondear2(
+    faltantes.reduce((acc, l) => acc + (Number(costos[l.idVariante]) || 0) * l.falta, 0)
+  );
+  const ivaFaltante = redondear2(
+    faltantes.reduce(
+      (acc, l) =>
+        acc +
+        (Number(costos[l.idVariante]) || 0) * l.falta * ((alicuotas[l.idVariante] ?? 21) / 100),
+      0
+    )
+  );
+
+  /**
+   * Prellenar el reclamo con lo que no llegó.
+   *
+   * Con un solo producto faltante se completa entero. Con varios no: el reclamo
+   * guarda unidades × precio, y dos productos a dos costos distintos no entran
+   * en esos dos campos. Antes que inventar un precio promedio que después nadie
+   * puede defender frente al proveedor, se deja el detalle escrito en el motivo
+   * y los importes los pone quien tiene la factura.
+   */
+  function prellenarReclamo() {
+    setDiscrepancia(true);
+    const detalle = faltantes
+      .map((l) => `${l.falta} x ${nombrePorVariante.get(l.idVariante) ?? "producto"}`)
+      .join(", ");
+    setMotivoDiscrepancia(`Facturado y no entregado: ${detalle}`);
+    if (faltantes.length === 1) {
+      const unica = faltantes[0];
+      setMalUnidades(String(unica.falta));
+      setMalNeto(costos[unica.idVariante] ?? "");
+      setMalAlicuota(alicuotas[unica.idVariante] ?? 21);
+      setMalIvaManual(null);
+    }
+  }
+
   // ---------- El pie ----------
   const nImpuestos = Number(impuestos) || 0;
   const nRetenciones = Number(retenciones) || 0;
@@ -421,6 +473,103 @@ export default function CostosRecepcionModal({
             ✕
           </button>
         </div>
+
+        {/* ---------- Lo que no llegó ----------
+            Arriba de todo y antes que la factura, porque es lo que hay que
+            saber ANTES de empezar a cargarla. Lo que dice cambia según el
+            proveedor: con factura hay plata para frenar, sin factura (Alifrut)
+            lo que hay que revisar es el conteo. */}
+        {(faltantes.length > 0 || sobrantes.length > 0) && (
+          <div
+            className={`px-6 py-4 border-b ${
+              faltantes.length > 0 && pideFactura
+                ? "bg-red-50 border-red-200"
+                : "bg-amber-50 border-amber-200"
+            }`}
+          >
+            <p
+              className={`text-xs font-semibold uppercase tracking-wide ${
+                faltantes.length > 0 && pideFactura ? "text-red-700" : "text-amber-700"
+              }`}
+            >
+              {faltantes.length > 0 ? "Llegó menos de lo que pediste" : "Llegó de más"}
+            </p>
+
+            <table className="w-full text-sm mt-2.5 tabular-nums">
+              <thead>
+                <tr className="text-[10px] uppercase tracking-wide text-neutral-500">
+                  <th className="text-left font-semibold pb-1">Producto</th>
+                  <th className="text-right font-semibold pb-1">Pedido</th>
+                  <th className="text-right font-semibold pb-1">Llegó</th>
+                  <th className="text-right font-semibold pb-1">Diferencia</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...faltantes, ...sobrantes].map((l) => {
+                  const dif = l.cantidadRecibida - l.cantidadSolicitada;
+                  return (
+                    <tr key={l.idVariante} className="border-t border-black/5">
+                      <td className="py-1 text-neutral-700">{nombrePorVariante.get(l.idVariante) ?? "—"}</td>
+                      <td className="py-1 text-right text-neutral-600">{l.cantidadSolicitada}</td>
+                      <td className="py-1 text-right text-neutral-600">{l.cantidadRecibida}</td>
+                      <td
+                        className={`py-1 text-right font-semibold ${
+                          dif < 0 ? "text-red-700" : "text-amber-700"
+                        }`}
+                      >
+                        {dif > 0 ? `+${dif}` : dif}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+
+            {faltantes.length > 0 && pideFactura ? (
+              <div className="mt-3 text-sm text-neutral-700">
+                <p>
+                  Si la factura incluye lo que no llegó, <b>vas a pagar mercadería que no tenés</b>.
+                </p>
+                {netoFaltante > 0 ? (
+                  <>
+                    <p className="mt-1.5 text-xs text-neutral-600">
+                      Con los costos que estás cargando, lo que falta vale{" "}
+                      <b className="text-neutral-800">${formatearMonto(netoFaltante)}</b> + IVA{" "}
+                      <b className="text-neutral-800">${formatearMonto(ivaFaltante)}</b> ={" "}
+                      <b className="text-neutral-900">${formatearMonto(netoFaltante + ivaFaltante)}</b>.
+                      Es una cuenta para orientarte — manda lo que diga la factura.
+                    </p>
+                    {!discrepancia && (
+                      <button
+                        type="button"
+                        onClick={prellenarReclamo}
+                        className="mt-2.5 rounded-lg bg-red-700 text-white text-sm font-medium px-3.5 py-2 hover:bg-red-800"
+                      >
+                        Reclamar nota de crédito
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <p className="mt-1.5 text-xs text-neutral-600">
+                    Cargá los costos de abajo y te digo cuánto reclamar.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-neutral-700">
+                {pideFactura ? (
+                  <>Entró más de lo que pediste. Revisá que la factura no te lo esté cobrando dos veces.</>
+                ) : (
+                  <>
+                    A este proveedor se le paga lo que se vende, así que <b>no hay nada que reclamar</b>.
+                    Pero esas unidades ya están en el stock: si el conteo estaba mal, la liquidación de
+                    fin de mes te las va a cobrar igual.
+                  </>
+                )}
+              </p>
+            )}
+          </div>
+        )}
 
         <div className="divide-y divide-neutral-100">
           {/* ---------- 1. La factura ---------- */}

@@ -87,6 +87,8 @@ export async function armarTablero(): Promise<Tablero | null> {
     ordenesPendientes,
     ordenesProveedor,
     sinCostear,
+    conDiferencias,
+    reclamosPendientes,
     turnosAbiertos,
     sinStock,
     ventasHoy,
@@ -146,6 +148,31 @@ export async function armarTablero(): Promise<Tablero | null> {
     puede("compras-costeo") || puede("proveedores")
       ? supabase.from("recepciones_proveedor").select("id_recepcion", { count: "exact", head: true }).eq("facturada", false)
       : CERO,
+    // Entregas que llegaron distinto de lo pedido y todavía no se costearon.
+    // Es el momento para frenar la plata: si al proveedor le facturaron lo que
+    // no entregó y nadie lo mira, esa factura entra como deuda y se paga.
+    //
+    // Se apaga sola al costear, sin que nadie la marque: el costeo ya obliga a
+    // explicar por qué la factura no cuadra con lo que llegó, así que pasar
+    // por ahí ES haberlo revisado.
+    puede("compras-costeo") || puede("proveedores")
+      ? supabase
+          .from("recepciones_proveedor")
+          .select("id_recepcion", { count: "exact", head: true })
+          .eq("tiene_diferencias", true)
+          .eq("facturada", false)
+      : CERO,
+    // Notas de crédito que el proveedor todavía no emitió. Hasta hoy vivían
+    // solo en su pantalla: si nadie entraba a Reclamos, esa plata se perdía de
+    // vista y la factura original se pagaba entera.
+    //
+    // Se apaga sola cuando llega la nota o cuando se descarta el reclamo.
+    puede("compras-costeo") || puede("proveedores")
+      ? supabase
+          .from("reclamos_proveedor")
+          .select("id_reclamo, total")
+          .eq("estado", "PENDIENTE")
+      : { data: [] as { id_reclamo: string; total: number | null }[] },
     puede("turnos")
       ? supabase.from("turnos").select("id_turno", { count: "exact", head: true }).eq("estado", "ABIERTO")
       : CERO,
@@ -308,6 +335,32 @@ export async function armarTablero(): Promise<Tablero | null> {
       detalle: "Sin el costo cargado, la liquidación de ese proveedor sale mal",
       valor: String(n(sinCostear)),
       href: "/compras/costeo",
+    });
+  }
+
+  // Va ARRIBA de la anterior y en rojo: entre costear tarde y pagar mercadería
+  // que no llegó, lo segundo es plata que sale y no vuelve.
+  if (n(conDiferencias) > 0) {
+    urgentes.unshift({
+      color: "rojo",
+      titulo: `${plural(n(conDiferencias), "entrega llegó distinta", "entregas llegaron distintas")} de lo pedido`,
+      detalle: "Miralo antes de cargar la factura: puede que te estén cobrando lo que no llegó",
+      valor: String(n(conDiferencias)),
+      href: "/compras/costeo",
+    });
+  }
+
+  // Plata que el proveedor te debe. En pesos y no en cantidad: "2 reclamos" no
+  // dice nada, "$43.560 por cobrar" sí.
+  const reclamos = (reclamosPendientes.data ?? []) as { id_reclamo: string; total: number | null }[];
+  if (reclamos.length > 0) {
+    const totalReclamado = reclamos.reduce((acc, r) => acc + (r.total ?? 0), 0);
+    urgentes.unshift({
+      color: "rojo",
+      titulo: `${plural(reclamos.length, "nota de crédito", "notas de crédito")} sin llegar`,
+      detalle: `${pesos(totalReclamado)} que te facturaron de más y todavía no te acreditaron`,
+      valor: String(reclamos.length),
+      href: "/compras/reclamos",
     });
   }
 
