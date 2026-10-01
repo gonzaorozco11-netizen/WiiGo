@@ -4,7 +4,12 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { Reclamo } from "@/lib/reclamos";
-import { cargarNotaCredito, descartarReclamo } from "@/app/(app)/compras/reclamos/actions";
+import {
+  cargarNotaCredito,
+  descartarReclamo,
+  adjuntarComprobanteNotaCredito,
+  urlComprobanteNotaCredito,
+} from "@/app/(app)/compras/reclamos/actions";
 
 // Reclamos: la plata que un proveedor te debe y todavía no devolvió.
 //
@@ -216,6 +221,9 @@ export default function ReclamosApp({ reclamos }: { reclamos: Reclamo[] }) {
                       <th className="text-left text-[9.5px] uppercase tracking-[0.06em] text-neutral-400 font-bold px-4 py-1.5">
                         Cómo cerró
                       </th>
+                      <th className="text-left text-[9.5px] uppercase tracking-[0.06em] text-neutral-400 font-bold px-4 py-1.5">
+                        Comprobante
+                      </th>
                       <th className="text-right text-[9.5px] uppercase tracking-[0.06em] text-neutral-400 font-bold px-4 py-1.5">
                         Importe
                       </th>
@@ -238,6 +246,9 @@ export default function ReclamosApp({ reclamos }: { reclamos: Reclamo[] }) {
                           ) : (
                             <span className="text-neutral-400">Descartado</span>
                           )}
+                        </td>
+                        <td className="px-4 py-1.5 text-[12px] border-b border-neutral-50 whitespace-nowrap">
+                          {r.estado === "ACREDITADO" && <Comprobante reclamo={r} />}
                         </td>
                         <td
                           className={`px-4 py-1.5 text-[12px] text-right tabular-nums font-semibold border-b border-neutral-50 ${
@@ -277,6 +288,71 @@ export default function ReclamosApp({ reclamos }: { reclamos: Reclamo[] }) {
   );
 }
 
+/**
+ * El papel de la nota: verlo si está, adjuntarlo si no.
+ *
+ * Los dos en el mismo lugar porque es la misma pregunta —"¿dónde está el
+ * comprobante?"— y la respuesta cambia según el día: el número de la nota llega
+ * antes que el PDF, así que un reclamo acreditado sin archivo es lo normal,
+ * no un error.
+ *
+ * El link se pide al momento de abrirlo y no al cargar la lista: el bucket es
+ * privado y la URL firmada vence, así que una guardada de antemano llegaría
+ * muerta.
+ */
+function Comprobante({ reclamo }: { reclamo: Reclamo }) {
+  const router = useRouter();
+  const [trabajando, setTrabajando] = useState(false);
+
+  async function abrir() {
+    if (!reclamo.ncComprobantePath) return;
+    setTrabajando(true);
+    const r = await urlComprobanteNotaCredito(reclamo.ncComprobantePath);
+    setTrabajando(false);
+    if (r.error || !r.url) return window.alert(r.error ?? "No se pudo abrir el comprobante.");
+    window.open(r.url, "_blank", "noopener");
+  }
+
+  async function subir(archivo: File) {
+    setTrabajando(true);
+    const fd = new FormData();
+    fd.append("archivo", archivo);
+    const r = await adjuntarComprobanteNotaCredito(reclamo.idReclamo, fd);
+    setTrabajando(false);
+    if (r.error) return window.alert(r.error);
+    router.refresh();
+  }
+
+  if (reclamo.ncComprobantePath) {
+    return (
+      <button
+        onClick={abrir}
+        disabled={trabajando}
+        className="text-accent hover:underline disabled:opacity-50"
+      >
+        {trabajando ? "Abriendo…" : "📎 Ver"}
+      </button>
+    );
+  }
+
+  return (
+    <label className="text-neutral-400 hover:text-accent cursor-pointer">
+      {trabajando ? "Subiendo…" : "+ Adjuntar"}
+      <input
+        type="file"
+        accept="application/pdf,image/*"
+        className="hidden"
+        disabled={trabajando}
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = "";
+          if (f) subir(f);
+        }}
+      />
+    </label>
+  );
+}
+
 function NotaCreditoModal({ reclamo, onClose }: { reclamo: Reclamo; onClose: () => void }) {
   // Precargado con lo que se reclamó, pero editable: manda lo que dice el
   // papel, igual que con la factura.
@@ -287,6 +363,7 @@ function NotaCreditoModal({ reclamo, onClose }: { reclamo: Reclamo; onClose: () 
   const [retenciones, setRetenciones] = useState(String(reclamo.retenciones || ""));
   const [descuentos, setDescuentos] = useState("");
   const [iva, setIva] = useState(String(reclamo.iva || ""));
+  const [archivo, setArchivo] = useState<File | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -305,6 +382,7 @@ function NotaCreditoModal({ reclamo, onClose }: { reclamo: Reclamo; onClose: () 
       retenciones: n(retenciones),
       descuentos: n(descuentos),
       iva: n(iva),
+      comprobante: archivo,
     })
       .then((r) => {
         if (r.error) setError(r.error);
@@ -371,6 +449,25 @@ function NotaCreditoModal({ reclamo, onClose }: { reclamo: Reclamo; onClose: () 
             </div>
             <p className="text-[11px] text-neutral-400 mt-1.5">
               Si te facturaron una percepción y ahora te acreditan la mercadería, esa percepción también vuelve.
+            </p>
+          </div>
+
+          {/* El papel. Opcional porque el número suele llegar antes que el PDF
+              — y si se exigiera acá, la nota se cargaría tarde o no se cargaría. */}
+          <div className="pt-3 border-t border-neutral-100">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 mb-2">
+              El comprobante
+            </p>
+            <input
+              type="file"
+              accept="application/pdf,image/*"
+              onChange={(e) => setArchivo(e.target.files?.[0] ?? null)}
+              className="block w-full text-sm text-neutral-600 file:mr-3 file:rounded-lg file:border-0 file:bg-neutral-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-neutral-700 hover:file:bg-neutral-200"
+            />
+            <p className="text-[11px] text-neutral-400 mt-1.5">
+              {archivo
+                ? `Se va a guardar ${archivo.name}.`
+                : "El PDF o una foto, para tenerlo cuando lo pida el contador. Si todavía no lo tenés, lo podés adjuntar después."}
             </p>
           </div>
 

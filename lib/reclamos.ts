@@ -34,6 +34,8 @@ export type Reclamo = {
   ncNumero: string | null;
   ncFecha: string | null;
   ncMonto: number | null;
+  /** El PDF o la foto de la nota, en el bucket privado. Null = se cargó sin papel. */
+  ncComprobantePath: string | null;
 };
 
 function dias(iso: string) {
@@ -101,5 +103,9 @@ export async function listarReclamos(): Promise<Reclamo[]> {
     ncNumero: (r.nc_numero as string | null) ?? null,
     ncFecha: (r.nc_fecha as string | null) ?? null,
     ncMonto: (r.nc_monto as number | null) ?? null,
+    // `?? null` y no una lectura directa: si sql/comprobante-nota-credito.sql
+    // todavía no se corrió, la columna no viene y la pantalla tiene que
+    // mostrarse igual, solo que sin el link al papel.
+    ncComprobantePath: (r.nc_comprobante_path as string | null) ?? null,
   }));
 }
