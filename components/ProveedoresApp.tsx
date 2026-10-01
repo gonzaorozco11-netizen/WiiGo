@@ -8,6 +8,7 @@ import {
   cambiarEstadoProveedor,
   registrarPagoProveedor,
   obtenerUrlComprobanteProveedor,
+  adjuntarComprobanteMovimiento,
   historialProveedorAction,
 } from "@/app/(app)/proveedores/actions";
 import ProveedorFormModal from "./ProveedorFormModal";
@@ -912,8 +913,22 @@ function HistorialProveedor({ idProveedor, recargar }: { idProveedor: string; re
       .finally(() => setCargando(false));
   }, [idProveedor, recargar]);
 
+  const [subiendo, setSubiendo] = useState<string | null>(null);
+
   function handleVerComprobante(path: string) {
     obtenerUrlComprobanteProveedor(path).then((url) => window.open(url, "_blank"));
+  }
+
+  /** Ponerle el papel a un movimiento que quedó sin él, o cambiárselo. */
+  async function handleAdjuntar(idMovimiento: string, archivo: File) {
+    setSubiendo(idMovimiento);
+    const fd = new FormData();
+    fd.append("archivo", archivo);
+    const r = await adjuntarComprobanteMovimiento(idMovimiento, fd);
+    setSubiendo(null);
+    if (r.error) return window.alert(r.error);
+    // Se recarga el historial y no toda la pantalla: el saldo no cambió.
+    historialProveedorAction(idProveedor).then(setHistorial);
   }
 
   return (
@@ -973,7 +988,20 @@ function HistorialProveedor({ idProveedor, recargar }: { idProveedor: string; re
                     📎 Ver
                   </button>
                 ) : (
-                  <span className="text-[10.5px] text-neutral-300 whitespace-nowrap">sin adjunto</span>
+                  <label className="text-[10.5px] text-neutral-400 hover:text-accent whitespace-nowrap cursor-pointer">
+                    {subiendo === m.idMovimiento ? "subiendo…" : "+ adjuntar"}
+                    <input
+                      type="file"
+                      accept="application/pdf,image/*"
+                      className="hidden"
+                      disabled={subiendo !== null}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        e.target.value = "";
+                        if (f) handleAdjuntar(m.idMovimiento, f);
+                      }}
+                    />
+                  </label>
                 )}
                 <span className="text-[11px] text-neutral-400 whitespace-nowrap">
                   saldo{" "}

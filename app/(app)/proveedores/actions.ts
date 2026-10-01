@@ -1300,6 +1300,19 @@ export async function costearEntrega(params: {
     // las del pedido, que es lo que hacía que facturar la primera entrega
     // tapara la segunda y esa mercadería quedara sin costo, en silencio.
     marcaEntrega.id_factura = idFactura;
+
+    // El mismo archivo, también en la factura. Lo que se sube acá ES la
+    // factura, y quien la busca después la busca desde la cuenta corriente del
+    // proveedor — que mira facturas_compra_proveedor, no la recepción. La
+    // columna existía y no la escribía nadie: el papel quedaba guardado y sin
+    // ninguna pantalla que lo abriera.
+    if (typeof marcaEntrega.comprobante_path === "string") {
+      await supabase
+        .from("facturas_compra_proveedor")
+        .update({ comprobante_path: marcaEntrega.comprobante_path })
+        .eq("id_factura", idFactura);
+    }
+
     await supabase.from("recepciones_proveedor").update(marcaEntrega).eq("id_recepcion", recepcion.id_recepcion);
     const otras = idsValidos.filter((id) => id !== recepcion.id_recepcion);
     if (otras.length > 0) {
@@ -1889,6 +1902,67 @@ export async function registrarPagoProveedor(idProveedor: string, formData: Form
     return { error: null };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo registrar el pago" };
+  }
+}
+
+/**
+ * Adjuntar el papel de un movimiento que quedó sin él, o reemplazarlo.
+ *
+ * Hace falta porque "sin adjunto" era un callejón sin salida: el comprobante de
+ * una transferencia aparece al día siguiente en el homebanking, y la factura en
+ * papel a veces llega después del remito. Sin esto, la única forma de ponerle el
+ * papel a un movimiento era no haberlo cargado todavía.
+ *
+ * Según de dónde nació el movimiento, el archivo va a dos lugares distintos: el
+ * de un pago cuelga del movimiento, el de una factura cuelga de la factura —
+ * porque esa factura puede tener varios movimientos (el original y un ajuste) y
+ * el papel es uno solo.
+ */
+export async function adjuntarComprobanteMovimiento(
+  idMovimiento: string,
+  formData: FormData
+): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+
+  const archivo = formData.get("archivo") as File | null;
+  if (!archivo || archivo.size === 0) return { error: "Elegí un archivo primero." };
+
+  try {
+    const supabase = getSupabaseServerClient();
+    const { data: mov } = await supabase
+      .from("movimientos_cuenta_proveedor")
+      .select("id_movimiento, id_factura, tipo_movimiento")
+      .eq("id_movimiento", idMovimiento)
+      .maybeSingle();
+    if (!mov) return { error: "No se encontró ese movimiento." };
+
+    const esDeFactura = Boolean(mov.id_factura);
+    const extension = archivo.name.split(".").pop()?.toLowerCase() ?? "pdf";
+    const path = esDeFactura
+      ? `factura-${mov.id_factura}.${extension}`
+      : `movimiento-${idMovimiento}.${extension}`;
+
+    const { error: errorUpload } = await supabase.storage
+      .from("comprobantes-proveedor")
+      .upload(path, archivo, { upsert: true, contentType: archivo.type || undefined });
+    if (errorUpload) return { error: `No se pudo subir el archivo: ${errorUpload.message}` };
+
+    const { error } = esDeFactura
+      ? await supabase
+          .from("facturas_compra_proveedor")
+          .update({ comprobante_path: path })
+          .eq("id_factura", mov.id_factura as string)
+      : await supabase
+          .from("movimientos_cuenta_proveedor")
+          .update({ comprobante_path: path })
+          .eq("id_movimiento", idMovimiento);
+    if (error) return { error: friendlyDbError(error) };
+
+    revalidatePath("/proveedores");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo adjuntar el comprobante" };
   }
 }
 
