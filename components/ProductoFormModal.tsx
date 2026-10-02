@@ -618,6 +618,8 @@ function PrecioDeMarca({
   const [precio, setPrecio] = useState(precioInicial ?? 0);
   const [descuento, setDescuento] = useState(descuentoInicial ?? 0);
   const [medio, setMedio] = useState<string>("CREDITO");
+  /** Lo que se está tecleando en el margen, mientras se teclea. Null = mostrar el calculado. */
+  const [margenEscrito, setMargenEscrito] = useState<string | null>(null);
   const [efectivo, setEfectivo] = useState(precioEfectivoInicial ?? 0);
   const [offEfectivo, setOffEfectivo] = useState(() =>
     precioInicial && precioEfectivoInicial && precioInicial > 0
@@ -720,13 +722,22 @@ function PrecioDeMarca({
           <div>
             <label className="block text-sm font-medium text-neutral-700 mb-1">
               Margen de la marca %
-              <Ayuda texto="Lo que le queda a la marca sobre su propia facturación, después del royalty y de lo que se le traslada. Depende de cómo pague el cliente: el que se muestra es el del medio elegido abajo." />
+              <Ayuda texto="Lo que le queda a la marca SOBRE SU PROPIA FACTURACIÓN, sin IVA — no sobre lo que paga el cliente. Son dos cuentas distintas: un 60% de margen puede ser un 54% de lo que pagó el cliente, porque de ese total también salen el IVA y lo que se va en cobrar. Depende del medio de pago elegido abajo." />
             </label>
             <input
               type="number"
               step="0.1"
-              value={costo > 0 && precio > 0 ? Math.round(margenDeLaMarca * 10) / 10 || "" : ""}
-              onChange={(e) => setPrecio(redondear(precioDesdeMargen(Number(e.target.value) || 0)))}
+              // Mientras se escribe manda lo escrito y no lo derivado: si el
+              // campo se recalculara en cada tecla, escribir "60" sería
+              // imposible — al teclear el 6 saltaría a un precio de 6% y el
+              // campo volvería con otro número.
+              value={margenEscrito ?? (costo > 0 && precio > 0 ? Math.round(margenDeLaMarca * 10) / 10 || "" : "")}
+              onChange={(e) => {
+                setMargenEscrito(e.target.value);
+                const n = Number(e.target.value);
+                if (Number.isFinite(n) && n > 0) setPrecio(redondear(precioDesdeMargen(n)));
+              }}
+              onBlur={() => setMargenEscrito(null)}
               disabled={!(costo > 0)}
               className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent disabled:bg-neutral-50"
             />
@@ -760,25 +771,61 @@ function PrecioDeMarca({
         {fila && costo > 0 && (
           <>
             <div className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-3 space-y-1">
-              <p className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wide mb-2">
+              <p className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wide mb-1">
                 De los ${pesos(precio)} que paga el cliente · {fila.etiqueta.toLowerCase()}
               </p>
-              <RepartoMarca color="#64748b" etiqueta={`Mercadería de ${marca.nombre}`} monto={costo} pct={pct(costo)} pesos={pesos} />
-              <RepartoMarca color="#2563eb" etiqueta="Tu comisión + su IVA" monto={deWiigo} pct={pct(deWiigo)} pesos={pesos} tono="mio" />
+
+              <DonaReparto
+                partes={[
+                  { color: "#64748b", monto: costo },
+                  { color: "#2563eb", monto: deWiigo },
+                  { color: "#c2843a", monto: deBanco },
+                  { color: "#b4bcc6", monto: fila.sircreb },
+                  { color: "#0d9488", monto: fila.leQueda ?? 0 },
+                ]}
+                centro={`$${pesos(fila.leQueda ?? 0)}`}
+                pie={`le queda a ${marca.nombre}`}
+              />
+
+              <RepartoMarca color="#64748b" etiqueta="Costo mercadería" monto={costo} pct={pct(costo)} pesos={pesos} />
+              <RepartoMarca color="#2563eb" etiqueta="Comisión WiiGo + IVA" monto={deWiigo} pct={pct(deWiigo)} pesos={pesos} tono="mio" />
               {deBanco > 0 && (
-                <RepartoMarca color="#c2843a" etiqueta="Mercado Pago y el banco" monto={deBanco} pct={pct(deBanco)} pesos={pesos} />
+                <RepartoMarca
+                  color="#c2843a"
+                  etiqueta="Otros costos"
+                  ayuda="Lo que se va en cobrar: la comisión de Mercado Pago y el impuesto a los créditos. Si alguna vez se le traslada el impuesto a los débitos, también entra acá. En efectivo no hay ninguno."
+                  monto={deBanco}
+                  pct={pct(deBanco)}
+                  pesos={pesos}
+                />
               )}
               {fila.sircreb > 0 && (
-                <RepartoMarca color="#b4bcc6" etiqueta="SIRCREB — se le devuelve" monto={fila.sircreb} pct={pct(fila.sircreb)} pesos={pesos} />
+                <RepartoMarca
+                  color="#b4bcc6"
+                  etiqueta="SIRCREB"
+                  ayuda="Retención que se le hace de forma preventiva. No es un costo: se le devuelve o se le compensa, y nunca es ganancia de WiiGo."
+                  monto={fila.sircreb}
+                  pct={pct(fila.sircreb)}
+                  pesos={pesos}
+                />
               )}
               <RepartoMarca
                 color="#0d9488"
-                etiqueta="Le queda a la marca"
+                etiqueta="Lo que le queda"
                 monto={fila.leQueda ?? 0}
                 pct={pct(fila.leQueda ?? 0)}
                 pesos={pesos}
                 tono="suyo"
               />
+
+              {/* Los dos porcentajes miden cosas distintas y es la confusión
+                  más fácil de esta pantalla: el de arriba es sobre lo que pagó
+                  el cliente, el margen es sobre lo que factura la marca. */}
+              <p className="text-[11px] text-neutral-400 pt-1.5 border-t border-neutral-200 mt-1.5">
+                Esos porcentajes son <b>de los ${pesos(precio)} que paga el cliente</b>. El margen de{" "}
+                <b>{Math.round(margenDeLaMarca * 10) / 10}%</b> de arriba es otra cuenta: sobre los $
+                {pesos(fila.leTransferimos / (1 + iva / 100))} que factura {marca.nombre}, ya sin IVA.
+              </p>
             </div>
 
             <table className="w-full text-xs tabular-nums">
@@ -878,9 +925,71 @@ function PrecioDeMarca({
   );
 }
 
+/**
+ * El reparto del precio como una dona, con el monto que le queda a la marca en
+ * el centro.
+ *
+ * Dona y no barra porque los pedazos son partes de un todo y una dona lo dice
+ * sin leer: el agujero del medio sirve para poner el número que importa, y el
+ * pedazo verde se compara contra la vuelta entera de un vistazo.
+ *
+ * SVG a mano y sin librería: son cinco arcos sobre un círculo, y meter una
+ * dependencia de gráficos para esto sería más código del que ahorra.
+ */
+function DonaReparto({
+  partes,
+  centro,
+  pie,
+}: {
+  partes: { color: string; monto: number }[];
+  centro: string;
+  pie: string;
+}) {
+  const total = partes.reduce((a, p) => a + Math.max(p.monto, 0), 0);
+  const R = 54;
+  const C = 2 * Math.PI * R;
+  let acumulado = 0;
+
+  return (
+    <div className="flex items-center justify-center py-1">
+      <div className="relative" style={{ width: 150, height: 150 }}>
+        <svg viewBox="0 0 150 150" width="150" height="150" aria-hidden="true">
+          {/* Arranca arriba y gira como un reloj: es como se lee una torta. */}
+          <g transform="rotate(-90 75 75)">
+            {partes.map((p, i) => {
+              const porcion = total > 0 ? Math.max(p.monto, 0) / total : 0;
+              const largo = porcion * C;
+              const offset = -acumulado * C;
+              acumulado += porcion;
+              return (
+                <circle
+                  key={i}
+                  cx="75"
+                  cy="75"
+                  r={R}
+                  fill="none"
+                  stroke={p.color}
+                  strokeWidth="21"
+                  strokeDasharray={`${largo} ${C - largo}`}
+                  strokeDashoffset={offset}
+                />
+              );
+            })}
+          </g>
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+          <span className="text-[17px] font-bold text-emerald-700 tabular-nums leading-none">{centro}</span>
+          <span className="text-[10px] text-neutral-500 mt-1 text-center px-6 leading-tight">{pie}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function RepartoMarca({
   color,
   etiqueta,
+  ayuda,
   monto,
   pct,
   pesos,
@@ -888,6 +997,7 @@ function RepartoMarca({
 }: {
   color: string;
   etiqueta: string;
+  ayuda?: string;
   monto: number;
   pct: number;
   pesos: (n: number) => string;
@@ -899,6 +1009,7 @@ function RepartoMarca({
       <span className={`flex items-center gap-2 ${clase}`}>
         <i className="w-2.5 h-2.5 rounded-sm block flex-none" style={{ background: color }} />
         {etiqueta}
+        {ayuda && <Ayuda texto={ayuda} />}
       </span>
       <span className="flex items-baseline gap-2 tabular-nums">
         <span className="text-[11px] text-neutral-400">{pct.toFixed(1)}%</span>
