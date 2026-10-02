@@ -24,8 +24,35 @@ export default async function MarcaDetailPage({ params }: { params: Promise<{ id
 
   if (!marcaRes.data) notFound();
 
+  // Las tasas con las que se calcula lo que le queda a la marca: su producto no
+  // es de WiiGo, así que lo que se le descuenta no son los costos de WiiGo.
+  const { data: cfg } = await supabase
+    .from("configuracion")
+    .select("parametro, valor")
+    .in("parametro", [
+      "IVA_GENERAL_PORCENTAJE",
+      "SIRCREB_PORCENTAJE",
+      "IMP_CREDITOS_PORCENTAJE",
+      "IMP_DEBITOS_PORCENTAJE",
+      "MP_COMISION_DINERO_CUENTA",
+      "MP_COMISION_DEBITO",
+      "MP_COMISION_CREDITO",
+    ]);
+  const c = new Map((cfg ?? []).map((x) => [x.parametro as string, Number(x.valor ?? 0)]));
+
   return (
     <MarcaDetail
+      tasas={{
+        impCreditos: c.get("IMP_CREDITOS_PORCENTAJE") ?? 0,
+        impDebitos: c.get("IMP_DEBITOS_PORCENTAJE") ?? 0,
+        sircreb: c.get("SIRCREB_PORCENTAJE") ?? 0,
+        ivaGeneral: c.get("IVA_GENERAL_PORCENTAJE") ?? 21,
+        mpPorMedio: {
+          MP_COMISION_DINERO_CUENTA: c.get("MP_COMISION_DINERO_CUENTA") ?? 0,
+          MP_COMISION_DEBITO: c.get("MP_COMISION_DEBITO") ?? 0,
+          MP_COMISION_CREDITO: c.get("MP_COMISION_CREDITO") ?? 0,
+        },
+      }}
       marca={marcaRes.data as Marca}
       subcategorias={(subcategoriasRes.data ?? []) as Subcategoria[]}
       productos={(productosRes.data ?? []) as Producto[]}

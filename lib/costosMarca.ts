@@ -67,6 +67,47 @@ export async function costosVigentes(
   return vigente;
 }
 
+/**
+ * Lo mismo pero para todas las marcas de una vez.
+ *
+ * Lo usa la pantalla de Productos, que lista el catálogo entero: pedir los
+ * costos marca por marca sería un viaje a la base por cada una.
+ */
+export async function costosVigentesPorProducto(
+  supabase: SupabaseClient
+): Promise<Map<string, CostoDeMarca>> {
+  const { data, error } = await supabase
+    .from("costos_marca")
+    .select("id_costo, id_producto, costo, vigente_desde, cargado_por, creado_el")
+    .order("vigente_desde", { ascending: false });
+  if (error) return new Map();
+
+  const hoy = new Date().toISOString().slice(0, 10);
+  const quienes = await nombresDeUsuario(
+    supabase,
+    (data ?? []).map((c) => c.cargado_por as string | null)
+  );
+
+  const vigente = new Map<string, CostoDeMarca>();
+  for (const c of data ?? []) {
+    const desde = String(c.vigente_desde).slice(0, 10);
+    if (desde > hoy) continue;
+    const id = c.id_producto as string;
+    if (vigente.has(id)) continue;
+    const quien = quienes.get((c.cargado_por as string | null) ?? "");
+    vigente.set(id, {
+      idCosto: c.id_costo as string,
+      idProducto: id,
+      costo: (c.costo as number) ?? 0,
+      vigenteDesde: desde,
+      cargadoPor: quien ? (quien.rol === "marca" ? "MARCA" : "WIIGO") : null,
+      nombreQuienCargo: quien?.nombre ?? null,
+      creadoEl: c.creado_el as string,
+    });
+  }
+  return vigente;
+}
+
 /** Todo el historial de un producto, del más nuevo al más viejo. */
 export async function historialCosto(
   supabase: SupabaseClient,

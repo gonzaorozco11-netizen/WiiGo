@@ -7,6 +7,7 @@ import { friendlyDbError } from "@/lib/errors";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 import { esCodigoInterno, limpiarCodigoBarras } from "@/lib/codigos";
 import { generarSkuVariante, generarCodigoBarrasVariante } from "@/lib/codigosVariante";
+import { guardarCosto } from "@/lib/costosMarca";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 async function usuarioActual() {
@@ -14,6 +15,14 @@ async function usuarioActual() {
   const token = cookieStore.get(SESSION_COOKIE)?.value;
   const session = await readSessionToken(token, process.env.AUTH_SECRET ?? "");
   return session?.nombre ?? null;
+}
+
+/** El id, para dejar firmado quién cargó el costo de una marca. */
+async function idUsuarioActual() {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(SESSION_COOKIE)?.value;
+  const session = await readSessionToken(token, process.env.AUTH_SECRET ?? "");
+  return session?.sub ?? null;
 }
 
 function text(formData: FormData, name: string) {
@@ -105,6 +114,42 @@ function sinCostosExtra<T extends object>(data: T): T {
   const copia = { ...data };
   delete (copia as Record<string, unknown>).costos_extra;
   return copia;
+}
+
+/**
+ * El costo de un producto de una marca en consignación.
+ *
+ * Va a `costos_marca` —con vigencia y con quién lo cargó— y no solo a
+ * `costo_informado`: ese campo no guarda historia, y una venta de marzo tiene
+ * que liquidarse con el costo que regía en marzo. Se sigue escribiendo el
+ * `costo_informado` igual para no romper lo que ya lo lee.
+ *
+ * No frena el guardado del producto: si falla, el producto queda bien cargado
+ * y el costo se vuelve a poner desde la misma pantalla.
+ */
+async function guardarCostoDeLaMarca(
+  supabase: ReturnType<typeof getSupabaseServerClient>,
+  formData: FormData,
+  idProducto: string,
+  idMarca: string
+) {
+  const costo = number(formData, "costo_marca");
+  if (!costo || costo <= 0) return;
+
+  const { data: marca } = await supabase
+    .from("marcas")
+    .select("tipo_comercializacion")
+    .eq("id_marca", idMarca)
+    .maybeSingle();
+  if (!marca || marca.tipo_comercializacion === "PROPIA") return;
+
+  await guardarCosto(supabase, {
+    idMarca,
+    idProducto,
+    costo,
+    vigenteDesde: new Date().toISOString().slice(0, 10),
+    idUsuario: await idUsuarioActual(),
+  });
 }
 
 // El SKU y el código de barras viven en lib/codigosVariante.ts: los usan esta
@@ -436,6 +481,7 @@ export async function createProducto(formData: FormData): Promise<{ error: strin
     const usuario = await usuarioActual();
     await sincronizarVariantes(supabase, inserted.id_producto, idMarca, formData, idLocalInicial, usuario);
     await guardarContenidoAsesor(supabase, inserted.id_producto, formData);
+    await guardarCostoDeLaMarca(supabase, formData, inserted.id_producto, idMarca);
 
     revalidatePath("/productos");
     revalidatePath("/stock");
@@ -467,6 +513,7 @@ export async function updateProducto(id: string, formData: FormData): Promise<{ 
     // se maneja desde /stock, para no pisar cantidades reales sin querer.
     await sincronizarVariantes(supabase, id, idMarca, formData, null, null);
     await guardarContenidoAsesor(supabase, id, formData);
+    await guardarCostoDeLaMarca(supabase, formData, id, idMarca);
 
     revalidatePath("/productos");
     revalidatePath(`/marcas/${idMarca}`);

@@ -24,6 +24,7 @@ import { deleteSubcategoria } from "@/app/(app)/marcas/actions";
 import { deleteProducto } from "@/app/(app)/productos/actions";
 import MarcaFormModal from "@/components/MarcaFormModal";
 import CostosDeMarca from "@/components/CostosDeMarca";
+import type { TasasGenerales } from "@/lib/margenMarca";
 import SubcategoriaFormModal from "@/components/SubcategoriaFormModal";
 import ProductoFormModal from "@/components/ProductoFormModal";
 
@@ -37,8 +38,11 @@ export default function MarcaDetail({
   objetivosPorProducto,
   filtrosPorProducto,
   variantesPorProducto,
+  tasas,
 }: {
   marca: Marca;
+  /** Para calcular lo que le queda a la marca en el formulario del producto. */
+  tasas: TasasGenerales;
   subcategorias: Subcategoria[];
   productos: Producto[];
   objetivosGlobales: Objetivo[];
@@ -336,6 +340,7 @@ export default function MarcaDetail({
         <ProductoFormModal
           producto={editingProd}
           marcas={[marca]}
+          tasas={tasas}
           subcategorias={subcategorias}
           objetivosGlobales={objetivosGlobales}
           filtrosGlobales={filtrosGlobales}

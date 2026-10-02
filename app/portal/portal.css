@@ -689,8 +689,10 @@
   display: flex; align-items: center; justify-content: center; min-width: 0;
   font-size: 11px; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden;
 }
-.b-iva { background: #b9bfae; } .b-prod { background: #7b8a6c; }
+.b-prod { background: #7b8a6c; }
 .b-wiigo { background: var(--salvia-honda); } .b-banco { background: var(--ocre); }
+/* El SIRCREB en gris y no en rojo: no es un costo, es plata que vuelve. */
+.b-sircreb { background: #b9bfae; }
 .b-queda { background: var(--verde-ok); }
 .leyenda100 { display: flex; flex-wrap: wrap; gap: 13px; margin-top: 11px; font-size: 12.5px; color: var(--texto-2); }
 .leyenda100 span { display: inline-flex; align-items: center; gap: 6px; }

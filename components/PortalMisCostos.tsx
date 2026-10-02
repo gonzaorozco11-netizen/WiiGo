@@ -118,9 +118,12 @@ function CuantoGano({
   const linea = producto.porMedio.find((m) => m.medio === medio) ?? producto.porMedio[0];
   const mejor = producto.porMedio.find((m) => m.medio === "EFECTIVO");
 
-  // De cada $100 que paga el cliente. El IVA de la venta no es de nadie de los
-  // dos: se muestra aparte para que los otros pedazos se lean sobre algo real.
-  const ivaVenta = producto.precio - producto.precio / 1.21;
+  // De cada $100 que paga el cliente, en pedazos que SUMAN 100.
+  //
+  // Sin una porción de IVA: `leQueda` todavía lo tiene adentro, así que
+  // mostrarlo aparte contaba la misma plata dos veces y la barra se pasaba del
+  // 100% (con estos números daba 112). El IVA de la marca es de la marca, y lo
+  // dice la nota de abajo — en la barra no entra.
   const costosWiigo = linea.comisionWiigo + linea.ivaComision;
   const costosBanco = linea.comisionMp + linea.impCreditos + linea.impDebitos;
   const pedazo = (v: number) => (producto.precio > 0 ? (v / producto.precio) * 100 : 0);
@@ -154,9 +157,6 @@ function CuantoGano({
             De cada $100 que paga el cliente · pagando con {linea.etiqueta.toLowerCase()}
           </p>
           <div className="barra100" aria-hidden="true">
-            <span className="b-iva" style={{ flexBasis: `${pedazo(ivaVenta)}%` }}>
-              ${Math.round(pedazo(ivaVenta))}
-            </span>
             <span className="b-prod" style={{ flexBasis: `${pedazo(producto.costo)}%` }}>
               ${Math.round(pedazo(producto.costo))}
             </span>
@@ -166,15 +166,20 @@ function CuantoGano({
             <span className="b-banco" style={{ flexBasis: `${pedazo(costosBanco)}%` }}>
               ${Math.round(pedazo(costosBanco))}
             </span>
+            {linea.sircreb > 0 && (
+              <span className="b-sircreb" style={{ flexBasis: `${pedazo(linea.sircreb)}%` }}>
+                ${Math.round(pedazo(linea.sircreb))}
+              </span>
+            )}
             <span className="b-queda" style={{ flexBasis: `${pedazo(suyo)}%` }}>
               ${Math.round(pedazo(suyo))}
             </span>
           </div>
           <div className="leyenda100">
-            <span><i className="llave b-iva" /> IVA — va a ARCA</span>
             <span><i className="llave b-prod" /> tu producto</span>
             <span><i className="llave b-wiigo" /> comisión WiiGo</span>
             <span><i className="llave b-banco" /> Mercado Pago y el banco</span>
+            {linea.sircreb > 0 && <span><i className="llave b-sircreb" /> retenido, vuelve</span>}
             <span><i className="llave b-queda" /> <b>te quedan a vos</b></span>
           </div>
 

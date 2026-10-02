@@ -14,6 +14,7 @@ import type {
 } from "@/lib/supabase";
 import { deleteProducto } from "@/app/(app)/productos/actions";
 import type { ProveedorConSaldo } from "@/app/(app)/proveedores/actions";
+import type { TasasGenerales } from "@/lib/margenMarca";
 import ProductoFormModal from "@/components/ProductoFormModal";
 
 function formatearMonto(valor: number) {
@@ -30,6 +31,8 @@ export default function ProductosApp({
   otrosCostosEfectivo,
   ivaGeneral,
   redondeoPrecio,
+  costoMarcaPorProducto = {},
+  tasas,
   stockPorVariante,
   stockOptimoPorVariante,
   diasCobertura,
@@ -54,6 +57,10 @@ export default function ProductosApp({
   ivaGeneral: number;
   /** Múltiplo al que se redondea el precio calculado. 0 = no redondear. */
   redondeoPrecio: number;
+  /** Lo que cada marca dice que le cuesta su producto. Solo para consignación. */
+  costoMarcaPorProducto?: Record<string, { costo: number; desde: string; cargadoPor: string | null }>;
+  /** Tasas generales, para calcular lo que le queda a una marca. */
+  tasas: TasasGenerales;
   stockPorVariante: Record<string, number>;
   stockOptimoPorVariante: Record<string, number>;
   diasCobertura: number;
@@ -316,6 +323,8 @@ export default function ProductosApp({
           otrosCostosEfectivo={otrosCostosEfectivo}
           ivaGeneral={ivaGeneral}
           redondeoPrecio={redondeoPrecio}
+          costoMarcaInicial={editing ? costoMarcaPorProducto[editing.id_producto] ?? null : null}
+          tasas={tasas}
           objetivosGlobales={objetivosGlobales}
           filtrosGlobales={filtrosGlobales}
           ficha={editing ? fichaPorProducto[editing.id_producto] ?? null : null}

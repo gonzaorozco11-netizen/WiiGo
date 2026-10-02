@@ -1,6 +1,7 @@
 import { getSupabaseServerClient, type Producto, type Marca, type Subcategoria, type Local } from "@/lib/supabase";
 import { fetchContenidoAsesor } from "@/lib/contenidoAsesor";
 import { fetchVariantesPorProducto } from "@/lib/variantes";
+import { costosVigentesPorProducto } from "@/lib/costosMarca";
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import PantallaBloqueada from "@/components/PantallaBloqueada";
 import ProductosApp from "@/components/ProductosApp";
@@ -52,6 +53,14 @@ export default async function ProductosPage() {
         "OTROS_COSTOS_EFECTIVO_PORCENTAJE",
         "IVA_GENERAL_PORCENTAJE",
         "REDONDEO_PRECIO",
+        // Las de abajo son para calcular lo que le queda a una marca en
+        // consignación: ahí los costos no son los de WiiGo.
+        "SIRCREB_PORCENTAJE",
+        "IMP_CREDITOS_PORCENTAJE",
+        "IMP_DEBITOS_PORCENTAJE",
+        "MP_COMISION_DINERO_CUENTA",
+        "MP_COMISION_DEBITO",
+        "MP_COMISION_CREDITO",
       ]),
     listarProveedores(),
   ]);
@@ -66,6 +75,19 @@ export default async function ProductosPage() {
   const proveedoresLiquidacion = proveedores.filter((p) => p.estado === "ACTIVO");
 
   const config = new Map((configRes.data ?? []).map((c) => [c.parametro as string, c.valor as string]));
+  const num = (clave: string, porDefecto = 0) => Number(config.get(clave) ?? porDefecto);
+
+  // El costo que cada marca dice que le cuesta su producto. Vive aparte de
+  // `costo_informado` (que es de WiiGo) — ver lib/costosMarca.ts.
+  const costosDeMarca = await costosVigentesPorProducto(supabase);
+  const costoMarcaPorProducto: Record<string, { costo: number; desde: string; cargadoPor: string | null }> = {};
+  costosDeMarca.forEach((c, idProducto) => {
+    costoMarcaPorProducto[idProducto] = {
+      costo: c.costo,
+      desde: c.vigenteDesde,
+      cargadoPor: c.cargadoPor === "MARCA" ? "la marca" : c.nombreQuienCargo,
+    };
+  });
 
   const error = productosRes.error || marcasRes.error || subcategoriasRes.error;
   if (error) {
@@ -120,6 +142,18 @@ export default async function ProductosPage() {
       otrosCostosEfectivo={Number(config.get("OTROS_COSTOS_EFECTIVO_PORCENTAJE") ?? 0)}
       ivaGeneral={Number(config.get("IVA_GENERAL_PORCENTAJE") ?? 21)}
       redondeoPrecio={Number(config.get("REDONDEO_PRECIO") ?? 0)}
+      costoMarcaPorProducto={costoMarcaPorProducto}
+      tasas={{
+        impCreditos: num("IMP_CREDITOS_PORCENTAJE"),
+        impDebitos: num("IMP_DEBITOS_PORCENTAJE"),
+        sircreb: num("SIRCREB_PORCENTAJE"),
+        ivaGeneral: num("IVA_GENERAL_PORCENTAJE", 21),
+        mpPorMedio: {
+          MP_COMISION_DINERO_CUENTA: num("MP_COMISION_DINERO_CUENTA"),
+          MP_COMISION_DEBITO: num("MP_COMISION_DEBITO"),
+          MP_COMISION_CREDITO: num("MP_COMISION_CREDITO"),
+        },
+      }}
       stockPorVariante={stockPorVariante}
       stockOptimoPorVariante={stockOptimoPorVariante}
       diasCobertura={DIAS_COBERTURA}
