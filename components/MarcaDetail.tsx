@@ -23,6 +23,7 @@ import type {
 import { deleteSubcategoria } from "@/app/(app)/marcas/actions";
 import { deleteProducto } from "@/app/(app)/productos/actions";
 import MarcaFormModal from "@/components/MarcaFormModal";
+import CostosDeMarca from "@/components/CostosDeMarca";
 import SubcategoriaFormModal from "@/components/SubcategoriaFormModal";
 import ProductoFormModal from "@/components/ProductoFormModal";
 
@@ -312,6 +313,14 @@ export default function MarcaDetail({
           </ul>
         )}
       </div>
+
+      {/* Solo para marcas en consignación: en la propia el costo es el de
+          WiiGo y vive en el producto, no acá. */}
+      {marca.tipo_comercializacion !== "PROPIA" && (
+        <div className="mt-4">
+          <CostosDeMarca idMarca={marca.id_marca} productos={productos} />
+        </div>
+      )}
 
       {editMarcaOpen && <MarcaFormModal marca={marca} onClose={() => setEditMarcaOpen(false)} />}
 

@@ -6,6 +6,15 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 import { exigirGestionInterna } from "@/lib/marcaSesion";
+import { costosVigentes, guardarCosto } from "@/lib/costosMarca";
+
+/** Quién está cargando, para que el costo quede con nombre y apellido. */
+async function idUsuarioActual(): Promise<string | null> {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(SESSION_COOKIE)?.value;
+  const sesion = await readSessionToken(token, process.env.AUTH_SECRET ?? "");
+  return sesion?.sub ?? null;
+}
 
 // Crear/editar/eliminar una marca (o subirle el logo) es solo para el Dueño
 // — acá se cargan el royalty, IVA y qué impuestos se le trasladan, así que
@@ -63,6 +72,46 @@ function marcaFromForm(formData: FormData) {
     trasladar_imp_debitos: bool(formData, "trasladar_imp_debitos"),
     frecuencia_liquidacion: text(formData, "frecuencia_liquidacion"),
   };
+}
+
+/**
+ * Los costos que la marca cargó de sus productos.
+ *
+ * Solo de ESA marca y entrando a su ficha: no hay —ni va a haber— una pantalla
+ * con los costos de todas juntas. Es el dato más sensible que una marca te
+ * confía, y una lista general es la forma más fácil de que se filtre sin que
+ * nadie lo haya decidido.
+ */
+export async function costosDeMarcaAction(idMarca: string) {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { costos: [], error: permisoError };
+  try {
+    const supabase = getSupabaseServerClient();
+    const vigentes = await costosVigentes(supabase, idMarca);
+    return { costos: Array.from(vigentes.values()), error: null };
+  } catch (err) {
+    return { costos: [], error: err instanceof Error ? err.message : "No se pudieron leer los costos" };
+  }
+}
+
+/** Cargar o corregir el costo de un producto de una marca, desde el sistema interno. */
+export async function guardarCostoDeMarcaAction(params: {
+  idMarca: string;
+  idProducto: string;
+  costo: number;
+  vigenteDesde: string;
+}): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  try {
+    const supabase = getSupabaseServerClient();
+    const r = await guardarCosto(supabase, { ...params, idUsuario: await idUsuarioActual() });
+    if (r.error) return r;
+    revalidatePath(`/marcas/${params.idMarca}`);
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo guardar el costo" };
+  }
 }
 
 // `trasladar_iva_comision_efectivo` es una columna que llegó después

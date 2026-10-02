@@ -9,8 +9,10 @@ import {
   goldPortal,
   gananciaRealPortal,
   detalleMesPortal,
+  misCostosPortal,
 } from "@/app/portal/actions";
 import PortalTablero from "@/components/PortalTablero";
+import PortalMisCostos from "@/components/PortalMisCostos";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +25,7 @@ export default async function PortalPage() {
 
   // Consultas independientes: van juntas para que la pantalla no se arme de
   // a una.
-  const [resumen, ventasHoy, ordenes, pagos, liquidaciones, ganancia, detalle, analisis, gold] = await Promise.all([
+  const [resumen, ventasHoy, ordenes, pagos, liquidaciones, ganancia, detalle, analisis, gold, costos] = await Promise.all([
     resumenPortal(),
     ventasDeHoy(),
     reposicionPortal(),
@@ -33,6 +35,7 @@ export default async function PortalPage() {
     conAnalisis ? detalleMesPortal() : Promise.resolve({ porProducto: [], porVenta: [], totalLineas: 0 }),
     conAnalisis ? analisisPortal() : Promise.resolve(null),
     conGold ? goldPortal() : Promise.resolve(null),
+    misCostosPortal(),
   ]);
 
   if (!sesion || !resumen) {
@@ -40,17 +43,22 @@ export default async function PortalPage() {
   }
 
   return (
-    <PortalTablero
-      resumen={resumen}
-      ventasHoy={ventasHoy}
-      ordenes={ordenes}
-      pagos={pagos}
-      liquidaciones={liquidaciones}
-      ganancia={ganancia}
-      detalle={detalle}
-      analisis={analisis}
-      gold={gold}
-      puedeVerMas={conAnalisis}
-    />
+    <>
+      {/* Antes del tablero: hasta que la marca cargue sus costos, el tablero le
+          dice cuánto cobra pero no cuánto gana. Esto es lo que lo completa. */}
+      {costos && <PortalMisCostos datos={costos} />}
+      <PortalTablero
+        resumen={resumen}
+        ventasHoy={ventasHoy}
+        ordenes={ordenes}
+        pagos={pagos}
+        liquidaciones={liquidaciones}
+        ganancia={ganancia}
+        detalle={detalle}
+        analisis={analisis}
+        gold={gold}
+        puedeVerMas={conAnalisis}
+      />
+    </>
   );
 }

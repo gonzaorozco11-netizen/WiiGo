@@ -1,9 +1,17 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionMarca } from "@/lib/marcaSesion";
 import { calcularRendicion } from "@/app/(app)/liquidaciones/actions";
 import { fechaHoraArgentina } from "@/lib/horarios";
+import { costosVigentes, guardarCosto, type CostoDeMarca } from "@/lib/costosMarca";
+import {
+  condicionesDeMarca,
+  tasasGeneralesParaSimular,
+  simularMargen,
+  type MargenSimulado,
+} from "@/lib/margenMarca";
 
 // Consultas del portal de marcas.
 //
@@ -393,6 +401,95 @@ export async function pagosPortal(): Promise<{ pagos: PagoPortal[]; total: numbe
   }));
 
   return { pagos, total: pagos.reduce((acc, p) => acc + p.importe, 0) };
+}
+
+// ===================== MIS COSTOS Y MI MARGEN =====================
+//
+// Lo único del portal que la marca ESCRIBE sobre sí misma. El resto es lectura
+// de lo que pasó; esto es un dato que solo ella tiene — WiiGo nunca supo cuánto
+// le cuesta producir, y sin eso el portal puede decir "te transferimos X" pero
+// no "ganás Y".
+
+export type ProductoConMargen = {
+  idProducto: string;
+  nombre: string;
+  precio: number;
+  costo: number | null;
+  vigenteDesde: string | null;
+  cargadoPor: "MARCA" | "WIIGO" | null;
+  nombreQuienCargo: string | null;
+  /** La cuenta de una venta, medio por medio. Vacío si el producto no tiene precio. */
+  porMedio: MargenSimulado[];
+};
+
+export type MisCostosPortal = {
+  productos: ProductoConMargen[];
+  sinCosto: number;
+};
+
+export async function misCostosPortal(): Promise<MisCostosPortal | null> {
+  const sesion = await obtenerSesionMarca();
+  if (!sesion) return null;
+
+  const supabase = getSupabaseServerClient();
+  const [{ data: productos }, costos, marca, tasas] = await Promise.all([
+    supabase
+      .from("productos")
+      .select("id_producto, nombre, precio_venta")
+      .eq("id_marca", sesion.idMarca)
+      .eq("estado", "ACTIVO")
+      .order("nombre", { ascending: true }),
+    costosVigentes(supabase, sesion.idMarca),
+    condicionesDeMarca(supabase, sesion.idMarca),
+    tasasGeneralesParaSimular(supabase),
+  ]);
+  if (!marca) return null;
+
+  const lista: ProductoConMargen[] = (productos ?? []).map((p) => {
+    const c = costos.get(p.id_producto as string) ?? null;
+    const precio = (p.precio_venta as number) ?? 0;
+    return {
+      idProducto: p.id_producto as string,
+      nombre: (p.nombre as string) ?? "Producto",
+      precio,
+      costo: c?.costo ?? null,
+      vigenteDesde: c?.vigenteDesde ?? null,
+      cargadoPor: c?.cargadoPor ?? null,
+      nombreQuienCargo: c?.nombreQuienCargo ?? null,
+      porMedio: precio > 0 ? simularMargen({ precio, costo: c?.costo ?? null, marca, tasas }) : [],
+    };
+  });
+
+  return { productos: lista, sinCosto: lista.filter((p) => p.costo == null).length };
+}
+
+/**
+ * La marca carga su costo.
+ *
+ * Sin idMarca por parámetro, como el resto del portal: sale de la sesión. El
+ * producto se valida contra ella del lado del servidor (ver guardarCosto), así
+ * que mandar el id de un producto ajeno no escribe nada.
+ */
+export async function guardarMiCosto(params: {
+  idProducto: string;
+  costo: number;
+  vigenteDesde: string;
+}): Promise<{ error: string | null }> {
+  const sesion = await obtenerSesionMarca();
+  if (!sesion) return { error: "Sesión no válida" };
+
+  const supabase = getSupabaseServerClient();
+  const r = await guardarCosto(supabase, {
+    idMarca: sesion.idMarca,
+    idProducto: params.idProducto,
+    costo: params.costo,
+    vigenteDesde: params.vigenteDesde,
+    idUsuario: sesion.idUsuario,
+  });
+  if (r.error) return r;
+
+  revalidatePath("/portal");
+  return { error: null };
 }
 
 export type GananciaRealPortal = {
