@@ -667,6 +667,16 @@ function PrecioDeMarca({
   const deWiigo = fila ? fila.comisionWiigo + fila.ivaComision : 0;
   const deBanco = fila ? fila.comisionMp + fila.impCreditos + fila.impDebitos : 0;
 
+  // Lo que la marca factura, y su IVA. `leTransferimos` los tiene juntos:
+  // mostrarlo como si fuera su ganancia la infla en todo el IVA — con estos
+  // números, $787 de más sobre $2.250 reales.
+  const facturaLaMarca = fila ? fila.leTransferimos / (1 + iva / 100) : 0;
+  const ivaDeLaMarca = fila ? fila.leTransferimos - facturaLaMarca : 0;
+  const ganancia = fila && costo > 0 ? facturaLaMarca - costo : 0;
+  /** Lo mismo, para cualquier fila de la tabla de medios de pago. */
+  const gananciaDe = (f: { leTransferimos: number }) =>
+    costo > 0 ? f.leTransferimos / (1 + iva / 100) - costo : 0;
+
   return (
     <div className="border border-neutral-200 rounded-xl p-4 space-y-3">
       <h3 className="text-sm font-semibold text-neutral-900">📦 Costo de la marca</h3>
@@ -784,10 +794,11 @@ function PrecioDeMarca({
                   { color: "#2563eb", monto: deWiigo },
                   { color: "#c2843a", monto: deBanco },
                   { color: "#b4bcc6", monto: fila.sircreb },
-                  { color: "#0d9488", monto: fila.leQueda ?? 0 },
+                  { color: "#a8b2bf", monto: ivaDeLaMarca },
+                  { color: "#0d9488", monto: ganancia },
                 ]}
-                centro={`$${pesos(fila.leQueda ?? 0)}`}
-                pie={`le queda a ${marca.nombre}`}
+                centro={`$${pesos(ganancia)}`}
+                pie={`de ganancia para ${marca.nombre}`}
               />
 
               <RepartoMarca color="#64748b" etiqueta="Costo mercadería" monto={costo} pct={pct(costo)} pesos={pesos} />
@@ -813,33 +824,47 @@ function PrecioDeMarca({
                 />
               )}
               <RepartoMarca
+                color="#a8b2bf"
+                etiqueta="IVA de su factura"
+                ayuda="El IVA que la marca le factura a WiiGo: lo cobra y lo deposita en ARCA, no es suyo. Contra eso descuenta el IVA de sus propias compras, así que lo que termina pagando es menos."
+                monto={ivaDeLaMarca}
+                pct={pct(ivaDeLaMarca)}
+                pesos={pesos}
+              />
+              <RepartoMarca
                 color="#0d9488"
-                etiqueta="Lo que le queda"
-                monto={fila.leQueda ?? 0}
-                pct={pct(fila.leQueda ?? 0)}
+                etiqueta="Su ganancia"
+                monto={ganancia}
+                pct={pct(ganancia)}
                 pesos={pesos}
                 tono="suyo"
               />
 
-              {/* Los dos porcentajes miden cosas distintas y es la confusión
-                  más fácil de esta pantalla: el de arriba es sobre lo que pagó
-                  el cliente, el margen es sobre lo que factura la marca. */}
-              <p className="text-[11px] text-neutral-400 pt-1.5 border-t border-neutral-200 mt-1.5 leading-relaxed">
-                Esos porcentajes son <b>de los ${pesos(precio)} que paga el cliente</b>. El margen de{" "}
-                <b>{Math.round(margenDeLaMarca * 10) / 10}%</b> de arriba es otra cuenta: sobre los $
-                {pesos(fila.leTransferimos / (1 + iva / 100))} que factura {marca.nombre}, ya sin IVA.
-                <br />
-                Y es <b>bruto</b>: de ahí {marca.nombre} todavía paga sus Ingresos Brutos, su alquiler
-                y sus sueldos.
-              </p>
+              {/* El mismo número en las dos bases que la gente usa, para que no
+                  haya que elegir cuál mirar ni adivinar sobre qué es. */}
+              <div className="pt-2 border-t border-neutral-200 mt-2">
+                <p className="text-xs text-neutral-700">
+                  Por cada unidad vendida, <b>{marca.nombre} gana ${pesos(ganancia)}</b>:
+                </p>
+                <p className="text-xs text-neutral-600 mt-0.5">
+                  <b className="text-emerald-700">{(Math.round(margenDeLaMarca * 10) / 10).toLocaleString("es-AR")}%</b>{" "}
+                  de lo que factura · <b className="text-emerald-700">{(Math.round(pct(ganancia) * 10) / 10).toLocaleString("es-AR")}%</b>{" "}
+                  de lo que paga el cliente
+                </p>
+                <p className="text-[11px] text-neutral-400 mt-1 leading-relaxed">
+                  Es su ganancia <b>sobre el producto</b>: ya tiene descontado todo lo que se ve
+                  arriba. De ahí todavía salen sus gastos propios —Ingresos Brutos, alquiler,
+                  sueldos— que WiiGo no conoce.
+                </p>
+              </div>
             </div>
 
             <table className="w-full text-xs tabular-nums">
               <thead>
                 <tr className="text-[10px] uppercase tracking-wide text-neutral-400">
                   <th className="text-left font-semibold pb-1">Si el cliente paga con</th>
-                  <th className="text-right font-semibold pb-1">Le queda a la marca</th>
-                  <th className="text-right font-semibold pb-1">De la venta</th>
+                  <th className="text-right font-semibold pb-1">Gana la marca</th>
+                  <th className="text-right font-semibold pb-1">De lo que factura</th>
                   <th className="text-right font-semibold pb-1">Tu comisión</th>
                 </tr>
               </thead>
@@ -858,9 +883,14 @@ function PrecioDeMarca({
                         f.medio === "EFECTIVO" ? "text-emerald-700" : f.medio === "CREDITO" ? "text-red-700" : "text-neutral-800"
                       }`}
                     >
-                      ${pesos(f.leQueda ?? 0)}
+                      ${pesos(gananciaDe(f))}
                     </td>
-                    <td className="py-1.5 text-right text-neutral-500">{Math.round(f.porcentaje ?? 0)}%</td>
+                    <td className="py-1.5 text-right text-neutral-500">
+                      {f.leTransferimos > 0
+                        ? Math.round((gananciaDe(f) / (f.leTransferimos / (1 + iva / 100))) * 100)
+                        : 0}
+                      %
+                    </td>
                     <td className="py-1.5 text-right text-accent font-semibold">
                       ${pesos(f.comisionWiigo + f.ivaComision)}
                     </td>
@@ -869,11 +899,11 @@ function PrecioDeMarca({
               </tbody>
             </table>
 
-            {enEfectivo && (enEfectivo.leQueda ?? 0) > (fila.leQueda ?? 0) && (
+            {enEfectivo && gananciaDe(enEfectivo) > ganancia && (
               <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
                 Entre efectivo y {fila.etiqueta.toLowerCase()} hay{" "}
-                <b>${pesos((enEfectivo.leQueda ?? 0) - (fila.leQueda ?? 0))} de diferencia</b> para{" "}
-                {marca.nombre}, en el mismo producto. Tu comisión casi no cambia.
+                <b>${pesos(gananciaDe(enEfectivo) - ganancia)} de diferencia</b> en lo que gana{" "}
+                {marca.nombre}, con el mismo producto al mismo precio. Tu comisión casi no cambia.
               </p>
             )}
           </>
