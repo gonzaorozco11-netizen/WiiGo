@@ -721,8 +721,8 @@ function PrecioDeMarca({
         <div className="grid grid-cols-3 gap-3">
           <div>
             <label className="block text-sm font-medium text-neutral-700 mb-1">
-              Margen de la marca %
-              <Ayuda texto="Lo que le queda a la marca SOBRE SU PROPIA FACTURACIÓN, sin IVA — no sobre lo que paga el cliente. Son dos cuentas distintas: un 60% de margen puede ser un 54% de lo que pagó el cliente, porque de ese total también salen el IVA y lo que se va en cobrar. Depende del medio de pago elegido abajo." />
+              Margen bruto de la marca %
+              <Ayuda texto="BRUTO: solo descuenta la mercadería. Un 60% quiere decir que de cada $100 que la marca factura (sin IVA), $60 le quedan ANTES de sus propios gastos: sus Ingresos Brutos, su alquiler, sus sueldos, su logística. No es lo que gana al final. Y ojo con la base: es sobre lo que ella factura, no sobre lo que paga el cliente — ese 60% suele ser un 54% de lo que pagó el cliente, porque de ahí también salen el IVA y lo que se va en cobrar." />
             </label>
             <input
               type="number"
@@ -741,6 +741,9 @@ function PrecioDeMarca({
               disabled={!(costo > 0)}
               className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent disabled:bg-neutral-50"
             />
+            <p className="text-[11px] text-neutral-400 mt-1">
+              Sobre lo que factura, antes de sus gastos
+            </p>
           </div>
           <div>
             <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="precio_venta_visible">
@@ -821,10 +824,13 @@ function PrecioDeMarca({
               {/* Los dos porcentajes miden cosas distintas y es la confusión
                   más fácil de esta pantalla: el de arriba es sobre lo que pagó
                   el cliente, el margen es sobre lo que factura la marca. */}
-              <p className="text-[11px] text-neutral-400 pt-1.5 border-t border-neutral-200 mt-1.5">
+              <p className="text-[11px] text-neutral-400 pt-1.5 border-t border-neutral-200 mt-1.5 leading-relaxed">
                 Esos porcentajes son <b>de los ${pesos(precio)} que paga el cliente</b>. El margen de{" "}
                 <b>{Math.round(margenDeLaMarca * 10) / 10}%</b> de arriba es otra cuenta: sobre los $
                 {pesos(fila.leTransferimos / (1 + iva / 100))} que factura {marca.nombre}, ya sin IVA.
+                <br />
+                Y es <b>bruto</b>: de ahí {marca.nombre} todavía paga sus Ingresos Brutos, su alquiler
+                y sus sueldos.
               </p>
             </div>
 
