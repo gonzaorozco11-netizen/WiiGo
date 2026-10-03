@@ -823,10 +823,20 @@ function PrecioDeMarca({
                   pesos={pesos}
                 />
               )}
+              {/* Con el nombre de la marca adelante a propósito. Dicho "IVA de
+                  su factura" se lee como el IVA de la venta, que es otro número
+                  y más grande — la pregunta sale sola la primera vez que
+                  alguien divide el precio por 1,21. */}
               <RepartoMarca
                 color="#a8b2bf"
-                etiqueta="IVA de su factura"
-                ayuda="El IVA que la marca le factura a WiiGo: lo cobra y lo deposita en ARCA, no es suyo. Contra eso descuenta el IVA de sus propias compras, así que lo que termina pagando es menos."
+                etiqueta={`IVA de ${marca.nombre}`}
+                ayuda={`OJO: no es el IVA de la venta. El de la venta son $${pesos(
+                  precio - precio / (1 + iva / 100)
+                )} y va en la factura que WiiGo le hace al cliente. Este es el de la factura que ${
+                  marca.nombre
+                } te emite a vos por $${pesos(
+                  fila.leTransferimos
+                )}: lo cobra y lo deposita en ARCA, no es suyo. Vos lo tomás como crédito fiscal, así que tampoco es un costo tuyo. Y ella contra eso descuenta el IVA de sus propias compras, así que termina pagando menos.`}
                 monto={ivaDeLaMarca}
                 pct={pct(ivaDeLaMarca)}
                 pesos={pesos}
@@ -855,6 +865,9 @@ function PrecioDeMarca({
                   Es su ganancia <b>sobre el producto</b>: ya tiene descontado todo lo que se ve
                   arriba. De ahí todavía salen sus gastos propios —Ingresos Brutos, alquiler,
                   sueldos— que WiiGo no conoce.
+                  <br />
+                  El cálculo asume que {marca.nombre} es <b>Responsable Inscripto</b>. Si fuera
+                  monotributista no discriminaría IVA y su ganancia sería ${pesos(ganancia + ivaDeLaMarca)}.
                 </p>
               </div>
             </div>
