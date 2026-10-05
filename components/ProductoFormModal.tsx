@@ -816,7 +816,10 @@ function PrecioDeMarca({
                 <RepartoMarca
                   color="#b4bcc6"
                   etiqueta="SIRCREB"
-                  ayuda="Retención que se le hace de forma preventiva. No es un costo: se le devuelve o se le compensa, y nunca es ganancia de WiiGo."
+                  // Sin prometer que vuelve. Que se devuelva o se compense es
+                  // una decisión comercial que todavía no está tomada, y una
+                  // pantalla no es el lugar para comprometerla.
+                  ayuda="Retención impositiva sobre la venta."
                   monto={fila.sircreb}
                   pct={pct(fila.sircreb)}
                   pesos={pesos}

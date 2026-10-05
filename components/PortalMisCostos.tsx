@@ -179,7 +179,7 @@ function CuantoGano({
             <span><i className="llave b-prod" /> tu producto</span>
             <span><i className="llave b-wiigo" /> comisión WiiGo</span>
             <span><i className="llave b-banco" /> Mercado Pago y el banco</span>
-            {linea.sircreb > 0 && <span><i className="llave b-sircreb" /> retenido, vuelve</span>}
+            {linea.sircreb > 0 && <span><i className="llave b-sircreb" /> retención impositiva</span>}
             <span><i className="llave b-queda" /> <b>te quedan a vos</b></span>
           </div>
 
@@ -224,11 +224,13 @@ function CuantoGano({
             )}
             {linea.sircreb > 0 && (
               <li>
+                {/* Sin prometer que vuelve: que se devuelva o se compense es
+                    una decisión comercial que todavía no está tomada. */}
                 <span className="k">
-                  SIRCREB retenido
-                  <small>no es un costo: se te devuelve</small>
+                  SIRCREB
+                  <small>retención impositiva sobre la venta</small>
                 </span>
-                <span className="v vuelve mono">-${pesos(linea.sircreb)}</span>
+                <span className="v resta mono">-${pesos(linea.sircreb)}</span>
               </li>
             )}
             <li>
