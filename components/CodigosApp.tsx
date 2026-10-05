@@ -34,6 +34,10 @@ const PLANCHAS = [
   { id: "105x37", nombre: "105 × 37 mm — 16 por hoja", ancho: 105, alto: 37, cols: 2, filas: 8, margenX: 0, margenY: 0.5, sepX: 0, sepY: 0 },
   { id: "105x48", nombre: "105 × 48 mm — 12 por hoja", ancho: 105, alto: 48, cols: 2, filas: 6, margenX: 0, margenY: 4.5, sepX: 0, sepY: 0 },
   { id: "38x21", nombre: "38,1 × 21,2 mm — 65 por hoja", ancho: 38.1, alto: 21.2, cols: 5, filas: 13, margenX: 4.7, margenY: 10.7, sepX: 2.5, sepY: 0 },
+  // Sin separación entre etiquetas: 5 × 39 = 195 mm y 17 × 17 = 289 mm entran
+  // justos en la A4, y lo que sobra se reparte como margen. Es la plancha más
+  // chica de la lista — el código entra, pero sin lugar de sobra.
+  { id: "39x17", nombre: "39 × 17 mm — 85 por hoja", ancho: 39, alto: 17, cols: 5, filas: 17, margenX: 7.5, margenY: 4, sepX: 0, sepY: 0 },
 ] as const;
 
 type Plancha = (typeof PLANCHAS)[number];
@@ -923,10 +927,17 @@ function Etiqueta({ item, medida }: { item: ItemCodigo; medida: { ancho: number;
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: ".4mm" }}>
+        {/* En una etiqueta chica el código usa casi todo el ancho.
+            Un código interno son 132 módulos contando las zonas mudas, y la
+            norma pide al menos 0,25 mm por módulo para que un lector barato lo
+            lea. Con el 80% de 39 mm quedaban 0,236 — por debajo del mínimo, y
+            con tinta de inyección que se expande un poco, ilegible. Con el 92%
+            quedan 0,272. En las planchas grandes no hace falta y el 80% se ve
+            mejor. */}
         <CodigoDeBarras
           valor={item.codigo ?? ""}
-          ancho={`${medida.ancho * 0.8}mm`}
-          alto={`${chica ? 5.5 : 9}mm`}
+          ancho={`${medida.ancho * (medida.ancho < 50 ? 0.92 : 0.8)}mm`}
+          alto={`${chica ? (medida.alto >= 16 ? 7 : 5.5) : 9}mm`}
         />
         <div
           style={{
