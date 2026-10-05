@@ -646,20 +646,15 @@ function PrecioDeMarca({
   const fila = filas.find((f) => f.medio === medio) ?? filas[0];
   const enEfectivo = filas.find((f) => f.medio === "EFECTIVO");
 
-  // Escribir el margen que quiere la marca y que salga el precio. La cuenta es
-  // la inversa de simularMargen: precio = costo × (1+IVA) / ((1−margen)(1−d)).
+  // Escribir el margen que quiere la marca y que salga el precio. Es la inversa
+  // de la cuenta de abajo: si margen = (T − costo) / T y T = precio × (1 − d),
+  // entonces precio = costo / ((1 − margen)(1 − d)).
   function precioDesdeMargen(margenPct: number) {
     if (!(costo > 0) || !fila || fila.precio <= 0) return 0;
     const d = (fila.precio - fila.leTransferimos) / fila.precio;
     const resto = (1 - Math.min(margenPct, 99) / 100) * (1 - d);
-    return resto > 0.0001 ? (costo * (1 + iva / 100)) / resto : 0;
+    return resto > 0.0001 ? costo / resto : 0;
   }
-  // Lo que le queda a la marca, neto de su IVA, sobre su propia facturación.
-  const margenDeLaMarca =
-    fila && costo > 0 && fila.leTransferimos > 0
-      ? ((fila.leTransferimos / (1 + iva / 100) - costo) / (fila.leTransferimos / (1 + iva / 100))) * 100
-      : 0;
-
   const pesos = (n: number) =>
     n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const pct = (v: number) => (precio > 0 ? (v / precio) * 100 : 0);
@@ -667,15 +662,20 @@ function PrecioDeMarca({
   const deWiigo = fila ? fila.comisionWiigo + fila.ivaComision : 0;
   const deBanco = fila ? fila.comisionMp + fila.impCreditos + fila.impDebitos : 0;
 
-  // Lo que la marca factura, y su IVA. `leTransferimos` los tiene juntos:
-  // mostrarlo como si fuera su ganancia la infla en todo el IVA — con estos
-  // números, $787 de más sobre $2.250 reales.
-  const facturaLaMarca = fila ? fila.leTransferimos / (1 + iva / 100) : 0;
-  const ivaDeLaMarca = fila ? fila.leTransferimos - facturaLaMarca : 0;
-  const ganancia = fila && costo > 0 ? facturaLaMarca - costo : 0;
+  // Lo que le queda a la marca: lo que se le transfiere menos lo que le costó.
+  //
+  // Sin descontarle ningún IVA propio. WiiGo le factura a ELLA la comisión — no
+  // al revés — así que de los impuestos de la marca el sistema no sabe nada:
+  // cuánto IVA le corresponde depende de cómo facture, y si es monotributista
+  // no discrimina ninguno. Restarle un IVA supuesto sería mostrarle una
+  // ganancia más chica que la real por una cuenta que nadie hizo.
+  const ganancia = fila && costo > 0 ? fila.leTransferimos - costo : 0;
   /** Lo mismo, para cualquier fila de la tabla de medios de pago. */
-  const gananciaDe = (f: { leTransferimos: number }) =>
-    costo > 0 ? f.leTransferimos / (1 + iva / 100) - costo : 0;
+  const gananciaDe = (f: { leTransferimos: number }) => (costo > 0 ? f.leTransferimos - costo : 0);
+
+  /** Su ganancia sobre lo que recibe. Las dos puntas son plata que WiiGo conoce exacta. */
+  const margenDeLaMarca =
+    fila && costo > 0 && fila.leTransferimos > 0 ? (ganancia / fila.leTransferimos) * 100 : 0;
 
   return (
     <div className="border border-neutral-200 rounded-xl p-4 space-y-3">
@@ -732,7 +732,7 @@ function PrecioDeMarca({
           <div>
             <label className="block text-sm font-medium text-neutral-700 mb-1">
               Margen bruto de la marca %
-              <Ayuda texto="BRUTO: solo descuenta la mercadería. Un 60% quiere decir que de cada $100 que la marca factura (sin IVA), $60 le quedan ANTES de sus propios gastos: sus Ingresos Brutos, su alquiler, sus sueldos, su logística. No es lo que gana al final. Y ojo con la base: es sobre lo que ella factura, no sobre lo que paga el cliente — ese 60% suele ser un 54% de lo que pagó el cliente, porque de ahí también salen el IVA y lo que se va en cobrar." />
+              <Ayuda texto="BRUTO: solo descuenta la mercadería. Un 60% quiere decir que de cada $100 que WiiGo le transfiere, $60 le quedan ANTES de sus propios impuestos y gastos: su IVA según cómo facture, Ingresos Brutos, alquiler, sueldos. No es lo que gana al final. Y la base es lo que RECIBE, no lo que paga el cliente — de ese total también salen la comisión de WiiGo y lo que se va en cobrar." />
             </label>
             <input
               type="number"
@@ -794,7 +794,6 @@ function PrecioDeMarca({
                   { color: "#2563eb", monto: deWiigo },
                   { color: "#c2843a", monto: deBanco },
                   { color: "#b4bcc6", monto: fila.sircreb },
-                  { color: "#a8b2bf", monto: ivaDeLaMarca },
                   { color: "#0d9488", monto: ganancia },
                 ]}
                 centro={`$${pesos(ganancia)}`}
@@ -823,27 +822,12 @@ function PrecioDeMarca({
                   pesos={pesos}
                 />
               )}
-              {/* Con el nombre de la marca adelante a propósito. Dicho "IVA de
-                  su factura" se lee como el IVA de la venta, que es otro número
-                  y más grande — la pregunta sale sola la primera vez que
-                  alguien divide el precio por 1,21. */}
-              <RepartoMarca
-                color="#a8b2bf"
-                etiqueta={`IVA de ${marca.nombre}`}
-                ayuda={`OJO: no es el IVA de la venta. El de la venta son $${pesos(
-                  precio - precio / (1 + iva / 100)
-                )} y va en la factura que WiiGo le hace al cliente. Este es el de la factura que ${
-                  marca.nombre
-                } te emite a vos por $${pesos(
-                  fila.leTransferimos
-                )}: lo cobra y lo deposita en ARCA, no es suyo. Vos lo tomás como crédito fiscal, así que tampoco es un costo tuyo. Y ella contra eso descuenta el IVA de sus propias compras, así que termina pagando menos.`}
-                monto={ivaDeLaMarca}
-                pct={pct(ivaDeLaMarca)}
-                pesos={pesos}
-              />
               <RepartoMarca
                 color="#0d9488"
-                etiqueta="Su ganancia"
+                etiqueta="Le queda a la marca"
+                ayuda={`Lo que se le transfiere ($${pesos(
+                  fila.leTransferimos
+                )}) menos lo que le costó el producto. De ahí salen sus propios impuestos, que dependen de cómo facture — WiiGo no los calcula.`}
                 monto={ganancia}
                 pct={pct(ganancia)}
                 pesos={pesos}
@@ -854,20 +838,18 @@ function PrecioDeMarca({
                   haya que elegir cuál mirar ni adivinar sobre qué es. */}
               <div className="pt-2 border-t border-neutral-200 mt-2">
                 <p className="text-xs text-neutral-700">
-                  Por cada unidad vendida, <b>{marca.nombre} gana ${pesos(ganancia)}</b>:
+                  Por cada unidad vendida, a <b>{marca.nombre} le quedan ${pesos(ganancia)}</b>:
                 </p>
                 <p className="text-xs text-neutral-600 mt-0.5">
                   <b className="text-emerald-700">{(Math.round(margenDeLaMarca * 10) / 10).toLocaleString("es-AR")}%</b>{" "}
-                  de lo que factura · <b className="text-emerald-700">{(Math.round(pct(ganancia) * 10) / 10).toLocaleString("es-AR")}%</b>{" "}
+                  de lo que recibe ·{" "}
+                  <b className="text-emerald-700">{(Math.round(pct(ganancia) * 10) / 10).toLocaleString("es-AR")}%</b>{" "}
                   de lo que paga el cliente
                 </p>
                 <p className="text-[11px] text-neutral-400 mt-1 leading-relaxed">
-                  Es su ganancia <b>sobre el producto</b>: ya tiene descontado todo lo que se ve
-                  arriba. De ahí todavía salen sus gastos propios —Ingresos Brutos, alquiler,
-                  sueldos— que WiiGo no conoce.
-                  <br />
-                  El cálculo asume que {marca.nombre} es <b>Responsable Inscripto</b>. Si fuera
-                  monotributista no discriminaría IVA y su ganancia sería ${pesos(ganancia + ivaDeLaMarca)}.
+                  Ya tiene descontado todo lo que se ve arriba. De ahí todavía salen{" "}
+                  <b>los impuestos y los gastos de {marca.nombre}</b> —su IVA según cómo facture,
+                  Ingresos Brutos, alquiler, sueldos— que WiiGo no conoce y no calcula.
                 </p>
               </div>
             </div>
@@ -876,8 +858,8 @@ function PrecioDeMarca({
               <thead>
                 <tr className="text-[10px] uppercase tracking-wide text-neutral-400">
                   <th className="text-left font-semibold pb-1">Si el cliente paga con</th>
-                  <th className="text-right font-semibold pb-1">Gana la marca</th>
-                  <th className="text-right font-semibold pb-1">De lo que factura</th>
+                  <th className="text-right font-semibold pb-1">Le queda a la marca</th>
+                  <th className="text-right font-semibold pb-1">De lo que recibe</th>
                   <th className="text-right font-semibold pb-1">Tu comisión</th>
                 </tr>
               </thead>
@@ -899,10 +881,7 @@ function PrecioDeMarca({
                       ${pesos(gananciaDe(f))}
                     </td>
                     <td className="py-1.5 text-right text-neutral-500">
-                      {f.leTransferimos > 0
-                        ? Math.round((gananciaDe(f) / (f.leTransferimos / (1 + iva / 100))) * 100)
-                        : 0}
-                      %
+                      {f.leTransferimos > 0 ? Math.round((gananciaDe(f) / f.leTransferimos) * 100) : 0}%
                     </td>
                     <td className="py-1.5 text-right text-accent font-semibold">
                       ${pesos(f.comisionWiigo + f.ivaComision)}
