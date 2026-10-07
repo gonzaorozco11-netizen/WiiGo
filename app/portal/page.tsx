@@ -9,10 +9,8 @@ import {
   goldPortal,
   gananciaRealPortal,
   detalleMesPortal,
-  misCostosPortal,
 } from "@/app/portal/actions";
 import PortalTablero from "@/components/PortalTablero";
-import PortalMisCostos from "@/components/PortalMisCostos";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +23,7 @@ export default async function PortalPage() {
 
   // Consultas independientes: van juntas para que la pantalla no se arme de
   // a una.
-  const [resumen, ventasHoy, ordenes, pagos, liquidaciones, ganancia, detalle, analisis, gold, costos] = await Promise.all([
+  const [resumen, ventasHoy, ordenes, pagos, liquidaciones, ganancia, detalle, analisis, gold] = await Promise.all([
     resumenPortal(),
     ventasDeHoy(),
     reposicionPortal(),
@@ -35,18 +33,21 @@ export default async function PortalPage() {
     conAnalisis ? detalleMesPortal() : Promise.resolve({ porProducto: [], porVenta: [], totalLineas: 0 }),
     conAnalisis ? analisisPortal() : Promise.resolve(null),
     conGold ? goldPortal() : Promise.resolve(null),
-    misCostosPortal(),
   ]);
 
   if (!sesion || !resumen) {
     return <p className="vacio">No se pudo cargar tu tablero. Probá recargar la página.</p>;
   }
 
+  // Los costos y los productos viven en /portal/productos, no acá.
+  //
+  // Estuvieron arriba del tablero un tiempo, con la idea de que el muro de
+  // "falta" empujara a cargarlos. Con una marca de 72 productos el efecto es
+  // el contrario: entra a ver cómo vendió y lo primero que encuentra son 72
+  // renglones vacíos. El tablero cuenta lo que pasó; la lista de productos es
+  // otra tarea y ahora tiene su propia pantalla.
   return (
     <>
-      {/* Antes del tablero: hasta que la marca cargue sus costos, el tablero le
-          dice cuánto cobra pero no cuánto gana. Esto es lo que lo completa. */}
-      {costos && <PortalMisCostos datos={costos} />}
       <PortalTablero
         resumen={resumen}
         ventasHoy={ventasHoy}

@@ -9,6 +9,14 @@
 // otra con su fecha, y el historial queda.
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+/**
+ * El cajón donde caen los productos sin subcategoría al agruparlos.
+ *
+ * Acá y no en app/portal/actions.ts: ese archivo es "use server" y ahí solo
+ * pueden exportarse funciones asíncronas.
+ */
+export const SIN_SUBCATEGORIA = "Sin subcategoría";
+
 export type CostoDeMarca = {
   idCosto: string;
   idProducto: string;

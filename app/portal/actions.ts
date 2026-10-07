@@ -5,7 +5,7 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionMarca } from "@/lib/marcaSesion";
 import { calcularRendicion } from "@/app/(app)/liquidaciones/actions";
 import { fechaHoraArgentina } from "@/lib/horarios";
-import { costosVigentes, guardarCosto, type CostoDeMarca } from "@/lib/costosMarca";
+import { costosVigentes, guardarCosto, SIN_SUBCATEGORIA, type CostoDeMarca } from "@/lib/costosMarca";
 import {
   condicionesDeMarca,
   tasasGeneralesParaSimular,
@@ -418,6 +418,12 @@ export type ProductoConMargen = {
   vigenteDesde: string | null;
   cargadoPor: "MARCA" | "WIIGO" | null;
   nombreQuienCargo: string | null;
+  /** Para agrupar la lista. Los que no tienen caen todos juntos al final. */
+  subcategoria: string;
+  /** Unidades en góndola, sumando todas las variantes del producto. */
+  stock: number;
+  /** Debajo de esto, WiiGo repone. Es el que avisa que queda poco. */
+  stockMinimo: number;
   /** La cuenta de una venta, medio por medio. Vacío si el producto no tiene precio. */
   porMedio: MargenSimulado[];
 };
@@ -425,6 +431,8 @@ export type ProductoConMargen = {
 export type MisCostosPortal = {
   productos: ProductoConMargen[];
   sinCosto: number;
+  /** Los que están por debajo del mínimo, agotados incluidos. */
+  sinStock: number;
 };
 
 export async function misCostosPortal(): Promise<MisCostosPortal | null> {
@@ -432,35 +440,78 @@ export async function misCostosPortal(): Promise<MisCostosPortal | null> {
   if (!sesion) return null;
 
   const supabase = getSupabaseServerClient();
-  const [{ data: productos }, costos, marca, tasas] = await Promise.all([
+  const [{ data: productos }, { data: subcats }, costos, marca, tasas] = await Promise.all([
     supabase
       .from("productos")
-      .select("id_producto, nombre, precio_venta")
+      .select("id_producto, nombre, precio_venta, id_subcategoria")
       .eq("id_marca", sesion.idMarca)
       .eq("estado", "ACTIVO")
       .order("nombre", { ascending: true }),
+    supabase.from("subcategorias").select("id_subcategoria, nombre").eq("id_marca", sesion.idMarca),
     costosVigentes(supabase, sesion.idMarca),
     condicionesDeMarca(supabase, sesion.idMarca),
     tasasGeneralesParaSimular(supabase),
   ]);
   if (!marca) return null;
 
+  const nombreSub = new Map(
+    (subcats ?? []).map((s) => [s.id_subcategoria as string, (s.nombre as string) ?? SIN_SUBCATEGORIA])
+  );
+
+  // El stock vive por variante, no por producto: un producto con tres sabores
+  // son tres renglones de `stock` que hay que sumar. El mínimo es el más alto
+  // de sus variantes — si una está por debajo, el producto está por debajo.
+  const idsProducto = (productos ?? []).map((p) => p.id_producto as string);
+  const { data: variantes } = idsProducto.length
+    ? await supabase
+        .from("variantes_producto")
+        .select("id_variante, id_producto, stock_minimo")
+        .in("id_producto", idsProducto)
+    : { data: [] };
+
+  const productoDeVariante = new Map<string, string>();
+  const minimoPorProducto = new Map<string, number>();
+  for (const v of variantes ?? []) {
+    const idP = v.id_producto as string;
+    productoDeVariante.set(v.id_variante as string, idP);
+    minimoPorProducto.set(idP, Math.max(minimoPorProducto.get(idP) ?? 0, (v.stock_minimo as number) ?? 0));
+  }
+
+  const idsVariante = [...productoDeVariante.keys()];
+  const { data: stock } = idsVariante.length
+    ? await supabase.from("stock").select("id_variante, cantidad").in("id_variante", idsVariante)
+    : { data: [] };
+
+  const stockPorProducto = new Map<string, number>();
+  for (const s of stock ?? []) {
+    const idP = productoDeVariante.get(s.id_variante as string);
+    if (idP) stockPorProducto.set(idP, (stockPorProducto.get(idP) ?? 0) + ((s.cantidad as number) ?? 0));
+  }
+
   const lista: ProductoConMargen[] = (productos ?? []).map((p) => {
-    const c = costos.get(p.id_producto as string) ?? null;
+    const id = p.id_producto as string;
+    const c = costos.get(id) ?? null;
     const precio = (p.precio_venta as number) ?? 0;
     return {
-      idProducto: p.id_producto as string,
+      idProducto: id,
       nombre: (p.nombre as string) ?? "Producto",
       precio,
       costo: c?.costo ?? null,
       vigenteDesde: c?.vigenteDesde ?? null,
       cargadoPor: c?.cargadoPor ?? null,
       nombreQuienCargo: c?.nombreQuienCargo ?? null,
+      subcategoria: nombreSub.get(p.id_subcategoria as string) ?? SIN_SUBCATEGORIA,
+      stock: stockPorProducto.get(id) ?? 0,
+      stockMinimo: minimoPorProducto.get(id) ?? 0,
       porMedio: precio > 0 ? simularMargen({ precio, costo: c?.costo ?? null, marca, tasas }) : [],
     };
   });
 
-  return { productos: lista, sinCosto: lista.filter((p) => p.costo == null).length };
+  return {
+    productos: lista,
+    sinCosto: lista.filter((p) => p.costo == null).length,
+    sinStock: lista.filter((p) => p.stock < p.stockMinimo || p.stock === 0).length,
+  };
 }
 
 /**
