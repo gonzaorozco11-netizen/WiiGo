@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import type {
   Producto,
   Marca,
@@ -565,24 +566,88 @@ function Field({
   );
 }
 
+/**
+ * Un porcentaje con un decimal, con coma.
+ *
+ * `toFixed(1)` escribe "83.3" con punto, y al lado de un "$3.927,19" se lee
+ * como de otro idioma. Acá el punto separa los miles y la coma los decimales,
+ * en toda la pantalla.
+ */
+const pct1 = (n: number) => (Math.round(n * 10) / 10).toLocaleString("es-AR");
+
+const ANCHO_AYUDA = 250;
+
+/**
+ * El globo de ayuda de la lupa.
+ *
+ * Va en un portal al body y posicionado a mano, no pegado a la lupa con
+ * `absolute`. Pegado se rompía de dos maneras: una lupa cerca del borde del
+ * modal mandaba medio globo afuera —se cortaba justo la mitad del texto— y
+ * dentro de una tabla el scroll del modal lo recortaba. Calculando la posición
+ * contra la ventana y limitándola a sus bordes, el globo entero se ve siempre,
+ * esté donde esté la lupa.
+ */
 function Ayuda({ texto }: { texto: string }) {
-  const [abierto, setAbierto] = useState(false);
+  const ref = useRef<HTMLButtonElement>(null);
+  const [pos, setPos] = useState<{ left: number; top: number; abajo: boolean } | null>(null);
+
+  function alternar() {
+    if (pos) {
+      setPos(null);
+      return;
+    }
+    const r = ref.current?.getBoundingClientRect();
+    if (!r) return;
+    const MARGEN = 8;
+    const left = Math.min(
+      Math.max(r.left + r.width / 2 - ANCHO_AYUDA / 2, MARGEN),
+      window.innerWidth - ANCHO_AYUDA - MARGEN
+    );
+    // Arriba de la lupa, salvo que contra el techo no entre.
+    const abajo = r.top < 130;
+    setPos({ left, top: abajo ? r.bottom + 6 : r.top - 6, abajo });
+  }
+
+  // Al scrollear, el globo quedaría flotando lejos de su lupa: se cierra.
+  useEffect(() => {
+    if (!pos) return;
+    const cerrar = () => setPos(null);
+    window.addEventListener("scroll", cerrar, true);
+    window.addEventListener("resize", cerrar);
+    return () => {
+      window.removeEventListener("scroll", cerrar, true);
+      window.removeEventListener("resize", cerrar);
+    };
+  }, [pos]);
+
   return (
-    <span className="relative inline-block ml-1 align-middle">
+    <span className="inline-block ml-1 align-middle">
       <button
+        ref={ref}
         type="button"
-        onClick={() => setAbierto((v) => !v)}
-        onBlur={() => setAbierto(false)}
+        onClick={alternar}
+        onBlur={() => setPos(null)}
         className="text-neutral-400 hover:text-accent"
         aria-label="Ayuda"
       >
         🔍
       </button>
-      {abierto && (
-        <span className="absolute z-20 left-1/2 -translate-x-1/2 bottom-full mb-1.5 w-56 bg-neutral-900 text-white text-xs font-normal leading-snug rounded-lg px-3 py-2 shadow-lg">
-          {texto}
-        </span>
-      )}
+      {pos &&
+        createPortal(
+          <span
+            style={{
+              position: "fixed",
+              left: pos.left,
+              top: pos.top,
+              width: ANCHO_AYUDA,
+              transform: pos.abajo ? undefined : "translateY(-100%)",
+            }}
+            className="z-[60] block bg-neutral-900 text-white text-xs font-normal leading-snug rounded-lg px-3 py-2 shadow-xl"
+          >
+            {texto}
+          </span>,
+          document.body
+        )}
     </span>
   );
 }
@@ -701,6 +766,9 @@ function PrecioDeMarca({
   /** Lo que WiiGo le factura a la marca por esa venta. */
   const comisionDe = (f: { comisionWiigo: number; ivaComision: number }) =>
     f.comisionWiigo + f.ivaComision;
+
+  /** Cuántas veces el costo de la marca es el precio de góndola. */
+  const markupDeLaMarca = (p: number) => (costo > 0 ? (p / costo - 1) * 100 : 0);
 
   /** Su ganancia sobre lo que recibe. Las dos puntas son plata que WiiGo conoce exacta. */
   const margenDeLaMarca =
@@ -830,6 +898,11 @@ function PrecioDeMarca({
             />
             <input type="hidden" name="precio_venta" value={precio || 0} />
             <p className="text-[11px] text-neutral-400 mt-1">
+              {costo > 0 && precio > 0 && (
+                <>
+                  Markup <b className="text-neutral-500">{pct1(markupDeLaMarca(precio))}%</b> ·{" "}
+                </>
+              )}
               Margen sobre lo que la marca recibe · IVA {iva.toLocaleString("es-AR")}% del producto
             </p>
           </div>
@@ -854,7 +927,14 @@ function PrecioDeMarca({
             />
             <input type="hidden" name="precio_efectivo" value={efectivo > 0 ? efectivo : ""} />
             <p className="text-[11px] text-neutral-400 mt-1">
-              Dejalo vacío si cobrás lo mismo de las dos formas
+              {costo > 0 && efectivo > 0 ? (
+                <>
+                  Markup <b className="text-neutral-500">{pct1(markupDeLaMarca(efectivo))}%</b>{" "}
+                  sobre el mismo costo
+                </>
+              ) : (
+                "Dejalo vacío si cobrás lo mismo de las dos formas"
+              )}
             </p>
           </div>
         </div>
@@ -1629,8 +1709,13 @@ function PrecioCalculadora({
             />
             <input type="hidden" name="precio_venta" value={precioRedondeado || 0} />
             <p className="text-[11px] text-neutral-400 mt-1">
+              {costoTotal > 0 && precioRedondeado > 0 && (
+                <>
+                  Markup <b className="text-neutral-500">{pct1(markup)}%</b> ·{" "}
+                </>
+              )}
               Otros costos {otrosCostos.toLocaleString("es-AR")}% · IVA {iva.toLocaleString("es-AR")}%
-              <Ayuda texto="Otros costos son Ingresos Brutos, la comisión de Mercado Pago y el impuesto al débito y crédito: es igual para todos los productos y se cambia en Configuración. El IVA es la alícuota del producto, y el precio de góndola ya lo incluye porque es lo que paga el cliente." />
+              <Ayuda texto="El markup es cuántas veces el costo es el precio final: Precio / Costo total − 1. Otros costos son Ingresos Brutos, la comisión de Mercado Pago y el impuesto al débito y crédito: es igual para todos los productos y se cambia en Configuración. El IVA es la alícuota del producto, y el precio de góndola ya lo incluye porque es lo que paga el cliente." />
             </p>
           </div>
           <div>
@@ -1648,7 +1733,17 @@ function PrecioCalculadora({
             />
             <input type="hidden" name="precio_efectivo" value={efectivo > 0 ? efectivoRedondeado : ""} />
             <p className="text-[11px] text-neutral-400 mt-1">
-              Dejalo vacío si cobrás lo mismo de las dos formas
+              {costoTotal > 0 && efectivoRedondeado > 0 ? (
+                <>
+                  Markup{" "}
+                  <b className="text-neutral-500">
+                    {pct1(markupDePrecio(efectivoRedondeado, costoTotal))}%
+                  </b>{" "}
+                  sobre el mismo costo
+                </>
+              ) : (
+                "Dejalo vacío si cobrás lo mismo de las dos formas"
+              )}
             </p>
           </div>
         </div>
@@ -1665,7 +1760,7 @@ function PrecioCalculadora({
           >
             {efectivoRedondeado >= precioRedondeado
               ? "⚠️ El precio en efectivo no es más barato que el de lista — revisalo, porque el cliente no va a ver ningún ahorro."
-              : `El cliente ahorra $${pesos(precioRedondeado - efectivoRedondeado)} pagando en efectivo (${offReal.toFixed(1)}% menos).`}
+              : `El cliente ahorra $${pesos(precioRedondeado - efectivoRedondeado)} pagando en efectivo (${pct1(offReal)}% menos).`}
           </p>
         )}
 
@@ -1679,8 +1774,8 @@ function PrecioCalculadora({
           {precioRedondeado > 0 && costoTotal > 0 && (
             <p className="text-[11px] text-blue-800 mt-1.5 leading-snug">
               {seRedondeo
-                ? `Redondeado para arriba desde $${pesos(precioSinRedondear)} — el margen queda en ${margenReal.toFixed(1)}%.`
-                : `Margen real ${margenReal.toFixed(1)}%.`}{" "}
+                ? `Redondeado para arriba desde $${pesos(precioSinRedondear)} — el margen queda en ${pct1(margenReal)}%.`
+                : `Margen real ${pct1(margenReal)}%.`}{" "}
               Es el mismo precio que va a cobrar el tótem y el que sale en el cartel.
             </p>
           )}
@@ -1757,7 +1852,7 @@ function PrecioCalculadora({
                     <>
                       El descuento de contado te cuesta{" "}
                       <b className="text-amber-700">${pesos(ganancia - quedaContado)}</b> por unidad.
-                      Hasta <b>${pesos(precioMismaGanancia)}</b> ({offGratis.toFixed(1)}% menos)
+                      Hasta <b>${pesos(precioMismaGanancia)}</b> ({pct1(offGratis)}% menos)
                       ganás lo mismo que con tarjeta.
                     </>
                   )
@@ -1766,7 +1861,7 @@ function PrecioCalculadora({
                     Todavía no cargaste precio en efectivo. Cobrando lo mismo te quedarían{" "}
                     <b className="text-teal-700">${pesos(quedaContado)}</b> —$
                     {pesos(quedaContado - ganancia)} más— porque no pagás la comisión de Mercado
-                    Pago. Hasta <b>${pesos(precioMismaGanancia)}</b> ({offGratis.toFixed(1)}% menos)
+                    Pago. Hasta <b>${pesos(precioMismaGanancia)}</b> ({pct1(offGratis)}% menos)
                     ganás igual que con tarjeta.
                   </>
                 )}
@@ -1782,7 +1877,7 @@ function PrecioCalculadora({
 
       {margenBajo && (
         <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-          ⚠️ Margen bajo: {margen.toFixed(1)}%. Te quedan ${pesos(ganancia)} por unidad. El mínimo recomendado es{" "}
+          ⚠️ Margen bajo: {pct1(margen)}%. Te quedan ${pesos(ganancia)} por unidad. El mínimo recomendado es{" "}
           {margenMinimo}% para que el producto aguante el alquiler, los sueldos y la luz — ajustable en Configuración.
         </p>
       )}
