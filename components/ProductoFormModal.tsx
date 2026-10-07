@@ -1050,29 +1050,105 @@ function RepartoMarca({
   );
 }
 
-// Una línea del reparto del precio. Al lado del monto va el % del precio final,
-// que es lo que deja comparar dos productos de precios distintos.
-function Reparto({
-  etiqueta,
-  monto,
-  total,
+/**
+ * El reparto de un precio de marca propia, con la dona.
+ *
+ * Se arma dos veces por producto —una por tarjeta y otra por efectivo— porque
+ * entre las dos no cambia solo el precio: en efectivo no hay comisión de
+ * Mercado Pago, así que el porcentaje de "otros costos" también es otro. Verlo
+ * dos veces es lo que convierte el descuento de contado en una decisión con la
+ * plata adelante.
+ */
+function RepartoConDona({
+  titulo,
+  precio,
+  costo,
+  extra,
+  otros,
+  iva,
   pesos,
-  destacado = false,
+  pie,
 }: {
-  etiqueta: string;
-  monto: number;
-  total: number;
+  titulo: string;
+  precio: number;
+  costo: number;
+  extra: number;
+  otros: number;
+  iva: number;
   pesos: (n: number) => string;
-  destacado?: boolean;
+  pie?: string;
 }) {
-  const share = total > 0 ? (monto / total) * 100 : 0;
+  const neto = precio / (1 + iva / 100);
+  const montoIva = precio - neto;
+  const cobrar = neto * (otros / 100);
+  const queda = neto - costo - extra - cobrar;
+  const margen = neto > 0 ? (queda / neto) * 100 : 0;
+  const pct = (v: number) => (precio > 0 ? (v / precio) * 100 : 0);
+  const mercaderia = costo + extra;
+
   return (
-    <div className="flex items-baseline justify-between gap-3 text-xs">
-      <span className={destacado ? "font-semibold text-emerald-800" : "text-neutral-600"}>{etiqueta}</span>
-      <span className="flex items-baseline gap-2 tabular-nums">
-        <span className="text-[11px] text-neutral-400">{share.toFixed(1)}%</span>
-        <span className={destacado ? "font-semibold text-emerald-800" : "text-neutral-800"}>${pesos(monto)}</span>
-      </span>
+    <div className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-3 space-y-1 mt-3">
+      <p className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wide mb-1">{titulo}</p>
+
+      <DonaReparto
+        partes={[
+          { color: "#64748b", monto: mercaderia },
+          { color: "#c2843a", monto: cobrar },
+          { color: "#a8b2bf", monto: montoIva },
+          { color: "#0d9488", monto: queda },
+        ]}
+        centro={`$${pesos(queda)}`}
+        pie="te queda a vos"
+      />
+
+      <RepartoMarca
+        color="#64748b"
+        etiqueta={extra > 0 ? "Mercadería y bolsita" : "Costo mercadería"}
+        monto={mercaderia}
+        pct={pct(mercaderia)}
+        pesos={pesos}
+      />
+      <RepartoMarca
+        color="#c2843a"
+        etiqueta="Costos de cobrar"
+        ayuda={`Ingresos Brutos, la comisión de Mercado Pago y el impuesto al débito y crédito. Acá van ${otros.toLocaleString(
+          "es-AR"
+        )}% — en efectivo es menos, porque no pagás la comisión de Mercado Pago.`}
+        monto={cobrar}
+        pct={pct(cobrar)}
+        pesos={pesos}
+      />
+      <RepartoMarca
+        color="#a8b2bf"
+        etiqueta="IVA"
+        ayuda="Lo cobrás con la venta y lo depositás en ARCA. Contra eso descontás el IVA de lo que comprás, así que lo que terminás pagando es menos."
+        monto={montoIva}
+        pct={pct(montoIva)}
+        pesos={pesos}
+      />
+      <RepartoMarca
+        color="#0d9488"
+        etiqueta="Te queda a vos"
+        monto={queda}
+        pct={pct(queda)}
+        pesos={pesos}
+        tono="suyo"
+      />
+
+      <div className="pt-2 border-t border-neutral-200 mt-2">
+        <p className="text-xs text-neutral-700">
+          Por cada unidad vendida, <b>te quedan ${pesos(queda)}</b>:
+        </p>
+        <p className="text-xs text-neutral-600 mt-0.5">
+          <b className="text-emerald-700">{(Math.round(margen * 10) / 10).toLocaleString("es-AR")}%</b> de la
+          venta sin IVA ·{" "}
+          <b className="text-emerald-700">{(Math.round(pct(queda) * 10) / 10).toLocaleString("es-AR")}%</b> de lo
+          que paga el cliente
+        </p>
+        <p className="text-[11px] text-neutral-400 mt-1">
+          {pie ?? "Antes del alquiler, los sueldos y la luz, que no salen de este producto sino del mes."}
+        </p>
+      </div>
     </div>
   );
 }
@@ -1439,30 +1515,41 @@ function PrecioCalculadora({
           </div>
         </div>
 
+        {/* Dos repartos, uno por forma de cobro. El de efectivo no es el mismo
+            con otro número: cambian el precio (si hay uno de contado) Y los
+            costos, porque en efectivo no hay comisión de Mercado Pago. Verlos
+            juntos es lo que deja decidir el descuento de contado con la plata
+            adelante en vez de a ojo. */}
         {precioRedondeado > 0 && costoTotal > 0 && (
-          <div className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 space-y-1">
-            <p className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wide">
-              De los ${pesos(precioRedondeado)} que paga el cliente
-            </p>
-            <Reparto etiqueta="Mercadería" monto={costo} total={precioRedondeado} pesos={pesos} />
-            {extra > 0 && (
-              <Reparto etiqueta="Bolsita y etiqueta" monto={extra} total={precioRedondeado} pesos={pesos} />
-            )}
-            <Reparto
-              etiqueta="Costos de cobrar"
-              monto={costosDeCobrar}
-              total={precioRedondeado}
+          <>
+            <RepartoConDona
+              titulo={`De los $${pesos(precioRedondeado)} que paga el cliente · tarjeta o QR`}
+              precio={precioRedondeado}
+              costo={costo}
+              extra={extra}
+              otros={otrosCostos}
+              iva={iva}
               pesos={pesos}
             />
-            <Reparto etiqueta="IVA" monto={montoIva} total={precioRedondeado} pesos={pesos} />
-            <Reparto
-              etiqueta="Te queda a vos"
-              monto={ganancia}
-              total={precioRedondeado}
+            <RepartoConDona
+              titulo={
+                efectivoRedondeado > 0
+                  ? `Pagando en efectivo · $${pesos(efectivoRedondeado)}`
+                  : `Si pagara en efectivo · $${pesos(precioRedondeado)}`
+              }
+              precio={efectivoRedondeado > 0 ? efectivoRedondeado : precioRedondeado}
+              costo={costo}
+              extra={extra}
+              otros={otrosCostosEfectivo}
+              iva={iva}
               pesos={pesos}
-              destacado
+              pie={
+                efectivoRedondeado > 0
+                  ? undefined
+                  : "Todavía no cargaste precio en efectivo. Esto es lo que te quedaría cobrando lo mismo: más, porque no pagás la comisión de Mercado Pago."
+              }
             />
-          </div>
+          </>
         )}
       </div>
 
