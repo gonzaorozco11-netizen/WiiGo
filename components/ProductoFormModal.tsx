@@ -21,7 +21,12 @@ import {
   formatearCodigo,
 } from "@/lib/codigos";
 import EscanerCodigo from "@/components/EscanerCodigo";
-import { simularMargen, type TasasGenerales, type CondicionesMarca } from "@/lib/margenMarca";
+import {
+  simularMargen,
+  type TasasGenerales,
+  type CondicionesMarca,
+  type MargenSimulado,
+} from "@/lib/margenMarca";
 
 type VarianteForm = {
   id: string;
@@ -644,7 +649,26 @@ function PrecioDeMarca({
 
   const filas = precio > 0 ? simularMargen({ precio, costo: costo || null, marca: condiciones, tasas }) : [];
   const fila = filas.find((f) => f.medio === medio) ?? filas[0];
-  const enEfectivo = filas.find((f) => f.medio === "EFECTIVO");
+
+  // El precio de contado es otro precio, no el mismo con otra retención: si hay
+  // uno cargado, la columna de efectivo se simula sobre ÉL. Simularla sobre el
+  // de lista mostraría una ganancia que la marca nunca va a cobrar.
+  const precioContado = efectivo > 0 ? efectivo : precio;
+  const filasContado =
+    precioContado === precio
+      ? filas
+      : precioContado > 0
+        ? simularMargen({ precio: precioContado, costo: costo || null, marca: condiciones, tasas })
+        : [];
+  const enEfectivo = filasContado.find((f) => f.medio === "EFECTIVO");
+
+  // Si está elegido "efectivo" y no hay precio de contado, las dos columnas
+  // serían idénticas: se muestra crédito del otro lado, que es la comparación
+  // que importa.
+  const filaIzq =
+    (medio === "EFECTIVO" && precioContado === precio
+      ? filas.find((f) => f.medio === "CREDITO")
+      : fila) ?? filas[0];
 
   // Escribir el margen que quiere la marca y que salga el precio. Es la inversa
   // de la cuenta de abajo: si margen = (T − costo) / T y T = precio × (1 − d),
@@ -657,10 +681,6 @@ function PrecioDeMarca({
   }
   const pesos = (n: number) =>
     n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const pct = (v: number) => (precio > 0 ? (v / precio) * 100 : 0);
-
-  const deWiigo = fila ? fila.comisionWiigo + fila.ivaComision : 0;
-  const deBanco = fila ? fila.comisionMp + fila.impCreditos + fila.impDebitos : 0;
 
   // Lo que le queda a la marca: lo que se le transfiere menos lo que le costó.
   //
@@ -676,6 +696,50 @@ function PrecioDeMarca({
   /** Su ganancia sobre lo que recibe. Las dos puntas son plata que WiiGo conoce exacta. */
   const margenDeLaMarca =
     fila && costo > 0 && fila.leTransferimos > 0 ? (ganancia / fila.leTransferimos) * 100 : 0;
+
+  /**
+   * Los cinco pedazos de un producto de marca, y suman el precio exacto.
+   *
+   * Sin pedazo de IVA, al revés que en un producto propio: WiiGo le factura a
+   * ELLA la comisión —no al revés— así que cuánto IVA le toca depende de cómo
+   * facture, y si es monotributista no discrimina ninguno. Un IVA supuesto le
+   * mostraría una ganancia más chica que la real por una cuenta que nadie hizo.
+   */
+  function partesDeMarca(f: MargenSimulado): ParteReparto[] {
+    const cobrar = f.comisionMp + f.impCreditos + f.impDebitos;
+    return [
+      { etiqueta: "Costo mercadería", color: COLOR_REPARTO.mercaderia, monto: costo },
+      {
+        etiqueta: "Comisión WiiGo + IVA",
+        color: COLOR_REPARTO.wiigo,
+        monto: f.comisionWiigo + f.ivaComision,
+      },
+      {
+        etiqueta: "Otros costos",
+        color: COLOR_REPARTO.cobrar,
+        monto: cobrar,
+        ayuda: "Lo que se va en cobrar: la comisión de Mercado Pago y el impuesto a los créditos. Si alguna vez se le traslada el impuesto a los débitos, también entra acá. En efectivo no hay ninguno.",
+      },
+      {
+        etiqueta: "SIRCREB",
+        color: COLOR_REPARTO.retencion,
+        // Sin prometer que vuelve. Que se devuelva o se compense es una
+        // decisión comercial que todavía no está tomada, y una pantalla no es
+        // el lugar para comprometerla.
+        ayuda: "Retención impositiva sobre la venta.",
+        monto: f.sircreb,
+      },
+      { etiqueta: "Le queda a la marca", color: COLOR_REPARTO.queda, monto: gananciaDe(f) },
+    ];
+  }
+
+  /** Para el sello: "QR · dinero en cuenta" no entra en una pastilla. */
+  const CORTO: Record<string, string> = {
+    EFECTIVO: "Efectivo",
+    DINERO_CUENTA: "QR",
+    DEBITO: "Débito",
+    CREDITO: "Crédito",
+  };
 
   return (
     <div className="border border-neutral-200 rounded-xl p-4 space-y-3">
@@ -781,82 +845,57 @@ function PrecioDeMarca({
           </div>
         </div>
 
-        {fila && costo > 0 && (
+        {fila && filaIzq && enEfectivo && costo > 0 && (
           <>
-            <div className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-3 space-y-1">
-              <p className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wide mb-1">
-                De los ${pesos(precio)} que paga el cliente · {fila.etiqueta.toLowerCase()}
-              </p>
+            <PanelReparto
+              titulo={`A dónde va cada peso que paga el cliente · ${marca.nombre}`}
+              izquierda={{
+                etiqueta: CORTO[filaIzq.medio] ?? filaIzq.etiqueta,
+                icono: filaIzq.medio === "EFECTIVO" ? "efectivo" : "tarjeta",
+                precio: filaIzq.precio,
+                partes: partesDeMarca(filaIzq),
+                queda: gananciaDe(filaIzq),
+                margen:
+                  filaIzq.leTransferimos > 0 ? (gananciaDe(filaIzq) / filaIzq.leTransferimos) * 100 : 0,
+                baseMargen: "de lo que recibe",
+              }}
+              derecha={{
+                etiqueta: "Efectivo",
+                icono: "efectivo",
+                precio: enEfectivo.precio,
+                partes: partesDeMarca(enEfectivo),
+                queda: gananciaDe(enEfectivo),
+                margen:
+                  enEfectivo.leTransferimos > 0
+                    ? (gananciaDe(enEfectivo) / enEfectivo.leTransferimos) * 100
+                    : 0,
+                baseMargen: "de lo que recibe",
+              }}
+              pie={
+                <>
+                  Por cada unidad, a <b>{marca.nombre}</b> le quedan{" "}
+                  <b className="text-teal-700">${pesos(gananciaDe(enEfectivo))}</b> en efectivo y{" "}
+                  <b>${pesos(gananciaDe(filaIzq))}</b> con{" "}
+                  {(CORTO[filaIzq.medio] ?? filaIzq.etiqueta).toLowerCase()}
+                  {Math.abs(gananciaDe(enEfectivo) - gananciaDe(filaIzq)) > 0.5 && (
+                    <>
+                      {" "}
+                      —<b>${pesos(Math.abs(gananciaDe(enEfectivo) - gananciaDe(filaIzq)))}</b> de
+                      diferencia por el mismo producto, y tu comisión casi no cambia
+                    </>
+                  )}
+                  .
+                  <span className="block text-[11px] text-neutral-400 mt-1 leading-relaxed">
+                    Ya tiene descontado todo lo de arriba. De ahí todavía salen{" "}
+                    <b>los impuestos y los gastos de {marca.nombre}</b> —su IVA según cómo facture,
+                    Ingresos Brutos, alquiler, sueldos— que WiiGo no conoce y no calcula.
+                  </span>
+                </>
+              }
+            />
 
-              <DonaReparto
-                partes={[
-                  { color: "#64748b", monto: costo },
-                  { color: "#2563eb", monto: deWiigo },
-                  { color: "#c2843a", monto: deBanco },
-                  { color: "#b4bcc6", monto: fila.sircreb },
-                  { color: "#0d9488", monto: ganancia },
-                ]}
-                centro={`$${pesos(ganancia)}`}
-                pie={`de ganancia para ${marca.nombre}`}
-              />
-
-              <RepartoMarca color="#64748b" etiqueta="Costo mercadería" monto={costo} pct={pct(costo)} pesos={pesos} />
-              <RepartoMarca color="#2563eb" etiqueta="Comisión WiiGo + IVA" monto={deWiigo} pct={pct(deWiigo)} pesos={pesos} tono="mio" />
-              {deBanco > 0 && (
-                <RepartoMarca
-                  color="#c2843a"
-                  etiqueta="Otros costos"
-                  ayuda="Lo que se va en cobrar: la comisión de Mercado Pago y el impuesto a los créditos. Si alguna vez se le traslada el impuesto a los débitos, también entra acá. En efectivo no hay ninguno."
-                  monto={deBanco}
-                  pct={pct(deBanco)}
-                  pesos={pesos}
-                />
-              )}
-              {fila.sircreb > 0 && (
-                <RepartoMarca
-                  color="#b4bcc6"
-                  etiqueta="SIRCREB"
-                  // Sin prometer que vuelve. Que se devuelva o se compense es
-                  // una decisión comercial que todavía no está tomada, y una
-                  // pantalla no es el lugar para comprometerla.
-                  ayuda="Retención impositiva sobre la venta."
-                  monto={fila.sircreb}
-                  pct={pct(fila.sircreb)}
-                  pesos={pesos}
-                />
-              )}
-              <RepartoMarca
-                color="#0d9488"
-                etiqueta="Le queda a la marca"
-                ayuda={`Lo que se le transfiere ($${pesos(
-                  fila.leTransferimos
-                )}) menos lo que le costó el producto. De ahí salen sus propios impuestos, que dependen de cómo facture — WiiGo no los calcula.`}
-                monto={ganancia}
-                pct={pct(ganancia)}
-                pesos={pesos}
-                tono="suyo"
-              />
-
-              {/* El mismo número en las dos bases que la gente usa, para que no
-                  haya que elegir cuál mirar ni adivinar sobre qué es. */}
-              <div className="pt-2 border-t border-neutral-200 mt-2">
-                <p className="text-xs text-neutral-700">
-                  Por cada unidad vendida, a <b>{marca.nombre} le quedan ${pesos(ganancia)}</b>:
-                </p>
-                <p className="text-xs text-neutral-600 mt-0.5">
-                  <b className="text-emerald-700">{(Math.round(margenDeLaMarca * 10) / 10).toLocaleString("es-AR")}%</b>{" "}
-                  de lo que recibe ·{" "}
-                  <b className="text-emerald-700">{(Math.round(pct(ganancia) * 10) / 10).toLocaleString("es-AR")}%</b>{" "}
-                  de lo que paga el cliente
-                </p>
-                <p className="text-[11px] text-neutral-400 mt-1 leading-relaxed">
-                  Ya tiene descontado todo lo que se ve arriba. De ahí todavía salen{" "}
-                  <b>los impuestos y los gastos de {marca.nombre}</b> —su IVA según cómo facture,
-                  Ingresos Brutos, alquiler, sueldos— que WiiGo no conoce y no calcula.
-                </p>
-              </div>
-            </div>
-
+            {/* La tabla también elige qué forma de cobro se compara arriba: se
+                toca un renglón y la columna izquierda cambia. */}
             <table className="w-full text-xs tabular-nums">
               <thead>
                 <tr className="text-[10px] uppercase tracking-wide text-neutral-400">
@@ -893,14 +932,10 @@ function PrecioDeMarca({
                 ))}
               </tbody>
             </table>
-
-            {enEfectivo && gananciaDe(enEfectivo) > ganancia && (
-              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                Entre efectivo y {fila.etiqueta.toLowerCase()} hay{" "}
-                <b>${pesos(gananciaDe(enEfectivo) - ganancia)} de diferencia</b> en lo que gana{" "}
-                {marca.nombre}, con el mismo producto al mismo precio. Tu comisión casi no cambia.
-              </p>
-            )}
+            <p className="text-[11px] text-neutral-400 -mt-1">
+              Todas al precio de góndola de ${pesos(precio)}. Tocá una para compararla arriba contra
+              el efectivo.
+            </p>
           </>
         )}
 
@@ -956,199 +991,230 @@ function PrecioDeMarca({
   );
 }
 
+/** Los colores del reparto, en un solo lugar: los usan la dona y la tabla. */
+const COLOR_REPARTO = {
+  mercaderia: "#64748b",
+  wiigo: "#2563eb",
+  cobrar: "#d97706",
+  retencion: "#b4bcc6",
+  iva: "#cbd5e1",
+  queda: "#0d9488",
+} as const;
+
+/** Lo que mide un pedazo del reparto. Mismo objeto para la dona y la tabla. */
+type ParteReparto = { etiqueta: string; color: string; monto: number; ayuda?: string };
+
 /**
- * El reparto del precio como una dona, con el monto que le queda a la marca en
- * el centro.
+ * Una forma de cobro con su reparto completo, para comparar dos al lado.
+ *
+ * `margen` y `baseMargen` viajan juntos porque la base cambia según de quién
+ * sea el producto: en marca propia es la venta sin IVA y en consignación es lo
+ * que la marca recibe. Mostrar un % sin decir sobre qué es la confusión más
+ * cara de esta pantalla.
+ */
+type Escena = {
+  etiqueta: string;
+  icono: "tarjeta" | "efectivo";
+  precio: number;
+  partes: ParteReparto[];
+  queda: number;
+  margen: number;
+  baseMargen: string;
+};
+
+/**
+ * El reparto del precio como una dona.
  *
  * Dona y no barra porque los pedazos son partes de un todo y una dona lo dice
- * sin leer: el agujero del medio sirve para poner el número que importa, y el
- * pedazo verde se compara contra la vuelta entera de un vistazo.
+ * sin leer: el agujero del medio sirve para el número que importa, y el pedazo
+ * verde se compara contra la vuelta entera de un vistazo.
  *
- * SVG a mano y sin librería: son cinco arcos sobre un círculo, y meter una
+ * Con un hueco entre pedazos y las puntas redondeadas: pegados se leían como un
+ * solo anillo partido en vez de como cuatro cosas. El anillo gris de atrás
+ * sostiene el círculo cuando algún pedazo da cero.
+ *
+ * SVG a mano y sin librería: son unos arcos sobre un círculo, y traer una
  * dependencia de gráficos para esto sería más código del que ahorra.
  */
-function DonaReparto({
-  partes,
-  centro,
-  pie,
-}: {
-  partes: { color: string; monto: number }[];
-  centro: string;
-  pie: string;
-}) {
-  const total = partes.reduce((a, p) => a + Math.max(p.monto, 0), 0);
-  const R = 54;
+function Dona({ partes, centro }: { partes: ParteReparto[]; centro: string }) {
+  const R = 47;
   const C = 2 * Math.PI * R;
+  const HUECO = C * (2.2 / 360);
+  const total = partes.reduce((a, p) => a + Math.max(p.monto, 0), 0);
   let acumulado = 0;
 
   return (
-    <div className="flex items-center justify-center py-1">
-      <div className="relative" style={{ width: 150, height: 150 }}>
-        <svg viewBox="0 0 150 150" width="150" height="150" aria-hidden="true">
-          {/* Arranca arriba y gira como un reloj: es como se lee una torta. */}
-          <g transform="rotate(-90 75 75)">
-            {partes.map((p, i) => {
-              const porcion = total > 0 ? Math.max(p.monto, 0) / total : 0;
-              const largo = porcion * C;
-              const offset = -acumulado * C;
-              acumulado += porcion;
-              return (
-                <circle
-                  key={i}
-                  cx="75"
-                  cy="75"
-                  r={R}
-                  fill="none"
-                  stroke={p.color}
-                  strokeWidth="21"
-                  strokeDasharray={`${largo} ${C - largo}`}
-                  strokeDashoffset={offset}
-                />
-              );
-            })}
-          </g>
-        </svg>
-        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-          <span className="text-[17px] font-bold text-emerald-700 tabular-nums leading-none">{centro}</span>
-          <span className="text-[10px] text-neutral-500 mt-1 text-center px-6 leading-tight">{pie}</span>
-        </div>
+    <div className="relative mx-auto mt-2" style={{ width: 132, height: 132 }}>
+      <svg viewBox="0 0 132 132" width="132" height="132" aria-hidden="true" className="block">
+        <circle cx="66" cy="66" r={R} fill="none" stroke="#f1f1f0" strokeWidth="16" />
+        {/* Arranca arriba y gira como un reloj: es como se lee una torta. */}
+        <g transform="rotate(-90 66 66)">
+          {partes.map((p, i) => {
+            const porcion = total > 0 ? Math.max(p.monto, 0) / total : 0;
+            const largo = Math.max(porcion * C - HUECO, 0.1);
+            const offset = -(acumulado * C + HUECO / 2);
+            acumulado += porcion;
+            return (
+              <circle
+                key={i}
+                cx="66"
+                cy="66"
+                r={R}
+                fill="none"
+                stroke={p.color}
+                strokeWidth="16"
+                strokeLinecap="round"
+                strokeDasharray={`${largo} ${C - largo}`}
+                strokeDashoffset={offset}
+                style={{ transition: "stroke-dasharray .35s cubic-bezier(.4,0,.2,1), stroke-dashoffset .35s cubic-bezier(.4,0,.2,1)" }}
+              />
+            );
+          })}
+        </g>
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+        <span className="text-[17px] font-bold text-teal-700 tabular-nums leading-none tracking-tight">
+          {centro}
+        </span>
+        <span className="text-[9px] text-neutral-400 mt-1 uppercase tracking-wider font-semibold">
+          te queda
+        </span>
       </div>
-    </div>
-  );
-}
-
-function RepartoMarca({
-  color,
-  etiqueta,
-  ayuda,
-  monto,
-  pct,
-  pesos,
-  tono,
-}: {
-  color: string;
-  etiqueta: string;
-  ayuda?: string;
-  monto: number;
-  pct: number;
-  pesos: (n: number) => string;
-  tono?: "mio" | "suyo";
-}) {
-  const clase = tono === "mio" ? "text-accent font-semibold" : tono === "suyo" ? "text-emerald-700 font-semibold" : "text-neutral-600";
-  return (
-    <div className="flex items-baseline justify-between gap-3 text-xs">
-      <span className={`flex items-center gap-2 ${clase}`}>
-        <i className="w-2.5 h-2.5 rounded-sm block flex-none" style={{ background: color }} />
-        {etiqueta}
-        {ayuda && <Ayuda texto={ayuda} />}
-      </span>
-      <span className="flex items-baseline gap-2 tabular-nums">
-        <span className="text-[11px] text-neutral-400">{pct.toFixed(1)}%</span>
-        <span className={clase}>${pesos(monto)}</span>
-      </span>
     </div>
   );
 }
 
 /**
- * El reparto de un precio de marca propia, con la dona.
+ * El sello de una forma de cobro.
  *
- * Se arma dos veces por producto —una por tarjeta y otra por efectivo— porque
- * entre las dos no cambia solo el precio: en efectivo no hay comisión de
- * Mercado Pago, así que el porcentaje de "otros costos" también es otro. Verlo
- * dos veces es lo que convierte el descuento de contado en una decisión con la
- * plata adelante.
+ * Contorneado el que deja menos; relleno y con tilde el que deja más. La
+ * comparación se resuelve sin leer un número — que es justo lo que no pasaba
+ * con dos donas apiladas.
  */
-function RepartoConDona({
+function Sello({ texto, icono, gana }: { texto: string; icono: "tarjeta" | "efectivo"; gana: boolean }) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[9.5px] font-bold uppercase tracking-[.09em] leading-none transition-all duration-200 ${
+        gana
+          ? "bg-teal-700 border-teal-700 text-white shadow-[0_1px_2px_rgba(15,118,110,.18),0_5px_12px_-4px_rgba(15,118,110,.45)]"
+          : "bg-white border-neutral-200 text-neutral-400"
+      }`}
+    >
+      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="flex-none">
+        {icono === "tarjeta" ? (
+          <>
+            <rect x="1.5" y="3.5" width="13" height="9" rx="2" />
+            <path d="M1.5 6.75h13" />
+          </>
+        ) : (
+          <>
+            <rect x="1.5" y="4" width="13" height="8" rx="1.5" />
+            <circle cx="8" cy="8" r="1.9" />
+          </>
+        )}
+      </svg>
+      {texto}
+      {gana && (
+        <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.2"
+          strokeLinecap="round" strokeLinejoin="round" className="flex-none">
+          <path d="M2.5 6.4l2.4 2.4 4.6-5" />
+        </svg>
+      )}
+    </span>
+  );
+}
+
+/**
+ * Las dos formas de cobro, lado a lado.
+ *
+ * Lado a lado y no apiladas: dos donas una debajo de la otra se ven casi
+ * iguales, y lo único que importa —cuál deja más— había que calcularlo de
+ * memoria mientras se scrolleaba.
+ *
+ * Lo usan los dos calculadores, el de marca propia y el de consignación. Lo que
+ * cambia entre ellos son los pedazos, no la forma de mostrarlos.
+ */
+function PanelReparto({
   titulo,
-  precio,
-  costo,
-  extra,
-  otros,
-  iva,
-  pesos,
+  izquierda,
+  derecha,
   pie,
 }: {
   titulo: string;
-  precio: number;
-  costo: number;
-  extra: number;
-  otros: number;
-  iva: number;
-  pesos: (n: number) => string;
-  pie?: string;
+  izquierda: Escena;
+  derecha: Escena;
+  pie: React.ReactNode;
 }) {
-  const neto = precio / (1 + iva / 100);
-  const montoIva = precio - neto;
-  const cobrar = neto * (otros / 100);
-  const queda = neto - costo - extra - cobrar;
-  const margen = neto > 0 ? (queda / neto) * 100 : 0;
-  const pct = (v: number) => (precio > 0 ? (v / precio) * 100 : 0);
-  const mercaderia = costo + extra;
+  const pesos = (n: number) =>
+    n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const entero = (n: number) => `$${Math.round(n).toLocaleString("es-AR")}`;
+  const un = (n: number) => (Math.round(n * 10) / 10).toLocaleString("es-AR");
+  const ganaDerecha = derecha.queda > izquierda.queda;
+
+  const columna = (e: Escena, gana: boolean) => (
+    <div className={`px-2 pt-4 pb-3 text-center transition-colors duration-200 ${gana ? "bg-teal-50" : ""}`}>
+      <Sello texto={e.etiqueta} icono={e.icono} gana={gana} />
+      <Dona partes={e.partes} centro={entero(e.queda)} />
+      <p className="text-[11.5px] text-neutral-600 mt-2 tabular-nums">cobrás ${pesos(e.precio)}</p>
+      <p className="text-[11px] text-neutral-400 mt-0.5">
+        margen {un(e.margen)}% {e.baseMargen}
+      </p>
+    </div>
+  );
 
   return (
-    <div className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-3 space-y-1 mt-3">
-      <p className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wide mb-1">{titulo}</p>
+    <div className="mt-3 border border-neutral-200 rounded-xl overflow-hidden">
+      <p className="px-4 py-2.5 bg-neutral-50 border-b border-neutral-200 text-[10.5px] font-bold uppercase tracking-wider text-neutral-400">
+        {titulo}
+      </p>
 
-      <DonaReparto
-        partes={[
-          { color: "#64748b", monto: mercaderia },
-          { color: "#c2843a", monto: cobrar },
-          { color: "#a8b2bf", monto: montoIva },
-          { color: "#0d9488", monto: queda },
-        ]}
-        centro={`$${pesos(queda)}`}
-        pie="te queda a vos"
-      />
-
-      <RepartoMarca
-        color="#64748b"
-        etiqueta={extra > 0 ? "Mercadería y bolsita" : "Costo mercadería"}
-        monto={mercaderia}
-        pct={pct(mercaderia)}
-        pesos={pesos}
-      />
-      <RepartoMarca
-        color="#c2843a"
-        etiqueta="Costos de cobrar"
-        ayuda={`Ingresos Brutos, la comisión de Mercado Pago y el impuesto al débito y crédito. Acá van ${otros.toLocaleString(
-          "es-AR"
-        )}% — en efectivo es menos, porque no pagás la comisión de Mercado Pago.`}
-        monto={cobrar}
-        pct={pct(cobrar)}
-        pesos={pesos}
-      />
-      <RepartoMarca
-        color="#a8b2bf"
-        etiqueta="IVA"
-        ayuda="Lo cobrás con la venta y lo depositás en ARCA. Contra eso descontás el IVA de lo que comprás, así que lo que terminás pagando es menos."
-        monto={montoIva}
-        pct={pct(montoIva)}
-        pesos={pesos}
-      />
-      <RepartoMarca
-        color="#0d9488"
-        etiqueta="Te queda a vos"
-        monto={queda}
-        pct={pct(queda)}
-        pesos={pesos}
-        tono="suyo"
-      />
-
-      <div className="pt-2 border-t border-neutral-200 mt-2">
-        <p className="text-xs text-neutral-700">
-          Por cada unidad vendida, <b>te quedan ${pesos(queda)}</b>:
-        </p>
-        <p className="text-xs text-neutral-600 mt-0.5">
-          <b className="text-emerald-700">{(Math.round(margen * 10) / 10).toLocaleString("es-AR")}%</b> de la
-          venta sin IVA ·{" "}
-          <b className="text-emerald-700">{(Math.round(pct(queda) * 10) / 10).toLocaleString("es-AR")}%</b> de lo
-          que paga el cliente
-        </p>
-        <p className="text-[11px] text-neutral-400 mt-1">
-          {pie ?? "Antes del alquiler, los sueldos y la luz, que no salen de este producto sino del mes."}
-        </p>
+      <div className="grid grid-cols-2 divide-x divide-neutral-200">
+        {columna(izquierda, !ganaDerecha)}
+        {columna(derecha, ganaDerecha)}
       </div>
+
+      <table className="w-full text-xs tabular-nums">
+        <thead>
+          <tr className="bg-neutral-50 border-y border-neutral-200 text-[9.5px] uppercase tracking-wider text-neutral-400">
+            <th className="text-left font-bold px-4 py-2">Cada peso va a</th>
+            <th className="text-right font-bold px-4 py-2">{izquierda.etiqueta}</th>
+            <th className="text-right font-bold px-4 py-2">{derecha.etiqueta}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {izquierda.partes.map((p, i) => {
+            const esQueda = i === izquierda.partes.length - 1;
+            const der = derecha.partes[i];
+            return (
+              <tr
+                key={p.etiqueta}
+                className={esQueda ? "bg-teal-50 text-teal-700 font-bold" : "border-b border-neutral-50"}
+              >
+                <td className="px-4 py-1.5">
+                  <span className="flex items-center gap-2">
+                    <i className="w-2.5 h-2.5 rounded-sm block flex-none" style={{ background: p.color }} />
+                    {p.etiqueta}
+                    {p.ayuda && <Ayuda texto={p.ayuda} />}
+                  </span>
+                </td>
+                {[
+                  { v: p.monto, base: izquierda.precio },
+                  { v: der?.monto ?? 0, base: derecha.precio },
+                ].map((c, j) => (
+                  <td key={j} className="px-4 py-1.5 text-right">
+                    ${pesos(c.v)}
+                    <span className={`ml-1.5 text-[10px] font-normal ${esQueda ? "text-teal-600" : "text-neutral-400"}`}>
+                      {c.base > 0 ? un((c.v / c.base) * 100) : 0}%
+                    </span>
+                  </td>
+                ))}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+
+      <div className="px-4 py-2.5 border-t border-neutral-200 bg-neutral-50 text-xs text-neutral-600">{pie}</div>
     </div>
   );
 }
@@ -1342,9 +1408,48 @@ function PrecioCalculadora({
   const offGratis =
     precioRedondeado > 0 ? Math.max(0, (1 - precioMismaGanancia / precioRedondeado) * 100) : 0;
 
-  const netoEfectivo = efectivoRedondeado / fIva;
-  const gananciaEfectivo =
-    efectivoRedondeado > 0 ? netoEfectivo * (1 - otrosCostosEfectivo / 100) - costoTotal : 0;
+  // El mismo reparto pero cobrando en efectivo. Si todavía no hay precio de
+  // contado cargado se usa el de lista: así la columna muestra lo que quedaría
+  // cobrando lo mismo, que es justo el descuento que sale gratis.
+  const precioContado = efectivoRedondeado > 0 ? efectivoRedondeado : precioRedondeado;
+  const netoContado = precioContado / fIva;
+  const ivaContado = precioContado - netoContado;
+  const cobrarContado = netoContado * (otrosCostosEfectivo / 100);
+  const quedaContado = netoContado - costoTotal - cobrarContado;
+
+  const gananciaEfectivo = efectivoRedondeado > 0 ? quedaContado : 0;
+
+  /**
+   * Los cuatro pedazos de un producto propio.
+   *
+   * Cuatro y no seis: no hay comisión de WiiGo —no se cobra comisión a sí
+   * mismo— ni SIRCREB, que se le retiene a la marca. Y el IVA sí aparece, al
+   * revés que en el de marca: el propio se sabe exacto.
+   */
+  function partesPropias(cobrar: number, montoIvaParte: number, queda: number): ParteReparto[] {
+    return [
+      {
+        etiqueta: extra > 0 ? "Mercadería y bolsita" : "Costo mercadería",
+        color: COLOR_REPARTO.mercaderia,
+        monto: costoTotal,
+      },
+      {
+        etiqueta: "Costos de cobrar",
+        color: COLOR_REPARTO.cobrar,
+        monto: cobrar,
+        ayuda: `Ingresos Brutos, la comisión de Mercado Pago y el impuesto al débito y crédito. Con tarjeta son ${otrosCostos.toLocaleString(
+          "es-AR"
+        )}% y en efectivo ${otrosCostosEfectivo.toLocaleString("es-AR")}%, porque no pagás la comisión de Mercado Pago.`,
+      },
+      {
+        etiqueta: "IVA",
+        color: COLOR_REPARTO.iva,
+        monto: montoIvaParte,
+        ayuda: "Lo cobrás con la venta y lo depositás en ARCA. Contra eso descontás el IVA de lo que comprás, así que lo que terminás pagando es menos.",
+      },
+      { etiqueta: "Te queda a vos", color: COLOR_REPARTO.queda, monto: queda },
+    ];
+  }
   // El % que terminó quedando después de redondear, no el que se escribió.
   const offReal =
     precioRedondeado > 0 && efectivoRedondeado > 0
@@ -1515,41 +1620,65 @@ function PrecioCalculadora({
           </div>
         </div>
 
-        {/* Dos repartos, uno por forma de cobro. El de efectivo no es el mismo
+        {/* Las dos formas de cobro, lado a lado. El de efectivo no es el mismo
             con otro número: cambian el precio (si hay uno de contado) Y los
             costos, porque en efectivo no hay comisión de Mercado Pago. Verlos
-            juntos es lo que deja decidir el descuento de contado con la plata
+            al lado es lo que deja decidir el descuento de contado con la plata
             adelante en vez de a ojo. */}
         {precioRedondeado > 0 && costoTotal > 0 && (
-          <>
-            <RepartoConDona
-              titulo={`De los $${pesos(precioRedondeado)} que paga el cliente · tarjeta o QR`}
-              precio={precioRedondeado}
-              costo={costo}
-              extra={extra}
-              otros={otrosCostos}
-              iva={iva}
-              pesos={pesos}
-            />
-            <RepartoConDona
-              titulo={
-                efectivoRedondeado > 0
-                  ? `Pagando en efectivo · $${pesos(efectivoRedondeado)}`
-                  : `Si pagara en efectivo · $${pesos(precioRedondeado)}`
-              }
-              precio={efectivoRedondeado > 0 ? efectivoRedondeado : precioRedondeado}
-              costo={costo}
-              extra={extra}
-              otros={otrosCostosEfectivo}
-              iva={iva}
-              pesos={pesos}
-              pie={
-                efectivoRedondeado > 0
-                  ? undefined
-                  : "Todavía no cargaste precio en efectivo. Esto es lo que te quedaría cobrando lo mismo: más, porque no pagás la comisión de Mercado Pago."
-              }
-            />
-          </>
+          <PanelReparto
+            titulo="A dónde va cada peso que paga el cliente"
+            izquierda={{
+              etiqueta: "Tarjeta o QR",
+              icono: "tarjeta",
+              precio: precioRedondeado,
+              partes: partesPropias(costosDeCobrar, montoIva, ganancia),
+              queda: ganancia,
+              margen: margenReal,
+              baseMargen: "de la venta sin IVA",
+            }}
+            derecha={{
+              etiqueta: "Efectivo",
+              icono: "efectivo",
+              precio: precioContado,
+              partes: partesPropias(cobrarContado, ivaContado, quedaContado),
+              queda: quedaContado,
+              margen: netoContado > 0 ? (quedaContado / netoContado) * 100 : 0,
+              baseMargen: "de la venta sin IVA",
+            }}
+            pie={
+              <>
+                {efectivoRedondeado > 0 ? (
+                  quedaContado >= ganancia - 0.5 ? (
+                    <>
+                      Cobrando <b>${pesos(precioContado)}</b> en efectivo te quedan{" "}
+                      <b className="text-teal-700">${pesos(quedaContado)}</b>, más que los $
+                      {pesos(ganancia)} de la tarjeta: <b>este descuento no te cuesta nada</b>.
+                    </>
+                  ) : (
+                    <>
+                      El descuento de contado te cuesta{" "}
+                      <b className="text-amber-700">${pesos(ganancia - quedaContado)}</b> por unidad.
+                      Hasta <b>${pesos(precioMismaGanancia)}</b> ({offGratis.toFixed(1)}% menos)
+                      ganás lo mismo que con tarjeta.
+                    </>
+                  )
+                ) : (
+                  <>
+                    Todavía no cargaste precio en efectivo. Cobrando lo mismo te quedarían{" "}
+                    <b className="text-teal-700">${pesos(quedaContado)}</b> —$
+                    {pesos(quedaContado - ganancia)} más— porque no pagás la comisión de Mercado
+                    Pago. Hasta <b>${pesos(precioMismaGanancia)}</b> ({offGratis.toFixed(1)}% menos)
+                    ganás igual que con tarjeta.
+                  </>
+                )}
+                <span className="block text-[11px] text-neutral-400 mt-1">
+                  Antes del alquiler, los sueldos y la luz, que no salen de este producto sino del
+                  mes.
+                </span>
+              </>
+            }
+          />
         )}
       </div>
 
