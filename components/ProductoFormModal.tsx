@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import type {
   Producto,
   Marca,
@@ -623,8 +623,6 @@ function PrecioDeMarca({
   const [precio, setPrecio] = useState(precioInicial ?? 0);
   const [descuento, setDescuento] = useState(descuentoInicial ?? 0);
   const [medio, setMedio] = useState<string>("CREDITO");
-  /** Lo que se está tecleando en el margen, mientras se teclea. Null = mostrar el calculado. */
-  const [margenEscrito, setMargenEscrito] = useState<string | null>(null);
   const [efectivo, setEfectivo] = useState(precioEfectivoInicial ?? 0);
   const [offEfectivo, setOffEfectivo] = useState(() =>
     precioInicial && precioEfectivoInicial && precioInicial > 0
@@ -645,6 +643,14 @@ function PrecioDeMarca({
 
   function redondear(p: number) {
     return redondeo > 0 && p > 0 ? Math.ceil(p / redondeo) * redondeo : p;
+  }
+
+  // El precio de contado se define contra el de lista, así que cuando el de
+  // lista cambia tiene que seguirlo. Si se quedaba en los pesos viejos, el %
+  // que se había elegido se desdibujaba solo. Igual que en los propios.
+  function reajustarEfectivo(nuevoPrecio: number) {
+    if (offEfectivo <= 0 || nuevoPrecio <= 0) return;
+    setEfectivo(redondear(nuevoPrecio * (1 - offEfectivo / 100)));
   }
 
   const filas = precio > 0 ? simularMargen({ precio, costo: costo || null, marca: condiciones, tasas }) : [];
@@ -692,6 +698,9 @@ function PrecioDeMarca({
   const ganancia = fila && costo > 0 ? fila.leTransferimos - costo : 0;
   /** Lo mismo, para cualquier fila de la tabla de medios de pago. */
   const gananciaDe = (f: { leTransferimos: number }) => (costo > 0 ? f.leTransferimos - costo : 0);
+  /** Lo que WiiGo le factura a la marca por esa venta. */
+  const comisionDe = (f: { comisionWiigo: number; ivaComision: number }) =>
+    f.comisionWiigo + f.ivaComision;
 
   /** Su ganancia sobre lo que recibe. Las dos puntas son plata que WiiGo conoce exacta. */
   const margenDeLaMarca =
@@ -789,65 +798,71 @@ function PrecioDeMarca({
       <div className="border-t border-neutral-200 pt-3 space-y-3">
         <h3 className="text-sm font-semibold text-neutral-900">💲 Precio y reparto</h3>
         <p className="text-xs text-neutral-500 -mt-2">
-          Escribí el precio de góndola, o el margen que quiere la marca y sale el precio.
+          Escribí el margen que quiere la marca o el precio — lo que te quede más cómodo. El otro se
+          completa solo.
         </p>
 
-        <div className="grid grid-cols-3 gap-3">
-          <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-1">
-              Margen bruto de la marca %
-              <Ayuda texto="BRUTO: solo descuenta la mercadería. Un 60% quiere decir que de cada $100 que WiiGo le transfiere, $60 le quedan ANTES de sus propios impuestos y gastos: su IVA según cómo facture, Ingresos Brutos, alquiler, sueldos. No es lo que gana al final. Y la base es lo que RECIBE, no lo que paga el cliente — de ese total también salen la comisión de WiiGo y lo que se va en cobrar." />
-            </label>
-            <input
-              type="number"
-              step="0.1"
-              // Mientras se escribe manda lo escrito y no lo derivado: si el
-              // campo se recalculara en cada tecla, escribir "60" sería
-              // imposible — al teclear el 6 saltaría a un precio de 6% y el
-              // campo volvería con otro número.
-              value={margenEscrito ?? (costo > 0 && precio > 0 ? Math.round(margenDeLaMarca * 10) / 10 || "" : "")}
-              onChange={(e) => {
-                setMargenEscrito(e.target.value);
-                const n = Number(e.target.value);
-                if (Number.isFinite(n) && n > 0) setPrecio(redondear(precioDesdeMargen(n)));
-              }}
-              onBlur={() => setMargenEscrito(null)}
-              disabled={!(costo > 0)}
-              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent disabled:bg-neutral-50"
-            />
-            <p className="text-[11px] text-neutral-400 mt-1">
-              Sobre lo que factura, antes de sus gastos
-            </p>
-          </div>
+        {/* Los dos precios del producto, uno al lado del otro, igual que en los
+            propios. Son los dos números que el cliente puede llegar a pagar, y
+            a la marca le queda distinto con cada uno. */}
+        <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="precio_venta_visible">
               Precio de góndola
+              <Ayuda texto="El margen es BRUTO: solo descuenta la mercadería. Un 60% quiere decir que de cada $100 que WiiGo le transfiere, $60 le quedan ANTES de sus propios impuestos y gastos: su IVA según cómo facture, Ingresos Brutos, alquiler, sueldos. No es lo que gana al final. Y la base es lo que RECIBE, no lo que paga el cliente — de ese total también salen la comisión de WiiGo y lo que se va en cobrar." />
             </label>
-            <input
-              id="precio_venta_visible"
-              type="number"
-              step="0.01"
-              value={precio || ""}
-              onChange={(e) => setPrecio(Number(e.target.value) || 0)}
-              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            <ParPrecio
+              pct={costo > 0 && precio > 0 ? margenDeLaMarca : 0}
+              onPct={(n) => {
+                if (n <= 0) return;
+                const nuevo = redondear(precioDesdeMargen(n));
+                setPrecio(nuevo);
+                reajustarEfectivo(nuevo);
+              }}
+              sufijo="% margen"
+              monto={precio}
+              onMonto={(n) => {
+                setPrecio(n);
+                reajustarEfectivo(n);
+              }}
+              idMonto="precio_venta_visible"
+              disabled={!(costo > 0)}
             />
             <input type="hidden" name="precio_venta" value={precio || 0} />
+            <p className="text-[11px] text-neutral-400 mt-1">
+              Margen sobre lo que la marca recibe · IVA {iva.toLocaleString("es-AR")}% del producto
+            </p>
           </div>
           <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-1">IVA %</label>
-            <input
-              type="text"
-              value={`${iva.toLocaleString("es-AR")} %`}
-              readOnly
-              className="w-full rounded-lg border border-dashed border-neutral-300 bg-neutral-50 px-3 py-2 text-sm text-neutral-600"
+            <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="precio_efectivo_visible">
+              Precio en efectivo
+              <Ayuda texto="El otro precio del producto, no un descuento. Ojo: en efectivo la marca no se ahorra la comisión de Mercado Pago —esa la pagás vos— así que un descuento de contado se lo come entero. El panel de abajo te muestra cuánto le cuesta." />
+            </label>
+            <ParPrecio
+              pct={offEfectivo}
+              onPct={(p) => {
+                setOffEfectivo(p);
+                setEfectivo(p > 0 && precio > 0 ? redondear(precio * (1 - p / 100)) : 0);
+              }}
+              sufijo="% menos"
+              monto={efectivo}
+              onMonto={(n) => {
+                setEfectivo(n);
+                setOffEfectivo(precio > 0 && n > 0 ? ((precio - n) / precio) * 100 : 0);
+              }}
+              idMonto="precio_efectivo_visible"
             />
-            <p className="text-[11px] text-neutral-400 mt-1">Del producto</p>
+            <input type="hidden" name="precio_efectivo" value={efectivo > 0 ? efectivo : ""} />
+            <p className="text-[11px] text-neutral-400 mt-1">
+              Dejalo vacío si cobrás lo mismo de las dos formas
+            </p>
           </div>
         </div>
 
         {fila && filaIzq && enEfectivo && costo > 0 && (
           <>
             <PanelReparto
+              deLaMarca
               titulo={`A dónde va cada peso que paga el cliente · ${marca.nombre}`}
               izquierda={{
                 etiqueta: CORTO[filaIzq.medio] ?? filaIzq.etiqueta,
@@ -881,10 +896,21 @@ function PrecioDeMarca({
                     <>
                       {" "}
                       —<b>${pesos(Math.abs(gananciaDe(enEfectivo) - gananciaDe(filaIzq)))}</b> de
-                      diferencia por el mismo producto, y tu comisión casi no cambia
+                      diferencia
                     </>
                   )}
-                  .
+                  . Tu comisión: <b className="text-accent">${pesos(comisionDe(filaIzq))}</b> y{" "}
+                  <b className="text-accent">${pesos(comisionDe(enEfectivo))}</b>.
+                  {/* El descuento de contado no es neutro para la marca: en
+                      efectivo ella no se ahorra la comisión de Mercado Pago
+                      —esa la paga WiiGo— así que se lo come entero. Es lo que
+                      hay que tener adelante antes de fijarlo. */}
+                  {enEfectivo.precio < filaIzq.precio && gananciaDe(enEfectivo) < gananciaDe(filaIzq) && (
+                    <span className="block mt-1 text-amber-700">
+                      El descuento de contado se lo come la marca: ella no paga la comisión de
+                      Mercado Pago, así que no se ahorra nada cobrando en efectivo.
+                    </span>
+                  )}
                   <span className="block text-[11px] text-neutral-400 mt-1 leading-relaxed">
                     Ya tiene descontado todo lo de arriba. De ahí todavía salen{" "}
                     <b>los impuestos y los gastos de {marca.nombre}</b> —su IVA según cómo facture,
@@ -895,46 +921,54 @@ function PrecioDeMarca({
             />
 
             {/* La tabla también elige qué forma de cobro se compara arriba: se
-                toca un renglón y la columna izquierda cambia. */}
+                toca un renglón y la columna izquierda cambia.
+
+                La fila de efectivo va al precio de contado, igual que la dona:
+                si la tabla lo mostrara al de góndola habría dos números
+                distintos para la misma palabra en la misma pantalla. */}
             <table className="w-full text-xs tabular-nums">
               <thead>
                 <tr className="text-[10px] uppercase tracking-wide text-neutral-400">
                   <th className="text-left font-semibold pb-1">Si el cliente paga con</th>
+                  <th className="text-right font-semibold pb-1">Paga</th>
                   <th className="text-right font-semibold pb-1">Le queda a la marca</th>
                   <th className="text-right font-semibold pb-1">De lo que recibe</th>
                   <th className="text-right font-semibold pb-1">Tu comisión</th>
                 </tr>
               </thead>
               <tbody>
-                {filas.map((f) => (
-                  <tr
-                    key={f.medio}
-                    onClick={() => setMedio(f.medio)}
-                    className={`cursor-pointer border-t border-neutral-100 ${
-                      f.medio === medio ? "bg-accent-tint" : ""
-                    }`}
-                  >
-                    <td className="py-1.5 text-neutral-700">{f.etiqueta}</td>
-                    <td
-                      className={`py-1.5 text-right font-semibold ${
-                        f.medio === "EFECTIVO" ? "text-emerald-700" : f.medio === "CREDITO" ? "text-red-700" : "text-neutral-800"
+                {filas.map((orig) => {
+                  const f = orig.medio === "EFECTIVO" ? enEfectivo : orig;
+                  return (
+                    <tr
+                      key={f.medio}
+                      onClick={() => setMedio(f.medio)}
+                      className={`cursor-pointer border-t border-neutral-100 ${
+                        f.medio === medio ? "bg-accent-tint" : ""
                       }`}
                     >
-                      ${pesos(gananciaDe(f))}
-                    </td>
-                    <td className="py-1.5 text-right text-neutral-500">
-                      {f.leTransferimos > 0 ? Math.round((gananciaDe(f) / f.leTransferimos) * 100) : 0}%
-                    </td>
-                    <td className="py-1.5 text-right text-accent font-semibold">
-                      ${pesos(f.comisionWiigo + f.ivaComision)}
-                    </td>
-                  </tr>
-                ))}
+                      <td className="py-1.5 text-neutral-700">{f.etiqueta}</td>
+                      <td className="py-1.5 text-right text-neutral-500">${pesos(f.precio)}</td>
+                      <td
+                        className={`py-1.5 text-right font-semibold ${
+                          f.medio === "EFECTIVO" ? "text-emerald-700" : f.medio === "CREDITO" ? "text-red-700" : "text-neutral-800"
+                        }`}
+                      >
+                        ${pesos(gananciaDe(f))}
+                      </td>
+                      <td className="py-1.5 text-right text-neutral-500">
+                        {f.leTransferimos > 0 ? Math.round((gananciaDe(f) / f.leTransferimos) * 100) : 0}%
+                      </td>
+                      <td className="py-1.5 text-right text-accent font-semibold">
+                        ${pesos(comisionDe(f))}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
             <p className="text-[11px] text-neutral-400 -mt-1">
-              Todas al precio de góndola de ${pesos(precio)}. Tocá una para compararla arriba contra
-              el efectivo.
+              Tocá una para compararla arriba contra el efectivo.
             </p>
           </>
         )}
@@ -945,43 +979,6 @@ function PrecioDeMarca({
             queda a vos.
           </p>
         )}
-      </div>
-
-      {/* El precio en efectivo sigue igual que en la marca propia: es el otro
-          precio del producto, no un descuento. */}
-      <div className="border-t border-neutral-200 pt-3 space-y-2">
-        <h4 className="text-sm font-semibold text-neutral-900">💵 Precio pagando en efectivo</h4>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-1">Precio en efectivo</label>
-            <input
-              type="number"
-              step="0.01"
-              value={efectivo || ""}
-              onChange={(e) => {
-                const n = Number(e.target.value) || 0;
-                setEfectivo(n);
-                setOffEfectivo(precio > 0 && n > 0 ? ((precio - n) / precio) * 100 : 0);
-              }}
-              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-            />
-            <input type="hidden" name="precio_efectivo" value={efectivo > 0 ? efectivo : ""} />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-1">Es un % menos</label>
-            <input
-              type="number"
-              step="0.1"
-              value={Math.round(offEfectivo * 10) / 10 || ""}
-              onChange={(e) => {
-                const p = Number(e.target.value) || 0;
-                setOffEfectivo(p);
-                setEfectivo(p > 0 && precio > 0 ? redondear(precio * (1 - p / 100)) : 0);
-              }}
-              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-            />
-          </div>
-        </div>
       </div>
 
       {/* El costo de la marca no viaja en `costo_informado`: va a su propia
@@ -1036,11 +1033,29 @@ type Escena = {
  * SVG a mano y sin librería: son unos arcos sobre un círculo, y traer una
  * dependencia de gráficos para esto sería más código del que ahorra.
  */
-function Dona({ partes, centro }: { partes: ParteReparto[]; centro: string }) {
+function Dona({ partes, centro, pie }: { partes: ParteReparto[]; centro: string; pie: string }) {
   const R = 47;
   const C = 2 * Math.PI * R;
   const HUECO = C * (2.2 / 360);
   const total = partes.reduce((a, p) => a + Math.max(p.monto, 0), 0);
+
+  // Al aparecer, la dona se dibuja sola: todos los pedazos arrancan de cero
+  // arriba y crecen en orden, uno atrás del otro, como un reloj.
+  //
+  // Tres fases y no dos porque el retraso escalonado sirve una sola vez: en la
+  // entrada ordena la lectura, pero si quedara puesto, cambiar el precio
+  // tardaría medio segundo en terminar de acomodarse. Apagado el escalón, cada
+  // ajuste posterior es un solo movimiento parejo.
+  const [fase, setFase] = useState<"inicio" | "entrando" | "listo">("inicio");
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setFase("entrando"));
+    const t = setTimeout(() => setFase("listo"), 1000);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(t);
+    };
+  }, []);
+
   let acumulado = 0;
 
   return (
@@ -1051,8 +1066,9 @@ function Dona({ partes, centro }: { partes: ParteReparto[]; centro: string }) {
         <g transform="rotate(-90 66 66)">
           {partes.map((p, i) => {
             const porcion = total > 0 ? Math.max(p.monto, 0) / total : 0;
-            const largo = Math.max(porcion * C - HUECO, 0.1);
-            const offset = -(acumulado * C + HUECO / 2);
+            const dibujado = fase !== "inicio";
+            const largo = dibujado ? Math.max(porcion * C - HUECO, 0.1) : 0.1;
+            const offset = dibujado ? -(acumulado * C + HUECO / 2) : -HUECO / 2;
             acumulado += porcion;
             return (
               <circle
@@ -1066,7 +1082,15 @@ function Dona({ partes, centro }: { partes: ParteReparto[]; centro: string }) {
                 strokeLinecap="round"
                 strokeDasharray={`${largo} ${C - largo}`}
                 strokeDashoffset={offset}
-                style={{ transition: "stroke-dasharray .35s cubic-bezier(.4,0,.2,1), stroke-dashoffset .35s cubic-bezier(.4,0,.2,1)" }}
+                // Cada propiedad por separado y nunca el atajo `transition`:
+                // mezclar el shorthand con `transitionDelay` en el mismo estilo
+                // hace que React avise de bugs de estilo al re-renderizar.
+                style={{
+                  transitionProperty: fase === "inicio" ? "none" : "stroke-dasharray, stroke-dashoffset",
+                  transitionDuration: "0.45s",
+                  transitionTimingFunction: "cubic-bezier(.4,0,.2,1)",
+                  transitionDelay: fase === "entrando" ? `${i * 110}ms` : "0ms",
+                }}
               />
             );
           })}
@@ -1077,8 +1101,79 @@ function Dona({ partes, centro }: { partes: ParteReparto[]; centro: string }) {
           {centro}
         </span>
         <span className="text-[9px] text-neutral-400 mt-1 uppercase tracking-wider font-semibold">
-          te queda
+          {pie}
         </span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Un precio escrito de las dos maneras: el porcentaje y los pesos, pegados.
+ *
+ * Pegados y no en dos campos separados porque son el mismo número: se escribe
+ * el que se tenga a mano —"quiero 35 de margen", "el de al lado lo vende a
+ * 7900"— y el otro se completa solo. Separados había que acordarse de cuál
+ * mandaba.
+ */
+function ParPrecio({
+  pct,
+  onPct,
+  sufijo,
+  monto,
+  onMonto,
+  idMonto,
+  disabled,
+}: {
+  pct: number;
+  onPct: (n: number) => void;
+  sufijo: string;
+  monto: number;
+  onMonto: (n: number) => void;
+  idMonto?: string;
+  disabled?: boolean;
+}) {
+  // Lo que se está tecleando en el porcentaje, mientras se teclea. Si el campo
+  // se recalculara en cada tecla, escribir "60" sería imposible: al teclear el
+  // 6 saltaría a un precio de 6% y el campo volvería con otro número.
+  const [escrito, setEscrito] = useState<string | null>(null);
+
+  const caja =
+    "flex items-baseline gap-1 px-3 py-2 " + (disabled ? "bg-neutral-50" : "");
+  const campo =
+    "w-full bg-transparent text-sm tabular-nums outline-none border-0 p-0 disabled:text-neutral-400";
+
+  return (
+    <div
+      className={`flex rounded-lg border overflow-hidden focus-within:ring-2 focus-within:ring-accent ${
+        disabled ? "border-neutral-200" : "border-neutral-300"
+      }`}
+    >
+      <div className={`${caja} w-[48%] border-r border-neutral-200`}>
+        <input
+          type="number"
+          step="0.1"
+          value={escrito ?? (Math.round(pct * 10) / 10 || "")}
+          onChange={(e) => {
+            setEscrito(e.target.value);
+            onPct(Number(e.target.value) || 0);
+          }}
+          onBlur={() => setEscrito(null)}
+          disabled={disabled}
+          className={`${campo} text-right`}
+        />
+        <span className="text-[11px] text-neutral-400 whitespace-nowrap flex-none">{sufijo}</span>
+      </div>
+      <div className={`${caja} flex-1`}>
+        <span className="text-sm text-neutral-400 flex-none">$</span>
+        <input
+          id={idMonto}
+          type="number"
+          step="0.01"
+          value={monto || ""}
+          onChange={(e) => onMonto(Number(e.target.value) || 0)}
+          className={campo}
+        />
       </div>
     </div>
   );
@@ -1139,11 +1234,14 @@ function PanelReparto({
   izquierda,
   derecha,
   pie,
+  deLaMarca = false,
 }: {
   titulo: string;
   izquierda: Escena;
   derecha: Escena;
   pie: React.ReactNode;
+  /** En consignación el que se queda con el pedazo verde es la marca, no vos. */
+  deLaMarca?: boolean;
 }) {
   const pesos = (n: number) =>
     n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -1154,8 +1252,10 @@ function PanelReparto({
   const columna = (e: Escena, gana: boolean) => (
     <div className={`px-2 pt-4 pb-3 text-center transition-colors duration-200 ${gana ? "bg-teal-50" : ""}`}>
       <Sello texto={e.etiqueta} icono={e.icono} gana={gana} />
-      <Dona partes={e.partes} centro={entero(e.queda)} />
-      <p className="text-[11.5px] text-neutral-600 mt-2 tabular-nums">cobrás ${pesos(e.precio)}</p>
+      <Dona partes={e.partes} centro={entero(e.queda)} pie={deLaMarca ? "le queda" : "te queda"} />
+      <p className="text-[11.5px] text-neutral-600 mt-2 tabular-nums">
+        {deLaMarca ? "el cliente paga" : "cobrás"} ${pesos(e.precio)}
+      </p>
       <p className="text-[11px] text-neutral-400 mt-0.5">
         margen {un(e.margen)}% {e.baseMargen}
       </p>
@@ -1417,8 +1517,6 @@ function PrecioCalculadora({
   const cobrarContado = netoContado * (otrosCostosEfectivo / 100);
   const quedaContado = netoContado - costoTotal - cobrarContado;
 
-  const gananciaEfectivo = efectivoRedondeado > 0 ? quedaContado : 0;
-
   /**
    * Los cuatro pedazos de un producto propio.
    *
@@ -1507,53 +1605,69 @@ function PrecioCalculadora({
       )}
 
       <div className="border-t border-neutral-200 pt-3 space-y-3">
-        <h3 className="text-sm font-semibold text-neutral-900">💲 Precio y rentabilidad</h3>
+        <h3 className="text-sm font-semibold text-neutral-900">💲 Precio y reparto</h3>
         <p className="text-xs text-neutral-500 -mt-2">
-          Escribí el margen que querés ganar y sale el precio. O escribí el precio y te dice qué margen deja. Los
-          otros dos se recalculan solos.
+          Escribí el margen o el precio — lo que te quede más cómodo. El otro se completa solo.
         </p>
 
-        <div className="grid grid-cols-3 gap-3">
+        {/* Los dos precios del producto, uno al lado del otro. Son los dos
+            números que el cliente puede llegar a pagar, así que se deciden
+            juntos y no en dos partes distintas de la pantalla. */}
+        <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-1">
-              Margen que quiero %
-              <Ayuda texto="Lo que te queda de verdad: después de la mercadería, la bolsita, Ingresos Brutos y lo que te cobran por cobrar. Antes del alquiler y los sueldos. Margen = Ganancia / Venta neta × 100." />
+            <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="precio_venta_visible">
+              Precio de góndola
+              <Ayuda texto="Escribí el margen que querés ganar y sale el precio. O, si el precio te lo pone la competencia, escribí los pesos y el margen se recalcula al revés. Margen = Ganancia / Venta neta × 100: lo que te queda después de la mercadería, la bolsita, Ingresos Brutos y lo que te cobran por cobrar, antes del alquiler y los sueldos." />
             </label>
-            <input
-              type="number"
-              step="0.01"
-              value={Math.round(margen * 10) / 10 || ""}
-              onChange={(e) => recalcularDesdeMargen(Number(e.target.value) || 0)}
-              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            <ParPrecio
+              pct={margen}
+              onPct={recalcularDesdeMargen}
+              sufijo="% margen"
+              monto={precio}
+              onMonto={recalcularDesdePrecio}
+              idMonto="precio_venta_visible"
             />
+            <input type="hidden" name="precio_venta" value={precioRedondeado || 0} />
+            <p className="text-[11px] text-neutral-400 mt-1">
+              Otros costos {otrosCostos.toLocaleString("es-AR")}% · IVA {iva.toLocaleString("es-AR")}%
+              <Ayuda texto="Otros costos son Ingresos Brutos, la comisión de Mercado Pago y el impuesto al débito y crédito: es igual para todos los productos y se cambia en Configuración. El IVA es la alícuota del producto, y el precio de góndola ya lo incluye porque es lo que paga el cliente." />
+            </p>
           </div>
           <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-1">
-              Otros costos %
-              <Ayuda texto="Ingresos Brutos, la comisión de Mercado Pago y el impuesto al débito y crédito. Es igual para todos los productos y se cambia en Configuración, no acá." />
+            <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="precio_efectivo_visible">
+              Precio en efectivo
+              <Ayuda texto="El otro precio del producto, no un descuento. Los descuentos NO se suman: la oferta se aplica al precio de tarjeta y el que paga en efectivo se lleva el más barato de los dos. Con lista $3.000 y efectivo $2.700: sin oferta paga $2.700; con oferta del 5% paga $2.700 (gana el de efectivo); con oferta del 20% paga $2.400 (gana el de oferta)." />
             </label>
-            <input
-              type="text"
-              value={`${otrosCostos.toLocaleString("es-AR")} %`}
-              readOnly
-              className="w-full rounded-lg border border-dashed border-neutral-300 bg-neutral-50 px-3 py-2 text-sm text-neutral-600"
+            <ParPrecio
+              pct={offEfectivo}
+              onPct={cambiarEfectivoPorPorcentaje}
+              sufijo="% menos"
+              monto={efectivo}
+              onMonto={cambiarEfectivoPorMonto}
+              idMonto="precio_efectivo_visible"
             />
-            <p className="text-[11px] text-neutral-400 mt-1">Viene de Configuración</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-1">
-              IVA %
-              <Ayuda texto="La alícuota del producto. El precio de góndola ya lo incluye, porque es lo que paga el cliente." />
-            </label>
-            <input
-              type="text"
-              value={`${iva.toLocaleString("es-AR")} %`}
-              readOnly
-              className="w-full rounded-lg border border-dashed border-neutral-300 bg-neutral-50 px-3 py-2 text-sm text-neutral-600"
-            />
-            <p className="text-[11px] text-neutral-400 mt-1">Del producto</p>
+            <input type="hidden" name="precio_efectivo" value={efectivo > 0 ? efectivoRedondeado : ""} />
+            <p className="text-[11px] text-neutral-400 mt-1">
+              Dejalo vacío si cobrás lo mismo de las dos formas
+            </p>
           </div>
         </div>
+
+        {/* Lo que ahorra el CLIENTE. El panel de más abajo cuenta la otra mitad
+            —lo que te queda a vos— y las dos cosas se deciden juntas. */}
+        {efectivoRedondeado > 0 && precioRedondeado > 0 && (
+          <p
+            className={`text-xs rounded-lg px-3 py-2 ${
+              efectivoRedondeado >= precioRedondeado
+                ? "text-amber-700 bg-amber-50 border border-amber-200"
+                : "text-emerald-800 bg-emerald-50 border border-emerald-200"
+            }`}
+          >
+            {efectivoRedondeado >= precioRedondeado
+              ? "⚠️ El precio en efectivo no es más barato que el de lista — revisalo, porque el cliente no va a ver ningún ahorro."
+              : `El cliente ahorra $${pesos(precioRedondeado - efectivoRedondeado)} pagando en efectivo (${offReal.toFixed(1)}% menos).`}
+          </p>
+        )}
 
         <div className="rounded-xl border border-accent bg-accent-tint px-4 py-3">
           <p className="text-[11px] font-semibold text-blue-800 uppercase tracking-wide">
@@ -1572,23 +1686,7 @@ function PrecioCalculadora({
           )}
         </div>
 
-        <div className="grid grid-cols-3 gap-3">
-          <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="precio_venta_visible">
-              Precio de góndola
-              <Ayuda texto="Si el precio te lo pone la competencia, escribilo acá: el margen se recalcula al revés y te dice cuánto te queda con ese precio." />
-            </label>
-            <input
-              id="precio_venta_visible"
-              type="number"
-              step="0.01"
-              value={precio || ""}
-              onChange={(e) => recalcularDesdePrecio(Number(e.target.value) || 0)}
-              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-            />
-            <input type="hidden" name="precio_venta" value={precioRedondeado || 0} />
-          </div>
-
+        <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-sm font-medium text-neutral-700 mb-1">
               Markup
@@ -1606,7 +1704,7 @@ function PrecioCalculadora({
           <div>
             <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="descuento_porcentaje">
               Descuento oferta %
-              <Ayuda texto="La oferta que pinta el cartelito «-20%» en el catálogo. Se aplica sobre el precio de tarjeta. Si el producto también tiene precio en efectivo, los descuentos no se suman: el cliente paga el más barato de los dos. Ver la ayuda del bloque de efectivo, más abajo." />
+              <Ayuda texto="La oferta que pinta el cartelito «-20%» en el catálogo. Se aplica sobre el precio de tarjeta. Si el producto también tiene precio en efectivo, los descuentos no se suman: el cliente paga el más barato de los dos." />
             </label>
             <input
               id="descuento_porcentaje"
@@ -1689,90 +1787,6 @@ function PrecioCalculadora({
         </p>
       )}
 
-      {/* El precio en efectivo no es un descuento: es el otro precio del
-          producto. Se escribe el monto o el %, lo que sea más cómodo, y el otro
-          se completa solo. Vacío = se cobra lo mismo en efectivo. */}
-      <div className="border-t border-neutral-200 pt-3 space-y-2">
-        <h4 className="text-sm font-semibold text-neutral-900">
-          💵 Precio pagando en efectivo
-          <Ayuda texto="Los descuentos NO se suman. La oferta se aplica al precio de tarjeta, y el que paga en efectivo se lleva el más barato de los dos. Ejemplo con lista $3.000 y efectivo $2.700: sin oferta paga $2.700; con oferta del 5% paga $2.700 (gana el de efectivo); con oferta del 20% paga $2.400 (gana el de oferta). Así el efectivo nunca sale más caro, y una oferta grande no termina siendo un descuento del 30% que nadie decidió." />
-        </h4>
-        <p className="text-xs text-neutral-500">
-          Lo que se cobra si el cliente paga en efectivo. Lo de arriba es lo que se cobra con tarjeta o Mercado Pago.
-          Dejalo vacío si en ese producto cobrás lo mismo de las dos formas.
-        </p>
-
-        {/* En efectivo no se paga la comisión de Mercado Pago. Ese ahorro alcanza
-            para un descuento que deja la misma ganancia que la tarjeta: saberlo
-            es la diferencia entre elegir el descuento y adivinarlo. */}
-        {precioRedondeado > 0 && costoTotal > 0 && offGratis > 0 && (
-          <p className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
-            Hasta <span className="font-semibold">{offGratis.toFixed(1)}%</span> de descuento (${pesos(
-              precioMismaGanancia
-            )}) ganás lo mismo que cobrando con tarjeta, porque en efectivo no pagás la comisión. Más que eso sale de
-            tu margen.
-          </p>
-        )}
-
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="precio_efectivo_visible">
-              Precio en efectivo
-            </label>
-            <input
-              id="precio_efectivo_visible"
-              type="number"
-              step="0.01"
-              value={efectivo || ""}
-              onChange={(e) => cambiarEfectivoPorMonto(Number(e.target.value) || 0)}
-              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-            />
-            <input type="hidden" name="precio_efectivo" value={efectivo > 0 ? efectivoRedondeado : ""} />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="efectivo_off">
-              Es un % menos
-              <Ayuda texto="Atajo: escribí acá cuánto más barato es en efectivo y el monto se calcula solo. En Animal Fitt, por ejemplo, es 14%." />
-            </label>
-            <input
-              id="efectivo_off"
-              type="number"
-              step="0.1"
-              value={Math.round(offEfectivo * 10) / 10 || ""}
-              onChange={(e) => cambiarEfectivoPorPorcentaje(Number(e.target.value) || 0)}
-              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-            />
-          </div>
-        </div>
-
-        {efectivoRedondeado > 0 && precioRedondeado > 0 && (
-          <p
-            className={`text-xs rounded-lg px-3 py-2 ${
-              efectivoRedondeado >= precioRedondeado
-                ? "text-amber-700 bg-amber-50 border border-amber-200"
-                : "text-emerald-800 bg-emerald-50 border border-emerald-200"
-            }`}
-          >
-            {efectivoRedondeado >= precioRedondeado
-              ? "⚠️ El precio en efectivo no es más barato que el de lista — revisalo, porque el cliente no va a ver ningún ahorro."
-              : `El cliente ahorra $${pesos(precioRedondeado - efectivoRedondeado)} pagando en efectivo (${offReal.toFixed(1)}% menos).`}
-          </p>
-        )}
-
-        {efectivoRedondeado > 0 && efectivoRedondeado < precioRedondeado && costoTotal > 0 && (
-          <p
-            className={`text-xs rounded-lg px-3 py-2 ${
-              gananciaEfectivo >= ganancia - 0.5
-                ? "text-emerald-800 bg-emerald-50 border border-emerald-200"
-                : "text-amber-700 bg-amber-50 border border-amber-200"
-            }`}
-          >
-            {gananciaEfectivo >= ganancia - 0.5
-              ? `Con ese precio ganás $${pesos(gananciaEfectivo)} en efectivo contra $${pesos(ganancia)} con tarjeta: este descuento no te cuesta nada.`
-              : `⚠️ Con ese precio ganás $${pesos(gananciaEfectivo)} en efectivo contra $${pesos(ganancia)} con tarjeta — $${pesos(ganancia - gananciaEfectivo)} menos por unidad. El descuento que sale gratis es ${offGratis.toFixed(1)}%.`}
-          </p>
-        )}
-      </div>
     </div>
   );
 }
