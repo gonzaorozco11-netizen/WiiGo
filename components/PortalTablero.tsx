@@ -1002,14 +1002,24 @@ export default function PortalTablero({
               <li key={o.idOrden} className="orden">
                 <div className="orden-cab">
                   <span>
-                    <span className="n">Orden del {fechaCorta(o.fecha)} · {o.local}</span>
+                    <span className="n">
+                      {o.origen === "MARCA" ? "Propuesta tuya" : "Orden"} del {fechaCorta(o.fecha)} ·{" "}
+                      {o.local}
+                    </span>
                     <span className="d">
                       {o.totalUnidades} unidades
                       {o.recibidaEl ? ` · recibida el ${fechaCorta(o.recibidaEl)}` : ""}
                       {o.recibidaPor ? ` por ${o.recibidaPor}` : ""}
                     </span>
                   </span>
-                  {o.recibidaEl ? (
+                  {/* Esperando y rechazada van antes que lo recibido: son los
+                      dos estados en los que la marca tiene que hacer algo, y
+                      antes caían los dos en "Pendiente de envío". */}
+                  {o.estado === "PROPUESTA" ? (
+                    <span className="pill aviso">Esperando que WiiGo la apruebe</span>
+                  ) : o.estado === "RECHAZADA" ? (
+                    <span className="pill critico">No aprobada</span>
+                  ) : o.recibidaEl ? (
                     <span className={`pill ${o.hayDiferencias ? "critico" : "ok"}`}>
                       {o.hayDiferencias ? "Llegó con diferencias" : "Llegó completa"}
                     </span>
@@ -1017,6 +1027,19 @@ export default function PortalTablero({
                     <span className="pill aviso">Pendiente de envío</span>
                   )}
                 </div>
+
+                {o.estado === "PROPUESTA" && (
+                  <p className="aviso-orden esperando">
+                    No la mandes todavía. Te avisamos cuando esté aprobada.
+                  </p>
+                )}
+                {o.estado === "RECHAZADA" && (
+                  <p className="aviso-orden rechazada">
+                    {o.motivoRechazo
+                      ? <><b>WiiGo no la aprobó:</b> {o.motivoRechazo}</>
+                      : "WiiGo no la aprobó. Escribinos si querés saber por qué."}
+                  </p>
+                )}
                 {o.lineas.length > 0 && (
                   <div className="orden-detalle">
                     <div className="encabezado-item">

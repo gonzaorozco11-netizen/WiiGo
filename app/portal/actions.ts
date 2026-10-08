@@ -6,6 +6,7 @@ import { obtenerSesionMarca } from "@/lib/marcaSesion";
 import { calcularRendicion } from "@/app/(app)/liquidaciones/actions";
 import { fechaHoraArgentina } from "@/lib/horarios";
 import { costosVigentes, guardarCosto, SIN_SUBCATEGORIA, type CostoDeMarca } from "@/lib/costosMarca";
+import { PROPUESTA, type OrigenOrden } from "@/lib/estadosOrden";
 import {
   condicionesDeMarca,
   tasasGeneralesParaSimular,
@@ -294,6 +295,13 @@ export type OrdenPortal = {
   fecha: string;
   local: string;
   estado: string;
+  /** De dónde salió: la pidió WiiGo, la propuso ella, o llegó sin pedido. */
+  origen: OrigenOrden;
+  /**
+   * Por qué WiiGo no la quiso. Es la mitad que faltaba: sin el motivo, la
+   * marca vuelve a mandar lo mismo la semana que viene.
+   */
+  motivoRechazo: string | null;
   totalUnidades: number;
   recibidaEl: string | null;
   recibidaPor: string | null;
@@ -309,12 +317,29 @@ export async function reposicionPortal(): Promise<OrdenPortal[]> {
   if (!sesion) return [];
 
   const supabase = getSupabaseServerClient();
-  const { data: ordenes } = await supabase
+
+  // Con `origen` y `motivo_rechazo` si existen; si todavía no se corrió
+  // sql/reposicion-propuesta.sql, sin ellas: la pantalla anda igual, nada más
+  // que sin distinguir las propuestas.
+  const columnas = "id_orden, fecha, estado, total_unidades, id_local";
+  let ordenes: Record<string, unknown>[] | null = null;
+  const conExtras = await supabase
     .from("ordenes_reposicion")
-    .select("id_orden, fecha, estado, total_unidades, id_local")
+    .select(`${columnas}, origen, motivo_rechazo`)
     .eq("id_marca", sesion.idMarca)
     .order("fecha", { ascending: false })
     .limit(8);
+  if (conExtras.error) {
+    const sin = await supabase
+      .from("ordenes_reposicion")
+      .select(columnas)
+      .eq("id_marca", sesion.idMarca)
+      .order("fecha", { ascending: false })
+      .limit(8);
+    ordenes = (sin.data as Record<string, unknown>[]) ?? null;
+  } else {
+    ordenes = conExtras.data as Record<string, unknown>[];
+  }
 
   if (!ordenes || ordenes.length === 0) return [];
 
@@ -356,6 +381,8 @@ export async function reposicionPortal(): Promise<OrdenPortal[]> {
       fecha: o.fecha as string,
       local: localPorId.get(o.id_local as string) ?? "—",
       estado: (o.estado as string) ?? "PENDIENTE",
+      origen: ((o.origen as OrigenOrden) ?? "WIIGO") as OrigenOrden,
+      motivoRechazo: (o.motivo_rechazo as string) ?? null,
       totalUnidades: (o.total_unidades as number) ?? 0,
       recibidaEl: (recepcion?.fecha as string) ?? null,
       recibidaPor: (recepcion?.usuario as string) ?? null,
@@ -585,7 +612,7 @@ export async function proponerEnvio(params: {
   const base = {
     id_marca: sesion.idMarca,
     id_local: idLocal,
-    estado: "PROPUESTA",
+    estado: PROPUESTA,
     total_unidades: total,
     observaciones: params.observaciones.trim() || null,
   };

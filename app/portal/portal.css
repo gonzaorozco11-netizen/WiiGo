@@ -980,3 +980,13 @@
   background: var(--superficie-2); border: 1px solid var(--borde); color: var(--texto-3);
   border-radius: 11px; padding: 10px 13px; font-size: 12.5px; margin-top: 13px;
 }
+
+/* El estado de una propuesta, en el renglon de la orden.
+   Sin esto, una propuesta rechazada se veia igual que una esperando que la
+   mandaran: las dos decian "Pendiente de envio". */
+.aviso-orden {
+  font-size: 12.5px; border-radius: 10px; padding: 9px 12px; margin-top: 9px; line-height: 1.45;
+}
+.aviso-orden.esperando { background: var(--ocre-tenue); border: 1px solid #ecdcb4; color: #7d5e1f; }
+.aviso-orden.rechazada { background: var(--rojo-tenue); border: 1px solid #edcdc7; color: #8e4038; }
+.aviso-orden b { font-weight: 700; }
