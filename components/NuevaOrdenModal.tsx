@@ -3,9 +3,38 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import type { Marca, Local } from "@/lib/supabase";
 import type { FilaVariante } from "@/components/ReposicionApp";
-import { crearOrden } from "@/app/(app)/reposicion/actions";
+import { crearOrden, sugerenciaDeReposicion } from "@/app/(app)/reposicion/actions";
+import {
+  SEMANAS_COBERTURA,
+  SEMANAS_HISTORIA,
+  type MotivoSugerencia,
+  type SugerenciaVariante,
+} from "@/lib/reposicionSugerida";
 
 type Linea = { idVariante: string; cantidad: number; sugerida: boolean };
+
+const ETIQUETA_MOTIVO: Record<MotivoSugerencia, string> = {
+  VENTAS: "por ventas",
+  MINIMO: "por mínimo",
+  SIN_HISTORIA: "sin ventas",
+};
+
+/** La cuenta de un renglón, en una línea: vendió tanto, hay tanto, viene tanto. */
+function ExplicacionSugerido({ s }: { s?: SugerenciaVariante }) {
+  if (!s) return null;
+  const partes = [
+    s.vendidas > 0
+      ? `vendió ${s.vendidas} (${s.porSemana.toLocaleString("es-AR")}/semana)`
+      : "no vendió nada todavía",
+    `hay ${s.stock}`,
+  ];
+  if (s.pendiente > 0) partes.push(`${s.pendiente} ya pedidas sin llegar`);
+  return (
+    <span className="block text-[11px] text-neutral-400 mt-0.5">
+      {partes.join(" · ")} — {ETIQUETA_MOTIVO[s.motivo]}
+    </span>
+  );
+}
 
 export default function NuevaOrdenModal({
   marcas,
@@ -36,19 +65,53 @@ export default function NuevaOrdenModal({
     [filas, idMarca]
   );
 
-  // Sugiere automáticamente lo que está por debajo del mínimo en el local
-  // elegido, con la cantidad necesaria para llegar al objetivo.
+  // La sugerencia sale del servidor, de lo que de verdad se vendió: velocidad
+  // de las últimas semanas × la cobertura que se quiere tener, menos lo que
+  // hay y menos lo que ya está pedido y no llegó. Ver lib/reposicionSugerida.
+  //
+  // Mientras llega, se muestra la cuenta vieja —la del mínimo y el objetivo
+  // cargados a mano— para que la pantalla no quede vacía medio segundo.
+  const [sugerencias, setSugerencias] = useState<Map<string, SugerenciaVariante>>(new Map());
+  const [calculando, setCalculando] = useState(false);
+
   useEffect(() => {
-    const sugeridos = variantesDeMarca
+    const porMinimo = variantesDeMarca
       .map((f) => {
-        const cantidadActual = cantidadPorClave.get(`${f.variante.id_variante}_${idLocal}`) ?? 0;
-        if (cantidadActual >= f.variante.stock_minimo) return null;
-        const cantidad = Math.max(f.variante.stock_objetivo - cantidadActual, 1);
-        return { idVariante: f.variante.id_variante, cantidad, sugerida: true };
+        const hay = cantidadPorClave.get(`${f.variante.id_variante}_${idLocal}`) ?? 0;
+        if (hay >= f.variante.stock_minimo) return null;
+        return {
+          idVariante: f.variante.id_variante,
+          cantidad: Math.max(f.variante.stock_objetivo - hay, 1),
+          sugerida: true,
+        };
       })
       .filter((l): l is Linea => l !== null);
-    setLineas(sugeridos);
+    setLineas(porMinimo);
   }, [idMarca, idLocal, variantesDeMarca, cantidadPorClave]);
+
+  useEffect(() => {
+    if (!idMarca || !idLocal) return;
+    let vigente = true;
+    setCalculando(true);
+    sugerenciaDeReposicion(idMarca, idLocal)
+      .then((filas) => {
+        // Si mientras tanto se cambió de marca o de local, este resultado ya
+        // no corresponde: pisaría la pantalla con los números de otra.
+        if (!vigente) return;
+        setSugerencias(new Map(filas.map((f) => [f.idVariante, f])));
+        setLineas(
+          filas
+            .filter((f) => f.sugerido > 0)
+            .map((f) => ({ idVariante: f.idVariante, cantidad: f.sugerido, sugerida: true }))
+        );
+      })
+      .finally(() => {
+        if (vigente) setCalculando(false);
+      });
+    return () => {
+      vigente = false;
+    };
+  }, [idMarca, idLocal]);
 
   const nombreVariante = (idVariante: string) => {
     const f = variantesDeMarca.find((x) => x.variante.id_variante === idVariante);
@@ -148,8 +211,11 @@ export default function NuevaOrdenModal({
 
           <div>
             <p className="text-xs text-neutral-500 mb-2">
-              Se sugieren solos los productos por debajo del mínimo en este local, con la cantidad
-              necesaria para llegar al objetivo. Podés sacar alguno o agregar otro a mano.
+              Las cantidades salen de <b>lo que se vendió en las últimas {SEMANAS_HISTORIA} semanas</b>{" "}
+              en este local: lo necesario para tener {SEMANAS_COBERTURA} semanas de mercadería, menos
+              lo que hay en góndola y menos lo que ya está pedido y no llegó. Revisalas antes de
+              mandar — podés sacar, cambiar o agregar lo que quieras.
+              {calculando && <span className="text-neutral-400"> · calculando…</span>}
             </p>
 
             <div className="border border-neutral-200 rounded-xl overflow-hidden">
@@ -171,7 +237,9 @@ export default function NuevaOrdenModal({
                   ) : lineas.length === 0 ? (
                     <tr>
                       <td colSpan={3} className="p-4 text-center text-xs text-neutral-500">
-                        Nada está por debajo del mínimo en este local. Agregá algo abajo si igual querés pedir.
+                        {calculando
+                          ? "Calculando qué hace falta…"
+                          : "Con lo que hay en góndola y lo que ya está pedido, no hace falta reponer nada. Agregá algo abajo si igual querés pedir."}
                       </td>
                     </tr>
                   ) : (
@@ -184,6 +252,10 @@ export default function NuevaOrdenModal({
                               sugerido
                             </span>
                           )}
+                          {/* De dónde salió el número. Un sugerido que no se
+                              puede discutir termina siendo un sugerido que se
+                              ignora. */}
+                          <ExplicacionSugerido s={sugerencias.get(linea.idVariante)} />
                         </td>
                         <td className="p-2">
                           <input

@@ -7,6 +7,7 @@ import { friendlyDbError } from "@/lib/errors";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 import { estaAbierta, estadoSegunRecibido } from "@/lib/estadosOrden";
 import { guardarRemito } from "@/lib/remitoRecepcion";
+import { sugerirReposicion, type SugerenciaVariante } from "@/lib/reposicionSugerida";
 
 async function usuarioActual() {
   const cookieStore = await cookies();
@@ -124,6 +125,23 @@ export async function marcarDevueltaAMarca(ids: string[]): Promise<{ error: stri
 // Next.js redacta en producción el mensaje de un Error tirado desde una
 // Server Action (queda solo un digest genérico en el navegador) — por eso
 // estas funciones no throwean para errores esperables: devuelven { error }.
+/**
+ * Qué pedirle a una marca, según lo que de verdad se vendió.
+ *
+ * La cuenta vive en lib/reposicionSugerida.ts. Esto solo la expone a la
+ * pantalla que arma la orden: lo que devuelve precarga los renglones y
+ * administración los revisa antes de mandar nada.
+ */
+export async function sugerenciaDeReposicion(
+  idMarca: string,
+  idLocal: string
+): Promise<SugerenciaVariante[]> {
+  if (!idMarca || !idLocal) return [];
+  const supabase = getSupabaseServerClient();
+  const mapa = await sugerirReposicion(supabase, { idMarca, idLocal });
+  return [...mapa.values()];
+}
+
 export async function crearOrden(
   idMarca: string,
   idLocal: string,
