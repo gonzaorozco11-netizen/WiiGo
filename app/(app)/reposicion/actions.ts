@@ -5,7 +5,14 @@ import { cookies } from "next/headers";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
-import { estaAbierta, estadoSegunRecibido } from "@/lib/estadosOrden";
+import {
+  estaAbierta,
+  estadoSegunRecibido,
+  PENDIENTE,
+  PROPUESTA,
+  RECHAZADA,
+  type OrigenOrden,
+} from "@/lib/estadosOrden";
 import { guardarRemito } from "@/lib/remitoRecepcion";
 import { sugerirReposicion, type SugerenciaVariante } from "@/lib/reposicionSugerida";
 
@@ -142,6 +149,73 @@ export async function sugerenciaDeReposicion(
   return [...mapa.values()];
 }
 
+/**
+ * Mete la orden y su detalle. Lo comparten las tres puertas por las que puede
+ * nacer: la que arma administración, la que propone la marca y la que se
+ * abre cuando llega mercadería sin pedido.
+ *
+ * `origen` se intenta y si la columna no existe se reintenta sin ella, igual
+ * que con `marcas.orden`: así la pantalla anda aunque todavía no se haya
+ * corrido sql/reposicion-propuesta.sql, nada más que sin distinguir de dónde
+ * salió cada orden.
+ */
+async function insertarOrden(
+  supabase: ReturnType<typeof getSupabaseServerClient>,
+  datos: {
+    idMarca: string;
+    idLocal: string;
+    estado: string;
+    origen: OrigenOrden;
+    items: { idVariante: string; cantidad: number }[];
+    observaciones: string;
+  }
+): Promise<{ error: string | null; idOrden?: string }> {
+  const totalUnidades = datos.items.reduce((acc, i) => acc + i.cantidad, 0);
+  const base = {
+    id_marca: datos.idMarca,
+    id_local: datos.idLocal,
+    estado: datos.estado,
+    total_unidades: totalUnidades,
+    observaciones: datos.observaciones || null,
+  };
+
+  let orden: { id_orden: string } | null = null;
+  const conOrigen = await supabase
+    .from("ordenes_reposicion")
+    .insert({ ...base, origen: datos.origen })
+    .select("id_orden")
+    .single();
+
+  if (conOrigen.error) {
+    if (!esColumnaQueFalta(conOrigen.error)) return { error: friendlyDbError(conOrigen.error) };
+    const sinOrigen = await supabase
+      .from("ordenes_reposicion")
+      .insert(base)
+      .select("id_orden")
+      .single();
+    if (sinOrigen.error) return { error: friendlyDbError(sinOrigen.error) };
+    orden = sinOrigen.data as { id_orden: string };
+  } else {
+    orden = conOrigen.data as { id_orden: string };
+  }
+
+  const filas = datos.items.map((i) => ({
+    id_orden: orden.id_orden,
+    id_variante: i.idVariante,
+    cantidad_solicitada: i.cantidad,
+    cantidad_recibida: 0,
+  }));
+  const { error: errorDetalle } = await supabase.from("detalle_reposicion").insert(filas);
+  if (errorDetalle) return { error: friendlyDbError(errorDetalle) };
+
+  return { error: null, idOrden: orden.id_orden };
+}
+
+/** La columna no existe todavía: falta correr el SQL. */
+function esColumnaQueFalta(error: { code?: string; message?: string }): boolean {
+  return error.code === "42703" || error.code === "PGRST204";
+}
+
 export async function crearOrden(
   idMarca: string,
   idLocal: string,
@@ -153,29 +227,15 @@ export async function crearOrden(
 
   try {
     const supabase = getSupabaseServerClient();
-    const totalUnidades = validos.reduce((acc, i) => acc + i.cantidad, 0);
-
-    const { data: orden, error: errorOrden } = await supabase
-      .from("ordenes_reposicion")
-      .insert({
-        id_marca: idMarca,
-        id_local: idLocal,
-        estado: "PENDIENTE",
-        total_unidades: totalUnidades,
-        observaciones: observaciones || null,
-      })
-      .select("id_orden")
-      .single();
-    if (errorOrden) return { error: friendlyDbError(errorOrden) };
-
-    const filas = validos.map((i) => ({
-      id_orden: orden.id_orden,
-      id_variante: i.idVariante,
-      cantidad_solicitada: i.cantidad,
-      cantidad_recibida: 0,
-    }));
-    const { error: errorDetalle } = await supabase.from("detalle_reposicion").insert(filas);
-    if (errorDetalle) return { error: friendlyDbError(errorDetalle) };
+    const r = await insertarOrden(supabase, {
+      idMarca,
+      idLocal,
+      estado: PENDIENTE,
+      origen: "WIIGO",
+      items: validos,
+      observaciones,
+    });
+    if (r.error) return { error: r.error };
 
     // Estas acciones se llaman desde Compras: /reposicion ya solo redirige.
     revalidatePath("/compras");
@@ -183,6 +243,156 @@ export async function crearOrden(
     return { error: null };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo crear la orden" };
+  }
+}
+
+/**
+ * Llegó mercadería que nadie pidió.
+ *
+ * El operativo la tiene adelante: no sirve decirle "no la recibas". Lo que
+ * hace falta es que quede registrada —qué, cuánto, de quién, con el remito—
+ * y que NO entre a la venta hasta que administración la acepte.
+ *
+ * Por eso abre una orden en PROPUESTA y no toca el stock. La mercadería está
+ * físicamente en el depósito pero no en la góndola, que es exactamente donde
+ * tiene que estar mientras se decide. Al aprobarla pasa a PENDIENTE y se
+ * recepciona por el circuito de siempre.
+ */
+export async function registrarLlegadaSinOrden(
+  idMarca: string,
+  idLocal: string,
+  items: { idVariante: string; cantidad: number }[],
+  observaciones: string
+): Promise<{ error: string | null }> {
+  const validos = items.filter((i) => i.cantidad > 0);
+  if (validos.length === 0) return { error: "Cargá al menos un producto con cantidad mayor a 0" };
+  if (!idMarca || !idLocal) return { error: "Elegí de qué marca es y a qué local llegó" };
+
+  try {
+    const supabase = getSupabaseServerClient();
+    const usuario = await usuarioActual();
+    const nota = [`Llegó sin pedido. Lo recibió ${usuario ?? "el local"}.`, observaciones]
+      .filter(Boolean)
+      .join(" ");
+
+    const r = await insertarOrden(supabase, {
+      idMarca,
+      idLocal,
+      estado: PROPUESTA,
+      origen: "SIN_PEDIDO",
+      items: validos,
+      observaciones: nota,
+    });
+    if (r.error) return { error: r.error };
+
+    revalidatePath("/compras");
+    revalidatePath("/compras/recepcion");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo registrar la llegada" };
+  }
+}
+
+/**
+ * Administración acepta una propuesta — de la marca o de algo que llegó sin
+ * pedido — y recién ahí la orden entra al circuito normal.
+ *
+ * Las cantidades se pueden ajustar antes de aprobar: si la marca mandó 20 y
+ * solo se le aceptan 12, se aprueba por 12 y las otras 8 vuelven.
+ */
+export async function aprobarPropuesta(
+  idOrden: string,
+  ajustes?: { idDetalle: string; cantidad: number }[]
+): Promise<{ error: string | null }> {
+  try {
+    const supabase = getSupabaseServerClient();
+
+    const { data: orden } = await supabase
+      .from("ordenes_reposicion")
+      .select("estado")
+      .eq("id_orden", idOrden)
+      .maybeSingle();
+    if (!orden) return { error: "No se encontró la orden" };
+    if (orden.estado !== PROPUESTA) return { error: "Esta orden ya fue resuelta." };
+
+    for (const a of ajustes ?? []) {
+      if (a.cantidad < 0) return { error: "No se puede aprobar una cantidad negativa." };
+      const { error } = await supabase
+        .from("detalle_reposicion")
+        .update({ cantidad_solicitada: a.cantidad })
+        .eq("id_detalle", a.idDetalle);
+      if (error) return { error: friendlyDbError(error) };
+    }
+
+    // El total se recalcula de los renglones y no de lo que mandó la pantalla:
+    // si se ajustaron cantidades, el de la cabecera quedó viejo.
+    const { data: renglones } = await supabase
+      .from("detalle_reposicion")
+      .select("cantidad_solicitada")
+      .eq("id_orden", idOrden);
+    const total = (renglones ?? []).reduce((a, r) => a + ((r.cantidad_solicitada as number) ?? 0), 0);
+    if (total <= 0) return { error: "No se puede aprobar una orden sin unidades. Rechazala." };
+
+    const usuario = await usuarioActual();
+    const cambios: Record<string, unknown> = { estado: PENDIENTE, total_unidades: total };
+    const conSello = await supabase
+      .from("ordenes_reposicion")
+      .update({ ...cambios, aprobada_por: usuario, aprobada_el: new Date().toISOString() })
+      .eq("id_orden", idOrden);
+    if (conSello.error) {
+      if (!esColumnaQueFalta(conSello.error)) return { error: friendlyDbError(conSello.error) };
+      const { error } = await supabase
+        .from("ordenes_reposicion")
+        .update(cambios)
+        .eq("id_orden", idOrden);
+      if (error) return { error: friendlyDbError(error) };
+    }
+
+    revalidatePath("/compras");
+    revalidatePath("/compras/recepcion");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo aprobar" };
+  }
+}
+
+/** Administración no la quiere. La mercadería vuelve a la marca. */
+export async function rechazarPropuesta(
+  idOrden: string,
+  motivo: string
+): Promise<{ error: string | null }> {
+  const texto = motivo.trim();
+  // Sin motivo, la marca vuelve a mandar lo mismo la semana que viene.
+  if (!texto) return { error: "Escribí por qué la rechazás: la marca lo va a ver." };
+
+  try {
+    const supabase = getSupabaseServerClient();
+    const { data: orden } = await supabase
+      .from("ordenes_reposicion")
+      .select("estado")
+      .eq("id_orden", idOrden)
+      .maybeSingle();
+    if (!orden) return { error: "No se encontró la orden" };
+    if (orden.estado !== PROPUESTA) return { error: "Esta orden ya fue resuelta." };
+
+    const conMotivo = await supabase
+      .from("ordenes_reposicion")
+      .update({ estado: RECHAZADA, motivo_rechazo: texto })
+      .eq("id_orden", idOrden);
+    if (conMotivo.error) {
+      if (!esColumnaQueFalta(conMotivo.error)) return { error: friendlyDbError(conMotivo.error) };
+      const { error } = await supabase
+        .from("ordenes_reposicion")
+        .update({ estado: RECHAZADA, observaciones: `Rechazada: ${texto}` })
+        .eq("id_orden", idOrden);
+      if (error) return { error: friendlyDbError(error) };
+    }
+
+    revalidatePath("/compras");
+    revalidatePath("/compras/recepcion");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo rechazar" };
   }
 }
 

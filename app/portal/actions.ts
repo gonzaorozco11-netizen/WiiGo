@@ -515,6 +515,91 @@ export async function misCostosPortal(): Promise<MisCostosPortal | null> {
 }
 
 /**
+ * La marca propone mandar mercadería que WiiGo no le pidió.
+ *
+ * Es la válvula del circuito: sin esto, un lanzamiento o una promo se arreglan
+ * por WhatsApp y la mercadería llega sin papel, que es justo lo que no puede
+ * pasar en consignación — si no hay orden, no hay contra qué contar lo que
+ * entró, y lo que no se cuenta no se liquida.
+ *
+ * Queda en PROPUESTA: la orden existe y WiiGo la ve, pero no puede entrar nada
+ * al stock hasta que administración la apruebe. Cuánto espacio de góndola
+ * ocupa cada marca sigue siendo una decisión de WiiGo.
+ */
+export async function proponerEnvio(params: {
+  items: { idVariante: string; cantidad: number }[];
+  observaciones: string;
+}): Promise<{ error: string | null }> {
+  const sesion = await obtenerSesionMarca();
+  if (!sesion) return { error: "Sesión no válida" };
+
+  const validos = params.items.filter((i) => i.cantidad > 0);
+  if (validos.length === 0) return { error: "Agregá al menos un producto con cantidad mayor a 0" };
+
+  const supabase = getSupabaseServerClient();
+
+  // Que las variantes sean suyas se valida del lado del servidor: mandar el id
+  // de la variante de otra marca no tiene que poder abrir una orden ajena.
+  const { data: productos } = await supabase
+    .from("productos")
+    .select("id_producto")
+    .eq("id_marca", sesion.idMarca);
+  const idsProducto = (productos ?? []).map((p) => p.id_producto as string);
+  const { data: variantes } = idsProducto.length
+    ? await supabase.from("variantes_producto").select("id_variante").in("id_producto", idsProducto)
+    : { data: [] };
+  const propias = new Set((variantes ?? []).map((v) => v.id_variante as string));
+  if (validos.some((i) => !propias.has(i.idVariante))) {
+    return { error: "Alguno de esos productos no es tuyo." };
+  }
+
+  // A qué local. Con uno solo no hay nada que elegir; con varios, el primero
+  // y WiiGo lo corrige al aprobar.
+  const { data: locales } = await supabase
+    .from("locales")
+    .select("id_local")
+    .eq("estado", "ACTIVO")
+    .limit(1);
+  const idLocal = (locales ?? [])[0]?.id_local as string | undefined;
+  if (!idLocal) return { error: "No hay un local donde recibirlo. Escribinos." };
+
+  const total = validos.reduce((a, i) => a + i.cantidad, 0);
+  const base = {
+    id_marca: sesion.idMarca,
+    id_local: idLocal,
+    estado: "PROPUESTA",
+    total_unidades: total,
+    observaciones: params.observaciones.trim() || null,
+  };
+
+  // Con `origen` si la columna existe; si no, sin ella. Ver
+  // sql/reposicion-propuesta.sql.
+  let orden = await supabase
+    .from("ordenes_reposicion")
+    .insert({ ...base, origen: "MARCA" })
+    .select("id_orden")
+    .single();
+  if (orden.error && (orden.error.code === "42703" || orden.error.code === "PGRST204")) {
+    orden = await supabase.from("ordenes_reposicion").insert(base).select("id_orden").single();
+  }
+  if (orden.error || !orden.data) return { error: "No se pudo enviar la propuesta." };
+
+  const { error } = await supabase.from("detalle_reposicion").insert(
+    validos.map((i) => ({
+      id_orden: orden.data!.id_orden,
+      id_variante: i.idVariante,
+      cantidad_solicitada: i.cantidad,
+      cantidad_recibida: 0,
+    }))
+  );
+  if (error) return { error: "No se pudo enviar la propuesta." };
+
+  revalidatePath("/portal");
+  revalidatePath("/portal/productos");
+  return { error: null };
+}
+
+/**
  * La marca carga su costo.
  *
  * Sin idMarca por parámetro, como el resto del portal: sale de la sesión. El

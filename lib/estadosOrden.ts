@@ -9,6 +9,17 @@
 // No importa supabase a propósito: lo usan tanto los server actions como los
 // componentes de cliente.
 
+/**
+ * Esperando que administración la apruebe.
+ *
+ * Son los dos casos que no nacen en Compras: la marca propone un envío desde
+ * su portal, o llega mercadería que nadie pidió. En los dos, la orden existe
+ * —queda el registro de qué, cuánto y cuándo— pero todavía no puede entrar
+ * nada al stock. Por eso NO está en ESTADOS_ABIERTOS.
+ */
+export const PROPUESTA = "PROPUESTA";
+/** Administración no la quiso. La mercadería vuelve a la marca. */
+export const RECHAZADA = "RECHAZADA";
 /** Emitida, todavía no se mandó. */
 export const PENDIENTE = "PENDIENTE";
 /** Llegó una parte. Lo que entró ya se vende; el resto sigue esperando. */
@@ -38,8 +49,22 @@ export function estaAbierta(estado: string | null | undefined): boolean {
 
 /** ¿Ya se cerró, con o sin faltante? */
 export function estaCerrada(estado: string | null | undefined): boolean {
-  return !estaAbierta(estado) && estado !== CANCELADA;
+  return !estaAbierta(estado) && estado !== CANCELADA && estado !== PROPUESTA && estado !== RECHAZADA;
 }
+
+/** ¿Está esperando que administración decida? */
+export function esperaAprobacion(estado: string | null | undefined): boolean {
+  return estado === PROPUESTA;
+}
+
+/** De dónde salió una orden. Ver sql/reposicion-propuesta.sql. */
+export type OrigenOrden = "WIIGO" | "MARCA" | "SIN_PEDIDO";
+
+export const ETIQUETA_ORIGEN: Record<OrigenOrden, string> = {
+  WIIGO: "La pediste vos",
+  MARCA: "La propuso la marca",
+  SIN_PEDIDO: "Llegó sin pedido",
+};
 
 /**
  * Cómo se muestra cada estado. Sin "recibida con diferencias" para el que
@@ -47,6 +72,10 @@ export function estaCerrada(estado: string | null | undefined): boolean {
  */
 export function etiquetaEstado(estado: string, enviada: boolean): string {
   switch (estado) {
+    case PROPUESTA:
+      return "Esperando aprobación";
+    case RECHAZADA:
+      return "Rechazada";
     case PENDIENTE:
       return enviada ? "Enviada" : "Sin enviar";
     case RECIBIDA_PARCIAL:
