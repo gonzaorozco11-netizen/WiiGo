@@ -3,7 +3,12 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { guardarMiCosto, type MisCostosPortal, type ProductoConMargen } from "@/app/portal/actions";
+import {
+  guardarMiCosto,
+  proponerEnvio,
+  type MisCostosPortal,
+  type ProductoConMargen,
+} from "@/app/portal/actions";
 import { SIN_SUBCATEGORIA } from "@/lib/costosMarca";
 import type { MargenSimulado } from "@/lib/margenMarca";
 
@@ -52,6 +57,8 @@ export default function PortalMisProductos({ datos }: { datos: MisCostosPortal }
   // abiertos es el mismo muro de antes.
   const [grupoAbierto, setGrupoAbierto] = useState<string | null>(null);
   const [abierta, setAbierta] = useState<string | null>(null);
+  const [proponiendo, setProponiendo] = useState(false);
+  const [propuestaHecha, setPropuestaHecha] = useState<string | null>(null);
 
   const total = datos.productos.length;
   const hechos = total - datos.sinCosto;
@@ -125,11 +132,18 @@ export default function PortalMisProductos({ datos }: { datos: MisCostosPortal }
             {/* El alta la hace WiiGo: la marca pide y nosotros aprobamos. El
                 formulario ya vive en "Pedir un cambio" — acá va el atajo,
                 porque es donde se le ocurre buscarlo. */}
-            <Link className="boton-portal" href="/portal/cambios?nuevo=1">
+            <Link className="boton-portal sec" href="/portal/cambios?nuevo=1">
               + Pedir un producto nuevo
             </Link>
+            {/* La válvula del circuito: sin esto, un lanzamiento se arregla
+                por WhatsApp y la mercadería llega sin papel. */}
+            <button className="boton-portal" onClick={() => setProponiendo(true)}>
+              ↑ Proponer un envío
+            </button>
           </div>
         </div>
+
+        {propuestaHecha && <div className="nota-verde">{propuestaHecha}</div>}
 
         {total === 0 ? (
           <p className="vacio">Todavía no tenés productos cargados en WiiGo.</p>
@@ -266,7 +280,156 @@ export default function PortalMisProductos({ datos }: { datos: MisCostosPortal }
         La cuenta que se abre en cada producto es por <b>una unidad</b>. La del mes entero está en el{" "}
         <Link href="/portal">Tablero</Link>, en «Lo que te queda este mes».
       </p>
+
+      {proponiendo && (
+        <ProponerEnvio
+          productos={datos.productos}
+          onCerrar={() => setProponiendo(false)}
+          onListo={(msg) => {
+            setProponiendo(false);
+            setPropuestaHecha(msg);
+          }}
+        />
+      )}
     </main>
+  );
+}
+
+/**
+ * La marca arma lo que quiere mandar y lo propone.
+ *
+ * Vienen precargados los que están sin stock: si la góndola está vacía, eso
+ * es lo que hay que mandar, y es la razón por la que entró a esta pantalla.
+ */
+function ProponerEnvio({
+  productos,
+  onCerrar,
+  onListo,
+}: {
+  productos: ProductoConMargen[];
+  onCerrar: () => void;
+  onListo: (msg: string) => void;
+}) {
+  const router = useRouter();
+  const [cantidades, setCantidades] = useState<Record<string, number>>(() =>
+    Object.fromEntries(productos.filter((p) => p.stock === 0).map((p) => [p.idProducto, 12]))
+  );
+  const [motivo, setMotivo] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [enviando, empezar] = useTransition();
+
+  // Primero los que están sin stock: es lo que hay que resolver.
+  const orden = useMemo(
+    () => [...productos].sort((a, b) => a.stock - b.stock || a.nombre.localeCompare(b.nombre, "es")),
+    [productos]
+  );
+
+  const elegidos = orden.filter((p) => (cantidades[p.idProducto] ?? 0) > 0);
+  const total = elegidos.reduce((a, p) => a + cantidades[p.idProducto], 0);
+
+  function enviar() {
+    setError(null);
+    empezar(async () => {
+      const r = await proponerEnvio({
+        items: elegidos.map((p) => ({ idProducto: p.idProducto, cantidad: cantidades[p.idProducto] })),
+        observaciones: motivo,
+      });
+      if (r.error) setError(r.error);
+      else {
+        router.refresh();
+        onListo(
+          `Propuesta enviada: ${total} unidades de ${elegidos.length} producto${
+            elegidos.length === 1 ? "" : "s"
+          }. WiiGo la revisa y te avisa.`
+        );
+      }
+    });
+  }
+
+  return (
+    <div className="modal-fondo" onClick={onCerrar}>
+      <div className="modal-caja grande" onClick={(e) => e.stopPropagation()}>
+        <h3>Proponer un envío</h3>
+        <p className="desc">Elegí qué querés mandar. WiiGo lo revisa y te avisa si lo acepta.</p>
+
+        <div className="nota-ocre">
+          No mandes nada hasta que te lo aprobemos. Si llega sin aprobar, queda frenado en el depósito
+          hasta que alguien lo revise.
+        </div>
+
+        <div className="tabla-scroll">
+          <table className="tabla-proponer">
+            <thead>
+              <tr>
+                <th>Producto</th>
+                <th className="num">En góndola</th>
+                <th className="num">Quiero mandar</th>
+              </tr>
+            </thead>
+            <tbody>
+              {orden.map((p) => (
+                <tr key={p.idProducto}>
+                  <td>
+                    {p.nombre}
+                    <small>{p.subcategoria}</small>
+                  </td>
+                  <td className="num">
+                    <Stock p={p} />
+                  </td>
+                  <td className="num">
+                    <input
+                      className="inp-costo"
+                      style={{ width: 84 }}
+                      type="number"
+                      min={0}
+                      inputMode="numeric"
+                      value={cantidades[p.idProducto] ?? ""}
+                      placeholder="0"
+                      disabled={enviando}
+                      aria-label={`Unidades a mandar de ${p.nombre}`}
+                      onChange={(e) =>
+                        setCantidades((prev) => ({
+                          ...prev,
+                          [p.idProducto]: Math.max(0, Number(e.target.value) || 0),
+                        }))
+                      }
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <label className="campo-portal">
+          <span className="et">¿Por qué?</span>
+          <textarea
+            value={motivo}
+            onChange={(e) => setMotivo(e.target.value)}
+            rows={2}
+            placeholder="Lanzamiento, promo, reposición de lo que se agotó…"
+          />
+          <span className="ay">Ayuda a que te lo aprueben más rápido.</span>
+        </label>
+
+        {error && <div className="nota-roja">{error}</div>}
+
+        <div className={total > 0 ? "nota-verde" : "nota-gris"}>
+          {total > 0
+            ? `Vas a proponer ${total} unidades de ${elegidos.length} producto${elegidos.length === 1 ? "" : "s"}.`
+            : "Poné cuántas unidades querés mandar de cada uno."}
+        </div>
+
+        <div className="modal-pie">
+          <button className="boton-portal sec" onClick={onCerrar} disabled={enviando}>
+            Cancelar
+          </button>
+          <button className="boton-portal" onClick={enviar} disabled={enviando || total <= 0}>
+            {enviando ? "Enviando…" : "Mandar la propuesta"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

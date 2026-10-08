@@ -527,7 +527,7 @@ export async function misCostosPortal(): Promise<MisCostosPortal | null> {
  * ocupa cada marca sigue siendo una decisión de WiiGo.
  */
 export async function proponerEnvio(params: {
-  items: { idVariante: string; cantidad: number }[];
+  items: { idProducto: string; cantidad: number }[];
   observaciones: string;
 }): Promise<{ error: string | null }> {
   const sesion = await obtenerSesionMarca();
@@ -538,20 +538,38 @@ export async function proponerEnvio(params: {
 
   const supabase = getSupabaseServerClient();
 
-  // Que las variantes sean suyas se valida del lado del servidor: mandar el id
-  // de la variante de otra marca no tiene que poder abrir una orden ajena.
+  // Que los productos sean suyos se valida del lado del servidor: mandar el id
+  // de un producto de otra marca no tiene que poder abrir una orden ajena.
   const { data: productos } = await supabase
     .from("productos")
     .select("id_producto")
     .eq("id_marca", sesion.idMarca);
-  const idsProducto = (productos ?? []).map((p) => p.id_producto as string);
-  const { data: variantes } = idsProducto.length
-    ? await supabase.from("variantes_producto").select("id_variante").in("id_producto", idsProducto)
-    : { data: [] };
-  const propias = new Set((variantes ?? []).map((v) => v.id_variante as string));
-  if (validos.some((i) => !propias.has(i.idVariante))) {
+  const propios = new Set((productos ?? []).map((p) => p.id_producto as string));
+  if (validos.some((i) => !propios.has(i.idProducto))) {
     return { error: "Alguno de esos productos no es tuyo." };
   }
+
+  // La orden se guarda por variante, pero la marca propone por producto: es
+  // como piensa ella, y en el 99% de los casos el producto tiene una sola.
+  // Con varias se toma la primera y WiiGo afina el sabor al aprobar — una
+  // propuesta no es una orden, es el principio de una conversación.
+  const { data: variantes } = await supabase
+    .from("variantes_producto")
+    .select("id_variante, id_producto, orden")
+    .in("id_producto", [...propios])
+    .eq("estado", "ACTIVO")
+    .order("orden", { ascending: true, nullsFirst: false });
+
+  const varianteDeProducto = new Map<string, string>();
+  for (const v of variantes ?? []) {
+    const idP = v.id_producto as string;
+    if (!varianteDeProducto.has(idP)) varianteDeProducto.set(idP, v.id_variante as string);
+  }
+
+  const renglones = validos
+    .map((i) => ({ idVariante: varianteDeProducto.get(i.idProducto), cantidad: i.cantidad }))
+    .filter((r): r is { idVariante: string; cantidad: number } => Boolean(r.idVariante));
+  if (renglones.length === 0) return { error: "Esos productos no tienen variantes activas." };
 
   // A qué local. Con uno solo no hay nada que elegir; con varios, el primero
   // y WiiGo lo corrige al aprobar.
@@ -563,7 +581,7 @@ export async function proponerEnvio(params: {
   const idLocal = (locales ?? [])[0]?.id_local as string | undefined;
   if (!idLocal) return { error: "No hay un local donde recibirlo. Escribinos." };
 
-  const total = validos.reduce((a, i) => a + i.cantidad, 0);
+  const total = renglones.reduce((a, i) => a + i.cantidad, 0);
   const base = {
     id_marca: sesion.idMarca,
     id_local: idLocal,
@@ -585,7 +603,7 @@ export async function proponerEnvio(params: {
   if (orden.error || !orden.data) return { error: "No se pudo enviar la propuesta." };
 
   const { error } = await supabase.from("detalle_reposicion").insert(
-    validos.map((i) => ({
+    renglones.map((i) => ({
       id_orden: orden.data!.id_orden,
       id_variante: i.idVariante,
       cantidad_solicitada: i.cantidad,

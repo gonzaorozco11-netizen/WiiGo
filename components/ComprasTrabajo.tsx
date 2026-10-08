@@ -20,6 +20,7 @@ import {
 import type { OrdenReposicion, OrdenCompraProveedor } from "@/lib/supabase";
 import type { FilaVariante } from "@/components/ReposicionApp";
 import NuevaOrdenModal from "@/components/NuevaOrdenModal";
+import LlegoSinPedidoModal from "@/components/LlegoSinPedidoModal";
 import NuevaOrdenCompraModal, { type OrdenParaEditar } from "@/components/NuevaOrdenCompraModal";
 import RecepcionModal from "@/components/RecepcionModal";
 import RecepcionCompraModal from "@/components/RecepcionCompraModal";
@@ -78,6 +79,7 @@ export default function ComprasTrabajo({
   puedeCerrarPedidos?: boolean;
 }) {
   const [nuevaMarca, setNuevaMarca] = useState(false);
+  const [llegoSinPedido, setLlegoSinPedido] = useState(false);
   const [nuevaProveedor, setNuevaProveedor] = useState(false);
   const [editando, setEditando] = useState<OrdenParaEditar | null>(null);
   const [recibirMarca, setRecibirMarca] = useState<OrdenReposicion | null>(null);
@@ -529,11 +531,26 @@ export default function ComprasTrabajo({
 
       {etapa === "RECEPCION" && (
         <>
-          <h1 className="text-xl font-semibold text-neutral-900">Recepción de mercadería</h1>
-          <p className="text-sm text-neutral-500 mt-1 mb-5">
-            Contá lo que hay en la caja y cargá <b className="text-neutral-700">eso</b>, no lo que dice el remito. Si
-            falta algo, queda el reclamo hecho solo.
-          </p>
+          <div className="flex items-start justify-between gap-3 flex-wrap mb-5">
+            <div>
+              <h1 className="text-xl font-semibold text-neutral-900">Recepción de mercadería</h1>
+              <p className="text-sm text-neutral-500 mt-1">
+                Contá lo que hay en la caja y cargá <b className="text-neutral-700">eso</b>, no lo que dice el
+                remito. Si falta algo, queda el reclamo hecho solo.
+              </p>
+            </div>
+            {/* Para cuando llega un bulto y no hay ninguna orden contra la
+                cual contarlo. Sin esto, o se rechaza en la puerta o entra al
+                stock sin registro, y las dos salidas son malas. */}
+            {datos.marcas.length > 0 && datos.locales.length > 0 && (
+              <button
+                onClick={() => setLlegoSinPedido(true)}
+                className="text-sm font-semibold text-neutral-700 bg-white border border-neutral-300 rounded-lg px-3.5 py-2 whitespace-nowrap"
+              >
+                + Llegó algo sin pedido
+              </button>
+            )}
+          </div>
 
           {esperandoLlegar.length === 0 && aMedias.length === 0 ? (
             <p className="bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl px-4 py-4 text-sm font-medium text-center">
@@ -633,6 +650,15 @@ export default function ComprasTrabajo({
           filas={filas}
           cantidadPorClave={cantidadPorClave}
           onClose={() => setNuevaMarca(false)}
+        />
+      )}
+      {llegoSinPedido && (
+        <LlegoSinPedidoModal
+          marcas={datos.marcas}
+          locales={datos.locales}
+          productos={datos.productos}
+          variantes={datos.variantes}
+          onClose={() => setLlegoSinPedido(false)}
         />
       )}
       {nuevaProveedor && (

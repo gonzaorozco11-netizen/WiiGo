@@ -11,6 +11,7 @@ import {
   PENDIENTE,
   PROPUESTA,
   RECHAZADA,
+  RECIBIDA,
   type OrigenOrden,
 } from "@/lib/estadosOrden";
 import { guardarRemito } from "@/lib/remitoRecepcion";
@@ -246,6 +247,123 @@ export async function crearOrden(
   }
 }
 
+export type PropuestaPendiente = {
+  idOrden: string;
+  origen: OrigenOrden;
+  marca: string;
+  local: string;
+  fecha: string;
+  observaciones: string | null;
+  items: {
+    idDetalle: string;
+    idVariante: string;
+    producto: string;
+    cantidad: number;
+    /** Lo que hay hoy en ese local, para decidir con la góndola adelante. */
+    stock: number;
+  }[];
+};
+
+/**
+ * Lo que espera que administración decida.
+ *
+ * Devuelve lista vacía —y no un error— si la columna `origen` todavía no
+ * existe: antes de correr sql/reposicion-propuesta.sql no hay ninguna
+ * propuesta posible, así que no hay nada que mostrar.
+ */
+export async function propuestasPendientes(): Promise<PropuestaPendiente[]> {
+  const supabase = getSupabaseServerClient();
+
+  const { data: ordenes, error } = await supabase
+    .from("ordenes_reposicion")
+    .select("id_orden, id_marca, id_local, fecha, observaciones, origen")
+    .eq("estado", PROPUESTA)
+    .order("fecha", { ascending: true });
+  if (error || !ordenes || ordenes.length === 0) return [];
+
+  const idsOrden = ordenes.map((o) => o.id_orden as string);
+  const idsMarca = [...new Set(ordenes.map((o) => o.id_marca as string).filter(Boolean))];
+  const idsLocal = [...new Set(ordenes.map((o) => o.id_local as string).filter(Boolean))];
+
+  const [{ data: detalles }, { data: marcas }, { data: locales }] = await Promise.all([
+    supabase
+      .from("detalle_reposicion")
+      .select("id_detalle, id_orden, id_variante, cantidad_solicitada")
+      .in("id_orden", idsOrden),
+    idsMarca.length
+      ? supabase.from("marcas").select("id_marca, nombre").in("id_marca", idsMarca)
+      : Promise.resolve({ data: [] }),
+    idsLocal.length
+      ? supabase.from("locales").select("id_local, nombre").in("id_local", idsLocal)
+      : Promise.resolve({ data: [] }),
+  ]);
+
+  const idsVariante = [...new Set((detalles ?? []).map((d) => d.id_variante as string))];
+  const [{ data: variantes }, { data: stock }] = await Promise.all([
+    idsVariante.length
+      ? supabase
+          .from("variantes_producto")
+          .select("id_variante, id_producto, nombre")
+          .in("id_variante", idsVariante)
+      : Promise.resolve({ data: [] }),
+    idsVariante.length
+      ? supabase.from("stock").select("id_variante, id_local, cantidad").in("id_variante", idsVariante)
+      : Promise.resolve({ data: [] }),
+  ]);
+
+  const idsProducto = [...new Set((variantes ?? []).map((v) => v.id_producto as string))];
+  const { data: productos } = idsProducto.length
+    ? await supabase.from("productos").select("id_producto, nombre").in("id_producto", idsProducto)
+    : { data: [] };
+
+  const nombreProducto = new Map((productos ?? []).map((p) => [p.id_producto as string, p.nombre as string]));
+  const infoVariante = new Map(
+    (variantes ?? []).map((v) => [
+      v.id_variante as string,
+      {
+        producto: nombreProducto.get(v.id_producto as string) ?? "Producto",
+        variante: (v.nombre as string) ?? "",
+      },
+    ])
+  );
+  const nombreMarca = new Map((marcas ?? []).map((m) => [m.id_marca as string, m.nombre as string]));
+  const nombreLocal = new Map((locales ?? []).map((l) => [l.id_local as string, l.nombre as string]));
+  const stockPorClave = new Map(
+    (stock ?? []).map((s) => [`${s.id_variante}_${s.id_local}`, (s.cantidad as number) ?? 0])
+  );
+
+  return ordenes.map((o) => {
+    const idOrden = o.id_orden as string;
+    const idLocal = o.id_local as string;
+    return {
+      idOrden,
+      origen: ((o.origen as OrigenOrden) ?? "MARCA") as OrigenOrden,
+      marca: nombreMarca.get(o.id_marca as string) ?? "Marca",
+      local: nombreLocal.get(idLocal) ?? "Local",
+      fecha: (o.fecha as string) ?? "",
+      observaciones: (o.observaciones as string) ?? null,
+      items: (detalles ?? [])
+        .filter((d) => d.id_orden === idOrden)
+        .map((d) => {
+          const idVariante = d.id_variante as string;
+          const info = infoVariante.get(idVariante);
+          const nombre = info
+            ? info.variante && info.variante !== "Único"
+              ? `${info.producto} — ${info.variante}`
+              : info.producto
+            : "Producto";
+          return {
+            idDetalle: d.id_detalle as string,
+            idVariante,
+            producto: nombre,
+            cantidad: (d.cantidad_solicitada as number) ?? 0,
+            stock: stockPorClave.get(`${idVariante}_${idLocal}`) ?? 0,
+          };
+        }),
+    };
+  });
+}
+
 /**
  * Llegó mercadería que nadie pidió.
  *
@@ -294,24 +412,52 @@ export async function registrarLlegadaSinOrden(
 }
 
 /**
- * Administración acepta una propuesta — de la marca o de algo que llegó sin
- * pedido — y recién ahí la orden entra al circuito normal.
+ * Administración acepta una propuesta. Hace dos cosas distintas según de
+ * dónde salió, porque son dos situaciones distintas:
  *
- * Las cantidades se pueden ajustar antes de aprobar: si la marca mandó 20 y
- * solo se le aceptan 12, se aprueba por 12 y las otras 8 vuelven.
+ *   SIN_PEDIDO — la mercadería YA está en el depósito y el operativo ya la
+ *     contó al cargarla. Entra al stock de una. Mandarla de vuelta a
+ *     Recepción sería contar dos veces lo mismo.
+ *
+ *   MARCA — todavía no salió de la marca. Pasa a PENDIENTE y queda en
+ *     Recepción esperando la entrega, como cualquier orden.
+ *
+ * Las cantidades se pueden ajustar antes: si la marca mandó 20 y se le
+ * aceptan 12, se aprueba por 12 y las otras 8 vuelven.
  */
 export async function aprobarPropuesta(
   idOrden: string,
   ajustes?: { idDetalle: string; cantidad: number }[]
-): Promise<{ error: string | null }> {
+): Promise<{ error: string | null; aviso?: string }> {
   try {
     const supabase = getSupabaseServerClient();
 
-    const { data: orden } = await supabase
+    // `origen` puede no existir todavía: sin él se trata como propuesta de
+    // marca, que es el camino conservador (no toca el stock).
+    let origen: OrigenOrden = "MARCA";
+    let orden: { estado?: unknown; id_local?: unknown; id_marca?: unknown } | null = null;
+
+    const conOrigen = await supabase
       .from("ordenes_reposicion")
-      .select("estado")
+      .select("estado, id_local, id_marca, origen")
       .eq("id_orden", idOrden)
       .maybeSingle();
+    if (conOrigen.error && !esColumnaQueFalta(conOrigen.error)) {
+      return { error: friendlyDbError(conOrigen.error) };
+    }
+    if (conOrigen.error) {
+      const sin = await supabase
+        .from("ordenes_reposicion")
+        .select("estado, id_local, id_marca")
+        .eq("id_orden", idOrden)
+        .maybeSingle();
+      if (sin.error) return { error: friendlyDbError(sin.error) };
+      orden = sin.data;
+    } else {
+      orden = conOrigen.data;
+      origen = ((conOrigen.data?.origen as OrigenOrden) ?? "MARCA") as OrigenOrden;
+    }
+
     if (!orden) return { error: "No se encontró la orden" };
     if (orden.estado !== PROPUESTA) return { error: "Esta orden ya fue resuelta." };
 
@@ -324,17 +470,36 @@ export async function aprobarPropuesta(
       if (error) return { error: friendlyDbError(error) };
     }
 
-    // El total se recalcula de los renglones y no de lo que mandó la pantalla:
-    // si se ajustaron cantidades, el de la cabecera quedó viejo.
+    // Los totales se releen de la base y no de lo que mandó la pantalla: si
+    // se ajustaron cantidades, lo de la cabecera quedó viejo.
     const { data: renglones } = await supabase
       .from("detalle_reposicion")
-      .select("cantidad_solicitada")
+      .select("id_detalle, id_variante, cantidad_solicitada")
       .eq("id_orden", idOrden);
-    const total = (renglones ?? []).reduce((a, r) => a + ((r.cantidad_solicitada as number) ?? 0), 0);
-    if (total <= 0) return { error: "No se puede aprobar una orden sin unidades. Rechazala." };
+    const lineas = renglones ?? [];
+    const total = lineas.reduce((a, r) => a + ((r.cantidad_solicitada as number) ?? 0), 0);
+    if (total <= 0) return { error: "No se puede aprobar sin unidades. Rechazala." };
 
     const usuario = await usuarioActual();
-    const cambios: Record<string, unknown> = { estado: PENDIENTE, total_unidades: total };
+    const idLocal = orden.id_local as string;
+
+    if (origen === "SIN_PEDIDO") {
+      const r = await entrarAlStock(supabase, {
+        idOrden,
+        idMarca: orden.id_marca as string,
+        idLocal,
+        usuario,
+        lineas: lineas.map((l) => ({
+          idDetalle: l.id_detalle as string,
+          idVariante: l.id_variante as string,
+          cantidad: (l.cantidad_solicitada as number) ?? 0,
+        })),
+      });
+      if (r.error) return { error: r.error };
+    }
+
+    const estadoFinal = origen === "SIN_PEDIDO" ? RECIBIDA : PENDIENTE;
+    const cambios: Record<string, unknown> = { estado: estadoFinal, total_unidades: total };
     const conSello = await supabase
       .from("ordenes_reposicion")
       .update({ ...cambios, aprobada_por: usuario, aprobada_el: new Date().toISOString() })
@@ -350,10 +515,101 @@ export async function aprobarPropuesta(
 
     revalidatePath("/compras");
     revalidatePath("/compras/recepcion");
-    return { error: null };
+    revalidatePath("/stock");
+    return {
+      error: null,
+      aviso:
+        origen === "SIN_PEDIDO"
+          ? `${total} unidades entraron al stock. Ya se pueden vender.`
+          : `Aprobada por ${total} unidades. Queda en Recepción esperando la entrega.`,
+    };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo aprobar" };
   }
+}
+
+/**
+ * Mete al stock lo que llegó sin pedido, con su recepción y sus movimientos.
+ *
+ * Deja el mismo rastro que una recepción normal —quién, cuándo, cuánto— para
+ * que la mercadería no aparezca en el stock sin explicación. La diferencia es
+ * que no hubo nada que comparar: lo solicitado ES lo que llegó, así que todos
+ * los renglones cierran en COMPLETA.
+ */
+async function entrarAlStock(
+  supabase: ReturnType<typeof getSupabaseServerClient>,
+  datos: {
+    idOrden: string;
+    idMarca: string;
+    idLocal: string;
+    usuario: string | null;
+    lineas: { idDetalle: string; idVariante: string; cantidad: number }[];
+  }
+): Promise<{ error: string | null }> {
+  const { data: recepcion, error: errorRecepcion } = await supabase
+    .from("recepciones")
+    .insert({
+      id_orden: datos.idOrden,
+      id_marca: datos.idMarca,
+      id_local: datos.idLocal,
+      usuario: datos.usuario,
+      observaciones: "Llegó sin pedido y se aceptó desde Compras.",
+    })
+    .select("id_recepcion")
+    .single();
+  if (errorRecepcion) return { error: friendlyDbError(errorRecepcion) };
+
+  for (const l of datos.lineas) {
+    if (l.cantidad <= 0) continue;
+
+    const { error: e1 } = await supabase
+      .from("detalle_reposicion")
+      .update({ cantidad_recibida: l.cantidad })
+      .eq("id_detalle", l.idDetalle);
+    if (e1) return { error: friendlyDbError(e1) };
+
+    const { error: e2 } = await supabase.from("detalle_recepciones").insert({
+      id_recepcion: recepcion.id_recepcion,
+      id_orden: datos.idOrden,
+      id_variante: l.idVariante,
+      cantidad_solicitada: l.cantidad,
+      cantidad_recibida: l.cantidad,
+      estado_control: "COMPLETA",
+      diferencia: 0,
+    });
+    if (e2) return { error: friendlyDbError(e2) };
+
+    const { data: actual } = await supabase
+      .from("stock")
+      .select("cantidad")
+      .eq("id_variante", l.idVariante)
+      .eq("id_local", datos.idLocal)
+      .maybeSingle();
+
+    const { error: e3 } = await supabase.from("stock").upsert(
+      {
+        id_variante: l.idVariante,
+        id_local: datos.idLocal,
+        cantidad: (actual?.cantidad ?? 0) + l.cantidad,
+        fecha_actualizacion: new Date().toISOString(),
+      },
+      { onConflict: "id_variante,id_local" }
+    );
+    if (e3) return { error: friendlyDbError(e3) };
+
+    const { error: e4 } = await supabase.from("movimientos_stock").insert({
+      id_variante: l.idVariante,
+      id_local: datos.idLocal,
+      tipo: "RECEPCION",
+      cantidad: l.cantidad,
+      motivo: "Llegó sin pedido, aceptado por administración",
+      id_referencia: datos.idOrden,
+      usuario: datos.usuario,
+    });
+    if (e4) return { error: friendlyDbError(e4) };
+  }
+
+  return { error: null };
 }
 
 /** Administración no la quiere. La mercadería vuelve a la marca. */
