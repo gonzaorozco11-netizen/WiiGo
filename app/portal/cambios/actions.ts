@@ -590,11 +590,43 @@ export async function pedirPromo(
   });
 }
 
+/** Un sabor o tamaño del producto nuevo. */
+export type VariantePedida = {
+  nombre: string;
+  codigoBarras?: string;
+  /** Si no lleva, se cobra el del producto. */
+  precio?: number | null;
+};
+
+/**
+ * La marca pide que se dé de alta un producto.
+ *
+ * Manda todo lo que solo ella sabe. Antes eran cuatro datos —nombre, precio,
+ * costo y descripción— y el resto lo completaba WiiGo a mano producto por
+ * producto: la subcategoría, el IVA, el precio de contado, el código que
+ * viene impreso en el envase, los sabores. Para una marca que entra con
+ * setenta productos eso son setenta cargas dobles.
+ *
+ * Sigue siendo una solicitud: no crea nada hasta que WiiGo la aprueba.
+ */
 export async function pedirProductoNuevo(datos: {
   nombre: string;
   precio: number;
   costo: number;
   descripcion?: string;
+  nombreEn?: string;
+  nombrePt?: string;
+  /** Una de las que ya tiene la marca. */
+  idSubcategoria?: string | null;
+  /** O una que propone crear, si ninguna le sirve. */
+  subcategoriaNueva?: string;
+  /** Lo que se cobra pagando en efectivo. Vacío = se cobra lo mismo. */
+  precioEfectivo?: number | null;
+  /** 21 / 10,5 / 0. Lo sabe ella por cómo factura. */
+  iva?: number | null;
+  /** El que viene impreso en el envase. Vacío = WiiGo le genera uno. */
+  codigoBarras?: string;
+  variantes?: VariantePedida[];
 }): Promise<Resultado> {
   const sesion = await sesionOError();
   const supabase = getSupabaseServerClient();
@@ -620,6 +652,38 @@ export async function pedirProductoNuevo(datos: {
     if (v.frena) return { error: v.frena };
   }
 
+  // La subcategoría se valida contra las suyas: mandar el id de la de otra
+  // marca no tiene que poder mover su producto de lugar.
+  let idSubcategoria: string | null = null;
+  if (datos.idSubcategoria) {
+    const { data: suya } = await supabase
+      .from("subcategorias")
+      .select("id_subcategoria")
+      .eq("id_subcategoria", datos.idSubcategoria)
+      .eq("id_marca", sesion.idMarca)
+      .maybeSingle();
+    if (!suya) return { error: "Esa subcategoría no es tuya." };
+    idSubcategoria = datos.idSubcategoria;
+  }
+
+  const efectivo = datos.precioEfectivo ?? null;
+  if (efectivo != null && efectivo > 0 && efectivo >= datos.precio) {
+    return { error: "El precio en efectivo tiene que ser menor que el de góndola." };
+  }
+
+  const variantes = (datos.variantes ?? [])
+    .map((v) => ({
+      nombre: v.nombre.trim(),
+      codigoBarras: (v.codigoBarras ?? "").trim() || null,
+      precio: v.precio != null && v.precio > 0 ? v.precio : null,
+    }))
+    .filter((v) => v.nombre);
+
+  const nombresVariante = variantes.map((v) => v.nombre.toLowerCase());
+  if (new Set(nombresVariante).size !== nombresVariante.length) {
+    return { error: "Hay dos sabores con el mismo nombre." };
+  }
+
   return crear(supabase, {
     idMarca: sesion.idMarca,
     idUsuario: sesion.idUsuario,
@@ -630,6 +694,14 @@ export async function pedirProductoNuevo(datos: {
       precio: datos.precio,
       costo: datos.costo,
       descripcion: descripcion || null,
+      nombreEn: (datos.nombreEn ?? "").trim() || null,
+      nombrePt: (datos.nombrePt ?? "").trim() || null,
+      idSubcategoria,
+      subcategoriaNueva: (datos.subcategoriaNueva ?? "").trim() || null,
+      precioEfectivo: efectivo && efectivo > 0 ? efectivo : null,
+      iva: datos.iva ?? null,
+      codigoBarras: (datos.codigoBarras ?? "").trim() || null,
+      variantes,
     },
     datosAnteriores: {},
     validacion,

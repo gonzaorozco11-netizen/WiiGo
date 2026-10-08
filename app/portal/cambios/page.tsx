@@ -14,11 +14,26 @@ export default async function PortalCambiosPage() {
   // La política se le muestra a la marca antes de que pida nada: si sabe de
   // entrada hasta dónde puede llegar un descuento, no manda uno que va a
   // volver rechazado.
-  const [productos, solicitudes, politica] = await Promise.all([
+  const [productos, solicitudes, politica, { data: subcategorias }] = await Promise.all([
     misProductos(),
     misSolicitudes(),
     obtenerPolitica(supabase),
+    supabase
+      .from("subcategorias")
+      .select("id_subcategoria, nombre")
+      .eq("id_marca", sesion.idMarca)
+      .order("nombre", { ascending: true }),
   ]);
 
-  return <PortalCambios productos={productos} solicitudes={solicitudes} politica={politica} />;
+  return (
+    <PortalCambios
+      productos={productos}
+      solicitudes={solicitudes}
+      politica={politica}
+      subcategorias={(subcategorias ?? []).map((s) => ({
+        id: s.id_subcategoria as string,
+        nombre: s.nombre as string,
+      }))}
+    />
+  );
 }

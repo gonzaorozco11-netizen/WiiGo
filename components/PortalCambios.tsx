@@ -59,10 +59,13 @@ export default function PortalCambios({
   productos,
   solicitudes,
   politica,
+  subcategorias = [],
 }: {
   productos: ProductoPropio[];
   solicitudes: SolicitudPropia[];
   politica: PoliticaDescuentos;
+  /** Las de la marca, para que al dar de alta elija una en vez de que WiiGo la adivine. */
+  subcategorias?: { id: string; nombre: string }[];
 }) {
   const router = useRouter();
   const [tab, setTab] = useState<"PEDIR" | "MIOS">("PEDIR");
@@ -104,7 +107,11 @@ export default function PortalCambios({
       </div>
 
       {nuevoAbierto && (
-        <FormProductoNuevo onListo={() => { setNuevoAbierto(false); router.refresh(); }} onCerrar={() => setNuevoAbierto(false)} />
+        <FormProductoNuevo
+          subcategorias={subcategorias}
+          onListo={() => { setNuevoAbierto(false); router.refresh(); }}
+          onCerrar={() => setNuevoAbierto(false)}
+        />
       )}
 
       {tab === "PEDIR" ? (
@@ -716,16 +723,47 @@ function FormBaja({ p, onListo }: { p: ProductoPropio; onListo: () => void }) {
 
 // ---------- Producto nuevo ----------
 
-function FormProductoNuevo({ onListo, onCerrar }: { onListo: () => void; onCerrar: () => void }) {
+type VarianteForm = { nombre: string; codigoBarras: string; precio: string };
+
+/**
+ * El alta que pide la marca.
+ *
+ * Antes eran cuatro campos y WiiGo completaba el resto a mano: la
+ * subcategoría, el IVA, el precio de contado, el código impreso en el envase,
+ * los sabores. Con una marca que entra con setenta productos eso son setenta
+ * cargas dobles, así que ahora manda todo lo que solo ella sabe.
+ *
+ * Lo esencial queda arriba y lo demás detrás de un "agregar más datos": nueve
+ * campos a la vista espantan a quien solo quiere dar de alta una proteína.
+ */
+function FormProductoNuevo({
+  subcategorias,
+  onListo,
+  onCerrar,
+}: {
+  subcategorias: { id: string; nombre: string }[];
+  onListo: () => void;
+  onCerrar: () => void;
+}) {
   const [nombre, setNombre] = useState("");
   const [precio, setPrecio] = useState("");
   const [costo, setCosto] = useState("");
   const [descripcion, setDescripcion] = useState("");
 
+  const [mas, setMas] = useState(false);
+  const [idSubcategoria, setIdSubcategoria] = useState("");
+  const [subNueva, setSubNueva] = useState("");
+  const [precioEfectivo, setPrecioEfectivo] = useState("");
+  const [iva, setIva] = useState("21");
+  const [codigoBarras, setCodigoBarras] = useState("");
+  const [variantes, setVariantes] = useState<VarianteForm[]>([]);
+
   const nPrecio = Number(precio);
   const nCosto = Number(costo);
+  const nEfectivo = Number(precioEfectivo);
   const valido = nombre.trim() !== "" && nPrecio > 0 && nCosto > 0;
   const ganancia = valido ? nPrecio - nCosto : null;
+  const efectivoMalo = nEfectivo > 0 && nPrecio > 0 && nEfectivo >= nPrecio;
 
   return (
     <div className="cam-nuevo">
@@ -738,9 +776,26 @@ function FormProductoNuevo({ onListo, onCerrar }: { onListo: () => void; onCerra
 
       <Envio
         texto="Mandar el producto"
-        deshabilitado={!valido}
+        deshabilitado={!valido || efectivoMalo}
         onEnviar={async () => {
-          const r = await pedirProductoNuevo({ nombre, precio: nPrecio, costo: nCosto, descripcion });
+          const r = await pedirProductoNuevo({
+            nombre,
+            precio: nPrecio,
+            costo: nCosto,
+            descripcion,
+            idSubcategoria: idSubcategoria || null,
+            subcategoriaNueva: subNueva,
+            precioEfectivo: nEfectivo > 0 ? nEfectivo : null,
+            iva: iva === "" ? null : Number(iva),
+            codigoBarras,
+            variantes: variantes
+              .filter((v) => v.nombre.trim())
+              .map((v) => ({
+                nombre: v.nombre,
+                codigoBarras: v.codigoBarras,
+                precio: v.precio ? Number(v.precio) : null,
+              })),
+          });
           if (!r.error) onListo();
           return r;
         }}
@@ -775,6 +830,164 @@ function FormProductoNuevo({ onListo, onCerrar }: { onListo: () => void; onCerra
           <span>Descripción (opcional)</span>
           <textarea rows={3} value={descripcion} onChange={(e) => setDescripcion(e.target.value)} />
         </label>
+
+        {!mas ? (
+          <button type="button" className="cam-mas" onClick={() => setMas(true)}>
+            + Agregar más datos (subcategoría, precio en efectivo, código de barras, sabores)
+          </button>
+        ) : (
+          <div className="cam-extra">
+            <div className="cam-campos">
+              <label className="cam-campo">
+                <span>Subcategoría</span>
+                <select value={idSubcategoria} onChange={(e) => setIdSubcategoria(e.target.value)}>
+                  <option value="">Elegí una…</option>
+                  {subcategorias.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.nombre}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="cam-campo">
+                <span>O proponé una nueva</span>
+                <input
+                  value={subNueva}
+                  onChange={(e) => setSubNueva(e.target.value)}
+                  placeholder="Ej.: Pre-entrenos"
+                  disabled={idSubcategoria !== ""}
+                />
+              </label>
+            </div>
+
+            <div className="cam-campos">
+              <label className="cam-campo">
+                <span>Precio en efectivo</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={precioEfectivo}
+                  onChange={(e) => setPrecioEfectivo(e.target.value)}
+                  placeholder="Vacío = lo mismo"
+                />
+              </label>
+              <label className="cam-campo">
+                <span>IVA</span>
+                <select value={iva} onChange={(e) => setIva(e.target.value)}>
+                  <option value="21">21 % — general</option>
+                  <option value="10.5">10,5 % — alimentos</option>
+                  <option value="0">0 % — exento</option>
+                </select>
+              </label>
+            </div>
+            {efectivoMalo && (
+              <p className="cam-var fuerte">
+                El precio en efectivo tiene que ser menor que el de góndola.
+              </p>
+            )}
+
+            <label className="cam-campo ancho">
+              <span>Código de barras del envase</span>
+              <input
+                value={codigoBarras}
+                onChange={(e) => setCodigoBarras(e.target.value)}
+                placeholder="Si el envase ya lo trae impreso"
+                inputMode="numeric"
+                disabled={variantes.length > 0}
+              />
+              {/* Si no lo trae, WiiGo le genera uno y lo imprime en sticker:
+                  generarle uno nuevo a un envase que ya trae el suyo es
+                  pegarle una etiqueta encima al pedo. */}
+              <small className="cam-ay">
+                {variantes.length > 0
+                  ? "Con sabores, el código va en cada uno."
+                  : "Si no lo trae, WiiGo le genera uno y lo imprime en sticker."}
+              </small>
+            </label>
+
+            <div className="cam-campo ancho">
+              <span>Sabores o tamaños</span>
+              {variantes.length === 0 ? (
+                <small className="cam-ay">
+                  Dejalo vacío si es uno solo. Si tiene varios, cargalos acá y cada uno lleva su
+                  código.
+                </small>
+              ) : (
+                <table className="cam-variantes">
+                  <thead>
+                    <tr>
+                      <th>Sabor o tamaño</th>
+                      <th>Código de barras</th>
+                      <th>Precio propio</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {variantes.map((v, i) => (
+                      <tr key={i}>
+                        <td>
+                          <input
+                            value={v.nombre}
+                            onChange={(e) =>
+                              setVariantes((p) =>
+                                p.map((x, j) => (j === i ? { ...x, nombre: e.target.value } : x))
+                              )
+                            }
+                            placeholder="Frutos rojos"
+                          />
+                        </td>
+                        <td>
+                          <input
+                            value={v.codigoBarras}
+                            onChange={(e) =>
+                              setVariantes((p) =>
+                                p.map((x, j) => (j === i ? { ...x, codigoBarras: e.target.value } : x))
+                              )
+                            }
+                            placeholder="7790…"
+                            inputMode="numeric"
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={v.precio}
+                            onChange={(e) =>
+                              setVariantes((p) =>
+                                p.map((x, j) => (j === i ? { ...x, precio: e.target.value } : x))
+                              )
+                            }
+                            placeholder="igual"
+                          />
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            className="cam-quitar"
+                            onClick={() => setVariantes((p) => p.filter((_, j) => j !== i))}
+                            aria-label="Quitar"
+                          >
+                            ×
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              <button
+                type="button"
+                className="cam-mas"
+                onClick={() =>
+                  setVariantes((p) => [...p, { nombre: "", codigoBarras: "", precio: "" }])
+                }
+              >
+                + Agregar un sabor
+              </button>
+            </div>
+          </div>
+        )}
       </Envio>
     </div>
   );

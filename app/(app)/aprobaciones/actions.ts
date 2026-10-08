@@ -479,12 +479,42 @@ export async function aplicarCambiosProgramados(): Promise<{ aplicadas: number; 
       } else if (s.tipo === "PRODUCTO_NUEVO") {
         const nombre = String(datos.nombre ?? "").trim();
         if (!nombre) throw new Error("nombre vacío");
+
+        // La marca puede proponer una subcategoría que no existe. Se crea acá
+        // y no al pedirla: si la solicitud se rechaza, no tiene que quedar una
+        // subcategoría vacía dando vueltas en el catálogo.
+        let idSubcategoria = (datos.idSubcategoria as string | null) ?? null;
+        const subNueva = String(datos.subcategoriaNueva ?? "").trim();
+        if (!idSubcategoria && subNueva) {
+          const { data: yaEsta } = await supabase
+            .from("subcategorias")
+            .select("id_subcategoria")
+            .eq("id_marca", s.id_marca as string)
+            .ilike("nombre", subNueva)
+            .maybeSingle();
+          if (yaEsta) {
+            idSubcategoria = yaEsta.id_subcategoria as string;
+          } else {
+            const { data: creada } = await supabase
+              .from("subcategorias")
+              .insert({ id_marca: s.id_marca, nombre: subNueva, estado: "ACTIVA" })
+              .select("id_subcategoria")
+              .single();
+            idSubcategoria = (creada?.id_subcategoria as string) ?? null;
+          }
+        }
+
         const { data: creado, error: errorAlta } = await supabase
           .from("productos")
           .insert({
             id_marca: s.id_marca,
             nombre,
+            nombre_en: (datos.nombreEn as string | null) ?? null,
+            nombre_pt: (datos.nombrePt as string | null) ?? null,
+            id_subcategoria: idSubcategoria,
             precio_venta: Number(datos.precio) || null,
+            precio_efectivo: Number(datos.precioEfectivo) || null,
+            iva_porcentaje: datos.iva != null ? Number(datos.iva) : null,
             costo_informado: Number(datos.costo) || null,
             descripcion: (datos.descripcion as string | null) ?? null,
             estado: "ACTIVO",
@@ -498,14 +528,38 @@ export async function aplicarCambiosProgramados(): Promise<{ aplicadas: number; 
         // esto el producto entra pero no se puede recibir ni vender. El SKU y
         // el código salen del mismo generador que usa la pantalla de
         // Productos, para que no se repitan entre los dos caminos.
-        await supabase.from("variantes_producto").insert({
-          id_producto: creado.id_producto,
-          nombre: "Único",
-          sku: await generarSkuVariante(supabase, s.id_marca as string),
-          codigo_barras: await generarCodigoBarrasVariante(supabase),
-          stock_minimo: 0,
-          stock_objetivo: 0,
-        });
+        //
+        // Si la marca mandó sabores, se crea uno por cada uno; si no, la
+        // variante "Único" de siempre. El código de barras es el que vino
+        // impreso en el envase cuando lo hay: generarle uno nuevo a un
+        // producto que ya trae el suyo obliga a pegarle un sticker encima al
+        // pedo.
+        const variantesPedidas = Array.isArray(datos.variantes)
+          ? (datos.variantes as { nombre: string; codigoBarras: string | null; precio: number | null }[])
+          : [];
+
+        const aCrear = variantesPedidas.length
+          ? variantesPedidas
+          : [
+              {
+                nombre: "Único",
+                codigoBarras: (datos.codigoBarras as string | null) ?? null,
+                precio: null,
+              },
+            ];
+
+        for (const [i, v] of aCrear.entries()) {
+          await supabase.from("variantes_producto").insert({
+            id_producto: creado.id_producto,
+            nombre: v.nombre || "Único",
+            sku: await generarSkuVariante(supabase, s.id_marca as string),
+            codigo_barras: v.codigoBarras || (await generarCodigoBarrasVariante(supabase)),
+            precio_venta: v.precio ?? null,
+            stock_minimo: 0,
+            stock_objetivo: 0,
+            orden: i,
+          });
+        }
 
         await supabase
           .from("solicitudes_marca")
