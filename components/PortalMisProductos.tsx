@@ -524,31 +524,6 @@ function Reparto({ p }: { p: ProductoConMargen }) {
           </span>
         </div>
       </div>
-
-      <table className="tabla-medios">
-        <thead>
-          <tr>
-            <th>Si el cliente paga con</th>
-            <th>Te transferimos</th>
-            <th>Te queda</th>
-            <th>De lo que recibís</th>
-          </tr>
-        </thead>
-        <tbody>
-          {p.porMedio.map((m) => (
-            <tr key={m.medio}>
-              <td>{m.etiqueta}</td>
-              <td>${enteros(m.leTransferimos)}</td>
-              <td className={m.medio === "EFECTIVO" ? "bien" : m.medio === "CREDITO" ? "flojo" : ""}>
-                ${enteros(m.leQueda ?? 0)}
-              </td>
-              <td className={m.medio === "EFECTIVO" ? "bien" : m.medio === "CREDITO" ? "flojo" : ""}>
-                {m.leTransferimos > 0 ? Math.round(((m.leQueda ?? 0) / m.leTransferimos) * 100) : 0}%
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
     </div>
   );
 }
