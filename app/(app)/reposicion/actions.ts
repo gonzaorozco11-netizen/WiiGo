@@ -15,7 +15,12 @@ import {
   type OrigenOrden,
 } from "@/lib/estadosOrden";
 import { guardarRemito } from "@/lib/remitoRecepcion";
-import { sugerirReposicion, type SugerenciaVariante } from "@/lib/reposicionSugerida";
+import {
+  coberturaDeMarca,
+  sugerirReposicion,
+  SEMANAS_COBERTURA,
+  type SugerenciaVariante,
+} from "@/lib/reposicionSugerida";
 
 async function usuarioActual() {
   const cookieStore = await cookies();
@@ -143,11 +148,14 @@ export async function marcarDevueltaAMarca(ids: string[]): Promise<{ error: stri
 export async function sugerenciaDeReposicion(
   idMarca: string,
   idLocal: string
-): Promise<SugerenciaVariante[]> {
-  if (!idMarca || !idLocal) return [];
+): Promise<{ filas: SugerenciaVariante[]; semanasCobertura: number }> {
+  if (!idMarca || !idLocal) return { filas: [], semanasCobertura: SEMANAS_COBERTURA };
   const supabase = getSupabaseServerClient();
-  const mapa = await sugerirReposicion(supabase, { idMarca, idLocal });
-  return [...mapa.values()];
+  // La cobertura viaja con el resultado para que la pantalla diga la de ESTA
+  // marca y no un número fijo que puede no ser el que se uso.
+  const semanasCobertura = await coberturaDeMarca(supabase, idMarca);
+  const mapa = await sugerirReposicion(supabase, { idMarca, idLocal, semanasCobertura });
+  return { filas: [...mapa.values()], semanasCobertura };
 }
 
 /**
@@ -380,8 +388,10 @@ export async function registrarLlegadaSinOrden(
   idMarca: string,
   idLocal: string,
   items: { idVariante: string; cantidad: number }[],
-  observaciones: string
-): Promise<{ error: string | null }> {
+  observaciones: string,
+  /** El remito que trajo el flete. Es el único papel que va a existir. */
+  comprobante?: File | null
+): Promise<{ error: string | null; aviso?: string }> {
   const validos = items.filter((i) => i.cantidad > 0);
   if (validos.length === 0) return { error: "Cargá al menos un producto con cantidad mayor a 0" };
   if (!idMarca || !idLocal) return { error: "Elegí de qué marca es y a qué local llegó" };
@@ -403,9 +413,16 @@ export async function registrarLlegadaSinOrden(
     });
     if (r.error) return { error: r.error };
 
+    // Al final y sin frenar nada: si el remito no se puede guardar, la llegada
+    // igual quedó registrada. Lo contrario —perder el registro de un bulto
+    // porque falló una subida— es mucho peor.
+    const aviso = r.idOrden
+      ? await guardarRemito(supabase, "ordenes_reposicion", r.idOrden, comprobante)
+      : undefined;
+
     revalidatePath("/compras");
     revalidatePath("/compras/recepcion");
-    return { error: null };
+    return { error: null, aviso };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo registrar la llegada" };
   }

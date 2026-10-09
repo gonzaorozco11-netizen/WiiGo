@@ -59,12 +59,35 @@ export type OpcionesSugerencia = {
  * semana floja no mueva la media, y tres de cobertura dan aire para que una
  * entrega que se atrasa no deje la góndola vacía.
  *
- * Por marca va a convenir que cambie —una de ticket alto que vende de a poco
- * quiere más cobertura— pero eso es un campo que todavía no existe, y un
- * default sensato sirve hasta que exista.
+ * La cobertura se puede cambiar por marca (`marcas.semanas_cobertura`): una de
+ * ticket alto que vende de a poco quiere más —si se queda sin stock pierde la
+ * venta grande— y una que rota rápido quiere menos, para no llenar el depósito
+ * de mercadería ajena. Nulo = este default.
  */
 export const SEMANAS_HISTORIA = 4;
 export const SEMANAS_COBERTURA = 3;
+
+/**
+ * La cobertura de una marca, o el default si no tiene una propia.
+ *
+ * Se reintenta sin la columna si todavía no se corrió
+ * sql/reposicion-remito-cobertura.sql.
+ */
+export async function coberturaDeMarca(
+  supabase: SupabaseClient,
+  idMarca: string
+): Promise<number> {
+  const { data, error } = await supabase
+    .from("marcas")
+    .select("semanas_cobertura")
+    .eq("id_marca", idMarca)
+    .maybeSingle();
+  if (error || !data) return SEMANAS_COBERTURA;
+  const n = data.semanas_cobertura as number | null;
+  // Entre 1 y 12: menos de una semana no es cobertura y más de tres meses es
+  // llenarle el depósito a alguien.
+  return n != null && n >= 1 && n <= 12 ? n : SEMANAS_COBERTURA;
+}
 
 /**
  * Qué pedirle a una marca para un local.
@@ -80,15 +103,14 @@ export async function sugerirReposicion(
   supabase: SupabaseClient,
   opciones: OpcionesSugerencia
 ): Promise<Map<string, SugerenciaVariante>> {
-  const {
-    idMarca,
-    idLocal,
-    semanasHistoria = SEMANAS_HISTORIA,
-    semanasCobertura = SEMANAS_COBERTURA,
-  } = opciones;
+  const { idMarca, idLocal, semanasHistoria = SEMANAS_HISTORIA } = opciones;
 
   const salida = new Map<string, SugerenciaVariante>();
   if (!idMarca || !idLocal) return salida;
+
+  // Si quien llama no impuso una, la de la marca; y si la marca no tiene, el
+  // default del sistema.
+  const semanasCobertura = opciones.semanasCobertura ?? (await coberturaDeMarca(supabase, idMarca));
 
   // Las variantes de la marca, con su piso.
   const { data: productos } = await supabase

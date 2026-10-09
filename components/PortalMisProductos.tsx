@@ -9,6 +9,7 @@ import {
   type MisCostosPortal,
   type ProductoConMargen,
 } from "@/app/portal/actions";
+import { pedirBaja } from "@/app/portal/cambios/actions";
 import { SIN_SUBCATEGORIA } from "@/lib/costosMarca";
 import type { MargenSimulado } from "@/lib/margenMarca";
 
@@ -686,6 +687,89 @@ function Reparto({ p }: { p: ProductoConMargen }) {
             sueldos— que WiiGo no conoce y no calcula.
           </span>
         </div>
+      </div>
+
+      <PedirBaja p={p} />
+    </div>
+  );
+}
+
+/**
+ * Sacar un producto de la góndola.
+ *
+ * Acá adentro y no como un botón de la fila: dar de baja es lo último que se
+ * hace con un producto y no tiene que estar al alcance del dedo mientras se
+ * cargan costos. Abre un paso de confirmación antes de mandar nada.
+ *
+ * Con stock en el local no se puede: lo frena el servidor, porque esa
+ * mercadería es de la marca y hay que sacarla antes de borrar el producto que
+ * la sostiene.
+ */
+function PedirBaja({ p }: { p: ProductoConMargen }) {
+  const router = useRouter();
+  const [confirmando, setConfirmando] = useState(false);
+  const [listo, setListo] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [mandando, empezar] = useTransition();
+
+  if (listo) {
+    return (
+      <p className="baja-ok">
+        Pedido mandado. WiiGo lo revisa y lo saca de la góndola si está de acuerdo.
+      </p>
+    );
+  }
+
+  if (!confirmando) {
+    return (
+      <div className="baja-pie">
+        <button className="baja-link" onClick={() => setConfirmando(true)}>
+          Pedir la baja de este producto
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="baja-caja">
+      <p>
+        ¿Sacamos <b>{p.nombre}</b> de la góndola? Deja de venderse, pero tus ventas anteriores y tus
+        liquidaciones quedan intactas.
+      </p>
+      {p.stock > 0 && (
+        <p className="baja-aviso">
+          Ojo: todavía hay <b>{p.stock} unidades</b> en el local. Hay que retirarlas antes.
+        </p>
+      )}
+      {error && <p className="baja-error">{error}</p>}
+      <div className="baja-botones">
+        <button
+          className="boton-portal sec"
+          disabled={mandando}
+          onClick={() => {
+            setConfirmando(false);
+            setError(null);
+          }}
+        >
+          No, dejalo
+        </button>
+        <button
+          className="boton-portal peligro"
+          disabled={mandando}
+          onClick={() => {
+            setError(null);
+            empezar(async () => {
+              const r = await pedirBaja(p.idProducto);
+              if (r.error) setError(r.error);
+              else {
+                setListo(true);
+                router.refresh();
+              }
+            });
+          }}
+        >
+          {mandando ? "Mandando…" : "Sí, pedir la baja"}
+        </button>
       </div>
     </div>
   );

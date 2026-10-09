@@ -9,8 +9,34 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 /** Privado. El mismo que usan los pagos y los costeos — un solo lugar que asegurar. */
 export const BUCKET_COMPROBANTES = "comprobantes-proveedor";
 
-/** Tabla donde vive la recepción: las de proveedor y las de marca son distintas. */
-export type TablaRecepcion = "recepciones_proveedor" | "recepciones";
+/**
+ * Dónde se engancha el remito.
+ *
+ * Las recepciones de proveedor y las de marca son tablas distintas. Y está
+ * `ordenes_reposicion`, que es el caso raro: cuando llega un bulto que nadie
+ * pidió, todavía NO hay recepción —esa se crea recién cuando administración
+ * lo acepta— así que el remito se guarda contra la orden. Si se esperara a la
+ * recepción, el único papel del envío se perdería en el medio.
+ */
+const DESTINOS = {
+  recepciones: {
+    id: "id_recepcion",
+    path: "comprobante_recepcion_path",
+    sql: "sql/remito-recepcion.sql",
+  },
+  recepciones_proveedor: {
+    id: "id_recepcion",
+    path: "comprobante_recepcion_path",
+    sql: "sql/remito-recepcion.sql",
+  },
+  ordenes_reposicion: {
+    id: "id_orden",
+    path: "remito_path",
+    sql: "sql/reposicion-remito-cobertura.sql",
+  },
+} as const;
+
+export type TablaRecepcion = keyof typeof DESTINOS;
 
 /**
  * Sube el remito y lo engancha a la recepción.
@@ -42,14 +68,14 @@ export async function guardarRemito(
     return `La mercadería quedó cargada, pero el comprobante no se pudo subir (${errorUpload.message}). Adjuntalo de nuevo desde el historial de entregas.`;
   }
 
+  const destino = DESTINOS[tabla];
   const { error } = await supabase
     .from(tabla)
-    .update({ comprobante_recepcion_path: path })
-    .eq("id_recepcion", idRecepcion);
+    .update({ [destino.path]: path })
+    .eq(destino.id, idRecepcion);
   if (error) {
-    // Columna sin crear (sql/remito-recepcion.sql): el archivo quedó subido,
-    // solo falta la columna donde anotarlo.
-    return `La mercadería quedó cargada, pero el comprobante no se pudo enganchar: falta correr sql/remito-recepcion.sql en Supabase.`;
+    // Columna sin crear: el archivo quedó subido, solo falta dónde anotarlo.
+    return `La mercadería quedó cargada, pero el comprobante no se pudo enganchar: falta correr ${destino.sql} en Supabase.`;
   }
   return undefined;
 }

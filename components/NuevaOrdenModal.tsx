@@ -73,6 +73,9 @@ export default function NuevaOrdenModal({
   // cargados a mano— para que la pantalla no quede vacía medio segundo.
   const [sugerencias, setSugerencias] = useState<Map<string, SugerenciaVariante>>(new Map());
   const [calculando, setCalculando] = useState(false);
+  // La cobertura es por marca, así que el texto la dice de ésta y no un número
+  // fijo que podría no ser el que se usó.
+  const [cobertura, setCobertura] = useState(SEMANAS_COBERTURA);
 
   useEffect(() => {
     const porMinimo = variantesDeMarca
@@ -94,10 +97,11 @@ export default function NuevaOrdenModal({
     let vigente = true;
     setCalculando(true);
     sugerenciaDeReposicion(idMarca, idLocal)
-      .then((filas) => {
+      .then(({ filas, semanasCobertura }) => {
         // Si mientras tanto se cambió de marca o de local, este resultado ya
         // no corresponde: pisaría la pantalla con los números de otra.
         if (!vigente) return;
+        setCobertura(semanasCobertura);
         setSugerencias(new Map(filas.map((f) => [f.idVariante, f])));
         setLineas(
           filas
@@ -212,9 +216,9 @@ export default function NuevaOrdenModal({
           <div>
             <p className="text-xs text-neutral-500 mb-2">
               Las cantidades salen de <b>lo que se vendió en las últimas {SEMANAS_HISTORIA} semanas</b>{" "}
-              en este local: lo necesario para tener {SEMANAS_COBERTURA} semanas de mercadería, menos
-              lo que hay en góndola y menos lo que ya está pedido y no llegó. Revisalas antes de
-              mandar — podés sacar, cambiar o agregar lo que quieras.
+              en este local: lo necesario para tener {cobertura} semanas de mercadería, menos lo que
+              hay en góndola y menos lo que ya está pedido y no llegó. Revisalas antes de mandar —
+              podés sacar, cambiar o agregar lo que quieras.
               {calculando && <span className="text-neutral-400"> · calculando…</span>}
             </p>
 

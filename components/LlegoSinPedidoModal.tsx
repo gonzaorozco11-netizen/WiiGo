@@ -33,6 +33,7 @@ export default function LlegoSinPedidoModal({
   const [idLocal, setIdLocal] = useState(locales[0]?.id_local ?? "");
   const [observaciones, setObservaciones] = useState("");
   const [lineas, setLineas] = useState<Linea[]>([]);
+  const [comprobante, setComprobante] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [guardando, empezar] = useTransition();
 
@@ -69,11 +70,15 @@ export default function LlegoSinPedidoModal({
         idMarca,
         idLocal,
         lineas.map((l) => ({ idVariante: l.idVariante, cantidad: Number(l.cantidad) || 0 })),
-        observaciones
+        observaciones,
+        comprobante
       );
       if (r.error) setError(r.error);
       else {
         router.refresh();
+        // El aviso no frena nada: la mercadería ya quedó cargada aunque la
+        // foto no haya subido.
+        if (r.aviso) alert(r.aviso);
         onClose();
       }
     });
@@ -230,13 +235,28 @@ export default function LlegoSinPedidoModal({
               value={observaciones}
               onChange={(e) => setObservaciones(e.target.value)}
               rows={2}
-              placeholder="Quién lo trajo, en qué estado llegó, si vino con remito…"
+              placeholder="Quién lo trajo, en qué estado llegó…"
               className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
             />
-            {/* El remito se adjunta después, en la recepción que genera la
-                aprobación: acá todavía no hay recepción donde colgarlo. */}
+          </div>
+
+          {/* El remito es el ÚNICO papel que va a existir de este envío: no
+              hubo orden, no hubo factura todavía. Sin la foto, después no hay
+              con qué reclamar. */}
+          <div>
+            <label className="block text-xs font-semibold text-neutral-500 uppercase mb-1">
+              Remito o lo que haya traído
+            </label>
+            <input
+              type="file"
+              accept="image/*,application/pdf"
+              capture="environment"
+              onChange={(e) => setComprobante(e.target.files?.[0] ?? null)}
+              className="w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-neutral-100 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-neutral-700"
+            />
             <p className="text-[11px] text-neutral-400 mt-1">
-              Si vino con remito, guardalo: se adjunta cuando administración lo acepte.
+              Sacale una foto. Es el único papel de este envío — sin esto después no hay con qué
+              reclamar.
             </p>
           </div>
 

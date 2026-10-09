@@ -1021,3 +1021,28 @@
   color: var(--texto-3); cursor: pointer; padding: 0 4px;
 }
 .cam-quitar:hover { color: var(--rojo); }
+
+/* Pedir la baja de un producto.
+   Dentro del detalle y no como boton de la fila: dar de baja es lo ultimo que
+   se hace con un producto y no tiene que estar al alcance del dedo mientras
+   se cargan costos. */
+.baja-pie { padding: 10px 2px 0; text-align: right; }
+.baja-link {
+  font: inherit; font-size: 11.5px; background: none; border: 0; color: var(--texto-3);
+  cursor: pointer; padding: 2px;
+}
+.baja-link:hover { color: var(--rojo); text-decoration: underline; }
+.baja-caja {
+  margin-top: 12px; background: var(--rojo-tenue); border: 1px solid #edcdc7;
+  border-radius: 11px; padding: 13px; font-size: 12.5px; color: #8e4038; max-width: 720px;
+}
+.baja-caja p { line-height: 1.5; }
+.baja-aviso { margin-top: 7px; font-weight: 600; }
+.baja-error { margin-top: 7px; font-weight: 600; color: var(--rojo); }
+.baja-botones { display: flex; gap: 9px; margin-top: 12px; flex-wrap: wrap; }
+.boton-portal.peligro { background: var(--rojo); border-color: var(--rojo); color: #fff; }
+.boton-portal.peligro:hover { background: #8e4038; }
+.baja-ok {
+  margin-top: 12px; background: var(--verde-tenue); border: 1px solid #cfe3d4; color: #2f5c3a;
+  border-radius: 11px; padding: 10px 13px; font-size: 12.5px; max-width: 720px;
+}
