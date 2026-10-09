@@ -590,6 +590,37 @@ export async function pedirPromo(
   });
 }
 
+/**
+ * Sube la foto de un producto que todavía no existe.
+ *
+ * Va aparte del alta porque un server action no recibe bien un archivo y un
+ * objeto grande a la vez: el form sube primero, se queda con la URL, y la
+ * manda como un campo más. Si después la solicitud se cancela, queda una
+ * imagen huérfana en `propuestas/` — barata, y mucho mejor que perder la foto
+ * por mandar todo junto.
+ */
+export async function subirFotoParaAlta(formData: FormData): Promise<{ url?: string; error?: string }> {
+  const sesion = await sesionOError();
+  const supabase = getSupabaseServerClient();
+
+  const archivo = formData.get("archivo") as File | null;
+  if (!archivo || archivo.size === 0) return { error: "Elegí una foto primero." };
+  if (!archivo.type.startsWith("image/")) return { error: "Eso no es una imagen." };
+  // 8 MB: una foto de celular sin comprimir entra, un video no.
+  if (archivo.size > 8 * 1024 * 1024) return { error: "La foto no puede pesar más de 8 MB." };
+
+  const extension = (archivo.name.split(".").pop() ?? "jpg").toLowerCase().slice(0, 5);
+  const path = `propuestas/nuevo-${sesion.idMarca}-${Date.now()}.${extension}`;
+
+  const { error } = await supabase.storage
+    .from("fotos-productos")
+    .upload(path, archivo, { upsert: true, contentType: archivo.type || undefined });
+  if (error) return { error: error.message };
+
+  const { data } = supabase.storage.from("fotos-productos").getPublicUrl(path);
+  return { url: data.publicUrl };
+}
+
 /** Un sabor o tamaño del producto nuevo. */
 export type VariantePedida = {
   nombre: string;
@@ -627,6 +658,10 @@ export async function pedirProductoNuevo(datos: {
   /** El que viene impreso en el envase. Vacío = WiiGo le genera uno. */
   codigoBarras?: string;
   variantes?: VariantePedida[];
+  /** La URL que devolvió subirFotoParaAlta. */
+  imagen?: string | null;
+  /** Lo que el Asesor le muestra al cliente. Todo opcional. */
+  ficha?: FichaDeMarca | null;
 }): Promise<Resultado> {
   const sesion = await sesionOError();
   const supabase = getSupabaseServerClient();
@@ -702,10 +737,38 @@ export async function pedirProductoNuevo(datos: {
       iva: datos.iva ?? null,
       codigoBarras: (datos.codigoBarras ?? "").trim() || null,
       variantes,
+      imagen: (datos.imagen ?? "").trim() || null,
+      ficha: fichaLimpia(datos.ficha),
     },
     datosAnteriores: {},
     validacion,
   });
+}
+
+/**
+ * La ficha, sin los campos vacíos y sin negativos.
+ *
+ * Devuelve null si no cargó nada: una ficha con los diez campos en blanco no
+ * tiene que crear una fila vacía en `ficha_producto`.
+ */
+function fichaLimpia(ficha: FichaDeMarca | null | undefined): FichaDeMarca | null {
+  if (!ficha) return null;
+  const num = (v: number | null) => (v === null || !Number.isFinite(v) || v < 0 ? null : v);
+  const texto = (v: string | null) => ((v ?? "").trim() ? (v ?? "").trim() : null);
+
+  const limpia: FichaDeMarca = {
+    kcal_100g: num(ficha.kcal_100g),
+    proteinas: num(ficha.proteinas),
+    carbohidratos: num(ficha.carbohidratos),
+    grasas: num(ficha.grasas),
+    fibra: num(ficha.fibra),
+    sodio: num(ficha.sodio),
+    porcion: texto(ficha.porcion),
+    ingredientes: texto(ficha.ingredientes),
+    micronutrientes: texto(ficha.micronutrientes),
+    origen: texto(ficha.origen),
+  };
+  return Object.values(limpia).every((v) => v === null) ? null : limpia;
 }
 
 export async function pedirBaja(idProducto: string): Promise<Resultado> {

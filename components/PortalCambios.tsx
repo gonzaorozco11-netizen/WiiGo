@@ -10,6 +10,7 @@ import {
   pedirCambioTexto,
   pedirPromo,
   pedirProductoNuevo,
+  subirFotoParaAlta,
   pedirBaja,
   cancelarSolicitud,
   type ProductoPropio,
@@ -758,6 +759,33 @@ function FormProductoNuevo({
   const [codigoBarras, setCodigoBarras] = useState("");
   const [variantes, setVariantes] = useState<VarianteForm[]>([]);
 
+  // La foto se sube apenas se elige y queda su URL: así el alta manda un
+  // campo de texto más y no un archivo, que es lo que complica el envío.
+  const [foto, setFoto] = useState<string | null>(null);
+  const [subiendoFoto, setSubiendoFoto] = useState(false);
+  const [errorFoto, setErrorFoto] = useState<string | null>(null);
+
+  const [ficha, setFicha] = useState<Record<string, string>>({});
+  const campoFicha = (k: string) => ficha[k] ?? "";
+  const ponerFicha = (k: string, v: string) => setFicha((p) => ({ ...p, [k]: v }));
+
+  async function elegirFoto(archivo: File | null) {
+    if (!archivo) return;
+    setErrorFoto(null);
+    setSubiendoFoto(true);
+    const fd = new FormData();
+    fd.set("archivo", archivo);
+    const r = await subirFotoParaAlta(fd);
+    setSubiendoFoto(false);
+    if (r.error) setErrorFoto(r.error);
+    else setFoto(r.url ?? null);
+  }
+
+  const num = (k: string) => {
+    const n = Number(ficha[k]);
+    return ficha[k] && Number.isFinite(n) ? n : null;
+  };
+
   const nPrecio = Number(precio);
   const nCosto = Number(costo);
   const nEfectivo = Number(precioEfectivo);
@@ -795,6 +823,19 @@ function FormProductoNuevo({
                 codigoBarras: v.codigoBarras,
                 precio: v.precio ? Number(v.precio) : null,
               })),
+            imagen: foto,
+            ficha: {
+              kcal_100g: num("kcal_100g"),
+              proteinas: num("proteinas"),
+              carbohidratos: num("carbohidratos"),
+              grasas: num("grasas"),
+              fibra: num("fibra"),
+              sodio: num("sodio"),
+              porcion: campoFicha("porcion") || null,
+              ingredientes: campoFicha("ingredientes") || null,
+              micronutrientes: campoFicha("micronutrientes") || null,
+              origen: campoFicha("origen") || null,
+            },
           });
           if (!r.error) onListo();
           return r;
@@ -830,6 +871,40 @@ function FormProductoNuevo({
           <span>Descripción (opcional)</span>
           <textarea rows={3} value={descripcion} onChange={(e) => setDescripcion(e.target.value)} />
         </label>
+
+        {/* La foto va arriba y no entre los campos de más: sin foto el
+            producto sale en el catálogo y en el tótem con un cuadro gris, y
+            eso se nota más que cualquier otro dato que falte. */}
+        <div className="cam-campo ancho">
+          <span>Foto del producto</span>
+          {foto ? (
+            <div className="cam-foto-ok">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={foto} alt="" />
+              <div>
+                <b>Foto lista</b>
+                <button type="button" className="cam-mas" onClick={() => setFoto(null)}>
+                  Cambiarla
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <input
+                type="file"
+                accept="image/*"
+                disabled={subiendoFoto}
+                onChange={(e) => elegirFoto(e.target.files?.[0] ?? null)}
+              />
+              <small className="cam-ay">
+                {subiendoFoto
+                  ? "Subiendo…"
+                  : "Cuadrada, mínimo 800×800, fondo blanco o neutro. Sin foto sale con un cuadro gris."}
+              </small>
+            </>
+          )}
+          {errorFoto && <p className="cam-var fuerte">{errorFoto}</p>}
+        </div>
 
         {!mas ? (
           <button type="button" className="cam-mas" onClick={() => setMas(true)}>
@@ -985,6 +1060,78 @@ function FormProductoNuevo({
               >
                 + Agregar un sabor
               </button>
+            </div>
+
+            {/* La ficha del asesor. Todo opcional, pero es lo que el cliente
+                lee en el tótem antes de decidir — y el dato está impreso en
+                el envase de la marca, así que es suyo y no de WiiGo. */}
+            <div className="cam-campo ancho cam-ficha">
+              <span>Información nutricional</span>
+              <small className="cam-ay">
+                Opcional, pero es lo que el Asesor le muestra al cliente. Un producto con ficha se
+                vende más que uno sin ficha.
+              </small>
+
+              <div className="cam-campos">
+                <label className="cam-campo">
+                  <span>Porción</span>
+                  <input
+                    value={campoFicha("porcion")}
+                    onChange={(e) => ponerFicha("porcion", e.target.value)}
+                    placeholder="1 scoop (5 g)"
+                  />
+                </label>
+                <label className="cam-campo">
+                  <span>Origen</span>
+                  <input
+                    value={campoFicha("origen")}
+                    onChange={(e) => ponerFicha("origen", e.target.value)}
+                    placeholder="Industria argentina"
+                  />
+                </label>
+              </div>
+
+              <div className="cam-nutri">
+                {[
+                  ["kcal_100g", "Calorías", "kcal"],
+                  ["proteinas", "Proteínas", "g"],
+                  ["carbohidratos", "Carbohidratos", "g"],
+                  ["grasas", "Grasas", "g"],
+                  ["fibra", "Fibra", "g"],
+                  ["sodio", "Sodio", "mg"],
+                ].map(([clave, rotulo, unidad]) => (
+                  <label key={clave}>
+                    <span>{rotulo}</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={campoFicha(clave)}
+                      onChange={(e) => ponerFicha(clave, e.target.value)}
+                      placeholder="0"
+                    />
+                    <i>{unidad}</i>
+                  </label>
+                ))}
+              </div>
+              <small className="cam-ay">Por cada 100 g, como figura en el envase.</small>
+
+              <label className="cam-campo ancho">
+                <span>Ingredientes</span>
+                <textarea
+                  rows={2}
+                  value={campoFicha("ingredientes")}
+                  onChange={(e) => ponerFicha("ingredientes", e.target.value)}
+                />
+              </label>
+              <label className="cam-campo ancho">
+                <span>Vitaminas y minerales</span>
+                <textarea
+                  rows={2}
+                  value={campoFicha("micronutrientes")}
+                  onChange={(e) => ponerFicha("micronutrientes", e.target.value)}
+                />
+              </label>
             </div>
           </div>
         )}

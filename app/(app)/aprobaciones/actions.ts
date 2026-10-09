@@ -517,12 +517,25 @@ export async function aplicarCambiosProgramados(): Promise<{ aplicadas: number; 
             iva_porcentaje: datos.iva != null ? Number(datos.iva) : null,
             costo_informado: Number(datos.costo) || null,
             descripcion: (datos.descripcion as string | null) ?? null,
+            imagen: (datos.imagen as string | null) ?? null,
             estado: "ACTIVO",
             visible_asesor: true,
           })
           .select("id_producto")
           .single();
         if (errorAlta) throw new Error(errorAlta.message);
+
+        // La ficha del asesor, si la mandó. Es lo que el cliente lee en el
+        // tótem: un producto con ficha se vende más que uno sin ficha, y el
+        // dato está impreso en el envase de la marca — es suyo, no de WiiGo.
+        const ficha = datos.ficha as Record<string, unknown> | null;
+        if (ficha && Object.values(ficha).some((v) => v !== null)) {
+          await supabase.from("ficha_producto").insert({
+            id_producto: creado.id_producto,
+            ...ficha,
+            estado: "ACTIVA",
+          });
+        }
 
         // Todo producto necesita al menos una variante para tener stock. Sin
         // esto el producto entra pero no se puede recibir ni vender. El SKU y
