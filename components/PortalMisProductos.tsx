@@ -53,7 +53,6 @@ type Filtro = "falta" | "sinstock" | "hechos" | "todos";
 export default function PortalMisProductos({ datos }: { datos: MisCostosPortal }) {
   const [filtro, setFiltro] = useState<Filtro>(datos.sinCosto > 0 ? "falta" : "todos");
   const [busca, setBusca] = useState("");
-  const [sub, setSub] = useState<string | null>(null);
   // Un cajón abierto por vez, y ninguno al entrar: con 72 productos, todos
   // abiertos es el mismo muro de antes.
   const [grupoAbierto, setGrupoAbierto] = useState<string | null>(null);
@@ -70,10 +69,18 @@ export default function PortalMisProductos({ datos }: { datos: MisCostosPortal }
       if (filtro === "falta" && p.costo != null) return false;
       if (filtro === "hechos" && p.costo == null) return false;
       if (filtro === "sinstock" && !faltaStock(p)) return false;
-      if (sub && p.subcategoria !== sub) return false;
       return q === "" || `${p.nombre} ${p.subcategoria}`.toLowerCase().includes(q);
     });
-  }, [datos.productos, filtro, busca, sub]);
+  }, [datos.productos, filtro, busca]);
+
+  /**
+   * Agrupar sirve para buscar algo; cargar setenta costos seguidos es otra
+   * tarea, y ahí los encabezados son interrupciones: abrir un cajón, cargar
+   * cinco, cerrarlo, abrir el siguiente. Con el filtro de lo que falta la
+   * lista va plana y de corrido —cada fila ya dice su subcategoría abajo del
+   * nombre— y con los otros filtros, que son para mirar, va agrupada.
+   */
+  const plano = filtro === "falta" || busca.trim() !== "";
 
   // Las subcategorías en el orden en que vienen los productos, con la de "sin
   // subcategoría" siempre al final: es un cajón de sobras, no una categoría.
@@ -89,19 +96,34 @@ export default function PortalMisProductos({ datos }: { datos: MisCostosPortal }
     return orden.map((s) => ({ nombre: s, items: visibles.filter((p) => p.subcategoria === s) }));
   }, [subcategorias, visibles]);
 
-  /** Buscar o filtrar por subcategoría abre sola la que corresponde: nadie
-      escribe "creatina" para después tener que abrir el cajón a mano. */
+  /**
+   * Cuál cajón está abierto.
+   *
+   * Si no tocó ninguno, se abre solo el primero que tiene costos sin cargar:
+   * entrar y ver diez cajones cerrados obliga a adivinar por dónde empezar, y
+   * lo que hay que hacer siempre es lo que falta.
+   */
+  const primeroConFaltantes = useMemo(
+    () =>
+      gruposVisibles.find((g) =>
+        datos.productos.some((p) => p.subcategoria === g.nombre && p.costo == null)
+      )?.nombre ?? gruposVisibles[0]?.nombre ?? null,
+    [gruposVisibles, datos.productos]
+  );
+
   function estaAbierto(nombre: string) {
-    if (busca.trim() !== "") return true;
-    if (sub) return true;
     if (gruposVisibles.length === 1) return true;
+    if (grupoAbierto === null) return nombre === primeroConFaltantes;
     return grupoAbierto === nombre;
   }
 
   function tocarGrupo(nombre: string) {
     // Abrir uno cierra el anterior, y con él el producto desplegado: si no,
     // quedaría abierto dentro de un cajón que ya no se ve.
-    setGrupoAbierto((g) => (g === nombre ? null : nombre));
+    //
+    // "" es "los cerré yo", distinto de null, que es "todavía no toqué nada" y
+    // deja abierto el primero con faltantes.
+    setGrupoAbierto(estaAbierto(nombre) ? "" : nombre);
     setAbierta(null);
   }
 
@@ -180,31 +202,40 @@ export default function PortalMisProductos({ datos }: { datos: MisCostosPortal }
               </div>
             </div>
 
-            <div className="chips-sub">
-              <button className="chip" aria-pressed={sub === null} onClick={() => setSub(null)}>
-                Todas las subcategorías <span className="c">{total}</span>
-              </button>
-              {subcategorias.map((s) => {
-                const en = datos.productos.filter((p) => p.subcategoria === s);
-                const faltan = en.filter((p) => p.costo == null).length;
-                return (
-                  <button
-                    key={s}
-                    className="chip"
-                    aria-pressed={sub === s}
-                    onClick={() => setSub((v) => (v === s ? null : s))}
-                  >
-                    {faltan > 0 && <span className="pendiente" />}
-                    {s} <span className="c">{en.length}</span>
-                  </button>
-                );
-              })}
-            </div>
+            {/* Los chips de subcategoría que había acá eran la misma lista que
+                los encabezados de abajo, con el mismo contador: dos controles
+                para lo mismo, y el usuario sin saber cuál usar. Quedan los
+                encabezados, que además dicen cuántos faltan en cada uno. */}
 
-            {gruposVisibles.length === 0 ? (
+            {visibles.length === 0 ? (
               <p className="vacio">
                 No hay productos que coincidan{busca.trim() ? ` con «${busca.trim()}»` : ""}.
               </p>
+            ) : plano ? (
+              <div className="grupo-cuerpo plano">
+                <table className="tabla-prod">
+                  <thead>
+                    <tr>
+                      <th>Producto</th>
+                      <th className="num">En góndola</th>
+                      <th className="num">Precio al público</th>
+                      <th className="num">Mi costo</th>
+                      <th className="num">Te queda por venta</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visibles.map((p) => (
+                      <Fila
+                        key={p.idProducto}
+                        p={p}
+                        conSubcategoria
+                        abierta={abierta === p.idProducto}
+                        onAbrir={() => setAbierta((a) => (a === p.idProducto ? null : p.idProducto))}
+                      />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             ) : (
               gruposVisibles.map((g) => {
                 const todosEn = datos.productos.filter((p) => p.subcategoria === g.nombre);
@@ -261,8 +292,16 @@ export default function PortalMisProductos({ datos }: { datos: MisCostosPortal }
 
             <div className="pie-prod">
               <span>
-                Tocá una subcategoría para abrirla. Escribí el costo y apretá <kbd>Enter</kbd>. Tocá el
-                nombre de un producto para ver la cuenta completa.
+                {plano ? (
+                  <>
+                    Escribí el costo y apretá <kbd>Enter</kbd> para saltar al siguiente.
+                  </>
+                ) : (
+                  <>
+                    Tocá una subcategoría para abrirla. Escribí el costo y apretá <kbd>Enter</kbd>.
+                  </>
+                )}{" "}
+                Tocá el nombre de un producto para ver la cuenta completa.
               </span>
               <span>{datos.sinCosto > 0 ? `Te faltan ${datos.sinCosto}` : "¡Están todos!"}</span>
             </div>
@@ -472,10 +511,13 @@ function Fila({
   p,
   abierta,
   onAbrir,
+  conSubcategoria,
 }: {
   p: ProductoConMargen;
   abierta: boolean;
   onAbrir: () => void;
+  /** En la lista plana, porque no hay encabezado que lo diga. */
+  conSubcategoria?: boolean;
 }) {
   const router = useRouter();
   const [valor, setValor] = useState(p.costo != null ? String(p.costo) : "");
@@ -528,6 +570,10 @@ function Fila({
             </svg>
             <span>
               {p.nombre}
+              {/* Sin los encabezados de subcategoría arriba, el renglón tiene
+                  que decir de qué cajón es. Agrupada no hace falta: ya lo dice
+                  el encabezado. */}
+              {conSubcategoria && p.costo == null && <small>{p.subcategoria}</small>}
               {p.costo != null && (
                 <small>
                   costo desde {fechaCorta(p.vigenteDesde)} · lo cargó{" "}
