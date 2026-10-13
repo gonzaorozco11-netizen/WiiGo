@@ -1374,3 +1374,30 @@
   text-transform: none; letter-spacing: 0;
 }
 .cam-contador.lleno { color: var(--rojo); font-weight: 700; }
+
+/* El alta como ventana.
+   Con tres pasos, inline empujaba los setenta renglones de la lista hacia
+   abajo y dejaba el formulario flotando arriba de algo que no tiene nada que
+   ver. La caja scrollea sola; el fondo queda quieto. */
+.modal-fondo .cam-nuevo {
+  width: 100%; max-width: 760px; max-height: 92vh; overflow-y: auto;
+  margin: 0; border-radius: 18px; padding: 20px 22px 22px;
+  box-shadow: 0 22px 50px -18px rgba(42, 47, 38, .4);
+}
+@media (max-width: 640px) {
+  .modal-fondo .cam-nuevo { max-height: 100vh; border-radius: 16px 16px 0 0; padding: 16px 15px 20px; }
+}
+.modal-fondo .cam-nuevo-cab {
+  position: sticky; top: -20px; z-index: 2; background: var(--superficie);
+  margin: -20px -22px 0; padding: 20px 22px 12px; border-bottom: 1px solid var(--borde);
+  align-items: center;
+}
+@media (max-width: 640px) {
+  .modal-fondo .cam-nuevo-cab { top: -16px; margin: -16px -15px 0; padding: 16px 15px 11px; }
+}
+.modal-fondo .cam-nuevo-cab h2 { font-size: 18px; }
+.modal-fondo .cam-cerrar {
+  font-size: 13px; font-weight: 600; padding: 6px 12px; border-radius: 8px;
+  border: 1px solid var(--borde-fuerte); background: var(--superficie-2);
+}
+.modal-fondo .cam-cerrar:hover { background: var(--salvia-tenue); color: var(--salvia-honda); }

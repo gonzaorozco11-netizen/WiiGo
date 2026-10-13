@@ -961,15 +961,19 @@ function FormProductoNuevo({
   }
 
   return (
-    <div className="cam-nuevo">
-      <div className="cam-nuevo-cab">
-        <h2>Producto nuevo</h2>
-        <button className="cam-cerrar" onClick={onCerrar}>
-          Cerrar
-        </button>
-      </div>
+    // Ventana y no un bloque dentro de la página: con tres pasos, inline
+    // empujaba la lista de productos hacia abajo y quedaba el formulario
+    // flotando arriba de setenta renglones que no tienen nada que ver.
+    <div className="modal-fondo" onClick={onCerrar}>
+      <div className="cam-nuevo" onClick={(e) => e.stopPropagation()}>
+        <div className="cam-nuevo-cab">
+          <h2>Producto nuevo</h2>
+          <button className="cam-cerrar" onClick={onCerrar} aria-label="Cerrar">
+            Cerrar
+          </button>
+        </div>
 
-      <div className="cam-pasos">
+        <div className="cam-pasos">
         {[
           { n: 1, t: "El producto", d: "Nombre, foto, subcategoría" },
           { n: 2, t: "Precio y códigos", d: "Tu costo, precios, sabores" },
@@ -1450,7 +1454,8 @@ function FormProductoNuevo({
             </button>
           )}
         </div>
-      </Envio>
+        </Envio>
+      </div>
     </div>
   );
 }
