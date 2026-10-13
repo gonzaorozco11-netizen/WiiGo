@@ -83,6 +83,17 @@ export default function PortalTareas({ datos }: { datos: TareasPortal }) {
         </section>
       )}
 
+      {/* Lo que todavía no se puede calcular, dicho en vez de omitido.
+          Un hueco sin explicación se lee como que el sistema no lo hace; con
+          el aviso, la marca sabe que viene y por qué todavía no está. */}
+      <div className="tarea-pronto">
+        <span aria-hidden="true">◴</span>
+        <p>
+          <b>Cuánto conviene mandar</b> se va a mostrar acá cuando haya ventas reales. Se calcula
+          con lo que se vendió en las últimas semanas: antes de eso cualquier número sería inventado.
+        </p>
+      </div>
+
       {datos.alDia.length > 0 && (
         <section className="tareas-grupo aldia">
           <h2>Al día</h2>

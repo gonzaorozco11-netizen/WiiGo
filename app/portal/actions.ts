@@ -1631,3 +1631,118 @@ export async function misTareas(): Promise<TareasPortal | null> {
     pendientes: tareas.length,
   };
 }
+
+// ===================== La bienvenida =====================
+
+export type ParteBienvenida = { etiqueta: string; monto: number; porcentaje: number; color: string };
+
+export type BienvenidaPortal = {
+  nombreMarca: string;
+  local: string | null;
+  productos: number;
+  /** Un producto suyo, para que el reparto no sea un ejemplo inventado. */
+  ejemplo: { nombre: string; precio: number; leTransferimos: number; partes: ParteBienvenida[] } | null;
+  sinCosto: number;
+  sinFoto: number;
+  sinFicha: number;
+};
+
+/**
+ * Los números que necesita la bienvenida, de esa marca y no de un folleto.
+ *
+ * "De tus $38.900 te quedan $33.859" convence; "de $100 te quedan $87" se lee
+ * como publicidad y no lo cree nadie. Por eso el ejemplo es un producto suyo
+ * de verdad — el más caro, que es el que mejor conocen.
+ *
+ * El reparto se muestra pagando con tarjeta, que es el caso más común y
+ * también el peor para la marca: mostrar el mejor y que después les llegue
+ * menos es la forma más rápida de perder la confianza que esta pantalla
+ * justamente viene a construir.
+ */
+export async function bienvenidaPortal(): Promise<BienvenidaPortal | null> {
+  const sesion = await obtenerSesionMarca();
+  if (!sesion) return null;
+
+  const supabase = getSupabaseServerClient();
+  const [{ data: productos }, { data: locales }, costos, marca, tasas] = await Promise.all([
+    supabase
+      .from("productos")
+      .select("id_producto, nombre, descripcion, imagen, precio_venta")
+      .eq("id_marca", sesion.idMarca)
+      .eq("estado", "ACTIVO"),
+    supabase.from("locales").select("nombre, direccion").eq("estado", "ACTIVO").limit(2),
+    costosVigentes(supabase, sesion.idMarca),
+    condicionesDeMarca(supabase, sesion.idMarca),
+    tasasGeneralesParaSimular(supabase),
+  ]);
+  if (!marca) return null;
+
+  const lista = productos ?? [];
+  const ids = lista.map((p) => p.id_producto as string);
+  const { data: fichas } = ids.length
+    ? await supabase
+        .from("ficha_producto")
+        .select("id_producto, kcal_100g, proteinas, carbohidratos, grasas, porcion, ingredientes")
+        .in("id_producto", ids)
+    : { data: [] as Record<string, unknown>[] };
+  const conFicha = new Set(
+    (fichas ?? [])
+      .filter((f) =>
+        [f.kcal_100g, f.proteinas, f.carbohidratos, f.grasas, f.porcion, f.ingredientes].some(
+          (v) => v !== null && v !== undefined && v !== ""
+        )
+      )
+      .map((f) => f.id_producto as string)
+  );
+
+  const caro = lista
+    .filter((p) => ((p.precio_venta as number | null) ?? 0) > 0)
+    .sort((a, b) => ((b.precio_venta as number) ?? 0) - ((a.precio_venta as number) ?? 0))[0];
+
+  let ejemplo: BienvenidaPortal["ejemplo"] = null;
+  if (caro) {
+    const precio = (caro.precio_venta as number) ?? 0;
+    const porMedio = simularMargen({
+      precio,
+      costo: costos.get(caro.id_producto as string)?.costo ?? null,
+      marca,
+      tasas,
+    });
+    const m = porMedio.find((x) => x.medio === "CREDITO") ?? porMedio[0];
+    if (m) {
+      const pct = (v: number) => (precio > 0 ? (v / precio) * 100 : 0);
+      const impuestos = m.impCreditos + m.impDebitos + m.sircreb;
+      ejemplo = {
+        nombre: (caro.nombre as string) ?? "Tu producto",
+        precio,
+        leTransferimos: m.leTransferimos,
+        partes: [
+          { etiqueta: "Te queda", monto: m.leTransferimos, porcentaje: pct(m.leTransferimos), color: "#6d8058" },
+          { etiqueta: "Comisión de WiiGo", monto: m.comisionWiigo, porcentaje: pct(m.comisionWiigo), color: "#bd8f3e" },
+          { etiqueta: "IVA de esa comisión", monto: m.ivaComision, porcentaje: pct(m.ivaComision), color: "#ddc08a" },
+          { etiqueta: "Cobro con tarjeta", monto: m.comisionMp, porcentaje: pct(m.comisionMp), color: "#7f9ab5" },
+          { etiqueta: "Impuestos del cobro", monto: impuestos, porcentaje: pct(impuestos), color: "#b58578" },
+        ].filter((p) => p.monto > 0),
+      };
+    }
+  }
+
+  // Solo tiene sentido nombrar la sucursal cuando hay una: con varias, decir
+  // una sola seria mentir sobre donde esta la mercaderia.
+  const local =
+    (locales ?? []).length === 1
+      ? [(locales ?? [])[0].nombre as string, (locales ?? [])[0].direccion as string | null]
+          .filter(Boolean)
+          .join(", ")
+      : null;
+
+  return {
+    nombreMarca: sesion.nombreMarca,
+    local,
+    productos: lista.length,
+    ejemplo,
+    sinCosto: lista.filter((p) => !costos.get(p.id_producto as string)).length,
+    sinFoto: lista.filter((p) => !p.imagen).length,
+    sinFicha: lista.filter((p) => !conFicha.has(p.id_producto as string)).length,
+  };
+}

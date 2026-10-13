@@ -1550,6 +1550,16 @@
 .tarea-btn.fuerte { color: #fff; background: var(--rojo); border-color: var(--rojo); }
 .tarea-btn.fuerte:hover { background: #96463c; border-color: #96463c; }
 
+/* Lo que todavia no se puede calcular, dicho en vez de omitido: un hueco sin
+   explicacion se lee como que el sistema no lo hace. */
+.tarea-pronto {
+  display: flex; align-items: flex-start; gap: 11px; margin-bottom: 20px;
+  border: 1px dashed var(--borde-fuerte); border-radius: 12px; padding: 13px 18px;
+}
+.tarea-pronto span { color: var(--texto-3); font-size: 17px; line-height: 1.2; flex: none; }
+.tarea-pronto p { font-size: 13.5px; color: var(--texto-3); line-height: 1.5; }
+.tarea-pronto p b { color: var(--texto-2); font-weight: 600; }
+
 /* Cerrar con lo que ya esta bien es lo que hace querer vaciar el resto. */
 .aldia-caja {
   background: var(--verde-tenue); border: 1px solid #c9e0cf; border-radius: 12px;
@@ -1557,6 +1567,121 @@
 }
 .aldia-caja span { color: var(--verde-ok); font-weight: 700; flex: none; }
 .aldia-caja p { font-size: 13.5px; color: #335c3d; line-height: 1.45; }
+
+/* ---------- La bienvenida ----------
+   Cuatro pantallas, una idea cada una. No explica donde esta cada boton:
+   explica el negocio, que es lo que de verdad no entienden. */
+.bv-abrir {
+  font: inherit; font-size: 12.5px; color: var(--texto-3); background: none; border: 0;
+  cursor: pointer; padding: 4px 2px; text-decoration: underline; text-underline-offset: 3px;
+}
+.bv-abrir:hover { color: var(--salvia-honda); }
+
+.bv-fondo {
+  position: fixed; inset: 0; z-index: 60; background: rgba(42,47,38,.46);
+  display: grid; place-items: center; padding: 20px; overflow: auto;
+}
+.bv {
+  width: min(760px, 100%); background: var(--superficie); border-radius: 20px;
+  padding: 30px 40px 24px; display: flex; flex-direction: column; gap: 18px;
+  box-shadow: 0 18px 50px rgba(42,47,38,.22);
+}
+
+.bv-pasos { display: flex; align-items: center; gap: 7px; }
+.bv-pasos > span { width: 26px; height: 4px; border-radius: 999px; background: var(--borde); }
+.bv-pasos > span.hecho { background: var(--salvia-fuerte); }
+.bv-pasos b { font-size: 11px; font-weight: 500; color: var(--texto-3); margin-left: 6px; }
+
+.bv-cuerpo { display: flex; flex-direction: column; gap: 14px; min-height: 330px; }
+.bv-cuerpo h2 { font-size: 26px; font-weight: 600; letter-spacing: -.02em; }
+.bv-intro { font-size: 15.5px; color: var(--texto-2); line-height: 1.55; max-width: 580px; }
+.bv-intro b { color: var(--texto); font-weight: 600; }
+.bv-nota {
+  font-size: 13.5px; color: var(--texto-2); line-height: 1.5;
+  background: var(--superficie-2); border: 1px solid var(--borde); border-radius: 11px;
+  padding: 12px 15px;
+}
+
+.bv-caja {
+  background: var(--salvia-tenue); border: 1px solid var(--borde-fuerte); border-radius: 14px;
+  padding: 17px 19px; display: flex; gap: 14px; align-items: flex-start; color: var(--salvia-honda);
+}
+.bv-caja svg { flex: none; margin-top: 2px; }
+.bv-caja b { display: block; font-size: 15.5px; font-weight: 600; margin-bottom: 4px; }
+.bv-caja p { font-size: 14px; line-height: 1.5; color: #4f5c43; }
+
+/* El reparto */
+.bv-reparto { display: flex; align-items: center; gap: 32px; flex-wrap: wrap; }
+.bv-dona { position: relative; width: 200px; height: 200px; flex: none; }
+.bv-dona-centro {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 1px;
+}
+.bv-dona-centro b { font-size: 23px; font-weight: 600; color: #3f4d33; letter-spacing: -.02em; }
+.bv-dona-centro span {
+  font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--texto-3);
+}
+.bv-partes { list-style: none; flex: 1 1 280px; display: flex; flex-direction: column; gap: 9px; }
+.bv-partes li {
+  display: grid; grid-template-columns: 12px 1fr 88px 52px; gap: 11px; align-items: center;
+  font-size: 14px; color: var(--texto-2);
+}
+.bv-partes li.fuerte { color: var(--texto); font-weight: 600; }
+.bv-partes .llave { width: 12px; height: 12px; border-radius: 3px; }
+.bv-partes .v { font-size: 13.5px; text-align: right; }
+.bv-partes .pct { font-size: 12px; color: var(--texto-3); text-align: right; }
+
+/* Los cuatro momentos del cobro */
+.bv-linea { list-style: none; display: flex; flex-direction: column; }
+.bv-linea li { display: grid; grid-template-columns: 30px 1fr; gap: 16px; }
+.bv-hito { display: flex; flex-direction: column; align-items: center; }
+.bv-hito .punto {
+  width: 30px; height: 30px; border-radius: 50%; background: var(--salvia-fuerte); color: #fff;
+  font-family: var(--f-mono); font-size: 13px; font-weight: 600;
+  display: flex; align-items: center; justify-content: center; flex: none;
+}
+.bv-hito .punto.fin { background: var(--verde-ok); font-family: var(--f-texto); font-size: 15px; }
+.bv-hito .raya { width: 2px; flex-grow: 1; background: var(--borde); }
+.bv-linea li > div:last-child { padding-bottom: 16px; }
+.bv-linea li:last-child > div:last-child { padding-bottom: 0; }
+.bv-linea b { display: block; font-size: 15.5px; font-weight: 600; margin-bottom: 2px; }
+.bv-linea p { font-size: 13.5px; color: var(--texto-2); line-height: 1.45; }
+
+/* Que necesitamos */
+.bv-items { display: flex; flex-direction: column; gap: 10px; }
+.bv-item {
+  border: 1px solid var(--borde); border-radius: 12px; padding: 14px 17px;
+  display: flex; align-items: center; gap: 16px;
+}
+.bv-item.rojo { border-left: 3px solid var(--rojo); }
+.bv-item.ocre { border-left: 3px solid var(--ocre); }
+.bv-item .n {
+  font-family: var(--f-titulo), var(--f-texto), sans-serif; font-size: 25px; font-weight: 600;
+  min-width: 40px; text-align: center; flex: none; letter-spacing: -.02em;
+}
+.bv-item.rojo .n { color: var(--rojo); }
+.bv-item.ocre .n { color: var(--ocre); }
+.bv-item b { display: block; font-size: 15px; font-weight: 600; margin-bottom: 2px; }
+.bv-item p { font-size: 13.5px; color: var(--texto-2); line-height: 1.45; }
+
+.bv-pie { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.bv-saltear {
+  font: inherit; font-size: 13.5px; color: var(--texto-3); background: none; border: 0;
+  cursor: pointer; padding: 6px 2px;
+}
+.bv-saltear:hover { color: var(--texto-2); }
+.bv-seguir {
+  font: inherit; font-size: 14.5px; font-weight: 600; color: #fff; background: var(--salvia-honda);
+  border: 1px solid var(--salvia-honda); border-radius: 11px; padding: 12px 25px; cursor: pointer;
+}
+.bv-seguir:hover { background: #41503a; border-color: #41503a; }
+
+@media (max-width: 640px) {
+  .bv { padding: 24px 20px 20px; border-radius: 16px; }
+  .bv-cuerpo h2 { font-size: 22px; }
+  .bv-cuerpo { min-height: 0; }
+}
 
 /* ---------- El estandar de fotos ----------
    Estaba como una nota al pie ("fondo claro, sin texto encima"), que es una
