@@ -3,14 +3,13 @@
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 
-// Etiquetas de los planes del portal de marcas. Se repiten acá en vez de
-// importarlas de lib/marcaSesion porque ese módulo lee cookies del servidor
-// y este es un componente de cliente.
-const ETIQUETA_PLAN_MARCA: Record<string, string> = {
-  BRONCE: "Bronce",
-  METAL: "Metal",
-  GOLD: "Gold",
-};
+// Los nombres de los planes salen de lib/planesMarca, que es la misma fuente
+// que usa el portal. Estuvieron copiados acá un tiempo porque importarlos de
+// marcaSesion arrastraba la lectura de cookies —server only— a un componente
+// de cliente; desde que viven en su propio archivo eso ya no pasa, y la copia
+// era justo lo que hacía que el sistema dijera "Metal" mientras el portal
+// decía "Silver".
+import { ETIQUETA_PLAN, type PlanMarca } from "@/lib/planesMarca";
 import type {
   Marca,
   Producto,
@@ -145,7 +144,10 @@ export default function MarcaDetail({
         <Dato label="Contacto" valor={marca.contacto} />
         <Dato label="Royalty" valor={marca.royalty_porcentaje !== null ? `${marca.royalty_porcentaje}%` : null} />
         <Dato label="Fee de ingreso" valor={marca.fee_ingreso !== null ? `$${marca.fee_ingreso}` : null} />
-        <Dato label="Plan del portal" valor={ETIQUETA_PLAN_MARCA[marca.plan ?? "BRONCE"] ?? "Bronce"} />
+        <Dato
+          label="Plan del portal"
+          valor={ETIQUETA_PLAN[(marca.plan as PlanMarca) ?? "BRONCE"] ?? "Bronce"}
+        />
       </div>
 
       {/* Subcategorías */}

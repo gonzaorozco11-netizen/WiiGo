@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import type { Marca } from "@/lib/supabase";
 import { createMarca, updateMarca, subirLogoMarca } from "@/app/(app)/marcas/actions";
+import { ETIQUETA_PLAN } from "@/lib/planesMarca";
 
 export default function MarcaFormModal({
   marca,
@@ -146,9 +147,18 @@ export default function MarcaFormModal({
                 defaultValue={marca?.plan ?? "BRONCE"}
                 className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
               >
-                <option value="BRONCE">Bronce — sus ventas, su stock y sus liquidaciones</option>
-                <option value="METAL">Metal — además, ranking de productos y alertas de stock</option>
-                <option value="GOLD">Gold — además, comparativas, proyección y benchmark</option>
+                {/* El nombre sale de ETIQUETA_PLAN, igual que en el portal:
+                    el valor guardado es METAL pero la marca lo ve como
+                    Silver, y acá tiene que decir lo mismo que ella lee. */}
+                <option value="BRONCE">
+                  {ETIQUETA_PLAN.BRONCE} — sus ventas, su stock y sus liquidaciones
+                </option>
+                <option value="METAL">
+                  {ETIQUETA_PLAN.METAL} — además, ranking de productos y alertas de stock
+                </option>
+                <option value="GOLD">
+                  {ETIQUETA_PLAN.GOLD} — además, comparativas, proyección y benchmark
+                </option>
               </select>
               <p className="text-xs text-neutral-400 mt-1">
                 Lo que la marca ve al entrar a su portal. El royalty y el abono se cargan aparte.

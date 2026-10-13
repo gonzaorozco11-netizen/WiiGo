@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { Marca } from "@/lib/supabase";
 import { deleteMarca } from "@/app/(app)/marcas/actions";
 import MarcaFormModal from "@/components/MarcaFormModal";
+import { ETIQUETA_PLAN, type PlanMarca } from "@/lib/planesMarca";
 
 export default function MarcasApp({ initialMarcas, esAdmin }: { initialMarcas: Marca[]; esAdmin: boolean }) {
   const [search, setSearch] = useState("");
@@ -97,7 +98,11 @@ export default function MarcasApp({ initialMarcas, esAdmin }: { initialMarcas: M
                   {m.contacto && <span>{m.contacto}</span>}
                   {m.email && <span>{m.email}</span>}
                   {m.royalty_porcentaje !== null && <span>Royalty {m.royalty_porcentaje}%</span>}
-                  <span className="text-neutral-400">Plan {m.plan ?? "BRONCE"}</span>
+                  {/* Por la etiqueta y no por el valor crudo: en la base el
+                      del medio es METAL y para la marca se llama Silver. */}
+                  <span className="text-neutral-400">
+                    Plan {ETIQUETA_PLAN[(m.plan as PlanMarca) ?? "BRONCE"] ?? "Bronce"}
+                  </span>
                 </div>
               </div>
               <div className="flex gap-3 shrink-0">
