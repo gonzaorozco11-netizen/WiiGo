@@ -58,60 +58,64 @@ export default function PortalCalendario({ datos }: { datos: CalendarioPortal })
         </button>
       </div>
 
-      {datos.eventos.length === 0 ? (
-        <p className="vacio">Todavía no hay nada cargado en el calendario.</p>
+      {/* El almanaque va siempre, haya eventos o no: sin él esto no es un
+          calendario, es una lista. Lo que se esconde cuando no hay nada es lo
+          de arriba, que es lo que pide una decisión. */}
+      {destacado ? (
+        <Destacado e={destacado} plan={datos.plan} onListo={() => router.refresh()} />
       ) : (
-        <>
-          {destacado && <Destacado e={destacado} plan={datos.plan} onListo={() => router.refresh()} />}
+        <p className="cal-nada">
+          Todavía no hay eventos cargados. Cuando WiiGo arme uno —un Black Friday, una semana
+          temática— te va a aparecer acá y en Mis tareas, con los días que faltan.
+        </p>
+      )}
 
-          {resto.length > 0 && (
-            <section className="cal-lista-sec">
-              <h2>Lo que sigue</h2>
-              <div className="cal-lista">
-                {resto.map((e) => (
-                  <FilaEvento key={e.idEvento} e={e} onListo={() => router.refresh()} />
+      {resto.length > 0 && (
+        <section className="cal-lista-sec">
+          <h2>Lo que sigue</h2>
+          <div className="cal-lista">
+            {resto.map((e) => (
+              <FilaEvento key={e.idEvento} e={e} onListo={() => router.refresh()} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      <section className="cal-lista-sec">
+        <div className="cal-alm-cab">
+          <h2>Los próximos {datos.almanaque.length} meses</h2>
+          <div className="cal-ref">
+            <span><i className="ev" /> Evento WiiGo</span>
+            <span><i className="com" /> Fecha comercial</span>
+            <span><i className="esp" /> Horario especial</span>
+            <span><i className="cerr" /> Local cerrado</span>
+          </div>
+        </div>
+        <div className="cal-almanaque">
+          {datos.almanaque.map((m) => (
+            <div className="mes" key={m.nombre}>
+              <h3>{m.nombre}</h3>
+              <div className="rejilla">
+                {DOW.map((d, i) => (
+                  <span className="dow" key={i}>
+                    {d}
+                  </span>
+                ))}
+                {m.celdas.map((c, i) => (
+                  <span className={c.clase} key={i}>
+                    {c.t}
+                  </span>
                 ))}
               </div>
-            </section>
-          )}
-
-          <section className="cal-lista-sec">
-            <div className="cal-alm-cab">
-              <h2>Los próximos {datos.almanaque.length} meses</h2>
-              <div className="cal-ref">
-                <span><i className="ev" /> Evento WiiGo</span>
-                <span><i className="com" /> Fecha comercial</span>
-                <span><i className="esp" /> Horario especial</span>
-                <span><i className="cerr" /> Local cerrado</span>
-              </div>
             </div>
-            <div className="cal-almanaque">
-              {datos.almanaque.map((m) => (
-                <div className="mes" key={m.nombre}>
-                  <h3>{m.nombre}</h3>
-                  <div className="rejilla">
-                    {DOW.map((d, i) => (
-                      <span className="dow" key={i}>
-                        {d}
-                      </span>
-                    ))}
-                    {m.celdas.map((c, i) => (
-                      <span className={c.clase} key={i}>
-                        {c.t}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
+          ))}
+        </div>
+      </section>
 
-          <p className="cal-pie">
-            Anotarte no cambia nada en la góndola: queda esperando que WiiGo confirme tu lugar. Y si
-            se te ocurre algo para tu marca, proponelo — lo revisamos como cualquier otra solicitud.
-          </p>
-        </>
-      )}
+      <p className="cal-pie">
+        Anotarte no cambia nada en la góndola: queda esperando que WiiGo confirme tu lugar. Y si se
+        te ocurre algo para tu marca, proponelo — lo revisamos como cualquier otra solicitud.
+      </p>
 
       {proponiendo && <ModalProponer onCerrar={() => setProponiendo(false)} onListo={() => { setProponiendo(false); router.refresh(); }} />}
     </main>
