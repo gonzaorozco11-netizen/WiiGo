@@ -146,7 +146,7 @@ export default function MarcaDetail({
         <Dato label="Fee de ingreso" valor={marca.fee_ingreso !== null ? `$${marca.fee_ingreso}` : null} />
         <Dato
           label="Plan del portal"
-          valor={ETIQUETA_PLAN[(marca.plan as PlanMarca) ?? "BRONCE"] ?? "Bronce"}
+          valor={ETIQUETA_PLAN[(marca.plan as PlanMarca) ?? "BRONCE"] ?? "Bronze"}
         />
       </div>
 

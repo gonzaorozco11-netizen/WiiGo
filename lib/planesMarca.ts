@@ -16,12 +16,14 @@ export const NIVEL: Record<PlanMarca, number> = { BRONCE: 1, METAL: 2, GOLD: 3 }
  * Cómo se llama cada plan para la marca.
  *
  * El del medio se guarda como METAL en la base pero se muestra "Silver":
- * Bronce → Silver → Gold se entiende sin que nadie lo explique, y "Metal" al
+ * Bronze → Silver → Gold se entiende sin que nadie lo explique, y "Metal" al
  * lado de "Gold" no dice si está arriba o abajo. Se cambia solo la etiqueta y
- * no el valor para no migrar la columna `marcas.plan` por un tema de nombre.
+ * no el valor para no migrar la columna `marcas.plan` por un tema de nombre
+ * — el mismo motivo por el que BRONCE se muestra "Bronze", con z, para que
+ * los tres nombres sean de la misma familia.
  */
 export const ETIQUETA_PLAN: Record<PlanMarca, string> = {
-  BRONCE: "Bronce",
+  BRONCE: "Bronze",
   METAL: "Silver",
   GOLD: "Gold",
 };

@@ -101,7 +101,7 @@ export default function MarcasApp({ initialMarcas, esAdmin }: { initialMarcas: M
                   {/* Por la etiqueta y no por el valor crudo: en la base el
                       del medio es METAL y para la marca se llama Silver. */}
                   <span className="text-neutral-400">
-                    Plan {ETIQUETA_PLAN[(m.plan as PlanMarca) ?? "BRONCE"] ?? "Bronce"}
+                    Plan {ETIQUETA_PLAN[(m.plan as PlanMarca) ?? "BRONCE"] ?? "Bronze"}
                   </span>
                 </div>
               </div>
