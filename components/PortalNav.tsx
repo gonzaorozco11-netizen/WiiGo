@@ -17,6 +17,11 @@ const ITEMS = [
   { href: "/portal/tareas", texto: "Mis tareas" },
   { href: "/portal/calendario", texto: "Calendario" },
   { href: "/portal/productos", texto: "Mis productos" },
+  // Se le muestra a todas aunque sea de Gold: la pantalla explica qué es y
+  // por qué conviene. Esconderla haría que nadie sepa que existe, y nadie
+  // paga por algo que no sabe que hay. El plan se controla del lado del
+  // servidor, que es donde protege.
+  { href: "/portal/canasta", texto: "Qué se lleva tu cliente" },
   { href: "/portal/cambios", texto: "Pedir un cambio" },
 ];
 

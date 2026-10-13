@@ -44,7 +44,7 @@ export const PITCH_PLAN: Partial<Record<PlanMarca, string>> = {
   METAL:
     "Dejás de mirar lo que pasó y empezás a saber qué hacer: qué reponer esta semana, qué producto tira y cuál se quedó dormido.",
   GOLD:
-    "Tenés el local para vos cuando lo necesitás: proponés tus propios eventos, entrás primero en los nuestros, y sabés en qué día y a qué hora se vende lo tuyo.",
+    "Tenés el local para vos cuando lo necesitás: proponés tus propios eventos, entrás primero en los nuestros, y sabés qué más se lleva el que compra lo tuyo.",
 };
 
 /** ¿El plan de la marca llega al nivel pedido? */
@@ -86,6 +86,7 @@ export const SUMA_EL_PLAN: Record<PlanMarca, string[]> = {
   GOLD: [
     "Proponer tus propios eventos en el local",
     "Entrar primero en los eventos de WiiGo",
+    "Con qué se vende junto lo tuyo, y qué día",
     "Cómo rendís frente al resto",
     "Cuándo se vende lo tuyo",
     "Por sucursal",
