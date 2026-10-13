@@ -1401,3 +1401,24 @@
   border: 1px solid var(--borde-fuerte); background: var(--superficie-2);
 }
 .modal-fondo .cam-cerrar:hover { background: var(--salvia-tenue); color: var(--salvia-honda); }
+
+/* Las secciones del alta.
+   Los campos sueltos uno abajo del otro se leen como una lista larga sin
+   principio ni fin; en bloques con encabezado se ve de un vistazo cuantas
+   cosas hay y de que va cada una. */
+.cam-bloque {
+  border: 1px solid var(--borde); border-radius: 14px; padding: 16px 18px; margin-bottom: 13px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.cam-bloque h3 {
+  font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px;
+  color: var(--texto);
+}
+.cam-bloque h3 span { font-size: 15px; line-height: 1; }
+.cam-bloque .d {
+  font-size: 12px; color: var(--texto-3); margin-top: -8px; line-height: 1.45;
+}
+/* El formulario ya separa con gap; adentro del bloque no hace falta el margen
+   extra de cada campo, que acumulaba hueco de mas. */
+.cam-bloque .cam-campo,
+.cam-bloque .cam-campos { margin: 0; }

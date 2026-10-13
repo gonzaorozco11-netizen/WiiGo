@@ -757,6 +757,37 @@ const LARGOS = {
 } as const;
 
 /**
+ * Una sección del alta, con su título.
+ *
+ * Los campos sueltos uno abajo del otro se leen como una lista larga sin
+ * principio ni fin; agrupados en bloques con encabezado se ve de un vistazo
+ * cuántas cosas hay y de qué va cada una. Es el mismo criterio que usa el
+ * formulario de WiiGo del lado de adentro.
+ */
+function Bloque({
+  icono,
+  titulo,
+  desc,
+  children,
+}: {
+  icono: string;
+  titulo: string;
+  desc?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="cam-bloque">
+      <h3>
+        <span aria-hidden="true">{icono}</span>
+        {titulo}
+      </h3>
+      {desc && <p className="d">{desc}</p>}
+      {children}
+    </section>
+  );
+}
+
+/**
  * Un campo de texto con su contador.
  *
  * El contador aparece recién cuando queda poco: mostrarlo desde el carácter
@@ -1380,6 +1411,7 @@ function FormProductoNuevo({
                 </>
               )}
             </div>
+            </Bloque>
           </>
         )}
 
@@ -1391,6 +1423,11 @@ function FormProductoNuevo({
               Un producto con ficha se vende más que uno sin ficha.
             </div>
 
+            <Bloque
+              icono="🥗"
+              titulo="Información nutricional"
+              desc="Como figura en el envase, por cada 100 g."
+            >
             <div className="cam-campos">
               <label className="cam-campo">
                 <span>Porción</span>
@@ -1455,6 +1492,7 @@ function FormProductoNuevo({
               max={LARGOS.micronutrientes}
               filas={2}
             />
+            </Bloque>
           </>
         )}
 
