@@ -1313,20 +1313,25 @@
 .cam-reparto-tabla .llave { width: 9px; height: 9px; border-radius: 2px; display: inline-block; flex: none; }
 
 /* Hasta tres fotos. La primera es la que se ve en la gondola y en el totem;
-   las otras dos aparecen en la ficha del Asesor cuando el cliente la abre. */
-.cam-fotos { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 7px; }
-.cam-foto {
+   las otras dos aparecen en la ficha del Asesor cuando el cliente la abre.
+
+   Va todo colgado de .cam-nuevo. Sin eso pisaba a las fichas de "la de hoy /
+   la nueva" del cambio de foto, que son .cam-foto tambien pero en columna con
+   el rotulo arriba: quedaban recortadas a 84x84 con el texto cortado por la
+   mitad. Mismos nombres, dos piezas distintas. */
+.cam-nuevo .cam-fotos { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 7px; }
+.cam-nuevo .cam-foto {
   position: relative; width: 84px; height: 84px; border-radius: 11px; overflow: hidden;
   border: 1px solid var(--borde); background: var(--superficie-2);
 }
-.cam-foto img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.cam-foto .quitar-foto {
+.cam-nuevo .cam-foto img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cam-nuevo .cam-foto .quitar-foto {
   position: absolute; top: 3px; right: 3px; width: 20px; height: 20px; border-radius: 50%;
   border: 0; background: rgba(42,47,38,.72); color: #fff; font-size: 13px; line-height: 1;
   cursor: pointer; display: flex; align-items: center; justify-content: center;
 }
-.cam-foto .quitar-foto:hover { background: var(--rojo); }
-.cam-foto .principal {
+.cam-nuevo .cam-foto .quitar-foto:hover { background: var(--rojo); }
+.cam-nuevo .cam-foto .principal {
   position: absolute; left: 0; right: 0; bottom: 0; background: rgba(42,47,38,.72); color: #fff;
   font-size: 8.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
   text-align: center; padding: 3px 2px;
@@ -1456,3 +1461,58 @@
 
 /* El icono del estado, adelante del rotulo. */
 .cam-estado i { font-style: normal; margin-right: 5px; }
+
+/* ---------- El estandar de fotos ----------
+   Estaba como una nota al pie ("fondo claro, sin texto encima"), que es una
+   sugerencia. En reglas numerables, y con el validador atras que las aplica,
+   pasa a ser el estandar de verdad. */
+.cam-estandar {
+  background: var(--superficie-2); border: 1px solid var(--borde); border-radius: 12px;
+  padding: 13px 16px; display: flex; flex-direction: column; gap: 7px;
+}
+.cam-estandar b { font-size: 12.5px; font-weight: 600; color: var(--texto); }
+/* El reset del portal apaga los bullets; aca hacen falta, porque son reglas
+   que se cuentan. */
+.cam-estandar ul {
+  margin: 0; padding-left: 17px; list-style: disc; display: flex; flex-direction: column; gap: 3px;
+}
+.cam-estandar li { font-size: 12.5px; color: var(--texto-2); line-height: 1.45; }
+.cam-estandar small { font-size: 11.5px; color: var(--texto-3); line-height: 1.45; }
+
+/* Que cumplio y que no la foto recien elegida. */
+.cam-reglas {
+  margin: 10px 0 0; padding: 0; list-style: none;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.cam-reglas li {
+  font-size: 12.5px; display: flex; align-items: flex-start; gap: 7px; line-height: 1.4;
+}
+.cam-reglas li i { font-style: normal; font-weight: 700; flex-shrink: 0; }
+.cam-reglas li.ok { color: var(--texto-2); }
+.cam-reglas li.ok i { color: var(--verde-ok); }
+.cam-reglas li.no { color: var(--rojo); font-weight: 600; }
+.cam-reglas li.no i { color: var(--rojo); }
+
+/* ---------- La foto en el lugar donde se va a ver ----------
+   Nadie lee el reglamento, pero cualquiera ve que su foto quedo chica o
+   torcida cuando la mira en la tarjeta del totem y no en un recuadro de
+   formulario. Corrige mas que las dos reglas de arriba juntas. */
+.cam-comoseve { margin-top: 12px; display: flex; flex-direction: column; gap: 7px; }
+.cam-comoseve .t {
+  font-size: 10.5px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--texto-3);
+}
+.cam-totem {
+  width: 190px; background: var(--superficie); border: 1px solid var(--borde);
+  border-radius: 14px; overflow: hidden; box-shadow: 0 1px 3px rgba(42,47,38,.07);
+}
+.cam-totem img { display: block; width: 190px; height: 190px; object-fit: cover; background: #fff; }
+.cam-totem .pie {
+  padding: 9px 11px 11px; display: flex; flex-direction: column; gap: 3px;
+  border-top: 1px solid var(--borde);
+}
+.cam-totem .pie b {
+  font-size: 12.5px; font-weight: 600; line-height: 1.3; color: var(--texto);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.cam-totem .pie .mono { font-size: 13px; font-weight: 600; color: var(--salvia-honda); }

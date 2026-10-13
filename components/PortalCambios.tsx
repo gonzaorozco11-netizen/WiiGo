@@ -29,6 +29,7 @@ import {
   type MargenSimulado,
   type TasasGenerales,
 } from "@/lib/margenMarca";
+import { revisarFoto, LADO_MINIMO, type Regla } from "@/lib/fotoProducto";
 
 // Pedir cambios, desde el lado de la marca.
 //
@@ -659,11 +660,38 @@ function FormFicha({ p, onListo }: { p: ProductoPropio; onListo: () => void }) {
 function FormFoto({ p, onListo }: { p: ProductoPropio; onListo: () => void }) {
   const [archivo, setArchivo] = useState<File | null>(null);
   const [vista, setVista] = useState<string | null>(null);
+  const [reglas, setReglas] = useState<Regla[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [revisando, setRevisando] = useState(false);
+
+  // Mismo criterio que en el alta: lo que no cumple el estándar no llega a
+  // mandarse, y lo que cumple sale ya cuadrado y en WebP.
+  async function elegir(f: File | null) {
+    setError(null);
+    setReglas(null);
+    setArchivo(null);
+    setVista((v) => {
+      if (v) URL.revokeObjectURL(v);
+      return null;
+    });
+    if (!f) return;
+
+    setRevisando(true);
+    const r = await revisarFoto(f);
+    setRevisando(false);
+    setReglas(r.reglas);
+    if (r.error || !r.archivo) {
+      setError(r.error ?? "No pudimos preparar esa foto.");
+      return;
+    }
+    setArchivo(r.archivo);
+    setVista(r.vista);
+  }
 
   return (
     <Envio
       texto="Mandar la foto"
-      deshabilitado={!archivo}
+      deshabilitado={!archivo || revisando}
       onEnviar={async () => {
         if (!archivo) return { error: "Elegí una foto." };
         const fd = new FormData();
@@ -672,13 +700,7 @@ function FormFoto({ p, onListo }: { p: ProductoPropio; onListo: () => void }) {
         if (!r.error) onListo();
         return r;
       }}
-      pie={
-        <p className="cam-nota">
-          Es la foto que ve el cliente en la pantalla del local y en el tótem. Que sea del producto solo,
-          sobre fondo claro y sin texto encima — las que tienen precios o logos pegados quedan viejas
-          enseguida.
-        </p>
-      }
+      pie={<ElEstandar />}
     >
       <div className="cam-fotos">
         <div className="cam-foto">
@@ -696,20 +718,92 @@ function FormFoto({ p, onListo }: { p: ProductoPropio; onListo: () => void }) {
             // eslint-disable-next-line @next/next/no-img-element
             <img src={vista} alt="" />
           ) : (
-            <div className="cam-foto-vacia">elegí una</div>
+            <div className="cam-foto-vacia">{revisando ? "revisando…" : "elegí una"}</div>
           )}
         </div>
       </div>
       <input
         type="file"
         accept="image/*"
-        onChange={(e) => {
-          const f = e.target.files?.[0] ?? null;
-          setArchivo(f);
-          setVista(f ? URL.createObjectURL(f) : null);
-        }}
+        disabled={revisando}
+        onChange={(e) => elegir(e.target.files?.[0] ?? null)}
       />
+      {reglas && <ReglasFoto reglas={reglas} />}
+      {error && <p className="cam-var fuerte">{error}</p>}
+      {vista && <ComoSeVe url={vista} nombre={p.nombre} precio={p.precio ?? null} />}
     </Envio>
+  );
+}
+
+/**
+ * El estándar de fotos, adentro del formulario.
+ *
+ * Estaba como una nota al pie con "fondo claro y sin texto encima", que es
+ * una sugerencia: la cumple el que ya la iba a cumplir. Dicho en reglas
+ * numerables, y con el validador atrás que las aplica, pasa a ser el
+ * estándar de verdad.
+ */
+function ElEstandar() {
+  return (
+    <div className="cam-estandar">
+      <b>Cómo tiene que ser la foto</b>
+      <ul>
+        <li>Cuadrada, de {LADO_MINIMO}×{LADO_MINIMO} px para arriba</li>
+        <li>Fondo blanco liso — sin mesa, sin mano, sin tela</li>
+        <li>El producto entero y centrado, sin tocar los bordes</li>
+        <li>El envase de frente, derecho, como se ve en la góndola</li>
+        <li>Sin logos, textos, precios ni marcas de agua encima</li>
+      </ul>
+      <small>
+        La revisamos al elegirla y te avisamos acá mismo si algo no da. La dejamos cuadrada nosotros,
+        no hace falta que la recortes.
+      </small>
+    </div>
+  );
+}
+
+/** Qué cumplió y qué no la foto que acaba de elegir. */
+function ReglasFoto({ reglas }: { reglas: Regla[] }) {
+  return (
+    <ul className="cam-reglas">
+      {reglas.map((r) => (
+        <li key={r.id} className={r.ok ? "ok" : "no"}>
+          <i aria-hidden="true">{r.ok ? "✓" : "✕"}</i>
+          {r.texto}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * La foto en el lugar donde se va a ver.
+ *
+ * Es lo que más corrige de todo esto: nadie lee el reglamento, pero cualquiera
+ * ve que su foto quedó torcida o chica cuando la mira en la tarjeta del tótem
+ * en vez de en un recuadro de formulario.
+ */
+function ComoSeVe({
+  url,
+  nombre,
+  precio,
+}: {
+  url: string;
+  nombre?: string;
+  precio?: number | null;
+}) {
+  return (
+    <div className="cam-comoseve">
+      <span className="t">Así se va a ver en el tótem</span>
+      <div className="cam-totem">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={url} alt="" />
+        <div className="pie">
+          <b>{nombre?.trim() || "Nombre del producto"}</b>
+          <span className="mono">{precio ? pesos(precio) : "$ —"}</span>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -996,6 +1090,9 @@ function FormProductoNuevo({
   const [fotos, setFotos] = useState<string[]>([]);
   const [subiendoFoto, setSubiendoFoto] = useState(false);
   const [errorFoto, setErrorFoto] = useState<string | null>(null);
+  // Lo que cumplió la última foto elegida, para mostrarlo tildado en vez de
+  // dejar que la marca adivine si hizo bien.
+  const [reglasFoto, setReglasFoto] = useState<Regla[] | null>(null);
   const MAX_FOTOS = 3;
 
   // ----- paso 2 -----
@@ -1051,10 +1148,23 @@ function FormProductoNuevo({
 
     // De a una y en orden, no todas juntas: así el que las elige ve cuál
     // quedó primera, que es la que va a la góndola.
+    //
+    // Se revisa ANTES de subir: una foto que no cumple no llega al bucket, y
+    // la que cumple se sube ya cuadrada y en WebP, así todas las de la
+    // góndola salen iguales venga de donde venga (ver lib/fotoProducto.ts).
     const nuevas: string[] = [];
     for (const archivo of Array.from(archivos).slice(0, MAX_FOTOS - fotos.length)) {
+      const revision = await revisarFoto(archivo);
+      setReglasFoto(revision.reglas);
+      if (revision.error || !revision.archivo) {
+        setErrorFoto(revision.error ?? "No pudimos preparar esa foto.");
+        if (revision.vista) URL.revokeObjectURL(revision.vista);
+        break;
+      }
+      if (revision.vista) URL.revokeObjectURL(revision.vista);
+
       const fd = new FormData();
-      fd.set("archivo", archivo);
+      fd.set("archivo", revision.archivo);
       const r = await subirFotoParaAlta(fd);
       if (r.error) {
         setErrorFoto(r.error);
@@ -1291,10 +1401,15 @@ function FormProductoNuevo({
               </div>
               <small className="cam-ay">
                 {fotos.length === 0
-                  ? "Cuadradas, mínimo 800×800, fondo blanco o neutro. Sin foto el producto sale con un cuadro gris."
+                  ? "La primera que subas es la de la góndola y el tótem. Las otras dos son opcionales."
                   : "La primera es la que se ve en la góndola y en el tótem. Las otras aparecen en la ficha cuando el cliente la abre: la etiqueta de atrás, el producto abierto."}
               </small>
+              {reglasFoto && <ReglasFoto reglas={reglasFoto} />}
               {errorFoto && <p className="cam-var fuerte">{errorFoto}</p>}
+              {fotos[0] && (
+                <ComoSeVe url={fotos[0]} nombre={nombre} precio={nPrecio > 0 ? nPrecio : null} />
+              )}
+              <ElEstandar />
             </div>
             </Bloque>
           </>
