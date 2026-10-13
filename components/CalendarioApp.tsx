@@ -19,6 +19,7 @@ import {
   EXPLICA_ALCANCE,
   ORDENES,
   TIPOS,
+  horario,
   rangoCorto,
   rangoLargo,
   type AlcanceEvento,
@@ -88,11 +89,18 @@ function Propuesta({ e, onListo }: { e: EventoAdmin; onListo: () => void }) {
     <div className="cal-propuesta">
       <p className="quien">{e.marcaPropone}</p>
       <p className="que">{e.nombre}</p>
-      <p className="cuando">{rangoLargo(e.fechaDesde, e.fechaHasta)}</p>
+      <p className="cuando">
+        {rangoLargo(e.fechaDesde, e.fechaHasta)}
+        {horario(e.horaDesde, e.horaHasta) ? `, ${horario(e.horaDesde, e.horaHasta)}` : ""}
+      </p>
       {e.descripcion && <p className="desc">{e.descripcion}</p>}
       {e.necesita && (
         <p className="pide">
-          <b>Necesita del local:</b> {e.necesita}
+          <b>Pide del local:</b> {e.necesita}
+          <br />
+          <span style={{ color: "#a3a3a3" }}>
+            Si aprobás, esto queda a cargo nuestro. Aprobá solo lo que puedas cumplir.
+          </span>
         </p>
       )}
 
@@ -165,7 +173,10 @@ function Evento({ e, onListo }: { e: EventoAdmin; onListo: () => void }) {
     <div className="cal-evento">
       <div className="cal-evento-cab">
         <div>
-          <p className="fecha">{rangoCorto(e.fechaDesde, e.fechaHasta)}</p>
+          <p className="fecha">
+            {rangoCorto(e.fechaDesde, e.fechaHasta)}
+            {horario(e.horaDesde, e.horaHasta) ? ` · ${horario(e.horaDesde, e.horaHasta)}` : ""}
+          </p>
           <p className="nom">{e.nombre}</p>
         </div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
@@ -248,6 +259,8 @@ function Formulario({
   const [tipo, setTipo] = useState<TipoEvento>("EVENTO");
   const [desde, setDesde] = useState("");
   const [hasta, setHasta] = useState("");
+  const [horaDesde, setHoraDesde] = useState("");
+  const [horaHasta, setHoraHasta] = useState("");
   const [descripcion, setDescripcion] = useState("");
   const [alcance, setAlcance] = useState<AlcanceEvento>("AVISO");
   const [cupo, setCupo] = useState("6");
@@ -261,6 +274,8 @@ function Formulario({
     setNombre("");
     setDesde("");
     setHasta("");
+    setHoraDesde("");
+    setHoraHasta("");
     setDescripcion("");
     setInvitadas([]);
   }
@@ -274,6 +289,8 @@ function Formulario({
         descripcion,
         fechaDesde: desde,
         fechaHasta: hasta || desde,
+        horaDesde,
+        horaHasta,
         alcance,
         cupo: Number(cupo) > 0 ? Number(cupo) : null,
         ordenEntrada: orden,
@@ -317,6 +334,19 @@ function Formulario({
         <label className="cal-campo">
           <span>Hasta</span>
           <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} />
+          <small>Vacío = un solo día.</small>
+        </label>
+      </div>
+
+      <div className="cal-fila2">
+        <label className="cal-campo">
+          <span>De qué hora</span>
+          <input type="time" value={horaDesde} onChange={(e) => setHoraDesde(e.target.value)} />
+        </label>
+        <label className="cal-campo">
+          <span>A qué hora</span>
+          <input type="time" value={horaHasta} onChange={(e) => setHoraHasta(e.target.value)} />
+          <small>Vacío = todo el día.</small>
         </label>
       </div>
 

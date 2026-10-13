@@ -14,6 +14,7 @@ import {
   ETIQUETA_PARTICIPACION,
   ETIQUETA_TIPO,
   cuandoCorto,
+  horario,
   rangoCorto,
   rangoLargo,
 } from "@/lib/eventos";
@@ -138,7 +139,10 @@ function Destacado({
       <div className="cal-destacado-cab">
         <div>
           <span className="tipo">{ETIQUETA_TIPO[e.tipo]}</span>
-          <span className="cuando">{rangoLargo(e.fechaDesde, e.fechaHasta)}</span>
+          <span className="cuando">
+            {rangoLargo(e.fechaDesde, e.fechaHasta)}
+            {horario(e.horaDesde, e.horaHasta) ? `, ${horario(e.horaDesde, e.horaHasta)}` : ""}
+          </span>
         </div>
         <span className="faltan">
           {e.diasFaltan <= 0 ? "es hoy" : e.diasFaltan === 1 ? "es mañana" : `faltan ${e.diasFaltan} días`}
@@ -194,7 +198,10 @@ function FilaEvento({ e, onListo }: { e: EventoPortal; onListo: () => void }) {
     <div className="cal-fila">
       <div className="fecha">
         <p className="d">{rangoCorto(e.fechaDesde, e.fechaHasta)}</p>
-        <p className="s">{cuandoCorto(e.fechaDesde, e.fechaHasta)}</p>
+        <p className="s">
+          {cuandoCorto(e.fechaDesde, e.fechaHasta)}
+          {horario(e.horaDesde, e.horaHasta) ? ` · ${horario(e.horaDesde, e.horaHasta)}` : ""}
+        </p>
       </div>
       <span className={`cal-chip ${e.miEstado === "INVITADA" ? "com" : CLASE_TIPO[e.tipo]}`}>
         {e.miEstado === "INVITADA" ? "Te invitamos" : ETIQUETA_TIPO[e.tipo]}
@@ -287,8 +294,13 @@ function Botones({ e, onListo, grande }: { e: EventoPortal; onListo: () => void;
 
 function ModalProponer({ onCerrar, onListo }: { onCerrar: () => void; onListo: () => void }) {
   const [nombre, setNombre] = useState("");
+  // Casi siempre es un día: una degustación, un lanzamiento. Arrancar en "un
+  // solo día" evita que la mayoría tenga que cargar dos fechas iguales.
+  const [variosDias, setVariosDias] = useState(false);
   const [desde, setDesde] = useState("");
   const [hasta, setHasta] = useState("");
+  const [horaDesde, setHoraDesde] = useState("");
+  const [horaHasta, setHoraHasta] = useState("");
   const [descripcion, setDescripcion] = useState("");
   const [necesita, setNecesita] = useState("");
   const [pendiente, empezar] = useTransition();
@@ -317,16 +329,49 @@ function ModalProponer({ onCerrar, onListo }: { onCerrar: () => void; onListo: (
           />
         </label>
 
+        <div className="cal-dias">
+          <button
+            type="button"
+            aria-pressed={!variosDias}
+            onClick={() => {
+              setVariosDias(false);
+              setHasta("");
+            }}
+          >
+            Un solo día
+          </button>
+          <button type="button" aria-pressed={variosDias} onClick={() => setVariosDias(true)}>
+            Varios días
+          </button>
+        </div>
+
         <div className="cal-campos">
           <label className="cal-campo">
-            <span>Desde</span>
+            <span>{variosDias ? "Desde" : "Qué día"}</span>
             <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} />
           </label>
+          {variosDias && (
+            <label className="cal-campo">
+              <span>Hasta</span>
+              <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} />
+            </label>
+          )}
+        </div>
+
+        <div className="cal-campos">
           <label className="cal-campo">
-            <span>Hasta</span>
-            <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} />
+            <span>De qué hora</span>
+            <input type="time" value={horaDesde} onChange={(e) => setHoraDesde(e.target.value)} />
+          </label>
+          <label className="cal-campo">
+            <span>A qué hora</span>
+            <input type="time" value={horaHasta} onChange={(e) => setHoraHasta(e.target.value)} />
           </label>
         </div>
+        <small className="cal-ayuda">
+          Si dura todo el día, dejá las horas vacías. El horario es lo que necesita saber el local
+          para tenerte el espacio listo.
+        </small>
 
         <label className="cal-campo">
           <span>Contanos un poco más</span>
@@ -341,13 +386,18 @@ function ModalProponer({ onCerrar, onListo }: { onCerrar: () => void; onListo: (
         </label>
 
         <label className="cal-campo">
-          <span>¿Necesitás algo de WiiGo?</span>
-          <input
+          <span>Avisanos qué vas a necesitar del local</span>
+          <textarea
+            rows={2}
             value={necesita}
             onChange={(e) => setNecesita(e.target.value)}
-            maxLength={200}
-            placeholder="Una mesa en la entrada, las pantallas, un espacio en góndola…"
+            maxLength={300}
+            placeholder="Una mesa en la entrada, las pantallas con tu marca, un enchufe, espacio en góndola…"
           />
+          <small>
+            Lo ponemos nosotros, pero solo lo que aprobemos. No cuentes con nada hasta que te lo
+            confirmemos por acá.
+          </small>
         </label>
 
         <div className="cal-aviso">
@@ -364,14 +414,16 @@ function ModalProponer({ onCerrar, onListo }: { onCerrar: () => void; onListo: (
           <button
             type="button"
             className="cal-btn grande"
-            disabled={pendiente || nombre.trim() === "" || !desde || !hasta}
+            disabled={pendiente || nombre.trim() === "" || !desde || (variosDias && !hasta)}
             onClick={() =>
               empezar(async () => {
                 setError(null);
                 const r = await proponerEvento({
                   nombre,
                   fechaDesde: desde,
-                  fechaHasta: hasta,
+                  fechaHasta: variosDias ? hasta : desde,
+                  horaDesde,
+                  horaHasta,
                   descripcion,
                   necesita,
                 });

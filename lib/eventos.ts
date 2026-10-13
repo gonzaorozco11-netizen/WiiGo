@@ -144,6 +144,19 @@ export function diaDeSemana(iso: string): number {
   ).getUTCDay();
 }
 
+/**
+ * "de 11 a 17" — el horario, cuando el evento no dura todo el día.
+ *
+ * Las horas en punto se escriben sin ":00": "de 11 a 17" se lee más rápido
+ * que "de 11:00 a 17:00", y es como lo diría cualquiera en voz alta.
+ */
+export function horario(desde: string | null, hasta: string | null): string | null {
+  if (!desde && !hasta) return null;
+  const limpia = (h: string) => (h.slice(3, 5) === "00" ? h.slice(0, 2) : h.slice(0, 5));
+  if (desde && hasta) return `de ${limpia(desde)} a ${limpia(hasta)}`;
+  return desde ? `desde las ${limpia(desde)}` : `hasta las ${limpia(hasta!)}`;
+}
+
 /** "lunes 26 al viernes 30 de octubre" — para el evento destacado. */
 const MES_LARGO = [
   "enero", "febrero", "marzo", "abril", "mayo", "junio",

@@ -1750,6 +1750,22 @@
 .cal-campo textarea { resize: vertical; }
 .cal-campo small { font-size: 12px; color: var(--texto-3); }
 .cal-campos { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.cal-ayuda { font-size: 12px; color: var(--texto-3); line-height: 1.45; margin-top: -6px; }
+
+/* Un dia o varios. Arranca en "un solo dia" porque es lo que son casi todos
+   -una degustacion, un lanzamiento- y asi la mayoria no carga dos fechas
+   iguales. */
+.cal-dias {
+  display: flex; gap: 3px; background: var(--salvia-tenue); padding: 3px; border-radius: 10px;
+  align-self: flex-start;
+}
+.cal-dias button {
+  font: inherit; font-size: 12.5px; font-weight: 600; border: 0; background: none;
+  color: var(--texto-2); padding: 7px 14px; border-radius: 8px; cursor: pointer;
+}
+.cal-dias button[aria-pressed="true"] {
+  background: var(--superficie); color: var(--salvia-honda); box-shadow: 0 1px 2px rgba(42,47,38,.08);
+}
 .cal-aviso {
   background: var(--salvia-tenue); border: 1px solid var(--borde-fuerte); border-radius: 12px;
   padding: 13px 16px; font-size: 13px; color: #4f5c43; line-height: 1.5;

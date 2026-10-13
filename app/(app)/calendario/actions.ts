@@ -31,6 +31,9 @@ export type EventoAdmin = {
   descripcion: string | null;
   fechaDesde: string;
   fechaHasta: string;
+  /** Null cuando dura todo el día. */
+  horaDesde: string | null;
+  horaHasta: string | null;
   alcance: AlcanceEvento;
   cupo: number | null;
   ordenEntrada: OrdenEntrada;
@@ -59,7 +62,7 @@ export async function calendarioAdmin(): Promise<CalendarioAdmin | null> {
     supabase
       .from("eventos")
       .select(
-        "id_evento, nombre, tipo, descripcion, fecha_desde, fecha_hasta, alcance, cupo, orden_entrada, visible_para_todas, estado, id_marca_propone, necesita"
+        "id_evento, nombre, tipo, descripcion, fecha_desde, fecha_hasta, hora_desde, hora_hasta, alcance, cupo, orden_entrada, visible_para_todas, estado, id_marca_propone, necesita"
       )
       .gte("fecha_hasta", hoy)
       .neq("estado", "CANCELADO")
@@ -101,6 +104,8 @@ export async function calendarioAdmin(): Promise<CalendarioAdmin | null> {
     descripcion: (e.descripcion as string | null) ?? null,
     fechaDesde: e.fecha_desde as string,
     fechaHasta: e.fecha_hasta as string,
+    horaDesde: (e.hora_desde as string | null) ?? null,
+    horaHasta: (e.hora_hasta as string | null) ?? null,
     alcance: (e.alcance as AlcanceEvento) ?? "AVISO",
     cupo: (e.cupo as number | null) ?? null,
     ordenEntrada: (e.orden_entrada as OrdenEntrada) ?? "GOLD_PRIMERO",
@@ -134,6 +139,8 @@ export async function guardarEvento(datos: {
   descripcion: string;
   fechaDesde: string;
   fechaHasta: string;
+  horaDesde: string;
+  horaHasta: string;
   alcance: AlcanceEvento;
   cupo: number | null;
   ordenEntrada: OrdenEntrada;
@@ -148,9 +155,13 @@ export async function guardarEvento(datos: {
 
   const nombre = datos.nombre.trim();
   if (!nombre) return { error: "Ponele un nombre." };
-  if (!datos.fechaDesde || !datos.fechaHasta) return { error: "Faltan las fechas." };
-  if (datos.fechaHasta < datos.fechaDesde) {
+  if (!datos.fechaDesde) return { error: "Falta la fecha." };
+  const hasta = datos.fechaHasta || datos.fechaDesde;
+  if (hasta < datos.fechaDesde) {
     return { error: "La fecha de fin no puede ser anterior a la de inicio." };
+  }
+  if (datos.horaDesde && datos.horaHasta && datos.horaHasta <= datos.horaDesde) {
+    return { error: "La hora de fin tiene que ser posterior a la de inicio." };
   }
 
   const supabase = getSupabaseServerClient();
@@ -159,7 +170,9 @@ export async function guardarEvento(datos: {
     tipo: datos.tipo,
     descripcion: datos.descripcion.trim() || null,
     fecha_desde: datos.fechaDesde,
-    fecha_hasta: datos.fechaHasta,
+    fecha_hasta: hasta,
+    hora_desde: datos.horaDesde || null,
+    hora_hasta: datos.horaHasta || null,
     alcance: datos.alcance,
     // Un aviso no tiene cupo ni orden: guardarlos igual deja números que
     // después nadie entiende de dónde salieron.

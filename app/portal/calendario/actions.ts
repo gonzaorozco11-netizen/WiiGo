@@ -33,6 +33,9 @@ export type EventoPortal = {
   descripcion: string | null;
   fechaDesde: string;
   fechaHasta: string;
+  /** Null cuando dura todo el día: un feriado, una semana temática. */
+  horaDesde: string | null;
+  horaHasta: string | null;
   alcance: AlcanceEvento;
   cupo: number | null;
   ordenEntrada: OrdenEntrada;
@@ -66,7 +69,7 @@ export async function calendarioPortal(): Promise<CalendarioPortal | null> {
   const { data: filas } = await supabase
     .from("eventos")
     .select(
-      "id_evento, nombre, tipo, descripcion, fecha_desde, fecha_hasta, alcance, cupo, orden_entrada, visible_para_todas, estado, id_marca_propone"
+      "id_evento, nombre, tipo, descripcion, fecha_desde, fecha_hasta, hora_desde, hora_hasta, alcance, cupo, orden_entrada, visible_para_todas, estado, id_marca_propone"
     )
     .gte("fecha_hasta", hoy)
     .in("estado", ["PUBLICADO", "PROPUESTO"])
@@ -121,6 +124,8 @@ export async function calendarioPortal(): Promise<CalendarioPortal | null> {
         descripcion: (e.descripcion as string | null) ?? null,
         fechaDesde: e.fecha_desde as string,
         fechaHasta: e.fecha_hasta as string,
+        horaDesde: (e.hora_desde as string | null) ?? null,
+        horaHasta: (e.hora_hasta as string | null) ?? null,
         alcance,
         cupo,
         ordenEntrada,
@@ -236,6 +241,8 @@ export async function proponerEvento(datos: {
   nombre: string;
   fechaDesde: string;
   fechaHasta: string;
+  horaDesde: string;
+  horaHasta: string;
   descripcion: string;
   necesita: string;
 }): Promise<{ error: string | null }> {
@@ -244,19 +251,27 @@ export async function proponerEvento(datos: {
 
   const nombre = datos.nombre.trim();
   if (!nombre) return { error: "Ponele un nombre al evento." };
-  if (!datos.fechaDesde || !datos.fechaHasta) return { error: "Elegí las fechas." };
-  if (datos.fechaHasta < datos.fechaDesde) {
+  if (!datos.fechaDesde) return { error: "Elegí el día." };
+
+  // Un solo día es el caso normal: la marca pone una fecha y listo.
+  const hasta = datos.fechaHasta || datos.fechaDesde;
+  if (hasta < datos.fechaDesde) {
     return { error: "La fecha de fin no puede ser anterior a la de inicio." };
   }
   const hoy = fechaHoraArgentina().fecha;
   if (datos.fechaDesde < hoy) return { error: "No se puede proponer algo para una fecha que ya pasó." };
+  if (datos.horaDesde && datos.horaHasta && datos.horaHasta <= datos.horaDesde) {
+    return { error: "La hora de fin tiene que ser posterior a la de inicio." };
+  }
 
   const { error } = await getSupabaseServerClient().from("eventos").insert({
     nombre,
     tipo: "EVENTO",
     descripcion: datos.descripcion.trim() || null,
     fecha_desde: datos.fechaDesde,
-    fecha_hasta: datos.fechaHasta,
+    fecha_hasta: hasta,
+    hora_desde: datos.horaDesde || null,
+    hora_hasta: datos.horaHasta || null,
     alcance: "INVITACION",
     visible_para_todas: false,
     estado: "PROPUESTO",
