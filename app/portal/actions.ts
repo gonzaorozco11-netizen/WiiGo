@@ -6,8 +6,9 @@ import { obtenerSesionMarca } from "@/lib/marcaSesion";
 import { calcularRendicion } from "@/app/(app)/liquidaciones/actions";
 import { fechaHoraArgentina } from "@/lib/horarios";
 import { costosVigentes, guardarCosto, SIN_SUBCATEGORIA, type CostoDeMarca } from "@/lib/costosMarca";
-import { PROPUESTA, type OrigenOrden } from "@/lib/estadosOrden";
+import { PENDIENTE, PROPUESTA, type OrigenOrden } from "@/lib/estadosOrden";
 import { diasHasta } from "@/lib/eventos";
+import { sugerirReposicion, topeDeVariante } from "@/lib/reposicionSugerida";
 import {
   condicionesDeMarca,
   tasasGeneralesParaSimular,
@@ -557,7 +558,7 @@ export async function misCostosPortal(): Promise<MisCostosPortal | null> {
 export async function proponerEnvio(params: {
   items: { idProducto: string; cantidad: number }[];
   observaciones: string;
-}): Promise<{ error: string | null }> {
+}): Promise<{ error: string | null; automatica?: boolean }> {
   const sesion = await obtenerSesionMarca();
   if (!sesion) return { error: "Sesión no válida" };
 
@@ -609,11 +610,20 @@ export async function proponerEnvio(params: {
   const idLocal = (locales ?? [])[0]?.id_local as string | undefined;
   if (!idLocal) return { error: "No hay un local donde recibirlo. Escribinos." };
 
+  // ¿Entra sola o espera a administración?
+  //
+  // Aprobar a mano algo que el sistema ya había calculado es trabajo que no
+  // agrega criterio: la marca manda lo que se le sugirió y alguien aprieta
+  // "aprobar" veinte veces por mes. Si después de recibir la góndola no pasa
+  // el tope de ningún producto, la orden nace aprobada; lo que lo pasa sigue
+  // esperando, que es donde sí hace falta decidir.
+  const automatica = await entraSinAprobacion(supabase, sesion.idMarca, idLocal, renglones);
+
   const total = renglones.reduce((a, i) => a + i.cantidad, 0);
   const base = {
     id_marca: sesion.idMarca,
     id_local: idLocal,
-    estado: PROPUESTA,
+    estado: automatica ? PENDIENTE : PROPUESTA,
     total_unidades: total,
     observaciones: params.observaciones.trim() || null,
   };
@@ -642,7 +652,49 @@ export async function proponerEnvio(params: {
 
   revalidatePath("/portal");
   revalidatePath("/portal/productos");
-  return { error: null };
+  return { error: null, automatica };
+}
+
+/**
+ * ¿Esta propuesta puede entrar sin que nadie la apruebe?
+ *
+ * Solo si NINGÚN renglón deja la góndola por encima del tope de ese producto.
+ * Alcanza con que uno lo pase para que la orden entera espere: media orden
+ * aprobada no existe, y partirla dejaría a la marca mandando dos veces.
+ *
+ * Si algo falla —una consulta, la columna que todavía no se creó— la
+ * respuesta es que no. El error se paga con una aprobación de más, nunca con
+ * mercadería entrando sola.
+ */
+async function entraSinAprobacion(
+  supabase: ReturnType<typeof getSupabaseServerClient>,
+  idMarca: string,
+  idLocal: string,
+  renglones: { idVariante: string; cantidad: number }[]
+): Promise<boolean> {
+  try {
+    const { data: marca } = await supabase
+      .from("marcas")
+      .select("aprobacion_automatica")
+      .eq("id_marca", idMarca)
+      .maybeSingle();
+    // Sin la columna todavía creada, `marca` viene sin la clave: en la duda,
+    // el circuito de siempre.
+    if (!marca || marca.aprobacion_automatica !== true) return false;
+
+    const sugerencias = await sugerirReposicion(supabase, { idMarca, idLocal });
+    if (sugerencias.size === 0) return false;
+
+    return renglones.every((r) => {
+      const s = sugerencias.get(r.idVariante);
+      // Una variante que la sugerencia no conoce no se aprueba sola: puede ser
+      // un producto recién dado de alta, justo el que conviene mirar.
+      if (!s) return false;
+      return s.stock + s.pendiente + r.cantidad <= topeDeVariante(s.objetivo);
+    });
+  } catch {
+    return false;
+  }
 }
 
 /**

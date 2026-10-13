@@ -68,6 +68,30 @@ export const SEMANAS_HISTORIA = 4;
 export const SEMANAS_COBERTURA = 3;
 
 /**
+ * Cuánto se tolera por encima del objetivo antes de pedir aprobación.
+ *
+ * Las marcas despachan por caja: de a 6, de a 12. Si el sistema sugiere 9 y la
+ * caja es de 12, mandar a aprobar a mano por tres unidades es fricción sin
+ * criterio atrás. El 20% —o dos unidades, lo que sea más grande— cubre el
+ * redondeo de caja sin abrir la puerta a que llenen la góndola.
+ */
+export const TOLERANCIA_TOPE = 0.2;
+export const TOLERANCIA_MINIMA = 2;
+
+/**
+ * El techo de lo que puede haber en góndola de una variante.
+ *
+ * Sale del objetivo, que lo calcula el sistema con las ventas reales y tiene
+ * piso en el mínimo cargado a mano. O sea: al principio manda el número que
+ * alguien decidió, y a medida que hay ventas manda cómo se vende. Nunca se
+ * cae por debajo del mínimo, porque un mes flojo no tiene que dejar a un
+ * producto sin poder reponerse.
+ */
+export function topeDeVariante(objetivo: number): number {
+  return objetivo + Math.max(TOLERANCIA_MINIMA, Math.round(objetivo * TOLERANCIA_TOPE));
+}
+
+/**
  * La cobertura de una marca, o el default si no tiene una propia.
  *
  * Se reintenta sin la columna si todavía no se corrió

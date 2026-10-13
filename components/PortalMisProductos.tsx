@@ -377,10 +377,15 @@ function ProponerEnvio({
       if (r.error) setError(r.error);
       else {
         router.refresh();
+        const cuanto = `${total} unidades de ${elegidos.length} producto${
+          elegidos.length === 1 ? "" : "s"
+        }`;
+        // Decirle que entró sola importa: si no, la marca espera una respuesta
+        // que nunca va a llegar y no manda la mercadería.
         onListo(
-          `Propuesta enviada: ${total} unidades de ${elegidos.length} producto${
-            elegidos.length === 1 ? "" : "s"
-          }. WiiGo la revisa y te avisa.`
+          r.automatica
+            ? `Aprobado: ${cuanto}. Entra dentro de lo esperado, así que no hace falta que lo revisemos — ya podés mandarlo el próximo día de recepción.`
+            : `Propuesta enviada: ${cuanto}. Es más de lo que la góndola necesita, así que lo mira WiiGo y te avisa.`
         );
       }
     });
