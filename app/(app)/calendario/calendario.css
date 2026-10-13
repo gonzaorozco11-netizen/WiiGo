@@ -1,0 +1,115 @@
+/* Calendario del local.
+   Dos cosas en la misma pantalla: lo que proponen las marcas (que espera
+   respuesta y por eso va arriba) y lo que cargamos nosotros. */
+
+.cal-cab { margin-bottom: 18px; }
+.cal-titulo { font-size: 20px; font-weight: 600; color: #171717; }
+.cal-sub { font-size: 14px; color: #737373; margin-top: 2px; }
+
+.cal-grid { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 20px; align-items: start; }
+@media (max-width: 1100px) { .cal-grid { grid-template-columns: 1fr; } }
+
+.cal-caja {
+  background: #fff; border: 1px solid #e5e5e5; border-radius: 14px; padding: 18px 20px;
+  margin-bottom: 16px;
+}
+.cal-caja h2 { font-size: 15px; font-weight: 600; color: #171717; margin-bottom: 12px; }
+
+/* Lo que proponen las marcas */
+.cal-propuesta {
+  background: #fff; border: 1px solid #e5e5e5; border-left: 3px solid #d97706;
+  border-radius: 12px; padding: 15px 18px; margin-bottom: 10px;
+}
+.cal-propuesta .quien { font-size: 12px; font-weight: 600; color: #b45309; margin-bottom: 3px; }
+.cal-propuesta .que { font-size: 16px; font-weight: 600; color: #171717; }
+.cal-propuesta .cuando { font-size: 13px; color: #737373; margin-top: 1px; }
+.cal-propuesta .desc { font-size: 13.5px; color: #525252; margin-top: 8px; line-height: 1.5; }
+.cal-propuesta .pide {
+  font-size: 13px; color: #525252; background: #fafafa; border: 1px solid #ededed;
+  border-radius: 9px; padding: 9px 12px; margin-top: 9px; line-height: 1.45;
+}
+.cal-propuesta .pide b { color: #171717; }
+.cal-acc { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; flex-wrap: wrap; }
+
+/* Formulario */
+.cal-campo { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+.cal-campo > span { font-size: 12px; font-weight: 600; color: #525252; }
+.cal-campo input[type="text"],
+.cal-campo input[type="date"],
+.cal-campo input[type="number"],
+.cal-campo select,
+.cal-campo textarea {
+  font: inherit; font-size: 14px; color: #171717; background: #fff;
+  border: 1px solid #d4d4d4; border-radius: 9px; padding: 9px 12px; width: 100%;
+  box-sizing: border-box;
+}
+.cal-campo textarea { resize: vertical; }
+.cal-campo small { font-size: 12px; color: #a3a3a3; line-height: 1.45; }
+.cal-fila2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+.cal-opcion {
+  display: flex; gap: 10px; align-items: flex-start; font-size: 13.5px; color: #404040;
+  border: 1px solid #e5e5e5; border-radius: 10px; padding: 10px 13px; margin-bottom: 7px;
+  cursor: pointer; line-height: 1.45;
+}
+.cal-opcion:hover { background: #fafafa; }
+.cal-opcion.elegida { background: #f0f7f0; border-color: #bbd3bb; }
+.cal-opcion b { font-weight: 600; color: #171717; }
+.cal-opcion input { margin-top: 3px; }
+
+.cal-invitadas { max-height: 190px; overflow: auto; border: 1px solid #e5e5e5; border-radius: 9px; padding: 4px 10px; }
+.cal-invitadas label {
+  display: flex; align-items: center; gap: 9px; font-size: 13.5px; padding: 7px 0;
+  border-top: 1px solid #f0f0f0; cursor: pointer;
+}
+.cal-invitadas label:first-child { border-top: 0; }
+
+.cal-btn {
+  font: inherit; font-size: 13.5px; font-weight: 600; color: #fff; background: #171717;
+  border: 1px solid #171717; border-radius: 9px; padding: 9px 16px; cursor: pointer;
+  white-space: nowrap;
+}
+.cal-btn:hover { background: #000; }
+.cal-btn.plano { color: #404040; background: #fff; border-color: #d4d4d4; }
+.cal-btn.plano:hover { background: #fafafa; }
+.cal-btn.malo { color: #b91c1c; background: #fff; border-color: #fecaca; }
+.cal-btn.malo:hover { background: #fef2f2; }
+.cal-btn:disabled { opacity: .5; cursor: default; }
+
+.cal-error { font-size: 12.5px; color: #b91c1c; font-weight: 600; margin-top: 8px; }
+
+/* Lo que viene */
+.cal-evento {
+  border: 1px solid #e5e5e5; border-radius: 12px; padding: 14px 16px; margin-bottom: 10px;
+  background: #fff;
+}
+.cal-evento-cab { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.cal-evento .fecha { font-family: var(--f-mono, ui-monospace), monospace; font-size: 13px; color: #737373; }
+.cal-evento .nom { font-size: 15.5px; font-weight: 600; color: #171717; margin-top: 1px; }
+.cal-tag {
+  font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  border-radius: 999px; padding: 3px 9px; white-space: nowrap;
+}
+.cal-tag.ev { background: #f0f7f0; color: #3f6b40; border: 1px solid #bbd3bb; }
+.cal-tag.com { background: #fef7e7; color: #92600e; border: 1px solid #f0dfb6; }
+.cal-tag.esp { background: #f5f5f5; color: #525252; border: 1px solid #e5e5e5; }
+.cal-tag.cerr { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+.cal-tag.borrador { background: #fff; color: #a3a3a3; border: 1px dashed #d4d4d4; }
+
+.cal-marcas { margin-top: 11px; border-top: 1px solid #f0f0f0; padding-top: 9px; }
+.cal-marca {
+  display: flex; align-items: center; gap: 10px; font-size: 13.5px; padding: 6px 0;
+}
+.cal-medalla {
+  font-size: 9px; font-weight: 700; letter-spacing: .06em; border-radius: 999px; padding: 2px 6px;
+}
+.cal-medalla.GOLD { background: #fef7e7; color: #92600e; border: 1px solid #f0dfb6; }
+.cal-medalla.METAL { background: #f0f7f0; color: #3f6b40; border: 1px solid #bbd3bb; }
+.cal-medalla.BRONCE { background: #f5f5f5; color: #525252; border: 1px solid #e5e5e5; }
+.cal-marca .nom { flex-grow: 1; }
+.cal-marca .est { font-size: 12px; font-weight: 600; }
+.cal-marca .est.ok { color: #15803d; }
+.cal-marca .est.esp { color: #b45309; }
+.cal-marca .est.no { color: #a3a3a3; }
+
+.cal-vacio { text-align: center; color: #a3a3a3; font-size: 14px; padding: 30px 0; }

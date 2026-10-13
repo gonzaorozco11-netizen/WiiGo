@@ -7,6 +7,7 @@ import { calcularRendicion } from "@/app/(app)/liquidaciones/actions";
 import { fechaHoraArgentina } from "@/lib/horarios";
 import { costosVigentes, guardarCosto, SIN_SUBCATEGORIA, type CostoDeMarca } from "@/lib/costosMarca";
 import { PROPUESTA, type OrigenOrden } from "@/lib/estadosOrden";
+import { diasHasta } from "@/lib/eventos";
 import {
   condicionesDeMarca,
   tasasGeneralesParaSimular,
@@ -1410,6 +1411,53 @@ export async function liquidacionesPortal(): Promise<LiquidacionPortal[]> {
 
 // ===================== Mis tareas =====================
 
+/**
+ * El evento más cercano sobre el que la marca todavía puede decidir algo.
+ *
+ * Solo dos casos cuentan: una invitación sin contestar, o un evento abierto
+ * donde todavía no está. Un feriado no es una tarea, y un evento al que ya se
+ * anotó tampoco: si apareciera, la lista nunca se vaciaría.
+ */
+async function proximoEventoPendiente(
+  supabase: ReturnType<typeof getSupabaseServerClient>,
+  idMarca: string
+): Promise<{ nombre: string; dias: number; invitada: boolean } | null> {
+  const hoy = fechaHoraArgentina().fecha;
+
+  const { data: eventos } = await supabase
+    .from("eventos")
+    .select("id_evento, nombre, fecha_desde, alcance, estado")
+    .eq("estado", "PUBLICADO")
+    .gte("fecha_hasta", hoy)
+    .neq("alcance", "AVISO")
+    .order("fecha_desde", { ascending: true })
+    .limit(12);
+
+  const ids = (eventos ?? []).map((e) => e.id_evento as string);
+  if (ids.length === 0) return null;
+
+  const { data: mias } = await supabase
+    .from("eventos_marcas")
+    .select("id_evento, estado")
+    .eq("id_marca", idMarca)
+    .in("id_evento", ids);
+  const estadoPorEvento = new Map((mias ?? []).map((p) => [p.id_evento as string, p.estado as string]));
+
+  for (const e of eventos ?? []) {
+    const mio = estadoPorEvento.get(e.id_evento as string);
+    const invitada = mio === "INVITADA";
+    const abiertoSinAnotarse = !mio && e.alcance === "ABIERTO";
+    if (!invitada && !abiertoSinAnotarse) continue;
+
+    return {
+      nombre: (e.nombre as string) ?? "el próximo evento",
+      dias: Math.max(0, diasHasta(e.fecha_desde as string, hoy)),
+      invitada,
+    };
+  }
+  return null;
+}
+
 export type Tarea = {
   id: string;
   /** FRENA: sin esto algo no pasa. VENDER: con esto vende más. */
@@ -1582,6 +1630,28 @@ export async function misTareas(): Promise<TareasPortal | null> {
       porque: "Se vendieron todos. Cada día sin stock es una venta que no pasa.",
       accion: "Proponer un envío",
       href: "/portal/productos",
+    });
+  }
+
+  // El evento más cercano sobre el que todavía puede hacer algo. Va acá y no
+  // solo en el calendario porque enterarse tarde de un Black Friday es
+  // exactamente el problema que el calendario viene a resolver: si no entra a
+  // esa pantalla, no se entera igual.
+  const evento = await proximoEventoPendiente(supabase, sesion.idMarca);
+  if (evento) {
+    tareas.push({
+      id: "evento",
+      grupo: "VENDER",
+      cuantas: evento.dias,
+      titulo:
+        evento.dias === 1
+          ? `Mañana: ${evento.nombre}`
+          : `Días para ${evento.nombre}`,
+      porque: evento.invitada
+        ? "Te invitamos y todavía no contestaste. Si entrás, conviene llegar con stock."
+        : "Todavía podés anotarte. Si entrás, conviene llegar con stock.",
+      accion: evento.invitada ? "Ver la invitación" : "Quiero participar",
+      href: "/portal/calendario",
     });
   }
 

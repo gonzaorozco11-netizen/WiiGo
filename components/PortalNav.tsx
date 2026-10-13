@@ -15,6 +15,7 @@ import { usePathname } from "next/navigation";
 const ITEMS = [
   { href: "/portal", texto: "Tablero" },
   { href: "/portal/tareas", texto: "Mis tareas" },
+  { href: "/portal/calendario", texto: "Calendario" },
   { href: "/portal/productos", texto: "Mis productos" },
   { href: "/portal/cambios", texto: "Pedir un cambio" },
 ];

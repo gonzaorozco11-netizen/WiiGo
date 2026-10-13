@@ -115,6 +115,9 @@ const GROUPS: NavGroup[] = [
     items: [
       { href: "/locales", label: "Locales" },
       { href: "/pantallas", label: "Pantallas" },
+      // Va en Local y no en Marcas porque es lo que pasa en el salón: un
+      // feriado o un Black Friday no son de ninguna marca en particular.
+      { href: "/calendario", label: "Calendario" },
     ],
   },
   {
