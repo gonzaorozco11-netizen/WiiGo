@@ -42,7 +42,7 @@ export const PITCH_PLAN: Partial<Record<PlanMarca, string>> = {
   METAL:
     "Dejás de mirar lo que pasó y empezás a saber qué hacer: qué reponer esta semana, qué producto tira y cuál se quedó dormido.",
   GOLD:
-    "Te comparás con el resto de las marcas de WiiGo y sabés en qué día, en qué hora y en qué sucursal conviene estar.",
+    "Tenés el local para vos cuando lo necesitás: proponés tus propios eventos, entrás primero en los nuestros, y sabés en qué día y a qué hora se vende lo tuyo.",
 };
 
 /** ¿El plan de la marca llega al nivel pedido? */
@@ -62,10 +62,15 @@ export function planIncluye(plan: PlanMarca, minimo: PlanMarca): boolean {
  * `beneficiosHasta`, que acumula los de abajo.
  */
 export const SUMA_EL_PLAN: Record<PlanMarca, string[]> = {
+  // Todo lo operativo va acá abajo, incluido el calendario. Gatear la
+  // operación no vende plan: enoja. Y a una marca que no ve el calendario no
+  // se le puede ocurrir querer entrar a un evento.
   BRONCE: [
     "Tus ventas y lo que te queda cada mes",
     "Tus productos, su stock y tu margen",
+    "Mis tareas: todo lo que depende de vos, en un lugar",
     "Pedir cambios y proponer envíos",
+    "El calendario del local, y anotarte en los eventos",
     "Tus pagos y liquidaciones",
   ],
   METAL: [
@@ -74,7 +79,11 @@ export const SUMA_EL_PLAN: Record<PlanMarca, string[]> = {
     "Alertas de stock",
     "Objetivo del mes",
   ],
+  // Lo de Gold es escaso de verdad: el espacio del local un día entero. Por
+  // eso se puede cobrar, y por eso no se puede dar a todas.
   GOLD: [
+    "Proponer tus propios eventos en el local",
+    "Entrar primero en los eventos de WiiGo",
     "Cómo rendís frente al resto",
     "Cuándo se vende lo tuyo",
     "Por sucursal",

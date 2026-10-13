@@ -15,10 +15,12 @@ import {
   ETIQUETA_TIPO,
   cuandoCorto,
   horario,
+  puedeProponerEvento,
   rangoCorto,
   rangoLargo,
 } from "@/lib/eventos";
 import { NIVEL } from "@/lib/planesMarca";
+import { pedirCambioDePlan } from "@/app/portal/cambios/actions";
 
 // El calendario del local, del lado de la marca.
 //
@@ -35,6 +37,8 @@ const DOW = ["L", "M", "M", "J", "V", "S", "D"];
 export default function PortalCalendario({ datos }: { datos: CalendarioPortal }) {
   const router = useRouter();
   const [proponiendo, setProponiendo] = useState(false);
+  const [mostrandoGold, setMostrandoGold] = useState(false);
+  const puedeProponer = puedeProponerEvento(datos.plan);
 
   // El destacado es el primero sobre el que todavía puede hacer algo; si no
   // hay ninguno, el primero que viene. Un feriado en grande arriba no sirve de
@@ -54,8 +58,16 @@ export default function PortalCalendario({ datos }: { datos: CalendarioPortal })
           <h1>Calendario</h1>
           <p>Lo que viene en el local. Si te enterás con tiempo, llegás con stock.</p>
         </div>
-        <button type="button" className="cal-proponer" onClick={() => setProponiendo(true)}>
+        {/* El botón se le muestra a todas, apagado para las que no son Gold:
+            esconderlo haría que una Bronce ni se entere de que existe, y nadie
+            paga por algo que no sabe que hay. */}
+        <button
+          type="button"
+          className={`cal-proponer${puedeProponer ? "" : " trabado"}`}
+          onClick={() => (puedeProponer ? setProponiendo(true) : setMostrandoGold(true))}
+        >
           + Proponer un evento
+          {!puedeProponer && <span className="medalla">Gold</span>}
         </button>
       </div>
 
@@ -119,7 +131,79 @@ export default function PortalCalendario({ datos }: { datos: CalendarioPortal })
       </p>
 
       {proponiendo && <ModalProponer onCerrar={() => setProponiendo(false)} onListo={() => { setProponiendo(false); router.refresh(); }} />}
+      {mostrandoGold && <ModalGold onCerrar={() => setMostrandoGold(false)} />}
     </main>
+  );
+}
+
+/**
+ * Por qué proponer un evento es de Gold.
+ *
+ * Dicho en lo que ocupa y no en "es una función premium": un evento de marca
+ * se lleva la góndola de entrada, las pantallas y un rato del operativo. Eso
+ * es lo que se paga, y entendido así nadie siente que le esconden un botón.
+ */
+function ModalGold({ onCerrar }: { onCerrar: () => void }) {
+  const [pendiente, empezar] = useTransition();
+  const [mandado, setMandado] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  return (
+    <div className="modal-fondo" onClick={onCerrar}>
+      <div className="cal-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="cal-modal-cab">
+          <div>
+            <h2>Proponer tu propio evento es de Gold</h2>
+            <p>Anotarte en los que armamos nosotros lo podés hacer igual, con cualquier plan.</p>
+          </div>
+          <button type="button" className="cal-btn plano" onClick={onCerrar}>
+            Cerrar
+          </button>
+        </div>
+
+        <div className="cal-aviso">
+          Un evento tuyo se lleva la góndola de entrada, las pantallas del local y un rato del
+          equipo, todo ese día y solo para tu marca. Eso es lo que incluye el plan Gold — y por eso
+          no lo puede pedir cualquiera: si lo pidieran todas, no le tocaría a nadie.
+        </div>
+
+        <ul className="cal-gold-lista">
+          <li>Proponer eventos propios: lanzamientos, degustaciones, activaciones.</li>
+          <li>Entrar primero en los eventos que armamos nosotros, antes que el resto.</li>
+          <li>Comparar cómo rendís contra las demás marcas del local.</li>
+          <li>Saber en qué día y a qué hora se vende lo tuyo.</li>
+        </ul>
+
+        {mandado ? (
+          <p className="cal-ok">
+            Listo, nos llegó. Te respondemos por acá — lo vas a ver en Mis solicitudes.
+          </p>
+        ) : (
+          <>
+            {error && <p className="cal-error">{error}</p>}
+            <div className="cal-modal-pie">
+              <button type="button" className="cal-btn plano" onClick={onCerrar}>
+                Ahora no
+              </button>
+              <button
+                type="button"
+                className="cal-btn grande"
+                disabled={pendiente}
+                onClick={() =>
+                  empezar(async () => {
+                    const r = await pedirCambioDePlan("GOLD");
+                    if (r.error) setError(r.error);
+                    else setMandado(true);
+                  })
+                }
+              >
+                {pendiente ? "Mandando…" : "Quiero pasarme a Gold"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 

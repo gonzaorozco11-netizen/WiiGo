@@ -9,6 +9,7 @@ import {
   diasHasta,
   entraDeUna,
   puedeAnotarse,
+  puedeProponerEvento,
   type AlcanceEvento,
   type EstadoParticipacion,
   type MesAlmanaque,
@@ -249,6 +250,11 @@ export async function proponerEvento(datos: {
 }): Promise<{ error: string | null }> {
   const sesion = await obtenerSesionMarca();
   if (!sesion) return { error: "Tenés que entrar de nuevo." };
+  // Se vuelve a mirar acá y no solo en pantalla: apagar un botón no protege
+  // nada, la función igual queda expuesta como endpoint.
+  if (!puedeProponerEvento(sesion.plan)) {
+    return { error: "Proponer eventos propios es del plan Gold." };
+  }
 
   const nombre = datos.nombre.trim();
   if (!nombre) return { error: "Ponele un nombre al evento." };

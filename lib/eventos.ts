@@ -84,6 +84,21 @@ export function puedeAnotarse(
 }
 
 /**
+ * ¿Esta marca puede proponer un evento propio?
+ *
+ * Solo Gold. No es por mezquindad: un evento de marca ocupa la góndola de
+ * entrada, las pantallas y un rato del operativo, y eso es exactamente lo que
+ * se está pagando. Si lo pudiera pedir cualquiera, el plan dejaría de valer.
+ *
+ * Igual el botón se le muestra a todas, apagado y con el motivo: esconderlo
+ * haría que una Bronce ni se entere de que existe, y nadie paga por algo que
+ * no sabe que hay.
+ */
+export function puedeProponerEvento(plan: PlanMarca): boolean {
+  return NIVEL[plan] >= NIVEL.GOLD;
+}
+
+/**
  * Una marca que se anota, ¿queda confirmada sola o esperando?
  *
  * Las Gold quedan confirmadas en el momento: es lo que están pagando. Al resto
