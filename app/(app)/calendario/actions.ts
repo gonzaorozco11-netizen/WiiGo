@@ -41,7 +41,8 @@ export type EventoAdmin = {
   estado: string;
   /** Null si lo armó WiiGo. */
   marcaPropone: string | null;
-  necesita: string | null;
+  /** Lo que la marca va a meter adentro del local: promotora, muestras, mesa. */
+  trae: string | null;
   marcas: MarcaEnEvento[];
 };
 
@@ -62,7 +63,7 @@ export async function calendarioAdmin(): Promise<CalendarioAdmin | null> {
     supabase
       .from("eventos")
       .select(
-        "id_evento, nombre, tipo, descripcion, fecha_desde, fecha_hasta, hora_desde, hora_hasta, alcance, cupo, orden_entrada, visible_para_todas, estado, id_marca_propone, necesita"
+        "id_evento, nombre, tipo, descripcion, fecha_desde, fecha_hasta, hora_desde, hora_hasta, alcance, cupo, orden_entrada, visible_para_todas, estado, id_marca_propone, trae"
       )
       .gte("fecha_hasta", hoy)
       .neq("estado", "CANCELADO")
@@ -114,7 +115,7 @@ export async function calendarioAdmin(): Promise<CalendarioAdmin | null> {
     marcaPropone: e.id_marca_propone
       ? nombrePorMarca.get(e.id_marca_propone as string) ?? "Una marca"
       : null,
-    necesita: (e.necesita as string | null) ?? null,
+    trae: (e.trae as string | null) ?? null,
     marcas: porEvento.get(e.id_evento as string) ?? [],
   });
 

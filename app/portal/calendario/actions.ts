@@ -244,7 +244,8 @@ export async function proponerEvento(datos: {
   horaDesde: string;
   horaHasta: string;
   descripcion: string;
-  necesita: string;
+  /** Lo que la marca va a meter adentro del local. WiiGo lo autoriza o no. */
+  trae: string;
 }): Promise<{ error: string | null }> {
   const sesion = await obtenerSesionMarca();
   if (!sesion) return { error: "Tenés que entrar de nuevo." };
@@ -276,7 +277,7 @@ export async function proponerEvento(datos: {
     visible_para_todas: false,
     estado: "PROPUESTO",
     id_marca_propone: sesion.idMarca,
-    necesita: datos.necesita.trim() || null,
+    trae: datos.trae.trim() || null,
   });
   if (error) return { error: error.message };
 

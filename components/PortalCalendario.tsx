@@ -302,7 +302,7 @@ function ModalProponer({ onCerrar, onListo }: { onCerrar: () => void; onListo: (
   const [horaDesde, setHoraDesde] = useState("");
   const [horaHasta, setHoraHasta] = useState("");
   const [descripcion, setDescripcion] = useState("");
-  const [necesita, setNecesita] = useState("");
+  const [trae, setTrae] = useState("");
   const [pendiente, empezar] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -386,17 +386,17 @@ function ModalProponer({ onCerrar, onListo }: { onCerrar: () => void; onListo: (
         </label>
 
         <label className="cal-campo">
-          <span>Avisanos qué vas a necesitar del local</span>
+          <span>¿Qué vas a traer?</span>
           <textarea
             rows={2}
-            value={necesita}
-            onChange={(e) => setNecesita(e.target.value)}
+            value={trae}
+            onChange={(e) => setTrae(e.target.value)}
             maxLength={300}
-            placeholder="Una mesa en la entrada, las pantallas con tu marca, un enchufe, espacio en góndola…"
+            placeholder="Una promotora, muestras, cartelería, una mesa propia, folletos…"
           />
           <small>
-            Lo ponemos nosotros, pero solo lo que aprobemos. No cuentes con nada hasta que te lo
-            confirmemos por acá.
+            Contanos todo lo que va a entrar al local ese día. Lo tenemos que aprobar antes: no
+            lleves nada que no te hayamos confirmado por acá.
           </small>
         </label>
 
@@ -425,7 +425,7 @@ function ModalProponer({ onCerrar, onListo }: { onCerrar: () => void; onListo: (
                   horaDesde,
                   horaHasta,
                   descripcion,
-                  necesita,
+                  trae,
                 });
                 if (r.error) setError(r.error);
                 else onListo();

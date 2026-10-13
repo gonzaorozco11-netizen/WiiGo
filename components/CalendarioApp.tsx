@@ -94,12 +94,12 @@ function Propuesta({ e, onListo }: { e: EventoAdmin; onListo: () => void }) {
         {horario(e.horaDesde, e.horaHasta) ? `, ${horario(e.horaDesde, e.horaHasta)}` : ""}
       </p>
       {e.descripcion && <p className="desc">{e.descripcion}</p>}
-      {e.necesita && (
+      {e.trae && (
         <p className="pide">
-          <b>Pide del local:</b> {e.necesita}
+          <b>Va a traer:</b> {e.trae}
           <br />
           <span style={{ color: "#a3a3a3" }}>
-            Si aprobás, esto queda a cargo nuestro. Aprobá solo lo que puedas cumplir.
+            Si aprobás, esto entra al local ese día. Lo que no quieras adentro, decilo en el motivo.
           </span>
         </p>
       )}
