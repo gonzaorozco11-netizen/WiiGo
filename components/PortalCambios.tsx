@@ -1063,6 +1063,7 @@ function FormProductoNuevo({
         {/* ===================== 1 ===================== */}
         {paso === 1 && (
           <>
+            <Bloque icono="📦" titulo="Qué es" desc="Como va a figurar en la góndola y en el tótem.">
             <CampoTexto
               etiqueta="Nombre"
               obligatorio
@@ -1116,9 +1117,15 @@ function FormProductoNuevo({
               placeholder="Qué es, para qué sirve, sabor, tamaño…"
               ayuda="Se lee en el tótem: dos o tres renglones se leen, diez no."
             />
+            </Bloque>
 
+            <Bloque
+              icono="📷"
+              titulo="Las fotos"
+              desc="Sin foto el producto sale con un cuadro gris en el catálogo y en el tótem."
+            >
             <div className="cam-campo ancho">
-              <span>Fotos del producto (hasta {MAX_FOTOS})</span>
+              <span>Hasta {MAX_FOTOS} fotos</span>
               <div className="cam-fotos">
                 {fotos.map((url, i) => (
                   <div className="cam-foto" key={url}>
@@ -1161,12 +1168,18 @@ function FormProductoNuevo({
               </small>
               {errorFoto && <p className="cam-var fuerte">{errorFoto}</p>}
             </div>
+            </Bloque>
           </>
         )}
 
         {/* ===================== 2 ===================== */}
         {paso === 2 && (
           <>
+            <Bloque
+              icono="💲"
+              titulo="Precio y tu costo"
+              desc="Mientras lo escribís, abajo ves cuánto te queda de cada venta."
+            >
             {/* El costo primero: es lo que la marca sabe sin pensar, y es
                 contra lo que mira si el precio le cierra. */}
             <label className="cam-campo ancho">
@@ -1241,9 +1254,11 @@ function FormProductoNuevo({
               marca={marca}
               tasas={tasas}
             />
+            </Bloque>
 
+            <Bloque icono="🏷️" titulo="Código de barras" desc="Lo que lee el tótem cuando el cliente escanea.">
             <div className="cam-campo ancho">
-              <span>¿El envase ya trae código de barras?</span>
+              <span>¿El envase ya lo trae impreso?</span>
               <div className="cam-siono">
                 <button type="button" aria-pressed={traeCodigo} onClick={() => setTraeCodigo(true)}>
                   Sí, lo trae
@@ -1266,9 +1281,11 @@ function FormProductoNuevo({
                 </div>
               )}
             </div>
+            </Bloque>
 
+            <Bloque icono="🎯" titulo="Sabores o tamaños" desc="Dejalo en «es uno solo» si no tiene variantes.">
             <div className="cam-campo ancho">
-              <span>¿Tiene sabores o tamaños?</span>
+              <span>¿Tiene varios?</span>
               <div className="cam-siono">
                 <button
                   type="button"
