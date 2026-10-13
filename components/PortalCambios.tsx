@@ -16,7 +16,13 @@ import {
   type ProductoPropio,
   type SolicitudPropia,
 } from "@/app/portal/cambios/actions";
-import type { PoliticaDescuentos, TipoSolicitud } from "@/lib/solicitudesMarca";
+import {
+  GRUPO_DE_TIPO,
+  ETIQUETA_GRUPO,
+  type GrupoBandeja,
+  type PoliticaDescuentos,
+  type TipoSolicitud,
+} from "@/lib/solicitudesMarca";
 import {
   simularMargen,
   type CondicionesMarca,
@@ -51,12 +57,14 @@ function hoyISO() {
   return new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
 }
 
-const ESTADO_TEXTO: Record<string, { rotulo: string; clase: string }> = {
-  PENDIENTE: { rotulo: "Esperando respuesta", clase: "esperando" },
-  APROBADA: { rotulo: "Aprobado", clase: "ok" },
-  APLICADA: { rotulo: "Ya está activo", clase: "ok" },
-  RECHAZADA: { rotulo: "No aprobado", clase: "no" },
-  CANCELADA: { rotulo: "Lo cancelaste", clase: "gris" },
+// El icono adelante para que el estado se lea sin leer: el reloj es lo único
+// sobre lo que la marca todavía puede hacer algo.
+const ESTADO_TEXTO: Record<string, { rotulo: string; clase: string; icono: string }> = {
+  PENDIENTE: { rotulo: "Esperando respuesta", clase: "esperando", icono: "⏳" },
+  APROBADA: { rotulo: "Aprobado", clase: "ok", icono: "✓" },
+  APLICADA: { rotulo: "Ya está activo", clase: "ok", icono: "✓" },
+  RECHAZADA: { rotulo: "No aprobado", clase: "no", icono: "✕" },
+  CANCELADA: { rotulo: "Lo cancelaste", clase: "gris", icono: "⊘" },
 };
 
 type Formulario =
@@ -112,8 +120,10 @@ export default function PortalCambios({
           Mis productos
           {productos.length > 0 && <span className="cam-cont">{productos.length}</span>}
         </button>
+        {/* "Mis solicitudes" y no "mis pedidos": en WiiGo un pedido es una
+            orden de reposición de mercadería, y la marca leería otra cosa. */}
         <button className={`cam-tab${tab === "MIOS" ? " activa" : ""}`} onClick={() => setTab("MIOS")}>
-          Lo que mandé
+          Mis solicitudes
           {pendientes > 0 && <span className="cam-cont fuerte">{pendientes}</span>}
         </button>
       </div>
@@ -158,16 +168,102 @@ export default function PortalCambios({
             </ul>
           )}
         </>
-      ) : solicitudes.length === 0 ? (
-        <p className="vacio">Todavía no mandaste ningún cambio.</p>
       ) : (
-        <ul className="cam-hist">
-          {solicitudes.map((s) => (
-            <FilaSolicitud key={s.idSolicitud} s={s} onListo={() => router.refresh()} />
-          ))}
-        </ul>
+        <MisSolicitudes solicitudes={solicitudes} onListo={() => router.refresh()} />
       )}
     </main>
+  );
+}
+
+const ORDEN_GRUPOS: GrupoBandeja[] = ["PRECIOS", "DESCUENTOS", "PRODUCTOS", "CONTENIDO"];
+
+/**
+ * Lo que la marca mandó: filtros por tipo, y adentro lo que espera arriba.
+ *
+ * Era una sola lista por fecha: con veinte solicitudes, encontrar si el
+ * cambio de precio de la semana pasada se aprobó era leerlas todas. Los
+ * filtros usan el mismo criterio que la bandeja de WiiGo —precios,
+ * descuentos, altas y bajas, contenido— así las dos puntas hablan el mismo
+ * idioma.
+ *
+ * El estado no es otro filtro sino la división de adentro, siempre a la
+ * vista: lo que espera es lo único sobre lo que la marca todavía puede hacer
+ * algo (cancelarlo), y esconderlo detrás de un botón que hay que acordarse de
+ * tocar es justo lo que no queremos. Con dos filas de filtros además había
+ * que entender que se cruzan entre sí.
+ */
+function MisSolicitudes({
+  solicitudes,
+  onListo,
+}: {
+  solicitudes: SolicitudPropia[];
+  onListo: () => void;
+}) {
+  const [filtro, setFiltro] = useState<GrupoBandeja | "TODAS">("TODAS");
+
+  // Solo los grupos que tienen algo: un botón "Descuentos 0" es ruido.
+  const conteos = ORDEN_GRUPOS.map((g) => ({
+    grupo: g,
+    cuantas: solicitudes.filter((s) => GRUPO_DE_TIPO[s.tipo] === g).length,
+  })).filter((x) => x.cuantas > 0);
+
+  const visibles =
+    filtro === "TODAS" ? solicitudes : solicitudes.filter((s) => GRUPO_DE_TIPO[s.tipo] === filtro);
+
+  const enEspera = visibles.filter((s) => s.estado === "PENDIENTE");
+  const resueltas = visibles.filter((s) => s.estado !== "PENDIENTE");
+
+  if (solicitudes.length === 0) {
+    return <p className="vacio">Todavía no mandaste ningún cambio.</p>;
+  }
+
+  return (
+    <>
+      {conteos.length > 1 && (
+        <div className="cam-filtros">
+          <button aria-pressed={filtro === "TODAS"} onClick={() => setFiltro("TODAS")}>
+            Todas <span className="n">{solicitudes.length}</span>
+          </button>
+          {conteos.map(({ grupo, cuantas }) => (
+            <button
+              key={grupo}
+              aria-pressed={filtro === grupo}
+              onClick={() => setFiltro(grupo)}
+            >
+              {ETIQUETA_GRUPO[grupo]} <span className="n">{cuantas}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {enEspera.length > 0 && (
+        <section className="cam-grupo" key="espera">
+          <h3>
+            <i aria-hidden="true">⏳</i> Esperando respuesta
+            <span className="cuantas">{enEspera.length}</span>
+          </h3>
+          <ul className="cam-hist">
+            {enEspera.map((s) => (
+              <FilaSolicitud key={s.idSolicitud} s={s} onListo={onListo} />
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {resueltas.length > 0 && (
+        <section className="cam-grupo" key="resueltas">
+          <h3>
+            <i aria-hidden="true">✓</i> Ya resueltas
+            <span className="cuantas">{resueltas.length}</span>
+          </h3>
+          <ul className="cam-hist">
+            {resueltas.map((s) => (
+              <FilaSolicitud key={s.idSolicitud} s={s} onListo={onListo} />
+            ))}
+          </ul>
+        </section>
+      )}
+    </>
   );
 }
 
@@ -234,7 +330,8 @@ function FilaProducto({
 
           {p.esperando.length > 0 && (
             <p className="cam-nota">
-              Lo que ya mandaste para este producto está esperando respuesta. Podés cancelarlo desde “Lo que mandé”.
+              Lo que ya mandaste para este producto está esperando respuesta. Podés cancelarlo desde “Mis
+            solicitudes”.
             </p>
           )}
 
@@ -1692,7 +1789,10 @@ function FilaSolicitud({ s, onListo }: { s: SolicitudPropia; onListo: () => void
     <li className={`cam-sol ${estado.clase}`}>
       <div className="cam-sol-cab">
         <span className="cam-sol-tipo">{s.tipoEtiqueta}</span>
-        <span className={`cam-estado ${estado.clase}`}>{estado.rotulo}</span>
+        <span className={`cam-estado ${estado.clase}`}>
+          <i aria-hidden="true">{estado.icono}</i>
+          {estado.rotulo}
+        </span>
       </div>
       {s.producto && <p className="cam-sol-prod">{s.producto}</p>}
 

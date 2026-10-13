@@ -1422,3 +1422,37 @@
    extra de cada campo, que acumulaba hueco de mas. */
 .cam-bloque .cam-campo,
 .cam-bloque .cam-campos { margin: 0; }
+
+/* ---------- Mis solicitudes ----------
+   Filtros por el mismo criterio que la bandeja de WiiGo, y adentro lo que
+   espera arriba: es lo unico sobre lo que la marca todavia puede hacer algo,
+   asi que no va escondido atras de un filtro. */
+.cam-filtros {
+  display: flex; gap: 3px; background: var(--salvia-tenue); padding: 3px; border-radius: 10px;
+  margin-bottom: 16px; flex-wrap: wrap;
+}
+.cam-filtros button {
+  font: inherit; font-size: 12.5px; font-weight: 600; border: 0; background: none;
+  color: var(--texto-2); padding: 7px 13px; border-radius: 8px; cursor: pointer; white-space: nowrap;
+}
+.cam-filtros button[aria-pressed="true"] {
+  background: var(--superficie); color: var(--salvia-honda); box-shadow: 0 1px 2px rgba(42,47,38,.08);
+}
+.cam-filtros .n { font-family: var(--f-mono); font-size: 11px; opacity: .65; margin-left: 4px; }
+
+.cam-grupo { margin-bottom: 18px; }
+.cam-grupo h3 {
+  font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--texto-3); margin-bottom: 9px; display: flex; align-items: center; gap: 8px;
+}
+/* El reloj / tilde del encabezado: a tamano de lectura, no al de la mayuscula
+   chiquita del rotulo, que lo dejaba ilegible. El gap del flex ya separa. */
+.cam-grupo h3 i { font-style: normal; font-size: 13px; letter-spacing: 0; margin-right: -3px; }
+.cam-grupo h3 .cuantas {
+  font-family: var(--f-mono); font-size: 10.5px; letter-spacing: 0; font-weight: 600;
+  background: var(--superficie-2); border: 1px solid var(--borde); border-radius: 999px;
+  padding: 1px 7px; color: var(--texto-3);
+}
+
+/* El icono del estado, adelante del rotulo. */
+.cam-estado i { font-style: normal; margin-right: 5px; }
