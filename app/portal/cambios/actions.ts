@@ -11,10 +11,12 @@ import {
   validarDescuento,
   validarProductoNuevo,
   validarBaja,
+  sinAlertas,
   ETIQUETA_TIPO,
   type TipoSolicitud,
   type Validacion,
 } from "@/lib/solicitudesMarca";
+import { PLANES, ETIQUETA_PLAN, planIncluye, type PlanMarca } from "@/lib/planesMarca";
 
 // Portal de marcas — el lado que pide.
 //
@@ -769,6 +771,48 @@ function fichaLimpia(ficha: FichaDeMarca | null | undefined): FichaDeMarca | nul
     origen: texto(ficha.origen),
   };
   return Object.values(limpia).every((v) => v === null) ? null : limpia;
+}
+
+/**
+ * La marca pide pasarse a un plan de arriba.
+ *
+ * Es lo que hace útil al botón del tablero: sin esto, "quiero Gold" termina
+ * en un WhatsApp que se pierde entre otros veinte. Así queda en la bandeja de
+ * aprobaciones con fecha, como cualquier otro pedido.
+ *
+ * Solo hacia arriba. Bajar de plan es una conversación comercial —hay un
+ * abono de por medio— y no algo que se resuelva con un botón.
+ */
+export async function pedirCambioDePlan(plan: PlanMarca): Promise<Resultado> {
+  const sesion = await sesionOError();
+  const supabase = getSupabaseServerClient();
+
+  const { data: marca } = await supabase
+    .from("marcas")
+    .select("plan")
+    .eq("id_marca", sesion.idMarca)
+    .maybeSingle();
+
+  const actual = ((marca?.plan as PlanMarca) ?? "BRONCE") as PlanMarca;
+  if (!PLANES.includes(plan)) return { error: "Ese plan no existe." };
+  if (plan === actual) return { error: `Ya tenés el plan ${ETIQUETA_PLAN[actual]}.` };
+  if (!planIncluye(plan, actual)) {
+    return { error: "Para bajar de plan escribinos: hay un abono de por medio." };
+  }
+
+  if (await yaHayPendiente(supabase, sesion.idMarca, "PLAN", null)) {
+    return { error: "Ya pediste un cambio de plan y todavía está esperando respuesta." };
+  }
+
+  return crear(supabase, {
+    idMarca: sesion.idMarca,
+    idUsuario: sesion.idUsuario,
+    tipo: "PLAN",
+    idProducto: null,
+    datos: { plan, etiqueta: ETIQUETA_PLAN[plan] },
+    datosAnteriores: { plan: actual, etiqueta: ETIQUETA_PLAN[actual] },
+    validacion: sinAlertas(),
+  });
 }
 
 export async function pedirBaja(idProducto: string): Promise<Resultado> {

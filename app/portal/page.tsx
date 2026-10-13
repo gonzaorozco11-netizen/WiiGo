@@ -59,6 +59,7 @@ export default async function PortalPage() {
         analisis={analisis}
         gold={gold}
         puedeVerMas={conAnalisis}
+        plan={sesion.plan}
       />
     </>
   );

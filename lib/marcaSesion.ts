@@ -13,11 +13,20 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 // cookie: si a una marca se le cambia el plan o se le da de baja el usuario,
 // pega en el acto sin esperar a que reloguee.
 
-export const PLANES = ["BRONCE", "METAL", "GOLD"] as const;
-export type PlanMarca = (typeof PLANES)[number];
+// Los planes viven en lib/planesMarca.ts, que no importa `next/headers` y por
+// eso lo puede usar también el tablero, que corre en el navegador. Se
+// reexportan para no romper lo que ya los importaba de acá.
+export {
+  PLANES,
+  ETIQUETA_PLAN,
+  SUMA_EL_PLAN,
+  planIncluye,
+  beneficiosHasta,
+  planSiguiente,
+  type PlanMarca,
+} from "@/lib/planesMarca";
 
-/** Orden de los planes: sirve para preguntar "¿tiene al menos Metal?". */
-const NIVEL: Record<PlanMarca, number> = { BRONCE: 1, METAL: 2, GOLD: 3 };
+import { PLANES, NIVEL, planIncluye, type PlanMarca } from "@/lib/planesMarca";
 
 export type SesionMarca = {
   idUsuario: string;
@@ -75,24 +84,14 @@ export async function obtenerSesionMarca(): Promise<SesionMarca | null> {
   };
 }
 
-/** ¿El plan de la marca llega al nivel pedido? */
-export function planIncluye(plan: PlanMarca, minimo: PlanMarca): boolean {
-  return NIVEL[plan] >= NIVEL[minimo];
-}
-
 /**
- * Lo mismo pero sobre la sesión, para usar directo en las pantallas.
+ * El plan sobre la sesión, para usar directo en las pantallas.
  * Sin sesión responde false: nada se muestra "por las dudas".
  */
 export function sesionIncluye(sesion: SesionMarca | null, minimo: PlanMarca): boolean {
   return sesion ? planIncluye(sesion.plan, minimo) : false;
 }
 
-export const ETIQUETA_PLAN: Record<PlanMarca, string> = {
-  BRONCE: "Bronce",
-  METAL: "Metal",
-  GOLD: "Gold",
-};
 
 // ===================== CONTROLES DE ACCESO =====================
 //

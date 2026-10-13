@@ -25,6 +25,10 @@ export type TipoSolicitud =
   | "SUBCATEGORIA"
   | "PRODUCTO_NUEVO"
   | "BAJA_PRODUCTO"
+  // La marca pide pasarse a un plan de arriba desde su tablero. No toca nada
+  // de sus productos: cambia qué ve ella y cuánto paga, así que lo decide
+  // WiiGo como cualquier otra solicitud.
+  | "PLAN"
   | "DESCUENTO"
   | "IMPORTACION";
 
@@ -42,6 +46,7 @@ export const ETIQUETA_TIPO: Record<TipoSolicitud, string> = {
   SUBCATEGORIA: "Subcategoría",
   PRODUCTO_NUEVO: "Producto nuevo",
   BAJA_PRODUCTO: "Baja de producto",
+  PLAN: "Cambio de plan",
   DESCUENTO: "Descuento",
   IMPORTACION: "Lista de precios",
 };
@@ -62,6 +67,9 @@ export const GRUPO_DE_TIPO: Record<TipoSolicitud, GrupoBandeja> = {
   PRODUCTO_NUEVO: "PRODUCTOS",
   BAJA_PRODUCTO: "PRODUCTOS",
   SUBCATEGORIA: "PRODUCTOS",
+  // Con "Altas y bajas" porque es la misma cabeza: una decisión comercial
+  // sobre la relación con la marca, no sobre un producto.
+  PLAN: "PRODUCTOS",
   DESCRIPCION: "CONTENIDO",
   FICHA: "CONTENIDO",
   NOMBRE: "CONTENIDO",
@@ -131,7 +139,7 @@ export type Validacion = {
   };
 };
 
-function sinAlertas(): Validacion {
+export function sinAlertas(): Validacion {
   return { frena: null, alertas: {} };
 }
 

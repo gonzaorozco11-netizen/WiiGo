@@ -1074,3 +1074,116 @@
   color: var(--texto);
 }
 .cam-nutri input:focus { outline: 2px solid var(--salvia); outline-offset: -1px; background: #fff; }
+
+
+/* ---------- Los planes ----------
+   Arriba el que tiene, con su nombre y su medalla; abajo los de arriba como
+   invitacion. Antes era un cartel chico que solo veia Bronce y que no decia
+   que plan tenia la marca: el chip de la cabecera dice el nombre y nada mas.
+
+   Los tres metales son el gancho visual: bronce, plata y oro se entienden
+   solos y nadie necesita que le expliquen cual esta arriba. */
+.plan-actual {
+  background: var(--superficie); border: 1px solid var(--borde); border-radius: 18px;
+  overflow: hidden; margin-bottom: 16px;
+}
+.plan-cab {
+  display: flex; align-items: center; gap: 14px; padding: 18px 20px;
+  border-bottom: 1px solid var(--borde); flex-wrap: wrap;
+}
+.medalla {
+  width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center;
+  justify-content: center; font-family: var(--f-titulo), sans-serif; font-weight: 700;
+  font-size: 17px; color: #fff; flex: none;
+  box-shadow: 0 2px 5px rgba(42,47,38,.14), inset 0 -2px 4px rgba(0,0,0,.14);
+}
+.medalla-BRONCE { background: linear-gradient(145deg, #d6a476, #9a7248); }
+.medalla-METAL  { background: linear-gradient(145deg, #c3ccd3, #5d6973); }
+.medalla-GOLD   { background: linear-gradient(145deg, #e7cd74, #8a6c1c); }
+.plan-tit { flex: 1; min-width: 0; }
+.plan-tit h2 { font-size: 21px; font-weight: 700; }
+.plan-tit .sub { font-size: 12.5px; color: var(--texto-3); margin-top: 1px; display: block; }
+.sello-tuyo {
+  font-size: 9.5px; font-weight: 700; letter-spacing: .11em; text-transform: uppercase;
+  background: var(--verde-tenue); color: #2f5c3a; border: 1px solid #cfe3d4;
+  padding: 5px 11px; border-radius: 999px; white-space: nowrap;
+}
+.plan-cuerpo { padding: 16px 20px 18px; }
+.plan-cuerpo .et {
+  font-size: 10.5px; font-weight: 700; letter-spacing: .11em; text-transform: uppercase;
+  color: var(--texto-3); margin-bottom: 11px;
+}
+.plan-lista { list-style: none; display: grid; gap: 8px; }
+@media (min-width: 620px) { .plan-lista { grid-template-columns: 1fr 1fr; gap: 8px 22px; } }
+.plan-lista li {
+  font-size: 13.5px; color: var(--texto-2); display: flex; align-items: flex-start; gap: 9px;
+}
+.plan-lista li::before { content: "✓"; color: var(--verde-ok); font-weight: 700; flex: none; line-height: 1.4; }
+
+.plan-gancho { text-align: center; margin: 26px 0 15px; }
+.plan-gancho h3 { font-size: 19px; font-weight: 700; }
+.plan-gancho p { font-size: 13px; color: var(--texto-3); margin-top: 4px; }
+
+.plan-cards { display: grid; gap: 14px; }
+@media (min-width: 720px) { .plan-cards.dos { grid-template-columns: 1fr 1fr; } }
+.plan-card {
+  background: var(--superficie); border: 1px solid var(--borde); border-radius: 18px;
+  padding: 20px; position: relative; overflow: hidden;
+  transition: transform .18s ease, box-shadow .18s ease;
+}
+.plan-card::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 4px; }
+.plan-card:hover { transform: translateY(-3px); box-shadow: 0 12px 28px -14px rgba(42,47,38,.3); }
+.plan-card-METAL {
+  border-color: #d7dce1; background: linear-gradient(180deg, #f4f6f8, var(--superficie) 60%);
+}
+.plan-card-METAL::before { background: linear-gradient(90deg, #c3ccd3, #5d6973); }
+.plan-card-GOLD {
+  border-color: #e6d5a4; background: linear-gradient(180deg, #fdf8ea, var(--superficie) 60%);
+}
+.plan-card-GOLD::before { background: linear-gradient(90deg, #e7cd74, #8a6c1c); }
+
+.plan-card .card-cab { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
+.plan-card h4 {
+  font-family: var(--f-titulo), sans-serif; font-size: 18px; font-weight: 700; letter-spacing: -.02em;
+}
+.plan-card-METAL h4 { color: #5d6973; }
+.plan-card-GOLD h4 { color: #8a6c1c; }
+.plan-card .salto {
+  font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  padding: 3px 9px; border-radius: 999px; white-space: nowrap;
+}
+.plan-card-METAL .salto { background: #f4f6f8; color: #5d6973; border: 1px solid #d7dce1; }
+.plan-card-GOLD .salto { background: #fdf8ea; color: #8a6c1c; border: 1px solid #e6d5a4; }
+.plan-card .pitch { font-size: 13px; color: var(--texto-2); margin: 7px 0 14px; line-height: 1.5; }
+.plan-card ul { list-style: none; display: flex; flex-direction: column; gap: 9px; margin-bottom: 17px; }
+.plan-card li {
+  font-size: 13.5px; color: var(--texto); display: flex; align-items: flex-start; gap: 9px;
+  font-weight: 500;
+}
+.plan-card li::before { content: "＋"; font-weight: 700; flex: none; line-height: 1.35; font-size: 12px; }
+.plan-card-METAL li::before { color: #5d6973; }
+.plan-card-GOLD li::before { color: #8a6c1c; }
+.card-boton {
+  display: block; width: 100%; text-align: center; font: inherit; font-size: 13.5px;
+  font-weight: 700; border: 0; border-radius: 11px; padding: 11px; cursor: pointer; color: #fff;
+}
+.card-boton:disabled { opacity: .6; cursor: default; }
+.plan-card-METAL .card-boton { background: #5d6973; }
+.plan-card-METAL .card-boton:hover:not(:disabled) { background: #4b555e; }
+.plan-card-GOLD .card-boton { background: #8a6c1c; }
+.plan-card-GOLD .card-boton:hover:not(:disabled) { background: #6f5614; }
+.card-ok {
+  background: var(--verde-tenue); border: 1px solid #cfe3d4; color: #2f5c3a;
+  border-radius: 11px; padding: 10px 13px; font-size: 12.5px; text-align: center;
+}
+.card-error { font-size: 12.5px; color: var(--rojo); margin-bottom: 9px; }
+
+.plan-tope {
+  background: linear-gradient(180deg, #fdf8ea, var(--superficie) 70%); border: 1px solid #e6d5a4;
+  border-radius: 18px; padding: 22px 20px; text-align: center;
+}
+.plan-tope .corona { font-size: 26px; line-height: 1; }
+.plan-tope h3 { font-size: 17px; font-weight: 700; color: #8a6c1c; margin-top: 7px; }
+.plan-tope p {
+  font-size: 13px; color: var(--texto-2); margin-top: 5px; max-width: 420px; margin-inline: auto;
+}

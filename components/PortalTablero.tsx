@@ -1,7 +1,17 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import {
+  beneficiosHasta,
+  planesPorEncima,
+  ETIQUETA_PLAN,
+  INICIAL_PLAN,
+  PITCH_PLAN,
+  SUMA_EL_PLAN,
+  type PlanMarca,
+} from "@/lib/planesMarca";
+import { pedirCambioDePlan } from "@/app/portal/cambios/actions";
 import {
   lineasVentaPortal,
   type ResumenPortal,
@@ -212,6 +222,7 @@ export default function PortalTablero({
   analisis,
   gold,
   puedeVerMas,
+  plan,
 }: {
   resumen: ResumenPortal;
   ventasHoy: VentaDelDia[];
@@ -226,6 +237,8 @@ export default function PortalTablero({
   /** Solo llega con plan Gold; en los otros viene null. */
   gold: GoldPortal | null;
   puedeVerMas: boolean;
+  /** Para el bloque "Tu plan": qué ve hoy y qué le falta. */
+  plan: PlanMarca;
 }) {
   const raiz = useRef<HTMLDivElement>(null);
   const router = useRouter();
@@ -1118,39 +1131,114 @@ export default function PortalTablero({
         </section>
       )}
 
-      {/* ===== UPSELL =====
-          Uno por escalón, no solo para Bronce. Antes la marca Metal no veía
-          nada: la que estaba a un paso de Gold era justo la única que no se
-          enteraba de qué se perdía. */}
-      {!puedeVerMas ? (
-        <section className="upsell">
-          <h2>Con el plan Metal ves más</h2>
-          <p>
-            Qué hacer cada semana, el ranking de tus productos, cuáles dejaron de rotar y el aviso cuando algo
-            está por agotarse — antes de quedarte sin stock en góndola.
-          </p>
-          <div className="items">
-            <span>Para hacer esta semana</span>
-            <span>Ranking de productos</span>
-            <span>Alertas de stock</span>
-            <span>Objetivo del mes</span>
-          </div>
-        </section>
-      ) : !gold ? (
-        <section className="upsell">
-          <h2>Con el plan Gold ves más</h2>
-          <p>
-            Cómo venís contra el resto de las marcas, en qué horas y en qué sucursal se vende lo tuyo, y a cuánto
-            vas a cerrar el mes al ritmo de hoy.
-          </p>
-          <div className="items">
-            <span>Cómo rendís frente al resto</span>
-            <span>Cuándo se vende lo tuyo</span>
-            <span>Por sucursal</span>
-            <span>Proyección del mes</span>
-          </div>
-        </section>
-      ) : null}
+      {/* ===== TU PLAN =====
+          Lo que tiene y lo que le falta, juntos y de la misma lista.
+          Separados se contradecían: el cartel de "ves más" aparecía solo para
+          Bronce —así que la marca Metal no se enteraba nunca de qué le faltaba
+          de Gold— y lo que SÍ tenía no lo decía nadie. El chip de la cabecera
+          dice el nombre del plan y nada más. */}
+      <TuPlan plan={plan} />
     </div>
+  );
+}
+
+function TuPlan({ plan }: { plan: PlanMarca }) {
+  const tiene = beneficiosHasta(plan);
+  const arriba = planesPorEncima(plan);
+
+  return (
+    <>
+      <section className="plan-actual">
+        <div className="plan-cab">
+          <span className={`medalla medalla-${plan}`}>{INICIAL_PLAN[plan]}</span>
+          <span className="plan-tit">
+            <h2>Plan {ETIQUETA_PLAN[plan]}</h2>
+            <span className="sub">
+              {tiene.length} cosas que ves en tu tablero
+            </span>
+          </span>
+          <span className="sello-tuyo">Tu plan</span>
+        </div>
+        <div className="plan-cuerpo">
+          <p className="et">Lo que ves hoy</p>
+          <ul className="plan-lista">
+            {tiene.map((b) => (
+              <li key={b}>{b}</li>
+            ))}
+          </ul>
+        </div>
+      </section>
+
+      {arriba.length > 0 ? (
+        <>
+          <div className="plan-gancho">
+            <h3>{arriba.length > 1 ? "Podés ver mucho más" : "Te falta un escalón"}</h3>
+            <p>Lo de abajo no lo ves con tu plan de hoy.</p>
+          </div>
+          <div className={`plan-cards${arriba.length > 1 ? " dos" : ""}`}>
+            {arriba.map((p, i) => (
+              <TarjetaPlan key={p} plan={p} esElProximo={i === 0} />
+            ))}
+          </div>
+        </>
+      ) : (
+        // A quien ya paga todo no se le vende nada.
+        <section className="plan-tope">
+          <div className="corona">👑</div>
+          <h3>Tenés todo lo que WiiGo puede mostrarte</h3>
+          <p>No hay un plan más arriba. Si se nos ocurre algo nuevo, lo vas a tener primero.</p>
+        </section>
+      )}
+    </>
+  );
+}
+
+/** Un plan de arriba, con el gancho y el botón que deja el pedido hecho. */
+function TarjetaPlan({ plan, esElProximo }: { plan: PlanMarca; esElProximo: boolean }) {
+  const router = useRouter();
+  const [pidiendo, empezar] = useTransition();
+  const [listo, setListo] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  return (
+    <article className={`plan-card plan-card-${plan}`}>
+      <div className="card-cab">
+        <h4>{ETIQUETA_PLAN[plan]}</h4>
+        <span className="salto">{esElProximo ? "El próximo paso" : "Todo lo de WiiGo"}</span>
+      </div>
+      <p className="pitch">{PITCH_PLAN[plan]}</p>
+      <ul>
+        {SUMA_EL_PLAN[plan].map((b) => (
+          <li key={b}>{b}</li>
+        ))}
+      </ul>
+
+      {listo ? (
+        <p className="card-ok">
+          Pedido mandado. Te vamos a escribir para arreglarlo.
+        </p>
+      ) : (
+        <>
+          {error && <p className="card-error">{error}</p>}
+          <button
+            className="card-boton"
+            disabled={pidiendo}
+            onClick={() => {
+              setError(null);
+              empezar(async () => {
+                const r = await pedirCambioDePlan(plan);
+                if (r.error) setError(r.error);
+                else {
+                  setListo(true);
+                  router.refresh();
+                }
+              });
+            }}
+          >
+            {pidiendo ? "Mandando…" : `Quiero pasarme a ${ETIQUETA_PLAN[plan]}`}
+          </button>
+        </>
+      )}
+    </article>
   );
 }

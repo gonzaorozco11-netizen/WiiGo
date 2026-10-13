@@ -7,6 +7,7 @@ import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos
 import { exigirGestionInterna } from "@/lib/marcaSesion";
 import { fechaHoraArgentina } from "@/lib/horarios";
 import { generarSkuVariante, generarCodigoBarrasVariante } from "@/lib/codigosVariante";
+import { PLANES, type PlanMarca } from "@/lib/planesMarca";
 import {
   obtenerPolitica,
   proximaVigencia,
@@ -476,6 +477,16 @@ export async function aplicarCambiosProgramados(): Promise<{ aplicadas: number; 
           .from("productos")
           .update({ estado: "INACTIVO", fecha_actualizacion: ahoraIso })
           .eq("id_producto", idProducto as string);
+      } else if (s.tipo === "PLAN") {
+        // El plan nuevo. Solo cambia qué ve la marca en su portal: el royalty
+        // y el abono no se tocan acá, se acuerdan aparte. Aprobar esto no es
+        // "ya le cobramos más", es "ya lo puede ver".
+        const plan = String(datos.plan ?? "");
+        if (!PLANES.includes(plan as PlanMarca)) throw new Error("plan no válido");
+        await supabase
+          .from("marcas")
+          .update({ plan })
+          .eq("id_marca", s.id_marca as string);
       } else if (s.tipo === "PRODUCTO_NUEVO") {
         const nombre = String(datos.nombre ?? "").trim();
         if (!nombre) throw new Error("nombre vacío");
