@@ -5,13 +5,16 @@ import { usePathname } from "next/navigation";
 
 // Menú del portal de marcas.
 //
-// Mis tareas va primero porque es lo único accionable: las otras tres son
-// para mirar. Con cuatro, un menú desplegable sería peor que cuatro links a
-// la vista. Las secciones que se agreguen van acá, y cada página vuelve a
-// controlar el plan del lado del servidor: esconder un link no protege nada.
+// El Tablero primero —es la pantalla de inicio y lo que la marca viene a
+// mirar— y Mis tareas al lado, que es lo único accionable. El número naranja
+// alcanza para llamar la atención sin tener que robarle el primer lugar.
+//
+// Con cuatro, un menú desplegable sería peor que cuatro links a la vista. Las
+// secciones que se agreguen van acá, y cada página vuelve a controlar el plan
+// del lado del servidor: esconder un link no protege nada.
 const ITEMS = [
-  { href: "/portal/tareas", texto: "Mis tareas" },
   { href: "/portal", texto: "Tablero" },
+  { href: "/portal/tareas", texto: "Mis tareas" },
   { href: "/portal/productos", texto: "Mis productos" },
   { href: "/portal/cambios", texto: "Pedir un cambio" },
 ];

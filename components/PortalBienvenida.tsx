@@ -167,12 +167,12 @@ function Dos({ datos }: { datos: BienvenidaPortal }) {
     <div className="bv-cuerpo">
       <h2>Cómo se reparte cada venta</h2>
       <p className="bv-intro">
-        Tu <b>{e.nombre}</b>, pagado con tarjeta a {pesos(e.precio)}.
+        Tu <b>{e.nombre}</b>, pagado con tarjeta a {pesos(e.precio)}. De ahí sale todo:
       </p>
 
       <div className="bv-reparto">
         <div className="bv-dona">
-          <svg width="200" height="200" viewBox="0 0 200 200" role="img" aria-label={`De ${pesos(e.precio)}, te quedan ${pesos(e.leTransferimos)}`}>
+          <svg width="200" height="200" viewBox="0 0 200 200" role="img" aria-label={`De ${pesos(e.precio)}, ${e.etiquetaResultado} ${pesos(e.resultado)}`}>
             <g transform="rotate(-90 100 100)" fill="none" strokeLinecap="round" strokeWidth="22">
               {e.partes.map((p) => {
                 const largo = (p.porcentaje / 100) * util;
@@ -193,14 +193,14 @@ function Dos({ datos }: { datos: BienvenidaPortal }) {
             </g>
           </svg>
           <div className="bv-dona-centro">
-            <b className="mono">{pesos(e.leTransferimos)}</b>
-            <span>te queda</span>
+            <b className="mono">{pesos(e.resultado)}</b>
+            <span>{e.etiquetaResultado}</span>
           </div>
         </div>
 
         <ul className="bv-partes">
-          {e.partes.map((p, i) => (
-            <li key={p.etiqueta} className={i === 0 ? "fuerte" : undefined}>
+          {e.partes.map((p) => (
+            <li key={p.etiqueta} className={p.fuerte ? "fuerte" : undefined}>
               <span className="llave" style={{ background: p.color }} />
               <span className="et">{p.etiqueta}</span>
               <span className="mono v">{pesos(p.monto)}</span>
@@ -211,8 +211,18 @@ function Dos({ datos }: { datos: BienvenidaPortal }) {
       </div>
 
       <p className="bv-nota">
-        Si el cliente paga en efectivo no hay cobro con tarjeta ni esos impuestos, así que te queda
-        más. Por eso conviene tener un precio en efectivo más bajo: lo elegís vos.
+        {e.hayCosto ? (
+          <>
+            Eso es lo que te queda <b>después</b> de pagar la mercadería. Y si el cliente paga en
+            efectivo no hay cobro con tarjeta ni esos impuestos, así que te queda más: por eso
+            conviene tener un precio en efectivo más bajo, que lo elegís vos.
+          </>
+        ) : (
+          <>
+            Eso es lo que te giramos, <b>todavía sin descontar lo que te costó la mercadería</b>.
+            Cargá tu costo en Mis productos y acá vas a ver tu ganancia de verdad.
+          </>
+        )}
       </p>
     </div>
   );

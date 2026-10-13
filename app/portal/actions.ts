@@ -1634,14 +1634,30 @@ export async function misTareas(): Promise<TareasPortal | null> {
 
 // ===================== La bienvenida =====================
 
-export type ParteBienvenida = { etiqueta: string; monto: number; porcentaje: number; color: string };
+export type ParteBienvenida = {
+  etiqueta: string;
+  monto: number;
+  porcentaje: number;
+  color: string;
+  /** El renglón que es la respuesta: va destacado y al final. */
+  fuerte?: boolean;
+};
 
 export type BienvenidaPortal = {
   nombreMarca: string;
   local: string | null;
   productos: number;
   /** Un producto suyo, para que el reparto no sea un ejemplo inventado. */
-  ejemplo: { nombre: string; precio: number; leTransferimos: number; partes: ParteBienvenida[] } | null;
+  ejemplo: {
+    nombre: string;
+    precio: number;
+    /** Lo que va al centro de la dona. */
+    resultado: number;
+    etiquetaResultado: string;
+    /** Con el costo cargado, el resultado es ganancia; sin él, solo el giro. */
+    hayCosto: boolean;
+    partes: ParteBienvenida[];
+  } | null;
   sinCosto: number;
   sinFoto: number;
   sinFicha: number;
@@ -1695,9 +1711,15 @@ export async function bienvenidaPortal(): Promise<BienvenidaPortal | null> {
       .map((f) => f.id_producto as string)
   );
 
-  const caro = lista
-    .filter((p) => ((p.precio_venta as number | null) ?? 0) > 0)
-    .sort((a, b) => ((b.precio_venta as number) ?? 0) - ((a.precio_venta as number) ?? 0))[0];
+  // Con costo cargado antes que sin él: la cuenta completa —incluida la
+  // mercadería— es la que de verdad contesta "cuánto gano".
+  const conPrecio = lista.filter((p) => ((p.precio_venta as number | null) ?? 0) > 0);
+  const porPrecio = (a: Record<string, unknown>, b: Record<string, unknown>) =>
+    ((b.precio_venta as number) ?? 0) - ((a.precio_venta as number) ?? 0);
+  const caro =
+    conPrecio
+      .filter((p) => (costos.get(p.id_producto as string)?.costo ?? 0) > 0)
+      .sort(porPrecio)[0] ?? conPrecio.sort(porPrecio)[0];
 
   let ejemplo: BienvenidaPortal["ejemplo"] = null;
   if (caro) {
@@ -1712,17 +1734,37 @@ export async function bienvenidaPortal(): Promise<BienvenidaPortal | null> {
     if (m) {
       const pct = (v: number) => (precio > 0 ? (v / precio) * 100 : 0);
       const impuestos = m.impCreditos + m.impDebitos + m.sircreb;
+
+      // El costo de la mercadería es una tajada más del precio, no algo que
+      // pasa después. Puesto primero y con la ganancia al final, el renglón
+      // de abajo es la respuesta a "cuánto gano" en vez de ser lo que WiiGo
+      // le gira, que todavía tiene adentro lo que le costó fabricarlo.
+      const hayCosto = m.costo != null && m.costo > 0 && m.leQueda != null;
+      const descuentos: ParteBienvenida[] = [
+        { etiqueta: "Comisión de WiiGo", monto: m.comisionWiigo, porcentaje: pct(m.comisionWiigo), color: "#bd8f3e" },
+        { etiqueta: "IVA de esa comisión", monto: m.ivaComision, porcentaje: pct(m.ivaComision), color: "#ddc08a" },
+        { etiqueta: "Cobro con tarjeta", monto: m.comisionMp, porcentaje: pct(m.comisionMp), color: "#7f9ab5" },
+        { etiqueta: "Impuestos del cobro", monto: impuestos, porcentaje: pct(impuestos), color: "#b58578" },
+      ];
+
+      const partes: ParteBienvenida[] = hayCosto
+        ? [
+            { etiqueta: "Tu costo de la mercadería", monto: m.costo!, porcentaje: pct(m.costo!), color: "#9b9a8f" },
+            ...descuentos,
+            { etiqueta: "Te queda a vos", monto: m.leQueda!, porcentaje: pct(m.leQueda!), color: "#6d8058", fuerte: true },
+          ]
+        : [
+            ...descuentos,
+            { etiqueta: "Te transferimos", monto: m.leTransferimos, porcentaje: pct(m.leTransferimos), color: "#6d8058", fuerte: true },
+          ];
+
       ejemplo = {
         nombre: (caro.nombre as string) ?? "Tu producto",
         precio,
-        leTransferimos: m.leTransferimos,
-        partes: [
-          { etiqueta: "Te queda", monto: m.leTransferimos, porcentaje: pct(m.leTransferimos), color: "#6d8058" },
-          { etiqueta: "Comisión de WiiGo", monto: m.comisionWiigo, porcentaje: pct(m.comisionWiigo), color: "#bd8f3e" },
-          { etiqueta: "IVA de esa comisión", monto: m.ivaComision, porcentaje: pct(m.ivaComision), color: "#ddc08a" },
-          { etiqueta: "Cobro con tarjeta", monto: m.comisionMp, porcentaje: pct(m.comisionMp), color: "#7f9ab5" },
-          { etiqueta: "Impuestos del cobro", monto: impuestos, porcentaje: pct(impuestos), color: "#b58578" },
-        ].filter((p) => p.monto > 0),
+        resultado: hayCosto ? m.leQueda! : m.leTransferimos,
+        etiquetaResultado: hayCosto ? "te queda" : "te transferimos",
+        hayCosto,
+        partes: partes.filter((p) => p.monto > 0),
       };
     }
   }
