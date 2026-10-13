@@ -17,6 +17,12 @@ import {
   type SolicitudPropia,
 } from "@/app/portal/cambios/actions";
 import type { PoliticaDescuentos, TipoSolicitud } from "@/lib/solicitudesMarca";
+import {
+  simularMargen,
+  type CondicionesMarca,
+  type MargenSimulado,
+  type TasasGenerales,
+} from "@/lib/margenMarca";
 
 // Pedir cambios, desde el lado de la marca.
 //
@@ -61,12 +67,17 @@ export default function PortalCambios({
   solicitudes,
   politica,
   subcategorias = [],
+  tasas,
+  condiciones,
 }: {
   productos: ProductoPropio[];
   solicitudes: SolicitudPropia[];
   politica: PoliticaDescuentos;
   /** Las de la marca, para que al dar de alta elija una en vez de que WiiGo la adivine. */
   subcategorias?: { id: string; nombre: string }[];
+  /** Para mostrarle el reparto mientras define el precio del producto nuevo. */
+  tasas: TasasGenerales;
+  condiciones: CondicionesMarca;
 }) {
   const router = useRouter();
   const [tab, setTab] = useState<"PEDIR" | "MIOS">("PEDIR");
@@ -110,6 +121,8 @@ export default function PortalCambios({
       {nuevoAbierto && (
         <FormProductoNuevo
           subcategorias={subcategorias}
+          tasas={tasas}
+          marca={condiciones}
           onListo={() => { setNuevoAbierto(false); router.refresh(); }}
           onCerrar={() => setNuevoAbierto(false)}
         />
@@ -727,47 +740,72 @@ function FormBaja({ p, onListo }: { p: ProductoPropio; onListo: () => void }) {
 type VarianteForm = { nombre: string; codigoBarras: string; precio: string };
 
 /**
- * El alta que pide la marca.
+ * El alta que pide la marca, con los mismos tres pasos que el formulario de
+ * WiiGo.
  *
- * Antes eran cuatro campos y WiiGo completaba el resto a mano: la
- * subcategoría, el IVA, el precio de contado, el código impreso en el envase,
- * los sabores. Con una marca que entra con setenta productos eso son setenta
- * cargas dobles, así que ahora manda todo lo que solo ella sabe.
+ * Era un formulario plano de cuatro campos y el resto lo completaba WiiGo a
+ * mano: subcategoría, precio de contado, código del envase, sabores, ficha.
+ * Con una marca que entra con setenta productos eso son setenta cargas
+ * dobles.
  *
- * Lo esencial queda arriba y lo demás detrás de un "agregar más datos": nueve
- * campos a la vista espantan a quien solo quiere dar de alta una proteína.
+ * En el paso del precio va el reparto en vivo. Antes la marca ponía un precio
+ * a ciegas y recién descubría cuánto le quedaba cuando el producto ya estaba
+ * publicado — y si no le gustaba, pedía un cambio de precio. Verlo mientras
+ * lo escribe es verlo cuando todavía lo puede decidir.
+ *
+ * El IVA no se pregunta: WiiGo le factura al cliente final con factura A y la
+ * alícuota la define WiiGo, no la marca.
  */
 function FormProductoNuevo({
   subcategorias,
+  tasas,
+  marca,
   onListo,
   onCerrar,
 }: {
   subcategorias: { id: string; nombre: string }[];
+  tasas: TasasGenerales;
+  marca: CondicionesMarca;
   onListo: () => void;
   onCerrar: () => void;
 }) {
-  const [nombre, setNombre] = useState("");
-  const [precio, setPrecio] = useState("");
-  const [costo, setCosto] = useState("");
-  const [descripcion, setDescripcion] = useState("");
+  const [paso, setPaso] = useState(1);
 
-  const [mas, setMas] = useState(false);
+  // ----- paso 1 -----
+  const [nombre, setNombre] = useState("");
+  const [nombreEn, setNombreEn] = useState("");
+  const [nombrePt, setNombrePt] = useState("");
   const [idSubcategoria, setIdSubcategoria] = useState("");
   const [subNueva, setSubNueva] = useState("");
-  const [precioEfectivo, setPrecioEfectivo] = useState("");
-  const [iva, setIva] = useState("21");
-  const [codigoBarras, setCodigoBarras] = useState("");
-  const [variantes, setVariantes] = useState<VarianteForm[]>([]);
-
-  // La foto se sube apenas se elige y queda su URL: así el alta manda un
-  // campo de texto más y no un archivo, que es lo que complica el envío.
+  const [descripcion, setDescripcion] = useState("");
   const [foto, setFoto] = useState<string | null>(null);
   const [subiendoFoto, setSubiendoFoto] = useState(false);
   const [errorFoto, setErrorFoto] = useState<string | null>(null);
 
+  // ----- paso 2 -----
+  const [costo, setCosto] = useState("");
+  const [precio, setPrecio] = useState("");
+  const [precioEfectivo, setPrecioEfectivo] = useState("");
+  const [offEfectivo, setOffEfectivo] = useState("");
+  const [traeCodigo, setTraeCodigo] = useState(false);
+  const [codigoBarras, setCodigoBarras] = useState("");
+  const [tieneVariantes, setTieneVariantes] = useState(false);
+  const [variantes, setVariantes] = useState<VarianteForm[]>([]);
+
+  // ----- paso 3 -----
   const [ficha, setFicha] = useState<Record<string, string>>({});
   const campoFicha = (k: string) => ficha[k] ?? "";
   const ponerFicha = (k: string, v: string) => setFicha((p) => ({ ...p, [k]: v }));
+  const num = (k: string) => {
+    const n = Number(ficha[k]);
+    return ficha[k] && Number.isFinite(n) ? n : null;
+  };
+
+  const nPrecio = Number(precio);
+  const nCosto = Number(costo);
+  const nEfectivo = Number(precioEfectivo);
+  const valido = nombre.trim() !== "" && nPrecio > 0 && nCosto > 0;
+  const efectivoMalo = nEfectivo > 0 && nPrecio > 0 && nEfectivo >= nPrecio;
 
   async function elegirFoto(archivo: File | null) {
     if (!archivo) return;
@@ -781,17 +819,26 @@ function FormProductoNuevo({
     else setFoto(r.url ?? null);
   }
 
-  const num = (k: string) => {
-    const n = Number(ficha[k]);
-    return ficha[k] && Number.isFinite(n) ? n : null;
-  };
-
-  const nPrecio = Number(precio);
-  const nCosto = Number(costo);
-  const nEfectivo = Number(precioEfectivo);
-  const valido = nombre.trim() !== "" && nPrecio > 0 && nCosto > 0;
-  const ganancia = valido ? nPrecio - nCosto : null;
-  const efectivoMalo = nEfectivo > 0 && nPrecio > 0 && nEfectivo >= nPrecio;
+  /** El precio de contado se define contra el de lista: si el de lista
+      cambia, el otro lo sigue. */
+  function cambiarPrecio(v: string) {
+    setPrecio(v);
+    const p = Number(v) || 0;
+    const o = Number(offEfectivo) || 0;
+    if (o > 0 && p > 0) setPrecioEfectivo(String(Math.round(p * (1 - o / 100))));
+  }
+  function cambiarOff(v: string) {
+    setOffEfectivo(v);
+    const p = Number(precio) || 0;
+    const o = Number(v) || 0;
+    setPrecioEfectivo(o > 0 && p > 0 ? String(Math.round(p * (1 - o / 100))) : "");
+  }
+  function cambiarEfectivo(v: string) {
+    setPrecioEfectivo(v);
+    const p = Number(precio) || 0;
+    const e = Number(v) || 0;
+    setOffEfectivo(p > 0 && e > 0 ? String(Math.round(((p - e) / p) * 10) / 10) : "");
+  }
 
   return (
     <div className="cam-nuevo">
@@ -802,27 +849,51 @@ function FormProductoNuevo({
         </button>
       </div>
 
+      <div className="cam-pasos">
+        {[
+          { n: 1, t: "El producto", d: "Nombre, foto, subcategoría" },
+          { n: 2, t: "Precio y códigos", d: "Tu costo, precios, sabores" },
+          { n: 3, t: "Ficha del asesor", d: "Opcional" },
+        ].map((p) => (
+          <button
+            key={p.n}
+            className={`cam-paso${p.n < paso ? " hecho" : ""}`}
+            aria-current={p.n === paso}
+            onClick={() => setPaso(p.n)}
+          >
+            <b>{p.n}</b>
+            <span>
+              {p.t}
+              <small>{p.d}</small>
+            </span>
+          </button>
+        ))}
+      </div>
+
       <Envio
         texto="Mandar el producto"
         deshabilitado={!valido || efectivoMalo}
         onEnviar={async () => {
           const r = await pedirProductoNuevo({
             nombre,
+            nombreEn,
+            nombrePt,
             precio: nPrecio,
             costo: nCosto,
             descripcion,
             idSubcategoria: idSubcategoria || null,
             subcategoriaNueva: subNueva,
             precioEfectivo: nEfectivo > 0 ? nEfectivo : null,
-            iva: iva === "" ? null : Number(iva),
-            codigoBarras,
-            variantes: variantes
-              .filter((v) => v.nombre.trim())
-              .map((v) => ({
-                nombre: v.nombre,
-                codigoBarras: v.codigoBarras,
-                precio: v.precio ? Number(v.precio) : null,
-              })),
+            codigoBarras: traeCodigo ? codigoBarras : "",
+            variantes: tieneVariantes
+              ? variantes
+                  .filter((v) => v.nombre.trim())
+                  .map((v) => ({
+                    nombre: v.nombre,
+                    codigoBarras: v.codigoBarras,
+                    precio: v.precio ? Number(v.precio) : null,
+                  }))
+              : [],
             imagen: foto,
             ficha: {
               kcal_100g: num("kcal_100g"),
@@ -842,76 +913,35 @@ function FormProductoNuevo({
         }}
         pie={
           <p className="cam-nota">
-            Al aprobarse queda esperando mercadería: recién se puede vender cuando entre el stock. El costo es tuyo y
-            no lo ve nadie del lado del cliente — sirve para que veas tu ganancia real en el tablero.
+            Al aprobarse queda esperando mercadería: recién se puede vender cuando entre el stock. El costo
+            es tuyo y no lo ve nadie del lado del cliente — sirve para que veas tu ganancia real.
           </p>
         }
       >
-        <label className="cam-campo ancho">
-          <span>Nombre</span>
-          <input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Como va a figurar en el tótem" autoFocus />
-        </label>
-        <div className="cam-campos">
-          <label className="cam-campo">
-            <span>Precio de venta</span>
-            <input type="number" step="0.01" value={precio} onChange={(e) => setPrecio(e.target.value)} placeholder="0,00" />
-          </label>
-          <label className="cam-campo">
-            <span>Tu costo</span>
-            <input type="number" step="0.01" value={costo} onChange={(e) => setCosto(e.target.value)} placeholder="0,00" />
-          </label>
-        </div>
-        {ganancia !== null && (
-          <p className={`cam-var${ganancia <= 0 ? " fuerte" : ""}`}>
-            Diferencia por unidad: <b className="mono">{pesos(ganancia)}</b>
-            {ganancia <= 0 && " — con ese costo perdés plata en cada venta."}
-          </p>
-        )}
-        <label className="cam-campo ancho">
-          <span>Descripción (opcional)</span>
-          <textarea rows={3} value={descripcion} onChange={(e) => setDescripcion(e.target.value)} />
-        </label>
-
-        {/* La foto va arriba y no entre los campos de más: sin foto el
-            producto sale en el catálogo y en el tótem con un cuadro gris, y
-            eso se nota más que cualquier otro dato que falte. */}
-        <div className="cam-campo ancho">
-          <span>Foto del producto</span>
-          {foto ? (
-            <div className="cam-foto-ok">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={foto} alt="" />
-              <div>
-                <b>Foto lista</b>
-                <button type="button" className="cam-mas" onClick={() => setFoto(null)}>
-                  Cambiarla
-                </button>
-              </div>
-            </div>
-          ) : (
-            <>
+        {/* ===================== 1 ===================== */}
+        {paso === 1 && (
+          <>
+            <label className="cam-campo ancho">
+              <span>Nombre *</span>
               <input
-                type="file"
-                accept="image/*"
-                disabled={subiendoFoto}
-                onChange={(e) => elegirFoto(e.target.files?.[0] ?? null)}
+                value={nombre}
+                onChange={(e) => setNombre(e.target.value)}
+                placeholder="Como va a figurar en la góndola y en el tótem"
+                autoFocus
               />
-              <small className="cam-ay">
-                {subiendoFoto
-                  ? "Subiendo…"
-                  : "Cuadrada, mínimo 800×800, fondo blanco o neutro. Sin foto sale con un cuadro gris."}
-              </small>
-            </>
-          )}
-          {errorFoto && <p className="cam-var fuerte">{errorFoto}</p>}
-        </div>
+            </label>
+            <div className="cam-campos">
+              <label className="cam-campo">
+                <span>Nombre en inglés</span>
+                <input value={nombreEn} onChange={(e) => setNombreEn(e.target.value)} placeholder="Opcional" />
+              </label>
+              <label className="cam-campo">
+                <span>Nombre en portugués</span>
+                <input value={nombrePt} onChange={(e) => setNombrePt(e.target.value)} placeholder="Opcional" />
+              </label>
+            </div>
+            <small className="cam-ay">El tótem está en tres idiomas. Sin esto se muestra el español.</small>
 
-        {!mas ? (
-          <button type="button" className="cam-mas" onClick={() => setMas(true)}>
-            + Agregar más datos (subcategoría, precio en efectivo, código de barras, sabores)
-          </button>
-        ) : (
-          <div className="cam-extra">
             <div className="cam-campos">
               <label className="cam-campo">
                 <span>Subcategoría</span>
@@ -935,162 +965,270 @@ function FormProductoNuevo({
               </label>
             </div>
 
+            <label className="cam-campo ancho">
+              <span>Descripción</span>
+              <textarea
+                rows={3}
+                value={descripcion}
+                onChange={(e) => setDescripcion(e.target.value)}
+                placeholder="Qué es, para qué sirve, sabor, tamaño…"
+              />
+            </label>
+
+            <div className="cam-campo ancho">
+              <span>Foto del producto</span>
+              {foto ? (
+                <div className="cam-foto-ok">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={foto} alt="" />
+                  <div>
+                    <b>Foto lista</b>
+                    <button type="button" className="cam-mas" onClick={() => setFoto(null)}>
+                      Cambiarla
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    disabled={subiendoFoto}
+                    onChange={(e) => elegirFoto(e.target.files?.[0] ?? null)}
+                  />
+                  <small className="cam-ay">
+                    {subiendoFoto
+                      ? "Subiendo…"
+                      : "Cuadrada, mínimo 800×800, fondo blanco o neutro. Sin foto sale con un cuadro gris."}
+                  </small>
+                </>
+              )}
+              {errorFoto && <p className="cam-var fuerte">{errorFoto}</p>}
+            </div>
+          </>
+        )}
+
+        {/* ===================== 2 ===================== */}
+        {paso === 2 && (
+          <>
+            {/* El costo primero: es lo que la marca sabe sin pensar, y es
+                contra lo que mira si el precio le cierra. */}
+            <label className="cam-campo ancho">
+              <span>Tu costo *</span>
+              <input
+                type="number"
+                step="0.01"
+                value={costo}
+                onChange={(e) => setCosto(e.target.value)}
+                placeholder="0,00"
+                autoFocus
+              />
+              <small className="cam-ay">
+                Lo que te sale a vos una unidad, sin IVA. Solo lo vemos WiiGo y vos.
+              </small>
+            </label>
+
             <div className="cam-campos">
+              <label className="cam-campo">
+                <span>Precio de góndola *</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={precio}
+                  onChange={(e) => cambiarPrecio(e.target.value)}
+                  placeholder="0,00"
+                />
+                <small className="cam-ay">Lo que paga el cliente con tarjeta o QR</small>
+              </label>
               <label className="cam-campo">
                 <span>Precio en efectivo</span>
                 <input
                   type="number"
                   step="0.01"
                   value={precioEfectivo}
-                  onChange={(e) => setPrecioEfectivo(e.target.value)}
+                  onChange={(e) => cambiarEfectivo(e.target.value)}
                   placeholder="Vacío = lo mismo"
+                />
+                <small className="cam-ay">
+                  <input
+                    className="cam-off"
+                    type="number"
+                    step="0.1"
+                    value={offEfectivo}
+                    onChange={(e) => cambiarOff(e.target.value)}
+                    placeholder="0"
+                    aria-label="Porcentaje menos en efectivo"
+                  />{" "}
+                  % menos que el de góndola
+                </small>
+              </label>
+            </div>
+
+            {efectivoMalo && (
+              <p className="cam-var fuerte">El precio en efectivo tiene que ser menor que el de góndola.</p>
+            )}
+
+            <RepartoAlta
+              precio={nPrecio}
+              efectivo={nEfectivo > 0 ? nEfectivo : nPrecio}
+              costo={nCosto}
+              marca={marca}
+              tasas={tasas}
+            />
+
+            <div className="cam-campo ancho">
+              <span>¿El envase ya trae código de barras?</span>
+              <div className="cam-siono">
+                <button type="button" aria-pressed={traeCodigo} onClick={() => setTraeCodigo(true)}>
+                  Sí, lo trae
+                </button>
+                <button type="button" aria-pressed={!traeCodigo} onClick={() => setTraeCodigo(false)}>
+                  No tiene
+                </button>
+              </div>
+              {traeCodigo ? (
+                <input
+                  className="cam-cb"
+                  value={codigoBarras}
+                  onChange={(e) => setCodigoBarras(e.target.value)}
+                  placeholder="7790000000000"
+                  inputMode="numeric"
+                />
+              ) : (
+                <div className="nota-ocre" style={{ marginTop: 10 }}>
+                  WiiGo le genera uno y lo imprime en sticker al aprobarlo.
+                </div>
+              )}
+            </div>
+
+            <div className="cam-campo ancho">
+              <span>¿Tiene sabores o tamaños?</span>
+              <div className="cam-siono">
+                <button
+                  type="button"
+                  aria-pressed={tieneVariantes}
+                  onClick={() => {
+                    setTieneVariantes(true);
+                    if (variantes.length === 0)
+                      setVariantes([
+                        { nombre: "", codigoBarras: "", precio: "" },
+                        { nombre: "", codigoBarras: "", precio: "" },
+                      ]);
+                  }}
+                >
+                  Sí, varios
+                </button>
+                <button type="button" aria-pressed={!tieneVariantes} onClick={() => setTieneVariantes(false)}>
+                  Es uno solo
+                </button>
+              </div>
+
+              {tieneVariantes && (
+                <>
+                  <table className="cam-variantes">
+                    <thead>
+                      <tr>
+                        <th>Sabor o tamaño</th>
+                        <th>Código de barras</th>
+                        <th>Precio propio</th>
+                        <th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {variantes.map((v, i) => (
+                        <tr key={i}>
+                          <td>
+                            <input
+                              value={v.nombre}
+                              onChange={(e) =>
+                                setVariantes((p) =>
+                                  p.map((x, j) => (j === i ? { ...x, nombre: e.target.value } : x))
+                                )
+                              }
+                              placeholder="Frutos rojos"
+                            />
+                          </td>
+                          <td>
+                            <input
+                              value={v.codigoBarras}
+                              onChange={(e) =>
+                                setVariantes((p) =>
+                                  p.map((x, j) => (j === i ? { ...x, codigoBarras: e.target.value } : x))
+                                )
+                              }
+                              placeholder="7790…"
+                              inputMode="numeric"
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={v.precio}
+                              onChange={(e) =>
+                                setVariantes((p) =>
+                                  p.map((x, j) => (j === i ? { ...x, precio: e.target.value } : x))
+                                )
+                              }
+                              placeholder="igual"
+                            />
+                          </td>
+                          <td>
+                            <button
+                              type="button"
+                              className="cam-quitar"
+                              onClick={() => setVariantes((p) => p.filter((_, j) => j !== i))}
+                              aria-label="Quitar"
+                            >
+                              ×
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <button
+                    type="button"
+                    className="cam-mas"
+                    onClick={() => setVariantes((p) => [...p, { nombre: "", codigoBarras: "", precio: "" }])}
+                  >
+                    + Agregar un sabor
+                  </button>
+                </>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* ===================== 3 ===================== */}
+        {paso === 3 && (
+          <>
+            <div className="nota-ocre">
+              Todo esto es <b>opcional</b>, pero es lo que el Asesor le muestra al cliente antes de decidir.
+              Un producto con ficha se vende más que uno sin ficha.
+            </div>
+
+            <div className="cam-campos">
+              <label className="cam-campo">
+                <span>Porción</span>
+                <input
+                  value={campoFicha("porcion")}
+                  onChange={(e) => ponerFicha("porcion", e.target.value)}
+                  placeholder="1 scoop (5 g)"
                 />
               </label>
               <label className="cam-campo">
-                <span>IVA</span>
-                <select value={iva} onChange={(e) => setIva(e.target.value)}>
-                  <option value="21">21 % — general</option>
-                  <option value="10.5">10,5 % — alimentos</option>
-                  <option value="0">0 % — exento</option>
-                </select>
+                <span>Origen</span>
+                <input
+                  value={campoFicha("origen")}
+                  onChange={(e) => ponerFicha("origen", e.target.value)}
+                  placeholder="Industria argentina"
+                />
               </label>
             </div>
-            {efectivoMalo && (
-              <p className="cam-var fuerte">
-                El precio en efectivo tiene que ser menor que el de góndola.
-              </p>
-            )}
-
-            <label className="cam-campo ancho">
-              <span>Código de barras del envase</span>
-              <input
-                value={codigoBarras}
-                onChange={(e) => setCodigoBarras(e.target.value)}
-                placeholder="Si el envase ya lo trae impreso"
-                inputMode="numeric"
-                disabled={variantes.length > 0}
-              />
-              {/* Si no lo trae, WiiGo le genera uno y lo imprime en sticker:
-                  generarle uno nuevo a un envase que ya trae el suyo es
-                  pegarle una etiqueta encima al pedo. */}
-              <small className="cam-ay">
-                {variantes.length > 0
-                  ? "Con sabores, el código va en cada uno."
-                  : "Si no lo trae, WiiGo le genera uno y lo imprime en sticker."}
-              </small>
-            </label>
 
             <div className="cam-campo ancho">
-              <span>Sabores o tamaños</span>
-              {variantes.length === 0 ? (
-                <small className="cam-ay">
-                  Dejalo vacío si es uno solo. Si tiene varios, cargalos acá y cada uno lleva su
-                  código.
-                </small>
-              ) : (
-                <table className="cam-variantes">
-                  <thead>
-                    <tr>
-                      <th>Sabor o tamaño</th>
-                      <th>Código de barras</th>
-                      <th>Precio propio</th>
-                      <th />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {variantes.map((v, i) => (
-                      <tr key={i}>
-                        <td>
-                          <input
-                            value={v.nombre}
-                            onChange={(e) =>
-                              setVariantes((p) =>
-                                p.map((x, j) => (j === i ? { ...x, nombre: e.target.value } : x))
-                              )
-                            }
-                            placeholder="Frutos rojos"
-                          />
-                        </td>
-                        <td>
-                          <input
-                            value={v.codigoBarras}
-                            onChange={(e) =>
-                              setVariantes((p) =>
-                                p.map((x, j) => (j === i ? { ...x, codigoBarras: e.target.value } : x))
-                              )
-                            }
-                            placeholder="7790…"
-                            inputMode="numeric"
-                          />
-                        </td>
-                        <td>
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={v.precio}
-                            onChange={(e) =>
-                              setVariantes((p) =>
-                                p.map((x, j) => (j === i ? { ...x, precio: e.target.value } : x))
-                              )
-                            }
-                            placeholder="igual"
-                          />
-                        </td>
-                        <td>
-                          <button
-                            type="button"
-                            className="cam-quitar"
-                            onClick={() => setVariantes((p) => p.filter((_, j) => j !== i))}
-                            aria-label="Quitar"
-                          >
-                            ×
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-              <button
-                type="button"
-                className="cam-mas"
-                onClick={() =>
-                  setVariantes((p) => [...p, { nombre: "", codigoBarras: "", precio: "" }])
-                }
-              >
-                + Agregar un sabor
-              </button>
-            </div>
-
-            {/* La ficha del asesor. Todo opcional, pero es lo que el cliente
-                lee en el tótem antes de decidir — y el dato está impreso en
-                el envase de la marca, así que es suyo y no de WiiGo. */}
-            <div className="cam-campo ancho cam-ficha">
               <span>Información nutricional</span>
-              <small className="cam-ay">
-                Opcional, pero es lo que el Asesor le muestra al cliente. Un producto con ficha se
-                vende más que uno sin ficha.
-              </small>
-
-              <div className="cam-campos">
-                <label className="cam-campo">
-                  <span>Porción</span>
-                  <input
-                    value={campoFicha("porcion")}
-                    onChange={(e) => ponerFicha("porcion", e.target.value)}
-                    placeholder="1 scoop (5 g)"
-                  />
-                </label>
-                <label className="cam-campo">
-                  <span>Origen</span>
-                  <input
-                    value={campoFicha("origen")}
-                    onChange={(e) => ponerFicha("origen", e.target.value)}
-                    placeholder="Industria argentina"
-                  />
-                </label>
-              </div>
-
               <div className="cam-nutri">
                 {[
                   ["kcal_100g", "Calorías", "kcal"],
@@ -1115,27 +1253,160 @@ function FormProductoNuevo({
                 ))}
               </div>
               <small className="cam-ay">Por cada 100 g, como figura en el envase.</small>
-
-              <label className="cam-campo ancho">
-                <span>Ingredientes</span>
-                <textarea
-                  rows={2}
-                  value={campoFicha("ingredientes")}
-                  onChange={(e) => ponerFicha("ingredientes", e.target.value)}
-                />
-              </label>
-              <label className="cam-campo ancho">
-                <span>Vitaminas y minerales</span>
-                <textarea
-                  rows={2}
-                  value={campoFicha("micronutrientes")}
-                  onChange={(e) => ponerFicha("micronutrientes", e.target.value)}
-                />
-              </label>
             </div>
-          </div>
+
+            <label className="cam-campo ancho">
+              <span>Ingredientes</span>
+              <textarea
+                rows={2}
+                value={campoFicha("ingredientes")}
+                onChange={(e) => ponerFicha("ingredientes", e.target.value)}
+              />
+            </label>
+            <label className="cam-campo ancho">
+              <span>Vitaminas y minerales</span>
+              <textarea
+                rows={2}
+                value={campoFicha("micronutrientes")}
+                onChange={(e) => ponerFicha("micronutrientes", e.target.value)}
+              />
+            </label>
+          </>
         )}
+
+        <div className="cam-pasos-pie">
+          {paso > 1 && (
+            <button type="button" className="cam-mas" onClick={() => setPaso(paso - 1)}>
+              ← Atrás
+            </button>
+          )}
+          <span className="hueco" />
+          {paso < 3 && (
+            <button type="button" className="cam-siguiente" onClick={() => setPaso(paso + 1)}>
+              Siguiente →
+            </button>
+          )}
+        </div>
       </Envio>
+    </div>
+  );
+}
+
+/**
+ * El reparto del precio mientras la marca lo escribe.
+ *
+ * El mismo panel que ve WiiGo del lado de adentro y que la marca ya ve en Mis
+ * productos, pero acá sirve para otra cosa: para decidir el precio, no para
+ * mirar el que ya está puesto. Si con ese precio le queda poco, se entera
+ * antes de mandarlo y no después de que esté publicado.
+ */
+function RepartoAlta({
+  precio,
+  efectivo,
+  costo,
+  marca,
+  tasas,
+}: {
+  precio: number;
+  efectivo: number;
+  costo: number;
+  marca: CondicionesMarca;
+  tasas: TasasGenerales;
+}) {
+  if (!(precio > 0 && costo > 0)) {
+    return (
+      <div className="nota-gris" style={{ marginTop: 13 }}>
+        Poné tu costo y el precio de góndola, y acá te mostramos cuánto te queda de cada venta.
+      </div>
+    );
+  }
+
+  const conCredito = simularMargen({ precio, costo, marca, tasas }).find((m) => m.medio === "CREDITO");
+  const conEfectivo = simularMargen({ precio: efectivo, costo, marca, tasas }).find(
+    (m) => m.medio === "EFECTIVO"
+  );
+  if (!conCredito || !conEfectivo) return null;
+
+  const qC = conCredito.leQueda ?? 0;
+  const qE = conEfectivo.leQueda ?? 0;
+
+  return (
+    <div className="cam-reparto">
+      <p className="et">A dónde va cada peso que paga el cliente</p>
+      <div className="cam-reparto-duo">
+        <ColumnaAlta m={conCredito} costo={costo} corto="Crédito" gana={qC >= qE} />
+        <ColumnaAlta m={conEfectivo} costo={costo} corto="Efectivo" gana={qE > qC} />
+      </div>
+      <p className="cam-reparto-pie">
+        {/* `pesos()` ya trae el signo: ponerle otro daba "$$3.137,00". */}
+        Por cada unidad te quedan <b>{pesos(qE)}</b> en efectivo y <b>{pesos(qC)}</b> con crédito. De ahí
+        todavía salen tus impuestos y tus gastos, que WiiGo no calcula.
+      </p>
+    </div>
+  );
+}
+
+function ColumnaAlta({
+  m,
+  costo,
+  corto,
+  gana,
+}: {
+  m: MargenSimulado;
+  costo: number;
+  corto: string;
+  gana: boolean;
+}) {
+  const queda = m.leQueda ?? 0;
+  const partes = [
+    { c: "#8a9a78", v: costo },
+    { c: "#536243", v: m.comisionWiigo + m.ivaComision },
+    { c: "#bd8f3e", v: m.comisionMp + m.impCreditos + m.impDebitos },
+    { c: "#b4bcc6", v: m.sircreb },
+    { c: "#4c8459", v: queda },
+  ];
+
+  const R = 38;
+  const C = 2 * Math.PI * R;
+  const HUECO = C * (2.2 / 360);
+  const total = partes.reduce((a, p) => a + Math.max(p.v, 0), 0);
+  let acum = 0;
+
+  return (
+    <div className={gana ? "gana" : undefined}>
+      <span className="cam-sello">{corto}</span>
+      <div className="cam-dona">
+        <svg viewBox="0 0 102 102" width="102" height="102" aria-hidden="true">
+          <circle cx="51" cy="51" r={R} fill="none" stroke="#eef0e9" strokeWidth="13" />
+          <g transform="rotate(-90 51 51)">
+            {partes.map((p, i) => {
+              const por = total > 0 ? Math.max(p.v, 0) / total : 0;
+              const largo = Math.max(por * C - HUECO, 0.1);
+              const off = -(acum * C + HUECO / 2);
+              acum += por;
+              return (
+                <circle
+                  key={i}
+                  cx="51"
+                  cy="51"
+                  r={R}
+                  fill="none"
+                  stroke={p.c}
+                  strokeWidth="13"
+                  strokeLinecap="round"
+                  strokeDasharray={`${largo} ${C - largo}`}
+                  strokeDashoffset={off}
+                />
+              );
+            })}
+          </g>
+        </svg>
+        <div className="centro">
+          <b>${Math.round(queda).toLocaleString("es-AR")}</b>
+          <span>te queda</span>
+        </div>
+      </div>
+      <p className="cam-reparto-cobra">el cliente paga {pesos(m.precio)}</p>
     </div>
   );
 }

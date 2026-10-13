@@ -560,10 +560,11 @@ function Fila({
         </td>
         <td className="num">
           {queda != null ? (
-            <span className="queda-col">
-              ${enteros(queda)}
-              <small>{pct1((queda / p.precio) * 100)}% de la venta</small>
-            </span>
+            // Solo los pesos. El "% de la venta" leído solo, sin el desglose
+            // al lado, parece que la marca se queda con menos de la mitad —
+            // sin decir que de ahí salen su propio costo, la comisión y los
+            // impuestos. Eso está explicado a un clic, abriendo el producto.
+            <span className="queda-col">${enteros(queda)}</span>
           ) : (
             <span className="sin-dato">—</span>
           )}
