@@ -1462,6 +1462,102 @@
 /* El icono del estado, adelante del rotulo. */
 .cam-estado i { font-style: normal; margin-right: 5px; }
 
+/* ---------- Mis tareas ----------
+   Ordenado por consecuencia y no por tipo: una lista plana de "pendientes" se
+   lee como deberes y se ignora. Agrupada, cada linea dice que le pasa a la
+   marca si no lo hace. */
+.nav-pendientes {
+  display: inline-block; margin-left: 6px; font-family: var(--f-mono);
+  font-size: 10.5px; font-weight: 700; color: #fff; background: var(--ocre);
+  border-radius: 999px; padding: 1px 6px; vertical-align: 1px;
+}
+
+.tareas-cab { margin-bottom: 18px; }
+.tareas-cab h1 { font-size: 26px; font-weight: 600; margin-bottom: 2px; }
+.tareas-cab p { font-size: 14px; color: var(--texto-2); }
+
+/* Primeros pasos. No es un cartel que se cierra, es una lista que se vacia:
+   cuando los cuatro estan, el bloque no se renderiza mas. */
+.pasos {
+  background: var(--superficie); border: 1px solid var(--borde-fuerte); border-radius: 16px;
+  padding: 19px 23px; margin-bottom: 20px; display: flex; flex-direction: column; gap: 14px;
+}
+.pasos-cab { display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
+.pasos-cab .rotulo {
+  font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--texto-3); margin-bottom: 1px;
+}
+.pasos-cab .sub { font-size: 13.5px; color: var(--texto-2); }
+.pasos-prog { display: flex; align-items: center; gap: 12px; }
+.pasos-prog .barra {
+  width: 150px; height: 8px; border-radius: 999px; background: var(--salvia-tenue);
+  overflow: hidden; display: flex;
+}
+.pasos-prog .barra span { background: var(--salvia-fuerte); }
+.pasos-prog b { font-size: 13px; font-weight: 600; color: var(--salvia-honda); }
+
+.pasos ol { list-style: none; display: flex; flex-direction: column; }
+.pasos li {
+  display: grid; grid-template-columns: 22px 1fr auto; gap: 14px; align-items: center;
+  padding: 10px 0; border-top: 1px solid var(--borde);
+}
+.pasos li .marca {
+  width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--borde-fuerte);
+  display: grid; place-items: center; font-size: 12px; font-weight: 700; color: transparent;
+}
+.pasos li.hecho .marca { background: var(--verde-ok); border-color: var(--verde-ok); color: #fff; }
+.pasos li .texto { font-size: 14.5px; }
+.pasos li.hecho .texto { color: var(--texto-3); text-decoration: line-through; }
+
+/* Los dos grupos. El color del borde izquierdo es la consecuencia: rojo
+   frena algo, ocre cuesta ventas. */
+.tareas-grupo { margin-bottom: 20px; display: flex; flex-direction: column; gap: 9px; }
+.tareas-grupo h2 {
+  font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  display: flex; align-items: center; gap: 8px;
+}
+.tareas-grupo h2 .cuantas {
+  font-family: var(--f-mono); font-size: 10.5px; letter-spacing: 0; font-weight: 600;
+  border-radius: 999px; padding: 1px 7px;
+}
+.tareas-grupo.frena h2 { color: var(--rojo); }
+.tareas-grupo.frena h2 .cuantas { background: var(--rojo-tenue); border: 1px solid #e8c4bd; }
+.tareas-grupo.vender h2 { color: var(--ocre); }
+.tareas-grupo.vender h2 .cuantas { background: var(--ocre-tenue); border: 1px solid #e8d7ac; }
+.tareas-grupo.aldia h2 { color: var(--verde-ok); }
+
+.tarea {
+  background: var(--superficie); border: 1px solid var(--borde); border-radius: 12px;
+  padding: 14px 18px; display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+}
+.tareas-grupo.frena .tarea { border-left: 3px solid var(--rojo); }
+.tareas-grupo.vender .tarea { border-left: 3px solid var(--ocre); }
+.tarea-n {
+  font-family: var(--f-titulo), var(--f-texto), sans-serif; font-size: 26px; font-weight: 600;
+  min-width: 42px; text-align: center; flex: none; letter-spacing: -.02em;
+}
+.tareas-grupo.frena .tarea-n { color: var(--rojo); }
+.tareas-grupo.vender .tarea-n { color: var(--ocre); }
+.tarea-txt { flex: 1 1 260px; min-width: 0; }
+.tarea-txt .tit { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
+.tarea-txt .por { font-size: 13.5px; color: var(--texto-2); line-height: 1.45; }
+.tarea-btn {
+  font-size: 13.5px; font-weight: 600; color: var(--salvia-honda); background: var(--superficie);
+  border: 1px solid var(--borde-fuerte); border-radius: 10px; padding: 9px 18px;
+  text-decoration: none; flex: none; white-space: nowrap;
+}
+.tarea-btn:hover { border-color: var(--salvia-media); background: var(--salvia-tenue); }
+.tarea-btn.fuerte { color: #fff; background: var(--rojo); border-color: var(--rojo); }
+.tarea-btn.fuerte:hover { background: #96463c; border-color: #96463c; }
+
+/* Cerrar con lo que ya esta bien es lo que hace querer vaciar el resto. */
+.aldia-caja {
+  background: var(--verde-tenue); border: 1px solid #c9e0cf; border-radius: 12px;
+  padding: 13px 18px; display: flex; align-items: center; gap: 12px;
+}
+.aldia-caja span { color: var(--verde-ok); font-weight: 700; flex: none; }
+.aldia-caja p { font-size: 13.5px; color: #335c3d; line-height: 1.45; }
+
 /* ---------- El estandar de fotos ----------
    Estaba como una nota al pie ("fondo claro, sin texto encima"), que es una
    sugerencia. En reglas numerables, y con el validador atras que las aplica,

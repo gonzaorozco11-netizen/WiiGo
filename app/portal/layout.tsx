@@ -6,6 +6,7 @@ import { WIIGO_LOGO_DATA_URI } from "@/lib/wiigo-logo-data";
 import PortalNav from "@/components/PortalNav";
 import PortalLocal from "@/components/PortalLocal";
 import { getSupabaseServerClient } from "@/lib/supabase";
+import { misTareas } from "@/app/portal/actions";
 import "./portal.css";
 
 // Tipografías propias del portal. Outfit es geométrica y redondeada, de la
@@ -36,11 +37,17 @@ export default async function PortalLayout({ children }: { children: React.React
   // De dónde son los números que está mirando. Va en el layout y no en el
   // tablero porque vale para todas las pantallas: el stock de Mis productos
   // también sale de acá.
-  const { data: locales } = await getSupabaseServerClient()
-    .from("locales")
-    .select("nombre, direccion")
-    .eq("estado", "ACTIVO")
-    .order("nombre", { ascending: true });
+  // El contador de "Mis tareas" va en el layout porque se ve desde cualquier
+  // pantalla: es lo que trae de vuelta a la marca. Si falla, el menú sale sin
+  // número en vez de tirar la página entera.
+  const [{ data: locales }, tareas] = await Promise.all([
+    getSupabaseServerClient()
+      .from("locales")
+      .select("nombre, direccion")
+      .eq("estado", "ACTIVO")
+      .order("nombre", { ascending: true }),
+    misTareas().catch(() => null),
+  ]);
 
   return (
     <div className={`portal ${outfit.variable} ${manrope.variable} ${mono.variable}`}>
@@ -65,7 +72,7 @@ export default async function PortalLayout({ children }: { children: React.React
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            <PortalNav />
+            <PortalNav pendientes={tareas?.pendientes ?? 0} />
             <span className={`plan-chip plan-${sesion.plan}`}>
               <span className="punto" />
               {ETIQUETA_PLAN[sesion.plan]}

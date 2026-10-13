@@ -1407,3 +1407,227 @@ export async function liquidacionesPortal(): Promise<LiquidacionPortal[]> {
     fechaPago: (l.fecha_pago as string) ?? null,
   }));
 }
+
+// ===================== Mis tareas =====================
+
+export type Tarea = {
+  id: string;
+  /** FRENA: sin esto algo no pasa. VENDER: con esto vende más. */
+  grupo: "FRENA" | "VENDER";
+  cuantas: number;
+  titulo: string;
+  /** Por qué le importa a la marca, en una línea. */
+  porque: string;
+  accion: string;
+  href: string;
+};
+
+export type PrimerPaso = {
+  id: string;
+  texto: string;
+  hecho: boolean;
+  href: string;
+};
+
+export type TareasPortal = {
+  tareas: Tarea[];
+  /** Lo que ya está bien. Cerrar con esto es lo que hace querer vaciar el resto. */
+  alDia: string[];
+  pasos: PrimerPaso[];
+  pasosHechos: number;
+  /** El número del menú: cuántas cosas esperan algo de la marca. */
+  pendientes: number;
+};
+
+/**
+ * Todo lo que depende de la marca, en un solo lugar.
+ *
+ * Ordenado por consecuencia y no por tipo. Una lista plana de "pendientes" se
+ * lee como deberes y se ignora; agrupada en "esto frena algo" y "esto te hace
+ * vender más", cada línea dice qué le pasa si no lo hace.
+ *
+ * El bloque de al día no es relleno: cerrar con "en esto estás bien" es lo que
+ * hace que quieran vaciar los otros dos.
+ *
+ * Lo que todavía no está acá es la sugerencia de reposición, que necesita
+ * semanas de ventas para decir algo que no sea ruido. Entra cuando las haya.
+ */
+export async function misTareas(): Promise<TareasPortal | null> {
+  const sesion = await obtenerSesionMarca();
+  if (!sesion) return null;
+
+  const supabase = getSupabaseServerClient();
+  const { data: productos } = await supabase
+    .from("productos")
+    .select("id_producto, nombre, descripcion, imagen")
+    .eq("id_marca", sesion.idMarca)
+    .eq("estado", "ACTIVO");
+
+  const ids = (productos ?? []).map((p) => p.id_producto as string);
+
+  const [costos, { data: fichas }, { data: rechazadas }, { data: liquidaciones }] = await Promise.all([
+    costosVigentes(supabase, sesion.idMarca),
+    ids.length
+      ? supabase
+          .from("ficha_producto")
+          .select("id_producto, kcal_100g, proteinas, carbohidratos, grasas, porcion, ingredientes")
+          .in("id_producto", ids)
+      : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+    supabase
+      .from("solicitudes_marca")
+      .select("id_solicitud")
+      .eq("id_marca", sesion.idMarca)
+      .eq("estado", "RECHAZADA"),
+    supabase
+      .from("liquidaciones")
+      .select("fecha_hasta, estado")
+      .eq("id_marca", sesion.idMarca)
+      .eq("estado", "PAGADA")
+      .order("fecha_hasta", { ascending: false })
+      .limit(1),
+  ]);
+
+  // Una ficha existe pero vacía cuenta como que falta: la fila se crea sola al
+  // tocar cualquier otro campo del producto, así que su sola presencia no dice
+  // nada.
+  const conFicha = new Set(
+    (fichas ?? [])
+      .filter((f) =>
+        [f.kcal_100g, f.proteinas, f.carbohidratos, f.grasas, f.porcion, f.ingredientes].some(
+          (v) => v !== null && v !== undefined && v !== ""
+        )
+      )
+      .map((f) => f.id_producto as string)
+  );
+
+  // El stock vive por variante: un producto con tres sabores son tres
+  // renglones que hay que sumar antes de decir que está agotado.
+  const { data: variantes } = ids.length
+    ? await supabase.from("variantes_producto").select("id_variante, id_producto").in("id_producto", ids)
+    : { data: [] };
+  const productoDeVariante = new Map(
+    (variantes ?? []).map((v) => [v.id_variante as string, v.id_producto as string])
+  );
+  const idsVariante = [...productoDeVariante.keys()];
+  const { data: stock } = idsVariante.length
+    ? await supabase.from("stock").select("id_variante, cantidad").in("id_variante", idsVariante)
+    : { data: [] };
+  const stockPorProducto = new Map<string, number>();
+  for (const s of stock ?? []) {
+    const idP = productoDeVariante.get(s.id_variante as string);
+    if (idP) stockPorProducto.set(idP, (stockPorProducto.get(idP) ?? 0) + ((s.cantidad as number) ?? 0));
+  }
+
+  const lista = productos ?? [];
+  const total = lista.length;
+  const sinCosto = lista.filter((p) => !costos.get(p.id_producto as string)).length;
+  const sinFoto = lista.filter((p) => !p.imagen).length;
+  const sinDescripcion = lista.filter((p) => !((p.descripcion as string | null) ?? "").trim()).length;
+  const sinFicha = lista.filter((p) => !conFicha.has(p.id_producto as string)).length;
+  const incompletos = lista.filter(
+    (p) =>
+      !p.imagen ||
+      !((p.descripcion as string | null) ?? "").trim() ||
+      !conFicha.has(p.id_producto as string)
+  ).length;
+  const agotados = lista.filter((p) => (stockPorProducto.get(p.id_producto as string) ?? 0) === 0).length;
+  const noAprobadas = (rechazadas ?? []).length;
+
+  const tareas: Tarea[] = [];
+  if (sinCosto > 0) {
+    tareas.push({
+      id: "costos",
+      grupo: "FRENA",
+      cuantas: sinCosto,
+      titulo: sinCosto === 1 ? "Un producto sin tu costo informado" : "Productos sin tu costo informado",
+      porque:
+        "Sin el costo no podemos calcular tu liquidación: quedan afuera del próximo pago.",
+      accion: "Cargar costos",
+      href: "/portal/productos",
+    });
+  }
+  if (noAprobadas > 0) {
+    tareas.push({
+      id: "rechazadas",
+      grupo: "FRENA",
+      cuantas: noAprobadas,
+      titulo: noAprobadas === 1 ? "Una solicitud que no se aprobó" : "Solicitudes que no se aprobaron",
+      porque: "Tienen el motivo escrito. Corregilas y volvé a mandarlas sin cargar todo de nuevo.",
+      accion: "Ver el motivo",
+      href: "/portal/cambios",
+    });
+  }
+  if (incompletos > 0) {
+    const falta = [
+      sinFoto > 0 ? `${sinFoto} sin foto` : null,
+      sinDescripcion > 0 ? `${sinDescripcion} sin descripción` : null,
+      sinFicha > 0 ? `${sinFicha} sin información nutricional` : null,
+    ].filter(Boolean);
+    tareas.push({
+      id: "fichas",
+      grupo: "VENDER",
+      cuantas: incompletos,
+      titulo: "Fichas incompletas",
+      porque: `${falta.join(", ")}. Se venden igual, pero sin foto ni descripción se muestran últimos en el tótem y no aparecen en el Asesor.`,
+      accion: "Completarlas",
+      href: "/portal/cambios",
+    });
+  }
+  if (agotados > 0) {
+    tareas.push({
+      id: "agotados",
+      grupo: "VENDER",
+      cuantas: agotados,
+      titulo: agotados === 1 ? "Un producto agotado en góndola" : "Productos agotados en góndola",
+      porque: "Se vendieron todos. Cada día sin stock es una venta que no pasa.",
+      accion: "Proponer un envío",
+      href: "/portal/productos",
+    });
+  }
+
+  const alDia: string[] = [];
+  if (total > 0 && sinCosto === 0) alDia.push("Todos tus productos tienen el costo cargado");
+  if (total > 0 && incompletos === 0) alDia.push("Todas tus fichas están completas");
+  if (total > 0 && agotados === 0) alDia.push("No tenés ningún producto agotado");
+  if (noAprobadas === 0) alDia.push("No tenés solicitudes rechazadas por corregir");
+  const ultima = (liquidaciones ?? [])[0];
+  if (ultima) alDia.push(`Última liquidación cobrada: ${(ultima.fecha_hasta as string) ?? ""}`);
+
+  // Los cuatro pasos salen de datos reales, no de un "ya lo viste" guardado en
+  // algún lado: lo que importa no es que hayan mirado la pantalla, es que el
+  // producto esté cargado.
+  const pasos: PrimerPaso[] = [
+    {
+      id: "costo",
+      texto: "Cargá el costo de tus productos",
+      hecho: total > 0 && sinCosto === 0,
+      href: "/portal/productos",
+    },
+    {
+      id: "foto",
+      texto: "Subí una foto a cada producto",
+      hecho: total > 0 && sinFoto === 0,
+      href: "/portal/cambios",
+    },
+    {
+      id: "descripcion",
+      texto: "Escribí la descripción de cada producto",
+      hecho: total > 0 && sinDescripcion === 0,
+      href: "/portal/cambios",
+    },
+    {
+      id: "ficha",
+      texto: "Completá la información nutricional",
+      hecho: total > 0 && sinFicha === 0,
+      href: "/portal/cambios",
+    },
+  ];
+
+  return {
+    tareas,
+    alDia,
+    pasos,
+    pasosHechos: pasos.filter((p) => p.hecho).length,
+    pendientes: tareas.length,
+  };
+}
