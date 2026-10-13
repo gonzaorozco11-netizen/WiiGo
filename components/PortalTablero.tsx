@@ -1118,8 +1118,11 @@ export default function PortalTablero({
         </section>
       )}
 
-      {/* ===== UPSELL ===== */}
-      {!puedeVerMas && (
+      {/* ===== UPSELL =====
+          Uno por escalón, no solo para Bronce. Antes la marca Metal no veía
+          nada: la que estaba a un paso de Gold era justo la única que no se
+          enteraba de qué se perdía. */}
+      {!puedeVerMas ? (
         <section className="upsell">
           <h2>Con el plan Metal ves más</h2>
           <p>
@@ -1133,7 +1136,21 @@ export default function PortalTablero({
             <span>Objetivo del mes</span>
           </div>
         </section>
-      )}
+      ) : !gold ? (
+        <section className="upsell">
+          <h2>Con el plan Gold ves más</h2>
+          <p>
+            Cómo venís contra el resto de las marcas, en qué horas y en qué sucursal se vende lo tuyo, y a cuánto
+            vas a cerrar el mes al ritmo de hoy.
+          </p>
+          <div className="items">
+            <span>Cómo rendís frente al resto</span>
+            <span>Cuándo se vende lo tuyo</span>
+            <span>Por sucursal</span>
+            <span>Proyección del mes</span>
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }
