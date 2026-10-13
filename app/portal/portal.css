@@ -1293,3 +1293,84 @@
   .portal-local { margin-left: 0; padding-left: 0; border-left: 0; display: flex; margin-top: 2px; }
   .portal-local .dir { display: none; }
 }
+/* El desglose del reparto, en el alta. Mismos colores y mismo orden que el de
+   Mis productos: es la misma cuenta y tiene que leerse igual. */
+.cam-reparto-tabla { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.cam-reparto-tabla th {
+  font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--texto-3); background: var(--superficie-2); padding: 7px 14px;
+  border-top: 1px solid var(--borde); border-bottom: 1px solid var(--borde); text-align: right;
+}
+.cam-reparto-tabla th:first-child { text-align: left; }
+.cam-reparto-tabla td {
+  padding: 5px 14px; border-bottom: 1px solid #f4f5f0; text-align: right;
+  font-family: var(--f-mono); font-variant-numeric: tabular-nums; color: var(--texto-2);
+}
+.cam-reparto-tabla td:first-child { text-align: left; font-family: var(--f-texto); }
+.cam-reparto-tabla tr.queda { background: var(--verde-tenue); font-weight: 700; }
+.cam-reparto-tabla tr.queda td { border-bottom: 0; color: #2f5c3a; }
+.cam-reparto-tabla .k { display: inline-flex; align-items: center; gap: 8px; }
+.cam-reparto-tabla .llave { width: 9px; height: 9px; border-radius: 2px; display: inline-block; flex: none; }
+
+/* Hasta tres fotos. La primera es la que se ve en la gondola y en el totem;
+   las otras dos aparecen en la ficha del Asesor cuando el cliente la abre. */
+.cam-fotos { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 7px; }
+.cam-foto {
+  position: relative; width: 84px; height: 84px; border-radius: 11px; overflow: hidden;
+  border: 1px solid var(--borde); background: var(--superficie-2);
+}
+.cam-foto img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cam-foto .quitar-foto {
+  position: absolute; top: 3px; right: 3px; width: 20px; height: 20px; border-radius: 50%;
+  border: 0; background: rgba(42,47,38,.72); color: #fff; font-size: 13px; line-height: 1;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.cam-foto .quitar-foto:hover { background: var(--rojo); }
+.cam-foto .principal {
+  position: absolute; left: 0; right: 0; bottom: 0; background: rgba(42,47,38,.72); color: #fff;
+  font-size: 8.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
+  text-align: center; padding: 3px 2px;
+}
+.cam-foto-add {
+  width: 84px; height: 84px; border-radius: 11px; border: 1.5px dashed var(--borde-fuerte);
+  background: var(--superficie-2); color: var(--texto-3); cursor: pointer; display: flex;
+  flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  font: inherit; font-size: 10.5px; text-align: center; padding: 4px;
+}
+.cam-foto-add:hover { border-color: var(--salvia); background: var(--salvia-tenue); color: var(--salvia-honda); }
+.cam-foto-add b { font-size: 18px; font-weight: 400; line-height: 1; }
+.cam-foto-add:disabled { opacity: .6; cursor: default; }
+
+/* Lo que falta, en rojo.
+   Se marca recien cuando el que carga intento avanzar, no mientras escribe:
+   un formulario en rojo desde el primer segundo es un formulario que grita
+   antes de que nadie haga nada mal. */
+.cam-form input.falta,
+.cam-form textarea.falta,
+.cam-form select.falta {
+  border-color: var(--rojo); background: var(--rojo-tenue);
+}
+.cam-form input.falta:focus,
+.cam-form textarea.falta:focus { outline-color: var(--rojo); }
+.cam-falta {
+  display: block; font-size: 11.5px; color: var(--rojo); font-weight: 600; margin-top: 4px;
+}
+.cam-falta-global {
+  background: var(--rojo-tenue); border: 1px solid #edcdc7; color: #8e4038; border-radius: 11px;
+  padding: 10px 13px; font-size: 12.5px; font-weight: 600; margin-bottom: 12px;
+}
+
+/* El paso que tiene algo sin completar: el numero pasa a ser un signo. */
+.cam-paso.falta {
+  border-color: #edcdc7; background: var(--rojo-tenue); color: #8e4038;
+}
+.cam-paso.falta b { background: var(--rojo); }
+.cam-paso.falta small { color: #a8655c; }
+
+/* El contador de caracteres. Aparece recien cuando queda poco: llevarlo desde
+   el caracter uno distrae de escribir. */
+.cam-contador {
+  float: right; font-size: 10.5px; font-weight: 500; color: var(--texto-3);
+  text-transform: none; letter-spacing: 0;
+}
+.cam-contador.lleno { color: var(--rojo); font-weight: 700; }

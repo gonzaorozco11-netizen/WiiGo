@@ -740,6 +740,90 @@ function FormBaja({ p, onListo }: { p: ProductoPropio; onListo: () => void }) {
 type VarianteForm = { nombre: string; codigoBarras: string; precio: string };
 
 /**
+ * Cuánto texto entra en cada campo.
+ *
+ * No es capricho: lo que se escribe acá se muestra en el tótem y en el
+ * Asesor, que son pantallas con un ancho fijo. Una descripción de mil
+ * caracteres no se lee mejor, se desborda o se corta a la mitad de una
+ * palabra. El límite obliga a decir lo importante.
+ */
+const LARGOS = {
+  nombre: 80,
+  descripcion: 280,
+  porcion: 60,
+  origen: 60,
+  ingredientes: 400,
+  micronutrientes: 200,
+} as const;
+
+/**
+ * Un campo de texto con su contador.
+ *
+ * El contador aparece recién cuando queda poco: mostrarlo desde el carácter
+ * uno distrae de escribir, y lo que importa es avisar antes de que se pase,
+ * no llevar la cuenta todo el tiempo.
+ */
+function CampoTexto({
+  etiqueta,
+  valor,
+  onChange,
+  max,
+  filas = 3,
+  placeholder,
+  ayuda,
+  obligatorio,
+  mostrarFalta,
+}: {
+  etiqueta: string;
+  valor: string;
+  onChange: (v: string) => void;
+  max: number;
+  filas?: number;
+  placeholder?: string;
+  ayuda?: string;
+  obligatorio?: boolean;
+  mostrarFalta?: boolean;
+}) {
+  const usados = valor.length;
+  const quedan = max - usados;
+  const falta = Boolean(obligatorio && mostrarFalta && valor.trim() === "");
+
+  return (
+    <label className="cam-campo ancho">
+      <span>
+        {etiqueta}
+        {obligatorio && " *"}
+        {quedan <= max * 0.2 && (
+          <span className={`cam-contador${quedan <= 0 ? " lleno" : ""}`}>
+            {quedan >= 0 ? `quedan ${quedan}` : `${-quedan} de más`}
+          </span>
+        )}
+      </span>
+      {filas === 1 ? (
+        <input
+          className={falta ? "falta" : undefined}
+          value={valor}
+          maxLength={max}
+          placeholder={placeholder}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      ) : (
+        <textarea
+          className={falta ? "falta" : undefined}
+          rows={filas}
+          value={valor}
+          maxLength={max}
+          placeholder={placeholder}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      )}
+      {falta ? <small className="cam-falta">⚠ Esto hace falta para poder mandarlo</small> : null}
+      {ayuda && !falta && <small className="cam-ay">{ayuda}</small>}
+    </label>
+  );
+}
+
+/**
  * El alta que pide la marca, con los mismos tres pasos que el formulario de
  * WiiGo.
  *
@@ -778,9 +862,13 @@ function FormProductoNuevo({
   const [idSubcategoria, setIdSubcategoria] = useState("");
   const [subNueva, setSubNueva] = useState("");
   const [descripcion, setDescripcion] = useState("");
-  const [foto, setFoto] = useState<string | null>(null);
+  // Hasta tres. La primera es la que se ve en la góndola y en el tótem; las
+  // otras dos aparecen en la ficha del Asesor cuando el cliente la abre —
+  // sirven para la etiqueta de atrás, el producto abierto, el tamaño real.
+  const [fotos, setFotos] = useState<string[]>([]);
   const [subiendoFoto, setSubiendoFoto] = useState(false);
   const [errorFoto, setErrorFoto] = useState<string | null>(null);
+  const MAX_FOTOS = 3;
 
   // ----- paso 2 -----
   const [costo, setCosto] = useState("");
@@ -807,16 +895,48 @@ function FormProductoNuevo({
   const valido = nombre.trim() !== "" && nPrecio > 0 && nCosto > 0;
   const efectivoMalo = nEfectivo > 0 && nPrecio > 0 && nEfectivo >= nPrecio;
 
-  async function elegirFoto(archivo: File | null) {
-    if (!archivo) return;
+  // Lo que falta, por paso. Se marca en rojo recién cuando el que carga pasó
+  // de largo —no mientras escribe— y el número del paso lleva el aviso para
+  // que no haya que recorrerlos buscando qué quedó vacío.
+  const [intento, setIntento] = useState(false);
+  const faltaEnPaso = {
+    1: nombre.trim() === "",
+    2: !(nCosto > 0) || !(nPrecio > 0) || efectivoMalo,
+    3: false,
+  } as Record<number, boolean>;
+  const marcar = (n: number) => intento && faltaEnPaso[n];
+  const malo = (cond: boolean) => (intento && cond ? "falta" : undefined);
+
+  function siguiente() {
+    if (faltaEnPaso[paso]) {
+      setIntento(true);
+      return;
+    }
+    setIntento(false);
+    setPaso(paso + 1);
+  }
+
+  async function elegirFoto(archivos: FileList | null) {
+    if (!archivos || archivos.length === 0) return;
     setErrorFoto(null);
     setSubiendoFoto(true);
-    const fd = new FormData();
-    fd.set("archivo", archivo);
-    const r = await subirFotoParaAlta(fd);
+
+    // De a una y en orden, no todas juntas: así el que las elige ve cuál
+    // quedó primera, que es la que va a la góndola.
+    const nuevas: string[] = [];
+    for (const archivo of Array.from(archivos).slice(0, MAX_FOTOS - fotos.length)) {
+      const fd = new FormData();
+      fd.set("archivo", archivo);
+      const r = await subirFotoParaAlta(fd);
+      if (r.error) {
+        setErrorFoto(r.error);
+        break;
+      }
+      if (r.url) nuevas.push(r.url);
+    }
+
     setSubiendoFoto(false);
-    if (r.error) setErrorFoto(r.error);
-    else setFoto(r.url ?? null);
+    if (nuevas.length) setFotos((p) => [...p, ...nuevas].slice(0, MAX_FOTOS));
   }
 
   /** El precio de contado se define contra el de lista: si el de lista
@@ -857,18 +977,35 @@ function FormProductoNuevo({
         ].map((p) => (
           <button
             key={p.n}
-            className={`cam-paso${p.n < paso ? " hecho" : ""}`}
+            className={`cam-paso${p.n < paso ? " hecho" : ""}${marcar(p.n) ? " falta" : ""}`}
             aria-current={p.n === paso}
             onClick={() => setPaso(p.n)}
           >
-            <b>{p.n}</b>
+            <b>{marcar(p.n) ? "!" : p.n}</b>
             <span>
               {p.t}
-              <small>{p.d}</small>
+              <small>{marcar(p.n) ? "Falta completar algo" : p.d}</small>
             </span>
           </button>
         ))}
       </div>
+
+      {/* Qué falta y dónde, en vez de un botón apagado sin explicación. Se
+          muestra al intentar avanzar, y siempre en el último paso: ahí el
+          botón de mandar está a la vista y no se puede tocar. */}
+      {(intento || paso === 3) && !valido && (
+        <p className="cam-falta-global">
+          ⚠ Falta completar{" "}
+          {[
+            nombre.trim() === "" && "el nombre (paso 1)",
+            !(nCosto > 0) && "tu costo (paso 2)",
+            !(nPrecio > 0) && "el precio de góndola (paso 2)",
+          ]
+            .filter(Boolean)
+            .join(", ")}
+          .
+        </p>
+      )}
 
       <Envio
         texto="Mandar el producto"
@@ -894,7 +1031,8 @@ function FormProductoNuevo({
                     precio: v.precio ? Number(v.precio) : null,
                   }))
               : [],
-            imagen: foto,
+            imagen: fotos[0] ?? null,
+            fotosExtra: fotos.slice(1),
             ficha: {
               kcal_100g: num("kcal_100g"),
               proteinas: num("proteinas"),
@@ -921,15 +1059,16 @@ function FormProductoNuevo({
         {/* ===================== 1 ===================== */}
         {paso === 1 && (
           <>
-            <label className="cam-campo ancho">
-              <span>Nombre *</span>
-              <input
-                value={nombre}
-                onChange={(e) => setNombre(e.target.value)}
-                placeholder="Como va a figurar en la góndola y en el tótem"
-                autoFocus
-              />
-            </label>
+            <CampoTexto
+              etiqueta="Nombre"
+              obligatorio
+              mostrarFalta={intento}
+              valor={nombre}
+              onChange={setNombre}
+              max={LARGOS.nombre}
+              filas={1}
+              placeholder="Como va a figurar en la góndola y en el tótem"
+            />
             <div className="cam-campos">
               <label className="cam-campo">
                 <span>Nombre en inglés</span>
@@ -965,44 +1104,57 @@ function FormProductoNuevo({
               </label>
             </div>
 
-            <label className="cam-campo ancho">
-              <span>Descripción</span>
-              <textarea
-                rows={3}
-                value={descripcion}
-                onChange={(e) => setDescripcion(e.target.value)}
-                placeholder="Qué es, para qué sirve, sabor, tamaño…"
-              />
-            </label>
+            <CampoTexto
+              etiqueta="Descripción"
+              valor={descripcion}
+              onChange={setDescripcion}
+              max={LARGOS.descripcion}
+              placeholder="Qué es, para qué sirve, sabor, tamaño…"
+              ayuda="Se lee en el tótem: dos o tres renglones se leen, diez no."
+            />
 
             <div className="cam-campo ancho">
-              <span>Foto del producto</span>
-              {foto ? (
-                <div className="cam-foto-ok">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={foto} alt="" />
-                  <div>
-                    <b>Foto lista</b>
-                    <button type="button" className="cam-mas" onClick={() => setFoto(null)}>
-                      Cambiarla
+              <span>Fotos del producto (hasta {MAX_FOTOS})</span>
+              <div className="cam-fotos">
+                {fotos.map((url, i) => (
+                  <div className="cam-foto" key={url}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={url} alt="" />
+                    <button
+                      type="button"
+                      className="quitar-foto"
+                      onClick={() => setFotos((p) => p.filter((_, j) => j !== i))}
+                      aria-label="Quitar esta foto"
+                    >
+                      ×
                     </button>
+                    {i === 0 && <span className="principal">Góndola</span>}
                   </div>
-                </div>
-              ) : (
-                <>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    disabled={subiendoFoto}
-                    onChange={(e) => elegirFoto(e.target.files?.[0] ?? null)}
-                  />
-                  <small className="cam-ay">
-                    {subiendoFoto
-                      ? "Subiendo…"
-                      : "Cuadrada, mínimo 800×800, fondo blanco o neutro. Sin foto sale con un cuadro gris."}
-                  </small>
-                </>
-              )}
+                ))}
+
+                {fotos.length < MAX_FOTOS && (
+                  <label className="cam-foto-add">
+                    <b>+</b>
+                    {subiendoFoto ? "Subiendo…" : fotos.length === 0 ? "Subir foto" : "Otra"}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      hidden
+                      disabled={subiendoFoto}
+                      onChange={(e) => {
+                        elegirFoto(e.target.files);
+                        e.target.value = "";
+                      }}
+                    />
+                  </label>
+                )}
+              </div>
+              <small className="cam-ay">
+                {fotos.length === 0
+                  ? "Cuadradas, mínimo 800×800, fondo blanco o neutro. Sin foto el producto sale con un cuadro gris."
+                  : "La primera es la que se ve en la góndola y en el tótem. Las otras aparecen en la ficha cuando el cliente la abre: la etiqueta de atrás, el producto abierto."}
+              </small>
               {errorFoto && <p className="cam-var fuerte">{errorFoto}</p>}
             </div>
           </>
@@ -1016,6 +1168,7 @@ function FormProductoNuevo({
             <label className="cam-campo ancho">
               <span>Tu costo *</span>
               <input
+                className={malo(!(nCosto > 0))}
                 type="number"
                 step="0.01"
                 value={costo}
@@ -1023,22 +1176,31 @@ function FormProductoNuevo({
                 placeholder="0,00"
                 autoFocus
               />
-              <small className="cam-ay">
-                Lo que te sale a vos una unidad, sin IVA. Solo lo vemos WiiGo y vos.
-              </small>
+              {malo(!(nCosto > 0)) ? (
+                <small className="cam-falta">⚠ Sin tu costo no podemos mostrarte cuánto ganás</small>
+              ) : (
+                <small className="cam-ay">
+                  Lo que te sale a vos una unidad, sin IVA. Solo lo vemos WiiGo y vos.
+                </small>
+              )}
             </label>
 
             <div className="cam-campos">
               <label className="cam-campo">
                 <span>Precio de góndola *</span>
                 <input
+                  className={malo(!(nPrecio > 0))}
                   type="number"
                   step="0.01"
                   value={precio}
                   onChange={(e) => cambiarPrecio(e.target.value)}
                   placeholder="0,00"
                 />
-                <small className="cam-ay">Lo que paga el cliente con tarjeta o QR</small>
+                {malo(!(nPrecio > 0)) ? (
+                  <small className="cam-falta">⚠ Esto hace falta</small>
+                ) : (
+                  <small className="cam-ay">Lo que paga el cliente con tarjeta o QR</small>
+                )}
               </label>
               <label className="cam-campo">
                 <span>Precio en efectivo</span>
@@ -1213,6 +1375,7 @@ function FormProductoNuevo({
                 <span>Porción</span>
                 <input
                   value={campoFicha("porcion")}
+                  maxLength={LARGOS.porcion}
                   onChange={(e) => ponerFicha("porcion", e.target.value)}
                   placeholder="1 scoop (5 g)"
                 />
@@ -1221,6 +1384,7 @@ function FormProductoNuevo({
                 <span>Origen</span>
                 <input
                   value={campoFicha("origen")}
+                  maxLength={LARGOS.origen}
                   onChange={(e) => ponerFicha("origen", e.target.value)}
                   placeholder="Industria argentina"
                 />
@@ -1255,22 +1419,21 @@ function FormProductoNuevo({
               <small className="cam-ay">Por cada 100 g, como figura en el envase.</small>
             </div>
 
-            <label className="cam-campo ancho">
-              <span>Ingredientes</span>
-              <textarea
-                rows={2}
-                value={campoFicha("ingredientes")}
-                onChange={(e) => ponerFicha("ingredientes", e.target.value)}
-              />
-            </label>
-            <label className="cam-campo ancho">
-              <span>Vitaminas y minerales</span>
-              <textarea
-                rows={2}
-                value={campoFicha("micronutrientes")}
-                onChange={(e) => ponerFicha("micronutrientes", e.target.value)}
-              />
-            </label>
+            <CampoTexto
+              etiqueta="Ingredientes"
+              valor={campoFicha("ingredientes")}
+              onChange={(v) => ponerFicha("ingredientes", v)}
+              max={LARGOS.ingredientes}
+              filas={2}
+              ayuda="Como figuran en el envase."
+            />
+            <CampoTexto
+              etiqueta="Vitaminas y minerales"
+              valor={campoFicha("micronutrientes")}
+              onChange={(v) => ponerFicha("micronutrientes", v)}
+              max={LARGOS.micronutrientes}
+              filas={2}
+            />
           </>
         )}
 
@@ -1282,7 +1445,7 @@ function FormProductoNuevo({
           )}
           <span className="hueco" />
           {paso < 3 && (
-            <button type="button" className="cam-siguiente" onClick={() => setPaso(paso + 1)}>
+            <button type="button" className="cam-siguiente" onClick={siguiente}>
               Siguiente →
             </button>
           )}
@@ -1337,6 +1500,38 @@ function RepartoAlta({
         <ColumnaAlta m={conCredito} costo={costo} corto="Crédito" gana={qC >= qE} />
         <ColumnaAlta m={conEfectivo} costo={costo} corto="Efectivo" gana={qE > qC} />
       </div>
+
+      {/* El desglose, igual que en Mis productos. Sin esto, la dona dice
+          cuánto le queda pero no por qué: de los $6.000 que paga el cliente,
+          dónde se fueron los otros $3.019. */}
+      <table className="cam-reparto-tabla">
+        <thead>
+          <tr>
+            <th>Cada peso va a</th>
+            <th>Crédito</th>
+            <th>Efectivo</th>
+          </tr>
+        </thead>
+        <tbody>
+          {partesDe(conCredito, costo).map((x, i) => {
+            const y = partesDe(conEfectivo, costo)[i];
+            const esQueda = i === 4;
+            return (
+              <tr key={x.k} className={esQueda ? "queda" : ""}>
+                <td>
+                  <span className="k">
+                    <i className="llave" style={{ background: x.c }} />
+                    {x.k}
+                  </span>
+                </td>
+                <td>{pesos(x.v)}</td>
+                <td>{pesos(y.v)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+
       <p className="cam-reparto-pie">
         {/* `pesos()` ya trae el signo: ponerle otro daba "$$3.137,00". */}
         Por cada unidad te quedan <b>{pesos(qE)}</b> en efectivo y <b>{pesos(qC)}</b> con crédito. De ahí
@@ -1344,6 +1539,24 @@ function RepartoAlta({
       </p>
     </div>
   );
+}
+
+/**
+ * Los cinco pedazos del precio, y suman el precio exacto.
+ *
+ * Una sola función para la dona y para la tabla: si cada una armara su lista,
+ * el día que cambie un concepto el dibujo y el detalle dirían cosas distintas.
+ * Sin pedazo de IVA, igual que en Mis productos: WiiGo le factura a ELLA la
+ * comisión y cuánto IVA le toca depende de cómo facture.
+ */
+function partesDe(m: MargenSimulado, costo: number) {
+  return [
+    { k: "Costo mercadería", c: "#8a9a78", v: costo },
+    { k: "Comisión WiiGo + IVA", c: "#536243", v: m.comisionWiigo + m.ivaComision },
+    { k: "Otros costos", c: "#bd8f3e", v: m.comisionMp + m.impCreditos + m.impDebitos },
+    { k: "SIRCREB", c: "#b4bcc6", v: m.sircreb },
+    { k: "Te queda a vos", c: "#4c8459", v: m.leQueda ?? 0 },
+  ];
 }
 
 function ColumnaAlta({
@@ -1358,13 +1571,7 @@ function ColumnaAlta({
   gana: boolean;
 }) {
   const queda = m.leQueda ?? 0;
-  const partes = [
-    { c: "#8a9a78", v: costo },
-    { c: "#536243", v: m.comisionWiigo + m.ivaComision },
-    { c: "#bd8f3e", v: m.comisionMp + m.impCreditos + m.impDebitos },
-    { c: "#b4bcc6", v: m.sircreb },
-    { c: "#4c8459", v: queda },
-  ];
+  const partes = partesDe(m, costo);
 
   const R = 38;
   const C = 2 * Math.PI * R;

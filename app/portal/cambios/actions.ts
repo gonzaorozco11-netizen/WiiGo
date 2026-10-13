@@ -660,8 +660,10 @@ export async function pedirProductoNuevo(datos: {
   /** El que viene impreso en el envase. Vacío = WiiGo le genera uno. */
   codigoBarras?: string;
   variantes?: VariantePedida[];
-  /** La URL que devolvió subirFotoParaAlta. */
+  /** La URL que devolvió subirFotoParaAlta. Es la de la góndola y el tótem. */
   imagen?: string | null;
+  /** Hasta dos más, que se ven en la ficha del Asesor. */
+  fotosExtra?: string[];
   /** Lo que el Asesor le muestra al cliente. Todo opcional. */
   ficha?: FichaDeMarca | null;
 }): Promise<Resultado> {
@@ -740,6 +742,9 @@ export async function pedirProductoNuevo(datos: {
       codigoBarras: (datos.codigoBarras ?? "").trim() || null,
       variantes,
       imagen: (datos.imagen ?? "").trim() || null,
+      // Dos como mucho: las que entran en foto_extra_1 y foto_extra_2 de la
+      // ficha. La tercera ranura queda para cuando WiiGo quiera sumar una.
+      fotosExtra: (datos.fotosExtra ?? []).map((u) => u.trim()).filter(Boolean).slice(0, 2),
       ficha: fichaLimpia(datos.ficha),
     },
     datosAnteriores: {},

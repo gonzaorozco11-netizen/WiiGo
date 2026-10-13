@@ -539,11 +539,20 @@ export async function aplicarCambiosProgramados(): Promise<{ aplicadas: number; 
         // La ficha del asesor, si la mandó. Es lo que el cliente lee en el
         // tótem: un producto con ficha se vende más que uno sin ficha, y el
         // dato está impreso en el envase de la marca — es suyo, no de WiiGo.
+        //
+        // Las fotos de más también viven en la ficha, así que si la marca
+        // mandó fotos pero no cargó ningún dato nutricional, la fila se crea
+        // igual: es el único lugar donde pueden colgarse.
         const ficha = datos.ficha as Record<string, unknown> | null;
-        if (ficha && Object.values(ficha).some((v) => v !== null)) {
+        const extra = Array.isArray(datos.fotosExtra) ? (datos.fotosExtra as string[]) : [];
+        const hayFicha = ficha && Object.values(ficha).some((v) => v !== null);
+
+        if (hayFicha || extra.length > 0) {
           await supabase.from("ficha_producto").insert({
             id_producto: creado.id_producto,
-            ...ficha,
+            ...(ficha ?? {}),
+            foto_extra_1: extra[0] ?? null,
+            foto_extra_2: extra[1] ?? null,
             estado: "ACTIVA",
           });
         }
