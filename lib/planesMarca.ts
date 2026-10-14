@@ -71,7 +71,7 @@ export const SUMA_EL_PLAN: Record<PlanMarca, string[]> = {
     "Tus ventas y lo que te queda cada mes",
     "Tus productos, su stock y tu margen",
     "Mis tareas: todo lo que depende de vos, en un lugar",
-    "Pedir cambios y proponer envíos",
+    "Cambiar precios y fotos, cargar productos nuevos y proponer envíos",
     "El calendario del local, y anotarte en los eventos",
     "Tus pagos y liquidaciones",
   ],

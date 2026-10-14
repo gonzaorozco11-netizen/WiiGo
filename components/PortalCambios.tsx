@@ -106,9 +106,10 @@ export default function PortalCambios({
     <main className="portal-lienzo">
       <div className="cam-cab">
         <div>
-          <h1 className="cam-titulo">Pedir un cambio</h1>
+          <h1 className="cam-titulo">Cambios y altas</h1>
           <p className="cam-sub">
-            Lo que mandes lo revisa administración de WiiGo. Nada cambia en la góndola hasta que esté aprobado.
+            Cambiá precios, fotos y fichas, y cargá productos nuevos. Lo que mandes lo revisa administración
+            de WiiGo: nada cambia en la góndola hasta que esté aprobado.
           </p>
         </div>
         <button className="cam-btn primario" onClick={() => setNuevoAbierto(true)}>

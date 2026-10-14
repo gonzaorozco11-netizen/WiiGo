@@ -153,10 +153,10 @@ export default function PortalMisProductos({ datos }: { datos: MisCostosPortal }
               </div>
             )}
             {/* El alta la hace WiiGo: la marca pide y nosotros aprobamos. El
-                formulario ya vive en "Pedir un cambio" — acá va el atajo,
+                formulario ya vive en "Cambios y altas" — acá va el atajo,
                 porque es donde se le ocurre buscarlo. */}
             <Link className="boton-portal sec" href="/portal/cambios?nuevo=1">
-              + Pedir un producto nuevo
+              + Cargar un producto nuevo
             </Link>
             {/* La válvula del circuito: sin esto, un lanzamiento se arregla
                 por WhatsApp y la mercadería llega sin papel. */}

@@ -22,7 +22,12 @@ const ITEMS = [
   { href: "/portal/tareas", texto: "Mis tareas" },
   { href: "/portal/calendario", texto: "Calendario" },
   { href: "/portal/productos", texto: "Mis productos" },
-  { href: "/portal/cambios", texto: "Pedir un cambio" },
+  // "Cambios y altas" y no "Pedir un cambio": acá adentro también se da de
+  // alta un producto nuevo, se sube una lista de precios entera y se pide
+  // cambio de plan. Una marca que va a lanzar algo nuevo no piensa "voy a
+  // pedir un cambio", y terminaba escribiendo por WhatsApp. Además era el
+  // único ítem del menú que era un verbo entre cinco sustantivos.
+  { href: "/portal/cambios", texto: "Cambios y altas" },
   { href: "/portal/avisos", texto: "Avisos" },
 ];
 
