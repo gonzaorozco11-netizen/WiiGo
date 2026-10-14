@@ -22,6 +22,11 @@ const ITEMS = [
   { href: "/portal/tareas", texto: "Mis tareas" },
   { href: "/portal/calendario", texto: "Calendario" },
   { href: "/portal/productos", texto: "Mis productos" },
+  // Módulo propio y no un botón adentro de Mis productos: un botón hay que
+  // acordarse de apretarlo, y nadie se acuerda de reponer. Una pantalla con
+  // contador en el menú reclama sola — el número rojo se ve desde cualquier
+  // pantalla y es lo que hace que la góndola no quede vacía.
+  { href: "/portal/reponer", texto: "Reponer" },
   // "Cambios y altas" y no "Pedir un cambio": acá adentro también se da de
   // alta un producto nuevo, se sube una lista de precios entera y se pide
   // cambio de plan. Una marca que va a lanzar algo nuevo no piensa "voy a
@@ -31,7 +36,14 @@ const ITEMS = [
   { href: "/portal/avisos", texto: "Avisos" },
 ];
 
-export default function PortalNav({ pendientes = 0 }: { pendientes?: number }) {
+export default function PortalNav({
+  pendientes = 0,
+  reponer = 0,
+}: {
+  pendientes?: number;
+  /** Productos agotados o por debajo del mínimo. */
+  reponer?: number;
+}) {
   const ruta = usePathname();
   const [abierto, setAbierto] = useState(false);
 
@@ -65,7 +77,7 @@ export default function PortalNav({ pendientes = 0 }: { pendientes?: number }) {
           strokeWidth="2" strokeLinecap="round" aria-hidden="true">
           <path d="M4 7h16M4 12h16M4 17h16" />
         </svg>
-        {pendientes > 0 && <span className="punto-pendiente" />}
+        {(pendientes > 0 || reponer > 0) && <span className="punto-pendiente" />}
       </button>
 
       {abierto && <div className="nav-fondo" onClick={() => setAbierto(false)} />}
@@ -83,6 +95,11 @@ export default function PortalNav({ pendientes = 0 }: { pendientes?: number }) {
             {i.texto}
             {i.href === "/portal/tareas" && pendientes > 0 && (
               <span className="nav-pendientes">{pendientes}</span>
+            )}
+            {/* En rojo y no naranja: una tarea pendiente se puede hacer
+                mañana, una góndola vacía está perdiendo ventas ahora. */}
+            {i.href === "/portal/reponer" && reponer > 0 && (
+              <span className="nav-pendientes urgente">{reponer}</span>
             )}
           </Link>
         ))}

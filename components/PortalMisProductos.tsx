@@ -161,10 +161,13 @@ export default function PortalMisProductos({ datos }: { datos: MisCostosPortal }
             <Link className="boton-portal" href="/portal/cambios?nuevo=1">
               + Añadir nuevo producto
             </Link>
-            {/* La válvula del circuito: sin esto, un lanzamiento se arregla
-                por WhatsApp y la mercadería llega sin papel. */}
+            {/* Sigue acá, pero como atajo: lo normal es que el envío salga de
+                Reponer, donde la orden ya viene armada con lo que se vendió.
+                Esta puerta queda para mandar algo que la sugerencia no pide
+                —un lanzamiento, una promo— que si no se arregla por WhatsApp
+                y la mercadería llega sin papel. */}
             <button className="boton-portal sec" onClick={() => setProponiendo(true)}>
-              ↑ Proponer un envío
+              ↑ Mandar algo que no está en Reponer
             </button>
           </div>
         </div>
