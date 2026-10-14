@@ -221,23 +221,38 @@ async function avisarQueVendio(
   // una venta suelta es un dato, "van siete hoy" es que la marca se mueve.
   const dia = await loDeHoy(supabase, marca.idMarca, idLocal, hoy);
 
-  const detalle = suyos
-    .map((r) => {
-      const n = nombres.get(r.id_variante as string) ?? "Producto";
-      return `<tr><td style="padding:7px 0;border-top:1px solid #eef1e9">${n}</td><td style="padding:7px 0;border-top:1px solid #eef1e9;text-align:right;white-space:nowrap">${r.cantidad} × ${pesos((r.precio_unitario as number) ?? 0)}</td></tr>`;
-    })
-    .join("");
+  const hora = fechaHoraArgentina().hora;
+
+  // La lista solo cuando hay más de un renglón. Con uno solo repite lo que ya
+  // dice el bloque de arriba, y un mail que se repite se lee como relleno.
+  const lista =
+    suyos.length > 1
+      ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px">${suyos
+          .map((r) => {
+            const n = nombres.get(r.id_variante as string) ?? "Producto";
+            return `<tr><td style="padding:7px 0;border-top:1px solid #eef1e9">${n}</td><td style="padding:7px 0;border-top:1px solid #eef1e9;text-align:right;white-space:nowrap">${r.cantidad} × ${pesos((r.precio_unitario as number) ?? 0)}</td></tr>`;
+          })
+          .join("")}</table>`
+      : "";
 
   const asunto =
     unidades === 1
-      ? `¡Vendiste! ${principal} — ${pesos(montoVenta)}`
-      : `¡Vendiste ${unidades} unidades! — ${pesos(montoVenta)}`;
+      ? `🎉 ¡Vendiste! ${principal} — ${pesos(montoVenta)}`
+      : `🎉 ¡Vendiste ${unidades} unidades! — ${pesos(montoVenta)}`;
 
-  const cuerpo = `
-    <p style="margin:0 0 14px">¡Felicitaciones, ${marca.nombre}! Se acaban de llevar esto de tu góndola:</p>
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;margin-bottom:16px">${detalle}</table>
-    <p style="margin:0 0 6px"><strong>Hoy van ${dia.ventas} ${dia.ventas === 1 ? "venta tuya" : "ventas tuyas"}, ${pesos(dia.monto)}.</strong></p>
-    <p style="margin:0;color:#5e6659;font-size:14px">Lo que te queda de cada una sale en tu próxima liquidación.</p>`;
+  // La racha es lo que convierte una venta suelta en un día que se mueve. Con
+  // una sola venta todavía no hay racha que contar, así que se dice otra cosa
+  // en vez de inventar un número.
+  const franja =
+    dia.ventas > 1
+      ? {
+          titulo: `🔥 Van ${dia.ventas} ventas tuyas hoy`,
+          texto: `Sumaron <strong>${pesos(dia.monto)}</strong>.`,
+        }
+      : {
+          titulo: "Es tu primera venta de hoy",
+          texto: "A medida que sumes te vamos contando cómo viene el día.",
+        };
 
   const texto = `¡Vendiste! ${principal}. ${pesos(montoVenta)}. Hoy van ${dia.ventas} ventas tuyas, ${pesos(dia.monto)}.`;
 
@@ -248,10 +263,21 @@ async function avisarQueVendio(
     idVenta,
     asunto,
     plantilla({
-      titulo: asunto,
-      cuerpo,
-      boton: { texto: "Ver mis ventas", url: `${base}/portal` },
-      pie: `Te escribimos porque tenés prendido «Cada vez que vendés algo». <a href="${base}/portal/avisos" style="color:#8d9587">Cambiar mis avisos</a>.`,
+      base,
+      tono: "verde",
+      emoji: "🎉",
+      titulo: `¡Vendiste, ${marca.nombre}!`,
+      bajada: "Recién se lo llevaron de tu góndola.",
+      destacado: pesos(montoVenta),
+      detalle: [
+        `<strong style="color:#2a2f26">${suyos.length > 1 ? `${suyos.length} productos tuyos` : principal}</strong>`,
+        `${unidades} ${unidades === 1 ? "unidad" : "unidades"} · hoy ${hora}`,
+      ],
+      franja,
+      cuerpo: lista,
+      boton: { texto: "Ver cómo venís este mes", url: `${base}/portal` },
+      nota: "Lo que te queda de cada venta sale en tu próxima liquidación.",
+      pie: `Te escribimos porque tenés prendido «Cada vez que vendés algo». <a href="${base}/portal/avisos" style="color:#8d9587">Cambiar mis avisos</a> · WiiGo, Mendoza`,
     }),
     texto
   );
@@ -282,20 +308,28 @@ async function avisarAgotados(
   const referencia = agotados.slice().sort().join(",");
   if (!(await sePuedeMandar(supabase, marca.idMarca, "agotado", referencia))) return;
 
-  const lista = agotados
-    .map((id) => `<tr><td style="padding:7px 0;border-top:1px solid #eef1e9">${nombres.get(id) ?? "Producto"}</td></tr>`)
-    .join("");
+  const uno = agotados.length === 1;
+  const hora = fechaHoraArgentina().hora;
 
-  const asunto =
-    agotados.length === 1
-      ? `Se agotó ${nombres.get(agotados[0]) ?? "un producto tuyo"}`
-      : `Se agotaron ${agotados.length} productos tuyos`;
+  const lista = uno
+    ? ""
+    : `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px">${agotados
+        .map(
+          (id) =>
+            `<tr><td style="padding:7px 0;border-top:1px solid #eef1e9">${nombres.get(id) ?? "Producto"}</td></tr>`
+        )
+        .join("")}</table>`;
 
-  const cuerpo = `
-    <p style="margin:0 0 14px">Se terminó en la góndola. Mientras no esté, no se vende.</p>
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;margin-bottom:16px">${lista}</table>
-    <p style="margin:0;color:#5e6659;font-size:14px">En el portal te decimos cuánto conviene mandar, calculado con lo que venías vendiendo. Si mandás eso o menos, queda aprobado solo.</p>`;
+  const asunto = uno
+    ? `Se agotó ${nombres.get(agotados[0]) ?? "un producto tuyo"}`
+    : `Se agotaron ${agotados.length} productos tuyos`;
 
+  // Mismo molde que el de venta —franja con el logo, bloque grande, un botón—
+  // pero en ámbar y sin emoji de fiesta. Si este mail también festejara, "se
+  // agotó" se leería como buena noticia y nadie iría a reponer.
+  //
+  // Lo grande acá es el PRODUCTO y no la plata: el dato que mueve a mandar
+  // mercadería es cuál se cayó.
   await mandar(
     supabase,
     marca,
@@ -303,10 +337,18 @@ async function avisarAgotados(
     referencia,
     asunto,
     plantilla({
-      titulo: asunto,
-      cuerpo,
-      boton: { texto: "Armar el envío", url: `${base}/portal/productos` },
-      pie: `Te escribimos porque tenés prendido «Se agotó un producto tuyo». <a href="${base}/portal/avisos" style="color:#8d9587">Cambiar mis avisos</a>.`,
+      base,
+      tono: "ambar",
+      emoji: "📦",
+      titulo: "Te quedaste sin stock",
+      bajada: "Mientras no esté en la góndola, no se vende.",
+      destacado: uno ? (nombres.get(agotados[0]) ?? "Un producto tuyo") : `${agotados.length} productos`,
+      destacadoChico: uno,
+      detalle: [`Se agotó hoy ${hora}`],
+      cuerpo: lista,
+      boton: { texto: "Avisar que lo repongo", url: `${base}/portal/productos` },
+      nota: "En el portal te decimos cuánto conviene mandar, calculado con lo que venías vendiendo. Si mandás eso o menos, queda aprobado solo.",
+      pie: `Te escribimos porque tenés prendido «Se agotó un producto tuyo». <a href="${base}/portal/avisos" style="color:#8d9587">Cambiar mis avisos</a> · WiiGo, Mendoza`,
     }),
     `${asunto}. Entrá a ${base}/portal/productos para armar el envío.`
   );
@@ -397,10 +439,12 @@ export async function avisarSolicitudResuelta(idSolicitud: string): Promise<void
     const base = baseUrlPublica();
     const asunto = aprobada ? "Te aprobamos lo que mandaste" : "No pudimos aprobar lo que mandaste";
 
+    // El motivo del rechazo entra en el bloque de arriba, no en una franja de
+    // color: es lo único que la marca necesita leer, y leerlo acá le ahorra
+    // entrar al portal a buscarlo.
     const cuerpo = aprobada
-      ? `<p style="margin:0 0 10px">Lo que mandaste quedó aprobado y ya está activo en la góndola.</p>`
-      : `<p style="margin:0 0 10px">Esta vez no se pudo, y te contamos por qué:</p>
-         <p style="margin:0 0 10px;padding:12px 14px;background:#f9ebe8;border:1px solid #e8c4bd;border-radius:10px;color:#8e392d">${s.motivo ?? "Escribinos y lo vemos."}</p>
+      ? ""
+      : `<p style="margin:0 0 12px;padding:12px 14px;background:#f9ebe8;border:1px solid #e8c4bd;border-radius:10px;color:#8e392d">${s.motivo ?? "Escribinos y lo vemos."}</p>
          <p style="margin:0;color:#5e6659;font-size:14px">Corregí eso y volvé a mandarlo: no hace falta que cargues todo de nuevo.</p>`;
 
     await mandar(
@@ -410,10 +454,16 @@ export async function avisarSolicitudResuelta(idSolicitud: string): Promise<void
       idSolicitud,
       asunto,
       plantilla({
-        titulo: asunto,
+        base,
+        tono: aprobada ? "verde" : "ambar",
+        emoji: aprobada ? "✅" : "📝",
+        titulo: aprobada ? "¡Listo! Te lo aprobamos" : "No pudimos aprobarlo",
+        bajada: aprobada
+          ? "Lo que mandaste ya está activo en la góndola."
+          : "Esta vez no se pudo, y acá abajo está el motivo.",
         cuerpo,
         boton: { texto: "Ver mis solicitudes", url: `${base}/portal/cambios` },
-        pie: `Te escribimos porque tenés prendido «Te respondimos una solicitud». <a href="${base}/portal/avisos" style="color:#8d9587">Cambiar mis avisos</a>.`,
+        pie: `Te escribimos porque tenés prendido «Te respondimos una solicitud». <a href="${base}/portal/avisos" style="color:#8d9587">Cambiar mis avisos</a> · WiiGo, Mendoza`,
       }),
       `${asunto}. ${aprobada ? "" : s.motivo ?? ""} Entrá a ${base}/portal/cambios`
     );
