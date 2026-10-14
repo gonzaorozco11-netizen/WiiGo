@@ -23,6 +23,7 @@ const ITEMS = [
   // servidor, que es donde protege.
   { href: "/portal/canasta", texto: "Qué se lleva tu cliente" },
   { href: "/portal/cambios", texto: "Pedir un cambio" },
+  { href: "/portal/avisos", texto: "Avisos" },
 ];
 
 /**

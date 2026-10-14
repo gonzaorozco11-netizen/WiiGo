@@ -1,8 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { cookies } from "next/headers";
 import { getSupabaseServerClient } from "@/lib/supabase";
+import { avisarVenta } from "@/lib/avisosEnviar";
 import { friendlyDbError } from "@/lib/errors";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 import { turnoAbiertoDeLocal } from "@/app/(app)/turnos/actions";
@@ -513,6 +515,11 @@ export async function venderPos(
   revalidatePath("/pos");
   revalidatePath("/stock");
   revalidatePath("/ventas");
+
+    // Los avisos a las marcas salen DESPUÉS de contestarle al cajero: nadie
+    // con la tarjeta en la mano tiene que esperar a que Resend conteste. Ver
+    // lib/avisosEnviar.ts — adentro no tira nunca.
+    after(() => avisarVenta(venta.id_venta as string, idLocal));
 
     return { error: null, venta: { numero: venta.numero as number, total, vuelto, puntosGenerados } };
   } catch (err) {

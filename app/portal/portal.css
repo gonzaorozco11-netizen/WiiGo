@@ -1568,6 +1568,123 @@
 .aldia-caja span { color: var(--verde-ok); font-weight: 700; flex: none; }
 .aldia-caja p { font-size: 13.5px; color: #335c3d; line-height: 1.45; }
 
+/* ---------- Avisos ----------
+   Cada aviso dice para que le sirve a la marca, no que hace el sistema. Y lo
+   que puede molestar arranca apagado. */
+.av-cab {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 20px;
+  margin-bottom: 18px;
+}
+.av-cab h1 { font-size: 26px; font-weight: 600; margin-bottom: 2px; }
+.av-cab p { font-size: 14px; color: var(--texto-2); }
+.av-guardado {
+  font-size: 12.5px; font-weight: 600; color: var(--verde-ok); background: var(--verde-tenue);
+  border: 1px solid #c9e0cf; border-radius: 999px; padding: 5px 12px; white-space: nowrap;
+}
+.av-error { font-size: 13.5px; color: var(--rojo); font-weight: 600; margin-bottom: 14px; }
+.av-sinmail {
+  background: var(--ocre-tenue); border: 1px solid #e8d7ac; border-radius: 12px;
+  padding: 13px 16px; font-size: 13.5px; color: #6f5418; line-height: 1.5; margin-bottom: 16px;
+}
+
+.av-grid { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 20px; align-items: start; }
+@media (max-width: 1000px) { .av-grid { grid-template-columns: 1fr; } }
+.av-col { display: flex; flex-direction: column; gap: 16px; }
+
+.av-caja {
+  background: var(--superficie); border: 1px solid var(--borde); border-radius: 16px;
+  padding: 20px 24px;
+}
+.av-caja h2 { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
+.av-caja .sub { font-size: 13px; color: var(--texto-3); margin-bottom: 6px; }
+.av-caja .cab { display: flex; align-items: center; gap: 9px; }
+.av-caja.pronto-caja { background: var(--superficie-2); border-style: dashed; }
+
+.av-fila {
+  display: grid; grid-template-columns: 1fr 46px; gap: 18px; align-items: center;
+  padding: 14px 0; border-top: 1px solid #eef1e9;
+}
+.av-fila .t {
+  font-size: 14.5px; font-weight: 600; margin-bottom: 2px;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.av-fila .d { font-size: 13px; color: var(--texto-2); line-height: 1.45; }
+.pronto {
+  font-size: 9.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--texto-3); background: var(--superficie-2); border: 1px solid var(--borde);
+  border-radius: 999px; padding: 2px 8px;
+}
+
+/* El interruptor */
+.av-sw {
+  width: 42px; height: 24px; border-radius: 999px; border: 0; padding: 0; cursor: pointer;
+  background: #dfe3d8; position: relative; justify-self: end; transition: background .15s;
+}
+.av-sw b {
+  position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%;
+  background: #fff; transition: left .15s; box-shadow: 0 1px 2px rgba(42,47,38,.2);
+}
+.av-sw.on { background: var(--salvia-fuerte); }
+.av-sw.on b { left: 21px; }
+.av-sw:disabled { opacity: .6; cursor: default; }
+
+.av-mail {
+  display: flex; align-items: center; gap: 10px; border-top: 1px solid #eef1e9;
+  padding: 11px 0; font-size: 14px;
+}
+.av-mail span { flex-grow: 1; min-width: 0; overflow-wrap: anywhere; }
+.av-mail button {
+  font: inherit; font-size: 12px; color: var(--texto-3); background: none; border: 0; cursor: pointer;
+}
+.av-mail button:hover { color: var(--rojo); }
+
+.av-agregar { display: block; border-top: 1px solid #eef1e9; padding-top: 12px; }
+.av-agregar > span { display: block; font-size: 12px; font-weight: 600; color: var(--texto-2); margin-bottom: 5px; }
+.av-agregar div { display: flex; gap: 8px; }
+.av-agregar input {
+  flex-grow: 1; min-width: 0; font: inherit; font-size: 14px; color: var(--texto);
+  background: var(--superficie); border: 1px solid var(--borde-fuerte); border-radius: 10px;
+  padding: 10px 13px;
+}
+.av-agregar button {
+  font: inherit; font-size: 13.5px; font-weight: 600; color: var(--salvia-honda);
+  background: var(--superficie); border: 1px solid var(--borde-fuerte); border-radius: 10px;
+  padding: 0 14px; cursor: pointer; white-space: nowrap;
+}
+.av-agregar button:disabled { opacity: .5; cursor: default; }
+
+.av-ultimos { list-style: none; display: flex; flex-direction: column; }
+.av-ultimos li {
+  display: flex; align-items: baseline; gap: 12px; padding: 9px 0;
+  border-top: 1px solid #eef1e9; font-size: 13px;
+}
+.av-ultimos .a { flex-grow: 1; min-width: 0; color: var(--texto-2); }
+.av-ultimos .c { font-size: 11.5px; color: var(--texto-3); white-space: nowrap; }
+.av-ultimos li.falló .a { color: var(--rojo); }
+
+.av-tope {
+  margin-top: 18px; background: var(--salvia-tenue); border: 1px solid var(--borde-fuerte);
+  border-radius: 14px; padding: 16px 20px; font-size: 13.5px; color: #4f5c43; line-height: 1.5;
+}
+
+.av-bloqueado {
+  background: var(--superficie); border: 1px solid var(--borde-fuerte); border-radius: 16px;
+  padding: 26px 28px; max-width: 620px; display: flex; flex-direction: column; gap: 10px;
+  align-items: flex-start;
+}
+.av-bloqueado .medalla {
+  font-size: 10.5px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--texto-2); background: var(--salvia-tenue); border: 1px solid var(--borde-fuerte);
+  border-radius: 999px; padding: 4px 11px;
+}
+.av-bloqueado h2 { font-size: 21px; font-weight: 600; letter-spacing: -.02em; }
+.av-bloqueado p { font-size: 14.5px; color: var(--texto-2); line-height: 1.55; }
+.av-btn {
+  font-size: 14.5px; font-weight: 600; color: #fff; background: var(--salvia-honda);
+  border-radius: 11px; padding: 12px 20px; text-decoration: none; margin-top: 4px;
+}
+.av-btn:hover { background: #41503a; color: #fff; }
+
 /* ---------- Con que se vende junto lo tuyo ----------
    Los numeros solos no mueven a nadie: "41% proteina" se mira y se olvida.
    El bloque de la lectura no es decoracion, es el producto. */
