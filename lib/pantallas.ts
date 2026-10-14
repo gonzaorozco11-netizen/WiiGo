@@ -67,5 +67,11 @@ export const PANTALLAS_DISPONIBLES: PantallaDisponible[] = [
   { clave: "iva-a-pagar", label: "IVA a pagar", grupo: "Contabilidad" },
   { clave: "locales", label: "Locales", grupo: "Local" },
   { clave: "pantallas", label: "Pantallas", grupo: "Local" },
+  // Faltaba, y el agujero era silencioso: la pantalla existía y estaba en el
+  // menú, pero como no estaba acá nadie con áreas asignadas la veía nunca, y
+  // encima no se podía tildar desde Organización para arreglarlo. El Dueño no
+  // se daba cuenta porque su lista es `null` y ve todo igual — el mismo modo
+  // de falla que tuvieron las tres pantallas de Compras con sub-ruta.
+  { clave: "calendario", label: "Calendario", grupo: "Local" },
   { clave: "organizacion", label: "Organización", grupo: "Equipo" },
 ];
