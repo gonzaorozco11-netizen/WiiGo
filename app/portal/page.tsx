@@ -32,7 +32,10 @@ export default async function PortalPage() {
     gananciaRealPortal(),
     conAnalisis ? detalleMesPortal() : Promise.resolve({ porProducto: [], porVenta: [], totalLineas: 0 }),
     conAnalisis ? analisisPortal() : Promise.resolve(null),
-    conGold ? goldPortal() : Promise.resolve(null),
+    // Se calcula desde Metal: la proyección del mes es de Silver. Lo que
+    // queda adentro del mismo objeto —benchmark, por hora, por sucursal,
+    // ideas— lo tapa el componente según el plan.
+    conAnalisis ? goldPortal() : Promise.resolve(null),
   ]);
 
   if (!sesion || !resumen) {
@@ -58,6 +61,7 @@ export default async function PortalPage() {
         detalle={detalle}
         analisis={analisis}
         gold={gold}
+        conGold={conGold}
         puedeVerMas={conAnalisis}
         plan={sesion.plan}
       />

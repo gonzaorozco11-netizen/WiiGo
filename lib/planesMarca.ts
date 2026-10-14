@@ -81,17 +81,22 @@ export const SUMA_EL_PLAN: Record<PlanMarca, string[]> = {
     "Ranking de tus productos",
     "Alertas de stock",
     "Objetivo del mes",
+    "Proyección: cómo vas a cerrar el mes",
   ],
-  // Lo de Gold es escaso de verdad: el espacio del local un día entero. Por
-  // eso se puede cobrar, y por eso no se puede dar a todas.
+  // Lo de Gold es escaso de verdad: el espacio del local un día entero, y
+  // datos que salen de comparar contra las demás marcas. Por eso se puede
+  // cobrar, y por eso no se puede dar a todas.
+  //
+  // Cinco y no siete: "Por sucursal" no mostraba nada con un solo local, y
+  // "Cuándo se vende lo tuyo" era la misma idea que la canasta dicha dos
+  // veces. Una lista larga de cosas parecidas se lee como relleno y hace
+  // dudar de las que sí valen.
   GOLD: [
     "Proponer tus propios eventos en el local",
     "Entrar primero en los eventos de WiiGo",
-    "Con qué se vende junto lo tuyo, y qué día",
-    "Cómo rendís frente al resto",
-    "Cuándo se vende lo tuyo",
-    "Por sucursal",
-    "Proyección del mes",
+    "Con qué se vende junto lo tuyo, qué día y a qué hora",
+    "Cómo rendís frente al resto de las marcas",
+    "Ideas para vender más, con el dato que las respalda",
   ],
 };
 

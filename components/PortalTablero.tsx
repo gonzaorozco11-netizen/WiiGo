@@ -222,6 +222,7 @@ export default function PortalTablero({
   detalle,
   analisis,
   gold,
+  conGold,
   puedeVerMas,
   plan,
 }: {
@@ -235,8 +236,10 @@ export default function PortalTablero({
   detalle: DetalleMesPortal;
   /** Solo llega con plan Metal o superior; en Bronce viene null. */
   analisis: AnalisisPortal | null;
-  /** Solo llega con plan Gold; en los otros viene null. */
+  /** Llega desde Metal: la proyección del mes es de Silver. En Bronze, null. */
   gold: GoldPortal | null;
+  /** Lo que de verdad es de Gold: el benchmark, las horas y las ideas. */
+  conGold: boolean;
   puedeVerMas: boolean;
   /** Para el bloque "Tu plan": qué ve hoy y qué le falta. */
   plan: PlanMarca;
@@ -619,7 +622,7 @@ export default function PortalTablero({
       </section>
 
       {/* ===== BENCHMARK (Gold) ===== */}
-      {gold?.benchmark && (
+      {conGold && gold?.benchmark && (
         <section className="modulo bench">
           <div className="modulo-cab">
             <h2>Cómo rendís frente al resto</h2>
@@ -671,7 +674,7 @@ export default function PortalTablero({
       )}
 
       {/* ===== POR HORA + SUCURSALES (Gold) ===== */}
-      {gold && (gold.porHora.length > 0 || gold.porSucursal.length > 1) && (
+      {conGold && gold && (gold.porHora.length > 0 || gold.porSucursal.length > 1) && (
         <div className="fila-2">
           {gold.porHora.length > 0 && (
             <section className="modulo">
@@ -1114,7 +1117,7 @@ export default function PortalTablero({
       </section>
 
       {/* ===== CÓMO VENDER MÁS (Gold) ===== */}
-      {gold && gold.ideas.length > 0 && (
+      {conGold && gold && gold.ideas.length > 0 && (
         <section className="modulo crecer">
           <div className="modulo-cab">
             <h2>Cómo vender más</h2>
