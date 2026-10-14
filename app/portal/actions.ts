@@ -1228,6 +1228,10 @@ export type GoldPortal = {
   /** Unidades por hora del día, de las últimas 8 semanas. */
   porHora: { hora: number; unidades: number }[];
   horaPico: number | null;
+  /** Unidades por día de la semana, de las últimas 8 semanas. */
+  porDia: { dia: string; unidades: number }[];
+  /** El día que más vende. Null si todavía no vendió nada. */
+  diaPico: string | null;
   porSucursal: { local: string; monto: number; unidades: number; porcentaje: number }[];
   /**
    * Comparación contra el resto de las marcas. Siempre agregada y anónima, y
@@ -1241,6 +1245,17 @@ export type GoldPortal = {
 
 /** Mínimo de marcas en la comparación: con menos, el promedio delata al vecino. */
 const MINIMO_PARA_COMPARAR = 4;
+
+/** La semana arranca el lunes. `clave` es como la abrevia es-AR. */
+const ORDEN_DIAS = [
+  { clave: "lun", etiqueta: "Lun" },
+  { clave: "mar", etiqueta: "Mar" },
+  { clave: "mié", etiqueta: "Mié" },
+  { clave: "jue", etiqueta: "Jue" },
+  { clave: "vie", etiqueta: "Vie" },
+  { clave: "sáb", etiqueta: "Sáb" },
+  { clave: "dom", etiqueta: "Dom" },
+];
 
 export async function goldPortal(): Promise<GoldPortal | null> {
   const sesion = await obtenerSesionMarca();
@@ -1285,6 +1300,26 @@ export async function goldPortal(): Promise<GoldPortal | null> {
     .map(([hora, unidades]) => ({ hora, unidades }))
     .sort((a, b) => a.hora - b.hora);
   const horaPico = porHora.length ? porHora.reduce((a, b) => (b.unidades > a.unidades ? b : a)).hora : null;
+
+  // ===== Por día de la semana =====
+  // Al lado de las horas porque son la misma pregunta partida en dos: la hora
+  // dice a qué rato del día conviene estar, el día dice cuál. Una promo se
+  // decide con las dos juntas, no con una.
+  //
+  // La semana arranca el lunes, que es como se lee acá. Se cuenta en la misma
+  // ventana de 8 semanas que las horas.
+  const dias = new Map<number, number>();
+  for (const r of pagadasLargas) {
+    const dia = new Date(r.fecha).toLocaleDateString("es-AR", {
+      timeZone: "America/Argentina/Buenos_Aires",
+      weekday: "short",
+    });
+    const i = ORDEN_DIAS.findIndex((d) => dia.toLowerCase().startsWith(d.clave));
+    if (i < 0) continue;
+    dias.set(i, (dias.get(i) ?? 0) + r.cantidad);
+  }
+  const porDia = ORDEN_DIAS.map((d, i) => ({ dia: d.etiqueta, unidades: dias.get(i) ?? 0 }));
+  const diaPico = porDia.reduce((a, b) => (b.unidades > a.unidades ? b : a), porDia[0]);
 
   // ===== Por sucursal =====
   const locales = new Map<string, { monto: number; unidades: number }>();
@@ -1431,7 +1466,16 @@ export async function goldPortal(): Promise<GoldPortal | null> {
     }
   }
 
-  return { proyeccion, porHora, horaPico, porSucursal, benchmark, ideas };
+  return {
+    proyeccion,
+    porHora,
+    horaPico,
+    porDia,
+    diaPico: diaPico && diaPico.unidades > 0 ? diaPico.dia : null,
+    porSucursal,
+    benchmark,
+    ideas,
+  };
 }
 
 export type LiquidacionPortal = {

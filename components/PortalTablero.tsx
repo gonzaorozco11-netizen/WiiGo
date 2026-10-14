@@ -193,6 +193,80 @@ function GraficoHoras({ datos, pico }: { datos: { hora: number; unidades: number
   );
 }
 
+/** En el gráfico va abreviado por el ancho; en una frase se lee entero. */
+const DIA_ENTERO: Record<string, string> = {
+  Lun: "lunes",
+  Mar: "martes",
+  Mié: "miércoles",
+  Jue: "jueves",
+  Vie: "viernes",
+  Sáb: "sábado",
+  Dom: "domingo",
+};
+
+/**
+ * Las ventas por día de la semana.
+ *
+ * Siete barras fijas y no solo los días con ventas: un domingo en cero es un
+ * dato —el local no abre, o nadie viene— y si la barra desapareciera se leería
+ * como que la semana tiene seis días.
+ */
+function GraficoDias({ datos, pico }: { datos: { dia: string; unidades: number }[]; pico: string | null }) {
+  const ANCHO = 480;
+  const ALTO = 160;
+  const maximo = Math.max(1, ...datos.map((d) => d.unidades));
+  const paso = ANCHO / Math.max(1, datos.length);
+  const ancho = Math.min(42, paso - 12);
+
+  return (
+    <svg viewBox={`0 0 ${ANCHO} ${ALTO}`} width="100%" height={ALTO} role="img" aria-label="Ventas por día de la semana">
+      <g>
+        {datos.map((d, i) => {
+          const alto = Math.max(3, (d.unidades / maximo) * (ALTO - 56));
+          return (
+            <g key={d.dia}>
+              {d.unidades > 0 && (
+                <text
+                  x={i * paso + paso / 2}
+                  y={ALTO - 34 - alto}
+                  textAnchor="middle"
+                  fill={d.dia === pico ? "#2a2f26" : "#8d9587"}
+                  fontSize="10.5"
+                  fontWeight={d.dia === pico ? 700 : 400}
+                >
+                  {d.unidades}
+                </text>
+              )}
+              <rect
+                x={i * paso + (paso - ancho) / 2}
+                y={ALTO - 28 - alto}
+                width={ancho}
+                height={alto}
+                rx="5"
+                fill={d.dia === pico ? "#bd8f3e" : "#a8b49a"}
+              />
+            </g>
+          );
+        })}
+      </g>
+      <g fontSize="10">
+        {datos.map((d, i) => (
+          <text
+            key={d.dia}
+            x={i * paso + paso / 2}
+            y={ALTO - 10}
+            textAnchor="middle"
+            fill={d.dia === pico ? "#2a2f26" : "#8d9587"}
+            fontWeight={d.dia === pico ? 700 : 400}
+          >
+            {d.dia}
+          </text>
+        ))}
+      </g>
+    </svg>
+  );
+}
+
 function Donut({ porcentaje }: { porcentaje: number }) {
   const CIRC = 301; // 2·π·48
   const trozo = Math.max(0, Math.min(100, porcentaje)) * (CIRC / 100);
@@ -673,24 +747,44 @@ export default function PortalTablero({
         </section>
       )}
 
-      {/* ===== POR HORA + SUCURSALES (Gold) ===== */}
-      {conGold && gold && (gold.porHora.length > 0 || gold.porSucursal.length > 1) && (
+      {/* ===== POR HORA + POR DÍA (Gold) =====
+          Juntos y no en pantallas distintas: son la misma pregunta partida en
+          dos. La hora dice a qué rato conviene estar, el día dice cuál, y una
+          promo se decide con las dos a la vez. */}
+      {conGold && gold && gold.porHora.length > 0 && (
         <div className="fila-2">
-          {gold.porHora.length > 0 && (
-            <section className="modulo">
-              <div className="modulo-cab">
-                <h2>Cuándo se vende lo tuyo</h2>
-                <p className="desc">Unidades por hora, últimas 8 semanas</p>
-              </div>
-              <GraficoHoras datos={gold.porHora} pico={gold.horaPico} />
-              {gold.horaPico !== null && (
-                <p className="desc" style={{ marginTop: 8 }}>
-                  Tu pico es a las <b style={{ color: "var(--ocre)" }}>{gold.horaPico} h</b>.
-                </p>
-              )}
-            </section>
-          )}
+          <section className="modulo">
+            <div className="modulo-cab">
+              <h2>A qué hora se vende lo tuyo</h2>
+              <p className="desc">Unidades por hora, últimas 8 semanas</p>
+            </div>
+            <GraficoHoras datos={gold.porHora} pico={gold.horaPico} />
+            {gold.horaPico !== null && (
+              <p className="desc" style={{ marginTop: 8 }}>
+                Tu pico es a las <b style={{ color: "var(--ocre)" }}>{gold.horaPico} h</b>.
+              </p>
+            )}
+          </section>
 
+          <section className="modulo">
+            <div className="modulo-cab">
+              <h2>Qué día se vende lo tuyo</h2>
+              <p className="desc">Unidades por día de la semana, últimas 8 semanas</p>
+            </div>
+            <GraficoDias datos={gold.porDia} pico={gold.diaPico} />
+            {gold.diaPico && (
+              <p className="desc" style={{ marginTop: 8 }}>
+                Tu mejor día es el <b style={{ color: "var(--ocre)" }}>{DIA_ENTERO[gold.diaPico] ?? gold.diaPico}</b>.
+                Si vas a hacer una promo o una degustación, es ese.
+              </p>
+            )}
+          </section>
+        </div>
+      )}
+
+      {/* ===== SUCURSALES (Gold) ===== */}
+      {conGold && gold && (
+        <div className="fila-2">
           {gold.porSucursal.length > 1 && (
             <section className="modulo">
               <div className="modulo-cab">

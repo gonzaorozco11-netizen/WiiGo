@@ -28,6 +28,11 @@
   background: var(--papel);
   color: var(--texto);
   min-height: 100vh;
+  /* Nada empuja el ancho de la pagina. En el celular, un solo elemento mas
+     ancho que la pantalla hace que TODO se mueva para los costados, y
+     encontrar cual es despues cuesta mas que prevenirlo. Lo ancho de verdad
+     —tablas, graficos— ya scrollea adentro de su propia caja. */
+  overflow-x: hidden;
   font-family: var(--f-texto), system-ui, -apple-system, sans-serif;
   font-size: 15px;
   line-height: 1.5;
@@ -648,7 +653,10 @@
 .cam-sol-pie { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 11px; }
 .cam-cuando { font-size: 12px; color: var(--texto-3); }
 
-/* ---------- Navegación del portal ---------- */
+/* ---------- Navegación del portal ----------
+   En la computadora, links en fila. En el celular esa fila no entra: empujaba
+   el ancho de la pagina y todo se movia para los costados. Abajo de 900px
+   pasa a ser un panel lateral. */
 .portal-nav { display: flex; gap: 3px; }
 .portal-nav a {
   font-size: 13.5px; font-weight: 500; color: var(--texto-3); text-decoration: none;
@@ -656,6 +664,61 @@
 }
 .portal-nav a:hover { background: var(--salvia-tenue); color: var(--texto); }
 .portal-nav a.activa { background: var(--salvia-tenue); color: var(--salvia-honda); font-weight: 600; }
+
+/* El boton de las rayas y la cabecera del panel solo existen en el celular. */
+.nav-rayas { display: none; }
+.portal-nav .nav-cab { display: none; }
+
+@media (max-width: 900px) {
+  .nav-rayas {
+    display: inline-flex; align-items: center; justify-content: center; position: relative;
+    width: 38px; height: 38px; border-radius: 10px; cursor: pointer;
+    background: var(--superficie); border: 1px solid var(--borde-fuerte); color: var(--texto-2);
+    order: -1;
+  }
+  /* El punto naranja repite el contador de Mis tareas: con el menu cerrado,
+     si no, no hay forma de saber que hay algo esperando. */
+  .nav-rayas .punto-pendiente {
+    position: absolute; top: 6px; right: 6px; width: 8px; height: 8px;
+    border-radius: 50%; background: var(--ocre); border: 1.5px solid var(--superficie);
+  }
+
+  .nav-fondo {
+    position: fixed; inset: 0; z-index: 70; background: rgba(42,47,38,.42);
+  }
+
+  .portal-nav {
+    position: fixed; top: 0; left: 0; bottom: 0; z-index: 71;
+    width: min(270px, 82vw); background: var(--superficie);
+    border-right: 1px solid var(--borde); box-shadow: 2px 0 18px rgba(42,47,38,.12);
+    flex-direction: column; gap: 2px; padding: 14px 12px;
+    transform: translateX(-100%); transition: transform .2s ease;
+    overflow-y: auto;
+  }
+  .portal-nav.abierto { transform: translateX(0); }
+
+  .portal-nav .nav-cab {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 2px 8px 12px; margin-bottom: 6px; border-bottom: 1px solid var(--borde);
+  }
+  .portal-nav .nav-cab span {
+    font-size: 10.5px; font-weight: 700; letter-spacing: .11em; text-transform: uppercase;
+    color: var(--texto-3);
+  }
+  .portal-nav .nav-cab button {
+    font: inherit; font-size: 16px; line-height: 1; color: var(--texto-3);
+    background: none; border: 0; cursor: pointer; padding: 4px 6px;
+  }
+
+  .portal-nav a {
+    font-size: 15px; padding: 12px 14px; border-radius: 10px; color: var(--texto-2);
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .portal-nav { transition: none; }
+}
 
 /* ---------- Mis costos y cuánto gano ----------
    Lo único del portal que la marca escribe sobre sí misma. */
