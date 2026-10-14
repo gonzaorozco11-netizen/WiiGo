@@ -141,12 +141,19 @@ export default function PortalReponer({ datos }: { datos: DatosReponer }) {
         )}
       </div>
 
-      {datos.yaMandado && (
-        <div className="rep-aviso">
-          Ya tenés un envío de <b>{datos.yaMandado.unidades} unidades</b> mandado y todavía sin
-          recibir. Lo que figura abajo ya lo descuenta, así que no vas a mandar dos veces lo mismo.
-        </div>
-      )}
+      {datos.yaMandado &&
+        (datos.yaMandado.estado === "PROPUESTA" ? (
+          <div className="rep-aviso">
+            Mandaste un envío de <b>{datos.yaMandado.unidades} unidades</b> que está{" "}
+            <b>esperando que WiiGo lo apruebe</b>, porque algo se pasaba del tope acordado. No hace
+            falta que lo mandes de nuevo.
+          </div>
+        ) : (
+          <div className="rep-aviso">
+            Ya tenés un envío de <b>{datos.yaMandado.unidades} unidades</b> mandado y todavía sin
+            recibir. Lo que figura abajo ya lo descuenta, así que no vas a mandar dos veces lo mismo.
+          </div>
+        ))}
 
       <div className="rep-numeros">
         <div className="rep-num agotado">

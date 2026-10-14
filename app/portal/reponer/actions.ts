@@ -171,13 +171,18 @@ export async function miReposicion(): Promise<DatosReponer | null> {
   const diaProximo = ((hoy.diaSemanaISO + faltanDias - 1) % 7) + 1;
 
   // Lo ya mandado y sin recibir, para que no mande dos veces lo mismo.
+  //
+  // PROPUESTA entra acá aunque NO esté en ESTADOS_ABIERTOS: desde el lado de
+  // la marca ya lo mandó, aunque del lado nuestro todavía no entre al cálculo
+  // de pendiente. Sin esto, un envío que quedó esperando aprobación es
+  // invisible para ella y lo manda de nuevo.
   const { data: abiertas } = await supabase
     .from("ordenes_reposicion")
     .select("estado, total_unidades")
     .eq("id_marca", sesion.idMarca)
     .eq("id_local", idLocal)
-    .in("estado", ESTADOS_ABIERTOS)
-    .order("fecha_creacion", { ascending: false })
+    .in("estado", [...ESTADOS_ABIERTOS, "PROPUESTA"])
+    .order("fecha", { ascending: false })
     .limit(1);
   const abierta = (abiertas ?? [])[0];
 
@@ -320,15 +325,41 @@ export async function mandarReposicion(
     estado: automatica ? PENDIENTE : PROPUESTA,
     total_unidades: total,
     observaciones: null,
+    // Nace YA enviada, y eso es lo que la manda derecho a Recepción.
+    //
+    // `enviada_el` es lo que separa las dos primeras etapas de Compras:
+    // vacío = "Órdenes de compra, falta emitirla", cargado = "Recepción,
+    // esperando que llegue". Una orden que armó WiiGo tiene que pasar por la
+    // primera, porque alguien tiene que mandársela al proveedor. Una que armó
+    // la marca NO: la marca ya la mandó, ese es el acto. Dejarla sin enviar
+    // ponía a WiiGo un botón de "Enviar a la marca" para avisarle de un envío
+    // que ella misma acababa de decidir.
+    //
+    // Si todavía espera aprobación no se marca: no está en camino nada hasta
+    // que WiiGo diga que sí.
   };
 
-  // Con `origen` si la columna existe; si no, sin ella (igual que
-  // proponerEnvio: ver sql/reposicion-propuesta.sql).
+  // `enviada_por` guarda un nombre, no un id (ver marcarOrdenEnviada): acá va
+  // el de la marca, que es quien lo mandó.
+  const comoEnviada = automatica
+    ? { enviada_el: new Date().toISOString(), enviada_por: sesion.nombreMarca }
+    : {};
+
+  // Las columnas opcionales se dejan caer si todavía no se crearon, en vez de
+  // que la marca no pueda mandar nada. `origen` sale de
+  // sql/reposicion-propuesta.sql y `enviada_el` de sql/ordenes-enviadas.sql.
   let orden = await supabase
     .from("ordenes_reposicion")
-    .insert({ ...base, origen: "MARCA" })
+    .insert({ ...base, ...comoEnviada, origen: "MARCA" })
     .select("id_orden")
     .single();
+  if (orden.error && (orden.error.code === "42703" || orden.error.code === "PGRST204")) {
+    orden = await supabase
+      .from("ordenes_reposicion")
+      .insert({ ...base, ...comoEnviada })
+      .select("id_orden")
+      .single();
+  }
   if (orden.error && (orden.error.code === "42703" || orden.error.code === "PGRST204")) {
     orden = await supabase.from("ordenes_reposicion").insert(base).select("id_orden").single();
   }

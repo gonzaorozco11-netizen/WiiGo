@@ -628,13 +628,28 @@ export async function proponerEnvio(params: {
     observaciones: params.observaciones.trim() || null,
   };
 
-  // Con `origen` si la columna existe; si no, sin ella. Ver
-  // sql/reposicion-propuesta.sql.
+  // Nace ya enviada: la marca es la que manda, no hay nada que WiiGo tenga
+  // que emitirle. Es lo que la deja en Recepción en vez de en "Órdenes de
+  // compra, sin enviar". Ver el comentario largo en app/portal/reponer.
+  const comoEnviada = automatica
+    ? { enviada_el: new Date().toISOString(), enviada_por: sesion.nombreMarca }
+    : {};
+
+  // Las columnas opcionales se dejan caer si todavía no se crearon. `origen`
+  // sale de sql/reposicion-propuesta.sql y `enviada_el` de
+  // sql/ordenes-enviadas.sql.
   let orden = await supabase
     .from("ordenes_reposicion")
-    .insert({ ...base, origen: "MARCA" })
+    .insert({ ...base, ...comoEnviada, origen: "MARCA" })
     .select("id_orden")
     .single();
+  if (orden.error && (orden.error.code === "42703" || orden.error.code === "PGRST204")) {
+    orden = await supabase
+      .from("ordenes_reposicion")
+      .insert({ ...base, ...comoEnviada })
+      .select("id_orden")
+      .single();
+  }
   if (orden.error && (orden.error.code === "42703" || orden.error.code === "PGRST204")) {
     orden = await supabase.from("ordenes_reposicion").insert(base).select("id_orden").single();
   }
