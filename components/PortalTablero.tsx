@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   beneficiosHasta,
+  loQueNoTiene,
   planesPorEncima,
   ETIQUETA_PLAN,
   INICIAL_PLAN,
@@ -1144,6 +1145,7 @@ export default function PortalTablero({
 
 function TuPlan({ plan }: { plan: PlanMarca }) {
   const tiene = beneficiosHasta(plan);
+  const falta = loQueNoTiene(plan);
   const arriba = planesPorEncima(plan);
 
   return (
@@ -1166,6 +1168,23 @@ function TuPlan({ plan }: { plan: PlanMarca }) {
               <li key={b}>{b}</li>
             ))}
           </ul>
+
+          {/* Lo que falta, en la misma lista y no solo en las tarjetas de
+              abajo: ahí está dicho como oferta, y una oferta se saltea. Acá,
+              al lado de lo suyo, el hueco se ve. */}
+          {falta.length > 0 && (
+            <>
+              <p className="et falta">Lo que no incluye tu plan</p>
+              <ul className="plan-lista sin">
+                {falta.map((b) => (
+                  <li key={b.texto}>
+                    <span>{b.texto}</span>
+                    <span className={`en-plan en-plan-${b.plan}`}>{ETIQUETA_PLAN[b.plan]}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </div>
       </section>
 

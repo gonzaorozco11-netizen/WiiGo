@@ -1120,6 +1120,21 @@
 }
 .plan-lista li::before { content: "✓"; color: var(--verde-ok); font-weight: 700; flex: none; line-height: 1.4; }
 
+/* Lo que el plan NO incluye, en la misma lista que lo que si.
+   En las tarjetas de abajo esta dicho como oferta, y una oferta se saltea;
+   aca, al lado de lo suyo, el hueco se ve. Apagado y con candado, nunca
+   tachado: no es algo que perdio, es algo que todavia no tiene. */
+.plan-cuerpo .et.falta { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--borde); }
+.plan-lista.sin li { color: var(--texto-3); align-items: center; }
+.plan-lista.sin li::before { content: "🔒"; color: var(--texto-3); font-size: 11px; }
+.plan-lista.sin li > span:first-of-type { flex-grow: 1; min-width: 0; }
+.en-plan {
+  font-size: 9.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  border-radius: 999px; padding: 2px 7px; flex: none;
+}
+.en-plan-METAL { color: #6b7580; background: #f2f4f6; border: 1px solid #d7dce1; }
+.en-plan-GOLD { color: #94762a; background: #fdf8ea; border: 1px solid #e6d5a4; }
+
 .plan-gancho { text-align: center; margin: 26px 0 15px; }
 .plan-gancho h3 { font-size: 19px; font-weight: 700; }
 .plan-gancho p { font-size: 13px; color: var(--texto-3); margin-top: 4px; }

@@ -76,6 +76,7 @@ export const SUMA_EL_PLAN: Record<PlanMarca, string[]> = {
     "Tus pagos y liquidaciones",
   ],
   METAL: [
+    "Los avisos te llegan por mail, no tenés que entrar",
     "Para hacer esta semana",
     "Ranking de tus productos",
     "Alertas de stock",
@@ -97,6 +98,17 @@ export const SUMA_EL_PLAN: Record<PlanMarca, string[]> = {
 /** Todo lo que incluye un plan, sumando los escalones de abajo. */
 export function beneficiosHasta(plan: PlanMarca): string[] {
   return PLANES.filter((p) => NIVEL[p] <= NIVEL[plan]).flatMap((p) => SUMA_EL_PLAN[p]);
+}
+
+/**
+ * Lo que NO tiene, con el plan en el que viene cada cosa.
+ *
+ * Va al lado de lo que sí tiene y no solo en las tarjetas de abajo: ahí está
+ * dicho como oferta, y una oferta se saltea. En la misma lista donde está
+ * mirando lo suyo, el hueco se ve.
+ */
+export function loQueNoTiene(plan: PlanMarca): { texto: string; plan: PlanMarca }[] {
+  return planesPorEncima(plan).flatMap((p) => SUMA_EL_PLAN[p].map((texto) => ({ texto, plan: p })));
 }
 
 /** El plan de arriba, o null si ya está en el último. */
