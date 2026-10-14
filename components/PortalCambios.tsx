@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   pedirCambioPrecio,
@@ -19,8 +19,11 @@ import {
 import {
   GRUPO_DE_TIPO,
   ETIQUETA_GRUPO,
+  ETIQUETA_RANURA,
+  EXPLICA_RANURA,
   type GrupoBandeja,
   type PoliticaDescuentos,
+  type RanuraFoto,
   type TipoSolicitud,
 } from "@/lib/solicitudesMarca";
 import {
@@ -94,12 +97,31 @@ export default function PortalCambios({
   const [abierto, setAbierto] = useState<string | null>(null);
   const [nuevoAbierto, setNuevoAbierto] = useState(false);
 
+  // El alta se abre llegando con ?nuevo=1 desde "Añadir nuevo producto", que
+  // vive en Mis productos. Se lee acá y no con useSearchParams para no
+  // arrastrar el <Suspense> que ese hook exige.
+  //
+  // Ojo: el link ya existía y no abría nada — nadie leía el parámetro, así
+  // que caía en esta pantalla y la marca tenía que encontrar el botón sola.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("nuevo") === "1") {
+      setNuevoAbierto(true);
+      // Se saca de la URL para que recargar no lo vuelva a abrir.
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+  }, []);
+
   const pendientes = solicitudes.filter((s) => s.estado === "PENDIENTE").length;
 
   const visibles = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
     if (!q) return productos;
-    return productos.filter((p) => p.nombre.toLowerCase().includes(q));
+    // También por subcategoría: ahora que se ve en la fila, buscar "proteínas"
+    // y que no traiga nada sería desconcertante.
+    return productos.filter(
+      (p) =>
+        p.nombre.toLowerCase().includes(q) || (p.subcategoria ?? "").toLowerCase().includes(q)
+    );
   }, [productos, busqueda]);
 
   return (
@@ -112,9 +134,10 @@ export default function PortalCambios({
             de WiiGo: nada cambia en la góndola hasta que esté aprobado.
           </p>
         </div>
-        <button className="cam-btn primario" onClick={() => setNuevoAbierto(true)}>
-          + Producto nuevo
-        </button>
+        {/* El botón de alta se fue a Mis productos, que es donde la marca lo
+            busca. Acá no se repite: dos puertas para lo mismo hacen dudar de
+            si son lo mismo. El formulario sigue viviendo en esta pantalla y
+            se abre solo cuando se llega con ?nuevo=1. */}
       </div>
 
       <div className="cam-tabs">
@@ -152,7 +175,7 @@ export default function PortalCambios({
           {visibles.length === 0 ? (
             <p className="vacio">
               {productos.length === 0
-                ? "Todavía no tenés productos cargados. Empezá con “Producto nuevo”."
+                ? "Todavía no tenés productos cargados. Empezá con “Añadir nuevo producto”, en Mis productos."
                 : "Ningún producto coincide con esa búsqueda."}
             </p>
           ) : (
@@ -293,7 +316,12 @@ function FilaProducto({
   return (
     <li className={`cam-prod${abierto ? " abierto" : ""}`}>
       <button className="cam-prod-cab" onClick={onAbrir}>
-        <span className="cam-prod-nom">{p.nombre}</span>
+        <span className="cam-prod-nom">
+          {p.nombre}
+          {/* La góndola donde va. Sin esto, con 72 productos de nombres
+              parecidos no hay forma de saber cuál es cuál sin abrirlo. */}
+          <span className="cam-prod-sub">{p.subcategoria ?? "Sin subcategoría"}</span>
+        </span>
         <span className="cam-prod-datos">
           <span className="mono">{pesos(p.precio)}</span>
           <span className="cam-stock">{p.stock} en góndola</span>
@@ -664,6 +692,11 @@ function FormFoto({ p, onListo }: { p: ProductoPropio; onListo: () => void }) {
   const [reglas, setReglas] = useState<Regla[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [revisando, setRevisando] = useState(false);
+  // Arranca en la primera que falte, y si están las tres, en el frente. Así
+  // el caso más común —completar lo que falta— no pide elegir nada.
+  const [ranura, setRanura] = useState<RanuraFoto>(
+    p.fotos.find((f) => !f.url)?.ranura ?? "principal"
+  );
 
   // Mismo criterio que en el alta: lo que no cumple el estándar no llega a
   // mandarse, y lo que cumple sale ya cuadrado y en WebP.
@@ -691,29 +724,41 @@ function FormFoto({ p, onListo }: { p: ProductoPropio; onListo: () => void }) {
 
   return (
     <Envio
-      texto="Mandar la foto"
+      texto={`Mandar la foto: ${ETIQUETA_RANURA[ranura].toLowerCase()}`}
       deshabilitado={!archivo || revisando}
       onEnviar={async () => {
         if (!archivo) return { error: "Elegí una foto." };
         const fd = new FormData();
         fd.set("archivo", archivo);
+        fd.set("ranura", ranura);
         const r = await pedirCambioFoto(p.idProducto, fd);
         if (!r.error) onListo();
         return r;
       }}
       pie={<ElEstandar />}
     >
+      {/* Las tres a la vez. Antes se mostraba solo la principal y la marca
+          creía que las otras dos no habían entrado — y no tenía forma de
+          corregir el dorso sin pisar el frente. */}
       <div className="cam-fotos">
-        <div className="cam-foto">
-          <span>La de hoy</span>
-          {p.imagen ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={p.imagen} alt="" />
-          ) : (
-            <div className="cam-foto-vacia">sin foto</div>
-          )}
-        </div>
-        <div className="cam-foto">
+        {p.fotos.map((f) => (
+          <button
+            type="button"
+            key={f.ranura}
+            className={`cam-foto elegible${ranura === f.ranura ? " activa" : ""}`}
+            onClick={() => setRanura(f.ranura)}
+            title={EXPLICA_RANURA[f.ranura]}
+          >
+            <span>{ETIQUETA_RANURA[f.ranura]}</span>
+            {f.url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={f.url} alt="" />
+            ) : (
+              <div className="cam-foto-vacia">falta</div>
+            )}
+          </button>
+        ))}
+        <div className="cam-foto nueva">
           <span>La nueva</span>
           {vista ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -723,6 +768,10 @@ function FormFoto({ p, onListo }: { p: ProductoPropio; onListo: () => void }) {
           )}
         </div>
       </div>
+      <p className="cam-var">
+        Vas a reemplazar <b>{ETIQUETA_RANURA[ranura].toLowerCase()}</b>. {EXPLICA_RANURA[ranura]}{" "}
+        Tocá otra de arriba para cambiar cuál.
+      </p>
       <input
         type="file"
         accept="image/*"

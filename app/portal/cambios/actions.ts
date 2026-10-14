@@ -13,6 +13,8 @@ import {
   validarBaja,
   sinAlertas,
   ETIQUETA_TIPO,
+  esRanuraFoto,
+  type RanuraFoto,
   type TipoSolicitud,
   type Validacion,
 } from "@/lib/solicitudesMarca";
@@ -111,6 +113,17 @@ export type ProductoPropio = {
   /** Lo que se cobra pagando en efectivo. null = todavía no lo cargó nadie. */
   precioEfectivo: number | null;
   imagen: string | null;
+  /**
+   * Las fotos que el producto tiene hoy, en orden: la principal primero.
+   *
+   * Un producto admite hasta tres (frente, dorso con la tabla, uso) y la
+   * pantalla mostraba una sola — la marca veía "una foto" y creía que las
+   * otras dos no habían entrado. `imagen` se deja aparte porque es la columna
+   * de `productos` que usa el resto del sistema.
+   */
+  fotos: { ranura: RanuraFoto; url: string | null }[];
+  /** Para qué góndola es. Null si todavía no se le asignó ninguna. */
+  subcategoria: string | null;
   /** Lo nutricional que ya está cargado, para precargar el formulario. */
   ficha: FichaDeMarca;
   stock: number;
@@ -124,7 +137,9 @@ export async function misProductos(): Promise<ProductoPropio[]> {
 
   const { data: productos } = await supabase
     .from("productos")
-    .select("id_producto, nombre, descripcion, precio_venta, precio_efectivo, imagen")
+    .select(
+      "id_producto, nombre, descripcion, precio_venta, precio_efectivo, imagen, subcategorias(nombre)"
+    )
     .eq("id_marca", sesion.idMarca)
     .eq("estado", "ACTIVO")
     .order("nombre", { ascending: true });
@@ -155,9 +170,13 @@ export async function misProductos(): Promise<ProductoPropio[]> {
     });
   }
 
+  // Las tres fotos salen de acá, no de `productos.imagen`: esa columna guarda
+  // solo la principal y era el motivo de que la marca viera una sola.
   const { data: fichas } = await supabase
     .from("ficha_producto")
-    .select("id_producto,kcal_100g,proteinas,carbohidratos,grasas,fibra,sodio,porcion,ingredientes,micronutrientes,origen")
+    .select(
+      "id_producto,kcal_100g,proteinas,carbohidratos,grasas,fibra,sodio,porcion,ingredientes,micronutrientes,origen,imagen_principal,foto_extra_1,foto_extra_2"
+    )
     .in("id_producto", ids);
   const fichaDe = new Map((fichas ?? []).map((f) => [f.id_producto as string, f]));
 
@@ -173,13 +192,29 @@ export async function misProductos(): Promise<ProductoPropio[]> {
     esperandoPorProducto.set(id, [...(esperandoPorProducto.get(id) ?? []), s.tipo as TipoSolicitud]);
   });
 
-  return productos.map((p) => ({
+  return productos.map((p) => {
+    const f = fichaDe.get(p.id_producto as string) as Record<string, unknown> | undefined;
+    // La principal cae a `productos.imagen` si la ficha no la tiene: hay
+    // productos viejos que entraron sin pasar por la ficha, y en esos la foto
+    // existe igual y la marca tiene que verla.
+    const fotos: { ranura: RanuraFoto; url: string | null }[] = [
+      {
+        ranura: "principal",
+        url: ((f?.imagen_principal as string | null) ?? (p.imagen as string | null)) || null,
+      },
+      { ranura: "extra_1", url: ((f?.foto_extra_1 as string | null) ?? null) || null },
+      { ranura: "extra_2", url: ((f?.foto_extra_2 as string | null) ?? null) || null },
+    ];
+
+    return {
     idProducto: p.id_producto as string,
     nombre: p.nombre as string,
     descripcion: (p.descripcion as string | null) ?? null,
     precio: (p.precio_venta as number | null) ?? null,
     precioEfectivo: (p.precio_efectivo as number | null) ?? null,
     imagen: (p.imagen as string | null) ?? null,
+    fotos,
+    subcategoria: ((p.subcategorias as { nombre?: string } | null)?.nombre as string | null) ?? null,
     ficha: {
       kcal_100g: null,
       proteinas: null,
@@ -191,11 +226,12 @@ export async function misProductos(): Promise<ProductoPropio[]> {
       ingredientes: null,
       micronutrientes: null,
       origen: null,
-      ...(fichaDe.get(p.id_producto as string) ?? {}),
+      ...(f ?? {}),
     } as FichaDeMarca,
     stock: stockPorProducto.get(p.id_producto as string) ?? 0,
     esperando: esperandoPorProducto.get(p.id_producto as string) ?? [],
-  }));
+    };
+  });
 }
 
 export type SolicitudPropia = {
@@ -459,6 +495,12 @@ export async function pedirCambioFoto(
   // 8 MB: una foto de celular sin comprimir entra, un video no.
   if (archivo.size > 8 * 1024 * 1024) return { error: "La foto no puede pesar más de 8 MB." };
 
+  // Cuál de las tres se está reemplazando. Viene del formulario pero se
+  // valida acá: lo que manda el navegador no decide en qué columna se
+  // escribe. Sin ranura es la principal, que es como se comportaba antes.
+  const pedida = formData.get("ranura");
+  const ranura: RanuraFoto = esRanuraFoto(pedida) ? pedida : "principal";
+
   if (await yaHayPendiente(supabase, sesion.idMarca, "FOTO", idProducto)) {
     return { error: "Ya mandaste una foto para este producto y todavía está esperando respuesta." };
   }
@@ -473,13 +515,27 @@ export async function pedirCambioFoto(
 
   const { data: publica } = supabase.storage.from("fotos-productos").getPublicUrl(path);
 
+  // La que se está por pisar, para que en Aprobaciones se vea el antes y el
+  // después de ESA ranura y no siempre el de la principal.
+  const { data: ficha } = await supabase
+    .from("ficha_producto")
+    .select("imagen_principal, foto_extra_1, foto_extra_2")
+    .eq("id_producto", idProducto)
+    .maybeSingle();
+  const anterior =
+    ranura === "principal"
+      ? ((ficha?.imagen_principal as string | null) ?? (producto.imagen as string | null) ?? null)
+      : ranura === "extra_1"
+        ? ((ficha?.foto_extra_1 as string | null) ?? null)
+        : ((ficha?.foto_extra_2 as string | null) ?? null);
+
   return crear(supabase, {
     idMarca: sesion.idMarca,
     idUsuario: sesion.idUsuario,
     tipo: "FOTO",
     idProducto,
-    datos: { imagen: publica.publicUrl },
-    datosAnteriores: { imagen: (producto.imagen as string | null) ?? null },
+    datos: { imagen: publica.publicUrl, ranura },
+    datosAnteriores: { imagen: anterior, ranura },
     validacion: { frena: null, alertas: {} },
   });
 }

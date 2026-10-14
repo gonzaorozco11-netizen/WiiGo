@@ -34,6 +34,46 @@ export type TipoSolicitud =
 
 export type EstadoSolicitud = "PENDIENTE" | "APROBADA" | "RECHAZADA" | "APLICADA" | "CANCELADA";
 
+/**
+ * Las tres fotos de un producto, y en qué columna vive cada una.
+ *
+ * El estándar acordado con las marcas es frente, dorso con la tabla
+ * nutricional y una de uso. Las tres existían en la base desde la carga del
+ * catálogo (`ficha_producto`), pero el portal mostraba y dejaba cambiar solo
+ * la principal: la marca veía una foto donde había tres y no tenía forma de
+ * corregir la del dorso sin pisar la del frente.
+ *
+ * La principal se guarda además en `productos.imagen`, que es la que lee el
+ * resto del sistema (tótem, asesor, POS). Las otras dos viven solo en la
+ * ficha.
+ */
+export const RANURAS_FOTO = ["principal", "extra_1", "extra_2"] as const;
+export type RanuraFoto = (typeof RANURAS_FOTO)[number];
+
+export const ETIQUETA_RANURA: Record<RanuraFoto, string> = {
+  principal: "Frente",
+  extra_1: "Dorso",
+  extra_2: "En uso",
+};
+
+/** Qué se le explica a la marca que va en cada una. */
+export const EXPLICA_RANURA: Record<RanuraFoto, string> = {
+  principal: "La que se ve en la góndola del tótem y en el Asesor.",
+  extra_1: "El dorso, con la tabla nutricional legible.",
+  extra_2: "El producto en uso o en contexto. Es la única opcional.",
+};
+
+/** La columna de `ficha_producto` donde se guarda cada ranura. */
+export const COLUMNA_RANURA: Record<RanuraFoto, string> = {
+  principal: "imagen_principal",
+  extra_1: "foto_extra_1",
+  extra_2: "foto_extra_2",
+};
+
+export function esRanuraFoto(v: unknown): v is RanuraFoto {
+  return typeof v === "string" && (RANURAS_FOTO as readonly string[]).includes(v);
+}
+
 /** Etiquetas para pantalla — un solo lugar, así no se escriben distinto en cada una. */
 export const ETIQUETA_TIPO: Record<TipoSolicitud, string> = {
   PRECIO: "Cambio de precio",

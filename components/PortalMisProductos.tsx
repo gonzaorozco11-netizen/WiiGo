@@ -152,15 +152,18 @@ export default function PortalMisProductos({ datos }: { datos: MisCostosPortal }
                 </div>
               </div>
             )}
-            {/* El alta la hace WiiGo: la marca pide y nosotros aprobamos. El
-                formulario ya vive en "Cambios y altas" — acá va el atajo,
-                porque es donde se le ocurre buscarlo. */}
-            <Link className="boton-portal sec" href="/portal/cambios?nuevo=1">
-              + Cargar un producto nuevo
+            {/* Acá y en ningún otro lado. Antes estaba también arriba de
+                "Cambios y altas", que es donde no se le ocurre buscarlo a
+                nadie: una marca que va a sumar un producto entra a Mis
+                productos, porque ahí están los suyos. El alta sigue siendo una
+                solicitud —la marca nunca escribe en `productos`— pero eso se
+                le dice en el formulario, no en el botón. */}
+            <Link className="boton-portal" href="/portal/cambios?nuevo=1">
+              + Añadir nuevo producto
             </Link>
             {/* La válvula del circuito: sin esto, un lanzamiento se arregla
                 por WhatsApp y la mercadería llega sin papel. */}
-            <button className="boton-portal" onClick={() => setProponiendo(true)}>
+            <button className="boton-portal sec" onClick={() => setProponiendo(true)}>
               ↑ Proponer un envío
             </button>
           </div>

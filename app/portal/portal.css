@@ -544,7 +544,10 @@
   font-family: inherit; padding: 13px 16px; border: 0; background: none; cursor: pointer; color: inherit;
 }
 .cam-prod-cab:hover { background: var(--superficie-2); }
-.cam-prod-nom { font-size: 14.5px; font-weight: 600; }
+.cam-prod-nom { font-size: 14.5px; font-weight: 600; display: flex; flex-direction: column; gap: 2px; text-align: left; }
+/* La góndola donde va el producto, debajo del nombre. Chica y en gris: ubica
+   sin competir con el nombre, que es lo que se busca al escanear la lista. */
+.cam-prod-sub { font-size: 11.5px; font-weight: 500; color: var(--texto-3); }
 .cam-prod-datos { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 13px; }
 .cam-stock { font-size: 12px; color: var(--texto-3); }
 .cam-espera {
@@ -582,6 +585,27 @@
   background: var(--papel); border: 1px solid var(--borde-fuerte);
 }
 .cam-foto-vacia { display: grid; place-items: center; font-size: 12px; color: var(--texto-3); }
+
+/* Las tres fotos del producto son botones: tocar una elige cuál se reemplaza.
+   La elegida se marca con el borde, no con un radio aparte — el radio obliga
+   a leer dos cosas (la foto y el control) para entender una sola. */
+.cam-foto.elegible {
+  border: 0; background: none; padding: 0; font: inherit; cursor: pointer; text-align: left;
+}
+.cam-foto.elegible img,
+.cam-foto.elegible .cam-foto-vacia { transition: border-color .12s, box-shadow .12s; }
+.cam-foto.elegible:hover img,
+.cam-foto.elegible:hover .cam-foto-vacia { border-color: var(--salvia); }
+.cam-foto.elegible.activa > span { color: var(--salvia-honda); }
+.cam-foto.elegible.activa img,
+.cam-foto.elegible.activa .cam-foto-vacia {
+  border-color: var(--salvia-honda); box-shadow: 0 0 0 2px var(--salvia-tenue);
+}
+/* La que falta se dibuja punteada: un hueco se tiene que leer como hueco, no
+   como una foto gris que ya está cargada. */
+.cam-foto.elegible .cam-foto-vacia { border-style: dashed; }
+/* "La nueva" va separada de las tres: no es una ranura, es lo que entra. */
+.cam-foto.nueva { margin-left: 8px; padding-left: 16px; border-left: 1px dashed var(--borde-fuerte); }
 
 /* Los seis números de la etiqueta en grilla y no en fila: así se cargan
    mirando el envase de arriba abajo, en el mismo orden en que están impresos. */

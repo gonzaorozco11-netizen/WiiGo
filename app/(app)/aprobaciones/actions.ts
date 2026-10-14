@@ -14,6 +14,9 @@ import {
   proximaVigencia,
   ETIQUETA_TIPO,
   GRUPO_DE_TIPO,
+  COLUMNA_RANURA,
+  esRanuraFoto,
+  type RanuraFoto,
   type TipoSolicitud,
   type GrupoBandeja,
 } from "@/lib/solicitudesMarca";
@@ -467,10 +470,28 @@ export async function aplicarCambiosProgramados(): Promise<{ aplicadas: number; 
       } else if (s.tipo === "FOTO") {
         const url = String(datos.imagen ?? "").trim();
         if (!url) throw new Error("foto vacía");
+
+        // Sin ranura es la principal: las solicitudes que ya estaban
+        // esperando cuando esto se agregó no la traen.
+        const ranura: RanuraFoto = esRanuraFoto(datos.ranura) ? datos.ranura : "principal";
+
+        // La foto vive en la ficha, que es donde están las tres. La principal
+        // se copia además a `productos.imagen`, que es la que leen el tótem,
+        // el asesor y el POS — si solo se escribiera una de las dos, la
+        // góndola y la ficha mostrarían fotos distintas del mismo producto.
         await supabase
-          .from("productos")
-          .update({ imagen: url, fecha_actualizacion: ahoraIso })
-          .eq("id_producto", idProducto as string);
+          .from("ficha_producto")
+          .upsert(
+            { id_producto: idProducto as string, [COLUMNA_RANURA[ranura]]: url },
+            { onConflict: "id_producto" }
+          );
+
+        if (ranura === "principal") {
+          await supabase
+            .from("productos")
+            .update({ imagen: url, fecha_actualizacion: ahoraIso })
+            .eq("id_producto", idProducto as string);
+        }
       } else if (s.tipo === "DESCUENTO") {
         const porcentaje = Number(datos.porcentaje);
         if (!Number.isFinite(porcentaje) || porcentaje <= 0) throw new Error("porcentaje inválido");
