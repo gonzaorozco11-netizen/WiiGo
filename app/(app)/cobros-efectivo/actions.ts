@@ -10,8 +10,7 @@ import { calcularBeneficioReferido, registrarReferido, puntosExtraPorMonto } fro
 import { registrarCanje, esProfesionalActivo } from "@/lib/canjesProfesionales";
 import { calcularCanjePuntos, aplicarCanjePuntos } from "@/lib/puntosWiigo";
 import { facturarAlAcreditarse } from "@/lib/arca/config";
-import { after } from "next/server";
-import { avisarVenta } from "@/lib/avisosEnviar";
+import { avisarVenta, conCorte } from "@/lib/avisosEnviar";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 async function usuarioActual() {
@@ -324,9 +323,8 @@ export async function confirmarCobro(
   // pendiente de facturar (ver lib/arca/config.ts).
   await facturarAlAcreditarse(idVenta, venta.medio_pago as string);
 
-    // Los avisos a las marcas, después de contestar: el que está en la caja no
-    // espera a que salga un mail. Ver lib/avisosEnviar.ts.
-    after(() => avisarVenta(idVenta, venta.id_local as string));
+    // Esperado y con techo de tiempo, no con after(): ver lib/avisosEnviar.ts.
+    await conCorte(() => avisarVenta(idVenta, venta.id_local as string));
 
     revalidatePath("/cobros-efectivo");
     revalidatePath("/clientes");

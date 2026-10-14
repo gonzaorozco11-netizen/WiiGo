@@ -6,14 +6,35 @@ import { TOPE_DIARIO, avisoPrendido, type TipoAviso } from "@/lib/avisosMarca";
 
 // Mandar los avisos.
 //
-// Todo lo de acá se llama desde `after()` (ver app/(app)/pos/actions.ts): la
-// venta se cierra, el cajero sigue atendiendo, y el mail sale después de que
-// la respuesta ya se fue. Un aviso nunca puede hacer esperar a una persona
-// con la tarjeta en la mano.
+// Esto se llama ESPERÁNDOLO, no desde `after()`. Se probó con after —el mail
+// sale después de contestarle al cajero, que suena mejor— y se perdió: de dos
+// ventas seguidas llegó la primera y la segunda se evaporó sin dejar rastro.
+// La tarea de after corre cuando la respuesta ya se fue, y si Vercel apaga la
+// función antes, nadie se entera. Un aviso que a veces sale es peor que no
+// tenerlo: la marca deja de confiar y vuelve a entrar a mirar igual.
 //
-// Y nada de acá tira. Cada función está envuelta: si falla una consulta, si
+// El costo es medio segundo en la venta, y la venta ya espera a ARCA, que es
+// otra llamada por red. CORTE es el techo: si Resend tarda más que eso, se
+// abandona y se registra, pero el cajero nunca queda esperando.
+//
+// Nada de acá tira. Cada función está envuelta: si falla una consulta, si
 // Resend contesta mal, si no hay clave configurada, se registra y se sigue.
 // La venta ya pasó; el mail es lo accesorio.
+
+/** Lo máximo que una venta puede esperar por los avisos. */
+const CORTE_MS = 2500;
+
+/** Corre algo con techo de tiempo. Nunca tira. */
+export async function conCorte(tarea: () => Promise<void>): Promise<void> {
+  try {
+    await Promise.race([
+      tarea(),
+      new Promise<void>((listo) => setTimeout(listo, CORTE_MS)),
+    ]);
+  } catch {
+    // Ya está registrado adentro.
+  }
+}
 
 type Marca = { idMarca: string; nombre: string; avisos: Record<string, unknown>; mails: string[] };
 
@@ -73,7 +94,21 @@ async function sePuedeMandar(
 
   const mandados = data ?? [];
   if (referencia && mandados.some((m) => m.referencia === referencia)) return false;
-  return mandados.length < (TOPE_DIARIO[tipo] ?? 5);
+
+  // Cuando frena el tope queda anotado. Un aviso que no sale y no deja rastro
+  // es media hora de buscar por qué no llegó un mail: ya pasó.
+  if (mandados.length >= (TOPE_DIARIO[tipo] ?? 5)) {
+    await supabase.from("avisos_enviados").insert({
+      id_marca: idMarca,
+      tipo,
+      referencia,
+      asunto: "No se mandó: tope del día alcanzado",
+      ok: false,
+      error: `Ya iban ${mandados.length} de tipo ${tipo} hoy.`,
+    });
+    return false;
+  }
+  return true;
 }
 
 async function registrar(

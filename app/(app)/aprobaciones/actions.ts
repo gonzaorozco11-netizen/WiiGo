@@ -1,8 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { after } from "next/server";
-import { avisarSolicitudResuelta } from "@/lib/avisosEnviar";
+import { avisarSolicitudResuelta, conCorte } from "@/lib/avisosEnviar";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos";
@@ -174,8 +173,8 @@ export async function aprobarSolicitud(
   });
 
   revalidatePath("/aprobaciones");
-  // Después de contestar: el que aprueba no espera a que salga el mail.
-  after(() => avisarSolicitudResuelta(idSolicitud));
+  // Esperado y con techo de tiempo, no con after(): ver lib/avisosEnviar.ts.
+  await conCorte(() => avisarSolicitudResuelta(idSolicitud));
   return { error: null };
 }
 
@@ -272,7 +271,7 @@ export async function rechazarSolicitud(idSolicitud: string, motivo: string): Pr
   revalidatePath("/aprobaciones");
   // El motivo del rechazo viaja adentro del mail: si la marca tiene que entrar
   // a buscarlo, no entra, y la semana que viene manda lo mismo.
-  after(() => avisarSolicitudResuelta(idSolicitud));
+  await conCorte(() => avisarSolicitudResuelta(idSolicitud));
   return { error: null };
 }
 
