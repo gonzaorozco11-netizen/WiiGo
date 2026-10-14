@@ -6,35 +6,27 @@ import { TOPE_DIARIO, avisoPrendido, type TipoAviso } from "@/lib/avisosMarca";
 
 // Mandar los avisos.
 //
-// Esto se llama ESPERÁNDOLO, no desde `after()`. Se probó con after —el mail
-// sale después de contestarle al cajero, que suena mejor— y se perdió: de dos
-// ventas seguidas llegó la primera y la segunda se evaporó sin dejar rastro.
-// La tarea de after corre cuando la respuesta ya se fue, y si Vercel apaga la
-// función antes, nadie se entera. Un aviso que a veces sale es peor que no
-// tenerlo: la marca deja de confiar y vuelve a entrar a mirar igual.
+// Dos intentos fallidos antes de llegar acá, los dos por lo mismo, y los dos
+// perdiendo mails en silencio:
 //
-// El costo es medio segundo en la venta, y la venta ya espera a ARCA, que es
-// otra llamada por red. CORTE es el techo: si Resend tarda más que eso, se
-// abandona y se registra, pero el cajero nunca queda esperando.
+//   1. `after()`. La tarea corre cuando la respuesta ya se fue; si Vercel
+//      apaga la función antes de que termine, nadie se entera.
+//   2. Esperarlo adentro de la venta con un techo de 2500 ms. Medido después:
+//      la cadena tardaba 2973 ms SOLO en consultar la base —siete consultas
+//      una atrás de la otra— así que se abandonaba antes de llamar a Resend y
+//      no quedaba ni registro del intento. De tres ventas seguidas llegó una.
+//
+// Ahora los avisos de venta corren en su propio pedido (/api/avisos/venta,
+// que dispara la pantalla apenas la venta se cerró). Nadie los espera, así que
+// no hay techo que los corte, y el cajero no espera por un mail.
+//
+// Y las consultas dejaron de ir en fila: lo que no depende de lo anterior va
+// junto, y las dos parejas que eran dos viajes cada una ahora son uno solo con
+// join. De siete viajes seriales a tres.
 //
 // Nada de acá tira. Cada función está envuelta: si falla una consulta, si
 // Resend contesta mal, si no hay clave configurada, se registra y se sigue.
 // La venta ya pasó; el mail es lo accesorio.
-
-/** Lo máximo que una venta puede esperar por los avisos. */
-const CORTE_MS = 2500;
-
-/** Corre algo con techo de tiempo. Nunca tira. */
-export async function conCorte(tarea: () => Promise<void>): Promise<void> {
-  try {
-    await Promise.race([
-      tarea(),
-      new Promise<void>((listo) => setTimeout(listo, CORTE_MS)),
-    ]);
-  } catch {
-    // Ya está registrado adentro.
-  }
-}
 
 type Marca = { idMarca: string; nombre: string; avisos: Record<string, unknown>; mails: string[] };
 
@@ -173,31 +165,39 @@ export async function avisarVenta(idVenta: string, idLocal: string): Promise<voi
     if (!renglones || renglones.length === 0) return;
 
     const idsMarca = [...new Set(renglones.map((r) => r.id_marca as string).filter(Boolean))];
-    const marcas = await marcasPara(supabase, idsMarca);
-    if (marcas.size === 0) return;
 
-    const nombres = await nombresDeVariante(
-      supabase,
-      [...new Set(renglones.map((r) => r.id_variante as string))]
-    );
+    // Las dos no dependen una de la otra: juntas son un viaje, no dos.
+    const [marcas, nombres] = await Promise.all([
+      marcasPara(supabase, idsMarca),
+      nombresDeVariante(supabase, [...new Set(renglones.map((r) => r.id_variante as string))]),
+    ]);
+    if (marcas.size === 0) return;
 
     const base = baseUrlPublica();
     const hoy = fechaHoraArgentina().fecha;
 
-    for (const idMarca of idsMarca) {
-      const marca = marcas.get(idMarca);
-      if (!marca || marca.mails.length === 0) continue;
+    // Cada marca es independiente de las demás: si una tarda, no puede
+    // demorar el aviso de otra.
+    await Promise.all(
+      idsMarca.map(async (idMarca) => {
+        const marca = marcas.get(idMarca);
+        if (!marca || marca.mails.length === 0) return;
 
-      const suyos = renglones.filter((r) => r.id_marca === idMarca);
+        const suyos = renglones.filter((r) => r.id_marca === idMarca);
 
-      if (avisoPrendido(marca.avisos, "venta") && (await sePuedeMandar(supabase, idMarca, "venta", idVenta))) {
-        await avisarQueVendio(supabase, marca, suyos, nombres, idVenta, idLocal, hoy, base);
-      }
-
-      if (avisoPrendido(marca.avisos, "agotado")) {
-        await avisarAgotados(supabase, marca, suyos, nombres, idLocal, base);
-      }
-    }
+        await Promise.all([
+          (async () => {
+            if (!avisoPrendido(marca.avisos, "venta")) return;
+            if (!(await sePuedeMandar(supabase, idMarca, "venta", idVenta))) return;
+            await avisarQueVendio(supabase, marca, suyos, nombres, idVenta, idLocal, hoy, base);
+          })(),
+          (async () => {
+            if (!avisoPrendido(marca.avisos, "agotado")) return;
+            await avisarAgotados(supabase, marca, suyos, nombres, idLocal, base);
+          })(),
+        ]);
+      })
+    );
   } catch {
     // Silencio a propósito: la venta ya está cerrada y cobrada.
   }
@@ -354,37 +354,35 @@ async function avisarAgotados(
   );
 }
 
-/** Cuántas ventas y cuánta plata lleva hoy esta marca en este local. */
+/**
+ * Cuántas ventas y cuánta plata lleva hoy esta marca en este local.
+ *
+ * Un solo viaje: antes eran dos —traer las ventas del día y después sus
+ * renglones— y esos 500 ms de más eran parte de por qué el aviso no llegaba.
+ */
 async function loDeHoy(
   supabase: ReturnType<typeof getSupabaseServerClient>,
   idMarca: string,
   idLocal: string,
   hoy: string
 ): Promise<{ ventas: number; monto: number }> {
-  const { data: ventas } = await supabase
-    .from("ventas")
-    .select("id_venta")
-    .eq("estado", "PAGADA")
-    .eq("id_local", idLocal)
-    .gte("fecha", `${hoy}T00:00:00`)
-    .lte("fecha", `${hoy}T23:59:59`);
-
-  const ids = (ventas ?? []).map((v) => v.id_venta as string);
-  if (ids.length === 0) return { ventas: 0, monto: 0 };
-
-  const { data: renglones } = await supabase
+  const { data } = await supabase
     .from("detalle_ventas")
-    .select("id_venta, subtotal")
+    .select("id_venta, subtotal, ventas!inner(estado, id_local, fecha)")
     .eq("id_marca", idMarca)
-    .in("id_venta", ids);
+    .eq("ventas.estado", "PAGADA")
+    .eq("ventas.id_local", idLocal)
+    .gte("ventas.fecha", `${hoy}T00:00:00`)
+    .lte("ventas.fecha", `${hoy}T23:59:59`);
 
-  const distintas = new Set((renglones ?? []).map((r) => r.id_venta as string));
+  const renglones = data ?? [];
   return {
-    ventas: distintas.size,
-    monto: (renglones ?? []).reduce((a, r) => a + ((r.subtotal as number) ?? 0), 0),
+    ventas: new Set(renglones.map((r) => r.id_venta as string)).size,
+    monto: renglones.reduce((a, r) => a + ((r.subtotal as number) ?? 0), 0),
   };
 }
 
+/** El nombre que ve la marca: producto, y la variante si no es la única. */
 async function nombresDeVariante(
   supabase: ReturnType<typeof getSupabaseServerClient>,
   ids: string[]
@@ -394,17 +392,11 @@ async function nombresDeVariante(
 
   const { data: variantes } = await supabase
     .from("variantes_producto")
-    .select("id_variante, id_producto, nombre")
+    .select("id_variante, nombre, productos!inner(nombre)")
     .in("id_variante", ids);
 
-  const idsProducto = [...new Set((variantes ?? []).map((v) => v.id_producto as string))];
-  const { data: productos } = idsProducto.length
-    ? await supabase.from("productos").select("id_producto, nombre").in("id_producto", idsProducto)
-    : { data: [] as Record<string, unknown>[] };
-  const nombreProducto = new Map((productos ?? []).map((p) => [p.id_producto as string, p.nombre as string]));
-
   for (const v of variantes ?? []) {
-    const prod = nombreProducto.get(v.id_producto as string) ?? "Producto";
+    const prod = ((v.productos as { nombre?: string } | null)?.nombre as string) ?? "Producto";
     const vari = (v.nombre as string) ?? "";
     salida.set(v.id_variante as string, vari && vari !== "Único" ? `${prod} — ${vari}` : prod);
   }

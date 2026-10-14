@@ -13,6 +13,7 @@ import {
   infoCanjePuntosAction,
 } from "@/app/(app)/pos/actions";
 import { cancelarPedido } from "@/app/(app)/cobros-efectivo/actions";
+import { dispararAvisosDeVenta } from "@/lib/dispararAvisos";
 
 type Item = {
   variante: VarianteProducto;
@@ -340,8 +341,12 @@ export default function PosApp({
     )
       .then((r) => {
         if (r.error) setError(r.error);
-        else if (r.venta) setResultado(r.venta);
-        else if (r.pedido) setPedidoMp(r.pedido);
+        else if (r.venta) {
+          setResultado(r.venta);
+          // Los avisos a las marcas van en su propio pedido y no se esperan:
+          // el cajero ve el vuelto ya mismo. Ver lib/dispararAvisos.ts.
+          dispararAvisosDeVenta(r.venta.idVenta);
+        } else if (r.pedido) setPedidoMp(r.pedido);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "No se pudo registrar la venta"))
       .finally(() => setEnviando(false));
@@ -357,6 +362,9 @@ export default function PosApp({
         .then((r) => {
           if (r.estado === "PAGADA") {
             setResultado({ numero: r.numero, total: r.total, vuelto: 0, puntosGenerados: 0 });
+            // Acá NO se disparan los avisos: esta venta la acreditó el webhook
+            // de Mercado Pago, y los manda él. Si los mandaran los dos, con
+            // mala suerte de tiempos la marca recibiría el mail dos veces.
             setPedidoMp(null);
           } else if (r.estado === "CANCELADA") {
             setError("Este pedido se canceló.");

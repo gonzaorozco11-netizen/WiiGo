@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { getSupabaseServerClient } from "@/lib/supabase";
-import { avisarVenta, conCorte } from "@/lib/avisosEnviar";
 import { friendlyDbError } from "@/lib/errors";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 import { turnoAbiertoDeLocal } from "@/app/(app)/turnos/actions";
@@ -138,7 +137,15 @@ export async function infoCanjePuntosAction(dni: string, montoAPagar: number) {
 // cliente paga desde su celular — la confirma sola el webhook, reusando
 // confirmarCobro. Sirve tanto como venta asistida normal como respaldo si
 // se cae la conexión de algún totem.
-type ResultadoVenta = { numero: number; total: number; vuelto: number; puntosGenerados: number };
+// `idVenta` viaja a la pantalla para que dispare los avisos a las marcas en
+// un pedido aparte: ver lib/dispararAvisos.ts.
+type ResultadoVenta = {
+  idVenta: string;
+  numero: number;
+  total: number;
+  vuelto: number;
+  puntosGenerados: number;
+};
 type ResultadoPedidoMp = { idVenta: string; numero: number; total: number; qrImagen?: string };
 
 // Para que el POS sepa cuándo el cliente ya pagó el QR y pasar solo a la
@@ -341,7 +348,16 @@ export async function venderPos(
     if (total <= 0) {
       const resultadoCobro = await confirmarCobro(venta.id_venta, 0, undefined, usuario ?? undefined);
       if (resultadoCobro.error) return { error: resultadoCobro.error };
-      return { error: null, venta: { numero: venta.numero as number, total: 0, vuelto: 0, puntosGenerados: 0 } };
+      return {
+        error: null,
+        venta: {
+          idVenta: venta.id_venta as string,
+          numero: venta.numero as number,
+          total: 0,
+          vuelto: 0,
+          puntosGenerados: 0,
+        },
+      };
     }
 
     try {
@@ -515,11 +531,19 @@ export async function venderPos(
   revalidatePath("/stock");
   revalidatePath("/ventas");
 
-    // Esperado y con techo de tiempo, no con after(): ver lib/avisosEnviar.ts.
-    // Con after se perdía uno de cada dos y nadie se enteraba.
-    await conCorte(() => avisarVenta(venta.id_venta as string, idLocal));
-
-    return { error: null, venta: { numero: venta.numero as number, total, vuelto, puntosGenerados } };
+    // Los avisos NO se mandan acá: el id vuelve a la pantalla, que los dispara
+    // en un pedido aparte. Esperarlos acá era lo que los hacía perderse —ver
+    // el encabezado de lib/avisosEnviar.ts— y además hacía esperar al cajero.
+    return {
+      error: null,
+      venta: {
+        idVenta: venta.id_venta as string,
+        numero: venta.numero as number,
+        total,
+        vuelto,
+        puntosGenerados,
+      },
+    };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo registrar la venta" };
   }

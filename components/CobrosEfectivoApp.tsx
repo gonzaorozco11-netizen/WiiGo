@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Local, Venta, DetalleVenta, Producto, VarianteProducto, Cliente } from "@/lib/supabase";
 import { confirmarCobro, cancelarPedido } from "@/app/(app)/cobros-efectivo/actions";
+import { dispararAvisosDeVenta } from "@/lib/dispararAvisos";
 
 type Tab = "PENDIENTE" | "COMPLETOS" | "CANCELADOS";
 type FiltroFecha = "HOY" | "SEMANA" | "MES" | "RANGO";
@@ -171,7 +172,11 @@ export default function CobrosEfectivoApp({
     confirmarCobro(ventaSeleccionada.id_venta, montoNum, esMercadoPago ? formaPagoMp : undefined)
       .then((res) => {
         if (res.error) setError(res.error);
-        else setIdVentaSeleccionada(null);
+        else {
+          // En su propio pedido, sin esperarlo: ver lib/dispararAvisos.ts.
+          dispararAvisosDeVenta(ventaSeleccionada.id_venta);
+          setIdVentaSeleccionada(null);
+        }
       })
       .catch((e) => setError(e instanceof Error ? e.message : "No se pudo confirmar el cobro"))
       .finally(() => setProcesando(false));

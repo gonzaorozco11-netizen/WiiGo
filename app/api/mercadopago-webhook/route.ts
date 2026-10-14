@@ -11,6 +11,8 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { obtenerOrdenMp, mapearFormaPagoMp } from "@/lib/mercadopago";
 import { confirmarCobro } from "@/app/(app)/cobros-efectivo/actions";
+import { getSupabaseServerClient } from "@/lib/supabase";
+import { avisarVenta } from "@/lib/avisosEnviar";
 
 function firmaValida(req: Request, dataId: string): boolean {
   const secret = process.env.MP_WEBHOOK_SECRET;
@@ -86,7 +88,22 @@ export async function POST(req: Request) {
     const resultado = await confirmarCobro(idVenta, total, formaPagoMp, "Mercado Pago (automático)");
     if (resultado.error) {
       console.error(`MP webhook: no se pudo confirmar el cobro de la venta ${idVenta}:`, resultado.error);
+      return new Response(null, { status: 200 });
     }
+
+    // Los avisos a las marcas se mandan acá y no desde una pantalla: una venta
+    // por QR —el totem, o el QR del POS— la acredita este webhook, sin que
+    // nadie esté mirando. Si no sale de acá, esa venta no avisa nunca.
+    //
+    // Se espera, sin techo: acá no hay un cajero esperando, y a Mercado Pago
+    // le da igual que la respuesta tarde unos segundos.
+    const supabase = getSupabaseServerClient();
+    const { data: venta } = await supabase
+      .from("ventas")
+      .select("id_local")
+      .eq("id_venta", idVenta)
+      .maybeSingle();
+    if (venta) await avisarVenta(idVenta, venta.id_local as string);
 
     return new Response(null, { status: 200 });
   } catch (err) {

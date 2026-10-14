@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { avisarSolicitudResuelta, conCorte } from "@/lib/avisosEnviar";
+import { avisarSolicitudResuelta } from "@/lib/avisosEnviar";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos";
@@ -173,8 +173,10 @@ export async function aprobarSolicitud(
   });
 
   revalidatePath("/aprobaciones");
-  // Esperado y con techo de tiempo, no con after(): ver lib/avisosEnviar.ts.
-  await conCorte(() => avisarSolicitudResuelta(idSolicitud));
+  // Acá sí se espera, sin techo: es un mail solo y lo aprieta alguien de
+  // adentro, no un cajero con gente en la fila. Un techo que corta es lo que
+  // hacía que el aviso se perdiera en silencio (ver lib/avisosEnviar.ts).
+  await avisarSolicitudResuelta(idSolicitud);
   return { error: null };
 }
 
@@ -271,7 +273,7 @@ export async function rechazarSolicitud(idSolicitud: string, motivo: string): Pr
   revalidatePath("/aprobaciones");
   // El motivo del rechazo viaja adentro del mail: si la marca tiene que entrar
   // a buscarlo, no entra, y la semana que viene manda lo mismo.
-  await conCorte(() => avisarSolicitudResuelta(idSolicitud));
+  await avisarSolicitudResuelta(idSolicitud);
   return { error: null };
 }
 
