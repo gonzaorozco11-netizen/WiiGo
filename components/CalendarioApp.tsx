@@ -23,6 +23,7 @@ import {
   rangoCorto,
   rangoLargo,
   type AlcanceEvento,
+  type MesAlmanaque,
   type OrdenEntrada,
   type TipoEvento,
 } from "@/lib/eventos";
@@ -74,6 +75,64 @@ export default function CalendarioApp({ datos }: { datos: CalendarioAdmin }) {
         </div>
 
         <Formulario marcas={datos.marcas} onListo={recargar} />
+      </div>
+
+      <Almanaque meses={datos.almanaque} />
+    </div>
+  );
+}
+
+const DOW = ["L", "M", "M", "J", "V", "S", "D"];
+
+/**
+ * Los próximos meses de un vistazo.
+ *
+ * Va siempre, haya eventos o no: vacío sigue diciendo algo —que el mes está
+ * libre— y sin la grilla no hay forma de ver de un saque si dos cosas caen la
+ * misma semana. Una lista ordenada por fecha no muestra eso.
+ *
+ * Es el mismo almanaque que ve la marca, armado con la misma función: si cada
+ * lado armara el suyo, el día que cambie un color quedarían dos calendarios
+ * distintos del mismo local.
+ */
+function Almanaque({ meses }: { meses: MesAlmanaque[] }) {
+  return (
+    <div className="cal-caja">
+      <div className="cal-alm-cab">
+        <h2>Los próximos {meses.length} meses</h2>
+        <div className="cal-ref">
+          <span>
+            <i className="ev" /> Evento WiiGo
+          </span>
+          <span>
+            <i className="com" /> Fecha comercial
+          </span>
+          <span>
+            <i className="esp" /> Horario especial
+          </span>
+          <span>
+            <i className="cerr" /> Local cerrado
+          </span>
+        </div>
+      </div>
+      <div className="cal-almanaque">
+        {meses.map((m) => (
+          <div className="mes" key={m.nombre}>
+            <h3>{m.nombre}</h3>
+            <div className="rejilla">
+              {DOW.map((d, i) => (
+                <span className="dow" key={i}>
+                  {d}
+                </span>
+              ))}
+              {m.celdas.map((c, i) => (
+                <span className={c.clase} key={i}>
+                  {c.t}
+                </span>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );

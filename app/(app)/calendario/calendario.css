@@ -113,3 +113,46 @@
 .cal-marca .est.no { color: #a3a3a3; }
 
 .cal-vacio { text-align: center; color: #a3a3a3; font-size: 14px; padding: 30px 0; }
+
+/* El almanaque.
+   Los colores son los MISMOS que los de .cal-tag de arriba: la referencia y
+   el chip del evento tienen que ser del mismo color o hay que aprenderse dos
+   codigos para la misma cosa. Por eso no se copiaron los del portal, que es
+   otra paleta. */
+.cal-alm-cab {
+  display: flex; align-items: center; justify-content: space-between; gap: 20px;
+  flex-wrap: wrap; margin-bottom: 14px;
+}
+.cal-alm-cab h2 { margin-bottom: 0; }
+.cal-ref { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11.5px; color: #737373; }
+.cal-ref span { display: flex; align-items: center; gap: 6px; }
+.cal-ref i { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+.cal-ref i.ev { background: #f0f7f0; border: 1px solid #bbd3bb; }
+.cal-ref i.com { background: #fef7e7; border: 1px solid #f0dfb6; }
+.cal-ref i.esp { background: #f5f5f5; border: 1px solid #e5e5e5; }
+.cal-ref i.cerr { background: #fef2f2; border: 1px solid #fecaca; }
+
+.cal-almanaque {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 30px;
+}
+.cal-almanaque .mes h3 {
+  font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  color: #a3a3a3; margin-bottom: 8px;
+}
+.cal-almanaque .rejilla { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+.cal-almanaque .dow {
+  font-size: 9.5px; font-weight: 700; color: #c4c4c4; text-align: center; padding-bottom: 3px;
+}
+.cal-almanaque .dia {
+  height: 32px; display: flex; align-items: center; justify-content: center;
+  font-size: 12.5px; font-variant-numeric: tabular-nums; color: #525252;
+  border-radius: 7px; border: 1px solid transparent;
+}
+/* Los días que no son de este mes ocupan lugar pero no se ven: sin eso la
+   grilla se corre y el 1 cae debajo del día de semana equivocado. */
+.cal-almanaque .dia.vacio { visibility: hidden; }
+.cal-almanaque .dia.ev { background: #f0f7f0; color: #3f6b40; font-weight: 600; border-color: #bbd3bb; }
+.cal-almanaque .dia.com { background: #fef7e7; color: #92600e; font-weight: 600; border-color: #f0dfb6; }
+.cal-almanaque .dia.esp { background: #f5f5f5; color: #525252; font-weight: 600; border-color: #e5e5e5; }
+.cal-almanaque .dia.cerr { background: #fef2f2; color: #b91c1c; font-weight: 600; border-color: #fecaca; }
+.cal-almanaque .dia.hoy { box-shadow: 0 0 0 2px var(--accent); color: #171717; font-weight: 700; }

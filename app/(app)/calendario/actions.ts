@@ -4,11 +4,21 @@ import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionConPermisos } from "@/lib/permisos";
 import { fechaHoraArgentina } from "@/lib/horarios";
+import { armarAlmanaque, type MesAlmanaque } from "@/lib/eventos";
 import type { AlcanceEvento, EstadoParticipacion, OrdenEntrada, TipoEvento } from "@/lib/eventos";
 import type { PlanMarca } from "@/lib/planesMarca";
 
 // El calendario del lado de WiiGo: cargar lo que viene, aprobar lo que
 // proponen las marcas y repartir los lugares.
+
+/**
+ * Cuántos meses de almanaque se dibujan.
+ *
+ * Los mismos que ve la marca, con la misma función: si cada lado armara el
+ * suyo, el día que cambie un color quedan dos calendarios distintos para el
+ * mismo local.
+ */
+const MESES_ALMANAQUE = 3;
 
 async function sesionInterna() {
   const sesion = await obtenerSesionConPermisos();
@@ -51,6 +61,7 @@ export type CalendarioAdmin = {
   propuestas: EventoAdmin[];
   proximos: EventoAdmin[];
   marcas: { idMarca: string; nombre: string; plan: PlanMarca }[];
+  almanaque: MesAlmanaque[];
 };
 
 export async function calendarioAdmin(): Promise<CalendarioAdmin | null> {
@@ -120,16 +131,25 @@ export async function calendarioAdmin(): Promise<CalendarioAdmin | null> {
   });
 
   const todos = (eventos ?? []).map(armar);
+  const proximos = todos.filter((e) => e.estado !== "PROPUESTO" && e.estado !== "RECHAZADO");
 
   return {
     hoy,
     propuestas: todos.filter((e) => e.estado === "PROPUESTO"),
-    proximos: todos.filter((e) => e.estado !== "PROPUESTO" && e.estado !== "RECHAZADO"),
+    proximos,
     marcas: (marcas ?? []).map((m) => ({
       idMarca: m.id_marca as string,
       nombre: (m.nombre as string) ?? "Marca",
       plan: ((m.plan as PlanMarca) ?? "BRONCE") as PlanMarca,
     })),
+    // Solo lo que está en pie. Una propuesta sin aprobar todavía no ocupa el
+    // local, y pintarla en el almanaque haría creer que el día ya está
+    // tomado cuando la decisión es justamente la que falta.
+    almanaque: armarAlmanaque(
+      hoy,
+      MESES_ALMANAQUE,
+      proximos.map((e) => ({ tipo: e.tipo, fechaDesde: e.fechaDesde, fechaHasta: e.fechaHasta }))
+    ),
   };
 }
 
