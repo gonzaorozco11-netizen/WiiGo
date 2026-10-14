@@ -44,7 +44,13 @@ const GROUPS: NavGroup[] = [
     // funciones para crear y recepcionar un pedido a una marca. Lo único
     // propio que tenía —devolverle mercadería fallada a la marca— se mudó a
     // Compras → Recepción, que es el mismo momento y la misma persona.
-    items: [{ href: "/stock", label: "Stock" }],
+    items: [
+      { href: "/stock", label: "Stock" },
+      // Cuánto tiene que haber, no cuánto hay. Va al lado de Stock porque se
+      // miran juntas: ver que algo está en 2 no dice nada sin saber que su
+      // objetivo era 8.
+      { href: "/stock/objetivos", label: "Mínimos y objetivos" },
+    ],
   },
   {
     label: "Operaciones",
