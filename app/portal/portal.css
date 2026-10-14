@@ -2085,6 +2085,44 @@
 .rep-num.total { border-left-color: var(--salvia-honda); }
 .rep-num.total > b { color: var(--salvia-honda); }
 
+.rep-vermas { margin-top: 10px; font-size: 13px; }
+.rep-vermas a { color: var(--salvia-honda); font-weight: 600; text-decoration: none; }
+.rep-vermas a:hover { text-decoration: underline; }
+
+/* Los filtros del historial. Mismo vocabulario que el resto del sistema:
+   esta semana / este mes / entre fechas. */
+.rep-filtros { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.rep-filtros button {
+  border: 1px solid var(--borde-fuerte); background: var(--superficie); border-radius: 999px;
+  padding: 6px 14px; font: inherit; font-size: 13px; font-weight: 600; color: var(--texto-2);
+  cursor: pointer;
+}
+.rep-filtros button:hover { border-color: var(--salvia); }
+.rep-filtros button.activo {
+  background: var(--salvia-tenue); border-color: var(--salvia-honda); color: var(--salvia-honda);
+}
+.rep-rango { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; color: var(--texto-3); }
+.rep-rango input {
+  border: 1px solid var(--borde-fuerte); border-radius: 9px; padding: 5px 9px;
+  font: inherit; font-size: 13px; background: var(--superficie); color: var(--texto);
+}
+
+.rep-envios { list-style: none; display: flex; flex-direction: column; gap: 9px; }
+.rep-envio { background: var(--superficie); border: 1px solid var(--borde); border-radius: 13px; overflow: hidden; }
+.rep-envio-cab {
+  width: 100%; display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; padding: 12px 18px; background: none; border: 0; font: inherit;
+  cursor: pointer; text-align: left;
+}
+.rep-envio-cab b { display: block; font-size: 14px; font-weight: 600; }
+.rep-envio-cab small { display: block; font-size: 12.5px; color: var(--texto-3); margin-top: 1px; }
+.rep-envio-det { border-top: 1px solid var(--borde); padding: 12px 18px 14px; background: var(--superficie-2); }
+.rep-motivo {
+  background: var(--rojo-tenue); border: 1px solid #eccec8; border-radius: 10px;
+  padding: 10px 13px; font-size: 13px; color: #8e392d; line-height: 1.5; margin-bottom: 10px;
+}
+.rep-chip.ok { background: #e3ead9; color: #3f4d33; }
+
 .rep-abrir { display: flex; justify-content: flex-end; margin-bottom: 8px; }
 .rep-abrir button {
   background: none; border: 0; font: inherit; font-size: 12.5px; font-weight: 600;

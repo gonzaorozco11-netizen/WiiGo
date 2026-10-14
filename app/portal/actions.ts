@@ -313,6 +313,16 @@ export type OrdenPortal = {
   hayDiferencias: boolean;
 };
 
+/**
+ * Cuántas órdenes se traen como mucho.
+ *
+ * Con dos recepciones por semana son más de un año de historia. El filtrado
+ * por fecha se hace en pantalla sobre esta lista en vez de volver al servidor
+ * por cada clic: a este volumen, ir y venir por cada filtro se siente más
+ * lento y no ahorra nada.
+ */
+const TOPE_ORDENES = 200;
+
 /** Órdenes de reposición de esta marca y cómo se recibieron en el local. */
 export async function reposicionPortal(): Promise<OrdenPortal[]> {
   const sesion = await obtenerSesionMarca();
@@ -330,14 +340,14 @@ export async function reposicionPortal(): Promise<OrdenPortal[]> {
     .select(`${columnas}, origen, motivo_rechazo`)
     .eq("id_marca", sesion.idMarca)
     .order("fecha", { ascending: false })
-    .limit(8);
+    .limit(TOPE_ORDENES);
   if (conExtras.error) {
     const sin = await supabase
       .from("ordenes_reposicion")
       .select(columnas)
       .eq("id_marca", sesion.idMarca)
       .order("fecha", { ascending: false })
-      .limit(8);
+      .limit(TOPE_ORDENES);
     ordenes = (sin.data as Record<string, unknown>[]) ?? null;
   } else {
     ordenes = conExtras.data as Record<string, unknown>[];

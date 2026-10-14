@@ -1099,17 +1099,21 @@ export default function PortalTablero({
         </section>
       </div>
 
-      {/* ===== REPOSICIÓN ===== */}
+      {/* ===== REPOSICIÓN =====
+          El detalle se mudó a Reponer → Mis envíos: mandar el envío y
+          controlar qué llegó son las dos mitades de la misma conversación, y
+          estaban en pantallas distintas. Acá queda el puntero y el último
+          movimiento, para el que lo venía buscando en el Tablero. */}
       <section className="modulo">
         <div className="modulo-cab">
           <h2>Reposición y recepciones</h2>
-          <p className="desc">Lo que se te pidió y lo que se recibió en el local</p>
+          <p className="desc">Lo que mandaste y lo que entró a la góndola</p>
         </div>
         {ordenes.length === 0 ? (
           <p className="vacio">Todavía no hay órdenes de reposición.</p>
         ) : (
           <ul className="ordenes">
-            {ordenes.map((o) => (
+            {ordenes.slice(0, 1).map((o) => (
               <li key={o.idOrden} className="orden">
                 <div className="orden-cab">
                   <span>
@@ -1178,6 +1182,9 @@ export default function PortalTablero({
             ))}
           </ul>
         )}
+        <p className="rep-vermas">
+          <a href="/portal/reponer">Ver todos tus envíos y lo que se recibió →</a>
+        </p>
       </section>
 
       {/* ===== LIQUIDACIONES ===== */}

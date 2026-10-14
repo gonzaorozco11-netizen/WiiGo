@@ -8,6 +8,7 @@ import {
   type GondolaReponer,
   type RenglonReponer,
 } from "@/app/portal/reponer/actions";
+import type { OrdenPortal } from "@/app/portal/actions";
 
 // Lo que la marca tiene que reponer.
 //
@@ -34,8 +35,15 @@ function pesos(v: number) {
  */
 const FILAS_ABIERTAS = 12;
 
-export default function PortalReponer({ datos }: { datos: DatosReponer }) {
+export default function PortalReponer({
+  datos,
+  envios,
+}: {
+  datos: DatosReponer;
+  envios: OrdenPortal[];
+}) {
   const router = useRouter();
+  const [solapa, setSolapa] = useState<"FALTA" | "ENVIOS">("FALTA");
   const [cantidades, setCantidades] = useState<Map<string, number>>(new Map());
   const [error, setError] = useState<string | null>(null);
   const [listo, setListo] = useState<{ automatica: boolean } | null>(null);
@@ -120,13 +128,16 @@ export default function PortalReponer({ datos }: { datos: DatosReponer }) {
     <main className="portal-lienzo">
       <div className="rep-cab">
         <div>
-          <h1 className="rep-titulo">Lo que tenés que reponer</h1>
+          <h1 className="rep-titulo">
+            {solapa === "FALTA" ? "Lo que tenés que reponer" : "Mis envíos"}
+          </h1>
           <p className="rep-sub">
-            Se arma solo con lo que vas vendiendo. No hace falta que lo revises todos los días:
-            cuando llegue el día de recepción, mandá lo que diga acá.
+            {solapa === "FALTA"
+              ? "Se arma solo con lo que vas vendiendo. No hace falta que lo revises todos los días: cuando llegue el día de recepción, mandá lo que diga acá."
+              : "Lo que mandaste y lo que se recibió de verdad en el local, producto por producto."}
           </p>
         </div>
-        {datos.proxima && (
+        {solapa === "FALTA" && datos.proxima && (
           <div className="rep-proxima">
             <span>Próxima recepción</span>
             <b>{datos.proxima.etiqueta} · {datos.proxima.horario} h</b>
@@ -141,7 +152,30 @@ export default function PortalReponer({ datos }: { datos: DatosReponer }) {
         )}
       </div>
 
-      {datos.yaMandado &&
+      <div className="cam-tabs">
+        <button
+          className={`cam-tab${solapa === "FALTA" ? " activa" : ""}`}
+          onClick={() => setSolapa("FALTA")}
+        >
+          Lo que falta
+          {datos.agotados + datos.bajos > 0 && (
+            <span className="cam-cont fuerte">{datos.agotados + datos.bajos}</span>
+          )}
+        </button>
+        <button
+          className={`cam-tab${solapa === "ENVIOS" ? " activa" : ""}`}
+          onClick={() => setSolapa("ENVIOS")}
+        >
+          Mis envíos
+          {envios.length > 0 && <span className="cam-cont">{envios.length}</span>}
+        </button>
+      </div>
+
+      {solapa === "ENVIOS" && <Envios envios={envios} />}
+
+      {solapa === "FALTA" && (
+        <>
+          {datos.yaMandado &&
         (datos.yaMandado.estado === "PROPUESTA" ? (
           <div className="rep-aviso">
             Mandaste un envío de <b>{datos.yaMandado.unidades} unidades</b> que está{" "}
@@ -250,12 +284,218 @@ export default function PortalReponer({ datos }: { datos: DatosReponer }) {
         )}
       </div>
 
-      <p className="rep-letra">
-        Mandar el envío no mueve el stock: avisa a WiiGo que la mercadería va en camino. Entra a la
-        góndola cuando la reciben en el local y cuentan lo que llegó de verdad. Si decía 8 y llegaron
-        6, se reciben 6 y lo vas a ver acá.
-      </p>
+          <p className="rep-letra">
+            Mandar el envío no mueve el stock: avisa a WiiGo que la mercadería va en camino. Entra a
+            la góndola cuando la reciben en el local y cuentan lo que llegó de verdad. Si decía 8 y
+            llegaron 6, se reciben 6 y lo vas a ver en Mis envíos.
+          </p>
+        </>
+      )}
     </main>
+  );
+}
+
+type Filtro = "TODO" | "SEMANA" | "MES" | "RANGO";
+
+const ETIQUETA_FILTRO: Record<Filtro, string> = {
+  TODO: "Todo",
+  SEMANA: "Esta semana",
+  MES: "Este mes",
+  RANGO: "Entre fechas",
+};
+
+function soloFecha(iso: string) {
+  return (iso ?? "").slice(0, 10);
+}
+
+function fechaCorta(iso: string | null) {
+  if (!iso) return "—";
+  const [a, m, d] = soloFecha(iso).split("-");
+  return d && m ? `${d}/${m}/${a?.slice(2)}` : iso;
+}
+
+/**
+ * Lo que la marca mandó y lo que se recibió de verdad.
+ *
+ * Es la otra mitad de Reponer: acá se manda, acá se controla. En consignación
+ * esto no es un historial decorativo — es el único lugar donde la marca puede
+ * ver que mandó 8 y entraron 6. Sin eso, la diferencia aparece recién en la
+ * liquidación de fin de mes y ahí ya es una discusión.
+ *
+ * El filtrado es en pantalla y no en el servidor: son como mucho 200 órdenes,
+ * y a ese volumen ir y volver por cada clic se siente más lento sin ahorrar
+ * nada.
+ */
+function Envios({ envios }: { envios: OrdenPortal[] }) {
+  const [filtro, setFiltro] = useState<Filtro>("TODO");
+  const [desde, setDesde] = useState("");
+  const [hasta, setHasta] = useState("");
+  const [abierta, setAbierta] = useState<string | null>(null);
+
+  const visibles = useMemo(() => {
+    const hoy = new Date();
+    const limite = (dias: number) => {
+      const d = new Date(hoy);
+      d.setDate(d.getDate() - dias);
+      return d.toISOString().slice(0, 10);
+    };
+    return envios.filter((o) => {
+      const f = soloFecha(o.fecha);
+      if (filtro === "SEMANA") return f >= limite(7);
+      if (filtro === "MES") return f >= limite(30);
+      if (filtro === "RANGO") {
+        if (desde && f < desde) return false;
+        if (hasta && f > hasta) return false;
+        return true;
+      }
+      return true;
+    });
+  }, [envios, filtro, desde, hasta]);
+
+  // Lo que importa del período: cuánto se mandó y cuánto entró. La diferencia
+  // es el número que se discute, así que se muestra solo.
+  const resumen = useMemo(() => {
+    let mandadas = 0;
+    let recibidas = 0;
+    let conDiferencia = 0;
+    for (const o of visibles) {
+      mandadas += o.totalUnidades;
+      recibidas += o.lineas.reduce((a, l) => a + l.recibida, 0);
+      if (o.hayDiferencias) conDiferencia++;
+    }
+    return { mandadas, recibidas, conDiferencia };
+  }, [visibles]);
+
+  return (
+    <>
+      <div className="rep-filtros">
+        {(["TODO", "SEMANA", "MES", "RANGO"] as Filtro[]).map((f) => (
+          <button
+            key={f}
+            type="button"
+            className={filtro === f ? "activo" : undefined}
+            onClick={() => setFiltro(f)}
+          >
+            {ETIQUETA_FILTRO[f]}
+          </button>
+        ))}
+        {filtro === "RANGO" && (
+          <span className="rep-rango">
+            <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} aria-label="Desde" />
+            <span>a</span>
+            <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} aria-label="Hasta" />
+          </span>
+        )}
+      </div>
+
+      {visibles.length > 0 && (
+        <div className="rep-numeros">
+          <div className="rep-num total">
+            <span>Mandaste</span>
+            <b>{resumen.mandadas} u.</b>
+            <small>en {visibles.length} {visibles.length === 1 ? "envío" : "envíos"}</small>
+          </div>
+          <div className="rep-num total">
+            <span>Entraron a la góndola</span>
+            <b>{resumen.recibidas} u.</b>
+            <small>contadas en el local al recibir</small>
+          </div>
+          <div className={`rep-num ${resumen.conDiferencia > 0 ? "bajo" : "total"}`}>
+            <span>Con diferencias</span>
+            <b>{resumen.conDiferencia}</b>
+            <small>
+              {resumen.conDiferencia === 0
+                ? "Entró todo lo que mandaste"
+                : "Envíos donde no coincidió algo"}
+            </small>
+          </div>
+        </div>
+      )}
+
+      {visibles.length === 0 ? (
+        <p className="vacio">
+          {envios.length === 0
+            ? "Todavía no mandaste ningún envío."
+            : "No hay envíos en ese período."}
+        </p>
+      ) : (
+        <ul className="rep-envios">
+          {visibles.map((o) => (
+            <li key={o.idOrden} className="rep-envio">
+              <button
+                className="rep-envio-cab"
+                onClick={() => setAbierta(abierta === o.idOrden ? null : o.idOrden)}
+              >
+                <span>
+                  <b>
+                    {abierta === o.idOrden ? "▾" : "▸"} {fechaCorta(o.fecha)} · {o.totalUnidades}{" "}
+                    unidades
+                  </b>
+                  <small>
+                    {o.local}
+                    {o.recibidaEl ? ` · recibida el ${fechaCorta(o.recibidaEl)}` : ""}
+                    {o.recibidaPor ? ` por ${o.recibidaPor}` : ""}
+                  </small>
+                </span>
+                <EstadoEnvio o={o} />
+              </button>
+
+              {abierta === o.idOrden && (
+                <div className="rep-envio-det">
+                  {o.motivoRechazo && <p className="rep-motivo">{o.motivoRechazo}</p>}
+                  {o.lineas.length === 0 ? (
+                    <p className="rep-nada">
+                      Todavía no se recibió. Cuando la reciban en el local vas a ver acá producto por
+                      producto lo que entró.
+                    </p>
+                  ) : (
+                    <table className="rep-tabla">
+                      <thead>
+                        <tr>
+                          <th>Producto</th>
+                          <th className="c">Mandaste</th>
+                          <th className="c">Entró</th>
+                          <th className="c">Diferencia</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {o.lineas.map((l, i) => (
+                          <tr key={i}>
+                            <td>{l.producto}</td>
+                            <td className="c mono">{l.solicitada}</td>
+                            <td className="c mono">{l.recibida}</td>
+                            <td className="c">
+                              {l.diferencia === 0 ? (
+                                <span className="tenue">—</span>
+                              ) : l.diferencia < 0 ? (
+                                <span className="rep-chip agotado">Faltan {Math.abs(l.diferencia)}</span>
+                              ) : (
+                                <span className="rep-chip bajo">Sobran {l.diferencia}</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
+  );
+}
+
+function EstadoEnvio({ o }: { o: OrdenPortal }) {
+  if (o.estado === "PROPUESTA") return <span className="rep-chip bajo">Esperando aprobación</span>;
+  if (o.estado === "RECHAZADA") return <span className="rep-chip agotado">Rechazada</span>;
+  if (!o.recibidaEl) return <span className="rep-chip camino">En camino</span>;
+  return o.hayDiferencias ? (
+    <span className="rep-chip bajo">Llegó con diferencias</span>
+  ) : (
+    <span className="rep-chip ok">Llegó completa</span>
   );
 }
 
