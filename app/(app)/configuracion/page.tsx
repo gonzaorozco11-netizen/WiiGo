@@ -4,6 +4,7 @@ import ConfiguracionApp from "@/components/ConfiguracionApp";
 import { obtenerEmisor } from "@/lib/arca/emisor-db";
 import { estadoCredenciales } from "@/lib/arca/credenciales";
 import { obtenerPolitica } from "@/lib/solicitudesMarca";
+import { leerDias } from "@/lib/recepcion";
 
 export const dynamic = "force-dynamic";
 
@@ -56,6 +57,9 @@ export default async function ConfiguracionPage() {
       "ARCA_IVA_PORCENTAJE",
       "ARCA_MONTO_IDENTIFICACION",
       "DEVOLUCION_DIAS_AVISO",
+      "RECEPCION_DIAS",
+      "RECEPCION_HORA_DESDE",
+      "RECEPCION_HORA_HASTA",
     ]);
 
   const valores = new Map((data ?? []).map((c) => [c.parametro, c.valor]));
@@ -111,6 +115,9 @@ export default async function ConfiguracionPage() {
       credencialesArca={credencialesArca}
       politicaAprobaciones={politicaAprobaciones}
       devolucionDiasAviso={Number(valores.get("DEVOLUCION_DIAS_AVISO") ?? 7) || 7}
+      recepcionDias={leerDias(valores.get("RECEPCION_DIAS"))}
+      recepcionHoraDesde={valores.get("RECEPCION_HORA_DESDE") ?? "09:00"}
+      recepcionHoraHasta={valores.get("RECEPCION_HORA_HASTA") ?? "12:00"}
       royaltiesMarcas={(marcasActivas.data ?? []).map((m) => ({
         nombre: m.nombre as string,
         royalty: (m.royalty_porcentaje as number | null) ?? 0,

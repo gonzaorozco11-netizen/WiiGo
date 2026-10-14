@@ -9,8 +9,10 @@ import {
   guardarConfigMercadoPago,
   guardarConfigGastos,
   guardarConfigDevoluciones,
+  guardarConfigRecepcion,
   conectarMercadoPagoQR,
 } from "@/app/(app)/configuracion/actions";
+import { DIAS_SEMANA, huecoMasLargo, nombrarDias } from "@/lib/recepcion";
 import ConfiguracionArca from "@/components/ConfiguracionArca";
 import ConfiguracionAprobaciones from "@/components/ConfiguracionAprobaciones";
 import type { DatosEmisor } from "@/lib/arca/emisor-db";
@@ -54,6 +56,9 @@ export default function ConfiguracionApp({
   politicaAprobaciones,
   royaltiesMarcas,
   devolucionDiasAviso,
+  recepcionDias,
+  recepcionHoraDesde,
+  recepcionHoraHasta,
 }: {
   puntosActivo: boolean;
   puntosCadaMonto: number;
@@ -91,6 +96,9 @@ export default function ConfiguracionApp({
   politicaAprobaciones: PoliticaDescuentos;
   royaltiesMarcas: { nombre: string; royalty: number }[];
   devolucionDiasAviso: number;
+  recepcionDias: number[];
+  recepcionHoraDesde: string;
+  recepcionHoraHasta: string;
 }) {
   const [isPending, startTransition] = useTransition();
   const [guardado, setGuardado] = useState(false);
@@ -155,6 +163,10 @@ export default function ConfiguracionApp({
   const [topeGastos, setTopeGastos] = useState(gastosTopeSinAutorizacion);
 
   const [isPendingDevoluciones, startTransitionDevoluciones] = useTransition();
+  const [isPendingRecepcion, startTransitionRecepcion] = useTransition();
+  const [guardadoRecepcion, setGuardadoRecepcion] = useState(false);
+  const [errorRecepcion, setErrorRecepcion] = useState<string | null>(null);
+  const [diasRecepcion, setDiasRecepcion] = useState<number[]>(recepcionDias);
   const [guardadoDevoluciones, setGuardadoDevoluciones] = useState(false);
   const [errorDevoluciones, setErrorDevoluciones] = useState<string | null>(null);
   const [diasDevolucion, setDiasDevolucion] = useState(devolucionDiasAviso);
@@ -239,6 +251,16 @@ export default function ConfiguracionApp({
       const res = await guardarConfigGastos(formData);
       if (res.error) setErrorGastos(res.error);
       else setGuardadoGastos(true);
+    });
+  }
+
+  function handleSubmitRecepcion(formData: FormData) {
+    setGuardadoRecepcion(false);
+    setErrorRecepcion(null);
+    startTransitionRecepcion(async () => {
+      const res = await guardarConfigRecepcion(formData);
+      if (res.error) setErrorRecepcion(res.error);
+      else setGuardadoRecepcion(true);
     });
   }
 
@@ -875,6 +897,110 @@ export default function ConfiguracionApp({
           className="w-full rounded-lg bg-accent hover:bg-accent-dark text-white py-2 text-sm font-medium disabled:opacity-50"
         >
           {isPendingDevoluciones ? "Guardando..." : "Guardar plazo"}
+        </button>
+      </form>
+
+      <form action={handleSubmitRecepcion} className="bg-white border border-neutral-200 rounded-xl p-5 mt-5">
+        <h2 className="text-base font-semibold text-neutral-900 mb-1">📦 Recepción de marcas</h2>
+        <p className="text-sm text-neutral-500 mb-4">
+          Los días en que el local recibe mercadería. Las marcas los ven en su portal y la orden de
+          reposición se calcula contra la próxima fecha. Recibir es el único paso del circuito que
+          ocupa a una persona: concentrarlo en dos mañanas es lo que evita pasar la semana recibiendo.
+        </p>
+
+        <div className="mb-4">
+          <span className="block text-sm font-medium text-neutral-700 mb-2">Días de recepción</span>
+          <div className="flex flex-wrap gap-2">
+            {DIAS_SEMANA.map((d) => {
+              const elegido = diasRecepcion.includes(d.iso);
+              return (
+                <label
+                  key={d.iso}
+                  className={`cursor-pointer select-none rounded-lg border px-3 py-2 text-sm font-medium ${
+                    elegido
+                      ? "border-accent bg-accent-tint text-accent"
+                      : "border-neutral-300 text-neutral-600 hover:border-neutral-400"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    name="recepcion_dias"
+                    value={d.iso}
+                    checked={elegido}
+                    onChange={(e) =>
+                      setDiasRecepcion((previos) =>
+                        e.target.checked
+                          ? [...previos, d.iso].sort((a, b) => a - b)
+                          : previos.filter((x) => x !== d.iso)
+                      )
+                    }
+                    className="sr-only"
+                  />
+                  {d.corto}
+                </label>
+              );
+            })}
+          </div>
+          {/* El hueco más largo es el número que manda para el stock objetivo:
+              hay que aguantar vendiendo todo ese tiempo sin que entre nada.
+              Mostrarlo acá evita elegir dos días pegados sin darse cuenta. */}
+          <p className="text-xs text-neutral-500 mt-2">
+            {diasRecepcion.length === 0 ? (
+              <span className="text-red-600">Elegí al menos un día.</span>
+            ) : (
+              <>
+                Se recibe {nombrarDias(diasRecepcion)}. El hueco más largo sin recibir es de{" "}
+                <b>{huecoMasLargo(diasRecepcion)} días</b>: el stock objetivo de cada producto tiene
+                que alcanzar para vender todo ese tiempo.
+              </>
+            )}
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="recepcion_hora_desde">
+              Desde
+            </label>
+            <input
+              id="recepcion_hora_desde"
+              name="recepcion_hora_desde"
+              type="time"
+              defaultValue={recepcionHoraDesde}
+              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="recepcion_hora_hasta">
+              Hasta
+            </label>
+            <input
+              id="recepcion_hora_hasta"
+              name="recepcion_hora_hasta"
+              type="time"
+              defaultValue={recepcionHoraHasta}
+              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+          </div>
+        </div>
+
+        {errorRecepcion && (
+          <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-4">
+            {errorRecepcion}
+          </p>
+        )}
+        {guardadoRecepcion && (
+          <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 mb-4">
+            Días de recepción guardados.
+          </p>
+        )}
+
+        <button
+          type="submit"
+          disabled={isPendingRecepcion}
+          className="w-full rounded-lg bg-accent hover:bg-accent-dark text-white py-2 text-sm font-medium disabled:opacity-50"
+        >
+          {isPendingRecepcion ? "Guardando..." : "Guardar recepción"}
         </button>
       </form>
 

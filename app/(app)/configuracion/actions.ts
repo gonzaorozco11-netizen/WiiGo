@@ -4,6 +4,12 @@ import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos";
 import { obtenerUsuarioMp, buscarSucursalMp, crearSucursalMp, buscarCajaMp, crearCajaMp } from "@/lib/mercadopago";
+import {
+  escribirDias,
+  PARAMETRO_DIAS,
+  PARAMETRO_HORA_DESDE,
+  PARAMETRO_HORA_HASTA,
+} from "@/lib/recepcion";
 
 async function requireEditarConfiguracion(): Promise<string | null> {
   const sesion = await obtenerSesionConPermisos();
@@ -444,6 +450,46 @@ export async function guardarConfigDevoluciones(formData: FormData): Promise<{ e
 
   revalidatePath("/configuracion");
   revalidatePath("/ventas");
+  return { error: null };
+}
+
+/**
+ * Los días y el horario en que el local recibe mercadería de las marcas.
+ *
+ * Se guarda acá y no en el código para que cambiarlo sea una decisión de
+ * operación y no un deploy: el día que la operativa no dé abasto un martes,
+ * se mueve a miércoles desde esta pantalla.
+ */
+export async function guardarConfigRecepcion(formData: FormData): Promise<{ error: string | null }> {
+  const permisoError = await requireEditarConfiguracion();
+  if (permisoError) return { error: permisoError };
+
+  const dias = formData
+    .getAll("recepcion_dias")
+    .map((d) => Number(d))
+    .filter((d) => Number.isInteger(d) && d >= 1 && d <= 7);
+  // Sin ningún día no hay circuito: las marcas no sabrían cuándo mandar y la
+  // orden de reposición no tendría fecha contra la cual calcular.
+  if (dias.length === 0) return { error: "Elegí al menos un día de recepción." };
+
+  const desde = String(formData.get("recepcion_hora_desde") ?? "").trim();
+  const hasta = String(formData.get("recepcion_hora_hasta") ?? "").trim();
+  const horaValida = (h: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(h);
+  if (!horaValida(desde) || !horaValida(hasta)) return { error: "Las horas tienen que ser como 09:00." };
+  if (desde >= hasta) return { error: "La hora de fin tiene que ser posterior a la de inicio." };
+
+  const supabase = getSupabaseServerClient();
+  for (const [parametro, valor, descripcion] of [
+    [PARAMETRO_DIAS, escribirDias(dias), "Recepción: días de la semana en que el local recibe mercadería de marcas (1=lunes)"],
+    [PARAMETRO_HORA_DESDE, desde, "Recepción: desde qué hora se recibe"],
+    [PARAMETRO_HORA_HASTA, hasta, "Recepción: hasta qué hora se recibe"],
+  ] as const) {
+    const error = await guardarParametro(supabase, parametro, valor, descripcion);
+    if (error) return { error };
+  }
+
+  revalidatePath("/configuracion");
+  revalidatePath("/portal/productos");
   return { error: null };
 }
 
