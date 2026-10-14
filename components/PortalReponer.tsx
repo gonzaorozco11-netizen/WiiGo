@@ -190,19 +190,35 @@ export default function PortalReponer({
         ))}
 
       <div className="rep-numeros">
-        <div className="rep-num agotado">
+        {/* La tarjeta se apaga cuando lo que falta ya viene en camino. Con el
+            envío mandado la góndola sigue vacía, pero no hay nada que hacer:
+            un número en rojo al lado de "0 para mandar" se contradice solo y
+            enseña a desconfiar de la pantalla. */}
+        <div className={`rep-num ${datos.agotados > datos.agotadosEnCamino ? "agotado" : "espera"}`}>
           <span>{sinHistoria ? "Sin stock en góndola" : "Agotados"}</span>
           <b>{datos.agotados}</b>
           <small>
-            {sinHistoria
-              ? "Todavía no hay nada tuyo en el local"
-              : "No se están vendiendo porque no están"}
+            {datos.agotados === 0
+              ? "Está todo en góndola"
+              : datos.agotados === datos.agotadosEnCamino
+                ? "Todos vienen en el envío que mandaste"
+                : datos.agotadosEnCamino > 0
+                  ? `${datos.agotadosEnCamino} ya vienen en camino`
+                  : sinHistoria
+                    ? "Todavía no hay nada tuyo en el local"
+                    : "No se están vendiendo porque no están"}
           </small>
         </div>
-        <div className="rep-num bajo">
+        <div className={`rep-num ${datos.bajos > datos.bajosEnCamino ? "bajo" : "espera"}`}>
           <span>Por debajo del mínimo</span>
           <b>{datos.bajos}</b>
-          <small>No llegan a la próxima recepción</small>
+          <small>
+            {datos.bajos === 0
+              ? "Ninguno está en riesgo"
+              : datos.bajos === datos.bajosEnCamino
+                ? "Todos vienen en el envío que mandaste"
+                : "No llegan a la próxima recepción"}
+          </small>
         </div>
         <div className="rep-num total">
           <span>Este envío</span>

@@ -2084,6 +2084,10 @@
 .rep-num.bajo > b { color: var(--ocre); }
 .rep-num.total { border-left-color: var(--salvia-honda); }
 .rep-num.total > b { color: var(--salvia-honda); }
+/* Lo que esta mal pero ya tiene solucion en camino: se muestra, no se grita.
+   El rojo es para lo que pide hacer algo. */
+.rep-num.espera { border-left-color: var(--borde-fuerte); }
+.rep-num.espera > b { color: var(--texto-3); }
 
 .rep-vermas { margin-top: 10px; font-size: 13px; }
 .rep-vermas a { color: var(--salvia-honda); font-weight: 600; text-decoration: none; }

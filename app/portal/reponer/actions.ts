@@ -47,8 +47,12 @@ export type GondolaReponer = {
 
 export type DatosReponer = {
   gondolas: GondolaReponer[];
+  /** Cómo está la góndola HOY: cuántos están en cero. */
   agotados: number;
+  /** De esos, cuántos ya vienen en el envío que mandó y todavía no llegó. */
+  agotadosEnCamino: number;
   bajos: number;
+  bajosEnCamino: number;
   /** Unidades y pesos a precio de venta de lo sugerido. */
   unidades: number;
   valorizado: number;
@@ -107,7 +111,9 @@ export async function miReposicion(): Promise<DatosReponer | null> {
 
   const porGondola = new Map<string, RenglonReponer[]>();
   let agotados = 0;
+  let agotadosEnCamino = 0;
   let bajos = 0;
+  let bajosEnCamino = 0;
   let unidades = 0;
   let valorizado = 0;
 
@@ -128,8 +134,19 @@ export async function miReposicion(): Promise<DatosReponer | null> {
     const estado: RenglonReponer["estado"] =
       stock <= 0 ? "AGOTADO" : minimo > 0 && stock < minimo ? "BAJO" : "OK";
 
-    if (estado === "AGOTADO") agotados++;
-    if (estado === "BAJO") bajos++;
+    // "En camino" es la diferencia entre estar mal y tener algo que hacer.
+    // Con el envío ya mandado, la góndola sigue vacía pero no hay nada que
+    // mandar: sin separarlos, la pantalla grita 116 al lado de un "0 para
+    // mandar" y se contradice sola.
+    const enCaminoAhora = (s?.pendiente ?? 0) > 0;
+    if (estado === "AGOTADO") {
+      agotados++;
+      if (enCaminoAhora) agotadosEnCamino++;
+    }
+    if (estado === "BAJO") {
+      bajos++;
+      if (enCaminoAhora) bajosEnCamino++;
+    }
     unidades += sugerido;
     valorizado += sugerido * prod.precio;
 
@@ -189,7 +206,9 @@ export async function miReposicion(): Promise<DatosReponer | null> {
   return {
     gondolas,
     agotados,
+    agotadosEnCamino,
     bajos,
+    bajosEnCamino,
     unidades,
     valorizado,
     proxima: {
@@ -209,11 +228,16 @@ export async function miReposicion(): Promise<DatosReponer | null> {
 }
 
 /**
- * Cuántos productos están agotados o por debajo del mínimo.
+ * Cuántos productos necesitan que la marca haga algo.
  *
- * Solo para el número del menú, así que no arma la orden entera: con el
- * cálculo completo, cada pantalla del portal pagaría media docena de
- * consultas de más solo para pintar un número.
+ * Agotados o bajo el mínimo, PERO descontando lo que ya viene en un envío
+ * mandado. Un producto en cero cuya reposición ya está en camino no es una
+ * tarea: es una espera. Contarlo igual deja un número rojo permanente en el
+ * menú —116, en el caso que lo destapó— y un número rojo que nunca baja se
+ * aprende a ignorar en dos días; después no sirve el día que sí importa.
+ *
+ * No arma la orden entera: con el cálculo completo, cada pantalla del portal
+ * pagaría media docena de consultas de más solo para pintar un número.
  */
 export async function cuantosFaltan(): Promise<number> {
   try {
@@ -245,18 +269,40 @@ export async function cuantosFaltan(): Promise<number> {
     const lista = (variantes ?? []).filter((v) => ((v.stock_objetivo as number) ?? 0) > 0);
     if (lista.length === 0) return 0;
 
-    const { data: stock } = await supabase
-      .from("stock")
-      .select("id_variante, cantidad")
-      .eq("id_local", idLocal)
-      .in(
-        "id_variante",
-        lista.map((v) => v.id_variante as string)
-      );
+    const idsVariante = lista.map((v) => v.id_variante as string);
+
+    const [{ data: stock }, { data: ordenes }] = await Promise.all([
+      supabase.from("stock").select("id_variante, cantidad").eq("id_local", idLocal).in("id_variante", idsVariante),
+      supabase
+        .from("ordenes_reposicion")
+        .select("id_orden")
+        .eq("id_marca", sesion.idMarca)
+        .eq("id_local", idLocal)
+        .in("estado", ESTADOS_ABIERTOS),
+    ]);
     const hay = new Map((stock ?? []).map((s) => [s.id_variante as string, (s.cantidad as number) ?? 0]));
 
+    // Lo que ya viene y todavía no llegó.
+    const enCamino = new Map<string, number>();
+    const idsOrden = (ordenes ?? []).map((o) => o.id_orden as string);
+    if (idsOrden.length > 0) {
+      const { data: renglones } = await supabase
+        .from("detalle_reposicion")
+        .select("id_variante, cantidad_solicitada, cantidad_recibida")
+        .in("id_orden", idsOrden)
+        .in("id_variante", idsVariante);
+      for (const r of renglones ?? []) {
+        const falta = ((r.cantidad_solicitada as number) ?? 0) - ((r.cantidad_recibida as number) ?? 0);
+        if (falta <= 0) continue;
+        const id = r.id_variante as string;
+        enCamino.set(id, (enCamino.get(id) ?? 0) + falta);
+      }
+    }
+
     return lista.filter((v) => {
-      const cantidad = hay.get(v.id_variante as string) ?? 0;
+      const id = v.id_variante as string;
+      // Lo que va a haber cuando llegue lo mandado, no lo que hay hoy.
+      const cantidad = (hay.get(id) ?? 0) + (enCamino.get(id) ?? 0);
       const minimo = (v.stock_minimo as number) ?? 0;
       return cantidad <= 0 || (minimo > 0 && cantidad < minimo);
     }).length;
