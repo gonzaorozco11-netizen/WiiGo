@@ -2085,6 +2085,13 @@
 .rep-num.total { border-left-color: var(--salvia-honda); }
 .rep-num.total > b { color: var(--salvia-honda); }
 
+.rep-abrir { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+.rep-abrir button {
+  background: none; border: 0; font: inherit; font-size: 12.5px; font-weight: 600;
+  color: var(--salvia-honda); cursor: pointer; padding: 2px 4px;
+}
+.rep-abrir button:hover { text-decoration: underline; }
+
 .rep-gondola {
   background: var(--superficie); border: 1px solid var(--borde); border-radius: 14px;
   margin-bottom: 12px; overflow: hidden;

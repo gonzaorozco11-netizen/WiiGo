@@ -20,12 +20,51 @@ function pesos(v: number) {
   return `$${Math.round(v).toLocaleString("es-AR")}`;
 }
 
+/**
+ * Cuántas filas se dejan abiertas de entrada.
+ *
+ * Es un presupuesto y no una regla fija porque los dos casos extremos piden
+ * cosas opuestas. Una semana normal son tres o cuatro productos repartidos en
+ * dos góndolas: ahí abrir todo es lo correcto, cerrarlo obliga a buscar.
+ * Pero antes de abrir el local está TODO agotado —116 productos— y abrir todo
+ * son cien filas que nadie revisa: se scrollea hasta abajo y se manda.
+ *
+ * Con un presupuesto de filas los dos casos salen bien solos, sin que la
+ * marca tenga que configurar nada.
+ */
+const FILAS_ABIERTAS = 12;
+
 export default function PortalReponer({ datos }: { datos: DatosReponer }) {
   const router = useRouter();
   const [cantidades, setCantidades] = useState<Map<string, number>>(new Map());
   const [error, setError] = useState<string | null>(null);
   const [listo, setListo] = useState<{ automatica: boolean } | null>(null);
   const [pendiente, empezar] = useTransition();
+
+  const abiertasPorDefecto = useMemo(() => {
+    const abiertas = new Set<string>();
+    let filas = 0;
+    for (const g of datos.gondolas) {
+      const faltan = g.renglones.filter((r) => r.sugerido > 0).length;
+      if (faltan === 0) continue;
+      if (filas > 0 && filas + g.renglones.length > FILAS_ABIERTAS) break;
+      abiertas.add(g.nombre);
+      filas += g.renglones.length;
+    }
+    return abiertas;
+  }, [datos]);
+
+  const [abiertas, setAbiertas] = useState<Set<string>>(abiertasPorDefecto);
+
+  // Sin una sola venta registrada no se puede hablar de "se dejó de vender":
+  // el local todavía no abrió. Mismo dato, otra frase.
+  const sinHistoria = useMemo(
+    () => datos.gondolas.every((g) => g.renglones.every((r) => r.porSemana === 0)),
+    [datos]
+  );
+
+  const conFaltante = datos.gondolas.filter((g) => g.renglones.some((r) => r.sugerido > 0));
+  const todasAbiertas = conFaltante.length > 0 && conFaltante.every((g) => abiertas.has(g.nombre));
 
   const sugeridoDe = useMemo(() => {
     const m = new Map<string, number>();
@@ -111,9 +150,13 @@ export default function PortalReponer({ datos }: { datos: DatosReponer }) {
 
       <div className="rep-numeros">
         <div className="rep-num agotado">
-          <span>Agotados</span>
+          <span>{sinHistoria ? "Sin stock en góndola" : "Agotados"}</span>
           <b>{datos.agotados}</b>
-          <small>No se están vendiendo porque no están</small>
+          <small>
+            {sinHistoria
+              ? "Todavía no hay nada tuyo en el local"
+              : "No se están vendiendo porque no están"}
+          </small>
         </div>
         <div className="rep-num bajo">
           <span>Por debajo del mínimo</span>
@@ -130,9 +173,37 @@ export default function PortalReponer({ datos }: { datos: DatosReponer }) {
       {datos.gondolas.length === 0 ? (
         <p className="vacio">Todavía no tenés productos con stock objetivo cargado.</p>
       ) : (
-        datos.gondolas.map((g) => (
-          <Gondola key={g.nombre} g={g} cantidad={cantidad} tocar={tocar} />
-        ))
+        <>
+          {conFaltante.length > 1 && (
+            <div className="rep-abrir">
+              <button
+                type="button"
+                onClick={() =>
+                  setAbiertas(todasAbiertas ? new Set() : new Set(conFaltante.map((g) => g.nombre)))
+                }
+              >
+                {todasAbiertas ? "Cerrar todas" : "Abrir todas"}
+              </button>
+            </div>
+          )}
+          {datos.gondolas.map((g) => (
+            <Gondola
+              key={g.nombre}
+              g={g}
+              abierta={abiertas.has(g.nombre)}
+              alternar={() =>
+                setAbiertas((previo) => {
+                  const siguiente = new Set(previo);
+                  if (siguiente.has(g.nombre)) siguiente.delete(g.nombre);
+                  else siguiente.add(g.nombre);
+                  return siguiente;
+                })
+              }
+              cantidad={cantidad}
+              tocar={tocar}
+            />
+          ))}
+        </>
       )}
 
       <div className="rep-pie">
@@ -183,22 +254,25 @@ export default function PortalReponer({ datos }: { datos: DatosReponer }) {
 
 function Gondola({
   g,
+  abierta,
+  alternar,
   cantidad,
   tocar,
 }: {
   g: GondolaReponer;
+  abierta: boolean;
+  alternar: () => void;
   cantidad: (id: string) => number;
   tocar: (id: string, n: number) => void;
 }) {
+  // Las góndolas que no necesitan nada se muestran igual, cerradas: sin ellas
+  // la lista parece incompleta y no se ve que el sistema miró todo el
+  // catálogo, no solo lo que falta.
   const hacenFalta = g.renglones.filter((r) => r.sugerido > 0).length;
-  // Las góndolas que no necesitan nada arrancan cerradas, pero se muestran:
-  // sin ellas la lista parece incompleta y no se ve que el sistema miró todo
-  // el catálogo, no solo lo que falta.
-  const [abierta, setAbierta] = useState(hacenFalta > 0);
 
   return (
     <section className="rep-gondola">
-      <button className="rep-gon-cab" onClick={() => setAbierta((v) => !v)}>
+      <button className="rep-gon-cab" onClick={alternar}>
         <span className="rep-gon-nom">
           {abierta ? "▾" : "▸"} {g.nombre}
         </span>
