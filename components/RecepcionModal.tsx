@@ -94,9 +94,29 @@ export default function RecepcionModal({
   const faltaDe = (d: DetalleReposicion) =>
     Math.max(0, (d.cantidad_solicitada ?? 0) - (d.cantidad_recibida ?? 0));
 
-  const [recibidos, setRecibidos] = useState<Record<string, number>>(
-    Object.fromEntries(detalle.map((d) => [d.id_detalle, faltaDe(d)]))
-  );
+  /**
+   * Lo que llegó, VACÍO al abrir. Lo escribe quien cuenta.
+   *
+   * Antes venía precargado con lo que faltaba, y eso convertía recibir en
+   * apretar confirmar: si el campo ya dice 5, nadie cuenta las 5. El
+   * precargado no ahorra trabajo, ahorra el conteo — que es el único trabajo
+   * que esta pantalla tiene.
+   *
+   * Se guarda como texto y no como número para poder distinguir "" de "0":
+   * vacío es «todavía no lo conté» y 0 es «conté y no llegó ninguna». Con un
+   * número solo, las dos cosas valdrían cero y el pedido se cerraría con
+   * renglones que nadie miró.
+   */
+  const [recibidos, setRecibidos] = useState<Record<string, string>>({});
+  const cantidadDe = (id: string) => {
+    const n = Number(recibidos[id]);
+    return recibidos[id] !== undefined && recibidos[id] !== "" && Number.isFinite(n) ? n : 0;
+  };
+  // Los que ya se completaron en una entrega anterior no tienen campo que
+  // llenar: no se cuentan como "falta contar" o el botón nunca se habilita.
+  const sinContar = detalle.filter(
+    (d) => faltaDe(d) > 0 && (recibidos[d.id_detalle] ?? "") === ""
+  ).length;
   // Por qué entró menos. Es lo único que decide quien abre la caja, y sin
   // esto la marca lee «faltan 6» como «no lo mandaste».
   const [motivos, setMotivos] = useState<Record<string, string>>({});
@@ -122,10 +142,10 @@ export default function RecepcionModal({
 
   const totalSolicitado = detalle.reduce((acc, d) => acc + (d.cantidad_solicitada ?? 0), 0);
   const totalYaRecibido = detalle.reduce((acc, d) => acc + (d.cantidad_recibida ?? 0), 0);
-  const totalAhora = detalle.reduce((acc, d) => acc + (recibidos[d.id_detalle] ?? 0), 0);
+  const totalAhora = detalle.reduce((acc, d) => acc + cantidadDe(d.id_detalle), 0);
   const totalPendiente = detalle.reduce(
     (acc, d) =>
-      acc + Math.max(0, (d.cantidad_solicitada ?? 0) - (d.cantidad_recibida ?? 0) - (recibidos[d.id_detalle] ?? 0)),
+      acc + Math.max(0, (d.cantidad_solicitada ?? 0) - (d.cantidad_recibida ?? 0) - cantidadDe(d.id_detalle)),
     0
   );
   const quedaAbierto = totalPendiente > 0;
@@ -141,7 +161,7 @@ export default function RecepcionModal({
             idDetalle: d.id_detalle,
             idVariante: d.id_variante,
             cantidadSolicitada: d.cantidad_solicitada,
-            cantidadRecibida: recibidos[d.id_detalle] ?? 0,
+            cantidadRecibida: cantidadDe(d.id_detalle),
             motivoFaltante: motivos[d.id_detalle] || null,
             fotoPath: fotos[d.id_detalle] || null,
           })),
@@ -215,7 +235,8 @@ export default function RecepcionModal({
                 {detalle.map((d) => {
                   const pedido = d.cantidad_solicitada ?? 0;
                   const previo = d.cantidad_recibida ?? 0;
-                  const ahora = recibidos[d.id_detalle] ?? 0;
+                  const ahora = cantidadDe(d.id_detalle);
+                  const crudo = recibidos[d.id_detalle] ?? "";
                   const pendiente = Math.max(0, pedido - previo - ahora);
                   const yaCerrado = previo >= pedido;
                   return (
@@ -233,17 +254,29 @@ export default function RecepcionModal({
                           {yaCerrado ? (
                             <span className="text-neutral-400 px-3">—</span>
                           ) : (
+                            // Arranca vacío: lo escribe quien cuenta. El
+                            // `placeholder` dice cuántas esperaba el pedido,
+                            // así el dato de referencia está a la vista sin
+                            // meterse en el campo.
                             <input
                               type="number"
                               min={0}
-                              value={ahora}
-                              onChange={(e) =>
+                              inputMode="numeric"
+                              value={crudo}
+                              placeholder={String(pedido - previo)}
+                              aria-label={`Cuántas llegaron de ${nombrePorVariante.get(d.id_variante) ?? "este producto"}`}
+                              onChange={(e) => {
+                                var v = e.target.value;
                                 setRecibidos((prev) => ({
                                   ...prev,
-                                  [d.id_detalle]: Math.max(0, Number(e.target.value)),
-                                }))
-                              }
-                              className="w-20 rounded-lg border border-accent px-2 py-1.5 text-sm text-right font-semibold tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
+                                  [d.id_detalle]: v === "" ? "" : String(Math.max(0, Number(v) || 0)),
+                                }));
+                              }}
+                              className={`w-20 rounded-lg px-2 py-1.5 text-sm text-right font-semibold tabular-nums focus:outline-none focus:ring-2 focus:ring-accent ${
+                                crudo === ""
+                                  ? "border border-dashed border-accent/60 bg-white placeholder:text-neutral-300 placeholder:font-normal"
+                                  : "border border-accent bg-white"
+                              }`}
                             />
                           )}
                         </td>
@@ -277,9 +310,12 @@ export default function RecepcionModal({
                   detalle.map((d) => {
                     const pedido = d.cantidad_solicitada ?? 0;
                     const previo = d.cantidad_recibida ?? 0;
-                    const ahora = recibidos[d.id_detalle] ?? 0;
+                    const ahora = cantidadDe(d.id_detalle);
                     const total = previo + ahora;
                     const nombre = nombrePorVariante.get(d.id_variante) ?? "—";
+                    // Sin contar todavía no hay nada que avisar: un renglón
+                    // vacío no es un faltante, es un renglón que falta mirar.
+                    if ((recibidos[d.id_detalle] ?? "") === "") return null;
 
                     if (total > pedido) {
                       return (
@@ -374,7 +410,24 @@ export default function RecepcionModal({
                   pedido a una marca no pasa por Costeo. */}
               <CampoRemito archivo={remito} onElegir={setRemito} />
 
-              {quedaAbierto ? (
+              {/* Un renglón sin tocar no es cero: es uno que nadie contó.
+                  Confirmar así cerraría el pedido con productos que nadie
+                  miró, y el faltante se descubriría en el inventario de fin
+                  de mes, cuando ya no hay a quién preguntarle. */}
+              {sinContar > 0 ? (
+                <div className="flex gap-2.5 bg-neutral-100 border border-neutral-300 rounded-lg px-3.5 py-3">
+                  <span aria-hidden="true">✍️</span>
+                  <p className="text-sm text-neutral-700">
+                    <b>
+                      {sinContar === 1
+                        ? "Falta contar 1 producto."
+                        : `Faltan contar ${sinContar} productos.`}
+                    </b>{" "}
+                    Poné cuántas unidades llegaron de cada uno. Si de alguno no llegó ninguna, escribí{" "}
+                    <b>0</b> — dejarlo vacío no es lo mismo.
+                  </p>
+                </div>
+              ) : quedaAbierto ? (
                 <div className="flex gap-2.5 bg-amber-50 border border-amber-200 rounded-lg px-3.5 py-3">
                   <span aria-hidden="true">⏳</span>
                   <p className="text-sm text-amber-900">
@@ -409,10 +462,16 @@ export default function RecepcionModal({
                 <button
                   type="button"
                   onClick={handleConfirmar}
-                  disabled={isPending || totalAhora === 0}
+                  disabled={isPending || sinContar > 0 || totalAhora === 0}
                   className="flex-1 rounded-lg bg-accent hover:bg-accent-dark text-white py-2 text-sm font-medium disabled:opacity-50"
                 >
-                  {isPending ? "Confirmando..." : quedaAbierto ? "Confirmar lo que llegó" : "Confirmar recepción"}
+                  {isPending
+                    ? "Confirmando..."
+                    : sinContar > 0
+                      ? `Faltan contar ${sinContar}`
+                      : quedaAbierto
+                        ? "Confirmar lo que llegó"
+                        : "Confirmar recepción"}
                 </button>
               </div>
             </>
