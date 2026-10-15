@@ -268,13 +268,17 @@ export default function PortalReponer({
         <div className={`rep-num ${datos.agotados > datos.agotadosEnCamino ? "agotado" : "espera"}`}>
           <span>{sinHistoria ? "Sin stock en góndola" : "Agotados"}</span>
           <b>{datos.agotados}</b>
+          {/* "Ya los mandaste" y no "ya vienen en camino" ni "despachados":
+              lo único que el sistema sabe es que la marca apretó mandar. Si
+              el repartidor salió o no, no lo sabe nadie acá — y "vienen en
+              camino" además es decir dos veces lo mismo. */}
           <small>
             {datos.agotados === 0
               ? "Está todo en góndola"
               : datos.agotados === datos.agotadosEnCamino
-                ? "Todos vienen en el envío que mandaste"
+                ? "Ya los mandaste a todos"
                 : datos.agotadosEnCamino > 0
-                  ? `${datos.agotadosEnCamino} ya vienen en camino`
+                  ? `${datos.agotadosEnCamino} ya los mandaste`
                   : sinHistoria
                     ? "Todavía no hay nada tuyo en el local"
                     : "No se están vendiendo porque no están"}
@@ -287,8 +291,10 @@ export default function PortalReponer({
             {datos.bajos === 0
               ? "Ninguno está en riesgo"
               : datos.bajos === datos.bajosEnCamino
-                ? "Todos vienen en el envío que mandaste"
-                : "No llegan a la próxima recepción"}
+                ? "Ya los mandaste a todos"
+                : datos.bajosEnCamino > 0
+                  ? `${datos.bajosEnCamino} ya los mandaste`
+                  : "No llegan a la próxima recepción"}
           </small>
         </div>
         <div className="rep-num total">
