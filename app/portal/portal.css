@@ -1068,6 +1068,33 @@
    lados: cuando la marca y WiiGo discuten un precio, discuten mirando lo
    mismo. Lo unico que cambia son los tonos, que son los del portal. */
 .tabla-prod tr.detalle td { background: var(--superficie-2); padding: 0; border-bottom: 1px solid var(--borde); }
+
+/* EN EL CELULAR DEJA DE SER UNA TABLA, igual que Reponer.
+   Acá lo que se viene a hacer es CARGAR COSTOS, así que el campo del costo
+   se queda con su renglón entero y el resto baja a letra chica. Con cinco
+   columnas arrastrándose de costado, el campo que hay que tocar era el que
+   quedaba afuera de la pantalla. */
+@media (max-width: 620px) {
+  .grupo-cuerpo { overflow-x: visible; }
+  .tabla-prod, .tabla-prod tbody, .tabla-prod tr, .tabla-prod td { display: block; }
+  .tabla-prod thead { display: none; }
+  .tabla-prod tr.prod {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 5px 12px;
+    padding: 11px 14px; border-bottom: 1px solid #f1f3ec;
+  }
+  .tabla-prod td { padding: 0; border: 0; text-align: left; }
+  .tabla-prod .nom { flex: 1 1 100%; }
+  .tabla-prod td[data-et] { font-size: 12.5px; }
+  .tabla-prod td[data-et]::before {
+    content: attr(data-et) " "; font-size: 9.5px; font-weight: 700;
+    letter-spacing: .06em; text-transform: uppercase; color: var(--texto-3);
+  }
+  /* El costo, renglón propio y campo ancho: es a lo que se entra. */
+  .tabla-prod td.costo { flex: 1 1 100%; display: flex; align-items: center; gap: 9px; }
+  .tabla-prod td.costo .inp-costo { flex: 1; width: auto; }
+  .tabla-prod tr.detalle { padding: 0; }
+  .tabla-prod tr.detalle td { border-bottom: 0; }
+}
 .caja-det { padding: 14px 16px 16px; }
 .panel-rep { border: 1px solid var(--borde); border-radius: 13px; overflow: hidden;
   background: var(--superficie); max-width: 720px; }
@@ -2412,10 +2439,41 @@
    renglon. */
 .rep-tabla-scroll { overflow-x: auto; }
 .rep-tabla { width: 100%; min-width: 440px; border-collapse: collapse; font-size: 13.5px; }
+
+/* EN EL CELULAR DEJA DE SER UNA TABLA.
+   Arrastrar de costado cinco columnas no es "se ve bien", es "no se rompe".
+   Cada fila pasa a ser una tarjeta: el nombre arriba ocupando todo, los
+   numeros chiquitos abajo con su etiqueta, y el contador a la derecha —que
+   es lo unico que se toca. */
 @media (max-width: 620px) {
-  .rep-tabla th:first-child, .rep-tabla td:first-child { padding-left: 12px; }
-  .rep-tabla th:last-child, .rep-tabla td:last-child { padding-right: 12px; }
-  .rep-tabla td { padding: 9px 7px; }
+  .rep-tabla-scroll { overflow-x: visible; }
+  .rep-tabla, .rep-tabla tbody, .rep-tabla tr, .rep-tabla td { display: block; }
+  .rep-tabla { min-width: 0; }
+  .rep-tabla thead { display: none; }
+  .rep-tabla tr {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 5px 12px;
+    padding: 11px 14px; border-top: 1px solid var(--borde-suave, #f2f4ee);
+  }
+  .rep-tabla td,
+  .rep-tabla th:first-child, .rep-tabla td:first-child,
+  .rep-tabla th:last-child, .rep-tabla td:last-child {
+    padding: 0; border: 0; text-align: left;
+  }
+  /* El nombre manda: renglon propio y entero. */
+  .rep-tabla td:first-child { flex: 1 1 100%; }
+  /* Los numeros, en una sola linea y con su encabezado adelante — el thead
+     ya no esta para decir de que son. */
+  .rep-tabla td[data-et] { font-size: 12.5px; }
+  .rep-tabla td[data-et]::before {
+    content: attr(data-et) " "; font-size: 9.5px; font-weight: 700;
+    letter-spacing: .06em; text-transform: uppercase; color: var(--texto-3);
+  }
+  /* Lo que es un parrafo y no un numero ocupa su propio renglon. */
+  .rep-tabla td.ancho { flex: 1 1 100%; }
+  /* El contador se va al borde derecho: es la accion, y en una tarjeta la
+     accion va donde cae el pulgar. */
+  .rep-tabla .rep-cant { margin-left: auto; }
+  .rep-tabla td > .rep-chip:first-child { margin-left: 0; }
 }
 .rep-tabla th {
   font-size: 10.5px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;

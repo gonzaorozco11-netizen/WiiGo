@@ -617,9 +617,15 @@ function Envios({ envios }: { envios: OrdenPortal[] }) {
                         {o.lineas.map((l, i) => (
                           <tr key={i}>
                             <td>{l.producto}</td>
-                            <td className="c mono">{l.solicitada}</td>
-                            <td className="c mono">{l.recibida}</td>
-                            <td>
+                            <td data-et="mandaste" className="c mono">
+                              {l.solicitada}
+                            </td>
+                            <td data-et="entró" className="c mono">
+                              {l.recibida}
+                            </td>
+                            {/* `ancho` = ocupa el renglón entero en el
+                                celular: no es un número, es un párrafo. */}
+                            <td className="ancho">
                               <Final l={l} />
                             </td>
                           </tr>
@@ -1176,13 +1182,21 @@ function Fila({
         {sinObjetivo && <span className="rep-chip neutro">SIN OBJETIVO</span>}
         {r.enCamino > 0 && <span className="rep-chip camino">{r.enCamino} en camino</span>}
       </td>
-      <td className={`c mono${r.estado === "AGOTADO" ? " rojo" : r.estado === "BAJO" ? " ambar" : ""}`}>
+      {/* `data-et` es el encabezado de la columna, para cuando la tabla se
+          convierte en tarjetas en el celular: ahí el thead desaparece y sin
+          esto los números quedan sueltos sin decir de qué son. */}
+      <td
+        data-et="góndola"
+        className={`c mono${r.estado === "AGOTADO" ? " rojo" : r.estado === "BAJO" ? " ambar" : ""}`}
+      >
         {r.stock}
       </td>
-      <td className="c mono tenue">
+      <td data-et="mín · obj" className="c mono tenue">
         {r.minimo} · {r.objetivo}
       </td>
-      <td className="c tenue">{r.porSemana > 0 ? `${r.porSemana} / sem` : "—"}</td>
+      <td data-et="vende" className="c tenue">
+        {r.porSemana > 0 ? `${r.porSemana} / sem` : "—"}
+      </td>
       <td className="c">
         <div className="rep-cant">
           <button type="button" onClick={() => tocar(r.idVariante, valor - 1)} aria-label="Menos">

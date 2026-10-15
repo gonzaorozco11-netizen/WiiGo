@@ -438,11 +438,14 @@ function Fila({
             </span>
           </button>
         </td>
-        <td className="num">
+        {/* `data-et` es el encabezado de la columna, para cuando la tabla se
+            convierte en tarjetas en el celular: ahí el thead desaparece y sin
+            esto los números quedan sueltos sin decir de qué son. */}
+        <td data-et="góndola" className="num">
           <Stock p={p} />
         </td>
-        <td className="num mono tenue">${enteros(p.precio)}</td>
-        <td className="num">
+        <td data-et="al público" className="num mono tenue">${enteros(p.precio)}</td>
+        <td data-et="mi costo" className="num costo">
           <input
             className={`inp-costo${p.costo != null ? " cargado" : ""}`}
             type="number"
@@ -459,7 +462,7 @@ function Fila({
           {recienGuardado && <span className="guardado">guardado ✓</span>}
           {error && <span className="err-costo">{error}</span>}
         </td>
-        <td className="num">
+        <td data-et="te queda" className="num">
           {queda != null ? (
             // Solo los pesos. El "% de la venta" leído solo, sin el desglose
             // al lado, parece que la marca se queda con menos de la mitad —
