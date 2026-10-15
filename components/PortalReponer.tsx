@@ -857,15 +857,17 @@ function EstadoEnvio({ o }: { o: OrdenPortal }) {
 type RenglonConGondola = RenglonReponer & { gondola: string };
 
 /**
- * Armar un envío desde cero, con lo que la sugerencia NO pide.
+ * Armar un envío desde cero: buscar, agregar, mandar.
  *
- * Las dos solapas no se pisan: lo que Recomendado ya pide no aparece acá como
- * agregable, se cambia allá. Así el riesgo de mandar lo mismo dos veces
- * desaparece en vez de tener que avisarlo en cada renglón.
+ * Tres pasos y nada más. Arranca vacío y manda solo lo que se agregó acá —
+ * la lista de Recomendado no se toca.
  *
- * Pero no se oculta en silencio: un renglón dice cuáles quedaron afuera y por
- * qué. Sin eso la marca busca "collagen", no lo ve, y concluye que no lo
- * tiene cargado.
+ * Lo único que avisa es lo que la marca no puede saber sola: que de ese
+ * producto ya mandó algo que todavía está en camino, y si con lo que está
+ * por agregar se pasa del tope acordado. Todo lo demás —el mínimo, el
+ * objetivo, la velocidad de venta— es para decidir CUÁNTO reponer, y para eso
+ * está Recomendado: acá la marca ya sabe qué quiere mandar y viene a
+ * buscarlo.
  */
 function AMano({
   porId,
@@ -879,14 +881,21 @@ function AMano({
   const [busca, setBusca] = useState("");
 
   const q = busca.trim().toLowerCase();
+  // Busca TODO, pida o no la sugerencia.
+  //
+  // Primero esto escondía lo que ya estaba en Recomendado, para que no se
+  // pudiera mandar dos veces. Esa regla funciona con un Recomendado de tres o
+  // cuatro productos y se rompe sola con uno de 116: buscar "prote" devolvía
+  // un resultado de cuarenta y cuatro, y armar un envío chico a mano —que es
+  // justo para lo que existe esta solapa— se volvía imposible.
+  //
+  // El doble envío se evita avisando, no escondiendo: cada producto que ya
+  // está en Recomendado lo dice en su propia fila, con la cantidad.
   const coinciden = q
     ? [...porId.values()].filter((r) =>
         `${r.producto} ${r.variante} ${r.gondola}`.toLowerCase().includes(q)
       )
     : [];
-  // Lo que ya pide la sugerencia no se agrega acá. Se cambia en Recomendado.
-  const paraAgregar = coinciden.filter((r) => r.sugerido === 0);
-  const yaEnReco = coinciden.filter((r) => r.sugerido > 0);
 
   const puestos = [...manual.entries()]
     .filter(([, n]) => n > 0)
@@ -914,39 +923,23 @@ function AMano({
         <section className="rep-bloque">
           <p className="rep-bloque-cab">
             <span>
-              {paraAgregar.length === 0
-                ? "Ninguno para agregar"
-                : `${paraAgregar.length} ${paraAgregar.length === 1 ? "producto" : "productos"} para agregar`}
+              {coinciden.length === 0
+                ? "Ninguno con ese nombre"
+                : `${coinciden.length} ${coinciden.length === 1 ? "producto" : "productos"}`}
             </span>
           </p>
-          {paraAgregar.length > 0 && (
+          {coinciden.length > 0 ? (
             <ul className="rep-lista">
-              {paraAgregar.map((r) => (
+              {coinciden.map((r) => (
                 <ItemAMano
                   key={r.idVariante}
                   r={r}
                   n={manual.get(r.idVariante) ?? 0}
                   tocar={tocarManual}
-                  conDatos
                 />
               ))}
             </ul>
-          )}
-          {yaEnReco.length > 0 && (
-            <p className="rep-yaesta">
-              <b>
-                {yaEnReco.length} {yaEnReco.length === 1 ? "resultado" : "resultados"} más
-              </b>{" "}
-              {yaEnReco.length === 1 ? "ya está" : "ya están"} en <b>Recomendado</b> —
-              {yaEnReco
-                .slice(0, 4)
-                .map((r) => ` ${r.producto}${r.variante && r.variante !== "Único" ? ` ${r.variante}` : ""}`)
-                .join(",")}
-              {yaEnReco.length > 4 ? ` y ${yaEnReco.length - 4} más` : ""}— con sus cantidades puestas.
-              Si querés cambiarlas, cambialas ahí.
-            </p>
-          )}
-          {paraAgregar.length === 0 && yaEnReco.length === 0 && (
+          ) : (
             <p className="rep-yaesta">No encontramos ningún producto tuyo con ese nombre.</p>
           )}
         </section>
@@ -955,8 +948,8 @@ function AMano({
       {puestos.length === 0 ? (
         q === "" && (
           <p className="vacio">
-            Buscá un producto arriba y poné cuántas unidades mandar. Este envío sale solo con lo que
-            agregues acá — la lista de Recomendado no se toca.
+            Buscá cualquier producto tuyo y poné cuántas unidades mandar. Este envío sale solo con lo
+            que agregues acá — la lista de Recomendado no se toca.
           </p>
         )
       ) : (
@@ -994,14 +987,11 @@ function ItemAMano({
   r,
   n,
   tocar,
-  conDatos = false,
   conQuitar = false,
 }: {
   r: RenglonConGondola;
   n: number;
   tocar: (id: string, cantidad: number) => void;
-  /** En los resultados: para qué no pida a ciegas algo que ya tiene. */
-  conDatos?: boolean;
   conQuitar?: boolean;
 }) {
   const sinObjetivo = r.minimo === 0 && r.objetivo === 0;
@@ -1013,17 +1003,18 @@ function ItemAMano({
         <span className="nom">
           {r.producto}
           {r.variante && r.variante !== "Único" && ` · ${r.variante}`}
+          {/* Dos datos y no cinco: de qué góndola es y cuánto hay. El mínimo,
+              el objetivo y la velocidad son para decidir CUÁNTO reponer, y
+              para eso está Recomendado — acá la marca ya sabe qué quiere
+              mandar y viene a buscarlo. */}
           <small>
             {r.gondola} · {r.stock} en góndola
-            {conDatos && (
-              <>
-                {" "}
-                · mín {r.minimo} · obj {r.objetivo} ·{" "}
-                {r.porSemana > 0 ? `se vende ${r.porSemana} / sem` : "sin ventas todavía"}
-              </>
-            )}
           </small>
           {sinObjetivo && <span className="rep-chip neutro">sin objetivo cargado</span>}
+          {/* Lo ÚNICO que la marca no puede recordar sola: que de ese
+              producto ya mandó algo y todavía no llegó. Lo que esté en el
+              otro borrador no se avisa acá — todavía no salió de su casa, y
+              un chip más por fila sobre 44 resultados es ruido. */}
           {r.enCamino > 0 && <span className="rep-chip camino">{r.enCamino} en camino</span>}
         </span>
         <div className={`rep-cant${seLePasa ? " ojo" : n > 0 ? " puesto" : ""}`}>
