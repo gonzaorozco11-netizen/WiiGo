@@ -633,19 +633,55 @@ export async function aprobarPropuesta(
     }
 
     const estadoFinal = origen === "SIN_PEDIDO" ? RECIBIDA : PENDIENTE;
+    const ahora = new Date().toISOString();
     const cambios: Record<string, unknown> = { estado: estadoFinal, total_unidades: total };
-    const conSello = await supabase
-      .from("ordenes_reposicion")
-      .update({ ...cambios, aprobada_por: usuario, aprobada_el: new Date().toISOString() })
-      .eq("id_orden", idOrden);
-    if (conSello.error) {
-      if (!esColumnaQueFalta(conSello.error)) return { error: friendlyDbError(conSello.error) };
+
+    // Aprobar una propuesta de marca la deja EN RECEPCIÓN, no en Órdenes.
+    //
+    // `enviada_el` es lo único que separa las dos primeras etapas de Compras:
+    // vacío = "falta emitirla", cargado = "esperando que llegue". Una orden
+    // que armó WiiGo tiene que pasar por la primera porque alguien se la
+    // manda al proveedor. Una que propuso la marca no: aprobarla ES el acto
+    // que faltaba, y después la manda ella.
+    //
+    // Sin esto la orden aprobada caía en Órdenes de compra con un botón
+    // "Enviar a la marca" para avisarle de un envío que ella misma propuso —
+    // y el mensaje de la aprobación ya prometía "queda en Recepción".
+    //
+    // El nombre que queda es el de la marca y no el de quien aprueba, igual
+    // que cuando entra sola desde el portal: lo mandó ella.
+    let comoEnviada: Record<string, unknown> = {};
+    if (origen === "MARCA") {
+      const { data: m } = await supabase
+        .from("marcas")
+        .select("nombre")
+        .eq("id_marca", orden.id_marca as string)
+        .maybeSingle();
+      comoEnviada = { enviada_el: ahora, enviada_por: (m?.nombre as string) ?? usuario };
+    }
+
+    const sello = { aprobada_por: usuario, aprobada_el: ahora };
+    // De más completo a más pelado: si falta una columna opcional se cae al
+    // intento siguiente en vez de dejar la propuesta sin resolver.
+    const intentos = [
+      { ...cambios, ...sello, ...comoEnviada },
+      { ...cambios, ...comoEnviada },
+      { ...cambios, ...sello },
+      cambios,
+    ];
+    let guardado = false;
+    for (const payload of intentos) {
       const { error } = await supabase
         .from("ordenes_reposicion")
-        .update(cambios)
+        .update(payload)
         .eq("id_orden", idOrden);
-      if (error) return { error: friendlyDbError(error) };
+      if (!error) {
+        guardado = true;
+        break;
+      }
+      if (!esColumnaQueFalta(error)) return { error: friendlyDbError(error) };
     }
+    if (!guardado) return { error: "No se pudo guardar la aprobación." };
 
     revalidatePath("/compras");
     revalidatePath("/compras/recepcion");
