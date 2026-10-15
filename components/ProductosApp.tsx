@@ -209,6 +209,12 @@ export default function ProductosApp({
                   <th className="p-3">Producto</th>
                   <th className="p-3 text-right">Costo</th>
                   <th className="p-3 text-right">Precio</th>
+                  {/* El de efectivo al lado del de góndola y no escondido en
+                      la ficha: son los dos números que van impresos juntos en
+                      el cartel, y la marca los cambia de a dos. Sin esta
+                      columna, un cambio de efectivo aprobado no se veía en
+                      ningún lado del sistema interno. */}
+                  <th className="p-3 text-right">Efectivo</th>
                   <th className="p-3 text-right">Stock</th>
                   <th className="p-3 text-right">Mín.</th>
                   <th className="p-3 text-right">Obj.</th>
@@ -281,6 +287,20 @@ export default function ProductosApp({
                           )
                         ) : (
                           "—"
+                        )}
+                      </td>
+                      <td className="p-3 text-right tabular-nums">
+                        {p.precio_efectivo !== null && p.precio_efectivo !== undefined ? (
+                          <div>
+                            <span>${formatearMonto(p.precio_efectivo)}</span>
+                            {p.precio_venta ? (
+                              <span className="block text-xs text-neutral-400">
+                                -{Math.round(((p.precio_venta - p.precio_efectivo) / p.precio_venta) * 100)}%
+                              </span>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <span className="text-neutral-300">—</span>
                         )}
                       </td>
                       <td className={`p-3 text-right tabular-nums font-semibold ${stockBajo ? "text-red-600" : "text-neutral-900"}`}>

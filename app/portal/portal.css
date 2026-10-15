@@ -626,15 +626,23 @@
   border-radius: 11px; padding: 11px 14px;
 }
 .cam-off > span { font-size: 13px; color: var(--salvia-honda); }
-.cam-off label { display: inline-flex; align-items: center; gap: 5px; }
-.cam-off input {
-  width: 72px; border: 1px solid var(--salvia-honda); border-radius: 9px; padding: 6px 9px;
-  font: inherit; font-family: var(--f-mono); font-size: 15px; font-weight: 700; text-align: right;
-  background: var(--superficie); color: var(--texto);
-}
-.cam-off label b { font-size: 15px; }
+.cam-off .numero { font-family: var(--f-mono); font-size: 16px; font-weight: 700; color: var(--salvia-honda); }
 .cam-off .ahorro { font-size: 12.5px; color: var(--texto-3); }
 .cam-off .ahorro b { color: var(--salvia-honda); }
+
+/* El interruptor $ / % va pegado al rótulo del campo, no al lado del input:
+   dice en qué unidad se escribe, no es parte del valor. */
+.cam-modo { display: inline-flex; gap: 2px; margin-left: 7px; vertical-align: -1px; }
+.cam-modo button {
+  border: 1px solid var(--borde-fuerte); background: var(--superficie); color: var(--texto-3);
+  font: inherit; font-size: 11px; font-weight: 700; line-height: 1;
+  padding: 3px 7px; cursor: pointer;
+}
+.cam-modo button:first-child { border-radius: 7px 0 0 7px; }
+.cam-modo button:last-child { border-radius: 0 7px 7px 0; border-left: 0; }
+.cam-modo button.activo {
+  background: var(--salvia-honda); border-color: var(--salvia-honda); color: #fff;
+}
 
 .cam-campos { display: flex; gap: 11px; flex-wrap: wrap; }
 .cam-campo { display: flex; flex-direction: column; gap: 4px; flex: 1 1 150px; min-width: 130px; }

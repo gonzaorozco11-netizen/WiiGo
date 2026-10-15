@@ -444,6 +444,37 @@ function Envio({
   );
 }
 
+type ModoPrecio = "PESOS" | "PORC";
+
+/**
+ * Escribir en pesos o en porcentaje.
+ *
+ * Una lista se actualiza pensando "subo todo un 12%", no calculadora en mano
+ * producto por producto; pero a veces el precio es uno puntual y redondo. Los
+ * dos modos escriben el mismo valor: el porcentaje es una forma de tipear, no
+ * otro dato que haya que guardar.
+ */
+function Modo({ valor, onCambiar }: { valor: ModoPrecio; onCambiar: (m: ModoPrecio) => void }) {
+  return (
+    <span className="cam-modo">
+      <button
+        type="button"
+        className={valor === "PESOS" ? "activo" : undefined}
+        onClick={() => onCambiar("PESOS")}
+      >
+        $
+      </button>
+      <button
+        type="button"
+        className={valor === "PORC" ? "activo" : undefined}
+        onClick={() => onCambiar("PORC")}
+      >
+        %
+      </button>
+    </span>
+  );
+}
+
 /**
  * Los dos precios, atados por el descuento.
  *
@@ -466,6 +497,16 @@ function FormPrecios({ p, politica, onListo }: { p: ProductoPropio; politica: Po
   // El descuento arranca en el que ya tenía: lo normal es cambiar el precio y
   // mantenerlo, no rediseñar la promoción.
   const [off, setOff] = useState(offDeHoy !== null ? offDeHoy.toFixed(1) : "");
+
+  // En pesos o en porcentaje, para cada uno.
+  //
+  // Una lista de precios se actualiza pensando "subo todo un 12%", no
+  // calculadora en mano producto por producto. Pero a veces el precio es uno
+  // puntual y redondo. Los dos modos escriben el MISMO campo de abajo: el
+  // porcentaje es una forma de tipear, no otro dato.
+  const [modoGondola, setModoGondola] = useState<ModoPrecio>("PESOS");
+  const [modoEfectivo, setModoEfectivo] = useState<ModoPrecio>("PESOS");
+  const [aumento, setAumento] = useState("");
 
   const nGondola = Number(gondola);
   const nEfectivo = Number(efectivo);
@@ -496,6 +537,14 @@ function FormPrecios({ p, politica, onListo }: { p: ProductoPropio; politica: Po
     const n = Number(v);
     if (!Number.isFinite(n) || n < 0 || n >= 100 || !gondolaValida) return;
     setEfectivo(String(redondear(nGondola * (1 - n / 100))));
+  }
+
+  /** "Subime todo un 12%" — se escribe el porcentaje y cae el precio. */
+  function tocarAumento(v: string) {
+    setAumento(v);
+    const n = Number(v);
+    if (!Number.isFinite(n) || !p.precio) return;
+    tocarGondola(String(redondear(p.precio * (1 + n / 100))));
   }
 
   const variacion = gondolaValida && p.precio ? ((nGondola - p.precio) / p.precio) * 100 : null;
@@ -532,17 +581,34 @@ function FormPrecios({ p, politica, onListo }: { p: ProductoPropio; politica: Po
           <input className="mono" value={pesos(p.precio)} disabled />
         </label>
         <label className="cam-campo">
-          <span>Góndola — nuevo</span>
-          <input
-            type="number"
-            step="0.01"
-            value={gondola}
-            onChange={(e) => tocarGondola(e.target.value)}
-            placeholder="0,00"
-            autoFocus
-          />
+          <span>
+            Góndola — nuevo
+            <Modo valor={modoGondola} onCambiar={setModoGondola} />
+          </span>
+          {modoGondola === "PESOS" ? (
+            <input
+              type="number"
+              step="0.01"
+              value={gondola}
+              onChange={(e) => tocarGondola(e.target.value)}
+              placeholder="0,00"
+              autoFocus
+            />
+          ) : (
+            <input
+              type="number"
+              step="0.1"
+              value={aumento}
+              onChange={(e) => tocarAumento(e.target.value)}
+              placeholder="0,0"
+              autoFocus
+            />
+          )}
         </label>
       </div>
+      {modoGondola === "PORC" && gondolaValida && (
+        <p className="cam-var">Queda en {pesos(nGondola)}</p>
+      )}
       {variacion !== null && variacion !== 0 && (
         <p className={`cam-var${Math.abs(variacion) >= politica.variacionPrecioAlerta ? " fuerte" : ""}`}>
           {variacion > 0 ? "+" : ""}
@@ -559,43 +625,52 @@ function FormPrecios({ p, politica, onListo }: { p: ProductoPropio; politica: Po
             <input className="mono" value={p.precioEfectivo !== null ? pesos(p.precioEfectivo) : "sin cargar"} disabled />
           </label>
           <label className="cam-campo">
-            <span>Efectivo — nuevo</span>
-            <input
-              type="number"
-              step="0.01"
-              value={efectivo}
-              onChange={(e) => tocarEfectivo(e.target.value)}
-              placeholder="0,00"
-            />
+            <span>
+              Efectivo — nuevo
+              <Modo valor={modoEfectivo} onCambiar={setModoEfectivo} />
+            </span>
+            {/* El % del efectivo es el descuento sobre la góndola, no un
+                aumento sobre el efectivo de ayer: es el número que se negocia
+                y el que va impreso en el cartel. Dos porcentajes distintos
+                para el mismo campo serían imposibles de distinguir. */}
+            {modoEfectivo === "PESOS" ? (
+              <input
+                type="number"
+                step="0.01"
+                value={efectivo}
+                onChange={(e) => tocarEfectivo(e.target.value)}
+                placeholder="0,00"
+              />
+            ) : (
+              <input
+                type="number"
+                step="0.1"
+                min="0"
+                max="99"
+                value={off}
+                onChange={(e) => tocarOff(e.target.value)}
+                placeholder="0,0"
+              />
+            )}
           </label>
         </div>
 
         <div className="cam-off">
           <span>Descuento por pagar en efectivo</span>
-          <label>
-            <input
-              type="number"
-              step="0.1"
-              min="0"
-              max="99"
-              value={off}
-              onChange={(e) => tocarOff(e.target.value)}
-              placeholder="0"
-            />
-            <b>%</b>
-          </label>
+          <b className="numero">{off === "" ? "—" : `${Number(off).toFixed(1)}%`}</b>
           {ahorro !== null && ahorro > 0 && (
             <span className="ahorro">
               · el cliente ahorra <b>{pesos(ahorro)}</b>
             </span>
           )}
+          {usaEfectivo && nEfectivo > 0 && <span className="ahorro">· paga {pesos(nEfectivo)}</span>}
         </div>
 
         <p className="cam-nota">
           {offDeHoy !== null
             ? `Es el mismo ${offDeHoy.toFixed(1)}% que tenías. Al mover la góndola, el efectivo se acomoda solo para mantenerlo.`
             : "Todavía no tenés precio en efectivo. Si cargás uno, el descuento queda fijo y se mantiene cuando cambies la góndola."}{" "}
-          Podés tocar cualquiera de los tres.
+          Podés escribir en pesos o en porcentaje, y lo otro se calcula solo.
         </p>
 
         {efectivoMalo && (
