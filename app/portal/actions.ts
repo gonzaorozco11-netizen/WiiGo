@@ -645,174 +645,19 @@ export async function misCostosPortal(): Promise<MisCostosPortal | null> {
   };
 }
 
-/**
- * La marca propone mandar mercadería que WiiGo no le pidió.
- *
- * Es la válvula del circuito: sin esto, un lanzamiento o una promo se arreglan
- * por WhatsApp y la mercadería llega sin papel, que es justo lo que no puede
- * pasar en consignación — si no hay orden, no hay contra qué contar lo que
- * entró, y lo que no se cuenta no se liquida.
- *
- * Queda en PROPUESTA: la orden existe y WiiGo la ve, pero no puede entrar nada
- * al stock hasta que administración la apruebe. Cuánto espacio de góndola
- * ocupa cada marca sigue siendo una decisión de WiiGo.
- */
-export async function proponerEnvio(params: {
-  items: { idProducto: string; cantidad: number }[];
-  observaciones: string;
-}): Promise<{ error: string | null; automatica?: boolean }> {
-  const sesion = await obtenerSesionMarca();
-  if (!sesion) return { error: "Sesión no válida" };
+/* Acá vivía `proponerEnvio`: la marca armaba un envío desde Mis productos y
+   lo proponía. Lo hace Reponer → A mano, y mejor: con buscador, por variante,
+   y avisando de lo que ya va en camino y del tope.
 
-  const validos = params.items.filter((i) => i.cantidad > 0);
-  if (validos.length === 0) return { error: "Agregá al menos un producto con cantidad mayor a 0" };
+   Este proponía por PRODUCTO, y cuando el producto tenía varios sabores el
+   sistema tomaba el primero y WiiGo corregía al aprobar — una orden con una
+   adivinanza adentro.
 
-  const supabase = getSupabaseServerClient();
-
-  // Que los productos sean suyos se valida del lado del servidor: mandar el id
-  // de un producto de otra marca no tiene que poder abrir una orden ajena.
-  const { data: productos } = await supabase
-    .from("productos")
-    .select("id_producto")
-    .eq("id_marca", sesion.idMarca);
-  const propios = new Set((productos ?? []).map((p) => p.id_producto as string));
-  if (validos.some((i) => !propios.has(i.idProducto))) {
-    return { error: "Alguno de esos productos no es tuyo." };
-  }
-
-  // La orden se guarda por variante, pero la marca propone por producto: es
-  // como piensa ella, y en el 99% de los casos el producto tiene una sola.
-  // Con varias se toma la primera y WiiGo afina el sabor al aprobar — una
-  // propuesta no es una orden, es el principio de una conversación.
-  const { data: variantes } = await supabase
-    .from("variantes_producto")
-    .select("id_variante, id_producto, orden")
-    .in("id_producto", [...propios])
-    .eq("estado", "ACTIVO")
-    .order("orden", { ascending: true, nullsFirst: false });
-
-  const varianteDeProducto = new Map<string, string>();
-  for (const v of variantes ?? []) {
-    const idP = v.id_producto as string;
-    if (!varianteDeProducto.has(idP)) varianteDeProducto.set(idP, v.id_variante as string);
-  }
-
-  const renglones = validos
-    .map((i) => ({ idVariante: varianteDeProducto.get(i.idProducto), cantidad: i.cantidad }))
-    .filter((r): r is { idVariante: string; cantidad: number } => Boolean(r.idVariante));
-  if (renglones.length === 0) return { error: "Esos productos no tienen variantes activas." };
-
-  // A qué local. Con uno solo no hay nada que elegir; con varios, el primero
-  // y WiiGo lo corrige al aprobar.
-  const { data: locales } = await supabase
-    .from("locales")
-    .select("id_local")
-    .eq("estado", "ACTIVO")
-    .limit(1);
-  const idLocal = (locales ?? [])[0]?.id_local as string | undefined;
-  if (!idLocal) return { error: "No hay un local donde recibirlo. Escribinos." };
-
-  // ¿Entra sola o espera a administración?
-  //
-  // Aprobar a mano algo que el sistema ya había calculado es trabajo que no
-  // agrega criterio: la marca manda lo que se le sugirió y alguien aprieta
-  // "aprobar" veinte veces por mes. Si después de recibir la góndola no pasa
-  // el tope de ningún producto, la orden nace aprobada; lo que lo pasa sigue
-  // esperando, que es donde sí hace falta decidir.
-  const automatica = await entraSinAprobacion(supabase, sesion.idMarca, idLocal, renglones);
-
-  const total = renglones.reduce((a, i) => a + i.cantidad, 0);
-  const base = {
-    id_marca: sesion.idMarca,
-    id_local: idLocal,
-    estado: automatica ? PENDIENTE : PROPUESTA,
-    total_unidades: total,
-    observaciones: params.observaciones.trim() || null,
-  };
-
-  // Nace ya enviada: la marca es la que manda, no hay nada que WiiGo tenga
-  // que emitirle. Es lo que la deja en Recepción en vez de en "Órdenes de
-  // compra, sin enviar". Ver el comentario largo en app/portal/reponer.
-  const comoEnviada = automatica
-    ? { enviada_el: new Date().toISOString(), enviada_por: sesion.nombreMarca }
-    : {};
-
-  // Las columnas opcionales se dejan caer si todavía no se crearon. `origen`
-  // sale de sql/reposicion-propuesta.sql y `enviada_el` de
-  // sql/ordenes-enviadas.sql.
-  let orden = await supabase
-    .from("ordenes_reposicion")
-    .insert({ ...base, ...comoEnviada, origen: "MARCA" })
-    .select("id_orden")
-    .single();
-  if (orden.error && (orden.error.code === "42703" || orden.error.code === "PGRST204")) {
-    orden = await supabase
-      .from("ordenes_reposicion")
-      .insert({ ...base, ...comoEnviada })
-      .select("id_orden")
-      .single();
-  }
-  if (orden.error && (orden.error.code === "42703" || orden.error.code === "PGRST204")) {
-    orden = await supabase.from("ordenes_reposicion").insert(base).select("id_orden").single();
-  }
-  if (orden.error || !orden.data) return { error: "No se pudo enviar la propuesta." };
-
-  const { error } = await supabase.from("detalle_reposicion").insert(
-    renglones.map((i) => ({
-      id_orden: orden.data!.id_orden,
-      id_variante: i.idVariante,
-      cantidad_solicitada: i.cantidad,
-      cantidad_recibida: 0,
-    }))
-  );
-  if (error) return { error: "No se pudo enviar la propuesta." };
-
-  revalidatePath("/portal");
-  revalidatePath("/portal/productos");
-  return { error: null, automatica };
-}
-
-/**
- * ¿Esta propuesta puede entrar sin que nadie la apruebe?
- *
- * Solo si NINGÚN renglón deja la góndola por encima del tope de ese producto.
- * Alcanza con que uno lo pase para que la orden entera espere: media orden
- * aprobada no existe, y partirla dejaría a la marca mandando dos veces.
- *
- * Si algo falla —una consulta, la columna que todavía no se creó— la
- * respuesta es que no. El error se paga con una aprobación de más, nunca con
- * mercadería entrando sola.
- */
-async function entraSinAprobacion(
-  supabase: ReturnType<typeof getSupabaseServerClient>,
-  idMarca: string,
-  idLocal: string,
-  renglones: { idVariante: string; cantidad: number }[]
-): Promise<boolean> {
-  try {
-    const { data: marca } = await supabase
-      .from("marcas")
-      .select("aprobacion_automatica")
-      .eq("id_marca", idMarca)
-      .maybeSingle();
-    // Sin la columna todavía creada, `marca` viene sin la clave: en la duda,
-    // el circuito de siempre.
-    if (!marca || marca.aprobacion_automatica !== true) return false;
-
-    const sugerencias = await sugerirReposicion(supabase, { idMarca, idLocal });
-    if (sugerencias.size === 0) return false;
-
-    return renglones.every((r) => {
-      const s = sugerencias.get(r.idVariante);
-      // Una variante que la sugerencia no conoce no se aprueba sola: puede ser
-      // un producto recién dado de alta, justo el que conviene mirar.
-      if (!s) return false;
-      return s.stock + s.pendiente + r.cantidad <= topeDeVariante(s.objetivo);
-    });
-  } catch {
-    return false;
-  }
-}
+   Se borra en vez de dejarse muerta: un archivo "use server" expone cada
+   función como endpoint, y uno que crea órdenes y ya no usa nadie es
+   superficie de más. Con ella se fue su `entraSinAprobacion`, que era una
+   copia de la que vive en app/portal/reponer/actions.ts — esa sigue, es la
+   que usa el envío de verdad. */
 
 /**
  * La marca carga su costo.
