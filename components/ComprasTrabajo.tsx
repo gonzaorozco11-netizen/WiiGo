@@ -66,6 +66,15 @@ type Fila = {
   dias: number;
   /** null = emitida pero todavía sin mandar. Es lo que define la etapa. */
   enviadaEl: string | null;
+  /**
+   * Lo anotado al anularla o darla de baja.
+   *
+   * Sin esto un pedido anulado desaparece de Recepción sin explicación: el
+   * motivo se guardaba y no se mostraba en ninguna pantalla. Importa más desde
+   * que la marca puede dar de baja su propio envío — el local tiene que poder
+   * ver que lo dio de baja ella y no alguien de acá.
+   */
+  nota: string | null;
 };
 
 export default function ComprasTrabajo({
@@ -316,6 +325,7 @@ export default function ComprasTrabajo({
       unidades: o.total_unidades ?? 0,
       dias: dias(o.fecha),
       enviadaEl: o.enviada_el ?? null,
+      nota: o.observaciones ?? null,
     }));
     const b: Fila[] = datos.ordenesProveedor.map((o) => ({
       origen: "PROVEEDOR",
@@ -327,6 +337,7 @@ export default function ComprasTrabajo({
       unidades: o.total_unidades ?? 0,
       dias: dias(o.fecha_alta),
       enviadaEl: o.enviada_el ?? null,
+      nota: o.observaciones ?? null,
     }));
     return [...a, ...b];
   }, [datos.ordenesMarca, datos.ordenesProveedor, marcaPorId, proveedorPorId, localPorId]);
@@ -1648,6 +1659,11 @@ function TablaPedidos({
                 {esta && (
                   <tr>
                     <td colSpan={5} className="px-4 pb-3 pt-1 bg-neutral-50 border-b border-neutral-100">
+                      {f.nota && (
+                        <p className="text-[11.5px] text-neutral-600 bg-white border border-neutral-200 rounded-lg px-3 py-2 mb-2 whitespace-pre-line">
+                          {f.nota}
+                        </p>
+                      )}
                       <p className="text-[9.5px] font-bold uppercase tracking-wider text-neutral-400 mb-1">
                         Qué traía
                       </p>

@@ -3,9 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionMarca } from "@/lib/marcaSesion";
+import { friendlyDbError } from "@/lib/errors";
 import { fechaHoraArgentina } from "@/lib/horarios";
 import { sugerirReposicion, topeDeVariante } from "@/lib/reposicionSugerida";
-import { ESTADOS_ABIERTOS } from "@/lib/estadosOrden";
+import { ESTADOS_ABIERTOS, RECIBIDA_PARCIAL, CANCELADA } from "@/lib/estadosOrden";
 import { leerDias, diasHastaProxima, nombrarDias, DIAS_SEMANA } from "@/lib/recepcion";
 
 // La orden de reposición, del lado de la marca.
@@ -59,7 +60,7 @@ export type DatosReponer = {
   /** Cuándo es la próxima recepción. */
   proxima: { etiqueta: string; faltanDias: number; horario: string } | null;
   /** Una orden ya mandada y todavía sin recibir. */
-  yaMandado: { unidades: number; estado: string } | null;
+  yaMandado: { idOrden: string; unidades: number; estado: string; sePuedeDarDeBaja: boolean } | null;
 };
 
 export async function miReposicion(): Promise<DatosReponer | null> {
@@ -195,7 +196,7 @@ export async function miReposicion(): Promise<DatosReponer | null> {
   // invisible para ella y lo manda de nuevo.
   const { data: abiertas } = await supabase
     .from("ordenes_reposicion")
-    .select("estado, total_unidades")
+    .select("id_orden, estado, total_unidades")
     .eq("id_marca", sesion.idMarca)
     .eq("id_local", idLocal)
     .in("estado", [...ESTADOS_ABIERTOS, "PROPUESTA"])
@@ -222,7 +223,14 @@ export async function miReposicion(): Promise<DatosReponer | null> {
       horario: `${cfg.get("RECEPCION_HORA_DESDE") ?? "09:00"} a ${cfg.get("RECEPCION_HORA_HASTA") ?? "12:00"}`,
     },
     yaMandado: abierta
-      ? { unidades: (abierta.total_unidades as number) ?? 0, estado: (abierta.estado as string) ?? "" }
+      ? {
+          idOrden: abierta.id_orden as string,
+          unidades: (abierta.total_unidades as number) ?? 0,
+          estado: (abierta.estado as string) ?? "",
+          // RECIBIDA_PARCIAL también cae en esta consulta (está en
+          // ESTADOS_ABIERTOS): ahí ya entró mercadería y no se da de baja.
+          sePuedeDarDeBaja: abierta.estado === PENDIENTE || abierta.estado === PROPUESTA,
+        }
       : null,
   };
 }
@@ -425,6 +433,84 @@ export async function mandarReposicion(
   revalidatePath("/portal");
   revalidatePath("/compras/recepcion");
   return { error: null, automatica };
+}
+
+/**
+ * La marca se arrepiente del envío.
+ *
+ * Mientras no haya llegado NADA al local se puede dar de baja y volver a
+ * armarlo: cambiar cantidades, sacar algo o agregar. Una vez que la operativa
+ * recibió, no — esa mercadería ya está en la góndola y en el stock, y borrar
+ * el papel dejaría stock sin explicación.
+ *
+ * No se borra la fila, queda CANCELADA con la nota. Un pedido que desaparece
+ * es un pedido sobre el que nadie puede preguntar después, y acá además hay
+ * dos partes: la marca podría jurar que mandó algo que el sistema no tiene.
+ *
+ * Cancelar alcanza, no hace falta editar: al quedar sin orden abierta la
+ * sugerencia vuelve a aparecer completa en "Lo que falta", así que rehacerlo
+ * son dos clics. Una pantalla de edición sería más superficie para el mismo
+ * resultado.
+ */
+export async function cancelarEnvio(idOrden: string): Promise<{ error: string | null }> {
+  const sesion = await obtenerSesionMarca();
+  if (!sesion) return { error: "Sesión no válida" };
+
+  try {
+    const supabase = getSupabaseServerClient();
+
+    // Que la orden sea suya se valida acá: con el id de otra marca no se
+    // puede cancelar un envío ajeno.
+    const { data: orden } = await supabase
+      .from("ordenes_reposicion")
+      .select("estado, observaciones, id_marca")
+      .eq("id_orden", idOrden)
+      .maybeSingle();
+    if (!orden || orden.id_marca !== sesion.idMarca) return { error: "Ese envío no es tuyo." };
+
+    if (orden.estado !== PENDIENTE && orden.estado !== PROPUESTA) {
+      return {
+        error:
+          orden.estado === RECIBIDA_PARCIAL
+            ? "Ya recibieron una parte de este envío, así que no se puede dar de baja. Escribinos y lo vemos."
+            : orden.estado === CANCELADA
+              ? "Este envío ya estaba dado de baja."
+              : "Este envío ya está cerrado.",
+      };
+    }
+
+    // Aunque el estado siga abierto, puede haber entrado algo: se mira contra
+    // los renglones y no solo contra el estado.
+    const { data: renglones } = await supabase
+      .from("detalle_reposicion")
+      .select("cantidad_recibida")
+      .eq("id_orden", idOrden);
+    if ((renglones ?? []).some((r) => ((r.cantidad_recibida as number) ?? 0) > 0)) {
+      return { error: "Ya recibieron parte de este envío, así que no se puede dar de baja." };
+    }
+
+    const nota = `Dado de baja por ${sesion.nombreMarca} desde su portal.`;
+
+    const { error } = await supabase
+      .from("ordenes_reposicion")
+      .update({
+        estado: CANCELADA,
+        observaciones: orden.observaciones ? `${orden.observaciones}\n${nota}` : nota,
+      })
+      .eq("id_orden", idOrden)
+      // Que siga abierto: si justo lo recepcionaron, no se cancela y la marca
+      // ve el resultado en vez de pisarlo.
+      .in("estado", [PENDIENTE, PROPUESTA]);
+    if (error) return { error: friendlyDbError(error) };
+
+    revalidatePath("/portal/reponer");
+    revalidatePath("/portal");
+    revalidatePath("/compras");
+    revalidatePath("/compras/recepcion");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo dar de baja el envío" };
+  }
 }
 
 /**

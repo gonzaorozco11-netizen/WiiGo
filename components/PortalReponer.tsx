@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   mandarReposicion,
+  cancelarEnvio,
   type DatosReponer,
   type GondolaReponer,
   type RenglonReponer,
@@ -175,19 +176,33 @@ export default function PortalReponer({
 
       {solapa === "FALTA" && (
         <>
-          {datos.yaMandado &&
-        (datos.yaMandado.estado === "PROPUESTA" ? (
-          <div className="rep-aviso">
-            Mandaste un envío de <b>{datos.yaMandado.unidades} unidades</b> que está{" "}
-            <b>esperando que WiiGo lo apruebe</b>, porque algo se pasaba del tope acordado. No hace
-            falta que lo mandes de nuevo.
-          </div>
-        ) : (
-          <div className="rep-aviso">
-            Ya tenés un envío de <b>{datos.yaMandado.unidades} unidades</b> mandado y todavía sin
-            recibir. Lo que figura abajo ya lo descuenta, así que no vas a mandar dos veces lo mismo.
-          </div>
-        ))}
+          {datos.yaMandado && (
+        <div className="rep-aviso">
+          {datos.yaMandado.estado === "PROPUESTA" ? (
+            <>
+              Mandaste un envío de <b>{datos.yaMandado.unidades} unidades</b> que está{" "}
+              <b>esperando que WiiGo lo apruebe</b>, porque algo se pasaba del tope acordado. No
+              hace falta que lo mandes de nuevo.
+            </>
+          ) : (
+            <>
+              Ya tenés un envío de <b>{datos.yaMandado.unidades} unidades</b> mandado y todavía sin
+              recibir. Lo que figura abajo ya lo descuenta, así que no vas a mandar dos veces lo
+              mismo.
+            </>
+          )}
+          {/* El arrepentimiento llega mirando este aviso, no entrando a Mis
+              envíos: acá es donde la marca se acuerda de que mandó algo que
+              quería cambiar. */}
+          {datos.yaMandado.sePuedeDarDeBaja && (
+            <>
+              {" "}
+              ¿Te falta agregar o sacar algo?{" "}
+              <BajaEnvio idOrden={datos.yaMandado.idOrden} compacto />
+            </>
+          )}
+        </div>
+      )}
 
       <div className="rep-numeros">
         {/* La tarjeta se apaga cuando lo que falta ya viene en camino. Con el
@@ -370,16 +385,22 @@ function Envios({ envios }: { envios: OrdenPortal[] }) {
 
   // Lo que importa del período: cuánto se mandó y cuánto entró. La diferencia
   // es el número que se discute, así que se muestra solo.
+  // Los dados de baja y los rechazados siguen en la lista —queda el registro
+  // de que existieron— pero no suman al "mandaste": esa mercadería no salió,
+  // y contarla deja una diferencia permanente contra lo que entró.
   const resumen = useMemo(() => {
     let mandadas = 0;
     let recibidas = 0;
     let conDiferencia = 0;
+    let cuentan = 0;
     for (const o of visibles) {
+      if (o.estado === "CANCELADA" || o.estado === "RECHAZADA") continue;
+      cuentan++;
       mandadas += o.totalUnidades;
       recibidas += o.lineas.reduce((a, l) => a + l.recibida, 0);
       if (o.hayDiferencias) conDiferencia++;
     }
-    return { mandadas, recibidas, conDiferencia };
+    return { mandadas, recibidas, conDiferencia, cuentan };
   }, [visibles]);
 
   return (
@@ -409,7 +430,12 @@ function Envios({ envios }: { envios: OrdenPortal[] }) {
           <div className="rep-num total">
             <span>Mandaste</span>
             <b>{resumen.mandadas} u.</b>
-            <small>en {visibles.length} {visibles.length === 1 ? "envío" : "envíos"}</small>
+            <small>
+              en {resumen.cuentan} {resumen.cuentan === 1 ? "envío" : "envíos"}
+              {visibles.length > resumen.cuentan
+                ? ` · ${visibles.length - resumen.cuentan} sin efecto`
+                : ""}
+            </small>
           </div>
           <div className="rep-num total">
             <span>Entraron a la góndola</span>
@@ -494,6 +520,13 @@ function Envios({ envios }: { envios: OrdenPortal[] }) {
                       </tbody>
                     </table>
                   )}
+
+                  {/* Mientras no haya recepción se puede dar de baja. Una vez
+                      que entró mercadería no: ya está en la góndola, y el
+                      papel es lo único que explica de dónde salió. */}
+                  {!o.recibidaEl && (o.estado === "PENDIENTE" || o.estado === "PROPUESTA") && (
+                    <BajaEnvio idOrden={o.idOrden} />
+                  )}
                 </div>
               )}
             </li>
@@ -504,9 +537,88 @@ function Envios({ envios }: { envios: OrdenPortal[] }) {
   );
 }
 
+/**
+ * Dar de baja un envío mandado.
+ *
+ * Dos pasos y no un `confirm()` del navegador: el cartel del navegador se
+ * cierra sin leer y además no puede explicar POR QUÉ se puede ahora y no se va
+ * a poder después. Acá el segundo paso dice qué pasa con la mercadería.
+ *
+ * Se ofrece en los dos lugares donde la marca se acuerda del envío: el aviso de
+ * "ya tenés uno mandado" y la ficha en Mis envíos.
+ */
+function BajaEnvio({
+  idOrden,
+  compacto,
+}: {
+  idOrden: string;
+  compacto?: boolean;
+}) {
+  const router = useRouter();
+  const [confirmando, setConfirmando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pendiente, empezar] = useTransition();
+
+  function darDeBaja() {
+    setError(null);
+    empezar(async () => {
+      const r = await cancelarEnvio(idOrden);
+      if (r.error) {
+        setConfirmando(false);
+        return setError(r.error);
+      }
+      router.refresh();
+    });
+  }
+
+  if (error) return <p className="rep-error">{error}</p>;
+
+  // Compacto va dentro de una frase del aviso, así que el primer paso es un
+  // span: un div ahí partiría el párrafo al medio.
+  if (!confirmando) {
+    const boton = (
+      <button type="button" className="rep-baja-link" onClick={() => setConfirmando(true)}>
+        Dar de baja este envío
+      </button>
+    );
+    if (compacto) return boton;
+    return (
+      <div className="rep-baja">
+        {boton}
+        <small>Mientras no lo reciban en el local lo podés dar de baja y volver a armarlo.</small>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`rep-baja confirmar${compacto ? " compacto" : ""}`}>
+      <p>
+        Se da de baja el envío entero. Si ya lo despachaste, avisale al local antes de que llegue.
+        Después lo volvés a armar desde <b>Lo que falta</b>, que vuelve a mostrarte todo.
+      </p>
+      <div className="rep-baja-botones">
+        <button type="button" className="rep-baja-si" onClick={darDeBaja} disabled={pendiente}>
+          {pendiente ? "Dando de baja…" : "Sí, darlo de baja"}
+        </button>
+        <button
+          type="button"
+          className="rep-baja-no"
+          onClick={() => setConfirmando(false)}
+          disabled={pendiente}
+        >
+          Dejarlo como está
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function EstadoEnvio({ o }: { o: OrdenPortal }) {
   if (o.estado === "PROPUESTA") return <span className="rep-chip bajo">Esperando aprobación</span>;
   if (o.estado === "RECHAZADA") return <span className="rep-chip agotado">Rechazada</span>;
+  // Sin este caso un envío dado de baja seguía diciendo "En camino", que es lo
+  // contrario de lo que pasó.
+  if (o.estado === "CANCELADA") return <span className="rep-chip neutro">Dado de baja</span>;
   if (!o.recibidaEl) return <span className="rep-chip camino">En camino</span>;
   return o.hayDiferencias ? (
     <span className="rep-chip bajo">Llegó con diferencias</span>
