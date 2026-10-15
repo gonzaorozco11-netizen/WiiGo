@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { Fragment, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   mandarReposicion,
@@ -45,7 +45,11 @@ export default function PortalReponer({
   envios: OrdenPortal[];
 }) {
   const router = useRouter();
-  const [solapa, setSolapa] = useState<"FALTA" | "ENVIOS">("FALTA");
+  // RECO y AMANO son dos vistas del MISMO envío, no dos envíos. Comparten el
+  // carrito, el total y el botón: con dos pedidos separados la marca manda
+  // dos cajas el mismo día al mismo local, y el local recibe dos órdenes de
+  // la misma marca sin saber por qué.
+  const [solapa, setSolapa] = useState<"RECO" | "AMANO" | "ENVIOS">("RECO");
   const [cantidades, setCantidades] = useState<Map<string, number>>(new Map());
   const [error, setError] = useState<string | null>(null);
   const [listo, setListo] = useState<{ automatica: boolean } | null>(null);
@@ -102,6 +106,14 @@ export default function PortalReponer({
 
   const unidades = aMandar.reduce((a, i) => a + i.cantidad, 0);
 
+  // Cuántos renglones puso ella que el sistema no pedía. Es el contador de la
+  // solapa "A mano": contar todo lo cargado haría que las dos solapas
+  // mostraran el mismo número y el contador no diría nada.
+  const aMano = useMemo(
+    () => aMandar.filter((i) => (sugeridoDe.get(i.idVariante) ?? 0) === 0).length,
+    [aMandar, sugeridoDe]
+  );
+
   // Cuántas se pasan del tope. Decirlo ANTES de mandar evita la sorpresa de
   // que la orden quede esperando sin que la marca entienda por qué.
   const sobreTope = useMemo(() => {
@@ -131,15 +143,21 @@ export default function PortalReponer({
       <div className="rep-cab">
         <div>
           <h1 className="rep-titulo">
-            {solapa === "FALTA" ? "Lo que tenés que reponer" : "Mis envíos"}
+            {solapa === "RECO"
+              ? "Lo que tenés que reponer"
+              : solapa === "AMANO"
+                ? "Agregar a mano"
+                : "Mis envíos"}
           </h1>
           <p className="rep-sub">
-            {solapa === "FALTA"
+            {solapa === "RECO"
               ? "Se arma solo con lo que vas vendiendo. No hace falta que lo revises todos los días: cuando llegue el día de recepción, mandá lo que diga acá."
-              : "Lo que mandaste y lo que se recibió de verdad en el local, producto por producto."}
+              : solapa === "AMANO"
+                ? "Buscá cualquier producto tuyo y poné cuánto mandar. Sirve para lo que el sistema no te va a pedir: una promo, un sabor nuevo, algo que sabés que se va a vender esta semana."
+                : "Lo que mandaste y lo que se recibió de verdad en el local, producto por producto."}
           </p>
         </div>
-        {solapa === "FALTA" && datos.proxima && (
+        {solapa !== "ENVIOS" && datos.proxima && (
           <div className="rep-proxima">
             <span>Próxima recepción</span>
             <b>{datos.proxima.etiqueta} · {datos.proxima.horario} h</b>
@@ -156,13 +174,23 @@ export default function PortalReponer({
 
       <div className="cam-tabs">
         <button
-          className={`cam-tab${solapa === "FALTA" ? " activa" : ""}`}
-          onClick={() => setSolapa("FALTA")}
+          className={`cam-tab${solapa === "RECO" ? " activa" : ""}`}
+          onClick={() => setSolapa("RECO")}
         >
-          Lo que falta
+          Recomendado
           {datos.agotados + datos.bajos > 0 && (
             <span className="cam-cont fuerte">{datos.agotados + datos.bajos}</span>
           )}
+        </button>
+        <button
+          className={`cam-tab${solapa === "AMANO" ? " activa" : ""}`}
+          onClick={() => setSolapa("AMANO")}
+        >
+          A mano
+          {/* Cuenta lo que puso ELLA y el sistema no pedía. Contar todo lo
+              cargado haría que las dos solapas mostraran el mismo número y
+              el contador no diría nada. */}
+          {aMano > 0 && <span className="cam-cont">{aMano}</span>}
         </button>
         <button
           className={`cam-tab${solapa === "ENVIOS" ? " activa" : ""}`}
@@ -175,7 +203,7 @@ export default function PortalReponer({
 
       {solapa === "ENVIOS" && <Envios envios={envios} />}
 
-      {solapa === "FALTA" && (
+      {solapa !== "ENVIOS" && (
         <>
           {datos.yaMandado && (
         <div className="rep-aviso">
@@ -205,6 +233,7 @@ export default function PortalReponer({
         </div>
       )}
 
+      {solapa === "RECO" && (
       <div className="rep-numeros">
         {/* La tarjeta se apaga cuando lo que falta ya viene en camino. Con el
             envío mandado la góndola sigue vacía, pero no hay nada que hacer:
@@ -242,41 +271,47 @@ export default function PortalReponer({
           <small>{pesos(datos.valorizado)} a precio de venta</small>
         </div>
       </div>
+      )}
 
-      {datos.gondolas.length === 0 ? (
-        <p className="vacio">Todavía no tenés productos con stock objetivo cargado.</p>
-      ) : (
-        <>
-          {conFaltante.length > 1 && (
-            <div className="rep-abrir">
-              <button
-                type="button"
-                onClick={() =>
-                  setAbiertas(todasAbiertas ? new Set() : new Set(conFaltante.map((g) => g.nombre)))
+      {solapa === "RECO" &&
+        (datos.gondolas.length === 0 ? (
+          <p className="vacio">Todavía no tenés productos con stock objetivo cargado.</p>
+        ) : (
+          <>
+            {conFaltante.length > 1 && (
+              <div className="rep-abrir">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setAbiertas(todasAbiertas ? new Set() : new Set(conFaltante.map((g) => g.nombre)))
+                  }
+                >
+                  {todasAbiertas ? "Cerrar todas" : "Abrir todas"}
+                </button>
+              </div>
+            )}
+            {datos.gondolas.map((g) => (
+              <Gondola
+                key={g.nombre}
+                g={g}
+                abierta={abiertas.has(g.nombre)}
+                alternar={() =>
+                  setAbiertas((previo) => {
+                    const siguiente = new Set(previo);
+                    if (siguiente.has(g.nombre)) siguiente.delete(g.nombre);
+                    else siguiente.add(g.nombre);
+                    return siguiente;
+                  })
                 }
-              >
-                {todasAbiertas ? "Cerrar todas" : "Abrir todas"}
-              </button>
-            </div>
-          )}
-          {datos.gondolas.map((g) => (
-            <Gondola
-              key={g.nombre}
-              g={g}
-              abierta={abiertas.has(g.nombre)}
-              alternar={() =>
-                setAbiertas((previo) => {
-                  const siguiente = new Set(previo);
-                  if (siguiente.has(g.nombre)) siguiente.delete(g.nombre);
-                  else siguiente.add(g.nombre);
-                  return siguiente;
-                })
-              }
-              cantidad={cantidad}
-              tocar={tocar}
-            />
-          ))}
-        </>
+                cantidad={cantidad}
+                tocar={tocar}
+              />
+            ))}
+          </>
+        ))}
+
+      {solapa === "AMANO" && (
+        <AMano datos={datos} cantidad={cantidad} tocar={tocar} sugeridoDe={sugeridoDe} />
       )}
 
       <div className="rep-pie">
@@ -708,6 +743,121 @@ function EstadoEnvio({ o }: { o: OrdenPortal }) {
   );
 }
 
+/**
+ * Buscar un producto puntual y mandarlo, lo pida o no el sistema.
+ *
+ * Pedir a mano YA SE PODÍA: cada góndola abierta lista todos sus productos
+ * con su contador, no solo los que hacen falta. Lo que no había era cómo
+ * ENCONTRAR uno entre ciento y pico sin ir abriendo góndola por góndola. El
+ * buscador es el cambio; la solapa es dónde ponerlo.
+ *
+ * Es el mismo carrito que Recomendado. Tocar acá un producto que allá ya
+ * tenía cantidad CAMBIA esa línea, no agrega otra.
+ */
+function AMano({
+  datos,
+  cantidad,
+  tocar,
+  sugeridoDe,
+}: {
+  datos: DatosReponer;
+  cantidad: (id: string) => number;
+  tocar: (id: string, n: number) => void;
+  sugeridoDe: Map<string, number>;
+}) {
+  const [busca, setBusca] = useState("");
+
+  const todos = useMemo(
+    () => datos.gondolas.flatMap((g) => g.renglones.map((r) => ({ ...r, gondola: g.nombre }))),
+    [datos]
+  );
+
+  const q = busca.trim().toLowerCase();
+  // Sin búsqueda no se listan los ciento y pico: sería el muro que esta
+  // pantalla viene a evitar. Se muestra lo que ya puso, que es lo único que
+  // tiene sentido revisar sin buscar nada.
+  const visibles = q
+    ? todos.filter((r) => `${r.producto} ${r.variante} ${r.gondola}`.toLowerCase().includes(q))
+    : todos.filter((r) => cantidad(r.idVariante) > 0);
+
+  return (
+    <>
+      <div className="rep-buscar">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7">
+          <circle cx="7" cy="7" r="4.6" />
+          <path d="M10.4 10.4 14 14" strokeLinecap="round" />
+        </svg>
+        <input
+          type="search"
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          placeholder="Buscar un producto tuyo…"
+          aria-label="Buscar un producto tuyo"
+        />
+      </div>
+
+      {visibles.length === 0 ? (
+        <p className="vacio">
+          {q
+            ? "No encontramos ningún producto tuyo con ese nombre."
+            : "Buscá un producto arriba y poné cuántas unidades mandar. Lo que agregues acá se suma al mismo envío."}
+        </p>
+      ) : (
+        <section className="rep-gondola">
+          <table className="rep-tabla">
+            <thead>
+              <tr>
+                <th>Producto</th>
+                <th className="c">En góndola</th>
+                <th className="c">Mín · Objetivo</th>
+                <th className="c">Se vende</th>
+                <th className="c">Mandar</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibles.map((r) => {
+                const puesto = cantidad(r.idVariante);
+                const sugerido = sugeridoDe.get(r.idVariante) ?? 0;
+                // Sin objetivo el sistema no tiene con qué calcular nada, así
+                // que ese producto NUNCA aparece en Recomendado. Decirlo acá
+                // es la única forma de que la marca entienda por qué no lo ve
+                // del otro lado — son 26 variantes en el caso que lo destapó.
+                const sinObjetivo = r.minimo === 0 && r.objetivo === 0;
+                // El que pide a mano es justo el que se pasa: si el sistema
+                // no se lo pidió, por algo es. Y una sola línea pasada frena
+                // el envío ENTERO, no esa línea.
+                const seLePasa = puesto > 0 && r.stock + r.enCamino + puesto > r.tope;
+                return (
+                  <Fragment key={r.idVariante}>
+                    <Fila r={r} valor={puesto} tocar={tocar} gondola={r.gondola} sinObjetivo={sinObjetivo} />
+                    {sugerido > 0 && (
+                      <tr className="rep-nota-fila">
+                        <td colSpan={5}>
+                          Este ya está en <b>Recomendado</b> con {sugerido} unidades. Si lo tocás acá
+                          cambiás esa misma línea — no se suma dos veces.
+                        </td>
+                      </tr>
+                    )}
+                    {seLePasa && (
+                      <tr className="rep-nota-fila ojo">
+                        <td colSpan={5}>
+                          Con {puesto} te pasás del tope acordado para este producto ({r.tope} en
+                          góndola). Se puede mandar igual, pero <b>el envío entero</b> queda esperando
+                          que WiiGo lo apruebe.
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </section>
+      )}
+    </>
+  );
+}
+
 function Gondola({
   g,
   abierta,
@@ -752,7 +902,16 @@ function Gondola({
           </thead>
           <tbody>
             {g.renglones.map((r) => (
-              <Fila key={r.idVariante} r={r} valor={cantidad(r.idVariante)} tocar={tocar} />
+              <Fila
+                key={r.idVariante}
+                r={r}
+                valor={cantidad(r.idVariante)}
+                tocar={tocar}
+                // También acá: sin objetivo la fila se ve igual a una que
+                // está al día, cuando en realidad el sistema no tiene con
+                // qué calcularla y nunca la va a pedir.
+                sinObjetivo={r.minimo === 0 && r.objetivo === 0}
+              />
             ))}
           </tbody>
         </table>
@@ -765,10 +924,15 @@ function Fila({
   r,
   valor,
   tocar,
+  gondola,
+  sinObjetivo = false,
 }: {
   r: RenglonReponer;
   valor: number;
   tocar: (id: string, n: number) => void;
+  /** Solo en la lista plana: agrupada ya lo dice el encabezado. */
+  gondola?: string;
+  sinObjetivo?: boolean;
 }) {
   return (
     <tr className={r.estado === "OK" && r.sugerido === 0 ? "ok" : undefined}>
@@ -777,8 +941,11 @@ function Fila({
           {r.producto}
           {r.variante && r.variante !== "Único" && <span className="rep-var"> · {r.variante}</span>}
         </span>
+        {/* En la lista plana el nombre solo no dice en qué cajón va. */}
+        {gondola && <span className="rep-gon-chip">{gondola}</span>}
         {r.estado === "AGOTADO" && <span className="rep-chip agotado">AGOTADO</span>}
         {r.estado === "BAJO" && <span className="rep-chip bajo">BAJO</span>}
+        {sinObjetivo && <span className="rep-chip neutro">SIN OBJETIVO</span>}
         {r.enCamino > 0 && <span className="rep-chip camino">{r.enCamino} en camino</span>}
       </td>
       <td className={`c mono${r.estado === "AGOTADO" ? " rojo" : r.estado === "BAJO" ? " ambar" : ""}`}>

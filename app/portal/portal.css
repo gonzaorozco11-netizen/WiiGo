@@ -2220,6 +2220,35 @@
   font: inherit; font-size: 13px; background: var(--superficie); color: var(--texto);
 }
 
+/* Buscar un producto puntual para mandarlo a mano. Pedir a mano ya se podia
+   —cada gondola abierta lista todos sus productos— pero no habia como
+   ENCONTRAR uno entre ciento y pico sin abrir gondola por gondola. */
+.rep-buscar {
+  display: flex; align-items: center; gap: 9px; background: var(--superficie);
+  border: 1px solid var(--borde-fuerte); border-radius: 11px; padding: 9px 13px;
+  max-width: 420px; margin-bottom: 14px; color: var(--texto-3);
+}
+.rep-buscar input {
+  border: 0; outline: 0; font: inherit; font-size: 14px; flex: 1; min-width: 0;
+  background: none; color: var(--texto);
+}
+.rep-buscar:focus-within { border-color: var(--salvia); box-shadow: 0 0 0 3px var(--salvia-tenue); }
+
+/* En la lista plana el nombre del producto solo no dice en que cajon va. */
+.rep-gon-chip {
+  display: inline-block; margin-left: 7px; font-size: 10.5px; font-weight: 600;
+  color: var(--texto-2); background: var(--superficie-2); border-radius: 999px;
+  padding: 1px 8px; white-space: nowrap;
+}
+
+/* El renglon de aclaracion debajo de una fila. Va pegado a su fila y no al
+   pie porque es sobre ESE producto. */
+.rep-nota-fila td {
+  font-size: 11.5px; color: #4f5c43; background: #f7faf3; line-height: 1.45;
+  padding: 6px 14px 8px; border-bottom: 1px solid #f1f3ec;
+}
+.rep-nota-fila.ojo td { color: #8a7340; background: var(--ocre-tenue); }
+
 .rep-envios { list-style: none; display: flex; flex-direction: column; gap: 9px; }
 .rep-envio { background: var(--superficie); border: 1px solid var(--borde); border-radius: 13px; overflow: hidden; }
 .rep-envio-cab {
