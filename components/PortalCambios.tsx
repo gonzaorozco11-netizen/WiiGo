@@ -100,6 +100,9 @@ export default function PortalCambios({
   const [busqueda, setBusqueda] = useState("");
   const [abierto, setAbierto] = useState<string | null>(null);
   const [nuevoAbierto, setNuevoAbierto] = useState(false);
+  // Ninguna abierta al entrar: con 72 productos, todas abiertas es el mismo
+  // muro que había antes sin agrupar.
+  const [gondolaAbierta, setGondolaAbierta] = useState<Set<string>>(new Set());
 
   // El alta se abre llegando con ?nuevo=1 desde "Añadir nuevo producto", que
   // vive en Mis productos. Se lee acá y no con useSearchParams para no
@@ -127,6 +130,36 @@ export default function PortalCambios({
         p.nombre.toLowerCase().includes(q) || (p.subcategoria ?? "").toLowerCase().includes(q)
     );
   }, [productos, busqueda]);
+
+  /**
+   * Los productos por góndola, en el orden en que vienen y con los que no
+   * tienen subcategoría al final: es un cajón de sobras, no una categoría.
+   *
+   * Buscando no se agrupa —la lista ya quedó corta y el encabezado estorba—,
+   * y eso se resuelve devolviendo un solo grupo sin nombre.
+   */
+  const grupos = useMemo(() => {
+    if (busqueda.trim() !== "") {
+      return [{ nombre: "", items: visibles, esperando: 0 }];
+    }
+    const orden: string[] = [];
+    for (const p of visibles) {
+      const g = p.subcategoria ?? SIN_GONDOLA;
+      if (!orden.includes(g)) orden.push(g);
+    }
+    orden.sort((a, b) => (a === SIN_GONDOLA ? 1 : b === SIN_GONDOLA ? -1 : 0));
+    return orden.map((nombre) => {
+      const items = visibles.filter((p) => (p.subcategoria ?? SIN_GONDOLA) === nombre);
+      return { nombre, items, esperando: items.filter((p) => p.esperando.length > 0).length };
+    });
+  }, [visibles, busqueda]);
+
+  // Con una sola góndola no hay nada que elegir: va abierta.
+  function gondolaVisible(nombre: string) {
+    if (nombre === "") return true;
+    if (grupos.length === 1) return true;
+    return gondolaAbierta.has(nombre);
+  }
 
   return (
     <main className="portal-lienzo">
@@ -183,8 +216,36 @@ export default function PortalCambios({
                 : "Ningún producto coincide con esa búsqueda."}
             </p>
           ) : (
+            /* Agrupado por góndola, igual que Reponer y Mis productos. Son
+               las mismas tres listas de los mismos productos: que una se
+               ordene distinto obliga a buscar de dos maneras.
+               Buscando va plano: ahí la lista ya quedó corta. */
+            grupos.map((g) => (
+              <section className="cam-gondola" key={g.nombre}>
+                {g.nombre && (
+                  <button
+                    className="cam-gon-cab"
+                    onClick={() =>
+                      setGondolaAbierta((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(g.nombre)) next.delete(g.nombre);
+                        else next.add(g.nombre);
+                        return next;
+                      })
+                    }
+                  >
+                    <span>
+                      {gondolaVisible(g.nombre) ? "▾" : "▸"} {g.nombre}
+                    </span>
+                    <small>
+                      {g.items.length} {g.items.length === 1 ? "producto" : "productos"}
+                      {g.esperando > 0 && ` · ${g.esperando} esperando`}
+                    </small>
+                  </button>
+                )}
+                {gondolaVisible(g.nombre) && (
             <ul className="cam-lista">
-              {visibles.map((p) => (
+              {g.items.map((p) => (
                 <FilaProducto
                   key={p.idProducto}
                   p={p}
@@ -198,6 +259,9 @@ export default function PortalCambios({
                 />
               ))}
             </ul>
+                )}
+              </section>
+            ))
           )}
         </>
       ) : (
@@ -466,6 +530,9 @@ function Envio({
     </div>
   );
 }
+
+/** Los que no tienen subcategoría van juntos y al final. */
+const SIN_GONDOLA = "Sin góndola";
 
 type ModoPrecio = "PESOS" | "PORC" | "GANAR";
 

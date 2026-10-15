@@ -535,6 +535,21 @@
 .cam-buscar:focus { outline: 2px solid var(--salvia); outline-offset: -1px; }
 
 /* ---------- Lista de productos ---------- */
+/* Las gondolas de Cambios y altas. Mismo agrupado que Reponer y Mis
+   productos: son las mismas tres listas de los mismos productos, y que una
+   se ordene distinto obliga a buscar de dos maneras. */
+.cam-gondola { margin-bottom: 10px; }
+.cam-gon-cab {
+  width: 100%; display: flex; align-items: center; justify-content: space-between;
+  gap: 14px; padding: 10px 14px; background: var(--superficie-2);
+  border: 1px solid var(--borde); border-radius: 11px; font: inherit;
+  cursor: pointer; text-align: left;
+}
+.cam-gon-cab:hover { border-color: var(--borde-fuerte); }
+.cam-gon-cab > span { font-size: 14px; font-weight: 600; }
+.cam-gon-cab small { font-size: 12.5px; color: var(--texto-3); white-space: nowrap; }
+.cam-gondola .cam-lista { margin-top: 7px; }
+
 .cam-lista { list-style: none; display: flex; flex-direction: column; gap: 8px; }
 .cam-prod { background: var(--superficie); border: 1px solid var(--borde); border-radius: 13px; overflow: hidden; }
 .cam-prod.abierto { border-color: var(--borde-fuerte); box-shadow: 0 1px 3px rgba(42, 47, 38, .05); }

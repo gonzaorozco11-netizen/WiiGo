@@ -74,13 +74,16 @@ export default function PortalMisProductos({ datos }: { datos: MisCostosPortal }
   }, [datos.productos, filtro, busca]);
 
   /**
-   * Agrupar sirve para buscar algo; cargar setenta costos seguidos es otra
-   * tarea, y ahí los encabezados son interrupciones: abrir un cajón, cargar
-   * cinco, cerrarlo, abrir el siguiente. Con el filtro de lo que falta la
-   * lista va plana y de corrido —cada fila ya dice su subcategoría abajo del
-   * nombre— y con los otros filtros, que son para mirar, va agrupada.
+   * Plana solo cuando se está buscando: ahí la lista ya quedó corta y los
+   * encabezados sobran.
+   *
+   * Antes también iba plana con el filtro de "lo que falta", con la idea de
+   * que cargar setenta costos seguidos no quiere cajones que abrir y cerrar.
+   * Pero cuando falta TODO —que es el estado de una marca recién cargada—
+   * eso dejaba setenta y dos filas de corrido y sin una sola góndola a la
+   * vista. La solución no era sacar los encabezados: es dejarlos abiertos.
    */
-  const plano = filtro === "falta" || busca.trim() !== "";
+  const plano = busca.trim() !== "";
 
   // Las subcategorías en el orden en que vienen los productos, con la de "sin
   // subcategoría" siempre al final: es un cajón de sobras, no una categoría.
@@ -113,6 +116,10 @@ export default function PortalMisProductos({ datos }: { datos: MisCostosPortal }
 
   function estaAbierto(nombre: string) {
     if (gruposVisibles.length === 1) return true;
+    // Cargando costos van todos abiertos: ahí la lista se recorre entera de
+    // arriba abajo y los encabezados son separadores, no cajones. Abrir y
+    // cerrar setenta veces es la fricción que esto venía a evitar.
+    if (filtro === "falta" && grupoAbierto === null) return true;
     if (grupoAbierto === null) return nombre === primeroConFaltantes;
     return grupoAbierto === nombre;
   }
