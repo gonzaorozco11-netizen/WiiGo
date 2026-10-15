@@ -5,7 +5,8 @@ import { datosCompras } from "@/lib/comprasDatos";
 import ComprasEtapas from "@/components/ComprasEtapas";
 import ComprasTrabajo from "@/components/ComprasTrabajo";
 import PropuestasPendientes from "@/components/PropuestasPendientes";
-import { propuestasPendientes } from "@/app/(app)/reposicion/actions";
+import ExcedentesPendientes from "@/components/ExcedentesPendientes";
+import { propuestasPendientes, excedentesPendientes } from "@/app/(app)/reposicion/actions";
 
 export const dynamic = "force-dynamic";
 
@@ -14,10 +15,11 @@ export default async function ComprasPage() {
   const sesion = await obtenerSesionConPantallas();
   if (!puedeVerPantalla(sesion, "compras")) return <PantallaBloqueada />;
 
-  const [datos, contadores, propuestas] = await Promise.all([
+  const [datos, contadores, propuestas, excedentes] = await Promise.all([
     datosCompras(),
     contadoresCompras(),
     propuestasPendientes(),
+    excedentesPendientes(),
   ]);
 
   return (
@@ -36,6 +38,11 @@ export default async function ComprasPage() {
           el depósito: es lo único de esta pantalla que no puede esperar. Si no
           hay nada esperando, el bloque no se dibuja. */}
       <PropuestasPendientes propuestas={propuestas} />
+      {/* Debajo de las propuestas porque es menos urgente: lo que llegó de más
+          ya está en la góndola y vendiéndose. Pero no puede quedar pendiente
+          para siempre: hasta que se resuelva, la marca no sabe si esas
+          unidades son suyas o están en consignación. */}
+      <ExcedentesPendientes items={excedentes} />
       <ComprasTrabajo etapa="ORDENES" datos={datos} />
     </div>
   );

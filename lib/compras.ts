@@ -21,10 +21,22 @@ export async function contadoresCompras(): Promise<{
   esperandoRecepcion: number;
   sinCostear: number;
   sinCostearVencidos: number;
+  /**
+   * Lo que espera una decisión de administración en la etapa Órdenes: envíos
+   * propuestos por una marca y mercadería que llegó de más.
+   *
+   * Aparte de `ordenesAbiertas` porque no es lo mismo: una orden sin enviar
+   * espera que la mandes, esto espera que decidas. Mezclarlos en un número
+   * haría que el badge dijera "sin enviar" sobre cosas que no se envían.
+   *
+   * Hasta que esto existió las dos bandejas solo se veían entrando a
+   * /compras: el circuito estaba, pero nadie se enteraba de que había algo.
+   */
+  aResolver: number;
 }> {
   const supabase = getSupabaseServerClient();
 
-  const [repSinEnviar, provSinEnviar, repEnviadas, provEnviadas, sinCostear] = await Promise.all([
+  const [repSinEnviar, provSinEnviar, repEnviadas, provEnviadas, sinCostear, propuestas, excedentes] = await Promise.all([
     supabase
       .from("ordenes_reposicion")
       .select("id_orden", { count: "exact", head: true })
@@ -49,6 +61,17 @@ export async function contadoresCompras(): Promise<{
       .in("estado", ESTADOS_ABIERTOS)
       .not("enviada_el", "is", null),
     supabase.from("recepciones_proveedor").select("id_recepcion, fecha").eq("facturada", false).limit(100),
+    supabase
+      .from("ordenes_reposicion")
+      .select("id_orden", { count: "exact", head: true })
+      .eq("estado", "PROPUESTA"),
+    // Si sql/recepcion-diferencias.sql todavía no se corrió, la columna no
+    // existe y el count viene en error: cuenta 0 y el badge no aparece, en
+    // vez de tirar abajo la barra entera de las tres etapas.
+    supabase
+      .from("detalle_recepciones")
+      .select("id_detalle_recepcion", { count: "exact", head: true })
+      .eq("resolucion_excedente", "PENDIENTE"),
   ]);
 
   const filas = sinCostear.data ?? [];
@@ -60,5 +83,6 @@ export async function contadoresCompras(): Promise<{
     esperandoRecepcion: (repEnviadas.count ?? 0) + (provEnviadas.count ?? 0),
     sinCostear: filas.length,
     sinCostearVencidos: vencidos,
+    aResolver: (propuestas.count ?? 0) + (excedentes.count ?? 0),
   };
 }

@@ -309,7 +309,22 @@ export type OrdenPortal = {
   recibidaPor: string | null;
   // Solo se completa cuando hubo recepción; si algo no coincide, la marca lo
   // ve producto por producto.
-  lineas: { producto: string; solicitada: number; recibida: number; diferencia: number }[];
+  lineas: {
+    producto: string;
+    solicitada: number;
+    recibida: number;
+    diferencia: number;
+    /**
+     * Por qué entró menos: lo eligió quien abrió la caja. Sin esto la marca
+     * lee «faltan 6» como «no lo mandaste», cuando en realidad llegó dañado y
+     * volvió con su propio repartidor el mismo día.
+     */
+    motivoFaltante: string | null;
+    /** Qué se hizo con lo que sobró: PENDIENTE / SE_QUEDA / A_DEVOLVER. */
+    resolucion: string | null;
+    /** Si lo que había que devolver ya se le entregó. */
+    devueltoEl: string | null;
+  }[];
   hayDiferencias: boolean;
 };
 
@@ -366,12 +381,27 @@ export async function reposicionPortal(): Promise<OrdenPortal[]> {
   ]);
 
   const idsRecepcion = (recepciones ?? []).map((r) => r.id_recepcion as string);
-  const { data: detalles } = idsRecepcion.length
-    ? await supabase
+  // Las columnas del motivo y de la resolución salen de
+  // sql/recepcion-diferencias.sql. Si todavía no se corrió, la consulta cae a
+  // las de siempre: la marca ve «faltan 6» como antes en vez de una pantalla
+  // en blanco.
+  const basicas = "id_recepcion, id_variante, cantidad_solicitada, cantidad_recibida, diferencia";
+  let detalles: Record<string, unknown>[] | null = [];
+  if (idsRecepcion.length) {
+    const conExtras = await supabase
+      .from("detalle_recepciones")
+      .select(`${basicas}, motivo_faltante, resolucion_excedente, devuelto_el`)
+      .in("id_recepcion", idsRecepcion);
+    if (conExtras.error) {
+      const sin = await supabase
         .from("detalle_recepciones")
-        .select("id_recepcion, id_variante, cantidad_solicitada, cantidad_recibida, diferencia")
-        .in("id_recepcion", idsRecepcion)
-    : { data: [] };
+        .select(basicas)
+        .in("id_recepcion", idsRecepcion);
+      detalles = (sin.data as Record<string, unknown>[]) ?? [];
+    } else {
+      detalles = conExtras.data as Record<string, unknown>[];
+    }
+  }
 
   const nombres = await nombresDeVariante([...new Set((detalles ?? []).map((d) => d.id_variante as string))]);
   const localPorId = new Map((locales ?? []).map((l) => [l.id_local as string, l.nombre as string]));
@@ -386,6 +416,9 @@ export async function reposicionPortal(): Promise<OrdenPortal[]> {
         solicitada: (d.cantidad_solicitada as number) ?? 0,
         recibida: (d.cantidad_recibida as number) ?? 0,
         diferencia: (d.diferencia as number) ?? 0,
+        motivoFaltante: (d.motivo_faltante as string) ?? null,
+        resolucion: (d.resolucion_excedente as string) ?? null,
+        devueltoEl: (d.devuelto_el as string) ?? null,
       }));
 
     return {

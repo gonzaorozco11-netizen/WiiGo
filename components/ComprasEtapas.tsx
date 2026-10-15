@@ -20,7 +20,13 @@ export default function ComprasEtapas({
   puedeVer,
 }: {
   actual: EtapaCompras;
-  contadores: { ordenesAbiertas: number; esperandoRecepcion: number; sinCostear: number; sinCostearVencidos: number };
+  contadores: {
+    ordenesAbiertas: number;
+    esperandoRecepcion: number;
+    sinCostear: number;
+    sinCostearVencidos: number;
+    aResolver: number;
+  };
   /** Qué etapas puede ver esta persona: las demás no se muestran. */
   puedeVer: (clave: EtapaCompras) => boolean;
 }) {
@@ -53,13 +59,26 @@ export default function ComprasEtapas({
             <span className="text-lg">{e.ico}</span>
             <span className="block font-semibold text-[14.5px] text-neutral-900 mt-0.5">{e.nombre}</span>
             <span className="block text-[11.5px] text-neutral-400">{e.quien}</span>
-            {n > 0 && (
-              <span
-                className={`inline-block text-[11px] font-bold rounded-full px-2 py-0.5 mt-2 ${
-                  alerta ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700"
-                }`}
-              >
-                {n} {e.clave === "COSTEO" ? "sin costear" : e.clave === "RECEPCION" ? "esperando" : "sin enviar"}
+            {(n > 0 || (e.clave === "ORDENES" && contadores.aResolver > 0)) && (
+              <span className="flex flex-wrap gap-1.5 mt-2">
+                {n > 0 && (
+                  <span
+                    className={`inline-block text-[11px] font-bold rounded-full px-2 py-0.5 ${
+                      alerta ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700"
+                    }`}
+                  >
+                    {n} {e.clave === "COSTEO" ? "sin costear" : e.clave === "RECEPCION" ? "esperando" : "sin enviar"}
+                  </span>
+                )}
+                {/* Lo que espera una decisión va aparte y en azul: no es lo
+                    mismo que una orden sin enviar, y con el mismo color y la
+                    misma palabra el número de al lado dejaría de querer decir
+                    algo. */}
+                {e.clave === "ORDENES" && contadores.aResolver > 0 && (
+                  <span className="inline-block text-[11px] font-bold rounded-full px-2 py-0.5 bg-accent-tint text-accent-dark">
+                    {contadores.aResolver} para resolver
+                  </span>
+                )}
               </span>
             )}
           </Link>

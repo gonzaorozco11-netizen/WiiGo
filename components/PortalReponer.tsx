@@ -10,6 +10,7 @@ import {
   type RenglonReponer,
 } from "@/app/portal/reponer/actions";
 import type { OrdenPortal } from "@/app/portal/actions";
+import { finalDelRenglon, motivo } from "@/lib/recepcionDiferencias";
 
 // Lo que la marca tiene que reponer.
 //
@@ -497,7 +498,7 @@ function Envios({ envios }: { envios: OrdenPortal[] }) {
                           <th>Producto</th>
                           <th className="c">Mandaste</th>
                           <th className="c">Entró</th>
-                          <th className="c">Diferencia</th>
+                          <th>En qué quedó</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -506,14 +507,8 @@ function Envios({ envios }: { envios: OrdenPortal[] }) {
                             <td>{l.producto}</td>
                             <td className="c mono">{l.solicitada}</td>
                             <td className="c mono">{l.recibida}</td>
-                            <td className="c">
-                              {l.diferencia === 0 ? (
-                                <span className="tenue">—</span>
-                              ) : l.diferencia < 0 ? (
-                                <span className="rep-chip agotado">Faltan {Math.abs(l.diferencia)}</span>
-                              ) : (
-                                <span className="rep-chip bajo">Sobran {l.diferencia}</span>
-                              )}
+                            <td>
+                              <Final l={l} />
                             </td>
                           </tr>
                         ))}
@@ -533,6 +528,92 @@ function Envios({ envios }: { envios: OrdenPortal[] }) {
           ))}
         </ul>
       )}
+    </>
+  );
+}
+
+/**
+ * En qué quedó un renglón, dicho entero.
+ *
+ * Antes la columna decía «Faltan 6» o «Sobran 4» y nada más, que es
+ * exactamente lo que generaba la llamada:
+ *
+ *   «Faltan 6» se lee como «no lo mandaste». Y la marca tiene razón en
+ *   discutirlo: lo mandó, estaba dañado y volvió con su propio repartidor el
+ *   mismo día. Son dos cosas distintas y se veían igual.
+ *
+ *   «Sobran 4» no dice si esas 4 quedaron en consignación —y se liquidan
+ *   cuando se vendan— o si las tiene que ir a buscar. Es su plata.
+ *
+ * Los casos los decide `finalDelRenglon`, que es la misma función que usa el
+ * lado de adentro: si cada pantalla los dedujera sola, la que se olvide uno
+ * muestra un guión donde tendría que decir algo.
+ */
+function Final({
+  l,
+}: {
+  l: {
+    solicitada: number;
+    recibida: number;
+    diferencia: number;
+    motivoFaltante: string | null;
+    resolucion: string | null;
+    devueltoEl: string | null;
+  };
+}) {
+  const final = finalDelRenglon({
+    solicitada: l.solicitada,
+    recibida: l.recibida,
+    resolucion: l.resolucion,
+  });
+
+  if (final === "COMPLETO") return <span className="rep-chip ok">Entró completo</span>;
+
+  if (final === "FALTO") {
+    const m = motivo(l.motivoFaltante);
+    return (
+      <>
+        <span className="rep-chip agotado">Faltaron {l.solicitada - l.recibida}</span>
+        {/* Sin motivo son las recepciones viejas, de antes de que se pudiera
+            cargar: se dice que no se sabe en vez de inventar una causa. */}
+        <small className="rep-final-nota">
+          {m ? m.paraLaMarca : "No quedó anotado por qué. Si las mandaste, avisanos."}
+        </small>
+      </>
+    );
+  }
+
+  // De acá para abajo sobró. Las tres salidas son muy distintas para su plata.
+  if (final === "SOBRO_SE_QUEDA") {
+    return (
+      <>
+        <span className="rep-chip ok">Sobraron {l.diferencia} y se quedaron</span>
+        <small className="rep-final-nota">
+          Están en góndola en consignación. Se te liquidan cuando se vendan.
+        </small>
+      </>
+    );
+  }
+
+  if (final === "SOBRO_A_DEVOLVER") {
+    return (
+      <>
+        <span className="rep-chip bajo">Sobraron {l.diferencia}, a devolver</span>
+        <small className="rep-final-nota">
+          {l.devueltoEl
+            ? `Ya se te entregaron el ${fechaCorta(l.devueltoEl)}.`
+            : "Están apartadas para que las retires. Pedilas cuando pase tu repartidor."}
+        </small>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <span className="rep-chip bajo">Sobraron {l.diferencia}</span>
+      <small className="rep-final-nota">
+        Entraron a la góndola igual. WiiGo está decidiendo si se quedan o si las retirás.
+      </small>
     </>
   );
 }

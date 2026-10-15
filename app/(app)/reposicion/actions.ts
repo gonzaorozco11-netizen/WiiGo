@@ -37,6 +37,12 @@ async function usuarioActual() {
 // el local. Sin una lista, esa pila crece en el depósito y nadie se acuerda
 // de qué había que devolverle a quién — y esa merma la termina comiendo
 // WiiGo cuando en realidad es de la marca.
+//
+// Son DOS pilas y una sola lista. La otra es lo que llegó de más y
+// administración decidió que la marca retire. Es el mismo momento y la misma
+// persona —viene el repartidor, recibís lo nuevo y le entregás lo que se
+// vuelve— así que separarlas en dos pantallas garantiza que una de las dos se
+// olvide. Lo único que cambia es por qué se devuelve, y eso se dice en la fila.
 
 export type MercaderiaADevolver = {
   idDetalleDev: string;
@@ -47,9 +53,27 @@ export type MercaderiaADevolver = {
   fecha: string;
   motivo: string;
   numeroVenta: number | null;
+  /**
+   * De dónde sale. Decide qué tabla se marca al entregarla, y el prefijo del
+   * id la lleva consigo para que la pantalla no tenga que acordarse.
+   */
+  origen: "DEVOLUCION_CLIENTE" | "EXCEDENTE";
 };
 
+/** Prefijos de `idDetalleDev` según de qué tabla salió la fila. */
+const PREFIJO_DEVOLUCION = "dev:";
+const PREFIJO_EXCEDENTE = "exc:";
+
 export async function mercaderiaParaDevolverAMarca(): Promise<MercaderiaADevolver[]> {
+  const [deClientes, excedentes] = await Promise.all([
+    devolucionesDeClientes(),
+    excedentesADevolver(),
+  ]);
+  // Lo más viejo primero: es lo que lleva más tiempo ocupando depósito.
+  return [...deClientes, ...excedentes].sort((a, b) => a.fecha.localeCompare(b.fecha));
+}
+
+async function devolucionesDeClientes(): Promise<MercaderiaADevolver[]> {
   const supabase = getSupabaseServerClient();
 
   const { data: devoluciones } = await supabase
@@ -100,7 +124,7 @@ export async function mercaderiaParaDevolverAMarca(): Promise<MercaderiaADevolve
     const nombreProd = v ? prodPorId.get(v.id_producto as string) ?? "Producto" : "Producto";
     const nombreVar = v && v.nombre !== "Único" ? ` — ${v.nombre}` : "";
     return {
-      idDetalleDev: r.id_detalle_dev as string,
+      idDetalleDev: `${PREFIJO_DEVOLUCION}${r.id_detalle_dev as string}`,
       idMarca: (r.id_marca as string | null) ?? null,
       marca: r.id_marca ? marcaPorId.get(r.id_marca as string) ?? "Sin marca" : "Sin marca",
       producto: `${nombreProd}${nombreVar}`,
@@ -108,28 +132,120 @@ export async function mercaderiaParaDevolverAMarca(): Promise<MercaderiaADevolve
       fecha: (dev?.fecha as string) ?? "",
       motivo: (dev?.motivo as string) ?? "",
       numeroVenta: dev ? numeroPorVenta.get(dev.id_venta as string) ?? null : null,
+      origen: "DEVOLUCION_CLIENTE",
     };
   });
 }
 
-/** Se le entregó a la marca. Queda quién y cuándo, como todo lo demás. */
+/**
+ * Lo que llegó de más y administración decidió que la marca retire.
+ *
+ * Es la otra mitad de la misma pila. Sin esto, "que las retire" era una
+ * decisión sin consecuencia: quedaba anotada en la base y nadie en el
+ * mostrador se enteraba nunca de que había algo para entregar.
+ */
+async function excedentesADevolver(): Promise<MercaderiaADevolver[]> {
+  const supabase = getSupabaseServerClient();
+
+  const { data, error } = await supabase
+    .from("detalle_recepciones")
+    .select("id_detalle_recepcion, id_recepcion, id_variante, diferencia")
+    .eq("resolucion_excedente", "A_DEVOLVER")
+    .is("devuelto_el", null)
+    .limit(300);
+  // Sin las columnas creadas todavía no hay excedentes que devolver: la lista
+  // sale con lo de clientes nada más, en vez de romper la pantalla entera.
+  if (error || !data || data.length === 0) return [];
+
+  const idsRecepcion = [...new Set(data.map((d) => d.id_recepcion as string))];
+  const idsVariante = [...new Set(data.map((d) => d.id_variante as string))];
+
+  const [{ data: recepciones }, { data: variantes }] = await Promise.all([
+    supabase.from("recepciones").select("id_recepcion, fecha, id_marca").in("id_recepcion", idsRecepcion),
+    supabase
+      .from("variantes_producto")
+      .select("id_variante, nombre, productos(nombre)")
+      .in("id_variante", idsVariante),
+  ]);
+
+  const idsMarca = [...new Set((recepciones ?? []).map((r) => r.id_marca as string).filter(Boolean))];
+  const { data: marcas } = idsMarca.length
+    ? await supabase.from("marcas").select("id_marca, nombre").in("id_marca", idsMarca)
+    : { data: [] as Record<string, unknown>[] };
+
+  const marcaPorId = new Map((marcas ?? []).map((m) => [m.id_marca as string, m.nombre as string]));
+  const recepcionPorId = new Map((recepciones ?? []).map((r) => [r.id_recepcion as string, r]));
+  const nombrePorVariante = new Map(
+    (variantes ?? []).map((v) => {
+      const prod = ((v.productos as { nombre?: string } | null)?.nombre as string) ?? "Producto";
+      const vari = (v.nombre as string) ?? "";
+      return [v.id_variante as string, vari && vari !== "Único" ? `${prod} — ${vari}` : prod];
+    })
+  );
+
+  return data.map((d) => {
+    const r = recepcionPorId.get(d.id_recepcion as string);
+    const idMarca = (r?.id_marca as string | null) ?? null;
+    return {
+      idDetalleDev: `${PREFIJO_EXCEDENTE}${d.id_detalle_recepcion as string}`,
+      idMarca,
+      marca: idMarca ? marcaPorId.get(idMarca) ?? "Sin marca" : "Sin marca",
+      producto: nombrePorVariante.get(d.id_variante as string) ?? "Producto",
+      cantidad: (d.diferencia as number) ?? 0,
+      fecha: (r?.fecha as string) ?? "",
+      motivo: "Llegó de más en un envío",
+      numeroVenta: null,
+      origen: "EXCEDENTE",
+    };
+  });
+}
+
+/**
+ * Se le entregó a la marca. Queda quién y cuándo, como todo lo demás.
+ *
+ * Los ids vienen prefijados porque la lista junta dos tablas: `dev:` son
+ * devoluciones de clientes y `exc:` excedentes de una recepción. Se reparten
+ * acá en vez de pedirle a la pantalla que lleve la cuenta.
+ */
 export async function marcarDevueltaAMarca(ids: string[]): Promise<{ error: string | null }> {
   if (ids.length === 0) return { error: "No hay nada seleccionado." };
   try {
     const supabase = getSupabaseServerClient();
     const usuario = await usuarioActual();
-    const { error } = await supabase
-      .from("detalle_devoluciones")
-      .update({ devuelto_a_marca_el: new Date().toISOString(), devuelto_a_marca_por: usuario })
-      .in("id_detalle_dev", ids)
-      // Que siga pendiente: si dos personas la entregan a la vez, no se
-      // pisa la firma de quien lo hizo primero.
-      .is("devuelto_a_marca_el", null);
-    if (error) return { error: friendlyDbError(error) };
+    const ahora = new Date().toISOString();
+
+    const deClientes = ids
+      .filter((i) => i.startsWith(PREFIJO_DEVOLUCION))
+      .map((i) => i.slice(PREFIJO_DEVOLUCION.length));
+    const excedentes = ids
+      .filter((i) => i.startsWith(PREFIJO_EXCEDENTE))
+      .map((i) => i.slice(PREFIJO_EXCEDENTE.length));
+
+    if (deClientes.length > 0) {
+      const { error } = await supabase
+        .from("detalle_devoluciones")
+        .update({ devuelto_a_marca_el: ahora, devuelto_a_marca_por: usuario })
+        .in("id_detalle_dev", deClientes)
+        // Que siga pendiente: si dos personas la entregan a la vez, no se
+        // pisa la firma de quien lo hizo primero.
+        .is("devuelto_a_marca_el", null);
+      if (error) return { error: friendlyDbError(error) };
+    }
+
+    if (excedentes.length > 0) {
+      const { error } = await supabase
+        .from("detalle_recepciones")
+        .update({ devuelto_el: ahora, devuelto_por: usuario })
+        .in("id_detalle_recepcion", excedentes)
+        .is("devuelto_el", null);
+      if (error) return { error: friendlyDbError(error) };
+    }
 
     // Estas acciones se llaman desde Compras: /reposicion ya solo redirige.
     revalidatePath("/compras");
     revalidatePath("/compras/recepcion");
+    // La marca lo ve en Mis envíos: pasa de "a devolver" a "ya lo retiraste".
+    revalidatePath("/portal/reponer");
     return { error: null };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo registrar la entrega" };

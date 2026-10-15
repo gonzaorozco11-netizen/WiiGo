@@ -26,6 +26,7 @@ import {
   type DetalleMesPortal,
   type LineaVentaMarca,
 } from "@/app/portal/actions";
+import { finalDelRenglon } from "@/lib/recepcionDiferencias";
 
 // Tablero del portal de marcas.
 //
@@ -33,6 +34,36 @@ import {
 // el explorador de ventas con filtro de fecha (pide datos nuevos al servidor
 // según lo que la marca elija). El resto de los datos ya viene calculado del
 // servidor — acá no se decide qué puede ver la marca, eso se resolvió antes.
+
+/**
+ * En qué quedó un renglón, en una sola etiqueta.
+ *
+ * Misma función que Reponer → Mis envíos (`finalDelRenglon`), vocabulario de
+ * pill en vez de chip. Acá va sin la explicación de abajo a propósito: esto es
+ * el resumen del último envío y tiene el link al detalle justo debajo. Lo que
+ * NO puede pasar es que las dos pantallas digan cosas distintas del mismo
+ * renglón — antes el Tablero decía «Faltan 6» mientras Mis envíos explicaba
+ * que habían vuelto dañadas con su repartidor.
+ */
+function FinalCorto({
+  l,
+}: {
+  l: { solicitada: number; recibida: number; diferencia: number; resolucion: string | null };
+}) {
+  const final = finalDelRenglon({
+    solicitada: l.solicitada,
+    recibida: l.recibida,
+    resolucion: l.resolucion,
+  });
+  if (final === "COMPLETO") return <span className="pill ok">Completo</span>;
+  if (final === "FALTO")
+    return <span className="pill critico">Faltaron {l.solicitada - l.recibida}</span>;
+  if (final === "SOBRO_SE_QUEDA")
+    return <span className="pill ok">Sobraron {l.diferencia}, se quedaron</span>;
+  if (final === "SOBRO_A_DEVOLVER")
+    return <span className="pill aviso">Sobraron {l.diferencia}, a devolver</span>;
+  return <span className="pill aviso">Sobraron {l.diferencia}</span>;
+}
 
 function pesos(v: number) {
   return v.toLocaleString("es-AR", { maximumFractionDigits: 0 });
@@ -1166,13 +1197,7 @@ export default function PortalTablero({
                         <span className="c mono">{l.solicitada}</span>
                         <span className="c mono">{l.recibida}</span>
                         <span className="r">
-                          {l.diferencia === 0 ? (
-                            <span className="pill ok">Completo</span>
-                          ) : l.diferencia < 0 ? (
-                            <span className="pill critico">Faltan {Math.abs(l.diferencia)}</span>
-                          ) : (
-                            <span className="pill aviso">Sobran {l.diferencia}</span>
-                          )}
+                          <FinalCorto l={l} />
                         </span>
                       </div>
                     ))}

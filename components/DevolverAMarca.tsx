@@ -45,6 +45,7 @@ export default function DevolverAMarca({ items }: { items: MercaderiaADevolver[]
   if (items.length === 0) return null;
 
   const unidadesTotal = items.reduce((a, i) => a + i.cantidad, 0);
+  const hayExcedentes = items.some((i) => i.origen === "EXCEDENTE");
 
   function entregar(ids: string[]) {
     setError(null);
@@ -60,9 +61,14 @@ export default function DevolverAMarca({ items }: { items: MercaderiaADevolver[]
       <p className="text-sm font-semibold text-amber-900 mb-0.5">
         📦 Para devolverle a la marca ({unidadesTotal} {unidadesTotal === 1 ? "unidad" : "unidades"})
       </p>
+      {/* Dos pilas, una lista: lo que devolvió un cliente y lo que llegó de
+          más y se decidió que la marca retire. Es el mismo momento y la misma
+          persona, así que separarlas en dos pantallas garantiza que una se
+          olvide. */}
       <p className="text-xs text-amber-800 mb-3">
-        Productos que un cliente devolvió fallados, vencidos o abiertos. No volvieron a la góndola: están apartados
-        esperando que pase el repositor.
+        {hayExcedentes
+          ? "Lo que un cliente devolvió fallado, vencido o abierto, y lo que llegó de más en un envío y decidiste que la marca retire. Está todo apartado esperando que pase el repositor."
+          : "Productos que un cliente devolvió fallados, vencidos o abiertos. No volvieron a la góndola: están apartados esperando que pase el repositor."}
       </p>
 
       {error && (
@@ -106,6 +112,14 @@ export default function DevolverAMarca({ items }: { items: MercaderiaADevolver[]
                     <li key={r.idDetalleDev} className="px-3 py-2 flex justify-between gap-3 flex-wrap">
                       <span className="text-sm text-neutral-700">
                         <b className="font-semibold text-neutral-900">{r.cantidad}×</b> {r.producto}
+                        {/* Por qué se vuelve cambia qué se le dice al
+                            repartidor, así que se ve antes de leer la letra
+                            chica. */}
+                        {r.origen === "EXCEDENTE" && (
+                          <span className="ml-1.5 text-[10px] font-bold uppercase tracking-wide bg-amber-100 text-amber-800 rounded-full px-1.5 py-0.5">
+                            Llegó de más
+                          </span>
+                        )}
                         <span className="block text-xs text-neutral-400">
                           {r.numeroVenta ? `Pedido #${String(r.numeroVenta).padStart(4, "0")} · ` : ""}
                           {fechaCorta(r.fecha)} · {r.motivo}

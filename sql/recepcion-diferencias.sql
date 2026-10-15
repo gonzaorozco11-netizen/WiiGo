@@ -37,6 +37,27 @@ alter table detalle_recepciones
 alter table detalle_recepciones
   add column if not exists resuelto_por text;
 
+-- Cuándo se le entregó de verdad lo que había que devolver, y a quién se lo
+-- dio.
+--
+-- Separado de resuelto_el porque son dos momentos distintos y los dos
+-- importan: "decidimos que lo retire" puede ser un martes y "se lo llevó el
+-- repartidor" el viernes siguiente. Sin esta columna, decidir que lo retire no
+-- tiene ninguna consecuencia operativa — nadie en el mostrador se entera de
+-- que hay algo para entregar, y la caja se queda en el depósito igual que
+-- antes.
+alter table detalle_recepciones
+  add column if not exists devuelto_el timestamptz;
+
+alter table detalle_recepciones
+  add column if not exists devuelto_por text;
+
+-- Lo que hay que devolver y todavía no se entregó. Es la lista que mira el
+-- mostrador cuando viene el repartidor de la marca.
+create index if not exists idx_detalle_recepciones_a_devolver
+  on detalle_recepciones (resolucion_excedente)
+  where resolucion_excedente = 'A_DEVOLVER' and devuelto_el is null;
+
 -- La bandeja busca por acá: los excedentes sin resolver de todas las marcas.
 -- Parcial porque los renglones con excedente son una minoría del total.
 create index if not exists idx_detalle_recepciones_excedente_pendiente
