@@ -176,6 +176,12 @@ export type Validacion = {
     escalaADuenio?: boolean;
     motivoEscala?: string;
     avisoParaLaMarca?: string;
+    /**
+     * El efectivo quedó muy abajo del precio de góndola. Avisa sin frenar:
+     * casi siempre es un cero de más al tipear, pero puede ser una decisión
+     * real de la marca — ese descuento lo absorbe ella.
+     */
+    descuento?: string;
   };
 };
 

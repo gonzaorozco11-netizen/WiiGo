@@ -406,9 +406,21 @@ export async function aplicarCambiosProgramados(): Promise<{ aplicadas: number; 
           .maybeSingle();
         const anterior = (producto?.precio_venta as number) ?? null;
 
+        // Los dos precios entran juntos cuando la solicitud trae los dos.
+        // Aplicar solo el de góndola dejaría el descuento del efectivo
+        // desarmado, que es el problema que el formulario único vino a
+        // resolver. Las solicitudes viejas traen solo `precio` y siguen
+        // funcionando igual.
+        const efectivo = Number(datos.precio_efectivo);
+        const tieneEfectivo = Number.isFinite(efectivo) && efectivo > 0;
+
         await supabase
           .from("productos")
-          .update({ precio_venta: precio, fecha_actualizacion: ahoraIso })
+          .update({
+            precio_venta: precio,
+            ...(tieneEfectivo ? { precio_efectivo: efectivo } : {}),
+            fecha_actualizacion: ahoraIso,
+          })
           .eq("id_producto", idProducto as string);
 
         await supabase.from("historial_precios").insert({

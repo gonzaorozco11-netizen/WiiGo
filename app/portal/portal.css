@@ -611,6 +611,31 @@
    mirando el envase de arriba abajo, en el mismo orden en que están impresos. */
 .cam-nutri { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 10px; }
 
+/* El bloque del efectivo, separado del de gondola por una linea punteada:
+   son el mismo formulario pero dos preguntas distintas, y pegados se leian
+   como cuatro campos sueltos. */
+.cam-precios-efectivo {
+  border-top: 1px dashed var(--borde-fuerte); margin-top: 13px; padding-top: 13px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+/* El porcentaje es un campo y no un cartel porque ES la variable que la marca
+   cuida: los pesos son la consecuencia. */
+.cam-off {
+  display: flex; align-items: center; gap: 11px; flex-wrap: wrap;
+  background: var(--salvia-tenue); border: 1px solid var(--borde-fuerte);
+  border-radius: 11px; padding: 11px 14px;
+}
+.cam-off > span { font-size: 13px; color: var(--salvia-honda); }
+.cam-off label { display: inline-flex; align-items: center; gap: 5px; }
+.cam-off input {
+  width: 72px; border: 1px solid var(--salvia-honda); border-radius: 9px; padding: 6px 9px;
+  font: inherit; font-family: var(--f-mono); font-size: 15px; font-weight: 700; text-align: right;
+  background: var(--superficie); color: var(--texto);
+}
+.cam-off label b { font-size: 15px; }
+.cam-off .ahorro { font-size: 12.5px; color: var(--texto-3); }
+.cam-off .ahorro b { color: var(--salvia-honda); }
+
 .cam-campos { display: flex; gap: 11px; flex-wrap: wrap; }
 .cam-campo { display: flex; flex-direction: column; gap: 4px; flex: 1 1 150px; min-width: 130px; }
 .cam-campo.ancho { flex-basis: 100%; }

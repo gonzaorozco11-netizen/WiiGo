@@ -3,8 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
-  pedirCambioPrecio,
-  pedirPrecioEfectivo,
+  pedirCambioPrecios,
   pedirCambioFoto,
   pedirFicha,
   pedirCambioTexto,
@@ -332,11 +331,11 @@ function FilaProducto({
       {abierto && (
         <div className="cam-panel">
           <div className="cam-opciones">
+            {/* Uno solo, no dos. Los dos precios son una sola decisión: lo
+                que la marca cuida es la diferencia entre ellos, y con botones
+                separados cambiaba uno y se olvidaba del otro. */}
             <Opcion activa={form === "PRECIO"} bloqueada={esperando("PRECIO")} onClick={() => setForm(form === "PRECIO" ? null : "PRECIO")}>
-              Cambiar precio
-            </Opcion>
-            <Opcion activa={form === "EFECTIVO"} bloqueada={esperando("PRECIO_EFECTIVO")} onClick={() => setForm(form === "EFECTIVO" ? null : "EFECTIVO")}>
-              Precio en efectivo
+              Precios
             </Opcion>
             <Opcion activa={form === "FOTO"} bloqueada={esperando("FOTO")} onClick={() => setForm(form === "FOTO" ? null : "FOTO")}>
               Foto
@@ -365,8 +364,7 @@ function FilaProducto({
             </p>
           )}
 
-          {form === "PRECIO" && <FormPrecio p={p} politica={politica} onListo={onListo} />}
-          {form === "EFECTIVO" && <FormEfectivo p={p} onListo={onListo} />}
+          {form === "PRECIO" && <FormPrecios p={p} politica={politica} onListo={onListo} />}
           {form === "FOTO" && <FormFoto p={p} onListo={onListo} />}
           {form === "FICHA" && <FormFicha p={p} onListo={onListo} />}
           {form === "DESCUENTO" && <FormPromo p={p} politica={politica} onListo={onListo} />}
@@ -446,123 +444,164 @@ function Envio({
   );
 }
 
-function FormPrecio({ p, politica, onListo }: { p: ProductoPropio; politica: PoliticaDescuentos; onListo: () => void }) {
-  const [precio, setPrecio] = useState("");
-  const valor = Number(precio);
-  const valido = Number.isFinite(valor) && valor > 0;
-  const variacion = valido && p.precio ? ((valor - p.precio) / p.precio) * 100 : null;
+/**
+ * Los dos precios, atados por el descuento.
+ *
+ * Antes eran dos formularios y dos botones. El problema no era la cantidad de
+ * clics: era que cambiar la góndola y olvidarse del efectivo le movía el
+ * descuento a la marca sin que lo decidiera —de 14% a 21,7% en el caso que lo
+ * destapó— y ese descuento lo absorbe casi entero ella.
+ *
+ * Los tres campos son el mismo número visto de tres formas, así que se tocan
+ * los tres y los otros dos se acomodan. El porcentaje es editable y no un
+ * cartel porque ES la variable que la marca cuida; los pesos son la
+ * consecuencia.
+ */
+function FormPrecios({ p, politica, onListo }: { p: ProductoPropio; politica: PoliticaDescuentos; onListo: () => void }) {
+  const offDeHoy =
+    p.precio && p.precioEfectivo !== null ? ((p.precio - p.precioEfectivo) / p.precio) * 100 : null;
+
+  const [gondola, setGondola] = useState(p.precio ? String(p.precio) : "");
+  const [efectivo, setEfectivo] = useState(p.precioEfectivo !== null ? String(p.precioEfectivo) : "");
+  // El descuento arranca en el que ya tenía: lo normal es cambiar el precio y
+  // mantenerlo, no rediseñar la promoción.
+  const [off, setOff] = useState(offDeHoy !== null ? offDeHoy.toFixed(1) : "");
+
+  const nGondola = Number(gondola);
+  const nEfectivo = Number(efectivo);
+  const nOff = Number(off);
+
+  const gondolaValida = Number.isFinite(nGondola) && nGondola > 0;
+  const usaEfectivo = efectivo.trim() !== "";
+
+  const redondear = (n: number) => Math.round(n * 100) / 100;
+
+  // Mover uno mueve los otros. El que se tocó manda; los demás se recalculan.
+  function tocarGondola(v: string) {
+    setGondola(v);
+    const n = Number(v);
+    if (!Number.isFinite(n) || n <= 0 || !Number.isFinite(nOff) || off.trim() === "") return;
+    setEfectivo(String(redondear(n * (1 - nOff / 100))));
+  }
+
+  function tocarEfectivo(v: string) {
+    setEfectivo(v);
+    const n = Number(v);
+    if (!Number.isFinite(n) || n <= 0 || !gondolaValida) return;
+    setOff(((nGondola - n) / nGondola * 100).toFixed(1));
+  }
+
+  function tocarOff(v: string) {
+    setOff(v);
+    const n = Number(v);
+    if (!Number.isFinite(n) || n < 0 || n >= 100 || !gondolaValida) return;
+    setEfectivo(String(redondear(nGondola * (1 - n / 100))));
+  }
+
+  const variacion = gondolaValida && p.precio ? ((nGondola - p.precio) / p.precio) * 100 : null;
+  const ahorro = gondolaValida && usaEfectivo && nEfectivo > 0 ? nGondola - nEfectivo : null;
+  const efectivoMalo = usaEfectivo && (!Number.isFinite(nEfectivo) || nEfectivo <= 0 || nEfectivo > nGondola);
+  const sinCambio =
+    gondolaValida &&
+    nGondola === p.precio &&
+    ((!usaEfectivo && p.precioEfectivo === null) || nEfectivo === p.precioEfectivo);
 
   return (
     <Envio
-      texto="Mandar el cambio de precio"
-      deshabilitado={!valido}
+      texto="Mandar los dos precios"
+      deshabilitado={!gondolaValida || efectivoMalo || sinCambio}
       onEnviar={async () => {
-        const r = await pedirCambioPrecio(p.idProducto, valor);
+        const r = await pedirCambioPrecios(
+          p.idProducto,
+          nGondola,
+          usaEfectivo && nEfectivo > 0 ? nEfectivo : null
+        );
         if (!r.error) onListo();
         return r;
       }}
       pie={
         <p className="cam-nota">
-          Si lo aprueban, el precio entra a las {politica.horaAplicacion} con el local cerrado — nunca a mitad del
-          día, para que el cartel de góndola y la caja digan siempre lo mismo.
+          Si los aprueban, los dos entran juntos a las {politica.horaAplicacion} con el local cerrado —
+          nunca a mitad del día, para que el cartel de góndola y la caja digan siempre lo mismo.
         </p>
       }
     >
       <div className="cam-campos">
         <label className="cam-campo">
-          <span>Precio de hoy</span>
+          <span>Góndola — hoy</span>
           <input className="mono" value={pesos(p.precio)} disabled />
         </label>
         <label className="cam-campo">
-          <span>Precio nuevo</span>
+          <span>Góndola — nuevo</span>
           <input
             type="number"
             step="0.01"
-            value={precio}
-            onChange={(e) => setPrecio(e.target.value)}
+            value={gondola}
+            onChange={(e) => tocarGondola(e.target.value)}
             placeholder="0,00"
             autoFocus
           />
         </label>
       </div>
-      {variacion !== null && (
+      {variacion !== null && variacion !== 0 && (
         <p className={`cam-var${Math.abs(variacion) >= politica.variacionPrecioAlerta ? " fuerte" : ""}`}>
           {variacion > 0 ? "+" : ""}
-          {variacion.toFixed(1)}%
+          {variacion.toFixed(1)}% · es el precio con tarjeta o QR
           {Math.abs(variacion) >= politica.variacionPrecioAlerta &&
             " — es un salto grande, revisá que no te haya quedado un cero de más."}
         </p>
       )}
-    </Envio>
-  );
-}
 
-/**
- * El precio pagando en efectivo.
- *
- * Es de la marca y no de WiiGo porque el descuento lo absorbe casi entero
- * ella. Por eso el formulario muestra en pesos cuánto ahorra el cliente: es el
- * número que va impreso en el cartel de góndola y el que decide la compra.
- */
-function FormEfectivo({ p, onListo }: { p: ProductoPropio; onListo: () => void }) {
-  const [precio, setPrecio] = useState("");
-  const valor = Number(precio);
-  const valido = Number.isFinite(valor) && valor > 0 && (!p.precio || valor <= p.precio);
-  const ahorro = valido && p.precio ? p.precio - valor : null;
-  const off = ahorro !== null && p.precio ? (ahorro / p.precio) * 100 : null;
+      <div className="cam-precios-efectivo">
+        <div className="cam-campos">
+          <label className="cam-campo">
+            <span>Efectivo — hoy</span>
+            <input className="mono" value={p.precioEfectivo !== null ? pesos(p.precioEfectivo) : "sin cargar"} disabled />
+          </label>
+          <label className="cam-campo">
+            <span>Efectivo — nuevo</span>
+            <input
+              type="number"
+              step="0.01"
+              value={efectivo}
+              onChange={(e) => tocarEfectivo(e.target.value)}
+              placeholder="0,00"
+            />
+          </label>
+        </div>
 
-  return (
-    <Envio
-      texto="Mandar el precio en efectivo"
-      deshabilitado={!valido}
-      onEnviar={async () => {
-        const r = await pedirPrecioEfectivo(p.idProducto, valor);
-        if (!r.error) onListo();
-        return r;
-      }}
-      pie={
-        <p className="cam-nota">
-          Es lo que paga el cliente en efectivo. Va impreso en el cartel de góndola al lado del precio de
-          lista, así que es lo que decide la compra. Este descuento lo absorbe la marca, por eso lo elegís vos.
-        </p>
-      }
-    >
-      <div className="cam-campos">
-        <label className="cam-campo">
-          <span>Con tarjeta o QR</span>
-          <input className="mono" value={pesos(p.precio)} disabled />
-        </label>
-        <label className="cam-campo">
-          <span>{p.precioEfectivo !== null ? "Efectivo de hoy" : "En efectivo"}</span>
-          {p.precioEfectivo !== null ? (
-            <input className="mono" value={pesos(p.precioEfectivo)} disabled />
-          ) : (
-            <input className="mono" value="sin cargar" disabled />
+        <div className="cam-off">
+          <span>Descuento por pagar en efectivo</span>
+          <label>
+            <input
+              type="number"
+              step="0.1"
+              min="0"
+              max="99"
+              value={off}
+              onChange={(e) => tocarOff(e.target.value)}
+              placeholder="0"
+            />
+            <b>%</b>
+          </label>
+          {ahorro !== null && ahorro > 0 && (
+            <span className="ahorro">
+              · el cliente ahorra <b>{pesos(ahorro)}</b>
+            </span>
           )}
-        </label>
-        <label className="cam-campo">
-          <span>Efectivo nuevo</span>
-          <input
-            type="number"
-            step="0.01"
-            value={precio}
-            onChange={(e) => setPrecio(e.target.value)}
-            placeholder="0,00"
-            autoFocus
-          />
-        </label>
+        </div>
+
+        <p className="cam-nota">
+          {offDeHoy !== null
+            ? `Es el mismo ${offDeHoy.toFixed(1)}% que tenías. Al mover la góndola, el efectivo se acomoda solo para mantenerlo.`
+            : "Todavía no tenés precio en efectivo. Si cargás uno, el descuento queda fijo y se mantiene cuando cambies la góndola."}{" "}
+          Podés tocar cualquiera de los tres.
+        </p>
+
+        {efectivoMalo && (
+          <p className="cam-var fuerte">El efectivo no puede ser mayor al precio de góndola.</p>
+        )}
       </div>
-      {precio !== "" && !valido && p.precio && valor > p.precio && (
-        <p className="cam-var fuerte">
-          No puede ser mayor al precio de lista — el cartel prometería un ahorro que no existe.
-        </p>
-      )}
-      {ahorro !== null && ahorro > 0 && (
-        <p className={`cam-var${off !== null && off >= 30 ? " fuerte" : ""}`}>
-          El cliente ahorra {pesos(ahorro)} ({off?.toFixed(1)}% menos)
-          {off !== null && off >= 30 && " — es mucho, revisá que no te haya quedado un cero de más."}
-        </p>
-      )}
     </Envio>
   );
 }

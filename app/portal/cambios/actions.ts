@@ -291,7 +291,27 @@ export async function misSolicitudes(): Promise<SolicitudPropia[]> {
 
 // ===================== LO QUE PIDE LA MARCA =====================
 
-export async function pedirCambioPrecio(idProducto: string, precio: number): Promise<Resultado> {
+/**
+ * Los dos precios del producto, en una sola solicitud.
+ *
+ * Van juntos porque son una sola decisión comercial. El número que la marca
+ * cuida no es ninguno de los dos sino la DIFERENCIA: ese descuento lo absorbe
+ * casi entero ella, y WiiGo solo resigna su royalty sobre esa diferencia.
+ *
+ * Con dos formularios separados —como estaba— subir el precio de góndola y
+ * olvidarse del efectivo le regalaba puntos de descuento sin que nadie lo
+ * decidiera: de 14% a 21,7% en el ejemplo real que lo destapó.
+ *
+ * Y por eso UNA solicitud y no dos: si fueran dos y se aprueba una sola, el
+ * producto queda con el descuento desarmado, que es justo lo que esto viene a
+ * evitar. El costo es que no se puede aprobar un precio y rechazar el otro —
+ * correcto, porque es una decisión sola.
+ */
+export async function pedirCambioPrecios(
+  idProducto: string,
+  precio: number,
+  precioEfectivo: number | null
+): Promise<Resultado> {
   const sesion = await sesionOError();
   const supabase = getSupabaseServerClient();
 
@@ -299,9 +319,13 @@ export async function pedirCambioPrecio(idProducto: string, precio: number): Pro
   if (!producto) return { error: "Ese producto no es tuyo." };
 
   const actual = (producto.precio_venta as number | null) ?? null;
-  if (actual !== null && Number(precio) === actual) {
-    return { error: "Ese ya es el precio que tiene el producto." };
-  }
+  const efectivoActual = (producto.precio_efectivo as number | null) ?? null;
+
+  const sinCambios =
+    (actual === null || Number(precio) === actual) &&
+    (precioEfectivo === null || precioEfectivo === efectivoActual);
+  if (sinCambios) return { error: "Esos ya son los precios que tiene el producto." };
+
   if (await yaHayPendiente(supabase, sesion.idMarca, "PRECIO", idProducto)) {
     return { error: "Ya mandaste un cambio de precio para este producto y todavía está esperando respuesta." };
   }
@@ -310,67 +334,39 @@ export async function pedirCambioPrecio(idProducto: string, precio: number): Pro
   const validacion = validarPrecio(precio, actual, politica);
   if (validacion.frena) return { error: validacion.frena };
 
+  // El efectivo se mide contra el precio de góndola NUEVO, no contra el
+  // viejo: los dos entran juntos, así que compararlo con el que está por
+  // dejar de existir daría un descuento que nunca va a pasar.
+  if (precioEfectivo !== null) {
+    if (!Number.isFinite(precioEfectivo) || precioEfectivo <= 0) {
+      return { error: "El precio en efectivo tiene que ser mayor a cero." };
+    }
+    if (precioEfectivo > precio) {
+      return { error: "El precio en efectivo no puede ser mayor al de góndola." };
+    }
+    const off = Math.round(((precio - precioEfectivo) / precio) * 100);
+    // Se avisa sin frenar: un descuento grande casi siempre es un cero de más
+    // al tipear, pero puede ser una decisión real de la marca.
+    if (off >= 30) {
+      validacion.alertas.descuento = `El efectivo queda ${off}% abajo del precio de góndola. ¿Es lo que querías?`;
+    }
+  }
+
   return crear(supabase, {
     idMarca: sesion.idMarca,
     idUsuario: sesion.idUsuario,
     tipo: "PRECIO",
     idProducto,
-    datos: { precio },
-    datosAnteriores: { precio: actual },
+    datos: { precio, ...(precioEfectivo !== null ? { precio_efectivo: precioEfectivo } : {}) },
+    datosAnteriores: { precio: actual, precio_efectivo: efectivoActual },
     validacion,
   });
 }
 
-/**
- * El precio pagando en efectivo.
- *
- * Es decisión de la marca y no de WiiGo porque el descuento del efectivo lo
- * absorbe casi entero la marca: WiiGo solo resigna su royalty sobre esa
- * diferencia. Por eso no pasa por la política de precios —que limita cuánto
- * puede moverse el precio de lista— sino por una regla más simple: tiene que
- * ser menor o igual al de lista, o el cartel de góndola quedaría prometiendo
- * un ahorro que no existe.
- */
-export async function pedirPrecioEfectivo(idProducto: string, precio: number): Promise<Resultado> {
-  const sesion = await sesionOError();
-  const supabase = getSupabaseServerClient();
-
-  const producto = await productoPropio(supabase, idProducto, sesion.idMarca);
-  if (!producto) return { error: "Ese producto no es tuyo." };
-
-  const lista = (producto.precio_venta as number | null) ?? null;
-  const actual = (producto.precio_efectivo as number | null) ?? null;
-
-  if (!Number.isFinite(precio) || precio <= 0) return { error: "Poné un precio mayor a cero." };
-  if (lista !== null && precio > lista) {
-    return { error: `El precio en efectivo no puede ser mayor al de lista ($${lista.toLocaleString("es-AR")}).` };
-  }
-  if (actual !== null && precio === actual) {
-    return { error: "Ese ya es el precio en efectivo que tiene el producto." };
-  }
-
-  if (await yaHayPendiente(supabase, sesion.idMarca, "PRECIO_EFECTIVO", idProducto)) {
-    return { error: "Ya mandaste un precio en efectivo para este producto y todavía está esperando respuesta." };
-  }
-
-  // Un descuento muy grande casi siempre es un cero de más al tipear, así que
-  // se avisa sin frenar: puede ser una decisión real de la marca.
-  const alertas: Record<string, string> = {};
-  if (lista) {
-    const off = Math.round(((lista - precio) / lista) * 100);
-    if (off >= 30) alertas.descuento = `Son ${off}% menos que el precio de lista. ¿Es lo que querías poner?`;
-  }
-
-  return crear(supabase, {
-    idMarca: sesion.idMarca,
-    idUsuario: sesion.idUsuario,
-    tipo: "PRECIO_EFECTIVO",
-    idProducto,
-    datos: { precio_efectivo: precio },
-    datosAnteriores: { precio_efectivo: actual, precio_venta: lista },
-    validacion: { frena: null, alertas },
-  });
-}
+// `pedirPrecioEfectivo` se retiró: el efectivo ya no se manda solo, va con el
+// precio de góndola en `pedirCambioPrecios`. El tipo PRECIO_EFECTIVO sigue
+// existiendo en lib/solicitudesMarca.ts y la bandeja lo sigue aplicando, para
+// las solicitudes que quedaron esperando de antes.
 
 /**
  * Los campos de la ficha que carga la marca.
