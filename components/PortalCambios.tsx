@@ -611,11 +611,19 @@ function FormPrecios({
    * precios que se guardan darían 13,8%: el número que la marca mira no
    * sería el que termina en la góndola.
    */
-  function ponerEfectivoDesde(precioGondola: number, descuento: number) {
+  function ponerEfectivoDesde(precioGondola: number, descuento: number, conservarOff = false) {
     const bruto = precioGondola * (1 - descuento / 100);
     const final = redondearPrecio(bruto, redondeo);
     setEfectivo(String(final));
-    setOff((((precioGondola - final) / precioGondola) * 100).toFixed(1));
+    // Mientras la marca escribe EN el campo del %, no se le reescribe.
+    //
+    // Tipear "10" manda primero un "1": con eso se recalculaba el descuento
+    // real —0,8% después de redondear— y se le metía ese "0,8" en el campo
+    // antes de que llegara el cero. Nunca se podían escribir dos dígitos, y
+    // el número que aparecía no tenía nada que ver con lo que se tecleó.
+    //
+    // El valor real se sincera al salir del campo, en `cerrarOff`.
+    if (!conservarOff) setOff((((precioGondola - final) / precioGondola) * 100).toFixed(1));
   }
 
   // Mover uno mueve los otros. El que se tocó manda; los demás se recalculan.
@@ -656,7 +664,20 @@ function FormPrecios({
     setOff(v);
     const n = Number(v);
     if (!Number.isFinite(n) || n < 0 || n >= 100 || !gondolaValida) return;
-    ponerEfectivoDesde(nGondola, n);
+    ponerEfectivoDesde(nGondola, n, true);
+  }
+
+  /**
+   * Al salir del campo, el % se sincera.
+   *
+   * El efectivo se redondea para arriba al próximo $100, así que el descuento
+   * que queda de verdad no es exactamente el que se escribió: 10% sobre
+   * $36.400 da $32.760, que sube a $32.800, y eso es 9,9%. Dejar escrito 10%
+   * sería mostrarle un número que no es el que termina en la góndola.
+   */
+  function cerrarOff() {
+    if (!gondolaValida || !usaEfectivo || !(nEfectivo > 0) || nEfectivo > nGondola) return;
+    setOff((((nGondola - nEfectivo) / nGondola) * 100).toFixed(1));
   }
 
   /**
@@ -701,6 +722,17 @@ function FormPrecios({
       : null;
 
   const variacion = gondolaValida && p.precio ? ((nGondola - p.precio) / p.precio) * 100 : null;
+  /**
+   * El descuento que de verdad queda, que no siempre es el que se escribió:
+   * el efectivo sube al próximo $100 y eso lo mueve unas décimas. Se dice en
+   * pantalla mientras se tipea, y el campo se corrige al salir de él.
+   */
+  const offReal =
+    gondolaValida && usaEfectivo && nEfectivo > 0 && nEfectivo <= nGondola
+      ? ((nGondola - nEfectivo) / nGondola) * 100
+      : null;
+  const offDesfasado =
+    offReal !== null && off.trim() !== "" && Number.isFinite(nOff) && Math.abs(offReal - nOff) >= 0.05;
   const ahorro = gondolaValida && usaEfectivo && nEfectivo > 0 ? nGondola - nEfectivo : null;
   const efectivoMalo = usaEfectivo && (!Number.isFinite(nEfectivo) || nEfectivo <= 0 || nEfectivo > nGondola);
   const sinCambio =
@@ -865,6 +897,7 @@ function FormPrecios({
                 max="99"
                 value={off}
                 onChange={(e) => tocarOff(e.target.value)}
+                onBlur={cerrarOff}
                 placeholder="0,0"
               />
               <u>%</u>
@@ -893,6 +926,19 @@ function FormPrecios({
             <>
               {" "}
               El cliente ahorra <b>{pesos(ahorro)}</b> pagando en efectivo.
+            </>
+          )}
+          {/* El precio sube al próximo $100, así que el descuento real se
+              corre unas décimas. Se avisa mientras escribe, y el campo se
+              acomoda al salir — en vez de corregirlo de prepo mientras
+              todavía está tecleando. */}
+          {offDesfasado && offReal !== null && (
+            <>
+              {" "}
+              <span className="tenue">
+                Con el efectivo en {pesos(nEfectivo)} el descuento queda en{" "}
+                <b>{offReal.toFixed(1)}%</b>, porque el precio sube al próximo {pesos(redondeo)}.
+              </span>
             </>
           )}
         </p>
