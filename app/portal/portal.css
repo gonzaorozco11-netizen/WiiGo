@@ -2343,7 +2343,19 @@
 .rep-gon-nom { font-size: 14.5px; font-weight: 600; }
 .rep-gon-dato { font-size: 12.5px; color: var(--texto-3); }
 
-.rep-tabla { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+/* La tabla de cinco columnas, scrolleable en celular.
+   `.rep-gondola` tiene overflow hidden para redondear las esquinas, asi que
+   sin esta caja la ultima columna -el contador- no se cortaba a la vista:
+   desaparecia. El min-width la deja scrollear en vez de aplastarse: con cinco
+   columnas en 390px, "PLATINUM WHEY PROTEIN 3kg" sale a una letra por
+   renglon. */
+.rep-tabla-scroll { overflow-x: auto; }
+.rep-tabla { width: 100%; min-width: 440px; border-collapse: collapse; font-size: 13.5px; }
+@media (max-width: 620px) {
+  .rep-tabla th:first-child, .rep-tabla td:first-child { padding-left: 12px; }
+  .rep-tabla th:last-child, .rep-tabla td:last-child { padding-right: 12px; }
+  .rep-tabla td { padding: 9px 7px; }
+}
 .rep-tabla th {
   font-size: 10.5px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
   color: var(--texto-3); text-align: left; padding: 6px 10px 5px; border-top: 1px solid var(--borde);

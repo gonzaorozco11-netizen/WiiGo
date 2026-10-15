@@ -601,6 +601,9 @@ function Envios({ envios }: { envios: OrdenPortal[] }) {
                       producto lo que entró.
                     </p>
                   ) : (
+                    // Mismo caso que la de Recomendado: `.rep-envio` también
+                    // recorta para redondear las esquinas.
+                    <div className="rep-tabla-scroll">
                     <table className="rep-tabla">
                       <thead>
                         <tr>
@@ -623,6 +626,7 @@ function Envios({ envios }: { envios: OrdenPortal[] }) {
                         ))}
                       </tbody>
                     </table>
+                    </div>
                   )}
 
                   {/* Mientras no haya recepción se puede dar de baja. Una vez
@@ -1112,7 +1116,12 @@ function Gondola({
         </span>
       </button>
 
+      {/* La tabla va adentro de algo que scrollee: son cinco columnas y la
+          caja de afuera tiene overflow hidden para redondear las esquinas, así
+          que en un celular la última columna —el contador, que es el punto de
+          toda la pantalla— no se cortaba a la vista: desaparecía. */}
       {abierta && (
+        <div className="rep-tabla-scroll">
         <table className="rep-tabla">
           <thead>
             <tr>
@@ -1138,6 +1147,7 @@ function Gondola({
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </section>
   );
