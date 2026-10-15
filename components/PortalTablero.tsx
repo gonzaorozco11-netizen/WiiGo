@@ -27,6 +27,7 @@ import {
   type LineaVentaMarca,
 } from "@/app/portal/actions";
 import { finalDelRenglon } from "@/lib/recepcionDiferencias";
+import { ETIQUETA_RETENCION, ETIQUETA_RETENCION_CORTA } from "@/lib/margenMarca";
 
 // Tablero del portal de marcas.
 //
@@ -651,7 +652,7 @@ export default function PortalTablero({
             )}
             {ganancia.sircreb > 0 && (
               <li>
-                <span className="k">SIRCREB</span>
+                <span className="k">{ETIQUETA_RETENCION}</span>
                 <span className="v resta mono">-${pesos(ganancia.sircreb)}</span>
               </li>
             )}
@@ -955,7 +956,9 @@ export default function PortalTablero({
                     <th>IVA s/comisión</th>
                     <th>Imp. créd.</th>
                     <th>Fee MP</th>
-                    <th>SIRCREB</th>
+                    {/* Corta porque es un encabezado de columna. Mismo
+                        concepto que ETIQUETA_RETENCION — ver margenMarca.ts. */}
+                    <th>{ETIQUETA_RETENCION_CORTA}</th>
                     <th>Imp. déb.</th>
                     <th>Neto a rendir</th>
                     <th>%</th>

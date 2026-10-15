@@ -64,6 +64,21 @@ function r2(v: number) {
 }
 
 /**
+ * Cómo se llama SIRCREB en las pantallas que ve la marca.
+ *
+ * "SIRCREB" es el nombre del régimen y es el correcto para hablar con un
+ * contador, pero del otro lado hay alguien que fabrica suplementos: un
+ * acrónimo que no significa nada se saltea, y lo que no se entiende no se
+ * discute. Adentro de WiiGo —Liquidaciones, Configuración, la ficha de la
+ * marca— sigue diciendo SIRCREB, que es donde esa precisión sirve.
+ *
+ * Las dos formas son el mismo concepto: la corta es para encabezados de
+ * columna, donde la larga no entra.
+ */
+export const ETIQUETA_RETENCION = "Retenciones impositivas";
+export const ETIQUETA_RETENCION_CORTA = "Retenciones";
+
+/**
  * Redondear un precio para arriba, al múltiplo configurado.
  *
  * Para arriba y no al más cercano: un cartel de góndola con centavos no

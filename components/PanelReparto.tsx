@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { MargenSimulado } from "@/lib/margenMarca";
+import { ETIQUETA_RETENCION, type MargenSimulado } from "@/lib/margenMarca";
 
 // A dónde va cada peso que paga el cliente.
 //
@@ -90,14 +90,19 @@ function partes(m: MargenSimulado, costo: number): Parte[] {
         "Lo que cobra Mercado Pago por cobrar con tarjeta o QR, con su IVA, más los impuestos a los créditos y débitos bancarios. En efectivo no hay ninguno: esa plata no pasa por el banco.",
     },
     {
-      etiqueta: "SIRCREB",
+      etiqueta: ETIQUETA_RETENCION,
       color: COLORES.sircreb,
       monto: m.sircreb,
-      // Que es una retención y no un costo importa de verdad: la marca lo
-      // recupera, así que el número de abajo es lo peor que le puede pasar,
-      // no lo que termina pasando.
+      // Describe lo que pasa y no lo que va a pasar después.
+      //
+      // Antes decía "se computa a cuenta en tu declaración, así que lo
+      // recuperás". Eso es una promesa sobre plata ajena que esta pantalla no
+      // está en condiciones de hacer: la retención se practica sobre la
+      // cuenta por la que entra el cobro, y qué se hace con ella es una
+      // decisión de WiiGo, no un hecho del régimen. Mientras esa decisión no
+      // esté tomada, acá se dice solo lo que es seguro.
       porque:
-        "Una retención de Ingresos Brutos que el banco descuenta de cada acreditación. No es un costo perdido: se computa a cuenta en tu declaración, así que lo recuperás. Lo descontamos igual porque es plata que ese mes no te llega.",
+        "Lo que se retiene de Ingresos Brutos en cada cobro con tarjeta o QR. Es plata que no entra con la venta. En efectivo no hay ninguna, porque el cobro no pasa por el banco.",
     },
     {
       etiqueta: "Te queda a vos",
@@ -266,7 +271,8 @@ function Columna({
           {abiertaParte && <p className="porque abierta">{abiertaParte.porque}</p>}
           {!abiertaParte && esEfectivo && m.comisionMp === 0 && m.sircreb === 0 && (
             <p className="porque">
-              Sin Mercado Pago, sin impuestos bancarios y sin SIRCREB: esa plata no pasa por el banco.
+              Sin Mercado Pago, sin impuestos bancarios y sin retenciones: esa plata no pasa por el
+              banco.
             </p>
           )}
         </div>
@@ -408,8 +414,8 @@ export default function PanelReparto({
         {descuentoParejo !== null && descuentoParejo > 0 && (
           <span className="chico">
             <b>Hasta {pct1(descuentoParejo)}% de descuento</b> te queda lo mismo con los dos: es lo que
-            te ahorrás de Mercado Pago, impuestos bancarios y SIRCREB cobrando en efectivo. Más que eso,
-            lo ponés vos.
+            te ahorrás de Mercado Pago, impuestos bancarios y retenciones cobrando en efectivo. Más que
+            eso, lo ponés vos.
           </span>
         )}
       </p>
