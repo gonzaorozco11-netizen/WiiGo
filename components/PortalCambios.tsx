@@ -871,7 +871,10 @@ function FormPrecios({
           </label>
         </div>
 
-        <div className="cam-off">
+        {/* `cam-descuento` y no `cam-off`: esa clase ya existía como el input
+            chiquito del % en el alta (54px de ancho), y al reusar el nombre
+            el bloque entero salía aplastado en una columna de 90px. */}
+        <div className="cam-descuento">
           <span>Descuento por pagar en efectivo</span>
           <b className="numero">{off === "" ? "—" : `${Number(off).toFixed(1)}%`}</b>
           {ahorro !== null && ahorro > 0 && (

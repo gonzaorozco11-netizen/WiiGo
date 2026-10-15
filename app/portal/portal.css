@@ -666,17 +666,20 @@
   border-top: 1px dashed var(--borde-fuerte); margin-top: 13px; padding-top: 13px;
   display: flex; flex-direction: column; gap: 10px;
 }
-/* El porcentaje es un campo y no un cartel porque ES la variable que la marca
-   cuida: los pesos son la consecuencia. */
-.cam-off {
+/* El descuento resultante, de lectura: se escribe arriba, en el modo % del
+   efectivo.
+   OJO con el nombre: `cam-off` ya existe mas abajo como el input chiquito
+   del % en el alta (54px). Reusarlo aplastaba este bloque a una columna de
+   90px con una palabra por renglon. */
+.cam-descuento {
   display: flex; align-items: center; gap: 11px; flex-wrap: wrap;
   background: var(--salvia-tenue); border: 1px solid var(--borde-fuerte);
   border-radius: 11px; padding: 11px 14px;
 }
-.cam-off > span { font-size: 13px; color: var(--salvia-honda); }
-.cam-off .numero { font-family: var(--f-mono); font-size: 16px; font-weight: 700; color: var(--salvia-honda); }
-.cam-off .ahorro { font-size: 12.5px; color: var(--texto-3); }
-.cam-off .ahorro b { color: var(--salvia-honda); }
+.cam-descuento > span { font-size: 13px; color: var(--salvia-honda); }
+.cam-descuento .numero { font-family: var(--f-mono); font-size: 16px; font-weight: 700; color: var(--salvia-honda); }
+.cam-descuento .ahorro { font-size: 12.5px; color: var(--texto-3); }
+.cam-descuento .ahorro b { color: var(--salvia-honda); }
 
 /* El interruptor $ / % va pegado al rótulo del campo, no al lado del input:
    dice en qué unidad se escribe, no es parte del valor. */
