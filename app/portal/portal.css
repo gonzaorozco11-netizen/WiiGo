@@ -1129,11 +1129,31 @@
   padding: 2.5px 0;
 }
 .detalle-gasto li .llave { width: 9px; height: 9px; border-radius: 2px; flex: none; }
-.detalle-gasto li span { flex: 1; min-width: 0; }
+.detalle-gasto li > span { flex: 1; min-width: 0; }
 .detalle-gasto li b {
   font-family: var(--f-mono); font-variant-numeric: tabular-nums; font-weight: 500; color: var(--texto);
 }
+/* El porcentaje al lado del importe: los pesos dicen cuanto, el porcentaje
+   dice si es mucho. Mas chico y gris porque es la referencia, no el dato. */
+.detalle-gasto li em {
+  font-style: normal; font-size: 10px; color: var(--texto-3);
+  font-variant-numeric: tabular-nums; min-width: 34px; text-align: right;
+}
+/* La lupa: de donde sale ese numero. Boton de verdad y no un title=, que en
+   un telefono no se abre nunca. */
+.detalle-gasto .lupa {
+  background: none; border: 0; padding: 0; margin: 0; flex: none; cursor: pointer;
+  color: var(--borde-fuerte); line-height: 0; display: inline-flex;
+}
+.detalle-gasto .lupa:hover { color: var(--salvia-honda); }
+.detalle-gasto .lupa.abierta { color: var(--salvia-honda); }
+.detalle-gasto .lupa:focus-visible { outline: 2px solid var(--salvia); outline-offset: 2px; border-radius: 3px; }
 .detalle-gasto .porque { font-size: 11px; color: var(--texto-3); line-height: 1.4; margin-top: 7px; }
+.detalle-gasto .porque.abierta {
+  background: var(--superficie-2); border: 1px solid var(--borde); border-radius: 8px;
+  padding: 7px 9px; color: var(--texto-2);
+}
+.duo .gana .detalle-gasto .porque.abierta { background: #fff; border-color: #dbe5d5; }
 
 /* El renglon que responde la pregunta, abajo del desglose. La lista explica
    POR QUE; esto es lo que la marca vino a saber. */
@@ -1160,6 +1180,11 @@
 }
 .panel-pie .verde { color: var(--verde-ok); }
 .panel-pie .chico { display: block; font-size: 11px; color: var(--texto-3); margin-top: 4px; line-height: 1.45; }
+/* Cuando el descuento de contado se paso del punto en que da lo mismo: el
+   pie deja de ser informativo y pasa a ser un aviso. */
+.panel-pie.alerta { background: var(--ocre-tenue); border-top-color: #eee0c6; color: #6f5418; }
+.panel-pie.alerta .chico { color: #8a7340; }
+.panel-pie.alerta .chico b { color: #6f5418; }
 
 /* Sin costo cargado no hay torta que dibujar: falta justo el pedazo mas
    grande. Se dice eso y lo unico que si se sabe. */

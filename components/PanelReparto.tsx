@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { MargenSimulado } from "@/lib/margenMarca";
 
 // A dónde va cada peso que paga el cliente.
@@ -44,7 +45,13 @@ const COLORES = {
   queda: "#4c8459",
 } as const;
 
-type Parte = { etiqueta: string; color: string; monto: number };
+type Parte = {
+  etiqueta: string;
+  color: string;
+  monto: number;
+  /** De dónde sale ese número. Se abre con la lupa del renglón. */
+  porque: string;
+};
 
 /**
  * Los cinco pedazos, que suman el precio exacto.
@@ -55,8 +62,15 @@ type Parte = { etiqueta: string; color: string; monto: number };
  * una cuenta que nadie hizo.
  */
 function partes(m: MargenSimulado, costo: number): Parte[] {
+  const royalty = m.precio > 0 ? (m.comisionWiigo / m.precio) * 100 : 0;
   return [
-    { etiqueta: "Costo mercadería", color: COLORES.prod, monto: costo },
+    {
+      etiqueta: "Costo mercadería",
+      color: COLORES.prod,
+      monto: costo,
+      porque:
+        "Lo que vos dijiste que te cuesta cada unidad. Lo cargás en Mis productos y solo lo vemos vos y WiiGo — no sale en ninguna pantalla del local.",
+    },
     {
       // Sin IVA trasladado el renglón no puede decir "+ IVA": en efectivo
       // suele no cobrarse, y el nombre quedaría prometiendo una baja que no
@@ -64,14 +78,33 @@ function partes(m: MargenSimulado, costo: number): Parte[] {
       etiqueta: m.ivaComision > 0 ? "Comisión WiiGo + IVA" : "Comisión WiiGo",
       color: COLORES.wiigo,
       monto: m.comisionWiigo + m.ivaComision,
+      porque:
+        `El ${pct1(royalty)}% de lo que paga el cliente, que es lo que cobra WiiGo por tener tu producto en góndola y venderlo` +
+        (m.ivaComision > 0 ? ", más el IVA de esa comisión." : ". En efectivo no se te traslada el IVA."),
     },
     {
       etiqueta: "Otros costos",
       color: COLORES.banco,
       monto: m.comisionMp + m.impCreditos + m.impDebitos,
+      porque:
+        "Lo que cobra Mercado Pago por cobrar con tarjeta o QR, con su IVA, más los impuestos a los créditos y débitos bancarios. En efectivo no hay ninguno: esa plata no pasa por el banco.",
     },
-    { etiqueta: "SIRCREB", color: COLORES.sircreb, monto: m.sircreb },
-    { etiqueta: "Te queda a vos", color: COLORES.queda, monto: m.leQueda ?? 0 },
+    {
+      etiqueta: "SIRCREB",
+      color: COLORES.sircreb,
+      monto: m.sircreb,
+      // Que es una retención y no un costo importa de verdad: la marca lo
+      // recupera, así que el número de abajo es lo peor que le puede pasar,
+      // no lo que termina pasando.
+      porque:
+        "Una retención de Ingresos Brutos que el banco descuenta de cada acreditación. No es un costo perdido: se computa a cuenta en tu declaración, así que lo recuperás. Lo descontamos igual porque es plata que ese mes no te llega.",
+    },
+    {
+      etiqueta: "Te queda a vos",
+      color: COLORES.queda,
+      monto: m.leQueda ?? 0,
+      porque: "Lo que paga el cliente menos todo lo de arriba, tu costo incluido.",
+    },
   ];
 }
 
@@ -159,6 +192,12 @@ function Columna({
   // que no pasa nada.
   const salen = todos.slice(0, -1).filter((p) => p.monto > 0);
 
+  // Cuál explicación está abierta. Una por columna y una sola a la vez: dos
+  // párrafos abiertos empujan la dona de al lado y se pierde la comparación,
+  // que es para lo que están las dos columnas.
+  const [abierta, setAbierta] = useState<string | null>(null);
+  const abiertaParte = salen.find((p) => p.etiqueta === abierta) ?? null;
+
   return (
     <div className={gana ? "gana" : undefined}>
       <span className="sello">
@@ -189,15 +228,40 @@ function Columna({
         <div className="detalle-gasto">
           <p className="sale">Lo que sale</p>
           <ul>
-            {salen.map((p) => (
-              <li key={p.etiqueta}>
-                <i className="llave" style={{ background: p.color }} />
-                <span>{p.etiqueta}</span>
-                <b>${enteros(p.monto)}</b>
-              </li>
-            ))}
+            {salen.map((p) => {
+              const abierto = abierta === p.etiqueta;
+              return (
+                <li key={p.etiqueta}>
+                  <i className="llave" style={{ background: p.color }} />
+                  <span>{p.etiqueta}</span>
+                  {/* La lupa y no un signo de pregunta: lo que hace es
+                      MOSTRAR de dónde sale el número, no ofrecer ayuda. Y es
+                      un botón de verdad para que ande con el dedo y con el
+                      teclado — un title= no se abre en un teléfono. */}
+                  <button
+                    type="button"
+                    className={`lupa${abierto ? " abierta" : ""}`}
+                    aria-expanded={abierto}
+                    aria-label={`De dónde sale ${p.etiqueta}`}
+                    onClick={() => setAbierta(abierto ? null : p.etiqueta)}
+                  >
+                    <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+                      strokeWidth="1.8" strokeLinecap="round">
+                      <circle cx="7" cy="7" r="4.6" />
+                      <path d="M10.4 10.4 14 14" />
+                    </svg>
+                  </button>
+                  <b>${enteros(p.monto)}</b>
+                  {/* El porcentaje al lado del importe: los pesos dicen cuánto,
+                      el porcentaje dice si es mucho. Sin él, "$2.202" no se
+                      puede juzgar sin hacer la cuenta contra el precio. */}
+                  <em>{pct1(m.precio > 0 ? (p.monto / m.precio) * 100 : 0)}%</em>
+                </li>
+              );
+            })}
           </ul>
-          {esEfectivo && m.comisionMp === 0 && m.sircreb === 0 && (
+          {abiertaParte && <p className="porque abierta">{abiertaParte.porque}</p>}
+          {!abiertaParte && esEfectivo && m.comisionMp === 0 && m.sircreb === 0 && (
             <p className="porque">
               Sin Mercado Pago, sin impuestos bancarios y sin SIRCREB: esa plata no pasa por el banco.
             </p>
@@ -247,6 +311,31 @@ export default function PanelReparto({
   const ganaEfectivo = Boolean(efectivo) && qE > qC;
   const diferencia = Math.abs(qE - qC);
 
+  /**
+   * Hasta qué descuento de contado da lo mismo cobrar de una forma o de la
+   * otra. ES EL NÚMERO para fijar el precio en efectivo, y hasta ahora no
+   * estaba en ninguna pantalla.
+   *
+   * En efectivo no hay Mercado Pago, ni impuestos bancarios, ni SIRCREB. Ese
+   * ahorro es lo que se puede regalar en el cartel sin perder plata. Pasado
+   * ese punto el descuento sale del bolsillo de la marca.
+   *
+   * No es la resta de las dos tasas: el descuento también achica la base
+   * sobre la que se cobra la comisión, así que se despeja
+   * P(1−d)(1−te) = P(1−tc), de donde d = 1 − (1−tc)/(1−te). Con la resta
+   * daría 14,1% donde el número real es 14,8%, y esas siete décimas son
+   * plata en cada venta.
+   */
+  const tasaCredito = credito.precio > 0 ? (credito.precio - credito.leTransferimos) / credito.precio : 0;
+  const tasaEfectivo =
+    efectivo && efectivo.precio > 0 ? (efectivo.precio - efectivo.leTransferimos) / efectivo.precio : 0;
+  const descuentoParejo =
+    efectivo && tasaEfectivo < 1 ? (1 - (1 - tasaCredito) / (1 - tasaEfectivo)) * 100 : null;
+  const offActual =
+    efectivo && credito.precio > 0 ? ((credito.precio - efectivo.precio) / credito.precio) * 100 : null;
+  const seLePasa =
+    descuentoParejo !== null && offActual !== null && offActual > descuentoParejo + 0.05;
+
   return (
     <div className="panel-rep">
       <p className="panel-tit">{titulo}</p>
@@ -256,7 +345,7 @@ export default function PanelReparto({
         {efectivo && <Columna m={efectivo} costo={costo} corto="Efectivo" gana={ganaEfectivo} />}
       </div>
 
-      <p className="panel-pie">
+      <p className={`panel-pie${seLePasa ? " alerta" : ""}`}>
         {!efectivo ? (
           <>Sin precio en efectivo no hay con qué comparar. </>
         ) : diferencia > 0.5 ? (
@@ -267,6 +356,27 @@ export default function PanelReparto({
         ) : (
           <>Te queda lo mismo con cualquiera de los dos medios de pago. </>
         )}
+
+        {/* La pregunta que se hace sola mirando las dos columnas: «en efectivo
+            el porcentaje es más alto, ¿por qué dice que conviene la tarjeta?».
+            Se contesta acá en vez de dejarla para una llamada. */}
+        {efectivo && (
+          <span className="chico">
+            Se compara en <b>pesos</b> y no en porcentaje: el {pct1((qE / efectivo.precio) * 100)}% del
+            efectivo es sobre {`$${enteros(efectivo.precio)}`} y el{" "}
+            {pct1((qC / credito.precio) * 100)}% de la tarjeta sobre {`$${enteros(credito.precio)}`}, así
+            que son porciones de tortas de distinto tamaño. Lo que entra a tu caja son los pesos.
+            {descuentoParejo !== null && descuentoParejo > 0 && (
+              <>
+                {" "}
+                <b>Hasta {pct1(descuentoParejo)}% de descuento</b> te queda lo mismo con los dos: es lo
+                que te ahorrás de Mercado Pago, impuestos bancarios y SIRCREB al cobrar en efectivo.
+                Más que eso, el descuento lo ponés vos.
+              </>
+            )}
+          </span>
+        )}
+
         <span className="chico">
           De lo que te queda todavía salen <b>tus impuestos y tus gastos</b> —tu IVA según cómo
           facturás, Ingresos Brutos, alquiler, sueldos— que WiiGo no conoce y no calcula.

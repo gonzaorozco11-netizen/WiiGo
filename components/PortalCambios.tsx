@@ -964,16 +964,11 @@ function FormPrecios({
             <PanelSinCosto credito={conTarjeta} efectivo={conEfectivo} donde="Mis productos" />
           ))}
 
-        {/* El aviso que evita la sorpresa: un descuento de efectivo más
-            grande que las comisiones que ahorra le deja MENOS, no más. El
-            panel dice CUÁNTO; esto dice POR QUÉ, que es lo que hace falta
-            para decidir si bajarlo. */}
-        {conTarjeta?.leQueda != null && conEfectivo?.leQueda != null && conEfectivo.leQueda < conTarjeta.leQueda && (
-          <p className="cam-var fuerte">
-            El descuento es más grande que las comisiones que te ahorrás, por eso en efectivo te queda
-            menos. No está mal —el efectivo vende más— pero conviene saberlo antes.
-          </p>
-        )}
+        {/* El aviso de "el descuento te deja menos" vivía acá suelto. Se fue
+            al pie del panel, que ahora además dice HASTA QUÉ porcentaje da lo
+            mismo. Un aviso sin ese número avisa de un problema sin decir
+            dónde está el límite, y además así el dato llega también a Mis
+            productos y al alta, que usan el mismo panel. */}
       </div>
     </Envio>
   );
