@@ -5,6 +5,7 @@
 // los componentes de cliente. Mismo criterio que lib/planesMarca.ts.
 
 import { NIVEL, type PlanMarca } from "@/lib/planesMarca";
+import { feriadosEntre } from "@/lib/feriados";
 
 /** Qué es lo que pasa ese día. */
 export const TIPOS = ["EVENTO", "COMERCIAL", "HORARIO", "CERRADO"] as const;
@@ -193,7 +194,18 @@ export function rangoLargo(desdeISO: string, hastaISO: string): string {
 }
 
 export type CeldaAlmanaque = { t: string; clase: string };
-export type MesAlmanaque = { nombre: string; celdas: CeldaAlmanaque[] };
+export type MesAlmanaque = {
+  nombre: string;
+  celdas: CeldaAlmanaque[];
+  /**
+   * Los feriados de ese mes, con su nombre.
+   *
+   * Listados y no solo marcados en la grilla: un puntito avisa que ese día
+   * pasa algo, pero para armar una promo hay que saber QUÉ pasa. Y en el
+   * teléfono no hay dónde pasar el mouse por encima.
+   */
+  feriados: { dia: number; nombre: string }[];
+};
 
 /**
  * Los próximos `cuantos` meses, con cada día pintado del color de su evento.
@@ -201,6 +213,11 @@ export type MesAlmanaque = { nombre: string; celdas: CeldaAlmanaque[] };
  * La semana arranca el lunes, que es como se lee un almanaque acá. Si un día
  * cae en dos eventos gana el primero de la lista, que viene ordenada por
  * fecha: el que arranca antes es el que la marca ya tenía en la cabeza.
+ *
+ * Los feriados nacionales van siempre, sin que nadie los cargue: salen
+ * calculados de lib/feriados.ts. Un evento de WiiGo le gana al feriado en el
+ * color de la celda —es lo que pide una decisión— pero el feriado se nombra
+ * igual en la lista de abajo.
  */
 export function armarAlmanaque(
   hoyISO: string,
@@ -225,6 +242,9 @@ export function armarAlmanaque(
 
   const anio0 = Number(hoyISO.slice(0, 4));
   const mes0 = Number(hoyISO.slice(5, 7)) - 1;
+  // Hasta el año siguiente: tres meses contados desde noviembre cruzan a
+  // enero, y pedir solo los de este año dejaría ese enero en blanco.
+  const feriados = feriadosEntre(anio0, anio0 + 1);
 
   const meses: MesAlmanaque[] = [];
   for (let k = 0; k < cuantos; k++) {
@@ -235,16 +255,25 @@ export function armarAlmanaque(
     const primero = (new Date(Date.UTC(anio, mes, 1)).getUTCDay() + 6) % 7;
 
     const celdas: CeldaAlmanaque[] = [];
+    const feriadosDelMes: { dia: number; nombre: string }[] = [];
     for (let i = 0; i < primero; i++) celdas.push({ t: "", clase: "dia vacio" });
     for (let d = 1; d <= diasDelMes; d++) {
       const iso = `${anio}-${String(mes + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
       const tipo = pintado.get(iso);
+      const feriado = feriados.get(iso);
+      if (feriado) feriadosDelMes.push({ dia: d, nombre: feriado });
       celdas.push({
         t: String(d),
-        clase: `dia${tipo ? ` ${tipo}` : ""}${iso === hoyISO ? " hoy" : ""}`,
+        // El evento gana el color; el feriado marca igual, con su propia
+        // clase, para que un día que es las dos cosas no pierda ninguna.
+        clase: `dia${tipo ? ` ${tipo}` : ""}${feriado ? " feriado" : ""}${iso === hoyISO ? " hoy" : ""}`,
       });
     }
-    meses.push({ nombre: `${MES_LARGO[mes][0].toUpperCase()}${MES_LARGO[mes].slice(1)} ${anio}`, celdas });
+    meses.push({
+      nombre: `${MES_LARGO[mes][0].toUpperCase()}${MES_LARGO[mes].slice(1)} ${anio}`,
+      celdas,
+      feriados: feriadosDelMes,
+    });
   }
   return meses;
 }

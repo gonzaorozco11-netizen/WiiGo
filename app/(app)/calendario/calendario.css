@@ -131,6 +131,13 @@
 .cal-ref i.com { background: #fef7e7; border: 1px solid #f0dfb6; }
 .cal-ref i.esp { background: #f5f5f5; border: 1px solid #e5e5e5; }
 .cal-ref i.cerr { background: #fef2f2; border: 1px solid #fecaca; }
+/* El feriado es un punto y no un fondo: un dia puede ser feriado Y tener un
+   evento de WiiGo encima, y el color de la celda se lo lleva el evento, que
+   es lo que pide una decision. */
+.cal-ref i.fer { background: transparent; border: 1px solid #e5e5e5; position: relative; }
+.cal-ref i.fer::after {
+  content: ""; position: absolute; inset: 2.5px; border-radius: 50%; background: #b07fb5;
+}
 
 .cal-almanaque {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 30px;
@@ -156,3 +163,17 @@
 .cal-almanaque .dia.esp { background: #f5f5f5; color: #525252; font-weight: 600; border-color: #e5e5e5; }
 .cal-almanaque .dia.cerr { background: #fef2f2; color: #b91c1c; font-weight: 600; border-color: #fecaca; }
 .cal-almanaque .dia.hoy { box-shadow: 0 0 0 2px var(--accent); color: #171717; font-weight: 700; }
+/* Un puntito abajo del numero, para que convivan: un 25 de diciembre con
+   evento de WiiGo tiene que seguir mostrando las dos cosas. */
+.cal-almanaque .dia.feriado { position: relative; font-weight: 600; }
+.cal-almanaque .dia.feriado::after {
+  content: ""; position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%);
+  width: 4px; height: 4px; border-radius: 50%; background: #b07fb5;
+}
+
+/* Que feriado es. Marcado alcanza para ubicarse; para preparar una promo hay
+   que saber que se festeja, y en el telefono no hay hover. Mismo bloque que
+   en el portal: los dos lados miran el mismo almanaque. */
+.cal-feriados { list-style: none; margin-top: 9px; display: flex; flex-direction: column; gap: 2px; }
+.cal-feriados li { font-size: 11px; color: #737373; line-height: 1.35; display: flex; gap: 7px; }
+.cal-feriados li b { color: #8a5f90; font-weight: 600; min-width: 16px; text-align: right; }

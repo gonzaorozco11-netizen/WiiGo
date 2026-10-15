@@ -113,6 +113,9 @@ function Almanaque({ meses }: { meses: MesAlmanaque[] }) {
           <span>
             <i className="cerr" /> Local cerrado
           </span>
+          <span>
+            <i className="fer" /> Feriado
+          </span>
         </div>
       </div>
       <div className="cal-almanaque">
@@ -131,6 +134,17 @@ function Almanaque({ meses }: { meses: MesAlmanaque[] }) {
                 </span>
               ))}
             </div>
+            {/* Con el nombre: la marca lo ve igual en su portal, y de los dos
+                lados sirve para lo mismo — preparar la fecha. */}
+            {m.feriados.length > 0 && (
+              <ul className="cal-feriados">
+                {m.feriados.map((f) => (
+                  <li key={f.dia}>
+                    <b>{f.dia}</b> {f.nombre}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         ))}
       </div>

@@ -102,6 +102,7 @@ export default function PortalCalendario({ datos }: { datos: CalendarioPortal })
             <span><i className="com" /> Fecha comercial</span>
             <span><i className="esp" /> Horario especial</span>
             <span><i className="cerr" /> Local cerrado</span>
+            <span><i className="fer" /> Feriado</span>
           </div>
         </div>
         <div className="cal-almanaque">
@@ -120,6 +121,18 @@ export default function PortalCalendario({ datos }: { datos: CalendarioPortal })
                   </span>
                 ))}
               </div>
+              {/* Con el nombre y no solo marcados: para preparar una promo
+                  hay que saber QUÉ se festeja ese día, y en el teléfono no
+                  hay dónde pasar el mouse por encima. */}
+              {m.feriados.length > 0 && (
+                <ul className="cal-feriados">
+                  {m.feriados.map((f) => (
+                    <li key={f.dia}>
+                      <b>{f.dia}</b> {f.nombre}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           ))}
         </div>
