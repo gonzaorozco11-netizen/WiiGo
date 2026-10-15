@@ -1109,7 +1109,7 @@
   position: absolute; inset: 0; display: flex; flex-direction: column;
   align-items: center; justify-content: center; pointer-events: none;
 }
-.dona-rep .centro b { font-family: var(--f-mono); font-size: 15px; font-weight: 600; color: var(--verde-ok); line-height: 1; }
+.dona-rep .centro b { font-family: var(--f-mono); font-size: 17px; font-weight: 600; color: var(--verde-ok); line-height: 1; }
 /* Lo que queda despues de todo, cuando es tan poco que la venta no le deja
    nada: de ese numero todavia salen sus propios impuestos. */
 .dona-rep .centro b.flojo { color: var(--rojo); }
@@ -1135,14 +1135,24 @@
 }
 .detalle-gasto .porque { font-size: 11px; color: var(--texto-3); line-height: 1.4; margin-top: 7px; }
 
-.duo .cierre {
-  font-size: 11.5px; color: var(--texto-3); line-height: 1.45;
-  border-top: 1px solid #e8ebe3; padding-top: 7px; margin-top: 9px;
+/* El renglon que responde la pregunta, abajo del desglose. La lista explica
+   POR QUE; esto es lo que la marca vino a saber. */
+.duo .gana-final {
+  border-top: 1px solid #e8ebe3; padding-top: 8px; margin-top: 9px;
+  display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap;
 }
-.duo .gana .cierre { border-top-color: #dbe5d5; }
-.duo .cierre .mono { font-family: var(--f-mono); color: var(--texto-2); }
-.duo .cierre .verde { color: var(--verde-ok); }
-.duo .cierre .rojo { color: var(--rojo); }
+.duo .gana .gana-final { border-top-color: #dbe5d5; }
+.duo .gana-final > span { font-size: 12.5px; color: var(--texto-2); }
+.duo .gana-final > b {
+  font-family: var(--f-mono); font-variant-numeric: tabular-nums;
+  font-size: 18px; font-weight: 700; color: var(--verde-ok); line-height: 1.1;
+}
+.duo .gana-final > em {
+  font-style: normal; font-size: 12.5px; font-weight: 700; color: var(--verde-ok);
+}
+.duo .gana-final > b.rojo, .duo .gana-final > em.rojo { color: var(--rojo); }
+/* El precio de donde sale, en renglon propio: es el contexto, no el dato. */
+.duo .gana-final > small { flex-basis: 100%; font-size: 11px; color: var(--texto-3); }
 
 .panel-pie {
   padding: 9px 14px; border-top: 1px solid var(--borde); background: var(--superficie-2);

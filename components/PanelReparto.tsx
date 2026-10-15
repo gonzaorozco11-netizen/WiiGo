@@ -82,6 +82,9 @@ function partes(m: MargenSimulado, costo: number): Parte[] {
  * pedazo da cero.
  */
 function Dona({ partes, centro, flojo }: { partes: Parte[]; centro: string; flojo: boolean }) {
+  // `centro` es el porcentaje y no los pesos: los pesos están abajo, en el
+  // renglón de "Ganás", y ponerlos en los dos lugares es decir dos veces lo
+  // mismo en 100 px. El agujero de una torta es donde va la proporción.
   const R = 44;
   const C = 2 * Math.PI * R;
   const HUECO = C * (2.2 / 360);
@@ -182,7 +185,7 @@ function Columna({
       </span>
 
       <div className="cuerpo-rep">
-        <Dona partes={todos} centro={`$${enteros(queda)}`} flojo={flojo} />
+        <Dona partes={todos} centro={`${pct1(sobrePrecio)}%`} flojo={flojo} />
         <div className="detalle-gasto">
           <p className="sale">Lo que sale</p>
           <ul>
@@ -202,9 +205,21 @@ function Columna({
         </div>
       </div>
 
-      <p className="cierre">
-        De los <b className="mono">${enteros(m.precio)}</b> que paga el cliente, te queda el{" "}
-        <b className={flojo ? "rojo" : "verde"}>{pct1(sobrePrecio)}%</b>.
+      {/* El renglón que responde la pregunta, abajo de todo el desglose: la
+          marca lee la lista para entender POR QUÉ, pero lo que vino a saber es
+          cuánto gana. En pesos y en porcentaje, porque las dos cosas se usan
+          para distinto — los pesos para decidir este precio, el porcentaje
+          para comparar contra sus otros productos. */}
+      <p className="gana-final">
+        {/* Un precio por debajo del costo no "gana" menos: pierde. Decirlo
+            «Ganás −$500» obliga a leer el signo para entender que está
+            regalando plata en cada venta. */}
+        <span>{queda < 0 ? "Perdés" : "Ganás"}</span>
+        <b className={flojo ? "rojo" : undefined}>${pesos(Math.abs(queda))}</b>
+        <em className={flojo ? "rojo" : undefined}>
+          · {pct1(Math.abs(sobrePrecio))}%
+        </em>
+        <small>de los ${enteros(m.precio)} que paga el cliente</small>
       </p>
     </div>
   );
