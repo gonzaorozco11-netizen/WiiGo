@@ -169,6 +169,9 @@ function Dona({ partes, centro, flojo }: { partes: Parte[]; centro: string; floj
  */
 const MARGEN_FLOJO = 5;
 
+/** Clave de la lupa del renglón final. No es una parte de la lista. */
+const GANA = "__gana";
+
 function Columna({
   m,
   costo,
@@ -283,8 +286,32 @@ function Columna({
         <em className={flojo ? "rojo" : undefined}>
           · {pct1(Math.abs(sobrePrecio))}%
         </em>
+        {/* La aclaración de que todavía no es ganancia limpia vivía abajo del
+            panel, suelta, y ahí era un renglón de letra chica que nadie
+            leía dos veces. Colgada del número al que se refiere se lee cuando
+            hace falta y no ocupa lugar el resto del tiempo. */}
+        <button
+          type="button"
+          className={`lupa${abierta === GANA ? " abierta" : ""}`}
+          aria-expanded={abierta === GANA}
+          aria-label="De dónde sale este número"
+          onClick={() => setAbierta(abierta === GANA ? null : GANA)}
+        >
+          <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+            strokeWidth="1.8" strokeLinecap="round">
+            <circle cx="7" cy="7" r="4.6" />
+            <path d="M10.4 10.4 14 14" />
+          </svg>
+        </button>
         <small>de los ${enteros(m.precio)} que paga el cliente</small>
       </p>
+      {abierta === GANA && (
+        <p className="porque abierta">
+          Es lo que paga el cliente menos todo lo de arriba, tu costo incluido. De ahí todavía salen{" "}
+          <b>tus impuestos y tus gastos</b> —tu IVA según cómo facturás, Ingresos Brutos, alquiler,
+          sueldos— que WiiGo no conoce y no calcula.
+        </p>
+      )}
     </div>
   );
 }
@@ -335,6 +362,10 @@ export default function PanelReparto({
     efectivo && credito.precio > 0 ? ((credito.precio - efectivo.precio) / credito.precio) * 100 : null;
   const seLePasa =
     descuentoParejo !== null && offActual !== null && offActual > descuentoParejo + 0.05;
+  // Sin descuento los dos precios son el mismo, y entonces el porcentaje de
+  // cada columna SÍ se puede comparar derecho: la diferencia la hacen las
+  // comisiones, no la base.
+  const hayDescuento = offActual !== null && offActual > 0.05;
 
   return (
     <div className="panel-rep">
@@ -347,40 +378,40 @@ export default function PanelReparto({
 
       <p className={`panel-pie${seLePasa ? " alerta" : ""}`}>
         {!efectivo ? (
-          <>Sin precio en efectivo no hay con qué comparar. </>
+          <>Sin precio en efectivo no hay con qué comparar.</>
         ) : diferencia > 0.5 ? (
           <>
             {ganaEfectivo ? "En efectivo" : "Con tarjeta"} te quedan{" "}
-            <b className={ganaEfectivo ? "verde" : undefined}>${enteros(diferencia)}</b> más por unidad.{" "}
+            <b className={ganaEfectivo ? "verde" : undefined}>${enteros(diferencia)}</b> más por unidad.
           </>
         ) : (
-          <>Te queda lo mismo con cualquiera de los dos medios de pago. </>
+          <>Te queda lo mismo con cualquiera de los dos medios de pago.</>
         )}
 
         {/* La pregunta que se hace sola mirando las dos columnas: «en efectivo
             el porcentaje es más alto, ¿por qué dice que conviene la tarjeta?».
-            Se contesta acá en vez de dejarla para una llamada. */}
-        {efectivo && (
+            Se contesta acá en vez de dejarla para una llamada.
+            Solo si los precios son distintos: con el mismo precio las dos
+            tortas son del mismo tamaño y la frase sería mentira — ahí el
+            porcentaje difiere por las comisiones, no por la base. */}
+        {hayDescuento && efectivo && (
           <span className="chico">
-            Se compara en <b>pesos</b> y no en porcentaje: el {pct1((qE / efectivo.precio) * 100)}% del
-            efectivo es sobre {`$${enteros(efectivo.precio)}`} y el{" "}
-            {pct1((qC / credito.precio) * 100)}% de la tarjeta sobre {`$${enteros(credito.precio)}`}, así
-            que son porciones de tortas de distinto tamaño. Lo que entra a tu caja son los pesos.
-            {descuentoParejo !== null && descuentoParejo > 0 && (
-              <>
-                {" "}
-                <b>Hasta {pct1(descuentoParejo)}% de descuento</b> te queda lo mismo con los dos: es lo
-                que te ahorrás de Mercado Pago, impuestos bancarios y SIRCREB al cobrar en efectivo.
-                Más que eso, el descuento lo ponés vos.
-              </>
-            )}
+            Se compara en <b>pesos</b>: el {pct1((qE / efectivo.precio) * 100)}% es sobre $
+            {enteros(efectivo.precio)} y el {pct1((qC / credito.precio) * 100)}% sobre $
+            {enteros(credito.precio)}.
           </span>
         )}
 
-        <span className="chico">
-          De lo que te queda todavía salen <b>tus impuestos y tus gastos</b> —tu IVA según cómo
-          facturás, Ingresos Brutos, alquiler, sueldos— que WiiGo no conoce y no calcula.
-        </span>
+        {/* El número que sirve para FIJAR el precio de contado, que es lo que
+            la marca viene a decidir. Va aunque todavía no haya descuento: ahí
+            es justamente cuando le sirve saber hasta dónde puede llegar. */}
+        {descuentoParejo !== null && descuentoParejo > 0 && (
+          <span className="chico">
+            <b>Hasta {pct1(descuentoParejo)}% de descuento</b> te queda lo mismo con los dos: es lo que
+            te ahorrás de Mercado Pago, impuestos bancarios y SIRCREB cobrando en efectivo. Más que eso,
+            lo ponés vos.
+          </span>
+        )}
       </p>
     </div>
   );

@@ -1141,19 +1141,18 @@
 }
 /* La lupa: de donde sale ese numero. Boton de verdad y no un title=, que en
    un telefono no se abre nunca. */
-.detalle-gasto .lupa {
+.duo .lupa {
   background: none; border: 0; padding: 0; margin: 0; flex: none; cursor: pointer;
   color: var(--borde-fuerte); line-height: 0; display: inline-flex;
 }
-.detalle-gasto .lupa:hover { color: var(--salvia-honda); }
-.detalle-gasto .lupa.abierta { color: var(--salvia-honda); }
-.detalle-gasto .lupa:focus-visible { outline: 2px solid var(--salvia); outline-offset: 2px; border-radius: 3px; }
-.detalle-gasto .porque { font-size: 11px; color: var(--texto-3); line-height: 1.4; margin-top: 7px; }
-.detalle-gasto .porque.abierta {
+.duo .lupa:hover, .duo .lupa.abierta { color: var(--salvia-honda); }
+.duo .lupa:focus-visible { outline: 2px solid var(--salvia); outline-offset: 2px; border-radius: 3px; }
+.duo .porque { font-size: 11px; color: var(--texto-3); line-height: 1.4; margin-top: 7px; }
+.duo .porque.abierta {
   background: var(--superficie-2); border: 1px solid var(--borde); border-radius: 8px;
   padding: 7px 9px; color: var(--texto-2);
 }
-.duo .gana .detalle-gasto .porque.abierta { background: #fff; border-color: #dbe5d5; }
+.duo .gana .porque.abierta { background: #fff; border-color: #dbe5d5; }
 
 /* El renglon que responde la pregunta, abajo del desglose. La lista explica
    POR QUE; esto es lo que la marca vino a saber. */
@@ -1173,6 +1172,7 @@
 .duo .gana-final > b.rojo, .duo .gana-final > em.rojo { color: var(--rojo); }
 /* El precio de donde sale, en renglon propio: es el contexto, no el dato. */
 .duo .gana-final > small { flex-basis: 100%; font-size: 11px; color: var(--texto-3); }
+.duo .gana-final > .lupa { align-self: center; }
 
 .panel-pie {
   padding: 9px 14px; border-top: 1px solid var(--borde); background: var(--superficie-2);
