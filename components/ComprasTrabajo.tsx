@@ -9,6 +9,7 @@ import {
   cerrarOrdenIncompleta,
 } from "@/app/(app)/compras/actions";
 import { anularCosteo } from "@/app/(app)/proveedores/actions";
+import { urlFotoDiferencia } from "@/app/(app)/reposicion/actions";
 import type { DatosCompras, EntregaHistorial, LineaEntrega } from "@/lib/comprasDatos";
 import {
   estaAbierta,
@@ -1369,6 +1370,13 @@ function HistorialEntregas({
                                       >
                                         {l.cantidadRecibida} llegaron
                                       </td>
+                                      {/* La foto de lo que no cerró, la misma
+                                          que ve la marca. Tres semanas después
+                                          nadie se acuerda de qué pasó con esa
+                                          caja, y es justo cuando se discute. */}
+                                      <td className="py-1 text-right w-24">
+                                        {l.fotoPath && <VerFotoDiferencia path={l.fotoPath} />}
+                                      </td>
                                     </tr>
                                   );
                                 })}
@@ -1406,6 +1414,35 @@ function ChipEstado({ estado }: { estado: string }) {
 }
 
 // ---------- Piezas compartidas ----------
+
+/**
+ * La foto de lo que no cerró, desde adentro de WiiGo.
+ *
+ * El link se pide al apretar: el bucket es privado y la URL firmada vence,
+ * así que una guardada de antemano llegaría muerta. Igual que el remito.
+ */
+function VerFotoDiferencia({ path }: { path: string }) {
+  const [abriendo, setAbriendo] = useState(false);
+
+  async function abrir() {
+    setAbriendo(true);
+    const r = await urlFotoDiferencia(path);
+    setAbriendo(false);
+    if (r.error || !r.url) return window.alert(r.error ?? "No se pudo abrir la foto.");
+    window.open(r.url, "_blank", "noopener");
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={abrir}
+      disabled={abriendo}
+      className="text-[11px] font-semibold text-accent hover:underline disabled:opacity-50"
+    >
+      {abriendo ? "Abriendo…" : "📷 Foto"}
+    </button>
+  );
+}
 
 function EtiquetaOrigen({ origen }: { origen: "MARCA" | "PROVEEDOR" }) {
   return (

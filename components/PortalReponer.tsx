@@ -9,7 +9,7 @@ import {
   type GondolaReponer,
   type RenglonReponer,
 } from "@/app/portal/reponer/actions";
-import type { OrdenPortal } from "@/app/portal/actions";
+import { urlFotoDiferenciaMarca, type OrdenPortal } from "@/app/portal/actions";
 import { finalDelRenglon, motivo } from "@/lib/recepcionDiferencias";
 
 // Lo que la marca tiene que reponer.
@@ -647,6 +647,8 @@ function Final({
     motivoFaltante: string | null;
     resolucion: string | null;
     devueltoEl: string | null;
+    idDetalleRecepcion: string | null;
+    tieneFoto: boolean;
   };
 }) {
   const final = finalDelRenglon({
@@ -655,6 +657,8 @@ function Final({
     resolucion: l.resolucion,
   });
 
+  const foto = l.tieneFoto && l.idDetalleRecepcion ? <VerFoto id={l.idDetalleRecepcion} /> : null;
+
   if (final === "COMPLETO") return <span className="rep-chip ok">Entró completo</span>;
 
   if (final === "FALTO") {
@@ -662,11 +666,24 @@ function Final({
     return (
       <>
         <span className="rep-chip agotado">Faltaron {l.solicitada - l.recibida}</span>
-        {/* Sin motivo son las recepciones viejas, de antes de que se pudiera
-            cargar: se dice que no se sabe en vez de inventar una causa. */}
-        <small className="rep-final-nota">
-          {m ? m.paraLaMarca : "No quedó anotado por qué. Si las mandaste, avisanos."}
-        </small>
+        {/* Tres cosas y no una: QUÉ pasó, DÓNDE quedó la mercadería y la
+            prueba. Antes solo se mostraba la consecuencia —"volvieron con tu
+            repartidor"— y el motivo que la operativa eligió de una lista no
+            aparecía en ninguna pantalla de la marca: leía que su mercadería
+            se había vuelto sin saber nunca por qué. */}
+        {m ? (
+          <>
+            <b className="rep-final-motivo">{m.etiqueta}</b>
+            <small className="rep-final-nota">{m.destino}</small>
+          </>
+        ) : (
+          // Recepciones viejas, de antes de que se pudiera cargar el motivo:
+          // se dice que no se sabe en vez de inventar una causa.
+          <small className="rep-final-nota">
+            No quedó anotado por qué. Si las mandaste, avisanos.
+          </small>
+        )}
+        {foto}
       </>
     );
   }
@@ -679,6 +696,7 @@ function Final({
         <small className="rep-final-nota">
           Están en góndola en consignación. Se te liquidan cuando se vendan.
         </small>
+        {foto}
       </>
     );
   }
@@ -692,6 +710,7 @@ function Final({
             ? `Ya se te entregaron el ${fechaCorta(l.devueltoEl)}.`
             : "Están apartadas para que las retires. Pedilas cuando pase tu repartidor."}
         </small>
+        {foto}
       </>
     );
   }
@@ -702,7 +721,46 @@ function Final({
       <small className="rep-final-nota">
         Entraron a la góndola igual. WiiGo está decidiendo si se quedan o si las retirás.
       </small>
+      {foto}
     </>
+  );
+}
+
+/**
+ * La prueba de lo que no cerró.
+ *
+ * «Faltó 1» es una afirmación; la foto de la caja aplastada es un hecho. Sin
+ * esto la marca tiene que decidir si cree, y esa decisión termina en una
+ * llamada.
+ *
+ * El link se pide al apretar y no al cargar la pantalla: el bucket es privado
+ * y la URL firmada vence, así que una guardada de antemano llegaría muerta.
+ * Y se manda el id del renglón, no el path — con el path, cualquiera que lo
+ * viera en el HTML podría pedir la foto de otra marca.
+ */
+function VerFoto({ id }: { id: string }) {
+  const [abriendo, setAbriendo] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function abrir() {
+    setError(null);
+    setAbriendo(true);
+    const r = await urlFotoDiferenciaMarca(id);
+    setAbriendo(false);
+    if (r.error || !r.url) return setError(r.error ?? "No se pudo abrir la foto.");
+    window.open(r.url, "_blank", "noopener");
+  }
+
+  if (error) return <small className="rep-final-nota rojo">{error}</small>;
+
+  return (
+    <button type="button" className="rep-ver-foto" onClick={abrir} disabled={abriendo}>
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6">
+        <path d="M2 5.5h2.5l1-1.5h5l1 1.5H14v8H2z" />
+        <circle cx="8" cy="9" r="2.4" />
+      </svg>
+      {abriendo ? "Abriendo…" : "Ver la foto"}
+    </button>
   );
 }
 

@@ -15,27 +15,43 @@
 //   dañado en el mismo viaje, y decidirlo mañana significa quedarse con
 //   mercadería rota en el depósito.
 
-/** Por qué entró menos de lo anunciado. */
+/**
+ * Por qué entró menos de lo anunciado.
+ *
+ * Dos textos y no uno, porque son dos preguntas distintas y la marca se hace
+ * las dos:
+ *
+ *   `etiqueta` — QUÉ PASÓ. Es lo que elige la operativa y es lo que la marca
+ *     tiene que leer con esas mismas palabras. Antes solo se le mostraba la
+ *     consecuencia —"volvieron con tu repartidor"— y el motivo que alguien
+ *     eligió de esta lista no aparecía en ninguna pantalla suya: leía que su
+ *     mercadería se volvió sin saber nunca por qué.
+ *
+ *   `destino` — DÓNDE ESTÁ. Es la primera pregunta de cualquiera al que le
+ *     dicen que su producto llegó roto, y la que define si tiene que hacer
+ *     algo: lo que se llevó el repartidor se repone, lo que nunca llegó se
+ *     averigua.
+ */
 export const MOTIVOS_FALTANTE = [
   {
     clave: "NO_LLEGO",
     etiqueta: "No vino en la caja",
-    paraLaMarca: "Estaba en el envío pero no en la caja. Si las mandaste, avisanos.",
+    destino: "No llegó al local. Si la mandaste, avisanos y lo revisamos.",
   },
   {
     clave: "DANADO",
     etiqueta: "Llegó dañado",
-    paraLaMarca: "Volvieron con tu repartidor el mismo día. Mandá otras y listo.",
+    destino: "Se la llevó tu repartidor el mismo día, en el mismo viaje. Mandá otra y listo.",
   },
   {
     clave: "VENCIDO",
     etiqueta: "Vencido o por vencer",
-    paraLaMarca: "No se puede poner en góndola. Volvieron con tu repartidor.",
+    destino: "No se puede poner en góndola. Se la llevó tu repartidor el mismo día.",
   },
   {
     clave: "NO_ES_LO_PEDIDO",
     etiqueta: "No es el producto anunciado",
-    paraLaMarca: "Llegó otra cosa. Volvió con tu repartidor.",
+    destino: "Llegó otra cosa. Se la llevó tu repartidor el mismo día.",
   },
 ] as const;
 

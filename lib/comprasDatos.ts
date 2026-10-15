@@ -106,6 +106,11 @@ export type LineaEntrega = {
   cantidadSolicitada: number;
   cantidadRecibida: number;
   /**
+   * La foto de lo que no cerró, si quien recibió la sacó. Solo en entregas
+   * de marca: un pedido a proveedor se reclama con la factura.
+   */
+  fotoPath: string | null;
+  /**
    * El costo real con el que se costeó esta línea, si ya se costeó: el del
    * papel más la parte de percepciones que le tocó.
    *
@@ -229,8 +234,21 @@ export async function datosCompras(): Promise<DatosCompras> {
     supabase
       .from("detalle_recepcion_proveedor")
       .select("id_recepcion, id_variante, cantidad_solicitada, cantidad_recibida, costo_unitario, costo_neto_factura"),
-    supabase.from("detalle_recepciones").select("id_recepcion, id_variante, cantidad_solicitada, cantidad_recibida"),
+    // Con la foto de lo que no cerró. Si todavía no se corrió
+    // sql/recepcion-foto.sql la columna no existe: se cae a las de siempre en
+    // vez de dejar Recepción sin historial.
+    supabase
+      .from("detalle_recepciones")
+      .select("id_recepcion, id_variante, cantidad_solicitada, cantidad_recibida, foto_path"),
   ]);
+
+  const lineasMarca = lineasEntregaMarcaRes.error
+    ? (
+        await supabase
+          .from("detalle_recepciones")
+          .select("id_recepcion, id_variante, cantidad_solicitada, cantidad_recibida")
+      ).data
+    : lineasEntregaMarcaRes.data;
 
   const marcas = (marcasRes.data ?? []) as Marca[];
 
@@ -248,7 +266,7 @@ export async function datosCompras(): Promise<DatosCompras> {
 
   // ---------- Historial de entregas ----------
   const unidadesPorRecepcion = new Map<string, number>();
-  for (const fila of [...(lineasEntregaProvRes.data ?? []), ...(lineasEntregaMarcaRes.data ?? [])]) {
+  for (const fila of [...(lineasEntregaProvRes.data ?? []), ...(lineasMarca ?? [])]) {
     const id = fila.id_recepcion as string;
     unidadesPorRecepcion.set(id, (unidadesPorRecepcion.get(id) ?? 0) + ((fila.cantidad_recibida as number) ?? 0));
   }
@@ -326,8 +344,9 @@ export async function datosCompras(): Promise<DatosCompras> {
         cantidadRecibida: (l.cantidad_recibida as number) ?? 0,
         costoUnitario: (l.costo_unitario as number | null) ?? null,
         costoNetoFactura: (l.costo_neto_factura as number | null) ?? null,
+        fotoPath: null,
       })),
-      ...(lineasEntregaMarcaRes.data ?? []).map((l) => ({
+      ...(lineasMarca ?? []).map((l) => ({
         idRecepcion: l.id_recepcion as string,
         idVariante: l.id_variante as string,
         cantidadSolicitada: (l.cantidad_solicitada as number) ?? 0,
@@ -335,6 +354,7 @@ export async function datosCompras(): Promise<DatosCompras> {
         // Lo de las marcas no tiene costo: no se compra.
         costoUnitario: null,
         costoNetoFactura: null,
+        fotoPath: ((l as Record<string, unknown>).foto_path as string | null) ?? null,
       })),
     ],
     idsMarcaPropia: marcas

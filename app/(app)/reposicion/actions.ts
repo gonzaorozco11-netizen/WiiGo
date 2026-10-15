@@ -14,7 +14,11 @@ import {
   RECIBIDA,
   type OrigenOrden,
 } from "@/lib/estadosOrden";
-import { guardarRemito } from "@/lib/remitoRecepcion";
+import {
+  guardarRemito,
+  subirFotoDiferencia as subirFoto,
+  BUCKET_COMPROBANTES,
+} from "@/lib/remitoRecepcion";
 import {
   coberturaDeMarca,
   sugerirReposicion,
@@ -898,6 +902,40 @@ export async function excedentesPendientes(): Promise<ExcedentePendiente[]> {
 }
 
 /**
+ * La foto de un renglón que no cerró, sacada mientras se cuenta.
+ *
+ * Devuelve el path para que la pantalla lo mande junto con el conteo. No
+ * frena nada: si falla, se recibe igual y la marca ve el motivo solo.
+ */
+export async function subirFotoDiferencia(
+  formData: FormData
+): Promise<{ path: string | null; error: string | null }> {
+  try {
+    const archivo = formData.get("archivo") as File | null;
+    if (!archivo || archivo.size === 0) return { path: null, error: "Elegí una foto primero." };
+    return await subirFoto(getSupabaseServerClient(), archivo);
+  } catch (err) {
+    return { path: null, error: err instanceof Error ? err.message : "No se pudo subir la foto" };
+  }
+}
+
+/**
+ * Ver la foto desde adentro de WiiGo. Link firmado y con vencimiento: el
+ * bucket es privado y una URL guardada de antemano llegaría muerta.
+ */
+export async function urlFotoDiferencia(path: string): Promise<{ url: string | null; error: string | null }> {
+  try {
+    const { data, error } = await getSupabaseServerClient()
+      .storage.from(BUCKET_COMPROBANTES)
+      .createSignedUrl(path, 60 * 10);
+    if (error) return { url: null, error: error.message };
+    return { url: data.signedUrl, error: null };
+  } catch (err) {
+    return { url: null, error: err instanceof Error ? err.message : "No se pudo abrir la foto" };
+  }
+}
+
+/**
  * Resolver un excedente: se queda, o la marca lo retira.
  *
  * NO toca el stock. La mercadería entró al recibirla y sigue ahí: si se
@@ -950,6 +988,15 @@ export async function recepcionarOrden(
      * en realidad llegó dañado y volvió con su repartidor.
      */
     motivoFaltante?: string | null;
+    /**
+     * La foto de lo que no cerró, ya subida por `subirFotoDiferencia`.
+     *
+     * Llega como path y no como archivo porque son hasta N fotos: mandarlas
+     * dentro de esta acción obligaría a meter varios archivos en la misma
+     * llamada que cuenta la mercadería, y un fallo de subida frenaría el
+     * conteo. La pantalla sube cada una cuando se saca; acá solo se anota.
+     */
+    fotoPath?: string | null;
   }[],
   observaciones: string,
   /** El remito que trajo la marca. Opcional. */
@@ -1037,6 +1084,9 @@ export async function recepcionarOrden(
         ? { motivo_faltante: item.motivoFaltante }
         : {}),
       ...(diferencia > 0 ? { resolucion_excedente: "PENDIENTE" } : {}),
+      // Solo si el renglón no cerró: una foto colgada de un renglón completo
+      // no prueba nada y le pondría a la marca un botón que no lleva a nada.
+      ...(diferencia !== 0 && item.fotoPath ? { foto_path: item.fotoPath } : {}),
     };
 
     // Si todavía no se corrió sql/recepcion-diferencias.sql, la recepción se

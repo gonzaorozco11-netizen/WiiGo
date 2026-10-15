@@ -2354,10 +2354,22 @@
 
 /* "En que quedo" cada renglon de una recepcion. El chip no lleva el margen
    izquierdo de .rep-chip porque aca abre la celda, no sigue a un texto. */
+/* QUE paso: el motivo que eligio la operativa, con esas mismas palabras.
+   Antes la marca leia solo la consecuencia y nunca la causa. */
+.rep-final-motivo { display: block; font-size: 12.5px; color: var(--texto); margin-top: 5px; }
+/* DONDE quedo la mercaderia. */
 .rep-final-nota {
   display: block; font-size: 11.5px; color: var(--texto-3); line-height: 1.45;
   margin-top: 3px; max-width: 320px;
 }
+.rep-final-nota.rojo { color: var(--rojo); }
+/* LA PRUEBA. "Falto 1" es una afirmacion; la foto es un hecho. */
+.rep-ver-foto {
+  display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; padding: 0;
+  margin-top: 6px; font: inherit; font-size: 12px; font-weight: 700; color: var(--salvia-honda);
+  text-decoration: underline; cursor: pointer;
+}
+.rep-ver-foto:disabled { opacity: .6; cursor: default; text-decoration: none; }
 /* Y mas grande: 9.5px alcanza para una palabra al lado de un numero, no para
    una frase que es lo unico que se lee de la fila. */
 .rep-tabla td > .rep-chip:first-child {

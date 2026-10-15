@@ -7,6 +7,62 @@ import { ESTADO_ESTILO } from "@/components/ReposicionApp";
 import { estaAbierta, etiquetaEstado, RECIBIDA_PARCIAL } from "@/lib/estadosOrden";
 import { CampoRemito } from "@/components/RemitoRecepcion";
 import { MOTIVOS_FALTANTE } from "@/lib/recepcionDiferencias";
+import { subirFotoDiferencia } from "@/app/(app)/reposicion/actions";
+
+/**
+ * Sacarle la foto a lo que no cerró, con la caja abierta.
+ *
+ * `capture="environment"` abre la cámara directo en el celular o la tablet:
+ * la caja rota está ahí, no en un archivo guardado. Mismo criterio que el
+ * remito.
+ *
+ * No es obligatoria y el botón no lo esconde: la mercadería no espera a que
+ * alguien encuentre el teléfono. Sin foto la marca ve el motivo solo, que ya
+ * es más de lo que veía antes.
+ */
+function BotonFoto({
+  idDetalle,
+  hecha,
+  subiendo,
+  onElegir,
+  tono = "red",
+}: {
+  idDetalle: string;
+  hecha: boolean;
+  subiendo: boolean;
+  onElegir: (idDetalle: string, archivo: File) => void;
+  tono?: "red" | "amber";
+}) {
+  const estilo = hecha
+    ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+    : tono === "amber"
+      ? "border-amber-300 bg-white text-amber-800 border-dashed"
+      : "border-red-300 bg-white text-red-800 border-dashed";
+
+  return (
+    <label
+      className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium cursor-pointer ${estilo}`}
+    >
+      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6">
+        <path d="M2 5.5h2.5l1-1.5h5l1 1.5H14v8H2z" />
+        <circle cx="8" cy="9" r="2.4" />
+      </svg>
+      {subiendo ? "Subiendo…" : hecha ? "Foto sacada · cambiar" : "Sacar foto"}
+      <input
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        disabled={subiendo}
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = "";
+          if (f) onElegir(idDetalle, f);
+        }}
+      />
+    </label>
+  );
+}
 
 // El gemelo de RecepcionCompraModal, para lo que mandan las marcas.
 // Mismas reglas: se carga lo que llegó AHORA, y si falta algo el pedido
@@ -44,6 +100,25 @@ export default function RecepcionModal({
   // Por qué entró menos. Es lo único que decide quien abre la caja, y sin
   // esto la marca lee «faltan 6» como «no lo mandaste».
   const [motivos, setMotivos] = useState<Record<string, string>>({});
+  // La foto de lo que no cerró, por renglón: path ya subido, o "subiendo".
+  // Se sube al sacarla y no al confirmar, así una foto que falla no frena el
+  // conteo de la mercadería — que es lo que no puede esperar.
+  const [fotos, setFotos] = useState<Record<string, string>>({});
+  const [subiendo, setSubiendo] = useState<string | null>(null);
+
+  async function sacarFoto(idDetalle: string, archivo: File) {
+    setError(null);
+    setSubiendo(idDetalle);
+    const fd = new FormData();
+    fd.append("archivo", archivo);
+    const r = await subirFotoDiferencia(fd);
+    setSubiendo(null);
+    if (r.error || !r.path) {
+      setError(`La foto no subió (${r.error ?? "error"}). Podés recibir igual.`);
+      return;
+    }
+    setFotos((p) => ({ ...p, [idDetalle]: r.path! }));
+  }
 
   const totalSolicitado = detalle.reduce((acc, d) => acc + (d.cantidad_solicitada ?? 0), 0);
   const totalYaRecibido = detalle.reduce((acc, d) => acc + (d.cantidad_recibida ?? 0), 0);
@@ -68,6 +143,7 @@ export default function RecepcionModal({
             cantidadSolicitada: d.cantidad_solicitada,
             cantidadRecibida: recibidos[d.id_detalle] ?? 0,
             motivoFaltante: motivos[d.id_detalle] || null,
+            fotoPath: fotos[d.id_detalle] || null,
           })),
           observaciones,
           remito
@@ -214,6 +290,15 @@ export default function RecepcionModal({
                               a la góndola y quedan avisadas para que administración decida si se
                               quedan.
                             </p>
+                            <div className="mt-2">
+                              <BotonFoto
+                                idDetalle={d.id_detalle}
+                                hecha={Boolean(fotos[d.id_detalle])}
+                                subiendo={subiendo === d.id_detalle}
+                                onElegir={sacarFoto}
+                                tono="amber"
+                              />
+                            </div>
                           </td>
                         </tr>
                       );
@@ -241,6 +326,12 @@ export default function RecepcionModal({
                                   </option>
                                 ))}
                               </select>
+                              <BotonFoto
+                                idDetalle={d.id_detalle}
+                                hecha={Boolean(fotos[d.id_detalle])}
+                                subiendo={subiendo === d.id_detalle}
+                                onElegir={sacarFoto}
+                              />
                               <span className="text-[11px] text-red-700">
                                 La marca ve esto. Sin motivo lee «no lo mandaste».
                               </span>

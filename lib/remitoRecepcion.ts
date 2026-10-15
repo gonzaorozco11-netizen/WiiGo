@@ -79,3 +79,34 @@ export async function guardarRemito(
   }
   return undefined;
 }
+
+/**
+ * La foto de lo que no cerró: la caja rota, el vencimiento, el producto que
+ * no era.
+ *
+ * Mismo bucket privado que el remito — un solo lugar que asegurar.
+ *
+ * Se sube ANTES de recepcionar y devuelve el path, en vez de subirse junto
+ * con el conteo. Es la única forma de tener una foto por renglón sin mandar
+ * N archivos dentro de la acción que cuenta la mercadería: la pantalla sube
+ * cada foto cuando se saca y guarda el path, y la recepción solo anota a qué
+ * renglón corresponde.
+ *
+ * El nombre es al azar y no derivado del renglón porque al sacarla todavía no
+ * existe la recepción: la fila de `detalle_recepciones` se crea después.
+ */
+export async function subirFotoDiferencia(
+  supabase: SupabaseClient,
+  archivo: File
+): Promise<{ path: string | null; error: string | null }> {
+  if (!archivo || archivo.size === 0) return { path: null, error: "Elegí una foto primero." };
+
+  const extension = archivo.name.split(".").pop()?.toLowerCase() ?? "jpg";
+  const path = `diferencia-${crypto.randomUUID()}.${extension}`;
+
+  const { error } = await supabase.storage
+    .from(BUCKET_COMPROBANTES)
+    .upload(path, archivo, { upsert: false, contentType: archivo.type || undefined });
+  if (error) return { path: null, error: error.message };
+  return { path, error: null };
+}

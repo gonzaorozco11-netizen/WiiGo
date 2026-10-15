@@ -9,6 +9,7 @@ import { costosVigentes, guardarCosto, SIN_SUBCATEGORIA, type CostoDeMarca } fro
 import { PENDIENTE, PROPUESTA, type OrigenOrden } from "@/lib/estadosOrden";
 import { diasHasta } from "@/lib/eventos";
 import { sugerirReposicion, topeDeVariante } from "@/lib/reposicionSugerida";
+import { BUCKET_COMPROBANTES } from "@/lib/remitoRecepcion";
 import {
   condicionesDeMarca,
   tasasGeneralesParaSimular,
@@ -324,9 +325,64 @@ export type OrdenPortal = {
     resolucion: string | null;
     /** Si lo que había que devolver ya se le entregó. */
     devueltoEl: string | null;
+    /**
+     * El renglón de la recepción, para pedir la foto.
+     *
+     * Va el id y no el path a propósito: con el path, cualquiera que lo
+     * adivine pide una URL firmada de la foto de otra marca. Con el id, el
+     * servidor mira de quién es esa recepción antes de firmar.
+     */
+    idDetalleRecepcion: string | null;
+    /** Si hay foto de lo que no cerró. El link se pide aparte, al abrirla. */
+    tieneFoto: boolean;
   }[];
   hayDiferencias: boolean;
 };
+
+/**
+ * La foto de un renglón que no cerró, para la marca.
+ *
+ * Recibe el id del renglón y NO el path: con el path, cualquiera que lo
+ * adivine o lo vea en el HTML pide una URL firmada de la foto de otra marca.
+ * Acá el servidor sale del renglón, sube a la recepción, mira de qué marca es
+ * y recién ahí firma.
+ *
+ * Link con vencimiento y pedido al abrirlo, igual que el remito: el bucket es
+ * privado y una URL guardada de antemano llegaría muerta.
+ */
+export async function urlFotoDiferenciaMarca(
+  idDetalleRecepcion: string
+): Promise<{ url: string | null; error: string | null }> {
+  const sesion = await obtenerSesionMarca();
+  if (!sesion) return { url: null, error: "Sesión no válida" };
+  try {
+    const supabase = getSupabaseServerClient();
+
+    const { data: linea } = await supabase
+      .from("detalle_recepciones")
+      .select("foto_path, id_recepcion")
+      .eq("id_detalle_recepcion", idDetalleRecepcion)
+      .maybeSingle();
+    if (!linea?.foto_path) return { url: null, error: "Esa entrega no tiene foto." };
+
+    const { data: recepcion } = await supabase
+      .from("recepciones")
+      .select("id_marca")
+      .eq("id_recepcion", linea.id_recepcion as string)
+      .maybeSingle();
+    if (!recepcion || recepcion.id_marca !== sesion.idMarca) {
+      return { url: null, error: "Esa entrega no es tuya." };
+    }
+
+    const { data, error } = await supabase.storage
+      .from(BUCKET_COMPROBANTES)
+      .createSignedUrl(linea.foto_path as string, 60 * 10);
+    if (error) return { url: null, error: error.message };
+    return { url: data.signedUrl, error: null };
+  } catch (err) {
+    return { url: null, error: err instanceof Error ? err.message : "No se pudo abrir la foto" };
+  }
+}
 
 /**
  * Cuántas órdenes se traen como mucho.
@@ -385,12 +441,13 @@ export async function reposicionPortal(): Promise<OrdenPortal[]> {
   // sql/recepcion-diferencias.sql. Si todavía no se corrió, la consulta cae a
   // las de siempre: la marca ve «faltan 6» como antes en vez de una pantalla
   // en blanco.
-  const basicas = "id_recepcion, id_variante, cantidad_solicitada, cantidad_recibida, diferencia";
+  const basicas =
+    "id_detalle_recepcion, id_recepcion, id_variante, cantidad_solicitada, cantidad_recibida, diferencia";
   let detalles: Record<string, unknown>[] | null = [];
   if (idsRecepcion.length) {
     const conExtras = await supabase
       .from("detalle_recepciones")
-      .select(`${basicas}, motivo_faltante, resolucion_excedente, devuelto_el`)
+      .select(`${basicas}, motivo_faltante, resolucion_excedente, devuelto_el, foto_path`)
       .in("id_recepcion", idsRecepcion);
     if (conExtras.error) {
       const sin = await supabase
@@ -419,6 +476,8 @@ export async function reposicionPortal(): Promise<OrdenPortal[]> {
         motivoFaltante: (d.motivo_faltante as string) ?? null,
         resolucion: (d.resolucion_excedente as string) ?? null,
         devueltoEl: (d.devuelto_el as string) ?? null,
+        idDetalleRecepcion: (d.id_detalle_recepcion as string) ?? null,
+        tieneFoto: Boolean(d.foto_path),
       }));
 
     return {
