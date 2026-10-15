@@ -11,7 +11,7 @@ import {
 } from "@/app/portal/actions";
 import { pedirBaja } from "@/app/portal/cambios/actions";
 import { SIN_SUBCATEGORIA } from "@/lib/costosMarca";
-import type { MargenSimulado } from "@/lib/margenMarca";
+import PanelReparto, { PanelSinCosto } from "@/components/PanelReparto";
 
 // "Mis productos": la lista de lo que WiiGo le vende a la marca, con su stock
 // y con el costo que solo ella puede cargar.
@@ -24,14 +24,8 @@ import type { MargenSimulado } from "@/lib/margenMarca";
 // suplementos, no lleva libros: si tiene que buscar qué significa
 // "contribución marginal", la pantalla falló.
 
-function pesos(v: number) {
-  return v.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
 function enteros(v: number) {
   return Math.round(v).toLocaleString("es-AR");
-}
-function pct1(v: number) {
-  return (Math.round(v * 10) / 10).toLocaleString("es-AR");
 }
 function hoyISO() {
   const d = new Date();
@@ -645,115 +639,28 @@ function Fila({
   );
 }
 
-const COLORES = {
-  prod: "#8a9a78",
-  wiigo: "#536243",
-  banco: "#bd8f3e",
-  sircreb: "#b4bcc6",
-  queda: "#4c8459",
-} as const;
-
-type Parte = { etiqueta: string; color: string; monto: number };
-
-/** Los cinco pedazos, y suman el precio exacto. Sin pedazo de IVA: WiiGo le
-    factura a ELLA la comisión, así que cuánto IVA le toca depende de cómo
-    facture — restarle uno supuesto sería mostrarle una ganancia más chica que
-    la real por una cuenta que nadie hizo. */
-function partes(m: MargenSimulado, costo: number): Parte[] {
-  return [
-    { etiqueta: "Costo mercadería", color: COLORES.prod, monto: costo },
-    { etiqueta: "Comisión WiiGo + IVA", color: COLORES.wiigo, monto: m.comisionWiigo + m.ivaComision },
-    { etiqueta: "Otros costos", color: COLORES.banco, monto: m.comisionMp + m.impCreditos + m.impDebitos },
-    { etiqueta: "SIRCREB", color: COLORES.sircreb, monto: m.sircreb },
-    { etiqueta: "Te queda a vos", color: COLORES.queda, monto: m.leQueda ?? 0 },
-  ];
-}
-
 /**
- * El mismo panel que ve WiiGo del lado de adentro: las dos formas de cobro
- * lado a lado, con la dona, la tabla de comparación y el cierre.
+ * El mismo panel que ve WiiGo del lado de adentro, y el mismo que sale en
+ * Precios: las dos formas de cobro lado a lado, con la dona y el detalle.
  *
  * Antes acá había una barra de $100 con botones para cambiar el medio de pago
  * — otro dibujo para la misma cuenta, que obligaba a tocar para comparar en
  * vez de ver las dos juntas. Mismo dibujo de los dos lados: cuando la marca y
- * WiiGo discuten un precio, discuten mirando lo mismo.
+ * WiiGo discuten un precio, discuten mirando lo mismo. Por eso el panel vive
+ * en components/PanelReparto.tsx y no acá.
  */
 function Reparto({ p }: { p: ProductoConMargen }) {
   const credito = p.porMedio.find((m) => m.medio === "CREDITO");
   const efectivo = p.porMedio.find((m) => m.medio === "EFECTIVO");
   if (!credito || !efectivo) return null;
 
-  if (p.costo == null) {
-    return (
-      <div className="caja-det">
-        <div className="nota-ocre" style={{ marginTop: 0 }}>
-          Cargale el costo acá arriba y te mostramos cuánto ganás con cada venta, igual que lo ve
-          WiiGo. Por ahora solo sabemos cuánto te transferimos:{" "}
-          <b>${pesos(credito.leTransferimos)}</b> pagando con tarjeta de crédito.
-        </div>
-      </div>
-    );
-  }
-
-  const qC = credito.leQueda ?? 0;
-  const qE = efectivo.leQueda ?? 0;
-  const ganaEfectivo = qE > qC;
-  const izq = partes(credito, p.costo);
-  const der = partes(efectivo, p.costo);
-
   return (
     <div className="caja-det">
-      <div className="panel-rep">
-        <p className="panel-tit">A dónde va cada peso que paga el cliente</p>
-        <div className="duo">
-          <Columna m={credito} costo={p.costo} corto="Crédito" gana={!ganaEfectivo} />
-          <Columna m={efectivo} costo={p.costo} corto="Efectivo" gana={ganaEfectivo} />
-        </div>
-
-        <table className="tabla-panel">
-          <thead>
-            <tr>
-              <th>Cada peso va a</th>
-              <th>Crédito</th>
-              <th>Efectivo</th>
-            </tr>
-          </thead>
-          <tbody>
-            {izq.map((x, i) => {
-              const y = der[i];
-              const esQueda = i === izq.length - 1;
-              return (
-                <tr key={x.etiqueta} className={esQueda ? "queda" : ""}>
-                  <td>
-                    <span className="k">
-                      <i className="llave" style={{ background: x.color }} />
-                      {x.etiqueta}
-                    </span>
-                  </td>
-                  {[x.monto, y.monto].map((v, j) => (
-                    <td key={j}>
-                      ${pesos(v)}
-                      <span className="pc">{pct1(p.precio > 0 ? (v / p.precio) * 100 : 0)}%</span>
-                    </td>
-                  ))}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-
-        <div className="panel-pie">
-          Por cada unidad te quedan <b className="verde">${pesos(qE)}</b> en efectivo y{" "}
-          <b>${pesos(qC)}</b> con crédito
-          {Math.abs(qE - qC) > 0.5 && <> —<b>${pesos(Math.abs(qE - qC))}</b> de diferencia</>}.
-          <span className="chico">
-            Ya tiene descontado todo lo de arriba. De ahí todavía salen{" "}
-            <b>tus impuestos y tus gastos</b> —tu IVA según cómo facturás, Ingresos Brutos, alquiler,
-            sueldos— que WiiGo no conoce y no calcula.
-          </span>
-        </div>
-      </div>
-
+      {p.costo == null ? (
+        <PanelSinCosto credito={credito} efectivo={efectivo} donde="la columna «Mi costo» de arriba" />
+      ) : (
+        <PanelReparto credito={credito} efectivo={efectivo} costo={p.costo} />
+      )}
       <PedirBaja p={p} />
     </div>
   );
@@ -840,97 +747,3 @@ function PedirBaja({ p }: { p: ProductoConMargen }) {
   );
 }
 
-function Columna({
-  m,
-  costo,
-  corto,
-  gana,
-}: {
-  m: MargenSimulado;
-  costo: number;
-  corto: string;
-  gana: boolean;
-}) {
-  const queda = m.leQueda ?? 0;
-  const margen = m.leTransferimos > 0 ? (queda / m.leTransferimos) * 100 : 0;
-  const esEfectivo = corto === "Efectivo";
-
-  return (
-    <div className={gana ? "gana" : undefined}>
-      <span className="sello">
-        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-          {esEfectivo ? (
-            <>
-              <rect x="1.5" y="4" width="13" height="8" rx="1.5" />
-              <circle cx="8" cy="8" r="1.9" />
-            </>
-          ) : (
-            <>
-              <rect x="1.5" y="3.5" width="13" height="9" rx="2" />
-              <path d="M1.5 6.75h13" />
-            </>
-          )}
-        </svg>
-        {corto}
-        {gana && (
-          <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.2"
-            strokeLinecap="round" strokeLinejoin="round">
-            <path d="M2.5 6.4l2.4 2.4 4.6-5" />
-          </svg>
-        )}
-      </span>
-      <Dona partes={partes(m, costo)} centro={`$${enteros(queda)}`} />
-      <p className="cobra">el cliente paga ${pesos(m.precio)}</p>
-      <p className="marg">margen {Math.round(margen)}% de lo que recibís</p>
-    </div>
-  );
-}
-
-/**
- * La dona: un arco por pedazo, con un hueco entre ellos y las puntas
- * redondeadas. Pegados se leían como un solo anillo partido en vez de como
- * cinco cosas distintas; el aro gris de atrás sostiene el círculo cuando algún
- * pedazo da cero.
- */
-function Dona({ partes, centro }: { partes: Parte[]; centro: string }) {
-  const R = 44;
-  const C = 2 * Math.PI * R;
-  const HUECO = C * (2.2 / 360);
-  const total = partes.reduce((a, p) => a + Math.max(p.monto, 0), 0);
-  let acumulado = 0;
-
-  return (
-    <div className="dona-rep">
-      <svg viewBox="0 0 126 126" width="126" height="126" aria-hidden="true">
-        <circle cx="63" cy="63" r={R} fill="none" stroke="#eef0e9" strokeWidth="15" />
-        {/* Arranca arriba y gira como un reloj: es como se lee una torta. */}
-        <g transform="rotate(-90 63 63)">
-          {partes.map((p, i) => {
-            const porcion = total > 0 ? Math.max(p.monto, 0) / total : 0;
-            const largo = Math.max(porcion * C - HUECO, 0.1);
-            const offset = -(acumulado * C + HUECO / 2);
-            acumulado += porcion;
-            return (
-              <circle
-                key={i}
-                cx="63"
-                cy="63"
-                r={R}
-                fill="none"
-                stroke={p.color}
-                strokeWidth="15"
-                strokeLinecap="round"
-                strokeDasharray={`${largo} ${C - largo}`}
-                strokeDashoffset={offset}
-              />
-            );
-          })}
-        </g>
-      </svg>
-      <div className="centro">
-        <b>{centro}</b>
-        <span>te queda</span>
-      </div>
-    </div>
-  );
-}

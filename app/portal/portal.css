@@ -647,33 +647,6 @@
   line-height: 1.4;
 }
 
-/* Lo que gana con cada medio de pago. Sin la linea del costo: ya esta en la
-   franja de arriba, y repetirla por columna es ruido. */
-.cam-gana { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; margin-top: 4px; }
-@media (max-width: 620px) { .cam-gana { grid-template-columns: 1fr; } }
-.cam-gana-col {
-  border: 1px solid var(--borde); border-radius: 11px; padding: 12px 14px;
-  background: var(--superficie);
-}
-.cam-gana-col.principal { border: 2px solid var(--salvia-honda); }
-.cam-gana-col .tit {
-  font-size: 10.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
-  color: var(--texto-3); margin-bottom: 6px;
-}
-.cam-gana-col .paga { font-size: 13px; color: var(--texto-2); margin-bottom: 7px; }
-.cam-gana-col ul { list-style: none; margin: 0 0 8px; padding: 0; }
-.cam-gana-col li {
-  display: flex; justify-content: space-between; gap: 10px;
-  font-size: 12px; color: var(--texto-3); padding: 1px 0;
-}
-.cam-gana-col li b { font-family: var(--f-mono); font-weight: 500; }
-.cam-gana-col .transf {
-  font-size: 13px; color: var(--texto-2); border-top: 1px solid var(--borde); padding-top: 7px;
-}
-.cam-gana-col .final { font-size: 13px; color: var(--texto-2); margin-top: 3px; }
-.cam-gana-col .final b { font-size: 17px; color: var(--salvia-honda); font-family: var(--f-mono); }
-.cam-gana-col .final em { font-style: normal; font-size: 12px; color: var(--texto-3); margin-left: 5px; }
-
 /* El bloque del efectivo, separado del de gondola por una linea punteada:
    son el mismo formulario pero dos preguntas distintas, y pegados se leian
    como cuatro campos sueltos. */
@@ -681,34 +654,56 @@
   border-top: 1px dashed var(--borde-fuerte); margin-top: 13px; padding-top: 13px;
   display: flex; flex-direction: column; gap: 10px;
 }
-/* El descuento resultante, de lectura: se escribe arriba, en el modo % del
-   efectivo.
-   OJO con el nombre: `cam-off` ya existe mas abajo como el input chiquito
-   del % en el alta (54px). Reusarlo aplastaba este bloque a una columna de
-   90px con una palabra por renglon. */
-.cam-descuento {
-  display: flex; align-items: center; gap: 11px; flex-wrap: wrap;
-  background: var(--salvia-tenue); border: 1px solid var(--borde-fuerte);
-  border-radius: 11px; padding: 11px 14px;
-}
-.cam-descuento > span { font-size: 13px; color: var(--salvia-honda); }
-.cam-descuento .numero { font-family: var(--f-mono); font-size: 16px; font-weight: 700; color: var(--salvia-honda); }
-.cam-descuento .ahorro { font-size: 12.5px; color: var(--texto-3); }
-.cam-descuento .ahorro b { color: var(--salvia-honda); }
 
-/* El interruptor $ / % va pegado al rótulo del campo, no al lado del input:
-   dice en qué unidad se escribe, no es parte del valor. */
-.cam-modo { display: inline-flex; gap: 2px; margin-left: 7px; vertical-align: -1px; }
-.cam-modo button {
-  border: 1px solid var(--borde-fuerte); background: var(--superficie); color: var(--texto-3);
-  font: inherit; font-size: 11px; font-weight: 700; line-height: 1;
-  padding: 3px 7px; cursor: pointer;
+/* Las dos filas de precio: HOY, el porcentaje y el precio, los tres juntos.
+   Reemplazan al interruptor $ / % / * de un campo solo, que escondia los
+   otros dos — se escribia en una caja sin ver en que unidad estaba.
+
+   OJO con el nombre del titulo: `cam-grupo` ya es la <section> del historial
+   de solicitudes. Tercera clase que choca en esta hoja (ver cam-foto y
+   cam-off), por eso este se llama cam-fila-tit. */
+.cam-fila-tit { font-size: 13px; font-weight: 700; color: var(--texto); }
+.cam-fila-tit small { font-weight: 500; color: var(--texto-3); }
+.cam-trio {
+  display: grid; grid-template-columns: 1fr 14px 1fr 1fr; gap: 11px; align-items: end;
+  margin-top: 9px;
 }
-.cam-modo button:first-child { border-radius: 7px 0 0 7px; }
-.cam-modo button:last-child { border-radius: 0 7px 7px 0; border-left: 0; }
-.cam-modo button.activo {
-  background: var(--salvia-honda); border-color: var(--salvia-honda); color: #fff;
+/* En el telefono las tres cajas en fila quedan de 90px: una cifra por
+   renglon. Apiladas se leen, y la flecha deja de tener sentido. */
+@media (max-width: 620px) {
+  .cam-trio { grid-template-columns: 1fr; }
+  .cam-trio .cam-flecha { display: none; }
 }
+.cam-flecha { font-style: normal; font-size: 17px; color: var(--borde-fuerte); text-align: center; padding-bottom: 11px; }
+
+/* La unidad adentro de la caja, a la derecha: dice que significa el numero
+   sin gastar un renglon de rotulo. */
+/* Los resets no son de adorno: `.cam-campo span` es el rotulo del campo —11px,
+   negrita, MAYUSCULAS— y esto es un <span> adentro de la misma <label>, asi
+   que se comia esas reglas y el input heredaba el text-transform. */
+.cam-conunidad {
+  position: relative; display: block;
+  font-size: 14px; font-weight: 400; letter-spacing: normal; text-transform: none;
+}
+.cam-conunidad input { padding-right: 30px; }
+.cam-conunidad u {
+  position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+  text-decoration: none; font-size: 13px; font-weight: 600; color: var(--texto-3); pointer-events: none;
+}
+
+/* El hueco donde iria "quiero ganar" cuando todavia no cargo el costo. No es
+   un campo deshabilitado: es el pedido, puesto en el lugar exacto de la
+   funcion que falta. Un aviso general arriba de todo se lee una vez y se
+   ignora; este aparece justo cuando esta por decidir un precio. */
+.cam-hueco {
+  border: 1px dashed #d9c79a; border-radius: 10px; background: var(--ocre-tenue);
+  padding: 8px 12px; min-height: 42px; display: flex; flex-direction: column; justify-content: center;
+  align-self: stretch; margin-top: 19px;
+}
+.cam-hueco b { font-size: 12.5px; font-weight: 700; color: #6f5418; line-height: 1.3; }
+.cam-hueco span { font-size: 11px; color: #8a7340; line-height: 1.35; margin-top: 2px; }
+.cam-hueco a { color: #6f5418; font-weight: 700; }
+@media (max-width: 620px) { .cam-hueco { margin-top: 0; } }
 
 .cam-campos { display: flex; gap: 11px; flex-wrap: wrap; }
 .cam-campo { display: flex; flex-direction: column; gap: 4px; flex: 1 1 150px; min-width: 130px; }
@@ -722,8 +717,11 @@
 .cam-campo input:focus, .cam-campo textarea:focus { outline: 2px solid var(--salvia); outline-offset: -1px; }
 .cam-campo input:disabled { background: var(--papel); color: var(--texto-2); }
 
-.cam-var { font-size: 13px; color: var(--texto-2); }
+.cam-var { font-size: 13px; color: var(--texto-2); line-height: 1.5; }
 .cam-var.fuerte { color: var(--rojo); font-weight: 600; }
+/* Un salto grande de precio, dentro de una frase que no es toda una alerta:
+   se pinta el numero y no el parrafo entero. */
+.cam-var b.fuerte { color: var(--rojo); }
 .cam-nota { font-size: 12.5px; color: var(--texto-3); line-height: 1.5; max-width: 68ch; }
 .cam-error {
   font-size: 13px; color: var(--rojo); background: var(--rojo-tenue);
@@ -1078,7 +1076,18 @@
   font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--texto-3);
 }
 .duo { display: grid; grid-template-columns: 1fr 1fr; }
-.duo > div { padding: 14px 10px 12px; text-align: center; }
+/* Sin precio en efectivo hay una sola columna: media tarjeta vacia se lee
+   como que falta cargar algo en la pantalla, no en el producto. */
+.duo.solo { grid-template-columns: 1fr; }
+/* En el telefono las dos columnas quedan de 150px y la dona sola ya mide
+   118: el detalle se partia en una palabra por renglon. */
+@media (max-width: 620px) {
+  .duo { grid-template-columns: 1fr; }
+  .duo > div + div { border-left: 0; border-top: 1px solid var(--borde); }
+}
+/* Alineado a la izquierda y no centrado: el detalle entro al lado de la dona
+   y una lista de importes centrada no se puede leer en columna. */
+.duo > div { padding: 13px 14px 12px; }
 .duo > div + div { border-left: 1px solid var(--borde); }
 .duo .gana { background: var(--verde-tenue); }
 .sello {
@@ -1090,41 +1099,64 @@
   background: var(--verde-ok); border-color: var(--verde-ok); color: #fff;
   box-shadow: 0 1px 2px rgba(76,132,89,.18), 0 5px 12px -4px rgba(76,132,89,.45);
 }
-.dona-rep { position: relative; width: 126px; height: 126px; margin: 8px auto 0; }
+/* La dona con el detalle al lado, adentro del mismo cuadro. Antes era la dona
+   centrada MAS una tabla de cinco filas debajo de las dos columnas, que
+   repetia los mismos numeros con los mismos colores y hacia la pantalla el
+   doble de larga. */
+.cuerpo-rep { display: flex; align-items: center; gap: 13px; margin-top: 10px; }
+.dona-rep { position: relative; width: 118px; height: 118px; flex: none; }
 .dona-rep .centro {
   position: absolute; inset: 0; display: flex; flex-direction: column;
   align-items: center; justify-content: center; pointer-events: none;
 }
-.dona-rep .centro b { font-family: var(--f-mono); font-size: 16px; font-weight: 600; color: var(--verde-ok); line-height: 1; }
+.dona-rep .centro b { font-family: var(--f-mono); font-size: 15px; font-weight: 600; color: var(--verde-ok); line-height: 1; }
+/* Lo que queda despues de todo, cuando es tan poco que la venta no le deja
+   nada: de ese numero todavia salen sus propios impuestos. */
+.dona-rep .centro b.flojo { color: var(--rojo); }
 .dona-rep .centro span {
   font-size: 8.5px; text-transform: uppercase; letter-spacing: .09em; font-weight: 700;
   color: var(--texto-3); margin-top: 5px;
 }
-.duo .cobra { font-size: 11.5px; color: var(--texto-2); margin-top: 9px; font-family: var(--f-mono); }
-.duo .marg { font-size: 11px; color: var(--texto-3); margin-top: 2px; }
 
-.tabla-panel { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-.tabla-panel th {
-  font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
-  color: var(--texto-3); background: var(--superficie-2); padding: 7px 14px;
-  border-top: 1px solid var(--borde); border-bottom: 1px solid var(--borde); text-align: right;
+.detalle-gasto { flex: 1; min-width: 0; }
+.detalle-gasto .sale {
+  font-size: 9.5px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
+  color: #a3aa9b; margin-bottom: 5px;
 }
-.tabla-panel th:first-child { text-align: left; }
-.tabla-panel td { padding: 5px 14px; border-bottom: 1px solid #f4f5f0; text-align: right;
-  font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
-.tabla-panel td:first-child { text-align: left; font-family: var(--f-texto); }
-.tabla-panel tr.queda { background: var(--verde-tenue); color: #2f5c3a; font-weight: 700; }
-.tabla-panel tr.queda td { border-bottom: 0; }
-.tabla-panel .pc { font-size: 10px; font-weight: 400; color: var(--texto-3); margin-left: 6px; }
-.tabla-panel tr.queda .pc { color: #4c8459; }
-.tabla-panel .k { display: inline-flex; align-items: center; gap: 8px; }
-.tabla-panel .llave { width: 9px; height: 9px; border-radius: 2px; display: inline-block; flex: none; }
+.detalle-gasto ul { list-style: none; }
+.detalle-gasto li {
+  display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--texto-2);
+  padding: 2.5px 0;
+}
+.detalle-gasto li .llave { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+.detalle-gasto li span { flex: 1; min-width: 0; }
+.detalle-gasto li b {
+  font-family: var(--f-mono); font-variant-numeric: tabular-nums; font-weight: 500; color: var(--texto);
+}
+.detalle-gasto .porque { font-size: 11px; color: var(--texto-3); line-height: 1.4; margin-top: 7px; }
+
+.duo .cierre {
+  font-size: 11.5px; color: var(--texto-3); line-height: 1.45;
+  border-top: 1px solid #e8ebe3; padding-top: 7px; margin-top: 9px;
+}
+.duo .gana .cierre { border-top-color: #dbe5d5; }
+.duo .cierre .mono { font-family: var(--f-mono); color: var(--texto-2); }
+.duo .cierre .verde { color: var(--verde-ok); }
+.duo .cierre .rojo { color: var(--rojo); }
+
 .panel-pie {
-  padding: 10px 14px; border-top: 1px solid var(--borde); background: var(--superficie-2);
-  font-size: 12.5px; color: var(--texto-2);
+  padding: 9px 14px; border-top: 1px solid var(--borde); background: var(--superficie-2);
+  font-size: 12px; color: var(--texto-2); line-height: 1.5;
 }
 .panel-pie .verde { color: var(--verde-ok); }
 .panel-pie .chico { display: block; font-size: 11px; color: var(--texto-3); margin-top: 4px; line-height: 1.45; }
+
+/* Sin costo cargado no hay torta que dibujar: falta justo el pedazo mas
+   grande. Se dice eso y lo unico que si se sabe. */
+.panel-vacio { padding: 13px 16px; }
+.panel-vacio p { font-size: 12.5px; color: var(--texto-2); line-height: 1.55; }
+.panel-vacio p + p { margin-top: 8px; }
+.panel-vacio .mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums; color: var(--texto); }
 
 
 /* ---------- Proponer un envio ----------
@@ -1441,48 +1473,10 @@
   background: var(--superficie-2); color: var(--texto);
 }
 
-/* ---------- El reparto mientras define el precio ----------
-   El mismo panel que ve WiiGo, pero acá sirve para DECIDIR el precio y no
-   para mirar el que ya esta puesto. */
-.cam-reparto {
-  border: 1px solid var(--borde); border-radius: 13px; background: var(--superficie);
-  overflow: hidden; margin-top: 14px;
-}
-.cam-reparto .et {
-  padding: 9px 14px; background: var(--superficie-2); border-bottom: 1px solid var(--borde);
-  font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
-  color: var(--texto-3);
-}
-.cam-reparto-duo { display: grid; grid-template-columns: 1fr 1fr; }
-.cam-reparto-duo > div { padding: 13px 10px 11px; text-align: center; }
-.cam-reparto-duo > div + div { border-left: 1px solid var(--borde); }
-.cam-reparto-duo .gana { background: var(--verde-tenue); }
-.cam-sello {
-  display: inline-block; padding: 4px 11px; border-radius: 999px; font-size: 9.5px; font-weight: 700;
-  letter-spacing: .09em; text-transform: uppercase; line-height: 1;
-  border: 1px solid var(--borde-fuerte); background: var(--superficie); color: var(--texto-3);
-}
-.cam-reparto-duo .gana .cam-sello {
-  background: var(--verde-ok); border-color: var(--verde-ok); color: #fff;
-}
-.cam-dona { position: relative; width: 102px; height: 102px; margin: 7px auto 0; }
-.cam-dona .centro {
-  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
-  justify-content: center; pointer-events: none;
-}
-.cam-dona .centro b {
-  font-family: var(--f-mono); font-size: 14px; font-weight: 600; color: var(--verde-ok); line-height: 1;
-}
-.cam-dona .centro span {
-  font-size: 8px; text-transform: uppercase; letter-spacing: .09em; font-weight: 700;
-  color: var(--texto-3); margin-top: 4px;
-}
-.cam-reparto-cobra { font-size: 11px; color: var(--texto-3); margin-top: 8px; font-family: var(--f-mono); }
-.cam-reparto-pie {
-  padding: 10px 14px; border-top: 1px solid var(--borde); background: var(--superficie-2);
-  font-size: 12.5px; color: var(--texto-2); line-height: 1.45;
-}
-.cam-reparto-pie b { color: var(--texto); }
+/* El reparto mientras define el precio usa el MISMO panel que Mis productos
+   —.panel-rep, mas arriba en esta hoja— y ya no una version propia. Habia
+   tres donas distintas para la misma cuenta: esta, la de Mis productos y la
+   de Precios. Tres dibujos obligan a aprender la cuenta tres veces. */
 
 /* De que sucursal son los numeros, al lado del nombre de la marca. */
 .portal-local {
@@ -1494,25 +1488,6 @@
   .portal-local { margin-left: 0; padding-left: 0; border-left: 0; display: flex; margin-top: 2px; }
   .portal-local .dir { display: none; }
 }
-/* El desglose del reparto, en el alta. Mismos colores y mismo orden que el de
-   Mis productos: es la misma cuenta y tiene que leerse igual. */
-.cam-reparto-tabla { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-.cam-reparto-tabla th {
-  font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
-  color: var(--texto-3); background: var(--superficie-2); padding: 7px 14px;
-  border-top: 1px solid var(--borde); border-bottom: 1px solid var(--borde); text-align: right;
-}
-.cam-reparto-tabla th:first-child { text-align: left; }
-.cam-reparto-tabla td {
-  padding: 5px 14px; border-bottom: 1px solid #f4f5f0; text-align: right;
-  font-family: var(--f-mono); font-variant-numeric: tabular-nums; color: var(--texto-2);
-}
-.cam-reparto-tabla td:first-child { text-align: left; font-family: var(--f-texto); }
-.cam-reparto-tabla tr.queda { background: var(--verde-tenue); font-weight: 700; }
-.cam-reparto-tabla tr.queda td { border-bottom: 0; color: #2f5c3a; }
-.cam-reparto-tabla .k { display: inline-flex; align-items: center; gap: 8px; }
-.cam-reparto-tabla .llave { width: 9px; height: 9px; border-radius: 2px; display: inline-block; flex: none; }
-
 /* Hasta tres fotos. La primera es la que se ve en la gondola y en el totem;
    las otras dos aparecen en la ficha del Asesor cuando el cliente la abre.
 

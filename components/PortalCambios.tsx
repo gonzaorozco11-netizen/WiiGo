@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   pedirCambioPrecios,
   pedirCambioFoto,
@@ -30,10 +31,10 @@ import {
   redondearPrecio,
   simularMargen,
   type CondicionesMarca,
-  type MargenSimulado,
   type TasasGenerales,
 } from "@/lib/margenMarca";
 import { revisarFoto, LADO_MINIMO, type Regla } from "@/lib/fotoProducto";
+import PanelReparto, { PanelSinCosto } from "@/components/PanelReparto";
 
 // Pedir cambios, desde el lado de la marca.
 //
@@ -534,110 +535,6 @@ function Envio({
 /** Los que no tienen subcategoría van juntos y al final. */
 const SIN_GONDOLA = "Sin góndola";
 
-type ModoPrecio = "PESOS" | "PORC" | "GANAR";
-
-/**
- * Lo que le queda con un precio, desglosado.
- *
- * Sin la línea del costo: ya está arriba en la franja, y repetirla una vez
- * por columna es ruido. Lo que importa acá es el camino desde lo que paga el
- * cliente hasta lo que entra.
- */
-function ColumnaGana({
-  m,
-  titulo,
-  principal = false,
-}: {
-  m: MargenSimulado;
-  titulo: string;
-  principal?: boolean;
-}) {
-  const bajas: [string, number][] = [
-    ["Comisión WiiGo", m.comisionWiigo],
-    ["IVA de esa comisión", m.ivaComision],
-    ["Mercado Pago", m.comisionMp],
-    ["Impuestos bancarios", m.impCreditos + m.impDebitos],
-  ];
-
-  return (
-    <div className={`cam-gana-col${principal ? " principal" : ""}`}>
-      <p className="tit">{titulo}</p>
-      <p className="paga">
-        El cliente paga <b>{pesos(m.precio)}</b>
-      </p>
-      <ul>
-        {bajas
-          .filter(([, v]) => v > 0)
-          .map(([t, v]) => (
-            <li key={t}>
-              <span>− {t}</span>
-              <b>{pesos(v)}</b>
-            </li>
-          ))}
-      </ul>
-      <p className="transf">
-        Te transferimos <b>{pesos(m.leTransferimos)}</b>
-      </p>
-      {m.leQueda !== null && (
-        <p className="final">
-          Ganás <b>{pesos(m.leQueda)}</b>
-          {m.porcentaje !== null && <em>· {m.porcentaje.toFixed(1)}%</em>}
-        </p>
-      )}
-    </div>
-  );
-}
-
-/**
- * Escribir en pesos o en porcentaje.
- *
- * Una lista se actualiza pensando "subo todo un 12%", no calculadora en mano
- * producto por producto; pero a veces el precio es uno puntual y redondo. Los
- * dos modos escriben el mismo valor: el porcentaje es una forma de tipear, no
- * otro dato que haya que guardar.
- */
-function Modo({
-  valor,
-  onCambiar,
-  conGanar = false,
-}: {
-  valor: ModoPrecio;
-  onCambiar: (m: ModoPrecio) => void;
-  /** El tercer modo solo existe con costo cargado: sin él no hay cuenta. */
-  conGanar?: boolean;
-}) {
-  return (
-    <span className="cam-modo">
-      <button
-        type="button"
-        className={valor === "PESOS" ? "activo" : undefined}
-        onClick={() => onCambiar("PESOS")}
-        title="Escribo el precio"
-      >
-        $
-      </button>
-      <button
-        type="button"
-        className={valor === "PORC" ? "activo" : undefined}
-        onClick={() => onCambiar("PORC")}
-        title="Escribo el aumento"
-      >
-        %
-      </button>
-      {conGanar && (
-        <button
-          type="button"
-          className={valor === "GANAR" ? "activo" : undefined}
-          onClick={() => onCambiar("GANAR")}
-          title="Escribo cuánto quiero ganar"
-        >
-          ★
-        </button>
-      )}
-    </span>
-  );
-}
-
 /**
  * Los dos precios, atados por el descuento.
  *
@@ -646,10 +543,20 @@ function Modo({
  * descuento a la marca sin que lo decidiera —de 14% a 21,7% en el caso que lo
  * destapó— y ese descuento lo absorbe casi entero ella.
  *
- * Los tres campos son el mismo número visto de tres formas, así que se tocan
- * los tres y los otros dos se acomodan. El porcentaje es editable y no un
- * cartel porque ES la variable que la marca cuida; los pesos son la
- * consecuencia.
+ * Cada fila muestra tres cosas a la vez: el precio de HOY en gris, el
+ * porcentaje y el precio nuevo. Los dos últimos son el mismo número visto de
+ * dos formas, así que se toca cualquiera y el otro se acomoda.
+ *
+ * Antes había un solo campo con un botón $ / % / ★ al lado que cambiaba qué
+ * significaba. Ese botón esconde los otros dos: se escribe en una caja sin ver
+ * en qué unidad está, y un 0,3 puede ser un precio o un descuento del 0,3%.
+ * Pasó, y no se arregla con un cartel que lo explique mejor — se arregla
+ * mostrando los dos números juntos.
+ *
+ * El porcentaje es editable y no un cartel porque ES la variable que la marca
+ * cuida: el descuento de efectivo lo absorbe casi entero ella, y cambiar la
+ * góndola olvidándose del efectivo se lo movía sin que lo decidiera (de 14% a
+ * 21,7% en el caso que lo destapó).
  */
 function FormPrecios({
   p,
@@ -675,16 +582,19 @@ function FormPrecios({
   // mantenerlo, no rediseñar la promoción.
   const [off, setOff] = useState(offDeHoy !== null ? offDeHoy.toFixed(1) : "");
 
-  // En pesos o en porcentaje, para cada uno.
+  // Cuánto quiere ganar, que es la otra forma de escribir la góndola.
   //
-  // Una lista de precios se actualiza pensando "subo todo un 12%", no
-  // calculadora en mano producto por producto. Pero a veces el precio es uno
-  // puntual y redondo. Los dos modos escriben el MISMO campo de abajo: el
-  // porcentaje es una forma de tipear, no otro dato.
-  const [modoGondola, setModoGondola] = useState<ModoPrecio>("PESOS");
-  const [modoEfectivo, setModoEfectivo] = useState<ModoPrecio>("PESOS");
-  const [aumento, setAumento] = useState("");
-  const [ganar, setGanar] = useState("");
+  // Arranca con el margen que le deja el precio de HOY, no vacío: los dos
+  // campos son el mismo número y tienen que decir lo mismo desde que se abre
+  // el formulario. Un % en blanco al lado de un precio cargado es la misma
+  // ambigüedad que había con el botón $ / % / ★.
+  const [ganar, setGanar] = useState(() => {
+    if (p.costo === null || !p.precio) return "";
+    const m = simularMargen({ precio: p.precio, costo: p.costo, marca: condiciones, tasas }).find(
+      (x) => x.medio === "CREDITO"
+    );
+    return m?.porcentaje != null ? m.porcentaje.toFixed(1) : "";
+  });
   /** El precio exacto antes de redondear, solo para mostrar de dónde salió. */
   const [precioCrudo, setPrecioCrudo] = useState<number | null>(null);
 
@@ -694,8 +604,6 @@ function FormPrecios({
 
   const gondolaValida = Number.isFinite(nGondola) && nGondola > 0;
   const usaEfectivo = efectivo.trim() !== "";
-
-  const redondear = (n: number) => Math.round(n * 100) / 100;
 
   /**
    * El efectivo también se redondea al múltiplo, y el descuento se recalcula
@@ -711,9 +619,28 @@ function FormPrecios({
   }
 
   // Mover uno mueve los otros. El que se tocó manda; los demás se recalculan.
-  function tocarGondola(v: string) {
+  //
+  // `desdeGanar` evita el ida y vuelta: cuando el precio salió de escribir el
+  // margen, volver a calcular el margen desde el precio redondeado lo movería
+  // un decimal y la marca vería saltar el 30 que acaba de tipear.
+  function tocarGondola(v: string, desdeGanar = false) {
     setGondola(v);
     const n = Number(v);
+    if (!desdeGanar) setPrecioCrudo(null);
+
+    // El margen es la otra forma de escribir este mismo precio, así que se
+    // mueve con él. Sin esto el campo de al lado quedaría mostrando el 30%
+    // viejo al lado de un precio que ya no da 30%.
+    if (!desdeGanar && p.costo !== null) {
+      const m =
+        Number.isFinite(n) && n > 0
+          ? simularMargen({ precio: n, costo: p.costo, marca: condiciones, tasas }).find(
+              (x) => x.medio === "CREDITO"
+            )
+          : null;
+      setGanar(m?.porcentaje != null ? m.porcentaje.toFixed(1) : "");
+    }
+
     if (!Number.isFinite(n) || n <= 0 || !Number.isFinite(nOff) || off.trim() === "") return;
     ponerEfectivoDesde(n, nOff);
   }
@@ -732,14 +659,6 @@ function FormPrecios({
     ponerEfectivoDesde(nGondola, n);
   }
 
-  /** "Subime todo un 12%" — se escribe el porcentaje y cae el precio. */
-  function tocarAumento(v: string) {
-    setAumento(v);
-    const n = Number(v);
-    if (!Number.isFinite(n) || !p.precio) return;
-    tocarGondola(String(redondearPrecio(p.precio * (1 + n / 100), redondeo)));
-  }
-
   /**
    * "Quiero ganar 30%" — la cuenta al revés, y el único modo que necesita el
    * costo. El precio que sale se redondea para arriba: con centavos no hay
@@ -752,7 +671,7 @@ function FormPrecios({
     const crudo = precioParaMargen({ margenDeseado: n, costo: p.costo, marca: condiciones, tasas });
     if (crudo === null) return;
     setPrecioCrudo(crudo);
-    tocarGondola(String(redondearPrecio(crudo, redondeo)));
+    tocarGondola(String(redondearPrecio(crudo, redondeo)), true);
   }
 
   // Lo que le queda HOY, para la franja de arriba.
@@ -765,14 +684,17 @@ function FormPrecios({
 
   // Lo que de verdad le queda con el precio puesto. Es el mismo cálculo que
   // la liquidación que le paga — no una aproximación para la pantalla.
-  const conTarjeta =
-    gondolaValida && p.costo !== null
-      ? simularMargen({ precio: nGondola, costo: p.costo, marca: condiciones, tasas }).find(
-          (m) => m.medio === "CREDITO"
-        )
-      : null;
+  //
+  // Sin costo también se simula, con `costo: null`: la ganancia no se puede
+  // calcular pero lo que se le transfiere sí, y es lo único que el panel
+  // puede decirle mientras tanto.
+  const conTarjeta = gondolaValida
+    ? simularMargen({ precio: nGondola, costo: p.costo, marca: condiciones, tasas }).find(
+        (m) => m.medio === "CREDITO"
+      )
+    : null;
   const conEfectivo =
-    usaEfectivo && nEfectivo > 0 && p.costo !== null
+    usaEfectivo && nEfectivo > 0 && nEfectivo <= nGondola
       ? simularMargen({ precio: nEfectivo, costo: p.costo, marca: condiciones, tasas }).find(
           (m) => m.medio === "EFECTIVO"
         )
@@ -807,9 +729,11 @@ function FormPrecios({
       }
     >
       {/* El costo arriba de todo: nadie elige un precio mirando el precio.
-          Si no lo cargó, se le dice dónde — sin costo no hay forma de
-          mostrarle lo que gana, y el tercer modo no existe. */}
-      {p.costo !== null ? (
+          Si no lo cargó no va cartel acá: el pedido está abajo, en el hueco
+          del campo "quiero ganar". Decirlo en los dos lados era decirlo dos
+          veces, y el de arriba es el que no sirve —no está al lado de nada
+          que se pueda hacer. */}
+      {p.costo !== null && (
         <div className="cam-costo">
           <span>
             <small>Tu costo</small>
@@ -830,28 +754,57 @@ function FormPrecios({
           </span>
           <small className="aparte">Esto lo ven solo vos y WiiGo.</small>
         </div>
-      ) : (
-        <p className="cam-nota">
-          Todavía no cargaste tu costo, así que no podemos mostrarte cuánto ganás con cada precio.
-          Se carga en <b>Mis productos</b>.
-        </p>
       )}
 
-      <div className="cam-campos">
+      {/* Góndola: hoy, el margen y el precio, los tres a la vista.
+          Antes era un campo solo con un botón $ / % / ★ al lado, y ese botón
+          escondía los otros dos: se escribía en una caja sin ver en qué unidad
+          estaba. Un 0,3 podía ser un precio o un descuento del 0,3%, y pasó. */}
+      {/* `cam-fila-tit` y no `cam-grupo`: esa clase ya es la <section> del
+          historial de solicitudes, y reusar el nombre le metía a este
+          renglón el margen y el borde de un bloque entero. Tercera vez que
+          pasa en esta hoja (ver cam-foto y cam-off). */}
+      <p className="cam-fila-tit">
+        Góndola <small>· el precio con tarjeta o QR</small>
+      </p>
+      <div className="cam-trio">
         <label className="cam-campo">
-          <span>Góndola — hoy</span>
+          <span>Hoy</span>
           <input className="mono" value={pesos(p.precio)} disabled />
         </label>
+        <i className="cam-flecha" aria-hidden="true">→</i>
+        {p.costo !== null ? (
+          <label className="cam-campo">
+            <span>Quiero ganar</span>
+            <span className="cam-conunidad">
+              <input
+                type="number"
+                step="0.1"
+                min="0"
+                max="99"
+                value={ganar}
+                onChange={(e) => tocarGanar(e.target.value)}
+                placeholder="30"
+              />
+              <u>%</u>
+            </span>
+          </label>
+        ) : (
+          /* Sin costo no hay cuenta posible. El pedido va en el lugar exacto
+             de la función que falta y no en un cartel arriba de todo: un aviso
+             general se lee una vez y se ignora, este aparece justo cuando está
+             por decidir un precio. Y desaparece solo el día que lo carga. */
+          <div className="cam-hueco">
+            <b>Cargá tu costo</b>
+            <span>
+              y acá ponés cuánto querés ganar. Se carga en{" "}
+              <Link href="/portal/productos">Mis productos</Link>.
+            </span>
+          </div>
+        )}
         <label className="cam-campo">
-          <span>
-            {modoGondola === "PESOS"
-              ? "Góndola — nuevo"
-              : modoGondola === "PORC"
-                ? "Aumento"
-                : "Quiero ganar"}
-            <Modo valor={modoGondola} onCambiar={setModoGondola} conGanar={p.costo !== null} />
-          </span>
-          {modoGondola === "PESOS" ? (
+          <span>Nuevo precio</span>
+          <span className="cam-conunidad">
             <input
               type="number"
               step="0.01"
@@ -860,71 +813,51 @@ function FormPrecios({
               placeholder="0,00"
               autoFocus
             />
-          ) : modoGondola === "PORC" ? (
-            <input
-              type="number"
-              step="0.1"
-              value={aumento}
-              onChange={(e) => tocarAumento(e.target.value)}
-              placeholder="0,0"
-              autoFocus
-            />
-          ) : (
-            <input
-              type="number"
-              step="0.1"
-              min="0"
-              max="99"
-              value={ganar}
-              onChange={(e) => tocarGanar(e.target.value)}
-              placeholder="30"
-              autoFocus
-            />
-          )}
+            <u>$</u>
+          </span>
         </label>
       </div>
 
-      {modoGondola !== "PESOS" && gondolaValida && (
-        <p className="cam-var">
-          Queda en <b>{pesos(nGondola)}</b>
-          {modoGondola === "GANAR" && precioCrudo !== null && redondeo > 0 && (
-            <> · la cuenta daba {pesos(precioCrudo)} y se redondeó para arriba al próximo {pesos(redondeo)}</>
-          )}
-        </p>
-      )}
-      {variacion !== null && variacion !== 0 && (
-        <p className={`cam-var${Math.abs(variacion) >= politica.variacionPrecioAlerta ? " fuerte" : ""}`}>
-          {variacion > 0 ? "+" : ""}
-          {variacion.toFixed(1)}% · es el precio con tarjeta o QR
-          {Math.abs(variacion) >= politica.variacionPrecioAlerta &&
-            " — es un salto grande, revisá que no te haya quedado un cero de más."}
-        </p>
-      )}
+      <p className="cam-var">
+        Tocás cualquiera de los dos y el otro se acomoda.
+        {variacion !== null && variacion !== 0 && (
+          <>
+            {" "}
+            <b className={Math.abs(variacion) >= politica.variacionPrecioAlerta ? "fuerte" : undefined}>
+              {variacion > 0 ? "+" : ""}
+              {variacion.toFixed(1)}%
+            </b>{" "}
+            contra el de hoy
+            {Math.abs(variacion) >= politica.variacionPrecioAlerta &&
+              " — es un salto grande, revisá que no te haya quedado un cero de más."}
+          </>
+        )}
+        {precioCrudo !== null && gondolaValida && redondeo > 0 && (
+          <>
+            {" "}
+            <span className="tenue">
+              La cuenta daba {pesos(precioCrudo)} y subió al próximo {pesos(redondeo)}.
+            </span>
+          </>
+        )}
+      </p>
 
       <div className="cam-precios-efectivo">
-        <div className="cam-campos">
+        <p className="cam-fila-tit">
+          Efectivo <small>· el descuento es sobre el precio nuevo de góndola</small>
+        </p>
+        <div className="cam-trio">
           <label className="cam-campo">
-            <span>Efectivo — hoy</span>
+            <span>Hoy</span>
             <input className="mono" value={p.precioEfectivo !== null ? pesos(p.precioEfectivo) : "sin cargar"} disabled />
           </label>
+          <i className="cam-flecha" aria-hidden="true">→</i>
+          {/* El % del efectivo es el descuento sobre la góndola, no un
+              aumento sobre el efectivo de ayer: es el número que se negocia y
+              el que va impreso en el cartel. */}
           <label className="cam-campo">
-            <span>
-              Efectivo — nuevo
-              <Modo valor={modoEfectivo} onCambiar={setModoEfectivo} />
-            </span>
-            {/* El % del efectivo es el descuento sobre la góndola, no un
-                aumento sobre el efectivo de ayer: es el número que se negocia
-                y el que va impreso en el cartel. Dos porcentajes distintos
-                para el mismo campo serían imposibles de distinguir. */}
-            {modoEfectivo === "PESOS" ? (
-              <input
-                type="number"
-                step="0.01"
-                value={efectivo}
-                onChange={(e) => tocarEfectivo(e.target.value)}
-                placeholder="0,00"
-              />
-            ) : (
+            <span>Descuento</span>
+            <span className="cam-conunidad">
               <input
                 type="number"
                 step="0.1"
@@ -934,55 +867,65 @@ function FormPrecios({
                 onChange={(e) => tocarOff(e.target.value)}
                 placeholder="0,0"
               />
-            )}
+              <u>%</u>
+            </span>
+          </label>
+          <label className="cam-campo">
+            <span>Nuevo precio</span>
+            <span className="cam-conunidad">
+              <input
+                type="number"
+                step="0.01"
+                value={efectivo}
+                onChange={(e) => tocarEfectivo(e.target.value)}
+                placeholder="0,00"
+              />
+              <u>$</u>
+            </span>
           </label>
         </div>
 
-        {/* `cam-descuento` y no `cam-off`: esa clase ya existía como el input
-            chiquito del % en el alta (54px de ancho), y al reusar el nombre
-            el bloque entero salía aplastado en una columna de 90px. */}
-        <div className="cam-descuento">
-          <span>Descuento por pagar en efectivo</span>
-          <b className="numero">{off === "" ? "—" : `${Number(off).toFixed(1)}%`}</b>
-          {ahorro !== null && ahorro > 0 && (
-            <span className="ahorro">
-              · el cliente ahorra <b>{pesos(ahorro)}</b>
-            </span>
-          )}
-          {usaEfectivo && nEfectivo > 0 && <span className="ahorro">· paga {pesos(nEfectivo)}</span>}
-        </div>
-
-        <p className="cam-nota">
+        <p className="cam-var">
           {offDeHoy !== null
-            ? `Es el mismo ${offDeHoy.toFixed(1)}% que tenías. Al mover la góndola, el efectivo se acomoda solo para mantenerlo.`
-            : "Todavía no tenés precio en efectivo. Si cargás uno, el descuento queda fijo y se mantiene cuando cambies la góndola."}{" "}
-          Podés escribir en pesos o en porcentaje, y lo otro se calcula solo.
+            ? `Venías con ${offDeHoy.toFixed(1)}%: si no lo tocás, se mantiene solo cuando movés la góndola.`
+            : "Todavía no tenés precio en efectivo. Si cargás uno, el descuento queda fijo y se mantiene cuando cambies la góndola."}
+          {ahorro !== null && ahorro > 0 && (
+            <>
+              {" "}
+              El cliente ahorra <b>{pesos(ahorro)}</b> pagando en efectivo.
+            </>
+          )}
         </p>
 
         {efectivoMalo && (
           <p className="cam-var fuerte">El efectivo no puede ser mayor al precio de góndola.</p>
         )}
 
-        {/* Lo que gana con estos precios, por medio de pago. No es "precio
-            menos costo": de lo que paga el cliente salen la comisión, su IVA,
-            Mercado Pago y los impuestos. Mostrarle un margen ingenuo se le
-            caería en la primera liquidación. */}
-        {conTarjeta && (
-          <div className="cam-gana">
-            <ColumnaGana m={conTarjeta} titulo="Con tarjeta o QR" principal />
-            {conEfectivo && (
-              <ColumnaGana m={conEfectivo} titulo={`En efectivo · −${Number(off || 0).toFixed(1)}%`} />
-            )}
-          </div>
-        )}
+        {/* Lo que gana con estos precios. Es el mismo panel de Mis productos
+            —ver components/PanelReparto.tsx— y no una versión propia: cuando
+            la marca y WiiGo discuten un precio, discuten mirando el mismo
+            dibujo. De paso aparece SIRCREB, que acá se descontaba de la
+            transferencia sin figurar en la lista. */}
+        {conTarjeta &&
+          (p.costo !== null ? (
+            <PanelReparto
+              credito={conTarjeta}
+              efectivo={conEfectivo}
+              costo={p.costo}
+              titulo="A dónde va cada peso · con los precios nuevos"
+            />
+          ) : (
+            <PanelSinCosto credito={conTarjeta} efectivo={conEfectivo} donde="Mis productos" />
+          ))}
 
         {/* El aviso que evita la sorpresa: un descuento de efectivo más
-            grande que las comisiones que ahorra le deja MENOS, no más. */}
+            grande que las comisiones que ahorra le deja MENOS, no más. El
+            panel dice CUÁNTO; esto dice POR QUÉ, que es lo que hace falta
+            para decidir si bajarlo. */}
         {conTarjeta?.leQueda != null && conEfectivo?.leQueda != null && conEfectivo.leQueda < conTarjeta.leQueda && (
           <p className="cam-var fuerte">
-            En efectivo te queda {pesos(conTarjeta.leQueda - conEfectivo.leQueda)} menos por unidad: el
-            descuento es más grande que las comisiones que te ahorrás. No está mal —el efectivo vende
-            más— pero conviene saberlo antes.
+            El descuento es más grande que las comisiones que te ahorrás, por eso en efectivo te queda
+            menos. No está mal —el efectivo vende más— pero conviene saberlo antes.
           </p>
         )}
       </div>
@@ -2235,132 +2178,12 @@ function RepartoAlta({
   );
   if (!conCredito || !conEfectivo) return null;
 
-  const qC = conCredito.leQueda ?? 0;
-  const qE = conEfectivo.leQueda ?? 0;
-
-  return (
-    <div className="cam-reparto">
-      <p className="et">A dónde va cada peso que paga el cliente</p>
-      <div className="cam-reparto-duo">
-        <ColumnaAlta m={conCredito} costo={costo} corto="Crédito" gana={qC >= qE} />
-        <ColumnaAlta m={conEfectivo} costo={costo} corto="Efectivo" gana={qE > qC} />
-      </div>
-
-      {/* El desglose, igual que en Mis productos. Sin esto, la dona dice
-          cuánto le queda pero no por qué: de los $6.000 que paga el cliente,
-          dónde se fueron los otros $3.019. */}
-      <table className="cam-reparto-tabla">
-        <thead>
-          <tr>
-            <th>Cada peso va a</th>
-            <th>Crédito</th>
-            <th>Efectivo</th>
-          </tr>
-        </thead>
-        <tbody>
-          {partesDe(conCredito, costo).map((x, i) => {
-            const y = partesDe(conEfectivo, costo)[i];
-            const esQueda = i === 4;
-            return (
-              <tr key={x.k} className={esQueda ? "queda" : ""}>
-                <td>
-                  <span className="k">
-                    <i className="llave" style={{ background: x.c }} />
-                    {x.k}
-                  </span>
-                </td>
-                <td>{pesos(x.v)}</td>
-                <td>{pesos(y.v)}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-
-      <p className="cam-reparto-pie">
-        {/* `pesos()` ya trae el signo: ponerle otro daba "$$3.137,00". */}
-        Por cada unidad te quedan <b>{pesos(qE)}</b> en efectivo y <b>{pesos(qC)}</b> con crédito. De ahí
-        todavía salen tus impuestos y tus gastos, que WiiGo no calcula.
-      </p>
-    </div>
-  );
-}
-
-/**
- * Los cinco pedazos del precio, y suman el precio exacto.
- *
- * Una sola función para la dona y para la tabla: si cada una armara su lista,
- * el día que cambie un concepto el dibujo y el detalle dirían cosas distintas.
- * Sin pedazo de IVA, igual que en Mis productos: WiiGo le factura a ELLA la
- * comisión y cuánto IVA le toca depende de cómo facture.
- */
-function partesDe(m: MargenSimulado, costo: number) {
-  return [
-    { k: "Costo mercadería", c: "#8a9a78", v: costo },
-    { k: "Comisión WiiGo + IVA", c: "#536243", v: m.comisionWiigo + m.ivaComision },
-    { k: "Otros costos", c: "#bd8f3e", v: m.comisionMp + m.impCreditos + m.impDebitos },
-    { k: "SIRCREB", c: "#b4bcc6", v: m.sircreb },
-    { k: "Te queda a vos", c: "#4c8459", v: m.leQueda ?? 0 },
-  ];
-}
-
-function ColumnaAlta({
-  m,
-  costo,
-  corto,
-  gana,
-}: {
-  m: MargenSimulado;
-  costo: number;
-  corto: string;
-  gana: boolean;
-}) {
-  const queda = m.leQueda ?? 0;
-  const partes = partesDe(m, costo);
-
-  const R = 38;
-  const C = 2 * Math.PI * R;
-  const HUECO = C * (2.2 / 360);
-  const total = partes.reduce((a, p) => a + Math.max(p.v, 0), 0);
-  let acum = 0;
-
-  return (
-    <div className={gana ? "gana" : undefined}>
-      <span className="cam-sello">{corto}</span>
-      <div className="cam-dona">
-        <svg viewBox="0 0 102 102" width="102" height="102" aria-hidden="true">
-          <circle cx="51" cy="51" r={R} fill="none" stroke="#eef0e9" strokeWidth="13" />
-          <g transform="rotate(-90 51 51)">
-            {partes.map((p, i) => {
-              const por = total > 0 ? Math.max(p.v, 0) / total : 0;
-              const largo = Math.max(por * C - HUECO, 0.1);
-              const off = -(acum * C + HUECO / 2);
-              acum += por;
-              return (
-                <circle
-                  key={i}
-                  cx="51"
-                  cy="51"
-                  r={R}
-                  fill="none"
-                  stroke={p.c}
-                  strokeWidth="13"
-                  strokeLinecap="round"
-                  strokeDasharray={`${largo} ${C - largo}`}
-                  strokeDashoffset={off}
-                />
-              );
-            })}
-          </g>
-        </svg>
-        <div className="centro">
-          <b>${Math.round(queda).toLocaleString("es-AR")}</b>
-          <span>te queda</span>
-        </div>
-      </div>
-      <p className="cam-reparto-cobra">el cliente paga {pesos(m.precio)}</p>
-    </div>
-  );
+  // El mismo componente que Mis productos y que Precios. Acá había una
+  // tercera versión del mismo dibujo —otra dona, otra tabla, otros tamaños—
+  // escrita a mano. Tres pantallas explicando la misma cuenta de tres formas
+  // obligan a aprenderla tres veces, y el día que no coinciden la marca deja
+  // de creerle a las tres.
+  return <PanelReparto credito={conCredito} efectivo={conEfectivo} costo={costo} />;
 }
 
 // ---------- Historial ----------
