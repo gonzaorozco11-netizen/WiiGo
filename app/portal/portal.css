@@ -2234,20 +2234,60 @@
 }
 .rep-buscar:focus-within { border-color: var(--salvia); box-shadow: 0 0 0 3px var(--salvia-tenue); }
 
-/* En la lista plana el nombre del producto solo no dice en que cajon va. */
-.rep-gon-chip {
-  display: inline-block; margin-left: 7px; font-size: 10.5px; font-weight: 600;
-  color: var(--texto-2); background: var(--superficie-2); border-radius: 999px;
-  padding: 1px 8px; white-space: nowrap;
+/* Los dos bloques de "A mano": los resultados de la busqueda y el envio que
+   se esta armando. Lista y no tabla: cada item tiene su contador, su chip y
+   a veces un aviso abajo, y en una tabla eso pelea con las columnas. */
+.rep-bloque {
+  border: 1px solid var(--borde); border-radius: 13px; overflow: hidden;
+  background: var(--superficie); margin-bottom: 12px;
+}
+.rep-bloque-cab {
+  padding: 8px 14px; background: var(--superficie-2); border-bottom: 1px solid var(--borde);
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--texto-3); display: flex; justify-content: space-between; gap: 12px;
+}
+/* El envio que se esta armando se distingue del resultado de la busqueda: es
+   lo que de verdad se va a mandar. */
+.rep-bloque.envio { border-color: var(--borde-fuerte); }
+.rep-bloque.envio .rep-bloque-cab {
+  background: var(--verde-tenue); color: #3f4d33; border-bottom-color: #dbe5d5;
 }
 
-/* El renglon de aclaracion debajo de una fila. Va pegado a su fila y no al
-   pie porque es sobre ESE producto. */
-.rep-nota-fila td {
-  font-size: 11.5px; color: #4f5c43; background: #f7faf3; line-height: 1.45;
-  padding: 6px 14px 8px; border-bottom: 1px solid #f1f3ec;
+.rep-lista { list-style: none; }
+.rep-lista > li {
+  display: flex; align-items: center; gap: 12px; padding: 9px 14px;
+  border-bottom: 1px solid #f1f3ec;
 }
-.rep-nota-fila.ojo td { color: #8a7340; background: var(--ocre-tenue); }
+.rep-lista > li:last-child { border-bottom: 0; }
+.rep-lista > li.conaviso { border-bottom: 0; padding-bottom: 4px; }
+.rep-lista .nom { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 500; }
+.rep-lista .nom small {
+  display: block; font-size: 11.5px; color: var(--texto-3); font-weight: 400; margin-top: 1px;
+}
+.rep-lista .rep-cant { flex: none; }
+.rep-quitar {
+  background: none; border: 0; font: inherit; font-size: 12px; font-weight: 600;
+  color: var(--texto-3); text-decoration: underline; cursor: pointer; flex: none;
+}
+.rep-quitar:hover { color: var(--rojo); }
+
+/* El aviso del tope, pegado a su producto: es sobre ESE renglon, no sobre el
+   envio. El del pie dice el total; este dice de donde sale. */
+.rep-aviso-item { display: block; padding: 0 14px 10px; border-bottom: 1px solid #f1f3ec; }
+.rep-aviso-item:last-child { border-bottom: 0; }
+.rep-aviso-item p {
+  font-size: 11.5px; color: #8a7340; background: var(--ocre-tenue); border: 1px solid #eee0c6;
+  border-radius: 9px; padding: 7px 11px; line-height: 1.45;
+}
+
+/* Lo que quedo afuera de la busqueda porque ya lo pide Recomendado. Se dice
+   cual y por que: ocultarlo en silencio hace que la marca busque algo, no lo
+   vea, y crea que no lo tiene cargado. */
+.rep-yaesta {
+  font-size: 12px; color: var(--texto-2); background: var(--superficie-2);
+  padding: 9px 14px; line-height: 1.45; border-top: 1px solid #f1f3ec;
+}
+.rep-nota.ojo { color: #8a7340; }
 
 .rep-envios { list-style: none; display: flex; flex-direction: column; gap: 9px; }
 .rep-envio { background: var(--superficie); border: 1px solid var(--borde); border-radius: 13px; overflow: hidden; }

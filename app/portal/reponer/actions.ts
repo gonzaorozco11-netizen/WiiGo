@@ -39,6 +39,14 @@ export type RenglonReponer = {
   /** Lo máximo que puede entrar sin que lo tenga que aprobar WiiGo. */
   tope: number;
   estado: "AGOTADO" | "BAJO" | "OK";
+  /**
+   * Precio de góndola, para valorizar un envío armado a mano.
+   *
+   * El `valorizado` de arriba solo sirve para la sugerencia; con la lista
+   * hecha a mano la pantalla tiene que poder sumar lo suyo sin volver al
+   * servidor por cada clic en el +.
+   */
+  precio: number;
 };
 
 export type GondolaReponer = {
@@ -163,6 +171,7 @@ export async function miReposicion(): Promise<DatosReponer | null> {
       sugerido,
       tope: topeDeVariante(objetivo),
       estado,
+      precio: prod.precio,
     };
     porGondola.set(prod.gondola, [...(porGondola.get(prod.gondola) ?? []), fila]);
   }
