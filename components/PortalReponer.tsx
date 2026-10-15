@@ -134,6 +134,17 @@ export default function PortalReponer({
     [manual]
   );
 
+  /** Lo que la marca tiene parado en la góndola, a precio de venta. */
+  const enGondola = useMemo(() => {
+    let unidades = 0;
+    let valorizado = 0;
+    for (const r of porId.values()) {
+      unidades += r.stock;
+      valorizado += r.stock * r.precio;
+    }
+    return { unidades, valorizado };
+  }, [porId]);
+
   // Se manda el borrador de la solapa en la que estás, y el botón lo dice.
   const aMandar = solapa === "AMANO" ? manualAMandar : recoAMandar;
   const unidades = aMandar.reduce((a, i) => a + i.cantidad, 0);
@@ -297,13 +308,17 @@ export default function PortalReponer({
                   : "No llegan a la próxima recepción"}
           </small>
         </div>
+        {/* Acá iba "Este envío", con las mismas unidades y los mismos pesos
+            que el pie de abajo. El mismo número dos veces en la misma
+            pantalla, y el del pie es el que no se puede mover: está pegado al
+            botón, que es donde se decide.
+            Lo que no estaba en ningún lado es ESTO: cuánta plata de la marca
+            está parada en la góndola. Y al lado de lo que pide Recomendado,
+            es la comparación que importa. */}
         <div className="rep-num total">
-          <span>Este envío</span>
-          <b>{unidades} u.</b>
-          {/* Calculado con lo que hay puesto AHORA y no con el valorizado que
-              trajo el servidor: ese es el de la sugerencia y se quedaba
-              viejo apenas la marca tocaba una cantidad. */}
-          <small>{pesos(valorizado)} a precio de venta</small>
+          <span>En góndola hoy</span>
+          <b>{enGondola.unidades} u.</b>
+          <small>{pesos(enGondola.valorizado)} tuyos en el local</small>
         </div>
       </div>
       )}
