@@ -6,6 +6,7 @@ import { recepcionarOrden } from "@/app/(app)/reposicion/actions";
 import { ESTADO_ESTILO } from "@/components/ReposicionApp";
 import { estaAbierta, etiquetaEstado, RECIBIDA_PARCIAL } from "@/lib/estadosOrden";
 import { CampoRemito } from "@/components/RemitoRecepcion";
+import { MOTIVOS_FALTANTE } from "@/lib/recepcionDiferencias";
 
 // El gemelo de RecepcionCompraModal, para lo que mandan las marcas.
 // Mismas reglas: se carga lo que llegó AHORA, y si falta algo el pedido
@@ -40,6 +41,9 @@ export default function RecepcionModal({
   const [recibidos, setRecibidos] = useState<Record<string, number>>(
     Object.fromEntries(detalle.map((d) => [d.id_detalle, faltaDe(d)]))
   );
+  // Por qué entró menos. Es lo único que decide quien abre la caja, y sin
+  // esto la marca lee «faltan 6» como «no lo mandaste».
+  const [motivos, setMotivos] = useState<Record<string, string>>({});
 
   const totalSolicitado = detalle.reduce((acc, d) => acc + (d.cantidad_solicitada ?? 0), 0);
   const totalYaRecibido = detalle.reduce((acc, d) => acc + (d.cantidad_recibida ?? 0), 0);
@@ -63,6 +67,7 @@ export default function RecepcionModal({
             idVariante: d.id_variante,
             cantidadSolicitada: d.cantidad_solicitada,
             cantidadRecibida: recibidos[d.id_detalle] ?? 0,
+            motivoFaltante: motivos[d.id_detalle] || null,
           })),
           observaciones,
           remito
@@ -172,6 +177,14 @@ export default function RecepcionModal({
                           <span className="text-neutral-900">{previo}</span>
                         ) : yaCerrado ? (
                           <span className="text-neutral-400 text-xs">cerrado</span>
+                        ) : previo + ahora > pedido ? (
+                          /* Antes decía "✓ completo" igual que si hubiera
+                             llegado justo, así que un error de tipeo pasaba
+                             derecho y nadie se enteraba del excedente hasta
+                             el inventario. */
+                          <span className="text-amber-700 font-semibold text-xs">
+                            +{previo + ahora - pedido} de más
+                          </span>
                         ) : pendiente === 0 ? (
                           <span className="text-emerald-600 font-semibold text-xs">✓ completo</span>
                         ) : (
@@ -181,6 +194,63 @@ export default function RecepcionModal({
                     </tr>
                   );
                 })}
+                {/* Las explicaciones van en una fila aparte y no al lado del
+                    número: la tabla se lee de un vistazo para contar, y un
+                    párrafo adentro de la celda rompe esa lectura. */}
+                {abierta &&
+                  detalle.map((d) => {
+                    const pedido = d.cantidad_solicitada ?? 0;
+                    const previo = d.cantidad_recibida ?? 0;
+                    const ahora = recibidos[d.id_detalle] ?? 0;
+                    const total = previo + ahora;
+                    const nombre = nombrePorVariante.get(d.id_variante) ?? "—";
+
+                    if (total > pedido) {
+                      return (
+                        <tr key={`n-${d.id_detalle}`} className="bg-amber-50">
+                          <td colSpan={esSegundaVuelta ? 5 : 4} className="px-3 py-2">
+                            <p className="text-xs text-amber-800 leading-relaxed">
+                              <b>{nombre}: llegaron {total - pedido} de más.</b> Recibilas igual — entran
+                              a la góndola y quedan avisadas para que administración decida si se
+                              quedan.
+                            </p>
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    if (ahora < pedido - previo) {
+                      return (
+                        <tr key={`n-${d.id_detalle}`} className="bg-red-50">
+                          <td colSpan={esSegundaVuelta ? 5 : 4} className="px-3 py-2">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs text-red-800">
+                                <b>{nombre}:</b> faltan {pedido - previo - ahora}. ¿Por qué?
+                              </span>
+                              <select
+                                value={motivos[d.id_detalle] ?? ""}
+                                onChange={(e) =>
+                                  setMotivos((prev) => ({ ...prev, [d.id_detalle]: e.target.value }))
+                                }
+                                className="rounded-lg border border-red-300 bg-white px-2 py-1 text-xs text-red-800"
+                              >
+                                <option value="">Elegí un motivo</option>
+                                {MOTIVOS_FALTANTE.map((m) => (
+                                  <option key={m.clave} value={m.clave}>
+                                    {m.etiqueta}
+                                  </option>
+                                ))}
+                              </select>
+                              <span className="text-[11px] text-red-700">
+                                La marca ve esto. Sin motivo lee «no lo mandaste».
+                              </span>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    }
+                    return null;
+                  })}
               </tbody>
               <tfoot>
                 <tr className="bg-neutral-50 border-t border-neutral-200 font-semibold tabular-nums">

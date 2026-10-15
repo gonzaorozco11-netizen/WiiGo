@@ -21,6 +21,7 @@ import {
   SEMANAS_COBERTURA,
   type SugerenciaVariante,
 } from "@/lib/reposicionSugerida";
+import { esMotivoValido, esResolucionValida } from "@/lib/recepcionDiferencias";
 
 async function usuarioActual() {
   const cookieStore = await cookies();
@@ -669,9 +670,135 @@ export async function rechazarPropuesta(
   }
 }
 
+export type ExcedentePendiente = {
+  idDetalleRecepcion: string;
+  idOrden: string;
+  marca: string;
+  producto: string;
+  anunciadas: number;
+  llegaron: number;
+  deMas: number;
+  recibidaEl: string;
+  recibidaPor: string | null;
+};
+
+/**
+ * Lo que llegó de más y todavía nadie resolvió.
+ *
+ * Es tu bandeja, no la de la operativa: ella cuenta, vos decidís si se queda.
+ * La mercadería ya está en la góndola —entró al stock al recibirla— así que
+ * esto no es "aceptar o no": es si se queda o la marca la retira.
+ */
+export async function excedentesPendientes(): Promise<ExcedentePendiente[]> {
+  try {
+    const supabase = getSupabaseServerClient();
+
+    const { data, error } = await supabase
+      .from("detalle_recepciones")
+      .select("id_detalle_recepcion, id_recepcion, id_orden, id_variante, cantidad_solicitada, cantidad_recibida, diferencia")
+      .eq("resolucion_excedente", "PENDIENTE")
+      .order("id_detalle_recepcion", { ascending: false })
+      .limit(60);
+    // Sin la columna todavía creada no hay nada que resolver: la bandeja sale
+    // vacía en vez de romper la pantalla entera.
+    if (error || !data || data.length === 0) return [];
+
+    const idsRecepcion = [...new Set(data.map((d) => d.id_recepcion as string))];
+    const idsVariante = [...new Set(data.map((d) => d.id_variante as string))];
+
+    const [{ data: recepciones }, { data: variantes }] = await Promise.all([
+      supabase.from("recepciones").select("id_recepcion, fecha, usuario, id_marca").in("id_recepcion", idsRecepcion),
+      supabase.from("variantes_producto").select("id_variante, nombre, productos(nombre)").in("id_variante", idsVariante),
+    ]);
+
+    const idsMarca = [...new Set((recepciones ?? []).map((r) => r.id_marca as string).filter(Boolean))];
+    const { data: marcas } = idsMarca.length
+      ? await supabase.from("marcas").select("id_marca, nombre").in("id_marca", idsMarca)
+      : { data: [] as Record<string, unknown>[] };
+
+    const nombreMarca = new Map((marcas ?? []).map((m) => [m.id_marca as string, m.nombre as string]));
+    const recepcionPorId = new Map((recepciones ?? []).map((r) => [r.id_recepcion as string, r]));
+    const nombreVariante = new Map(
+      (variantes ?? []).map((v) => {
+        const prod = ((v.productos as { nombre?: string } | null)?.nombre as string) ?? "Producto";
+        const vari = (v.nombre as string) ?? "";
+        return [v.id_variante as string, vari && vari !== "Único" ? `${prod} — ${vari}` : prod];
+      })
+    );
+
+    return data.map((d) => {
+      const r = recepcionPorId.get(d.id_recepcion as string);
+      return {
+        idDetalleRecepcion: d.id_detalle_recepcion as string,
+        idOrden: d.id_orden as string,
+        marca: nombreMarca.get((r?.id_marca as string) ?? "") ?? "Marca",
+        producto: nombreVariante.get(d.id_variante as string) ?? "Producto",
+        anunciadas: (d.cantidad_solicitada as number) ?? 0,
+        llegaron: (d.cantidad_recibida as number) ?? 0,
+        deMas: (d.diferencia as number) ?? 0,
+        recibidaEl: (r?.fecha as string) ?? "",
+        recibidaPor: (r?.usuario as string) ?? null,
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Resolver un excedente: se queda, o la marca lo retira.
+ *
+ * NO toca el stock. La mercadería entró al recibirla y sigue ahí: si se
+ * devuelve, la salida se carga cuando se entrega de verdad, igual que
+ * cualquier otro movimiento. Descontarla acá dejaría el stock mintiendo
+ * mientras la caja sigue en el depósito.
+ */
+export async function resolverExcedente(
+  idDetalleRecepcion: string,
+  resolucion: string
+): Promise<{ error: string | null }> {
+  if (!esResolucionValida(resolucion) || resolucion === "PENDIENTE") {
+    return { error: "Elegí si se queda o si la marca la retira." };
+  }
+  try {
+    const supabase = getSupabaseServerClient();
+    const usuario = await usuarioActual();
+
+    const { error } = await supabase
+      .from("detalle_recepciones")
+      .update({
+        resolucion_excedente: resolucion,
+        resuelto_el: new Date().toISOString(),
+        resuelto_por: usuario,
+      })
+      .eq("id_detalle_recepcion", idDetalleRecepcion)
+      // Que siga pendiente: si dos personas lo resuelven a la vez, queda la
+      // primera y la segunda ve el resultado en vez de pisarlo.
+      .eq("resolucion_excedente", "PENDIENTE");
+    if (error) return { error: friendlyDbError(error) };
+
+    revalidatePath("/compras");
+    revalidatePath("/portal/reponer");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo resolver" };
+  }
+}
+
 export async function recepcionarOrden(
   idOrden: string,
-  items: { idDetalle: string; idVariante: string; cantidadSolicitada: number; cantidadRecibida: number }[],
+  items: {
+    idDetalle: string;
+    idVariante: string;
+    cantidadSolicitada: number;
+    cantidadRecibida: number;
+    /**
+     * Por qué entró menos. Lo elige quien abre la caja y es lo único que
+     * decide: sin esto la marca lee «faltan 6» como «no lo mandaste», cuando
+     * en realidad llegó dañado y volvió con su repartidor.
+     */
+    motivoFaltante?: string | null;
+  }[],
   observaciones: string,
   /** El remito que trajo la marca. Opcional. */
   comprobante?: File | null
@@ -740,7 +867,7 @@ export async function recepcionarOrden(
 
     // El renglón de la recepción guarda solo lo que llegó AHORA: es el
     // registro de esta entrega puntual, con su fecha y su remito.
-    const { error: errorDetalleRecepcion } = await supabase.from("detalle_recepciones").insert({
+    const base = {
       id_recepcion: recepcion.id_recepcion,
       id_orden: idOrden,
       id_variante: item.idVariante,
@@ -748,7 +875,34 @@ export async function recepcionarOrden(
       cantidad_recibida: item.cantidadRecibida,
       estado_control: estadoControl,
       diferencia,
-    });
+    };
+
+    // El motivo solo cuando faltó, y la resolución solo cuando sobró: null es
+    // "este renglón no tiene ese problema". Marcar todos como PENDIENTE
+    // llenaría la bandeja de trabajo que no existe.
+    const extras = {
+      ...(diferencia < 0 && esMotivoValido(item.motivoFaltante)
+        ? { motivo_faltante: item.motivoFaltante }
+        : {}),
+      ...(diferencia > 0 ? { resolucion_excedente: "PENDIENTE" } : {}),
+    };
+
+    // Si todavía no se corrió sql/recepcion-diferencias.sql, la recepción se
+    // guarda igual sin esas columnas: que no se pueda recibir mercadería por
+    // una migración pendiente sería mucho peor que perder el detalle.
+    let errorDetalleRecepcion = null;
+    if (Object.keys(extras).length > 0) {
+      const r = await supabase.from("detalle_recepciones").insert({ ...base, ...extras });
+      if (r.error && (r.error.code === "42703" || r.error.code === "PGRST204")) {
+        const r2 = await supabase.from("detalle_recepciones").insert(base);
+        errorDetalleRecepcion = r2.error;
+      } else {
+        errorDetalleRecepcion = r.error;
+      }
+    } else {
+      const r = await supabase.from("detalle_recepciones").insert(base);
+      errorDetalleRecepcion = r.error;
+    }
     if (errorDetalleRecepcion) return { error: friendlyDbError(errorDetalleRecepcion) };
 
     if (item.cantidadRecibida > 0) {
