@@ -18,6 +18,7 @@ import {
   puedeProponerEvento,
   rangoCorto,
   rangoLargo,
+  type MesAlmanaque,
 } from "@/lib/eventos";
 import { NIVEL } from "@/lib/planesMarca";
 import { pedirCambioDePlan } from "@/app/portal/cambios/actions";
@@ -36,8 +37,15 @@ const DOW = ["L", "M", "M", "J", "V", "S", "D"];
 
 export default function PortalCalendario({ datos }: { datos: CalendarioPortal }) {
   const router = useRouter();
-  const [proponiendo, setProponiendo] = useState(false);
+  // `null` = cerrado. Un string = abierto con esa fecha ya puesta: la marca
+  // acaba de señalar el día con el dedo, pedirle que lo elija de nuevo en un
+  // selector es hacerle repetir lo que ya dijo.
+  const [proponiendo, setProponiendo] = useState<string | null>(null);
   const [mostrandoGold, setMostrandoGold] = useState(false);
+  // El día que está mirando. El almanaque deja de ser un dibujo: se toca un
+  // día y dice qué pasa, incluso cuando no pasa nada — que es el caso más
+  // frecuente y justo cuando la marca quiere proponer algo.
+  const [dia, setDia] = useState<string | null>(null);
   const puedeProponer = puedeProponerEvento(datos.plan);
 
   // El destacado es el primero sobre el que todavía puede hacer algo; si no
@@ -64,7 +72,7 @@ export default function PortalCalendario({ datos }: { datos: CalendarioPortal })
         <button
           type="button"
           className={`cal-proponer${puedeProponer ? "" : " trabado"}`}
-          onClick={() => (puedeProponer ? setProponiendo(true) : setMostrandoGold(true))}
+          onClick={() => (puedeProponer ? setProponiendo("") : setMostrandoGold(true))}
         >
           + Proponer un evento
           {!puedeProponer && <span className="medalla">Gold</span>}
@@ -115,11 +123,21 @@ export default function PortalCalendario({ datos }: { datos: CalendarioPortal })
                     {d}
                   </span>
                 ))}
-                {m.celdas.map((c, i) => (
-                  <span className={c.clase} key={i}>
-                    {c.t}
-                  </span>
-                ))}
+                {m.celdas.map((c, i) =>
+                  c.iso === "" ? (
+                    <span className={c.clase} key={i} />
+                  ) : (
+                    <button
+                      type="button"
+                      className={`${c.clase}${dia === c.iso ? " sel" : ""}`}
+                      key={i}
+                      aria-pressed={dia === c.iso}
+                      onClick={() => setDia(dia === c.iso ? null : c.iso)}
+                    >
+                      {c.t}
+                    </button>
+                  )
+                )}
               </div>
               {/* Con el nombre y no solo marcados: para preparar una promo
                   hay que saber QUÉ se festeja ese día, y en el teléfono no
@@ -136,6 +154,17 @@ export default function PortalCalendario({ datos }: { datos: CalendarioPortal })
             </div>
           ))}
         </div>
+
+        {dia && (
+          <PanelDia
+            iso={dia}
+            eventos={datos.eventos}
+            almanaque={datos.almanaque}
+            puedeProponer={puedeProponer}
+            onCerrar={() => setDia(null)}
+            onProponer={() => (puedeProponer ? setProponiendo(dia) : setMostrandoGold(true))}
+          />
+        )}
       </section>
 
       <p className="cal-pie">
@@ -143,7 +172,16 @@ export default function PortalCalendario({ datos }: { datos: CalendarioPortal })
         te ocurre algo para tu marca, proponelo — lo revisamos como cualquier otra solicitud.
       </p>
 
-      {proponiendo && <ModalProponer onCerrar={() => setProponiendo(false)} onListo={() => { setProponiendo(false); router.refresh(); }} />}
+      {proponiendo !== null && (
+        <ModalProponer
+          fechaInicial={proponiendo}
+          onCerrar={() => setProponiendo(null)}
+          onListo={() => {
+            setProponiendo(null);
+            router.refresh();
+          }}
+        />
+      )}
       {mostrandoGold && <ModalGold onCerrar={() => setMostrandoGold(false)} />}
     </main>
   );
@@ -389,12 +427,110 @@ function Botones({ e, onListo, grande }: { e: EventoPortal; onListo: () => void;
   );
 }
 
-function ModalProponer({ onCerrar, onListo }: { onCerrar: () => void; onListo: () => void }) {
+/**
+ * Qué pasa el día que la marca tocó.
+ *
+ * Abajo del almanaque y no en una ventana: en el celular una ventana para
+ * decir "no hay nada" es demasiado, y así la grilla queda a la vista con el
+ * día marcado mientras se lee — se puede tocar otro sin cerrar nada.
+ *
+ * El día VACÍO es el caso más frecuente y el que más importa: es justo cuando
+ * la marca quiere proponer algo, porque buscó un día libre y lo encontró.
+ */
+function PanelDia({
+  iso,
+  eventos,
+  almanaque,
+  puedeProponer,
+  onCerrar,
+  onProponer,
+}: {
+  iso: string;
+  eventos: EventoPortal[];
+  almanaque: MesAlmanaque[];
+  puedeProponer: boolean;
+  onCerrar: () => void;
+  onProponer: () => void;
+}) {
+  // Un evento de varios días ocupa todos: se busca por rango, no por igualdad.
+  const delDia = eventos.filter((e) => e.fechaDesde <= iso && iso <= e.fechaHasta);
+  const feriado =
+    almanaque.flatMap((m) => m.celdas).find((c) => c.iso === iso)?.feriado ?? null;
+  const [a, m, d] = iso.split("-");
+
+  return (
+    <div className="cal-panel">
+      <div className="cal-panel-cab">
+        <h4>{rangoLargo(iso, iso)}</h4>
+        <button type="button" className="cerrar" onClick={onCerrar}>
+          Cerrar
+        </button>
+      </div>
+
+      <div className="cal-panel-cuerpo">
+        {feriado && (
+          <div className="cal-panel-item">
+            <span className="barra fer" />
+            <span>
+              <span className="t fer">Feriado nacional</span>
+              <h5>{feriado}</h5>
+              <p>
+                No lo pone WiiGo: es feriado en todo el país. Si el local abre o no, lo vas a ver
+                acá mismo cuando esté cargado.
+              </p>
+            </span>
+          </div>
+        )}
+
+        {delDia.map((e) => (
+          <div className="cal-panel-item" key={e.idEvento}>
+            <span className={`barra ${CLASE_TIPO[e.tipo]}`} />
+            <span>
+              <span className={`t ${CLASE_TIPO[e.tipo]}`}>{ETIQUETA_TIPO[e.tipo]}</span>
+              <h5>{e.nombre}</h5>
+              <p>
+                {horario(e.horaDesde, e.horaHasta) || "Todo el día"}
+                {e.fechaDesde !== e.fechaHasta && ` · ${rangoCorto(e.fechaDesde, e.fechaHasta)}`}
+                {e.cupo != null && ` · cupo para ${e.cupo} marcas`}
+                {e.puedoAnotarme && " · te podés anotar"}
+              </p>
+            </span>
+          </div>
+        ))}
+
+        {!feriado && delDia.length === 0 && (
+          <p className="cal-panel-nada">
+            No hay nada el {Number(d)}/{Number(m)}/{a.slice(2)}. El local abre normal.
+          </p>
+        )}
+      </div>
+
+      <div className="cal-panel-pie">
+        <span>¿Querés hacer algo tuyo este día?</span>
+        <button type="button" className="cal-btn" onClick={onProponer}>
+          Proponer un evento el {Number(d)}/{Number(m)}
+          {!puedeProponer && <span className="medalla">Gold</span>}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ModalProponer({
+  fechaInicial = "",
+  onCerrar,
+  onListo,
+}: {
+  /** El día que la marca tocó en el almanaque. Vacío = abrió desde el botón. */
+  fechaInicial?: string;
+  onCerrar: () => void;
+  onListo: () => void;
+}) {
   const [nombre, setNombre] = useState("");
   // Casi siempre es un día: una degustación, un lanzamiento. Arrancar en "un
   // solo día" evita que la mayoría tenga que cargar dos fechas iguales.
   const [variosDias, setVariosDias] = useState(false);
-  const [desde, setDesde] = useState("");
+  const [desde, setDesde] = useState(fechaInicial);
   const [hasta, setHasta] = useState("");
   const [horaDesde, setHoraDesde] = useState("");
   const [horaHasta, setHoraHasta] = useState("");

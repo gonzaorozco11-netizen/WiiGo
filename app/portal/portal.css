@@ -2121,17 +2121,13 @@
 .cal-ref { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11.5px; color: var(--texto-2); }
 .cal-ref span { display: flex; align-items: center; gap: 6px; }
 .cal-ref i { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
-.cal-ref i.ev { background: #e3ead9; border: 1px solid #cfdcc0; }
-.cal-ref i.com { background: var(--ocre-tenue); border: 1px solid #eaddb9; }
-.cal-ref i.esp { background: #f0f1ec; border: 1px solid #e0e2da; }
-.cal-ref i.cerr { background: var(--rojo-tenue); border: 1px solid #eccec8; }
-/* El feriado es un punto y no un fondo: un dia puede ser feriado Y tener un
-   evento de WiiGo encima, y el color de la celda se lo lleva el evento, que
-   es lo que pide una decision. */
-.cal-ref i.fer { background: transparent; border: 1px solid var(--borde-fuerte); position: relative; }
-.cal-ref i.fer::after {
-  content: ""; position: absolute; inset: 2.5px; border-radius: 50%; background: #b07fb5;
-}
+/* El mismo color pleno que la celda: la referencia y el dia tienen que ser
+   identicos o hay que aprenderse dos codigos para la misma cosa. */
+.cal-ref i.ev { background: #5e7a4a; }
+.cal-ref i.com { background: #c08a2e; }
+.cal-ref i.esp { background: #8a9484; }
+.cal-ref i.cerr { background: #b2543f; }
+.cal-ref i.fer { background: #9a6aa0; }
 
 .cal-almanaque {
   background: var(--superficie); border: 1px solid var(--borde); border-radius: 12px;
@@ -2145,24 +2141,89 @@
 .cal-almanaque .dow {
   font-size: 9.5px; font-weight: 700; color: #b2b8aa; text-align: center; padding-bottom: 3px;
 }
+/* Cada dia es un boton: se toca y el panel de abajo dice que pasa. El dia
+   VACIO tambien, que es el caso mas frecuente y justo cuando la marca quiere
+   proponer algo. */
 .cal-almanaque .dia {
-  height: 32px; display: flex; align-items: center; justify-content: center;
-  font-family: var(--f-mono); font-size: 12.5px; color: var(--texto-2);
-  border-radius: 7px; border: 1px solid transparent;
+  height: 38px; display: flex; align-items: center; justify-content: center;
+  font: inherit; font-family: var(--f-mono); font-size: 12.5px; color: var(--texto-2);
+  border-radius: 9px; border: 0; background: none; padding: 0; cursor: pointer;
+  position: relative;
 }
+.cal-almanaque .dia:hover { background: #eef1ea; }
 .cal-almanaque .dia.vacio { visibility: hidden; }
-.cal-almanaque .dia.ev { background: #e3ead9; color: #3f4d33; font-weight: 600; border-color: #cfdcc0; }
-.cal-almanaque .dia.com { background: var(--ocre-tenue); color: #6f5418; font-weight: 600; border-color: #eaddb9; }
-.cal-almanaque .dia.esp { background: #f0f1ec; color: #4f5649; font-weight: 600; border-color: #e0e2da; }
-.cal-almanaque .dia.cerr { background: var(--rojo-tenue); color: #8e392d; font-weight: 600; border-color: #eccec8; }
-.cal-almanaque .dia.hoy { box-shadow: 0 0 0 2px var(--salvia-honda); color: var(--texto); font-weight: 700; }
-/* Un puntito abajo del numero, para que convivan: un 25 de diciembre con
-   evento de WiiGo tiene que seguir mostrando las dos cosas. */
-.cal-almanaque .dia.feriado { position: relative; font-weight: 600; }
-.cal-almanaque .dia.feriado::after {
-  content: ""; position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%);
-  width: 4px; height: 4px; border-radius: 50%; background: #b07fb5;
+
+/* COLOR PLENO, no un tinte.
+   La grilla esta casi toda vacia: hay cuatro o cinco dias marcados sobre
+   treinta y uno. Un tinte palido sobre cuatro celdas no se ve, y lo que no se
+   ve no sirve. Con color pleno los marcados saltan y los vacios desaparecen,
+   que es el orden de importancia correcto. */
+.cal-almanaque .dia.marcado { color: #fff; font-weight: 700; }
+.cal-almanaque .dia.marcado:hover { filter: brightness(1.08); background: none; }
+.cal-almanaque .dia.feriado { background: #9a6aa0; }
+.cal-almanaque .dia.ev { background: #5e7a4a; }
+.cal-almanaque .dia.com { background: #c08a2e; }
+.cal-almanaque .dia.esp { background: #8a9484; }
+.cal-almanaque .dia.cerr { background: #b2543f; }
+
+/* Hoy va por dentro para no pelear con el anillo del elegido. */
+.cal-almanaque .dia.hoy { box-shadow: inset 0 0 0 2px var(--salvia-honda); }
+.cal-almanaque .dia.hoy:not(.marcado) { color: var(--texto); font-weight: 700; }
+/* El elegido se levanta: se ve desde el otro lado de la pantalla. */
+.cal-almanaque .dia.sel {
+  box-shadow: 0 0 0 3px var(--texto), 0 6px 14px -4px rgba(42,47,38,.45);
+  transform: translateY(-1px);
 }
+/* Un puntito blanco abajo del numero cuando el dia es dos cosas: el 25 de
+   diciembre es feriado Y el local cierra, y el fondo solo puede mostrar una. */
+.cal-almanaque .dia.feriado.ev::after,
+.cal-almanaque .dia.feriado.com::after,
+.cal-almanaque .dia.feriado.esp::after,
+.cal-almanaque .dia.feriado.cerr::after {
+  content: ""; position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%);
+  width: 4px; height: 4px; border-radius: 50%; background: rgba(255,255,255,.9);
+}
+
+/* El panel del dia elegido. Abajo del almanaque y no en una ventana: en el
+   celular una ventana para decir "no hay nada" es demasiado, y asi la grilla
+   queda a la vista con el dia marcado mientras se lee. */
+.cal-panel {
+  margin-top: 18px; border: 1px solid var(--texto); border-radius: 13px;
+  overflow: hidden; background: var(--superficie);
+}
+.cal-panel-cab {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 14px;
+  flex-wrap: wrap; padding: 11px 15px; background: var(--texto); color: #fff;
+}
+.cal-panel-cab h4 { font-size: 15px; font-weight: 600; }
+.cal-panel-cab .cerrar {
+  background: none; border: 0; font: inherit; font-size: 12px; font-weight: 600;
+  color: var(--borde-fuerte); text-decoration: underline; cursor: pointer;
+}
+.cal-panel-cuerpo { padding: 13px 15px; display: flex; flex-direction: column; gap: 12px; }
+.cal-panel-item { display: flex; gap: 11px; align-items: flex-start; }
+.cal-panel-item .barra { width: 4px; align-self: stretch; border-radius: 3px; flex: none; }
+.cal-panel-item .barra.fer { background: #9a6aa0; }
+.cal-panel-item .barra.ev { background: #5e7a4a; }
+.cal-panel-item .barra.com { background: #c08a2e; }
+.cal-panel-item .barra.esp { background: #8a9484; }
+.cal-panel-item .barra.cerr { background: #b2543f; }
+.cal-panel-item .t {
+  font-size: 10px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase;
+}
+.cal-panel-item .t.fer { color: #7b5280; }
+.cal-panel-item .t.ev { color: #3f4d33; }
+.cal-panel-item .t.com { color: #6f5418; }
+.cal-panel-item .t.esp { color: #4f5649; }
+.cal-panel-item .t.cerr { color: #8e392d; }
+.cal-panel-item h5 { font-size: 14.5px; font-weight: 600; margin-top: 2px; }
+.cal-panel-item p { font-size: 12.5px; color: var(--texto-2); line-height: 1.5; margin-top: 2px; }
+.cal-panel-nada { font-size: 13px; color: var(--texto-3); }
+.cal-panel-pie {
+  padding: 11px 15px; border-top: 1px solid var(--borde); background: var(--superficie-2);
+  display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;
+}
+.cal-panel-pie > span { font-size: 12px; color: var(--texto-3); }
 
 /* Que feriado es. Marcado alcanza para ubicarse; para preparar una promo hay
    que saber que se festeja, y en el telefono no hay hover. */

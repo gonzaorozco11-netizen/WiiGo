@@ -193,7 +193,19 @@ export function rangoLargo(desdeISO: string, hastaISO: string): string {
     : `${dia1} ${d1} de ${MES_LARGO[mes1]} al ${dia2} ${d2} de ${MES_LARGO[mes2]}`;
 }
 
-export type CeldaAlmanaque = { t: string; clase: string };
+export type CeldaAlmanaque = {
+  t: string;
+  clase: string;
+  /**
+   * La fecha de esa celda. Vacía en los huecos del principio del mes.
+   *
+   * Sin esto el almanaque es un dibujo: para que un día se pueda tocar y
+   * decir qué pasa, la celda tiene que saber qué día es.
+   */
+  iso: string;
+  /** El nombre del feriado, si lo hay. Lo demás lo busca la pantalla. */
+  feriado: string | null;
+};
 export type MesAlmanaque = {
   nombre: string;
   celdas: CeldaAlmanaque[];
@@ -256,17 +268,27 @@ export function armarAlmanaque(
 
     const celdas: CeldaAlmanaque[] = [];
     const feriadosDelMes: { dia: number; nombre: string }[] = [];
-    for (let i = 0; i < primero; i++) celdas.push({ t: "", clase: "dia vacio" });
+    for (let i = 0; i < primero; i++)
+      celdas.push({ t: "", clase: "dia vacio", iso: "", feriado: null });
     for (let d = 1; d <= diasDelMes; d++) {
       const iso = `${anio}-${String(mes + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
       const tipo = pintado.get(iso);
-      const feriado = feriados.get(iso);
+      const feriado = feriados.get(iso) ?? null;
       if (feriado) feriadosDelMes.push({ dia: d, nombre: feriado });
       celdas.push({
         t: String(d),
-        // El evento gana el color; el feriado marca igual, con su propia
-        // clase, para que un día que es las dos cosas no pierda ninguna.
-        clase: `dia${tipo ? ` ${tipo}` : ""}${feriado ? " feriado" : ""}${iso === hoyISO ? " hoy" : ""}`,
+        // `marcado` es lo que enciende el color pleno: con la grilla casi
+        // toda vacía, un tinte sobre cuatro celdas de treinta y una no se ve,
+        // y lo que no se ve no sirve.
+        //
+        // El evento se queda con el fondo —es lo que pide una decisión— y el
+        // feriado marca igual con su propia clase, para que un día que es las
+        // dos cosas no pierda ninguna.
+        clase: `dia${tipo || feriado ? " marcado" : ""}${tipo ? ` ${tipo}` : ""}${
+          feriado ? " feriado" : ""
+        }${iso === hoyISO ? " hoy" : ""}`,
+        iso,
+        feriado,
       });
     }
     meses.push({

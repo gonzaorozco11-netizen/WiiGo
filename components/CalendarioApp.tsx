@@ -38,6 +38,9 @@ import { ETIQUETA_PLAN } from "@/lib/planesMarca";
 export default function CalendarioApp({ datos }: { datos: CalendarioAdmin }) {
   const router = useRouter();
   const recargar = () => router.refresh();
+  // El día que se está mirando en el almanaque, con lo que hay abajo. Mismo
+  // comportamiento que del lado de la marca: es el mismo calendario.
+  const [dia, setDia] = useState<string | null>(null);
 
   return (
     <div>
@@ -77,7 +80,12 @@ export default function CalendarioApp({ datos }: { datos: CalendarioAdmin }) {
         <Formulario marcas={datos.marcas} onListo={recargar} />
       </div>
 
-      <Almanaque meses={datos.almanaque} />
+      <Almanaque
+        meses={datos.almanaque}
+        eventos={[...datos.proximos, ...datos.propuestas]}
+        dia={dia}
+        onDia={setDia}
+      />
     </div>
   );
 }
@@ -95,7 +103,17 @@ const DOW = ["L", "M", "M", "J", "V", "S", "D"];
  * lado armara el suyo, el día que cambie un color quedarían dos calendarios
  * distintos del mismo local.
  */
-function Almanaque({ meses }: { meses: MesAlmanaque[] }) {
+function Almanaque({
+  meses,
+  eventos,
+  dia,
+  onDia,
+}: {
+  meses: MesAlmanaque[];
+  eventos: EventoAdmin[];
+  dia: string | null;
+  onDia: (iso: string | null) => void;
+}) {
   return (
     <div className="cal-caja">
       <div className="cal-alm-cab">
@@ -128,11 +146,23 @@ function Almanaque({ meses }: { meses: MesAlmanaque[] }) {
                   {d}
                 </span>
               ))}
-              {m.celdas.map((c, i) => (
-                <span className={c.clase} key={i}>
-                  {c.t}
-                </span>
-              ))}
+              {/* Clickeable igual que del lado de la marca: es el mismo
+                  almanaque y tiene que responder igual al dedo. */}
+              {m.celdas.map((c, i) =>
+                c.iso === "" ? (
+                  <span className={c.clase} key={i} />
+                ) : (
+                  <button
+                    type="button"
+                    className={`${c.clase}${dia === c.iso ? " sel" : ""}`}
+                    key={i}
+                    aria-pressed={dia === c.iso}
+                    onClick={() => onDia(dia === c.iso ? null : c.iso)}
+                  >
+                    {c.t}
+                  </button>
+                )
+              )}
             </div>
             {/* Con el nombre: la marca lo ve igual en su portal, y de los dos
                 lados sirve para lo mismo — preparar la fecha. */}
@@ -147,6 +177,70 @@ function Almanaque({ meses }: { meses: MesAlmanaque[] }) {
             )}
           </div>
         ))}
+      </div>
+
+      {dia && <PanelDia iso={dia} eventos={eventos} meses={meses} onCerrar={() => onDia(null)} />}
+    </div>
+  );
+}
+
+/**
+ * Qué hay el día que se tocó.
+ *
+ * Mismo panel que ve la marca en su portal. Del lado de adentro sirve para lo
+ * que se pregunta antes de cargar algo: "¿el 25 ya tiene algo?". Hoy había que
+ * buscarlo en la lista de arriba.
+ */
+function PanelDia({
+  iso,
+  eventos,
+  meses,
+  onCerrar,
+}: {
+  iso: string;
+  eventos: EventoAdmin[];
+  meses: MesAlmanaque[];
+  onCerrar: () => void;
+}) {
+  // Un evento de varios días ocupa todos: se busca por rango, no por igualdad.
+  const delDia = eventos.filter((e) => e.fechaDesde <= iso && iso <= e.fechaHasta);
+  const feriado = meses.flatMap((m) => m.celdas).find((c) => c.iso === iso)?.feriado ?? null;
+
+  return (
+    <div className="cal-panel">
+      <div className="cal-panel-cab">
+        <h4>{rangoLargo(iso, iso)}</h4>
+        <button type="button" className="cerrar" onClick={onCerrar}>
+          Cerrar
+        </button>
+      </div>
+      <div className="cal-panel-cuerpo">
+        {feriado && (
+          <div className="cal-panel-item">
+            <span className="barra fer" />
+            <span>
+              <span className="t fer">Feriado nacional</span>
+              <h5>{feriado}</h5>
+              <p>No lo cargó nadie: sale calculado. Si ese día el local no abre, cargalo aparte.</p>
+            </span>
+          </div>
+        )}
+        {delDia.map((e) => (
+          <div className="cal-panel-item" key={e.idEvento}>
+            <span className={`barra ${CLASE_TIPO[e.tipo]}`} />
+            <span>
+              <span className={`t ${CLASE_TIPO[e.tipo]}`}>{ETIQUETA_TIPO[e.tipo]}</span>
+              <h5>{e.nombre}</h5>
+              <p>
+                {horario(e.horaDesde, e.horaHasta) || "Todo el día"}
+                {e.fechaDesde !== e.fechaHasta && ` · ${rangoCorto(e.fechaDesde, e.fechaHasta)}`}
+              </p>
+            </span>
+          </div>
+        ))}
+        {!feriado && delDia.length === 0 && (
+          <p className="cal-panel-nada">No hay nada ese día. El local abre normal.</p>
+        )}
       </div>
     </div>
   );

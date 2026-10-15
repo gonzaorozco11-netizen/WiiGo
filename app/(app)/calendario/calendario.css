@@ -127,17 +127,13 @@
 .cal-ref { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11.5px; color: #737373; }
 .cal-ref span { display: flex; align-items: center; gap: 6px; }
 .cal-ref i { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
-.cal-ref i.ev { background: #f0f7f0; border: 1px solid #bbd3bb; }
-.cal-ref i.com { background: #fef7e7; border: 1px solid #f0dfb6; }
-.cal-ref i.esp { background: #f5f5f5; border: 1px solid #e5e5e5; }
-.cal-ref i.cerr { background: #fef2f2; border: 1px solid #fecaca; }
-/* El feriado es un punto y no un fondo: un dia puede ser feriado Y tener un
-   evento de WiiGo encima, y el color de la celda se lo lleva el evento, que
-   es lo que pide una decision. */
-.cal-ref i.fer { background: transparent; border: 1px solid #e5e5e5; position: relative; }
-.cal-ref i.fer::after {
-  content: ""; position: absolute; inset: 2.5px; border-radius: 50%; background: #b07fb5;
-}
+/* El mismo color pleno que la celda: la referencia y el dia tienen que ser
+   identicos o hay que aprenderse dos codigos para la misma cosa. */
+.cal-ref i.ev { background: #4f7a4f; }
+.cal-ref i.com { background: #b5842a; }
+.cal-ref i.esp { background: #8f8f8f; }
+.cal-ref i.cerr { background: #b5453c; }
+.cal-ref i.fer { background: #8e5f9b; }
 
 .cal-almanaque {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 30px;
@@ -151,24 +147,41 @@
   font-size: 9.5px; font-weight: 700; color: #c4c4c4; text-align: center; padding-bottom: 3px;
 }
 .cal-almanaque .dia {
-  height: 32px; display: flex; align-items: center; justify-content: center;
-  font-size: 12.5px; font-variant-numeric: tabular-nums; color: #525252;
-  border-radius: 7px; border: 1px solid transparent;
+  height: 38px; display: flex; align-items: center; justify-content: center;
+  font: inherit; font-size: 12.5px; font-variant-numeric: tabular-nums; color: #525252;
+  border-radius: 9px; border: 0; background: none; padding: 0; cursor: pointer;
+  position: relative;
 }
+.cal-almanaque .dia:hover { background: #f5f5f5; }
 /* Los días que no son de este mes ocupan lugar pero no se ven: sin eso la
    grilla se corre y el 1 cae debajo del día de semana equivocado. */
 .cal-almanaque .dia.vacio { visibility: hidden; }
-.cal-almanaque .dia.ev { background: #f0f7f0; color: #3f6b40; font-weight: 600; border-color: #bbd3bb; }
-.cal-almanaque .dia.com { background: #fef7e7; color: #92600e; font-weight: 600; border-color: #f0dfb6; }
-.cal-almanaque .dia.esp { background: #f5f5f5; color: #525252; font-weight: 600; border-color: #e5e5e5; }
-.cal-almanaque .dia.cerr { background: #fef2f2; color: #b91c1c; font-weight: 600; border-color: #fecaca; }
-.cal-almanaque .dia.hoy { box-shadow: 0 0 0 2px var(--accent); color: #171717; font-weight: 700; }
-/* Un puntito abajo del numero, para que convivan: un 25 de diciembre con
-   evento de WiiGo tiene que seguir mostrando las dos cosas. */
-.cal-almanaque .dia.feriado { position: relative; font-weight: 600; }
-.cal-almanaque .dia.feriado::after {
-  content: ""; position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%);
-  width: 4px; height: 4px; border-radius: 50%; background: #b07fb5;
+
+/* COLOR PLENO, no un tinte. La grilla esta casi toda vacia: un tinte palido
+   sobre cuatro celdas de treinta y una no se ve, y lo que no se ve no sirve.
+   Mismo criterio que el portal — es el mismo almanaque. */
+.cal-almanaque .dia.marcado { color: #fff; font-weight: 700; }
+.cal-almanaque .dia.marcado:hover { filter: brightness(1.08); background: none; }
+.cal-almanaque .dia.feriado { background: #8e5f9b; }
+.cal-almanaque .dia.ev { background: #4f7a4f; }
+.cal-almanaque .dia.com { background: #b5842a; }
+.cal-almanaque .dia.esp { background: #8f8f8f; }
+.cal-almanaque .dia.cerr { background: #b5453c; }
+
+.cal-almanaque .dia.hoy { box-shadow: inset 0 0 0 2px var(--accent); }
+.cal-almanaque .dia.hoy:not(.marcado) { color: #171717; font-weight: 700; }
+.cal-almanaque .dia.sel {
+  box-shadow: 0 0 0 3px #171717, 0 6px 14px -4px rgba(0,0,0,.35);
+  transform: translateY(-1px);
+}
+/* Un puntito blanco cuando el dia es dos cosas: el 25 de diciembre es feriado
+   Y el local cierra, y el fondo solo puede mostrar una. */
+.cal-almanaque .dia.feriado.ev::after,
+.cal-almanaque .dia.feriado.com::after,
+.cal-almanaque .dia.feriado.esp::after,
+.cal-almanaque .dia.feriado.cerr::after {
+  content: ""; position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%);
+  width: 4px; height: 4px; border-radius: 50%; background: rgba(255,255,255,.9);
 }
 
 /* Que feriado es. Marcado alcanza para ubicarse; para preparar una promo hay
