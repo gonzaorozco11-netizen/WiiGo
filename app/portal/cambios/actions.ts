@@ -19,6 +19,7 @@ import {
   type Validacion,
 } from "@/lib/solicitudesMarca";
 import { PLANES, ETIQUETA_PLAN, planIncluye, type PlanMarca } from "@/lib/planesMarca";
+import { costosVigentes } from "@/lib/costosMarca";
 
 // Portal de marcas — el lado que pide.
 //
@@ -124,6 +125,13 @@ export type ProductoPropio = {
   fotos: { ranura: RanuraFoto; url: string | null }[];
   /** Para qué góndola es. Null si todavía no se le asignó ninguna. */
   subcategoria: string | null;
+  /**
+   * Lo que le cuesta el producto a la marca. Null si no lo cargó.
+   *
+   * Sin esto no se puede elegir un precio: nadie decide mirando el precio,
+   * se decide mirando cuánto queda. Es dato suyo — solo lo ven ella y WiiGo.
+   */
+  costo: number | null;
   /** Lo nutricional que ya está cargado, para precargar el formulario. */
   ficha: FichaDeMarca;
   stock: number;
@@ -180,6 +188,8 @@ export async function misProductos(): Promise<ProductoPropio[]> {
     .in("id_producto", ids);
   const fichaDe = new Map((fichas ?? []).map((f) => [f.id_producto as string, f]));
 
+  const costos = await costosVigentes(supabase, sesion.idMarca);
+
   const { data: pendientes } = await supabase
     .from("solicitudes_marca")
     .select("tipo, id_producto")
@@ -215,6 +225,7 @@ export async function misProductos(): Promise<ProductoPropio[]> {
     imagen: (p.imagen as string | null) ?? null,
     fotos,
     subcategoria: ((p.subcategorias as { nombre?: string } | null)?.nombre as string | null) ?? null,
+    costo: costos.get(p.id_producto as string)?.costo ?? null,
     ficha: {
       kcal_100g: null,
       proteinas: null,

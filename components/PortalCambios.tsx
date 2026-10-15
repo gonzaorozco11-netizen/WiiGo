@@ -26,6 +26,8 @@ import {
   type TipoSolicitud,
 } from "@/lib/solicitudesMarca";
 import {
+  precioParaMargen,
+  redondearPrecio,
   simularMargen,
   type CondicionesMarca,
   type MargenSimulado,
@@ -80,6 +82,7 @@ export default function PortalCambios({
   subcategorias = [],
   tasas,
   condiciones,
+  redondeo,
 }: {
   productos: ProductoPropio[];
   solicitudes: SolicitudPropia[];
@@ -89,6 +92,8 @@ export default function PortalCambios({
   /** Para mostrarle el reparto mientras define el precio del producto nuevo. */
   tasas: TasasGenerales;
   condiciones: CondicionesMarca;
+  /** Múltiplo al que se redondea un precio calculado. 0 = sin redondeo. */
+  redondeo: number;
 }) {
   const router = useRouter();
   const [tab, setTab] = useState<"PEDIR" | "MIOS">("PEDIR");
@@ -184,6 +189,9 @@ export default function PortalCambios({
                   key={p.idProducto}
                   p={p}
                   politica={politica}
+                  condiciones={condiciones}
+                  tasas={tasas}
+                  redondeo={redondeo}
                   abierto={abierto === p.idProducto}
                   onAbrir={() => setAbierto(abierto === p.idProducto ? null : p.idProducto)}
                   onListo={() => { setAbierto(null); router.refresh(); }}
@@ -296,12 +304,18 @@ function MisSolicitudes({
 function FilaProducto({
   p,
   politica,
+  condiciones,
+  tasas,
+  redondeo,
   abierto,
   onAbrir,
   onListo,
 }: {
   p: ProductoPropio;
   politica: PoliticaDescuentos;
+  condiciones: CondicionesMarca;
+  tasas: TasasGenerales;
+  redondeo: number;
   abierto: boolean;
   onAbrir: () => void;
   onListo: () => void;
@@ -364,7 +378,16 @@ function FilaProducto({
             </p>
           )}
 
-          {form === "PRECIO" && <FormPrecios p={p} politica={politica} onListo={onListo} />}
+          {form === "PRECIO" && (
+            <FormPrecios
+              p={p}
+              politica={politica}
+              condiciones={condiciones}
+              tasas={tasas}
+              redondeo={redondeo}
+              onListo={onListo}
+            />
+          )}
           {form === "FOTO" && <FormFoto p={p} onListo={onListo} />}
           {form === "FICHA" && <FormFicha p={p} onListo={onListo} />}
           {form === "DESCUENTO" && <FormPromo p={p} politica={politica} onListo={onListo} />}
@@ -444,7 +467,59 @@ function Envio({
   );
 }
 
-type ModoPrecio = "PESOS" | "PORC";
+type ModoPrecio = "PESOS" | "PORC" | "GANAR";
+
+/**
+ * Lo que le queda con un precio, desglosado.
+ *
+ * Sin la línea del costo: ya está arriba en la franja, y repetirla una vez
+ * por columna es ruido. Lo que importa acá es el camino desde lo que paga el
+ * cliente hasta lo que entra.
+ */
+function ColumnaGana({
+  m,
+  titulo,
+  principal = false,
+}: {
+  m: MargenSimulado;
+  titulo: string;
+  principal?: boolean;
+}) {
+  const bajas: [string, number][] = [
+    ["Comisión WiiGo", m.comisionWiigo],
+    ["IVA de esa comisión", m.ivaComision],
+    ["Mercado Pago", m.comisionMp],
+    ["Impuestos bancarios", m.impCreditos + m.impDebitos],
+  ];
+
+  return (
+    <div className={`cam-gana-col${principal ? " principal" : ""}`}>
+      <p className="tit">{titulo}</p>
+      <p className="paga">
+        El cliente paga <b>{pesos(m.precio)}</b>
+      </p>
+      <ul>
+        {bajas
+          .filter(([, v]) => v > 0)
+          .map(([t, v]) => (
+            <li key={t}>
+              <span>− {t}</span>
+              <b>{pesos(v)}</b>
+            </li>
+          ))}
+      </ul>
+      <p className="transf">
+        Te transferimos <b>{pesos(m.leTransferimos)}</b>
+      </p>
+      {m.leQueda !== null && (
+        <p className="final">
+          Ganás <b>{pesos(m.leQueda)}</b>
+          {m.porcentaje !== null && <em>· {m.porcentaje.toFixed(1)}%</em>}
+        </p>
+      )}
+    </div>
+  );
+}
 
 /**
  * Escribir en pesos o en porcentaje.
@@ -454,13 +529,23 @@ type ModoPrecio = "PESOS" | "PORC";
  * dos modos escriben el mismo valor: el porcentaje es una forma de tipear, no
  * otro dato que haya que guardar.
  */
-function Modo({ valor, onCambiar }: { valor: ModoPrecio; onCambiar: (m: ModoPrecio) => void }) {
+function Modo({
+  valor,
+  onCambiar,
+  conGanar = false,
+}: {
+  valor: ModoPrecio;
+  onCambiar: (m: ModoPrecio) => void;
+  /** El tercer modo solo existe con costo cargado: sin él no hay cuenta. */
+  conGanar?: boolean;
+}) {
   return (
     <span className="cam-modo">
       <button
         type="button"
         className={valor === "PESOS" ? "activo" : undefined}
         onClick={() => onCambiar("PESOS")}
+        title="Escribo el precio"
       >
         $
       </button>
@@ -468,9 +553,20 @@ function Modo({ valor, onCambiar }: { valor: ModoPrecio; onCambiar: (m: ModoPrec
         type="button"
         className={valor === "PORC" ? "activo" : undefined}
         onClick={() => onCambiar("PORC")}
+        title="Escribo el aumento"
       >
         %
       </button>
+      {conGanar && (
+        <button
+          type="button"
+          className={valor === "GANAR" ? "activo" : undefined}
+          onClick={() => onCambiar("GANAR")}
+          title="Escribo cuánto quiero ganar"
+        >
+          ★
+        </button>
+      )}
     </span>
   );
 }
@@ -488,7 +584,21 @@ function Modo({ valor, onCambiar }: { valor: ModoPrecio; onCambiar: (m: ModoPrec
  * cartel porque ES la variable que la marca cuida; los pesos son la
  * consecuencia.
  */
-function FormPrecios({ p, politica, onListo }: { p: ProductoPropio; politica: PoliticaDescuentos; onListo: () => void }) {
+function FormPrecios({
+  p,
+  politica,
+  condiciones,
+  tasas,
+  redondeo,
+  onListo,
+}: {
+  p: ProductoPropio;
+  politica: PoliticaDescuentos;
+  condiciones: CondicionesMarca;
+  tasas: TasasGenerales;
+  redondeo: number;
+  onListo: () => void;
+}) {
   const offDeHoy =
     p.precio && p.precioEfectivo !== null ? ((p.precio - p.precioEfectivo) / p.precio) * 100 : null;
 
@@ -507,6 +617,9 @@ function FormPrecios({ p, politica, onListo }: { p: ProductoPropio; politica: Po
   const [modoGondola, setModoGondola] = useState<ModoPrecio>("PESOS");
   const [modoEfectivo, setModoEfectivo] = useState<ModoPrecio>("PESOS");
   const [aumento, setAumento] = useState("");
+  const [ganar, setGanar] = useState("");
+  /** El precio exacto antes de redondear, solo para mostrar de dónde salió. */
+  const [precioCrudo, setPrecioCrudo] = useState<number | null>(null);
 
   const nGondola = Number(gondola);
   const nEfectivo = Number(efectivo);
@@ -517,12 +630,25 @@ function FormPrecios({ p, politica, onListo }: { p: ProductoPropio; politica: Po
 
   const redondear = (n: number) => Math.round(n * 100) / 100;
 
+  /**
+   * El efectivo también se redondea al múltiplo, y el descuento se recalcula
+   * contra el precio YA redondeado. Si no, la pantalla diría 14% y los
+   * precios que se guardan darían 13,8%: el número que la marca mira no
+   * sería el que termina en la góndola.
+   */
+  function ponerEfectivoDesde(precioGondola: number, descuento: number) {
+    const bruto = precioGondola * (1 - descuento / 100);
+    const final = redondearPrecio(bruto, redondeo);
+    setEfectivo(String(final));
+    setOff((((precioGondola - final) / precioGondola) * 100).toFixed(1));
+  }
+
   // Mover uno mueve los otros. El que se tocó manda; los demás se recalculan.
   function tocarGondola(v: string) {
     setGondola(v);
     const n = Number(v);
     if (!Number.isFinite(n) || n <= 0 || !Number.isFinite(nOff) || off.trim() === "") return;
-    setEfectivo(String(redondear(n * (1 - nOff / 100))));
+    ponerEfectivoDesde(n, nOff);
   }
 
   function tocarEfectivo(v: string) {
@@ -536,7 +662,7 @@ function FormPrecios({ p, politica, onListo }: { p: ProductoPropio; politica: Po
     setOff(v);
     const n = Number(v);
     if (!Number.isFinite(n) || n < 0 || n >= 100 || !gondolaValida) return;
-    setEfectivo(String(redondear(nGondola * (1 - n / 100))));
+    ponerEfectivoDesde(nGondola, n);
   }
 
   /** "Subime todo un 12%" — se escribe el porcentaje y cae el precio. */
@@ -544,8 +670,46 @@ function FormPrecios({ p, politica, onListo }: { p: ProductoPropio; politica: Po
     setAumento(v);
     const n = Number(v);
     if (!Number.isFinite(n) || !p.precio) return;
-    tocarGondola(String(redondear(p.precio * (1 + n / 100))));
+    tocarGondola(String(redondearPrecio(p.precio * (1 + n / 100), redondeo)));
   }
+
+  /**
+   * "Quiero ganar 30%" — la cuenta al revés, y el único modo que necesita el
+   * costo. El precio que sale se redondea para arriba: con centavos no hay
+   * cartel de góndola posible.
+   */
+  function tocarGanar(v: string) {
+    setGanar(v);
+    const n = Number(v);
+    if (p.costo === null) return;
+    const crudo = precioParaMargen({ margenDeseado: n, costo: p.costo, marca: condiciones, tasas });
+    if (crudo === null) return;
+    setPrecioCrudo(crudo);
+    tocarGondola(String(redondearPrecio(crudo, redondeo)));
+  }
+
+  // Lo que le queda HOY, para la franja de arriba.
+  const hoyTarjeta =
+    p.precio && p.costo !== null
+      ? simularMargen({ precio: p.precio, costo: p.costo, marca: condiciones, tasas }).find(
+          (m) => m.medio === "CREDITO"
+        )
+      : null;
+
+  // Lo que de verdad le queda con el precio puesto. Es el mismo cálculo que
+  // la liquidación que le paga — no una aproximación para la pantalla.
+  const conTarjeta =
+    gondolaValida && p.costo !== null
+      ? simularMargen({ precio: nGondola, costo: p.costo, marca: condiciones, tasas }).find(
+          (m) => m.medio === "CREDITO"
+        )
+      : null;
+  const conEfectivo =
+    usaEfectivo && nEfectivo > 0 && p.costo !== null
+      ? simularMargen({ precio: nEfectivo, costo: p.costo, marca: condiciones, tasas }).find(
+          (m) => m.medio === "EFECTIVO"
+        )
+      : null;
 
   const variacion = gondolaValida && p.precio ? ((nGondola - p.precio) / p.precio) * 100 : null;
   const ahorro = gondolaValida && usaEfectivo && nEfectivo > 0 ? nGondola - nEfectivo : null;
@@ -575,6 +739,37 @@ function FormPrecios({ p, politica, onListo }: { p: ProductoPropio; politica: Po
         </p>
       }
     >
+      {/* El costo arriba de todo: nadie elige un precio mirando el precio.
+          Si no lo cargó, se le dice dónde — sin costo no hay forma de
+          mostrarle lo que gana, y el tercer modo no existe. */}
+      {p.costo !== null ? (
+        <div className="cam-costo">
+          <span>
+            <small>Tu costo</small>
+            <b>{pesos(p.costo)}</b>
+          </span>
+          <i>→</i>
+          <span>
+            <small>Góndola hoy</small>
+            <b>{pesos(p.precio)}</b>
+          </span>
+          <i>→</i>
+          <span>
+            <small>Te queda hoy</small>
+            <b className="bien">{hoyTarjeta?.leQueda !== null && hoyTarjeta ? pesos(hoyTarjeta.leQueda) : "—"}</b>
+            {hoyTarjeta?.porcentaje !== null && hoyTarjeta && (
+              <em>· {hoyTarjeta.porcentaje!.toFixed(1)}%</em>
+            )}
+          </span>
+          <small className="aparte">Esto lo ven solo vos y WiiGo.</small>
+        </div>
+      ) : (
+        <p className="cam-nota">
+          Todavía no cargaste tu costo, así que no podemos mostrarte cuánto ganás con cada precio.
+          Se carga en <b>Mis productos</b>.
+        </p>
+      )}
+
       <div className="cam-campos">
         <label className="cam-campo">
           <span>Góndola — hoy</span>
@@ -582,8 +777,12 @@ function FormPrecios({ p, politica, onListo }: { p: ProductoPropio; politica: Po
         </label>
         <label className="cam-campo">
           <span>
-            Góndola — nuevo
-            <Modo valor={modoGondola} onCambiar={setModoGondola} />
+            {modoGondola === "PESOS"
+              ? "Góndola — nuevo"
+              : modoGondola === "PORC"
+                ? "Aumento"
+                : "Quiero ganar"}
+            <Modo valor={modoGondola} onCambiar={setModoGondola} conGanar={p.costo !== null} />
           </span>
           {modoGondola === "PESOS" ? (
             <input
@@ -594,7 +793,7 @@ function FormPrecios({ p, politica, onListo }: { p: ProductoPropio; politica: Po
               placeholder="0,00"
               autoFocus
             />
-          ) : (
+          ) : modoGondola === "PORC" ? (
             <input
               type="number"
               step="0.1"
@@ -603,11 +802,28 @@ function FormPrecios({ p, politica, onListo }: { p: ProductoPropio; politica: Po
               placeholder="0,0"
               autoFocus
             />
+          ) : (
+            <input
+              type="number"
+              step="0.1"
+              min="0"
+              max="99"
+              value={ganar}
+              onChange={(e) => tocarGanar(e.target.value)}
+              placeholder="30"
+              autoFocus
+            />
           )}
         </label>
       </div>
-      {modoGondola === "PORC" && gondolaValida && (
-        <p className="cam-var">Queda en {pesos(nGondola)}</p>
+
+      {modoGondola !== "PESOS" && gondolaValida && (
+        <p className="cam-var">
+          Queda en <b>{pesos(nGondola)}</b>
+          {modoGondola === "GANAR" && precioCrudo !== null && redondeo > 0 && (
+            <> · la cuenta daba {pesos(precioCrudo)} y se redondeó para arriba al próximo {pesos(redondeo)}</>
+          )}
+        </p>
       )}
       {variacion !== null && variacion !== 0 && (
         <p className={`cam-var${Math.abs(variacion) >= politica.variacionPrecioAlerta ? " fuerte" : ""}`}>
@@ -675,6 +891,29 @@ function FormPrecios({ p, politica, onListo }: { p: ProductoPropio; politica: Po
 
         {efectivoMalo && (
           <p className="cam-var fuerte">El efectivo no puede ser mayor al precio de góndola.</p>
+        )}
+
+        {/* Lo que gana con estos precios, por medio de pago. No es "precio
+            menos costo": de lo que paga el cliente salen la comisión, su IVA,
+            Mercado Pago y los impuestos. Mostrarle un margen ingenuo se le
+            caería en la primera liquidación. */}
+        {conTarjeta && (
+          <div className="cam-gana">
+            <ColumnaGana m={conTarjeta} titulo="Con tarjeta o QR" principal />
+            {conEfectivo && (
+              <ColumnaGana m={conEfectivo} titulo={`En efectivo · −${Number(off || 0).toFixed(1)}%`} />
+            )}
+          </div>
+        )}
+
+        {/* El aviso que evita la sorpresa: un descuento de efectivo más
+            grande que las comisiones que ahorra le deja MENOS, no más. */}
+        {conTarjeta?.leQueda != null && conEfectivo?.leQueda != null && conEfectivo.leQueda < conTarjeta.leQueda && (
+          <p className="cam-var fuerte">
+            En efectivo te queda {pesos(conTarjeta.leQueda - conEfectivo.leQueda)} menos por unidad: el
+            descuento es más grande que las comisiones que te ahorrás. No está mal —el efectivo vende
+            más— pero conviene saberlo antes.
+          </p>
         )}
       </div>
     </Envio>

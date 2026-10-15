@@ -15,7 +15,7 @@ export default async function PortalCambiosPage() {
   // La política se le muestra a la marca antes de que pida nada: si sabe de
   // entrada hasta dónde puede llegar un descuento, no manda uno que va a
   // volver rechazado.
-  const [productos, solicitudes, politica, { data: subcategorias }, condiciones, tasas] =
+  const [productos, solicitudes, politica, { data: subcategorias }, condiciones, tasas, { data: cfg }] =
     await Promise.all([
       misProductos(),
       misSolicitudes(),
@@ -29,6 +29,10 @@ export default async function PortalCambiosPage() {
       // es el mismo cálculo que la liquidación que de verdad le paga.
       condicionesDeMarca(supabase, sesion.idMarca),
       tasasGeneralesParaSimular(supabase),
+      // El múltiplo al que se redondea un precio calculado. Estaba solo del
+      // lado de WiiGo: la marca calculaba un precio y le quedaba con
+      // centavos, que en un cartel de góndola no existe.
+      supabase.from("configuracion").select("valor").eq("parametro", "REDONDEO_PRECIO").maybeSingle(),
     ]);
 
   if (!condiciones) return <p className="vacio">No se pudo cargar la pantalla. Probá recargar.</p>;
@@ -44,6 +48,7 @@ export default async function PortalCambiosPage() {
       }))}
       tasas={tasas}
       condiciones={condiciones}
+      redondeo={Number(cfg?.valor ?? 0) || 0}
     />
   );
 }

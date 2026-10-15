@@ -63,6 +63,63 @@ function r2(v: number) {
   return Math.round(v * 100) / 100;
 }
 
+/**
+ * Redondear un precio para arriba, al múltiplo configurado.
+ *
+ * Para arriba y no al más cercano: un cartel de góndola con centavos no
+ * existe, y redondear para abajo le come margen a la marca en cada venta.
+ * Con múltiplo 0 queda como está.
+ */
+export function redondearPrecio(valor: number, multiplo: number): number {
+  if (!Number.isFinite(valor) || valor <= 0) return 0;
+  if (!Number.isFinite(multiplo) || multiplo <= 0) return r2(valor);
+  return Math.ceil(valor / multiplo) * multiplo;
+}
+
+/**
+ * Qué precio hay que poner para que a la marca le quede un % determinado.
+ *
+ * Es la cuenta al revés de `simularMargen`, y es la que la marca necesita de
+ * verdad: nadie elige un precio mirando el precio, lo elige mirando cuánto le
+ * queda.
+ *
+ * El porcentaje es sobre LO QUE PAGA EL CLIENTE, no sobre el costo. Es la
+ * medida que se usa en retail y la única que hace comparable un producto con
+ * otro; sobre el costo el mismo precio daría un número bastante más grande y
+ * la marca creería que gana más de lo que gana.
+ *
+ * Todas las deducciones son proporcionales al precio, así que la tasa total
+ * se saca simulando a un precio cualquiera en vez de volver a escribir la
+ * fórmula. Si mañana cambia cómo se descuenta algo, esto lo sigue solo.
+ */
+export function precioParaMargen(params: {
+  margenDeseado: number;
+  costo: number;
+  marca: CondicionesMarca;
+  tasas: TasasGenerales;
+  medio?: MedioSimulado;
+}): number | null {
+  const { margenDeseado, costo, marca, tasas, medio = "CREDITO" } = params;
+  if (!Number.isFinite(costo) || costo <= 0) return null;
+  if (!Number.isFinite(margenDeseado) || margenDeseado < 0 || margenDeseado >= 100) return null;
+
+  const base = 10000;
+  const sim = simularMargen({ precio: base, costo: null, marca, tasas }).find((m) => m.medio === medio);
+  if (!sim) return null;
+
+  // Cuánto del precio le queda después de comisiones e impuestos.
+  const queda = sim.leTransferimos / base;
+  const m = margenDeseado / 100;
+
+  // precio × queda − costo = m × precio  →  precio = costo / (queda − m)
+  const divisor = queda - m;
+  // Pedir más margen del que deja el precio entero es imposible: no hay
+  // precio que lo cumpla, por alto que sea.
+  if (divisor <= 0.0001) return null;
+
+  return r2(costo / divisor);
+}
+
 const CLAVE_MP: Record<MedioSimulado, string> = {
   EFECTIVO: "",
   DINERO_CUENTA: "MP_COMISION_DINERO_CUENTA",

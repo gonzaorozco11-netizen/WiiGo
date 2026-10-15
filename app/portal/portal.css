@@ -611,6 +611,54 @@
    mirando el envase de arriba abajo, en el mismo orden en que están impresos. */
 .cam-nutri { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 10px; }
 
+/* La franja del costo, arriba de los campos. Nadie elige un precio mirando
+   el precio: lo elige mirando cuanto le queda, y para eso el costo tiene que
+   estar a la vista mientras escribe. */
+.cam-costo {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  background: var(--superficie-2); border: 1px solid var(--borde); border-radius: 11px;
+  padding: 11px 15px; margin-bottom: 13px;
+}
+.cam-costo small {
+  display: block; font-size: 10.5px; font-weight: 700; letter-spacing: .05em;
+  text-transform: uppercase; color: var(--texto-3);
+}
+.cam-costo b { font-size: 17px; font-family: var(--f-mono); }
+.cam-costo b.bien { color: var(--salvia-honda); }
+.cam-costo em { font-style: normal; font-size: 12px; color: var(--texto-3); margin-left: 4px; }
+.cam-costo i { font-style: normal; color: var(--borde-fuerte); font-size: 15px; }
+.cam-costo .aparte {
+  margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 500; max-width: 180px;
+  line-height: 1.4;
+}
+
+/* Lo que gana con cada medio de pago. Sin la linea del costo: ya esta en la
+   franja de arriba, y repetirla por columna es ruido. */
+.cam-gana { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; margin-top: 4px; }
+@media (max-width: 620px) { .cam-gana { grid-template-columns: 1fr; } }
+.cam-gana-col {
+  border: 1px solid var(--borde); border-radius: 11px; padding: 12px 14px;
+  background: var(--superficie);
+}
+.cam-gana-col.principal { border: 2px solid var(--salvia-honda); }
+.cam-gana-col .tit {
+  font-size: 10.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--texto-3); margin-bottom: 6px;
+}
+.cam-gana-col .paga { font-size: 13px; color: var(--texto-2); margin-bottom: 7px; }
+.cam-gana-col ul { list-style: none; margin: 0 0 8px; padding: 0; }
+.cam-gana-col li {
+  display: flex; justify-content: space-between; gap: 10px;
+  font-size: 12px; color: var(--texto-3); padding: 1px 0;
+}
+.cam-gana-col li b { font-family: var(--f-mono); font-weight: 500; }
+.cam-gana-col .transf {
+  font-size: 13px; color: var(--texto-2); border-top: 1px solid var(--borde); padding-top: 7px;
+}
+.cam-gana-col .final { font-size: 13px; color: var(--texto-2); margin-top: 3px; }
+.cam-gana-col .final b { font-size: 17px; color: var(--salvia-honda); font-family: var(--f-mono); }
+.cam-gana-col .final em { font-style: normal; font-size: 12px; color: var(--texto-3); margin-left: 5px; }
+
 /* El bloque del efectivo, separado del de gondola por una linea punteada:
    son el mismo formulario pero dos preguntas distintas, y pegados se leian
    como cuatro campos sueltos. */
