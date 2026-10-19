@@ -92,6 +92,13 @@ export default function NuevaOrdenModal({
     setLineas(porMinimo);
   }, [idMarca, idLocal, variantesDeMarca, cantidadPorClave]);
 
+  // Ni una venta de esta marca en la ventana. El cálculo entonces no midió
+  // nada: cayó al piso —mínimo y objetivo cargados a mano— y el texto de
+  // arriba estaría diciendo que las cantidades salen de las ventas cuando
+  // salen de lo que alguien escribió al dar de alta el producto.
+  const sinHistoria =
+    sugerencias.size > 0 && [...sugerencias.values()].every((s) => s.vendidas === 0);
+
   useEffect(() => {
     if (!idMarca || !idLocal) return;
     let vigente = true;
@@ -215,10 +222,22 @@ export default function NuevaOrdenModal({
 
           <div>
             <p className="text-xs text-neutral-500 mb-2">
-              Las cantidades salen de <b>lo que se vendió en las últimas {SEMANAS_HISTORIA} semanas</b>{" "}
-              en este local: lo necesario para tener {cobertura} semanas de mercadería, menos lo que
-              hay en góndola y menos lo que ya está pedido y no llegó. Revisalas antes de mandar —
-              podés sacar, cambiar o agregar lo que quieras.
+              {sinHistoria ? (
+                <>
+                  Esta marca <b>todavía no vendió nada en este local</b>, así que estas cantidades no
+                  salen de ventas: son el objetivo de góndola cargado en Stock, menos lo que hay y
+                  menos lo que ya está pedido. Cuando haya {SEMANAS_HISTORIA} semanas con ventas, el
+                  pedido se calcula con la velocidad real. Revisalas igual antes de mandar.
+                </>
+              ) : (
+                <>
+                  Las cantidades salen de{" "}
+                  <b>lo que se vendió en las últimas {SEMANAS_HISTORIA} semanas</b> en este local: lo
+                  necesario para tener {cobertura} semanas de mercadería, menos lo que hay en góndola
+                  y menos lo que ya está pedido y no llegó. Revisalas antes de mandar — podés sacar,
+                  cambiar o agregar lo que quieras.
+                </>
+              )}
               {calculando && <span className="text-neutral-400"> · calculando…</span>}
             </p>
 

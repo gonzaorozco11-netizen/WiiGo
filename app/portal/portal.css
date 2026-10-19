@@ -2286,6 +2286,17 @@
   padding: 12px 16px; font-size: 13.5px; color: #6f5418; line-height: 1.5; margin-bottom: 14px;
 }
 
+/* El aviso de "todavía no hay ventas". A propósito NO es ocre como
+   .rep-aviso: no hay nada que corregir ni nada pendiente de la marca, es
+   una aclaración de cómo leer el número. En ocre sería una alarma falsa,
+   repetida en cada visita durante el primer mes. */
+.rep-sinhist {
+  background: var(--superficie-2); border: 1px solid var(--borde); border-radius: 12px;
+  padding: 12px 16px; font-size: 13.5px; color: var(--texto-2); line-height: 1.55;
+  margin-bottom: 14px;
+}
+.rep-sinhist b { color: var(--texto); font-weight: 600; }
+
 .rep-numeros { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-bottom: 18px; }
 .rep-num {
   background: var(--superficie); border: 1px solid var(--borde); border-radius: 12px;

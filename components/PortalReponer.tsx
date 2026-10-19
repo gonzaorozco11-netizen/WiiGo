@@ -191,7 +191,9 @@ export default function PortalReponer({
           </h1>
           <p className="rep-sub">
             {solapa === "RECO"
-              ? "Se arma solo con lo que vas vendiendo. No hace falta que lo revises todos los días: cuando llegue el día de recepción, mandá lo que diga acá."
+              ? sinHistoria
+                ? "Todavía no hay ventas tuyas registradas, así que esto no es una recomendación: es la góndola que hay que llenar. Cuando haya ventas, se arma solo con lo que de verdad se vende."
+                : "Se arma solo con lo que vas vendiendo. No hace falta que lo revises todos los días: cuando llegue el día de recepción, mandá lo que diga acá."
               : solapa === "AMANO"
                 ? "Buscá cualquier producto tuyo y poné cuánto mandar. Sirve para lo que el sistema no te va a pedir: una promo, un sabor nuevo, algo que sabés que se va a vender esta semana."
                 : "Lo que mandaste y lo que se recibió de verdad en el local, producto por producto."}
@@ -267,6 +269,21 @@ export default function PortalReponer({
               <BajaEnvio idOrden={datos.yaMandado.idOrden} compacto />
             </>
           )}
+        </div>
+      )}
+
+      {/* Sin ventas en la ventana, el cálculo no tiene de dónde agarrarse y
+          cae al objetivo de góndola. El número sigue sirviendo —hay que
+          llenar la góndola igual— pero llamarlo "recomendado" es prometer
+          una inteligencia que todavía no existe: la marca lo leería como
+          "esto es lo que se vende" y lo que ve es "esto es lo que entra".
+          Se dice cuál de las dos cosas es, y desde cuándo va a ser la otra. */}
+      {solapa === "RECO" && sinHistoria && (
+        <div className="rep-sinhist">
+          <b>Todavía no sé cuánto se vende de lo tuyo.</b> Estos números salen del objetivo de
+          góndola que fijó WiiGo para cada producto — son la carga inicial, no una recomendación.
+          Con {datos.semanasHistoria} semanas de ventas registradas voy a poder decirte cuánto
+          conviene tener de cada uno, y este pedido pasa a armarse solo con eso.
         </div>
       )}
 

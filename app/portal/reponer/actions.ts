@@ -5,7 +5,7 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionMarca } from "@/lib/marcaSesion";
 import { friendlyDbError } from "@/lib/errors";
 import { fechaHoraArgentina } from "@/lib/horarios";
-import { sugerirReposicion, topeDeVariante } from "@/lib/reposicionSugerida";
+import { sugerirReposicion, topeDeVariante, SEMANAS_HISTORIA } from "@/lib/reposicionSugerida";
 import { ESTADOS_ABIERTOS, RECIBIDA_PARCIAL, CANCELADA } from "@/lib/estadosOrden";
 import { leerDias, diasHastaProxima, nombrarDias, DIAS_SEMANA } from "@/lib/recepcion";
 
@@ -65,6 +65,13 @@ export type DatosReponer = {
   /** Unidades y pesos a precio de venta de lo sugerido. */
   unidades: number;
   valorizado: number;
+  /**
+   * Cuántas semanas para atrás mira el cálculo para medir la velocidad de
+   * venta. Va a la pantalla porque la marca tiene que poder leer el número
+   * sabiendo de dónde sale: mientras no haya ventas en esa ventana, lo que
+   * ve no es una recomendación por ventas sino el objetivo de góndola.
+   */
+  semanasHistoria: number;
   /** Cuándo es la próxima recepción. */
   proxima: { etiqueta: string; faltanDias: number; horario: string } | null;
   /** Una orden ya mandada y todavía sin recibir. */
@@ -221,6 +228,7 @@ export async function miReposicion(): Promise<DatosReponer | null> {
     bajosEnCamino,
     unidades,
     valorizado,
+    semanasHistoria: SEMANAS_HISTORIA,
     proxima: {
       etiqueta:
         faltanDias === 0
