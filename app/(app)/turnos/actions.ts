@@ -55,23 +55,36 @@ export async function abrirTurno(idLocal: string, montoInicial: number): Promise
   }
 }
 
-// Solo cuenta ventas ya PAGADAS — una pendiente de Self Checkout que
-// todavía no confirmó nadie no estampa turno ni entra en el arqueo.
+// El arqueo cuenta PLATA QUE PASÓ POR EL CAJÓN, no ventas válidas. Son dos
+// preguntas distintas y confundirlas descuadra la caja:
+//
+//   PAGADA   entró la plata y ahí sigue.
+//   ANULADA  entró la plata igual —se cobró en este turno— y después salió
+//            por el reintegro, que se resta más abajo. Si no se cuenta la
+//            entrada pero sí la salida, el cajón cierra con un faltante del
+//            tamaño de la venta anulada.
+//
+// Una pendiente de Self Checkout que nadie confirmó no estampa turno, así que
+// no entra por ningún lado: ahí no hubo plata.
+//
 // El vuelto se registra como salida aparte: total_cobrado es lo que el
 // cliente entregó en mano (bruto), total es lo que realmente queda en la
 // venta (neto) — la diferencia es el vuelto que salió de la caja.
 async function resumenTurno(supabase: SupabaseClient, idTurno: string) {
   const { data: ventas, error } = await supabase
     .from("ventas")
-    .select("total, total_cobrado, medio_pago")
+    .select("total, total_cobrado, medio_pago, estado")
     .eq("id_turno", idTurno)
-    .eq("estado", "PAGADA");
+    .in("estado", ["PAGADA", "ANULADA"]);
   if (error) throw new Error(friendlyDbError(error));
 
   let totalEfectivo = 0;
   let totalRecibidoEfectivo = 0;
   let totalMercadoPago = 0;
+  let cantidadVentas = 0;
   for (const v of ventas ?? []) {
+    // El contador sí es de ventas: una anulada no se vendió.
+    if (v.estado === "PAGADA") cantidadVentas++;
     if (v.medio_pago === "EFECTIVO") {
       totalEfectivo += v.total ?? 0;
       totalRecibidoEfectivo += v.total_cobrado ?? v.total ?? 0;
@@ -101,21 +114,32 @@ async function resumenTurno(supabase: SupabaseClient, idTurno: string) {
     .eq("medio_pago", "EFECTIVO_TURNO");
   const totalPagosProveedorEfectivo = (pagosProveedor ?? []).reduce((acc, m) => acc - (m.importe ?? 0), 0);
 
-  // Plata devuelta por anulaciones, contra el turno en que salió del cajón.
+  // Toda la plata devuelta desde este cajón, se haya anulado la venta entera
+  // o devuelto un solo producto.
   //
-  // Una venta anulada deja de sumar acá sola (arriba solo se cuentan las
-  // PAGADAS), y con eso alcanza cuando la devolución es del mismo día y del
-  // mismo medio. Los otros casos necesitan esta resta: una venta de la semana
-  // pasada devuelta hoy salía de un arqueo ya cerrado, y una venta cobrada por
-  // Mercado Pago y devuelta en efectivo nunca sumó a esta caja. Sin esto, al
-  // cerrar faltaría plata sin explicación y nadie sabría por qué.
+  // Antes esto se leía de `ventas` filtrando por estado ANULADA, y por eso las
+  // devoluciones PARCIALES no aparecían nunca: la venta sigue PAGADA, así que
+  // el billete salía del cajón sin que el arqueo lo supiera. Con varias
+  // devoluciones parciales en el día, al cerrar faltaba plata y la diferencia
+  // quedaba a nombre de quien contó.
+  //
+  // La tabla `devoluciones` tiene las dos clases con todo lo que hace falta:
+  // cuánto se devolvió, por qué medio y de qué turno salió. Y un reintegro en
+  // efectivo exige turno abierto (ver registrarDevolucion), así que ninguno
+  // puede quedar sin arqueo.
+  //
+  // El filtro por medio es el que hace falta: una venta cobrada por Mercado
+  // Pago y reintegrada por Mercado Pago no toca este cajón, y una cobrada por
+  // QR pero devuelta en efectivo sí lo vacía aunque nunca haya entrado acá.
   const { data: devoluciones } = await supabase
-    .from("ventas")
-    .select("devolucion_monto")
-    .eq("devolucion_turno", idTurno)
-    .eq("devolucion_medio", "EFECTIVO_TURNO")
-    .eq("estado", "ANULADA");
-  const totalDevolucionesEfectivo = (devoluciones ?? []).reduce((acc, d) => acc + (d.devolucion_monto ?? 0), 0);
+    .from("devoluciones")
+    .select("monto_devuelto")
+    .eq("id_turno", idTurno)
+    .eq("medio", "EFECTIVO_TURNO");
+  const totalDevolucionesEfectivo = (devoluciones ?? []).reduce(
+    (acc, d) => acc + (d.monto_devuelto ?? 0),
+    0
+  );
 
   return {
     totalEfectivo,
@@ -124,7 +148,7 @@ async function resumenTurno(supabase: SupabaseClient, idTurno: string) {
     totalGastosEfectivo,
     totalPagosProveedorEfectivo,
     totalDevolucionesEfectivo,
-    cantidadVentas: (ventas ?? []).length,
+    cantidadVentas,
   };
 }
 

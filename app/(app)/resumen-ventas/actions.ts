@@ -24,6 +24,11 @@ export type LineaResumenVentas = {
   canal: string | null;
   local: string;
   cantidadItems: number;
+  /** La suma de los renglones a precio de lista, ya sin lo devuelto. */
+  bruto: number;
+  /** Lo que el cliente no pagó: código de profesional, puntos, canje. */
+  descuento: number;
+  /** Lo que de verdad entró: bruto − descuento. */
   totalFacturado: number;
   costo: number;
   margen: number;
@@ -49,12 +54,23 @@ const LIMITE_VENTAS = 3000;
 export async function calcularResumenVentas(
   desde: string,
   hasta: string
-): Promise<{ lineas: LineaResumenVentas[]; totalFacturado: number; totalMargen: number; posibleTruncado: boolean }> {
+): Promise<{
+  lineas: LineaResumenVentas[];
+  totalFacturado: number;
+  totalBruto: number;
+  totalDescuento: number;
+  totalMargen: number;
+  posibleTruncado: boolean;
+}> {
   const supabase = getSupabaseServerClient();
 
   const { data: ventas, error: errorVentas } = await supabase
     .from("ventas")
-    .select("id_venta, numero, fecha, medio_pago, canal, id_local")
+    // `descuento` es lo que el cliente NO pagó: código de profesional, canje
+    // de puntos, canje de profesional. Sin esta columna el resumen informaba
+    // la suma de los renglones y la llamaba facturado, que es el precio de
+    // lista — plata que nunca entró.
+    .select("id_venta, numero, fecha, medio_pago, canal, id_local, descuento")
     .eq("estado", "PAGADA")
     .gte("fecha", `${desde}T00:00:00`)
     .lte("fecha", `${hasta}T23:59:59`)
@@ -62,7 +78,8 @@ export async function calcularResumenVentas(
     .limit(LIMITE_VENTAS);
   if (errorVentas) throw new Error(friendlyDbError(errorVentas));
   const posibleTruncado = (ventas ?? []).length === LIMITE_VENTAS;
-  if (!ventas || ventas.length === 0) return { lineas: [], totalFacturado: 0, totalMargen: 0, posibleTruncado: false };
+  if (!ventas || ventas.length === 0)
+    return { lineas: [], totalFacturado: 0, totalBruto: 0, totalDescuento: 0, totalMargen: 0, posibleTruncado: false };
   const ventaPorId = new Map(ventas.map((v) => [v.id_venta as string, v]));
   const idsVenta = ventas.map((v) => v.id_venta as string);
 
@@ -75,10 +92,11 @@ export async function calcularResumenVentas(
 
   const { data: detalle, error: errorDetalle } = await supabase
     .from("detalle_ventas")
-    .select("id_venta, id_variante, cantidad, subtotal")
+    .select("id_detalle, id_venta, id_variante, cantidad, subtotal")
     .in("id_venta", idsVenta);
   if (errorDetalle) throw new Error(friendlyDbError(errorDetalle));
-  if (!detalle || detalle.length === 0) return { lineas: [], totalFacturado: 0, totalMargen: 0, posibleTruncado };
+  if (!detalle || detalle.length === 0)
+    return { lineas: [], totalFacturado: 0, totalBruto: 0, totalDescuento: 0, totalMargen: 0, posibleTruncado };
 
   const idsVariante = [...new Set(detalle.map((d) => d.id_variante as string))];
   const { data: variantes } = await supabase
@@ -102,6 +120,27 @@ export async function calcularResumenVentas(
     return variante && variante.nombre !== "Único" ? `${base} — ${variante.nombre}` : base;
   };
 
+  // Lo que volvió al local, renglón por renglón.
+  //
+  // Una devolución parcial deja la venta PAGADA y no toca su detalle, así que
+  // sin esto el producto que el cliente trajo de vuelta seguía contando como
+  // vendido para siempre. Se descuenta acá, en la línea, y no al final sobre
+  // el total: así el margen tampoco cuenta lo que se devolvió.
+  //
+  // Las anulaciones totales no hacen falta mirarlas: esa venta queda ANULADA
+  // y ya está afuera del filtro de arriba.
+  const { data: devueltos } = await supabase
+    .from("detalle_devoluciones")
+    .select("id_detalle, cantidad, subtotal")
+    .in("id_detalle", detalle.map((d) => d.id_detalle as string));
+  const devueltoPorDetalle = new Map<string, { cantidad: number; subtotal: number }>();
+  for (const d of devueltos ?? []) {
+    const previo = devueltoPorDetalle.get(d.id_detalle as string) ?? { cantidad: 0, subtotal: 0 };
+    previo.cantidad += (d.cantidad as number) ?? 0;
+    previo.subtotal += (d.subtotal as number) ?? 0;
+    devueltoPorDetalle.set(d.id_detalle as string, previo);
+  }
+
   const idsMarca = [...new Set((productos ?? []).map((p) => p.id_marca as string).filter(Boolean))];
   const { data: marcas } = await supabase
     .from("marcas")
@@ -119,8 +158,11 @@ export async function calcularResumenVentas(
     const producto = idProducto ? productoPorId.get(idProducto) : undefined;
     const marca = producto?.id_marca ? marcaPorId.get(producto.id_marca as string) : undefined;
     const tipo = marca?.tipo_comercializacion ?? "PROPIA";
-    const subtotalLinea = (d.subtotal as number) ?? 0;
-    const cantidadLinea = (d.cantidad as number) ?? 0;
+    const devuelto = devueltoPorDetalle.get(d.id_detalle as string);
+    const subtotalLinea = ((d.subtotal as number) ?? 0) - (devuelto?.subtotal ?? 0);
+    const cantidadLinea = ((d.cantidad as number) ?? 0) - (devuelto?.cantidad ?? 0);
+    // Devuelto entero: el renglón no deja rastro en el resumen.
+    if (cantidadLinea <= 0 && subtotalLinea <= 0) continue;
 
     let costoLinea = 0;
     let margenLinea = 0;
@@ -149,7 +191,12 @@ export async function calcularResumenVentas(
   for (const [idVenta, acum] of acumPorVenta) {
     const venta = ventaPorId.get(idVenta);
     if (!venta) continue;
-    const totalFacturado = redondear2(acum.total);
+    // Tres números distintos y los tres se muestran, porque responden cosas
+    // distintas: a cuánto estaban los productos, cuánto se resignó y cuánto
+    // entró. Antes se informaba el primero con el nombre del tercero.
+    const bruto = redondear2(acum.total);
+    const descuento = redondear2((venta.descuento as number) ?? 0);
+    const totalFacturado = redondear2(Math.max(bruto - descuento, 0));
     const margen = redondear2(acum.margen);
     lineas.push({
       idVenta,
@@ -159,6 +206,8 @@ export async function calcularResumenVentas(
       canal: (venta.canal as string | null) ?? null,
       local: venta.id_local ? localPorId.get(venta.id_local as string) ?? "—" : "—",
       cantidadItems: acum.items,
+      bruto,
+      descuento,
       totalFacturado,
       detalle: acum.detalle,
       costo: redondear2(acum.costo),
@@ -170,7 +219,9 @@ export async function calcularResumenVentas(
   lineas.sort((a, b) => b.fecha.localeCompare(a.fecha));
 
   const totalFacturado = redondear2(lineas.reduce((acc, l) => acc + l.totalFacturado, 0));
+  const totalBruto = redondear2(lineas.reduce((acc, l) => acc + l.bruto, 0));
+  const totalDescuento = redondear2(lineas.reduce((acc, l) => acc + l.descuento, 0));
   const totalMargen = redondear2(lineas.reduce((acc, l) => acc + l.margen, 0));
 
-  return { lineas, totalFacturado, totalMargen, posibleTruncado };
+  return { lineas, totalFacturado, totalBruto, totalDescuento, totalMargen, posibleTruncado };
 }

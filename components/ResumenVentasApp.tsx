@@ -58,6 +58,7 @@ export default function ResumenVentasApp() {
   // entero — así buscar/filtrar también muestra su propio total.
   const totalFacturadoFiltrado = useMemo(() => lineasFiltradas.reduce((acc, l) => acc + l.totalFacturado, 0), [lineasFiltradas]);
   const totalMargenFiltrado = useMemo(() => lineasFiltradas.reduce((acc, l) => acc + l.margen, 0), [lineasFiltradas]);
+  const totalDescuentoFiltrado = useMemo(() => lineasFiltradas.reduce((acc, l) => acc + l.descuento, 0), [lineasFiltradas]);
   const hayFiltroActivo = busqueda.trim() !== "" || filtroPago !== "TODOS";
 
   const ventaSeleccionada = lineasFiltradas.find((l) => l.idVenta === idVentaSeleccionada) ?? null;
@@ -114,9 +115,16 @@ export default function ResumenVentasApp() {
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-5">
         <div className="bg-white border border-neutral-200 rounded-xl p-4">
           <p className="text-[11px] font-bold uppercase tracking-wide text-neutral-400 mb-0.5">
-            Total facturado{hayFiltroActivo ? " (filtrado)" : ""}
+            Total cobrado{hayFiltroActivo ? " (filtrado)" : ""}
           </p>
           <p className="text-xl font-extrabold text-neutral-900">${formatearMonto(totalFacturadoFiltrado)}</p>
+          {/* Lo que se resignó en descuentos no se esconde dentro del total:
+              es plata que se decidió no cobrar y hay que poder verla. */}
+          {totalDescuentoFiltrado > 0 && (
+            <p className="text-[11px] text-amber-700 mt-0.5">
+              ${formatearMonto(totalDescuentoFiltrado)} en descuentos
+            </p>
+          )}
         </div>
         <div className="bg-white border border-neutral-200 rounded-xl p-4">
           <p className="text-[11px] font-bold uppercase tracking-wide text-neutral-400 mb-0.5">
@@ -252,8 +260,23 @@ export default function ResumenVentasApp() {
                   </table>
 
                   <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-4 text-sm">
+                    {/* El descuento solo aparece cuando hubo: en una venta sin
+                        código de profesional ni puntos sería un renglón en
+                        cero repetido en todos lados. */}
+                    {ventaSeleccionada.descuento > 0 && (
+                      <>
+                        <div className="flex justify-between mb-1.5">
+                          <span className="text-neutral-500">Productos</span>
+                          <span className="text-neutral-500">${formatearMonto(ventaSeleccionada.bruto)}</span>
+                        </div>
+                        <div className="flex justify-between mb-1.5">
+                          <span className="text-neutral-500">Descuento</span>
+                          <span className="text-amber-700">-${formatearMonto(ventaSeleccionada.descuento)}</span>
+                        </div>
+                      </>
+                    )}
                     <div className="flex justify-between mb-1.5">
-                      <span className="text-neutral-500">Total facturado</span>
+                      <span className="text-neutral-500">Pagó el cliente</span>
                       <span>${formatearMonto(ventaSeleccionada.totalFacturado)}</span>
                     </div>
                     <div className="flex justify-between mb-1.5">
