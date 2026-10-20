@@ -384,6 +384,55 @@ html, body { margin: 0; padding: 0; height: 100%; background: #fafafa; }
   40% { opacity: 0; }
   100% { opacity: 0; }
 }
+/* Cartel "Estaciones de pago": placa translúcida arriba del cielo, para que
+   desde lejos se entienda qué es el aparato. Blanco con transparencia y no
+   un color fijo, así toma el tono del cielo de día, nublado y de noche.
+   Sin backdrop-filter (el WebView 83 se arrastra con los filtros) ni gap
+   en flex: los separadores van con margin. */
+.sc-placa {
+  position: absolute;
+  z-index: 10;
+  top: 48px;
+  left: 50%;
+  transform: translateX(-50%);
+  /* max-content: un bloque absoluto centrado con left: 50% se achica a la
+     mitad del ancho y partía el título en dos renglones sin necesidad. */
+  width: max-content;
+  max-width: calc(100% - 40px);
+  padding: 18px 40px 20px;
+  border-radius: 24px;
+  background: rgba(255,255,255,.16);
+  border: 1px solid rgba(255,255,255,.42);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.5), 0 18px 34px -18px rgba(0,0,0,.35);
+  text-align: center;
+  pointer-events: none;
+}
+.sc-placa-marca,
+.sc-placa-paso {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,.85);
+}
+/* Con .sc-placa delante: si no, ".sc-root p { margin: 0 }" pisa el margen. */
+.sc-placa .sc-placa-titulo {
+  margin: 6px 0 10px;
+  font-size: 38px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.05;
+  color: #ffffff;
+  text-shadow: 0 2px 10px rgba(0,0,0,.25);
+}
+.sc-placa-pasos { display: flex; align-items: center; justify-content: center; }
+.sc-placa-punto {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #d4ddb4;
+  margin: 0 10px;
+}
 .sc-logo-wrap { position: relative; z-index: 2; }
 .sc-logo-glow {
   position: absolute;
@@ -2296,6 +2345,18 @@ export default function SelfCheckoutApp({
             </>
           )}
           {clima === "tormenta" && <div key={flashKey} className="sc-relampago sc-flash" />}
+
+          <div className="sc-placa">
+            <p className="sc-placa-marca">WiiGo</p>
+            <p className="sc-placa-titulo">Estaciones de pago</p>
+            <div className="sc-placa-pasos">
+              <span className="sc-placa-paso">Escaneá</span>
+              <span className="sc-placa-punto" />
+              <span className="sc-placa-paso">Pagá</span>
+              <span className="sc-placa-punto" />
+              <span className="sc-placa-paso">Listo</span>
+            </div>
+          </div>
 
           <div className="sc-logo-wrap" style={{ perspective: "1100px" }}>
             <div className="sc-logo-glow" />
