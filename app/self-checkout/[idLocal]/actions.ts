@@ -178,16 +178,15 @@ export async function confirmarPedido(
       .in("id_producto", idsProducto);
     if (errorProductos) return { error: friendlyDbError(errorProductos) };
 
-    const { data: stockDb, error: errorStockCheck } = await supabase
-      .from("stock")
-      .select("id_variante, cantidad")
-      .eq("id_local", idLocal)
-      .in("id_variante", idsVariante);
-    if (errorStockCheck) return { error: friendlyDbError(errorStockCheck) };
-
+    // El stock NO frena el pedido, a propósito. Al totem se llega escaneando
+    // el producto que el cliente tiene en la mano: si el sistema dice cero,
+    // lo que está mal es el número (una entrega sin cargar, un conteo viejo),
+    // no el producto. Misma regla que el mostrador: se vende, y al cobrarse
+    // confirmarCobro descuenta lo que haya, anota el ajuste y marca la venta
+    // "a revisar" (ver lib/stockVenta.ts). Antes esto rechazaba el pedido y
+    // el cliente se iba sin poder pagar algo que estaba en la góndola.
     const varianteMap = new Map((variantesDb ?? []).map((v) => [v.id_variante as string, v]));
     const productoMap = new Map((productosDb ?? []).map((p) => [p.id_producto as string, p]));
-    const stockMap = new Map((stockDb ?? []).map((s) => [s.id_variante as string, s.cantidad as number]));
 
     const items: ItemCarrito[] = [];
     for (const itemPedido of itemsPedido) {
@@ -197,16 +196,6 @@ export async function confirmarPedido(
       const producto = variante ? productoMap.get(variante.id_producto as string) : undefined;
       if (!variante || variante.estado !== "ACTIVO" || !producto || producto.estado !== "ACTIVO") {
         return { error: "Uno de los productos del carrito ya no está disponible — volvé a armar el pedido." };
-      }
-
-      const disponible = stockMap.get(itemPedido.idVariante) ?? 0;
-      if (itemPedido.cantidad > disponible) {
-        return {
-          error:
-            disponible > 0
-              ? `Ya no queda esa cantidad disponible — quedan ${disponible} unidades. Ajustá el carrito.`
-              : "Ese producto se acaba de quedar sin stock. Sacalo del carrito para continuar.",
-        };
       }
 
       // El precio depende de cómo paga: en efectivo se cobra `precio_efectivo`

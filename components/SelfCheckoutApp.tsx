@@ -1616,6 +1616,9 @@ export default function SelfCheckoutApp({
 
   const [toast, setToast] = useState<{ nombre: string; precio: number } | null>(null);
   const toastTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Un código que el lector leyó pero no es de ningún producto activo.
+  const [avisoCodigo, setAvisoCodigo] = useState<string | null>(null);
+  const avisoTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [busquedaTexto, setBusquedaTexto] = useState("");
 
@@ -1651,13 +1654,16 @@ export default function SelfCheckoutApp({
     // verdad (ver el poll), así que esta lista no se rearma al pedo.
   }, [variantes, productoPorId, marcaPorId, preciosEnVivo]);
 
-  // Solo esto se rehace cuando llega stock nuevo: agregar el disponible y
-  // sacar lo que quedó en cero. Sin volver a ordenar.
+  // Solo esto se rehace cuando llega stock nuevo: agregar el disponible, sin
+  // volver a ordenar. Incluye lo que figura en cero a propósito: un producto
+  // escaneado está en la mano del cliente y tiene que poder entrar al
+  // carrito aunque el número del sistema esté mal. La búsqueda por nombre,
+  // en cambio, sigue mostrando solo lo que tiene stock (ahí el cliente elige
+  // de una lista y podría pedir algo que no está en la góndola).
   const items = useMemo<Item[]>(() => {
     const resultado: Item[] = [];
     for (const base of catalogoOrdenado) {
-      const cantidadDisponible = stockPorVariante.get(base.variante.id_variante) ?? 0;
-      if (cantidadDisponible <= 0) continue;
+      const cantidadDisponible = Math.max(0, stockPorVariante.get(base.variante.id_variante) ?? 0);
       resultado.push({
         variante: base.variante,
         producto: base.producto,
@@ -1825,17 +1831,40 @@ export default function SelfCheckoutApp({
     };
   }, []);
 
-  function agregarAlCarrito(idVariante: string) {
+  // `escaneado`: el cliente tiene el producto en la mano, así que entra al
+  // carrito aunque el sistema diga que no hay stock (la venta queda "a
+  // revisar" al cobrarse). Desde la lista del buscador sí se respeta el tope.
+  function agregarAlCarrito(idVariante: string, escaneado = false) {
     const item = itemPorVariante.get(idVariante);
     if (!item) return;
-    let agregado = false;
-    setCarrito((prev) => {
-      const actual = prev[idVariante] ?? 0;
-      if (actual >= item.cantidadDisponible) return prev;
-      agregado = true;
-      return { ...prev, [idVariante]: actual + 1 };
-    });
-    if (agregado) mostrarToast(item.producto.nombre, item.precio);
+    const actual = carrito[idVariante] ?? 0;
+    if (!escaneado && actual >= item.cantidadDisponible) return;
+    setCarrito((prev) => ({ ...prev, [idVariante]: (prev[idVariante] ?? 0) + 1 }));
+    setAvisoCodigo(null);
+    mostrarToast(item.producto.nombre, item.precio);
+  }
+
+  // Lo que hace un código leído por el lector, venga del buscador o de la
+  // pantalla sin cursor. Devuelve si lo encontró.
+  function procesarCodigo(leido: string): boolean {
+    const codigo = leido.trim();
+    if (!codigo) return false;
+    const coincidencia = items.find((i) => mismoCodigo(i.variante.codigo_barras, codigo));
+    // Escanear desde la pantalla de inicio arranca la compra directamente
+    // (también si el código no existe, para que el cliente vea el aviso).
+    if (paso === "reposo") setPaso("escaneo");
+    if (!coincidencia) {
+      // El aviso reemplaza al "Agregado" del producto anterior: si no, el
+      // cliente ve el cartel verde y cree que entró.
+      if (toastTimeout.current) clearTimeout(toastTimeout.current);
+      setToast(null);
+      setAvisoCodigo("No encontramos ese producto. Pedile ayuda al personal.");
+      if (avisoTimeout.current) clearTimeout(avisoTimeout.current);
+      avisoTimeout.current = setTimeout(() => setAvisoCodigo(null), 4000);
+      return false;
+    }
+    agregarAlCarrito(coincidencia.variante.id_variante, true);
+    return true;
   }
 
   // Compara dos códigos tolerando la diferencia UPC/EAN.
@@ -1864,28 +1893,97 @@ export default function SelfCheckoutApp({
     if (e.key !== "Enter") return;
     const valor = e.currentTarget.value.trim();
     if (!valor) return;
-    const coincidencia = items.find((i) => mismoCodigo(i.variante.codigo_barras, valor));
-    if (coincidencia) {
-      agregarAlCarrito(coincidencia.variante.id_variante);
-      setBusquedaTexto("");
+    // Solo números y largo de código: es una lectura del lector (o alguien
+    // tipeando un código). Si no es eso, es una búsqueda por nombre y se deja.
+    const pareceCodigo = /^\d{6,14}$/.test(valor);
+    if (!pareceCodigo) {
+      const coincidencia = items.find((i) => mismoCodigo(i.variante.codigo_barras, valor));
+      if (coincidencia) {
+        agregarAlCarrito(coincidencia.variante.id_variante, true);
+        setBusquedaTexto("");
+      }
+      return;
     }
+    procesarCodigo(valor);
+    setBusquedaTexto("");
   }
+
+  // El lector escribe como un teclado, pero solo llega al buscador si el
+  // cursor está ahí. Si el cliente tocó el carrito o cualquier otra parte, el
+  // foco se va y la lectura se perdía sin hacer nada. Esto escucha el
+  // teclado de toda la pantalla y reconoce una lectura por la velocidad: el
+  // lector manda todos los dígitos en pocos milisegundos, una persona no.
+  // También funciona desde la pantalla de inicio: escanear arranca la compra.
+  const procesarCodigoRef = useRef(procesarCodigo);
+  procesarCodigoRef.current = procesarCodigo;
+  useEffect(() => {
+    if (paso !== "reposo" && paso !== "escaneo") return;
+    let buffer = "";
+    let ultima = 0;
+    let rapido = true;
+    let cierre: ReturnType<typeof setTimeout> | null = null;
+
+    function despachar() {
+      if (cierre) clearTimeout(cierre);
+      cierre = null;
+      const codigo = buffer;
+      const fueLector = rapido && codigo.length >= 6;
+      buffer = "";
+      rapido = true;
+      if (fueLector) procesarCodigoRef.current(codigo);
+      return fueLector;
+    }
+
+    function alTeclear(e: KeyboardEvent) {
+      // Si el foco está en un campo de texto, ese campo se encarga (el
+      // buscador tiene su propio manejo de Enter).
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+
+      const ahora = Date.now();
+      if (e.key === "Enter" || e.key === "Tab") {
+        if (buffer && despachar()) e.preventDefault();
+        return;
+      }
+      if (e.key.length !== 1) return;
+      if (ahora - ultima > 100) {
+        // Pausa larga: empieza una lectura nueva.
+        buffer = "";
+        rapido = true;
+      } else if (buffer && ahora - ultima > 60) {
+        rapido = false;
+      }
+      ultima = ahora;
+      buffer += e.key;
+      // Algunos lectores vienen configurados sin Enter al final: si la ráfaga
+      // se corta, se toma como lectura terminada.
+      if (cierre) clearTimeout(cierre);
+      cierre = setTimeout(despachar, 150);
+    }
+
+    window.addEventListener("keydown", alTeclear);
+    return () => {
+      window.removeEventListener("keydown", alTeclear);
+      if (cierre) clearTimeout(cierre);
+    };
+  }, [paso]);
 
   useEffect(() => {
     if (paso !== "escaneo") return;
     searchInputRef.current?.focus();
   }, [paso]);
 
+  // Sin tope por stock: lo que está en el carrito el cliente lo tiene en la
+  // mano, y cada unidad que suma la paga. Si el sistema decía menos, la venta
+  // queda "a revisar" al cobrarse (misma regla que el mostrador).
   function cambiarCantidad(idVariante: string, delta: number) {
     setCarrito((prev) => {
-      const item = itemPorVariante.get(idVariante);
       const actual = prev[idVariante] ?? 0;
-      const nueva = actual + delta;
+      const nueva = Math.min(actual + delta, 99);
       if (nueva <= 0) {
         const { [idVariante]: _omit, ...resto } = prev;
         return resto;
       }
-      if (item && nueva > item.cantidadDisponible) return prev;
       return { ...prev, [idVariante]: nueva };
     });
   }
@@ -1897,6 +1995,7 @@ export default function SelfCheckoutApp({
     setPedido(null);
     setError(null);
     setBusquedaTexto("");
+    setAvisoCodigo(null);
     setProfesional(null);
     setMarcasCanje(new Set());
     setPinCanje("");
@@ -2238,7 +2337,13 @@ export default function SelfCheckoutApp({
             </div>
           )}
 
-          {error && !toast && (
+          {avisoCodigo && !toast && (
+            <div className="sc-error-caja">
+              <p className="sc-error-texto">{avisoCodigo}</p>
+            </div>
+          )}
+
+          {error && !toast && !avisoCodigo && (
             <div className="sc-error-caja">
               <p className="sc-error-texto">{error}</p>
             </div>
@@ -2278,7 +2383,6 @@ export default function SelfCheckoutApp({
                       <span className="sc-item-cant-num">{i.cantidad}</span>
                       <button
                         onClick={() => cambiarCantidad(i.variante.id_variante, 1)}
-                        disabled={i.cantidad >= i.cantidadDisponible}
                         className="sc-btn-cant"
                       >
                         +
