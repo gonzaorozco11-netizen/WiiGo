@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { esCodigoInterno, limpiarCodigoBarras, formatearCodigo } from "@/lib/codigos";
 import { guardarCodigoBarras, volverAEtiquetaWiigo } from "@/app/(app)/codigos/actions";
@@ -29,6 +29,12 @@ const SIN_MARCA = "Marcas que no están activas";
  * se respeta, todo sale corrido media etiqueta y se arruina la hoja entera.
  */
 const PLANCHAS = [
+  // La que usa el local: paquete de 25 hojas, 2000 etiquetas. 5 columnas por
+  // 16 filas, sin separación: 5 × 39 = 195 mm y 16 × 17 = 272 mm, y lo que
+  // sobra de la A4 queda como margen parejo (7,5 mm a los costados y 12,5 mm
+  // arriba y abajo). Si la plancha real lo tiene distinto, se corrige con el
+  // ajuste fino de la pantalla, sin tocar esto.
+  { id: "39x17-80", nombre: "39 × 17 mm — 80 por hoja", ancho: 39, alto: 17, cols: 5, filas: 16, margenX: 7.5, margenY: 12.5, sepX: 0, sepY: 0 },
   { id: "70x35", nombre: "70 × 35 mm — 24 por hoja", ancho: 70, alto: 35, cols: 3, filas: 8, margenX: 0, margenY: 8.5, sepX: 0, sepY: 0 },
   { id: "63x34", nombre: "63,5 × 33,9 mm — 24 por hoja (Avery L7159)", ancho: 63.5, alto: 33.9, cols: 3, filas: 8, margenX: 7.2, margenY: 13.1, sepX: 2.5, sepY: 0 },
   { id: "105x37", nombre: "105 × 37 mm — 16 por hoja", ancho: 105, alto: 37, cols: 2, filas: 8, margenX: 0, margenY: 0.5, sepX: 0, sepY: 0 },
@@ -540,6 +546,40 @@ function ConfigurarImpresion({
   const [plancha, setPlancha] = useState<Plancha>(PLANCHAS[0]);
   const [rollo, setRollo] = useState<Rollo>(ROLLOS[0]);
   const [desde, setDesde] = useState(1);
+  // Ajuste fino: casi todas las impresoras corren la hoja uno o dos
+  // milímetros al tomarla. Se mide una vez con la prueba en papel común y
+  // queda guardado en esta compu, para esa plancha.
+  const [ajuste, setAjuste] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  // Recordar la última plancha elegida y su ajuste. Solo comodidad: si el
+  // navegador no deja guardar, arranca con la primera y sin ajuste.
+  useEffect(() => {
+    try {
+      const id = localStorage.getItem("codigos.plancha");
+      const p = PLANCHAS.find((x) => x.id === id);
+      if (p) setPlancha(p);
+    } catch {}
+  }, []);
+  useEffect(() => {
+    try {
+      localStorage.setItem("codigos.plancha", plancha.id);
+      const guardado = JSON.parse(localStorage.getItem(`codigos.ajuste.${plancha.id}`) ?? "null");
+      setAjuste(
+        guardado && typeof guardado.x === "number" && typeof guardado.y === "number" ? guardado : { x: 0, y: 0 }
+      );
+    } catch {
+      setAjuste({ x: 0, y: 0 });
+    }
+  }, [plancha.id]);
+
+  function cambiarAjuste(eje: "x" | "y", valor: number) {
+    const limpio = Math.round(Math.min(Math.max(valor, -10), 10) * 2) / 2;
+    const nuevo = { ...ajuste, [eje]: Number.isFinite(limpio) ? limpio : 0 };
+    setAjuste(nuevo);
+    try {
+      localStorage.setItem(`codigos.ajuste.${plancha.id}`, JSON.stringify(nuevo));
+    } catch {}
+  }
   const [cantidades, setCantidades] = useState<Record<string, number>>(() =>
     Object.fromEntries(items.map((i) => [i.idVariante, unidadesIniciales(i)]))
   );
@@ -693,6 +733,39 @@ function ConfigurarImpresion({
                 className="w-24 rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
               />
             </div>
+
+            <div>
+              <label className="block text-xs text-neutral-500 mb-1" htmlFor="ajuste-y">
+                Bajar (mm)
+              </label>
+              <input
+                id="ajuste-y"
+                type="number"
+                step={0.5}
+                min={-10}
+                max={10}
+                value={ajuste.y}
+                onChange={(e) => cambiarAjuste("y", Number(e.target.value))}
+                title="Positivo baja todo, negativo lo sube"
+                className="w-20 rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-neutral-500 mb-1" htmlFor="ajuste-x">
+                Correr a la derecha (mm)
+              </label>
+              <input
+                id="ajuste-x"
+                type="number"
+                step={0.5}
+                min={-7}
+                max={7}
+                value={ajuste.x}
+                onChange={(e) => cambiarAjuste("x", Number(e.target.value))}
+                title="Positivo corre todo a la derecha, negativo a la izquierda"
+                className="w-20 rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
+              />
+            </div>
           </>
         ) : (
           <div>
@@ -743,7 +816,9 @@ function ConfigurarImpresion({
             Al imprimir, poné el tamaño en <b>A4</b> y los márgenes en <b>ninguno</b>, y desactivá
             &ldquo;ajustar al papel&rdquo; — si el navegador achica la página, las etiquetas salen
             corridas y se arruina la plancha entera. Hacé una prueba en papel común y ponela sobre la
-            plancha a contraluz antes de gastar la primera.
+            plancha a contraluz antes de gastar la primera. Si los códigos caen corridos, medí cuánto
+            con una regla y ponelo en <b>Bajar</b> o <b>Correr a la derecha</b> (en negativo para el
+            otro lado). Queda guardado en esta compu para las próximas veces.
           </>
         ) : (
           <>
@@ -756,7 +831,7 @@ function ConfigurarImpresion({
       </p>
 
       {papel === "plancha" ? (
-        <HojaDeEtiquetas plancha={plancha} desde={desde} items={aImprimir} />
+        <HojaDeEtiquetas plancha={plancha} desde={desde} items={aImprimir} ajuste={ajuste} />
       ) : (
         <TiraDeEtiquetas rollo={rollo} items={aImprimir} />
       )}
@@ -775,10 +850,13 @@ function HojaDeEtiquetas({
   plancha,
   desde,
   items,
+  ajuste,
 }: {
   plancha: Plancha;
   desde: number;
   items: ItemCodigo[];
+  /** Milímetros que se corre toda la grilla para compensar la impresora. */
+  ajuste: { x: number; y: number };
 }) {
   const porHoja = plancha.cols * plancha.filas;
   // Los casilleros que se saltean van vacíos adelante; el resto se corta en
@@ -821,8 +899,12 @@ function HojaDeEtiquetas({
           style={{
             width: "210mm",
             height: "297mm",
-            paddingTop: `${plancha.margenY}mm`,
-            paddingLeft: `${plancha.margenX}mm`,
+            // El ajuste nunca puede sacar la grilla del papel: el margen
+            // resultante se frena en cero.
+            paddingTop: `${Math.max(0, plancha.margenY + ajuste.y)}mm`,
+            paddingLeft: `${Math.max(0, plancha.margenX + ajuste.x)}mm`,
+            boxSizing: "border-box",
+            overflow: "hidden",
             display: "grid",
             gridTemplateColumns: `repeat(${plancha.cols}, ${plancha.ancho}mm)`,
             gridAutoRows: `${plancha.alto}mm`,
