@@ -17,6 +17,7 @@ import {
   consumirEnMemoria,
   type ConsumoLote,
 } from "./fifoProveedor";
+import { devueltoPorDetalle, netearRenglon } from "./devueltoPorDetalle";
 
 // ===================== DETALLE PARA PANTALLA =====================
 //
@@ -196,13 +197,17 @@ export async function calcularLiquidacionProveedor(
   const { data: detalle } = idsVenta.length
     ? await supabase
         .from("detalle_ventas")
-        .select("id_variante, cantidad")
+        .select("id_detalle, id_variante, cantidad")
         .in("id_venta", idsVenta)
         .in("id_variante", varianteIds)
         .is("id_liquidacion_proveedor", null)
-    : { data: [] as { id_variante: string; cantidad: number }[] };
+    : { data: [] as { id_detalle: string; id_variante: string; cantidad: number }[] };
 
   if ((detalle ?? []).length === 0 && mermas.length === 0) return { lineas: [], total: 0 };
+
+  // Lo que el cliente devolvió no se le paga: esa unidad volvió al stock y se
+  // va a pagar cuando se venda de nuevo. Sin esto se pagaba dos veces.
+  const devueltos = await devueltoPorDetalle(supabase, (detalle ?? []).map((d) => d.id_detalle as string));
 
   const nombrePorVariante = new Map<string, string>();
   const costoReservaPorVariante = new Map<string, number>();
@@ -215,7 +220,8 @@ export async function calcularLiquidacionProveedor(
 
   const cantidadPorVariante = new Map<string, number>();
   for (const d of detalle ?? []) {
-    cantidadPorVariante.set(d.id_variante, (cantidadPorVariante.get(d.id_variante) ?? 0) + (d.cantidad ?? 0));
+    const cantidad = netearRenglon(d.cantidad, 0, devueltos.get(d.id_detalle as string)).cantidad;
+    cantidadPorVariante.set(d.id_variante, (cantidadPorVariante.get(d.id_variante) ?? 0) + cantidad);
   }
   // Las unidades de merma se suman a las vendidas: para el FIFO son lo mismo,
   // mercadería que salió del lote y hay que pagar.

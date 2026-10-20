@@ -5,6 +5,7 @@ import { friendlyDbError } from "@/lib/errors";
 import { calcularRendicion } from "@/app/(app)/liquidaciones/actions";
 import { exigirGestionInterna } from "@/lib/marcaSesion";
 import { listarMermas } from "@/lib/mermas";
+import { devueltoPorDetalle, netearRenglon } from "@/lib/devueltoPorDetalle";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 // Coincide con `pagos.forma_pago_cliente` (ver cobros-efectivo/actions.ts)
@@ -172,6 +173,10 @@ export async function calcularRentabilidad(idMarca: string, desde: string, hasta
     .in("id_pago", idsPago.length > 0 ? idsPago : ["00000000-0000-0000-0000-000000000000"]);
   const formaPagoPorIdPago = new Map((pagos ?? []).map((p) => [p.id_pago, p.forma_pago_cliente]));
 
+  // Lo devuelto se resta renglón por renglón: ni venta ni costo por un
+  // producto que volvió. Ver lib/devueltoPorDetalle.ts.
+  const devueltos = await devueltoPorDetalle(supabase, (detalle ?? []).map((d) => d.id_detalle as string));
+
   const lineas: LineaRentabilidad[] = [];
 
   for (const linea of detalle ?? []) {
@@ -182,7 +187,9 @@ export async function calcularRentabilidad(idMarca: string, desde: string, hasta
     const producto = productoPorId.get(variante.id_producto);
     const nombreProducto = `${producto?.nombre ?? "Producto"}${variante.nombre !== "Único" ? ` — ${variante.nombre}` : ""}`;
 
-    const ventaBruta = linea.subtotal ?? 0;
+    const neto = netearRenglon(linea.cantidad, linea.subtotal, devueltos.get(linea.id_detalle));
+    if (neto.cantidad <= 0 && neto.subtotal <= 0) continue;
+    const ventaBruta = neto.subtotal;
     const esEfectivo = venta.medio_pago === "EFECTIVO";
     const reglas = esEfectivo ? tasas.efectivo : tasas.mercadoPago;
 
@@ -198,7 +205,7 @@ export async function calcularRentabilidad(idMarca: string, desde: string, hasta
     const facturacionNetaLinea = reglas.iva ? ventaBruta / (1 + tasas.ivaGeneral / 100) : ventaBruta;
     const ivaLinea = ventaBruta - facturacionNetaLinea;
     const costoImpositivoLinea = reglas.iibb ? facturacionNetaLinea * (tasas.iibb / 100) : 0;
-    const cmvLinea = (producto?.costo_informado ?? 0) * linea.cantidad;
+    const cmvLinea = (producto?.costo_informado ?? 0) * neto.cantidad;
     const impuestoCreditosRedondeado = redondear2(impCreditosLinea);
     const comisionMpRedondeada = redondear2(feeMpLinea);
     const gastosFinancierosLinea = redondear2(impCreditosLinea + feeMpLinea);
@@ -210,7 +217,7 @@ export async function calcularRentabilidad(idMarca: string, desde: string, hasta
       fecha: venta.fecha,
       numeroVenta: venta.numero,
       producto: nombreProducto,
-      cantidad: linea.cantidad,
+      cantidad: neto.cantidad,
       medioPago: venta.medio_pago,
       formaPagoMp,
       ventaBruta: redondear2(ventaBruta),

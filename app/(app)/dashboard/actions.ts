@@ -6,6 +6,7 @@ import { resumenGastos } from "@/app/(app)/gastos/actions";
 import { saldoLiquidacionesPendiente } from "@/app/(app)/situacion-marca/actions";
 import { saldoCuentaComercial } from "@/lib/cuentaComercialMarca";
 import { saldosRetencionPorMarca } from "@/lib/retencionesMarca";
+import { devueltoPorDetalle, netearRenglon, devueltoParcialPorVenta } from "@/lib/devueltoPorDetalle";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 // Royalty ganado por WiiGo en marcas de consignación durante el período —
@@ -43,15 +44,23 @@ async function royaltyConsignacionPeriodo(supabase: SupabaseClient, desde: strin
   // consulta — más simple de confiar y de depurar.
   const { data: detalle, error: errorDetalle } = await supabase
     .from("detalle_ventas")
-    .select("id_venta, id_marca, subtotal, precio_unitario, cantidad")
+    .select("id_detalle, id_venta, id_marca, subtotal, precio_unitario, cantidad")
     .in("id_venta", idsVenta);
   if (errorDetalle) throw new Error(errorDetalle.message);
+
+  // Sin lo devuelto: WiiGo no gana royalty por un producto que volvió a la
+  // góndola de la marca. Ver lib/devueltoPorDetalle.ts.
+  const devueltos = await devueltoPorDetalle(supabase, (detalle ?? []).map((d) => d.id_detalle as string));
 
   let royalty = 0;
   for (const d of detalle ?? []) {
     const marca = marcaPorId.get(d.id_marca);
     if (!marca) continue;
-    const importe = d.subtotal ?? d.precio_unitario * d.cantidad;
+    const importe = netearRenglon(
+      d.cantidad,
+      d.subtotal ?? d.precio_unitario * d.cantidad,
+      devueltos.get(d.id_detalle as string)
+    ).subtotal;
     const comision = importe * ((marca.royalty_porcentaje ?? 0) / 100);
     const sinIvaPorEfectivo =
       esEfectivoPorVenta.get(d.id_venta) === true && (marca.trasladar_iva_comision_efectivo ?? true) === false;
@@ -91,15 +100,21 @@ async function otrosIngresosPeriodo(supabase: SupabaseClient, desde: string, has
   return Math.round((data ?? []).reduce((acc, m) => acc + (m.importe > 0 ? m.importe : 0), 0));
 }
 
-// Venta bruta del período, todas las marcas y canales juntos.
+// Venta del período, todas las marcas y canales juntos, ya sin lo que el
+// cliente devolvió. Una devolución parcial deja la venta PAGADA con su total
+// entero; sin restarla acá el Dashboard seguía mostrando como vendido lo que
+// volvió a la góndola, y contradecía a Resumen de ventas.
 async function ventaBrutaPeriodo(supabase: SupabaseClient, desde: string, hasta: string) {
   const { data } = await supabase
     .from("ventas")
-    .select("total")
+    .select("id_venta, total")
     .eq("estado", "PAGADA")
     .gte("fecha", `${desde}T00:00:00`)
     .lte("fecha", `${hasta}T23:59:59`);
-  return Math.round((data ?? []).reduce((acc, v) => acc + (v.total ?? 0), 0));
+  const devuelto = await devueltoParcialPorVenta(supabase, (data ?? []).map((v) => v.id_venta as string));
+  return Math.round(
+    (data ?? []).reduce((acc, v) => acc + Math.max((v.total ?? 0) - (devuelto.get(v.id_venta as string) ?? 0), 0), 0)
+  );
 }
 
 // Plata que efectivamente entró (neto acreditado, ya descontada la
@@ -214,15 +229,20 @@ export async function rentabilidadPorMarca(desde: string, hasta: string) {
   if (idsVenta.length > 0) {
     const { data: detalle } = await supabase
       .from("detalle_ventas")
-      .select("id_venta, id_marca, subtotal, precio_unitario, cantidad")
+      .select("id_detalle, id_venta, id_marca, subtotal, precio_unitario, cantidad")
       .in("id_venta", idsVenta);
+    const devueltos = await devueltoPorDetalle(supabase, (detalle ?? []).map((d) => d.id_detalle as string));
 
     // Separado por medio de pago porque el IVA del royalty puede no
     // corresponder en efectivo (ver trasladar_iva_comision_efectivo).
     const ventasPorMarca = new Map<string, number>();
     const efectivoPorMarca = new Map<string, number>();
     for (const d of detalle ?? []) {
-      const importe = d.subtotal ?? d.precio_unitario * d.cantidad;
+      const importe = netearRenglon(
+        d.cantidad,
+        d.subtotal ?? d.precio_unitario * d.cantidad,
+        devueltos.get(d.id_detalle as string)
+      ).subtotal;
       ventasPorMarca.set(d.id_marca, (ventasPorMarca.get(d.id_marca) ?? 0) + importe);
       if (esEfectivoPorVenta.get(d.id_venta)) {
         efectivoPorMarca.set(d.id_marca, (efectivoPorMarca.get(d.id_marca) ?? 0) + importe);

@@ -2,6 +2,7 @@
 
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
+import { devueltoPorDetalle, netearRenglon } from "@/lib/devueltoPorDetalle";
 
 // 2 decimales, no pesos enteros — si se redondea a entero en cada línea, la
 // suma de muchas líneas puede terminar desviada del total real.
@@ -120,26 +121,13 @@ export async function calcularResumenVentas(
     return variante && variante.nombre !== "Único" ? `${base} — ${variante.nombre}` : base;
   };
 
-  // Lo que volvió al local, renglón por renglón.
-  //
-  // Una devolución parcial deja la venta PAGADA y no toca su detalle, así que
-  // sin esto el producto que el cliente trajo de vuelta seguía contando como
-  // vendido para siempre. Se descuenta acá, en la línea, y no al final sobre
-  // el total: así el margen tampoco cuenta lo que se devolvió.
-  //
-  // Las anulaciones totales no hacen falta mirarlas: esa venta queda ANULADA
-  // y ya está afuera del filtro de arriba.
-  const { data: devueltos } = await supabase
-    .from("detalle_devoluciones")
-    .select("id_detalle, cantidad, subtotal")
-    .in("id_detalle", detalle.map((d) => d.id_detalle as string));
-  const devueltoPorDetalle = new Map<string, { cantidad: number; subtotal: number }>();
-  for (const d of devueltos ?? []) {
-    const previo = devueltoPorDetalle.get(d.id_detalle as string) ?? { cantidad: 0, subtotal: 0 };
-    previo.cantidad += (d.cantidad as number) ?? 0;
-    previo.subtotal += (d.subtotal as number) ?? 0;
-    devueltoPorDetalle.set(d.id_detalle as string, previo);
-  }
+  // Lo que volvió al local, renglón por renglón. Se descuenta acá, en la
+  // línea, y no al final sobre el total: así el margen tampoco cuenta lo que
+  // se devolvió. Ver lib/devueltoPorDetalle.ts.
+  const devueltos = await devueltoPorDetalle(
+    supabase,
+    detalle.map((d) => d.id_detalle as string)
+  );
 
   const idsMarca = [...new Set((productos ?? []).map((p) => p.id_marca as string).filter(Boolean))];
   const { data: marcas } = await supabase
@@ -158,9 +146,11 @@ export async function calcularResumenVentas(
     const producto = idProducto ? productoPorId.get(idProducto) : undefined;
     const marca = producto?.id_marca ? marcaPorId.get(producto.id_marca as string) : undefined;
     const tipo = marca?.tipo_comercializacion ?? "PROPIA";
-    const devuelto = devueltoPorDetalle.get(d.id_detalle as string);
-    const subtotalLinea = ((d.subtotal as number) ?? 0) - (devuelto?.subtotal ?? 0);
-    const cantidadLinea = ((d.cantidad as number) ?? 0) - (devuelto?.cantidad ?? 0);
+    const { cantidad: cantidadLinea, subtotal: subtotalLinea } = netearRenglon(
+      d.cantidad as number,
+      d.subtotal as number,
+      devueltos.get(d.id_detalle as string)
+    );
     // Devuelto entero: el renglón no deja rastro en el resumen.
     if (cantidadLinea <= 0 && subtotalLinea <= 0) continue;
 

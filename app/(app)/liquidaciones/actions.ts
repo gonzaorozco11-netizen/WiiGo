@@ -8,6 +8,7 @@ import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 import { registrarMovimientoRetencion, saldosRetencionPorMarca, historialRetencionMarca } from "@/lib/retencionesMarca";
 import { obtenerSesionMarca, exigirLecturaDeMarca, exigirGestionInterna } from "@/lib/marcaSesion";
 import { registrarMovimientoComercial } from "@/lib/cuentaComercialMarca";
+import { devueltoPorDetalle, netearRenglon, type Devuelto } from "@/lib/devueltoPorDetalle";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 async function usuarioActual() {
@@ -106,7 +107,25 @@ type VentaMinima = {
 // arma el detalle línea por línea con las deducciones. El royalty y el
 // IVA sobre royalty salen de la ficha de la marca; las tasas generales
 // (Imp. a los Créditos, comisión MP), de Configuración.
-export async function construirLineas(supabase: SupabaseClient, idMarca: string, ventasFiltradas: VentaMinima[]) {
+export async function construirLineas(
+  supabase: SupabaseClient,
+  idMarca: string,
+  ventasFiltradas: VentaMinima[],
+  opciones: {
+    /**
+     * Restar lo que el cliente devolvió de cada renglón. Es lo normal: a la
+     * marca no se le rinde un producto que tiene de vuelta en la góndola, y
+     * WiiGo no gana royalty por él.
+     *
+     * Se apaga en dos casos, los dos de ventas YA liquidadas: el comprobante
+     * de una liquidación cerrada (que no puede cambiar porque después hubo
+     * una devolución) y el contracargo (que ya prorratea por su cuenta lo
+     * devuelto sobre el total original — restar acá también lo contaría dos
+     * veces).
+     */
+    netearDevoluciones?: boolean;
+  } = {}
+) {
   const { data: marca, error: errorMarca } = await supabase
     .from("marcas")
     .select(
@@ -135,6 +154,11 @@ export async function construirLineas(supabase: SupabaseClient, idMarca: string,
     .eq("id_marca", idMarca)
     .in("id_venta", ventasFiltradas.map((v) => v.id_venta));
   if (errorDetalle) throw new Error(friendlyDbError(errorDetalle));
+
+  const devueltos: Map<string, Devuelto> =
+    opciones.netearDevoluciones === false
+      ? new Map()
+      : await devueltoPorDetalle(supabase, (detalle ?? []).map((d) => d.id_detalle as string));
 
   const idsVariante = [...new Set((detalle ?? []).map((d) => d.id_variante))];
   const { data: variantes } = await supabase
@@ -172,9 +196,17 @@ export async function construirLineas(supabase: SupabaseClient, idMarca: string,
       ? `${producto?.nombre ?? "Producto"}${variante.nombre !== "Único" ? ` — ${variante.nombre}` : ""}`
       : "Producto";
 
+    const neto = netearRenglon(
+      linea.cantidad,
+      linea.subtotal ?? linea.precio_unitario * linea.cantidad,
+      devueltos.get(linea.id_detalle as string)
+    );
+    // Devuelto entero: no hay nada que rendir por ese renglón.
+    if (neto.cantidad <= 0 && neto.subtotal <= 0) continue;
+
     const esEfectivo = venta.medio_pago === "EFECTIVO";
     const formaPagoMp = venta.id_pago ? formaPagoPorIdPago.get(venta.id_pago) ?? null : null;
-    const ventaBruta = redondear2(linea.subtotal ?? linea.precio_unitario * linea.cantidad);
+    const ventaBruta = redondear2(neto.subtotal);
     const comisionWiigo = redondear2(ventaBruta * (royalty / 100));
     const ivaComision =
       esEfectivo && !ivaRoyaltyEnEfectivo ? 0 : redondear2(comisionWiigo * (ivaRoyalty / 100));
@@ -221,7 +253,7 @@ export async function construirLineas(supabase: SupabaseClient, idMarca: string,
       fecha: venta.fecha,
       numeroVenta: venta.numero,
       producto: nombreProducto,
-      cantidad: linea.cantidad,
+      cantidad: neto.cantidad,
       medioPago: venta.medio_pago,
       formaPagoMp,
       ventaBruta,
@@ -311,7 +343,11 @@ export async function contracargoPorAnulacion(
   const resultado: { idMarca: string; nombre: string; importe: number }[] = [];
 
   for (const idMarca of idsMarca) {
-    const { marca, resumen } = await construirLineas(supabase, idMarca, [ventaParaCalculo]);
+    // Sobre la venta original entera: el factor de abajo ya dice qué parte
+    // se devolvió. Si acá además se restara lo devuelto, se contaría dos veces.
+    const { marca, resumen } = await construirLineas(supabase, idMarca, [ventaParaCalculo], {
+      netearDevoluciones: false,
+    });
     const factor = factorPorMarca ? factorPorMarca.get(idMarca) ?? 0 : 1;
     const importe = Math.round(resumen.netoARendir * factor * 100) / 100;
     if (importe <= 0) continue;
@@ -392,7 +428,12 @@ export async function detalleLiquidacion(idLiquidacion: string) {
     .eq("id_liquidacion", idLiquidacion);
   if (errorVentas) throw new Error(friendlyDbError(errorVentas));
 
-  const { marca, lineas, resumen } = await construirLineas(supabase, liquidacion.id_marca, ventas ?? []);
+  // Tal como se rindió: una devolución posterior no cambia un comprobante
+  // ya cerrado — eso se resuelve con el contracargo, en la liquidación que
+  // sigue.
+  const { marca, lineas, resumen } = await construirLineas(supabase, liquidacion.id_marca, ventas ?? [], {
+    netearDevoluciones: false,
+  });
 
   return { liquidacion, marca, lineas, resumen };
 }

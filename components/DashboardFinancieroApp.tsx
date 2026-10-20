@@ -118,7 +118,7 @@ export default function DashboardFinancieroApp() {
           {/* Venta */}
           <Kpi
             nombre="Venta"
-            explicacion="Todo lo que se vendió en el período — marca propia + marcas en consignación, bruto."
+            explicacion="Todo lo que se vendió en el período — marca propia + marcas en consignación — ya descontado lo que los clientes devolvieron."
             valor={resumen.venta}
           />
 
