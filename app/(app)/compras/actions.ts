@@ -414,6 +414,13 @@ export async function cerrarOrdenIncompleta(
     revalidatePath("/compras/costeo");
     revalidatePath("/compras/reclamos");
     revalidatePath("/");
+    // La marca ve este pedido en su portal: mientras siga abierto, Reponer le
+    // descuenta el faltante como mercadería en camino y le pide de menos. Si
+    // no se refresca, el cierre tarda en llegarle y el número sigue mal.
+    if (origen === "MARCA") {
+      revalidatePath("/portal/reponer");
+      revalidatePath("/portal");
+    }
     return { error: null, aviso };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo cerrar el pedido" };

@@ -158,12 +158,12 @@ export default function ComprasTrabajo({
    * cambia es dónde se toma: acá es donde uno ve el pedido colgado.
    */
   function cerrarPedidoDesdeRecepcion(f: Fila, faltan: number) {
-    const datos = pedirDatosDeCierre(faltan, f.contraparte);
+    const datos = pedirDatosDeCierre(faltan, f.contraparte, f.origen);
     if (!datos) return;
 
     setError(null);
     setEnviando(`${f.origen}-${f.idOrden}`);
-    cerrarOrdenIncompleta("PROVEEDOR", f.idOrden, datos.motivo, datos.facturado)
+    cerrarOrdenIncompleta(f.origen, f.idOrden, datos.motivo, datos.facturado)
       .then((r) => {
         if (r.error) setError(r.error);
         else {
@@ -594,8 +594,14 @@ export default function ComprasTrabajo({
                         hace que quede abierto para siempre.
                         Mismo texto que en Costeo a propósito: es la misma
                         acción, y dos nombres distintos se leen como dos
-                        cosas distintas. */}
-                    {puedeCerrarPedidos && f.origen === "PROVEEDOR" && (
+                        cosas distintas.
+                        Va para los dos orígenes: un envío de marca que llegó
+                        a medias tampoco se cierra solo, y mientras siga
+                        abierto el faltante cuenta como mercadería en camino
+                        en el Reponer de la marca, que entonces pide de menos.
+                        Costeo no lo necesita —ahí solo entran entregas de
+                        proveedor, que son las que tienen factura. */}
+                    {puedeCerrarPedidos && (
                       <BotonSuave
                         onClick={() => cerrarPedidoDesdeRecepcion(f, faltan)}
                         disabled={enviando === `${f.origen}-${f.idOrden}`}
@@ -786,8 +792,11 @@ function CosteoEtapa({
       .finally(() => setAnulando(null));
   }
 
+  // Siempre PROVEEDOR: a Costeo solo llegan entregas de proveedor, porque son
+  // las únicas que tienen factura que costear. Los envíos de marca se cierran
+  // desde Recepción.
   function cerrarPedido(idOrden: string, faltan: number, contraparte?: string) {
-    const datos = pedirDatosDeCierre(faltan, contraparte);
+    const datos = pedirDatosDeCierre(faltan, contraparte, "PROVEEDOR");
     if (!datos) return;
 
     setErrorCierre(null);
@@ -1559,14 +1568,22 @@ function BotonPrincipal({
  */
 function pedirDatosDeCierre(
   faltan: number,
-  contraparte?: string
+  contraparte?: string,
+  origen: "MARCA" | "PROVEEDOR" = "PROVEEDOR"
 ): { motivo: string; facturado: { neto: number; iva: number } | null } | null {
+  const esMarca = origen === "MARCA";
   const aQuien = contraparte ? ` a ${contraparte}` : "";
   const motivo = window.prompt(
-    `Vas a dar por cerrado el pedido${aQuien} con ${faltan} unidades sin recibir.\n\n¿Por qué?`,
-    "El proveedor no envía el resto"
+    `Vas a dar por cerrado el ${esMarca ? "envío" : "pedido"}${aQuien} con ${faltan} unidades sin recibir.\n\n¿Por qué?`,
+    esMarca ? "La marca no manda el resto" : "El proveedor no envía el resto"
   );
   if (motivo === null) return null;
+
+  // En consignación no hay factura de la marca que corregir: la mercadería
+  // sigue siendo de ella hasta que se vende, y lo que no llegó nunca se le
+  // pagó. Preguntar por una nota de crédito acá sería preguntar por algo que
+  // no existe.
+  if (esMarca) return { motivo, facturado: null };
 
   // Se pregunta y no se calcula: el sistema sabe cuántas unidades faltaron,
   // pero no si el proveedor las facturó ni a qué precio. Adivinarlo daría un
