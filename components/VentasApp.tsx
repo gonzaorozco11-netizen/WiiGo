@@ -6,6 +6,7 @@ import {
   anularVenta,
   listarVentasFiltradas,
   obtenerDetalleVenta,
+  qrComprobanteDeVenta,
   reintentarNotaCredito,
   type MedioDevolucion,
 } from "@/app/(app)/ventas/actions";
@@ -219,11 +220,31 @@ export default function VentasApp({
       .finally(() => setCargandoDetalle(false));
   }, [idVentaSeleccionada]);
 
+  // Comprobante para el cliente: el mismo QR que muestra el totem al final.
+  const [comprobante, setComprobante] = useState<{ numero: number; url: string; qr: string; facturada: boolean } | null>(
+    null
+  );
+  const [cargandoComprobante, setCargandoComprobante] = useState(false);
+  const [errorComprobante, setErrorComprobante] = useState<string | null>(null);
+
+  function mostrarComprobante(venta: Venta) {
+    setCargandoComprobante(true);
+    setErrorComprobante(null);
+    qrComprobanteDeVenta(venta.id_venta)
+      .then((r) => {
+        if (r.error !== null) setErrorComprobante(r.error);
+        else setComprobante({ numero: venta.numero, url: r.url, qr: r.qr, facturada: r.facturada });
+      })
+      .catch(() => setErrorComprobante("No se pudo armar el comprobante. Probá de nuevo."))
+      .finally(() => setCargandoComprobante(false));
+  }
+
   function seleccionarVenta(id: string) {
     setIdVentaSeleccionada(id);
     setAnulando(false);
     setMotivoAnular("");
     setMensajeAnular(null);
+    setErrorComprobante(null);
   }
 
   function handleAnularVenta() {
@@ -554,6 +575,22 @@ export default function VentasApp({
                   </div>
                 )}
 
+                {/* Para el cliente que no llegó a escanear el QR del totem
+                    (la pantalla vuelve sola al inicio) o que compró en el
+                    mostrador y quiere el comprobante igual. */}
+                {ventaSeleccionada.estado === "PAGADA" && (
+                  <div className="mt-4">
+                    <button
+                      onClick={() => mostrarComprobante(ventaSeleccionada)}
+                      disabled={cargandoComprobante}
+                      className="w-full text-sm font-semibold text-white bg-accent rounded-lg py-2.5 hover:bg-accent-dark disabled:opacity-60"
+                    >
+                      {cargandoComprobante ? "Armando el comprobante…" : "Mostrar comprobante al cliente"}
+                    </button>
+                    {errorComprobante && <p className="mt-2 text-xs text-red-600">{errorComprobante}</p>}
+                  </div>
+                )}
+
                 {ventaSeleccionada.estado === "PAGADA" && devolviendo && (
                   <div className="mt-4">
                     <DevolucionPanel
@@ -764,6 +801,94 @@ export default function VentasApp({
             )}
           </div>
         </div>
+      </div>
+
+      {comprobante && (
+        <ComprobanteParaCliente comprobante={comprobante} onCerrar={() => setComprobante(null)} />
+      )}
+    </div>
+  );
+}
+
+// Pantalla completa a propósito: la operativa da vuelta la compu o la
+// tablet hacia el cliente, y el QR tiene que leerse desde un metro.
+function ComprobanteParaCliente({
+  comprobante,
+  onCerrar,
+}: {
+  comprobante: { numero: number; url: string; qr: string; facturada: boolean };
+  onCerrar: () => void;
+}) {
+  const [copiado, setCopiado] = useState(false);
+
+  useEffect(() => {
+    function alTeclear(e: KeyboardEvent) {
+      if (e.key === "Escape") onCerrar();
+    }
+    window.addEventListener("keydown", alTeclear);
+    return () => window.removeEventListener("keydown", alTeclear);
+  }, [onCerrar]);
+
+  function copiarLink() {
+    navigator.clipboard
+      ?.writeText(comprobante.url)
+      .then(() => {
+        setCopiado(true);
+        setTimeout(() => setCopiado(false), 2500);
+      })
+      .catch(() => {});
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"
+      onClick={onCerrar}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Comprobante para el cliente"
+    >
+      <div
+        className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 text-center"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+          Pedido {formatearPedido(comprobante.numero)}
+        </p>
+        <h2 className="mt-1 text-xl font-extrabold text-neutral-900">
+          {comprobante.facturada ? "Escaneá y llevate tu factura" : "Escaneá y llevate tu comprobante"}
+        </h2>
+        <p className="mt-1 text-sm text-neutral-500">Apuntá con la cámara de tu celular</p>
+
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={comprobante.qr}
+          alt={comprobante.facturada ? "Código QR de la factura" : "Código QR del comprobante"}
+          className="mx-auto mt-4 w-full max-w-[320px] aspect-square"
+        />
+        <p className="mt-2 text-xs text-neutral-500">No hace falta instalar nada</p>
+
+        <div className="mt-5 grid grid-cols-2 gap-2">
+          <a
+            href={comprobante.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm font-semibold text-neutral-700 border border-neutral-300 rounded-lg py-2 hover:bg-neutral-50"
+          >
+            Abrir comprobante
+          </a>
+          <button
+            onClick={copiarLink}
+            className="text-sm font-semibold text-neutral-700 border border-neutral-300 rounded-lg py-2 hover:bg-neutral-50"
+          >
+            {copiado ? "Link copiado" : "Copiar link"}
+          </button>
+        </div>
+        <button
+          onClick={onCerrar}
+          className="mt-2 w-full text-sm font-semibold text-white bg-accent rounded-lg py-2.5 hover:bg-accent-dark"
+        >
+          Listo
+        </button>
       </div>
     </div>
   );

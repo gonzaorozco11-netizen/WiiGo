@@ -1,7 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
+import QRCode from "qrcode";
+import { baseUrlPublica } from "@/lib/urlPublica";
 import { getSupabaseServerClient, type Venta, type DetalleVenta } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
@@ -566,6 +568,32 @@ export async function listarVentasFiltradas(params: {
 // el panel de la derecha — antes se traía TODO detalle_ventas junto con el
 // listado completo sin usarse para nada más que esto. Ahora se pide bajo
 // demanda, una venta a la vez, por id_venta (ya indexado).
+// El mismo QR que muestra el totem al terminar, para cuando el cliente no
+// llegó a escanearlo (la pantalla vuelve sola al inicio) o compró en el
+// mostrador y quiere el comprobante igual. Apunta a la misma página pública
+// /comprobante/<id>, que muestra la factura si la venta la tiene.
+export async function qrComprobanteDeVenta(
+  idVenta: string
+): Promise<{ url: string; qr: string; facturada: boolean; error: null } | { error: string }> {
+  try {
+    const supabase = getSupabaseServerClient();
+    const { data, error } = await supabase.from("ventas").select("estado, cae").eq("id_venta", idVenta).maybeSingle();
+    if (error) return { error: friendlyDbError(error) };
+    if (!data) return { error: "No se encontró la venta." };
+    if (data.estado !== "PAGADA") return { error: "Solo una venta pagada tiene comprobante para el cliente." };
+
+    // Dominio fijo, no el del request: ver lib/urlPublica.ts.
+    const h = await headers();
+    const host = h.get("x-forwarded-host") ?? h.get("host") ?? "";
+    const proto = h.get("x-forwarded-proto") ?? "https";
+    const url = `${baseUrlPublica(host ? `${proto}://${host}` : "")}/comprobante/${idVenta}`;
+    const qr = await QRCode.toDataURL(url, { margin: 1, width: 480 });
+    return { url, qr, facturada: Boolean(data.cae), error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo armar el comprobante." };
+  }
+}
+
 export async function obtenerDetalleVenta(idVenta: string): Promise<DetalleVenta[]> {
   const supabase = getSupabaseServerClient();
   const { data, error } = await supabase.from("detalle_ventas").select("*").eq("id_venta", idVenta);
