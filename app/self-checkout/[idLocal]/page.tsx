@@ -13,6 +13,7 @@ import {
 import { obtenerClimaActual } from "@/lib/clima";
 import { montoQuePideDni } from "@/lib/arca/config";
 import SelfCheckoutApp from "@/components/SelfCheckoutApp";
+import { versionActual } from "@/lib/version";
 
 export const dynamic = "force-dynamic";
 
@@ -68,6 +69,7 @@ export default async function SelfCheckoutPage({ params }: { params: Promise<{ i
   return (
     <SelfCheckoutApp
       montoPideDni={montoPideDni}
+      version={versionActual()}
       local={local as Local}
       productos={(productosRes.data ?? []) as unknown as ProductoPublico[]}
       variantes={(variantesRes.data ?? []) as unknown as VarianteTotem[]}

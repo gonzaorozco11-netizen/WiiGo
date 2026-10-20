@@ -1318,7 +1318,10 @@ export default function SelfCheckoutApp({
   clima,
   esDeNoche,
   montoPideDni,
+  version,
 }: {
+  /** La versión publicada cuando se abrió esta página (ver lib/version.ts). */
+  version: string;
   local: Local;
   // Tipos recortados a propósito: esta pantalla es pública y solo recibe las
   // columnas que puede mostrar. Ver app/self-checkout/[idLocal]/page.tsx.
@@ -2150,6 +2153,40 @@ export default function SelfCheckoutApp({
     }, 1000);
     return () => clearInterval(id);
   }, [paso]);
+
+  // Versión nueva publicada: el totem se recarga solo, pero únicamente
+  // cuando nadie lo está usando. Antes quedaba con la versión vieja hasta la
+  // recarga de las 4 de la mañana, o hasta que alguien lo recargara a mano.
+  //
+  // Cada 2 minutos pregunta qué versión hay publicada. Si cambió, espera a
+  // que se den las dos cosas: estar en la pantalla de inicio (nunca en medio
+  // de una compra ni esperando un pago) y que haya pasado 1 minuto desde el
+  // último toque. Si alguien toca la pantalla, la recarga se posterga sola.
+  const [hayVersionNueva, setHayVersionNueva] = useState(false);
+  useEffect(() => {
+    if (version === "local" || hayVersionNueva) return;
+    const preguntar = () => {
+      fetch(`/api/version?t=${Date.now()}`, { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((r) => {
+          if (r && typeof r.version === "string" && r.version !== "local" && r.version !== version) {
+            setHayVersionNueva(true);
+          }
+        })
+        .catch(() => {}); // sin internet un rato: se vuelve a preguntar
+    };
+    const id = setInterval(preguntar, 2 * 60 * 1000);
+    return () => clearInterval(id);
+  }, [version, hayVersionNueva]);
+
+  useEffect(() => {
+    if (!hayVersionNueva || paso !== "reposo") return;
+    const QUIETO_MS = 60 * 1000;
+    const id = setInterval(() => {
+      if (Date.now() - ultimaActividad.current >= QUIETO_MS) window.location.reload();
+    }, 5000);
+    return () => clearInterval(id);
+  }, [hayVersionNueva, paso]);
 
   function handleCancelarPedido() {
     if (!pedido) {
