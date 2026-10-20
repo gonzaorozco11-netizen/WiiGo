@@ -29,6 +29,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const sesionPermisos = await obtenerSesionConPermisos();
   const puedeVerCajaAdmin = tienePermiso(sesionPermisos, PERMISOS.VER_CAJA_ADMIN);
   const puedeGestionarNomina = tienePermiso(sesionPermisos, PERMISOS.GESTIONAR_NOMINA);
+  // Misma regla que app/(app)/configuracion/page.tsx: si la pantalla no la
+  // deja entrar, el menú no se la muestra.
+  const puedeEditarConfiguracion = tienePermiso(sesionPermisos, PERMISOS.EDITAR_CONFIGURACION);
   const avisoSalida = session ? await verificarAvisoSalida() : { debeRecordar: false, horaSalida: null };
   // Contador del menú: lo que las marcas mandaron y las etiquetas vencidas.
   const pendientes = session ? await contarPendientes() : { solicitudes: 0, etiquetas: 0, etiquetasVencidas: 0 };
@@ -58,6 +61,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               esAdmin={session?.rol === "admin"}
               puedeVerCajaAdmin={puedeVerCajaAdmin}
               puedeGestionarNomina={puedeGestionarNomina}
+              puedeEditarConfiguracion={puedeEditarConfiguracion}
               pendientesAprobacion={pendientes.solicitudes}
               etiquetasVencidas={pendientes.etiquetasVencidas}
             />

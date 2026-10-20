@@ -167,6 +167,7 @@ export default function AppNav({
   esAdmin,
   puedeVerCajaAdmin,
   puedeGestionarNomina,
+  puedeEditarConfiguracion,
   pendientesAprobacion = 0,
   etiquetasVencidas = 0,
 }: {
@@ -174,6 +175,9 @@ export default function AppNav({
   esAdmin: boolean;
   puedeVerCajaAdmin: boolean;
   puedeGestionarNomina: boolean;
+  /** Configuración no está en el catálogo de pantallas: la abre el admin o
+   *  quien tenga el permiso puntual de editarla (ver configuracion/page.tsx). */
+  puedeEditarConfiguracion: boolean;
   /** Solicitudes de marcas esperando respuesta. */
   pendientesAprobacion?: number;
   /** Etiquetas cuyo precio ya cambió y el cartel todavía no. Van en rojo. */
@@ -281,14 +285,16 @@ export default function AppNav({
           </div>
         );
       })}
-      <Link
-        href={SUELTO.href}
-        className={`text-sm font-semibold px-2.5 py-1.5 rounded-lg ${
-          esActivo(SUELTO.href) ? "text-accent bg-accent-tint" : "text-neutral-600 hover:text-neutral-900"
-        }`}
-      >
-        {SUELTO.label}
-      </Link>
+      {puedeEditarConfiguracion && (
+        <Link
+          href={SUELTO.href}
+          className={`text-sm font-semibold px-2.5 py-1.5 rounded-lg ${
+            esActivo(SUELTO.href) ? "text-accent bg-accent-tint" : "text-neutral-600 hover:text-neutral-900"
+          }`}
+        >
+          {SUELTO.label}
+        </Link>
+      )}
       {esAdmin && (
         <Link
           href={AUDITORIA.href}
