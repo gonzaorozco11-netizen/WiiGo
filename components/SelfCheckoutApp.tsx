@@ -399,7 +399,7 @@ html, body { margin: 0; padding: 0; height: 100%; background: #fafafa; }
      mitad del ancho y partía el título en dos renglones sin necesidad. */
   width: max-content;
   max-width: calc(100% - 40px);
-  padding: 18px 40px 20px;
+  padding: 20px 40px 20px;
   border-radius: 24px;
   background: rgba(255,255,255,.16);
   border: 1px solid rgba(255,255,255,.42);
@@ -407,7 +407,6 @@ html, body { margin: 0; padding: 0; height: 100%; background: #fafafa; }
   text-align: center;
   pointer-events: none;
 }
-.sc-placa-marca,
 .sc-placa-paso {
   font-size: 12px;
   font-weight: 700;
@@ -417,7 +416,7 @@ html, body { margin: 0; padding: 0; height: 100%; background: #fafafa; }
 }
 /* Con .sc-placa delante: si no, ".sc-root p { margin: 0 }" pisa el margen. */
 .sc-placa .sc-placa-titulo {
-  margin: 6px 0 10px;
+  margin: 0 0 10px;
   font-size: 38px;
   font-weight: 800;
   letter-spacing: -0.01em;
@@ -2347,7 +2346,6 @@ export default function SelfCheckoutApp({
           {clima === "tormenta" && <div key={flashKey} className="sc-relampago sc-flash" />}
 
           <div className="sc-placa">
-            <p className="sc-placa-marca">WiiGo</p>
             <p className="sc-placa-titulo">Estaciones de pago</p>
             <div className="sc-placa-pasos">
               <span className="sc-placa-paso">Escaneá</span>
