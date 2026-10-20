@@ -1,13 +1,11 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
-import { logout } from "@/app/login/actions";
 import { obtenerSesionConPantallas } from "@/lib/roles";
 import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos";
 import { verificarAvisoSalida } from "@/app/(app)/ficha-asistencia/actions";
 import { contarPendientes } from "@/app/(app)/aprobaciones/actions";
-import AppNav from "@/components/AppNav";
+import AppNav, { MigaDePan } from "@/components/AppNav";
 import AvisoSalidaBanner from "@/components/AvisoSalidaBanner";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -37,57 +35,34 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const pendientes = session ? await contarPendientes() : { solicitudes: 0, etiquetas: 0, etiquetasVencidas: 0 };
 
   return (
-    <div className="app-shell min-h-screen bg-fondo-app">
-      {/* `print:hidden`: el menú no va en ningún papel. Las páginas pensadas
-          para imprimir (el pedido al proveedor, el recibo) viven adentro de
-          este layout, y sin esto el PDF sale con la barra de navegación y el
-          "Salir" arriba de todo — y ese papel se lo mandás al proveedor. */}
-      <header className="border-b border-neutral-200 bg-white print:hidden">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-            {/* El logo lleva al inicio: es lo primero que toca cualquiera
-                para volver, y hasta ahora era texto suelto que no hacía nada.
-                Va el nombre sin la bajada ("estaciones de bienestar"): acá
-                adentro entra el equipo todos los días y ya sabe qué es WiiGo,
-                así que la bajada solo le comería lugar al menú. El logo
-                completo va donde la marca se presenta ante alguien de afuera
-                — login, portal de marcas y comprobante del cliente. */}
-            <Link href="/" className="shrink-0 hover:opacity-70 transition-opacity" aria-label="Ir al inicio">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/wiigo-wordmark.png" alt="WiiGo" className="h-7 w-auto block" />
-            </Link>
-            <AppNav
-              pantallas={sesionConPantallas?.pantallas ?? null}
-              esAdmin={session?.rol === "admin"}
-              puedeVerCajaAdmin={puedeVerCajaAdmin}
-              puedeGestionarNomina={puedeGestionarNomina}
-              puedeEditarConfiguracion={puedeEditarConfiguracion}
-              pendientesAprobacion={pendientes.solicitudes}
-              etiquetasVencidas={pendientes.etiquetasVencidas}
-            />
+    // Menú a la izquierda y la pantalla a la derecha (en la computadora; en
+    // la tablet y el celular el menú es un cajón). Al imprimir el menú no
+    // existe (`print:hidden` adentro de AppNav): las páginas pensadas para
+    // imprimir (el pedido al proveedor, el recibo) viven adentro de este
+    // layout, y ese papel se lo mandás al proveedor.
+    <div className="app-shell min-h-screen bg-fondo-app lg:flex print:block">
+      <AppNav
+        pantallas={sesionConPantallas?.pantallas ?? null}
+        esAdmin={session?.rol === "admin"}
+        puedeVerCajaAdmin={puedeVerCajaAdmin}
+        puedeGestionarNomina={puedeGestionarNomina}
+        puedeEditarConfiguracion={puedeEditarConfiguracion}
+        pendientesAprobacion={pendientes.solicitudes}
+        etiquetasVencidas={pendientes.etiquetasVencidas}
+        nombre={sesionConPantallas?.nombre ?? session?.nombre ?? null}
+      />
+      <div className="flex-1 min-w-0">
+        {avisoSalida.debeRecordar && (
+          <div className="print:hidden">
+            <AvisoSalidaBanner horaSalida={avisoSalida.horaSalida} />
           </div>
-          <div className="flex items-center gap-3">
-            {session && (
-              <span className="text-sm text-neutral-500 hidden sm:inline">
-                {session.nombre}
-                {session.rol && ` · ${session.rol === "admin" ? "Dueño" : "Operativo"}`}
-              </span>
-            )}
-            <form action={logout}>
-              <button className="text-sm text-neutral-500 hover:text-neutral-900" type="submit">
-                Salir
-              </button>
-            </form>
-          </div>
-        </div>
-      </header>
-      {avisoSalida.debeRecordar && (
-        <div className="print:hidden">
-          <AvisoSalidaBanner horaSalida={avisoSalida.horaSalida} />
-        </div>
-      )}
-      {/* Sin márgenes ni ancho máximo al imprimir: la hoja define los suyos. */}
-      <main className="max-w-6xl mx-auto px-4 py-6 print:max-w-none print:p-0">{children}</main>
+        )}
+        {/* Sin márgenes ni ancho máximo al imprimir: la hoja define los suyos. */}
+        <main className="max-w-6xl mx-auto px-4 lg:px-6 py-6 print:max-w-none print:p-0">
+          <MigaDePan />
+          {children}
+        </main>
+      </div>
     </div>
   );
 }
