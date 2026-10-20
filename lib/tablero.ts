@@ -2,6 +2,8 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import { fechaHoraArgentina } from "@/lib/horarios";
 import { ESTADOS_ABIERTOS } from "@/lib/estadosOrden";
+import { devueltoParcialPorVenta } from "@/lib/devueltoPorDetalle";
+import { armarInicioDueno, type InicioDueno } from "@/lib/inicioDueno";
 
 // Tablero de inicio.
 //
@@ -38,6 +40,9 @@ export type KpiTablero = {
 };
 
 export type Tablero = {
+  /** El negocio de un vistazo. Solo para el Dueño; null para el resto. */
+  dueno: InicioDueno | null;
+  errorDueno: string | null;
   nombre: string;
   fecha: string;
   urgentes: ItemTablero[];
@@ -180,8 +185,8 @@ export async function armarTablero(): Promise<Tablero | null> {
       ? supabase.from("stock").select("id_stock", { count: "exact", head: true }).lte("cantidad", 0)
       : CERO,
     puede("ventas") || puede("pos")
-      ? supabase.from("ventas").select("total, medio_pago").eq("estado", "PAGADA").gte("fecha", inicioDeHoy)
-      : { data: [] as { total: number | null; medio_pago: string | null }[] },
+      ? supabase.from("ventas").select("id_venta, total, medio_pago").eq("estado", "PAGADA").gte("fecha", inicioDeHoy)
+      : { data: [] as { id_venta: string; total: number | null; medio_pago: string | null }[] },
     // Liquidaciones a proveedor que todavía no tienen su factura. Cada una es
     // crédito fiscal parado: hasta que no se carga, ese IVA no entra en IVA a
     // pagar. Se piden con más de una semana a propósito — el día que liquidás
@@ -388,16 +393,19 @@ export async function armarTablero(): Promise<Tablero | null> {
   }
 
   const filasVentas = ("data" in ventasHoy ? ventasHoy.data : []) ?? [];
-  if (puede("ventas") || puede("pos")) {
-    const total = filasVentas.reduce((a, v) => a + (v.total ?? 0), 0);
-    const efectivo = filasVentas
-      .filter((v) => v.medio_pago === "EFECTIVO")
-      .reduce((a, v) => a + (v.total ?? 0), 0);
+  if ((puede("ventas") || puede("pos")) && !esAdmin) {
+    // Sin lo devuelto: una devolución parcial deja la venta PAGADA con su
+    // total entero (ver lib/devueltoPorDetalle.ts).
+    const devuelto = await devueltoParcialPorVenta(supabase, filasVentas.map((v) => v.id_venta as string));
+    const neto = (v: { id_venta: string; total: number | null }) =>
+      Math.max((v.total ?? 0) - (devuelto.get(v.id_venta) ?? 0), 0);
+    const total = filasVentas.reduce((a, v) => a + neto(v), 0);
+    const efectivo = filasVentas.filter((v) => v.medio_pago === "EFECTIVO").reduce((a, v) => a + neto(v), 0);
     kpis.push({ etiqueta: "Ventas de hoy", valor: pesos(total), pie: plural(filasVentas.length, "ticket", "tickets") });
     kpis.push({ etiqueta: "Cobrado en efectivo", valor: pesos(efectivo), pie: "hoy" });
   }
 
-  if (puede("aprobaciones")) {
+  if (puede("aprobaciones") && !esAdmin) {
     kpis.push({
       etiqueta: "Esperando respuesta",
       valor: String(n(solicitudes)),
@@ -406,7 +414,21 @@ export async function armarTablero(): Promise<Tablero | null> {
     });
   }
 
+  // El negocio entero, solo para el Dueño. Si algo falla acá, el inicio sale
+  // igual con sus pendientes: un error de cálculo no puede dejarlo sin inicio.
+  let dueno: InicioDueno | null = null;
+  let errorDueno: string | null = null;
+  if (esAdmin) {
+    try {
+      dueno = await armarInicioDueno(supabase);
+    } catch (e) {
+      errorDueno = e instanceof Error ? e.message : "No se pudieron calcular las ventas.";
+    }
+  }
+
   return {
+    dueno,
+    errorDueno,
     nombre: sesion.nombre,
     fecha: new Date(`${hoyISO}T12:00:00-03:00`).toLocaleDateString("es-AR", {
       weekday: "long",

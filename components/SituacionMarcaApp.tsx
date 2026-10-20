@@ -35,8 +35,19 @@ const ETIQUETA_TIPO_CARGO: Record<string, string> = {
   AJUSTE: "Ajuste",
 };
 
-export default function SituacionMarcaApp({ marcas, locales }: { marcas: Marca[]; locales: Local[] }) {
-  const [idMarca, setIdMarca] = useState(marcas[0]?.id_marca ?? "");
+export default function SituacionMarcaApp({
+  marcas,
+  locales,
+  marcaInicial,
+}: {
+  marcas: Marca[];
+  locales: Local[];
+  /** Marca con la que abre (viene de `?marca=` en la URL). */
+  marcaInicial?: string;
+}) {
+  const [idMarca, setIdMarca] = useState(
+    marcas.find((m) => m.id_marca === marcaInicial)?.id_marca ?? marcas[0]?.id_marca ?? ""
+  );
   const marca = marcas.find((m) => m.id_marca === idMarca) ?? null;
 
   const [cargando, setCargando] = useState(true);

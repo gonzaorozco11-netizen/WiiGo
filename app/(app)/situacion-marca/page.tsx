@@ -5,7 +5,11 @@ import SituacionMarcaApp from "@/components/SituacionMarcaApp";
 
 export const dynamic = "force-dynamic";
 
-export default async function SituacionMarcaPage() {
+// `?marca=<id>` abre la pantalla directo en esa marca (lo usa el "Ver" de
+// Ventas por marca en el inicio del Dueño). Sin el parámetro, o con una marca
+// que no está en la lista, arranca en la primera como siempre.
+export default async function SituacionMarcaPage({ searchParams }: { searchParams: Promise<{ marca?: string }> }) {
+  const { marca: marcaPedida } = await searchParams;
   const sesion = await obtenerSesionConPantallas();
   if (!puedeVerPantalla(sesion, "situacion-marca")) return <PantallaBloqueada />;
 
@@ -36,5 +40,11 @@ export default async function SituacionMarcaPage() {
     );
   }
 
-  return <SituacionMarcaApp marcas={(marcasRes.data ?? []) as Marca[]} locales={(localesRes.data ?? []) as Local[]} />;
+  return (
+    <SituacionMarcaApp
+      marcas={(marcasRes.data ?? []) as Marca[]}
+      locales={(localesRes.data ?? []) as Local[]}
+      marcaInicial={marcaPedida}
+    />
+  );
 }

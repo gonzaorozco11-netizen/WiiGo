@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { Tablero } from "@/lib/tablero";
+import InicioDueno from "@/components/InicioDueno";
 
 // La pantalla de inicio: cómo viene el día.
 //
@@ -21,7 +22,7 @@ export default function TableroInicio({ tablero }: { tablero: Tablero }) {
       <div className="bg-white border border-neutral-200 rounded-xl p-5 mb-4">
         <p className="text-xs font-bold uppercase tracking-wider text-neutral-400">{tablero.fecha}</p>
         <h1 className="text-xl font-semibold text-neutral-900 mt-1">Buen día, {tablero.nombre}</h1>
-        <p className="text-sm text-neutral-500 mt-0.5">Así viene el día.</p>
+        <p className="text-sm text-neutral-500 mt-0.5">{tablero.dueno ? "Así viene el día y el mes." : "Así viene el día."}</p>
       </div>
 
       <Link
@@ -75,7 +76,15 @@ export default function TableroInicio({ tablero }: { tablero: Tablero }) {
         )}
       </Link>
 
-      {kpis.length > 0 && (
+      {tablero.dueno ? (
+        <InicioDueno datos={tablero.dueno} turno={kpis.find((k) => k.etiqueta === "Turno de caja")} />
+      ) : tablero.errorDueno ? (
+        <p className="text-sm text-red-600 bg-white border border-red-200 rounded-xl p-4">
+          No se pudieron calcular las ventas del inicio: {tablero.errorDueno}
+        </p>
+      ) : null}
+
+      {!tablero.dueno && kpis.length > 0 && (
         <div className="mb-5">
           <p className="text-xs font-bold uppercase tracking-wider text-neutral-400 mb-2">Números</p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
