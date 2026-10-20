@@ -66,9 +66,13 @@ export default function PosApp({
   const [medioPago, setMedioPago] = useState<MedioPago>("EFECTIVO");
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [resultado, setResultado] = useState<{ numero: number; total: number; vuelto: number; puntosGenerados: number } | null>(
-    null
-  );
+  const [resultado, setResultado] = useState<{
+    numero: number;
+    total: number;
+    vuelto: number;
+    puntosGenerados: number;
+    aviso?: string;
+  } | null>(null);
   const [pedidoMp, setPedidoMp] = useState<{ idVenta: string; numero: number; total: number; qrImagen?: string } | null>(null);
   const [cancelandoMp, setCancelandoMp] = useState(false);
   const [clienteEncontrado, setClienteEncontrado] = useState<{ nombre: string; apellido: string | null; puntos: number } | null>(null);
@@ -146,8 +150,12 @@ export default function PosApp({
       .map((variante) => {
         const producto = productoPorId.get(variante.id_producto);
         if (!producto) return null;
+        // Sin stock también entra a la lista. Antes se escondía, y entonces
+        // un producto que estaba en la góndola pero con el número en cero no
+        // se podía vender de ninguna forma — el sistema le ganaba a la
+        // realidad. Ahora se muestra marcado, se vende igual y la venta
+        // queda a revisar (ver lib/stockVenta.ts).
         const cantidadDisponible = stockPorClave.get(`${variante.id_variante}_${idLocal}`) ?? 0;
-        if (cantidadDisponible <= 0) return null;
         return {
           variante,
           producto,
@@ -181,6 +189,10 @@ export default function PosApp({
   }, [carrito, itemPorVariante]);
 
   const subtotal = itemsCarrito.reduce((acc, i) => acc + i.precio * i.cantidad, 0);
+
+  // Renglones que piden más de lo que el sistema dice que hay. No frenan la
+  // venta: avisan, y la venta sale marcada para que alguien revise el stock.
+  const lineasSinStock = itemsCarrito.filter((i) => i.cantidad > i.cantidadDisponible);
 
   // Los dos totales, para poder mostrarlos en los botones de medio de pago.
   // Se recalculan desde el producto y no desde `i.precio`, que ya viene con
@@ -263,26 +275,22 @@ export default function PosApp({
     return () => clearTimeout(timeout);
   }, [dni, totalConCanje]);
 
+  // Sin tope por stock, a propósito: si el producto está en la mano del
+  // cliente, existe. El tope lo pone la realidad; el sistema avisa y marca.
   function agregar(idVariante: string) {
     const item = itemPorVariante.get(idVariante);
     if (!item) return;
-    setCarrito((prev) => {
-      const actual = prev[idVariante] ?? 0;
-      if (actual >= item.cantidadDisponible) return prev;
-      return { ...prev, [idVariante]: actual + 1 };
-    });
+    setCarrito((prev) => ({ ...prev, [idVariante]: (prev[idVariante] ?? 0) + 1 }));
   }
 
   function cambiarCantidad(idVariante: string, delta: number) {
     setCarrito((prev) => {
-      const item = itemPorVariante.get(idVariante);
       const actual = prev[idVariante] ?? 0;
       const nueva = actual + delta;
       if (nueva <= 0) {
         const { [idVariante]: _omit, ...resto } = prev;
         return resto;
       }
-      if (item && nueva > item.cantidadDisponible) return prev;
       return { ...prev, [idVariante]: nueva };
     });
   }
@@ -361,7 +369,13 @@ export default function PosApp({
       estadoVentaPos(pedidoMp.idVenta)
         .then((r) => {
           if (r.estado === "PAGADA") {
-            setResultado({ numero: r.numero, total: r.total, vuelto: 0, puntosGenerados: 0 });
+            setResultado({
+              numero: r.numero,
+              total: r.total,
+              vuelto: 0,
+              puntosGenerados: 0,
+              aviso: r.aRevisar ? `Ojo: ${r.aRevisar}` : undefined,
+            });
             // Acá NO se disparan los avisos: esta venta la acreditó el webhook
             // de Mercado Pago, y los manda él. Si los mandaran los dos, con
             // mala suerte de tiempos la marca recibiría el mail dos veces.
@@ -439,6 +453,11 @@ export default function PosApp({
           {resultado.puntosGenerados > 0 && (
             <p className="text-sm text-accent font-semibold">⭐ +{resultado.puntosGenerados} WiiGo Points</p>
           )}
+          {resultado.aviso && (
+            <p className="text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3 text-left">
+              {resultado.aviso}
+            </p>
+          )}
         </div>
         <button
           onClick={nuevaVenta}
@@ -493,6 +512,11 @@ export default function PosApp({
                 <p className="text-sm font-semibold text-neutral-900 truncate">{i.producto.nombre}</p>
                 {i.variante.nombre !== "Único" && <p className="text-xs text-neutral-400">{i.variante.nombre}</p>}
               </div>
+              {i.cantidadDisponible <= 0 && (
+                <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 rounded-full px-2 py-0.5 shrink-0">
+                  Sin stock
+                </span>
+              )}
               <span className="font-bold text-sm text-neutral-900 shrink-0">${formatearMonto(i.precio)}</span>
             </button>
           ))}
@@ -513,6 +537,12 @@ export default function PosApp({
                 <p className="text-xs text-neutral-400">
                   {i.variante.nombre !== "Único" && `${i.variante.nombre} · `}${formatearMonto(i.precio)} c/u
                 </p>
+                {i.cantidad > i.cantidadDisponible && (
+                  <p className="text-xs font-semibold text-amber-700">
+                    {i.cantidadDisponible <= 0 ? "Sin stock registrado" : `El sistema tiene ${i.cantidadDisponible}`} — se
+                    vende igual y queda a revisar
+                  </p>
+                )}
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
                 <button
@@ -524,8 +554,7 @@ export default function PosApp({
                 <span className="w-5 text-center font-bold text-sm">{i.cantidad}</span>
                 <button
                   onClick={() => cambiarCantidad(i.variante.id_variante, 1)}
-                  disabled={i.cantidad >= i.cantidadDisponible}
-                  className="w-7 h-7 rounded-md border border-neutral-300 text-neutral-500 font-bold disabled:opacity-30"
+                  className="w-7 h-7 rounded-md border border-neutral-300 text-neutral-500 font-bold"
                 >
                   +
                 </button>
@@ -775,6 +804,15 @@ export default function PosApp({
           </p>
         )}
       </div>
+
+      {lineasSinStock.length > 0 && (
+        <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+          {lineasSinStock.length === 1
+            ? "Un producto del carrito no tiene stock registrado."
+            : `${lineasSinStock.length} productos del carrito no tienen stock registrado.`}{" "}
+          Se cobra igual y la venta queda marcada <b>a revisar</b> para que alguien corrija el stock después.
+        </p>
+      )}
 
       {error && (
         <p className="text-sm text-red-600 mb-3" role="alert">

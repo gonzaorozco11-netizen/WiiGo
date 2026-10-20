@@ -440,10 +440,15 @@ export default function VentasApp({
                         {v.descuento ? `-$${formatearMonto(v.descuento)}` : "—"}
                       </td>
                       <td className="p-3 text-right font-semibold tabular-nums">${formatearMonto(v.total ?? 0)}</td>
-                      <td className="p-3">
+                      <td className="p-3 whitespace-nowrap">
                         <span className={`text-xs rounded-full px-2 py-0.5 ${ESTADO_ESTILO[v.estado] ?? "bg-neutral-100 text-neutral-600"}`}>
                           {ESTADO_LABEL[v.estado] ?? v.estado}
                         </span>
+                        {/* Se vendió algo que el sistema tenía en cero: la
+                            venta está bien, el stock no. Ver lib/stockVenta.ts. */}
+                        {v.a_revisar && (
+                          <span className="ml-1 text-xs rounded-full px-2 py-0.5 bg-amber-50 text-amber-700">A revisar</span>
+                        )}
                       </td>
                       {puedeFacturar && (
                         <td className="p-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
@@ -541,6 +546,13 @@ export default function VentasApp({
                     <span>${formatearMonto(ventaSeleccionada.total ?? 0)}</span>
                   </div>
                 </div>
+
+                {ventaSeleccionada.a_revisar && (
+                  <div className="mt-3 text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                    <b>A revisar.</b> {ventaSeleccionada.a_revisar} El ajuste ya quedó anotado en el libro de
+                    movimientos de Stock.
+                  </div>
+                )}
 
                 {ventaSeleccionada.estado === "PAGADA" && devolviendo && (
                   <div className="mt-4">

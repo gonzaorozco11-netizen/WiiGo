@@ -719,6 +719,10 @@ export type Venta = {
   devolucion_turno: string | null;
   devolucion_fecha: string | null;
   devolucion_autorizada_por: string | null;
+  // Algo que alguien tiene que ir a mirar. Hoy, un solo caso: se vendió un
+  // producto que el sistema tenía en cero. Null = nada pendiente. Ver
+  // lib/stockVenta.ts.
+  a_revisar: string | null;
 };
 
 // Turno de caja: abre un empleado con un fondo inicial de efectivo, todas

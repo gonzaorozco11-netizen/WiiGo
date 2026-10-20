@@ -18,6 +18,7 @@ import { buscarProfesionalPorDni, verificarPinProfesional, calcularDescuentoCanj
 import { calcularCanjePuntos, aplicarCanjePuntos } from "@/lib/puntosWiigo";
 import { crearOrdenQrMp } from "@/lib/mercadopago";
 import { confirmarCobro } from "@/app/(app)/cobros-efectivo/actions";
+import { descontarStockDeVenta } from "@/lib/stockVenta";
 import QRCode from "qrcode";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -145,17 +146,29 @@ type ResultadoVenta = {
   total: number;
   vuelto: number;
   puntosGenerados: number;
+  /** Algo que el cajero tiene que saber aunque la venta haya salido bien. */
+  aviso?: string;
 };
 type ResultadoPedidoMp = { idVenta: string; numero: number; total: number; qrImagen?: string };
 
 // Para que el POS sepa cuándo el cliente ya pagó el QR y pasar solo a la
 // pantalla de éxito, sin que el empleado tenga que estar preguntando.
-export async function estadoVentaPos(idVenta: string): Promise<{ estado: string; numero: number; total: number }> {
+export async function estadoVentaPos(
+  idVenta: string
+): Promise<{ estado: string; numero: number; total: number; aRevisar: string | null }> {
   const supabase = getSupabaseServerClient();
-  const { data, error } = await supabase.from("ventas").select("estado, numero, total").eq("id_venta", idVenta).maybeSingle();
+  // select("*") y no las columnas sueltas: `a_revisar` puede no existir
+  // todavía (sql/ventas-a-revisar.sql sin correr) y pedirla por nombre
+  // tiraría abajo el sondeo entero del QR por una columna optativa.
+  const { data, error } = await supabase.from("ventas").select("*").eq("id_venta", idVenta).maybeSingle();
   if (error) throw new Error(friendlyDbError(error));
   if (!data) throw new Error("No se encontró la venta");
-  return { estado: data.estado as string, numero: data.numero as number, total: data.total as number };
+  return {
+    estado: data.estado as string,
+    numero: data.numero as number,
+    total: data.total as number,
+    aRevisar: (data.a_revisar as string | null | undefined) ?? null,
+  };
 }
 
 // Next.js redacta en producción el mensaje de un Error tirado desde una
@@ -478,33 +491,23 @@ export async function venderPos(
     await aplicarCanjePuntos(supabase, idCliente, puntosACanjear);
   }
 
-  for (const item of items) {
-    const { data: stockActual } = await supabase
-      .from("stock")
-      .select("cantidad")
-      .eq("id_variante", item.idVariante)
-      .eq("id_local", idLocal)
-      .maybeSingle();
-    const nuevaCantidad = Math.max((stockActual?.cantidad ?? 0) - item.cantidad, 0);
-
-    const { error: errorStock } = await supabase
-      .from("stock")
-      .upsert(
-        { id_variante: item.idVariante, id_local: idLocal, cantidad: nuevaCantidad, fecha_actualizacion: new Date().toISOString() },
-        { onConflict: "id_variante,id_local" }
-      );
-    if (errorStock) return { error: friendlyDbError(errorStock) };
-
-    await supabase.from("movimientos_stock").insert({
-      id_variante: item.idVariante,
-      id_local: idLocal,
-      tipo: "VENTA",
-      cantidad: -item.cantidad,
-      motivo: "Venta mostrador (POS)",
-      id_referencia: venta.id_venta,
-      usuario,
-    });
-  }
+  // Si el sistema tenía menos de lo que se vendió, la venta sale igual y
+  // queda marcada a revisar — ver lib/stockVenta.ts para el porqué.
+  const stock = await descontarStockDeVenta(supabase, {
+    idVenta: venta.id_venta as string,
+    numeroVenta: venta.numero as number,
+    idLocal,
+    lineas: items.map((i) => ({ idVariante: i.idVariante, cantidad: i.cantidad })),
+    motivo: "Venta mostrador (POS)",
+    usuario,
+  });
+  if (stock.error) return { error: stock.error };
+  const avisoStock =
+    stock.sinStock.length > 0
+      ? `Ojo: ${stock.sinStock
+          .map((s) => `${s.producto} no tenía stock registrado (había ${s.habia}, se vendieron ${s.vendidas})`)
+          .join("; ")}. La venta quedó marcada a revisar para que alguien corrija el stock.`
+      : undefined;
 
   // Sin cliente identificado no hay a quién sumarle los puntos, así que
   // la venta queda con 0 aunque la regla general esté activa. Un profesional
@@ -542,6 +545,7 @@ export async function venderPos(
         total,
         vuelto,
         puntosGenerados,
+        aviso: avisoStock,
       },
     };
   } catch (err) {

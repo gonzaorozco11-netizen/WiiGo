@@ -10,6 +10,7 @@ import { calcularBeneficioReferido, registrarReferido, puntosExtraPorMonto } fro
 import { registrarCanje, esProfesionalActivo } from "@/lib/canjesProfesionales";
 import { calcularCanjePuntos, aplicarCanjePuntos } from "@/lib/puntosWiigo";
 import { facturarAlAcreditarse } from "@/lib/arca/config";
+import { descontarStockDeVenta } from "@/lib/stockVenta";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 async function usuarioActual() {
@@ -73,7 +74,9 @@ export async function confirmarCobro(
 
     const { data: venta, error: errorVenta } = await supabase
       .from("ventas")
-      .select("id_venta, id_cliente, id_local, total, estado, medio_pago, id_codigo_profesional, id_profesional_canje, marcas_canje, puntos_canjeados")
+      .select(
+        "id_venta, numero, canal, id_cliente, id_local, total, estado, medio_pago, id_codigo_profesional, id_profesional_canje, marcas_canje, puntos_canjeados"
+      )
       .eq("id_venta", idVenta)
       .maybeSingle();
     if (errorVenta) return { error: friendlyDbError(errorVenta) };
@@ -96,27 +99,13 @@ export async function confirmarCobro(
     if (errorDetalle) return { error: friendlyDbError(errorDetalle) };
     const lineas = detalle ?? [];
 
-    // Validar que todavía haya stock ANTES de cobrar nada — sin esto, dos
-    // pedidos armados con el mismo producto (dos totems, o self-checkout +
-    // una venta manual) podían cobrarse los dos igual, y el descuento final
-    // se tapaba solo poniendo el stock en 0 en vez de avisar que ya no
-    // alcanzaba.
-    const idsVarianteDetalle = [...new Set(lineas.map((l) => l.id_variante as string))];
-    const { data: stockLineas, error: errorStockCheck } = await supabase
-      .from("stock")
-      .select("id_variante, cantidad")
-      .eq("id_local", venta.id_local)
-      .in("id_variante", idsVarianteDetalle);
-    if (errorStockCheck) return { error: friendlyDbError(errorStockCheck) };
-    const stockMap = new Map((stockLineas ?? []).map((s) => [s.id_variante as string, s.cantidad as number]));
-    for (const linea of lineas) {
-      if ((stockMap.get(linea.id_variante as string) ?? 0) < (linea.cantidad as number)) {
-        return {
-          error: "Ya no queda stock suficiente para completar este pedido — revisá el stock antes de confirmar el cobro.",
-        };
-      }
-    }
-
+    // Acá ya no se frena por stock. Antes, si dos pedidos se armaron con la
+    // misma última unidad (dos totems, o totem + mostrador), el segundo se
+    // rechazaba en este punto — pero con Mercado Pago el cliente YA pagó
+    // cuando llega el webhook, y rechazar dejaba una venta pendiente para
+    // siempre con la plata cobrada. El stock se valida al armar el pedido;
+    // si igual llegó acá sin stock, se descuenta lo que haya y la venta queda
+    // marcada a revisar (ver lib/stockVenta.ts).
     const usuario = usuarioOverride ?? (await usuarioActual());
     const esMercadoPago = venta.medio_pago === "MERCADO_PAGO";
 
@@ -184,40 +173,15 @@ export async function confirmarCobro(
     return { error: "Este pedido se canceló justo antes de confirmarse — no se cobró nada." };
   }
 
-  for (const linea of lineas) {
-    const cantidadActual = stockMap.get(linea.id_variante as string) ?? 0;
-    const nuevaCantidad = cantidadActual - (linea.cantidad as number);
-    if (nuevaCantidad < 0) {
-      // No debería pasar (ya se validó arriba), salvo que otro cobro haya
-      // descontado este mismo stock en el instante entre la validación y
-      // acá — mejor cortar acá con un error claro que dejar el stock en
-      // negativo sin avisar.
-      return { error: "Ya no queda stock suficiente para completar este pedido — revisá el stock antes de confirmar el cobro." };
-    }
-
-    const { error: errorStock } = await supabase
-      .from("stock")
-      .upsert(
-        {
-          id_variante: linea.id_variante,
-          id_local: venta.id_local,
-          cantidad: nuevaCantidad,
-          fecha_actualizacion: new Date().toISOString(),
-        },
-        { onConflict: "id_variante,id_local" }
-      );
-    if (errorStock) return { error: friendlyDbError(errorStock) };
-
-    await supabase.from("movimientos_stock").insert({
-      id_variante: linea.id_variante,
-      id_local: venta.id_local,
-      tipo: "VENTA",
-      cantidad: -linea.cantidad,
-      motivo: "Venta Self Checkout",
-      id_referencia: idVenta,
-      usuario,
-    });
-  }
+  const stock = await descontarStockDeVenta(supabase, {
+    idVenta,
+    numeroVenta: (venta.numero as number) ?? 0,
+    idLocal: venta.id_local,
+    lineas: lineas.map((l) => ({ idVariante: l.id_variante as string, cantidad: l.cantidad as number })),
+    motivo: venta.canal === "POS" ? "Venta mostrador (QR Mercado Pago)" : "Venta Self Checkout",
+    usuario,
+  });
+  if (stock.error) return { error: stock.error };
 
   // El referido de profesional recién se registra acá (no al armar el
   // pedido) — así un carrito abandonado antes de pagar nunca genera un
