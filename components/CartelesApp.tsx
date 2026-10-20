@@ -31,6 +31,11 @@ const SIN_MARCA = "Sin marca";
  * de escribir la medida a mano.
  */
 const MEDIDAS = [
+  // El porta precios que compró el local ("6 cm × 35 mm", paquete de 100).
+  // Va primero y es el que arranca elegido. Medido en Chrome: con 1 mm de
+  // aire por lado un precio de seis cifras y un nombre de dos renglones
+  // entran sin cortarse.
+  { id: "60x35", nombre: "60 × 35 mm", ancho: 60, alto: 35 },
   { id: "65x40", nombre: "65 × 40 mm", ancho: 65, alto: 40 },
   { id: "65x34", nombre: "65 × 34 mm", ancho: 65, alto: 34 },
   { id: "60x40", nombre: "60 × 40 mm", ancho: 60, alto: 40 },
@@ -75,8 +80,8 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
   const [modo, setModo] = useState<"cambiaron" | "todos">(pendientes.length > 0 ? "cambiaron" : "todos");
   const visibles = modo === "cambiaron" ? pendientes : imprimibles;
 
-  const [medida, setMedida] = useState<{ ancho: number; alto: number }>({ ancho: 65, alto: 40 });
-  const [medidaId, setMedidaId] = useState<string>("65x40");
+  const [medida, setMedida] = useState<{ ancho: number; alto: number }>({ ancho: MEDIDAS[0].ancho, alto: MEDIDAS[0].alto });
+  const [medidaId, setMedidaId] = useState<string>(MEDIDAS[0].id);
   const [aire, setAire] = useState(1);
   const [elegidos, setElegidos] = useState<Set<string>>(new Set(visibles.map((i) => i.idProducto)));
 
