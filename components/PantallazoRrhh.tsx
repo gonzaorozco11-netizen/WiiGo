@@ -31,9 +31,14 @@ const TIPO_LIC: Record<string, string> = {
   OTRO: "de licencia",
 };
 
-// Escala de la regla: 0% a 30%. Verde hasta 15% (lo sano en comercio
-// minorista), amarillo hasta 20%, rojo después.
-const TOPE_REGLA = 30;
+// El indicador es el costo del equipo sobre los ingresos netos de WiiGo
+// (comisión + venta propia sin IVA + fees), no sobre lo facturado: casi toda
+// la venta es de las marcas. Para un negocio que vive de comisiones lo sano
+// es hasta el 35%; entre 35% y 45%, para mirar; arriba, el equipo se come la
+// ganancia. Sin aflojar: es el número que dice si el negocio aguanta el equipo.
+const SANO = 35;
+const ALERTA = 45;
+const TOPE_REGLA = 70;
 
 function moverMes(periodo: string, delta: number) {
   const [a, m] = periodo.split("-").map(Number);
@@ -56,13 +61,14 @@ export default function PantallazoRrhh({
   const [anio, mes] = periodo.split("-").map(Number);
   const nombreMes = MESES[mes - 1];
   const estado =
-    d.porcentajeVentas === null
+    d.porcentajeIngresos === null
       ? null
-      : d.porcentajeVentas <= 15
+      : d.porcentajeIngresos <= SANO
         ? { texto: "Sano", clase: "bg-emerald-50 text-emerald-700" }
-        : d.porcentajeVentas <= 20
+        : d.porcentajeIngresos <= ALERTA
           ? { texto: "Para mirar", clase: "bg-amber-50 text-amber-700" }
           : { texto: "Alto", clase: "bg-red-50 text-red-700" };
+  const enRegla = (v: number) => `${(v / TOPE_REGLA) * 100}%`;
   const turnosConRinde = d.turnos.filter((t) => t.rinde !== null);
   const flojo = turnosConRinde.length >= 2 ? turnosConRinde.reduce((a, t) => ((t.rinde ?? 0) < (a.rinde ?? 0) ? t : a)) : null;
   const maxRinde = Math.max(...turnosConRinde.map((t) => t.rinde ?? 0), 1);
@@ -132,37 +138,79 @@ export default function PantallazoRrhh({
           )}
         </div>
         <div className="p-5 border-t md:border-t-0 md:border-l border-neutral-200">
-          <p className={eyebrow}>Qué parte de las ventas se lleva</p>
-          {d.porcentajeVentas === null ? (
-            <p className="text-sm text-neutral-500 mt-3">Todavía no hay ventas en {nombreMes}.</p>
+          <p className={eyebrow}>Qué parte de lo que gana WiiGo se lleva</p>
+          {d.porcentajeIngresos === null ? (
+            <p className="text-sm text-neutral-500 mt-3">Todavía no hay ingresos en {nombreMes}.</p>
           ) : (
             <>
               <div className="flex items-baseline gap-2.5 mt-2.5 mb-2">
-                <p className="tipo-titulo text-4xl font-bold tabular-nums leading-none text-neutral-900">{pct(d.porcentajeVentas)}</p>
+                <p className="tipo-titulo text-4xl font-bold tabular-nums leading-none text-neutral-900">{pct(d.porcentajeIngresos)}</p>
                 {estado && <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${estado.clase}`}>{estado.texto}</span>}
               </div>
               <p className="text-sm text-neutral-500">
-                De cada $100 que vendés, <b className="text-neutral-900">{pesos(d.porcentajeVentas)}</b> van al equipo
+                De cada $100 que gana WiiGo, <b className="text-neutral-900">{pesos(Math.min(d.porcentajeIngresos, 999))}</b> van al equipo
               </p>
               <div
                 className="relative h-3 rounded-full mt-4"
-                style={{ background: "linear-gradient(90deg, #0f7a4a 0 50%, #d08a1c 50% 66.6%, #c2341d 66.6% 100%)" }}
+                style={{
+                  background: `linear-gradient(90deg, #0f7a4a 0 ${enRegla(SANO)}, #d08a1c ${enRegla(SANO)} ${enRegla(ALERTA)}, #c2341d ${enRegla(ALERTA)} 100%)`,
+                }}
               >
                 <span
                   className="absolute -top-1.5 w-1 h-6 rounded bg-neutral-900 ring-2 ring-white"
-                  style={{ left: `calc(${Math.min(d.porcentajeVentas / TOPE_REGLA, 1) * 100}% - 2px)` }}
+                  style={{ left: `calc(${Math.min(d.porcentajeIngresos / TOPE_REGLA, 1) * 100}% - 2px)` }}
                 />
               </div>
               <div className="relative h-4 text-[11px] text-neutral-400 mt-1">
                 <span className="absolute left-0">0%</span>
-                <span className="absolute -translate-x-1/2" style={{ left: "50%" }}>15%</span>
-                <span className="absolute -translate-x-1/2" style={{ left: "66.6%" }}>20%</span>
-                <span className="absolute right-0">30%</span>
+                <span className="absolute -translate-x-1/2" style={{ left: enRegla(SANO) }}>{SANO}%</span>
+                <span className="absolute -translate-x-1/2" style={{ left: enRegla(ALERTA) }}>{ALERTA}%</span>
+                <span className="absolute right-0">{TOPE_REGLA}%+</span>
+              </div>
+              {/* De dónde sale lo que gana WiiGo. */}
+              <div className="mt-3 space-y-1 text-[13px]">
+                <div className="flex justify-between text-neutral-500">
+                  <span>Comisión de las marcas</span>
+                  <span className="tabular-nums text-neutral-800">{pesos(d.ingresos.comision)}</span>
+                </div>
+                <div className="flex justify-between text-neutral-500">
+                  <span>{d.ingresos.ventaPropiaConIva > 0 ? "Venta de la marca propia" : "Venta de la marca propia, sin IVA"}</span>
+                  <span className="tabular-nums text-neutral-800">{pesos(d.ingresos.ventaPropia)}</span>
+                </div>
+                {d.ingresos.ventaPropiaConIva > 0 && (
+                  <p className="text-[11.5px] text-amber-700">
+                    {pesos(d.ingresos.ventaPropiaConIva)} son ventas en efectivo sin factura, y van con IVA: así está configurado en
+                    Configuración → Rentabilidad. Si esas ventas se facturan, activá ahí descontar el IVA en efectivo.
+                  </p>
+                )}
+                {d.ingresos.fees > 0 && (
+                  <div className="flex justify-between text-neutral-500">
+                    <span>Fees de las marcas</span>
+                    <span className="tabular-nums text-neutral-800">{pesos(d.ingresos.fees)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between font-semibold text-neutral-900 border-t border-neutral-200 pt-1">
+                  <span>Lo que gana WiiGo</span>
+                  <span className="tabular-nums">{pesos(d.ingresos.total)}</span>
+                </div>
               </div>
               <p className="text-[13px] text-neutral-500 bg-neutral-50 rounded-lg px-3 py-2.5 mt-3">
-                Vendiste <b className="text-neutral-900 tabular-nums">{pesos(d.ventas)}</b>. Para que el equipo sea el 15% de las
-                ventas, con este equipo tenés que vender <b className="text-neutral-900 tabular-nums">{pesos(d.ventaParaQuince)}</b> por mes.
+                Para que el equipo sea el {SANO}% de lo que ganás, necesitás ingresar{" "}
+                <b className="text-neutral-900 tabular-nums">{pesos(d.ingresoParaMeta)}</b> por mes
+                {d.facturadoParaMeta !== null && (
+                  <>
+                    , unos <b className="text-neutral-900 tabular-nums">{pesos(d.facturadoParaMeta)}</b> de facturación con la mezcla de
+                    este mes
+                  </>
+                )}
+                .
               </p>
+              {d.porcentajeFacturado !== null && (
+                <p className="text-[11.5px] text-neutral-400 mt-2">
+                  Sobre lo facturado ({pesos(d.facturado)}, con IVA y la parte de las marcas) sería {pct(d.porcentajeFacturado)}. No
+                  sirve para medir: esa plata es casi toda de las marcas.
+                </p>
+              )}
             </>
           )}
         </div>
@@ -179,7 +227,7 @@ export default function PantallazoRrhh({
             <p className="tipo-titulo text-2xl font-bold tabular-nums mt-2 text-neutral-900">{pesos(g.total)}</p>
             <p className="text-xs text-neutral-500">
               {g.detalle}
-              {d.ventas > 0 && g.total > 0 && ` · ${pct((g.total / d.ventas) * 100)} de las ventas`}
+              {d.ingresos.total > 0 && g.total > 0 && ` · ${pct((g.total / d.ingresos.total) * 100)} de lo que gana WiiGo`}
             </p>
             <ul className="mt-3 pt-3 border-t border-neutral-100 space-y-2.5">
               {g.gente.length === 0 && <li className="text-xs text-neutral-400">Nadie cargado en este grupo.</li>}
@@ -219,7 +267,9 @@ export default function PantallazoRrhh({
         <section className={`${tarjeta} p-5`}>
           <h2 className="font-semibold text-neutral-900">Los turnos del local</h2>
           <p className="text-xs text-neutral-500">
-            Cuánto cuesta cada turno y cuánto vende. Los turnos salen de los horarios de trabajo de Organización.
+            Cuánto cuesta cada turno y cuánto le deja a WiiGo de lo que vende: la comisión de las marcas más la venta propia sin
+            IVA. Si por cada $1 de sueldo queda menos de $1, el turno no paga su propio sueldo. Los turnos salen de los horarios de
+            trabajo de Organización.
             {hayHorasProyectadas && " El costo es el del mes completo; las horas, las fichadas hasta hoy."}
           </p>
           <div className="overflow-x-auto mt-3">
@@ -231,6 +281,7 @@ export default function PantallazoRrhh({
                   <th className="text-right pb-2 px-2">Horas</th>
                   <th className="text-right pb-2 px-2">Cuesta</th>
                   <th className="text-right pb-2 px-2">Vende</th>
+                  <th className="text-right pb-2 px-2 whitespace-nowrap">Le queda a WiiGo</th>
                   <th className="text-right pb-2 pl-2 whitespace-nowrap">Por cada $1 de sueldo</th>
                 </tr>
               </thead>
@@ -251,7 +302,8 @@ export default function PantallazoRrhh({
                         )}
                       </td>
                       <td className="py-2.5 px-2 text-right tabular-nums">{t.cuesta > 0 ? pesos(t.cuesta) : "—"}</td>
-                      <td className="py-2.5 px-2 text-right tabular-nums">{pesos(t.vende)}</td>
+                      <td className="py-2.5 px-2 text-right tabular-nums text-neutral-500">{pesos(t.vende)}</td>
+                      <td className="py-2.5 px-2 text-right tabular-nums">{pesos(t.ingreso)}</td>
                       <td className="py-2.5 pl-2">
                         {t.rinde === null ? (
                           <span className="block text-right text-neutral-400">—</span>
@@ -260,7 +312,10 @@ export default function PantallazoRrhh({
                             <span className="w-20 h-1.5 rounded-full bg-neutral-100 overflow-hidden">
                               <span
                                 className="block h-full rounded-full"
-                                style={{ width: `${(t.rinde / maxRinde) * 100}%`, background: esFlojo ? "#d08a1c" : "#0f7a4a" }}
+                                style={{
+                                  width: `${(t.rinde / maxRinde) * 100}%`,
+                                  background: t.rinde < 1 ? "#c2341d" : esFlojo ? "#d08a1c" : "#0f7a4a",
+                                }}
                               />
                             </span>
                             <b className="tabular-nums text-neutral-900">{pesos(t.rinde)}</b>
@@ -280,9 +335,11 @@ export default function PantallazoRrhh({
           )}
           {flojo && flojo.rinde !== null && (
             <p className="text-[13.5px] text-neutral-800 bg-amber-50 rounded-lg px-3.5 py-3 mt-3">
-              El turno de <b className="text-amber-700">{flojo.horario}</b> es el que menos rinde: cada $1 de sueldo trae{" "}
-              {pesos(flojo.rinde)} de ventas. Si lo sacás, ahorrás <b className="text-amber-700">{pesos(flojo.cuesta)}</b> por mes,
-              pero alguien tiene que cubrir esas horas: los cobros en efectivo de los totems los confirma una persona.
+              El turno de <b className="text-amber-700">{flojo.horario}</b> es el que menos rinde: por cada $1 de sueldo le deja a
+              WiiGo {pesos(flojo.rinde)}
+              {flojo.rinde < 1 ? ", así que no paga su propio sueldo" : ""}. Si lo sacás, ahorrás{" "}
+              <b className="text-amber-700">{pesos(flojo.cuesta)}</b> por mes, pero alguien tiene que cubrir esas horas: los cobros en
+              efectivo de los totems los confirma una persona.
             </p>
           )}
         </section>

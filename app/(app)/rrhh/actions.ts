@@ -6,7 +6,7 @@ import { friendlyDbError } from "@/lib/errors";
 import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos";
 import { fechaHoraArgentina, minutosDeHora } from "@/lib/horarios";
 import { puedeCerrarseAguinaldo } from "@/lib/aguinaldo";
-import { devueltoParcialPorVenta } from "@/lib/devueltoPorDetalle";
+import { devueltoParcialPorVenta, devueltoPorDetalle, netearRenglon } from "@/lib/devueltoPorDetalle";
 
 async function requireAcceso() {
   const sesion = await obtenerSesionConPermisos();
@@ -512,11 +512,26 @@ export type DashboardRrhh = {
   periodo: string;
   esMesActual: boolean;
   costoTotal: number;
-  ventas: number;
-  /** Lo que cuesta el equipo sobre lo vendido, en %. null si no hubo ventas. */
-  porcentajeVentas: number | null;
-  /** Cuánto habría que vender para que el equipo sea el 15% de las ventas. */
-  ventaParaQuince: number;
+  /** Lo facturado en el mes (con IVA, todas las marcas). Solo de referencia. */
+  facturado: number;
+  /** Lo que gana WiiGo, sin IVA: comisión + venta propia + fees de marcas. */
+  ingresos: {
+    comision: number;
+    ventaPropia: number;
+    /** De la venta propia, lo que quedó con IVA porque la regla de Rentabilidad
+     *  no lo saca (efectivo sin factura). Se avisa en pantalla. */
+    ventaPropiaConIva: number;
+    fees: number;
+    total: number;
+  };
+  /** El indicador: lo que cuesta el equipo sobre los ingresos netos, en %. */
+  porcentajeIngresos: number | null;
+  /** Lo mismo sobre lo facturado, para comparar. */
+  porcentajeFacturado: number | null;
+  /** Cuánto habría que ingresar para que el equipo sea el META_COSTO_LABORAL %. */
+  ingresoParaMeta: number;
+  /** Y cuánto habría que facturar para eso, con la mezcla de este mes. */
+  facturadoParaMeta: number | null;
   grupos: {
     clave: "LOCAL" | "ADMINISTRACION" | "TERCERIZADOS";
     nombre: string;
@@ -543,6 +558,8 @@ export type DashboardRrhh = {
     horasHastaHoy: number | null;
     cuesta: number;
     vende: number;
+    /** Lo que le queda a WiiGo de lo que vendió el turno (ingreso neto). */
+    ingreso: number;
     rinde: number | null;
   }[];
   ventasFueraDeTurno: number;
@@ -556,6 +573,10 @@ export type DashboardRrhh = {
   } | null;
   avisos: { clave: string; titulo: string; detalle: string; n: number; href: string }[];
 };
+
+// El costo laboral sano para un negocio que vive de comisiones: hasta el 35%
+// de los ingresos netos. Mismo número que el semáforo de PantallazoRrhh.
+const META_COSTO_LABORAL = 35;
 
 const quitarTildes = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
@@ -757,12 +778,24 @@ export async function armarDashboardRrhh(periodoPedido?: string): Promise<Dashbo
   ].map((g) => ({ ...g, total: suma(g.gente) }));
   const costoTotal = grupos.reduce((a, g) => a + g.total, 0);
 
-  // ---------- Ventas del mes y por turno ----------
-  const ventasMes: { id_venta: string; fecha: string; total: number | null }[] = [];
+  // ---------- Ingresos netos de WiiGo, del mes y por turno ----------
+  // El costo del equipo se mide contra lo que gana WiiGo, no contra lo
+  // facturado: de una marca en consignación la venta es de la marca, y a
+  // WiiGo le corresponde solo la comisión. Es la presentación de la norma
+  // contable (intermediario: la comisión; dueño del producto: la venta).
+  // Todo sin IVA, que se cobra por cuenta de ARCA:
+  //   - Consignación: la comisión (royalty) sobre el renglón, sin el IVA que
+  //     se le traslada a la marca.
+  //   - Marca propia (y todo lo que no es consignación): la venta del
+  //     renglón sin IVA. El IVA se saca si la venta tiene factura, o si la
+  //     regla de Configuración → Rentabilidad lo indica para ese medio de
+  //     pago (la misma regla que usa Rentabilidad, para no dar otro número).
+  //   - Fee de ingreso y gasto fijo mensual cobrados a las marcas.
+  const ventasMes: { id_venta: string; fecha: string; total: number | null; medio_pago: string | null; cae: string | null }[] = [];
   for (let desde = 0; ; desde += 1000) {
     const { data } = await supabase
       .from("ventas")
-      .select("id_venta, fecha, total")
+      .select("id_venta, fecha, total, medio_pago, cae")
       .eq("estado", "PAGADA")
       .gte("fecha", desdeMes)
       .lte("fecha", hastaMes)
@@ -771,9 +804,68 @@ export async function armarDashboardRrhh(periodoPedido?: string): Promise<Dashbo
     ventasMes.push(...((data ?? []) as typeof ventasMes));
     if ((data ?? []).length < 1000) break;
   }
-  const devuelto = await devueltoParcialPorVenta(supabase, ventasMes.map((v) => v.id_venta));
+  const idsVentaMes = ventasMes.map((v) => v.id_venta);
+  type RenglonMes = { id_detalle: string; id_venta: string; id_marca: string | null; cantidad: number | null; subtotal: number | null };
+  const renglonesMes: RenglonMes[] = [];
+  for (let i = 0; i < idsVentaMes.length; i += 500) {
+    const tanda = idsVentaMes.slice(i, i + 500);
+    for (let desde = 0; ; desde += 1000) {
+      const { data } = await supabase
+        .from("detalle_ventas")
+        .select("id_detalle, id_venta, id_marca, cantidad, subtotal")
+        .in("id_venta", tanda)
+        .order("id_detalle", { ascending: true })
+        .range(desde, desde + 999);
+      renglonesMes.push(...((data ?? []) as RenglonMes[]));
+      if ((data ?? []).length < 1000) break;
+    }
+  }
+  const [devuelto, devueltoRenglon, marcasRes, configRes, feesRes] = await Promise.all([
+    devueltoParcialPorVenta(supabase, idsVentaMes),
+    devueltoPorDetalle(supabase, renglonesMes.map((r) => r.id_detalle)),
+    supabase.from("marcas").select("id_marca, tipo_comercializacion, royalty_porcentaje"),
+    supabase.from("configuracion").select("parametro, valor").in("parametro", ["IVA_GENERAL_PORCENTAJE", "RENT_EFECTIVO_IVA", "RENT_MP_IVA"]),
+    supabase
+      .from("movimientos_cuenta_comercial_marca")
+      .select("importe")
+      .in("tipo_cargo", ["FEE_INGRESO", "GASTO_FIJO_MENSUAL"])
+      .eq("anulado", false)
+      .gte("fecha", desdeMes)
+      .lte("fecha", hastaMes),
+  ]);
+  const cfg = new Map((configRes.data ?? []).map((c) => [c.parametro as string, c.valor as string]));
+  const ivaGeneral = Number(cfg.get("IVA_GENERAL_PORCENTAJE") ?? 21);
+  const sacaIvaEfectivo = (cfg.get("RENT_EFECTIVO_IVA") ?? "false") === "true";
+  const sacaIvaMp = (cfg.get("RENT_MP_IVA") ?? "true") === "true";
+  const marcaPorId = new Map((marcasRes.data ?? []).map((m) => [m.id_marca as string, m]));
+  const ventaPorId = new Map(ventasMes.map((v) => [v.id_venta, v]));
+  const ingresoPorVenta = new Map<string, number>();
+  let comision = 0;
+  let ventaPropia = 0;
+  let ventaPropiaConIva = 0; // la parte a la que no se le sacó IVA (efectivo sin factura, según la regla)
+  for (const r of renglonesMes) {
+    const venta = ventaPorId.get(r.id_venta);
+    if (!venta) continue;
+    const neto = netearRenglon(r.cantidad, r.subtotal, devueltoRenglon.get(r.id_detalle)).subtotal;
+    const marca = r.id_marca ? marcaPorId.get(r.id_marca) : undefined;
+    let ingreso: number;
+    if (marca?.tipo_comercializacion === "CONSIGNACION") {
+      ingreso = neto * (((marca.royalty_porcentaje as number) ?? 0) / 100);
+      comision += ingreso;
+    } else {
+      const sacaIva = Boolean(venta.cae) || (venta.medio_pago === "EFECTIVO" ? sacaIvaEfectivo : sacaIvaMp);
+      ingreso = sacaIva ? neto / (1 + ivaGeneral / 100) : neto;
+      ventaPropia += ingreso;
+      if (!sacaIva) ventaPropiaConIva += neto;
+    }
+    ingresoPorVenta.set(r.id_venta, (ingresoPorVenta.get(r.id_venta) ?? 0) + ingreso);
+  }
+  const fees = (feesRes.data ?? []).reduce((a, f) => a + ((f.importe as number) > 0 ? (f.importe as number) : 0), 0);
+  const ingresosNetos = comision + ventaPropia + fees;
+
   const horarios = horariosRes.data ?? [];
   const ventasPorTurno = new Map<string, number>();
+  const ingresoPorTurno = new Map<string, number>();
   let ventas = 0;
   let ventasFueraDeTurno = 0;
   for (const v of ventasMes) {
@@ -781,8 +873,11 @@ export async function armarDashboardRrhh(periodoPedido?: string): Promise<Dashbo
     ventas += neto;
     const minutos = fechaHoraArgentina(v.fecha).minutosDelDia;
     const turno = horarios.find((h) => minutos >= minutosDeHora(h.hora_entrada as string) && minutos < minutosDeHora(h.hora_salida as string));
-    if (turno) ventasPorTurno.set(turno.id_horario as string, (ventasPorTurno.get(turno.id_horario as string) ?? 0) + neto);
-    else ventasFueraDeTurno += neto;
+    if (turno) {
+      const id = turno.id_horario as string;
+      ventasPorTurno.set(id, (ventasPorTurno.get(id) ?? 0) + neto);
+      ingresoPorTurno.set(id, (ingresoPorTurno.get(id) ?? 0) + (ingresoPorVenta.get(v.id_venta) ?? 0));
+    } else ventasFueraDeTurno += neto;
   }
   const turnos = [...horarios]
     .sort((a, b) => minutosDeHora(a.hora_entrada as string) - minutosDeHora(b.hora_entrada as string))
@@ -793,6 +888,7 @@ export async function armarDashboardRrhh(periodoPedido?: string): Promise<Dashbo
       const horasLista = filas.map((f) => f.horas).filter((x): x is number => x !== null);
       const horasHoyLista = filas.map((f) => (f.hastaHoy ? f.hastaHoy.horas : f.horas)).filter((x): x is number => x !== null);
       const vende = ventasPorTurno.get(h.id_horario as string) ?? 0;
+      const ingreso = ingresoPorTurno.get(h.id_horario as string) ?? 0;
       return {
         nombre: h.nombre as string,
         horario: `${hhmm(h.hora_entrada as string)} a ${hhmm(h.hora_salida as string)} h`,
@@ -801,7 +897,10 @@ export async function armarDashboardRrhh(periodoPedido?: string): Promise<Dashbo
         horasHastaHoy: horasHoyLista.length ? horasHoyLista.reduce((a, x) => a + x, 0) : null,
         cuesta: Math.round(cuesta),
         vende: Math.round(vende),
-        rinde: cuesta > 0 ? vende / cuesta : null,
+        ingreso: Math.round(ingreso),
+        // Lo que le queda a WiiGo por cada $1 de sueldo del turno. Menos de
+        // $1: el turno no paga su propio sueldo.
+        rinde: cuesta > 0 ? ingreso / cuesta : null,
       };
     });
 
@@ -842,9 +941,20 @@ export async function armarDashboardRrhh(periodoPedido?: string): Promise<Dashbo
     periodo,
     esMesActual,
     costoTotal: Math.round(costoTotal),
-    ventas: Math.round(ventas),
-    porcentajeVentas: ventas > 0 ? (costoTotal / ventas) * 100 : null,
-    ventaParaQuince: Math.round(costoTotal / 0.15),
+    facturado: Math.round(ventas),
+    ingresos: {
+      comision: Math.round(comision),
+      ventaPropia: Math.round(ventaPropia),
+      ventaPropiaConIva: Math.round(ventaPropiaConIva),
+      fees: Math.round(fees),
+      total: Math.round(ingresosNetos),
+    },
+    porcentajeIngresos: ingresosNetos > 0 ? (costoTotal / ingresosNetos) * 100 : null,
+    porcentajeFacturado: ventas > 0 ? (costoTotal / ventas) * 100 : null,
+    ingresoParaMeta: Math.round(costoTotal / (META_COSTO_LABORAL / 100)),
+    // Con la misma mezcla de este mes entre comisión y venta propia: cuánto
+    // habría que facturar para llegar a ese ingreso.
+    facturadoParaMeta: ingresosNetos > 0 ? Math.round(ventas * (costoTotal / (META_COSTO_LABORAL / 100) / ingresosNetos)) : null,
     grupos,
     turnos,
     ventasFueraDeTurno: Math.round(ventasFueraDeTurno),

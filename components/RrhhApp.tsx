@@ -92,7 +92,7 @@ const SUBS: Record<VistaRrhh, { clave: Sub; etiqueta: string }[]> = {
 const TITULO: Record<VistaRrhh, { h1: string; bajada: string }> = {
   DASHBOARD: {
     h1: "RR.HH.",
-    bajada: "Lo que cuesta el equipo, qué parte de las ventas se lleva, lo que rinde cada turno y qué está trabado.",
+    bajada: "Lo que cuesta el equipo, qué parte de lo que gana WiiGo se lleva, lo que rinde cada turno y qué está trabado.",
   },
   PERSONAL: {
     h1: "Personal",
