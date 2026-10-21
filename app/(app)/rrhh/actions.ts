@@ -528,6 +528,8 @@ export type DashboardRrhh = {
       monto: number;
       /** El sueldo de un por hora todavía sin cerrar se proyecta a fin de mes. */
       proyectado: boolean;
+      /** Para los proyectados que cobran por hora: lo real hasta hoy. */
+      hastaHoy: { monto: number; horas: number | null } | null;
       estado: { texto: string; tono: "bien" | "ojo" | "mal" | "gris" };
     }[];
   }[];
@@ -535,7 +537,10 @@ export type DashboardRrhh = {
     nombre: string;
     horario: string;
     quien: string[];
+    /** Horas del mes (proyectadas a fin de mes si el mes está en curso). */
     horas: number | null;
+    /** Las fichadas de verdad hasta hoy; distinto de `horas` solo si se proyectó. */
+    horasHastaHoy: number | null;
     cuesta: number;
     vende: number;
     rinde: number | null;
@@ -636,7 +641,10 @@ export async function armarDashboardRrhh(periodoPedido?: string): Promise<Dashbo
   // más las contribuciones patronales si está en blanco). Sin cerrar: el pago
   // base y el presentismo que viene ganando; si cobra por hora y el mes está
   // en curso, sus horas hasta hoy se proyectan a fin de mes con el mismo ritmo.
-  type FilaEmpleado = { idPersona: string; nombre: string; porHora: boolean; horas: number | null; valorHora: number | null; costo: number; sinCargas: number; proyectado: boolean; estado: EstadoSueldo };
+  type FilaEmpleado = {
+    idPersona: string; nombre: string; porHora: boolean; horas: number | null; valorHora: number | null; costo: number; sinCargas: number;
+    proyectado: boolean; hastaHoy: { monto: number; horas: number | null } | null; estado: EstadoSueldo;
+  };
   const filasEmpleado: FilaEmpleado[] = novedades.map((f) => {
     const c = f.cierre;
     if (c) {
@@ -644,18 +652,23 @@ export async function armarDashboardRrhh(periodoPedido?: string): Promise<Dashbo
       const cargas = c.es_formal ? (c.contribuciones_patronales ?? 0) : 0;
       return {
         idPersona: f.idPersona, nombre: f.nombre, porHora: f.modalidad === "POR_HORA", horas: f.horasTrabajadasMes, valorHora: f.valorHora,
-        costo: redondear2(sinCargas + cargas), sinCargas: redondear2(sinCargas), proyectado: false,
+        costo: redondear2(sinCargas + cargas), sinCargas: redondear2(sinCargas), proyectado: false, hastaHoy: null,
         estado: c.es_estimado ? "ESTIMADO" : c.estado === "PAGADO" ? "PAGADO" : "CERRADO",
       };
     }
-    const proyectar = f.modalidad === "POR_HORA" && esMesActual && diaDeHoy > 0;
+    // Solo se proyecta si hay algo que proyectar: con 0 horas no hay ritmo.
+    const proyectar = f.modalidad === "POR_HORA" && esMesActual && diaDeHoy > 0 && diaDeHoy < diasDelMes && f.montoBase > 0;
     const factor = proyectar ? diasDelMes / diaDeHoy : 1;
     const base = f.montoBase * factor;
     const incentivo = f.incentivoPresentismoPreview * factor;
     return {
       idPersona: f.idPersona, nombre: f.nombre, porHora: f.modalidad === "POR_HORA",
       horas: f.horasTrabajadasMes === null ? null : Math.round(f.horasTrabajadasMes * factor),
-      valorHora: f.valorHora, costo: redondear2(base + incentivo), sinCargas: redondear2(base + incentivo), proyectado: proyectar, estado: "SIN_CERRAR",
+      valorHora: f.valorHora, costo: redondear2(base + incentivo), sinCargas: redondear2(base + incentivo), proyectado: proyectar,
+      hastaHoy: proyectar
+        ? { monto: Math.round(f.montoBase + f.incentivoPresentismoPreview), horas: f.horasTrabajadasMes === null ? null : Math.round(f.horasTrabajadasMes) }
+        : null,
+      estado: "SIN_CERRAR",
     };
   });
   const costoPorPersona = new Map(filasEmpleado.map((f) => [f.idPersona, f]));
@@ -671,12 +684,16 @@ export async function armarDashboardRrhh(periodoPedido?: string): Promise<Dashbo
   const filaGente = (f: FilaEmpleado) => {
     const horario = horarioPorId.get((personaPorId.get(f.idPersona)?.id_horario as string) ?? "");
     const turno = horario ? `${horario.nombre} · ${hhmm(horario.hora_entrada as string)} a ${hhmm(horario.hora_salida as string)} h` : null;
-    const pago = f.porHora && f.horas !== null && f.valorHora ? `${f.horas} h × $${Math.round(f.valorHora).toLocaleString("es-AR")}` : null;
+    const valor = f.valorHora ? `$${Math.round(f.valorHora).toLocaleString("es-AR")}` : null;
+    // Proyectado: las horas reales van aparte ("Lleva…"), acá solo el valor
+    // hora. Cerrado o mes terminado: las horas reales × el valor hora.
+    const pago = !f.porHora || !valor ? null : f.proyectado || f.horas === null ? `${valor} la hora` : `${f.horas} h × ${valor}`;
     return {
       nombre: f.nombre,
       detalle: [turno, pago].filter(Boolean).join(" · ") || (f.porHora ? "Por hora" : "Sueldo fijo"),
       monto: Math.round(f.costo),
       proyectado: f.proyectado,
+      hastaHoy: f.hastaHoy,
       estado: textoEstado[f.estado],
     };
   };
@@ -717,16 +734,20 @@ export async function armarDashboardRrhh(periodoPedido?: string): Promise<Dashbo
     const gasto = tomar(gastosLibres, claves);
     const recurrente = tomar(recurrentesLibres, claves);
     if (gasto) {
-      return { nombre: nombreCompleto, detalle: gasto.descripcion ?? "Honorarios", monto: Math.round(gasto.neto ?? gasto.monto), proyectado: false, estado: { texto: "Pagado", tono: "bien" as const } };
+      return { nombre: nombreCompleto, detalle: gasto.descripcion ?? "Honorarios", monto: Math.round(gasto.neto ?? gasto.monto), proyectado: false, hastaHoy: null, estado: { texto: "Pagado", tono: "bien" as const } };
     }
     if (recurrente) {
-      return { nombre: nombreCompleto, detalle: recurrente.descripcion ?? "Honorarios", monto: Math.round(recurrente.monto_estimado ?? 0), proyectado: true, estado: { texto: "Falta pagar", tono: "ojo" as const } };
+      const monto = Math.round(recurrente.monto_estimado ?? 0);
+      return { nombre: nombreCompleto, detalle: recurrente.descripcion ?? "Honorarios", monto, proyectado: monto > 0, hastaHoy: null, estado: { texto: "Falta pagar", tono: "ojo" as const } };
     }
-    return { nombre: nombreCompleto, detalle: "Cargá su honorario como gasto recurrente", monto: 0, proyectado: false, estado: { texto: "Sin honorario cargado", tono: "gris" as const } };
+    return { nombre: nombreCompleto, detalle: "Cargá su honorario como gasto recurrente", monto: 0, proyectado: false, hastaHoy: null, estado: { texto: "Sin honorario cargado", tono: "gris" as const } };
   });
   // Honorarios que no son de ninguna persona cargada (por ejemplo, un estudio).
-  for (const g of gastosLibres) genteTerc.push({ nombre: g.descripcion ?? "Honorarios", detalle: "Honorarios", monto: Math.round(g.neto ?? g.monto), proyectado: false, estado: { texto: "Pagado", tono: "bien" } });
-  for (const r of recurrentesLibres) genteTerc.push({ nombre: r.descripcion ?? "Honorarios", detalle: "Honorarios", monto: Math.round(r.monto_estimado ?? 0), proyectado: true, estado: { texto: "Falta pagar", tono: "ojo" } });
+  for (const g of gastosLibres) genteTerc.push({ nombre: g.descripcion ?? "Honorarios", detalle: "Honorarios", monto: Math.round(g.neto ?? g.monto), proyectado: false, hastaHoy: null, estado: { texto: "Pagado", tono: "bien" } });
+  for (const r of recurrentesLibres) {
+    const monto = Math.round(r.monto_estimado ?? 0);
+    genteTerc.push({ nombre: r.descripcion ?? "Honorarios", detalle: "Honorarios", monto, proyectado: monto > 0, hastaHoy: null, estado: { texto: "Falta pagar", tono: "ojo" } });
+  }
 
   const suma = (xs: { monto: number }[]) => xs.reduce((a, x) => a + x.monto, 0);
   const grupos: DashboardRrhh["grupos"] = [
@@ -770,12 +791,14 @@ export async function armarDashboardRrhh(periodoPedido?: string): Promise<Dashbo
       const filas = deEste.map((p) => costoPorPersona.get(p.id_persona as string)).filter((f): f is FilaEmpleado => !!f);
       const cuesta = filas.reduce((a, f) => a + f.costo, 0);
       const horasLista = filas.map((f) => f.horas).filter((x): x is number => x !== null);
+      const horasHoyLista = filas.map((f) => (f.hastaHoy ? f.hastaHoy.horas : f.horas)).filter((x): x is number => x !== null);
       const vende = ventasPorTurno.get(h.id_horario as string) ?? 0;
       return {
         nombre: h.nombre as string,
         horario: `${hhmm(h.hora_entrada as string)} a ${hhmm(h.hora_salida as string)} h`,
         quien: deEste.map((p) => [p.nombre, p.apellido].filter(Boolean).join(" ")),
         horas: horasLista.length ? horasLista.reduce((a, x) => a + x, 0) : null,
+        horasHastaHoy: horasHoyLista.length ? horasHoyLista.reduce((a, x) => a + x, 0) : null,
         cuesta: Math.round(cuesta),
         vende: Math.round(vende),
         rinde: cuesta > 0 ? vende / cuesta : null,

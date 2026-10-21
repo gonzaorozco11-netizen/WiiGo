@@ -67,7 +67,14 @@ export default function PantallazoRrhh({
   const flojo = turnosConRinde.length >= 2 ? turnosConRinde.reduce((a, t) => ((t.rinde ?? 0) < (a.rinde ?? 0) ? t : a)) : null;
   const maxRinde = Math.max(...turnosConRinde.map((t) => t.rinde ?? 0), 1);
   const avisosActivos = d.avisos.filter((a) => a.n > 0);
-  const hayProyeccion = d.grupos.some((g) => g.gente.some((p) => p.proyectado));
+  // El aviso de "incluye lo que falta" solo si de verdad hay algo estimado, y
+  // diciendo qué: horas proyectadas, honorarios estimados, o las dos cosas.
+  const hayHorasProyectadas = d.grupos.some((g) => g.clave !== "TERCERIZADOS" && g.gente.some((p) => p.proyectado));
+  const hayHonorariosEstimados = d.grupos.some((g) => g.clave === "TERCERIZADOS" && g.gente.some((p) => p.proyectado));
+  const avisoProyeccion = [
+    hayHorasProyectadas ? "las horas de los que cobran por hora están llevadas a fin de mes con el ritmo que tienen hasta hoy" : null,
+    hayHonorariosEstimados ? "los honorarios que todavía no cargaste van con su monto estimado" : null,
+  ].filter(Boolean);
 
   return (
     <div className="space-y-4">
@@ -118,10 +125,9 @@ export default function PantallazoRrhh({
               </div>
             </>
           )}
-          {hayProyeccion && (
+          {avisoProyeccion.length > 0 && (
             <p className="text-[11.5px] text-neutral-400 mt-3">
-              Incluye lo que falta del mes: las horas de los que cobran por hora se proyectan a fin de mes con su ritmo
-              actual, y los honorarios sin cargar con su monto estimado.
+              Es lo que va a costar el mes completo: {avisoProyeccion.join(", y ")}.
             </p>
           )}
         </div>
@@ -185,10 +191,21 @@ export default function PantallazoRrhh({
                       {p.monto > 0 ? pesos(p.monto) : "—"}
                     </span>
                   </div>
+                  {/* Por hora y mes en curso: lo real hasta hoy, y el monto de
+                      arriba es al cierre del mes. */}
+                  {p.hastaHoy && (
+                    <div className="flex items-baseline justify-between gap-2 text-xs mt-0.5">
+                      <span className="text-neutral-600">
+                        Lleva <b className="tabular-nums">{pesos(p.hastaHoy.monto)}</b>
+                        {p.hastaHoy.horas !== null && <span className="tabular-nums"> · {p.hastaHoy.horas} h</span>}
+                      </span>
+                      <span className="text-neutral-400 shrink-0">al cierre</span>
+                    </div>
+                  )}
                   <div className="flex flex-wrap items-center gap-1.5 text-xs text-neutral-400 mt-0.5">
                     <span>{p.detalle}</span>
                     <span className={`font-bold rounded-full px-1.5 py-px text-[11px] ${TONO_CHIP[p.estado.tono]}`}>{p.estado.texto}</span>
-                    {p.proyectado && p.monto > 0 && <span className="text-[11px]">· estimado</span>}
+                    {p.proyectado && !p.hastaHoy && <span className="text-[11px]">· estimado</span>}
                   </div>
                 </li>
               ))}
@@ -203,6 +220,7 @@ export default function PantallazoRrhh({
           <h2 className="font-semibold text-neutral-900">Los turnos del local</h2>
           <p className="text-xs text-neutral-500">
             Cuánto cuesta cada turno y cuánto vende. Los turnos salen de los horarios de trabajo de Organización.
+            {hayHorasProyectadas && " El costo es el del mes completo; las horas, las fichadas hasta hoy."}
           </p>
           <div className="overflow-x-auto mt-3">
             <table className="w-full text-sm">
@@ -226,7 +244,12 @@ export default function PantallazoRrhh({
                         <span className="text-xs text-neutral-400">{t.horario}</span>
                       </td>
                       <td className="py-2.5 px-2 text-neutral-700">{t.quien.length ? t.quien.join(", ") : <span className="text-neutral-400">Nadie asignado</span>}</td>
-                      <td className="py-2.5 px-2 text-right tabular-nums">{t.horas === null ? "—" : `${t.horas} h`}</td>
+                      <td className="py-2.5 px-2 text-right tabular-nums whitespace-nowrap">
+                        {t.horasHastaHoy === null ? "—" : `${t.horasHastaHoy} h`}
+                        {t.horas !== null && t.horasHastaHoy !== null && t.horas !== t.horasHastaHoy && (
+                          <span className="block text-[11px] text-neutral-400">{t.horas} h al cierre</span>
+                        )}
+                      </td>
                       <td className="py-2.5 px-2 text-right tabular-nums">{t.cuesta > 0 ? pesos(t.cuesta) : "—"}</td>
                       <td className="py-2.5 px-2 text-right tabular-nums">{pesos(t.vende)}</td>
                       <td className="py-2.5 pl-2">
