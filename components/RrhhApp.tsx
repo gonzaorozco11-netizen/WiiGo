@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { actualizarSueldoBase, actualizarValorHora } from "@/app/(app)/usuarios/actions";
+import PantallazoRrhh from "@/components/PantallazoRrhh";
+import { actualizarSueldoBase, actualizarValorHora, actualizarCobraPresentismo } from "@/app/(app)/usuarios/actions";
 import { puedeCerrarseAguinaldo, etiquetaSemestre, semestreActual } from "@/lib/aguinaldo";
 import { crearHorario, actualizarHorario, desactivarHorario, listarHorarios, type HorarioTrabajo } from "@/app/(app)/organizacion/actions";
 import {
@@ -73,7 +74,7 @@ type Sub =
 
 /** Qué sub-secciones tiene cada pantalla, y con qué nombre. */
 const SUBS: Record<VistaRrhh, { clave: Sub; etiqueta: string }[]> = {
-  DASHBOARD: [{ clave: "dashboard", etiqueta: "Hoy" }],
+  DASHBOARD: [{ clave: "dashboard", etiqueta: "Pantallazo del mes" }],
   PERSONAL: [{ clave: "vacaciones", etiqueta: "Personal" }],
   PLANILLA: [
     { clave: "planilla", etiqueta: "Horas del mes" },
@@ -91,7 +92,7 @@ const SUBS: Record<VistaRrhh, { clave: Sub; etiqueta: string }[]> = {
 const TITULO: Record<VistaRrhh, { h1: string; bajada: string }> = {
   DASHBOARD: {
     h1: "RR.HH.",
-    bajada: "Quién está trabajando, cuánto llevás del mes en sueldos y qué está trabado.",
+    bajada: "Lo que cuesta el equipo, qué parte de las ventas se lleva, lo que rinde cada turno y qué está trabado.",
   },
   PERSONAL: {
     h1: "Personal",
@@ -198,161 +199,20 @@ export default function RrhhApp({
 
 // ===================== DASHBOARD =====================
 
-const TIPO_LIC_CORTO: Record<string, string> = {
-  VACACIONES: "vacaciones",
-  MATERNIDAD: "maternidad",
-  EXAMEN: "examen",
-  PARTICULAR: "licencia",
-  ENFERMEDAD: "enfermedad",
-  OTRO: "licencia",
-};
-
 function TabDashboard() {
+  const [periodo, setPeriodo] = useState(mesActualISO());
   const [d, setD] = useState<DashboardRrhh | null>(null);
   const [cargando, setCargando] = useState(true);
 
   useEffect(() => {
-    armarDashboardRrhh()
+    setCargando(true);
+    armarDashboardRrhh(periodo)
       .then(setD)
       .finally(() => setCargando(false));
-  }, []);
+  }, [periodo]);
 
   if (cargando || !d) return <p className="text-sm text-neutral-400 text-center py-10">Cargando...</p>;
-
-  const cosas = [
-    {
-      ico: "⏰",
-      titulo: "Fichajes sin salida",
-      detalle: d.fichajesSinSalida === 0 ? "Todos los días cerrados" : "Esos días cuentan 0 horas",
-      n: d.fichajesSinSalida,
-      href: "/rrhh/planilla",
-    },
-    {
-      ico: "💰",
-      titulo: "Nóminas sin cerrar",
-      detalle: d.sueldos.sinCerrar === 0 ? "Todas cerradas" : "Falta calcular el sueldo",
-      n: d.sueldos.sinCerrar,
-      href: "/rrhh/sueldos",
-    },
-    {
-      ico: "🚫",
-      titulo: "No pueden cobrar",
-      detalle: d.noPuedenCobrar === 0 ? "Todos pueden" : "Les falta usuario o sueldo",
-      n: d.noPuedenCobrar,
-      href: "/rrhh/personal",
-    },
-    {
-      ico: "👔",
-      titulo: "Legajos incompletos",
-      detalle: d.legajosIncompletos === 0 ? "Todos completos" : "Falta algún dato",
-      n: d.legajosIncompletos,
-      href: "/rrhh/personal",
-    },
-  ];
-
-  return (
-    <div>
-      <div className="grid sm:grid-cols-2 gap-2.5 mb-2.5">
-        <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3.5">
-          <p className="text-[10.5px] font-bold uppercase tracking-wide text-neutral-500">Trabajando ahora</p>
-          <p className="text-3xl font-extrabold text-neutral-900 tabular-nums leading-tight">
-            {d.trabajando.length}
-            <span className="text-base font-semibold text-neutral-400"> de {d.totalActivos}</span>
-          </p>
-          {/* Los nombres y no solo el número: "3 de 5" no te dice quién
-              falta, que es lo único accionable. */}
-          <div className="text-xs text-neutral-500 mt-1.5 space-y-0.5">
-            {d.trabajando.map((t) => (
-              <p key={t.idPersona}>
-                <span className="text-emerald-600">●</span> {t.nombre}{" "}
-                <span className="text-neutral-400">desde {t.desde}</span>
-              </p>
-            ))}
-            {d.deLicenciaHoy.map((l, i) => (
-              <p key={`lic-${i}`} className="text-neutral-400">
-                ○ {l.nombre} · de {TIPO_LIC_CORTO[l.tipo] ?? "licencia"}
-              </p>
-            ))}
-            {d.sinFichar.map((n) => (
-              <p key={`sf-${n}`} className="text-amber-700">
-                ○ {n} · <span className="opacity-80">no fichó</span>
-              </p>
-            ))}
-            {d.trabajando.length === 0 && d.deLicenciaHoy.length === 0 && d.sinFichar.length === 0 && (
-              <p className="text-neutral-400">Todavía no hay nadie cargado.</p>
-            )}
-          </div>
-        </div>
-
-        <div
-          className={`rounded-xl border px-4 py-3.5 ${
-            d.sueldos.falta > 0 ? "border-amber-200 bg-amber-50" : "border-emerald-200 bg-emerald-50"
-          }`}
-        >
-          <p
-            className={`text-[10.5px] font-bold uppercase tracking-wide ${
-              d.sueldos.falta > 0 ? "text-amber-700" : "text-emerald-700"
-            }`}
-          >
-            Sueldos del mes
-          </p>
-          <p
-            className={`text-3xl font-extrabold tabular-nums leading-tight ${
-              d.sueldos.falta > 0 ? "text-amber-700" : "text-emerald-700"
-            }`}
-          >
-            ${formatearMonto(d.sueldos.total)}
-          </p>
-          <p className={`text-xs mt-1 ${d.sueldos.falta > 0 ? "text-amber-700/80" : "text-emerald-700/80"}`}>
-            {d.sueldos.falta > 0 ? `$${formatearMonto(d.sueldos.falta)} sin pagar` : "Todo pagado"}
-          </p>
-          {d.adelantosDelMes.cantidad > 0 && (
-            <p className="text-xs text-neutral-500 mt-1.5 pt-1.5 border-t border-black/5">
-              ${formatearMonto(d.adelantosDelMes.total)} en adelantos ·{" "}
-              {d.adelantosDelMes.cantidad} {d.adelantosDelMes.cantidad === 1 ? "entregado" : "entregados"}
-            </p>
-          )}
-        </div>
-      </div>
-
-      <div className="grid sm:grid-cols-2 gap-2.5">
-        {cosas.map((c) => (
-          <a
-            key={c.titulo}
-            href={c.href}
-            className={`flex gap-3 items-start border rounded-xl px-4 py-3 ${
-              c.n > 0
-                ? "bg-amber-50 border-amber-200 hover:border-amber-300"
-                : "bg-white border-neutral-200 opacity-60 hover:opacity-100"
-            }`}
-          >
-            <span
-              className={`shrink-0 w-[28px] h-[28px] rounded-lg flex items-center justify-center text-[13px] ${
-                c.n > 0 ? "bg-amber-100 text-amber-700" : "bg-neutral-100 text-neutral-400"
-              }`}
-            >
-              {c.n > 0 ? c.ico : "✓"}
-            </span>
-            <span className="min-w-0">
-              <span className={`block text-[13px] font-semibold ${c.n > 0 ? "text-amber-800" : "text-neutral-700"}`}>
-                {c.titulo}
-              </span>
-              <span className={`block text-[11.5px] ${c.n > 0 ? "text-amber-700/80" : "text-neutral-400"}`}>
-                {c.detalle}
-              </span>
-            </span>
-            <span
-              className={`ml-auto text-lg font-bold tabular-nums leading-tight ${
-                c.n > 0 ? "text-amber-700" : "text-neutral-300"
-              }`}
-            >
-              {c.n}
-            </span>
-          </a>
-        ))}
-      </div>
-    </div>
-  );
+  return <PantallazoRrhh d={d} periodo={periodo} setPeriodo={setPeriodo} />;
 }
 
 // ===================== NÓMINA =====================
@@ -364,6 +224,7 @@ function TabNomina({ usuarios }: { usuarios: UsuarioMin[] }) {
   const [editando, setEditando] = useState<string | null>(null);
   const [valorEditSueldo, setValorEditSueldo] = useState("");
   const [valorEditHora, setValorEditHora] = useState("");
+  const [valorEditCobra, setValorEditCobra] = useState(true);
   const [guardandoSueldo, setGuardandoSueldo] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [modalCerrar, setModalCerrar] = useState<NovedadNomina | null>(null);
@@ -382,10 +243,18 @@ function TabNomina({ usuarios }: { usuarios: UsuarioMin[] }) {
     const hora = Number(valorEditHora.replace(/[^\d.-]/g, "")) || 0;
     setError(null);
     setGuardandoSueldo(true);
-    Promise.all([actualizarSueldoBase(idUsuario, sueldo), actualizarValorHora(idUsuario, hora)])
-      .then(([resSueldo, resHora]) => {
-        if (resSueldo.error || resHora.error) {
-          setError(resSueldo.error ?? resHora.error);
+    const fila = filas.find((x) => x.idUsuario === idUsuario);
+    Promise.all([
+      actualizarSueldoBase(idUsuario, sueldo),
+      actualizarValorHora(idUsuario, hora),
+      // Solo si cambió: así no exige el SQL nuevo a quien no toca esto.
+      fila && fila.cobraPresentismo !== valorEditCobra
+        ? actualizarCobraPresentismo(idUsuario, valorEditCobra)
+        : Promise.resolve({ error: null as string | null }),
+    ])
+      .then(([resSueldo, resHora, resCobra]) => {
+        if (resSueldo.error || resHora.error || resCobra.error) {
+          setError(resSueldo.error ?? resHora.error ?? resCobra.error);
           return;
         }
         setEditando(null);
@@ -541,6 +410,15 @@ function TabNomina({ usuarios }: { usuarios: UsuarioMin[] }) {
                               className="w-20 border border-neutral-300 rounded-lg px-2 py-1 text-sm text-right"
                             />
                           </div>
+                          <label className="flex items-center gap-1.5 text-[11px] text-neutral-600 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={valorEditCobra}
+                              onChange={(e) => setValorEditCobra(e.target.checked)}
+                              className="accent-accent"
+                            />
+                            Cobra presentismo
+                          </label>
                           <button onClick={() => handleGuardarPagoBase(f.idUsuario)} disabled={guardandoSueldo} className="text-xs font-semibold text-accent">
                             {guardandoSueldo ? "Guardando..." : "Guardar"}
                           </button>
@@ -551,6 +429,7 @@ function TabNomina({ usuarios }: { usuarios: UsuarioMin[] }) {
                             setEditando(f.idUsuario);
                             setValorEditSueldo(String(f.sueldoBase));
                             setValorEditHora(String(f.valorHora ?? 0));
+                            setValorEditCobra(f.cobraPresentismo);
                           }}
                           className="hover:underline decoration-dotted text-right"
                           title="Editar sueldo fijo / valor hora"
@@ -569,12 +448,20 @@ function TabNomina({ usuarios }: { usuarios: UsuarioMin[] }) {
                       )}
                     </td>
                     <td className="p-3">
-                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${RESULTADO_BADGE_NOMINA[f.presentismoResultado]}`}>
-                        {RESULTADO_LABEL_NOMINA[f.presentismoResultado]}
-                      </span>
-                      <span className="text-[10.5px] text-neutral-400 ml-1.5">
-                        +${formatearMonto(f.cierre ? f.cierre.incentivo_presentismo : f.incentivoPresentismoPreview)}
-                      </span>
+                      {f.cobraPresentismo ? (
+                        <>
+                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${RESULTADO_BADGE_NOMINA[f.presentismoResultado]}`}>
+                            {RESULTADO_LABEL_NOMINA[f.presentismoResultado]}
+                          </span>
+                          <span className="text-[10.5px] text-neutral-400 ml-1.5">
+                            +${formatearMonto(f.cierre ? f.cierre.incentivo_presentismo : f.incentivoPresentismoPreview)}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-500" title="Se cambia tocando el sueldo">
+                          No cobra
+                        </span>
+                      )}
                     </td>
                     <td className="p-3 text-right tabular-nums text-red-600">
                       {(f.cierre ? f.cierre.adelantos : f.adelantos) > 0 ? `-$${formatearMonto(f.cierre ? f.cierre.adelantos : f.adelantos)}` : "—"}
@@ -1071,7 +958,8 @@ function ModalCerrarNomina({
 }) {
   const [horasExtraMonto, setHorasExtraMonto] = useState("0");
   const [premiosMonto, setPremiosMonto] = useState("0");
-  const [incluirIncentivo, setIncluirIncentivo] = useState(true);
+  // Arranca destildado para quien no cobra presentismo.
+  const [incluirIncentivo, setIncluirIncentivo] = useState(fila.cobraPresentismo);
   const [esFormal, setEsFormal] = useState(false);
   const [aportesEmpleado, setAportesEmpleado] = useState("0");
   const [contribucionesPatronales, setContribucionesPatronales] = useState("0");

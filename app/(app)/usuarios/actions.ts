@@ -163,6 +163,25 @@ export async function actualizarValorHora(id: string, valorHora: number): Promis
   return { error: null };
 }
 
+// Si a esta persona le corresponde el incentivo de presentismo. Se apaga, por
+// ejemplo, para la administrativa con sueldo fijo cerrado.
+export async function actualizarCobraPresentismo(id: string, cobra: boolean): Promise<{ error: string | null }> {
+  const sesion = await obtenerSesionConPermisos();
+  if (!tienePermiso(sesion, PERMISOS.GESTIONAR_NOMINA)) {
+    return { error: "No tenés permiso para gestionar la Nómina." };
+  }
+  const supabase = getSupabaseServerClient();
+  const { error } = await supabase.from("usuarios").update({ cobra_presentismo: cobra }).eq("id_usuario", id);
+  if (error) {
+    if (/cobra_presentismo/.test(error.message)) {
+      return { error: "Falta correr sql/usuarios-cobra-presentismo.sql en Supabase para poder guardar esto." };
+    }
+    return { error: friendlyDbError(error) };
+  }
+  revalidatePath("/rrhh");
+  return { error: null };
+}
+
 // Solo admin puede tildar permisos — delegar quién puede repartir permisos
 // sería un agujero de seguridad (un operativo se podría auto-otorgar todo).
 export async function actualizarPermisosUsuario(id: string, permisos: string[]): Promise<{ error: string | null }> {

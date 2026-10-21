@@ -6,6 +6,7 @@ import { friendlyDbError } from "@/lib/errors";
 import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos";
 import { fechaHoraArgentina, minutosDeHora } from "@/lib/horarios";
 import { puedeCerrarseAguinaldo } from "@/lib/aguinaldo";
+import { devueltoParcialPorVenta } from "@/lib/devueltoPorDetalle";
 
 async function requireAcceso() {
   const sesion = await obtenerSesionConPermisos();
@@ -496,39 +497,83 @@ export async function listarPersonalRrhh(): Promise<PersonaDeRrhh[]> {
 
 // ===================== DASHBOARD =====================
 //
-// Tres preguntas y nada más: quién está, cuánto debo y qué está trabado.
+// El pantallazo del mes. Contesta, en este orden:
+//   1. Cuánto cuesta el equipo y qué parte de las ventas se lleva.
+//   2. Cómo se reparte: el local (los que cobran por hora), la administración
+//      (sueldo fijo) y los servicios tercerizados (honorarios).
+//   3. Cuánto cuesta y cuánto vende cada turno del local.
+//   4. Quién está hoy y qué está trabado.
 // Sin gráficos de evolución a propósito: con cinco empleados una línea de
 // tendencia dibuja una historia que no existe.
 
+export type EstadoSueldo = "PAGADO" | "CERRADO" | "ESTIMADO" | "SIN_CERRAR";
+
 export type DashboardRrhh = {
-  hoy: string;
-  /** Fichó entrada y todavía no salió. */
-  trabajando: { idPersona: string; nombre: string; desde: string }[];
-  totalActivos: number;
-  deLicenciaHoy: { nombre: string; tipo: string; hasta: string }[];
-  /** Tiene horario hoy, no está de licencia y no fichó. */
-  sinFichar: string[];
-  sueldos: { total: number; falta: number; pagado: number; sinCerrar: number; sinPagar: number };
-  fichajesSinSalida: number;
-  legajosIncompletos: number;
-  noPuedenCobrar: number;
-  adelantosDelMes: { total: number; cantidad: number };
+  periodo: string;
+  esMesActual: boolean;
+  costoTotal: number;
+  ventas: number;
+  /** Lo que cuesta el equipo sobre lo vendido, en %. null si no hubo ventas. */
+  porcentajeVentas: number | null;
+  /** Cuánto habría que vender para que el equipo sea el 15% de las ventas. */
+  ventaParaQuince: number;
+  grupos: {
+    clave: "LOCAL" | "ADMINISTRACION" | "TERCERIZADOS";
+    nombre: string;
+    detalle: string;
+    total: number;
+    gente: {
+      nombre: string;
+      detalle: string;
+      monto: number;
+      /** El sueldo de un por hora todavía sin cerrar se proyecta a fin de mes. */
+      proyectado: boolean;
+      estado: { texto: string; tono: "bien" | "ojo" | "mal" | "gris" };
+    }[];
+  }[];
+  turnos: {
+    nombre: string;
+    horario: string;
+    quien: string[];
+    horas: number | null;
+    cuesta: number;
+    vende: number;
+    rinde: number | null;
+  }[];
+  ventasFueraDeTurno: number;
+  /** Lo que conviene apartar por mes para el aguinaldo de los empleados. */
+  aguinaldoPorMes: number;
+  hoy: {
+    turnoActual: string | null;
+    trabajando: { nombre: string; desde: string }[];
+    deLicencia: { nombre: string; tipo: string }[];
+    sinFichar: string[];
+  } | null;
+  avisos: { clave: string; titulo: string; detalle: string; n: number; href: string }[];
 };
 
-export async function armarDashboardRrhh(): Promise<DashboardRrhh> {
+const quitarTildes = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
+export async function armarDashboardRrhh(periodoPedido?: string): Promise<DashboardRrhh> {
   const permisoError = await requireAcceso();
   if (permisoError) throw new Error(permisoError);
 
   const supabase = getSupabaseServerClient();
   const ahora = fechaHoraArgentina();
   const hoy = ahora.fecha;
-  const periodo = hoy.slice(0, 7);
+  const periodoActual = hoy.slice(0, 7);
+  const periodo = periodoPedido && /^\d{4}-\d{2}$/.test(periodoPedido) ? periodoPedido : periodoActual;
+  const esMesActual = periodo === periodoActual;
+  const [anio, mes] = periodo.split("-").map(Number);
+  const diasDelMes = new Date(Date.UTC(anio, mes, 0)).getUTCDate();
+  const diaDeHoy = Number(hoy.slice(8, 10));
+  const desdeMes = `${periodo}-01T00:00:00-03:00`;
+  const hastaMes = `${periodo}-${String(diasDelMes).padStart(2, "0")}T23:59:59-03:00`;
 
-  const [novedades, gente, pendientes, adelantos, licenciasRes, fichajesRes] = await Promise.all([
+  const [novedades, gente, pendientes, licenciasRes, fichajesRes, personasRes, horariosRes, categoriasRes] = await Promise.all([
     obtenerNovedadesMes(periodo),
     listarPersonalRrhh(),
     listarFichajesPendientesSalida(),
-    listarAdelantos(periodo),
     supabase
       .from("licencias")
       .select("id_persona, tipo, fecha_desde, fecha_hasta")
@@ -537,12 +582,18 @@ export async function armarDashboardRrhh(): Promise<DashboardRrhh> {
     supabase
       .from("fichajes")
       .select("id_persona, tipo, fecha_hora")
-      .gte("fecha_hora", `${hoy}T00:00:00Z`)
-      .lte("fecha_hora", `${hoy}T23:59:59Z`)
+      .gte("fecha_hora", `${hoy}T00:00:00-03:00`)
+      .lte("fecha_hora", `${hoy}T23:59:59-03:00`)
       .order("fecha_hora", { ascending: true }),
+    supabase.from("personas").select("id_persona, nombre, apellido, tipo, id_horario").eq("estado", "ACTIVO"),
+    supabase.from("horarios_trabajo").select("id_horario, nombre, hora_entrada, hora_salida, dias_semana").eq("estado", "ACTIVO"),
+    supabase.from("categorias_gasto").select("id_categoria, nombre").eq("estado", "ACTIVA"),
   ]);
 
   const nombrePorPersona = new Map(gente.map((p) => [p.idPersona, p.nombre]));
+  const personas = personasRes.data ?? [];
+  // Solo los empleados fichan: los externos (tercerizados) y los socios no.
+  const empleados = new Set(personas.filter((p) => p.tipo === "EMPLEADO").map((p) => p.id_persona as string));
 
   // Quién está adentro: último fichaje del día es una ENTRADA.
   const ultimoDelDia = new Map<string, { tipo: string; hora: string }>();
@@ -577,38 +628,217 @@ export async function armarDashboardRrhh(): Promise<DashboardRrhh> {
   // un franco puntual no está en ningún lado, así que esto es un aviso para
   // mirar, no una falta.
   const sinFichar = gente
-    .filter((p) => !ultimoDelDia.has(p.idPersona) && !idsLicencia.has(p.idPersona))
+    .filter((p) => empleados.has(p.idPersona) && !ultimoDelDia.has(p.idPersona) && !idsLicencia.has(p.idPersona))
     .map((p) => p.nombre);
 
-  const sueldos = novedades.reduce(
-    (acc, f) => {
-      const monto = f.cierre ? f.cierre.neto_a_pagar : f.montoBase;
-      acc.total += monto;
-      if (f.cierre?.estado === "PAGADO") acc.pagado += monto;
-      else {
-        acc.falta += monto;
-        if (f.cierre) acc.sinPagar += 1;
-        else acc.sinCerrar += 1;
-      }
-      return acc;
+  // ---------- Empleados: lo que cuesta cada uno este mes ----------
+  // Cerrado: lo que dice el cierre (sueldo + presentismo + extras + premios,
+  // más las contribuciones patronales si está en blanco). Sin cerrar: el pago
+  // base y el presentismo que viene ganando; si cobra por hora y el mes está
+  // en curso, sus horas hasta hoy se proyectan a fin de mes con el mismo ritmo.
+  type FilaEmpleado = { idPersona: string; nombre: string; porHora: boolean; horas: number | null; valorHora: number | null; costo: number; sinCargas: number; proyectado: boolean; estado: EstadoSueldo };
+  const filasEmpleado: FilaEmpleado[] = novedades.map((f) => {
+    const c = f.cierre;
+    if (c) {
+      const sinCargas = (c.sueldo_base ?? 0) + (c.incentivo_presentismo ?? 0) + (c.horas_extra_monto ?? 0) + (c.premios_monto ?? 0);
+      const cargas = c.es_formal ? (c.contribuciones_patronales ?? 0) : 0;
+      return {
+        idPersona: f.idPersona, nombre: f.nombre, porHora: f.modalidad === "POR_HORA", horas: f.horasTrabajadasMes, valorHora: f.valorHora,
+        costo: redondear2(sinCargas + cargas), sinCargas: redondear2(sinCargas), proyectado: false,
+        estado: c.es_estimado ? "ESTIMADO" : c.estado === "PAGADO" ? "PAGADO" : "CERRADO",
+      };
+    }
+    const proyectar = f.modalidad === "POR_HORA" && esMesActual && diaDeHoy > 0;
+    const factor = proyectar ? diasDelMes / diaDeHoy : 1;
+    const base = f.montoBase * factor;
+    const incentivo = f.incentivoPresentismoPreview * factor;
+    return {
+      idPersona: f.idPersona, nombre: f.nombre, porHora: f.modalidad === "POR_HORA",
+      horas: f.horasTrabajadasMes === null ? null : Math.round(f.horasTrabajadasMes * factor),
+      valorHora: f.valorHora, costo: redondear2(base + incentivo), sinCargas: redondear2(base + incentivo), proyectado: proyectar, estado: "SIN_CERRAR",
+    };
+  });
+  const costoPorPersona = new Map(filasEmpleado.map((f) => [f.idPersona, f]));
+  const textoEstado: Record<EstadoSueldo, { texto: string; tono: "bien" | "ojo" | "mal" | "gris" }> = {
+    PAGADO: { texto: "Pagado", tono: "bien" },
+    CERRADO: { texto: "Cerrado, sin pagar", tono: "ojo" },
+    ESTIMADO: { texto: "Estimado", tono: "ojo" },
+    SIN_CERRAR: { texto: "Sin cerrar", tono: "mal" },
+  };
+  const horarioPorId = new Map((horariosRes.data ?? []).map((h) => [h.id_horario as string, h]));
+  const personaPorId = new Map(personas.map((p) => [p.id_persona as string, p]));
+  const hhmm = (t: string | null) => (t ?? "").slice(0, 5).replace(/^0/, "");
+  const filaGente = (f: FilaEmpleado) => {
+    const horario = horarioPorId.get((personaPorId.get(f.idPersona)?.id_horario as string) ?? "");
+    const turno = horario ? `${horario.nombre} · ${hhmm(horario.hora_entrada as string)} a ${hhmm(horario.hora_salida as string)} h` : null;
+    const pago = f.porHora && f.horas !== null && f.valorHora ? `${f.horas} h × $${Math.round(f.valorHora).toLocaleString("es-AR")}` : null;
+    return {
+      nombre: f.nombre,
+      detalle: [turno, pago].filter(Boolean).join(" · ") || (f.porHora ? "Por hora" : "Sueldo fijo"),
+      monto: Math.round(f.costo),
+      proyectado: f.proyectado,
+      estado: textoEstado[f.estado],
+    };
+  };
+  // El local son los que cobran por hora; la administración, los de sueldo fijo.
+  const delLocal = filasEmpleado.filter((f) => f.porHora);
+  const deAdministracion = filasEmpleado.filter((f) => !f.porHora);
+
+  // ---------- Servicios tercerizados ----------
+  // Las personas "Externo" de Organización. Sus honorarios salen de los gastos
+  // en la categoría de honorarios: el gasto del mes (pagado) o, si todavía no
+  // se cargó, el recurrente con su monto estimado (falta pagar). Se reconoce
+  // de quién es cada uno porque la descripción lleva su nombre.
+  const idsHonorarios = (categoriasRes.data ?? [])
+    .filter((c) => quitarTildes(c.nombre as string).startsWith("honorario"))
+    .map((c) => c.id_categoria as string);
+  const [gastosHon, recurrentesHon] = idsHonorarios.length
+    ? await Promise.all([
+        supabase
+          .from("gastos")
+          .select("descripcion, monto, neto")
+          .in("id_categoria", idsHonorarios)
+          .eq("anulado", false)
+          .gte("fecha", desdeMes)
+          .lte("fecha", hastaMes),
+        supabase.from("gastos_recurrentes").select("descripcion, monto_estimado").in("id_categoria", idsHonorarios).eq("activo", true),
+      ])
+    : [{ data: [] as { descripcion: string | null; monto: number; neto: number | null }[] }, { data: [] as { descripcion: string | null; monto_estimado: number | null }[] }];
+  const gastosLibres = [...(gastosHon.data ?? [])];
+  const recurrentesLibres = [...(recurrentesHon.data ?? [])];
+  const tomar = <T extends { descripcion: string | null }>(lista: T[], claves: string[]) => {
+    const i = lista.findIndex((g) => claves.some((k) => k && quitarTildes(g.descripcion ?? "").includes(k)));
+    return i >= 0 ? lista.splice(i, 1)[0] : null;
+  };
+  const externos = personas.filter((p) => p.tipo === "EXTERNO");
+  const genteTerc: DashboardRrhh["grupos"][number]["gente"] = externos.map((p) => {
+    const nombreCompleto = [p.nombre, p.apellido].filter(Boolean).join(" ");
+    const claves = [quitarTildes(nombreCompleto), quitarTildes((p.apellido as string) ?? "")].filter((k) => k.length >= 3);
+    const gasto = tomar(gastosLibres, claves);
+    const recurrente = tomar(recurrentesLibres, claves);
+    if (gasto) {
+      return { nombre: nombreCompleto, detalle: gasto.descripcion ?? "Honorarios", monto: Math.round(gasto.neto ?? gasto.monto), proyectado: false, estado: { texto: "Pagado", tono: "bien" as const } };
+    }
+    if (recurrente) {
+      return { nombre: nombreCompleto, detalle: recurrente.descripcion ?? "Honorarios", monto: Math.round(recurrente.monto_estimado ?? 0), proyectado: true, estado: { texto: "Falta pagar", tono: "ojo" as const } };
+    }
+    return { nombre: nombreCompleto, detalle: "Cargá su honorario como gasto recurrente", monto: 0, proyectado: false, estado: { texto: "Sin honorario cargado", tono: "gris" as const } };
+  });
+  // Honorarios que no son de ninguna persona cargada (por ejemplo, un estudio).
+  for (const g of gastosLibres) genteTerc.push({ nombre: g.descripcion ?? "Honorarios", detalle: "Honorarios", monto: Math.round(g.neto ?? g.monto), proyectado: false, estado: { texto: "Pagado", tono: "bien" } });
+  for (const r of recurrentesLibres) genteTerc.push({ nombre: r.descripcion ?? "Honorarios", detalle: "Honorarios", monto: Math.round(r.monto_estimado ?? 0), proyectado: true, estado: { texto: "Falta pagar", tono: "ojo" } });
+
+  const suma = (xs: { monto: number }[]) => xs.reduce((a, x) => a + x.monto, 0);
+  const grupos: DashboardRrhh["grupos"] = [
+    { clave: "LOCAL" as const, nombre: "Local", detalle: `${delLocal.length} ${delLocal.length === 1 ? "persona" : "personas"} por hora`, gente: delLocal.map(filaGente) },
+    { clave: "ADMINISTRACION" as const, nombre: "Administración", detalle: "sueldo fijo", gente: deAdministracion.map(filaGente) },
+    { clave: "TERCERIZADOS" as const, nombre: "Servicios tercerizados", detalle: "honorarios", gente: genteTerc },
+  ].map((g) => ({ ...g, total: suma(g.gente) }));
+  const costoTotal = grupos.reduce((a, g) => a + g.total, 0);
+
+  // ---------- Ventas del mes y por turno ----------
+  const ventasMes: { id_venta: string; fecha: string; total: number | null }[] = [];
+  for (let desde = 0; ; desde += 1000) {
+    const { data } = await supabase
+      .from("ventas")
+      .select("id_venta, fecha, total")
+      .eq("estado", "PAGADA")
+      .gte("fecha", desdeMes)
+      .lte("fecha", hastaMes)
+      .order("fecha", { ascending: true })
+      .range(desde, desde + 999);
+    ventasMes.push(...((data ?? []) as typeof ventasMes));
+    if ((data ?? []).length < 1000) break;
+  }
+  const devuelto = await devueltoParcialPorVenta(supabase, ventasMes.map((v) => v.id_venta));
+  const horarios = horariosRes.data ?? [];
+  const ventasPorTurno = new Map<string, number>();
+  let ventas = 0;
+  let ventasFueraDeTurno = 0;
+  for (const v of ventasMes) {
+    const neto = Math.max((v.total ?? 0) - (devuelto.get(v.id_venta) ?? 0), 0);
+    ventas += neto;
+    const minutos = fechaHoraArgentina(v.fecha).minutosDelDia;
+    const turno = horarios.find((h) => minutos >= minutosDeHora(h.hora_entrada as string) && minutos < minutosDeHora(h.hora_salida as string));
+    if (turno) ventasPorTurno.set(turno.id_horario as string, (ventasPorTurno.get(turno.id_horario as string) ?? 0) + neto);
+    else ventasFueraDeTurno += neto;
+  }
+  const turnos = [...horarios]
+    .sort((a, b) => minutosDeHora(a.hora_entrada as string) - minutosDeHora(b.hora_entrada as string))
+    .map((h) => {
+      const deEste = personas.filter((p) => p.id_horario === h.id_horario && empleados.has(p.id_persona as string));
+      const filas = deEste.map((p) => costoPorPersona.get(p.id_persona as string)).filter((f): f is FilaEmpleado => !!f);
+      const cuesta = filas.reduce((a, f) => a + f.costo, 0);
+      const horasLista = filas.map((f) => f.horas).filter((x): x is number => x !== null);
+      const vende = ventasPorTurno.get(h.id_horario as string) ?? 0;
+      return {
+        nombre: h.nombre as string,
+        horario: `${hhmm(h.hora_entrada as string)} a ${hhmm(h.hora_salida as string)} h`,
+        quien: deEste.map((p) => [p.nombre, p.apellido].filter(Boolean).join(" ")),
+        horas: horasLista.length ? horasLista.reduce((a, x) => a + x, 0) : null,
+        cuesta: Math.round(cuesta),
+        vende: Math.round(vende),
+        rinde: cuesta > 0 ? vende / cuesta : null,
+      };
+    });
+
+  // ---------- Hoy ----------
+  const turnoActual = esMesActual
+    ? horarios.find(
+        (h) =>
+          ((h.dias_semana as number[] | null) ?? [1, 2, 3, 4, 5, 6, 7]).includes(ahora.diaSemanaISO) &&
+          ahora.minutosDelDia >= minutosDeHora(h.hora_entrada as string) &&
+          ahora.minutosDelDia < minutosDeHora(h.hora_salida as string)
+      )
+    : undefined;
+
+  // ---------- Lo trabado ----------
+  const sinCerrar = filasEmpleado.filter((f) => f.estado === "SIN_CERRAR" || f.estado === "ESTIMADO").length;
+  const honorariosSinPagar = genteTerc.filter((g) => g.estado.texto === "Falta pagar").length;
+  const avisos = [
+    { clave: "fichajes", titulo: "Fichajes sin salida", detalle: "Esos días cuentan 0 horas", n: pendientes.length, href: "/rrhh/planilla" },
+    { clave: "sueldos", titulo: "Sueldos sin cerrar", detalle: "Falta calcular el sueldo del mes", n: sinCerrar, href: "/rrhh/sueldos" },
+    { clave: "honorarios", titulo: "Honorarios sin pagar", detalle: "De servicios tercerizados", n: honorariosSinPagar, href: "/gastos-ingresos" },
+    {
+      clave: "cobrar",
+      titulo: "No pueden cobrar",
+      detalle: "Les falta usuario o sueldo",
+      n: gente.filter((p) => empleados.has(p.idPersona) && (p.problema === "NO_COBRA" || p.problema === "SIN_SUELDO")).length,
+      href: "/rrhh/personal",
     },
-    { total: 0, falta: 0, pagado: 0, sinCerrar: 0, sinPagar: 0 }
-  );
+    {
+      clave: "legajos",
+      titulo: "Legajos incompletos",
+      detalle: "Falta algún dato, como la fecha de ingreso",
+      n: gente.filter((p) => empleados.has(p.idPersona) && (p.problema === "SIN_INGRESO" || p.problema === "INCOMPLETO")).length,
+      href: "/rrhh/personal",
+    },
+  ];
 
   return {
-    hoy,
-    trabajando,
-    totalActivos: gente.length,
-    deLicenciaHoy: deLicencia.map(({ nombre, tipo, hasta }) => ({ nombre, tipo, hasta })),
-    sinFichar,
-    sueldos,
-    fichajesSinSalida: pendientes.length,
-    legajosIncompletos: gente.filter((p) => p.problema === "SIN_INGRESO" || p.problema === "INCOMPLETO").length,
-    noPuedenCobrar: gente.filter((p) => p.problema === "NO_COBRA" || p.problema === "SIN_SUELDO").length,
-    adelantosDelMes: {
-      total: adelantos.reduce((a, x) => a + x.monto, 0),
-      cantidad: adelantos.length,
-    },
+    periodo,
+    esMesActual,
+    costoTotal: Math.round(costoTotal),
+    ventas: Math.round(ventas),
+    porcentajeVentas: ventas > 0 ? (costoTotal / ventas) * 100 : null,
+    ventaParaQuince: Math.round(costoTotal / 0.15),
+    grupos,
+    turnos,
+    ventasFueraDeTurno: Math.round(ventasFueraDeTurno),
+    // Medio sueldo por semestre = un doceavo de lo que se gana por mes. Sin
+    // las contribuciones (no forman parte del aguinaldo) y sin tercerizados.
+    aguinaldoPorMes: Math.round(filasEmpleado.reduce((a, f) => a + f.sinCargas, 0) / 12),
+    hoy: esMesActual
+      ? {
+          turnoActual: turnoActual
+            ? `${turnoActual.nombre} · ${hhmm(turnoActual.hora_entrada as string)} a ${hhmm(turnoActual.hora_salida as string)} h`
+            : null,
+          trabajando: trabajando.map(({ nombre, desde }) => ({ nombre, desde })),
+          deLicencia: deLicencia.map(({ nombre, tipo }) => ({ nombre, tipo })),
+          sinFichar,
+        }
+      : null,
+    avisos,
   };
 }
 
@@ -998,10 +1228,30 @@ export type NovedadNomina = {
   horasFeriadoMes: number | null;
   montoBase: number;
   presentismoResultado: "COMPLETO" | "PARCIAL" | "PERDIDO";
+  /** false: a esta persona no le corresponde el incentivo (se configura en Sueldos). */
+  cobraPresentismo: boolean;
   incentivoPresentismoPreview: number;
   adelantos: number;
   cierre: CierreNomina | null;
 };
+
+/**
+ * Quién cobra el incentivo de presentismo.
+ *
+ * Por defecto todos, como siempre. Se puede apagar por persona (por ejemplo
+ * a la administrativa) desde Sueldos. Si la columna todavía no existe (falta
+ * correr sql/usuarios-cobra-presentismo.sql), todos siguen cobrando: nadie
+ * pierde el incentivo por un SQL sin correr.
+ */
+async function cobraPresentismoPorUsuario(
+  supabase: ReturnType<typeof getSupabaseServerClient>,
+  idsUsuario: string[]
+): Promise<Map<string, boolean>> {
+  if (idsUsuario.length === 0) return new Map();
+  const { data, error } = await supabase.from("usuarios").select("id_usuario, cobra_presentismo").in("id_usuario", idsUsuario);
+  if (error) return new Map();
+  return new Map((data ?? []).map((u) => [u.id_usuario as string, u.cobra_presentismo !== false]));
+}
 
 export type Feriado = { fecha: string; nombre: string };
 
@@ -1098,6 +1348,7 @@ export async function obtenerNovedadesMes(periodo: string): Promise<NovedadNomin
   const idsPersona = usuariosConSueldo.map((u) => u.id_persona as string);
   const { data: cierresExistentes } = await supabase.from("nomina_cierres").select("*").eq("periodo", periodo).in("id_persona", idsPersona);
   const cierrePorPersona = new Map((cierresExistentes ?? []).map((c) => [c.id_persona as string, c as CierreNomina]));
+  const cobraPorUsuario = await cobraPresentismoPorUsuario(supabase, idsUsuario);
 
   const filas = await Promise.all(
     usuariosConSueldo.map(async (u) => {
@@ -1111,6 +1362,7 @@ export async function obtenerNovedadesMes(periodo: string): Promise<NovedadNomin
       const montoBase = esPorHora ? (pagoPorHora?.montoBase ?? 0) : sueldoBase;
       const presentismoResultado = presentismoPorPersona.get(idPersona) ?? "COMPLETO";
       const factor = presentismoResultado === "COMPLETO" ? 1 : presentismoResultado === "PARCIAL" ? 0.5 : 0;
+      const cobraPresentismo = cobraPorUsuario.get(u.id_usuario as string) ?? true;
       return {
         idPersona,
         idUsuario: u.id_usuario as string,
@@ -1122,7 +1374,10 @@ export async function obtenerNovedadesMes(periodo: string): Promise<NovedadNomin
         horasFeriadoMes,
         montoBase,
         presentismoResultado,
-        incentivoPresentismoPreview: redondear2(montoBase * (params.PRESENTISMO_PORCENTAJE_INCENTIVO / 100) * factor),
+        cobraPresentismo,
+        incentivoPresentismoPreview: cobraPresentismo
+          ? redondear2(montoBase * (params.PRESENTISMO_PORCENTAJE_INCENTIVO / 100) * factor)
+          : 0,
         adelantos: adelantoPorUsuario.get(u.id_usuario as string) ?? 0,
         cierre: cierrePorPersona.get(idPersona) ?? null,
       };
@@ -1182,7 +1437,10 @@ export async function cerrarNomina(idPersona: string, idUsuario: string, periodo
     // Se puede sacar el incentivo puntualmente en este cierre (tilde en el
     // modal) aunque lo haya ganado por presentismo — queda a criterio de
     // quien cierra, cierre a cierre.
-    const incluirIncentivo = formData.get("incluir_incentivo") === "on";
+    // A quien no le corresponde presentismo no se le suma nunca, aunque el
+    // tilde llegue marcado.
+    const cobra = (await cobraPresentismoPorUsuario(supabase, [idUsuario])).get(idUsuario) ?? true;
+    const incluirIncentivo = cobra && formData.get("incluir_incentivo") === "on";
     const incentivoPresentismo = incluirIncentivo ? redondear2(montoBase * (params.PRESENTISMO_PORCENTAJE_INCENTIVO / 100) * factor) : 0;
 
     const { desde, hasta } = rangoDelPeriodoStr(periodo);
