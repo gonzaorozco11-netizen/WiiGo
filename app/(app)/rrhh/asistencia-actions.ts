@@ -489,7 +489,7 @@ export async function armarPlanillasAsistencia(periodoPedido: string, idPersona?
 
   // Las marcas de cada día, en tramos (cada entrada con su salida): con dos
   // turnos el mismo día salen las dos líneas y se suman las horas de cada una.
-  type DatoMarca = MarcaPlanilla & { tarde: boolean; justificado: boolean; antes: boolean; minutos: number };
+  type DatoMarca = MarcaPlanilla & { tarde: boolean; justificado: boolean; antes: boolean; minutos: number; puntual: boolean };
   type Dia = Tramo<DatoMarca>[];
   const crudasPor = new Map<string, Map<number, MarcaDia<DatoMarca>[]>>();
   for (const f of fichajes.filas) {
@@ -509,6 +509,8 @@ export async function armarPlanillasAsistencia(periodoPedido: string, idPersona?
         justificado: Boolean(f.justificado),
         antes: f.tipo === "SALIDA" && f.estado === "ANTICIPADA",
         minutos: f.minutos_diferencia ?? 0,
+        // Fichada sin turno: una hora puntual (o un día excepcional).
+        puntual: f.tipo === "ENTRADA" && f.estado === "SIN_HORARIO",
       },
     });
     porDia.set(d, marcas);
@@ -554,6 +556,7 @@ export async function armarPlanillasAsistencia(periodoPedido: string, idPersona?
         for (const t of conEntrada) {
           const e = t.entrada!.dato;
           if (!e.firma && !e.manual) totales.sinFirma += 1;
+          if (e.puntual) notas.push(`Hora puntual desde las ${e.hora}`);
           if (e.tarde && !e.justificado) {
             totales.tardanzas += 1;
             fila.tipo = "tarde";

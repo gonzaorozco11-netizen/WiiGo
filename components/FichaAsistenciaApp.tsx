@@ -138,7 +138,7 @@ export default function FichaAsistenciaApp() {
         {esEntrada && llegada ? (
           <AvisoLlegada llegada={llegada} nombre={nombre} minutosTarde={resultado.minutos ?? 0} />
         ) : (
-          <AvisoSimple resultado={resultado} />
+          <AvisoSimple resultado={resultado} conTurnos={Boolean(estado?.pideFirma)} />
         )}
 
         {resultado.sancion && !sancionHecha && <FirmarSancion sancion={resultado.sancion} onListo={() => setSancionHecha(true)} />}
@@ -192,14 +192,10 @@ export default function FichaAsistenciaApp() {
       </p>
       <h1 className="text-xl font-bold text-neutral-900 mb-6">Hola, {estado?.persona?.nombre} 👋</h1>
 
-      {esEntrada && estado && estado.horarios.length > 0 && (
+      {/* Solo para quien tiene horario fijo: los de horario libre fichan sin elegir turno. */}
+      {esEntrada && estado && estado.pideFirma && estado.horarios.length > 0 && (
         <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-3 mb-6 text-left">
-          <p className="text-[10.5px] font-bold uppercase tracking-wide text-neutral-400 mb-2">Tu turno hoy</p>
-          {idHorarioSeleccionado === null && (
-            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 mb-2">
-              No hay un turno tuyo a esta hora. Si viniste a cubrir uno, elegilo; si fue algo excepcional, dejalo así.
-            </p>
-          )}
+          <p className="text-[10.5px] font-bold uppercase tracking-wide text-neutral-400 mb-2">¿A qué venís?</p>
           <div className="space-y-1.5">
             {estado.horarios.map((h) => (
               <label
@@ -215,14 +211,25 @@ export default function FichaAsistenciaApp() {
                 <span className="text-neutral-400">{h.hora_entrada.slice(0, 5)}</span>
               </label>
             ))}
-            <button
-              type="button"
-              onClick={() => setIdHorarioSeleccionado(null)}
-              className={`w-full text-left text-xs px-2.5 py-1 ${idHorarioSeleccionado === null ? "text-accent font-semibold" : "text-neutral-400"}`}
+            {/* Hora puntual: viene por algo suelto (por ejemplo, una hora a
+                las 15). Se cuentan las horas, sin tardanza ni salida antes. */}
+            <label
+              className={`flex items-center justify-between gap-2 border rounded-lg px-2.5 py-1.5 text-xs cursor-pointer ${
+                idHorarioSeleccionado === null ? "border-accent bg-accent-tint text-accent-dark font-semibold" : "border-neutral-200"
+              }`}
             >
-              {idHorarioSeleccionado === null ? "✓ " : ""}No evaluar hoy (día excepcional)
-            </button>
+              <span className="flex items-center gap-2">
+                <input type="radio" name="horario" checked={idHorarioSeleccionado === null} onChange={() => setIdHorarioSeleccionado(null)} />
+                Hora puntual (algo suelto, no un turno)
+              </span>
+              <span className="text-neutral-400">sin tardanza</span>
+            </label>
           </div>
+          {idHorarioSeleccionado === null && (
+            <p className="text-xs text-neutral-500 mt-2">
+              Se cuentan tus horas, sin llegada tarde ni salida antes. Si viniste a cubrir un turno, elegilo arriba.
+            </p>
+          )}
         </div>
       )}
 
@@ -329,14 +336,14 @@ function AvisoLlegada({ llegada, nombre, minutosTarde }: { llegada: NonNullable<
 }
 
 /** Salida, o entrada sin horario para evaluar. */
-function AvisoSimple({ resultado }: { resultado: ResultadoFichaje }) {
+function AvisoSimple({ resultado, conTurnos }: { resultado: ResultadoFichaje; conTurnos: boolean }) {
   const anticipada = resultado.estado === "ANTICIPADA";
   const sinEvaluar = resultado.estado === "SIN_HORARIO";
   return (
     <div className={`rounded-3xl text-center px-6 py-10 ${anticipada ? "bg-amber-50" : sinEvaluar ? "bg-neutral-50" : "bg-emerald-50"}`}>
       <div className="text-5xl mb-3">{anticipada ? "⏱️" : sinEvaluar ? "📝" : resultado.tipo === "SALIDA" ? "👋" : "🚀"}</div>
       <h1 className={`text-xl font-extrabold mb-2 ${anticipada ? "text-amber-700" : sinEvaluar ? "text-neutral-700" : "text-emerald-700"}`}>
-        {resultado.tipo === "SALIDA" ? `¡Hasta mañana, ${resultado.nombre}!` : sinEvaluar ? "Fichaje registrado" : "¡A tiempo!"}
+        {resultado.tipo === "SALIDA" ? `¡Hasta mañana, ${resultado.nombre}!` : sinEvaluar ? (conTurnos ? `Hora puntual registrada, ${resultado.nombre}` : `¡Hola, ${resultado.nombre}!`) : "¡A tiempo!"}
       </h1>
       <p className="text-sm text-neutral-700">
         {anticipada && (
@@ -344,7 +351,12 @@ function AvisoSimple({ resultado }: { resultado: ResultadoFichaje }) {
             Te fuiste <b>{resultado.minutos} min</b> antes de tu horario.
           </>
         )}
-        {sinEvaluar && resultado.tipo === "ENTRADA" && <>Se guardó la hora, sin evaluar tardanza (no elegiste un turno para hoy).</>}
+        {sinEvaluar && resultado.tipo === "ENTRADA" && (
+          <>
+            Entraste a las {new Date().toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}.
+            {conTurnos ? " Se cuentan tus horas, sin llegada tarde." : ""} Acordate de fichar la salida al irte.
+          </>
+        )}
         {!anticipada && !sinEvaluar && resultado.tipo === "SALIDA" && <>Tu salida quedó registrada. ¡Gracias por el día!</>}
         {sinEvaluar && resultado.tipo === "SALIDA" && <>Tu salida quedó registrada.</>}
       </p>

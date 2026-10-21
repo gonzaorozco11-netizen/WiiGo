@@ -137,12 +137,15 @@ export async function obtenerEstadoFicha(): Promise<EstadoFicha> {
   // el habitual. Si a las 17 viene a cubrir el turno tarde, viene marcado el
   // de la tarde: si quedara marcado el de la mañana, la evaluaría contra las
   // 9 y le saldría una llegada tarde que no es.
-  //   - Solo turnos de hoy, que todavía no terminaron, y cuya entrada es
-  //     dentro de las próximas 2 horas o ya pasó.
-  //   - Sin los que ya fichó hoy (el doble turno: a las 17 no vuelve a
-  //     ofrecer el de la mañana).
-  //   - De esos, el de entrada más cercana a ahora.
-  // Si ninguno encaja, no se marca nada (no se evalúa tardanza).
+  //   - Solo turnos de hoy, que todavía no terminaron, sin los que ya fichó
+  //     hoy (el doble turno: a las 17 no vuelve a ofrecer el de la mañana).
+  //   - Su turno habitual: desde 2 horas antes de la entrada hasta que
+  //     termina (si llega 11:30 a su turno de las 9, es llegada tarde).
+  //   - Otro turno (viene a cubrir): solo si ficha cerca de su entrada, de 2
+  //     horas antes a 1 hora después.
+  // Si ninguno encaja, queda "Hora puntual": viene por algo suelto (por
+  // ejemplo, una hora a las 15). Se cuentan las horas, sin tardanza ni
+  // salida antes de hora.
   let idHorarioSugerido: string | null = null;
   if (siguienteTipo === "ENTRADA" && persona.id_horario) {
     const { data: entradasHoy } = await supabase
@@ -157,7 +160,8 @@ export async function obtenerEstadoFicha(): Promise<EstadoFicha> {
         h.dias_semana.includes(ahora.diaSemanaISO) &&
         !usadosHoy.has(h.id_horario) &&
         (!h.hora_salida || ahora.minutosDelDia < minutosDeHora(h.hora_salida)) &&
-        ahora.minutosDelDia >= minutosDeHora(h.hora_entrada) - 120
+        ahora.minutosDelDia >= minutosDeHora(h.hora_entrada) - 120 &&
+        (h.id_horario === persona.id_horario || ahora.minutosDelDia <= minutosDeHora(h.hora_entrada) + 60)
     );
     candidatos.sort((a, b) => Math.abs(minutosDeHora(a.hora_entrada) - ahora.minutosDelDia) - Math.abs(minutosDeHora(b.hora_entrada) - ahora.minutosDelDia));
     // Su turno habitual gana si todavía corre y no lo fichó: si llega 11:30 a
