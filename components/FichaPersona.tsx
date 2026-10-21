@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import ModalLegajo from "@/components/ModalLegajo";
+import LlamadosPersona from "@/components/LlamadosPersona";
 import {
   obtenerFichaPersona,
   actualizarFichaPersona,
@@ -17,7 +18,7 @@ import { obtenerUrlDocumentoLegajo } from "@/app/(app)/organizacion/actions";
 // Cada pestaña es una pregunta: quién es y cómo trabaja, qué cobró, sus
 // vacaciones, qué la cubre y a quién llamar, sus papeles, y qué pasó con ella.
 
-type Pestana = "resumen" | "sueldos" | "vacaciones" | "seguro" | "datos" | "notas";
+type Pestana = "resumen" | "sueldos" | "vacaciones" | "llamados" | "seguro" | "datos" | "notas";
 
 const pesos = (v: number) => `$${Math.round(v).toLocaleString("es-AR")}`;
 const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
@@ -137,6 +138,7 @@ export default function FichaPersona({
           { clave: "resumen", label: "Resumen" },
           { clave: "sueldos", label: "Sueldos" },
           { clave: "vacaciones", label: "Vacaciones" },
+          { clave: "llamados", label: "Llamados" },
           { clave: "seguro", label: "Seguro y contacto" },
           { clave: "datos", label: "Datos y documentos" },
           { clave: "notas", label: "Notas" },
@@ -232,6 +234,7 @@ export default function FichaPersona({
               }
             />
           )}
+          {f && pestana === "llamados" && <LlamadosPersona idPersona={f.idPersona} />}
           {f && pestana === "seguro" && <PestanaSeguro f={f} onEditar={() => setEditando(true)} />}
           {f && pestana === "datos" && <PestanaDatos f={f} onEditar={() => setLegajo(true)} />}
           {f && pestana === "notas" && <PestanaNotas f={f} onCambio={cargar} />}

@@ -2,7 +2,16 @@
 
 import { Fragment, useEffect, useState } from "react";
 import type { Local, Turno } from "@/lib/supabase";
-import { abrirTurno, cerrarTurno, historialTurnos, resumenTurnoAbierto, ventasDeTurno } from "@/app/(app)/turnos/actions";
+import {
+  abrirTurno,
+  historialTurnos,
+  resumenTurnoAbierto,
+  ventasDeTurno,
+  confirmarRecuento,
+  urlFotoArqueo,
+  actualizarFondoCambio,
+} from "@/app/(app)/turnos/actions";
+import ArqueoCaja from "@/components/ArqueoCaja";
 
 type Resumen = {
   totalEfectivo: number;
@@ -48,18 +57,31 @@ function formatearPedido(numero: number) {
   return `VTA-${String(numero).padStart(4, "0")}`;
 }
 
-export default function TurnosApp({ locales, turnosAbiertos }: { locales: Local[]; turnosAbiertos: Turno[] }) {
+const fondoDe = (l: Local | undefined) => Number((l as Record<string, unknown> | undefined)?.fondo_cambio ?? 20000) || 0;
+
+export default function TurnosApp({
+  locales,
+  turnosAbiertos,
+  puedeAdministrar,
+  yo,
+}: {
+  locales: Local[];
+  turnosAbiertos: Turno[];
+  /** Administración: cierra la caja de cualquiera, recuenta sobres y cambia el fondo de cambio. */
+  puedeAdministrar: boolean;
+  yo: { idUsuario: string | null; nombre: string | null };
+}) {
   const [idLocal, setIdLocal] = useState(locales[0]?.id_local ?? "");
   const [montoInicial, setMontoInicial] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [procesando, setProcesando] = useState(false);
+  const [editandoFondo, setEditandoFondo] = useState(false);
+  const [fondoNuevo, setFondoNuevo] = useState("");
 
   const [resumen, setResumen] = useState<Resumen | null>(null);
   const [cargandoResumen, setCargandoResumen] = useState(false);
   const [ventasAbierto, setVentasAbierto] = useState<VentaTurno[]>([]);
   const [cerrando, setCerrando] = useState(false);
-  const [efectivoContado, setEfectivoContado] = useState("");
-  const [observaciones, setObservaciones] = useState("");
 
   const [historial, setHistorial] = useState<Turno[]>([]);
   const [cargandoHistorial, setCargandoHistorial] = useState(false);
@@ -68,15 +90,20 @@ export default function TurnosApp({ locales, turnosAbiertos }: { locales: Local[
   const [cargandoVentasDe, setCargandoVentasDe] = useState<string | null>(null);
 
   const turnoAbierto = turnosAbiertos.find((t) => t.id_local === idLocal) ?? null;
+  const local = locales.find((l) => l.id_local === idLocal);
+  const fondo = fondoDe(local);
+  const esMiCaja =
+    !!turnoAbierto &&
+    ((Boolean(turnoAbierto.id_usuario_apertura) && turnoAbierto.id_usuario_apertura === yo.idUsuario) || turnoAbierto.usuario_apertura === yo.nombre);
+  const puedoCerrar = puedeAdministrar || esMiCaja;
 
   useEffect(() => {
     setError(null);
     setCerrando(false);
-    setEfectivoContado("");
-    setObservaciones("");
     setResumen(null);
     setIdTurnoExpandido(null);
-  }, [idLocal]);
+    setMontoInicial(String(fondoDe(locales.find((l) => l.id_local === idLocal))));
+  }, [idLocal, locales]);
 
   // El historial se muestra siempre — no hace falta ir a buscarlo con un
   // botón aparte, así se ve de entrada qué turnos cerraron con diferencia.
@@ -117,7 +144,7 @@ export default function TurnosApp({ locales, turnosAbiertos }: { locales: Local[
     const monto = Number(montoInicial.replace(/[^\d.-]/g, "")) || 0;
     setError(null);
     setProcesando(true);
-    abrirTurno(idLocal, monto)
+    abrirTurno(idLocal, monto, fondo)
       .then((res) => {
         if (res.error) setError(res.error);
         else window.location.reload();
@@ -126,22 +153,17 @@ export default function TurnosApp({ locales, turnosAbiertos }: { locales: Local[
       .finally(() => setProcesando(false));
   }
 
-  function handleCerrarTurno() {
-    if (!turnoAbierto) return;
-    const contado = Number(efectivoContado.replace(/[^\d.-]/g, "")) || 0;
-    setError(null);
+  function handleGuardarFondo() {
+    const monto = Number(fondoNuevo.replace(/[^\d]/g, "")) || 0;
     setProcesando(true);
-    cerrarTurno(turnoAbierto.id_turno, contado, observaciones)
+    actualizarFondoCambio(idLocal, monto)
       .then((res) => {
         if (res.error) setError(res.error);
         else window.location.reload();
       })
-      .catch((e) => setError(e instanceof Error ? e.message : "No se pudo cerrar el turno"))
       .finally(() => setProcesando(false));
   }
 
-  const contadoNum = Number(efectivoContado.replace(/[^\d.-]/g, "")) || 0;
-  const diferencia = resumen ? contadoNum - resumen.efectivoEsperado : 0;
   const efectivoRecibido = resumen ? resumen.totalEfectivo + resumen.totalVueltoEntregado : 0;
 
   return (
@@ -177,13 +199,49 @@ export default function TurnosApp({ locales, turnosAbiertos }: { locales: Local[
         </p>
       )}
 
+      {/* El sobre de cambio de este local: con eso abre cada turno. */}
+      <div className="flex flex-wrap items-center gap-2 text-sm text-neutral-600 mb-4">
+        <span>
+          Sobre de cambio de este local: <b className="text-neutral-900">${formatearMonto(fondo)}</b>
+        </span>
+        {puedeAdministrar &&
+          (editandoFondo ? (
+            <>
+              <input
+                value={fondoNuevo}
+                onChange={(e) => setFondoNuevo(e.target.value)}
+                inputMode="numeric"
+                className="w-28 border border-neutral-300 rounded-lg px-2 py-1 text-sm"
+                autoFocus
+              />
+              <button onClick={handleGuardarFondo} disabled={procesando} className="text-xs font-semibold text-white bg-accent rounded-lg px-3 py-1.5">
+                Guardar
+              </button>
+              <button onClick={() => setEditandoFondo(false)} className="text-xs text-neutral-500">
+                Cancelar
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => {
+                setFondoNuevo(String(fondo));
+                setEditandoFondo(true);
+              }}
+              className="text-xs font-semibold text-accent hover:underline"
+            >
+              cambiar
+            </button>
+          ))}
+      </div>
+
       {!turnoAbierto ? (
         <div className="bg-white border border-neutral-200 rounded-xl p-5 max-w-md">
           <h2 className="text-sm font-semibold text-neutral-700 mb-0.5">No hay ningún turno abierto acá</h2>
           <p className="text-xs text-neutral-400 mb-3">
-            Nadie va a poder cobrar ventas en este local (Vender ni Cobros en Efectivo) hasta que se abra un turno.
+            Nadie va a poder cobrar ventas en este local (Vender ni Cobros en Efectivo) hasta que se abra un turno. Lo normal es abrirlo al fichar la
+            entrada.
           </p>
-          <label className="block text-xs font-medium text-neutral-500 mb-1">Fondo inicial de efectivo</label>
+          <label className="block text-xs font-medium text-neutral-500 mb-1">Lo que hay en el sobre de cambio</label>
           <input
             value={montoInicial}
             onChange={(e) => setMontoInicial(e.target.value)}
@@ -267,61 +325,31 @@ export default function TurnosApp({ locales, turnosAbiertos }: { locales: Local[
           )}
 
           <div className="flex justify-end mb-5">
-            {!cerrando && (
-              <button
-                onClick={() => setCerrando(true)}
-                className="border-2 border-accent text-accent hover:bg-accent-tint font-bold px-5 py-2 rounded-lg text-sm"
-              >
-                🔒 Cerrar turno (arqueo)
-              </button>
-            )}
+            {!cerrando &&
+              (puedoCerrar ? (
+                <button
+                  onClick={() => setCerrando(true)}
+                  className="border-2 border-accent text-accent hover:bg-accent-tint font-bold px-5 py-2 rounded-lg text-sm"
+                >
+                  🔒 Cerrar turno (arqueo)
+                </button>
+              ) : (
+                <p className="text-sm text-neutral-500">
+                  Esta caja la abrió <b>{turnoAbierto.usuario_apertura ?? "otra persona"}</b>: la cierra esa persona o administración.
+                </p>
+              ))}
           </div>
 
           {cerrando && (
-            <div className="bg-white border border-neutral-200 rounded-xl p-5 mb-5 max-w-md">
-              <h3 className="text-sm font-bold text-neutral-900 mb-2">Arqueo de cierre</h3>
-              <label className="block text-sm font-medium text-neutral-700 mb-1">Efectivo contado (contá la caja física)</label>
-              <input
-                value={efectivoContado}
-                onChange={(e) => setEfectivoContado(e.target.value)}
-                placeholder="$0"
-                className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm mb-2"
+            <div className="max-w-md mb-5">
+              <ArqueoCaja
+                idTurno={turnoAbierto.id_turno}
+                fondo={fondo}
+                exigirFotoYFirma={!puedeAdministrar}
+                textoBoton="Confirmar cierre"
+                onCerrado={() => window.location.reload()}
+                onCancelar={() => setCerrando(false)}
               />
-              {resumen && efectivoContado !== "" && (
-                <p
-                  className={`text-sm font-semibold mb-3 ${
-                    diferencia === 0 ? "text-emerald-600" : diferencia > 0 ? "text-accent" : "text-red-600"
-                  }`}
-                >
-                  {diferencia === 0
-                    ? "✓ Cierra justo, sin diferencia."
-                    : diferencia > 0
-                      ? `Sobran $${formatearMonto(diferencia)} respecto de lo esperado.`
-                      : `Faltan $${formatearMonto(Math.abs(diferencia))} respecto de lo esperado.`}
-                </p>
-              )}
-              <label className="block text-sm font-medium text-neutral-700 mb-1">Observaciones (opcional)</label>
-              <input
-                value={observaciones}
-                onChange={(e) => setObservaciones(e.target.value)}
-                placeholder="Ej: faltante por vuelto mal dado en la venta #0012"
-                className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm mb-3"
-              />
-              <div className="flex gap-2.5">
-                <button
-                  onClick={() => setCerrando(false)}
-                  className="flex-1 border border-neutral-300 text-neutral-700 font-semibold py-2.5 rounded-xl text-sm"
-                >
-                  Volver
-                </button>
-                <button
-                  onClick={handleCerrarTurno}
-                  disabled={procesando || efectivoContado === ""}
-                  className="flex-1 bg-accent hover:bg-accent-dark disabled:opacity-40 text-white font-bold py-2.5 rounded-xl text-sm"
-                >
-                  {procesando ? "Cerrando..." : "Confirmar cierre"}
-                </button>
-              </div>
             </div>
           )}
 
@@ -383,6 +411,16 @@ export default function TurnosApp({ locales, turnosAbiertos }: { locales: Local[
                           <span className="text-neutral-400 mr-1">{expandido ? "▾" : "▸"}</span>
                           {formatearFechaHora(t.fecha_apertura)}
                           <div className="text-xs text-neutral-400 pl-3.5">{t.usuario_apertura ?? "—"}</div>
+                          {t.recaudacion != null && t.recuento == null && (
+                            <div className="pl-3.5 mt-0.5">
+                              <span className="text-[10.5px] font-bold rounded-full px-1.5 py-px bg-amber-50 text-amber-700">Sobre sin contar</span>
+                            </div>
+                          )}
+                          {t.recaudacion != null && t.recuento != null && t.recuento !== t.recaudacion && (
+                            <div className="pl-3.5 mt-0.5">
+                              <span className="text-[10.5px] font-bold rounded-full px-1.5 py-px bg-red-50 text-red-700">El sobre no coincide</span>
+                            </div>
+                          )}
                         </td>
                         <td className="p-3 whitespace-nowrap">
                           {t.fecha_cierre ? formatearFechaHora(t.fecha_cierre) : "—"}
@@ -411,6 +449,7 @@ export default function TurnosApp({ locales, turnosAbiertos }: { locales: Local[
                       {expandido && (
                         <tr className="border-b border-neutral-100 last:border-0">
                           <td colSpan={9} className="bg-neutral-50 p-0">
+                            <DetalleArqueo turno={t} puedeAdministrar={puedeAdministrar} />
                             {cargandoVentasDe === t.id_turno ? (
                               <p className="text-sm text-neutral-400 text-center py-4">Cargando ventas...</p>
                             ) : (ventasPorTurno[t.id_turno] ?? []).length === 0 ? (
@@ -433,6 +472,101 @@ export default function TurnosApp({ locales, turnosAbiertos }: { locales: Local[
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * El arqueo de un turno cerrado: los dos sobres, el conteo por billete, la
+ * foto y la firma. Administración anota acá cuánto había en el sobre de
+ * recaudación cuando lo cuenta.
+ */
+function DetalleArqueo({ turno, puedeAdministrar }: { turno: Turno; puedeAdministrar: boolean }) {
+  const [monto, setMonto] = useState(turno.recuento != null ? String(turno.recuento) : turno.recaudacion != null ? String(turno.recaudacion) : "");
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [verFoto, setVerFoto] = useState<string | null>(null);
+
+  if (turno.recaudacion == null && !turno.foto_arqueo && !turno.firma_cierre) {
+    return turno.observaciones ? <p className="text-xs text-neutral-500 px-8 pt-3">Observaciones: {turno.observaciones}</p> : null;
+  }
+
+  const billetes = Object.entries(turno.conteo_billetes ?? {})
+    .filter(([, n]) => Number(n) > 0)
+    .sort((a, b) => (b[0] === "otros" ? -1 : a[0] === "otros" ? 1 : Number(b[0]) - Number(a[0])));
+  const recuentoDistinto = turno.recuento != null && turno.recaudacion != null && turno.recuento !== turno.recaudacion;
+
+  return (
+    <div className="px-8 pt-3 pb-1 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] text-[13px]">
+      <div className="space-y-1">
+        {turno.cambio_esperado != null && turno.cambio_esperado !== turno.monto_inicial_efectivo && (
+          <p className="text-amber-700 font-semibold">
+            Abrió con ${formatearMonto(turno.monto_inicial_efectivo)} en el sobre de cambio: tenía que haber ${formatearMonto(turno.cambio_esperado)}.
+          </p>
+        )}
+        <p>
+          Sobre de recaudación: <b>${formatearMonto(turno.recaudacion ?? 0)}</b> · sobre de cambio que dejó: <b>${formatearMonto(turno.cambio_dejado ?? 0)}</b>
+        </p>
+        {billetes.length > 0 && (
+          <p className="text-neutral-500">
+            Contó:{" "}
+            {billetes.map(([b, n]) => (b === "otros" ? `$${formatearMonto(Number(n))} en billetes chicos y monedas` : `${n} de $${formatearMonto(Number(b))}`)).join(" · ")}
+          </p>
+        )}
+        {turno.observaciones && <p className="text-neutral-500">Observaciones: {turno.observaciones}</p>}
+        {puedeAdministrar && turno.recaudacion != null && (
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <span className={recuentoDistinto ? "text-red-700 font-semibold" : "text-neutral-600"}>
+              {turno.recuento != null
+                ? recuentoDistinto
+                  ? `Contaste $${formatearMonto(turno.recuento)}: ${turno.recuento < turno.recaudacion ? "faltan" : "sobran"} $${formatearMonto(Math.abs(turno.recuento - turno.recaudacion))}`
+                  : `Contaste el sobre: coincide ✓`
+                : "Cuando cuentes el sobre, anotá cuánto había:"}
+            </span>
+            <input
+              value={monto}
+              onChange={(e) => setMonto(e.target.value.replace(/[^\d]/g, ""))}
+              inputMode="numeric"
+              className="w-28 border border-neutral-300 rounded-lg px-2 py-1 text-sm"
+              aria-label="Lo que había en el sobre de recaudación"
+            />
+            <button
+              onClick={() => {
+                setGuardando(true);
+                setError(null);
+                confirmarRecuento(turno.id_turno, Number(monto) || 0)
+                  .then((res) => (res.error ? setError(res.error) : window.location.reload()))
+                  .finally(() => setGuardando(false));
+              }}
+              disabled={guardando || monto === ""}
+              className="text-xs font-semibold text-white bg-accent disabled:opacity-40 rounded-lg px-3 py-1.5"
+            >
+              {guardando ? "Guardando..." : turno.recuento != null ? "Corregir" : "Confirmar"}
+            </button>
+            {error && <span className="text-xs text-red-600">{error}</span>}
+          </div>
+        )}
+      </div>
+      <div className="flex items-start gap-3">
+        {turno.foto_arqueo && puedeAdministrar && (
+          <button
+            onClick={() => urlFotoArqueo(turno.foto_arqueo!).then((u) => u && setVerFoto(u))}
+            className="text-xs font-semibold text-accent border border-neutral-200 bg-white rounded-lg px-3 py-1.5"
+          >
+            📷 Ver foto
+          </button>
+        )}
+        {turno.firma_cierre && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={turno.firma_cierre} alt="Firma del arqueo" className="h-10 w-28 object-contain bg-white border border-neutral-200 rounded" />
+        )}
+      </div>
+      {verFoto && (
+        <div className="fixed inset-0 z-50 bg-black/70 grid place-items-center p-4" onClick={() => setVerFoto(null)} role="dialog" aria-label="Foto del arqueo">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={verFoto} alt="Foto del arqueo" className="max-h-[90vh] max-w-full rounded-lg" />
+        </div>
+      )}
     </div>
   );
 }

@@ -747,6 +747,19 @@ export type Turno = {
   total_pagos_proveedor_efectivo: number | null;
   cantidad_ventas: number | null;
   observaciones: string | null;
+  // Caja con sobre de cambio (sql/llamados-y-caja.sql). Pueden no existir
+  // si el SQL todavía no se corrió.
+  id_usuario_apertura?: string | null;
+  id_usuario_cierre?: string | null;
+  cambio_esperado?: number | null;
+  conteo_billetes?: Record<string, number> | null;
+  cambio_dejado?: number | null;
+  recaudacion?: number | null;
+  foto_arqueo?: string | null;
+  firma_cierre?: string | null;
+  recuento?: number | null;
+  recuento_por?: string | null;
+  recuento_en?: string | null;
 };
 
 // Tabla original del esquema (ya pensada para el detalle completo de una

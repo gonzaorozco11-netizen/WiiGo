@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
+import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 async function usuarioActual() {
@@ -12,6 +13,39 @@ async function usuarioActual() {
   const token = cookieStore.get(SESSION_COOKIE)?.value;
   const session = await readSessionToken(token, process.env.AUTH_SECRET ?? "");
   return session?.nombre ?? null;
+}
+
+async function sesionActual() {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(SESSION_COOKIE)?.value;
+  const session = await readSessionToken(token, process.env.AUTH_SECRET ?? "");
+  return session ? { idUsuario: session.sub as string, nombre: (session.nombre as string) ?? null } : null;
+}
+
+/** Administración: puede cerrar la caja de cualquiera, recontar sobres y cambiar el fondo de cambio. */
+async function puedeAdministrarCaja() {
+  return tienePermiso(await obtenerSesionConPermisos(), PERMISOS.VER_CAJA_ADMIN);
+}
+
+/** Si el error es porque todavía no se corrió sql/llamados-y-caja.sql. */
+const faltaColumna = (mensaje: string) => /column|schema cache|does not exist/i.test(mensaje);
+
+const BUCKET_ARQUEOS = "arqueos-caja";
+
+/** Sube la foto del arqueo (data:image/jpeg;base64,...). Crea el depósito la primera vez. */
+async function subirFotoArqueo(supabase: SupabaseClient, idTurno: string, foto: string) {
+  const m = /^data:image\/(jpeg|png|webp);base64,(.+)$/.exec(foto);
+  if (!m) return { path: null, error: "La foto no se pudo leer. Sacala de nuevo." };
+  const buffer = Buffer.from(m[2], "base64");
+  if (buffer.length > 6_000_000) return { path: null, error: "La foto es demasiado grande." };
+  const path = `${idTurno}.${m[1] === "jpeg" ? "jpg" : m[1]}`;
+  const subir = () => supabase.storage.from(BUCKET_ARQUEOS).upload(path, buffer, { upsert: true, contentType: `image/${m[1]}` });
+  let { error } = await subir();
+  if (error && /not found|bucket/i.test(error.message)) {
+    await supabase.storage.createBucket(BUCKET_ARQUEOS, { public: false });
+    ({ error } = await subir());
+  }
+  return error ? { path: null, error: `No se pudo guardar la foto: ${error.message}` } : { path, error: null };
 }
 
 // Usado por POS y Cobros en Efectivo para saber a qué turno estampar una
@@ -31,7 +65,10 @@ export async function turnoAbiertoDeLocal(supabase: SupabaseClient, idLocal: str
 // Next.js redacta en producción el mensaje de un Error tirado desde una
 // Server Action (queda solo un digest genérico en el navegador) — por eso
 // esta función no throwea para errores esperables: devuelve { error }.
-export async function abrirTurno(idLocal: string, montoInicial: number): Promise<{ error: string | null }> {
+//
+// cambioEsperado: lo que tenía que tener el sobre de cambio. Si se abre con
+// otro monto queda registrado, y administración lo ve.
+export async function abrirTurno(idLocal: string, montoInicial: number, cambioEsperado?: number): Promise<{ error: string | null }> {
   if (montoInicial < 0) return { error: "El fondo inicial no puede ser negativo" };
 
   try {
@@ -39,16 +76,27 @@ export async function abrirTurno(idLocal: string, montoInicial: number): Promise
     const existente = await turnoAbiertoDeLocal(supabase, idLocal);
     if (existente) return { error: "Ya hay un turno abierto en este local — cerralo antes de abrir uno nuevo." };
 
-    const usuario = await usuarioActual();
-    const { error } = await supabase.from("turnos").insert({
+    const sesion = await sesionActual();
+    const base = {
       id_local: idLocal,
-      usuario_apertura: usuario,
+      usuario_apertura: sesion?.nombre ?? null,
       monto_inicial_efectivo: montoInicial,
       estado: "ABIERTO",
+    };
+    let { error } = await supabase.from("turnos").insert({
+      ...base,
+      id_usuario_apertura: sesion?.idUsuario ?? null,
+      cambio_esperado: cambioEsperado ?? null,
     });
-    if (error) return { error: friendlyDbError(error) };
+    if (error && faltaColumna(error.message)) ({ error } = await supabase.from("turnos").insert(base));
+    if (error) {
+      // El índice único de un solo turno abierto por local.
+      if (/duplicate|unique/i.test(error.message)) return { error: "Ya hay un turno abierto en este local — cerralo antes de abrir uno nuevo." };
+      return { error: friendlyDbError(error) };
+    }
 
     revalidatePath("/turnos");
+    revalidatePath("/ficha-asistencia");
     return { error: null };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo abrir el turno" };
@@ -175,23 +223,46 @@ export async function resumenTurnoAbierto(idTurno: string) {
   };
 }
 
+export type ArqueoCierre = {
+  /** Cantidad de billetes por valor ("20000": 5, ...) y "otros": monto suelto en billetes chicos y monedas. */
+  billetes: Record<string, number>;
+  /** Lo que queda en el sobre de cambio para el turno siguiente. */
+  cambioDejado: number;
+  /** Foto de la plata contada y los sobres (data:image/jpeg;base64,...). */
+  foto?: string | null;
+  /** Firma del arqueo (data:image/png;base64,...). */
+  firma?: string | null;
+};
+
+// Cierre con arqueo. La caja la cierra quien la abrió, o administración.
+//
+// Con sobre de cambio (arqueo.cambioDejado): a la Caja Administración pasa
+// solo la recaudación (lo contado menos el cambio que queda para el
+// siguiente). Antes pasaba todo lo contado y el fondo de cambio se sumaba
+// una y otra vez en cada turno.
 export async function cerrarTurno(
   idTurno: string,
   efectivoContado: number,
-  observaciones: string
+  observaciones: string,
+  arqueo?: ArqueoCierre
 ): Promise<{ error: string | null }> {
   if (efectivoContado < 0) return { error: "El efectivo contado no puede ser negativo" };
 
   try {
     const supabase = getSupabaseServerClient();
-    const { data: turno, error: errorTurno } = await supabase
-      .from("turnos")
-      .select("estado, monto_inicial_efectivo, id_local")
-      .eq("id_turno", idTurno)
-      .maybeSingle();
+    const { data: turno, error: errorTurno } = await supabase.from("turnos").select("*").eq("id_turno", idTurno).maybeSingle();
     if (errorTurno) return { error: friendlyDbError(errorTurno) };
     if (!turno) return { error: "No se encontró el turno" };
     if (turno.estado !== "ABIERTO") return { error: "Este turno ya está cerrado" };
+
+    const sesion = await sesionActual();
+    const admin = await puedeAdministrarCaja();
+    const esQuienAbrio =
+      (Boolean(turno.id_usuario_apertura) && turno.id_usuario_apertura === sesion?.idUsuario) || turno.usuario_apertura === sesion?.nombre;
+    if (!admin && !esQuienAbrio) {
+      return { error: `Esta caja la abrió ${turno.usuario_apertura ?? "otra persona"}: la cierra esa persona o administración.` };
+    }
+    if (!admin && (!arqueo?.foto || !arqueo?.firma)) return { error: "Para cerrar la caja falta la foto de la plata contada y tu firma." };
 
     const resumen = await resumenTurno(supabase, idTurno);
     const efectivoEsperado =
@@ -200,41 +271,68 @@ export async function cerrarTurno(
       resumen.totalGastosEfectivo -
       resumen.totalPagosProveedorEfectivo -
       resumen.totalDevolucionesEfectivo;
-    const usuario = await usuarioActual();
+    const diferencia = efectivoContado - efectivoEsperado;
+    if (diferencia !== 0 && !observaciones.trim()) return { error: "La caja no cuadra: escribí qué pasó antes de cerrar." };
 
-    const { error } = await supabase
-      .from("turnos")
-      .update({
-        estado: "CERRADO",
-        usuario_cierre: usuario,
-        fecha_cierre: new Date().toISOString(),
-        efectivo_esperado: efectivoEsperado,
-        efectivo_contado: efectivoContado,
-        diferencia_efectivo: efectivoContado - efectivoEsperado,
-        total_mercado_pago: resumen.totalMercadoPago,
-        total_vuelto_entregado: resumen.totalVueltoEntregado,
-        total_gastos_efectivo: resumen.totalGastosEfectivo,
-        total_pagos_proveedor_efectivo: resumen.totalPagosProveedorEfectivo,
-        cantidad_ventas: resumen.cantidadVentas,
-        observaciones: observaciones || null,
-      })
-      .eq("id_turno", idTurno);
+    const usuario = sesion?.nombre ?? (await usuarioActual());
+    const cambioDejado = arqueo ? Math.min(Math.max(0, arqueo.cambioDejado), efectivoContado) : null;
+    const recaudacion = cambioDejado !== null ? efectivoContado - cambioDejado : efectivoContado;
+
+    let fotoPath: string | null = null;
+    if (arqueo?.foto) {
+      const subida = await subirFotoArqueo(supabase, idTurno, arqueo.foto);
+      if (subida.error) return { error: subida.error };
+      fotoPath = subida.path;
+    }
+
+    const base = {
+      estado: "CERRADO",
+      usuario_cierre: usuario,
+      fecha_cierre: new Date().toISOString(),
+      efectivo_esperado: efectivoEsperado,
+      efectivo_contado: efectivoContado,
+      diferencia_efectivo: diferencia,
+      total_mercado_pago: resumen.totalMercadoPago,
+      total_vuelto_entregado: resumen.totalVueltoEntregado,
+      total_gastos_efectivo: resumen.totalGastosEfectivo,
+      total_pagos_proveedor_efectivo: resumen.totalPagosProveedorEfectivo,
+      cantidad_ventas: resumen.cantidadVentas,
+      observaciones: observaciones || null,
+    };
+    const extra = arqueo
+      ? {
+          id_usuario_cierre: sesion?.idUsuario ?? null,
+          conteo_billetes: arqueo.billetes,
+          cambio_dejado: cambioDejado,
+          recaudacion,
+          foto_arqueo: fotoPath,
+          firma_cierre: arqueo.firma ?? null,
+        }
+      : { id_usuario_cierre: sesion?.idUsuario ?? null };
+    // Solo si sigue abierto: si dos personas cierran a la vez, cierra una sola.
+    let { data: cerrado, error } = await supabase.from("turnos").update({ ...base, ...extra }).eq("id_turno", idTurno).eq("estado", "ABIERTO").select("id_turno");
+    if (error && faltaColumna(error.message)) {
+      ({ data: cerrado, error } = await supabase.from("turnos").update(base).eq("id_turno", idTurno).eq("estado", "ABIERTO").select("id_turno"));
+    }
     if (error) return { error: friendlyDbError(error) };
+    if (!cerrado || cerrado.length === 0) return { error: "Este turno ya está cerrado" };
 
-    // El efectivo contado entra solo a la Caja Administración — es el
-    // único lugar donde se junta la plata de todos los cierres de todos
-    // los turnos, para que administración sepa cuánto tiene sin sumar a mano.
+    // La recaudación entra a la Caja Administración — es el único lugar
+    // donde se junta la plata de todos los cierres, para que administración
+    // sepa cuánto tiene sin sumar a mano. El sobre de cambio queda en el local.
     const { data: local } = await supabase.from("locales").select("nombre").eq("id_local", turno.id_local).maybeSingle();
-    await supabase.from("movimientos_caja_admin").insert({
+    const { error: errorMov } = await supabase.from("movimientos_caja_admin").insert({
       tipo: "INGRESO_TURNO",
-      monto: efectivoContado,
+      monto: recaudacion,
       id_turno: idTurno,
-      descripcion: `Cierre de turno — ${local?.nombre ?? "Local"} — ${usuario ?? "—"}`,
+      descripcion: `Cierre de turno — ${local?.nombre ?? "Local"} — ${usuario ?? "—"}${cambioDejado !== null ? " (sobre de recaudación)" : ""}`,
       usuario,
     });
+    if (errorMov) console.error("No se pudo registrar el cierre en la Caja Administración:", errorMov.message);
 
     revalidatePath("/turnos");
     revalidatePath("/gastos-ingresos");
+    revalidatePath("/ficha-asistencia");
     return { error: null };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo cerrar el turno" };
@@ -252,6 +350,50 @@ export async function historialTurnos(idLocal: string) {
     .limit(50);
   if (error) throw new Error(friendlyDbError(error));
   return data ?? [];
+}
+
+/**
+ * Administración cuenta el sobre de recaudación de un turno. Si da distinto
+ * de lo que contó el operativo, queda marcado, y el ingreso a la Caja
+ * Administración pasa a ser lo que contó administración (la plata real).
+ */
+export async function confirmarRecuento(idTurno: string, monto: number): Promise<{ error: string | null }> {
+  if (!(await puedeAdministrarCaja())) return { error: "Solo administración puede recontar los sobres." };
+  if (!(monto >= 0)) return { error: "Escribí cuánto había en el sobre." };
+  const supabase = getSupabaseServerClient();
+  const usuario = await usuarioActual();
+  const { error } = await supabase
+    .from("turnos")
+    .update({ recuento: monto, recuento_por: usuario, recuento_en: new Date().toISOString() })
+    .eq("id_turno", idTurno);
+  if (error) return { error: faltaColumna(error.message) ? "Falta correr sql/llamados-y-caja.sql en Supabase." : friendlyDbError(error) };
+  await supabase
+    .from("movimientos_caja_admin")
+    .update({ monto })
+    .eq("id_turno", idTurno)
+    .eq("tipo", "INGRESO_TURNO");
+  revalidatePath("/turnos");
+  revalidatePath("/gastos-ingresos");
+  return { error: null };
+}
+
+/** Link temporal (10 minutos) para ver la foto de un arqueo. */
+export async function urlFotoArqueo(path: string): Promise<string | null> {
+  if (!(await puedeAdministrarCaja())) return null;
+  const supabase = getSupabaseServerClient();
+  const { data } = await supabase.storage.from(BUCKET_ARQUEOS).createSignedUrl(path, 60 * 10);
+  return data?.signedUrl ?? null;
+}
+
+/** El sobre de cambio con el que abre cada turno de un local. */
+export async function actualizarFondoCambio(idLocal: string, monto: number): Promise<{ error: string | null }> {
+  if (!(await puedeAdministrarCaja())) return { error: "Solo administración puede cambiar el fondo de cambio." };
+  if (!(monto >= 0)) return { error: "El monto no es válido." };
+  const supabase = getSupabaseServerClient();
+  const { error } = await supabase.from("locales").update({ fondo_cambio: monto }).eq("id_local", idLocal);
+  if (error) return { error: faltaColumna(error.message) ? "Falta correr sql/llamados-y-caja.sql en Supabase." : friendlyDbError(error) };
+  revalidatePath("/turnos");
+  return { error: null };
 }
 
 // Detalle de un turno para poder auditar rápido dónde está una diferencia

@@ -1,5 +1,6 @@
 import { getSupabaseServerClient, type Local, type Turno } from "@/lib/supabase";
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
+import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos";
 import PantallaBloqueada from "@/components/PantallaBloqueada";
 import TurnosApp from "@/components/TurnosApp";
 
@@ -34,10 +35,13 @@ export default async function TurnosPage() {
     );
   }
 
+  const permisos = await obtenerSesionConPermisos();
   return (
     <TurnosApp
       locales={(localesRes.data ?? []) as Local[]}
       turnosAbiertos={(turnosAbiertosRes.data ?? []) as Turno[]}
+      puedeAdministrar={tienePermiso(permisos, PERMISOS.VER_CAJA_ADMIN)}
+      yo={{ idUsuario: permisos?.idUsuario ?? null, nombre: permisos?.nombre ?? sesion?.nombre ?? null }}
     />
   );
 }

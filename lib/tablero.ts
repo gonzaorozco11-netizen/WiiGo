@@ -4,6 +4,7 @@ import { fechaHoraArgentina } from "@/lib/horarios";
 import { ESTADOS_ABIERTOS } from "@/lib/estadosOrden";
 import { devueltoParcialPorVenta } from "@/lib/devueltoPorDetalle";
 import { armarInicioDueno, type InicioDueno } from "@/lib/inicioDueno";
+import { avisosCajaYLlamados } from "@/lib/avisosCaja";
 
 // Tablero de inicio.
 //
@@ -222,6 +223,17 @@ export async function armarTablero(): Promise<Tablero | null> {
       valor: "→",
       href: "/ficha-asistencia",
     });
+  }
+
+  // ---------- Caja y llamados de atención (solo el Dueño) ----------
+  if (esAdmin) {
+    try {
+      const avisos = await avisosCajaYLlamados(supabase);
+      urgentes.push(...avisos.urgentes);
+      seguimiento.push(...avisos.seguimiento);
+    } catch (e) {
+      console.error("No se pudieron armar los avisos de caja:", e);
+    }
   }
 
   // ---------- Aprobaciones ----------

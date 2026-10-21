@@ -47,6 +47,7 @@ import {
   type SueldoSinPagar,
 } from "@/app/(app)/rrhh/asistencia-actions";
 import AsistenciaMes, { SelectorMes, HorarioDeCadaUno } from "@/components/AsistenciaMes";
+import { obtenerReglaApercibimiento, guardarReglaApercibimiento } from "@/app/(app)/rrhh/sanciones-actions";
 
 type UsuarioMin = { id_usuario: string; nombre: string; sueldo_base: number | null };
 type PersonaMin = { id_persona: string; nombre: string; apellido: string | null };
@@ -203,6 +204,7 @@ export default function RrhhApp({
             <HorarioDeCadaUno />
             <TabHorarios horarios={horarios} onCambio={recargarHorarios} />
             <BloqueFeriados />
+            <ReglaLlamados />
             <ReglasPresentismo />
           </div>
         )}
@@ -1868,6 +1870,54 @@ function ModalAdelanto({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ===================== LLAMADOS DE ATENCIÓN =====================
+//
+// Cuando un operativo ficha tarde, en la tablet le aparece la nota para
+// firmar. Las primeras del mes son llamado de atención; desde la que se
+// elige acá, cada una es un apercibimiento.
+
+function ReglaLlamados() {
+  const [desde, setDesde] = useState<number | null>(null);
+  const [mensaje, setMensaje] = useState<{ texto: string; error: boolean } | null>(null);
+
+  useEffect(() => {
+    obtenerReglaApercibimiento().then(setDesde);
+  }, []);
+
+  function cambiar(n: number) {
+    setDesde(n);
+    setMensaje(null);
+    guardarReglaApercibimiento(n).then((res) => setMensaje(res.error ? { texto: res.error, error: true } : { texto: "Guardado.", error: false }));
+  }
+
+  return (
+    <div className="bg-white border border-neutral-200 rounded-xl p-4">
+      <h2 className="text-[15px] font-semibold text-neutral-900">Llegadas tarde</h2>
+      <p className="text-xs text-neutral-400 mb-3 max-w-xl">
+        Llega tarde quien ficha después de su hora de entrada (con la tolerancia de su horario). En la tablet firma la nota en el momento. Se cuentan por
+        mes. Si una tardanza se justifica, se anula desde el legajo y deja de contar.
+      </p>
+      <label className="flex flex-wrap items-center gap-2 text-sm text-neutral-700">
+        Llamado de atención hasta la anterior; apercibimiento desde la llegada tarde número
+        <select
+          value={desde ?? ""}
+          onChange={(e) => cambiar(Number(e.target.value))}
+          disabled={desde === null}
+          className="border border-neutral-300 rounded-lg px-2 py-1 text-sm font-semibold"
+        >
+          {[2, 3, 4, 5, 6].map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+        del mes
+      </label>
+      {mensaje && <p className={`text-xs mt-2 ${mensaje.error ? "text-red-600" : "text-emerald-700"}`}>{mensaje.texto}</p>}
     </div>
   );
 }
