@@ -16,6 +16,7 @@ const TIPOS_DOCUMENTO: { clave: string; label: string; icono: string }[] = [
   { clave: "APTO_MEDICO", label: "Apto médico", icono: "🩺" },
   { clave: "CBU", label: "CBU", icono: "🏦" },
   { clave: "CONTRATO", label: "Contrato", icono: "📄" },
+  { clave: "POLIZA_SEGURO", label: "Póliza de seguro", icono: "🛡️" },
 ];
 
 function formatearFecha(fechaISO: string) {

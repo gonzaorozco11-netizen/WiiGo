@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import PantallazoRrhh from "@/components/PantallazoRrhh";
+import FichaPersona from "@/components/FichaPersona";
 import { actualizarSueldoBase, actualizarValorHora, actualizarCobraPresentismo } from "@/app/(app)/usuarios/actions";
 import { puedeCerrarseAguinaldo, etiquetaSemestre, semestreActual } from "@/lib/aguinaldo";
 import { crearHorario, actualizarHorario, desactivarHorario, listarHorarios, type HorarioTrabajo } from "@/app/(app)/organizacion/actions";
@@ -96,7 +97,7 @@ const TITULO: Record<VistaRrhh, { h1: string; bajada: string }> = {
   },
   PERSONAL: {
     h1: "Personal",
-    bajada: "La gente que trabaja con vos, por sucursal: sus vacaciones y qué le falta a cada legajo. Los datos personales se cargan en Equipo → Organización.",
+    bajada: "Quién trabaja con WiiGo y cómo. Tocá a una persona para ver su ficha: sueldos, aguinaldo, vacaciones, seguro, documentos y notas.",
   },
   PLANILLA: {
     h1: "Planilla",
@@ -2192,28 +2193,27 @@ function anioActual() {
   return new Date().getFullYear();
 }
 
-const PROBLEMA_CHIP: Record<NonNullable<PersonaDeRrhh["problema"]>, { texto: string; clase: string }> = {
-  NO_COBRA: { texto: "No puede cobrar", clase: "bg-red-100 text-red-700" },
-  SIN_SUELDO: { texto: "Sin sueldo cargado", clase: "bg-red-100 text-red-700" },
-  SIN_INGRESO: { texto: "Falta fecha de ingreso", clase: "bg-amber-100 text-amber-700" },
-  INCOMPLETO: { texto: "Legajo incompleto", clase: "bg-amber-100 text-amber-700" },
-};
-
 /**
- * La gente, agrupada por sucursal.
+ * Personal: quién trabaja con WiiGo y cómo.
  *
- * Reemplazó a la tabla de vacaciones sueltas por dos razones. La primera es
- * que esa tabla **escondía** a quien no tuviera fecha de ingreso cargada: si
- * te faltaba ese dato, la persona no existía en la pantalla. La segunda es
- * que las vacaciones son un dato DE la persona, no una lista aparte — mejor
- * verlas adentro de cada una.
+ * Separado por cómo trabaja cada uno, no por sucursal: los empleados (fichan,
+ * cobran por nómina, tienen vacaciones y aguinaldo), los servicios
+ * tercerizados (facturan por mes) y los socios. Antes estaban todos juntos y
+ * a los tercerizados y al socio se les marcaba "No puede cobrar" en rojo,
+ * aunque no van en la nómina: la pantalla decía "5 personas no pueden
+ * cobrar" cuando era una sola.
+ *
+ * Tocar a alguien abre su ficha al costado (FichaPersona).
  */
 function TabVacaciones({ personas }: { personas: PersonaMin[] }) {
-  const [anio, setAnio] = useState(anioActual());
+  void personas;
+  const anio = anioActual();
   const [gente, setGente] = useState<PersonaDeRrhh[]>([]);
   const [saldos, setSaldos] = useState<SaldoVacaciones[]>([]);
   const [cargando, setCargando] = useState(true);
   const [modalPersona, setModalPersona] = useState<SaldoVacaciones | null>(null);
+  const [fichaAbierta, setFichaAbierta] = useState<string | null>(null);
+  const [vueltaFicha, setVueltaFicha] = useState(0);
 
   function recargar() {
     setCargando(true);
@@ -2225,154 +2225,249 @@ function TabVacaciones({ personas }: { personas: PersonaMin[] }) {
       .finally(() => setCargando(false));
   }
 
-  useEffect(recargar, [anio]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(recargar, []);
 
   const saldoPorPersona = new Map(saldos.map((s) => [s.idPersona, s]));
+  const empleados = gente.filter((p) => p.tipo === "EMPLEADO");
+  const externos = gente.filter((p) => p.tipo === "EXTERNO");
+  const socios = gente.filter((p) => p.tipo !== "EMPLEADO" && p.tipo !== "EXTERNO");
+  const noCobran = empleados.filter((p) => p.problema === "NO_COBRA" || p.problema === "SIN_SUELDO");
+  const completos = empleados.filter((p) => p.faltantes.length === 0).length;
+  const diasDisponibles = empleados.reduce((a, p) => a + Math.max(saldoPorPersona.get(p.idPersona)?.diasDisponibles ?? 0, 0), 0);
+  const hoyMs = Date.now();
+  const diasHasta = (iso: string | null) => (iso ? Math.round((Date.parse(`${iso}T12:00:00`) - hoyMs) / 86400000) : null);
+  const finPrueba = (ingreso: string | null) => {
+    if (!ingreso) return null;
+    const [a, m, d] = ingreso.split("-").map(Number);
+    return new Date(Date.UTC(a, m - 1 + 6, d)).toISOString().slice(0, 10);
+  };
 
-  // Agrupado por sucursal, con los que no tienen ninguna al final: son los
-  // que hay que ir a asignar, no los primeros que querés ver.
-  const porLocal = new Map<string, PersonaDeRrhh[]>();
-  for (const p of gente) {
-    const lista = porLocal.get(p.local) ?? [];
-    lista.push(p);
-    porLocal.set(p.local, lista);
+  const iniciales = (nombre: string) =>
+    nombre
+      .split(" ")
+      .slice(0, 2)
+      .map((x) => x[0]?.toUpperCase() ?? "")
+      .join("");
+  const cerrarFicha = () => setFichaAbierta(null);
+
+  if (cargando && gente.length === 0) return <p className="text-sm text-neutral-400 text-center py-8">Cargando...</p>;
+  if (gente.length === 0) {
+    return <p className="text-sm text-neutral-400 text-center py-8">Todavía no hay personas activas. Se cargan en Equipo → Organización.</p>;
   }
-  const grupos = [...porLocal.entries()].sort((a, b) => {
-    if (a[0] === "Sin sucursal asignada") return 1;
-    if (b[0] === "Sin sucursal asignada") return -1;
-    return a[0].localeCompare(b[0]);
-  });
-
-  const conProblema = gente.filter((p) => p.problema === "NO_COBRA" || p.problema === "SIN_SUELDO").length;
 
   return (
-    <div>
-      {/* El aviso va arriba y en rojo: es el único problema de esta pantalla
-          que cuesta plata. Se puede tener un legajo impecable y que esa
-          persona no aparezca nunca en la nómina. */}
-      {!cargando && conProblema > 0 && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 mb-3">
-          <p className="text-sm font-semibold text-red-800">
-            {conProblema === 1 ? "1 persona no puede cobrar" : `${conProblema} personas no pueden cobrar`}
+    <div className="space-y-3">
+      {/* Resumen en una línea */}
+      <div className="grid sm:grid-cols-3 gap-2.5">
+        <div className="rounded-xl border border-neutral-200 bg-white px-4 py-3">
+          <p className="text-[10.5px] font-bold uppercase tracking-wider text-neutral-400">El equipo</p>
+          <p className="text-lg font-bold text-neutral-900">
+            {empleados.length} {empleados.length === 1 ? "empleado" : "empleados"}
           </p>
-          <p className="text-xs text-red-700 mt-0.5">
-            Les falta el usuario vinculado o el sueldo. No van a aparecer cuando cierres la nómina, y los adelantos
-            que les des tampoco se les descuentan. Se arregla en Equipo → Usuarios.
+          <p className="text-xs text-neutral-500">
+            {externos.length} {externos.length === 1 ? "servicio tercerizado" : "servicios tercerizados"} · {socios.length}{" "}
+            {socios.length === 1 ? "socio" : "socios"}
           </p>
         </div>
-      )}
-
-      <div className="flex items-center gap-2 mb-3 flex-wrap">
-        <button onClick={() => setAnio((a) => a - 1)} className="px-2 py-1 text-neutral-400 hover:text-neutral-700 font-bold">
-          ‹
-        </button>
-        <span className="text-sm font-bold w-14 text-center">{anio}</span>
-        <button onClick={() => setAnio((a) => a + 1)} className="px-2 py-1 text-neutral-400 hover:text-neutral-700 font-bold">
-          ›
-        </button>
-        <span className="text-xs text-neutral-400 ml-2">
-          Días legales por antigüedad (Art. 150/151 LCT), sin los extra que pueda dar tu convenio.
-        </span>
+        <div className="rounded-xl border border-neutral-200 bg-white px-4 py-3">
+          <p className="text-[10.5px] font-bold uppercase tracking-wider text-neutral-400">Legajos completos</p>
+          <p className="text-lg font-bold text-neutral-900">
+            {completos} de {empleados.length}
+          </p>
+          <p className="text-xs text-neutral-500">usuario, sueldo, ingreso, DNI y CUIL</p>
+        </div>
+        <div className="rounded-xl border border-neutral-200 bg-white px-4 py-3">
+          <p className="text-[10.5px] font-bold uppercase tracking-wider text-neutral-400">Vacaciones {anio}</p>
+          <p className="text-lg font-bold text-neutral-900">{diasDisponibles} días</p>
+          <p className="text-xs text-neutral-500">por tomar entre todos los empleados</p>
+        </div>
       </div>
 
-      {cargando ? (
-        <p className="text-sm text-neutral-400 text-center py-8">Cargando...</p>
-      ) : gente.length === 0 ? (
-        <p className="text-sm text-neutral-400 text-center py-8">
-          Todavía no hay personas activas. Se cargan en Equipo → Organización.
+      {/* El único aviso que cuesta plata: un empleado que no aparece al
+          cerrar la nómina. Solo empleados: tercerizados y socios no cobran
+          por nómina. */}
+      {noCobran.length > 0 && (
+        <p className="text-[13.5px] rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-neutral-800">
+          <b className="text-red-700">
+            {noCobran.map((p) => p.nombre).join(", ")} {noCobran.length === 1 ? "no puede cobrar" : "no pueden cobrar"}.
+          </b>{" "}
+          Les falta el usuario vinculado o el sueldo, así que no aparecen al cerrar la nómina. Se arregla en Equipo → Usuarios y en Sueldos.
         </p>
-      ) : (
-        grupos.map(([local, lista]) => (
-          <div key={local} className="mb-4">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 mb-2">
-              {local} · {lista.length}
-            </p>
-            <div className="space-y-2">
-              {lista.map((p) => {
-                const saldo = saldoPorPersona.get(p.idPersona);
-                const chip = p.problema ? PROBLEMA_CHIP[p.problema] : null;
-                const iniciales = p.nombre
-                  .split(" ")
-                  .slice(0, 2)
-                  .map((x) => x[0]?.toUpperCase() ?? "")
-                  .join("");
-                return (
-                  <div
-                    key={p.idPersona}
-                    className="flex items-center gap-3 flex-wrap border border-neutral-200 rounded-xl bg-white px-3.5 py-3"
-                  >
-                    <span className="shrink-0 w-[38px] h-[38px] rounded-full bg-accent-tint text-accent flex items-center justify-center text-sm font-bold">
-                      {iniciales}
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block text-[14.5px] font-semibold text-neutral-900">{p.nombre}</span>
-                      <span className="block text-[11.5px] text-neutral-400">
-                        {[
-                          p.puesto,
-                          (p.valorHora ?? 0) > 0
-                            ? `por hora $${formatearMonto(p.valorHora ?? 0)}`
-                            : (p.sueldoBase ?? 0) > 0
-                              ? `fijo $${formatearMonto(p.sueldoBase ?? 0)}`
-                              : null,
-                          p.fechaIngreso
-                            ? `desde ${new Date(`${p.fechaIngreso}T12:00:00`).toLocaleDateString("es-AR", {
-                                month: "2-digit",
-                                year: "numeric",
-                              })}`
-                            : null,
-                        ]
-                          .filter(Boolean)
-                          .join(" · ") || "Sin datos cargados"}
-                      </span>
-                    </span>
+      )}
 
-                    {chip && (
-                      <span
-                        className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full whitespace-nowrap ${chip.clase}`}
-                        title={p.faltantes.length > 0 ? `Falta: ${p.faltantes.join(", ")}` : undefined}
-                      >
-                        {chip.texto}
-                      </span>
-                    )}
+      {/* Empleados */}
+      <div className="flex items-baseline justify-between gap-2 pt-2">
+        <h3 className="text-[15px] font-semibold text-neutral-900 flex items-center gap-2">
+          <i className="inline-block w-2.5 h-2.5 rounded-[3px] bg-accent" /> Empleados
+        </h3>
+        <p className="text-xs text-neutral-500">Fichan, cobran por nómina y tienen vacaciones y aguinaldo</p>
+      </div>
+      {empleados.length === 0 && <p className="text-sm text-neutral-400">No hay empleados cargados.</p>}
+      {empleados.map((p) => {
+        const saldo = saldoPorPersona.get(p.idPersona);
+        const cobra =
+          (p.valorHora ?? 0) > 0 ? `Por hora $${formatearMonto(p.valorHora ?? 0)}` : (p.sueldoBase ?? 0) > 0 ? `Fijo $${formatearMonto(p.sueldoBase ?? 0)}` : null;
+        const prueba = diasHasta(finPrueba(p.fechaIngreso));
+        const seguro = diasHasta(p.seguroVence);
+        const sinCobrar = p.problema === "NO_COBRA" || p.problema === "SIN_SUELDO";
+        const chequeos = [
+          { label: "Usuario", ok: Boolean(p.idUsuario) },
+          { label: "Sueldo", ok: Boolean(cobra) },
+          { label: "Ingreso", ok: Boolean(p.fechaIngreso) },
+          { label: "DNI", ok: p.tieneDni },
+          { label: "CUIL", ok: p.tieneCuil },
+        ];
+        return (
+          <button
+            key={p.idPersona}
+            type="button"
+            onClick={() => setFichaAbierta(p.idPersona)}
+            className="w-full text-left border border-neutral-200 rounded-xl bg-white px-4 py-3.5 hover:border-accent/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            <span className="flex items-center gap-3">
+              <span
+                className={`shrink-0 w-[42px] h-[42px] rounded-full grid place-items-center text-sm font-bold ${
+                  sinCobrar ? "bg-red-50 text-red-700" : "bg-accent-tint text-accent"
+                }`}
+              >
+                {iniciales(p.nombre)}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[15px] font-semibold text-neutral-900">
+                  {p.nombre}
+                  {p.puesto && <span className="font-normal text-neutral-400 text-[13px] ml-1.5">{p.puesto}</span>}
+                </span>
+                <span className="flex flex-wrap gap-1.5 mt-1">
+                  {cobra ? (
+                    <span className={`text-[11.5px] font-semibold rounded-full px-2 py-0.5 ${(p.valorHora ?? 0) > 0 ? "bg-accent-tint text-accent" : "bg-violet-50 text-violet-700"}`}>
+                      {cobra}
+                    </span>
+                  ) : (
+                    <span className="text-[11.5px] font-semibold rounded-full px-2 py-0.5 bg-neutral-100 text-neutral-500">Sin sueldo cargado</span>
+                  )}
+                  <span className="text-[11.5px] rounded-full px-2 py-0.5 bg-neutral-100 text-neutral-600">{p.horario ?? "Sin horario asignado"}</span>
+                  {p.fechaIngreso && (
+                    <span className="text-[11.5px] rounded-full px-2 py-0.5 bg-neutral-100 text-neutral-600">
+                      Desde {new Date(`${p.fechaIngreso}T12:00:00`).toLocaleDateString("es-AR", { month: "short", year: "numeric" })}
+                    </span>
+                  )}
+                  {prueba !== null && prueba >= 0 && prueba <= 30 && (
+                    <span className="text-[11.5px] font-semibold rounded-full px-2 py-0.5 bg-amber-50 text-amber-700">Termina la prueba en {prueba} días</span>
+                  )}
+                  {seguro !== null && seguro <= 30 && (
+                    <span className="text-[11.5px] font-semibold rounded-full px-2 py-0.5 bg-amber-50 text-amber-700">
+                      {seguro < 0 ? "Seguro vencido" : `Seguro vence en ${seguro} días`}
+                    </span>
+                  )}
+                </span>
+              </span>
+              <span className="text-right shrink-0">
+                {saldo ? (
+                  <>
+                    <span className={`block text-xl font-extrabold leading-tight tabular-nums ${saldo.diasDisponibles < 0 ? "text-red-600" : "text-emerald-600"}`}>
+                      {saldo.diasDisponibles} días
+                    </span>
+                    <span className="block text-[11px] text-neutral-400">de vacaciones de {saldo.diasLegales}</span>
+                  </>
+                ) : (
+                  <span className="block text-[11px] text-neutral-400 max-w-[110px]">sin fecha de ingreso, no se calculan</span>
+                )}
+              </span>
+            </span>
+            <span className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-3 pt-2.5 border-t border-dashed border-neutral-200 text-[12.5px] pl-[54px]">
+              <span className="text-neutral-400 font-semibold">Legajo</span>
+              {chequeos.map((c) => (
+                <span key={c.label} className={c.ok ? "text-emerald-700" : "text-red-600 font-semibold"}>
+                  {c.ok ? "✓" : "✗"} {c.label}
+                </span>
+              ))}
+              <span className="ml-auto text-accent font-semibold">Ver ficha →</span>
+            </span>
+          </button>
+        );
+      })}
 
-                    {/* Las vacaciones solo si hay fecha de ingreso: sin ese
-                        dato no se pueden calcular los días legales. */}
-                    {saldo ? (
-                      <span className="ml-auto flex items-center gap-3">
-                        <span className="text-right tabular-nums">
-                          <span
-                            className={`block text-[17px] font-extrabold leading-tight ${
-                              saldo.diasDisponibles < 0 ? "text-red-600" : "text-emerald-600"
-                            }`}
-                          >
-                            {saldo.diasDisponibles}
-                          </span>
-                          <span className="block text-[10px] text-neutral-400">
-                            de {saldo.diasLegales} días
-                          </span>
-                        </span>
-                        <button
-                          onClick={() => setModalPersona(saldo)}
-                          className="text-xs font-semibold text-accent whitespace-nowrap"
-                        >
-                          Licencias →
-                        </button>
-                      </span>
-                    ) : (
-                      <span className="ml-auto text-[11px] text-neutral-300 whitespace-nowrap">
-                        sin vacaciones calculadas
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+      {/* Tercerizados */}
+      {externos.length > 0 && (
+        <>
+          <div className="flex items-baseline justify-between gap-2 pt-3">
+            <h3 className="text-[15px] font-semibold text-neutral-900 flex items-center gap-2">
+              <i className="inline-block w-2.5 h-2.5 rounded-[3px] bg-neutral-400" /> Servicios tercerizados
+            </h3>
+            <p className="text-xs text-neutral-500">Facturan por mes. No fichan ni tienen nómina</p>
           </div>
-        ))
+          <div className="bg-white border border-neutral-200 rounded-xl overflow-hidden">
+            {externos.map((p) => (
+              <button
+                key={p.idPersona}
+                type="button"
+                onClick={() => setFichaAbierta(p.idPersona)}
+                className="w-full text-left flex items-center gap-3 px-4 py-3 border-t border-neutral-100 first:border-0 hover:bg-neutral-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                <span className="w-9 h-9 rounded-full bg-neutral-100 text-neutral-500 grid place-items-center text-xs font-bold shrink-0">{iniciales(p.nombre)}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[14px] font-semibold text-neutral-900">{p.nombre}</span>
+                  <span className="block text-xs text-neutral-400">{p.puesto ?? "Servicio tercerizado"}</span>
+                </span>
+                <span className="text-xs text-accent font-semibold">Ver ficha →</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Socios */}
+      {socios.length > 0 && (
+        <>
+          <div className="flex items-baseline justify-between gap-2 pt-3">
+            <h3 className="text-[15px] font-semibold text-neutral-900 flex items-center gap-2">
+              <i className="inline-block w-2.5 h-2.5 rounded-[3px] bg-violet-500" /> Socios
+            </h3>
+            <p className="text-xs text-neutral-500">No tienen sueldo ni legajo laboral</p>
+          </div>
+          <div className="bg-white border border-neutral-200 rounded-xl overflow-hidden">
+            {socios.map((p) => (
+              <button
+                key={p.idPersona}
+                type="button"
+                onClick={() => setFichaAbierta(p.idPersona)}
+                className="w-full text-left flex items-center gap-3 px-4 py-3 border-t border-neutral-100 first:border-0 hover:bg-neutral-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                <span className="w-9 h-9 rounded-full bg-neutral-100 text-neutral-500 grid place-items-center text-xs font-bold shrink-0">{iniciales(p.nombre)}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[14px] font-semibold text-neutral-900">{p.nombre}</span>
+                  <span className="block text-xs text-neutral-400">{p.puesto ?? "Socio"}</span>
+                </span>
+                <span className="text-xs text-accent font-semibold">Ver ficha →</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
+      {fichaAbierta && (
+        <FichaPersona
+          key={`${fichaAbierta}-${vueltaFicha}`}
+          idPersona={fichaAbierta}
+          onClose={cerrarFicha}
+          onCambio={recargar}
+          onAbrirLicencias={(persona) => setModalPersona(persona)}
+        />
       )}
 
       {modalPersona && (
-        <ModalLicenciasPersona persona={modalPersona} onClose={() => setModalPersona(null)} onCambio={recargar} />
+        <ModalLicenciasPersona
+          persona={modalPersona}
+          onClose={() => {
+            setModalPersona(null);
+            setVueltaFicha((v) => v + 1);
+          }}
+          onCambio={() => {
+            recargar();
+            setVueltaFicha((v) => v + 1);
+          }}
+        />
       )}
     </div>
   );

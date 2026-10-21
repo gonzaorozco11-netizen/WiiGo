@@ -27,6 +27,17 @@ async function requireAcceso() {
   return null;
 }
 
+// El legajo (datos personales y documentos) se toca desde Organización y
+// también desde la ficha de RR.HH. → Personal, así que alcanza con una de
+// las dos: la pantalla Organización o el permiso de gestionar la nómina.
+async function requireAccesoLegajo() {
+  const sesion = await obtenerSesionConPantallas();
+  if (puedeVerPantalla(sesion, "organizacion")) return null;
+  const conPermisos = await obtenerSesionConPermisos();
+  if (tienePermiso(conPermisos, PERMISOS.GESTIONAR_NOMINA)) return null;
+  return "No tenés permiso para hacer esto.";
+}
+
 // Los horarios de trabajo se gestionan desde RR.HH. (permiso puntual
 // GESTIONAR_NOMINA, igual que Nómina y Presentismo), no desde la pantalla
 // "organizacion" — por eso llevan su propio chequeo.
@@ -498,7 +509,7 @@ export type DocumentoLegajo = {
 // Datos sensibles del legajo — aparte de la edición rápida de Organización
 // (nombre/área/puesto), para no mezclar el día a día con el papeleo legal.
 export async function actualizarLegajo(idPersona: string, formData: FormData): Promise<{ error: string | null }> {
-  const permisoError = await requireAcceso();
+  const permisoError = await requireAccesoLegajo();
   if (permisoError) return { error: permisoError };
 
   try {
@@ -523,7 +534,7 @@ export async function actualizarLegajo(idPersona: string, formData: FormData): P
 }
 
 export async function listarDocumentosLegajo(idPersona: string): Promise<DocumentoLegajo[]> {
-  const permisoError = await requireAcceso();
+  const permisoError = await requireAccesoLegajo();
   if (permisoError) throw new Error(permisoError);
 
   const supabase = getSupabaseServerClient();
@@ -540,7 +551,7 @@ export async function listarDocumentosLegajo(idPersona: string): Promise<Documen
 // y contrato son datos sensibles, no algo para mostrar en pantallas
 // públicas — se accede siempre con URL firmada, nunca URL pública.
 export async function subirDocumentoLegajo(idPersona: string, tipo: string, formData: FormData): Promise<{ error: string | null }> {
-  const permisoError = await requireAcceso();
+  const permisoError = await requireAccesoLegajo();
   if (permisoError) return { error: permisoError };
 
   const archivo = formData.get("archivo") as File | null;
@@ -574,7 +585,7 @@ export async function subirDocumentoLegajo(idPersona: string, tipo: string, form
 }
 
 export async function obtenerUrlDocumentoLegajo(path: string): Promise<string> {
-  const permisoError = await requireAcceso();
+  const permisoError = await requireAccesoLegajo();
   if (permisoError) throw new Error(permisoError);
 
   const supabase = getSupabaseServerClient();
@@ -586,7 +597,7 @@ export async function obtenerUrlDocumentoLegajo(path: string): Promise<string> {
 // Se guarda el historial completo a propósito (ver project RR.HH.) — esto
 // es solo para sacar un archivo subido por error, no un reemplazo normal.
 export async function eliminarDocumentoLegajo(idDocumento: string, path: string): Promise<{ error: string | null }> {
-  const permisoError = await requireAcceso();
+  const permisoError = await requireAccesoLegajo();
   if (permisoError) return { error: permisoError };
 
   try {

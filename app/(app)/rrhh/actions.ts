@@ -419,6 +419,14 @@ export type PersonaDeRrhh = {
   faltantes: string[];
   /** El más grave de los faltantes, o null si está completo. */
   problema: "NO_COBRA" | "SIN_SUELDO" | "SIN_INGRESO" | "INCOMPLETO" | null;
+  /** EMPLEADO, EXTERNO (tercerizado) o SOCIO, como está en Organización. */
+  tipo: string;
+  /** "Turno mañana · 9 a 15 h", o null sin horario asignado. */
+  horario: string | null;
+  tieneDni: boolean;
+  tieneCuil: boolean;
+  /** Vencimiento del seguro de accidentes personales (null sin cargar o sin el SQL nuevo). */
+  seguroVence: string | null;
 };
 
 export async function listarPersonalRrhh(): Promise<PersonaDeRrhh[]> {
@@ -426,17 +434,28 @@ export async function listarPersonalRrhh(): Promise<PersonaDeRrhh[]> {
   if (permisoError) throw new Error(permisoError);
 
   const supabase = getSupabaseServerClient();
-  const [personasRes, usuariosRes, localesRes, asignacionesRes, puestosRes] = await Promise.all([
+  const [personasRes, usuariosRes, localesRes, asignacionesRes, puestosRes, horariosRes, segurosRes] = await Promise.all([
     supabase
       .from("personas")
-      .select("id_persona, nombre, apellido, id_local, fecha_ingreso, dni, cuil")
+      .select("id_persona, nombre, apellido, id_local, fecha_ingreso, dni, cuil, tipo, id_horario")
       .eq("estado", "ACTIVO")
       .order("nombre", { ascending: true }),
     supabase.from("usuarios").select("id_usuario, id_persona, sueldo_base, valor_hora").eq("estado", "ACTIVO"),
     supabase.from("locales").select("id_local, nombre"),
     supabase.from("persona_puestos").select("id_persona, id_puesto, es_principal"),
     supabase.from("puestos").select("id_puesto, nombre"),
+    supabase.from("horarios_trabajo").select("id_horario, nombre, hora_entrada, hora_salida"),
+    // Columna nueva (sql/personas-ficha.sql): si todavía no existe, esta
+    // consulta falla sola y la lista sigue sin el dato del seguro.
+    supabase.from("personas").select("id_persona, seguro_ap_vence").eq("estado", "ACTIVO"),
   ]);
+  const hhmm = (t: string | null) => (t ?? "").slice(0, 5).replace(/^0/, "");
+  const horarioPorId = new Map(
+    (horariosRes.data ?? []).map((h) => [h.id_horario as string, `${h.nombre} · ${hhmm(h.hora_entrada as string)} a ${hhmm(h.hora_salida as string)} h`])
+  );
+  const seguroPorPersona = new Map(
+    segurosRes.error ? [] : (segurosRes.data ?? []).map((s) => [s.id_persona as string, (s.seguro_ap_vence as string | null) ?? null])
+  );
 
   const usuarioPorPersona = new Map(
     (usuariosRes.data ?? []).filter((u) => u.id_persona).map((u) => [u.id_persona as string, u])
@@ -491,6 +510,11 @@ export async function listarPersonalRrhh(): Promise<PersonaDeRrhh[]> {
       valorHora,
       faltantes,
       problema,
+      tipo: (p.tipo as string) ?? "EMPLEADO",
+      horario: p.id_horario ? horarioPorId.get(p.id_horario as string) ?? null : null,
+      tieneDni: Boolean(p.dni),
+      tieneCuil: Boolean(p.cuil),
+      seguroVence: seguroPorPersona.get(idPersona) ?? null,
     };
   });
 }
@@ -1419,6 +1443,13 @@ export async function eliminarFeriado(fecha: string): Promise<{ error: string | 
 // de feriados, esas horas se pagan doble (Art. 166 LCT). Solo cuenta si
 // hay horas fichadas ese día — un feriado no trabajado no genera pago para
 // alguien por hora (no tiene sueldo garantizado sin trabajar).
+/** Lo que lleva ganado en el mes una persona que cobra por hora (para la ficha). */
+export async function pagoPorHoraDelMes(idPersona: string, periodo: string, valorHora: number) {
+  const permisoError = await requireAcceso();
+  if (permisoError) throw new Error(permisoError);
+  return calcularPagoPorHoraMes(idPersona, periodo, valorHora);
+}
+
 async function calcularPagoPorHoraMes(idPersona: string, periodo: string, valorHora: number) {
   const supabase = getSupabaseServerClient();
   const [filas, { data: feriadosData }] = await Promise.all([
