@@ -1,7 +1,6 @@
-import PantallaRrhh from "../pantalla";
+import { redirect } from "next/navigation";
 
-export const dynamic = "force-dynamic";
-
+// "Personal" ahora se llama Legajos. Los links viejos siguen funcionando.
 export default function PersonalPage() {
-  return <PantallaRrhh vista="PERSONAL" />;
+  redirect("/rrhh/legajos");
 }

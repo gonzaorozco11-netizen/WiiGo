@@ -9,10 +9,6 @@ import { crearHorario, actualizarHorario, desactivarHorario, listarHorarios, typ
 import {
   obtenerParametrosPresentismo,
   actualizarParametrosPresentismo,
-  calcularPresentismoMes,
-  listarPlanillaHoraria,
-  listarFichajesPendientesSalida,
-  completarSalidaManual,
   listarSaldosVacaciones,
   listarPersonalRrhh,
   type PersonaDeRrhh,
@@ -39,55 +35,48 @@ import {
   listarFeriados,
   crearFeriado,
   eliminarFeriado,
-  type PresentismoFila,
-  type FilaPlanilla,
-  type FichajePendiente,
   type SaldoVacaciones,
   type Licencia,
   type NovedadNomina,
   type Feriado,
 } from "@/app/(app)/rrhh/actions";
+import {
+  armarAsistenciaMes,
+  sueldosSinPagarAnteriores,
+  type AsistenciaMes as AsistenciaDatos,
+  type SueldoSinPagar,
+} from "@/app/(app)/rrhh/asistencia-actions";
+import AsistenciaMes, { SelectorMes, HorarioDeCadaUno } from "@/components/AsistenciaMes";
 
 type UsuarioMin = { id_usuario: string; nombre: string; sueldo_base: number | null };
 type PersonaMin = { id_persona: string; nombre: string; apellido: string | null };
 
 /**
- * Las tres pantallas en las que se partió RR.HH.
- *
- * Antes era una sola con cinco solapas. Se partió porque cada grupo se usa en
- * un momento distinto: la planilla se mira todo el mes, los sueldos el día 1,
- * y el legajo casi nunca. Lo que NO se partió es este archivo: los cinco
- * bloques comparten tipos, helpers y modales, y separarlos en archivos habría
- * sido mover mil líneas para que la pantalla se vea igual.
+ * Las cuatro pantallas de RR.HH., en el orden en que se usan:
+ *   Tablero → cómo viene el mes.
+ *   Legajos → quién es cada uno (la ficha).
+ *   Asistencia → quién vino y cuántas horas hizo; acá se corrige lo que falta.
+ *   Sueldos → con eso, el cierre y el pago (adelantos y aguinaldo adentro).
+ * Las cuatro comparten el mes elegido (?mes=), así al pasar de una a otra se
+ * sigue mirando el mismo.
  */
-export type VistaRrhh = "DASHBOARD" | "PERSONAL" | "PLANILLA" | "SUELDOS" | "ADELANTOS";
+export type VistaRrhh = "DASHBOARD" | "LEGAJOS" | "ASISTENCIA" | "SUELDOS";
 
-type Sub =
-  | "dashboard"
-  | "nomina"
-  | "aguinaldo"
-  | "feriados"
-  | "planilla"
-  | "presentismo"
-  | "horarios"
-  | "vacaciones"
-  | "adelantos";
+type Sub = "dashboard" | "legajos" | "asistencia" | "reglas" | "nomina" | "adelantos" | "aguinaldo";
 
 /** Qué sub-secciones tiene cada pantalla, y con qué nombre. */
 const SUBS: Record<VistaRrhh, { clave: Sub; etiqueta: string }[]> = {
-  DASHBOARD: [{ clave: "dashboard", etiqueta: "Pantallazo del mes" }],
-  PERSONAL: [{ clave: "vacaciones", etiqueta: "Personal" }],
-  PLANILLA: [
-    { clave: "planilla", etiqueta: "Horas del mes" },
-    { clave: "presentismo", etiqueta: "Presentismo" },
-    { clave: "horarios", etiqueta: "Horarios" },
+  DASHBOARD: [{ clave: "dashboard", etiqueta: "Tablero" }],
+  LEGAJOS: [{ clave: "legajos", etiqueta: "Legajos" }],
+  ASISTENCIA: [
+    { clave: "asistencia", etiqueta: "El mes" },
+    { clave: "reglas", etiqueta: "Reglas" },
   ],
   SUELDOS: [
-    { clave: "nomina", etiqueta: "Del mes" },
+    { clave: "nomina", etiqueta: "El mes" },
+    { clave: "adelantos", etiqueta: "Adelantos" },
     { clave: "aguinaldo", etiqueta: "Aguinaldo" },
-    { clave: "feriados", etiqueta: "Feriados" },
   ],
-  ADELANTOS: [{ clave: "adelantos", etiqueta: "Adelantos" }],
 };
 
 const TITULO: Record<VistaRrhh, { h1: string; bajada: string }> = {
@@ -95,29 +84,20 @@ const TITULO: Record<VistaRrhh, { h1: string; bajada: string }> = {
     h1: "RR.HH.",
     bajada: "Lo que cuesta el equipo, qué parte de lo que gana WiiGo se lleva, lo que rinde cada turno y qué está trabado.",
   },
-  PERSONAL: {
-    h1: "Personal",
+  LEGAJOS: {
+    h1: "Legajos",
     bajada: "Quién trabaja con WiiGo y cómo. Tocá a una persona para ver su ficha: sueldos, aguinaldo, vacaciones, seguro, documentos y notas.",
   },
-  PLANILLA: {
-    h1: "Planilla",
-    bajada: "Las horas de cada uno y lo que lleva ganado. Tocá a alguien para ver su planilla día por día.",
+  ASISTENCIA: {
+    h1: "Asistencia",
+    bajada: "Quién vino, cuántas horas hizo y qué hay que corregir.",
   },
   SUELDOS: {
     h1: "Sueldos",
-    bajada: "El cierre del mes: cuánto hay que pagar, cuánto salió y qué falta. Acá adentro también el aguinaldo y los feriados, que se pagan al doble a la gente por hora.",
-  },
-  ADELANTOS: {
-    h1: "Adelantos",
-    bajada: "Lo que ya le diste a cada uno este mes. Se descuenta solo del neto cuando cerrás la nómina.",
+    bajada: "El cierre del mes, persona por persona: revisar horas, descontar adelantos, cerrar y pagar.",
   },
 };
 
-const RESULTADO_BADGE_NOMINA: Record<NovedadNomina["presentismoResultado"], string> = {
-  COMPLETO: "bg-emerald-100 text-emerald-700",
-  PARCIAL: "bg-amber-100 text-amber-700",
-  PERDIDO: "bg-red-100 text-red-700",
-};
 const RESULTADO_LABEL_NOMINA: Record<NovedadNomina["presentismoResultado"], string> = {
   COMPLETO: "Completo",
   PARCIAL: "Parcial",
@@ -140,7 +120,8 @@ function formatearMonto(valor: number) {
 }
 
 function mesActualISO() {
-  return new Date().toISOString().slice(0, 7);
+  // El mes de Argentina, no el de UTC: a las 22 h del último día ya es el mes que viene en UTC.
+  return new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 7);
 }
 
 export default function RrhhApp({
@@ -148,15 +129,43 @@ export default function RrhhApp({
   usuarios,
   horariosIniciales,
   personas,
+  mesInicial,
+  subInicial,
 }: {
   vista: VistaRrhh;
   usuarios: UsuarioMin[];
   horariosIniciales: HorarioTrabajo[];
   personas: PersonaMin[];
+  mesInicial?: string;
+  subInicial?: string;
 }) {
   const subs = SUBS[vista];
-  const [sub, setSub] = useState<Sub>(subs[0].clave);
+  const [sub, setSubEstado] = useState<Sub>(subs.find((s) => s.clave === subInicial)?.clave ?? subs[0].clave);
   const [horarios, setHorarios] = useState(horariosIniciales);
+  const [periodo, setPeriodoEstado] = useState(mesInicial && /^\d{4}-\d{2}$/.test(mesInicial) ? mesInicial : mesActualISO());
+  const [fichaAbierta, setFichaAbierta] = useState<string | null>(null);
+  const [vueltaFicha, setVueltaFicha] = useState(0);
+  const [licencias, setLicencias] = useState<SaldoVacaciones | null>(null);
+  // Cuando algo cambia en la ficha, se vuelve a montar la pantalla de abajo
+  // para que muestre los datos nuevos.
+  const [version, setVersion] = useState(0);
+
+  /** Deja el mes y la solapa en la dirección, así los links entre pantallas y el "atrás" respetan lo que estabas mirando. */
+  function escribirUrl(mes: string, solapa: Sub) {
+    const url = new URL(window.location.href);
+    url.searchParams.set("mes", mes);
+    if (solapa === subs[0].clave) url.searchParams.delete("tab");
+    else url.searchParams.set("tab", solapa);
+    window.history.replaceState(null, "", url.toString());
+  }
+  function setPeriodo(p: string) {
+    setPeriodoEstado(p);
+    escribirUrl(p, sub);
+  }
+  function setSub(s: Sub) {
+    setSubEstado(s);
+    escribirUrl(periodo, s);
+  }
 
   function recargarHorarios() {
     listarHorarios().then(setHorarios);
@@ -185,23 +194,54 @@ export default function RrhhApp({
         </div>
       )}
 
-      {sub === "dashboard" && <TabDashboard />}
-      {sub === "nomina" && <TabNomina usuarios={usuarios} />}
-      {sub === "aguinaldo" && <TabAguinaldo />}
-      {sub === "feriados" && <BloqueFeriados />}
-      {sub === "planilla" && <TabPlanilla />}
-      {sub === "presentismo" && <TabPresentismo />}
-      {sub === "horarios" && <TabHorarios horarios={horarios} onCambio={recargarHorarios} />}
-      {sub === "vacaciones" && <TabVacaciones personas={personas} />}
-      {sub === "adelantos" && <TabAdelantos usuarios={usuarios} />}
+      <div key={version}>
+        {sub === "dashboard" && <TabDashboard periodo={periodo} setPeriodo={setPeriodo} />}
+        {sub === "legajos" && <TabVacaciones personas={personas} />}
+        {sub === "asistencia" && <AsistenciaMes periodo={periodo} setPeriodo={setPeriodo} onAbrirFicha={setFichaAbierta} />}
+        {sub === "reglas" && (
+          <div className="space-y-4">
+            <HorarioDeCadaUno />
+            <TabHorarios horarios={horarios} onCambio={recargarHorarios} />
+            <BloqueFeriados />
+            <ReglasPresentismo />
+          </div>
+        )}
+        {sub === "nomina" && <TabNomina usuarios={usuarios} periodo={periodo} setPeriodo={setPeriodo} onAbrirFicha={setFichaAbierta} />}
+        {sub === "adelantos" && <TabAdelantos usuarios={usuarios} periodo={periodo} setPeriodo={setPeriodo} />}
+        {sub === "aguinaldo" && <TabAguinaldo />}
+      </div>
+
+      {/* La ficha de una persona, abierta desde Asistencia o Sueldos. Legajos
+          tiene la suya adentro de la lista. */}
+      {fichaAbierta && (
+        <FichaPersona
+          key={`${fichaAbierta}-${vueltaFicha}`}
+          idPersona={fichaAbierta}
+          onClose={() => setFichaAbierta(null)}
+          onCambio={() => setVersion((v) => v + 1)}
+          onAbrirLicencias={(persona) => setLicencias(persona)}
+        />
+      )}
+      {licencias && (
+        <ModalLicenciasPersona
+          persona={licencias}
+          onClose={() => {
+            setLicencias(null);
+            setVueltaFicha((v) => v + 1);
+          }}
+          onCambio={() => {
+            setVersion((v) => v + 1);
+            setVueltaFicha((v) => v + 1);
+          }}
+        />
+      )}
     </div>
   );
 }
 
-// ===================== DASHBOARD =====================
+// ===================== TABLERO =====================
 
-function TabDashboard() {
-  const [periodo, setPeriodo] = useState(mesActualISO());
+function TabDashboard({ periodo, setPeriodo }: { periodo: string; setPeriodo: (p: string) => void }) {
   const [d, setD] = useState<DashboardRrhh | null>(null);
   const [cargando, setCargando] = useState(true);
 
@@ -218,9 +258,25 @@ function TabDashboard() {
 
 // ===================== NÓMINA =====================
 
-function TabNomina({ usuarios }: { usuarios: UsuarioMin[] }) {
-  const [mes, setMes] = useState(mesActualISO());
+// Sueldos → El mes: una tarjeta por empleado con la cuenta completa y los
+// cuatro pasos del cierre (horas, adelantos, cerrar, pagar). El paso que
+// sigue va en azul; lo que falta, en naranja. No se puede cerrar con días sin
+// salida: esos días cuentan 0 horas y el sueldo saldría de menos.
+function TabNomina({
+  usuarios,
+  periodo,
+  setPeriodo,
+  onAbrirFicha,
+}: {
+  usuarios: UsuarioMin[];
+  periodo: string;
+  setPeriodo: (p: string) => void;
+  onAbrirFicha: (idPersona: string) => void;
+}) {
+  const mes = periodo;
   const [filas, setFilas] = useState<NovedadNomina[]>([]);
+  const [asistencia, setAsistencia] = useState<AsistenciaDatos | null>(null);
+  const [anteriores, setAnteriores] = useState<SueldoSinPagar[]>([]);
   const [cargando, setCargando] = useState(true);
   const [editando, setEditando] = useState<string | null>(null);
   const [valorEditSueldo, setValorEditSueldo] = useState("");
@@ -234,9 +290,16 @@ function TabNomina({ usuarios }: { usuarios: UsuarioMin[] }) {
 
   function recargar() {
     setCargando(true);
-    obtenerNovedadesMes(mes).then(setFilas).finally(() => setCargando(false));
+    Promise.all([obtenerNovedadesMes(mes), armarAsistenciaMes(mes), sueldosSinPagarAnteriores(mes)])
+      .then(([n, a, ant]) => {
+        setFilas(n);
+        setAsistencia(a);
+        setAnteriores(ant);
+      })
+      .finally(() => setCargando(false));
   }
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(recargar, [mes]);
 
   function handleGuardarPagoBase(idUsuario: string) {
@@ -285,9 +348,10 @@ function TabNomina({ usuarios }: { usuarios: UsuarioMin[] }) {
    * una idea de todo el mes aunque falten cerrar algunos, y el pie aclara
    * cuántos son estimados.
    */
+  const netoDe = (f: NovedadNomina) => (f.cierre ? f.cierre.neto_a_pagar : f.montoBase + f.incentivoPresentismoPreview - f.adelantos);
   const totales = filas.reduce(
     (acc, f) => {
-      const monto = f.cierre ? f.cierre.neto_a_pagar : f.montoBase;
+      const monto = netoDe(f);
       acc.total += monto;
       if (f.cierre?.estado === "PAGADO") {
         acc.pagado += monto;
@@ -304,17 +368,10 @@ function TabNomina({ usuarios }: { usuarios: UsuarioMin[] }) {
 
   return (
     <div>
-      <p className="text-xs text-neutral-400 mb-3">
-        Cerrá la nómina por persona apenas sepas el monto (no hace falta esperar a fin de mes) — calcula el incentivo
-        de presentismo hasta ese momento y genera el gasto devengado en el Estado de Resultados. Si algo cambia
-        después, "Deshacé" el cierre y volvé a cerrar antes de pagar. En los que cobran por hora, el pago base sale
-        de sus horas trabajadas (Planilla horaria) × el valor hora que le cargues.
-      </p>
-
       {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
 
-      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <input type="month" value={mes} onChange={(e) => setMes(e.target.value)} className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-sm" />
+      <div className="flex justify-end mb-3">
+        <SelectorMes periodo={periodo} setPeriodo={setPeriodo} />
       </div>
 
       {/* Los tres totales.
@@ -325,10 +382,10 @@ function TabNomina({ usuarios }: { usuarios: UsuarioMin[] }) {
       {!cargando && filas.length > 0 && (
         <div className="grid sm:grid-cols-3 gap-2.5 mb-4">
           <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3">
-            <p className="text-[10.5px] font-bold uppercase tracking-wide text-neutral-500">Total del mes</p>
+            <p className="text-[10.5px] font-bold uppercase tracking-wide text-neutral-500">Sueldos del mes</p>
             <p className="text-2xl font-extrabold text-neutral-900 tabular-nums">${formatearMonto(totales.total)}</p>
             <p className="text-xs text-neutral-400">
-              {filas.length} {filas.length === 1 ? "empleado" : "empleados"}
+              {filas.length} {filas.length === 1 ? "empleado" : "empleados"}, ya sin adelantos
             </p>
           </div>
           <div
@@ -369,164 +426,242 @@ function TabNomina({ usuarios }: { usuarios: UsuarioMin[] }) {
         </div>
       )}
 
-      <div className="bg-white border border-neutral-200 rounded-xl overflow-hidden">
-        {cargando ? (
-          <p className="text-sm text-neutral-400 text-center py-8">Cargando...</p>
-        ) : usuarios.length === 0 || filas.length === 0 ? (
-          <p className="text-sm text-neutral-400 text-center py-8">No hay usuarios activos con sueldo fijo o valor hora cargado.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-neutral-200 text-left text-xs text-neutral-500">
-                  <th className="p-3">Empleado</th>
-                  <th className="p-3 text-right">Pago base</th>
-                  <th className="p-3">Presentismo</th>
-                  <th className="p-3 text-right">Adelantos</th>
-                  <th className="p-3 text-right">Nómina</th>
-                  <th className="p-3"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {filas.map((f) => (
-                  <tr key={f.idUsuario} className="border-b border-neutral-100 last:border-0">
-                    <td className="p-3">{f.nombre}</td>
-                    <td className="p-3 text-right tabular-nums">
-                      {editando === f.idUsuario ? (
-                        <div className="flex flex-col items-end gap-1">
-                          <div className="flex items-center gap-1">
-                            <span className="text-[10px] text-neutral-400">Fijo $</span>
-                            <input
-                              autoFocus
-                              value={valorEditSueldo}
-                              onChange={(e) => setValorEditSueldo(e.target.value)}
-                              className="w-20 border border-neutral-300 rounded-lg px-2 py-1 text-sm text-right"
-                            />
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <span className="text-[10px] text-neutral-400">Valor hora $</span>
-                            <input
-                              value={valorEditHora}
-                              onChange={(e) => setValorEditHora(e.target.value)}
-                              className="w-20 border border-neutral-300 rounded-lg px-2 py-1 text-sm text-right"
-                            />
-                          </div>
-                          <label className="flex items-center gap-1.5 text-[11px] text-neutral-600 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={valorEditCobra}
-                              onChange={(e) => setValorEditCobra(e.target.checked)}
-                              className="accent-accent"
-                            />
-                            Cobra presentismo
-                          </label>
-                          <button onClick={() => handleGuardarPagoBase(f.idUsuario)} disabled={guardandoSueldo} className="text-xs font-semibold text-accent">
-                            {guardandoSueldo ? "Guardando..." : "Guardar"}
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => {
-                            setEditando(f.idUsuario);
-                            setValorEditSueldo(String(f.sueldoBase));
-                            setValorEditHora(String(f.valorHora ?? 0));
-                            setValorEditCobra(f.cobraPresentismo);
-                          }}
-                          className="hover:underline decoration-dotted text-right"
-                          title="Editar sueldo fijo / valor hora"
-                        >
-                          {f.modalidad === "POR_HORA" ? (
-                            <>
-                              <div>${formatearMonto(f.montoBase)}</div>
-                              <div className="text-[10.5px] text-neutral-400 font-normal">
-                                {f.horasTrabajadasMes ?? 0} hs × ${formatearMonto(f.valorHora ?? 0)}
-                              </div>
-                            </>
-                          ) : (
-                            `$${formatearMonto(f.sueldoBase)}`
-                          )}
+      {cargando && filas.length === 0 ? (
+        <p className="text-sm text-neutral-400 text-center py-8">Cargando...</p>
+      ) : (
+        <div className="space-y-2.5">
+          {usuarios.length === 0 && filas.length === 0 && (
+            <p className="text-sm text-neutral-400 text-center py-8 bg-white border border-neutral-200 rounded-xl">
+              No hay empleados con sueldo fijo o valor hora cargado.
+            </p>
+          )}
+          {filas.map((f) => {
+            const a = asistencia?.filas.find((x) => x.idPersona === f.idPersona);
+            const sinSalida = (asistencia?.sinSalida ?? []).filter((s) => s.idPersona === f.idPersona).length;
+            const porHora = f.modalidad === "POR_HORA";
+            const libre = a?.horario.tipo === "LIBRE";
+            const adel = f.cierre ? f.cierre.adelantos : f.adelantos;
+            const presentismo = f.cierre ? f.cierre.incentivo_presentismo : f.incentivoPresentismoPreview;
+            const base = f.cierre ? f.cierre.sueldo_base : f.montoBase;
+            const cerrado = Boolean(f.cierre && !f.cierre.es_estimado);
+            const pagado = f.cierre?.estado === "PAGADO" && !f.cierre.es_estimado;
+            const trabado = !f.cierre && sinSalida > 0;
+            type Paso = { titulo: string; texto: React.ReactNode; tono: "hecho" | "falta" | "ahora" | "nada" };
+            const pasos: Paso[] = [
+              sinSalida > 0
+                ? {
+                    titulo: "1. Horas",
+                    texto: (
+                      <>
+                        {sinSalida} {sinSalida === 1 ? "día" : "días"} sin salida ·{" "}
+                        <a href={`/rrhh/asistencia?mes=${mes}`} className="underline">
+                          corregir
+                        </a>
+                      </>
+                    ),
+                    tono: "falta",
+                  }
+                : a?.horario.tipo === "SIN"
+                  ? {
+                      // No traba el cierre: es un pendiente, no un error. Pero
+                      // mientras no se elija, el presentismo se paga completo.
+                      titulo: "1. Horas",
+                      texto: (
+                        <>
+                          horario sin definir ·{" "}
+                          <a href={`/rrhh/asistencia?mes=${mes}&tab=reglas`} className="underline">
+                            elegir
+                          </a>
+                        </>
+                      ),
+                      tono: "falta",
+                    }
+                  : { titulo: "1. Horas", texto: libre ? "horario libre, no hay que revisar" : porHora ? `${f.horasTrabajadasMes ?? 0} h revisadas` : "sueldo fijo, no hace falta", tono: "hecho" },
+              { titulo: "2. Adelantos", texto: adel > 0 ? `$${formatearMonto(adel)} a descontar` : "no tuvo", tono: "hecho" },
+              cerrado
+                ? { titulo: "3. Cerrar", texto: `cerrado el ${new Date(f.cierre!.fecha_cierre).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" })}`, tono: "hecho" }
+                : f.cierre?.es_estimado
+                  ? { titulo: "3. Cerrar", texto: "estimado, falta el cierre real", tono: "falta" }
+                  : trabado
+                    ? { titulo: "3. Cerrar", texto: "cuando estén las horas", tono: "nada" }
+                    : { titulo: "3. Cerrar", texto: "listo para cerrar", tono: "ahora" },
+              pagado
+                ? { titulo: "4. Pagar", texto: f.cierre?.fecha_pago ? `pagado el ${new Date(f.cierre.fecha_pago).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" })}` : "pagado", tono: "hecho" }
+                : cerrado
+                  ? { titulo: "4. Pagar", texto: "listo para pagar", tono: "ahora" }
+                  : { titulo: "4. Pagar", texto: "—", tono: "nada" },
+            ];
+            const claseTono = {
+              hecho: "bg-emerald-50 text-emerald-700",
+              falta: "bg-amber-50 text-amber-800",
+              ahora: "bg-accent-tint text-accent ring-1 ring-accent",
+              nada: "bg-neutral-100 text-neutral-500",
+            };
+            return (
+              <div key={f.idUsuario} className="bg-white border border-neutral-200 rounded-xl p-4 grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1.6fr)_auto] items-center">
+                <div className="min-w-0">
+                  <button type="button" onClick={() => onAbrirFicha(f.idPersona)} className="text-[15px] font-semibold text-neutral-900 hover:underline text-left">
+                    {f.nombre}
+                  </button>
+                  <p className="text-xs text-neutral-400">
+                    {porHora ? `Por hora $${formatearMonto(f.valorHora ?? 0)}` : `Fijo $${formatearMonto(f.sueldoBase)}`} · {a?.horario.texto ?? ""}
+                    {" · "}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditando(f.idUsuario);
+                        setValorEditSueldo(String(f.sueldoBase));
+                        setValorEditHora(String(f.valorHora ?? 0));
+                        setValorEditCobra(f.cobraPresentismo);
+                      }}
+                      className="text-accent hover:underline"
+                    >
+                      editar sueldo
+                    </button>
+                  </p>
+                  <p className="text-[13px] text-neutral-500 mt-1.5 tabular-nums">
+                    {porHora
+                      ? `${f.cierre ? "" : `${f.horasTrabajadasMes ?? 0} h × $${formatearMonto(f.valorHora ?? 0)} = `}$${formatearMonto(base)}`
+                      : `$${formatearMonto(base)}`}
+                    {" + presentismo "}
+                    {f.cobraPresentismo ? `$${formatearMonto(presentismo)}${presentismo === 0 && f.presentismoResultado === "PERDIDO" ? " (lo perdió)" : ""}` : "no cobra"}
+                    {` − adelantos $${formatearMonto(adel)} = `}
+                    <b className="text-neutral-900">${formatearMonto(netoDe(f))}</b>
+                  </p>
+                  {editando === f.idUsuario && (
+                    <div className="mt-2 flex flex-wrap items-end gap-2 bg-neutral-50 rounded-lg p-2.5">
+                      <label className="text-[11px] text-neutral-500">
+                        Fijo $
+                        <input
+                          autoFocus
+                          value={valorEditSueldo}
+                          onChange={(e) => setValorEditSueldo(e.target.value)}
+                          className="block w-24 border border-neutral-300 rounded-lg px-2 py-1 text-sm text-right"
+                        />
+                      </label>
+                      <label className="text-[11px] text-neutral-500">
+                        Valor hora $
+                        <input
+                          value={valorEditHora}
+                          onChange={(e) => setValorEditHora(e.target.value)}
+                          className="block w-24 border border-neutral-300 rounded-lg px-2 py-1 text-sm text-right"
+                        />
+                      </label>
+                      <label className="flex items-center gap-1.5 text-[11px] text-neutral-600 cursor-pointer pb-1.5">
+                        <input type="checkbox" checked={valorEditCobra} onChange={(e) => setValorEditCobra(e.target.checked)} className="accent-accent" />
+                        Cobra presentismo
+                      </label>
+                      <button onClick={() => handleGuardarPagoBase(f.idUsuario)} disabled={guardandoSueldo} className="text-xs font-semibold text-white bg-accent rounded-lg px-3 py-1.5">
+                        {guardandoSueldo ? "Guardando..." : "Guardar"}
+                      </button>
+                      <button onClick={() => setEditando(null)} className="text-xs text-neutral-500 px-2 py-1.5">
+                        Cancelar
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                  {pasos.map((p) => (
+                    <div key={p.titulo} className={`rounded-lg px-2.5 py-2 text-[12px] ${claseTono[p.tono]}`}>
+                      <b className="block text-[12.5px]">{p.titulo}</b>
+                      {p.texto}
+                    </div>
+                  ))}
+                </div>
+                <div className="text-right">
+                  <span className="block text-xs text-neutral-400">{f.cierre?.es_estimado ? "Estimado" : "A pagar"}</span>
+                  <b className="block text-xl tabular-nums text-neutral-900 mb-1.5">${formatearMonto(netoDe(f))}</b>
+                  {!f.cierre ? (
+                    <div className="flex items-center justify-end gap-2.5">
+                      {porHora && (
+                        <button onClick={() => setModalEstimar(f)} className="text-xs text-neutral-400 hover:text-accent">
+                          Estimar
                         </button>
                       )}
-                    </td>
-                    <td className="p-3">
-                      {f.cobraPresentismo ? (
-                        <>
-                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${RESULTADO_BADGE_NOMINA[f.presentismoResultado]}`}>
-                            {RESULTADO_LABEL_NOMINA[f.presentismoResultado]}
-                          </span>
-                          <span className="text-[10.5px] text-neutral-400 ml-1.5">
-                            +${formatearMonto(f.cierre ? f.cierre.incentivo_presentismo : f.incentivoPresentismoPreview)}
-                          </span>
-                        </>
-                      ) : (
-                        <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-500" title="Se cambia tocando el sueldo">
-                          No cobra
-                        </span>
+                      <button
+                        onClick={() => setModalCerrar(f)}
+                        disabled={trabado}
+                        title={trabado ? "Primero corregí los días sin salida en Asistencia" : undefined}
+                        className="text-xs font-bold text-white bg-accent hover:bg-accent-dark disabled:opacity-40 px-3 py-1.5 rounded-lg"
+                      >
+                        Cerrar sueldo
+                      </button>
+                    </div>
+                  ) : f.cierre.es_estimado ? (
+                    <div className="flex items-center justify-end gap-2.5">
+                      <button onClick={() => handleDeshacerCierre(f)} className="text-xs text-neutral-400 hover:text-red-600">
+                        Deshacer
+                      </button>
+                      <button
+                        onClick={() => setModalCerrar(f)}
+                        disabled={sinSalida > 0}
+                        className="text-xs font-bold text-white bg-accent hover:bg-accent-dark disabled:opacity-40 px-3 py-1.5 rounded-lg"
+                      >
+                        Cerrar (real)
+                      </button>
+                    </div>
+                  ) : f.cierre.estado === "PENDIENTE_PAGO" ? (
+                    <div className="flex items-center justify-end gap-2.5">
+                      <button onClick={() => handleDeshacerCierre(f)} className="text-xs text-neutral-400 hover:text-red-600">
+                        Deshacer
+                      </button>
+                      <button onClick={() => setModalPagar(f)} className="text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 rounded-lg">
+                        Pagar
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-end gap-2.5">
+                      <span className="text-xs font-semibold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">✓ Pagado</span>
+                      {f.cierre.comprobante_path && (
+                        <button onClick={() => handleVerComprobante(f.cierre!.comprobante_path!)} className="text-xs font-semibold text-accent">
+                          Ver comprobante
+                        </button>
                       )}
-                    </td>
-                    <td className="p-3 text-right tabular-nums text-red-600">
-                      {(f.cierre ? f.cierre.adelantos : f.adelantos) > 0 ? `-$${formatearMonto(f.cierre ? f.cierre.adelantos : f.adelantos)}` : "—"}
-                    </td>
-                    <td className="p-3 text-right whitespace-nowrap">
-                      {!f.cierre ? (
-                        <span className="text-neutral-300 text-xs">Sin cerrar</span>
-                      ) : f.cierre.es_estimado ? (
-                        <span className="text-amber-700 tabular-nums">
-                          <span className="text-[10px] font-bold uppercase tracking-wide bg-amber-100 px-1.5 py-0.5 rounded mr-1">Estimado</span>
-                          ${formatearMonto(f.cierre.neto_a_pagar)}
-                        </span>
-                      ) : (
-                        <span className="font-bold tabular-nums">${formatearMonto(f.cierre.neto_a_pagar)}</span>
-                      )}
-                    </td>
-                    <td className="p-3 text-right whitespace-nowrap">
-                      {!f.cierre ? (
-                        <div className="flex items-center justify-end gap-2.5">
-                          {f.modalidad === "POR_HORA" && (
-                            <button onClick={() => setModalEstimar(f)} className="text-xs text-neutral-400 hover:text-accent">
-                              Estimar
-                            </button>
-                          )}
-                          <button onClick={() => setModalCerrar(f)} className="text-xs font-bold text-white bg-accent hover:bg-accent-dark px-3 py-1.5 rounded-lg">
-                            Cerrar nómina
-                          </button>
-                        </div>
-                      ) : f.cierre.es_estimado ? (
-                        <div className="flex items-center justify-end gap-2.5">
-                          <button onClick={() => handleDeshacerCierre(f)} className="text-xs text-neutral-400 hover:text-red-600">
-                            Deshacer
-                          </button>
-                          <button onClick={() => setModalCerrar(f)} className="text-xs font-bold text-white bg-accent hover:bg-accent-dark px-3 py-1.5 rounded-lg">
-                            Cerrar (real)
-                          </button>
-                        </div>
-                      ) : f.cierre.estado === "PENDIENTE_PAGO" ? (
-                        <div className="flex items-center justify-end gap-2.5">
-                          <button onClick={() => handleDeshacerCierre(f)} className="text-xs text-neutral-400 hover:text-red-600">
-                            Deshacer
-                          </button>
-                          <button onClick={() => setModalPagar(f)} className="text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 rounded-lg">
-                            Pagar
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center justify-end gap-2.5">
-                          <span className="text-xs font-semibold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">✓ Pagado</span>
-                          {f.cierre.comprobante_path && (
-                            <button onClick={() => handleVerComprobante(f.cierre!.comprobante_path!)} className="text-xs font-semibold text-accent">
-                              Ver comprobante
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </td>
-                  </tr>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Empleados que no pueden cobrar: no aparecen en la nómina hasta que
+              tengan usuario y sueldo. Se muestran igual, para que no se olviden. */}
+          {(asistencia?.filas ?? [])
+            .filter((x) => !filas.some((f) => f.idPersona === x.idPersona))
+            .map((x) => (
+              <div key={x.idPersona} className="bg-white border border-neutral-200 rounded-xl p-4 flex flex-wrap items-center gap-4">
+                <div className="min-w-0 flex-1">
+                  <button type="button" onClick={() => onAbrirFicha(x.idPersona)} className="text-[15px] font-semibold text-neutral-900 hover:underline text-left">
+                    {x.nombre}
+                  </button>
+                  <p className="text-[13px] text-red-600">No puede cobrar: le falta el usuario vinculado o el sueldo.</p>
+                </div>
+                <p className="text-[12.5px] rounded-lg px-3 py-2 bg-amber-50 text-amber-800">Antes de cerrar, cargale usuario y sueldo.</p>
+                <button type="button" onClick={() => onAbrirFicha(x.idPersona)} className="text-xs font-semibold text-accent border border-neutral-200 rounded-lg px-3 py-1.5">
+                  Abrir ficha
+                </button>
+              </div>
+            ))}
+
+          {anteriores.length > 0 && (
+            <div className="bg-white border border-amber-200 rounded-xl p-4 text-[13px]">
+              <p className="font-semibold text-neutral-900 mb-1.5">Quedó sin pagar de meses anteriores</p>
+              <div className="space-y-1">
+                {anteriores.map((s) => (
+                  <p key={`${s.idPersona}-${s.periodo}`} className="flex flex-wrap items-center gap-2 text-neutral-600">
+                    <span>
+                      {s.etiquetaMes}: {s.nombre} <b className="text-neutral-900 tabular-nums">${formatearMonto(s.neto)}</b>
+                    </span>
+                    <button type="button" onClick={() => setPeriodo(s.periodo)} className="text-accent font-semibold hover:underline">
+                      Ir a ese mes para pagarlo →
+                    </button>
+                  </p>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {modalCerrar && (
         <ModalCerrarNomina
@@ -1287,11 +1422,13 @@ function TabHorarios({ horarios, onCambio }: { horarios: HorarioTrabajo[]; onCam
 
   return (
     <div>
-      <p className="text-xs text-neutral-400 mb-3">
-        "Horario de trabajo" a propósito — no es lo mismo que un "turno" de caja. Creá horarios con nombre (ej. "Turno
-        Mañana") y asignaselos a cada persona desde Organización.
-      </p>
-      <div className="flex justify-end mb-3">
+      <div className="flex items-end justify-between gap-3 mb-3 flex-wrap">
+        <div>
+          <h2 className="text-[15px] font-semibold text-neutral-900">Horarios de trabajo</h2>
+          <p className="text-xs text-neutral-400 max-w-xl">
+            Creá horarios con nombre (por ejemplo &ldquo;Turno mañana&rdquo;) y elegí arriba cuál tiene cada uno. No es lo mismo que el turno de caja.
+          </p>
+        </div>
         <button onClick={() => setModal("nuevo")} className="rounded-lg bg-accent hover:bg-accent-dark text-white px-4 py-2 text-sm font-medium">
           + Nuevo horario
         </button>
@@ -1431,8 +1568,6 @@ function ModalHorario({ horario, onClose, onGuardado }: { horario: HorarioTrabaj
   );
 }
 
-// ===================== PRESENTISMO =====================
-
 // ===================== ADELANTOS =====================
 //
 // Es una lista de control, no un formulario: cuando alguien te pide plata,
@@ -1448,8 +1583,9 @@ const MEDIO_ADELANTO: { valor: string; etiqueta: string; nota: string }[] = [
   { valor: "MERCADO_PAGO", etiqueta: "Mercado Pago", nota: "no toca caja" },
 ];
 
-function TabAdelantos({ usuarios }: { usuarios: UsuarioMin[] }) {
-  const [mes, setMes] = useState(mesActualISO());
+function TabAdelantos({ usuarios, periodo, setPeriodo }: { usuarios: UsuarioMin[]; periodo: string; setPeriodo: (p: string) => void }) {
+  const mes = periodo;
+  const setMes = setPeriodo;
   const [filas, setFilas] = useState<AdelantoListado[]>([]);
   const [cargando, setCargando] = useState(true);
   const [nuevo, setNuevo] = useState(false);
@@ -1491,12 +1627,7 @@ function TabAdelantos({ usuarios }: { usuarios: UsuarioMin[] }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <input
-          type="month"
-          value={mes}
-          onChange={(e) => setMes(e.target.value)}
-          className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-sm"
-        />
+        <SelectorMes periodo={mes} setPeriodo={setMes} />
         <button
           onClick={() => setNuevo(true)}
           className="bg-accent hover:bg-accent-dark text-white text-sm font-semibold px-3.5 py-2 rounded-lg"
@@ -1741,448 +1872,70 @@ function ModalAdelanto({
   );
 }
 
-// ===================== PLANILLA =====================
+// ===================== REGLAS DEL PRESENTISMO =====================
 //
-// La lista de gente con sus horas y lo que lleva ganado, para entrar a la
-// planilla de uno.
-//
-// El dato ya existía: `obtenerNovedadesMes` lo calcula cada vez que se abre
-// Sueldos. Lo que faltaba era mostrarlo ANTES de entrar — hasta ahora, para
-// saber cuánto llevaba ganado alguien por hora había que abrir su planilla,
-// sumar los días y multiplicar de cabeza.
+// Las reglas con las que se calcula el presentismo de cada mes. El resultado
+// de cada persona ya no tiene pantalla propia: sale de la grilla de
+// Asistencia (columna Presentismo) y se cobra en Sueldos.
 
-function TabPlanilla() {
-  const [mes, setMes] = useState(mesActualISO());
-  const [filas, setFilas] = useState<NovedadNomina[]>([]);
-  const [cargando, setCargando] = useState(true);
-  const [abierta, setAbierta] = useState<{ idPersona: string; nombre: string } | null>(null);
-  const [pendientes, setPendientes] = useState<FichajePendiente[]>([]);
-
-  useEffect(() => {
-    setCargando(true);
-    obtenerNovedadesMes(mes)
-      .then(setFilas)
-      .finally(() => setCargando(false));
-  }, [mes]);
-
-  function recargarPendientes() {
-    listarFichajesPendientesSalida().then(setPendientes);
-  }
-  useEffect(recargarPendientes, []);
-
-  // Un fichaje sin salida deja el día en 0 horas: el que lo tiene está
-  // cobrando de menos y no hay forma de darse cuenta mirando el total.
-  const pendientesPorPersona = new Map<string, number>();
-  for (const p of pendientes) {
-    pendientesPorPersona.set(p.idPersona, (pendientesPorPersona.get(p.idPersona) ?? 0) + 1);
-  }
-
-  const totalHoras = filas.reduce((a, f) => a + (f.horasTrabajadasMes ?? 0), 0);
-
-  return (
-    <div>
-      {pendientes.length > 0 && (
-        <FichajesPendientesSalida pendientes={pendientes} onCompletado={recargarPendientes} />
-      )}
-
-      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <input
-          type="month"
-          value={mes}
-          onChange={(e) => setMes(e.target.value)}
-          className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-sm"
-        />
-        {totalHoras > 0 && (
-          <span className="text-xs text-neutral-400 tabular-nums">
-            {totalHoras.toFixed(1)} horas entre todos
-          </span>
-        )}
-      </div>
-
-      {cargando ? (
-        <p className="text-sm text-neutral-400 text-center py-8">Cargando...</p>
-      ) : filas.length === 0 ? (
-        <p className="text-sm text-neutral-400 text-center py-8">
-          No hay empleados con sueldo o valor hora cargado.
-        </p>
-      ) : (
-        <div className="space-y-2">
-          {filas.map((f) => {
-            const sinSalida = pendientesPorPersona.get(f.idPersona) ?? 0;
-            const iniciales = f.nombre
-              .split(" ")
-              .slice(0, 2)
-              .map((p) => p[0]?.toUpperCase() ?? "")
-              .join("");
-            return (
-              <button
-                key={f.idPersona}
-                onClick={() => setAbierta({ idPersona: f.idPersona, nombre: f.nombre })}
-                className={`w-full text-left flex items-center gap-3 flex-wrap border rounded-xl px-3.5 py-3 ${
-                  sinSalida > 0
-                    ? "border-amber-200 bg-amber-50 hover:border-amber-300"
-                    : "border-neutral-200 bg-white hover:border-neutral-300"
-                }`}
-              >
-                <span
-                  className={`shrink-0 w-[38px] h-[38px] rounded-full flex items-center justify-center text-sm font-bold ${
-                    sinSalida > 0 ? "bg-amber-100 text-amber-700" : "bg-accent-tint text-accent"
-                  }`}
-                >
-                  {iniciales}
-                </span>
-                <span className="min-w-0">
-                  <span className="block text-[14.5px] font-semibold text-neutral-900">{f.nombre}</span>
-                  <span className={`block text-[11.5px] ${sinSalida > 0 ? "text-amber-700" : "text-neutral-400"}`}>
-                    {sinSalida > 0
-                      ? `⚠ ${sinSalida} ${sinSalida === 1 ? "fichaje sin salida" : "fichajes sin salida"}`
-                      : f.modalidad === "POR_HORA"
-                        ? `Por hora · $${formatearMonto(f.valorHora ?? 0)} la hora`
-                        : "Sueldo fijo"}
-                  </span>
-                </span>
-                <span className="ml-auto text-right tabular-nums">
-                  <span className="block text-[17px] font-extrabold text-neutral-900 leading-tight">
-                    ${formatearMonto(f.montoBase)}
-                  </span>
-                  <span className="block text-[11px] text-neutral-400">
-                    {f.modalidad === "POR_HORA"
-                      ? `${(f.horasTrabajadasMes ?? 0).toFixed(1)} hs${
-                          (f.horasFeriadoMes ?? 0) > 0 ? ` · ${(f.horasFeriadoMes ?? 0).toFixed(1)} feriado` : ""
-                        }`
-                      : "sueldo fijo"}
-                  </span>
-                </span>
-                <span className="text-neutral-300 text-lg">›</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {abierta && <ModalPlanillaHoraria fila={abierta} mes={mes} onClose={() => setAbierta(null)} />}
-    </div>
-  );
-}
-
-// ===================== PRESENTISMO =====================
-
-function TabPresentismo() {
-  const [mes, setMes] = useState(mesActualISO());
-  const [filas, setFilas] = useState<PresentismoFila[]>([]);
-  const [cargando, setCargando] = useState(true);
-  const [mostrarConfig, setMostrarConfig] = useState(false);
+function ReglasPresentismo() {
   const [params, setParams] = useState<Record<string, number> | null>(null);
-  const [guardandoConfig, setGuardandoConfig] = useState(false);
-  const [modalPlanilla, setModalPlanilla] = useState<PresentismoFila | null>(null);
-  const [pendientes, setPendientes] = useState<FichajePendiente[]>([]);
-  const [cargandoPendientes, setCargandoPendientes] = useState(true);
+  const [guardando, setGuardando] = useState(false);
+  const [mensaje, setMensaje] = useState<{ texto: string; error: boolean } | null>(null);
 
-  function recargar() {
-    setCargando(true);
-    calcularPresentismoMes(mes).then(setFilas).finally(() => setCargando(false));
-  }
-
-  function recargarPendientes() {
-    setCargandoPendientes(true);
-    listarFichajesPendientesSalida().then(setPendientes).finally(() => setCargandoPendientes(false));
-  }
-
-  useEffect(recargar, [mes]);
-  useEffect(recargarPendientes, []);
   useEffect(() => {
     obtenerParametrosPresentismo().then(setParams);
   }, []);
 
-  function handleGuardarConfig(e: React.FormEvent<HTMLFormElement>) {
+  function handleGuardar(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    setGuardandoConfig(true);
+    setGuardando(true);
+    setMensaje(null);
     actualizarParametrosPresentismo(formData)
       .then((res) => {
-        if (!res.error) {
+        if (res.error) setMensaje({ texto: res.error, error: true });
+        else {
+          setMensaje({ texto: "Reglas guardadas.", error: false });
           obtenerParametrosPresentismo().then(setParams);
-          recargar();
         }
       })
-      .finally(() => setGuardandoConfig(false));
+      .finally(() => setGuardando(false));
   }
 
-  const RESULTADO_BADGE: Record<PresentismoFila["resultado"], string> = {
-    COMPLETO: "bg-emerald-100 text-emerald-700",
-    PARCIAL: "bg-amber-100 text-amber-700",
-    PERDIDO: "bg-red-100 text-red-700",
-  };
+  const campos: { nombre: string; etiqueta: string; ayuda?: string }[] = [
+    { nombre: "PRESENTISMO_PORCENTAJE_INCENTIVO", etiqueta: "% del sueldo que es el presentismo", ayuda: "Completo cobra todo esto, parcial la mitad, perdido nada." },
+    { nombre: "PRESENTISMO_TARDANZAS_PARA_PARCIAL", etiqueta: "Con esta cantidad de tardanzas o más, lo cobra a medias" },
+    { nombre: "PRESENTISMO_MAX_TARDANZAS", etiqueta: "Con más de esta cantidad de tardanzas, lo pierde" },
+    { nombre: "PRESENTISMO_MAX_FALTAS", etiqueta: "Con esta cantidad de faltas o más, lo pierde" },
+    { nombre: "PRESENTISMO_MAX_SALIDAS_ANTICIPADAS", etiqueta: "Con más de esta cantidad de salidas antes de hora, lo pierde" },
+  ];
 
   return (
-    <div>
-      {!cargandoPendientes && pendientes.length > 0 && (
-        <FichajesPendientesSalida
-          pendientes={pendientes}
-          onCompletado={() => {
-            recargarPendientes();
-            recargar();
-          }}
-        />
-      )}
-
-      <p className="text-xs text-neutral-400 mb-3">
-        Solo cuenta tardanzas y faltas detectadas por fichaje — todavía no distingue ausencias autorizadas (eso llega
-        con Vacaciones y Licencias). Revisá manualmente antes de aplicarlo a un pago.
+    <div className="bg-white border border-neutral-200 rounded-xl p-4">
+      <h2 className="text-[15px] font-semibold text-neutral-900">Reglas del presentismo</h2>
+      <p className="text-xs text-neutral-400 mb-3 max-w-xl">
+        Solo se aplican a quien tiene horario fijo y cobra presentismo. Los feriados, las licencias y el día de hoy no cuentan como falta.
       </p>
-
-      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <input type="month" value={mes} onChange={(e) => setMes(e.target.value)} className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-sm" />
-        <button onClick={() => setMostrarConfig((v) => !v)} className="text-xs font-semibold text-accent">
-          {mostrarConfig ? "▾" : "▸"} Configurar umbrales
-        </button>
-      </div>
-
-      {mostrarConfig && params && (
-        <form onSubmit={handleGuardarConfig} className="bg-white border border-neutral-200 rounded-xl p-4 mb-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-medium text-neutral-600 mb-1">Más de esta cantidad de tardanzas → pérdida total</label>
-            <input type="number" name="PRESENTISMO_MAX_TARDANZAS" defaultValue={params.PRESENTISMO_MAX_TARDANZAS} className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm" />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-neutral-600 mb-1">Esta cantidad de faltas (o más) → pérdida total</label>
-            <input type="number" name="PRESENTISMO_MAX_FALTAS" defaultValue={params.PRESENTISMO_MAX_FALTAS} className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm" />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-neutral-600 mb-1">Más de esta cantidad de salidas anticipadas → pérdida total</label>
-            <input type="number" name="PRESENTISMO_MAX_SALIDAS_ANTICIPADAS" defaultValue={params.PRESENTISMO_MAX_SALIDAS_ANTICIPADAS} className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm" />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-neutral-600 mb-1">Esta cantidad de tardanzas (o más) → pérdida parcial</label>
-            <input type="number" name="PRESENTISMO_TARDANZAS_PARA_PARCIAL" defaultValue={params.PRESENTISMO_TARDANZAS_PARA_PARCIAL} className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm" />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-neutral-600 mb-1">% del sueldo que es el incentivo de presentismo</label>
-            <input type="number" name="PRESENTISMO_PORCENTAJE_INCENTIVO" defaultValue={params.PRESENTISMO_PORCENTAJE_INCENTIVO} className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm" />
-            <p className="text-[10.5px] text-neutral-400 mt-1">Completo cobra el 100% de esto, Parcial la mitad, Perdido nada.</p>
-          </div>
-          <div className="sm:col-span-2 flex justify-end">
-            <button type="submit" disabled={guardandoConfig} className="bg-accent hover:bg-accent-dark disabled:opacity-50 text-white font-medium px-4 py-1.5 rounded-lg text-sm">
-              {guardandoConfig ? "Guardando..." : "Guardar umbrales"}
+      {!params ? (
+        <p className="text-sm text-neutral-400">Cargando...</p>
+      ) : (
+        <form onSubmit={handleGuardar} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {campos.map((c) => (
+            <div key={c.nombre}>
+              <label className="block text-xs font-medium text-neutral-600 mb-1">{c.etiqueta}</label>
+              <input type="number" name={c.nombre} defaultValue={params[c.nombre]} className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm" />
+              {c.ayuda && <p className="text-[10.5px] text-neutral-400 mt-1">{c.ayuda}</p>}
+            </div>
+          ))}
+          <div className="sm:col-span-2 flex items-center justify-end gap-3">
+            {mensaje && <span className={`text-xs ${mensaje.error ? "text-red-600" : "text-emerald-700"}`}>{mensaje.texto}</span>}
+            <button type="submit" disabled={guardando} className="bg-accent hover:bg-accent-dark disabled:opacity-50 text-white font-medium px-4 py-1.5 rounded-lg text-sm">
+              {guardando ? "Guardando..." : "Guardar reglas"}
             </button>
           </div>
         </form>
       )}
-
-      <div className="bg-white border border-neutral-200 rounded-xl overflow-hidden">
-        {cargando ? (
-          <p className="text-sm text-neutral-400 text-center py-8">Cargando...</p>
-        ) : filas.length === 0 ? (
-          <p className="text-sm text-neutral-400 text-center py-8">No hay personas con horario asignado.</p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-neutral-200 text-left text-xs text-neutral-500">
-                <th className="p-3">Empleado</th>
-                <th className="p-3 text-right">Tardanzas</th>
-                <th className="p-3 text-right">Faltas</th>
-                <th className="p-3 text-right">Salidas anticipadas</th>
-                <th className="p-3">Presentismo</th>
-                <th className="p-3"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filas.map((f) => (
-                <tr key={f.idPersona} className="border-b border-neutral-100 last:border-0">
-                  <td className="p-3">{f.nombre}</td>
-                  <td className="p-3 text-right tabular-nums">{f.tardanzas}</td>
-                  <td className="p-3 text-right tabular-nums">{f.faltas}</td>
-                  <td className="p-3 text-right tabular-nums">{f.salidasAnticipadas}</td>
-                  <td className="p-3">
-                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${RESULTADO_BADGE[f.resultado]}`}>
-                      {f.resultado === "COMPLETO" ? "Completo" : f.resultado === "PARCIAL" ? "Parcial" : "Perdido"}
-                    </span>
-                  </td>
-                  <td className="p-3 text-right whitespace-nowrap">
-                    <button onClick={() => setModalPlanilla(f)} className="text-xs font-semibold text-accent">
-                      Planilla horaria →
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      {modalPlanilla && <ModalPlanillaHoraria fila={modalPlanilla} mes={mes} onClose={() => setModalPlanilla(null)} />}
-    </div>
-  );
-}
-
-function FichajesPendientesSalida({ pendientes, onCompletado }: { pendientes: FichajePendiente[]; onCompletado: () => void }) {
-  const [valores, setValores] = useState<Record<string, string>>({});
-  const [guardandoClave, setGuardandoClave] = useState<string | null>(null);
-
-  function clave(p: FichajePendiente) {
-    return `${p.idPersona}|${p.fecha}`;
-  }
-
-  function formatearFecha(fecha: string) {
-    return new Date(`${fecha}T00:00:00`).toLocaleDateString("es-AR", { weekday: "short", day: "2-digit", month: "2-digit" });
-  }
-
-  function handleCompletar(p: FichajePendiente) {
-    const hora = valores[clave(p)];
-    if (!hora) return;
-    setGuardandoClave(clave(p));
-    completarSalidaManual(p.idPersona, p.fecha, hora)
-      .then((res) => {
-        if (res.error) alert(res.error);
-        else onCompletado();
-      })
-      .finally(() => setGuardandoClave(null));
-  }
-
-  return (
-    <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-5">
-      <h2 className="text-sm font-bold text-red-800 mb-1">⚠️ Fichajes sin salida ({pendientes.length})</h2>
-      <p className="text-xs text-red-700 mb-3">Fichó entrada esos días pero nunca la salida. Cargá la hora real en que se fue.</p>
-      <div className="space-y-2">
-        {pendientes.map((p) => (
-          <div key={clave(p)} className="bg-white border border-red-200 rounded-lg px-3 py-2 flex items-center gap-2.5 flex-wrap">
-            <span className="text-sm font-medium text-neutral-800 flex-1 min-w-[160px]">
-              {p.nombre} <span className="text-neutral-400 font-normal capitalize">· {formatearFecha(p.fecha)}</span>
-            </span>
-            <span className="text-xs text-neutral-400">Entrada {p.horaEntrada}</span>
-            <input
-              type="time"
-              value={valores[clave(p)] ?? ""}
-              onChange={(e) => setValores((v) => ({ ...v, [clave(p)]: e.target.value }))}
-              className="border border-neutral-300 rounded-lg px-2 py-1 text-sm"
-            />
-            <button
-              onClick={() => handleCompletar(p)}
-              disabled={!valores[clave(p)] || guardandoClave === clave(p)}
-              className="text-xs font-bold text-white bg-red-600 hover:bg-red-700 disabled:opacity-40 px-3 py-1.5 rounded-lg"
-            >
-              {guardandoClave === clave(p) ? "..." : "Cargar salida"}
-            </button>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// Pide solo lo que usa y no un `PresentismoFila` entero: así lo pueden abrir
-// tanto Presentismo como Planilla, que arma sus filas de otra consulta.
-function ModalPlanillaHoraria({
-  fila,
-  mes,
-  onClose,
-}: {
-  fila: { idPersona: string; nombre: string };
-  mes: string;
-  onClose: () => void;
-}) {
-  const [dias, setDias] = useState<FilaPlanilla[]>([]);
-  const [cargando, setCargando] = useState(true);
-
-  useEffect(() => {
-    setCargando(true);
-    listarPlanillaHoraria(fila.idPersona, mes)
-      .then(setDias)
-      .finally(() => setCargando(false));
-  }, [fila.idPersona, mes]);
-
-  const diasTrabajados = dias.filter((d) => d.horaEntrada).length;
-  const horasTotales = dias.reduce((acc, d) => acc + (d.horasTrabajadas ?? 0), 0);
-  // Se cuentan de los mismos días que se muestran abajo, en vez de recibirlas
-  // ya contadas: así el número de arriba y la tabla no pueden discrepar.
-  const tardanzas = dias.filter((d) => d.tardanza).length;
-
-  function formatearFecha(fecha: string) {
-    return new Date(`${fecha}T00:00:00`).toLocaleDateString("es-AR", { weekday: "short", day: "2-digit", month: "2-digit" });
-  }
-
-  return (
-    <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
-      <div className="bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl p-6 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-start justify-between mb-1">
-          <div>
-            <h2 className="text-lg font-semibold text-neutral-900">Planilla horaria</h2>
-            <p className="text-xs text-neutral-400">
-              {fila.nombre} · {new Date(`${mes}-01T00:00:00`).toLocaleDateString("es-AR", { month: "long", year: "numeric" })}
-            </p>
-          </div>
-          <button type="button" onClick={onClose} className="text-neutral-400 hover:text-neutral-700" aria-label="Cerrar">
-            ✕
-          </button>
-        </div>
-
-        {cargando ? (
-          <p className="text-sm text-neutral-400 text-center py-8">Cargando...</p>
-        ) : (
-          <>
-            <div className="grid grid-cols-3 gap-2.5 my-4">
-              <div className="bg-accent-tint rounded-lg px-3 py-2.5 text-center">
-                <p className="text-lg font-extrabold text-accent tabular-nums">{diasTrabajados}</p>
-                <p className="text-[10px] font-semibold uppercase text-neutral-500">Días trabajados</p>
-              </div>
-              <div className="bg-accent-tint rounded-lg px-3 py-2.5 text-center">
-                <p className="text-lg font-extrabold text-accent tabular-nums">{horasTotales.toFixed(1)}</p>
-                <p className="text-[10px] font-semibold uppercase text-neutral-500">Horas totales</p>
-              </div>
-              <div className="bg-accent-tint rounded-lg px-3 py-2.5 text-center">
-                <p className="text-lg font-extrabold text-accent tabular-nums">{tardanzas}</p>
-                <p className="text-[10px] font-semibold uppercase text-neutral-500">Tardanzas</p>
-              </div>
-            </div>
-
-            {dias.length === 0 ? (
-              <p className="text-sm text-neutral-400 text-center py-8">No hay fichajes en este mes.</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-neutral-200 text-left text-[10.5px] font-bold uppercase tracking-wide text-neutral-400">
-                      <th className="py-2 pr-2">Fecha</th>
-                      <th className="py-2 pr-2">Hora de ingreso</th>
-                      <th className="py-2 pr-2">Hora de salida</th>
-                      <th className="py-2 pr-2 text-right">Total hs</th>
-                      <th className="py-2">Estado</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {dias.map((d) => {
-                      const badges: { label: string; clases: string }[] = [];
-                      if (!d.horaEntrada) badges.push({ label: "Sin fichaje", clases: "bg-neutral-100 text-neutral-400" });
-                      else {
-                        badges.push(d.tardanza ? { label: "Tardanza", clases: "bg-amber-100 text-amber-700" } : { label: "A tiempo", clases: "bg-emerald-100 text-emerald-700" });
-                        if (!d.horaSalida) badges.push({ label: "Sin salida", clases: "bg-red-100 text-red-700" });
-                        else if (d.salidaAnticipada) badges.push({ label: "Salida anticipada", clases: "bg-red-100 text-red-700" });
-                      }
-                      return (
-                        <tr key={d.fecha} className="border-b border-dashed border-neutral-100 last:border-0">
-                          <td className="py-2 pr-2 font-bold text-neutral-800 capitalize whitespace-nowrap">{formatearFecha(d.fecha)}</td>
-                          <td className={`py-2 pr-2 tabular-nums ${d.tardanza ? "font-bold text-amber-600" : "text-neutral-500"}`}>{d.horaEntrada ?? "—"}</td>
-                          <td className={`py-2 pr-2 tabular-nums ${d.salidaAnticipada || (d.horaEntrada && !d.horaSalida) ? "font-bold text-red-600" : "text-neutral-500"}`}>{d.horaSalida ?? "—"}</td>
-                          <td className="py-2 pr-2 text-right font-bold text-neutral-800 tabular-nums whitespace-nowrap">{d.horasTrabajadas != null ? `${d.horasTrabajadas} hs` : "—"}</td>
-                          <td className="py-2">
-                            <span className="flex gap-1 flex-wrap">
-                              {badges.map((b) => (
-                                <span key={b.label} className={`text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${b.clases}`}>
-                                  {b.label}
-                                </span>
-                              ))}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </>
-        )}
-      </div>
     </div>
   );
 }
@@ -2346,7 +2099,7 @@ function TabVacaciones({ personas }: { personas: PersonaMin[] }) {
                   ) : (
                     <span className="text-[11.5px] font-semibold rounded-full px-2 py-0.5 bg-neutral-100 text-neutral-500">Sin sueldo cargado</span>
                   )}
-                  <span className="text-[11.5px] rounded-full px-2 py-0.5 bg-neutral-100 text-neutral-600">{p.horario ?? "Sin horario asignado"}</span>
+                  <span className="text-[11.5px] rounded-full px-2 py-0.5 bg-neutral-100 text-neutral-600">{p.horario ?? "Horario sin definir"}</span>
                   {p.fechaIngreso && (
                     <span className="text-[11.5px] rounded-full px-2 py-0.5 bg-neutral-100 text-neutral-600">
                       Desde {new Date(`${p.fechaIngreso}T12:00:00`).toLocaleDateString("es-AR", { month: "short", year: "numeric" })}

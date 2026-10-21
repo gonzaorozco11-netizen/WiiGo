@@ -148,6 +148,10 @@ export async function calcularPresentismoMes(periodo: string): Promise<Presentis
     .filter((f) => f.fechaArg >= desdeStr && f.fechaArg <= hastaStr);
 
   const { diasPorPersona: diasConLicencia, sinGocePorPersona } = await diasConLicenciaPorPersona(supabase, idsPersona, desdeStr, hastaStr);
+  // Un feriado no es una falta: ese día no se esperaba a nadie.
+  const { data: feriadosData } = await supabase.from("feriados").select("fecha").gte("fecha", desdeStr).lte("fecha", hastaStr);
+  const feriados = new Set((feriadosData ?? []).map((f) => f.fecha as string));
+  const hoyArgentina = fechaHoraArgentina().fecha;
 
   const resultado: PresentismoFila[] = [];
   for (const p of personas ?? []) {
@@ -164,7 +168,10 @@ export async function calcularPresentismoMes(periodo: string): Promise<Presentis
     while (cursor <= hasta) {
       const isoDow = cursor.getDay() === 0 ? 7 : cursor.getDay();
       const fechaCursor = cursor.toISOString().slice(0, 10);
-      if (diasSemana.includes(isoDow) && !diasLicenciaPersona.has(fechaCursor)) diasEsperados.push(fechaCursor);
+      // Hoy tampoco cuenta todavía: puede estar por fichar (mismo criterio que la grilla de Asistencia).
+      if (diasSemana.includes(isoDow) && !diasLicenciaPersona.has(fechaCursor) && !feriados.has(fechaCursor) && fechaCursor < hoyArgentina) {
+        diasEsperados.push(fechaCursor);
+      }
       cursor.setDate(cursor.getDate() + 1);
     }
     const diasConEntrada = new Set(fichajesPersona.filter((f) => f.tipo === "ENTRADA").map((f) => f.fechaArg));
@@ -434,7 +441,7 @@ export async function listarPersonalRrhh(): Promise<PersonaDeRrhh[]> {
   if (permisoError) throw new Error(permisoError);
 
   const supabase = getSupabaseServerClient();
-  const [personasRes, usuariosRes, localesRes, asignacionesRes, puestosRes, horariosRes, segurosRes] = await Promise.all([
+  const [personasRes, usuariosRes, localesRes, asignacionesRes, puestosRes, horariosRes, segurosRes, librePorPersonaRes] = await Promise.all([
     supabase
       .from("personas")
       .select("id_persona, nombre, apellido, id_local, fecha_ingreso, dni, cuil, tipo, id_horario")
@@ -448,7 +455,10 @@ export async function listarPersonalRrhh(): Promise<PersonaDeRrhh[]> {
     // Columna nueva (sql/personas-ficha.sql): si todavía no existe, esta
     // consulta falla sola y la lista sigue sin el dato del seguro.
     supabase.from("personas").select("id_persona, seguro_ap_vence").eq("estado", "ACTIVO"),
+    // Ídem con sql/personas-horario-libre.sql.
+    supabase.from("personas").select("id_persona").eq("estado", "ACTIVO").eq("horario_libre", true),
   ]);
+  const libres = new Set(librePorPersonaRes.error ? [] : (librePorPersonaRes.data ?? []).map((x) => x.id_persona as string));
   const hhmm = (t: string | null) => (t ?? "").slice(0, 5).replace(/^0/, "");
   const horarioPorId = new Map(
     (horariosRes.data ?? []).map((h) => [h.id_horario as string, `${h.nombre} · ${hhmm(h.hora_entrada as string)} a ${hhmm(h.hora_salida as string)} h`])
@@ -511,7 +521,7 @@ export async function listarPersonalRrhh(): Promise<PersonaDeRrhh[]> {
       faltantes,
       problema,
       tipo: (p.tipo as string) ?? "EMPLEADO",
-      horario: p.id_horario ? horarioPorId.get(p.id_horario as string) ?? null : null,
+      horario: p.id_horario ? horarioPorId.get(p.id_horario as string) ?? null : libres.has(idPersona) ? "Horario libre" : null,
       tieneDni: Boolean(p.dni),
       tieneCuil: Boolean(p.cuil),
       seguroVence: seguroPorPersona.get(idPersona) ?? null,
@@ -942,22 +952,22 @@ export async function armarDashboardRrhh(periodoPedido?: string): Promise<Dashbo
   const sinCerrar = filasEmpleado.filter((f) => f.estado === "SIN_CERRAR" || f.estado === "ESTIMADO").length;
   const honorariosSinPagar = genteTerc.filter((g) => g.estado.texto === "Falta pagar").length;
   const avisos = [
-    { clave: "fichajes", titulo: "Fichajes sin salida", detalle: "Esos días cuentan 0 horas", n: pendientes.length, href: "/rrhh/planilla" },
-    { clave: "sueldos", titulo: "Sueldos sin cerrar", detalle: "Falta calcular el sueldo del mes", n: sinCerrar, href: "/rrhh/sueldos" },
+    { clave: "fichajes", titulo: "Fichajes sin salida", detalle: "Esos días cuentan 0 horas", n: pendientes.length, href: `/rrhh/asistencia?mes=${periodo}` },
+    { clave: "sueldos", titulo: "Sueldos sin cerrar", detalle: "Falta calcular el sueldo del mes", n: sinCerrar, href: `/rrhh/sueldos?mes=${periodo}` },
     { clave: "honorarios", titulo: "Honorarios sin pagar", detalle: "De servicios tercerizados", n: honorariosSinPagar, href: "/gastos-ingresos" },
     {
       clave: "cobrar",
       titulo: "No pueden cobrar",
       detalle: "Les falta usuario o sueldo",
       n: gente.filter((p) => empleados.has(p.idPersona) && (p.problema === "NO_COBRA" || p.problema === "SIN_SUELDO")).length,
-      href: "/rrhh/personal",
+      href: "/rrhh/legajos",
     },
     {
       clave: "legajos",
       titulo: "Legajos incompletos",
       detalle: "Falta algún dato, como la fecha de ingreso",
       n: gente.filter((p) => empleados.has(p.idPersona) && (p.problema === "SIN_INGRESO" || p.problema === "INCOMPLETO")).length,
-      href: "/rrhh/personal",
+      href: "/rrhh/legajos",
     },
   ];
 
@@ -1127,7 +1137,7 @@ export async function registrarAdelanto(params: {
       });
     }
 
-    revalidatePath("/rrhh/adelantos");
+    revalidatePath("/rrhh/sueldos");
     revalidatePath("/rrhh/sueldos");
     revalidatePath("/gastos-ingresos");
     return { error: null };
@@ -1154,7 +1164,7 @@ export async function anularAdelanto(idGasto: string, motivo: string): Promise<{
   if (error) return { error: friendlyDbError(error) };
 
   void sesion;
-  revalidatePath("/rrhh/adelantos");
+  revalidatePath("/rrhh/sueldos");
   revalidatePath("/rrhh/sueldos");
   return { error: null };
 }

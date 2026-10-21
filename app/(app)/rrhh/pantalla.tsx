@@ -4,12 +4,20 @@ import { listarHorarios } from "@/app/(app)/organizacion/actions";
 import PantallaBloqueada from "@/components/PantallaBloqueada";
 import RrhhApp, { type VistaRrhh } from "@/components/RrhhApp";
 
-// Los datos que necesitan las tres pantallas de RR.HH.
+export type ParamsRrhh = Promise<Record<string, string | string[] | undefined>>;
+
+// Los datos que necesitan las cuatro pantallas de RR.HH.
 //
-// Se cargan igual para las tres a propósito: son tres consultas chicas sobre
-// tablas de pocas filas, y tener una carga distinta por pantalla sería tres
-// lugares donde equivocarse para ahorrar milisegundos.
-export default async function PantallaRrhh({ vista }: { vista: VistaRrhh }) {
+// Se cargan igual para todas a propósito: son tres consultas chicas sobre
+// tablas de pocas filas, y tener una carga distinta por pantalla serían
+// cuatro lugares donde equivocarse para ahorrar milisegundos.
+//
+// ?mes=AAAA-MM y ?tab= vienen de la dirección: así un link desde otra
+// pantalla abre el mismo mes y la solapa justa.
+export default async function PantallaRrhh({ vista, searchParams }: { vista: VistaRrhh; searchParams?: ParamsRrhh }) {
+  const params = (await searchParams) ?? {};
+  const mes = typeof params.mes === "string" ? params.mes : undefined;
+  const tab = typeof params.tab === "string" ? params.tab : undefined;
   const sesion = await obtenerSesionConPermisos();
   if (!tienePermiso(sesion, PERMISOS.GESTIONAR_NOMINA)) return <PantallaBloqueada />;
 
@@ -28,5 +36,14 @@ export default async function PantallaRrhh({ vista }: { vista: VistaRrhh }) {
       .order("nombre", { ascending: true }),
   ]);
 
-  return <RrhhApp vista={vista} usuarios={usuarios ?? []} horariosIniciales={horarios} personas={personas ?? []} />;
+  return (
+    <RrhhApp
+      vista={vista}
+      usuarios={usuarios ?? []}
+      horariosIniciales={horarios}
+      personas={personas ?? []}
+      mesInicial={mes}
+      subInicial={tab}
+    />
+  );
 }

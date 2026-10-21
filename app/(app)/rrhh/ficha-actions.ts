@@ -303,7 +303,11 @@ export async function obtenerFichaPersona(idPersona: string): Promise<FichaPerso
     tipo: p.tipo as string,
     puesto: principal?.puestos?.nombre ?? null,
     local: (localRes.data as { nombre: string } | null)?.nombre ?? null,
-    horario: h ? `${h.nombre} · ${hhmm(h.hora_entrada)} a ${hhmm(h.hora_salida)} h` : null,
+    horario: h
+      ? `${h.nombre} · ${hhmm(h.hora_entrada)} a ${hhmm(h.hora_salida)} h`
+      : (p as Record<string, unknown>).horario_libre === true
+        ? "Horario libre"
+        : null,
     personaLegajo: {
       ...(p as unknown as PersonaConPuestos),
       asignaciones: asignaciones.map((a) => ({
@@ -393,7 +397,7 @@ export async function actualizarFichaPersona(idPersona: string, formData: FormDa
     })
     .eq("id_persona", idPersona);
   if (error) return { error: /column|schema cache/i.test(error.message) ? FALTA_SQL : friendlyDbError(error) };
-  revalidatePath("/rrhh/personal");
+  revalidatePath("/rrhh/legajos");
   return { error: null };
 }
 

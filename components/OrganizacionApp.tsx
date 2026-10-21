@@ -419,7 +419,7 @@ function ModalPersona({
           <div>
             <label className="block text-xs font-medium text-neutral-600 mb-1">Horario de trabajo</label>
             <select name="id_horario" defaultValue={persona?.id_horario ?? ""} className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-white">
-              <option value="">Sin horario asignado</option>
+              <option value="">Sin horario fijo (libre o sin definir: se elige en RR.HH. → Asistencia → Reglas)</option>
               {horarios.map((h) => (
                 <option key={h.id_horario} value={h.id_horario}>
                   {h.nombre} ({h.hora_entrada.slice(0, 5)})

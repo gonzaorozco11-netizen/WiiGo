@@ -1,7 +1,6 @@
-import PantallaRrhh from "../pantalla";
+import { redirect } from "next/navigation";
 
-export const dynamic = "force-dynamic";
-
+// Los adelantos ahora viven dentro de Sueldos, porque se descuentan ahí.
 export default function AdelantosPage() {
-  return <PantallaRrhh vista="ADELANTOS" />;
+  redirect("/rrhh/sueldos?tab=adelantos");
 }

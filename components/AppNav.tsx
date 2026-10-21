@@ -143,14 +143,13 @@ const GROUPS: NavGroup[] = [
   {
     label: "RR.HH.",
     icono: "rrhh",
-    // Cada una se usa en un momento distinto: la planilla todo el mes, los
-    // sueldos el día 1, el legajo casi nunca.
+    // En el orden en que se usan: cómo viene el mes, quién es cada uno,
+    // quién vino, y con eso cerrar y pagar (adelantos y aguinaldo adentro).
     items: [
-      { href: "/rrhh", label: "Dashboard", permiso: "nomina" },
-      { href: "/rrhh/personal", label: "Personal", permiso: "nomina" },
-      { href: "/rrhh/planilla", label: "Planilla", permiso: "nomina" },
+      { href: "/rrhh", label: "Tablero", permiso: "nomina" },
+      { href: "/rrhh/legajos", label: "Legajos", permiso: "nomina" },
+      { href: "/rrhh/asistencia", label: "Asistencia", permiso: "nomina" },
       { href: "/rrhh/sueldos", label: "Sueldos", permiso: "nomina" },
-      { href: "/rrhh/adelantos", label: "Adelantos", permiso: "nomina" },
     ],
   },
   {

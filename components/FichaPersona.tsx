@@ -12,7 +12,7 @@ import {
 } from "@/app/(app)/rrhh/ficha-actions";
 import { obtenerUrlDocumentoLegajo } from "@/app/(app)/organizacion/actions";
 
-// La ficha de una persona: se abre al costado de la lista de Personal, con
+// La ficha de una persona: se abre al costado de Legajos (y desde Asistencia o Sueldos), con
 // pestañas una al lado de la otra (pedido de Gonzalo: nada de todo apilado).
 // Cada pestaña es una pregunta: quién es y cómo trabaja, qué cobró, sus
 // vacaciones, qué la cubre y a quién llamar, sus papeles, y qué pasó con ella.
@@ -334,7 +334,7 @@ function PestanaResumen({ f, onEditar }: { f: Ficha; onEditar: () => void }) {
           <Dato etiqueta="Tipo" valor={TIPO_PERSONA[f.tipo] ?? f.tipo} />
           {esEmpleado && (
             <>
-              <Dato etiqueta="Horario" valor={f.horario ?? "Sin horario asignado"} />
+              <Dato etiqueta="Horario" valor={f.horario ?? "Sin definir"} tono={f.horario ? undefined : "ojo"} />
               <Dato etiqueta="Cómo cobra" valor={cobra} />
               <Dato etiqueta="Presentismo" valor={u ? (u.cobraPresentismo ? "Cobra" : "No cobra") : null} />
               <Dato etiqueta="Usuario del sistema" valor={u ? "Sí" : null} falta={!u} />
@@ -351,7 +351,8 @@ function PestanaResumen({ f, onEditar }: { f: Ficha; onEditar: () => void }) {
         </div>
         {esEmpleado && (
           <p className="text-[11.5px] text-neutral-400 mt-3">
-            El sueldo y el presentismo se cambian en <Link href="/rrhh/sueldos" className="text-accent">Sueldos</Link>; el puesto y el horario, en{" "}
+            El sueldo y el presentismo se cambian en <Link href="/rrhh/sueldos" className="text-accent">Sueldos</Link>; el horario, en{" "}
+            <Link href="/rrhh/asistencia?tab=reglas" className="text-accent">Asistencia → Reglas</Link>; el puesto, en{" "}
             <Link href="/organizacion" className="text-accent">Organización</Link>.
           </p>
         )}
@@ -461,7 +462,7 @@ function PestanaSueldos({ f }: { f: Ficha }) {
       <section className={card}>
         <div className="flex items-baseline justify-between mb-2">
           <p className={titulo}>Aguinaldo</p>
-          <Link href="/rrhh/sueldos" className={linkChico}>
+          <Link href="/rrhh/sueldos?tab=aguinaldo" className={linkChico}>
             Ir a Aguinaldo
           </Link>
         </div>
