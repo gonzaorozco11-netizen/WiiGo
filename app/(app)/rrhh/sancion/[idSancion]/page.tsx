@@ -42,8 +42,7 @@ export default async function SancionPage({ params }: { params: Promise<{ idSanc
         .sa-titulo { text-align: center; font-family: Arial, Helvetica, sans-serif; font-weight: 700; letter-spacing: .14em; font-size: 15px; margin: 22px 0 18px; }
         .sa-hoja p { margin: 0 0 12px; white-space: pre-line; }
         .sa-noti { margin-top: 36px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; font-family: Arial, Helvetica, sans-serif; font-size: 11.5px; color: #5b6475; text-align: center; }
-        .sa-noti div { border-top: 1px solid #161b26; padding-top: 6px; min-height: 20px; }
-        .sa-firma { height: 70px; display: flex; align-items: flex-end; justify-content: center; margin-bottom: 4px; }
+        .sa-firma { height: 70px; display: flex; align-items: flex-end; justify-content: center; border-bottom: 1px solid #161b26; margin-bottom: 6px; }
         .sa-firma img { max-height: 70px; max-width: 240px; }
         .sa-anulada { position: absolute; top: 46%; left: 50%; transform: translate(-50%, -50%) rotate(-18deg); font-family: Arial, sans-serif; font-weight: 800; font-size: 54px; letter-spacing: .1em; color: rgba(185, 28, 28, .18); border: 6px solid rgba(185, 28, 28, .18); padding: 6px 22px; pointer-events: none; }
         .sa-nota { font-family: Arial, sans-serif; font-size: 11.5px; color: #5b6475; margin-top: 18px; }
