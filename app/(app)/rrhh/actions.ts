@@ -7,6 +7,7 @@ import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos
 import { fechaHoraArgentina, minutosDeHora } from "@/lib/horarios";
 import { puedeCerrarseAguinaldo } from "@/lib/aguinaldo";
 import { devueltoParcialPorVenta, devueltoPorDetalle, netearRenglon } from "@/lib/devueltoPorDetalle";
+import { armarTramos, horasDeTramos, quedoSinSalida, type MarcaDia } from "@/lib/tramos";
 
 async function requireAcceso() {
   const sesion = await obtenerSesionConPermisos();
@@ -228,39 +229,31 @@ export async function listarPlanillaHoraria(idPersona: string, periodo: string):
     .lte("fecha_hora", `${hastaStr}T23:59:59Z`)
     .order("fecha_hora", { ascending: true });
 
-  const porDia = new Map<string, { entrada?: string; salida?: string; estadoEntrada?: string; estadoSalida?: string }>();
+  // Las marcas de cada día, en orden. Las horas se suman por tramo (cada
+  // entrada con su salida): con dos turnos el mismo día no se cuentan las
+  // horas del medio. Ver lib/tramos.ts.
+  const porDia = new Map<string, MarcaDia<string>[]>();
   for (const f of fichajes ?? []) {
     const enArgentina = fechaHoraArgentina(f.fecha_hora as string);
     const fecha = enArgentina.fecha;
     if (fecha < desdeStr || fecha > hastaStr) continue;
-    const hora = enArgentina.hora;
-    const fila = porDia.get(fecha) ?? {};
-    if (f.tipo === "ENTRADA" && !fila.entrada) {
-      fila.entrada = hora;
-      fila.estadoEntrada = f.estado as string;
-    }
-    if (f.tipo === "SALIDA") {
-      fila.salida = hora;
-      fila.estadoSalida = f.estado as string;
-    }
-    porDia.set(fecha, fila);
+    const marcas = porDia.get(fecha) ?? [];
+    marcas.push({ tipo: f.tipo as string, hora: enArgentina.hora, dato: (f.estado as string) ?? "" });
+    porDia.set(fecha, marcas);
   }
 
   return [...porDia.entries()]
-    .map(([fecha, v]) => {
-      let horasTrabajadas: number | null = null;
-      if (v.entrada && v.salida) {
-        const [eh, em] = v.entrada.split(":").map(Number);
-        const [sh, sm] = v.salida.split(":").map(Number);
-        horasTrabajadas = Math.round(((sh * 60 + sm - (eh * 60 + em)) / 60) * 100) / 100;
-      }
+    .map(([fecha, marcas]) => {
+      const tramos = armarTramos(marcas);
+      const entradas = tramos.filter((t) => t.entrada);
+      const salidas = tramos.filter((t) => t.salida);
       return {
         fecha,
-        horaEntrada: v.entrada ?? null,
-        horaSalida: v.salida ?? null,
-        horasTrabajadas,
-        tardanza: v.estadoEntrada === "TARDE",
-        salidaAnticipada: v.estadoSalida === "ANTICIPADA",
+        horaEntrada: entradas[0]?.entrada?.hora ?? null,
+        horaSalida: salidas[salidas.length - 1]?.salida?.hora ?? null,
+        horasTrabajadas: horasDeTramos(tramos),
+        tardanza: entradas.some((t) => t.entrada?.dato === "TARDE"),
+        salidaAnticipada: salidas.some((t) => t.salida?.dato === "ANTICIPADA"),
       };
     })
     .sort((a, b) => b.fecha.localeCompare(a.fecha));
@@ -290,21 +283,23 @@ export async function listarFichajesPendientesSalida(): Promise<FichajePendiente
     .gte("fecha_hora", desde.toISOString())
     .order("fecha_hora", { ascending: true });
 
-  const porPersonaDia = new Map<string, { entrada?: string; salida?: string }>();
+  // Pendiente: el día terminó con una entrada sin su salida (con dos turnos,
+  // la del segundo tramo).
+  const porPersonaDia = new Map<string, MarcaDia<null>[]>();
   for (const f of fichajes ?? []) {
     const enArgentina = fechaHoraArgentina(f.fecha_hora as string);
     const clave = `${f.id_persona}|${enArgentina.fecha}`;
-    const actual = porPersonaDia.get(clave) ?? {};
-    if (f.tipo === "ENTRADA" && !actual.entrada) actual.entrada = enArgentina.hora;
-    if (f.tipo === "SALIDA") actual.salida = enArgentina.hora;
-    porPersonaDia.set(clave, actual);
+    const marcas = porPersonaDia.get(clave) ?? [];
+    marcas.push({ tipo: f.tipo as string, hora: enArgentina.hora, dato: null });
+    porPersonaDia.set(clave, marcas);
   }
 
   const hoy = fechaHoraArgentina().fecha;
   const pendientes: { idPersona: string; fecha: string; horaEntrada: string }[] = [];
-  for (const [clave, v] of porPersonaDia) {
+  for (const [clave, marcas] of porPersonaDia) {
     const [idPersona, fecha] = clave.split("|");
-    if (v.entrada && !v.salida && fecha !== hoy) pendientes.push({ idPersona, fecha, horaEntrada: v.entrada });
+    const tramos = armarTramos(marcas);
+    if (fecha !== hoy && quedoSinSalida(tramos)) pendientes.push({ idPersona, fecha, horaEntrada: tramos[tramos.length - 1].entrada!.hora });
   }
   if (pendientes.length === 0) return [];
 

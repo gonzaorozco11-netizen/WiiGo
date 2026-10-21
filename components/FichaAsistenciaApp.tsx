@@ -197,7 +197,7 @@ export default function FichaAsistenciaApp() {
           <p className="text-[10.5px] font-bold uppercase tracking-wide text-neutral-400 mb-2">Tu turno hoy</p>
           {idHorarioSeleccionado === null && (
             <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 mb-2">
-              Hoy no es tu día habitual — elegí qué turno te corresponde si viniste igual (o dejalo así si fue algo excepcional).
+              No hay un turno tuyo a esta hora. Si viniste a cubrir uno, elegilo; si fue algo excepcional, dejalo así.
             </p>
           )}
           <div className="space-y-1.5">

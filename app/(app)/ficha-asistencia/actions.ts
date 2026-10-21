@@ -133,10 +133,37 @@ export async function obtenerEstadoFicha(): Promise<EstadoFicha> {
   const esDeHoy = !!ultimoFichaje && fechaHoraArgentina(ultimoFichaje.fecha_hora as string).fecha === ahora.fecha;
   const siguienteTipo: "ENTRADA" | "SALIDA" = esDeHoy && ultimoFichaje!.tipo === "ENTRADA" ? "SALIDA" : "ENTRADA";
 
+  // El turno que viene marcado: el que corresponde a esta hora, no siempre
+  // el habitual. Si a las 17 viene a cubrir el turno tarde, viene marcado el
+  // de la tarde: si quedara marcado el de la mañana, la evaluaría contra las
+  // 9 y le saldría una llegada tarde que no es.
+  //   - Solo turnos de hoy, que todavía no terminaron, y cuya entrada es
+  //     dentro de las próximas 2 horas o ya pasó.
+  //   - Sin los que ya fichó hoy (el doble turno: a las 17 no vuelve a
+  //     ofrecer el de la mañana).
+  //   - De esos, el de entrada más cercana a ahora.
+  // Si ninguno encaja, no se marca nada (no se evalúa tardanza).
   let idHorarioSugerido: string | null = null;
   if (siguienteTipo === "ENTRADA" && persona.id_horario) {
-    const asignado = horarios.find((h) => h.id_horario === persona.id_horario);
-    if (asignado && asignado.dias_semana.includes(ahora.diaSemanaISO)) idHorarioSugerido = asignado.id_horario;
+    const { data: entradasHoy } = await supabase
+      .from("fichajes")
+      .select("id_horario, fecha_hora")
+      .eq("id_persona", persona.id_persona as string)
+      .eq("tipo", "ENTRADA")
+      .gte("fecha_hora", `${ahora.fecha}T00:00:00-03:00`);
+    const usadosHoy = new Set((entradasHoy ?? []).map((e) => e.id_horario as string | null).filter(Boolean));
+    const candidatos = horarios.filter(
+      (h) =>
+        h.dias_semana.includes(ahora.diaSemanaISO) &&
+        !usadosHoy.has(h.id_horario) &&
+        (!h.hora_salida || ahora.minutosDelDia < minutosDeHora(h.hora_salida)) &&
+        ahora.minutosDelDia >= minutosDeHora(h.hora_entrada) - 120
+    );
+    candidatos.sort((a, b) => Math.abs(minutosDeHora(a.hora_entrada) - ahora.minutosDelDia) - Math.abs(minutosDeHora(b.hora_entrada) - ahora.minutosDelDia));
+    // Su turno habitual gana si todavía corre y no lo fichó: si llega 11:30 a
+    // su turno de las 9, es una llegada tarde, no el turno de la siesta.
+    const habitual = candidatos.find((h) => h.id_horario === persona.id_horario);
+    idHorarioSugerido = habitual?.id_horario ?? candidatos[0]?.id_horario ?? null;
   }
 
   let horarioDeHoy: HorarioResumen | null = null;
@@ -344,6 +371,11 @@ export async function fichar(tipo: "ENTRADA" | "SALIDA", idHorarioElegido: strin
       .eq("id_horario", idHorarioAUsar)
       .maybeSingle();
     horario = (data ?? null) as HorarioFichaje | null;
+  }
+  // Seguro: una entrada con un turno que ya terminó (marcó el de la mañana a
+  // las 17) no se evalúa. Nunca una llegada tarde por haber elegido mal el turno.
+  if (tipo === "ENTRADA" && horario?.hora_salida && fechaHoraArgentina(ahora).minutosDelDia >= minutosDeHora(horario.hora_salida)) {
+    horario = null;
   }
 
   let estado: "A_TIEMPO" | "TARDE" | "ANTICIPADA" | "SIN_HORARIO" = "SIN_HORARIO";

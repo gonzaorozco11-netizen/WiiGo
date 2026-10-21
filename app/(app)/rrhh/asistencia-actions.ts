@@ -6,6 +6,7 @@ import { friendlyDbError } from "@/lib/errors";
 import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos";
 import { fechaHoraArgentina, minutosDeHora } from "@/lib/horarios";
 import { calcularPresentismoMes, obtenerNovedadesMes } from "@/app/(app)/rrhh/actions";
+import { armarTramos, horasDeTramos, quedoSinSalida, type MarcaDia, type Tramo } from "@/lib/tramos";
 import { EMISOR } from "@/lib/emisor";
 
 // Asistencia: la grilla del mes, persona por día.
@@ -32,6 +33,8 @@ export type CeldaAsistencia = {
   horas: number | null;
   entrada: string | null;
   salida: string | null;
+  /** Si fichó más de un turno ese día: "9:00 a 13:00", "17:00 a 21:00". */
+  tramos?: string[];
 };
 
 export type HorarioPersona = { tipo: "FIJO" | "LIBRE" | "SIN"; idHorario: string | null; texto: string };
@@ -123,23 +126,38 @@ export async function armarAsistenciaMes(periodoPedido?: string): Promise<Asiste
   for (const f of feriadosRes.data ?? []) feriados[Number((f.fecha as string).slice(8, 10))] = f.nombre as string;
   const presentismoPorPersona = new Map(presentismo.map((p) => [p.idPersona, p]));
 
-  // Fichajes por persona y día (hora argentina): la primera entrada y la
-  // última salida del día.
-  type Dia = { entrada?: string; salida?: string; tarde?: boolean };
-  const fichajesPor = new Map<string, Map<number, Dia>>();
+  // Fichajes por persona y día (hora argentina), armados en tramos: cada
+  // entrada con su salida. Con dos turnos el mismo día se suman los dos
+  // tramos, no se cuenta de la primera entrada a la última salida.
+  type Dia = { entrada?: string; salida?: string; tardes: number; horas: number | null; abierto: string | null; tramos: string[] };
+  const marcasPor = new Map<string, Map<number, MarcaDia<{ tarde: boolean }>[]>>();
   for (const f of fichajesRes.data ?? []) {
     const arg = fechaHoraArgentina(f.fecha_hora as string);
     if (arg.fecha.slice(0, 7) !== periodo) continue;
     const d = Number(arg.fecha.slice(8, 10));
-    const porDia = fichajesPor.get(f.id_persona as string) ?? new Map<number, Dia>();
-    const dia = porDia.get(d) ?? {};
-    if (f.tipo === "ENTRADA" && !dia.entrada) {
-      dia.entrada = arg.hora;
-      dia.tarde = f.estado === "TARDE" && !f.justificado;
+    const porDia = marcasPor.get(f.id_persona as string) ?? new Map<number, MarcaDia<{ tarde: boolean }>[]>();
+    const marcas = porDia.get(d) ?? [];
+    marcas.push({ tipo: f.tipo as string, hora: arg.hora, dato: { tarde: f.tipo === "ENTRADA" && f.estado === "TARDE" && !f.justificado } });
+    porDia.set(d, marcas);
+    marcasPor.set(f.id_persona as string, porDia);
+  }
+  const fichajesPor = new Map<string, Map<number, Dia>>();
+  for (const [idPersona, porDia] of marcasPor) {
+    const dias = new Map<number, Dia>();
+    for (const [d, marcas] of porDia) {
+      const tramos = armarTramos(marcas);
+      const conEntrada = tramos.filter((t) => t.entrada);
+      const ultimo = tramos[tramos.length - 1];
+      dias.set(d, {
+        entrada: conEntrada[0]?.entrada?.hora,
+        salida: [...tramos].reverse().find((t) => t.salida)?.salida?.hora,
+        tardes: conEntrada.filter((t) => t.entrada?.dato.tarde).length,
+        horas: horasDeTramos(tramos),
+        abierto: quedoSinSalida(tramos) ? ultimo.entrada!.hora : null,
+        tramos: tramos.filter((t) => t.entrada).map((t) => `${t.entrada!.hora} a ${t.salida?.hora ?? "—"}`),
+      });
     }
-    if (f.tipo === "SALIDA") dia.salida = arg.hora;
-    porDia.set(d, dia);
-    fichajesPor.set(f.id_persona as string, porDia);
+    fichajesPor.set(idPersona, dias);
   }
 
   const licenciaPor = new Map<string, Set<number>>();
@@ -185,23 +203,23 @@ export async function armarAsistenciaMes(periodoPedido?: string): Promise<Asiste
       if (licencia.has(d)) return { estado: "lic", horas: null, entrada: fichaje?.entrada ?? null, salida: fichaje?.salida ?? null };
       if (fichaje?.entrada) {
         // La llegada tarde cuenta aunque después no haya fichado la salida
-        // (igual que en el presentismo y en la planilla).
-        if (horario.tipo === "FIJO" && fichaje.tarde) tardanzas += 1;
-        let horasDia: number | null = null;
-        if (fichaje.salida) {
-          horasDia = Math.max(0, Math.round(((minutosDeHora(fichaje.salida) - minutosDeHora(fichaje.entrada)) / 60) * 10) / 10);
-          horas += horasDia;
-        }
-        if (!fichaje.salida) {
+        // (igual que en el presentismo y en la planilla). Con dos turnos,
+        // cuenta cada entrada tarde.
+        if (horario.tipo === "FIJO") tardanzas += fichaje.tardes;
+        const horasDia = fichaje.horas;
+        if (horasDia !== null) horas += horasDia;
+        const tramos = fichaje.tramos.length > 1 ? fichaje.tramos : undefined;
+        if (fichaje.abierto) {
           if (pasado) {
-            sinSalida.push({ idPersona, nombre, fecha: fechaDe(d), horaEntrada: fichaje.entrada, horaSalidaEsperada: h ? hhmm(h.hora_salida as string) : null });
-            return { estado: "sin_salida", horas: null, entrada: fichaje.entrada, salida: null };
+            sinSalida.push({ idPersona, nombre, fecha: fechaDe(d), horaEntrada: fichaje.abierto, horaSalidaEsperada: h ? hhmm(h.hora_salida as string) : null });
+            return { estado: "sin_salida", horas: horasDia, entrada: fichaje.entrada, salida: null, tramos };
           }
-          if (esHoy) trabajandoAhora.push({ nombre, desde: fichaje.entrada });
-          return { estado: "en_curso", horas: null, entrada: fichaje.entrada, salida: null };
+          if (esHoy) trabajandoAhora.push({ nombre, desde: fichaje.abierto });
+          return { estado: "en_curso", horas: horasDia, entrada: fichaje.entrada, salida: null, tramos };
         }
-        if (horario.tipo !== "FIJO") return { estado: "flex", horas: horasDia, entrada: fichaje.entrada, salida: fichaje.salida ?? null };
-        return { estado: fichaje.tarde ? "tarde" : "ok", horas: horasDia, entrada: fichaje.entrada, salida: fichaje.salida ?? null };
+        const horasRedondeadas = horasDia === null ? null : Math.round(horasDia * 10) / 10;
+        if (horario.tipo !== "FIJO") return { estado: "flex", horas: horasRedondeadas, entrada: fichaje.entrada, salida: fichaje.salida ?? null, tramos };
+        return { estado: fichaje.tardes > 0 ? "tarde" : "ok", horas: horasRedondeadas, entrada: fichaje.entrada, salida: fichaje.salida ?? null, tramos };
       }
       if (horario.tipo !== "FIJO" || !h) return { estado: "vacio", horas: null, entrada: null, salida: null };
       const trabaja = ((h.dias_semana as number[] | null) ?? []).includes(dow);
@@ -319,8 +337,8 @@ export type DiaPlanilla = {
   fecha: string;
   dia: number;
   diaSemana: number;
-  entrada: MarcaPlanilla | null;
-  salida: MarcaPlanilla | null;
+  /** Cada turno del día: entrada y salida con su firma. Casi siempre uno; dos si hizo doble turno. */
+  tramos: { entrada: MarcaPlanilla | null; salida: MarcaPlanilla | null }[];
   horas: number | null;
   tipo: "trabajo" | "tarde" | "falta" | "lic" | "feriado" | "no_trabaja" | "sin_salida" | "en_curso" | "futuro";
   obs: string;
@@ -469,24 +487,38 @@ export async function armarPlanillasAsistencia(periodoPedido: string, idPersona?
   }
   const novedadPor = new Map(novedades.map((n) => [n.idPersona, n]));
 
-  type Dia = { entrada?: MarcaPlanilla & { tarde: boolean; justificado: boolean; minutos: number }; salida?: MarcaPlanilla & { antes: boolean; minutos: number } };
-  const marcasPor = new Map<string, Map<number, Dia>>();
+  // Las marcas de cada día, en tramos (cada entrada con su salida): con dos
+  // turnos el mismo día salen las dos líneas y se suman las horas de cada una.
+  type DatoMarca = MarcaPlanilla & { tarde: boolean; justificado: boolean; antes: boolean; minutos: number };
+  type Dia = Tramo<DatoMarca>[];
+  const crudasPor = new Map<string, Map<number, MarcaDia<DatoMarca>[]>>();
   for (const f of fichajes.filas) {
     const arg = fechaHoraArgentina(f.fecha_hora);
     if (arg.fecha.slice(0, 7) !== periodo) continue;
     const d = Number(arg.fecha.slice(8, 10));
-    const porDia = marcasPor.get(f.id_persona) ?? new Map<number, Dia>();
-    const dia = porDia.get(d) ?? {};
-    const manual = /completado manual/i.test(f.usuario ?? "");
-    if (f.tipo === "ENTRADA" && !dia.entrada) {
-      dia.entrada = { hora: arg.hora, firma: f.firma ?? null, manual, tarde: f.estado === "TARDE", justificado: Boolean(f.justificado), minutos: f.minutos_diferencia ?? 0 };
-    }
-    if (f.tipo === "SALIDA") {
-      dia.salida = { hora: arg.hora, firma: f.firma ?? null, manual, antes: f.estado === "ANTICIPADA", minutos: f.minutos_diferencia ?? 0 };
-    }
-    porDia.set(d, dia);
-    marcasPor.set(f.id_persona, porDia);
+    const porDia = crudasPor.get(f.id_persona) ?? new Map<number, MarcaDia<DatoMarca>[]>();
+    const marcas = porDia.get(d) ?? [];
+    marcas.push({
+      tipo: f.tipo,
+      hora: arg.hora,
+      dato: {
+        hora: arg.hora,
+        firma: f.firma ?? null,
+        manual: /completado manual/i.test(f.usuario ?? ""),
+        tarde: f.tipo === "ENTRADA" && f.estado === "TARDE",
+        justificado: Boolean(f.justificado),
+        antes: f.tipo === "SALIDA" && f.estado === "ANTICIPADA",
+        minutos: f.minutos_diferencia ?? 0,
+      },
+    });
+    porDia.set(d, marcas);
+    crudasPor.set(f.id_persona, porDia);
   }
+  const marcasPor = new Map<string, Map<number, Dia>>();
+  for (const [idP, porDia] of crudasPor) {
+    marcasPor.set(idP, new Map([...porDia].map(([d, marcas]) => [d, armarTramos(marcas)])));
+  }
+  const soloMarca = (m: DatoMarca): MarcaPlanilla => ({ hora: m.hora, firma: m.firma, manual: m.manual });
 
   const planillas: PlanillaPersona[] = personas.map((p) => {
     const id = p.id_persona as string;
@@ -500,7 +532,7 @@ export async function armarPlanillasAsistencia(periodoPedido: string, idPersona?
       const d = i + 1;
       const fecha = fechaDe(d);
       const dow = new Date(Date.UTC(anio, mes - 1, d)).getUTCDay() || 7;
-      const fila: DiaPlanilla = { fecha, dia: d, diaSemana: dow, entrada: null, salida: null, horas: null, tipo: "trabajo", obs: "" };
+      const fila: DiaPlanilla = { fecha, dia: d, diaSemana: dow, tramos: [], horas: null, tipo: "trabajo", obs: "" };
       const futuro = hoyDia === 0 || (hoyDia !== null && d > hoyDia);
       const esHoy = hoyDia === d;
       const trabaja = diasHorario.includes(dow);
@@ -511,37 +543,43 @@ export async function armarPlanillasAsistencia(periodoPedido: string, idPersona?
       if (futuro) return { ...fila, tipo: "futuro" };
       if (licencia) return { ...fila, tipo: "lic", obs: TIPO_LICENCIA[(licencia.tipo as string) ?? "OTRO"] ?? "Licencia" };
 
-      if (marca?.entrada) {
-        const { tarde, justificado, minutos, ...entrada } = marca.entrada;
-        fila.entrada = entrada;
+      const conEntrada = (marca ?? []).filter((t) => t.entrada);
+      if (conEntrada.length > 0) {
         totales.diasTrabajados += 1;
         if (trabaja && !feriado) totales.diasEsperados += 1;
-        if (!entrada.firma && !entrada.manual) totales.sinFirma += 1;
         const notas: string[] = [];
         if (feriado) notas.push(`Feriado: ${feriado} (se paga doble)`);
         else if (!trabaja) notas.push("Día que no le tocaba");
-        if (tarde && !justificado) {
-          totales.tardanzas += 1;
-          fila.tipo = "tarde";
-          notas.push(`Llegó ${minutos} min tarde`);
-        } else if (tarde) notas.push("Tardanza justificada");
-        if (marca.salida) {
-          const { antes, minutos: minAntes, ...salida } = marca.salida;
-          fila.salida = salida;
-          if (!salida.firma && !salida.manual) totales.sinFirma += 1;
-          fila.horas = Math.round(((minutosDeHora(salida.hora) - minutosDeHora(entrada.hora)) / 60) * 100) / 100;
-          totales.horas += Math.max(0, fila.horas);
-          if (antes) {
-            totales.salidasAntes += 1;
-            notas.push(`Se fue ${minAntes} min antes`);
+        if (conEntrada.length > 1) notas.push(`${conEntrada.length} turnos`);
+        for (const t of conEntrada) {
+          const e = t.entrada!.dato;
+          if (!e.firma && !e.manual) totales.sinFirma += 1;
+          if (e.tarde && !e.justificado) {
+            totales.tardanzas += 1;
+            fila.tipo = "tarde";
+            notas.push(`Llegó ${e.minutos} min tarde (${e.hora})`);
+          } else if (e.tarde) notas.push("Tardanza justificada");
+          if (t.salida) {
+            const s = t.salida.dato;
+            if (!s.firma && !s.manual) totales.sinFirma += 1;
+            if (s.antes) {
+              totales.salidasAntes += 1;
+              notas.push(`Se fue ${s.minutos} min antes (${s.hora})`);
+            }
+            if (s.manual) notas.push("Salida cargada por administración");
           }
-          if (salida.manual) notas.push("Salida cargada por administración");
-        } else if (esHoy) {
-          fila.tipo = "en_curso";
-          notas.push("Trabajando ahora");
-        } else {
-          fila.tipo = "sin_salida";
-          notas.push("No fichó la salida");
+          fila.tramos.push({ entrada: soloMarca(e), salida: t.salida ? soloMarca(t.salida.dato) : null });
+        }
+        fila.horas = horasDeTramos(conEntrada);
+        if (fila.horas !== null) totales.horas += fila.horas;
+        if (quedoSinSalida(conEntrada)) {
+          if (esHoy) {
+            fila.tipo = "en_curso";
+            notas.push("Trabajando ahora");
+          } else {
+            fila.tipo = "sin_salida";
+            notas.push("No fichó la salida");
+          }
         }
         fila.obs = notas.join(" · ");
         return fila;

@@ -301,16 +301,20 @@ function DetalleDia({
   const [error, setError] = useState<string | null>(null);
   const titulo = `${sel.fila.nombre.split(" ")[0]} · ${NOMBRE_DIA[d.diaSemana[sel.dia - 1]]} ${sel.dia}`;
 
+  // Con dos turnos el mismo día se muestran los dos tramos y la suma de horas.
+  const dosTurnos = c.tramos && c.tramos.length > 1 ? `Hizo ${c.tramos.length} turnos: ${c.tramos.join(" y ")}` : null;
   const texto: Record<CeldaAsistencia["estado"], string> = {
-    ok: `Entró a las ${c.entrada} y salió a las ${c.salida}: ${c.horas} h.`,
-    tarde: `Llegó tarde: entró a las ${c.entrada} y salió a las ${c.salida} (${c.horas} h).`,
+    ok: dosTurnos ? `${dosTurnos}. En total ${c.horas} h.` : `Entró a las ${c.entrada} y salió a las ${c.salida}: ${c.horas} h.`,
+    tarde: dosTurnos ? `${dosTurnos}, con llegada tarde. En total ${c.horas} h.` : `Llegó tarde: entró a las ${c.entrada} y salió a las ${c.salida} (${c.horas} h).`,
     falta: "No vino y no tenía licencia. Si fue un franco o un día acordado, cargalo como licencia en su ficha.",
-    sin_salida: `Entró a las ${c.entrada} y no fichó la salida. Ese día cuenta 0 horas hasta que la cargues.`,
-    en_curso: `Entró a las ${c.entrada} y todavía está trabajando.`,
+    sin_salida: dosTurnos
+      ? `${dosTurnos}. No fichó la salida del último: ese turno cuenta 0 horas hasta que la cargues.`
+      : `Entró a las ${c.entrada} y no fichó la salida. Ese día cuenta 0 horas hasta que la cargues.`,
+    en_curso: dosTurnos ? `${dosTurnos}. Sigue trabajando.` : `Entró a las ${c.entrada} y todavía está trabajando.`,
     lic: "Estaba de vacaciones o de licencia.",
     feriado: `Feriado: ${d.feriados[sel.dia] ?? ""}.`,
     no_trabaja: "Ese día no está en su horario.",
-    flex: `Horario libre: entró a las ${c.entrada} y salió a las ${c.salida} (${c.horas} h).`,
+    flex: dosTurnos ? `Horario libre. ${dosTurnos}. En total ${c.horas} h.` : `Horario libre: entró a las ${c.entrada} y salió a las ${c.salida} (${c.horas} h).`,
     vacio: sel.fila.horario.tipo === "LIBRE" ? "Horario libre: ese día no fichó, y no cuenta como falta." : "Sin fichajes ese día.",
     futuro: "Todavía no llegó ese día.",
   };

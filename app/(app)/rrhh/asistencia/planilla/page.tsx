@@ -182,8 +182,12 @@ export default async function PlanillaAsistenciaPage({ searchParams }: { searchP
                 <tr key={f.fecha} className={CLASE_FILA[f.tipo] ?? ""}>
                   <td className="pl-num">{f.fecha.slice(8, 10)}/{f.fecha.slice(5, 7)}</td>
                   <td>{DIA[f.diaSemana]}</td>
-                  <td>{f.tipo === "futuro" ? "" : <Marca m={f.entrada} />}</td>
-                  <td>{f.tipo === "futuro" ? "" : <Marca m={f.salida} />}</td>
+                  <td>
+                    {f.tipo === "futuro" ? "" : f.tramos.length === 0 ? <Marca m={null} /> : f.tramos.map((t, i) => <div key={i}><Marca m={t.entrada} /></div>)}
+                  </td>
+                  <td>
+                    {f.tipo === "futuro" ? "" : f.tramos.length === 0 ? <Marca m={null} /> : f.tramos.map((t, i) => <div key={i}><Marca m={t.salida} /></div>)}
+                  </td>
                   <td className="pl-der pl-num">{f.horas !== null ? horas(f.horas) : f.tipo === "futuro" ? "" : "—"}</td>
                   <td className="pl-obs">{f.obs}</td>
                 </tr>
