@@ -113,7 +113,16 @@ export default function AsistenciaMes({
 
   return (
     <div className="space-y-3">
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {d.filas.some((f) => f.horario.tipo === "FIJO") && (
+          <a
+            href={`/rrhh/asistencia/planilla?mes=${periodo}`}
+            className="h-8 inline-flex items-center rounded-lg border border-neutral-200 bg-white px-3 text-xs font-semibold text-neutral-700 hover:bg-neutral-50"
+            title="Una hoja por operativo, para imprimir o guardar en PDF"
+          >
+            Planillas del mes
+          </a>
+        )}
         <SelectorMes periodo={periodo} setPeriodo={setPeriodo} />
       </div>
 
@@ -204,21 +213,27 @@ export default function AsistenciaMes({
                     {/* El nombre y el resumen del mes van juntos a la izquierda (y
                         quedan fijos al desplazar): así entra el mes entero sin
                         tener que correr la grilla para ver las horas. */}
-                    <td className="sticky left-0 z-10 bg-white pr-3 py-1 whitespace-nowrap min-w-[175px] align-top">
+                    <td className="sticky left-0 z-10 bg-white pr-3 py-1 min-w-[160px] max-w-[175px] align-top">
                       <button type="button" onClick={() => onAbrirFicha(f.idPersona)} className="text-left hover:underline">
                         <span className="block text-[13.5px] font-semibold text-neutral-900">{f.nombre}</span>
                         <span className={`block text-[11px] ${f.horario.tipo === "SIN" ? "text-amber-700" : "text-neutral-400"}`}>
                           {f.horario.tipo === "FIJO" ? f.horario.texto.split(" · ")[0] : f.horario.texto} ·{" "}
-                          {f.cobra === "POR_HORA" ? "por hora" : f.cobra === "FIJO" ? "fijo" : "sin sueldo"}
+                          {f.cobra === "POR_HORA" ? "por hora" : f.cobra === "FIJO" ? "sueldo fijo" : "sin sueldo"}
                         </span>
                       </button>
-                      <span className="flex items-center gap-1.5 mt-1 text-[11.5px] text-neutral-600 tabular-nums">
+                      <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 mt-1 text-[11.5px] text-neutral-600 tabular-nums whitespace-nowrap">
                         <b className="text-neutral-900">{f.horas % 1 === 0 ? f.horas : f.horas.toFixed(1)} h</b>
                         {f.tardanzas !== null && f.tardanzas > 0 && <span className="text-amber-700">· {f.tardanzas} tarde</span>}
                         {f.faltas !== null && f.faltas > 0 && <span className="text-red-700">· {f.faltas} {f.faltas === 1 ? "falta" : "faltas"}</span>}
                         <span className={`text-[10.5px] font-bold rounded-full px-1.5 py-px ${TONO[f.presentismo.tono]}`} title="Presentismo del mes">
                           {f.presentismo.texto}
                         </span>
+                        {/* La planilla para imprimir: solo para los de horario fijo. */}
+                        {f.horario.tipo === "FIJO" && (
+                          <a href={`/rrhh/asistencia/planilla?mes=${periodo}&persona=${f.idPersona}`} className="text-accent font-semibold hover:underline">
+                            Planilla
+                          </a>
+                        )}
                       </span>
                     </td>
                     {f.celdas.map((c, i) => {

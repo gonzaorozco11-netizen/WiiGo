@@ -5,7 +5,8 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos";
 import { fechaHoraArgentina, minutosDeHora } from "@/lib/horarios";
-import { calcularPresentismoMes } from "@/app/(app)/rrhh/actions";
+import { calcularPresentismoMes, obtenerNovedadesMes } from "@/app/(app)/rrhh/actions";
+import { EMISOR } from "@/lib/emisor";
 
 // Asistencia: la grilla del mes, persona por día.
 //
@@ -183,6 +184,9 @@ export async function armarAsistenciaMes(periodoPedido?: string): Promise<Asiste
       if (esFuturo || (hoyDia !== null && d > hoyDia)) return { estado: "futuro", horas: null, entrada: null, salida: null };
       if (licencia.has(d)) return { estado: "lic", horas: null, entrada: fichaje?.entrada ?? null, salida: fichaje?.salida ?? null };
       if (fichaje?.entrada) {
+        // La llegada tarde cuenta aunque después no haya fichado la salida
+        // (igual que en el presentismo y en la planilla).
+        if (horario.tipo === "FIJO" && fichaje.tarde) tardanzas += 1;
         let horasDia: number | null = null;
         if (fichaje.salida) {
           horasDia = Math.max(0, Math.round(((minutosDeHora(fichaje.salida) - minutosDeHora(fichaje.entrada)) / 60) * 10) / 10);
@@ -197,7 +201,6 @@ export async function armarAsistenciaMes(periodoPedido?: string): Promise<Asiste
           return { estado: "en_curso", horas: null, entrada: fichaje.entrada, salida: null };
         }
         if (horario.tipo !== "FIJO") return { estado: "flex", horas: horasDia, entrada: fichaje.entrada, salida: fichaje.salida ?? null };
-        if (fichaje.tarde) tardanzas += 1;
         return { estado: fichaje.tarde ? "tarde" : "ok", horas: horasDia, entrada: fichaje.entrada, salida: fichaje.salida ?? null };
       }
       if (horario.tipo !== "FIJO" || !h) return { estado: "vacio", horas: null, entrada: null, salida: null };
@@ -301,6 +304,302 @@ export async function sueldosSinPagarAnteriores(periodo: string): Promise<Sueldo
       neto: Number(c.neto_a_pagar ?? 0),
     };
   });
+}
+
+// ===================== PLANILLA PARA IMPRIMIR =====================
+//
+// La planilla de asistencia del mes, una hoja por operativo (los que tienen
+// horario fijo). Día por día: entrada y salida con la firma que hizo al
+// fichar, horas, y qué pasó ese día. Abajo, lo que lleva ganado, con la
+// misma cuenta que Sueldos (obtenerNovedadesMes), así los números coinciden.
+
+export type MarcaPlanilla = { hora: string; firma: string | null; manual: boolean };
+
+export type DiaPlanilla = {
+  fecha: string;
+  dia: number;
+  diaSemana: number;
+  entrada: MarcaPlanilla | null;
+  salida: MarcaPlanilla | null;
+  horas: number | null;
+  tipo: "trabajo" | "tarde" | "falta" | "lic" | "feriado" | "no_trabaja" | "sin_salida" | "en_curso" | "futuro";
+  obs: string;
+};
+
+export type PlanillaPersona = {
+  idPersona: string;
+  nombre: string;
+  puesto: string | null;
+  dni: string | null;
+  cuil: string | null;
+  fechaIngreso: string | null;
+  horario: string;
+  dias: string;
+  filas: DiaPlanilla[];
+  totales: { horas: number; diasTrabajados: number; diasEsperados: number; tardanzas: number; faltas: number; salidasAntes: number; sinFirma: number };
+  presentismo: string;
+  ganado: {
+    porHora: boolean;
+    valorHora: number;
+    sueldoFijo: number;
+    horas: number;
+    horasFeriado: number;
+    base: number;
+    presentismo: number;
+    cobraPresentismo: boolean;
+    adelantos: number;
+    aCobrar: number;
+    cerrado: boolean;
+  } | null;
+};
+
+export type PlanillasMes = {
+  periodo: string;
+  etiquetaMes: string;
+  generada: string;
+  empresa: { razonSocial: string; cuit: string; domicilio: string };
+  planillas: PlanillaPersona[];
+  faltaSqlFirma: boolean;
+};
+
+const NOMBRE_DIA = ["", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
+const TIPO_LICENCIA: Record<string, string> = {
+  VACACIONES: "Vacaciones",
+  MATERNIDAD: "Licencia por maternidad",
+  EXAMEN: "Licencia por examen",
+  PARTICULAR: "Licencia particular",
+  ENFERMEDAD: "Licencia por enfermedad",
+  OTRO: "Licencia",
+};
+
+function textoDiasLargo(dias: number[] | null) {
+  const d = [...(dias ?? [])].sort();
+  if (d.join() === "1,2,3,4,5,6") return "Lunes a sábado";
+  if (d.join() === "1,2,3,4,5") return "Lunes a viernes";
+  if (d.join() === "1,2,3,4,5,6,7") return "Todos los días";
+  return d.map((x) => NOMBRE_DIA[x]).join(", ");
+}
+
+/**
+ * Las planillas del mes: de una persona (idPersona) o de todos los
+ * operativos. Solo empleados con horario fijo: los de horario libre o sin
+ * definir no tienen planilla por ahora.
+ */
+export async function armarPlanillasAsistencia(periodoPedido: string, idPersona?: string): Promise<PlanillasMes> {
+  const permisoError = await requireAcceso();
+  if (permisoError) throw new Error(permisoError);
+
+  const supabase = getSupabaseServerClient();
+  const ahora = fechaHoraArgentina();
+  const periodoActual = ahora.fecha.slice(0, 7);
+  const periodo = /^\d{4}-\d{2}$/.test(periodoPedido) ? periodoPedido : periodoActual;
+  const [anio, mes] = periodo.split("-").map(Number);
+  const diasDelMes = new Date(Date.UTC(anio, mes, 0)).getUTCDate();
+  const hoyDia = periodo === periodoActual ? Number(ahora.fecha.slice(8, 10)) : periodo > periodoActual ? 0 : null;
+  const desde = `${periodo}-01`;
+  const hasta = `${periodo}-${String(diasDelMes).padStart(2, "0")}`;
+  const fechaDe = (d: number) => `${periodo}-${String(d).padStart(2, "0")}`;
+
+  let consultaPersonas = supabase
+    .from("personas")
+    .select("id_persona, nombre, apellido, dni, cuil, fecha_ingreso, id_horario")
+    .eq("estado", "ACTIVO")
+    .eq("tipo", "EMPLEADO")
+    .not("id_horario", "is", null)
+    .order("nombre", { ascending: true });
+  if (idPersona) consultaPersonas = consultaPersonas.eq("id_persona", idPersona);
+  const { data: personas, error: errorPersonas } = await consultaPersonas;
+  if (errorPersonas) throw new Error(friendlyDbError(errorPersonas));
+
+  const base: Omit<PlanillasMes, "planillas" | "faltaSqlFirma"> = {
+    periodo,
+    etiquetaMes: `${MESES[mes - 1]} ${anio}`,
+    generada: ahora.fecha.split("-").reverse().join("/"),
+    empresa: { razonSocial: EMISOR.razonSocial, cuit: EMISOR.cuit, domicilio: EMISOR.domicilioComercial },
+  };
+  if (!personas || personas.length === 0) return { ...base, planillas: [], faltaSqlFirma: false };
+
+  const ids = personas.map((p) => p.id_persona as string);
+
+  // Los fichajes del mes con la firma. Si falta sql/fichajes-firma.sql, se
+  // traen sin firma y la planilla avisa.
+  type Fichaje = { id_persona: string; tipo: string; fecha_hora: string; estado: string | null; minutos_diferencia: number | null; justificado: boolean | null; usuario: string | null; firma?: string | null };
+  async function traerFichajes(conFirma: boolean) {
+    const filas: Fichaje[] = [];
+    const columnas = `id_persona, tipo, fecha_hora, estado, minutos_diferencia, justificado, usuario${conFirma ? ", firma" : ""}`;
+    for (let desdeFila = 0; ; desdeFila += 1000) {
+      const { data, error } = await supabase
+        .from("fichajes")
+        .select(columnas)
+        .in("id_persona", ids)
+        .gte("fecha_hora", `${desde}T00:00:00-03:00`)
+        .lte("fecha_hora", `${hasta}T23:59:59-03:00`)
+        .order("fecha_hora", { ascending: true })
+        .range(desdeFila, desdeFila + 999);
+      if (error) return { filas, error };
+      filas.push(...((data ?? []) as unknown as Fichaje[]));
+      if (!data || data.length < 1000) return { filas, error: null };
+    }
+  }
+
+  const [fichajesConFirma, horariosRes, licenciasRes, feriadosRes, asignacionesRes, puestosRes, novedades] = await Promise.all([
+    traerFichajes(true),
+    supabase.from("horarios_trabajo").select("id_horario, nombre, hora_entrada, hora_salida, dias_semana"),
+    supabase.from("licencias").select("id_persona, fecha_desde, fecha_hasta, tipo").in("id_persona", ids).lte("fecha_desde", hasta).gte("fecha_hasta", desde),
+    supabase.from("feriados").select("fecha, nombre").gte("fecha", desde).lte("fecha", hasta),
+    supabase.from("persona_puestos").select("id_persona, id_puesto, es_principal").in("id_persona", ids),
+    supabase.from("puestos").select("id_puesto, nombre"),
+    hoyDia === 0 ? Promise.resolve([]) : obtenerNovedadesMes(periodo),
+  ]);
+  let fichajes = fichajesConFirma;
+  let faltaSqlFirma = false;
+  if (fichajes.error) {
+    faltaSqlFirma = /firma/.test(fichajes.error.message);
+    fichajes = await traerFichajes(false);
+    if (fichajes.error) throw new Error(friendlyDbError(fichajes.error));
+  }
+
+  const horarioPorId = new Map((horariosRes.data ?? []).map((h) => [h.id_horario as string, h]));
+  const feriados = new Map((feriadosRes.data ?? []).map((f) => [f.fecha as string, f.nombre as string]));
+  const nombrePuesto = new Map((puestosRes.data ?? []).map((p) => [p.id_puesto as string, p.nombre as string]));
+  const puestoPor = new Map<string, string>();
+  for (const a of asignacionesRes.data ?? []) {
+    const nombre = nombrePuesto.get(a.id_puesto as string);
+    if (nombre && (a.es_principal || !puestoPor.has(a.id_persona as string))) puestoPor.set(a.id_persona as string, nombre);
+  }
+  const novedadPor = new Map(novedades.map((n) => [n.idPersona, n]));
+
+  type Dia = { entrada?: MarcaPlanilla & { tarde: boolean; justificado: boolean; minutos: number }; salida?: MarcaPlanilla & { antes: boolean; minutos: number } };
+  const marcasPor = new Map<string, Map<number, Dia>>();
+  for (const f of fichajes.filas) {
+    const arg = fechaHoraArgentina(f.fecha_hora);
+    if (arg.fecha.slice(0, 7) !== periodo) continue;
+    const d = Number(arg.fecha.slice(8, 10));
+    const porDia = marcasPor.get(f.id_persona) ?? new Map<number, Dia>();
+    const dia = porDia.get(d) ?? {};
+    const manual = /completado manual/i.test(f.usuario ?? "");
+    if (f.tipo === "ENTRADA" && !dia.entrada) {
+      dia.entrada = { hora: arg.hora, firma: f.firma ?? null, manual, tarde: f.estado === "TARDE", justificado: Boolean(f.justificado), minutos: f.minutos_diferencia ?? 0 };
+    }
+    if (f.tipo === "SALIDA") {
+      dia.salida = { hora: arg.hora, firma: f.firma ?? null, manual, antes: f.estado === "ANTICIPADA", minutos: f.minutos_diferencia ?? 0 };
+    }
+    porDia.set(d, dia);
+    marcasPor.set(f.id_persona, porDia);
+  }
+
+  const planillas: PlanillaPersona[] = personas.map((p) => {
+    const id = p.id_persona as string;
+    const h = horarioPorId.get(p.id_horario as string);
+    const diasHorario = ((h?.dias_semana as number[] | null) ?? []) as number[];
+    const licencias = (licenciasRes.data ?? []).filter((l) => l.id_persona === id);
+    const porDia = marcasPor.get(id) ?? new Map<number, Dia>();
+    const totales = { horas: 0, diasTrabajados: 0, diasEsperados: 0, tardanzas: 0, faltas: 0, salidasAntes: 0, sinFirma: 0 };
+
+    const filas: DiaPlanilla[] = Array.from({ length: diasDelMes }, (_, i) => {
+      const d = i + 1;
+      const fecha = fechaDe(d);
+      const dow = new Date(Date.UTC(anio, mes - 1, d)).getUTCDay() || 7;
+      const fila: DiaPlanilla = { fecha, dia: d, diaSemana: dow, entrada: null, salida: null, horas: null, tipo: "trabajo", obs: "" };
+      const futuro = hoyDia === 0 || (hoyDia !== null && d > hoyDia);
+      const esHoy = hoyDia === d;
+      const trabaja = diasHorario.includes(dow);
+      const feriado = feriados.get(fecha);
+      const licencia = licencias.find((l) => fecha >= (l.fecha_desde as string) && fecha <= (l.fecha_hasta as string));
+      const marca = porDia.get(d);
+
+      if (futuro) return { ...fila, tipo: "futuro" };
+      if (licencia) return { ...fila, tipo: "lic", obs: TIPO_LICENCIA[(licencia.tipo as string) ?? "OTRO"] ?? "Licencia" };
+
+      if (marca?.entrada) {
+        const { tarde, justificado, minutos, ...entrada } = marca.entrada;
+        fila.entrada = entrada;
+        totales.diasTrabajados += 1;
+        if (trabaja && !feriado) totales.diasEsperados += 1;
+        if (!entrada.firma && !entrada.manual) totales.sinFirma += 1;
+        const notas: string[] = [];
+        if (feriado) notas.push(`Feriado: ${feriado} (se paga doble)`);
+        else if (!trabaja) notas.push("Día que no le tocaba");
+        if (tarde && !justificado) {
+          totales.tardanzas += 1;
+          fila.tipo = "tarde";
+          notas.push(`Llegó ${minutos} min tarde`);
+        } else if (tarde) notas.push("Tardanza justificada");
+        if (marca.salida) {
+          const { antes, minutos: minAntes, ...salida } = marca.salida;
+          fila.salida = salida;
+          if (!salida.firma && !salida.manual) totales.sinFirma += 1;
+          fila.horas = Math.round(((minutosDeHora(salida.hora) - minutosDeHora(entrada.hora)) / 60) * 100) / 100;
+          totales.horas += Math.max(0, fila.horas);
+          if (antes) {
+            totales.salidasAntes += 1;
+            notas.push(`Se fue ${minAntes} min antes`);
+          }
+          if (salida.manual) notas.push("Salida cargada por administración");
+        } else if (esHoy) {
+          fila.tipo = "en_curso";
+          notas.push("Trabajando ahora");
+        } else {
+          fila.tipo = "sin_salida";
+          notas.push("No fichó la salida");
+        }
+        fila.obs = notas.join(" · ");
+        return fila;
+      }
+
+      if (!trabaja) return { ...fila, tipo: "no_trabaja", obs: "No trabaja" };
+      if (feriado) return { ...fila, tipo: "feriado", obs: `Feriado: ${feriado}` };
+      if (esHoy) return { ...fila, tipo: "en_curso", obs: "Hoy" };
+      totales.diasEsperados += 1;
+      totales.faltas += 1;
+      return { ...fila, tipo: "falta", obs: "Faltó" };
+    });
+    totales.horas = Math.round(totales.horas * 100) / 100;
+
+    const n = novedadPor.get(id);
+    const presentismo = !n
+      ? "—"
+      : !n.cobraPresentismo
+        ? "No cobra"
+        : n.presentismoResultado === "COMPLETO"
+          ? "Completo"
+          : n.presentismoResultado === "PARCIAL"
+            ? "Parcial"
+            : "Perdido";
+    const cierre = n?.cierre && !n.cierre.es_estimado ? n.cierre : null;
+    const ganado: PlanillaPersona["ganado"] = n
+      ? {
+          porHora: n.modalidad === "POR_HORA",
+          valorHora: n.valorHora ?? 0,
+          sueldoFijo: n.sueldoBase,
+          horas: n.horasTrabajadasMes ?? 0,
+          horasFeriado: n.horasFeriadoMes ?? 0,
+          base: cierre ? cierre.sueldo_base : n.montoBase,
+          presentismo: cierre ? cierre.incentivo_presentismo : n.incentivoPresentismoPreview,
+          cobraPresentismo: n.cobraPresentismo,
+          adelantos: cierre ? cierre.adelantos : n.adelantos,
+          aCobrar: cierre ? cierre.neto_a_pagar : n.montoBase + n.incentivoPresentismoPreview - n.adelantos,
+          cerrado: Boolean(cierre),
+        }
+      : null;
+
+    return {
+      idPersona: id,
+      nombre: [p.nombre, p.apellido].filter(Boolean).join(" "),
+      puesto: puestoPor.get(id) ?? null,
+      dni: (p.dni as string | null) ?? null,
+      cuil: (p.cuil as string | null) ?? null,
+      fechaIngreso: p.fecha_ingreso ? (p.fecha_ingreso as string).split("-").reverse().join("/") : null,
+      horario: h ? `${h.nombre} · ${corto(h.hora_entrada as string)} a ${corto(h.hora_salida as string)}` : "—",
+      dias: textoDiasLargo(diasHorario),
+      filas,
+      totales,
+      presentismo,
+      ganado,
+    };
+  });
+
+  return { ...base, planillas, faltaSqlFirma };
 }
 
 /**

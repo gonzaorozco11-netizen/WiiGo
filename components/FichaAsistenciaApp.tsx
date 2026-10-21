@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { obtenerEstadoFicha, fichar, guardarMotivoTardanza, type EstadoFicha, type ResultadoFichaje } from "@/app/(app)/ficha-asistencia/actions";
+import PadFirma from "@/components/PadFirma";
 
 export default function FichaAsistenciaApp() {
   const [estado, setEstado] = useState<EstadoFicha | null>(null);
@@ -13,6 +14,7 @@ export default function FichaAsistenciaApp() {
   const [motivo, setMotivo] = useState("");
   const [guardandoMotivo, setGuardandoMotivo] = useState(false);
   const [motivoGuardado, setMotivoGuardado] = useState(false);
+  const [firma, setFirma] = useState<string | null>(null);
 
   function recargar() {
     setCargando(true);
@@ -32,9 +34,10 @@ export default function FichaAsistenciaApp() {
     setFichando(true);
     setMotivo("");
     setMotivoGuardado(false);
-    fichar(estado.siguienteTipo, estado.siguienteTipo === "ENTRADA" ? idHorarioSeleccionado : null)
+    fichar(estado.siguienteTipo, estado.siguienteTipo === "ENTRADA" ? idHorarioSeleccionado : null, estado.pideFirma ? firma : null)
       .then((res) => {
         setResultado(res);
+        setFirma(null);
         // Si llegó tarde, se le deja tiempo para escribir el motivo — no
         // vuelve sola. El resto de los casos sí vuelve sola.
         if (!res.error && res.estado !== "TARDE") {
@@ -147,6 +150,7 @@ export default function FichaAsistenciaApp() {
   }
 
   const esEntrada = estado?.siguienteTipo === "ENTRADA";
+  const pideFirma = Boolean(estado?.pideFirma);
 
   return (
     <div className="max-w-md mx-auto text-center py-16">
@@ -203,13 +207,23 @@ export default function FichaAsistenciaApp() {
 
       {confirmando && (
         <p className={`text-sm font-semibold rounded-lg px-3 py-2 mb-4 ${esEntrada ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
-          ¿Fichar {esEntrada ? "entrada" : "salida"}? Tocá de nuevo para confirmar.
+          {pideFirma
+            ? `Firmá para fichar la ${esEntrada ? "entrada" : "salida"} y tocá Confirmar.`
+            : `¿Fichar ${esEntrada ? "entrada" : "salida"}? Tocá de nuevo para confirmar.`}
         </p>
+      )}
+
+      {/* La firma: queda pegada a este fichaje y sale en la planilla de
+          asistencia del mes, al lado de la hora. */}
+      {confirmando && pideFirma && (
+        <div className="mb-5 text-left">
+          <PadFirma onCambio={setFirma} />
+        </div>
       )}
 
       <button
         onClick={() => (confirmando ? handleFichar() : setConfirmando(true))}
-        disabled={fichando}
+        disabled={fichando || (confirmando && pideFirma && !firma)}
         className={`w-44 h-44 rounded-full text-white font-bold text-sm mx-auto flex flex-col items-center justify-center gap-1.5 shadow-lg disabled:opacity-60 ${
           esEntrada ? "bg-gradient-to-br from-emerald-500 to-emerald-700" : "bg-gradient-to-br from-amber-500 to-amber-700"
         } ${confirmando ? "ring-4 ring-offset-2 " + (esEntrada ? "ring-emerald-300" : "ring-amber-300") : ""}`}
@@ -219,7 +233,13 @@ export default function FichaAsistenciaApp() {
       </button>
 
       {confirmando && !fichando && (
-        <button onClick={() => setConfirmando(false)} className="block mx-auto mt-4 text-xs font-semibold text-neutral-400 hover:text-neutral-600">
+        <button
+          onClick={() => {
+            setConfirmando(false);
+            setFirma(null);
+          }}
+          className="block mx-auto mt-4 text-xs font-semibold text-neutral-400 hover:text-neutral-600"
+        >
           Cancelar
         </button>
       )}

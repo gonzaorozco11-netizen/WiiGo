@@ -45,6 +45,11 @@ export type EstadoFicha = {
   // elegir, tiene que ser el mismo para que el par entrada/salida sea
   // coherente).
   horarioDeHoy: HorarioResumen | null;
+  /**
+   * Si tiene que firmar al fichar: los que tienen horario fijo (los
+   * operativos). La firma sale en su planilla de asistencia del mes.
+   */
+  pideFirma: boolean;
 };
 
 // El usuario que ficha tiene que estar vinculado a una Persona en
@@ -53,7 +58,7 @@ export type EstadoFicha = {
 export async function obtenerEstadoFicha(): Promise<EstadoFicha> {
   const persona = await personaActual();
   if (!persona) {
-    return { persona: null, sinPersonaVinculada: true, siguienteTipo: "ENTRADA", horarios: [], idHorarioSugerido: null, horarioDeHoy: null };
+    return { persona: null, sinPersonaVinculada: true, siguienteTipo: "ENTRADA", horarios: [], idHorarioSugerido: null, horarioDeHoy: null, pideFirma: false };
   }
 
   const supabase = getSupabaseServerClient();
@@ -98,7 +103,13 @@ export async function obtenerEstadoFicha(): Promise<EstadoFicha> {
     horarios: horarios.map(({ dias_semana: _dias_semana, ...h }) => h),
     idHorarioSugerido,
     horarioDeHoy,
+    pideFirma: Boolean(persona.id_horario),
   };
+}
+
+/** Una firma válida: PNG en base64 y de tamaño razonable (las del recuadro pesan unos pocos KB). */
+function firmaValida(firma: string | null | undefined): firma is string {
+  return typeof firma === "string" && firma.length < 200_000 && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(firma);
 }
 
 export type ResultadoFichaje = {
@@ -120,9 +131,13 @@ export type ResultadoFichaje = {
 // tardanza, solo se registra la hora). Para una SALIDA se ignora: siempre
 // se usa el mismo horario que quedó guardado en la entrada de hoy, para que
 // el par sea coherente.
-export async function fichar(tipo: "ENTRADA" | "SALIDA", idHorarioElegido: string | null): Promise<ResultadoFichaje> {
+//
+// firma: la que hizo con el dedo en el recuadro. Se exige a quien tiene
+// horario fijo (ver pideFirma).
+export async function fichar(tipo: "ENTRADA" | "SALIDA", idHorarioElegido: string | null, firma?: string | null): Promise<ResultadoFichaje> {
   const persona = await personaActual();
   if (!persona) return { error: "Tu usuario no está vinculado a ninguna persona — avisale a administración." };
+  if (persona.id_horario && !firmaValida(firma)) return { error: "Falta tu firma. Firmá en el recuadro y volvé a confirmar." };
 
   const supabase = getSupabaseServerClient();
   const ahora = new Date();
@@ -167,19 +182,25 @@ export async function fichar(tipo: "ENTRADA" | "SALIDA", idHorarioElegido: strin
     }
   }
 
-  const { data: fichajeCreado, error } = await supabase
+  const fila: Record<string, unknown> = {
+    id_persona: persona.id_persona,
+    tipo,
+    fecha_hora: ahora.toISOString(),
+    minutos_diferencia: minutos || null,
+    estado,
+    id_horario: idHorarioAUsar,
+  };
+  let { data: fichajeCreado, error } = await supabase
     .from("fichajes")
-    .insert({
-      id_persona: persona.id_persona,
-      tipo,
-      fecha_hora: ahora.toISOString(),
-      minutos_diferencia: minutos || null,
-      estado,
-      id_horario: idHorarioAUsar,
-    })
+    .insert(firmaValida(firma) ? { ...fila, firma } : fila)
     .select("id_fichaje")
     .single();
-  if (error) return { error: error.message };
+  // Si todavía no se corrió sql/fichajes-firma.sql, se ficha igual sin la
+  // firma: la hora nunca se pierde por una columna que falta.
+  if (error && /firma/.test(error.message)) {
+    ({ data: fichajeCreado, error } = await supabase.from("fichajes").insert(fila).select("id_fichaje").single());
+  }
+  if (error || !fichajeCreado) return { error: error?.message ?? "No se pudo fichar." };
 
   // Recordatorio de caja: si esta persona tiene un turno de caja abierto a
   // su nombre, se lo avisamos justo al fichar la salida — es el momento en
