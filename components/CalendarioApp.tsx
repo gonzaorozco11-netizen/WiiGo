@@ -35,7 +35,7 @@ import { ETIQUETA_PLAN } from "@/lib/planesMarca";
 // respuesta; abajo el formulario para cargar lo nuestro y la lista de lo que
 // viene con quién se anotó en cada cosa.
 
-export default function CalendarioApp({ datos }: { datos: CalendarioAdmin }) {
+export default function CalendarioApp({ datos, soloLectura = false }: { datos: CalendarioAdmin; soloLectura?: boolean }) {
   const router = useRouter();
   const recargar = () => router.refresh();
   // El día que se está mirando en el almanaque, con lo que hay abajo. Mismo
@@ -47,8 +47,9 @@ export default function CalendarioApp({ datos }: { datos: CalendarioAdmin }) {
       <div className="cal-cab">
         <h1 className="cal-titulo">Calendario</h1>
         <p className="cal-sub">
-          Lo que cargues acá lo ven las marcas en su portal el mismo día. Los feriados también:
-          sin eso, una marca ve un martes en cero y piensa que algo anda mal.
+          {soloLectura
+            ? "Los eventos, las fechas comerciales y los días especiales del local, con las marcas que participan. Así sabés qué viene."
+            : "Lo que cargues acá lo ven las marcas en su portal el mismo día. Los feriados también: sin eso, una marca ve un martes en cero y piensa que algo anda mal."}
         </p>
       </div>
 
@@ -72,12 +73,12 @@ export default function CalendarioApp({ datos }: { datos: CalendarioAdmin }) {
             {datos.proximos.length === 0 ? (
               <p className="cal-vacio">Todavía no hay nada cargado.</p>
             ) : (
-              datos.proximos.map((e) => <Evento key={e.idEvento} e={e} onListo={recargar} />)
+              datos.proximos.map((e) => <Evento key={e.idEvento} e={e} onListo={recargar} soloLectura={soloLectura} />)
             )}
           </div>
         </div>
 
-        <Formulario marcas={datos.marcas} onListo={recargar} />
+        {!soloLectura && <Formulario marcas={datos.marcas} onListo={recargar} />}
       </div>
 
       <Almanaque
@@ -332,7 +333,7 @@ function Propuesta({ e, onListo }: { e: EventoAdmin; onListo: () => void }) {
   );
 }
 
-function Evento({ e, onListo }: { e: EventoAdmin; onListo: () => void }) {
+function Evento({ e, onListo, soloLectura = false }: { e: EventoAdmin; onListo: () => void; soloLectura?: boolean }) {
   const [pendiente, empezar] = useTransition();
   const confirmadas = e.marcas.filter((m) => m.estado === "CONFIRMADA").length;
 
@@ -352,6 +353,14 @@ function Evento({ e, onListo }: { e: EventoAdmin; onListo: () => void }) {
         </div>
       </div>
 
+      {/* De qué se trata: sobre todo para el equipo del local, que se entera acá. */}
+      {(e.descripcion || e.trae) && (
+        <div style={{ fontSize: 13, color: "#525252", margin: "6px 0 2px", lineHeight: 1.45 }}>
+          {e.descripcion && <p style={{ margin: 0 }}>{e.descripcion}</p>}
+          {e.trae && <p style={{ margin: "4px 0 0" }}>Trae: {e.trae}</p>}
+        </div>
+      )}
+
       {e.alcance !== "AVISO" && (
         <div className="cal-marcas">
           <p style={{ fontSize: 12, color: "#737373", marginBottom: 4 }}>
@@ -366,7 +375,9 @@ function Evento({ e, onListo }: { e: EventoAdmin; onListo: () => void }) {
               <div className="cal-marca" key={m.idMarca}>
                 <span className={`cal-medalla ${m.plan}`}>{ETIQUETA_PLAN[m.plan].toUpperCase()}</span>
                 <span className="nom">{m.nombre}</span>
-                {m.estado === "ANOTADA" ? (
+                {m.estado === "ANOTADA" && soloLectura ? (
+                  <span className="est esp">Anotada</span>
+                ) : m.estado === "ANOTADA" ? (
                   <>
                     <button
                       type="button"

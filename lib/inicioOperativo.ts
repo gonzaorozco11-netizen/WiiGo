@@ -172,6 +172,10 @@ export async function armarInicioOperativo(
     });
   if (puede("ventas"))
     agregar({ clave: "devolucion", titulo: "Devolución o cambio", detalle: "Buscar la venta y devolver", href: "/ventas", icono: "↩️", badge: null, deshabilitado: false });
+  if (puede("aprender"))
+    agregar({ clave: "aprender", titulo: "Aprender", detalle: "Conocé los productos para asesorar mejor", href: "/aprender", icono: "🧠", badge: null, deshabilitado: false });
+  if (puede("calendario"))
+    agregar({ clave: "calendario", titulo: "Calendario", detalle: "Eventos, fechas y lo que hacen las marcas", href: "/calendario", icono: "📅", badge: null, deshabilitado: false });
   if (puede("turnos"))
     agregar({ clave: "caja", titulo: "Mi caja", detalle: "Ver tu turno de caja y sus ventas", href: "/turnos", icono: "💵", badge: null, deshabilitado: false });
 

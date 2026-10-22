@@ -19,6 +19,10 @@ export const PANTALLAS_DISPONIBLES: PantallaDisponible[] = [
   { clave: "carteles", label: "Carteles de góndola", grupo: "Catálogo" },
   { clave: "objetivos", label: "Objetivos del asesor", grupo: "Catálogo" },
   { clave: "catalogo-asesor", label: "Catálogo asesor", grupo: "Catálogo" },
+  // Estudiar los productos (lo aprobado) y, aparte, revisar/aprobar lo que
+  // escribe la IA (eso es del Dueño, se puede delegar).
+  { clave: "aprender", label: "Aprender (estudiar los productos)", grupo: "Catálogo" },
+  { clave: "aprender-revisar", label: "Aprender: revisar y aprobar explicaciones", grupo: "Catálogo" },
   // Compras está partido en tres a propósito: cada etapa la hace una persona
   // distinta (administración pide, el local recibe, administración costea).
   // Separarlas permite darle a cada una solo su pantalla — y que la operativa
@@ -79,5 +83,8 @@ export const PANTALLAS_DISPONIBLES: PantallaDisponible[] = [
   // se daba cuenta porque su lista es `null` y ve todo igual — el mismo modo
   // de falla que tuvieron las tres pantallas de Compras con sub-ruta.
   { clave: "calendario", label: "Calendario", grupo: "Local" },
+  // Ver el calendario lo puede cualquiera con "calendario"; cargar, aprobar y
+  // repartir lugares, el Dueño o quien tenga esta.
+  { clave: "calendario-editar", label: "Calendario: cargar y aprobar eventos", grupo: "Local" },
   { clave: "organizacion", label: "Organización", grupo: "Equipo" },
 ];

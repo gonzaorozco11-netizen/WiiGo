@@ -21,13 +21,17 @@ const MEDIA_HORA = 30;
 export async function avisosCajaYLlamados(supabase: SupabaseClient): Promise<{ urgentes: ItemTablero[]; seguimiento: ItemTablero[] }> {
   const ahora = fechaHoraArgentina();
   const periodo = ahora.fecha.slice(0, 7);
-  const [locales, abiertos, horarios, sinContar, sanciones] = await Promise.all([
+  const [locales, abiertos, horarios, sinContar, sanciones, aprender] = await Promise.all([
     supabase.from("locales").select("id_local, nombre").eq("estado", "ACTIVO"),
     supabase.from("turnos").select("*").eq("estado", "ABIERTO"),
     supabase.from("horarios_trabajo").select("nombre, hora_entrada, hora_salida, dias_semana").eq("estado", "ACTIVO"),
     supabase.from("turnos").select("id_turno", { count: "exact", head: true }).eq("estado", "CERRADO").not("recaudacion", "is", null).is("recuento", null),
     supabase.from("sanciones").select("id_persona, tipo, se_nego, firmado_en, creado_en, estado").eq("periodo", periodo).eq("estado", "VIGENTE"),
+    supabase.from("aprender_fichas").select("id_ficha", { count: "exact", head: true }).not("borrador", "is", null),
   ]);
+
+  // Aprender: explicaciones que escribió la IA esperando tu aprobación.
+  const paraRevisar = aprender.error ? 0 : aprender.count ?? 0;
 
   const urgentes: ItemTablero[] = [];
   const seguimiento: ItemTablero[] = [];
@@ -71,6 +75,16 @@ export async function avisosCajaYLlamados(supabase: SupabaseClient): Promise<{ u
         });
       }
     }
+  }
+
+  if (paraRevisar > 0) {
+    seguimiento.push({
+      color: "azul",
+      titulo: `${paraRevisar} ${paraRevisar === 1 ? "explicación" : "explicaciones"} de Aprender para revisar`,
+      detalle: "Leelas y aprobalas para que el equipo las estudie",
+      valor: String(paraRevisar),
+      href: "/aprender/revisar",
+    });
   }
 
   // Sobres de recaudación sin contar.

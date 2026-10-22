@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionConPermisos } from "@/lib/permisos";
+import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import { fechaHoraArgentina } from "@/lib/horarios";
 import { armarAlmanaque, type MesAlmanaque } from "@/lib/eventos";
 import type { AlcanceEvento, EstadoParticipacion, OrdenEntrada, TipoEvento } from "@/lib/eventos";
@@ -25,6 +26,23 @@ async function sesionInterna() {
   // Un usuario de marca no entra acá ni con la URL a mano.
   if (!sesion || sesion.rol === "marca") return null;
   return sesion;
+}
+
+/**
+ * Cargar, aprobar y repartir lugares: el Dueño o quien tenga la pantalla
+ * "calendario-editar". El resto del equipo (por ejemplo los operativos, que
+ * tienen "calendario") lo ve sin poder tocar nada.
+ */
+async function sesionEditora() {
+  const sesion = await sesionInterna();
+  if (!sesion) return null;
+  if (sesion.rol === "admin") return sesion;
+  return puedeVerPantalla(await obtenerSesionConPantallas(), "calendario-editar") ? sesion : null;
+}
+
+/** Si la persona puede cargar y aprobar eventos (para la pantalla). */
+export async function puedeEditarCalendario(): Promise<boolean> {
+  return Boolean(await sesionEditora());
 }
 
 export type MarcaEnEvento = {
@@ -171,7 +189,7 @@ export async function guardarEvento(datos: {
   /** Solo con alcance INVITACION. */
   invitadas: string[];
 }): Promise<{ error: string | null }> {
-  const sesion = await sesionInterna();
+  const sesion = await sesionEditora();
   if (!sesion) return { error: "No tenés permiso para esto." };
 
   const nombre = datos.nombre.trim();
@@ -240,7 +258,7 @@ export async function guardarEvento(datos: {
 
 /** Aprobar lo que propuso una marca: pasa a PUBLICADO y la marca queda adentro. */
 export async function aprobarPropuesta(idEvento: string): Promise<{ error: string | null }> {
-  const sesion = await sesionInterna();
+  const sesion = await sesionEditora();
   if (!sesion) return { error: "No tenés permiso para esto." };
 
   const supabase = getSupabaseServerClient();
@@ -281,7 +299,7 @@ export async function rechazarPropuesta(
   idEvento: string,
   motivo: string
 ): Promise<{ error: string | null }> {
-  const sesion = await sesionInterna();
+  const sesion = await sesionEditora();
   if (!sesion) return { error: "No tenés permiso para esto." };
   if (!motivo.trim()) return { error: "Escribí por qué no se puede." };
 
@@ -309,7 +327,7 @@ export async function resolverMarca(
   entra: boolean,
   motivo = ""
 ): Promise<{ error: string | null }> {
-  const sesion = await sesionInterna();
+  const sesion = await sesionEditora();
   if (!sesion) return { error: "No tenés permiso para esto." };
 
   const { error } = await getSupabaseServerClient()

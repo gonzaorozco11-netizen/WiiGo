@@ -69,6 +69,9 @@ const GROUPS: NavGroup[] = [
       { href: "/carteles", label: "Carteles de góndola" },
       { href: "/objetivos", label: "Objetivos del asesor" },
       { href: "/catalogo-asesor", label: "Catálogo asesor" },
+      // Estudiar los productos, y aprobar lo que escribe la IA para eso.
+      { href: "/aprender", label: "Aprender" },
+      { href: "/aprender/revisar", label: "Aprender: revisar" },
     ],
   },
   {

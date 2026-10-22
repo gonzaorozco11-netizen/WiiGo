@@ -22,6 +22,7 @@ const ICONO: Record<string, string> = {
   "/stock": "📦",
   "/turnos": "💵",
   "/rrhh/legajos": "📝",
+  "/aprender/revisar": "🧠",
 };
 
 export default function MisTareasApp({ tablero }: { tablero: Tablero }) {

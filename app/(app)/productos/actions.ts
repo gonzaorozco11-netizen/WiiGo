@@ -8,7 +8,30 @@ import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 import { esCodigoInterno, limpiarCodigoBarras } from "@/lib/codigos";
 import { generarSkuVariante, generarCodigoBarrasVariante } from "@/lib/codigosVariante";
 import { guardarCosto } from "@/lib/costosMarca";
+import { hayClaveIA } from "@/lib/ia";
+import { actualizarFichaProducto, actualizarFichaTema } from "@/lib/aprender";
+import { after } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
+
+/**
+ * Aprender: después de guardar un producto, la IA escribe (o actualiza) su
+ * explicación como borrador para que Gonzalo la apruebe, y la de su tema si
+ * todavía no tiene. Corre después de responder: guardar el producto nunca
+ * espera a la IA, y si la IA falla el producto queda guardado igual.
+ */
+function explicarParaAprender(idProducto: string) {
+  if (!hayClaveIA()) return;
+  after(async () => {
+    try {
+      const supabase = getSupabaseServerClient();
+      await actualizarFichaProducto(supabase, idProducto);
+      const { data } = await supabase.from("productos").select("id_subcategoria").eq("id_producto", idProducto).maybeSingle();
+      if (data?.id_subcategoria) await actualizarFichaTema(supabase, data.id_subcategoria as string);
+    } catch (e) {
+      console.error("Aprender: no se pudo escribir la explicación de", idProducto, e);
+    }
+  });
+}
 
 async function usuarioActual() {
   const cookieStore = await cookies();
@@ -482,6 +505,7 @@ export async function createProducto(formData: FormData): Promise<{ error: strin
     await sincronizarVariantes(supabase, inserted.id_producto, idMarca, formData, idLocalInicial, usuario);
     await guardarContenidoAsesor(supabase, inserted.id_producto, formData);
     await guardarCostoDeLaMarca(supabase, formData, inserted.id_producto, idMarca);
+    explicarParaAprender(inserted.id_producto as string);
 
     revalidatePath("/productos");
     revalidatePath("/stock");
@@ -514,6 +538,7 @@ export async function updateProducto(id: string, formData: FormData): Promise<{ 
     await sincronizarVariantes(supabase, id, idMarca, formData, null, null);
     await guardarContenidoAsesor(supabase, id, formData);
     await guardarCostoDeLaMarca(supabase, formData, id, idMarca);
+    explicarParaAprender(id);
 
     revalidatePath("/productos");
     revalidatePath(`/marcas/${idMarca}`);

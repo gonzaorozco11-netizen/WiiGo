@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import ModalLegajo from "@/components/ModalLegajo";
 import LlamadosPersona from "@/components/LlamadosPersona";
+import { progresoAprender } from "@/app/(app)/aprender/actions";
 import {
   obtenerFichaPersona,
   actualizarFichaPersona,
@@ -66,6 +67,32 @@ function antiguedad(ingreso: string | null) {
 const card = "bg-white border border-neutral-200 rounded-xl p-4";
 const titulo = "text-[11px] font-bold uppercase tracking-wider text-neutral-400";
 const linkChico = "text-xs font-semibold text-accent hover:underline";
+
+/** Cuánto estudió en Aprender y cómo le va en las preguntas de repaso. */
+function AprenderEnLegajo({ idPersona }: { idPersona: string }) {
+  const [p, setP] = useState<Awaited<ReturnType<typeof progresoAprender>> | undefined>(undefined);
+  useEffect(() => {
+    progresoAprender(idPersona).then(setP);
+  }, [idPersona]);
+  if (!p || p.total === 0) return null;
+  const pct = p.preguntas ? Math.round((p.bien / p.preguntas) * 100) : null;
+  return (
+    <section className={card}>
+      <p className={titulo}>Aprender</p>
+      <p className="text-[13.5px] text-neutral-800 mt-1">
+        Repasó <b>{p.repasados}</b> de {p.total} productos
+        {pct !== null ? (
+          <>
+            {" "}
+            · en las preguntas le fue bien en el <b>{pct}%</b> ({p.bien} de {p.preguntas})
+          </>
+        ) : (
+          " · todavía no hizo preguntas de repaso"
+        )}
+      </p>
+    </section>
+  );
+}
 
 function Dato({ etiqueta, valor, falta, tono }: { etiqueta: string; valor: string | null; falta?: boolean; tono?: "ojo" }) {
   return (
@@ -216,6 +243,7 @@ export default function FichaPersona({
           )}
 
           {f && pestana === "resumen" && <PestanaResumen f={f} onEditar={() => setEditando(true)} />}
+          {f && pestana === "resumen" && esEmpleado && <AprenderEnLegajo idPersona={f.idPersona} />}
           {f && pestana === "sueldos" && (esExterno ? <PestanaHonorarios f={f} /> : <PestanaSueldos f={f} />)}
           {f && pestana === "vacaciones" && (
             <PestanaVacaciones
