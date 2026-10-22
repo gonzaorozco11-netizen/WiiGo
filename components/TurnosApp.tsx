@@ -276,7 +276,9 @@ export default function TurnosApp({
             )}
           </div>
 
-          {cargandoResumen || !resumen ? (
+          {/* La caja de otra persona: se ve quién la tiene, pero no sus números
+              ni sus ventas (cada uno ve solo lo suyo; administración ve todo). */}
+          {!puedoCerrar ? null : cargandoResumen || !resumen ? (
             <p className="text-sm text-neutral-400 mb-4">Calculando ventas del turno...</p>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5 mb-4">
@@ -353,6 +355,7 @@ export default function TurnosApp({
             </div>
           )}
 
+          {puedoCerrar && (
           <div className="bg-white border border-neutral-200 rounded-xl overflow-hidden mb-6">
             <div className="flex items-baseline justify-between px-4 py-3 border-b border-neutral-100">
               <h2 className="text-sm font-bold text-neutral-900">Ventas de este turno</h2>
@@ -366,19 +369,22 @@ export default function TurnosApp({
               </div>
             )}
           </div>
+          )}
         </>
       )}
 
       <div className="bg-white border border-neutral-200 rounded-xl overflow-hidden">
         <div className="flex items-baseline justify-between px-4 py-3 border-b border-neutral-100">
-          <h2 className="text-sm font-bold text-neutral-900">Historial de turnos</h2>
+          <h2 className="text-sm font-bold text-neutral-900">{puedeAdministrar ? "Historial de turnos" : "Mis arqueos"}</h2>
           <span className="text-xs text-neutral-400">Del más reciente al más viejo — tocá una fila para ver el detalle</span>
         </div>
 
         {cargandoHistorial ? (
           <p className="text-sm text-neutral-400 text-center py-8">Cargando...</p>
         ) : historial.length === 0 ? (
-          <p className="text-sm text-neutral-400 text-center py-8">Todavía no hay turnos cerrados en este local.</p>
+          <p className="text-sm text-neutral-400 text-center py-8">
+            {puedeAdministrar ? "Todavía no hay turnos cerrados en este local." : "Todavía no cerraste ninguna caja."}
+          </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

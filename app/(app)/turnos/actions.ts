@@ -339,17 +339,27 @@ export async function cerrarTurno(
   }
 }
 
+// El historial de arqueos. Administración ve todos; cada uno del equipo ve
+// solo los suyos: los que abrió o cerró él (pedido de Gonzalo, 2026-10-22).
 export async function historialTurnos(idLocal: string) {
   const supabase = getSupabaseServerClient();
+  const admin = await puedeAdministrarCaja();
   const { data, error } = await supabase
     .from("turnos")
     .select("*")
     .eq("id_local", idLocal)
     .eq("estado", "CERRADO")
     .order("fecha_cierre", { ascending: false })
-    .limit(50);
+    .limit(admin ? 50 : 300);
   if (error) throw new Error(friendlyDbError(error));
-  return data ?? [];
+  if (admin) return data ?? [];
+  const sesion = await sesionActual();
+  if (!sesion) return [];
+  const esSuyo = (t: Record<string, unknown>) =>
+    t.id_usuario_apertura === sesion.idUsuario ||
+    t.id_usuario_cierre === sesion.idUsuario ||
+    (Boolean(sesion.nombre) && (t.usuario_apertura === sesion.nombre || t.usuario_cierre === sesion.nombre));
+  return (data ?? []).filter(esSuyo).slice(0, 50);
 }
 
 /**

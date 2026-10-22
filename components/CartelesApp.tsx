@@ -364,7 +364,50 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
         )}
       </div>
 
+      {aImprimir.length > 0 && <EjemploCartel item={aImprimir[0]} medida={medida} impreso={impreso} />}
+
       <HojaDeCarteles items={aImprimir} medida={medida} impreso={impreso} grilla={grilla} />
+    </div>
+  );
+}
+
+/**
+ * Un cartel en grande, arriba de la hoja: la hoja entera se ve chica y no se
+ * llega a leer cómo queda (pedido de Gonzalo). Solo en pantalla: al imprimir
+ * sale únicamente la hoja.
+ */
+function EjemploCartel({
+  item,
+  medida,
+  impreso,
+}: {
+  item: ItemCartel;
+  medida: { ancho: number; alto: number };
+  impreso: { ancho: number; alto: number };
+}) {
+  const escala = Math.min(2.2, 140 / medida.ancho);
+  return (
+    <div className="mt-6 rounded-xl border border-neutral-200 bg-neutral-50 p-4 print:hidden">
+      <p className="text-xs font-bold uppercase tracking-wider text-neutral-400 mb-3">Así sale cada cartel (ampliado para verlo mejor)</p>
+      <div className="mx-auto" style={{ width: `${medida.ancho * escala}mm`, height: `${medida.alto * escala}mm`, maxWidth: "100%" }}>
+        <div
+          className="bg-white shadow-sm"
+          style={{
+            width: `${medida.ancho}mm`,
+            height: `${medida.alto}mm`,
+            transform: `scale(${escala})`,
+            transformOrigin: "top left",
+            outline: ".2mm dashed #d4d4d4",
+            display: "grid",
+            placeItems: "center",
+          }}
+        >
+          <Cartel item={item} ancho={impreso.ancho} alto={impreso.alto} />
+        </div>
+      </div>
+      <p className="text-xs text-neutral-500 mt-3 text-center">
+        {item.nombre} · tamaño real {medida.ancho} × {medida.alto} mm
+      </p>
     </div>
   );
 }

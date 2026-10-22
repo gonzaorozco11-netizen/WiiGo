@@ -830,12 +830,47 @@ function ConfigurarImpresion({
         )}
       </p>
 
+      {aImprimir.length > 0 && <EjemploEtiqueta item={aImprimir[0]} medida={papel === "plancha" ? plancha : rollo} />}
+
       {papel === "plancha" ? (
         <HojaDeEtiquetas plancha={plancha} desde={desde} items={aImprimir} ajuste={ajuste} />
       ) : (
         <TiraDeEtiquetas rollo={rollo} items={aImprimir} />
       )}
     </>
+  );
+}
+
+/**
+ * Una etiqueta en grande, arriba de la hoja: la hoja entera se ve chica y no
+ * se llega a leer cómo queda (pedido de Gonzalo). Solo en pantalla: al
+ * imprimir sale únicamente la hoja.
+ */
+function EjemploEtiqueta({ item, medida }: { item: ItemCodigo; medida: { ancho: number; alto: number } }) {
+  // Hasta 3 veces, sin pasar de unos 12 cm de ancho en pantalla.
+  const escala = Math.min(3, 120 / medida.ancho);
+  return (
+    <div className="mt-6 rounded-xl border border-neutral-200 bg-neutral-50 p-4 print:hidden">
+      <p className="text-xs font-bold uppercase tracking-wider text-neutral-400 mb-3">Así sale cada etiqueta (ampliada para verla mejor)</p>
+      <div className="mx-auto" style={{ width: `${medida.ancho * escala}mm`, height: `${medida.alto * escala}mm`, maxWidth: "100%" }}>
+        <div
+          className="bg-white shadow-sm"
+          style={{
+            width: `${medida.ancho}mm`,
+            height: `${medida.alto}mm`,
+            transform: `scale(${escala})`,
+            transformOrigin: "top left",
+            outline: ".2mm dashed #d4d4d4",
+            overflow: "hidden",
+          }}
+        >
+          <Etiqueta item={item} medida={medida} />
+        </div>
+      </div>
+      <p className="text-xs text-neutral-500 mt-3 text-center">
+        {nombreParaEtiqueta(item)} · tamaño real {String(medida.ancho).replace(".", ",")} × {String(medida.alto).replace(".", ",")} mm
+      </p>
+    </div>
   );
 }
 

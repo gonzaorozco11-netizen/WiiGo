@@ -159,7 +159,7 @@ function InicioLocal({ tablero }: { tablero: Tablero }) {
       </Link>
 
       {o.accesos.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+        <div className={`grid grid-cols-2 gap-2.5 ${o.accesos.length > 6 ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}>
           {o.accesos.map((a) => {
             const contenido = (
               <>

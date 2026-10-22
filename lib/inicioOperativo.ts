@@ -48,7 +48,7 @@ export async function armarInicioOperativo(
 
   const { data: usuario } = await supabase.from("usuarios").select("id_persona").eq("id_usuario", sesion.idUsuario).maybeSingle();
   const idPersona = (usuario?.id_persona as string | null) ?? null;
-  const [personaRes, fichajesRes, ventasRes, pedidosRes] = await Promise.all([
+  const [personaRes, fichajesRes, ventasRes, pedidosRes, cartelesRes] = await Promise.all([
     idPersona ? supabase.from("personas").select("id_local, id_horario").eq("id_persona", idPersona).maybeSingle() : Promise.resolve({ data: null }),
     idPersona
       ? supabase.from("fichajes").select("tipo, fecha_hora, id_horario").eq("id_persona", idPersona).gte("fecha_hora", inicioDeHoy).order("fecha_hora", { ascending: true })
@@ -59,7 +59,12 @@ export async function armarInicioOperativo(
     puede("cobros-efectivo")
       ? supabase.from("ventas").select("id_venta", { count: "exact", head: true }).eq("estado", "PENDIENTE_PAGO")
       : Promise.resolve({ count: 0 }),
+    // Carteles con el precio viejo puesto: los que hay que cambiar en la góndola.
+    puede("carteles")
+      ? supabase.from("tareas_etiqueta").select("id_tarea", { count: "exact", head: true }).in("estado", ["PENDIENTE", "VENCIDA"])
+      : Promise.resolve({ count: 0 }),
   ]);
+  const cartelesPorCambiar = Math.max(("count" in cartelesRes ? cartelesRes.count ?? 0 : 0), pendientes.etiquetas);
   const persona = personaRes.data as { id_local: string | null; id_horario: string | null } | null;
   const fichajes = (fichajesRes.data ?? []) as { tipo: string; fecha_hora: string; id_horario: string | null }[];
 
@@ -137,14 +142,19 @@ export async function armarInicioOperativo(
     agregar({ clave: "cobrar", titulo: "Cobrar pedidos", detalle: "Los que armaron en el tótem y pagan en caja", href: "/cobros-efectivo", icono: "📲", badge: pedidos || null, deshabilitado: !cajaAbierta });
   if (puede("compras-recepcion"))
     agregar({ clave: "recibir", titulo: "Recibir mercadería", detalle: "Cuando llega un pedido de una marca", href: "/compras/recepcion", icono: "📥", badge: pendientes.recibir || null, badgeTono: "ambar", deshabilitado: false });
-  if (puede("codigos") || puede("carteles"))
+  // Dos accesos, uno por pantalla (pedido de Gonzalo): las etiquetas de
+  // código de barras y los carteles de precio de góndola. Las etiquetas por
+  // cambiar (precios nuevos) son de los carteles.
+  if (puede("codigos"))
+    agregar({ clave: "codigos", titulo: "Códigos de barras", detalle: "Imprimir las etiquetas con el código de cada producto", href: "/codigos", icono: "🏷️", badge: null, deshabilitado: false });
+  if (puede("carteles"))
     agregar({
-      clave: "etiquetas",
-      titulo: "Etiquetas y carteles",
-      detalle: "Imprimir códigos de barras y precios de góndola",
-      href: puede("codigos") ? "/codigos" : "/carteles",
-      icono: "🏷️",
-      badge: pendientes.etiquetas || null,
+      clave: "carteles",
+      titulo: "Carteles de precios",
+      detalle: "Imprimir y actualizar los precios de góndola",
+      href: "/carteles",
+      icono: "💲",
+      badge: cartelesPorCambiar || null,
       badgeTono: "ambar",
       deshabilitado: false,
     });
@@ -165,5 +175,5 @@ export async function armarInicioOperativo(
   if (puede("turnos"))
     agregar({ clave: "caja", titulo: "Mi caja", detalle: "Ver tu turno de caja y sus ventas", href: "/turnos", icono: "💵", badge: null, deshabilitado: false });
 
-  return { principal, estado, accesos: accesos.slice(0, 6), ventasHoy: idsVenta.length, productosHoy };
+  return { principal, estado, accesos, ventasHoy: idsVenta.length, productosHoy };
 }
