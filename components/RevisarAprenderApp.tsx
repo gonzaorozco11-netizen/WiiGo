@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   escribirExplicacion,
   aprobarExplicacion,
+  aprobarVarias,
   descartarBorrador,
   type EstadoRevision,
   type FichaParaRevisar,
@@ -121,13 +122,77 @@ export default function RevisarAprenderApp({ estado }: { estado: EstadoRevision 
       {estado.pendientes.length === 0 ? (
         <p className="text-sm text-neutral-400 text-center py-10 bg-white border border-neutral-200 rounded-xl">No hay nada para revisar.</p>
       ) : (
-        <div className="space-y-3">
-          {estado.pendientes.map((f) => (
-            <TarjetaRevision key={f.idFicha} f={f} onListo={() => router.refresh()} />
+        <div className="space-y-5">
+          {agrupar(estado.pendientes).map(([grupo, fichas]) => (
+            <GrupoRevision key={grupo} grupo={grupo} fichas={fichas} onListo={() => router.refresh()} />
           ))}
         </div>
       )}
     </div>
+  );
+}
+
+/** Por tema, en el orden en que llegaron: primero la introducción del tema. */
+function agrupar(fichas: FichaParaRevisar[]): [string, FichaParaRevisar[]][] {
+  const grupos = new Map<string, FichaParaRevisar[]>();
+  for (const f of fichas) grupos.set(f.grupo, [...(grupos.get(f.grupo) ?? []), f]);
+  return [...grupos.entries()]
+    .map(([g, fs]) => [g, fs.sort((a, b) => (a.tipo === b.tipo ? a.titulo.localeCompare(b.titulo, "es") : a.tipo === "TEMA" ? -1 : 1))] as [string, FichaParaRevisar[]])
+    .sort((a, b) => a[0].localeCompare(b[0], "es"));
+}
+
+/** Un tema: sus explicaciones cerradas, y un botón para aprobarlas todas juntas. */
+function GrupoRevision({ grupo, fichas, onListo }: { grupo: string; fichas: FichaParaRevisar[]; onListo: () => void }) {
+  const [abierto, setAbierto] = useState(false);
+  const [aprobando, setAprobando] = useState(false);
+  const [confirmar, setConfirmar] = useState(false);
+  return (
+    <section className="bg-neutral-50 border border-neutral-200 rounded-2xl p-3 space-y-2">
+      <div className="flex flex-wrap items-center gap-2 px-1">
+        <button type="button" onClick={() => setAbierto(!abierto)} className="text-[15px] font-semibold text-neutral-900 text-left">
+          {abierto ? "▾" : "▸"} {grupo}
+        </button>
+        <span className="text-xs text-neutral-500">
+          {fichas.length} para revisar
+        </span>
+        <span className="ml-auto flex items-center gap-2">
+          {confirmar ? (
+            <>
+              <span className="text-xs text-neutral-600">¿Ya las leíste? Se aprueban tal como están.</span>
+              <button type="button" onClick={() => setConfirmar(false)} className="text-xs text-neutral-500 px-2">
+                No
+              </button>
+              <button
+                type="button"
+                disabled={aprobando}
+                onClick={() => {
+                  setAprobando(true);
+                  aprobarVarias(fichas.map((f) => f.idFicha)).finally(() => {
+                    setAprobando(false);
+                    setConfirmar(false);
+                    onListo();
+                  });
+                }}
+                className="text-xs font-bold text-white bg-emerald-600 rounded-lg px-3 py-1.5"
+              >
+                {aprobando ? "Aprobando…" : "Sí, aprobar"}
+              </button>
+            </>
+          ) : (
+            <button type="button" onClick={() => setConfirmar(true)} className="text-xs font-bold text-emerald-700 border border-emerald-300 bg-white rounded-lg px-3 py-1.5">
+              ✓ Aprobar las {fichas.length} de este tema
+            </button>
+          )}
+        </span>
+      </div>
+      {abierto && (
+        <div className="space-y-2">
+          {fichas.map((f) => (
+            <TarjetaRevision key={f.idFicha} f={f} onListo={onListo} />
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -173,6 +238,7 @@ function TarjetaRevision({ f, onListo }: { f: FichaParaRevisar; onListo: () => v
   const [contenido, setContenido] = useState<Record<string, unknown>>({ ...(f.borrador as Record<string, unknown>) });
   const [ocupado, setOcupado] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [abierta, setAbierta] = useState(false);
   const campos = (f.tipo === "PRODUCTO" ? CAMPOS_PRODUCTO : CAMPOS_TEMA) as [string, string][];
   const preguntas = (contenido.preguntas as FichaProducto["preguntas"] | undefined) ?? [];
 
@@ -183,6 +249,33 @@ function TarjetaRevision({ f, onListo }: { f: FichaParaRevisar; onListo: () => v
     setOcupado(null);
     if (res.error) setError(res.error);
     else onListo();
+  }
+
+  // Cerrada: el título y un resumen, para recorrer rápido.
+  if (!abierta) {
+    const resumen = (contenido.paraQueSirve as string) ?? (contenido.queEs as string) ?? "";
+    return (
+      <div className="bg-white border border-neutral-200 rounded-xl px-4 py-3 flex flex-wrap items-center gap-3">
+        <button type="button" onClick={() => setAbierta(true)} className="min-w-0 flex-1 text-left">
+          <span className="block text-sm font-semibold text-neutral-900">
+            {f.tipo === "TEMA" && typeof contenido.icono === "string" ? `${contenido.icono} ` : ""}
+            {f.titulo}
+          </span>
+          <span className="block text-xs text-neutral-500 line-clamp-2">{resumen}</span>
+        </button>
+        <button type="button" onClick={() => setAbierta(true)} className="text-xs font-semibold text-accent">
+          Leer y editar
+        </button>
+        <button
+          type="button"
+          disabled={Boolean(ocupado)}
+          onClick={() => hacer("aprobar", () => aprobarExplicacion(f.idFicha, contenido as FichaProducto | FichaTema))}
+          className="text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg px-3 py-1.5"
+        >
+          {ocupado === "aprobar" ? "…" : "✓ Aprobar"}
+        </button>
+      </div>
+    );
   }
 
   return (
@@ -238,6 +331,9 @@ function TarjetaRevision({ f, onListo }: { f: FichaParaRevisar; onListo: () => v
       )}
       {error && <p className="text-sm text-red-600">{error}</p>}
       <div className="flex flex-wrap items-center gap-2 justify-end">
+        <button type="button" onClick={() => setAbierta(false)} className="mr-auto text-xs font-semibold text-neutral-500">
+          Cerrar
+        </button>
         <button type="button" disabled={Boolean(ocupado)} onClick={() => hacer("descartar", () => descartarBorrador(f.idFicha))} className="text-xs font-semibold text-neutral-400 hover:text-red-600 px-2">
           Descartar
         </button>

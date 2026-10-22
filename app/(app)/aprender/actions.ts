@@ -134,6 +134,8 @@ export type FichaParaRevisar = {
   id: string;
   titulo: string;
   subtitulo: string;
+  /** El tema al que pertenece, para agruparlas en la revisión. */
+  grupo: string;
   borrador: FichaProducto | FichaTema | null;
   aprobado: boolean;
   error: string | null;
@@ -174,6 +176,7 @@ export async function estadoRevision(): Promise<EstadoRevision> {
       id: (esProducto ? f.id_producto : f.id_subcategoria) as string,
       titulo: esProducto ? ((p?.nombre as string) ?? "Producto") : `Tema: ${nombreSub.get(f.id_subcategoria as string) ?? "Tema"}`,
       subtitulo: esProducto ? `${nombreMarca.get(p?.id_marca as string) ?? ""} · ${nombreSub.get(p?.id_subcategoria as string) ?? "sin tema"}` : "Introducción del tema",
+      grupo: (esProducto ? nombreSub.get(p?.id_subcategoria as string) : nombreSub.get(f.id_subcategoria as string)) ?? "Otros productos",
       borrador: (f.borrador as FichaProducto | FichaTema | null) ?? null,
       aprobado: Boolean(f.aprobado),
       error: (f.error as string | null) ?? null,
@@ -223,6 +226,25 @@ export async function aprobarExplicacion(idFicha: string, contenido: FichaProduc
   if (error) return { error: error.message };
   revalidatePath("/aprender");
   return { error: null };
+}
+
+/** Aprueba varias de una (por ejemplo todo un tema), tal como las escribió la IA. */
+export async function aprobarVarias(idsFicha: string[]): Promise<{ error: string | null; aprobadas: number }> {
+  const sesion = await sesionQueRevisa();
+  if (!sesion) return { error: "Solo administración revisa Aprender.", aprobadas: 0 };
+  const supabase = getSupabaseServerClient();
+  const { data: filas, error } = await supabase.from("aprender_fichas").select("id_ficha, borrador").in("id_ficha", idsFicha).not("borrador", "is", null);
+  if (error) return { error: error.message, aprobadas: 0 };
+  let aprobadas = 0;
+  for (const f of filas ?? []) {
+    const r = await supabase
+      .from("aprender_fichas")
+      .update({ aprobado: f.borrador, borrador: null, aprobado_por: sesion.nombre, aprobado_en: new Date().toISOString(), error: null })
+      .eq("id_ficha", f.id_ficha as string);
+    if (!r.error) aprobadas++;
+  }
+  revalidatePath("/aprender");
+  return { error: null, aprobadas };
 }
 
 export async function descartarBorrador(idFicha: string): Promise<{ error: string | null }> {
