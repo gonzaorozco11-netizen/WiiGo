@@ -79,6 +79,8 @@ const GROUPS: NavGroup[] = [
     // se mudó a Compras → Recepción.
     items: [
       { href: "/stock", label: "Stock" },
+      // Solo consulta (precio y cuánto hay), para el equipo del local.
+      { href: "/stock/consulta", label: "Precio y stock" },
       // Cuánto tiene que haber, no cuánto hay. Al lado de Stock porque se
       // miran juntas.
       { href: "/stock/objetivos", label: "Mínimos y objetivos" },

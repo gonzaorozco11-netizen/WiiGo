@@ -30,6 +30,9 @@ export const PANTALLAS_DISPONIBLES: PantallaDisponible[] = [
   // nota de crédito baja la cuenta corriente y el crédito fiscal.
   { clave: "compras-reclamos", label: "Reclamos", grupo: "Compras" },
   { clave: "stock", label: "Stock", grupo: "Stock" },
+  // Solo para mirar precio y cuánto hay, sin poder ajustar nada: es la que
+  // se le da al equipo del local (Stock permite ajustar cantidades).
+  { clave: "stock-consulta", label: "Precio y stock (solo consulta)", grupo: "Stock" },
   // Define cuánto se repone de cada producto, así que toca la relación con la
   // marca: por eso es asignable pero no se da sola con "Stock".
   { clave: "stock-objetivos", label: "Mínimos y objetivos", grupo: "Stock" },

@@ -148,10 +148,18 @@ export async function armarInicioOperativo(
       badgeTono: "ambar",
       deshabilitado: false,
     });
-  // Solo con la pantalla Stock (que también permite ajustar cantidades: se
-  // habilita a propósito, no se asume).
-  if (puede("stock"))
-    agregar({ clave: "stock", titulo: "Precio y stock", detalle: "Buscar un producto: cuánto sale y cuánto hay", href: "/stock", icono: "🔎", badge: null, deshabilitado: false });
+  // La consulta de solo lectura (stock-consulta); si no la tiene pero tiene
+  // Stock (que además permite ajustar), va a Stock.
+  if (puede("stock-consulta") || puede("stock"))
+    agregar({
+      clave: "stock",
+      titulo: "Precio y stock",
+      detalle: "Buscar un producto: cuánto sale y cuánto hay",
+      href: puede("stock-consulta") ? "/stock/consulta" : "/stock",
+      icono: "🔎",
+      badge: null,
+      deshabilitado: false,
+    });
   if (puede("ventas"))
     agregar({ clave: "devolucion", titulo: "Devolución o cambio", detalle: "Buscar la venta y devolver", href: "/ventas", icono: "↩️", badge: null, deshabilitado: false });
   if (puede("turnos"))

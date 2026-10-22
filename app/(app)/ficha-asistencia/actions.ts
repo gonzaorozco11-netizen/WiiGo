@@ -133,19 +133,12 @@ export async function obtenerEstadoFicha(): Promise<EstadoFicha> {
   const esDeHoy = !!ultimoFichaje && fechaHoraArgentina(ultimoFichaje.fecha_hora as string).fecha === ahora.fecha;
   const siguienteTipo: "ENTRADA" | "SALIDA" = esDeHoy && ultimoFichaje!.tipo === "ENTRADA" ? "SALIDA" : "ENTRADA";
 
-  // El turno que viene marcado: el que corresponde a esta hora, no siempre
-  // el habitual. Si a las 17 viene a cubrir el turno tarde, viene marcado el
-  // de la tarde: si quedara marcado el de la mañana, la evaluaría contra las
-  // 9 y le saldría una llegada tarde que no es.
-  //   - Solo turnos de hoy, que todavía no terminaron, sin los que ya fichó
-  //     hoy (el doble turno: a las 17 no vuelve a ofrecer el de la mañana).
-  //   - Su turno habitual: desde 2 horas antes de la entrada hasta que
-  //     termina (si llega 11:30 a su turno de las 9, es llegada tarde).
-  //   - Otro turno (viene a cubrir): solo si ficha cerca de su entrada, de 2
-  //     horas antes a 1 hora después.
-  // Si ninguno encaja, queda "Hora puntual": viene por algo suelto (por
-  // ejemplo, una hora a las 15). Se cuentan las horas, sin tardanza ni
-  // salida antes de hora.
+  // El turno que viene marcado:
+  //   - Por defecto, su turno habitual (aunque sea otra hora: si ya terminó,
+  //     la entrada no se evalúa). Ella puede elegir otro o "Hora puntual".
+  //   - Doble turno: si ya fichó su turno hoy, el otro turno que corresponde
+  //     a esta hora: de hoy, que no terminó, sin los ya fichados, y con la
+  //     entrada de 2 horas antes a 1 hora después. Si no hay, hora puntual.
   let idHorarioSugerido: string | null = null;
   if (siguienteTipo === "ENTRADA" && persona.id_horario) {
     const { data: entradasHoy } = await supabase
@@ -164,10 +157,15 @@ export async function obtenerEstadoFicha(): Promise<EstadoFicha> {
         (h.id_horario === persona.id_horario || ahora.minutosDelDia <= minutosDeHora(h.hora_entrada) + 60)
     );
     candidatos.sort((a, b) => Math.abs(minutosDeHora(a.hora_entrada) - ahora.minutosDelDia) - Math.abs(minutosDeHora(b.hora_entrada) - ahora.minutosDelDia));
-    // Su turno habitual gana si todavía corre y no lo fichó: si llega 11:30 a
-    // su turno de las 9, es una llegada tarde, no el turno de la siesta.
-    const habitual = candidatos.find((h) => h.id_horario === persona.id_horario);
-    idHorarioSugerido = habitual?.id_horario ?? candidatos[0]?.id_horario ?? null;
+    // Pedido de Gonzalo (2026-10-22): por defecto viene marcado SU turno, el
+    // que tiene definido, para que no se equivoquen; la hora puntual es cada
+    // tanto y la elige ella. Si su turno ya terminó a esta hora, la entrada
+    // igual no se evalúa (ver el seguro en fichar()), así que nunca sale una
+    // llegada tarde injusta.
+    // La excepción es el doble turno: si ya fichó su turno hoy, viene marcado
+    // el otro turno que corresponde a esta hora (o la hora puntual si no hay).
+    const habitualDisponible = !usadosHoy.has(persona.id_horario as string) && horarios.some((h) => h.id_horario === persona.id_horario);
+    idHorarioSugerido = habitualDisponible ? (persona.id_horario as string) : candidatos[0]?.id_horario ?? null;
   }
 
   let horarioDeHoy: HorarioResumen | null = null;
