@@ -2,7 +2,7 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import { fechaHoraArgentina } from "@/lib/horarios";
 import { ESTADOS_ABIERTOS } from "@/lib/estadosOrden";
-import { devueltoParcialPorVenta } from "@/lib/devueltoPorDetalle";
+import { armarInicioOperativo, type InicioOperativo } from "@/lib/inicioOperativo";
 import { armarInicioDueno, type InicioDueno } from "@/lib/inicioDueno";
 import { avisosCajaYLlamados } from "@/lib/avisosCaja";
 
@@ -44,6 +44,8 @@ export type Tablero = {
   /** El negocio de un vistazo. Solo para el Dueño; null para el resto. */
   dueno: InicioDueno | null;
   errorDueno: string | null;
+  /** El inicio del local (botón grande + accesos rápidos). Para el equipo, no para el Dueño. */
+  operativo: InicioOperativo | null;
   nombre: string;
   fecha: string;
   urgentes: ItemTablero[];
@@ -406,15 +408,9 @@ export async function armarTablero(): Promise<Tablero | null> {
 
   const filasVentas = ("data" in ventasHoy ? ventasHoy.data : []) ?? [];
   if ((puede("ventas") || puede("pos")) && !esAdmin) {
-    // Sin lo devuelto: una devolución parcial deja la venta PAGADA con su
-    // total entero (ver lib/devueltoPorDetalle.ts).
-    const devuelto = await devueltoParcialPorVenta(supabase, filasVentas.map((v) => v.id_venta as string));
-    const neto = (v: { id_venta: string; total: number | null }) =>
-      Math.max((v.total ?? 0) - (devuelto.get(v.id_venta) ?? 0), 0);
-    const total = filasVentas.reduce((a, v) => a + neto(v), 0);
-    const efectivo = filasVentas.filter((v) => v.medio_pago === "EFECTIVO").reduce((a, v) => a + neto(v), 0);
-    kpis.push({ etiqueta: "Ventas de hoy", valor: pesos(total), pie: plural(filasVentas.length, "ticket", "tickets") });
-    kpis.push({ etiqueta: "Cobrado en efectivo", valor: pesos(efectivo), pie: "hoy" });
+    // Sin montos para el equipo (pedido de Gonzalo): cuántas ventas, no
+    // cuánta plata entró.
+    kpis.push({ etiqueta: "Ventas de hoy", valor: String(filasVentas.length), pie: filasVentas.length === 1 ? "venta" : "ventas" });
   }
 
   if (puede("aprobaciones") && !esAdmin) {
@@ -438,9 +434,24 @@ export async function armarTablero(): Promise<Tablero | null> {
     }
   }
 
+  // El inicio del local para el equipo: botón grande con lo que toca ahora y
+  // los accesos de todos los días. Si falla, el inicio sale igual.
+  let operativo: InicioOperativo | null = null;
+  if (!esAdmin && (puede("pos") || puede("ficha-asistencia"))) {
+    try {
+      operativo = await armarInicioOperativo(supabase, { idUsuario: sesion.idUsuario, nombre: sesion.nombre }, puede, {
+        recibir: n(ordenesPendientes) + n(ordenesProveedor),
+        etiquetas: n(etiquetas),
+      });
+    } catch (e) {
+      console.error("No se pudo armar el inicio del local:", e);
+    }
+  }
+
   return {
     dueno,
     errorDueno,
+    operativo,
     nombre: sesion.nombre,
     fecha: new Date(`${hoyISO}T12:00:00-03:00`).toLocaleDateString("es-AR", {
       weekday: "long",
