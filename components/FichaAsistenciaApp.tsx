@@ -11,6 +11,7 @@ import {
   type CajaFicha,
 } from "@/app/(app)/ficha-asistencia/actions";
 import { abrirTurno } from "@/app/(app)/turnos/actions";
+import { logout } from "@/app/login/actions";
 import PadFirma from "@/components/PadFirma";
 import ArqueoCaja from "@/components/ArqueoCaja";
 
@@ -25,7 +26,7 @@ import ArqueoCaja from "@/components/ArqueoCaja";
 
 const pesos = (n: number) => `$${Math.round(n).toLocaleString("es-AR")}`;
 
-export default function FichaAsistenciaApp() {
+export default function FichaAsistenciaApp({ antesDeSalir = false }: { antesDeSalir?: boolean }) {
   const [estado, setEstado] = useState<EstadoFicha | null>(null);
   const [cargando, setCargando] = useState(true);
   const [fichando, setFichando] = useState(false);
@@ -71,8 +72,10 @@ export default function FichaAsistenciaApp() {
     setCajaHecha(false);
     setCajaOmitida(false);
     if (res.error) return;
-    // Vuelve sola solo si no queda nada por hacer (firmar el llamado o abrir la caja).
-    const quedaAlgo = Boolean(res.sancion) || res.estado === "TARDE" || (res.tipo === "ENTRADA" && res.caja && !res.caja.abierta);
+    // Vuelve sola solo si no queda nada por hacer (firmar el llamado, abrir la
+    // caja, o salir del usuario si vino a eso).
+    const quedaAlgo =
+      Boolean(res.sancion) || res.estado === "TARDE" || (res.tipo === "ENTRADA" && res.caja && !res.caja.abierta) || (antesDeSalir && res.tipo === "SALIDA");
     if (!quedaAlgo) volverRef.current = setTimeout(volverAlInicio, res.turnoAbiertoLocal ? 9000 : 6000);
   }
 
@@ -162,6 +165,15 @@ export default function FichaAsistenciaApp() {
         )}
         {cajaHecha && <p className="text-sm font-semibold text-emerald-700 bg-emerald-50 rounded-lg px-3 py-2 text-center">Caja abierta ✓ ¡Buen turno!</p>}
 
+        {/* Vino porque quiso salir: ya fichó la salida (y cerró la caja), ahora sí puede. */}
+        {antesDeSalir && resultado.tipo === "SALIDA" && (
+          <form action={logout} className="text-center">
+            <button type="submit" className="text-sm font-bold text-white bg-neutral-800 hover:bg-neutral-900 px-6 py-2.5 rounded-xl">
+              Salir de mi usuario
+            </button>
+          </form>
+        )}
+
         {resultado.turnoAbiertoLocal && (
           <p className="text-sm font-bold text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
             ⚠️ Te queda la caja de <b>{resultado.turnoAbiertoLocal}</b> abierta — ¡cerrala antes de irte!
@@ -186,6 +198,25 @@ export default function FichaAsistenciaApp() {
 
   return (
     <div className="max-w-md mx-auto text-center py-16">
+      {antesDeSalir && (
+        <p className="text-sm font-semibold text-red-700 bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-5">
+          {cajaMiaAbierta ? (
+            "Para salir de tu usuario, primero cerrá tu caja y fichá la salida."
+          ) : esEntrada && estado?.caja?.abierta?.esMia ? (
+            <>
+              Tenés la caja abierta. Cerrala con el arqueo en{" "}
+              <a href="/turnos" className="underline">
+                Mi caja
+              </a>{" "}
+              y después vas a poder salir.
+            </>
+          ) : esEntrada ? (
+            "Ya está todo cerrado: podés salir desde el menú."
+          ) : (
+            "Para salir de tu usuario, primero fichá la salida."
+          )}
+        </p>
+      )}
       {resultado?.error && <p className="text-sm text-red-600 mb-4">{resultado.error}</p>}
       <p className="text-sm text-neutral-400 mb-1 capitalize">
         {new Date().toLocaleString("es-AR", { weekday: "long", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
