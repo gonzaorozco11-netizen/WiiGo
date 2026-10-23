@@ -22,6 +22,7 @@ import {
   formatearCodigo,
 } from "@/lib/codigos";
 import EscanerCodigo from "@/components/EscanerCodigo";
+import { duracionSugerida } from "@/lib/rotulado";
 import {
   simularMargen,
   type TasasGenerales,
@@ -295,6 +296,8 @@ export default function ProductoFormModal({
               className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
             />
           </div>
+
+          <RotuloSection producto={producto} fraccionado={marcaSeleccionada?.tipo_comercializacion === "PROPIA"} />
           </div>
 
           {/* ---------- 2 · Precio y stock ---------- */}
@@ -2374,6 +2377,59 @@ function FotoExtraFicha({
         {error && <p className="text-xs text-red-600 mt-0.5">{error}</p>}
       </div>
       <input type="hidden" name={`ficha_${campo}`} value={foto} readOnly />
+    </div>
+  );
+}
+
+/**
+ * Lo que sale en la etiqueta de la bolsita y en el cartel de góndola.
+ *
+ * El peso va en todos: con él el cartel muestra el precio por kilo. Días,
+ * alérgenos y trazas solo tienen sentido en lo que fraccionamos nosotros (marca
+ * propia); en las otras marcas el rótulo viene impreso de fábrica. Se esconden
+ * con CSS y no con JSX por lo mismo que los pasos: si no se envían, el guardado
+ * los pisaría con vacío.
+ */
+function RotuloSection({ producto, fraccionado }: { producto: Producto | null; fraccionado: boolean }) {
+  const sugerida = duracionSugerida(producto?.nombre ?? "");
+  return (
+    <div className="border border-neutral-200 rounded-xl p-4 space-y-3">
+      <div>
+        <h3 className="text-sm font-semibold text-neutral-900">🏷️ Etiqueta y góndola</h3>
+        <p className="text-xs text-neutral-500">
+          El peso sale en el cartel de góndola con el precio por kilo
+          {fraccionado ? ", y el resto en la etiqueta de la bolsita que fraccionás" : ""}.
+        </p>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Peso neto (gramos)" name="peso_neto_g" type="number" step="any" defaultValue={producto?.peso_neto_g ?? ""} />
+        <div className={fraccionado ? "" : "hidden"}>
+          <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="dias_vida_util">
+            Días que dura
+          </label>
+          <input
+            id="dias_vida_util"
+            name="dias_vida_util"
+            type="number"
+            min={1}
+            defaultValue={producto?.dias_vida_util ?? ""}
+            placeholder={`Sugerido: ${sugerida.dias}`}
+            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+          />
+        </div>
+      </div>
+      <div className={fraccionado ? "space-y-3" : "hidden"}>
+        <p className="text-xs text-neutral-500 -mt-1">
+          Desde que se fracciona. Si lo dejás vacío se usa {sugerida.dias} días ({sugerida.tipo}), pero lo que manda es
+          lo que diga tu proveedor. El vencimiento nunca pasa del de la bolsa grande.
+        </p>
+        <Field label="Contiene (alérgenos)" name="alergenos" defaultValue={producto?.alergenos ?? ""} />
+        <Field label="Puede contener trazas de" name="trazas" defaultValue={producto?.trazas ?? ""} />
+        <p className="text-xs text-neutral-500 -mt-1">
+          Ej: contiene &ldquo;almendras (frutos de cáscara)&rdquo;; trazas de &ldquo;maní y otros frutos secos&rdquo;. El
+          país que pongas en Origen (paso 3) sale en el cartel de góndola.
+        </p>
+      </div>
     </div>
   );
 }

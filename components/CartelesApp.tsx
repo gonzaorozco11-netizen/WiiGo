@@ -3,6 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { marcarCartelesPuestos } from "@/app/(app)/carteles/actions";
+import { pesoTexto, precioPorKilo } from "@/lib/rotulado";
 
 export type ItemCartel = {
   idProducto: string;
@@ -18,6 +19,10 @@ export type ItemCartel = {
   /** Si este producto tiene un cartel pendiente de cambiar, su tarea. */
   idTarea: string | null;
   vencida: boolean;
+  /** Peso neto en gramos: con él van el peso al lado del nombre y el precio por kilo. */
+  pesoG?: number | null;
+  /** País de origen (de la ficha del asesor), chiquito arriba a la derecha. */
+  origen?: string | null;
 };
 
 const SIN_MARCA = "Sin marca";
@@ -548,9 +553,15 @@ function Cartel({ item, ancho, alto }: { item: ItemCartel; ancho: number; alto: 
             fontWeight: 700,
             color: "#9aa0a7",
             lineHeight: 1.3,
+            display: "flex",
+            justifyContent: "space-between",
+            gap: mm(1.5),
           }}
         >
-          {item.marca ?? " "}
+          {/* Texto y no banderita: Windows no dibuja los emojis de banderas y
+              en la impresión saldrían dos letras sueltas. */}
+          {item.origen && <span style={{ order: 2, color: "#6b7178", whiteSpace: "nowrap" }}>{item.origen}</span>}
+          {item.marca ??" "}
         </div>
         <div
           style={{
@@ -565,6 +576,7 @@ function Cartel({ item, ancho, alto }: { item: ItemCartel; ancho: number; alto: 
           }}
         >
           {item.nombre}
+          {item.pesoG != null && <span style={{ color: "#6b7178", textTransform: "none", whiteSpace: "nowrap" }}> · {pesoTexto(item.pesoG)}</span>}
         </div>
       </div>
 
@@ -621,6 +633,29 @@ function Cartel({ item, ancho, alto }: { item: ItemCartel; ancho: number; alto: 
             </span>
           )}
         </div>
+
+        {/* El precio por unidad de medida: lo pide la norma de exhibición de
+            precios para lo que se vende por peso, y deja comparar. */}
+        {item.pesoG != null && (
+          <div
+            style={{
+              marginTop: mm(0.8),
+              fontSize: mm(1.8),
+              color: "#3c4248",
+              display: "flex",
+              justifyContent: "space-between",
+              gap: mm(1.5),
+              whiteSpace: "nowrap",
+            }}
+          >
+            <span>
+              Por kilo: <b>{pesos(precioPorKilo(item.lista, item.pesoG))}</b>
+            </span>
+            <span>
+              efectivo <b>{pesos(precioPorKilo(item.efectivo, item.pesoG))}</b>
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );

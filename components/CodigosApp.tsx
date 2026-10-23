@@ -1,8 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { esCodigoInterno, limpiarCodigoBarras, formatearCodigo } from "@/lib/codigos";
+import {
+  PIE_ETIQUETA_DEFECTO,
+  calcularVencimiento,
+  duracionSugerida,
+  fechaCorta,
+  loteDe,
+  pesoTexto,
+} from "@/lib/rotulado";
 import { guardarCodigoBarras, volverAEtiquetaWiigo } from "@/app/(app)/codigos/actions";
 import type { EntradaPendiente } from "@/lib/entradas";
 import EscanerCodigo from "@/components/EscanerCodigo";
@@ -17,7 +25,37 @@ export type ItemCodigo = {
   imagen: string | null;
   codigo: string | null;
   marca: string | null;
+  /** Solo en lo que fraccionamos nosotros (marca propia): va el rótulo completo. */
+  rotulo?: RotuloItem | null;
 };
+
+export type RotuloItem = {
+  pesoG: number | null;
+  /** null = no está cargado y se usa la duración sugerida. */
+  dias: number | null;
+  alergenos: string | null;
+  trazas: string | null;
+};
+
+/** Lo que vale para toda la tanda que se imprime: el pie y las fechas. */
+type DatosTanda = { pie: string; envasado: string; venceBolsa: string | null };
+const TandaContext = createContext<DatosTanda>({ pie: PIE_ETIQUETA_DEFECTO, envasado: hoyIso(), venceBolsa: null });
+
+function hoyIso() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** Los primeros de una lista larga y cuántos más quedan. */
+function resumirLista(textos: string[], hasta = 6) {
+  const resto = textos.length - hasta;
+  return textos.slice(0, hasta).join(" · ") + (resto > 0 ? ` y ${resto} más` : "");
+}
+
+/** El rótulo completo no entra en una etiqueta chica: hace falta 60 × 30 mm o más. */
+function entraRotulo(medida: { ancho: number; alto: number }) {
+  return medida.ancho >= 60 && medida.alto >= 30;
+}
 
 const SIN_MARCA = "Marcas que no están activas";
 
@@ -90,9 +128,12 @@ function nombreParaEtiqueta(item: ItemCodigo) {
 export default function CodigosApp({
   items,
   entradas = [],
+  pieEtiqueta = PIE_ETIQUETA_DEFECTO,
 }: {
   items: ItemCodigo[];
   entradas?: EntradaPendiente[];
+  /** Nombre y dirección del local, al pie de la etiqueta de lo fraccionado. */
+  pieEtiqueta?: string;
 }) {
   // Si acaba de entrar mercadería que hay que etiquetar, la pantalla arranca
   // en Imprimir: es a lo que vino la operativa. Si no, arranca en Revisar, que
@@ -192,7 +233,7 @@ export default function CodigosApp({
           onAviso={setAviso}
         />
       ) : (
-        <Imprimir items={conEtiqueta} entradas={entradas} />
+        <Imprimir items={conEtiqueta} entradas={entradas} pie={pieEtiqueta} />
       )}
 
       {escaneando && (
@@ -469,7 +510,7 @@ function EscanerDeLista({
 /*  Pestaña 2: imprimir la hoja                                        */
 /* ------------------------------------------------------------------ */
 
-function Imprimir({ items, entradas }: { items: ItemCodigo[]; entradas: EntradaPendiente[] }) {
+function Imprimir({ items, entradas, pie }: { items: ItemCodigo[]; entradas: EntradaPendiente[]; pie: string }) {
   const porVariante = useMemo(() => new Map(entradas.map((e) => [e.idVariante, e])), [entradas]);
   const recibidos = useMemo(
     () => items.filter((i) => porVariante.has(i.idVariante)),
@@ -530,7 +571,7 @@ function Imprimir({ items, entradas }: { items: ItemCodigo[]; entradas: EntradaP
 
       {/* El `key` remonta la lista al cambiar de modo: las cantidades se
           recalculan solas en vez de arrastrar las del modo anterior. */}
-      <ConfigurarImpresion key={modo} items={visibles} unidadesIniciales={unidades} />
+      <ConfigurarImpresion key={modo} items={visibles} unidadesIniciales={unidades} pie={pie} />
     </>
   );
 }
@@ -538,11 +579,16 @@ function Imprimir({ items, entradas }: { items: ItemCodigo[]; entradas: EntradaP
 function ConfigurarImpresion({
   items,
   unidadesIniciales,
+  pie,
 }: {
   items: ItemCodigo[];
   unidadesIniciales: (i: ItemCodigo) => number;
+  pie: string;
 }) {
   const [papel, setPapel] = useState<"plancha" | "rollo">("plancha");
+  // Las fechas valen para toda la tanda: se fracciona e imprime de una vez.
+  const [envasado, setEnvasado] = useState(hoyIso);
+  const [venceBolsa, setVenceBolsa] = useState("");
   const [plancha, setPlancha] = useState<Plancha>(PLANCHAS[0]);
   const [rollo, setRollo] = useState<Rollo>(ROLLOS[0]);
   const [desde, setDesde] = useState(1);
@@ -598,8 +644,68 @@ function ConfigurarImpresion({
     setCantidades((prev) => ({ ...prev, [id]: Math.min(Math.max(0, n), 99) }));
   }
 
+  // Lo fraccionado que va en esta tanda: de ahí salen las fechas y los avisos.
+  const medida = papel === "plancha" ? plancha : rollo;
+  const fraccionados = items.filter((i) => i.rotulo && (cantidades[i.idVariante] ?? 0) > 0);
+  const sinDias = fraccionados.filter((i) => i.rotulo?.dias == null);
+  const sinPeso = fraccionados.filter((i) => i.rotulo?.pesoG == null);
+  const tanda: DatosTanda = { pie, envasado: envasado || hoyIso(), venceBolsa: venceBolsa || null };
+
   return (
-    <>
+    <TandaContext.Provider value={tanda}>
+      {fraccionados.length > 0 && (
+        <div className="print:hidden rounded-xl border border-amber-200 bg-amber-50/60 p-4 mb-4 space-y-3">
+          <div className="flex flex-wrap items-end gap-4">
+            <div>
+              <label className="block text-xs text-neutral-600 mb-1" htmlFor="envasado">
+                Fecha de envasado
+              </label>
+              <input
+                id="envasado"
+                type="date"
+                value={envasado}
+                onChange={(e) => setEnvasado(e.target.value)}
+                className="rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-neutral-600 mb-1" htmlFor="vence-bolsa">
+                Vence la bolsa grande (opcional)
+              </label>
+              <input
+                id="vence-bolsa"
+                type="date"
+                value={venceBolsa}
+                onChange={(e) => setVenceBolsa(e.target.value)}
+                className="rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
+              />
+            </div>
+            <p className="text-xs text-neutral-600 max-w-sm leading-relaxed">
+              El vencimiento sale solo: envasado + los días que dura cada producto, sin pasarse nunca del de la bolsa
+              grande. Si imprimís productos de bolsas distintas, cargá ese vencimiento imprimiendo de a uno.
+            </p>
+          </div>
+          {!entraRotulo(medida) && (
+            <p className="text-sm text-amber-800">
+              <b>Esta etiqueta es chica para el rótulo.</b> En {medida.ancho} × {medida.alto} mm sale solo el nombre y el
+              código. Para que salgan peso, fechas y alérgenos elegí una de <b>70 × 35 mm</b> o más grande.
+            </p>
+          )}
+          {sinDias.length > 0 && (
+            <p className="text-xs text-amber-800">
+              Usan la duración sugerida porque no tienen sus días cargados:{" "}
+              {resumirLista(sinDias.map((i) => `${i.producto} (${duracionSugerida(i.producto).dias} días)`))}. Cargalos
+              en el producto con lo que diga tu proveedor.
+            </p>
+          )}
+          {sinPeso.length > 0 && (
+            <p className="text-xs text-amber-800">
+              Sin peso neto cargado (sale sin peso): {resumirLista(sinPeso.map((i) => i.producto))}.
+            </p>
+          )}
+        </div>
+      )}
+
       <div className="print:hidden border border-neutral-200 rounded-xl overflow-hidden bg-white mb-4">
         {porMarca.map(([marca, deLaMarca]) => {
           const totalMarca = deLaMarca.reduce((a, i) => a + (cantidades[i.idVariante] ?? 0), 0);
@@ -837,7 +943,7 @@ function ConfigurarImpresion({
       ) : (
         <TiraDeEtiquetas rollo={rollo} items={aImprimir} />
       )}
-    </>
+    </TandaContext.Provider>
   );
 }
 
@@ -999,6 +1105,7 @@ function TiraDeEtiquetas({ rollo, items }: { rollo: Rollo; items: ItemCodigo[] }
 }
 
 function Etiqueta({ item, medida }: { item: ItemCodigo; medida: { ancho: number; alto: number } }) {
+  if (item.rotulo && entraRotulo(medida)) return <EtiquetaRotulada item={item} rotulo={item.rotulo} />;
   const nombre = nombreParaEtiqueta(item);
   // En las etiquetas chicas no entra el mismo cuerpo de letra. Y dentro de una
   // misma medida, un nombre largo tiene que achicarse o se corta a la mitad.
@@ -1074,6 +1181,120 @@ function Etiqueta({ item, medida }: { item: ItemCodigo; medida: { ancho: number;
           <span>{item.sku ?? ""}</span>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * La etiqueta de lo que fraccionamos nosotros: la bolsita lleva todo lo que no
+ * cambia (qué es, cuánto pesa, cuándo vence, qué alérgenos tiene y quién la
+ * armó). El precio no, a propósito: va en el cartel de góndola, así un aumento
+ * no obliga a reetiquetar las bolsas. Medida pensada para 70 × 35 mm; en una
+ * más grande sobra aire, en una más chica no se usa (ver entraRotulo).
+ */
+function EtiquetaRotulada({ item, rotulo }: { item: ItemCodigo; rotulo: RotuloItem }) {
+  const { pie, envasado, venceBolsa } = useContext(TandaContext);
+  const nombre = nombreParaEtiqueta(item) + (item.variante ? ` ${item.variante}` : "");
+  const dias = rotulo.dias ?? duracionSugerida(item.producto).dias;
+  const vence = calcularVencimiento(envasado, dias, venceBolsa);
+  const alergenos = [
+    rotulo.alergenos && `Contiene ${rotulo.alergenos.replace(/\.$/, "")}.`,
+    rotulo.trazas && `Puede contener trazas de ${rotulo.trazas.replace(/\.$/, "")}.`,
+  ].filter(Boolean) as string[];
+
+  return (
+    <div
+      className="etq-casillero"
+      style={{
+        width: "100%",
+        height: "100%",
+        padding: "1.8mm 2.2mm",
+        display: "flex",
+        flexDirection: "column",
+        gap: ".6mm",
+        overflow: "hidden",
+        color: "#000",
+        fontFamily: "'Arial Narrow', Arial, sans-serif",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "2mm" }}>
+        <div
+          style={{
+            fontSize: nombre.length > 30 ? "2.8mm" : "3.4mm",
+            lineHeight: 1.1,
+            fontWeight: 700,
+            textTransform: "uppercase",
+            display: "-webkit-box",
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: "vertical",
+            overflow: "hidden",
+          }}
+        >
+          {nombre}
+        </div>
+        {rotulo.pesoG != null && (
+          <div style={{ textAlign: "right", whiteSpace: "nowrap", flexShrink: 0 }}>
+            <div style={{ fontSize: "1.5mm", letterSpacing: ".05em", textTransform: "uppercase" }}>Peso neto</div>
+            <div style={{ fontSize: "3.4mm", fontWeight: 700, lineHeight: 1 }}>{pesoTexto(rotulo.pesoG)}</div>
+          </div>
+        )}
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: "1.5mm",
+          fontSize: "2mm",
+          borderTop: ".2mm solid #000",
+          borderBottom: ".2mm solid #000",
+          padding: ".4mm 0",
+          whiteSpace: "nowrap",
+        }}
+      >
+        <span>
+          Envasado <b>{fechaCorta(envasado)}</b>
+        </span>
+        <span>
+          Vence <b>{fechaCorta(vence)}</b>
+        </span>
+        <span>
+          Lote <b>{loteDe(envasado)}</b>
+        </span>
+      </div>
+
+      {alergenos.length > 0 && (
+        <div
+          style={{
+            fontSize: "1.8mm",
+            lineHeight: 1.2,
+            display: "-webkit-box",
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: "vertical",
+            overflow: "hidden",
+          }}
+        >
+          {alergenos.map((t, i) => (i === 0 ? <b key={i}>{t} </b> : <span key={i}>{t}</span>))}
+        </div>
+      )}
+
+      <div style={{ marginTop: "auto", display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: "1.5mm" }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: ".3mm" }}>
+          {/* 34 mm: un código interno son 132 módulos y la norma pide 0,25 mm
+              por módulo como mínimo para que lo lea un lector barato. */}
+          <CodigoDeBarras valor={item.codigo ?? ""} ancho="34mm" alto="7mm" />
+          <div style={{ fontFamily: "ui-monospace, monospace", fontSize: "1.9mm", letterSpacing: ".2mm" }}>
+            {formatearCodigo(item.codigo ?? "")}
+          </div>
+        </div>
+        <div style={{ fontSize: "1.55mm", lineHeight: 1.25, textAlign: "right" }}>
+          {pie.split("\n").map((linea, i) => (
+            <div key={i} style={{ fontWeight: i === 0 ? 700 : 400 }}>
+              {linea}
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

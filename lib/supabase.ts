@@ -169,6 +169,11 @@ export type Producto = {
   // Solo para productos de marca propia con modo LIQUIDACION_VENTA: a qué
   // proveedor se le paga el costo de lo vendido (ver liquidacionesProveedor.ts).
   id_proveedor_liquidacion: string | null;
+  // El rótulo (sql/rotulado.sql). Opcionales: undefined si el SQL no se corrió.
+  peso_neto_g?: number | null;
+  dias_vida_util?: number | null;
+  alergenos?: string | null;
+  trazas?: string | null;
   fecha_alta: string;
   fecha_actualizacion: string;
 };

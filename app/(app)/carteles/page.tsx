@@ -12,11 +12,12 @@ export default async function CartelesPage() {
 
   const supabase = getSupabaseServerClient();
 
-  const [productosRes, marcasRes, tareasRes] = await Promise.all([
-    supabase
-      .from("productos")
-      .select("id_producto,nombre,id_marca,precio_venta,precio_efectivo,descuento_porcentaje")
-      .eq("estado", "ACTIVO"),
+  const BASE_PRODUCTO = "id_producto,nombre,id_marca,precio_venta,precio_efectivo,descuento_porcentaje";
+  const traerProductos = (columnas: string) =>
+    supabase.from("productos").select(columnas).eq("estado", "ACTIVO");
+
+  const [productosConPeso, marcasRes, tareasRes, fichasRes] = await Promise.all([
+    traerProductos(`${BASE_PRODUCTO},peso_neto_g`),
     supabase.from("marcas").select("id_marca,nombre").eq("estado", "ACTIVA"),
     // Los carteles que quedaron con el precio viejo. La cuenta ya la lleva el
     // circuito de solicitudes de marca; acá solo se lee para poder reimprimir
@@ -26,7 +27,11 @@ export default async function CartelesPage() {
       .select("id_tarea,id_producto,precio_anterior,precio_nuevo,tipo,vence_el")
       .in("estado", ["PENDIENTE", "VENCIDA"])
       .limit(500),
+    // El país de origen de la ficha del asesor: sale chiquito en el cartel.
+    supabase.from("ficha_producto").select("id_producto,origen"),
   ]);
+  // Sin sql/rotulado.sql corrido, el cartel sale como antes, sin precio por kilo.
+  const productosRes = productosConPeso.error ? await traerProductos(BASE_PRODUCTO) : productosConPeso;
 
   const error = productosRes.error || marcasRes.error;
   if (error) {
@@ -45,7 +50,14 @@ export default async function CartelesPage() {
     precio_venta: number | null;
     precio_efectivo: number | null;
     descuento_porcentaje: number | null;
+    peso_neto_g?: number | null;
   };
+
+  const origenes = new Map(
+    ((fichasRes.data ?? []) as { id_producto: string; origen: string | null }[])
+      .filter((f) => f.origen?.trim())
+      .map((f) => [f.id_producto, (f.origen as string).trim()])
+  );
 
   const marcas = new Map(
     ((marcasRes.data ?? []) as { id_marca: string; nombre: string }[]).map((m) => [m.id_marca, m.nombre])
@@ -69,7 +81,7 @@ export default async function CartelesPage() {
     }
   }
 
-  const items: ItemCartel[] = ((productosRes.data ?? []) as FilaProducto[])
+  const items: ItemCartel[] = ((productosRes.data ?? []) as unknown as FilaProducto[])
     .map((p) => {
       // La cuenta de los dos precios —oferta incluida— vive en lib/precios.ts y
       // la comparten el POS, el tótem y el asesor. Un cartel que diga otra cosa
@@ -96,6 +108,8 @@ export default async function CartelesPage() {
         descuento: p.descuento_porcentaje ?? 0,
         idTarea: t?.idTarea ?? null,
         vencida: t?.vencida ?? false,
+        pesoG: p.peso_neto_g && p.peso_neto_g > 0 ? p.peso_neto_g : null,
+        origen: origenes.get(p.id_producto) ?? null,
       };
     })
     .filter((i) => i.lista > 0)

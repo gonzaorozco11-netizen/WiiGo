@@ -119,24 +119,53 @@ function productoFromForm(formData: FormData, idMarca: string, idSubcategoria: s
     id_proveedor_liquidacion: text(formData, "id_proveedor_liquidacion"),
     imagen: text(formData, "imagen"),
     estado: text(formData, "estado") ?? "ACTIVO",
+    // El rótulo (sql/rotulado.sql): peso para la etiqueta y el precio por
+    // kilo; días, alérgenos y trazas para la bolsita que fraccionamos.
+    peso_neto_g: positivo(number(formData, "peso_neto_g")),
+    dias_vida_util: entero(positivo(number(formData, "dias_vida_util"))),
+    alergenos: text(formData, "alergenos"),
+    trazas: text(formData, "trazas"),
     fecha_actualizacion: new Date().toISOString(),
   };
 }
 
-// `costos_extra` es una columna que llegó después (sql/costos-extra.sql). Si el
-// SQL todavía no se corrió, Postgres rechaza el guardado entero por una columna
-// que no conoce — y no se podría dar de alta ningún producto. Antes que eso, se
-// guarda sin ella: se pierde la bolsita, no el producto.
+function positivo(n: number | null) {
+  return n !== null && n > 0 ? n : null;
+}
+
+function entero(n: number | null) {
+  return n === null ? null : Math.round(n);
+}
+
+// Columnas que llegaron después del alta original. Si su SQL todavía no se
+// corrió, Postgres rechaza el guardado entero por una sola columna que no
+// conoce; antes que no poder guardar el producto, se guarda sin ella.
+const COLUMNAS_OPCIONALES = ["costos_extra", "peso_neto_g", "dias_vida_util", "alergenos", "trazas"] as const;
+
+async function guardarTolerante<T extends object, R extends { error: { code?: string; message?: string } | null }>(
+  data: T,
+  guardar: (payload: T) => PromiseLike<R>
+): Promise<R> {
+  let payload = data;
+  let res = await guardar(payload);
+  for (let i = 0; i < COLUMNAS_OPCIONALES.length && res.error; i++) {
+    const err = res.error;
+    const falta = COLUMNAS_OPCIONALES.find((c) => c in payload && faltaLaColumna(err, c));
+    if (!falta) break;
+    const copia = { ...payload };
+    delete (copia as Record<string, unknown>)[falta];
+    payload = copia;
+    res = await guardar(payload);
+  }
+  return res;
+}
+
+// Ej: `costos_extra` (sql/costos-extra.sql) sin correr: se pierde la bolsita,
+// no el producto.
 function faltaLaColumna(error: { code?: string; message?: string }, columna: string): boolean {
   return (
     (error.code === "42703" || error.code === "PGRST204") && (error.message ?? "").includes(columna)
   );
-}
-
-function sinCostosExtra<T extends object>(data: T): T {
-  const copia = { ...data };
-  delete (copia as Record<string, unknown>).costos_extra;
-  return copia;
 }
 
 /**
@@ -495,8 +524,7 @@ export async function createProducto(formData: FormData): Promise<{ error: strin
     const insertar = (payload: typeof data) =>
       supabase.from("productos").insert(payload).select("id_producto").single();
 
-    let res = await insertar(data);
-    if (res.error && faltaLaColumna(res.error, "costos_extra")) res = await insertar(sinCostosExtra(data));
+    const res = await guardarTolerante(data, insertar);
     if (res.error) return { error: friendlyDbError(res.error) };
     const inserted = res.data;
 
@@ -529,8 +557,7 @@ export async function updateProducto(id: string, formData: FormData): Promise<{ 
     const actualizar = (payload: typeof data) =>
       supabase.from("productos").update(payload).eq("id_producto", id);
 
-    let res = await actualizar(data);
-    if (res.error && faltaLaColumna(res.error, "costos_extra")) res = await actualizar(sinCostosExtra(data));
+    const res = await guardarTolerante(data, actualizar);
     if (res.error) return { error: friendlyDbError(res.error) };
 
     // Al editar nunca se toca el stock desde acá (idLocalInicial null) — eso
