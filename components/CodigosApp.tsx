@@ -25,6 +25,8 @@ export type ItemCodigo = {
   imagen: string | null;
   codigo: string | null;
   marca: string | null;
+  /** Marca propia (WiiGo Dietética): la etiqueta dice WiiGo y no el nombre de la marca. */
+  propia?: boolean;
   /** Solo en lo que fraccionamos nosotros (marca propia): va el rótulo completo. */
   rotulo?: RotuloItem | null;
 };
@@ -1177,8 +1179,12 @@ function Etiqueta({ item, medida }: { item: ItemCodigo; medida: { ancho: number;
 
       {!chica && (
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: "2.2mm", color: "#666" }}>
-          <span>WiiGo</span>
-          <span>{item.sku ?? ""}</span>
+          {/* De quién es el producto: lo nuestro dice WiiGo, lo de cada marca
+              en consignación dice esa marca. */}
+          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {item.propia ? "WiiGo · Estaciones de Bienestar" : item.marca ?? ""}
+          </span>
+          <span style={{ flexShrink: 0, marginLeft: "1mm" }}>{item.sku ?? ""}</span>
         </div>
       )}
     </div>

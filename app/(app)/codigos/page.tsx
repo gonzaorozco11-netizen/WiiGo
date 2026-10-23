@@ -85,6 +85,7 @@ export default async function CodigosPage() {
           // Las marcas que no están ACTIVA no salen ni en el asesor ni en el
           // tótem; se agrupan aparte para que no ensucien la cuenta.
           marca: marcas.get(p.id_marca) ?? null,
+          propia: marcasPorId.get(p.id_marca)?.tipo_comercializacion === "PROPIA",
           // Solo lo que fraccionamos nosotros lleva rótulo: lo de las marcas
           // en consignación ya trae el suyo impreso de fábrica.
           rotulo:
