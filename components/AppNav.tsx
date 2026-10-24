@@ -215,6 +215,7 @@ function itemActivo(pathname: string): { grupo: string | null; item: NavItem } |
   const candidatos: { grupo: string | null; item: NavItem }[] = [
     ...GROUPS.flatMap((g) => g.items.map((item) => ({ grupo: g.label, item }))),
     { grupo: null, item: { href: "/mis-tareas", label: "Mis Tareas" } },
+    { grupo: null, item: { href: "/junta", label: "Junta" } },
     { grupo: null, item: { href: "/configuracion", label: "Configuración" } },
     { grupo: null, item: { href: "/auditoria", label: "Auditoría" } },
   ];
@@ -323,6 +324,13 @@ export default function AppNav({
             </span>
           )}
         </Link>
+        {/* Solo el Dueño: los seis encargados con IA ven todos los números. */}
+        {esAdmin && (
+          <Link href="/junta" className={`mt-0.5 ${claseLink(activo?.item.href === "/junta")}`}>
+            <Icono nombre="equipo" className={activo?.item.href === "/junta" ? "text-accent" : "text-neutral-500"} />
+            Junta
+          </Link>
+        )}
 
         <div className="h-px bg-neutral-200 mx-2.5 my-2.5" />
 

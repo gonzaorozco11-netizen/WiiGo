@@ -1,6 +1,6 @@
 // Conexión con la inteligencia artificial (Claude, de Anthropic).
 //
-// Se usa para escribir las explicaciones de Aprender. Necesita la variable
+// Se usa para escribir las explicaciones de Aprender y para la Junta. Necesita la variable
 // de entorno ANTHROPIC_API_KEY (se crea en console.anthropic.com y se carga
 // en Vercel → Settings → Environment Variables). Sin la clave, todo lo demás
 // del sistema funciona igual: solo no se escriben explicaciones nuevas.
@@ -21,12 +21,25 @@ export class SinClaveIA extends Error {
 }
 
 /**
+ * Las instrucciones pueden ir en partes: las que se marcan `fija` se guardan
+ * un rato del lado de Anthropic y las consultas siguientes que empiezan igual
+ * las cobran mucho más barato (la Junta manda los mismos datos del negocio a
+ * los seis encargados). Lo fijo tiene que ir primero.
+ */
+export type ParteSistema = { texto: string; fija?: boolean };
+
+/**
  * Le pide a Claude una respuesta en JSON y la devuelve ya leída.
  * El pedido incluye cómo tiene que ser el JSON; acá solo se extrae y se parsea.
  */
-export async function pedirJson(sistema: string, pedido: string, maxTokens = 2000): Promise<unknown> {
+export async function pedirJson(sistema: string | ParteSistema[], pedido: string, maxTokens = 2000): Promise<unknown> {
   const clave = process.env.ANTHROPIC_API_KEY;
   if (!clave) throw new SinClaveIA();
+
+  const system =
+    typeof sistema === "string"
+      ? sistema
+      : sistema.map((p) => ({ type: "text", text: p.texto, ...(p.fija ? { cache_control: { type: "ephemeral" } } : {}) }));
 
   const respuesta = await fetch(URL_API, {
     method: "POST",
@@ -38,7 +51,7 @@ export async function pedirJson(sistema: string, pedido: string, maxTokens = 200
     body: JSON.stringify({
       model: MODELO,
       max_tokens: maxTokens,
-      system: sistema,
+      system,
       messages: [{ role: "user", content: pedido }],
     }),
   });
