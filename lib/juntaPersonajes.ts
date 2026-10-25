@@ -25,17 +25,17 @@ export type Encargado = {
 
 export const ENCARGADOS: Encargado[] = [
   { id: "lola", nombre: "Lola", area: "Marketing", color: "#b8566f", rasgo: "Creativa. Piensa en contenido y en que te conozcan.",
-    zona: { x: 31.3, y: 29.5, w: 10, h: 27 }, cartel: 58, cara: { x: 35.4, y: 37 } },
+    zona: { x: 29.8, y: 32, w: 11.2, h: 28 }, cartel: 70, cara: { x: 35.6, y: 39 } },
   { id: "bruno", nombre: "Bruno", area: "Finanzas", color: "#3d5a3a", rasgo: "Cuida cada peso. Siempre pregunta cuánto rinde.",
-    zona: { x: 21, y: 28.5, w: 10.3, h: 33 }, cartel: 50, cara: { x: 27, y: 37 } },
+    zona: { x: 20.5, y: 29, w: 9.3, h: 37 }, cartel: 62, cara: { x: 26.2, y: 36 } },
   { id: "ines", nombre: "Inés", area: "Contabilidad e impuestos", color: "#56688c", rasgo: "Prolija. Te avisa vencimientos y qué facturar.",
-    zona: { x: 8.3, y: 26.5, w: 12.7, h: 56 }, cartel: 44, cara: { x: 16, y: 38 } },
+    zona: { x: 6, y: 26, w: 14.5, h: 56 }, cartel: 56, cara: { x: 14.6, y: 37 } },
   { id: "facu", nombre: "Facu", area: "Ventas", color: "#b07a2f", rasgo: "Vive en el salón: ticket, góndola y tótem.",
-    zona: { x: 59, y: 28.5, w: 10.7, h: 27 }, cartel: 58, cara: { x: 65.6, y: 37 } },
+    zona: { x: 57.6, y: 30.5, w: 14.2, h: 30.5 }, cartel: 70, cara: { x: 65.2, y: 37.5 } },
   { id: "carmen", nombre: "Carmen", area: "Personal", color: "#7a5a8c", rasgo: "Mira al equipo: turnos, clima y cumplimiento.",
-    zona: { x: 69.7, y: 30.5, w: 9.8, h: 33 }, cartel: 50, cara: { x: 74.6, y: 38 } },
+    zona: { x: 71.8, y: 31.5, w: 8.2, h: 35 }, cartel: 64, cara: { x: 75.2, y: 39 } },
   { id: "julian", nombre: "Julián", area: "Marcas", color: "#2f7f7a", rasgo: "El comercial con las marcas: quién rinde y quién falta.",
-    zona: { x: 79.5, y: 26, w: 15, h: 56 }, cartel: 44, cara: { x: 84.8, y: 36 } },
+    zona: { x: 80, y: 25, w: 17.6, h: 62 }, cartel: 48, cara: { x: 85.9, y: 34 } },
 ];
 
 export const ES_ENCARGADO = (id: string): id is IdEncargado => ENCARGADOS.some((e) => e.id === id);
