@@ -23,7 +23,9 @@
 .jt-cabecera { position: absolute; left: 50%; bottom: 1.5%; transform: translateX(-50%); color: #e6eedf; font-size: clamp(9px, 1vw, 12px); font-weight: 700; letter-spacing: .14em; text-transform: uppercase; opacity: .85; text-shadow: 0 1px 3px rgba(0, 0, 0, .6); }
 
 /* la pantalla del fondo */
-.jt-tele { position: absolute; top: 12.4%; left: 49.6%; width: 25%; height: 24.6%; transform: translateX(-50%); background: rgba(8, 10, 8, .92); border-radius: 2px; padding: 1.6% 2%; color: #dfe8d6; overflow: hidden; cursor: zoom-in; z-index: 5;
+/* Ocupa solo la parte de arriba de la tele de la foto: abajo a la izquierda,
+   la cabeza de Lola queda delante de la pantalla y no hay que taparla. */
+.jt-tele { position: absolute; top: 12.6%; left: 49.6%; width: 24.6%; height: 17.2%; transform: translateX(-50%); background: rgba(8, 10, 8, .92); border-radius: 2px; padding: 1.6% 2%; color: #dfe8d6; overflow: hidden; cursor: zoom-in; z-index: 5;
   transition: top .35s ease, width .35s ease, height .35s ease; box-shadow: 0 0 18px rgba(160, 200, 150, .18); }
 .jt-tele:focus-visible { outline: 2px solid #e3c48a; outline-offset: 2px; }
 .jt-tele.grande { top: 6%; width: 72%; height: 76%; padding: 3% 4%; cursor: zoom-out; background: #0b0e0a; border: 6px solid #0a0c09; border-radius: 10px; box-shadow: 0 20px 60px rgba(0, 0, 0, .6); }
