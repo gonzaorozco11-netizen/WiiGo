@@ -2,9 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { preguntar } from "@/app/(app)/junta/actions";
+import { listarTareasJunta, preguntar } from "@/app/(app)/junta/actions";
 import { ENCARGADOS, type DestinoJunta, type Lamina, type MensajeJunta } from "@/lib/juntaPersonajes";
 import type { ItemTablero } from "@/lib/tablero";
+import type { EquipoTareas, TareaVista } from "@/lib/tareasEquipo";
+import JuntaTareas from "@/components/JuntaTareas";
 
 const pesos = (v: number) => `$ ${Math.round(v).toLocaleString("es-AR")}`;
 const COLOR_PENDIENTE: Record<ItemTablero["color"], string> = { rojo: "#dc2626", ambar: "#d97706", azul: "#2563eb" };
@@ -38,13 +40,20 @@ export default function JuntaApp({
   sinClave,
   hoy,
   pendientes,
+  tareasIniciales,
 }: {
   mensajesIniciales: MensajeJunta[];
   faltaSql: boolean;
   sinClave: boolean;
   hoy: { vendido: number; ventas: number; ticket: number } | null;
   pendientes: ItemTablero[];
+  tareasIniciales: { tareas: TareaVista[]; equipo: EquipoTareas; faltaSql: boolean };
 }) {
+  const [tareas, setTareas] = useState(tareasIniciales);
+  const propuestas = tareas.tareas.filter((t) => t.estadoTarea === "PROPUESTA").length;
+  const [panel, setPanel] = useState<"tareas" | "mesa">(propuestas > 0 ? "tareas" : "mesa");
+  const recargarTareas = async () => setTareas(await listarTareasJunta());
+  const tareasDe = (idMensaje: string) => tareas.tareas.filter((t) => t.idMensaje === idMensaje);
   const [sel, setSel] = useState<DestinoJunta>("junta");
   const [mensajes, setMensajes] = useState(mensajesIniciales);
   const [texto, setTexto] = useState("");
@@ -98,6 +107,11 @@ export default function JuntaApp({
       return;
     }
     setMensajes((m) => [...m, ...r.mensajes]);
+    // Si propusieron tareas, aparecen en "Para aprobar".
+    const antes = tareas.tareas.filter((t) => t.estadoTarea === "PROPUESTA").length;
+    const nuevas = await listarTareasJunta();
+    setTareas(nuevas);
+    if (nuevas.tareas.filter((t) => t.estadoTarea === "PROPUESTA").length > antes) setPanel("tareas");
   }
 
   const elegido = encargado(sel);
@@ -223,6 +237,14 @@ export default function JuntaApp({
                       {e?.nombre} <span>· {e?.area}</span>
                     </div>
                     {m.texto}
+                    {tareasDe(m.id).map((t) => (
+                      <button key={t.id} type="button" className="jt-propuso" onClick={() => setPanel("tareas")}>
+                        <b>Propone una tarea:</b> {t.titulo}
+                        <span className={`jt-estado ${t.estadoTarea === "PROPUESTA" ? "pendiente" : t.estadoTarea === "ACTIVA" ? "hecha" : "descartada"}`}>
+                          {t.estadoTarea === "PROPUESTA" ? "Para aprobar" : t.estadoTarea === "ACTIVA" ? "Aprobada" : t.estadoTarea === "DESCARTADA" ? "Descartada" : "Quitada"}
+                        </span>
+                      </button>
+                    ))}
                   </div>
                 </div>
               );
@@ -274,7 +296,18 @@ export default function JuntaApp({
         </section>
 
         <section className="jt-caja">
-          <h2>Lo que hay sobre la mesa</h2>
+          <div className="jt-pestanas" role="tablist" aria-label="Panel">
+            <button type="button" role="tab" aria-selected={panel === "tareas"} className={panel === "tareas" ? "on" : ""} onClick={() => setPanel("tareas")}>
+              Tareas{propuestas > 0 && <span className="jt-cuenta alerta">{propuestas}</span>}
+            </button>
+            <button type="button" role="tab" aria-selected={panel === "mesa"} className={panel === "mesa" ? "on" : ""} onClick={() => setPanel("mesa")}>
+              Sobre la mesa
+            </button>
+          </div>
+          {panel === "tareas" ? (
+            <JuntaTareas tareas={tareas.tareas} equipo={tareas.equipo} faltaSql={tareas.faltaSql} onCambio={recargarTareas} />
+          ) : (
+          <>
           {pendientes.length === 0 ? (
             <p className="jt-vacio">El sistema no marca nada pendiente ahora.</p>
           ) : (
@@ -290,6 +323,8 @@ export default function JuntaApp({
             </div>
           )}
           <p className="jt-nota">Es lo mismo que ves en el Inicio, y la junta lo tiene en cuenta cuando opina. Los reportes del día, la semana y el mes llegan en la próxima etapa.</p>
+          </>
+          )}
         </section>
       </div>
     </div>

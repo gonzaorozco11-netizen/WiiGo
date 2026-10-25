@@ -18,6 +18,8 @@ import { pedirJson, pedirTexto, type ParteSistema } from "@/lib/ia";
 import { armarTablero } from "@/lib/tablero";
 import { armarDashboardRrhh } from "@/app/(app)/rrhh/actions";
 import { fechaHoraArgentina } from "@/lib/horarios";
+import { getSupabaseServerClient } from "@/lib/supabase";
+import { tareasParaJunta, type TareaVista } from "@/lib/tareasEquipo";
 import { ENCARGADOS, textoLegible, type Encargado, type IdEncargado, type Lamina, type MensajeJunta } from "@/lib/juntaPersonajes";
 
 const pesos = (v: number) => `$${Math.round(v).toLocaleString("es-AR")}`;
@@ -96,6 +98,18 @@ export async function datosDelNegocio(): Promise<string> {
     );
   }
 
+  // Las tareas que ya tiene el equipo: para no repetirlas y para seguirlas.
+  const { tareas } = await tareasParaJunta(getSupabaseServerClient()).catch(() => ({ tareas: [] as TareaVista[] }));
+  const activas = tareas.filter((t) => t.estadoTarea === "ACTIVA");
+  const propuestas = tareas.filter((t) => t.estadoTarea === "PROPUESTA");
+  if (activas.length || propuestas.length) {
+    partes.push(
+      "## Tareas del equipo",
+      ...activas.map((t) => `- ${t.titulo} (${t.para}, ${t.cuando}): ${t.situacion === "HECHA" ? `hecha por ${t.hecha?.nombre}` : t.situacion === "VENCIDA" ? "VENCIDA sin hacer" : "pendiente"}.`),
+      ...propuestas.map((t) => `- Propuesta esperando que Gonzalo la apruebe: ${t.titulo} (${t.para}, ${t.cuando}).`),
+    );
+  }
+
   return partes.filter(Boolean).join("\n");
 }
 
@@ -132,7 +146,10 @@ const FORMATO_ENCARGADO = `Cómo contestar:
 - Si tenés un número real que valga la pena mostrar en la pantalla de la sala, agregá al final UNA sola línea que empiece con LAMINA: y un JSON en esa misma línea, así:
 LAMINA: {"titulo": "título corto", "grande": "el número o la frase corta", "detalle": "una línea que lo explica"}
 Para comparar varios valores (por ejemplo, ventas por día), en vez de "grande" usá "barras": [{"etiqueta": "Lun", "valor": 123}], hasta 8.
-- Si no tenés un número para mostrar, no agregues esa línea.`;
+- Si no tenés un número para mostrar, no agregues esa línea.
+- Si conviene darle una tarea concreta al equipo del local (o Gonzalo te pide tareas), agregá al final una línea por tarea, como máximo 3, así:
+TAREA: {"titulo": "qué hay que hacer, corto y claro", "para": "todos", "cuando": "AAAA-MM-DD", "repite": null, "motivo": "por qué, en una línea"}
+"para" es "todos", el nombre de un turno o el nombre de una persona del equipo, tal como aparecen en los Datos. "cuando" es la fecha para la que tiene que estar, o null. Si se repite cada semana, "repite" es el día ("viernes") y "cuando" va null. Solo tareas que pueda hacer el equipo del local, no Gonzalo. Gonzalo las aprueba antes de que le lleguen a nadie; en tu texto podés decir que le dejás la propuesta.`;
 
 /** Lo que se habló antes en este hilo, para que sigan la conversación. */
 function conversacionPrevia(historial: MensajeJunta[]) {
@@ -159,29 +176,57 @@ function leerLamina(x: unknown): Lamina | null {
   return { titulo, grande, detalle: typeof l.detalle === "string" ? l.detalle.slice(0, 120) : undefined, barras: barras?.length ? barras : undefined };
 }
 
-/**
- * Lee lo que contestó un encargado: el texto, y la lámina si la mandó en la
- * última línea (LAMINA: {...}). Si la lámina viene rota, se pierde solo ella.
- */
-function leerOpinion(texto: string): { respuesta: string; lamina: Lamina | null } {
-  const marca = texto.lastIndexOf("LAMINA:");
-  const cuerpo = marca >= 0 ? texto.slice(0, marca) : texto;
-  let lamina: Lamina | null = null;
-  if (marca >= 0) {
-    const resto = texto.slice(marca + 7);
-    const inicio = resto.indexOf("{");
-    const fin = resto.lastIndexOf("}");
-    if (inicio >= 0 && fin > inicio) {
-      try {
-        lamina = leerLamina(JSON.parse(resto.slice(inicio, fin + 1)));
-      } catch {
-        lamina = null;
-      }
-    }
+/** Lo que propone un encargado como tarea, tal cual lo escribió. */
+export type TareaPropuesta = { titulo: string; para?: string; cuando?: string | null; repite?: string | null; motivo?: string };
+
+function jsonDeLinea(linea: string): unknown {
+  const inicio = linea.indexOf("{");
+  const fin = linea.lastIndexOf("}");
+  if (inicio < 0 || fin <= inicio) return null;
+  try {
+    return JSON.parse(linea.slice(inicio, fin + 1));
+  } catch {
+    return null;
   }
-  const respuesta = textoLegible(cuerpo.replace(/```[a-z]*|```/gi, "").replace(/\*\*/g, ""));
+}
+
+function leerTarea(x: unknown): TareaPropuesta | null {
+  if (!x || typeof x !== "object") return null;
+  const t = x as Record<string, unknown>;
+  const titulo = typeof t.titulo === "string" ? t.titulo.trim().slice(0, 140) : "";
+  if (!titulo) return null;
+  const texto = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+  const cuando = texto(t.cuando);
+  return {
+    titulo,
+    para: texto(t.para) ?? undefined,
+    cuando: cuando && /^\d{4}-\d{2}-\d{2}$/.test(cuando) ? cuando : null,
+    repite: texto(t.repite),
+    motivo: texto(t.motivo)?.slice(0, 240) ?? undefined,
+  };
+}
+
+/**
+ * Lee lo que contestó un encargado: el texto, la lámina (LAMINA: {...}) y las
+ * tareas que propone (TAREA: {...}), cada una en su línea. Si una de esas
+ * líneas viene rota, se pierde solo esa.
+ */
+function leerOpinion(texto: string): { respuesta: string; lamina: Lamina | null; tareas: TareaPropuesta[] } {
+  const lineas = texto.split("\n");
+  let lamina: Lamina | null = null;
+  const tareas: TareaPropuesta[] = [];
+  const cuerpo: string[] = [];
+  for (const linea of lineas) {
+    const l = linea.trim().replace(/^[-*]\s*/, "");
+    if (l.startsWith("LAMINA:")) lamina = leerLamina(jsonDeLinea(l)) ?? lamina;
+    else if (l.startsWith("TAREA:")) {
+      const t = leerTarea(jsonDeLinea(l));
+      if (t && tareas.length < 3) tareas.push(t);
+    } else cuerpo.push(linea);
+  }
+  const respuesta = textoLegible(cuerpo.join("\n").replace(/```[a-z]*|```/gi, "").replace(/\*\*/g, ""));
   if (!respuesta) throw new Error("La inteligencia artificial no devolvió ninguna respuesta.");
-  return { respuesta, lamina };
+  return { respuesta, lamina, tareas };
 }
 
 async function opinar(e: Encargado, datos: string, previo: string, pregunta: string, conJunta: boolean) {
@@ -194,7 +239,7 @@ async function opinar(e: Encargado, datos: string, previo: string, pregunta: str
 }
 
 export type RespuestaJunta = {
-  respuestas: { autor: IdEncargado; texto: string; lamina: Lamina | null }[];
+  respuestas: { autor: IdEncargado; texto: string; lamina: Lamina | null; tareas: TareaPropuesta[] }[];
   resumen: { texto: string; puntos: string[]; lamina: Lamina | null } | null;
 };
 
@@ -206,7 +251,7 @@ export async function consultar(destino: IdEncargado | "junta", pregunta: string
   if (destino !== "junta") {
     const e = ENCARGADOS.find((x) => x.id === destino)!;
     const r = await opinar(e, datos, previo, pregunta, false);
-    return { respuestas: [{ autor: e.id, texto: r.respuesta, lamina: r.lamina }], resumen: null };
+    return { respuestas: [{ autor: e.id, texto: r.respuesta, lamina: r.lamina, tareas: r.tareas }], resumen: null };
   }
 
   // El primero solo y después los otros cinco a la vez: así el primero deja
@@ -216,7 +261,7 @@ export async function consultar(destino: IdEncargado | "junta", pregunta: string
   const errores: string[] = [];
   const preguntarA = (e: Encargado) =>
     opinar(e, datos, previo, pregunta, true)
-      .then((r) => ({ autor: e.id, texto: r.respuesta, lamina: r.lamina }))
+      .then((r) => ({ autor: e.id, texto: r.respuesta, lamina: r.lamina, tareas: r.tareas }))
       .catch((err: unknown) => {
         const motivo = err instanceof Error ? err.message : String(err);
         console.error(`[junta] ${e.nombre} no pudo responder: ${motivo}`);

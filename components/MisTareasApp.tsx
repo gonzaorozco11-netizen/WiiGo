@@ -1,17 +1,22 @@
 "use client";
 
+import { useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { Tablero, ItemTablero } from "@/lib/tablero";
+import type { TareaVista } from "@/lib/tareasEquipo";
+import { marcarTareaHecha } from "@/app/(app)/mis-tareas/actions";
 
 // Mis Tareas: lo que cada uno tiene que hacer hoy.
 //
-// El motor es el mismo que arma el Inicio (lib/tablero.ts) — no se calcula
-// nada nuevo. Lo que cambia es la forma: en vez de tarjetas de resumen, una
-// lista para trabajar, ordenada por urgencia.
-//
-// Nadie marca nada como hecho: la tarea desaparece cuando el problema se
-// resuelve de verdad. Una lista que hay que ir tachando a mano siempre
-// termina mintiendo.
+// Dos clases de tareas:
+//   - Las de Administración WiiGo (arriba): las aprobó el Dueño desde la
+//     Junta. Se marcan como hechas a mano, porque el sistema no tiene forma de
+//     saber si se limpiaron los vidrios.
+//   - Los avisos del sistema: el motor es el mismo que arma el Inicio
+//     (lib/tablero.ts). Nadie los marca: desaparecen cuando el problema se
+//     resuelve de verdad. Una lista de avisos que hay que ir tachando a mano
+//     siempre termina mintiendo.
 
 const ICONO: Record<string, string> = {
   "/ficha-asistencia": "🕘",
@@ -25,7 +30,7 @@ const ICONO: Record<string, string> = {
   "/aprender/revisar": "🧠",
 };
 
-export default function MisTareasApp({ tablero }: { tablero: Tablero }) {
+export default function MisTareasApp({ tablero, asignadas = [] }: { tablero: Tablero; asignadas?: TareaVista[] }) {
   // Tres baldes por urgencia. Salen del color que ya trae cada tarea, así que
   // agregar una tarea nueva en tablero.ts la ubica sola.
   const ahora = tablero.urgentes.filter((t) => t.color === "rojo");
@@ -34,7 +39,8 @@ export default function MisTareasApp({ tablero }: { tablero: Tablero }) {
     ...tablero.urgentes.filter((t) => t.color === "azul"),
     ...tablero.seguimiento,
   ];
-  const total = ahora.length + esperan.length + cuandoPuedas.length;
+  const pendientesAsignadas = asignadas.filter((t) => t.situacion !== "HECHA").length;
+  const total = ahora.length + esperan.length + cuandoPuedas.length + pendientesAsignadas;
 
   return (
     <div className="max-w-3xl mx-auto">
@@ -48,6 +54,8 @@ export default function MisTareasApp({ tablero }: { tablero: Tablero }) {
             : `${total} ${total === 1 ? "cosa esperándote" : "cosas esperándote"}`}
         </p>
       </div>
+
+      {asignadas.length > 0 && <TareasAdministracion tareas={asignadas} />}
 
       {total === 0 ? (
         <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl px-4 py-8 text-center">
@@ -72,6 +80,71 @@ export default function MisTareasApp({ tablero }: { tablero: Tablero }) {
           Ir al Inicio
         </Link>
       </div>
+    </div>
+  );
+}
+
+/** Las tareas que asignó Administración WiiGo: se tildan cuando se hacen. */
+function TareasAdministracion({ tareas }: { tareas: TareaVista[] }) {
+  const router = useRouter();
+  const [enCurso, setEnCurso] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [, startTransition] = useTransition();
+
+  async function tildar(t: TareaVista) {
+    setError(null);
+    setEnCurso(t.id);
+    const r = await marcarTareaHecha(t.id, t.situacion !== "HECHA");
+    setEnCurso(null);
+    if (r.error) setError(r.error);
+    else startTransition(() => router.refresh());
+  }
+
+  return (
+    <div className="mb-6">
+      <p className="text-xs font-bold uppercase tracking-wider mb-2.5 text-neutral-700">
+        De parte de Administración WiiGo
+        <span className="ml-2 text-[10px] font-bold bg-neutral-200 text-neutral-700 rounded-full px-1.5 py-0.5">
+          {tareas.filter((t) => t.situacion !== "HECHA").length}
+        </span>
+      </p>
+      <div className="flex flex-col gap-2">
+        {tareas.map((t) => {
+          const hecha = t.situacion === "HECHA";
+          const vencida = t.situacion === "VENCIDA";
+          return (
+            <div
+              key={t.id}
+              className={`flex items-start gap-3 border border-l-[3px] rounded-xl px-4 py-3 ${
+                hecha ? "border-neutral-200 border-l-emerald-500 bg-white" : vencida ? "border-red-200 border-l-red-500 bg-red-50" : "border-neutral-200 border-l-[#3d5a3a] bg-white"
+              }`}
+            >
+              <button
+                type="button"
+                onClick={() => tildar(t)}
+                disabled={enCurso === t.id}
+                aria-label={hecha ? `Desmarcar: ${t.titulo}` : `Marcar como hecha: ${t.titulo}`}
+                className={`mt-0.5 w-6 h-6 shrink-0 rounded-md border-2 grid place-items-center text-sm font-bold ${
+                  hecha ? "bg-emerald-600 border-emerald-600 text-white" : "border-[#3d5a3a] bg-white text-transparent"
+                } disabled:opacity-50`}
+              >
+                ✓
+              </button>
+              <span className="flex-1 min-w-0">
+                <span className={`block text-sm font-semibold ${hecha ? "line-through text-neutral-400" : vencida ? "text-red-800" : "text-neutral-900"}`}>{t.titulo}</span>
+                <span className={`block text-xs ${vencida ? "text-red-700" : "text-neutral-500"}`}>
+                  {hecha && t.hecha ? `Hecha por ${t.hecha.nombre} · ${t.hecha.hora}` : `${t.cuando}${vencida ? " · se pasó la fecha" : ""} · ${t.para}`}
+                </span>
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      {error && (
+        <p className="text-sm text-red-600 mt-2" role="alert">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

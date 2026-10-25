@@ -90,6 +90,43 @@
 .jt-pend a span { color: #737373; }
 .jt-caja h2 { font-size: 15px; font-weight: 600; color: #171717; }
 
+/* ---------- tareas ---------- */
+.jt-pestanas { display: grid; grid-template-columns: 1fr 1fr; background: #f5f5f5; border-radius: 10px; padding: 3px; gap: 3px; }
+.jt-pestanas button { border: 0; background: none; border-radius: 8px; padding: 7px; font-size: 13px; font-weight: 600; color: #737373; cursor: pointer; display: inline-flex; justify-content: center; align-items: center; gap: 6px; }
+.jt-pestanas button.on { background: #fff; color: #171717; box-shadow: 0 1px 3px rgba(0, 0, 0, .12); }
+.jt-cuenta { font-size: 11px; font-weight: 700; background: #e5e5e5; color: #404040; border-radius: 999px; padding: 1px 7px; }
+.jt-cuenta.alerta { background: #fde68a; color: #92400e; }
+.jt-tareas { display: grid; gap: 10px; }
+.jt-tareas h2 { display: flex; align-items: center; gap: 6px; }
+.jt-tarea { border: 1px solid #e5e5e5; border-left: 4px solid var(--c); border-radius: 12px; padding: 10px 12px; display: grid; gap: 8px; }
+.jt-form { display: grid; gap: 8px; }
+.jt-form textarea { width: 100%; border: 1px solid #d4d4d4; border-radius: 8px; padding: 7px 9px; font: inherit; font-size: 14px; font-weight: 600; resize: vertical; }
+.jt-form-fila { display: flex; flex-wrap: wrap; gap: 8px; }
+.jt-form-fila label { display: grid; gap: 3px; font-size: 11.5px; font-weight: 600; color: #737373; flex: 1 1 130px; min-width: 0; }
+.jt-form-fila select, .jt-form-fila input { border: 1px solid #d4d4d4; border-radius: 8px; padding: 6px 8px; font: inherit; font-size: 13px; color: #171717; background: #fff; width: 100%; }
+.jt-tarea-por { font-size: 12px; color: #737373; line-height: 1.45; }
+.jt-botones { display: flex; gap: 6px; flex-wrap: wrap; }
+.jt-botones button { border: 1.5px solid #e5e5e5; background: #fff; border-radius: 9px; padding: 7px 12px; font-size: 13px; font-weight: 700; cursor: pointer; }
+.jt-botones button.si { background: #3d5a3a; border-color: #3d5a3a; color: #fff; }
+.jt-botones button.no { color: #b91c1c; }
+.jt-botones button:disabled { opacity: .5; cursor: default; }
+.jt-nueva { border: 1.5px dashed #c9a26b; background: #f5ecdc; color: #6b4a1f; border-radius: 10px; padding: 9px; font-size: 13px; font-weight: 700; cursor: pointer; }
+.jt-activas { display: grid; gap: 6px; }
+.jt-activa { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; border: 1px solid #e5e5e5; border-radius: 10px; padding: 8px 10px; font-size: 13px; }
+.jt-activa b { display: block; }
+.jt-activa span { color: #737373; font-size: 12px; }
+.jt-estado { font-size: 11px; font-weight: 700; border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+.jt-estado.pendiente { background: #fffbeb; color: #92400e; }
+.jt-estado.vencida { background: #fef2f2; color: #b91c1c; }
+.jt-estado.hecha { background: #ecfdf5; color: #047857; }
+.jt-estado.descartada { background: #f5f5f5; color: #737373; }
+.jt-activa .jt-estado { color: inherit; }
+.jt-activa .jt-estado.pendiente { color: #92400e; }
+.jt-activa .jt-estado.vencida { color: #b91c1c; }
+.jt-activa .jt-estado.hecha { color: #047857; }
+.jt-archivar { border: 0; background: none; color: #737373; font-size: 12px; text-decoration: underline; cursor: pointer; }
+.jt-propuso { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; width: 100%; margin-top: 8px; text-align: left; border: 1.5px dashed #c9a26b; background: #fffaf1; border-radius: 9px; padding: 7px 9px; font: inherit; font-size: 13px; cursor: pointer; white-space: normal; }
+
 @media (prefers-reduced-motion: reduce) {
   .jt-lamina, .jt-zona.pensando .jt-cartel::after, .jt-espera i { animation: none; }
   .jt-foco, .jt-cartel, .jt-tele { transition: none; }
