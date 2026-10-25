@@ -4,7 +4,7 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionConPantallas } from "@/lib/roles";
 import { hayClaveIA } from "@/lib/ia";
 import { consultar } from "@/lib/junta";
-import { ES_ENCARGADO, type DestinoJunta, type MensajeJunta } from "@/lib/juntaPersonajes";
+import { ES_ENCARGADO, textoLegible, type DestinoJunta, type MensajeJunta } from "@/lib/juntaPersonajes";
 
 // La Junta es solo del Dueño: ve todos los números del negocio.
 
@@ -22,7 +22,7 @@ const aMensaje = (f: Fila): MensajeJunta => ({
   id: f.id_mensaje,
   hilo: f.hilo as DestinoJunta,
   autor: f.autor as MensajeJunta["autor"],
-  texto: f.texto,
+  texto: f.autor === "gonzalo" ? f.texto : textoLegible(f.texto),
   puntos: f.puntos ?? undefined,
   lamina: f.lamina,
   creado: f.creado,

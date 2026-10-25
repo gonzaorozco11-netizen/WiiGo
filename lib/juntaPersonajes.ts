@@ -48,6 +48,26 @@ export type Lamina = {
   barras?: { etiqueta: string; valor: number }[];
 };
 
+/**
+ * Lo que dijo un encargado, listo para leer. Las primeras respuestas se
+ * guardaron con el formato interno a la vista ({"respuesta": "...") y a veces
+ * cortadas: acá se rescata el texto, y si quedó cortado se marca con "…".
+ */
+export function textoLegible(texto: string): string {
+  const t = texto.trim();
+  if (!t.startsWith("{")) return t;
+  try {
+    const r = JSON.parse(t) as { respuesta?: unknown };
+    if (typeof r.respuesta === "string") return r.respuesta.trim();
+  } catch {
+    // Sigue abajo.
+  }
+  const m = t.match(/"respuesta"\s*:\s*"((?:[^"\\]|\\[\s\S])*)("?)/);
+  if (!m) return t;
+  const limpio = m[1].replace(/\\n/g, "\n").replace(/\\"/g, '"').replace(/\\\\/g, "\\").trim();
+  return m[2] ? limpio : `${limpio}…`;
+}
+
 /** Un mensaje de la conversación. `autor`: "gonzalo", un encargado o "resumen". */
 export type MensajeJunta = {
   id: string;

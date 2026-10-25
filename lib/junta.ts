@@ -18,7 +18,7 @@ import { pedirJson, pedirTexto, type ParteSistema } from "@/lib/ia";
 import { armarTablero } from "@/lib/tablero";
 import { armarDashboardRrhh } from "@/app/(app)/rrhh/actions";
 import { fechaHoraArgentina } from "@/lib/horarios";
-import { ENCARGADOS, type Encargado, type IdEncargado, type Lamina, type MensajeJunta } from "@/lib/juntaPersonajes";
+import { ENCARGADOS, textoLegible, type Encargado, type IdEncargado, type Lamina, type MensajeJunta } from "@/lib/juntaPersonajes";
 
 const pesos = (v: number) => `$${Math.round(v).toLocaleString("es-AR")}`;
 const pct = (v: number) => `${Math.round(v * 100)}%`;
@@ -110,7 +110,7 @@ El equipo: dos operativos en el local por turnos, que atienden, asesoran, repone
 El dueño se llama Gonzalo. No es programador. Quiere que le hablen directo y simple, sin jerga, y que le avisen lo estratégico que no está viendo.
 
 Reglas para contestar:
-- Hablás en español rioplatense, de vos, como una persona de la mesa. Corto: entre 2 y 5 oraciones, salvo que Gonzalo pida detalle.
+- Hablás en español rioplatense, de vos, como una persona de la mesa. Corto: entre 2 y 4 oraciones, salvo que Gonzalo pida detalle.
 - Usás solo los números de "Datos de WiiGo". Si un dato no está, lo decís y decís qué habría que cargar para tenerlo. Nunca inventás números.
 - Solo opinás y proponés. No podés cambiar nada del sistema, ni mandar mensajes, ni pagar nada.
 - En temas legales o de impuestos orientás, y decís que lo confirme con Agustín.
@@ -125,9 +125,14 @@ const ENFOQUE: Record<IdEncargado, string> = {
   julian: "Sos Julián, encargado de Marcas. Sos el comercial con las marcas en consignación: cuáles rinden y cuáles no, a cuáles reponer, qué categorías faltan, qué marcas nuevas sumar, cómo negociar degustaciones o exhibición, y cuándo conviene liberar espacio de una marca que no vende.",
 };
 
-const FORMATO_ENCARGADO = `Respondé SOLO con un JSON, sin texto antes ni después:
-{"respuesta": "lo que le decís a Gonzalo", "lamina": {"titulo": "título corto", "grande": "el número o la frase corta más importante", "detalle": "una línea que lo explica"} }
-La lámina es para la pantalla de la sala. Ponela solo si tenés un número real que valga la pena mostrar; si no, "lamina": null. Si querés comparar varios valores (por ejemplo, ventas por día), en vez de "grande" usá "barras": [{"etiqueta": "Lun", "valor": 123}] con hasta 8 barras.`;
+// Texto normal y la lámina aparte, en la última línea: si la respuesta se
+// cortara, lo escrito igual se lee bien (con JSON, un corte lo arruinaba todo).
+const FORMATO_ENCARGADO = `Cómo contestar:
+- Escribí lo que le decís a Gonzalo como texto normal: sin JSON, sin títulos, sin viñetas, sin negritas. Entre 2 y 4 oraciones, como máximo 90 palabras.
+- Si tenés un número real que valga la pena mostrar en la pantalla de la sala, agregá al final UNA sola línea que empiece con LAMINA: y un JSON en esa misma línea, así:
+LAMINA: {"titulo": "título corto", "grande": "el número o la frase corta", "detalle": "una línea que lo explica"}
+Para comparar varios valores (por ejemplo, ventas por día), en vez de "grande" usá "barras": [{"etiqueta": "Lun", "valor": 123}], hasta 8.
+- Si no tenés un número para mostrar, no agregues esa línea.`;
 
 /** Lo que se habló antes en este hilo, para que sigan la conversación. */
 function conversacionPrevia(historial: MensajeJunta[]) {
@@ -155,37 +160,28 @@ function leerLamina(x: unknown): Lamina | null {
 }
 
 /**
- * Lee lo que contestó un encargado. Se pide JSON, pero si viene roto (por
- * ejemplo, con un salto de línea sin escapar adentro del texto) se rescata la
- * respuesta igual: es preferible una respuesta sin lámina que ninguna.
+ * Lee lo que contestó un encargado: el texto, y la lámina si la mandó en la
+ * última línea (LAMINA: {...}). Si la lámina viene rota, se pierde solo ella.
  */
 function leerOpinion(texto: string): { respuesta: string; lamina: Lamina | null } {
-  const inicio = texto.indexOf("{");
-  const fin = texto.lastIndexOf("}");
-  if (inicio >= 0 && fin > inicio) {
-    try {
-      const r = JSON.parse(texto.slice(inicio, fin + 1)) as { respuesta?: unknown; lamina?: unknown };
-      if (typeof r.respuesta === "string" && r.respuesta.trim()) return { respuesta: r.respuesta.trim(), lamina: leerLamina(r.lamina) };
-    } catch {
-      // Sigue abajo.
-    }
-    const suelto = texto.match(/"respuesta"\s*:\s*"((?:[^"\\]|\\[\s\S])*)"/);
-    if (suelto) {
-      let lamina: Lamina | null = null;
-      const bloque = texto.match(/"lamina"\s*:\s*(\{[^{}]*?(?:\[[^\]]*\][^{}]*?)?\})/);
-      if (bloque) {
-        try {
-          lamina = leerLamina(JSON.parse(bloque[1]));
-        } catch {
-          lamina = null;
-        }
+  const marca = texto.lastIndexOf("LAMINA:");
+  const cuerpo = marca >= 0 ? texto.slice(0, marca) : texto;
+  let lamina: Lamina | null = null;
+  if (marca >= 0) {
+    const resto = texto.slice(marca + 7);
+    const inicio = resto.indexOf("{");
+    const fin = resto.lastIndexOf("}");
+    if (inicio >= 0 && fin > inicio) {
+      try {
+        lamina = leerLamina(JSON.parse(resto.slice(inicio, fin + 1)));
+      } catch {
+        lamina = null;
       }
-      return { respuesta: suelto[1].replace(/\\n/g, "\n").replace(/\\"/g, '"').trim(), lamina };
     }
   }
-  const limpio = texto.replace(/```[a-z]*|```/gi, "").trim();
-  if (!limpio) throw new Error("La inteligencia artificial no devolvió ninguna respuesta.");
-  return { respuesta: limpio, lamina: null };
+  const respuesta = textoLegible(cuerpo.replace(/```[a-z]*|```/gi, "").replace(/\*\*/g, ""));
+  if (!respuesta) throw new Error("La inteligencia artificial no devolvió ninguna respuesta.");
+  return { respuesta, lamina };
 }
 
 async function opinar(e: Encargado, datos: string, previo: string, pregunta: string, conJunta: boolean) {
@@ -194,7 +190,7 @@ async function opinar(e: Encargado, datos: string, previo: string, pregunta: str
     { texto: `${ENFOQUE[e.id]}\n\n${FORMATO_ENCARGADO}` },
   ];
   const pedido = `${previo}${conJunta ? "Gonzalo le lleva este tema a toda la junta. Opiná desde tu área, sin repetir lo que dirían los demás" : "Gonzalo te habla a vos"}:\n${pregunta}`;
-  return leerOpinion(await pedirTexto(sistema, pedido, 700));
+  return leerOpinion(await pedirTexto(sistema, pedido, 1200));
 }
 
 export type RespuestaJunta = {
@@ -242,7 +238,7 @@ Respondé SOLO con un JSON: {"resumen": "una o dos oraciones", "puntos": ["acci�
   const dichos = respuestas.map((r) => `${ENCARGADOS.find((e) => e.id === r.autor)!.nombre} (${ENCARGADOS.find((e) => e.id === r.autor)!.area}): ${r.texto}`).join("\n");
   let resumen: RespuestaJunta["resumen"] = null;
   try {
-    const r = (await pedirJson(sistema, `${previo}Tema de Gonzalo: ${pregunta}\n\nLo que dijo cada uno:\n${dichos}`, 700)) as {
+    const r = (await pedirJson(sistema, `${previo}Tema de Gonzalo: ${pregunta}\n\nLo que dijo cada uno:\n${dichos}`, 1200)) as {
       resumen?: unknown;
       puntos?: unknown;
       lamina?: unknown;
