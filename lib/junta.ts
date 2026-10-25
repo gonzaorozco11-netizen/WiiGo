@@ -14,7 +14,7 @@
 // Se paga por uso (ANTHROPIC_API_KEY, la misma de Aprender): una pregunta a
 // toda la junta son siete consultas.
 
-import { pedirJson, type ParteSistema } from "@/lib/ia";
+import { pedirJson, pedirTexto, type ParteSistema } from "@/lib/ia";
 import { armarTablero } from "@/lib/tablero";
 import { armarDashboardRrhh } from "@/app/(app)/rrhh/actions";
 import { fechaHoraArgentina } from "@/lib/horarios";
@@ -154,15 +154,47 @@ function leerLamina(x: unknown): Lamina | null {
   return { titulo, grande, detalle: typeof l.detalle === "string" ? l.detalle.slice(0, 120) : undefined, barras: barras?.length ? barras : undefined };
 }
 
+/**
+ * Lee lo que contestó un encargado. Se pide JSON, pero si viene roto (por
+ * ejemplo, con un salto de línea sin escapar adentro del texto) se rescata la
+ * respuesta igual: es preferible una respuesta sin lámina que ninguna.
+ */
+function leerOpinion(texto: string): { respuesta: string; lamina: Lamina | null } {
+  const inicio = texto.indexOf("{");
+  const fin = texto.lastIndexOf("}");
+  if (inicio >= 0 && fin > inicio) {
+    try {
+      const r = JSON.parse(texto.slice(inicio, fin + 1)) as { respuesta?: unknown; lamina?: unknown };
+      if (typeof r.respuesta === "string" && r.respuesta.trim()) return { respuesta: r.respuesta.trim(), lamina: leerLamina(r.lamina) };
+    } catch {
+      // Sigue abajo.
+    }
+    const suelto = texto.match(/"respuesta"\s*:\s*"((?:[^"\\]|\\[\s\S])*)"/);
+    if (suelto) {
+      let lamina: Lamina | null = null;
+      const bloque = texto.match(/"lamina"\s*:\s*(\{[^{}]*?(?:\[[^\]]*\][^{}]*?)?\})/);
+      if (bloque) {
+        try {
+          lamina = leerLamina(JSON.parse(bloque[1]));
+        } catch {
+          lamina = null;
+        }
+      }
+      return { respuesta: suelto[1].replace(/\\n/g, "\n").replace(/\\"/g, '"').trim(), lamina };
+    }
+  }
+  const limpio = texto.replace(/```[a-z]*|```/gi, "").trim();
+  if (!limpio) throw new Error("La inteligencia artificial no devolvió ninguna respuesta.");
+  return { respuesta: limpio, lamina: null };
+}
+
 async function opinar(e: Encargado, datos: string, previo: string, pregunta: string, conJunta: boolean) {
   const sistema: ParteSistema[] = [
     { texto: `${NEGOCIO}\n\n${datos}`, fija: true },
     { texto: `${ENFOQUE[e.id]}\n\n${FORMATO_ENCARGADO}` },
   ];
   const pedido = `${previo}${conJunta ? "Gonzalo le lleva este tema a toda la junta. Opiná desde tu área, sin repetir lo que dirían los demás" : "Gonzalo te habla a vos"}:\n${pregunta}`;
-  const r = (await pedirJson(sistema, pedido, 700)) as { respuesta?: unknown; lamina?: unknown };
-  const respuesta = typeof r.respuesta === "string" && r.respuesta.trim() ? r.respuesta.trim() : "No llegué a armar una respuesta. Preguntame de nuevo.";
-  return { respuesta, lamina: leerLamina(r.lamina) };
+  return leerOpinion(await pedirTexto(sistema, pedido, 700));
 }
 
 export type RespuestaJunta = {
@@ -181,16 +213,24 @@ export async function consultar(destino: IdEncargado | "junta", pregunta: string
     return { respuestas: [{ autor: e.id, texto: r.respuesta, lamina: r.lamina }], resumen: null };
   }
 
-  // Los seis a la vez. Si a uno le falla, la junta sigue con los demás.
-  const opiniones = await Promise.all(
-    ENCARGADOS.map((e) =>
-      opinar(e, datos, previo, pregunta, true)
-        .then((r) => ({ autor: e.id, texto: r.respuesta, lamina: r.lamina }))
-        .catch(() => null)
-    )
-  );
+  // El primero solo y después los otros cinco a la vez: así el primero deja
+  // guardados los datos del negocio y los demás los leen de ahí, más rápido,
+  // más barato y sin pasarse del límite por minuto de la cuenta. Si a uno le
+  // falla, la junta sigue con los demás.
+  const errores: string[] = [];
+  const preguntarA = (e: Encargado) =>
+    opinar(e, datos, previo, pregunta, true)
+      .then((r) => ({ autor: e.id, texto: r.respuesta, lamina: r.lamina }))
+      .catch((err: unknown) => {
+        const motivo = err instanceof Error ? err.message : String(err);
+        console.error(`[junta] ${e.nombre} no pudo responder: ${motivo}`);
+        errores.push(motivo);
+        return null;
+      });
+  const [primero, ...resto] = ENCARGADOS;
+  const opiniones = [await preguntarA(primero), ...(await Promise.all(resto.map(preguntarA)))];
   const respuestas = opiniones.filter((o): o is NonNullable<typeof o> => o !== null);
-  if (!respuestas.length) throw new Error("La junta no pudo responder. Probá de nuevo en un minuto.");
+  if (!respuestas.length) throw new Error(`La junta no pudo responder. ${errores[0] ?? "Probá de nuevo en un minuto."}`);
 
   const sistema: ParteSistema[] = [
     { texto: `${NEGOCIO}\n\n${datos}`, fija: true },

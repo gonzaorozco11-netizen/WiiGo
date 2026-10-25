@@ -28,11 +28,15 @@ export class SinClaveIA extends Error {
  */
 export type ParteSistema = { texto: string; fija?: boolean };
 
+const esperar = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 /**
- * Le pide a Claude una respuesta en JSON y la devuelve ya leída.
- * El pedido incluye cómo tiene que ser el JSON; acá solo se extrae y se parsea.
+ * Le pide a Claude una respuesta y devuelve el texto tal cual.
+ * Si Anthropic está saturado o se pasó el límite por minuto de la cuenta
+ * (429/529), espera y prueba hasta dos veces más: con varias consultas
+ * seguidas, como la Junta, pasa en las cuentas nuevas.
  */
-export async function pedirJson(sistema: string | ParteSistema[], pedido: string, maxTokens = 2000): Promise<unknown> {
+export async function pedirTexto(sistema: string | ParteSistema[], pedido: string, maxTokens = 2000): Promise<string> {
   const clave = process.env.ANTHROPIC_API_KEY;
   if (!clave) throw new SinClaveIA();
 
@@ -41,31 +45,48 @@ export async function pedirJson(sistema: string | ParteSistema[], pedido: string
       ? sistema
       : sistema.map((p) => ({ type: "text", text: p.texto, ...(p.fija ? { cache_control: { type: "ephemeral" } } : {}) }));
 
-  const respuesta = await fetch(URL_API, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": clave,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: MODELO,
-      max_tokens: maxTokens,
-      system,
-      messages: [{ role: "user", content: pedido }],
-    }),
-  });
-  if (!respuesta.ok) {
+  for (let intento = 1; ; intento++) {
+    const respuesta = await fetch(URL_API, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": clave,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: MODELO,
+        max_tokens: maxTokens,
+        system,
+        messages: [{ role: "user", content: pedido }],
+      }),
+    });
+    if (respuesta.ok) {
+      const datos = (await respuesta.json()) as { content?: { type: string; text?: string }[] };
+      return (datos.content ?? [])
+        .filter((c) => c.type === "text")
+        .map((c) => c.text ?? "")
+        .join("");
+    }
     const texto = await respuesta.text().catch(() => "");
+    if ((respuesta.status === 429 || respuesta.status === 529) && intento < 3) {
+      const pide = Number(respuesta.headers.get("retry-after"));
+      await esperar(Number.isFinite(pide) && pide > 0 ? Math.min(pide, 20) * 1000 : intento * 4000);
+      continue;
+    }
+    console.error(`[ia] Anthropic respondió ${respuesta.status}: ${texto.slice(0, 500)}`);
     if (respuesta.status === 401) throw new Error("La clave de la inteligencia artificial no es válida. Revisá ANTHROPIC_API_KEY en Vercel.");
     if (respuesta.status === 429) throw new Error("La inteligencia artificial está ocupada. Probá de nuevo en un minuto.");
+    if (/credit balance/i.test(texto)) throw new Error("La cuenta de Anthropic se quedó sin crédito.");
     throw new Error(`La inteligencia artificial respondió con un error (${respuesta.status}). ${texto.slice(0, 200)}`);
   }
-  const datos = (await respuesta.json()) as { content?: { type: string; text?: string }[] };
-  const texto = (datos.content ?? [])
-    .filter((c) => c.type === "text")
-    .map((c) => c.text ?? "")
-    .join("");
+}
+
+/**
+ * Le pide a Claude una respuesta en JSON y la devuelve ya leída.
+ * El pedido incluye cómo tiene que ser el JSON; acá solo se extrae y se parsea.
+ */
+export async function pedirJson(sistema: string | ParteSistema[], pedido: string, maxTokens = 2000): Promise<unknown> {
+  const texto = await pedirTexto(sistema, pedido, maxTokens);
   // El JSON puede venir solo o entre ```json ... ```: se toma del primer { al último }.
   const inicio = texto.indexOf("{");
   const fin = texto.lastIndexOf("}");
