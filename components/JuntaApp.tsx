@@ -7,6 +7,8 @@ import { ENCARGADOS, type DestinoJunta, type Lamina, type MensajeJunta } from "@
 import type { ItemTablero } from "@/lib/tablero";
 import type { EquipoTareas, TareaVista } from "@/lib/tareasEquipo";
 import JuntaTareas from "@/components/JuntaTareas";
+import JuntaReportes from "@/components/JuntaReportes";
+import type { ReporteListado } from "@/app/(app)/junta/actions";
 
 const pesos = (v: number) => `$ ${Math.round(v).toLocaleString("es-AR")}`;
 const COLOR_PENDIENTE: Record<ItemTablero["color"], string> = { rojo: "#dc2626", ambar: "#d97706", azul: "#2563eb" };
@@ -41,6 +43,7 @@ export default function JuntaApp({
   hoy,
   pendientes,
   tareasIniciales,
+  reportesIniciales,
 }: {
   mensajesIniciales: MensajeJunta[];
   faltaSql: boolean;
@@ -48,10 +51,11 @@ export default function JuntaApp({
   hoy: { vendido: number; ventas: number; ticket: number } | null;
   pendientes: ItemTablero[];
   tareasIniciales: { tareas: TareaVista[]; equipo: EquipoTareas; faltaSql: boolean };
+  reportesIniciales: { reportes: ReporteListado[]; faltaSql: boolean };
 }) {
   const [tareas, setTareas] = useState(tareasIniciales);
   const propuestas = tareas.tareas.filter((t) => t.estadoTarea === "PROPUESTA").length;
-  const [panel, setPanel] = useState<"tareas" | "mesa">(propuestas > 0 ? "tareas" : "mesa");
+  const [panel, setPanel] = useState<"tareas" | "reportes" | "mesa">(propuestas > 0 ? "tareas" : "reportes");
   const recargarTareas = async () => setTareas(await listarTareasJunta());
   const tareasDe = (idMensaje: string) => tareas.tareas.filter((t) => t.idMensaje === idMensaje);
   const [sel, setSel] = useState<DestinoJunta>("junta");
@@ -296,9 +300,12 @@ export default function JuntaApp({
         </section>
 
         <section className="jt-caja">
-          <div className="jt-pestanas" role="tablist" aria-label="Panel">
+          <div className="jt-pestanas tres" role="tablist" aria-label="Panel">
             <button type="button" role="tab" aria-selected={panel === "tareas"} className={panel === "tareas" ? "on" : ""} onClick={() => setPanel("tareas")}>
               Tareas{propuestas > 0 && <span className="jt-cuenta alerta">{propuestas}</span>}
+            </button>
+            <button type="button" role="tab" aria-selected={panel === "reportes"} className={panel === "reportes" ? "on" : ""} onClick={() => setPanel("reportes")}>
+              Reportes
             </button>
             <button type="button" role="tab" aria-selected={panel === "mesa"} className={panel === "mesa" ? "on" : ""} onClick={() => setPanel("mesa")}>
               Sobre la mesa
@@ -306,6 +313,8 @@ export default function JuntaApp({
           </div>
           {panel === "tareas" ? (
             <JuntaTareas tareas={tareas.tareas} equipo={tareas.equipo} faltaSql={tareas.faltaSql} onCambio={recargarTareas} />
+          ) : panel === "reportes" ? (
+            <JuntaReportes iniciales={reportesIniciales} />
           ) : (
           <>
           {pendientes.length === 0 ? (
@@ -322,7 +331,7 @@ export default function JuntaApp({
               ))}
             </div>
           )}
-          <p className="jt-nota">Es lo mismo que ves en el Inicio, y la junta lo tiene en cuenta cuando opina. Los reportes del día, la semana y el mes llegan en la próxima etapa.</p>
+          <p className="jt-nota">Es lo mismo que ves en el Inicio, y la junta lo tiene en cuenta cuando opina.</p>
           </>
           )}
         </section>

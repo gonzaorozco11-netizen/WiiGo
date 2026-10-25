@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionConPantallas } from "@/lib/roles";
 import { hayClaveIA } from "@/lib/ia";
-import { consultar, type TareaPropuesta } from "@/lib/junta";
+import { consultar, datosDelNegocio, type TareaPropuesta } from "@/lib/junta";
+import { generarReporte, type TipoReporte } from "@/lib/juntaReportes";
 import { diaDeTexto, equipoParaTareas, resolverPara, tareasParaJunta, type TareaVista } from "@/lib/tareasEquipo";
 import { ES_ENCARGADO, textoLegible, type DestinoJunta, type MensajeJunta } from "@/lib/juntaPersonajes";
 
@@ -183,3 +184,48 @@ export async function cerrarTarea(idTarea: string, como: "DESCARTADA" | "ARCHIVA
 }
 
 const faltaTablaTareas = (m: string) => /tareas_equipo|schema cache|does not exist/i.test(m);
+
+// ---------- Reportes ----------
+
+export type ReporteListado = { id: string; tipo: TipoReporte; fecha: string; titulo: string; titular: string | null; enviadoA: string | null; error: string | null };
+
+export async function listarReportes(): Promise<{ reportes: ReporteListado[]; faltaSql: boolean }> {
+  if (!(await esDueno())) return { reportes: [], faltaSql: false };
+  const { data, error } = await getSupabaseServerClient()
+    .from("junta_reportes")
+    .select("id_reporte, tipo, fecha, titulo, titular, enviado_a, error")
+    .order("creado", { ascending: false })
+    .limit(40);
+  if (error) return { reportes: [], faltaSql: /junta_reportes|schema cache|does not exist/i.test(error.message) };
+  return {
+    reportes: (data ?? []).map((r) => ({
+      id: r.id_reporte as string,
+      tipo: r.tipo as TipoReporte,
+      fecha: r.fecha as string,
+      titulo: r.titulo as string,
+      titular: (r.titular as string | null) ?? null,
+      enviadoA: (r.enviado_a as string | null) ?? null,
+      error: (r.error as string | null) ?? null,
+    })),
+    faltaSql: false,
+  };
+}
+
+/** El mail tal cual se mandó, para verlo en la Junta. */
+export async function verReporte(idReporte: string): Promise<{ html: string | null }> {
+  if (!(await esDueno())) return { html: null };
+  const { data } = await getSupabaseServerClient().from("junta_reportes").select("html").eq("id_reporte", idReporte).maybeSingle();
+  return { html: (data?.html as string | null) ?? null };
+}
+
+/** Armarlo ahora, sin esperar a mañana (lo vuelve a armar aunque ya exista el de hoy). */
+export async function generarReporteAhora(tipo: TipoReporte): Promise<{ error: string | null; mensaje?: string }> {
+  if (!(await esDueno())) return { error: "Solo el Dueño." };
+  if (!hayClaveIA()) return { error: "Falta conectar la inteligencia artificial." };
+  try {
+    const r = await generarReporte(getSupabaseServerClient(), tipo, { forzar: true, contexto: await datosDelNegocio(), base: process.env.APP_URL ?? "" });
+    return r.ok ? { error: null, mensaje: r.mensaje } : { error: r.mensaje };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "No se pudo armar el reporte." };
+  }
+}

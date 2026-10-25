@@ -8,6 +8,10 @@
     {
       "path": "/api/cron/aplicar-cambios",
       "schedule": "30 2 * * *"
+    },
+    {
+      "path": "/api/cron/junta-reportes",
+      "schedule": "0 9 * * *"
     }
   ]
 }

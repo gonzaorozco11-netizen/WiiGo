@@ -3,7 +3,7 @@ import { armarTablero } from "@/lib/tablero";
 import { hayClaveIA } from "@/lib/ia";
 import PantallaBloqueada from "@/components/PantallaBloqueada";
 import JuntaApp from "@/components/JuntaApp";
-import { leerConversaciones, listarTareasJunta } from "./actions";
+import { leerConversaciones, listarReportes, listarTareasJunta } from "./actions";
 import "./junta.css";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +15,12 @@ export default async function JuntaPage() {
   const sesion = await obtenerSesionConPantallas();
   if (sesion?.rol !== "admin") return <PantallaBloqueada />;
 
-  const [tablero, conversaciones, tareas] = await Promise.all([armarTablero().catch(() => null), leerConversaciones(), listarTareasJunta()]);
+  const [tablero, conversaciones, tareas, reportes] = await Promise.all([
+    armarTablero().catch(() => null),
+    leerConversaciones(),
+    listarTareasJunta(),
+    listarReportes(),
+  ]);
   const d = tablero?.dueno;
 
   return (
@@ -26,6 +31,7 @@ export default async function JuntaPage() {
       hoy={d ? { vendido: d.hoy.vendido, ventas: d.hoy.tickets, ticket: d.hoy.tickets ? Math.round(d.hoy.vendido / d.hoy.tickets) : 0 } : null}
       pendientes={[...(tablero?.urgentes ?? []), ...(tablero?.seguimiento ?? [])].slice(0, 8)}
       tareasIniciales={tareas}
+      reportesIniciales={reportes}
     />
   );
 }

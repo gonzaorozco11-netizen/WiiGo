@@ -16,6 +16,7 @@
 
 import { pedirJson, pedirTexto, type ParteSistema } from "@/lib/ia";
 import { armarTablero } from "@/lib/tablero";
+import { armarInicioDueno } from "@/lib/inicioDueno";
 import { armarDashboardRrhh } from "@/app/(app)/rrhh/actions";
 import { fechaHoraArgentina } from "@/lib/horarios";
 import { getSupabaseServerClient } from "@/lib/supabase";
@@ -35,7 +36,9 @@ export async function datosDelNegocio(): Promise<string> {
     armarDashboardRrhh().catch(() => null),
   ]);
 
-  const d = tablero?.dueno;
+  // Sin sesión (el cron de los reportes) armarTablero no devuelve nada: las
+  // ventas del mes se leen directo, que no necesitan permisos.
+  const d = tablero?.dueno ?? (await armarInicioDueno(getSupabaseServerClient()).catch(() => null));
   if (d) {
     const variacion = d.vendidoMesAnteriorTramo > 0 ? Math.round((d.vendidoMes / d.vendidoMesAnteriorTramo - 1) * 100) : null;
     partes.push(
@@ -113,7 +116,7 @@ export async function datosDelNegocio(): Promise<string> {
   return partes.filter(Boolean).join("\n");
 }
 
-const NEGOCIO = `Sos parte de la junta de WiiGo, una mesa de seis encargados que asesoran al dueño.
+export const NEGOCIO = `Sos parte de la junta de WiiGo, una mesa de seis encargados que asesoran al dueño.
 
 WiiGo es una "Estación de Bienestar": un concepto nuevo que creó WiiGo (no se presenta como dietética). La primera estación está en Arístides Villanueva 256, Mendoza, y la visión es ser referente del retail saludable y llegar a todo el país con más estaciones. Reúne marcas saludables, con trayectoria o nuevas, con tres diferenciales: sinergia entre marcas (precio y calidad), tecnología (tótem de autocompra con QR de Mercado Pago o efectivo, pantallas asesoras) y profesionales de la salud (las nutricionistas aparecen en las pantallas asesoras y el cliente saca turno; no están en el local). Hay venta en el local y pronto tienda online con retiro o envío. El cliente se registra con su DNI y suma puntos WiiGo.
 
@@ -131,7 +134,7 @@ Reglas para contestar:
 - Terminás con una recomendación concreta, no con una lista de opciones.`;
 
 const ENFOQUE: Record<IdEncargado, string> = {
-  lola: "Sos Lola, encargada de Marketing. Creativa y práctica. Pensás en que conozcan a WiiGo y al concepto de Estación de Bienestar: Instagram y contenido (que generan los operativos en el local, siempre aprobado por WiiGo), clientes nuevos, que dejen su DNI y sumen puntos, eventos y degustaciones con las marcas, y la tienda online. Proponés acciones baratas y medibles.",
+  lola: "Sos Lola, encargada de Marketing. Creativa y práctica. Pensás en que conozcan a WiiGo y al concepto de Estación de Bienestar: Instagram y contenido (que generan los operativos en el local, siempre aprobado por WiiGo), clientes nuevos, que dejen su DNI (el canje de puntos todavía está apagado: no prometas canjes), eventos y degustaciones con las marcas, y la tienda online. Proponés acciones baratas y medibles.",
   bruno: "Sos Bruno, encargado de Finanzas. Cuidás cada peso y siempre preguntás cuánto rinde. Mirás lo que le queda a WiiGo (comisión, venta propia, fees), los gastos fijos, el costo del equipo contra los ingresos netos, el efectivo y Mercado Pago, y si una idea paga lo que cuesta. Hacés las cuentas con los números que hay y decís el punto de equilibrio cuando sirve.",
   ines: "Sos Inés, encargada de Contabilidad e impuestos. Prolija. Mirás que todo se facture, IVA, ingresos brutos, vencimientos, los papeles de las marcas y de los empleados. WiiGo es NUOVO IMPERO SAS, responsable inscripta en IVA. Orientás con claridad y siempre recomendás confirmar con Agustín, el contador.",
   facu: "Sos Facu, encargado de Ventas. Vivís en el salón: ticket promedio, cuántas ventas, horarios y días fuertes, qué se vende y qué no, la góndola (son 5 módulos), el tótem y la experiencia del cliente. Proponés cosas concretas para vender más: ubicación, combos, productos de impulso, cómo asesorar.",
@@ -159,7 +162,7 @@ function conversacionPrevia(historial: MensajeJunta[]) {
   return `Lo que se habló hasta ahora:\n${historial.map((m) => `${nombre(m.autor)}: ${m.texto}${m.puntos?.length ? ` (${m.puntos.join("; ")})` : ""}`).join("\n")}\n\n`;
 }
 
-function leerLamina(x: unknown): Lamina | null {
+export function leerLamina(x: unknown): Lamina | null {
   if (!x || typeof x !== "object") return null;
   const l = x as Record<string, unknown>;
   const titulo = typeof l.titulo === "string" ? l.titulo.slice(0, 60) : "";
@@ -190,7 +193,7 @@ function jsonDeLinea(linea: string): unknown {
   }
 }
 
-function leerTarea(x: unknown): TareaPropuesta | null {
+export function leerTarea(x: unknown): TareaPropuesta | null {
   if (!x || typeof x !== "object") return null;
   const t = x as Record<string, unknown>;
   const titulo = typeof t.titulo === "string" ? t.titulo.trim().slice(0, 140) : "";
