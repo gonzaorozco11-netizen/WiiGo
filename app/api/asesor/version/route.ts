@@ -15,10 +15,18 @@ import { getSupabaseServerClient } from "@/lib/supabase";
  */
 export const dynamic = "force-dynamic";
 
+// Resume un texto largo en un número corto: la huella viaja cada pocos
+// segundos y no hace falta que lleve las fichas enteras.
+function resumir(texto: string) {
+  let h = 5381;
+  for (let i = 0; i < texto.length; i++) h = ((h << 5) + h + texto.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+
 export async function GET() {
   const supabase = getSupabaseServerClient();
 
-  const [ultimo, productos, marcas, subcategorias, profesionales] = await Promise.all([
+  const [ultimo, productos, marcas, subcategorias, profesionales, consultorios, miembros] = await Promise.all([
     supabase
       .from("productos")
       .select("fecha_actualizacion")
@@ -31,7 +39,18 @@ export async function GET() {
     // ningún número. Son tres o cuatro filas de texto corto.
     supabase.from("marcas").select("nombre,logo,estado,visible_asesor").order("nombre"),
     supabase.from("subcategorias").select("nombre,estado").order("nombre"),
-    supabase.from("profesionales").select("id_profesional", { count: "exact", head: true }).eq("publicado", true),
+    // Igual que marcas: sin fecha de modificación, se miran los campos que se
+    // ven en la ficha. Antes era solo la cantidad de publicados, y cambiarle
+    // la foto o el link de turnos a una no llegaba a la pantalla.
+    supabase
+      .from("profesionales")
+      .select("id_profesional,nombre,apellido,foto,titulo,especialidad,bio,link_reserva,link_reserva_online,precio_presencial,precio_online")
+      .eq("publicado", true)
+      .eq("estado", "ACTIVO")
+      .order("id_profesional"),
+    // Si todavía no existe la tabla de consultorios, estas dos fallan y no suman nada.
+    supabase.from("consultorios").select("id_consultorio,nombre,link_reserva,link_reserva_online,estado").order("id_consultorio"),
+    supabase.from("profesionales").select("id_profesional,id_consultorio").not("id_consultorio", "is", null).order("id_profesional"),
   ]);
 
   const huella = [
@@ -39,7 +58,9 @@ export async function GET() {
     productos.count ?? 0,
     (marcas.data ?? []).map((m) => `${m.nombre}${m.logo ?? ""}${m.estado}${m.visible_asesor}`).join(","),
     (subcategorias.data ?? []).map((s) => `${s.nombre}${s.estado}`).join(","),
-    profesionales.count ?? 0,
+    resumir(
+      JSON.stringify([profesionales.data ?? [], consultorios.error ? [] : consultorios.data, miembros.error ? [] : miembros.data])
+    ),
   ].join("|");
 
   return NextResponse.json(

@@ -15,6 +15,7 @@ import type {
   FichaProducto,
   Subcategoria,
   ProfesionalPublico,
+  ConsultorioEnFicha,
   ConocemeSlide,
   FormacionProfesional,
   TrayectoriaProfesional,
@@ -194,6 +195,9 @@ const HOME_I18N = {
     matricula: "Matrícula",
     presencial: "Presencial",
     online: "Online",
+    atiendeEn: "Atiende en",
+    juntoA: "junto a",
+    mismaAgenda: "Comparten la agenda de turnos.",
   },
   en: {
     pregunta: "What are you looking for today?",
@@ -234,6 +238,9 @@ const HOME_I18N = {
     matricula: "License",
     presencial: "In person",
     online: "Online",
+    atiendeEn: "Works at",
+    juntoA: "with",
+    mismaAgenda: "They share the same booking calendar.",
   },
   pt: {
     pregunta: "O que você está procurando hoje?",
@@ -274,6 +281,9 @@ const HOME_I18N = {
     matricula: "Registro",
     presencial: "Presencial",
     online: "Online",
+    atiendeEn: "Atende em",
+    juntoA: "junto com",
+    mismaAgenda: "Compartilham a mesma agenda.",
   },
 } as const;
 
@@ -820,6 +830,7 @@ export default function AsesorApp({
   variantesPorProducto,
   subcategorias,
   profesionales,
+  consultorioPorProfesional,
   fortalezasPorProfesional,
   objetivosPorProfesional,
   conocemePorProfesional,
@@ -837,6 +848,7 @@ export default function AsesorApp({
   variantesPorProducto: Record<string, VarianteProductoPublica[]>;
   subcategorias: Subcategoria[];
   profesionales: ProfesionalPublico[];
+  consultorioPorProfesional: Record<string, ConsultorioEnFicha>;
   fortalezasPorProfesional: Record<string, { nombre: string; principal: boolean }[]>;
   objetivosPorProfesional: Record<string, string[]>;
   conocemePorProfesional: Record<string, ConocemeSlide[]>;
@@ -1104,6 +1116,7 @@ export default function AsesorApp({
   }, [profesionales, categoriaProf]);
 
   const profesionalActual = profesionalId ? profesionales.find((p) => p.id_profesional === profesionalId) ?? null : null;
+  const consultorioActual = profesionalId ? consultorioPorProfesional[profesionalId] ?? null : null;
 
   const tieneReservaPresencial = Boolean(profesionalActual?.link_reserva);
   const tieneReservaOnline = Boolean(profesionalActual?.link_reserva_online);
@@ -2232,6 +2245,41 @@ export default function AsesorApp({
                 </button>
               ) : (
                 <p className="text-center text-[11px] text-[#a8a8a8]">Todavía no tiene link de reserva cargado.</p>
+              )}
+
+              {/* Atiende con otras y comparten la agenda: el turno de arriba ya
+                  abre la del consultorio. Esto es para que el cliente sepa con
+                  quién atiende y pueda pasar a su ficha. */}
+              {consultorioActual && consultorioActual.companeras.length > 0 && (
+                <div className="rounded-xl p-3 flex flex-col gap-2" style={{ background: SAGE_TINT, color: SAGE_DARK }}>
+                  <p className="text-[11px] leading-snug">
+                    {t("atiendeEn")} <b>{consultorioActual.nombre}</b> {t("juntoA")}{" "}
+                    {consultorioActual.companeras.map((c) => c.nombre).join(", ")}. {t("mismaAgenda")}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {consultorioActual.companeras.map((c) => (
+                      <button
+                        key={c.id_profesional}
+                        onClick={() => irAFichaProfesional(c.id_profesional)}
+                        className="flex items-center gap-2 bg-white rounded-full pl-1 pr-3 py-1 text-[11px] font-bold"
+                        style={{ color: SAGE_DARK }}
+                      >
+                        <span
+                          className="w-6 h-6 rounded-full overflow-hidden grid place-items-center text-[10px] text-white shrink-0"
+                          style={{ background: SAGE_DARK }}
+                        >
+                          {c.foto ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={c.foto} alt="" className="w-full h-full object-cover object-top" />
+                          ) : (
+                            c.nombre.charAt(0).toUpperCase()
+                          )}
+                        </span>
+                        {c.nombre} →
+                      </button>
+                    ))}
+                  </div>
+                </div>
               )}
 
               {slidesDelProfesionalActual.length > 0 && (

@@ -902,6 +902,24 @@ export type Profesional = {
   orden: number | null;
   fecha_alta: string;
   observaciones: string | null;
+  // Si comparte agenda con otras: el link de turnos sale del consultorio.
+  // Opcional porque la columna llega con sql/profesionales-consultorios.sql.
+  id_consultorio?: string | null;
+};
+
+export type Consultorio = {
+  id_consultorio: string;
+  nombre: string;
+  link_reserva: string | null;
+  link_reserva_online: string | null;
+  estado: string;
+};
+
+// Lo que el asesor muestra de un consultorio en la ficha de cada una: con
+// quién comparte la agenda, para poder pasar a la ficha de la otra.
+export type ConsultorioEnFicha = {
+  nombre: string;
+  companeras: { id_profesional: string; nombre: string; foto: string | null }[];
 };
 
 // El asesor es una pantalla pública: el DNI, el teléfono, el mail, la fecha de

@@ -5,6 +5,7 @@ import {
   type Producto,
   type Subcategoria,
   type ProfesionalPublico,
+  type ConsultorioEnFicha,
   type FormacionProfesional,
   type TrayectoriaProfesional,
   type ConocemeSlide,
@@ -48,6 +49,8 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
     formacionRes,
     trayectoriaRes,
     contenido,
+    miembrosRes,
+    consultoriosRes,
   ] = await Promise.all([
     // Columnas explícitas: con "*" viajaban al navegador el royalty, el fee de
     // ingreso, el plan y el contacto de cada marca. Esta pantalla es pública.
@@ -65,7 +68,46 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
     supabase.from("formacion_profesional").select("*").eq("publico", true).order("anio", { ascending: false }),
     supabase.from("trayectoria_profesional").select("*").eq("publico", true).order("orden", { ascending: true }),
     fetchContenidoAsesor(supabase),
+    // Aparte de la lista: si todavía no se corrió sql/profesionales-consultorios.sql
+    // estas dos fallan solas y la pantalla sigue andando como antes.
+    supabase
+      .from("profesionales")
+      .select("id_profesional, id_consultorio")
+      .eq("estado", "ACTIVO")
+      .eq("publicado", true)
+      .not("id_consultorio", "is", null),
+    supabase.from("consultorios").select("id_consultorio, nombre, link_reserva, link_reserva_online").eq("estado", "ACTIVO"),
   ]);
+
+  // Las que comparten consultorio usan su agenda: el botón de turno abre el
+  // link del consultorio, y la ficha muestra con quién atiende.
+  const profesionales = (profesionalesRes.data ?? []) as ProfesionalPublico[];
+  const consultorioPorProfesional: Record<string, ConsultorioEnFicha> = {};
+  if (!miembrosRes.error && !consultoriosRes.error) {
+    const miembros = (miembrosRes.data ?? []) as { id_profesional: string; id_consultorio: string }[];
+    const consultorioPorId = new Map(
+      ((consultoriosRes.data ?? []) as { id_consultorio: string; nombre: string; link_reserva: string | null; link_reserva_online: string | null }[]).map(
+        (c) => [c.id_consultorio, c]
+      )
+    );
+    const profesionalPorId = new Map(profesionales.map((p) => [p.id_profesional, p]));
+    for (const m of miembros) {
+      const consultorio = consultorioPorId.get(m.id_consultorio);
+      const profesional = profesionalPorId.get(m.id_profesional);
+      if (!consultorio || !profesional) continue;
+      if (consultorio.link_reserva) profesional.link_reserva = consultorio.link_reserva;
+      if (consultorio.link_reserva_online) profesional.link_reserva_online = consultorio.link_reserva_online;
+      consultorioPorProfesional[m.id_profesional] = {
+        nombre: consultorio.nombre,
+        companeras: miembros
+          .filter((o) => o.id_consultorio === m.id_consultorio && o.id_profesional !== m.id_profesional)
+          .flatMap((o) => {
+            const p = profesionalPorId.get(o.id_profesional);
+            return p ? [{ id_profesional: p.id_profesional, nombre: `${p.nombre}${p.apellido ? ` ${p.apellido}` : ""}`, foto: p.foto }] : [];
+          }),
+      };
+    }
+  }
 
   const fortalezaPorId: Record<string, string> = {};
   (fortalezasRes.data ?? []).forEach((f: { id_fortaleza: string; nombre: string }) => {
@@ -140,7 +182,8 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
       productos={(productosRes.data ?? []) as ProductoPublico[]}
       variantesPorProducto={variantesPorProducto}
       subcategorias={(subcategoriasRes.data ?? []) as Subcategoria[]}
-      profesionales={(profesionalesRes.data ?? []) as ProfesionalPublico[]}
+      profesionales={profesionales}
+      consultorioPorProfesional={consultorioPorProfesional}
       fortalezasPorProfesional={fortalezasPorProfesional}
       objetivosPorProfesional={objetivosPorProfesional}
       conocemePorProfesional={conocemePorProfesional}

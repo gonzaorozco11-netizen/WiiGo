@@ -12,6 +12,7 @@ import type {
   TrayectoriaProfesional,
   FilminaProfesional,
   TipoFilmina,
+  Consultorio,
 } from "@/lib/supabase";
 import {
   listarProfesionales,
@@ -62,6 +63,8 @@ import {
   eliminarFilmina,
   toggleVisibleFilmina,
   reordenarFilmina,
+  listarConsultorios,
+  guardarConsultorio,
 } from "@/app/(app)/profesionales/actions";
 
 type Codigo = {
@@ -164,14 +167,15 @@ export default function ProfesionalesApp({ marcas, objetivosGlobales }: { marcas
 
 // Cuántos de los campos clave de la Fase A están cargados — para el
 // indicador "Perfil completado" en el listado y en la ficha de edición.
-function calcularCompletitud(p: Profesional, tieneFortalezas: boolean, tieneObjetivos: boolean) {
+// Si comparte consultorio, el link de turnos puede venir de ahí y no de ella.
+function calcularCompletitud(p: Profesional, tieneFortalezas: boolean, tieneObjetivos: boolean, linkConsultorio: string | null = null) {
   const items: { label: string; ok: boolean }[] = [
     { label: "Foto", ok: Boolean(p.foto) },
     { label: "Título y especialidad", ok: Boolean(p.titulo && p.especialidad) },
     { label: "Presentación corta", ok: Boolean(p.bio) },
     { label: "Fortalezas", ok: tieneFortalezas },
     { label: "Cómo puede ayudarte", ok: tieneObjetivos },
-    { label: "Atención y reserva", ok: Boolean(p.tipo_atencion && p.link_reserva) },
+    { label: "Atención y reserva", ok: Boolean(p.tipo_atencion && (p.link_reserva || linkConsultorio)) },
   ];
   const completados = items.filter((i) => i.ok).length;
   const porcentaje = Math.round((completados / items.length) * 100);
@@ -226,6 +230,10 @@ function StatCard({
 
 // ===================== TAB PROFESIONALES =====================
 
+type FiltroLista = "todos" | "publicados" | "completar" | "borradores" | "inactivos";
+
+type DatosConsultorios = Awaited<ReturnType<typeof listarConsultorios>>;
+
 function TabProfesionales({ objetivosGlobales }: { objetivosGlobales: Objetivo[] }) {
   const [periodo, setPeriodo] = useState<"hoy" | "semana" | "mes">("mes");
   const [filas, setFilas] = useState<FilaResumen[]>([]);
@@ -233,8 +241,10 @@ function TabProfesionales({ objetivosGlobales }: { objetivosGlobales: Objetivo[]
   const [codigos, setCodigos] = useState<Codigo[]>([]);
   const [conFortalezas, setConFortalezas] = useState<string[]>([]);
   const [conObjetivos, setConObjetivos] = useState<string[]>([]);
+  const [consultorios, setConsultorios] = useState<DatosConsultorios>({ disponible: false, consultorios: [], miembros: [] });
   const [cargando, setCargando] = useState(false);
-  const [expandido, setExpandido] = useState<string | null>(null);
+  const [filtro, setFiltro] = useState<FiltroLista>("todos");
+  const [abierto, setAbierto] = useState<{ id: string; editando: boolean } | null>(null);
   const [mostrarForm, setMostrarForm] = useState(false);
 
   const { desde, hasta } = (() => {
@@ -255,13 +265,15 @@ function TabProfesionales({ objetivosGlobales }: { objetivosGlobales: Objetivo[]
       listarCodigos(),
       listarProfesionalesConFortalezas(),
       listarProfesionalesConObjetivos(),
+      listarConsultorios(),
     ])
-      .then(([r, p, c, cf, co]) => {
+      .then(([r, p, c, cf, co, cons]) => {
         setFilas(r);
         setProfesionales(p as Profesional[]);
         setCodigos(c as Codigo[]);
         setConFortalezas(cf);
         setConObjetivos(co);
+        setConsultorios(cons);
       })
       .finally(() => setCargando(false));
   }
@@ -273,6 +285,53 @@ function TabProfesionales({ objetivosGlobales }: { objetivosGlobales: Objetivo[]
   const montoTotal = filas.reduce((acc, f) => acc + f.totalVenta, 0);
   const comisionPendienteTotal = filas.reduce((acc, f) => acc + f.comisionPendiente, 0);
   const comisionPagadaTotal = filas.reduce((acc, f) => acc + f.comisionPagada, 0);
+
+  const nombreCompleto = (p: Profesional) => `${p.nombre}${p.apellido ? ` ${p.apellido}` : ""}`;
+  const consultorioDe = (idProfesional: string) => {
+    const m = consultorios.miembros.find((x) => x.id_profesional === idProfesional);
+    return m ? consultorios.consultorios.find((c) => c.id_consultorio === m.id_consultorio) ?? null : null;
+  };
+  const nombresPorConsultorio: Record<string, string[]> = {};
+  for (const m of consultorios.miembros) {
+    const p = profesionales.find((x) => x.id_profesional === m.id_profesional);
+    if (p) (nombresPorConsultorio[m.id_consultorio] ??= []).push(nombreCompleto(p));
+  }
+  const categorias = [...new Set(profesionales.map((p) => p.categoria).filter((c): c is string => Boolean(c)))];
+
+  const tarjetas = filas.flatMap((f) => {
+    const profesional = profesionales.find((p) => p.id_profesional === f.idProfesional);
+    if (!profesional) return [];
+    const consultorio = consultorioDe(profesional.id_profesional);
+    const completitud = calcularCompletitud(
+      profesional,
+      conFortalezas.includes(profesional.id_profesional),
+      conObjetivos.includes(profesional.id_profesional),
+      consultorio?.link_reserva ?? consultorio?.link_reserva_online ?? null
+    );
+    const companeras = consultorio
+      ? (nombresPorConsultorio[consultorio.id_consultorio] ?? []).filter((n) => n !== nombreCompleto(profesional))
+      : [];
+    return [{ fila: f, profesional, completitud, consultorio, companeras }];
+  });
+
+  const cumple = (t: (typeof tarjetas)[number], filtroLista: FiltroLista) => {
+    const activo = t.profesional.estado === "ACTIVO";
+    if (filtroLista === "publicados") return activo && t.profesional.publicado;
+    if (filtroLista === "completar") return activo && t.completitud.porcentaje < 100;
+    if (filtroLista === "borradores") return activo && !t.profesional.publicado;
+    if (filtroLista === "inactivos") return !activo;
+    return activo;
+  };
+  const visibles = tarjetas.filter((t) => cumple(t, filtro));
+  const abiertoTarjeta = abierto ? tarjetas.find((t) => t.profesional.id_profesional === abierto.id) ?? null : null;
+
+  const FILTROS: { clave: FiltroLista; label: string }[] = [
+    { clave: "todos", label: "Activos" },
+    { clave: "publicados", label: "Publicados" },
+    { clave: "completar", label: "Les falta completar" },
+    { clave: "borradores", label: "Borradores" },
+    { clave: "inactivos", label: "Inactivos" },
+  ];
 
   return (
     <div>
@@ -294,105 +353,236 @@ function TabProfesionales({ objetivosGlobales }: { objetivosGlobales: Objetivo[]
         <StatCard color="success" icono="✅" etiqueta="Comisión pagada" valor={`$${formatearMonto(comisionPagadaTotal)}`} />
       </div>
 
-      {mostrarForm && <FormNuevoProfesional onCreado={() => { setMostrarForm(false); recargar(); }} />}
+      {mostrarForm && (
+        <FormNuevoProfesional
+          categorias={categorias}
+          consultorios={consultorios}
+          nombresPorConsultorio={nombresPorConsultorio}
+          onCreado={(id) => {
+            setMostrarForm(false);
+            recargar();
+            setAbierto({ id, editando: true });
+          }}
+        />
+      )}
 
-      <div className="bg-white border border-neutral-200 rounded-xl overflow-hidden">
-        <div className="flex items-baseline justify-between px-4 py-3 border-b border-neutral-100">
-          <h2 className="text-sm font-bold text-neutral-900">Profesionales y sus códigos</h2>
-          <span className="text-xs text-neutral-400">Tocá una fila para ver el detalle</span>
+      <div className="flex flex-wrap gap-1.5 mb-4">
+        {FILTROS.map((x) => {
+          const cuenta = tarjetas.filter((t) => cumple(t, x.clave)).length;
+          return (
+            <button
+              key={x.clave}
+              onClick={() => setFiltro(x.clave)}
+              className={`text-xs font-semibold px-3 py-1.5 rounded-full border ${
+                filtro === x.clave ? "bg-accent-tint border-accent text-accent-dark" : "bg-white border-neutral-200 text-neutral-600"
+              }`}
+            >
+              {x.label} <span className="tabular-nums text-neutral-400">{cuenta}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {cargando && tarjetas.length === 0 ? (
+        <p className="text-sm text-neutral-400 text-center py-8">Cargando...</p>
+      ) : tarjetas.length === 0 ? (
+        <p className="text-sm text-neutral-400 text-center py-8">Todavía no hay profesionales cargados.</p>
+      ) : visibles.length === 0 ? (
+        <p className="text-sm text-neutral-400 text-center py-8">No hay profesionales en este filtro.</p>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5">
+          {visibles.map((t) => (
+            <TarjetaProfesional
+              key={t.profesional.id_profesional}
+              profesional={t.profesional}
+              fila={t.fila}
+              completitud={t.completitud}
+              consultorio={t.consultorio}
+              companeras={t.companeras}
+              onAbrir={() => setAbierto({ id: t.profesional.id_profesional, editando: false })}
+            />
+          ))}
         </div>
-        {cargando ? (
-          <p className="text-sm text-neutral-400 text-center py-8">Cargando...</p>
-        ) : filas.length === 0 ? (
-          <p className="text-sm text-neutral-400 text-center py-8">Todavía no hay profesionales cargados.</p>
+      )}
+
+      {abiertoTarjeta && (
+        <PanelLateral
+          profesional={abiertoTarjeta.profesional}
+          porcentaje={abiertoTarjeta.completitud.porcentaje}
+          onCerrar={() => setAbierto(null)}
+        >
+          <DetalleProfesional
+            key={abiertoTarjeta.profesional.id_profesional}
+            profesional={abiertoTarjeta.profesional}
+            objetivosGlobales={objetivosGlobales}
+            codigos={codigos.filter((c) => c.id_profesional === abiertoTarjeta.profesional.id_profesional)}
+            consultorios={consultorios}
+            nombresPorConsultorio={nombresPorConsultorio}
+            abrirEditando={abierto?.editando ?? false}
+            onCambio={recargar}
+          />
+        </PanelLateral>
+      )}
+    </div>
+  );
+}
+
+// La foto con un anillo alrededor que se llena según cuánto tiene cargado el
+// perfil: verde completo, ámbar si le falta algo.
+function AvatarConAnillo({ foto, nombre, porcentaje, tamano = 64 }: { foto: string | null; nombre: string; porcentaje: number; tamano?: number }) {
+  const color = porcentaje >= 100 ? "#059669" : "#f59e0b";
+  const iniciales = nombre
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((x) => x.charAt(0).toUpperCase())
+    .join("");
+  return (
+    <span
+      className="rounded-full p-[3px] shrink-0 grid"
+      style={{ width: tamano, height: tamano, background: `conic-gradient(${color} ${porcentaje}%, #e5e5e5 0)` }}
+    >
+      <span className="w-full h-full rounded-full overflow-hidden bg-neutral-100 border-2 border-white grid place-items-center text-neutral-500 font-bold">
+        {foto ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={foto} alt="" className="w-full h-full object-cover object-top" />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-neutral-200 text-left text-xs text-neutral-500">
-                  <th className="p-3">Profesional</th>
-                  <th className="p-3">Código</th>
-                  <th className="p-3 text-right">Ventas</th>
-                  <th className="p-3 text-right">Total vendido</th>
-                  <th className="p-3 text-right">Comisión pendiente</th>
-                  <th className="p-3">Estado</th>
-                  <th className="p-3">Perfil</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filas.map((f) => {
-                  const expandido2 = expandido === f.idProfesional;
-                  const profesional = profesionales.find((p) => p.id_profesional === f.idProfesional);
-                  const codigosDelProfesional = codigos.filter((c) => c.id_profesional === f.idProfesional);
-                  const completitud = profesional
-                    ? calcularCompletitud(
-                        profesional,
-                        conFortalezas.includes(profesional.id_profesional),
-                        conObjetivos.includes(profesional.id_profesional)
-                      )
-                    : null;
-                  return (
-                    <Fragment key={f.idProfesional}>
-                      <tr
-                        onClick={() => setExpandido(expandido2 ? null : f.idProfesional)}
-                        className={`border-b border-neutral-100 last:border-0 cursor-pointer hover:bg-neutral-50 ${expandido2 ? "bg-neutral-50" : ""}`}
-                      >
-                        <td className="p-3">
-                          <span className="text-neutral-400 mr-1">{expandido2 ? "▾" : "▸"}</span>
-                          <span className="font-medium text-neutral-900">{f.nombre}</span>
-                          {f.especialidad && <div className="text-xs text-neutral-400 pl-3.5">{f.especialidad}</div>}
-                        </td>
-                        <td className="p-3">
-                          {f.codigoPrincipal ? (
-                            <span className="text-xs font-mono font-bold bg-accent-tint text-accent-dark px-2 py-0.5 rounded">{f.codigoPrincipal}</span>
-                          ) : (
-                            <span className="text-xs text-neutral-400">Sin código</span>
-                          )}
-                        </td>
-                        <td className="p-3 text-right tabular-nums">{f.ventasReferidas}</td>
-                        <td className="p-3 text-right tabular-nums">${formatearMonto(f.totalVenta)}</td>
-                        <td className={`p-3 text-right tabular-nums font-semibold ${f.comisionPendiente > 0 ? "text-red-600" : "text-neutral-400"}`}>
-                          ${formatearMonto(f.comisionPendiente)}
-                        </td>
-                        <td className="p-3">
-                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${f.estado === "ACTIVO" ? "bg-emerald-100 text-emerald-700" : "bg-neutral-100 text-neutral-500"}`}>
-                            {f.estado}
-                          </span>
-                        </td>
-                        <td className="p-3">
-                          {profesional && completitud && (
-                            <div className="flex items-center gap-2">
-                              <span
-                                className={`text-xs font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${
-                                  profesional.publicado ? "bg-emerald-100 text-emerald-700" : "bg-neutral-100 text-neutral-500"
-                                }`}
-                              >
-                                {profesional.publicado ? "🟢 Publicado" : "⚪ Borrador"}
-                              </span>
-                              <span className="text-xs text-neutral-400 tabular-nums">{completitud.porcentaje}%</span>
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                      {expandido2 && profesional && (
-                        <tr className="border-b border-neutral-100 last:border-0">
-                          <td colSpan={7} className="bg-neutral-50 p-0">
-                            <DetalleProfesional
-                              profesional={profesional}
-                              objetivosGlobales={objetivosGlobales}
-                              codigos={codigosDelProfesional}
-                              onCambio={recargar}
-                            />
-                          </td>
-                        </tr>
-                      )}
-                    </Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          iniciales
         )}
+      </span>
+    </span>
+  );
+}
+
+function TarjetaProfesional({
+  profesional,
+  fila,
+  completitud,
+  consultorio,
+  companeras,
+  onAbrir,
+}: {
+  profesional: Profesional;
+  fila: FilaResumen;
+  completitud: ReturnType<typeof calcularCompletitud>;
+  consultorio: Consultorio | null;
+  companeras: string[];
+  onAbrir: () => void;
+}) {
+  const faltan = completitud.items.filter((i) => !i.ok).map((i) => i.label.toLowerCase());
+  const activo = profesional.estado === "ACTIVO";
+  return (
+    <button
+      onClick={onAbrir}
+      className={`text-left bg-white border rounded-2xl p-4 flex flex-col gap-3 transition hover:shadow-md hover:border-accent ${
+        activo ? "border-neutral-200" : "border-neutral-200 opacity-60"
+      }`}
+    >
+      <div className="flex items-center gap-3.5 min-w-0">
+        <AvatarConAnillo foto={profesional.foto} nombre={fila.nombre} porcentaje={completitud.porcentaje} />
+        <div className="min-w-0">
+          <p className="font-bold text-neutral-900 leading-tight truncate">{fila.nombre}</p>
+          <p className="text-xs text-neutral-500 truncate">
+            {[profesional.categoria, profesional.especialidad].filter(Boolean).join(" · ") || "Sin profesión cargada"}
+          </p>
+          <p className="text-[11px] font-semibold text-neutral-400 tabular-nums mt-0.5">Perfil {completitud.porcentaje}%</p>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-1.5">
+        {!activo ? (
+          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-500">Inactivo</span>
+        ) : profesional.publicado ? (
+          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">Publicado</span>
+        ) : (
+          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-500">Borrador</span>
+        )}
+        {consultorio && (
+          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">
+            {companeras.length > 0 ? `Agenda compartida con ${companeras.join(", ")}` : `Consultorio ${consultorio.nombre}`}
+          </span>
+        )}
+        {!profesional.dni && <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">Sin DNI</span>}
+      </div>
+
+      <div className="grid grid-cols-3 gap-2 border-t border-neutral-100 pt-2.5">
+        <div className="min-w-0">
+          <p className="text-[10.5px] font-semibold text-neutral-400">Código</p>
+          <p className="text-sm font-bold font-mono truncate">{fila.codigoPrincipal ?? "—"}</p>
+        </div>
+        <div className="min-w-0">
+          <p className="text-[10.5px] font-semibold text-neutral-400">Ventas</p>
+          <p className="text-sm font-bold tabular-nums truncate">
+            {fila.ventasReferidas}
+            {fila.totalVenta > 0 && <span className="font-medium text-neutral-500"> · ${formatearMonto(fila.totalVenta)}</span>}
+          </p>
+        </div>
+        <div className="min-w-0">
+          <p className="text-[10.5px] font-semibold text-neutral-400">A pagar</p>
+          <p className={`text-sm font-bold tabular-nums ${fila.comisionPendiente > 0 ? "text-red-600" : "text-neutral-400"}`}>
+            ${formatearMonto(fila.comisionPendiente)}
+          </p>
+        </div>
+      </div>
+
+      {activo && faltan.length > 0 && (
+        <p className="text-xs text-neutral-600 bg-amber-50 rounded-lg px-3 py-2">
+          <span className="font-semibold text-amber-800">Le falta:</span>{" "}
+          {faltan.length === 1 ? faltan[0] : `${faltan.slice(0, -1).join(", ")} y ${faltan[faltan.length - 1]}`}
+        </p>
+      )}
+    </button>
+  );
+}
+
+// El detalle se abre al costado, sobre la lista, en vez de debajo de una fila:
+// así la lista no salta y se cierra con Escape o tocando afuera.
+function PanelLateral({
+  profesional,
+  porcentaje,
+  onCerrar,
+  children,
+}: {
+  profesional: Profesional;
+  porcentaje: number;
+  onCerrar: () => void;
+  children: React.ReactNode;
+}) {
+  useEffect(() => {
+    const alTeclear = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onCerrar();
+    };
+    window.addEventListener("keydown", alTeclear);
+    const overflowAntes = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", alTeclear);
+      document.body.style.overflow = overflowAntes;
+    };
+  }, [onCerrar]);
+
+  const nombre = `${profesional.nombre}${profesional.apellido ? ` ${profesional.apellido}` : ""}`;
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex justify-end" onClick={onCerrar}>
+      <div
+        role="dialog"
+        aria-label={nombre}
+        className="bg-neutral-50 w-full max-w-3xl h-full overflow-y-auto shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="sticky top-0 z-10 bg-white border-b border-neutral-200 px-5 py-3 flex items-center gap-3">
+          <AvatarConAnillo foto={profesional.foto} nombre={nombre} porcentaje={porcentaje} tamano={44} />
+          <div className="min-w-0 flex-1">
+            <p className="font-bold text-neutral-900 truncate">{nombre}</p>
+            <p className="text-xs text-neutral-500 truncate">
+              {[profesional.categoria, profesional.especialidad].filter(Boolean).join(" · ") || "Sin profesión cargada"}
+            </p>
+          </div>
+          <button onClick={onCerrar} className="text-sm font-semibold text-neutral-500 hover:text-neutral-900 px-2 py-1" aria-label="Cerrar">
+            ✕
+          </button>
+        </div>
+        {children}
       </div>
     </div>
   );
@@ -402,11 +592,17 @@ function DetalleProfesional({
   profesional,
   objetivosGlobales,
   codigos,
+  consultorios,
+  nombresPorConsultorio,
+  abrirEditando = false,
   onCambio,
 }: {
   profesional: Profesional;
   objetivosGlobales: Objetivo[];
   codigos: Codigo[];
+  consultorios: DatosConsultorios;
+  nombresPorConsultorio: Record<string, string[]>;
+  abrirEditando?: boolean;
   onCambio: () => void;
 }) {
   const [saldos, setSaldos] = useState<SaldoMarca[]>([]);
@@ -415,7 +611,7 @@ function DetalleProfesional({
   const [cargando, setCargando] = useState(true);
   const [mostrarCodigoForm, setMostrarCodigoForm] = useState(false);
   const [mostrarPinForm, setMostrarPinForm] = useState(false);
-  const [mostrarEditar, setMostrarEditar] = useState(false);
+  const [mostrarEditar, setMostrarEditar] = useState(abrirEditando);
   const [expandido, setExpandido] = useState<string | null>(null);
 
   function recargar() {
@@ -477,6 +673,8 @@ function DetalleProfesional({
         <FormEditarProfesional
           profesional={profesional}
           objetivosGlobales={objetivosGlobales}
+          consultorios={consultorios}
+          nombresPorConsultorio={nombresPorConsultorio}
           onGuardado={() => {
             setMostrarEditar(false);
             onCambio();
@@ -779,110 +977,287 @@ function FormPin({ idProfesional, onGuardado }: { idProfesional: string; onGuard
   );
 }
 
-function FormNuevoProfesional({ onCreado }: { onCreado: () => void }) {
+// ===================== AGENDA: PROPIA O COMPARTIDA =====================
+
+type EstadoAgenda = {
+  modo: "propia" | "compartida";
+  idConsultorio: string; // "" sin elegir, "__nuevo" para crear uno
+  nombreNuevo: string;
+  linkReserva: string;
+  linkReservaOnline: string;
+};
+
+function agendaInicial(consultorios: DatosConsultorios, idProfesional: string | null): EstadoAgenda {
+  const miembro = idProfesional ? consultorios.miembros.find((m) => m.id_profesional === idProfesional) : undefined;
+  const c = miembro ? consultorios.consultorios.find((x) => x.id_consultorio === miembro.id_consultorio) : undefined;
+  return c
+    ? { modo: "compartida", idConsultorio: c.id_consultorio, nombreNuevo: "", linkReserva: c.link_reserva ?? "", linkReservaOnline: c.link_reserva_online ?? "" }
+    : { modo: "propia", idConsultorio: "", nombreNuevo: "", linkReserva: "", linkReservaOnline: "" };
+}
+
+// Antes de guardar a la profesional: si eligieron "nuevo consultorio" se
+// crea, y si cambiaron los links de uno que ya existe se actualizan (valen
+// para todo el consultorio).
+async function resolverAgenda(estado: EstadoAgenda, consultorios: DatosConsultorios): Promise<{ error: string | null; idConsultorio: string | null }> {
+  if (estado.modo === "propia") return { error: null, idConsultorio: null };
+  if (!estado.idConsultorio) return { error: "Elegí con qué consultorio comparte la agenda.", idConsultorio: null };
+  if (estado.idConsultorio === "__nuevo") {
+    const res = await guardarConsultorio({ nombre: estado.nombreNuevo, linkReserva: estado.linkReserva, linkReservaOnline: estado.linkReservaOnline });
+    return { error: res.error, idConsultorio: res.id ?? null };
+  }
+  const actual = consultorios.consultorios.find((c) => c.id_consultorio === estado.idConsultorio);
+  if (
+    actual &&
+    ((actual.link_reserva ?? "") !== estado.linkReserva || (actual.link_reserva_online ?? "") !== estado.linkReservaOnline)
+  ) {
+    const res = await guardarConsultorio({
+      idConsultorio: actual.id_consultorio,
+      nombre: actual.nombre,
+      linkReserva: estado.linkReserva,
+      linkReservaOnline: estado.linkReservaOnline,
+    });
+    if (res.error) return { error: res.error, idConsultorio: null };
+  }
+  return { error: null, idConsultorio: estado.idConsultorio };
+}
+
+function SelectorAgenda({
+  estado,
+  onChange,
+  consultorios,
+  nombresPorConsultorio,
+  nombrePropio,
+}: {
+  estado: EstadoAgenda;
+  onChange: (estado: EstadoAgenda) => void;
+  consultorios: DatosConsultorios;
+  nombresPorConsultorio: Record<string, string[]>;
+  nombrePropio: string | null;
+}) {
+  const set = (cambios: Partial<EstadoAgenda>) => onChange({ ...estado, ...cambios });
+  function elegirConsultorio(id: string) {
+    const c = consultorios.consultorios.find((x) => x.id_consultorio === id);
+    set({ idConsultorio: id, linkReserva: c?.link_reserva ?? "", linkReservaOnline: c?.link_reserva_online ?? "" });
+  }
+  const opciones: { modo: EstadoAgenda["modo"]; titulo: string; bajada: string }[] = [
+    { modo: "propia", titulo: "Agenda propia", bajada: "Tiene su propio link de turnos." },
+    { modo: "compartida", titulo: "Agenda compartida", bajada: "Atiende en un consultorio con otros y usan el mismo link." },
+  ];
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {opciones.map((o) => {
+          const on = estado.modo === o.modo;
+          return (
+            <button
+              type="button"
+              key={o.modo}
+              onClick={() => set({ modo: o.modo })}
+              className={`text-left rounded-xl border px-3 py-2.5 ${on ? "border-accent bg-accent-tint" : "border-neutral-200 bg-white"}`}
+            >
+              <span className={`block text-sm font-bold ${on ? "text-accent-dark" : "text-neutral-800"}`}>{o.titulo}</span>
+              <span className="block text-xs text-neutral-500">{o.bajada}</span>
+            </button>
+          );
+        })}
+      </div>
+      {estado.modo === "compartida" && (
+        <div className="rounded-xl border border-neutral-200 bg-white p-3 flex flex-col gap-3">
+          <div>
+            <label className="block text-xs font-medium text-neutral-600 mb-1">Consultorio</label>
+            <select
+              value={estado.idConsultorio}
+              onChange={(e) => elegirConsultorio(e.target.value)}
+              className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm"
+            >
+              <option value="">Elegí uno…</option>
+              {consultorios.consultorios.map((c) => {
+                const otros = (nombresPorConsultorio[c.id_consultorio] ?? []).filter((n) => n !== nombrePropio);
+                return (
+                  <option key={c.id_consultorio} value={c.id_consultorio}>
+                    {c.nombre}
+                    {otros.length > 0 ? ` — con ${otros.join(", ")}` : ""}
+                  </option>
+                );
+              })}
+              <option value="__nuevo">+ Nuevo consultorio</option>
+            </select>
+          </div>
+          {estado.idConsultorio === "__nuevo" && (
+            <div>
+              <label className="block text-xs font-medium text-neutral-600 mb-1">Nombre del consultorio</label>
+              <input
+                value={estado.nombreNuevo}
+                onChange={(e) => set({ nombreNuevo: e.target.value })}
+                placeholder="Ej: Consultorio Raíz"
+                className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm"
+              />
+            </div>
+          )}
+          {estado.idConsultorio && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-neutral-600 mb-1">Link de turnos — Presencial</label>
+                <input
+                  value={estado.linkReserva}
+                  onChange={(e) => set({ linkReserva: e.target.value })}
+                  placeholder="Cal.com, Google Calendar o WhatsApp"
+                  className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-600 mb-1">Link de turnos — Online</label>
+                <input
+                  value={estado.linkReservaOnline}
+                  onChange={(e) => set({ linkReservaOnline: e.target.value })}
+                  placeholder="Para turnos por videollamada"
+                  className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm"
+                />
+              </div>
+              <p className="sm:col-span-2 text-[11px] text-neutral-400">
+                Estos links son los del consultorio: si los cambiás acá, cambian para todo el consultorio.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const PROFESIONES_BASE = ["Nutricionista", "Entrenador/a", "Kinesiólogo/a", "Psicólogo/a"];
+
+// El alta pide solo lo justo para que exista: quién es, cómo ubicarla, qué
+// hace y con qué agenda atiende. La foto, la presentación y todo lo que se
+// ve en la pantalla del local se completan después, en su ficha.
+function FormNuevoProfesional({
+  categorias,
+  consultorios,
+  nombresPorConsultorio,
+  onCreado,
+}: {
+  categorias: string[];
+  consultorios: DatosConsultorios;
+  nombresPorConsultorio: Record<string, string[]>;
+  onCreado: (id: string) => void;
+}) {
+  const opciones = [...new Set([...PROFESIONES_BASE, ...categorias])];
+  const [profesion, setProfesion] = useState(opciones[0]);
+  const [otraProfesion, setOtraProfesion] = useState("");
+  const [agenda, setAgenda] = useState<EstadoAgenda>(() => agendaInicial(consultorios, null));
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     const formData = new FormData(e.currentTarget);
+    formData.set("categoria", profesion === "__otra" ? otraProfesion.trim() : profesion);
     setGuardando(true);
-    crearProfesional(formData)
-      .then((res) => {
-        if (res.error) setError(res.error);
-        else onCreado();
-      })
-      .finally(() => setGuardando(false));
+    try {
+      if (consultorios.disponible) {
+        const resAgenda = await resolverAgenda(agenda, consultorios);
+        if (resAgenda.error) {
+          setError(resAgenda.error);
+          return;
+        }
+        if (resAgenda.idConsultorio) formData.set("id_consultorio", resAgenda.idConsultorio);
+      }
+      const res = await crearProfesional(formData);
+      if (res.error) setError(res.error);
+      else if (res.id) onCreado(res.id);
+    } finally {
+      setGuardando(false);
+    }
   }
 
+  const campo = "w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm";
   return (
-    <form onSubmit={handleSubmit} className="bg-white border border-neutral-200 rounded-xl p-5 mb-5">
-      <h2 className="text-base font-semibold text-neutral-900 mb-4">+ Nuevo profesional</h2>
-      {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-4">{error}</p>}
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-        <div>
-          <label className="block text-sm font-medium text-neutral-700 mb-1">Nombre y apellido</label>
-          <input name="nombre" required placeholder="Nombre" className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm mb-2" />
-          <input name="apellido" placeholder="Apellido (opcional)" className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm" />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-neutral-700 mb-1">Categoría / Especialidad</label>
-          <input name="categoria" placeholder="Ej: Nutricionista" className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm mb-2" />
-          <input name="especialidad" placeholder="Especialidad (opcional)" className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm" />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-neutral-700 mb-1">Título</label>
-          <input name="titulo" placeholder="Ej: Lic. en Nutrición" className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm" />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-neutral-700 mb-1">Teléfono</label>
-          <input name="telefono" className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm" />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-neutral-700 mb-1">Email</label>
-          <input name="email" type="email" className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm" />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-neutral-700 mb-1">DNI</label>
-          <input name="dni" className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm" />
-          <p className="text-xs text-neutral-400 mt-1">Para que pueda pagar en caja con su propio saldo.</p>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-neutral-700 mb-1">Tipo de atención</label>
-          <select name="tipo_atencion" className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm">
-            <option value="">Sin especificar</option>
-            <option value="Presencial">Presencial</option>
-            <option value="Virtual">Virtual</option>
-            <option value="Presencial y virtual">Presencial y virtual</option>
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-neutral-700 mb-1">Link de reserva</label>
-          <input name="link_reserva" placeholder="Ej: link de WhatsApp o Calendly" className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm" />
-        </div>
-      </div>
-
-      <div className="mb-4">
-        <label className="block text-sm font-medium text-neutral-700 mb-1">Bio</label>
-        <textarea name="bio" rows={2} placeholder="Presentación corta para mostrarle al cliente" className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm" />
-        <p className="text-xs text-neutral-400 mt-1">
-          La foto, fortalezas, formación, "cómo puede ayudarte" y la publicación se completan después, editando el
-          profesional ya creado.
+    <form onSubmit={handleSubmit} className="bg-white border border-neutral-200 rounded-2xl p-5 mb-5 flex flex-col gap-4">
+      <div>
+        <h2 className="text-base font-bold text-neutral-900">Nuevo profesional</h2>
+        <p className="text-xs text-neutral-500 mt-0.5">
+          Lo básico para darlo de alta. La foto, la presentación y lo que se ve en la pantalla del local se completan después.
         </p>
       </div>
+      {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
 
-      <div className="border-t border-dashed border-neutral-200 pt-3 mb-3">
-        <p className="text-xs font-bold uppercase tracking-wide text-accent-dark mb-2">Código de descuento (opcional)</p>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-1">Código</label>
-            <input name="codigo" placeholder="Ej: MARINA10" className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm font-mono uppercase" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-1">Vigente desde</label>
-            <input name="fecha_desde" type="date" className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-1">Vigente hasta</label>
-            <input name="fecha_hasta" type="date" className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm" />
-          </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs font-medium text-neutral-600 mb-1">Nombre</label>
+          <input name="nombre" required className={campo} />
         </div>
-        <div className="mt-3 max-w-[220px]">
-          <label className="block text-sm font-medium text-neutral-700 mb-1">Límite de usos</label>
-          <input name="limite_usos" type="number" placeholder="Sin límite" className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm" />
+        <div>
+          <label className="block text-xs font-medium text-neutral-600 mb-1">Apellido</label>
+          <input name="apellido" className={campo} />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-neutral-600 mb-1">DNI</label>
+          <input name="dni" inputMode="numeric" className={campo} />
+          <p className="text-[11px] text-neutral-400 mt-1">Para que pueda pagar en caja con su saldo.</p>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-neutral-600 mb-1">WhatsApp</label>
+          <input name="telefono" inputMode="tel" className={campo} />
+        </div>
+        <div className="sm:col-span-2">
+          <label className="block text-xs font-medium text-neutral-600 mb-1">Mail</label>
+          <input name="email" type="email" className={campo} />
         </div>
       </div>
 
-      <div className="mb-4">
-        <label className="block text-sm font-medium text-neutral-700 mb-1">Observaciones</label>
-        <input name="observaciones" className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm" />
+      <div>
+        <p className="text-xs font-medium text-neutral-600 mb-1.5">Profesión</p>
+        <div className="flex flex-wrap gap-2">
+          {[...opciones, "__otra"].map((o) => {
+            const on = profesion === o;
+            return (
+              <button
+                type="button"
+                key={o}
+                onClick={() => setProfesion(o)}
+                className={`text-sm px-3 py-1.5 rounded-lg border ${
+                  on ? "border-accent bg-accent-tint text-accent-dark font-semibold" : "border-neutral-200 text-neutral-700"
+                }`}
+              >
+                {o === "__otra" ? "Otra" : o}
+              </button>
+            );
+          })}
+        </div>
+        {profesion === "__otra" && (
+          <input
+            value={otraProfesion}
+            onChange={(e) => setOtraProfesion(e.target.value)}
+            placeholder="¿Cuál?"
+            required
+            className={`${campo} mt-2 max-w-xs`}
+          />
+        )}
+      </div>
+
+      {consultorios.disponible && (
+        <div>
+          <p className="text-xs font-medium text-neutral-600 mb-1.5">Agenda de turnos</p>
+          <SelectorAgenda
+            estado={agenda}
+            onChange={setAgenda}
+            consultorios={consultorios}
+            nombresPorConsultorio={nombresPorConsultorio}
+            nombrePropio={null}
+          />
+        </div>
+      )}
+
+      <div className="max-w-xs">
+        <label className="block text-xs font-medium text-neutral-600 mb-1">Código para sus pacientes (opcional)</label>
+        <input name="codigo" placeholder="Ej: MARINA10" className={`${campo} font-mono uppercase`} />
+        <p className="text-[11px] text-neutral-400 mt-1">Si hace falta, el vencimiento y el límite de usos se cargan después.</p>
       </div>
 
       <div className="flex justify-end">
-        <button type="submit" disabled={guardando} className="bg-accent hover:bg-accent-dark disabled:opacity-50 text-white font-medium px-5 py-2 rounded-lg text-sm">
-          {guardando ? "Guardando..." : "Crear profesional"}
+        <button type="submit" disabled={guardando} className="bg-accent hover:bg-accent-dark disabled:opacity-50 text-white font-semibold px-5 py-2 rounded-lg text-sm">
+          {guardando ? "Guardando..." : "Crear y completar su perfil"}
         </button>
       </div>
     </form>
@@ -942,16 +1317,23 @@ function SeccionFormLabel({ children }: { children: React.ReactNode }) {
 function FormEditarProfesional({
   profesional,
   objetivosGlobales,
+  consultorios,
+  nombresPorConsultorio,
   onGuardado,
 }: {
   profesional: Profesional;
   objetivosGlobales: Objetivo[];
+  consultorios: DatosConsultorios;
+  nombresPorConsultorio: Record<string, string[]>;
   onGuardado: () => void;
 }) {
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [foto, setFoto] = useState(profesional.foto);
   const [subiendoFoto, setSubiendoFoto] = useState(false);
+  const [agenda, setAgenda] = useState<EstadoAgenda>(() => agendaInicial(consultorios, profesional.id_profesional));
+  const nombrePropio = `${profesional.nombre}${profesional.apellido ? ` ${profesional.apellido}` : ""}`;
+  const linkConsultorio = agenda.modo === "compartida" ? agenda.linkReserva || agenda.linkReservaOnline || null : null;
 
   const [catalogoFortalezas, setCatalogoFortalezas] = useState<FortalezaProfesional[]>([]);
   const [fortalezasSeleccionadas, setFortalezasSeleccionadas] = useState<Set<string>>(new Set());
@@ -1011,25 +1393,36 @@ function FormEditarProfesional({
     });
   }
 
-  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     const formData = new FormData(e.currentTarget);
     setGuardando(true);
-    Promise.all([
-      actualizarProfesional(profesional.id_profesional, formData),
-      guardarFortalezasProfesional(
-        profesional.id_profesional,
-        [...fortalezasSeleccionadas].map((nombre) => ({ nombre, principal: nombre === fortalezaPrincipal }))
-      ),
-      guardarObjetivosProfesional(profesional.id_profesional, [...objetivosSeleccionados]),
-    ])
-      .then(([res1, res2, res3]) => {
-        const err = res1.error || res2.error || res3.error;
-        if (err) setError(err);
-        else onGuardado();
-      })
-      .finally(() => setGuardando(false));
+    try {
+      // Primero el consultorio (si es nuevo hay que crearlo para tener su id).
+      if (consultorios.disponible) {
+        const resAgenda = await resolverAgenda(agenda, consultorios);
+        if (resAgenda.error) {
+          setError(resAgenda.error);
+          return;
+        }
+        formData.set("modo_agenda", agenda.modo);
+        formData.set("id_consultorio", resAgenda.idConsultorio ?? "");
+      }
+      const [res1, res2, res3] = await Promise.all([
+        actualizarProfesional(profesional.id_profesional, formData),
+        guardarFortalezasProfesional(
+          profesional.id_profesional,
+          [...fortalezasSeleccionadas].map((nombre) => ({ nombre, principal: nombre === fortalezaPrincipal }))
+        ),
+        guardarObjetivosProfesional(profesional.id_profesional, [...objetivosSeleccionados]),
+      ]);
+      const err = res1.error || res2.error || res3.error;
+      if (err) setError(err);
+      else onGuardado();
+    } finally {
+      setGuardando(false);
+    }
   }
 
   function handleFoto(e: React.ChangeEvent<HTMLInputElement>) {
@@ -1067,7 +1460,12 @@ function FormEditarProfesional({
       </div>
 
       {(() => {
-        const completitud = calcularCompletitud({ ...profesional, foto }, fortalezasSeleccionadas.size > 0, objetivosSeleccionados.size > 0);
+        const completitud = calcularCompletitud(
+          { ...profesional, foto },
+          fortalezasSeleccionadas.size > 0,
+          objetivosSeleccionados.size > 0,
+          linkConsultorio
+        );
         const faltan = completitud.items.filter((i) => !i.ok);
         // Un porcentaje no dice qué hacer. Lo que sirve es la cuenta de lo que
         // falta y el nombre de cada cosa: son seis, y con esas seis se publica.
@@ -1248,6 +1646,25 @@ function FormEditarProfesional({
       </p>
 
       <SeccionFormLabel>📅 Atención y reserva</SeccionFormLabel>
+      {consultorios.disponible && (
+        <div className="mb-3">
+          <SelectorAgenda
+            estado={agenda}
+            onChange={setAgenda}
+            consultorios={consultorios}
+            nombresPorConsultorio={nombresPorConsultorio}
+            nombrePropio={nombrePropio}
+          />
+        </div>
+      )}
+      {/* Con agenda compartida los links propios no se muestran, pero se
+          guardan igual: si un día deja el consultorio, vuelven a estar. */}
+      {agenda.modo === "compartida" && (
+        <>
+          <input type="hidden" name="link_reserva" value={profesional.link_reserva ?? ""} />
+          <input type="hidden" name="link_reserva_online" value={profesional.link_reserva_online ?? ""} />
+        </>
+      )}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
         <div>
           <label className="block text-xs font-medium text-neutral-600 mb-1">Tipo de atención</label>
@@ -1265,17 +1682,21 @@ function FormEditarProfesional({
             Si la carga, el cliente ve un aviso antes de reservar un turno presencial fuera del local.
           </p>
         </div>
-        <div>
-          <label className="block text-xs font-medium text-neutral-600 mb-1">Link de reserva — Presencial</label>
-          <input name="link_reserva" defaultValue={profesional.link_reserva ?? ""} placeholder="Link de Cal.com, WhatsApp, etc." className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-neutral-600 mb-1">Link de reserva — Online</label>
-          <input name="link_reserva_online" defaultValue={profesional.link_reserva_online ?? ""} placeholder="Link de Cal.com para videollamada" className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
-          <p className="text-[11px] text-neutral-400 mt-1">
-            Si cargás los dos links, el cliente va a poder elegir modalidad antes de reservar.
-          </p>
-        </div>
+        {agenda.modo === "propia" && (
+          <>
+            <div>
+              <label className="block text-xs font-medium text-neutral-600 mb-1">Link de reserva — Presencial</label>
+              <input name="link_reserva" defaultValue={profesional.link_reserva ?? ""} placeholder="Link de Cal.com, WhatsApp, etc." className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-neutral-600 mb-1">Link de reserva — Online</label>
+              <input name="link_reserva_online" defaultValue={profesional.link_reserva_online ?? ""} placeholder="Link de Cal.com para videollamada" className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
+              <p className="text-[11px] text-neutral-400 mt-1">
+                Si cargás los dos links, el cliente va a poder elegir modalidad antes de reservar.
+              </p>
+            </div>
+          </>
+        )}
         <div>
           <label className="block text-xs font-medium text-neutral-600 mb-1">Precio — Presencial</label>
           <input type="number" name="precio_presencial" defaultValue={profesional.precio_presencial ?? ""} placeholder="Ej: 15000" className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />

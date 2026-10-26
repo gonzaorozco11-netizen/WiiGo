@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
-import { getSupabaseServerClient } from "@/lib/supabase";
+import { getSupabaseServerClient, type Consultorio } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { hashPassword } from "@/lib/auth";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
@@ -25,6 +25,16 @@ async function requireAdmin() {
   const sesion = await readSessionToken(token, process.env.AUTH_SECRET ?? "");
   if (sesion?.rol !== "admin") return "No tenés permiso para hacer esto — hace falta ser administrador.";
   return null;
+}
+
+// Las lecturas traen DNI, teléfono y plata de los profesionales. Las server
+// actions se pueden llamar desde cualquier sesión, así que un usuario de
+// marca no tiene que poder pedirlas.
+async function requireInterno() {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(SESSION_COOKIE)?.value;
+  const sesion = await readSessionToken(token, process.env.AUTH_SECRET ?? "");
+  if (!sesion || sesion.rol === "marca") throw new Error("No tenés permiso para ver profesionales.");
 }
 
 function text(formData: FormData, name: string) {
@@ -65,6 +75,7 @@ async function sincronizarClientePorDni(supabase: SupabaseClient, dni: string, n
 // arriesgarse a exponerlo por accidente (mismo criterio que password_hash
 // de usuarios).
 export async function listarProfesionales() {
+  await requireInterno();
   const supabase = getSupabaseServerClient();
   const { data, error } = await supabase
     .from("profesionales")
@@ -77,8 +88,9 @@ export async function listarProfesionales() {
 }
 
 // Crea el profesional y, si se completó, su primer código en el mismo paso
-// — así de entrada queda listo para usarse.
-export async function crearProfesional(formData: FormData): Promise<{ error: string | null }> {
+// — así de entrada queda listo para usarse. Devuelve el id para abrir su
+// ficha y seguir completándola.
+export async function crearProfesional(formData: FormData): Promise<{ error: string | null; id?: string }> {
   const permisoError = await requireAdmin();
   if (permisoError) return { error: permisoError };
 
@@ -105,9 +117,14 @@ export async function crearProfesional(formData: FormData): Promise<{ error: str
       if (existenteDni) return { error: `Ya hay un profesional cargado con el DNI ${dni}.` };
     }
 
+    // La columna llega con sql/profesionales-consultorios.sql: solo se manda
+    // si eligieron un consultorio, así el alta común anda aunque no se haya corrido.
+    const idConsultorio = text(formData, "id_consultorio");
+
     const { data: profesional, error } = await supabase
       .from("profesionales")
       .insert({
+        ...(idConsultorio ? { id_consultorio: idConsultorio } : {}),
         nombre,
         apellido: text(formData, "apellido"),
         categoria: text(formData, "categoria"),
@@ -152,7 +169,7 @@ export async function crearProfesional(formData: FormData): Promise<{ error: str
     }
 
     revalidatePath("/profesionales");
-    return { error: null };
+    return { error: null, id: profesional.id_profesional };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo crear el profesional" };
   }
@@ -201,6 +218,11 @@ export async function actualizarProfesional(idProfesional: string, formData: For
       precio_online: number(formData, "precio_online"),
       publicado: bool(formData, "publicado"),
       observaciones: text(formData, "observaciones"),
+      // Solo viene cuando la pantalla muestra la opción de agenda, que es
+      // cuando ya existe la tabla de consultorios.
+      ...(formData.has("modo_agenda")
+        ? { id_consultorio: formData.get("modo_agenda") === "compartida" ? text(formData, "id_consultorio") : null }
+        : {}),
     })
     .eq("id_profesional", idProfesional);
   if (error) return { error: friendlyDbError(error) };
@@ -284,6 +306,59 @@ export async function cambiarPublicacionProfesional(
   if (error) return { error: friendlyDbError(error) };
   revalidatePath("/profesionales");
   return { error: null };
+}
+
+// ===================== CONSULTORIOS (agenda compartida) =====================
+
+// Si todavía no se corrió sql/profesionales-consultorios.sql devuelve
+// disponible: false, y la pantalla esconde la opción en vez de romperse.
+export async function listarConsultorios(): Promise<{
+  disponible: boolean;
+  consultorios: Consultorio[];
+  miembros: { id_profesional: string; id_consultorio: string }[];
+}> {
+  await requireInterno();
+  const supabase = getSupabaseServerClient();
+  const [consultorios, miembros] = await Promise.all([
+    supabase.from("consultorios").select("id_consultorio, nombre, link_reserva, link_reserva_online, estado").eq("estado", "ACTIVO").order("nombre"),
+    supabase.from("profesionales").select("id_profesional, id_consultorio").not("id_consultorio", "is", null),
+  ]);
+  if (consultorios.error || miembros.error) return { disponible: false, consultorios: [], miembros: [] };
+  return {
+    disponible: true,
+    consultorios: (consultorios.data ?? []) as Consultorio[],
+    miembros: (miembros.data ?? []) as { id_profesional: string; id_consultorio: string }[],
+  };
+}
+
+// Crea un consultorio o le cambia el nombre y los links. Los links valen para
+// todas las que atienden ahí.
+export async function guardarConsultorio(datos: {
+  idConsultorio?: string | null;
+  nombre: string;
+  linkReserva: string | null;
+  linkReservaOnline: string | null;
+}): Promise<{ error: string | null; id?: string }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  const nombre = datos.nombre.trim();
+  if (!nombre) return { error: "Ponele un nombre al consultorio." };
+  const fila = {
+    nombre,
+    link_reserva: datos.linkReserva?.trim() || null,
+    link_reserva_online: datos.linkReservaOnline?.trim() || null,
+  };
+  const supabase = getSupabaseServerClient();
+  if (datos.idConsultorio) {
+    const { error } = await supabase.from("consultorios").update(fila).eq("id_consultorio", datos.idConsultorio);
+    if (error) return { error: friendlyDbError(error) };
+    revalidatePath("/profesionales");
+    return { error: null, id: datos.idConsultorio };
+  }
+  const { data, error } = await supabase.from("consultorios").insert(fila).select("id_consultorio").single();
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath("/profesionales");
+  return { error: null, id: data.id_consultorio };
 }
 
 // ===================== FORTALEZAS ("¿en qué se destaca?") =====================
@@ -780,6 +855,7 @@ export async function reordenarFilmina(idProfesional: string, idFilmina: string,
 // ===================== CÓDIGOS =====================
 
 export async function listarCodigos() {
+  await requireInterno();
   const supabase = getSupabaseServerClient();
   const { data, error } = await supabase.from("codigos_profesionales").select("*").order("codigo");
   if (error) throw new Error(friendlyDbError(error));
@@ -834,6 +910,7 @@ export type FiltroPeriodo = { desde: string; hasta: string };
 // Un profesional por fila, con sus métricas del período — todo calculado acá
 // en vez de guardarlo denormalizado, alcanza de sobra a esta escala.
 export async function resumenProfesionales(filtro: FiltroPeriodo) {
+  await requireInterno();
   const supabase = getSupabaseServerClient();
   const [{ data: profesionales, error }, { data: codigos }, { data: referidos }, { data: movimientos }] = await Promise.all([
     supabase.from("profesionales").select("*").order("nombre"),
@@ -893,6 +970,7 @@ export async function resumenProfesionales(filtro: FiltroPeriodo) {
 // El saldo real de un profesional se lleva por marca (los puntos de una
 // marca no sirven para otra) — ver lib/canjesProfesionales.ts.
 export async function saldosDeProfesional(idProfesional: string) {
+  await requireInterno();
   const supabase = getSupabaseServerClient();
   return saldosPorMarca(supabase, idProfesional);
 }
@@ -900,6 +978,7 @@ export async function saldosDeProfesional(idProfesional: string) {
 // Historial de movimientos (canjes automáticos en caja + pagos/canjes que
 // carga un admin a mano) — el más reciente primero.
 export async function canjesDeProfesional(idProfesional: string) {
+  await requireInterno();
   const supabase = getSupabaseServerClient();
   const { data, error } = await supabase
     .from("movimientos_profesional_marca")
@@ -936,6 +1015,7 @@ export async function canjesDeProfesional(idProfesional: string) {
 // saldo (distinto del historial de pagos/canjes, que es lo que ya gastó).
 // Sin esto no había forma de ver "la venta de tal día le generó tanto".
 export async function ventasGeneradasDeProfesional(idProfesional: string) {
+  await requireInterno();
   const supabase = getSupabaseServerClient();
   const { data, error } = await supabase
     .from("referidos_profesionales")
@@ -966,6 +1046,7 @@ export async function ventasGeneradasDeProfesional(idProfesional: string) {
 // Para ver "en qué gastó sus puntos": los productos de esa marca puntual
 // dentro de la venta donde se hizo el canje.
 export async function detalleCanje(idMovimiento: string) {
+  await requireInterno();
   const supabase = getSupabaseServerClient();
   const { data: movimiento, error } = await supabase
     .from("movimientos_profesional_marca")
