@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import type {
   Marca,
   Profesional,
@@ -244,7 +244,8 @@ function TabProfesionales({ objetivosGlobales }: { objetivosGlobales: Objetivo[]
   const [consultorios, setConsultorios] = useState<DatosConsultorios>({ disponible: false, consultorios: [], miembros: [] });
   const [cargando, setCargando] = useState(false);
   const [filtro, setFiltro] = useState<FiltroLista>("todos");
-  const [abierto, setAbierto] = useState<{ id: string; editando: boolean } | null>(null);
+  const [abierto, setAbierto] = useState<{ id: string; pestana: Pestana } | null>(null);
+  const cerrarFicha = useCallback(() => setAbierto(null), []);
   const [mostrarForm, setMostrarForm] = useState(false);
 
   const { desde, hasta } = (() => {
@@ -361,7 +362,7 @@ function TabProfesionales({ objetivosGlobales }: { objetivosGlobales: Objetivo[]
           onCreado={(id) => {
             setMostrarForm(false);
             recargar();
-            setAbierto({ id, editando: true });
+            setAbierto({ id, pestana: "perfil" });
           }}
         />
       )}
@@ -399,29 +400,26 @@ function TabProfesionales({ objetivosGlobales }: { objetivosGlobales: Objetivo[]
               completitud={t.completitud}
               consultorio={t.consultorio}
               companeras={t.companeras}
-              onAbrir={() => setAbierto({ id: t.profesional.id_profesional, editando: false })}
+              onAbrir={() => setAbierto({ id: t.profesional.id_profesional, pestana: "resumen" })}
             />
           ))}
         </div>
       )}
 
-      {abiertoTarjeta && (
-        <PanelLateral
+      {abiertoTarjeta && abierto && (
+        <FichaProfesional
+          key={abiertoTarjeta.profesional.id_profesional}
           profesional={abiertoTarjeta.profesional}
-          porcentaje={abiertoTarjeta.completitud.porcentaje}
-          onCerrar={() => setAbierto(null)}
-        >
-          <DetalleProfesional
-            key={abiertoTarjeta.profesional.id_profesional}
-            profesional={abiertoTarjeta.profesional}
-            objetivosGlobales={objetivosGlobales}
-            codigos={codigos.filter((c) => c.id_profesional === abiertoTarjeta.profesional.id_profesional)}
-            consultorios={consultorios}
-            nombresPorConsultorio={nombresPorConsultorio}
-            abrirEditando={abierto?.editando ?? false}
-            onCambio={recargar}
-          />
-        </PanelLateral>
+          fila={abiertoTarjeta.fila}
+          objetivosGlobales={objetivosGlobales}
+          codigos={codigos.filter((c) => c.id_profesional === abiertoTarjeta.profesional.id_profesional)}
+          consultorios={consultorios}
+          nombresPorConsultorio={nombresPorConsultorio}
+          categorias={categorias}
+          pestanaInicial={abierto.pestana}
+          onCambio={recargar}
+          onCerrar={cerrarFicha}
+        />
       )}
     </div>
   );
@@ -532,311 +530,6 @@ function TarjetaProfesional({
         </p>
       )}
     </button>
-  );
-}
-
-// El detalle se abre al costado, sobre la lista, en vez de debajo de una fila:
-// así la lista no salta y se cierra con Escape o tocando afuera.
-function PanelLateral({
-  profesional,
-  porcentaje,
-  onCerrar,
-  children,
-}: {
-  profesional: Profesional;
-  porcentaje: number;
-  onCerrar: () => void;
-  children: React.ReactNode;
-}) {
-  useEffect(() => {
-    const alTeclear = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onCerrar();
-    };
-    window.addEventListener("keydown", alTeclear);
-    const overflowAntes = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      window.removeEventListener("keydown", alTeclear);
-      document.body.style.overflow = overflowAntes;
-    };
-  }, [onCerrar]);
-
-  const nombre = `${profesional.nombre}${profesional.apellido ? ` ${profesional.apellido}` : ""}`;
-  return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex justify-end" onClick={onCerrar}>
-      <div
-        role="dialog"
-        aria-label={nombre}
-        className="bg-neutral-50 w-full max-w-3xl h-full overflow-y-auto shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="sticky top-0 z-10 bg-white border-b border-neutral-200 px-5 py-3 flex items-center gap-3">
-          <AvatarConAnillo foto={profesional.foto} nombre={nombre} porcentaje={porcentaje} tamano={44} />
-          <div className="min-w-0 flex-1">
-            <p className="font-bold text-neutral-900 truncate">{nombre}</p>
-            <p className="text-xs text-neutral-500 truncate">
-              {[profesional.categoria, profesional.especialidad].filter(Boolean).join(" · ") || "Sin profesión cargada"}
-            </p>
-          </div>
-          <button onClick={onCerrar} className="text-sm font-semibold text-neutral-500 hover:text-neutral-900 px-2 py-1" aria-label="Cerrar">
-            ✕
-          </button>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function DetalleProfesional({
-  profesional,
-  objetivosGlobales,
-  codigos,
-  consultorios,
-  nombresPorConsultorio,
-  abrirEditando = false,
-  onCambio,
-}: {
-  profesional: Profesional;
-  objetivosGlobales: Objetivo[];
-  codigos: Codigo[];
-  consultorios: DatosConsultorios;
-  nombresPorConsultorio: Record<string, string[]>;
-  abrirEditando?: boolean;
-  onCambio: () => void;
-}) {
-  const [saldos, setSaldos] = useState<SaldoMarca[]>([]);
-  const [canjes, setCanjes] = useState<CanjeFila[]>([]);
-  const [ventasGeneradas, setVentasGeneradas] = useState<VentaGeneradaFila[]>([]);
-  const [cargando, setCargando] = useState(true);
-  const [mostrarCodigoForm, setMostrarCodigoForm] = useState(false);
-  const [mostrarPinForm, setMostrarPinForm] = useState(false);
-  const [mostrarEditar, setMostrarEditar] = useState(abrirEditando);
-  const [expandido, setExpandido] = useState<string | null>(null);
-
-  function recargar() {
-    setCargando(true);
-    Promise.all([
-      saldosDeProfesional(profesional.id_profesional),
-      canjesDeProfesional(profesional.id_profesional),
-      ventasGeneradasDeProfesional(profesional.id_profesional),
-    ])
-      .then(([s, c, v]) => {
-        setSaldos(s);
-        setCanjes(c as CanjeFila[]);
-        setVentasGeneradas(v);
-      })
-      .finally(() => setCargando(false));
-  }
-
-  useEffect(recargar, [profesional.id_profesional]);
-
-  function toggleEstadoProfesional() {
-    const nuevo = profesional.estado === "ACTIVO" ? "INACTIVO" : "ACTIVO";
-    cambiarEstadoProfesional(profesional.id_profesional, nuevo).then(onCambio);
-  }
-
-  function togglePublicacion() {
-    cambiarPublicacionProfesional(profesional.id_profesional, !profesional.publicado).then(onCambio);
-  }
-
-  function toggleEstadoCodigo(codigo: Codigo) {
-    const nuevo = codigo.estado === "ACTIVO" ? "INACTIVO" : "ACTIVO";
-    cambiarEstadoCodigo(codigo.id_codigo, nuevo).then(onCambio);
-  }
-
-  return (
-    <div className="p-4">
-      <div className="flex items-center justify-between mb-3">
-        <div className="text-xs text-neutral-500">
-          {profesional.telefono && <span className="mr-3">📞 {profesional.telefono}</span>}
-          {profesional.email && <span className="mr-3">✉️ {profesional.email}</span>}
-          {profesional.dni && <span>🪪 DNI {profesional.dni}</span>}
-        </div>
-        <div className="flex items-center gap-3">
-          <button onClick={() => setMostrarEditar((v) => !v)} className="text-xs font-semibold text-accent">
-            {mostrarEditar ? "Cancelar" : "✏️ Editar"}
-          </button>
-          <button onClick={() => setMostrarPinForm((v) => !v)} className="text-xs font-semibold text-accent">
-            {mostrarPinForm ? "Cancelar" : "🔒 Cambiar PIN"}
-          </button>
-          <button onClick={togglePublicacion} className="text-xs font-semibold text-emerald-600 hover:text-emerald-800">
-            {profesional.publicado ? "Pasar a Borrador" : "🟢 Publicar"}
-          </button>
-          <button onClick={toggleEstadoProfesional} className="text-xs font-semibold text-red-500 hover:text-red-700">
-            {profesional.estado === "ACTIVO" ? "Desactivar profesional" : "Activar profesional"}
-          </button>
-        </div>
-      </div>
-
-      {mostrarEditar && (
-        <FormEditarProfesional
-          profesional={profesional}
-          objetivosGlobales={objetivosGlobales}
-          consultorios={consultorios}
-          nombresPorConsultorio={nombresPorConsultorio}
-          onGuardado={() => {
-            setMostrarEditar(false);
-            onCambio();
-          }}
-        />
-      )}
-      {mostrarPinForm && <FormPin idProfesional={profesional.id_profesional} onGuardado={() => setMostrarPinForm(false)} />}
-      {!profesional.dni && (
-        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
-          ⚠ Sin DNI cargado — este profesional todavía no puede pagar en caja con su saldo. Editalo para agregarlo.
-        </p>
-      )}
-
-      <div className="bg-white border border-neutral-200 rounded-lg p-3 mb-4">
-        <div className="flex items-center justify-between mb-2">
-          <p className="text-xs font-bold text-neutral-700">Códigos</p>
-          <button onClick={() => setMostrarCodigoForm((v) => !v)} className="text-xs font-semibold text-accent">
-            {mostrarCodigoForm ? "Cancelar" : "+ Agregar código"}
-          </button>
-        </div>
-        {codigos.length === 0 ? (
-          <p className="text-xs text-neutral-400">Sin códigos todavía.</p>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            {codigos.map((c) => (
-              <span
-                key={c.id_codigo}
-                onClick={() => toggleEstadoCodigo(c)}
-                className={`cursor-pointer text-xs font-mono font-bold px-2 py-1 rounded ${
-                  c.estado === "ACTIVO" ? "bg-accent-tint text-accent-dark" : "bg-neutral-100 text-neutral-400 line-through"
-                }`}
-                title={c.estado === "ACTIVO" ? "Click para desactivar" : "Click para activar"}
-              >
-                {c.codigo} {c.limite_usos != null && `(${c.usos}/${c.limite_usos})`}
-              </span>
-            ))}
-          </div>
-        )}
-        {mostrarCodigoForm && <FormNuevoCodigo idProfesional={profesional.id_profesional} onCreado={() => { setMostrarCodigoForm(false); onCambio(); }} />}
-      </div>
-
-      <div className="bg-white border border-neutral-200 rounded-lg p-3 mb-4">
-        <p className="text-xs font-bold text-neutral-700 mb-2">Saldo por marca</p>
-        <p className="text-[11px] text-neutral-400 mb-2">
-          Cada marca es una bolsa aparte — no se puede gastar el saldo de una en otra.
-        </p>
-        {cargando ? (
-          <p className="text-xs text-neutral-400 text-center py-2">Cargando...</p>
-        ) : saldos.length === 0 ? (
-          <p className="text-xs text-neutral-400">Todavía no generó saldo en ninguna marca.</p>
-        ) : (
-          <div className="space-y-1.5">
-            {saldos.map((s) => (
-              <FilaSaldoMarca
-                key={s.idMarca}
-                idProfesional={profesional.id_profesional}
-                saldo={s}
-                onCambio={() => {
-                  recargar();
-                  onCambio();
-                }}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div className="bg-white border border-neutral-200 rounded-lg overflow-hidden mb-4">
-        <div className="px-3 py-2 border-b border-neutral-100">
-          <p className="text-xs font-bold text-neutral-700">Ventas generadas (referidos)</p>
-          <p className="text-[11px] text-neutral-400">Las ventas donde fue el código referido — esto es lo que le fue sumando saldo</p>
-        </div>
-        {cargando ? (
-          <p className="text-xs text-neutral-400 text-center py-4">Cargando...</p>
-        ) : ventasGeneradas.length === 0 ? (
-          <p className="text-xs text-neutral-400 text-center py-4">
-            Todavía no generó ninguna venta con su código — si esperabas ver una acá, fijate que la marca de esos
-            productos tenga habilitado el programa de profesionales (pestaña "Configuración por marca", arriba).
-          </p>
-        ) : (
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="text-left text-neutral-400 border-b border-neutral-200">
-                <th className="p-2.5">Fecha</th>
-                <th className="p-2.5">Venta</th>
-                <th className="p-2.5 text-right">Total venta</th>
-                <th className="p-2.5 text-right">Comisión generada</th>
-              </tr>
-            </thead>
-            <tbody>
-              {ventasGeneradas.map((v) => (
-                <tr key={v.idReferido} className="border-b border-neutral-100 last:border-0">
-                  <td className="p-2.5 whitespace-nowrap text-neutral-500">
-                    {new Date(v.fecha).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" })}
-                  </td>
-                  <td className="p-2.5">{v.numeroVenta ? `#${v.numeroVenta}` : "—"}</td>
-                  <td className="p-2.5 text-right tabular-nums">${Math.round(v.totalVenta).toLocaleString("es-AR")}</td>
-                  <td className="p-2.5 text-right tabular-nums font-semibold text-emerald-600">
-                    +${Math.round(v.comisionGenerada).toLocaleString("es-AR")}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      <div className="bg-white border border-neutral-200 rounded-lg overflow-hidden">
-        <div className="px-3 py-2 border-b border-neutral-100">
-          <p className="text-xs font-bold text-neutral-700">Historial de pagos y canjes</p>
-        </div>
-        {cargando ? (
-          <p className="text-xs text-neutral-400 text-center py-4">Cargando...</p>
-        ) : canjes.length === 0 ? (
-          <p className="text-xs text-neutral-400 text-center py-4">Todavía no pagó ni canjeó nada.</p>
-        ) : (
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="text-left text-neutral-400 border-b border-neutral-200">
-                <th className="p-2.5">Fecha</th>
-                <th className="p-2.5">Marca</th>
-                <th className="p-2.5">Tipo</th>
-                <th className="p-2.5 text-right">Monto</th>
-                <th className="p-2.5">Venta</th>
-              </tr>
-            </thead>
-            <tbody>
-              {canjes.map((c) => {
-                const abierto = expandido === c.idMovimiento;
-                return (
-                  <Fragment key={c.idMovimiento}>
-                    <tr
-                      onClick={() => c.idVenta && setExpandido(abierto ? null : c.idMovimiento)}
-                      className={`border-b border-neutral-100 last:border-0 ${c.idVenta ? "cursor-pointer hover:bg-neutral-50" : ""}`}
-                    >
-                      <td className="p-2.5 whitespace-nowrap text-neutral-500">{formatearFechaHora(c.fecha)}</td>
-                      <td className="p-2.5">{c.nombreMarca}</td>
-                      <td className="p-2.5">
-                        <span className={`font-semibold ${c.tipo === "CANJE" ? "text-purple-600" : "text-emerald-600"}`}>
-                          {c.tipo === "CANJE" ? "Canje" : "Pago"}
-                        </span>
-                      </td>
-                      <td className="p-2.5 text-right tabular-nums font-semibold">${formatearMonto(c.monto)}</td>
-                      <td className="p-2.5">
-                        {c.numeroVenta ? (
-                          <span className="text-accent">
-                            {abierto ? "▾" : "▸"} VTA-{String(c.numeroVenta).padStart(4, "0")}
-                          </span>
-                        ) : (
-                          <span className="text-neutral-400">{c.descripcion ?? "—"}</span>
-                        )}
-                      </td>
-                    </tr>
-                    {abierto && c.idVenta && <DetalleCanjeVenta idMovimiento={c.idMovimiento} />}
-                  </Fragment>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
-    </div>
   );
 }
 
@@ -1266,74 +959,215 @@ function FormNuevoProfesional({
 
 const OPCIONES_TIPO_FORMACION = ["Carrera universitaria", "Posgrado", "Especialización", "Diplomatura", "Curso", "Certificación"];
 
-/**
- * El corte entre lo que hace falta para publicar y lo que suma.
- *
- * La ficha pide seis cosas, pero la pantalla mostraba diez secciones seguidas
- * sin distinguir cuáles eran. Así parecía que había veinte cosas por cargar y
- * nadie terminaba ninguna. Con el corte, se ve dónde termina lo obligatorio.
- */
-function CorteFormulario({ titulo, bajada }: { titulo: string; bajada: string }) {
+// ===================== FICHA DEL PROFESIONAL =====================
+// Una ventana en el medio de la pantalla, con una pestaña por parte de la
+// ficha. Antes era un formulario de veinte campos seguidos debajo de una fila:
+// no se veía qué faltaba ni cómo iba a quedar en la pantalla del local.
+
+type Pestana = "resumen" | "datos" | "perfil" | "ayuda" | "turnos" | "fotos" | "historia" | "conoceme";
+
+const PESTANAS: { clave: Pestana; icono: string; label: string }[] = [
+  { clave: "resumen", icono: "📊", label: "Resumen" },
+  { clave: "datos", icono: "👤", label: "Datos personales" },
+  { clave: "perfil", icono: "⭐", label: "Perfil" },
+  { clave: "ayuda", icono: "🎯", label: "En qué ayuda" },
+  { clave: "turnos", icono: "📅", label: "Turnos" },
+  { clave: "fotos", icono: "📸", label: "Fotos" },
+  { clave: "historia", icono: "🎓", label: "Historia" },
+  { clave: "conoceme", icono: "🎞️", label: "Conóceme" },
+];
+
+// A qué pestaña lleva cada cosa que falta para que el perfil esté completo.
+const PESTANA_DE_ITEM: Record<string, Pestana> = {
+  Foto: "perfil",
+  "Título y especialidad": "perfil",
+  "Presentación corta": "perfil",
+  Fortalezas: "ayuda",
+  "Cómo puede ayudarte": "ayuda",
+  "Atención y reserva": "turnos",
+};
+
+const INPUT =
+  "w-full border border-neutral-300 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent";
+
+function Tarjeta({ titulo, bajada, children }: { titulo: string; bajada?: string; children: React.ReactNode }) {
   return (
-    <div className="mt-7 mb-3 pt-4 border-t-2 border-dashed border-neutral-200">
-      <p className="text-sm font-bold text-neutral-900">{titulo}</p>
-      <p className="text-xs text-neutral-500 mt-0.5">{bajada}</p>
+    <section className="bg-white border border-neutral-200 rounded-2xl p-5 flex flex-col gap-4">
+      <div>
+        <h3 className="text-[15px] font-extrabold text-neutral-900">{titulo}</h3>
+        {bajada && <p className="text-xs text-neutral-500 mt-0.5">{bajada}</p>}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function Campo({
+  label,
+  nota,
+  ancho = false,
+  children,
+}: {
+  label: string;
+  nota?: string;
+  ancho?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className={`flex flex-col gap-1 ${ancho ? "sm:col-span-2" : ""}`}>
+      <span className="flex items-center justify-between gap-2 text-xs font-semibold text-neutral-600">
+        {label}
+        {nota && <span className="font-medium text-neutral-400">{nota}</span>}
+      </span>
+      {children}
+    </label>
+  );
+}
+
+// Fotos, formación, trayectoria y filminas se guardan solas al tocar su botón.
+// Lo que se escribe ahí no tiene que marcar "hay cambios sin guardar" en la ficha.
+function GuardaSola({ children }: { children: React.ReactNode }) {
+  return <div onChange={(e) => e.stopPropagation()}>{children}</div>;
+}
+
+// Una versión chica de la ficha del asesor, con lo que se está escribiendo:
+// así se ve el resultado antes de guardar.
+function VistaPreviaKiosco({
+  foto,
+  nombre,
+  titulo,
+  especialidad,
+  matricula,
+  bio,
+  fortalezas,
+  tieneTurno,
+}: {
+  foto: string | null;
+  nombre: string;
+  titulo: string;
+  especialidad: string;
+  matricula: string;
+  bio: string;
+  fortalezas: { nombre: string; principal: boolean }[];
+  tieneTurno: boolean;
+}) {
+  const verde = "#2d585b";
+  return (
+    <div className="lg:sticky lg:top-0 flex flex-col gap-2">
+      <p className="text-[11px] font-bold uppercase tracking-[.1em] text-neutral-400">Así se ve en la pantalla del local</p>
+      <div className="rounded-2xl overflow-hidden border-[6px] border-[#1f2a2c]" style={{ background: "#f7f9f2" }}>
+        <div className="relative h-48" style={{ background: "linear-gradient(155deg, #8fa584 0%, #2d585b 100%)" }}>
+          {foto ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={foto} alt="" className="absolute inset-0 w-full h-full object-cover object-top" />
+          ) : (
+            <span className="absolute inset-0 grid place-items-center text-4xl font-extrabold text-white/70">
+              {nombre.charAt(0).toUpperCase()}
+            </span>
+          )}
+          <div className="absolute inset-x-0 bottom-0 p-3" style={{ background: "linear-gradient(180deg, transparent, rgba(0,0,0,.55))" }}>
+            <p className="text-white text-xl italic font-semibold leading-tight" style={{ fontFamily: "Georgia, serif" }}>
+              {nombre}
+            </p>
+            {(titulo || especialidad) && (
+              <p className="text-[9px] font-extrabold uppercase tracking-[.14em] text-white/90 mt-1">
+                {[titulo, especialidad].filter(Boolean).join(" · ")}
+              </p>
+            )}
+          </div>
+        </div>
+        <div className="p-3 flex flex-col gap-2">
+          {matricula && (
+            <span className="self-start text-[10px] font-extrabold rounded-full px-2.5 py-0.5" style={{ background: "#e9f1f2", color: verde }}>
+              ✓ Matrícula {matricula}
+            </span>
+          )}
+          {bio ? (
+            <p className="text-[11.5px] italic text-neutral-700 border-l-2 pl-2 line-clamp-3" style={{ borderColor: "#b36b4a" }}>
+              {bio}
+            </p>
+          ) : (
+            <p className="text-[11px] text-amber-700 border border-dashed border-amber-400 rounded-lg px-2 py-1">+ presentación corta</p>
+          )}
+          <div className="flex flex-wrap gap-1">
+            {fortalezas.length > 0 ? (
+              fortalezas.map((f) => (
+                <span key={f.nombre} className="text-[9.5px] font-bold rounded-full px-2 py-0.5" style={{ background: "#e9f1f2", color: verde }}>
+                  {f.principal ? "★ " : ""}
+                  {f.nombre}
+                </span>
+              ))
+            ) : (
+              <span className="text-[9.5px] font-bold rounded-full px-2 py-0.5 text-amber-700 border border-dashed border-amber-400">+ fortalezas</span>
+            )}
+          </div>
+          {tieneTurno ? (
+            <span className="text-center text-xs font-extrabold text-white rounded-full py-2" style={{ background: verde }}>
+              📅 Reservar turno
+            </span>
+          ) : (
+            <span className="text-center text-[11px] text-amber-700 border border-dashed border-amber-400 rounded-full py-1.5">+ link de turnos</span>
+          )}
+        </div>
+      </div>
+      <p className="text-xs text-neutral-500">Cambia mientras escribís. Se publica al guardar.</p>
     </div>
   );
 }
 
-/**
- * Una sección opcional, cerrada por default.
- *
- * Es un <details> y no un estado de React a propósito: adentro hay formularios
- * que se guardan solos, y cerrarlos no tiene que desmontarlos ni perder lo que
- * alguien estaba escribiendo.
- */
-function Plegable({
-  titulo,
-  resumen,
-  children,
-}: {
-  titulo: string;
-  resumen: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <details className="group border border-neutral-200 rounded-xl mb-2 bg-white">
-      <summary className="flex items-center gap-2 px-4 py-3 cursor-pointer list-none select-none">
-        <span className="text-neutral-400 text-xs transition-transform group-open:rotate-90">▶</span>
-        <span className="text-sm font-semibold text-neutral-800">{titulo}</span>
-        <span className="text-xs text-neutral-400 ml-auto hidden sm:block">{resumen}</span>
-      </summary>
-      <div className="px-4 pb-4 border-t border-neutral-100 pt-3">{children}</div>
-    </details>
-  );
-}
-
-function SeccionFormLabel({ children }: { children: React.ReactNode }) {
-  return <p className="text-xs font-bold uppercase tracking-wide text-accent-dark mt-5 mb-2 first:mt-0">{children}</p>;
-}
-
-function FormEditarProfesional({
+function FichaProfesional({
   profesional,
+  fila,
   objetivosGlobales,
+  codigos,
   consultorios,
   nombresPorConsultorio,
-  onGuardado,
+  categorias,
+  pestanaInicial = "resumen",
+  onCambio,
+  onCerrar,
 }: {
   profesional: Profesional;
+  fila: FilaResumen;
   objetivosGlobales: Objetivo[];
+  codigos: Codigo[];
   consultorios: DatosConsultorios;
   nombresPorConsultorio: Record<string, string[]>;
-  onGuardado: () => void;
+  categorias: string[];
+  pestanaInicial?: Pestana;
+  onCambio: () => void;
+  onCerrar: () => void;
 }) {
+  const id = profesional.id_profesional;
+  const formId = `ficha-${id}`;
+  const activo = profesional.estado === "ACTIVO";
+
+  const [pestana, setPestana] = useState<Pestana>(pestanaInicial);
+  const [sucio, setSucio] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [guardado, setGuardado] = useState(false);
+  const [menu, setMenu] = useState(false);
+  const [mostrarPin, setMostrarPin] = useState(false);
+  const [publicado, setPublicado] = useState(profesional.publicado);
+
+  // Lo que alimenta la vista previa y el porcentaje va controlado; el resto
+  // del formulario se lee al guardar.
+  const [nombre, setNombre] = useState(profesional.nombre);
+  const [apellido, setApellido] = useState(profesional.apellido ?? "");
+  const [dni, setDni] = useState(profesional.dni ?? "");
+  const [categoria, setCategoria] = useState(profesional.categoria ?? "");
+  const [escribiendoProfesion, setEscribiendoProfesion] = useState(false);
+  const [matricula, setMatricula] = useState(profesional.matricula ?? "");
+  const [titulo, setTitulo] = useState(profesional.titulo ?? "");
+  const [especialidad, setEspecialidad] = useState(profesional.especialidad ?? "");
+  const [bio, setBio] = useState(profesional.bio ?? "");
   const [foto, setFoto] = useState(profesional.foto);
   const [subiendoFoto, setSubiendoFoto] = useState(false);
-  const [agenda, setAgenda] = useState<EstadoAgenda>(() => agendaInicial(consultorios, profesional.id_profesional));
-  const nombrePropio = `${profesional.nombre}${profesional.apellido ? ` ${profesional.apellido}` : ""}`;
-  const linkConsultorio = agenda.modo === "compartida" ? agenda.linkReserva || agenda.linkReservaOnline || null : null;
+  const [tipoAtencion, setTipoAtencion] = useState(profesional.tipo_atencion ?? "");
+  const [linkPropio, setLinkPropio] = useState(profesional.link_reserva ?? "");
+  const [linkPropioOnline, setLinkPropioOnline] = useState(profesional.link_reserva_online ?? "");
+  const [agenda, setAgenda] = useState<EstadoAgenda>(() => agendaInicial(consultorios, id));
 
   const [catalogoFortalezas, setCatalogoFortalezas] = useState<FortalezaProfesional[]>([]);
   const [fortalezasSeleccionadas, setFortalezasSeleccionadas] = useState<Set<string>>(new Set());
@@ -1341,56 +1175,172 @@ function FormEditarProfesional({
   const [nuevaFortaleza, setNuevaFortaleza] = useState("");
   const [objetivosSeleccionados, setObjetivosSeleccionados] = useState<Set<string>>(new Set());
 
+  const [saldos, setSaldos] = useState<SaldoMarca[]>([]);
+  const [canjes, setCanjes] = useState<CanjeFila[]>([]);
+  const [ventasGeneradas, setVentasGeneradas] = useState<VentaGeneradaFila[]>([]);
+  const [cargandoResumen, setCargandoResumen] = useState(true);
+  const [mostrarCodigoForm, setMostrarCodigoForm] = useState(false);
+  const [canjeAbierto, setCanjeAbierto] = useState<string | null>(null);
+
+  const cargarResumen = useCallback(
+    () =>
+      Promise.all([saldosDeProfesional(id), canjesDeProfesional(id), ventasGeneradasDeProfesional(id)])
+        .then(([s, c, v]) => {
+          setSaldos(s);
+          setCanjes(c as CanjeFila[]);
+          setVentasGeneradas(v);
+        })
+        .finally(() => setCargandoResumen(false)),
+    [id]
+  );
+
   useEffect(() => {
-    Promise.all([listarFortalezas(), listarFortalezasDeProfesional(profesional.id_profesional), listarObjetivosDeProfesional(profesional.id_profesional)]).then(
+    cargarResumen();
+  }, [cargarResumen]);
+
+  useEffect(() => {
+    Promise.all([listarFortalezas(), listarFortalezasDeProfesional(id), listarObjetivosDeProfesional(id)]).then(
       ([catalogo, propias, objetivos]) => {
         setCatalogoFortalezas(catalogo as FortalezaProfesional[]);
         const porId = new Map((catalogo as FortalezaProfesional[]).map((f) => [f.id_fortaleza, f.nombre]));
         const nombresPropios = new Set<string>();
         let principal: string | null = null;
         (propias as { id_fortaleza: string; principal: boolean }[]).forEach((p) => {
-          const nombre = porId.get(p.id_fortaleza);
-          if (!nombre) return;
-          nombresPropios.add(nombre);
-          if (p.principal) principal = nombre;
+          const n = porId.get(p.id_fortaleza);
+          if (!n) return;
+          nombresPropios.add(n);
+          if (p.principal) principal = n;
         });
         setFortalezasSeleccionadas(nombresPropios);
         setFortalezaPrincipal(principal);
         setObjetivosSeleccionados(new Set(objetivos));
       }
     );
-  }, [profesional.id_profesional]);
+  }, [id]);
 
-  function toggleFortaleza(nombre: string) {
+  const intentarCerrar = useCallback(() => {
+    if (sucio && !confirm("Tenés cambios sin guardar. ¿Cerrar igual?")) return;
+    onCerrar();
+  }, [sucio, onCerrar]);
+
+  useEffect(() => {
+    const alTeclear = (e: KeyboardEvent) => {
+      if (e.key === "Escape") intentarCerrar();
+    };
+    window.addEventListener("keydown", alTeclear);
+    return () => window.removeEventListener("keydown", alTeclear);
+  }, [intentarCerrar]);
+
+  useEffect(() => {
+    const antes = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = antes;
+    };
+  }, []);
+
+  function cambio() {
+    setSucio(true);
+    setGuardado(false);
+  }
+
+  const nombreCompleto = `${nombre}${apellido ? ` ${apellido}` : ""}`;
+  const linkConsultorio = agenda.modo === "compartida" ? agenda.linkReserva || agenda.linkReservaOnline || null : null;
+  const completitud = calcularCompletitud(
+    {
+      ...profesional,
+      foto,
+      titulo,
+      especialidad,
+      bio,
+      tipo_atencion: tipoAtencion,
+      link_reserva: agenda.modo === "propia" ? linkPropio || linkPropioOnline : null,
+    },
+    fortalezasSeleccionadas.size > 0,
+    objetivosSeleccionados.size > 0,
+    linkConsultorio
+  );
+  const faltan = completitud.items.filter((i) => !i.ok);
+  const faltaEn = (p: Pestana) => faltan.some((i) => PESTANA_DE_ITEM[i.label] === p);
+  const estadoPestana: Partial<Record<Pestana, "ok" | "falta">> = {
+    datos: dni ? "ok" : "falta",
+    perfil: faltaEn("perfil") ? "falta" : "ok",
+    ayuda: faltaEn("ayuda") ? "falta" : "ok",
+    turnos: faltaEn("turnos") ? "falta" : "ok",
+  };
+  const fortalezasVista = [...fortalezasSeleccionadas]
+    .map((n) => ({ nombre: n, principal: n === fortalezaPrincipal }))
+    .sort((a, b) => Number(b.principal) - Number(a.principal));
+  const profesiones = [...new Set([...PROFESIONES_BASE, ...categorias, ...(categoria ? [categoria] : [])])];
+
+  function togglePublicado() {
+    const nuevo = !publicado;
+    setPublicado(nuevo);
+    cambiarPublicacionProfesional(id, nuevo).then((res) => {
+      if (res.error) {
+        setPublicado(!nuevo);
+        setError(res.error);
+      } else onCambio();
+    });
+  }
+
+  function toggleEstado() {
+    setMenu(false);
+    cambiarEstadoProfesional(id, activo ? "INACTIVO" : "ACTIVO").then(onCambio);
+  }
+
+  function toggleEstadoCodigo(codigo: Codigo) {
+    cambiarEstadoCodigo(codigo.id_codigo, codigo.estado === "ACTIVO" ? "INACTIVO" : "ACTIVO").then(onCambio);
+  }
+
+  function toggleFortaleza(n: string) {
+    cambio();
     setFortalezasSeleccionadas((prev) => {
       const next = new Set(prev);
-      if (next.has(nombre)) {
-        next.delete(nombre);
-        if (fortalezaPrincipal === nombre) setFortalezaPrincipal(null);
-      } else {
-        next.add(nombre);
-      }
+      if (next.has(n)) {
+        next.delete(n);
+        if (fortalezaPrincipal === n) setFortalezaPrincipal(null);
+      } else next.add(n);
       return next;
     });
   }
 
   function agregarFortalezaNueva() {
-    const nombre = nuevaFortaleza.trim();
-    if (!nombre) return;
-    if (!catalogoFortalezas.some((f) => f.nombre.toLowerCase() === nombre.toLowerCase())) {
-      setCatalogoFortalezas((prev) => [...prev, { id_fortaleza: `nueva-${nombre}`, nombre, orden: null, estado: "ACTIVA" }]);
+    const n = nuevaFortaleza.trim();
+    if (!n) return;
+    cambio();
+    if (!catalogoFortalezas.some((f) => f.nombre.toLowerCase() === n.toLowerCase())) {
+      setCatalogoFortalezas((prev) => [...prev, { id_fortaleza: `nueva-${n}`, nombre: n, orden: null, estado: "ACTIVA" }]);
     }
-    setFortalezasSeleccionadas((prev) => new Set(prev).add(nombre));
+    setFortalezasSeleccionadas((prev) => new Set(prev).add(n));
     setNuevaFortaleza("");
   }
 
-  function toggleObjetivo(id: string) {
+  function toggleObjetivo(idObjetivo: string) {
+    cambio();
     setObjetivosSeleccionados((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(idObjetivo)) next.delete(idObjetivo);
+      else next.add(idObjetivo);
       return next;
     });
+  }
+
+  function handleFoto(e: React.ChangeEvent<HTMLInputElement>) {
+    const archivo = e.target.files?.[0];
+    if (!archivo) return;
+    const formData = new FormData();
+    formData.set("archivo", archivo);
+    setSubiendoFoto(true);
+    subirFotoProfesional(id, formData)
+      .then((res) => {
+        if (res.error) setError(res.error);
+        else if (res.url) {
+          setFoto(res.url);
+          onCambio();
+        }
+      })
+      .finally(() => setSubiendoFoto(false));
   }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -1404,351 +1354,790 @@ function FormEditarProfesional({
         const resAgenda = await resolverAgenda(agenda, consultorios);
         if (resAgenda.error) {
           setError(resAgenda.error);
+          setPestana("turnos");
           return;
         }
         formData.set("modo_agenda", agenda.modo);
         formData.set("id_consultorio", resAgenda.idConsultorio ?? "");
       }
-      const [res1, res2, res3] = await Promise.all([
-        actualizarProfesional(profesional.id_profesional, formData),
+      const [r1, r2, r3] = await Promise.all([
+        actualizarProfesional(id, formData),
         guardarFortalezasProfesional(
-          profesional.id_profesional,
-          [...fortalezasSeleccionadas].map((nombre) => ({ nombre, principal: nombre === fortalezaPrincipal }))
+          id,
+          [...fortalezasSeleccionadas].map((n) => ({ nombre: n, principal: n === fortalezaPrincipal }))
         ),
-        guardarObjetivosProfesional(profesional.id_profesional, [...objetivosSeleccionados]),
+        guardarObjetivosProfesional(id, [...objetivosSeleccionados]),
       ]);
-      const err = res1.error || res2.error || res3.error;
+      const err = r1.error || r2.error || r3.error;
       if (err) setError(err);
-      else onGuardado();
+      else {
+        setSucio(false);
+        setGuardado(true);
+        onCambio();
+      }
     } finally {
       setGuardando(false);
     }
   }
 
-  function handleFoto(e: React.ChangeEvent<HTMLInputElement>) {
-    const archivo = e.target.files?.[0];
-    if (!archivo) return;
-    const formData = new FormData();
-    formData.set("archivo", archivo);
-    setSubiendoFoto(true);
-    subirFotoProfesional(profesional.id_profesional, formData)
-      .then((res) => {
-        if (res.error) setError(res.error);
-        else if (res.url) setFoto(res.url);
-      })
-      .finally(() => setSubiendoFoto(false));
-  }
+  const NOTA_PIE: Partial<Record<Pestana, string>> = {
+    resumen: "Para editar, tocá una de las pestañas de arriba.",
+    fotos: "Las fotos y los videos se guardan solos al subirlos.",
+    historia: "La formación y la trayectoria se guardan solas. Su historia, con el botón.",
+    conoceme: "Las filminas se guardan solas.",
+  };
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white border border-neutral-200 rounded-lg p-4 mb-4">
-      <h3 className="text-sm font-bold text-neutral-900 mb-3">Editar profesional</h3>
-      {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-3">{error}</p>}
-
-      <div className="flex items-center gap-3 mb-4">
-        <span className="w-16 h-16 rounded-xl overflow-hidden bg-neutral-100 flex items-center justify-center text-neutral-400 text-xl font-bold shrink-0">
-          {foto ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={foto} alt="" className="w-full h-full object-cover" />
-          ) : (
-            profesional.nombre.charAt(0).toUpperCase()
-          )}
-        </span>
-        <label className="text-xs font-semibold text-accent cursor-pointer">
-          {subiendoFoto ? "Subiendo..." : foto ? "Cambiar foto" : "Agregar foto"}
-          <input type="file" accept="image/*" onChange={handleFoto} disabled={subiendoFoto} className="hidden" />
-        </label>
-      </div>
-
-      {(() => {
-        const completitud = calcularCompletitud(
-          { ...profesional, foto },
-          fortalezasSeleccionadas.size > 0,
-          objetivosSeleccionados.size > 0,
-          linkConsultorio
-        );
-        const faltan = completitud.items.filter((i) => !i.ok);
-        // Un porcentaje no dice qué hacer. Lo que sirve es la cuenta de lo que
-        // falta y el nombre de cada cosa: son seis, y con esas seis se publica.
-        return (
-          <div
-            className={`rounded-lg p-3 mb-4 border ${
-              faltan.length === 0 ? "bg-emerald-50 border-emerald-300" : "bg-accent-tint border-accent"
-            }`}
-          >
-            <p className="text-sm font-bold text-neutral-900 mb-1.5">
-              {faltan.length === 0
-                ? "✓ Lista para publicar"
-                : `Para publicarla ${faltan.length === 1 ? "falta 1 cosa" : `faltan ${faltan.length} cosas`} de 6`}
-            </p>
-            <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
-              {completitud.items.map((item) => (
-                <p key={item.label} className={`text-xs ${item.ok ? "text-emerald-700" : "text-amber-700"}`}>
-                  {item.ok ? "✓" : "⚠"} {item.label}
-                </p>
-              ))}
-            </div>
-            {faltan.length === 0 && (
-              <p className="text-xs text-emerald-700 mt-1.5">
-                Lo de más abajo —formación, trayectoria, fotos— es opcional y suma, pero ya podés publicarla así.
+    <div className="fixed inset-0 z-50 bg-black/45 flex items-center justify-center sm:p-6" onClick={intentarCerrar}>
+      <div
+        role="dialog"
+        aria-label={nombreCompleto}
+        className="bg-neutral-50 w-full max-w-5xl h-full sm:h-auto sm:max-h-[calc(100vh-3rem)] sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden"
+        onClick={(e) => {
+          e.stopPropagation();
+          if (menu) setMenu(false);
+        }}
+      >
+        {/* ---------- cabecera ---------- */}
+        <div className="bg-white border-b border-neutral-200 px-5 sm:px-6 pt-5">
+          <div className="flex items-start gap-4 flex-wrap">
+            <AvatarConAnillo foto={foto} nombre={nombreCompleto} porcentaje={completitud.porcentaje} tamano={72} />
+            <div className="flex-1 min-w-[200px]">
+              <h2 className="text-xl font-extrabold text-neutral-900 leading-tight">{nombreCompleto}</h2>
+              <p className="text-sm text-neutral-500">
+                {[categoria, especialidad].filter(Boolean).join(" · ") || "Sin profesión cargada"}
               </p>
-            )}
-          </div>
-        );
-      })()}
-
-      <SeccionFormLabel>👤 Datos personales</SeccionFormLabel>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div>
-          <label className="block text-xs font-medium text-neutral-600 mb-1">Nombre</label>
-          <input name="nombre" required defaultValue={profesional.nombre} className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-neutral-600 mb-1">Apellido</label>
-          <input name="apellido" defaultValue={profesional.apellido ?? ""} className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-neutral-600 mb-1">DNI 🔒</label>
-          <input name="dni" defaultValue={profesional.dni ?? ""} className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-neutral-600 mb-1">Fecha de nacimiento 🔒</label>
-          <input name="fecha_nacimiento" type="date" defaultValue={profesional.fecha_nacimiento ?? ""} className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-neutral-600 mb-1">Email</label>
-          <input name="email" type="email" defaultValue={profesional.email ?? ""} className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-neutral-600 mb-1">Teléfono 🔒</label>
-          <input name="telefono" defaultValue={profesional.telefono ?? ""} className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-neutral-600 mb-1">Profesión</label>
-          <input name="categoria" defaultValue={profesional.categoria ?? ""} placeholder="Ej: Nutricionista" className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-neutral-600 mb-1">Matrícula profesional</label>
-          <input name="matricula" defaultValue={profesional.matricula ?? ""} placeholder="Ej: MP 4521" className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
-        </div>
-      </div>
-      <p className="text-[11px] text-neutral-400 mt-2">🔒 Estos campos son administrativos — nunca se muestran en el kiosco ni en la ficha del cliente.</p>
-
-      <SeccionFormLabel>⭐ Perfil profesional</SeccionFormLabel>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-        <div>
-          <label className="block text-xs font-medium text-neutral-600 mb-1">Título principal</label>
-          <input name="titulo" defaultValue={profesional.titulo ?? ""} placeholder="Ej: Lic. en Nutrición" className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-neutral-600 mb-1">Especialidad principal</label>
-          <input name="especialidad" defaultValue={profesional.especialidad ?? ""} placeholder="Ej: Nutrición deportiva" className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
-        </div>
-      </div>
-      <div className="mb-3">
-        <label className="block text-xs font-medium text-neutral-600 mb-1">Presentación corta — aparece al tocar su foto en el kiosco</label>
-        <textarea
-          name="bio"
-          rows={2}
-          defaultValue={profesional.bio ?? ""}
-          placeholder="Dos o tres renglones, como si se lo contaras a un cliente. Ej: Acompaño a deportistas y a personas que quieren mejorar su alimentación sin dietas imposibles. Trabajo con planes que se adaptan a tu rutina, no al revés."
-          className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm"
-        />
-        <p className="text-[11px] text-neutral-400 mt-1">
-          Es lo primero que lee el cliente. Que hable de lo que le va a pasar a él, no de los títulos de ella
-          — esos ya se ven arriba.
-        </p>
-      </div>
-      <div className="mb-3">
-        <label className="block text-xs font-medium text-neutral-600 mb-1">
-          Biografía completa — opcional, aparece en &ldquo;Conóceme&rdquo;
-        </label>
-        <textarea
-          name="biografia_completa"
-          rows={3}
-          defaultValue={profesional.biografia_completa ?? ""}
-          placeholder="La versión larga: cómo llegó a la nutrición, con qué tipo de paciente trabaja mejor, qué la diferencia. Se puede dejar vacía."
-          className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm"
-        />
-      </div>
-
-      <SeccionFormLabel>💪 ¿En qué se destaca?</SeccionFormLabel>
-      <div className="flex flex-wrap gap-2 mb-1">
-        {catalogoFortalezas.map((f) => {
-          const on = fortalezasSeleccionadas.has(f.nombre);
-          return (
-            <button
-              key={f.id_fortaleza}
-              type="button"
-              onClick={() => toggleFortaleza(f.nombre)}
-              className={`text-xs font-semibold px-3 py-1.5 rounded-full border flex items-center gap-1.5 ${
-                on ? "bg-accent-tint border-accent text-accent-dark" : "border-neutral-300 text-neutral-600"
-              }`}
-            >
-              {f.nombre}
-              {on && (
-                <span
-                  role="button"
-                  tabIndex={-1}
+              <div className="flex items-center gap-2 mt-1.5 text-xs text-neutral-500 flex-wrap">
+                <span className="w-28 h-1.5 rounded-full bg-neutral-200 overflow-hidden">
+                  <span
+                    className={`block h-full rounded-full ${completitud.porcentaje === 100 ? "bg-emerald-600" : "bg-amber-500"}`}
+                    style={{ width: `${completitud.porcentaje}%` }}
+                  />
+                </span>
+                <b className={completitud.porcentaje === 100 ? "text-emerald-700" : "text-amber-700"}>Perfil {completitud.porcentaje}%</b>
+                {faltan.length === 0 ? (
+                  <span>· Completo</span>
+                ) : (
+                  <span>
+                    · Le {faltan.length === 1 ? "falta" : "faltan"}:{" "}
+                    {faltan.map((i, idx) => (
+                      <Fragment key={i.label}>
+                        {idx > 0 && (idx === faltan.length - 1 ? " y " : ", ")}
+                        <button
+                          type="button"
+                          onClick={() => setPestana(PESTANA_DE_ITEM[i.label] ?? "perfil")}
+                          className="font-bold text-accent hover:underline"
+                        >
+                          {i.label.toLowerCase()}
+                        </button>
+                      </Fragment>
+                    ))}
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={togglePublicado}
+                disabled={!activo}
+                className={`flex items-center gap-2.5 rounded-xl border px-3 py-2 text-left disabled:opacity-50 ${
+                  publicado ? "bg-emerald-50 border-emerald-200" : "bg-neutral-50 border-neutral-200"
+                }`}
+              >
+                <span className={`relative w-9 h-5 rounded-full shrink-0 ${publicado ? "bg-emerald-600" : "bg-neutral-300"}`}>
+                  <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${publicado ? "left-[18px]" : "left-0.5"}`} />
+                </span>
+                <span>
+                  <b className={`block text-xs ${publicado ? "text-emerald-700" : "text-neutral-600"}`}>{publicado ? "Publicado" : "Borrador"}</b>
+                  <span className="block text-[11px] text-neutral-500">
+                    {publicado ? "Se ve en la pantalla del local" : "No se ve en la pantalla"}
+                  </span>
+                </span>
+              </button>
+              <div className="relative">
+                <button
+                  type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    setFortalezaPrincipal(fortalezaPrincipal === f.nombre ? null : f.nombre);
+                    setMenu((v) => !v);
                   }}
-                  title="Marcar como principal"
-                  className={fortalezaPrincipal === f.nombre ? "text-amber-500" : "text-neutral-300"}
+                  className="w-9 h-9 rounded-xl border border-neutral-200 bg-white text-neutral-500 hover:text-neutral-900 text-lg leading-none"
+                  aria-label="Más opciones"
                 >
-                  ★
-                </span>
+                  ⋯
+                </button>
+                {menu && (
+                  <div className="absolute right-0 top-11 z-20 bg-white border border-neutral-200 rounded-xl shadow-lg py-1 w-60">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMostrarPin(true);
+                        setMenu(false);
+                        setPestana("resumen");
+                      }}
+                      className="block w-full text-left px-3 py-2 text-sm hover:bg-neutral-50"
+                    >
+                      🔒 Cambiar PIN para pagar en caja
+                    </button>
+                    <button type="button" onClick={toggleEstado} className="block w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50">
+                      {activo ? "Desactivar profesional" : "Activar profesional"}
+                    </button>
+                  </div>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={intentarCerrar}
+                aria-label="Cerrar"
+                className="w-9 h-9 rounded-xl text-xl text-neutral-400 hover:text-neutral-900"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+
+          <nav role="tablist" aria-label="Partes de la ficha" className="flex gap-1.5 mt-4 pb-3 overflow-x-auto sm:flex-wrap">
+            {PESTANAS.map((p) => {
+              const on = pestana === p.clave;
+              const est = estadoPestana[p.clave];
+              return (
+                <button
+                  key={p.clave}
+                  type="button"
+                  role="tab"
+                  aria-selected={on}
+                  onClick={() => setPestana(p.clave)}
+                  className={`shrink-0 flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-[13px] font-semibold ${
+                    on ? "bg-accent border-accent text-white" : "bg-white border-neutral-200 text-neutral-600 hover:border-neutral-300"
+                  }`}
+                >
+                  <span aria-hidden="true">{p.icono}</span>
+                  {p.label}
+                  {est && (
+                    <span
+                      className={`w-4 h-4 rounded-full grid place-items-center text-[10px] font-extrabold text-white ${
+                        est === "ok" ? "bg-emerald-600" : "bg-amber-500"
+                      }`}
+                    >
+                      {est === "ok" ? "✓" : "!"}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+
+        {/* ---------- cuerpo ---------- */}
+        <div className="flex-1 overflow-y-auto px-5 sm:px-6 py-5">
+          {!activo && (
+            <p className="text-sm text-neutral-600 bg-neutral-100 rounded-xl px-4 py-2.5 mb-4">
+              Este profesional está desactivado: no se ve en la pantalla del local y su código no funciona.
+            </p>
+          )}
+          {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-2.5 mb-4">{error}</p>}
+
+          {/* El resumen va fuera del formulario: adentro tiene sus propios formularios (código, pagos). */}
+          <div hidden={pestana !== "resumen"}>
+            <div className="flex flex-col gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="bg-white border border-neutral-200 rounded-2xl px-4 py-3">
+                  <p className="text-xs font-semibold text-neutral-500">Ventas con su código</p>
+                  <p className="text-2xl font-extrabold tabular-nums">{fila.ventasReferidas}</p>
+                </div>
+                <div className="bg-white border border-neutral-200 rounded-2xl px-4 py-3">
+                  <p className="text-xs font-semibold text-neutral-500">Vendido con su código</p>
+                  <p className="text-2xl font-extrabold tabular-nums">${formatearMonto(fila.totalVenta)}</p>
+                </div>
+                <div className="bg-white border border-neutral-200 rounded-2xl px-4 py-3">
+                  <p className="text-xs font-semibold text-neutral-500">A pagar</p>
+                  <p className={`text-2xl font-extrabold tabular-nums ${fila.comisionPendiente > 0 ? "text-red-600" : "text-neutral-400"}`}>
+                    ${formatearMonto(fila.comisionPendiente)}
+                  </p>
+                </div>
+              </div>
+
+              {!profesional.dni && (
+                <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
+                  Sin DNI cargado: todavía no puede pagar en caja con su saldo.{" "}
+                  <button type="button" onClick={() => setPestana("datos")} className="font-bold underline">
+                    Cargarlo
+                  </button>
+                </p>
               )}
-            </button>
-          );
-        })}
-      </div>
-      <div className="flex gap-2 mb-2 max-w-xs">
-        <input
-          value={nuevaFortaleza}
-          onChange={(e) => setNuevaFortaleza(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              agregarFortalezaNueva();
-            }
-          }}
-          placeholder="Crear una nueva..."
-          className="flex-1 border border-neutral-300 rounded-lg px-2.5 py-1 text-xs"
-        />
-        <button type="button" onClick={agregarFortalezaNueva} className="text-xs font-semibold text-accent">
-          + Crear
-        </button>
-      </div>
-      <p className="text-[11px] text-neutral-400 mb-3">Tocá la ★ de una fortaleza elegida para marcarla como principal.</p>
+              {mostrarPin && <FormPin idProfesional={id} onGuardado={() => setMostrarPin(false)} />}
 
-      <SeccionFormLabel>🎯 ¿Cómo puede ayudarte?</SeccionFormLabel>
-      <div className="flex flex-wrap gap-2 mb-1">
-        {objetivosGlobales.length === 0 && <p className="text-xs text-neutral-400">Todavía no cargaste objetivos en Catálogo asesor.</p>}
-        {objetivosGlobales.map((o) => {
-          const on = objetivosSeleccionados.has(o.id_objetivo);
-          return (
+              <Tarjeta titulo="Códigos" bajada="Tocá un código para pausarlo o volver a activarlo.">
+                <div className="flex flex-wrap gap-2 items-center">
+                  {codigos.length === 0 && <span className="text-sm text-neutral-400">Sin códigos todavía.</span>}
+                  {codigos.map((c) => (
+                    <button
+                      type="button"
+                      key={c.id_codigo}
+                      onClick={() => toggleEstadoCodigo(c)}
+                      className={`text-sm font-mono font-bold px-2.5 py-1 rounded-lg ${
+                        c.estado === "ACTIVO" ? "bg-accent-tint text-accent-dark" : "bg-neutral-100 text-neutral-400 line-through"
+                      }`}
+                    >
+                      {c.codigo} {c.limite_usos != null && `(${c.usos}/${c.limite_usos})`}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setMostrarCodigoForm((v) => !v)}
+                    className="text-sm font-semibold text-accent border border-neutral-200 rounded-lg px-3 py-1 bg-white"
+                  >
+                    {mostrarCodigoForm ? "Cancelar" : "+ Agregar código"}
+                  </button>
+                </div>
+                {mostrarCodigoForm && (
+                  <FormNuevoCodigo
+                    idProfesional={id}
+                    onCreado={() => {
+                      setMostrarCodigoForm(false);
+                      onCambio();
+                    }}
+                  />
+                )}
+              </Tarjeta>
+
+              <Tarjeta titulo="Saldo por marca" bajada="Cada marca es una bolsa aparte: no se puede gastar el saldo de una en otra.">
+                {cargandoResumen ? (
+                  <p className="text-sm text-neutral-400">Cargando...</p>
+                ) : saldos.length === 0 ? (
+                  <p className="text-sm text-neutral-400">Todavía no generó saldo en ninguna marca.</p>
+                ) : (
+                  <div className="flex flex-col gap-1.5">
+                    {saldos.map((s) => (
+                      <FilaSaldoMarca
+                        key={s.idMarca}
+                        idProfesional={id}
+                        saldo={s}
+                        onCambio={() => {
+                          cargarResumen();
+                          onCambio();
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
+              </Tarjeta>
+
+              <Tarjeta titulo="Ventas con su código" bajada="Las ventas donde se usó su código: es lo que le fue sumando saldo.">
+                {cargandoResumen ? (
+                  <p className="text-sm text-neutral-400">Cargando...</p>
+                ) : ventasGeneradas.length === 0 ? (
+                  <p className="text-sm text-neutral-400">
+                    Todavía no hay ventas con su código. Si esperabas ver una, fijate que la marca de esos productos tenga el programa
+                    habilitado en &ldquo;Configuración por marca&rdquo;.
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-xs text-neutral-400 border-b border-neutral-200">
+                          <th className="py-2 pr-3">Fecha</th>
+                          <th className="py-2 pr-3">Venta</th>
+                          <th className="py-2 pr-3 text-right">Total</th>
+                          <th className="py-2 text-right">Comisión</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {ventasGeneradas.map((v) => (
+                          <tr key={v.idReferido} className="border-b border-neutral-100 last:border-0">
+                            <td className="py-2 pr-3 whitespace-nowrap text-neutral-500">
+                              {new Date(v.fecha).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                            </td>
+                            <td className="py-2 pr-3">{v.numeroVenta ? `#${v.numeroVenta}` : "—"}</td>
+                            <td className="py-2 pr-3 text-right tabular-nums">${formatearMonto(v.totalVenta)}</td>
+                            <td className="py-2 text-right tabular-nums font-semibold text-emerald-600">+${formatearMonto(v.comisionGenerada)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </Tarjeta>
+
+              <Tarjeta titulo="Pagos y canjes">
+                {cargandoResumen ? (
+                  <p className="text-sm text-neutral-400">Cargando...</p>
+                ) : canjes.length === 0 ? (
+                  <p className="text-sm text-neutral-400">Todavía no se le pagó ni canjeó nada.</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-xs text-neutral-400 border-b border-neutral-200">
+                          <th className="py-2 pr-3">Fecha</th>
+                          <th className="py-2 pr-3">Marca</th>
+                          <th className="py-2 pr-3">Tipo</th>
+                          <th className="py-2 pr-3 text-right">Monto</th>
+                          <th className="py-2">Venta</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {canjes.map((c) => {
+                          const abierto = canjeAbierto === c.idMovimiento;
+                          return (
+                            <Fragment key={c.idMovimiento}>
+                              <tr
+                                onClick={() => c.idVenta && setCanjeAbierto(abierto ? null : c.idMovimiento)}
+                                className={`border-b border-neutral-100 last:border-0 ${c.idVenta ? "cursor-pointer hover:bg-neutral-50" : ""}`}
+                              >
+                                <td className="py-2 pr-3 whitespace-nowrap text-neutral-500">{formatearFechaHora(c.fecha)}</td>
+                                <td className="py-2 pr-3">{c.nombreMarca}</td>
+                                <td className="py-2 pr-3">
+                                  <span className={`font-semibold ${c.tipo === "CANJE" ? "text-purple-600" : "text-emerald-600"}`}>
+                                    {c.tipo === "CANJE" ? "Canje" : "Pago"}
+                                  </span>
+                                </td>
+                                <td className="py-2 pr-3 text-right tabular-nums font-semibold">${formatearMonto(c.monto)}</td>
+                                <td className="py-2">
+                                  {c.numeroVenta ? (
+                                    <span className="text-accent">
+                                      {abierto ? "▾" : "▸"} VTA-{String(c.numeroVenta).padStart(4, "0")}
+                                    </span>
+                                  ) : (
+                                    <span className="text-neutral-400">{c.descripcion ?? "—"}</span>
+                                  )}
+                                </td>
+                              </tr>
+                              {abierto && c.idVenta && <DetalleCanjeVenta idMovimiento={c.idMovimiento} />}
+                            </Fragment>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </Tarjeta>
+
+              {(profesional.telefono || profesional.email) && (
+                <p className="text-xs text-neutral-500">
+                  {profesional.telefono && <span className="mr-4">📞 {profesional.telefono}</span>}
+                  {profesional.email && <span>✉️ {profesional.email}</span>}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Todas las pestañas que se editan son un solo formulario: las
+              escondidas siguen montadas, así nada se pierde al cambiar de pestaña. */}
+          <form id={formId} onSubmit={handleSubmit} onChange={cambio}>
+            {publicado && <input type="hidden" name="publicado" value="on" />}
+            <input type="hidden" name="categoria" value={categoria} />
+            <input type="hidden" name="tipo_atencion" value={tipoAtencion} />
+
+            {/* ---------- datos personales ---------- */}
+            <div hidden={pestana !== "datos"}>
+              <Tarjeta titulo="Datos personales" bajada="Para ubicarla y para que pueda pagar en caja con su saldo.">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
+                  <Campo label="Nombre">
+                    <input name="nombre" required value={nombre} onChange={(e) => setNombre(e.target.value)} className={INPUT} />
+                  </Campo>
+                  <Campo label="Apellido">
+                    <input name="apellido" value={apellido} onChange={(e) => setApellido(e.target.value)} className={INPUT} />
+                  </Campo>
+                  <Campo label="DNI" nota="🔒 privado">
+                    <input name="dni" inputMode="numeric" value={dni} onChange={(e) => setDni(e.target.value)} className={INPUT} />
+                  </Campo>
+                  <Campo label="Fecha de nacimiento" nota="🔒 privado">
+                    <input name="fecha_nacimiento" type="date" defaultValue={profesional.fecha_nacimiento ?? ""} className={INPUT} />
+                  </Campo>
+                  <Campo label="Mail">
+                    <input name="email" type="email" defaultValue={profesional.email ?? ""} className={INPUT} />
+                  </Campo>
+                  <Campo label="WhatsApp" nota="🔒 privado">
+                    <input name="telefono" inputMode="tel" defaultValue={profesional.telefono ?? ""} className={INPUT} />
+                  </Campo>
+                  <div className="sm:col-span-2 flex flex-col gap-1.5">
+                    <span className="text-xs font-semibold text-neutral-600">Profesión</span>
+                    <div className="flex flex-wrap gap-2">
+                      {profesiones.map((o) => {
+                        const on = !escribiendoProfesion && categoria === o;
+                        return (
+                          <button
+                            type="button"
+                            key={o}
+                            onClick={() => {
+                              cambio();
+                              setEscribiendoProfesion(false);
+                              setCategoria(o);
+                            }}
+                            className={`text-sm px-3 py-1.5 rounded-full border font-semibold ${
+                              on ? "border-accent bg-accent-tint text-accent-dark" : "border-neutral-300 bg-white text-neutral-600"
+                            }`}
+                          >
+                            {o}
+                          </button>
+                        );
+                      })}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          cambio();
+                          setEscribiendoProfesion(true);
+                          setCategoria("");
+                        }}
+                        className={`text-sm px-3 py-1.5 rounded-full border font-semibold ${
+                          escribiendoProfesion ? "border-accent bg-accent-tint text-accent-dark" : "border-neutral-300 bg-white text-neutral-600"
+                        }`}
+                      >
+                        Otra
+                      </button>
+                    </div>
+                    {escribiendoProfesion && (
+                      <input
+                        value={categoria}
+                        onChange={(e) => setCategoria(e.target.value)}
+                        placeholder="¿Cuál?"
+                        className={`${INPUT} max-w-xs`}
+                      />
+                    )}
+                  </div>
+                  <Campo label="Matrícula">
+                    <input
+                      name="matricula"
+                      value={matricula}
+                      onChange={(e) => setMatricula(e.target.value)}
+                      placeholder="Ej: MP 4521"
+                      className={INPUT}
+                    />
+                  </Campo>
+                  <Campo label="Observaciones" nota="Solo para vos">
+                    <input name="observaciones" defaultValue={profesional.observaciones ?? ""} className={INPUT} />
+                  </Campo>
+                </div>
+                <p className="text-xs text-neutral-500 bg-neutral-100 rounded-xl px-3 py-2">
+                  🔒 Lo marcado como privado nunca se muestra en la pantalla del local.
+                </p>
+              </Tarjeta>
+            </div>
+
+            {/* ---------- perfil ---------- */}
+            <div hidden={pestana !== "perfil"}>
+              <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_300px] gap-5 items-start">
+                <Tarjeta titulo="Cómo la ve el cliente">
+                  <div className="flex items-center gap-4">
+                    <span className="w-24 h-24 rounded-full overflow-hidden bg-neutral-100 grid place-items-center text-3xl font-bold text-neutral-400 shrink-0">
+                      {foto ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={foto} alt="" className="w-full h-full object-cover object-top" />
+                      ) : (
+                        nombre.charAt(0).toUpperCase()
+                      )}
+                    </span>
+                    <div className="flex flex-col gap-1.5 items-start">
+                      <b className="text-sm">Foto de perfil</b>
+                      <span className="text-xs text-neutral-500">De medio cuerpo y con buena luz. Se guarda apenas la elegís.</span>
+                      <label className="text-sm font-semibold text-accent border border-neutral-200 rounded-lg px-3 py-1.5 bg-white cursor-pointer">
+                        {subiendoFoto ? "Subiendo..." : foto ? "Cambiar foto" : "Subir foto"}
+                        <input type="file" accept="image/*" onChange={handleFoto} disabled={subiendoFoto} className="hidden" />
+                      </label>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
+                    <Campo label="Título">
+                      <input
+                        name="titulo"
+                        value={titulo}
+                        onChange={(e) => setTitulo(e.target.value)}
+                        placeholder="Ej: Lic. en Nutrición"
+                        className={INPUT}
+                      />
+                    </Campo>
+                    <Campo label="Especialidad">
+                      <input
+                        name="especialidad"
+                        value={especialidad}
+                        onChange={(e) => setEspecialidad(e.target.value)}
+                        placeholder="Ej: Nutrición deportiva"
+                        className={INPUT}
+                      />
+                    </Campo>
+                    <Campo label="Presentación corta" nota={`${bio.length} letras`} ancho>
+                      <textarea
+                        name="bio"
+                        rows={4}
+                        value={bio}
+                        onChange={(e) => setBio(e.target.value)}
+                        placeholder="Dos o tres renglones, como si se lo contara a un cliente. Ej: Acompaño a deportistas y a personas que quieren comer mejor sin dietas imposibles."
+                        className={INPUT}
+                      />
+                    </Campo>
+                  </div>
+                  <p className="text-xs text-blue-900 bg-accent-tint rounded-xl px-3 py-2">
+                    💡 Es lo primero que lee el cliente. Que hable de lo que le va a pasar a él, no de los títulos: esos ya se ven arriba.
+                  </p>
+                </Tarjeta>
+                <VistaPreviaKiosco
+                  foto={foto}
+                  nombre={nombreCompleto}
+                  titulo={titulo}
+                  especialidad={especialidad}
+                  matricula={matricula}
+                  bio={bio}
+                  fortalezas={fortalezasVista}
+                  tieneTurno={Boolean(linkConsultorio || (agenda.modo === "propia" && (linkPropio || linkPropioOnline)))}
+                />
+              </div>
+            </div>
+
+            {/* ---------- en qué ayuda ---------- */}
+            <div hidden={pestana !== "ayuda"}>
+              <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_300px] gap-5 items-start">
+                <div className="flex flex-col gap-4">
+                  <Tarjeta titulo="¿En qué se destaca?" bajada="Elegí 2 o 3. Con la ★ marcás la principal.">
+                    <div className="flex flex-wrap gap-2">
+                      {catalogoFortalezas.map((f) => {
+                        const on = fortalezasSeleccionadas.has(f.nombre);
+                        return (
+                          <button
+                            key={f.id_fortaleza}
+                            type="button"
+                            onClick={() => toggleFortaleza(f.nombre)}
+                            className={`text-sm font-semibold px-3 py-1.5 rounded-full border flex items-center gap-1.5 ${
+                              on ? "bg-accent-tint border-accent text-accent-dark" : "border-neutral-300 bg-white text-neutral-600"
+                            }`}
+                          >
+                            {f.nombre}
+                            {on && (
+                              <span
+                                role="button"
+                                tabIndex={-1}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  cambio();
+                                  setFortalezaPrincipal(fortalezaPrincipal === f.nombre ? null : f.nombre);
+                                }}
+                                title="Marcar como principal"
+                                className={fortalezaPrincipal === f.nombre ? "text-amber-500" : "text-neutral-300"}
+                              >
+                                ★
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="flex gap-2 max-w-sm">
+                      <input
+                        value={nuevaFortaleza}
+                        onChange={(e) => setNuevaFortaleza(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            agregarFortalezaNueva();
+                          }
+                        }}
+                        placeholder="Crear otra..."
+                        className={INPUT}
+                      />
+                      <button type="button" onClick={agregarFortalezaNueva} className="text-sm font-semibold text-accent px-2 shrink-0">
+                        + Crear
+                      </button>
+                    </div>
+                  </Tarjeta>
+                  <Tarjeta
+                    titulo="¿Cómo puede ayudarte?"
+                    bajada="Son los mismos objetivos de “Encontrar productos para mí”: así el asesor la recomienda según lo que busca el cliente."
+                  >
+                    <div className="flex flex-wrap gap-2">
+                      {objetivosGlobales.length === 0 && (
+                        <p className="text-sm text-neutral-400">Todavía no cargaste objetivos en Catálogo asesor.</p>
+                      )}
+                      {objetivosGlobales.map((o) => {
+                        const on = objetivosSeleccionados.has(o.id_objetivo);
+                        return (
+                          <button
+                            key={o.id_objetivo}
+                            type="button"
+                            onClick={() => toggleObjetivo(o.id_objetivo)}
+                            className={`text-sm font-semibold px-3 py-1.5 rounded-full border ${
+                              on ? "bg-accent-tint border-accent text-accent-dark" : "border-neutral-300 bg-white text-neutral-600"
+                            }`}
+                          >
+                            {o.nombre}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </Tarjeta>
+                </div>
+                <VistaPreviaKiosco
+                  foto={foto}
+                  nombre={nombreCompleto}
+                  titulo={titulo}
+                  especialidad={especialidad}
+                  matricula={matricula}
+                  bio={bio}
+                  fortalezas={fortalezasVista}
+                  tieneTurno={Boolean(linkConsultorio || (agenda.modo === "propia" && (linkPropio || linkPropioOnline)))}
+                />
+              </div>
+            </div>
+
+            {/* ---------- turnos ---------- */}
+            <div hidden={pestana !== "turnos"}>
+              <Tarjeta titulo="Turnos y precios">
+                {consultorios.disponible && (
+                  <SelectorAgenda
+                    estado={agenda}
+                    onChange={(a) => {
+                      cambio();
+                      setAgenda(a);
+                    }}
+                    consultorios={consultorios}
+                    nombresPorConsultorio={nombresPorConsultorio}
+                    nombrePropio={nombreCompleto}
+                  />
+                )}
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-xs font-semibold text-neutral-600">Atiende</span>
+                  <div className="inline-flex flex-wrap self-start gap-1 border border-neutral-300 rounded-xl p-1 bg-white">
+                    {[
+                      { valor: "Presencial", label: "Presencial" },
+                      { valor: "Virtual", label: "Online" },
+                      { valor: "Presencial y virtual", label: "Las dos" },
+                    ].map((o) => (
+                      <button
+                        key={o.valor}
+                        type="button"
+                        onClick={() => {
+                          cambio();
+                          setTipoAtencion(o.valor);
+                        }}
+                        className={`px-3.5 py-1.5 rounded-lg text-sm font-semibold ${
+                          tipoAtencion === o.valor ? "bg-accent text-white" : "text-neutral-600"
+                        }`}
+                      >
+                        {o.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
+                  {agenda.modo === "propia" ? (
+                    <>
+                      <Campo label="Link de turnos — Presencial">
+                        <input
+                          name="link_reserva"
+                          value={linkPropio}
+                          onChange={(e) => setLinkPropio(e.target.value)}
+                          placeholder="Cal.com, Google Calendar o WhatsApp"
+                          className={INPUT}
+                        />
+                      </Campo>
+                      <Campo label="Link de turnos — Online">
+                        <input
+                          name="link_reserva_online"
+                          value={linkPropioOnline}
+                          onChange={(e) => setLinkPropioOnline(e.target.value)}
+                          placeholder="Para turnos por videollamada"
+                          className={INPUT}
+                        />
+                      </Campo>
+                    </>
+                  ) : (
+                    // Con agenda compartida no se muestran, pero se guardan igual:
+                    // si un día deja el consultorio, vuelven a estar.
+                    <>
+                      <input type="hidden" name="link_reserva" value={linkPropio} />
+                      <input type="hidden" name="link_reserva_online" value={linkPropioOnline} />
+                    </>
+                  )}
+                  <Campo label="Precio — Presencial">
+                    <input type="number" name="precio_presencial" defaultValue={profesional.precio_presencial ?? ""} placeholder="Ej: 15000" className={INPUT} />
+                  </Campo>
+                  <Campo label="Precio — Online">
+                    <input type="number" name="precio_online" defaultValue={profesional.precio_online ?? ""} placeholder="Ej: 12000" className={INPUT} />
+                  </Campo>
+                  <Campo label="Ciudad" nota="Solo si no atiende en el local" ancho>
+                    <input name="ciudad" defaultValue={profesional.ciudad ?? ""} placeholder="Ej: Buenos Aires" className={INPUT} />
+                  </Campo>
+                </div>
+                <p className="text-xs text-blue-900 bg-accent-tint rounded-xl px-3 py-2">
+                  💡 El precio es informativo: el cliente lo ve antes de reservar, y la consulta la cobra ella directo.
+                </p>
+              </Tarjeta>
+            </div>
+
+            {/* ---------- fotos ---------- */}
+            <div hidden={pestana !== "fotos"}>
+              <Tarjeta titulo="Fotos y videos" bajada="Las fotos se ven en su ficha de la pantalla del local. Se guardan apenas las subís.">
+                <GuardaSola>
+                  <SeccionGaleria idProfesional={id} />
+                  <SeccionVideos idProfesional={id} />
+                </GuardaSola>
+              </Tarjeta>
+            </div>
+
+            {/* ---------- historia ---------- */}
+            <div hidden={pestana !== "historia"}>
+              <div className="flex flex-col gap-4">
+                <Tarjeta titulo="Su historia" bajada="Opcional. La versión larga: cómo llegó a su profesión y con quién trabaja mejor.">
+                  <textarea name="biografia_completa" rows={5} defaultValue={profesional.biografia_completa ?? ""} placeholder="Se puede dejar vacía." className={INPUT} />
+                </Tarjeta>
+                <Tarjeta titulo="Formación" bajada="Títulos, posgrados y cursos.">
+                  <GuardaSola>
+                    <SeccionFormacion idProfesional={id} />
+                  </GuardaSola>
+                </Tarjeta>
+                <Tarjeta titulo="Trayectoria" bajada="Dónde trabajó y desde cuándo.">
+                  <GuardaSola>
+                    <SeccionTrayectoria idProfesional={id} />
+                  </GuardaSola>
+                </Tarjeta>
+              </div>
+            </div>
+
+            {/* ---------- conóceme ---------- */}
+            <div hidden={pestana !== "conoceme"}>
+              <Tarjeta
+                titulo="Conóceme"
+                bajada="Las filminas que pasa la pantalla cuando el cliente toca “Conóceme”. Las de formación, trayectoria y fortalezas se arman solas con lo que ya cargaste."
+              >
+                <GuardaSola>
+                  <SeccionConoceme idProfesional={id} />
+                </GuardaSola>
+              </Tarjeta>
+            </div>
+          </form>
+        </div>
+
+        {/* ---------- pie ---------- */}
+        <div className="bg-white border-t border-neutral-200 px-5 sm:px-6 py-3 flex items-center justify-between gap-3 flex-wrap">
+          <p className="text-xs text-neutral-500">
+            {guardado && !sucio ? (
+              <span className="font-semibold text-emerald-700">✓ Cambios guardados</span>
+            ) : sucio ? (
+              <span className="font-semibold text-amber-700">Hay cambios sin guardar</span>
+            ) : (
+              NOTA_PIE[pestana] ?? "Los cambios de todas las pestañas se guardan juntos."
+            )}
+          </p>
+          <div className="flex gap-2">
             <button
-              key={o.id_objetivo}
               type="button"
-              onClick={() => toggleObjetivo(o.id_objetivo)}
-              className={`text-xs font-semibold px-3 py-1.5 rounded-full border ${
-                on ? "bg-accent-tint border-accent text-accent-dark" : "border-neutral-300 text-neutral-600"
-              }`}
+              onClick={intentarCerrar}
+              className="text-sm font-semibold text-neutral-600 border border-neutral-200 rounded-xl px-4 py-2 bg-white"
             >
-              {o.nombre}
+              Cerrar
             </button>
-          );
-        })}
-      </div>
-      <p className="text-[11px] text-neutral-400 mb-3">
-        Son los mismos objetivos de "Encontrar productos para mí" — así el Asesor puede recomendar a este profesional según lo que busca el cliente.
-      </p>
-
-      <SeccionFormLabel>📅 Atención y reserva</SeccionFormLabel>
-      {consultorios.disponible && (
-        <div className="mb-3">
-          <SelectorAgenda
-            estado={agenda}
-            onChange={setAgenda}
-            consultorios={consultorios}
-            nombresPorConsultorio={nombresPorConsultorio}
-            nombrePropio={nombrePropio}
-          />
-        </div>
-      )}
-      {/* Con agenda compartida los links propios no se muestran, pero se
-          guardan igual: si un día deja el consultorio, vuelven a estar. */}
-      {agenda.modo === "compartida" && (
-        <>
-          <input type="hidden" name="link_reserva" value={profesional.link_reserva ?? ""} />
-          <input type="hidden" name="link_reserva_online" value={profesional.link_reserva_online ?? ""} />
-        </>
-      )}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-        <div>
-          <label className="block text-xs font-medium text-neutral-600 mb-1">Tipo de atención</label>
-          <select name="tipo_atencion" defaultValue={profesional.tipo_atencion ?? ""} className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm">
-            <option value="">Sin especificar</option>
-            <option value="Presencial">Presencial</option>
-            <option value="Virtual">Virtual</option>
-            <option value="Presencial y virtual">Presencial y virtual</option>
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-neutral-600 mb-1">Ciudad (solo si no atiende en el local)</label>
-          <input name="ciudad" defaultValue={profesional.ciudad ?? ""} placeholder="Ej: Buenos Aires" className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
-          <p className="text-[11px] text-neutral-400 mt-1">
-            Si la carga, el cliente ve un aviso antes de reservar un turno presencial fuera del local.
-          </p>
-        </div>
-        {agenda.modo === "propia" && (
-          <>
-            <div>
-              <label className="block text-xs font-medium text-neutral-600 mb-1">Link de reserva — Presencial</label>
-              <input name="link_reserva" defaultValue={profesional.link_reserva ?? ""} placeholder="Link de Cal.com, WhatsApp, etc." className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-neutral-600 mb-1">Link de reserva — Online</label>
-              <input name="link_reserva_online" defaultValue={profesional.link_reserva_online ?? ""} placeholder="Link de Cal.com para videollamada" className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
-              <p className="text-[11px] text-neutral-400 mt-1">
-                Si cargás los dos links, el cliente va a poder elegir modalidad antes de reservar.
-              </p>
-            </div>
-          </>
-        )}
-        <div>
-          <label className="block text-xs font-medium text-neutral-600 mb-1">Precio — Presencial</label>
-          <input type="number" name="precio_presencial" defaultValue={profesional.precio_presencial ?? ""} placeholder="Ej: 15000" className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-neutral-600 mb-1">Precio — Online</label>
-          <input type="number" name="precio_online" defaultValue={profesional.precio_online ?? ""} placeholder="Ej: 12000" className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
-          <p className="text-[11px] text-neutral-400 mt-1">
-            Solo informativo — el cliente ve el precio antes de reservar, pero el cobro lo hace la profesional directo (efectivo o transferencia) en la consulta.
-          </p>
+            <button
+              type="submit"
+              form={formId}
+              disabled={guardando || !sucio}
+              className="text-sm font-bold text-white bg-accent hover:bg-accent-dark disabled:opacity-40 rounded-xl px-5 py-2"
+            >
+              {guardando ? "Guardando..." : "Guardar cambios"}
+            </button>
+          </div>
         </div>
       </div>
-
-      <CorteFormulario
-        titulo="Hasta acá, con esto ya se publica"
-        bajada="Lo de abajo es opcional. Suma mucho, pero podés dejarlo para después y la ficha ya funciona."
-      />
-
-      <Plegable titulo="🎓 Formación" resumen="Títulos, posgrados, cursos">
-        <SeccionFormacion idProfesional={profesional.id_profesional} />
-      </Plegable>
-
-      <Plegable titulo="🏆 Trayectoria" resumen="Dónde trabajó, desde cuándo">
-        <SeccionTrayectoria idProfesional={profesional.id_profesional} />
-      </Plegable>
-
-      <Plegable titulo="📸 Fotos y videos" resumen="Del consultorio, trabajando, atendiendo">
-        <SeccionGaleria idProfesional={profesional.id_profesional} />
-        <SeccionVideos idProfesional={profesional.id_profesional} />
-      </Plegable>
-
-      <Plegable titulo="🎞️ Conóceme" resumen="Las filminas que ve el cliente en el kiosco">
-        <SeccionConoceme idProfesional={profesional.id_profesional} />
-      </Plegable>
-
-      <SeccionFormLabel>👁️ Publicación</SeccionFormLabel>
-      <label className="flex items-center gap-2 text-sm text-neutral-700 mb-3">
-        <input type="checkbox" name="publicado" defaultChecked={profesional.publicado} className="rounded border-neutral-300 text-accent focus:ring-accent" />
-        Publicado en el kiosco del Asesor (si no está tildado, queda en Borrador y no se muestra al cliente)
-      </label>
-
-      <div className="mb-3">
-        <label className="block text-xs font-medium text-neutral-600 mb-1">Observaciones</label>
-        <input name="observaciones" defaultValue={profesional.observaciones ?? ""} className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm" />
-      </div>
-
-      <div className="flex justify-end">
-        <button type="submit" disabled={guardando} className="bg-accent hover:bg-accent-dark disabled:opacity-50 text-white font-medium px-4 py-1.5 rounded-lg text-sm">
-          {guardando ? "Guardando..." : "Guardar cambios"}
-        </button>
-      </div>
-    </form>
+    </div>
   );
 }
 
