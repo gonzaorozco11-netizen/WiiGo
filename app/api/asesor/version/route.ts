@@ -26,7 +26,7 @@ function resumir(texto: string) {
 export async function GET() {
   const supabase = getSupabaseServerClient();
 
-  const [ultimo, productos, marcas, subcategorias, profesionales, consultorios, miembros] = await Promise.all([
+  const [ultimo, productos, marcas, subcategorias, profesionales, galeria, consultorios, miembros] = await Promise.all([
     supabase
       .from("productos")
       .select("fecha_actualizacion")
@@ -48,6 +48,7 @@ export async function GET() {
       .eq("publicado", true)
       .eq("estado", "ACTIVO")
       .order("id_profesional"),
+    supabase.from("galeria_profesional").select("id_foto,publico,orden").order("id_foto"),
     // Si todavía no existe la tabla de consultorios, estas dos fallan y no suman nada.
     supabase.from("consultorios").select("id_consultorio,nombre,link_reserva,link_reserva_online,estado").order("id_consultorio"),
     supabase.from("profesionales").select("id_profesional,id_consultorio").not("id_consultorio", "is", null).order("id_profesional"),
@@ -59,7 +60,12 @@ export async function GET() {
     (marcas.data ?? []).map((m) => `${m.nombre}${m.logo ?? ""}${m.estado}${m.visible_asesor}`).join(","),
     (subcategorias.data ?? []).map((s) => `${s.nombre}${s.estado}`).join(","),
     resumir(
-      JSON.stringify([profesionales.data ?? [], consultorios.error ? [] : consultorios.data, miembros.error ? [] : miembros.data])
+      JSON.stringify([
+        profesionales.data ?? [],
+        galeria.data ?? [],
+        consultorios.error ? [] : consultorios.data,
+        miembros.error ? [] : miembros.data,
+      ])
     ),
   ].join("|");
 

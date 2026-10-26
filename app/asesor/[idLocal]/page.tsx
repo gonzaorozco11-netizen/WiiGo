@@ -63,7 +63,7 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
     supabase.from("profesional_fortalezas").select("id_profesional, id_fortaleza, principal"),
     supabase.from("profesional_objetivos").select("id_profesional, id_objetivo"),
     supabase.from("filminas_profesional").select("*").eq("visible", true).order("orden", { ascending: true }),
-    supabase.from("galeria_profesional").select("id_foto, id_profesional, url"),
+    supabase.from("galeria_profesional").select("id_foto, id_profesional, url, publico, orden"),
     supabase.from("videos_profesional").select("id_video, id_profesional, url, titulo"),
     supabase.from("formacion_profesional").select("*").eq("publico", true).order("anio", { ascending: false }),
     supabase.from("trayectoria_profesional").select("*").eq("publico", true).order("orden", { ascending: true }),
@@ -131,6 +131,15 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
     fotoUrlPorId[f.id_foto] = f.url;
   });
 
+  // La galería se ve en la ficha, no solo dentro de "Conóceme": antes una foto
+  // subida que no estaba en ninguna filmina no aparecía en ningún lado.
+  const idsPublicados = new Set(profesionales.map((p) => p.id_profesional));
+  const fotosPorProfesional: Record<string, string[]> = {};
+  ((galeriaRes.data ?? []) as { id_profesional: string; url: string; publico: boolean | null; orden: number | null }[])
+    .filter((f) => f.publico !== false && idsPublicados.has(f.id_profesional))
+    .sort((a, b) => (a.orden ?? 9999) - (b.orden ?? 9999))
+    .forEach((f) => (fotosPorProfesional[f.id_profesional] ??= []).push(f.url));
+
   const videoPorId: Record<string, { url: string; titulo: string }> = {};
   (videosRes.data ?? []).forEach((v: { id_video: string; url: string; titulo: string }) => {
     videoPorId[v.id_video] = { url: v.url, titulo: v.titulo };
@@ -184,6 +193,7 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
       subcategorias={(subcategoriasRes.data ?? []) as Subcategoria[]}
       profesionales={profesionales}
       consultorioPorProfesional={consultorioPorProfesional}
+      fotosPorProfesional={fotosPorProfesional}
       fortalezasPorProfesional={fortalezasPorProfesional}
       objetivosPorProfesional={objetivosPorProfesional}
       conocemePorProfesional={conocemePorProfesional}

@@ -198,6 +198,7 @@ const HOME_I18N = {
     atiendeEn: "Atiende en",
     juntoA: "junto a",
     mismaAgenda: "Comparten la agenda de turnos.",
+    fotosTitulo: "Fotos",
   },
   en: {
     pregunta: "What are you looking for today?",
@@ -241,6 +242,7 @@ const HOME_I18N = {
     atiendeEn: "Works at",
     juntoA: "with",
     mismaAgenda: "They share the same booking calendar.",
+    fotosTitulo: "Photos",
   },
   pt: {
     pregunta: "O que você está procurando hoje?",
@@ -284,6 +286,7 @@ const HOME_I18N = {
     atiendeEn: "Atende em",
     juntoA: "junto com",
     mismaAgenda: "Compartilham a mesma agenda.",
+    fotosTitulo: "Fotos",
   },
 } as const;
 
@@ -831,6 +834,7 @@ export default function AsesorApp({
   subcategorias,
   profesionales,
   consultorioPorProfesional,
+  fotosPorProfesional,
   fortalezasPorProfesional,
   objetivosPorProfesional,
   conocemePorProfesional,
@@ -849,6 +853,7 @@ export default function AsesorApp({
   subcategorias: Subcategoria[];
   profesionales: ProfesionalPublico[];
   consultorioPorProfesional: Record<string, ConsultorioEnFicha>;
+  fotosPorProfesional: Record<string, string[]>;
   fortalezasPorProfesional: Record<string, { nombre: string; principal: boolean }[]>;
   objetivosPorProfesional: Record<string, string[]>;
   conocemePorProfesional: Record<string, ConocemeSlide[]>;
@@ -1152,8 +1157,11 @@ export default function AsesorApp({
 
   // ¿Hay algo para poner en la hoja derecha de la ficha? Si no, se abre de una
   // sola hoja: media ficha vacía se lee como que la pantalla está a medio hacer.
+  const fotosDelProfesionalActual = profesionalId ? fotosPorProfesional[profesionalId] ?? [] : [];
+  const [fotoAmpliada, setFotoAmpliada] = useState<string | null>(null);
   const tieneHistoria =
     Boolean(profesionalActual?.biografia_completa) ||
+    fotosDelProfesionalActual.length > 0 ||
     formacionDelProfesionalActual.length > 0 ||
     trayectoriaDelProfesionalActual.length > 0;
   const trayectoriaOrdenada = useMemo(
@@ -1204,6 +1212,7 @@ export default function AsesorApp({
   function irAFichaProfesional(id: string) {
     setProfesionalId(id);
     setMostrarComoAyuda(false);
+    setFotoAmpliada(null);
     setPantalla("fichaProfesional");
   }
 
@@ -2335,6 +2344,23 @@ export default function AsesorApp({
                 </BloqueHistoria>
               )}
 
+              {fotosDelProfesionalActual.length > 0 && (
+                <BloqueHistoria titulo={t("fotosTitulo")} contenedor={hojaHistoria}>
+                  <div className="grid grid-cols-3 gap-2">
+                    {fotosDelProfesionalActual.map((url) => (
+                      <button
+                        key={url}
+                        onClick={() => setFotoAmpliada(url)}
+                        className="aspect-square rounded-xl overflow-hidden bg-[#e8eade]"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={url} alt="" loading="lazy" className="w-full h-full object-cover" />
+                      </button>
+                    ))}
+                  </div>
+                </BloqueHistoria>
+              )}
+
               {formacionOrdenada.length > 0 && (
                 <BloqueHistoria titulo={t("formacionTitulo")} contenedor={hojaHistoria}>
                   <LineaDeTiempo
@@ -2368,6 +2394,18 @@ export default function AsesorApp({
           )}
           </div>
         </div>
+      )}
+
+      {/* La foto de la galería en grande: se cierra tocando en cualquier lado. */}
+      {pantalla === "fichaProfesional" && fotoAmpliada && (
+        <button
+          onClick={() => setFotoAmpliada(null)}
+          className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-6"
+          aria-label="Cerrar foto"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={fotoAmpliada} alt="" className="max-w-full max-h-full object-contain rounded-2xl" />
+        </button>
       )}
 
       {pantalla === "reservarTurno" && profesionalActual && (
