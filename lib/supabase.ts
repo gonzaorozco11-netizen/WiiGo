@@ -904,6 +904,18 @@ export type Profesional = {
   observaciones: string | null;
 };
 
+// El asesor es una pantalla pública: el DNI, el teléfono, el mail, la fecha de
+// nacimiento, las observaciones y el PIN del profesional no viajan al navegador.
+export type ProfesionalPublico = Pick<
+  Profesional,
+  | "id_profesional" | "nombre" | "apellido" | "categoria" | "titulo" | "especialidad" | "bio"
+  | "biografia_completa" | "foto" | "matricula" | "tipo_atencion" | "link_reserva"
+  | "link_reserva_online" | "ciudad" | "precio_presencial" | "precio_online" | "orden"
+>;
+
+export const COLUMNAS_PROFESIONAL_PUBLICO =
+  "id_profesional,nombre,apellido,categoria,titulo,especialidad,bio,biografia_completa,foto,matricula,tipo_atencion,link_reserva,link_reserva_online,ciudad,precio_presencial,precio_online,orden";
+
 export type FortalezaProfesional = {
   id_fortaleza: string;
   nombre: string;

@@ -4,7 +4,7 @@ import {
   type Local,
   type Producto,
   type Subcategoria,
-  type Profesional,
+  type ProfesionalPublico,
   type FormacionProfesional,
   type TrayectoriaProfesional,
   type ConocemeSlide,
@@ -12,6 +12,7 @@ import {
   type VarianteProductoPublica,
   COLUMNAS_PRODUCTO_PUBLICO,
   COLUMNAS_VARIANTE_PUBLICA,
+  COLUMNAS_PROFESIONAL_PUBLICO,
   traerMarcasPublicas,
 } from "@/lib/supabase";
 import { fetchContenidoAsesor } from "@/lib/contenidoAsesor";
@@ -54,7 +55,7 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
     supabase.from("productos").select(COLUMNAS_PRODUCTO_PUBLICO).eq("estado", "ACTIVO").eq("visible_asesor", true),
     supabase.from("variantes_producto").select(COLUMNAS_VARIANTE_PUBLICA).eq("estado", "ACTIVO"),
     supabase.from("subcategorias").select("*").eq("estado", "ACTIVA"),
-    supabase.from("profesionales").select("*").eq("estado", "ACTIVO").eq("publicado", true).order("orden", { ascending: true }),
+    supabase.from("profesionales").select(COLUMNAS_PROFESIONAL_PUBLICO).eq("estado", "ACTIVO").eq("publicado", true).order("orden", { ascending: true }),
     supabase.from("fortalezas_profesional").select("*").eq("estado", "ACTIVA"),
     supabase.from("profesional_fortalezas").select("id_profesional, id_fortaleza, principal"),
     supabase.from("profesional_objetivos").select("id_profesional, id_objetivo"),
@@ -139,7 +140,7 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
       productos={(productosRes.data ?? []) as ProductoPublico[]}
       variantesPorProducto={variantesPorProducto}
       subcategorias={(subcategoriasRes.data ?? []) as Subcategoria[]}
-      profesionales={(profesionalesRes.data ?? []) as Profesional[]}
+      profesionales={(profesionalesRes.data ?? []) as ProfesionalPublico[]}
       fortalezasPorProfesional={fortalezasPorProfesional}
       objetivosPorProfesional={objetivosPorProfesional}
       conocemePorProfesional={conocemePorProfesional}

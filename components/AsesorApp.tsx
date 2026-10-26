@@ -14,7 +14,7 @@ import type {
   FiltroProducto,
   FichaProducto,
   Subcategoria,
-  Profesional,
+  ProfesionalPublico,
   ConocemeSlide,
   FormacionProfesional,
   TrayectoriaProfesional,
@@ -836,7 +836,7 @@ export default function AsesorApp({
   productos: ProductoPublico[];
   variantesPorProducto: Record<string, VarianteProductoPublica[]>;
   subcategorias: Subcategoria[];
-  profesionales: Profesional[];
+  profesionales: ProfesionalPublico[];
   fortalezasPorProfesional: Record<string, { nombre: string; principal: boolean }[]>;
   objetivosPorProfesional: Record<string, string[]>;
   conocemePorProfesional: Record<string, ConocemeSlide[]>;
