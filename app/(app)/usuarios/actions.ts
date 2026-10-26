@@ -48,6 +48,7 @@ export async function crearUsuario(formData: FormData): Promise<{ error: string 
   if (!nombre) return { error: "El nombre es obligatorio" };
   if (!email) return { error: "El email es obligatorio" };
   if (password.length < 6) return { error: "La contraseña tiene que tener al menos 6 caracteres" };
+  if (rol === "profesional") return { error: "El usuario de una profesional se crea desde su ficha, en Profesionales." };
   // Un usuario de marca sin marca asignada no podría entrar a ningún lado:
   // el portal lo rechaza y el sistema interno también.
   if (rol === "marca" && !idMarca) return { error: "Elegí a qué marca pertenece este usuario." };
@@ -89,6 +90,13 @@ export async function actualizarUsuario(id: string, formData: FormData): Promise
 
   try {
     const supabase = getSupabaseServerClient();
+    // Entrar o salir del rol de profesional cambia qué puede ver esa persona
+    // (su espacio o el sistema entero), así que no se hace desde acá: se
+    // maneja desde su ficha en Profesionales.
+    const { data: actual } = await supabase.from("usuarios").select("rol").eq("id_usuario", id).maybeSingle();
+    if ((actual?.rol === "profesional") !== (rol === "profesional")) {
+      return { error: "El usuario de una profesional se maneja desde su ficha, en Profesionales." };
+    }
     const { error } = await supabase
       .from("usuarios")
       .update({ nombre, email, rol, id_marca: rol === "marca" ? idMarca : null })

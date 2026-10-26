@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
+import { esRolInterno, INICIO_ROL_EXTERNO } from "@/lib/rolesInternos";
 import { obtenerSesionConPantallas } from "@/lib/roles";
 import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos";
 import { verificarAvisoSalida } from "@/app/(app)/ficha-asistencia/actions";
@@ -16,8 +17,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // Los usuarios de marca no entran acá bajo ningún concepto: este árbol es
   // el sistema interno (caja, costos, sueldos, todas las marcas). Se los
   // manda a su portal. Es la contracara del control que hace el layout de
-  // /portal, que sí exige rol "marca" — cada lado cierra su puerta.
-  if (session?.rol === "marca") redirect("/portal");
+  // /portal, que sí exige rol "marca" — cada lado cierra su puerta. Las
+  // profesionales, igual: a su espacio (proxy.ts ya las frena antes). Se
+  // pregunta por los roles internos y no por los de afuera, así un rol nuevo
+  // queda afuera hasta que alguien decida lo contrario.
+  if (session && !esRolInterno(session.rol)) redirect(INICIO_ROL_EXTERNO[session.rol] ?? "/login");
   // Se busca fresco en la base (no en la cookie) para que un rol nuevo o
   // recién cambiado pegue al toque, sin esperar a que la persona reloguee.
   const sesionConPantallas = await obtenerSesionConPantallas();

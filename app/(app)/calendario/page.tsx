@@ -1,4 +1,5 @@
 import { obtenerSesionConPermisos } from "@/lib/permisos";
+import { esRolInterno } from "@/lib/rolesInternos";
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import { calendarioAdmin, puedeEditarCalendario } from "@/app/(app)/calendario/actions";
 import PantallaBloqueada from "@/components/PantallaBloqueada";
@@ -13,8 +14,8 @@ export const dynamic = "force-dynamic";
 // los borradores ni las propuestas sin aprobar.
 export default async function CalendarioPage() {
   const sesion = await obtenerSesionConPermisos();
-  // Los usuarios de marca no entran acá: esta es la pantalla de WiiGo.
-  if (!sesion || sesion.rol === "marca") return <PantallaBloqueada />;
+  // Ni marcas ni profesionales entran acá: esta es la pantalla de WiiGo.
+  if (!sesion || !esRolInterno(sesion.rol)) return <PantallaBloqueada />;
   const pantallas = await obtenerSesionConPantallas();
   const editor = await puedeEditarCalendario();
   if (!editor && !puedeVerPantalla(pantallas, "calendario")) return <PantallaBloqueada />;

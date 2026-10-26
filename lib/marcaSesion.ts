@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 import { getSupabaseServerClient } from "@/lib/supabase";
+import { esRolInterno } from "@/lib/rolesInternos";
 
 // Sesión del portal de marcas.
 //
@@ -106,13 +107,17 @@ export function sesionIncluye(sesion: SesionMarca | null, minimo: PlanMarca): bo
 // devolver vacío: un acceso indebido tiene que fallar fuerte y visible, no
 // pasar desapercibido.
 
-/** ¿Quién está logueado? Sirve para distinguir marca de usuario interno. */
-async function rolActual(): Promise<{ hay: boolean; esMarca: boolean }> {
+/**
+ * ¿Quién está logueado? Sirve para distinguir al equipo de WiiGo de los de
+ * afuera (marcas y profesionales). Se pregunta por los roles internos y no
+ * por "marca": así un rol nuevo no pasa como empleado.
+ */
+async function rolActual(): Promise<{ hay: boolean; esInterno: boolean }> {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
   const sesion = await readSessionToken(token, process.env.AUTH_SECRET ?? "");
-  if (!sesion) return { hay: false, esMarca: false };
-  return { hay: true, esMarca: sesion.rol === "marca" };
+  if (!sesion) return { hay: false, esInterno: false };
+  return { hay: true, esInterno: esRolInterno(sesion.rol) };
 }
 
 /**
@@ -127,8 +132,9 @@ export async function exigirLecturaDeMarca(idMarca: string): Promise<void> {
     }
     return;
   }
-  const { hay } = await rolActual();
+  const { hay, esInterno } = await rolActual();
   if (!hay) throw new Error("Sesión no válida");
+  if (!esInterno) throw new Error("No tenés acceso a los datos de esa marca");
 }
 
 /**
@@ -137,7 +143,7 @@ export async function exigirLecturaDeMarca(idMarca: string): Promise<void> {
  * ni sobre sus propios datos.
  */
 export async function exigirGestionInterna(): Promise<void> {
-  const { hay, esMarca } = await rolActual();
+  const { hay, esInterno } = await rolActual();
   if (!hay) throw new Error("Sesión no válida");
-  if (esMarca) throw new Error("Esta operación es del equipo de WiiGo");
+  if (!esInterno) throw new Error("Esta operación es del equipo de WiiGo");
 }

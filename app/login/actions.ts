@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { SESSION_COOKIE, createSessionToken, readSessionToken } from "@/lib/session";
 import { verifyPassword } from "@/lib/auth";
 import { getSupabaseServerClient, type Usuario } from "@/lib/supabase";
+import { esRolInterno, INICIO_ROL_EXTERNO } from "@/lib/rolesInternos";
 
 export async function login(_prevState: { error?: string } | undefined, formData: FormData) {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
@@ -54,10 +55,15 @@ export async function login(_prevState: { error?: string } | undefined, formData
     maxAge: 60 * 60 * 24 * 30, // 30 días
   });
 
-  // Cada rol a su casa. El usuario de una marca no ve el sistema interno, así
-  // que no tiene sentido mandarlo a "/" ni respetar un ?next= que apunte
-  // adentro: de ahí lo rebotaría el layout igual.
-  if (usuario.rol === "marca") redirect("/portal");
+  // Cuándo entró por última vez: lo mira Gonzalo en la ficha de cada
+  // profesional. Si la columna todavía no existe (falta el SQL), no frena el
+  // ingreso: por eso no se mira el error.
+  await supabase.from("usuarios").update({ ultimo_ingreso: new Date().toISOString() }).eq("id_usuario", usuario.id_usuario);
+
+  // Cada rol a su casa. El usuario de una marca o de una profesional no ve el
+  // sistema interno, así que no tiene sentido mandarlo a "/" ni respetar un
+  // ?next= que apunte adentro: de ahí lo rebotaría el layout igual.
+  if (!esRolInterno(usuario.rol)) redirect(INICIO_ROL_EXTERNO[usuario.rol ?? ""] ?? "/login");
 
   redirect(next && next.startsWith("/") ? next : "/");
 }
@@ -96,8 +102,9 @@ export async function logout() {
   const cookieStore = await cookies();
   const sesion = await readSessionToken(cookieStore.get(SESSION_COOKIE)?.value, process.env.AUTH_SECRET ?? "");
   // Con la caja abierta o sin fichar la salida no se sale: se la lleva a
-  // fichar, que le pide el arqueo si tiene la caja abierta.
-  if (sesion && sesion.rol !== "admin" && sesion.rol !== "marca" && (await pendienteAntesDeSalir(sesion.sub as string, (sesion.nombre as string) ?? ""))) {
+  // fichar, que le pide el arqueo si tiene la caja abierta. Las marcas y las
+  // profesionales no abren caja ni fichan: salen siempre.
+  if (sesion && sesion.rol !== "admin" && esRolInterno(sesion.rol) && (await pendienteAntesDeSalir(sesion.sub as string, (sesion.nombre as string) ?? ""))) {
     redirect("/ficha-asistencia?antes-de-salir=1");
   }
   cookieStore.delete(SESSION_COOKIE);

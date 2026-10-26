@@ -65,6 +65,11 @@ import {
   reordenarFilmina,
   listarConsultorios,
   guardarConsultorio,
+  usuarioDeProfesional,
+  crearUsuarioProfesional,
+  cambiarClaveUsuarioProfesional,
+  cambiarEstadoUsuarioProfesional,
+  type UsuarioDeProfesional,
 } from "@/app/(app)/profesionales/actions";
 
 type Codigo = {
@@ -990,6 +995,223 @@ const PESTANA_DE_ITEM: Record<string, Pestana> = {
 const INPUT =
   "w-full border border-neutral-300 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent";
 
+// ---------- Su usuario (su espacio en /mi-espacio) ----------
+
+// Una contraseña fácil de dictar por WhatsApp: su nombre sin acentos y cuatro números.
+function contrasenaSugerida(nombre: string) {
+  const base = nombre.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Za-z]/g, "").slice(0, 8) || "WiiGo";
+  const numeros = String(Math.floor(1000 + Math.random() * 9000));
+  return `${base.charAt(0).toUpperCase()}${base.slice(1).toLowerCase()}-${numeros}`;
+}
+
+// wa.me necesita el número con código de país. En Argentina, los celulares
+// van con 549 adelante: un número de 10 dígitos (261 555-0123) se completa solo.
+function linkWhatsApp(telefono: string | null, texto: string) {
+  let numero = (telefono ?? "").replace(/\D/g, "");
+  if (numero.startsWith("0")) numero = numero.slice(1);
+  if (numero.length === 10) numero = `549${numero}`;
+  return `https://wa.me/${numero}?text=${encodeURIComponent(texto)}`;
+}
+
+function fechaCorta(iso: string) {
+  return new Date(iso).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
+function TarjetaUsuarioProfesional({ profesional }: { profesional: Profesional }) {
+  const id = profesional.id_profesional;
+  const [datos, setDatos] = useState<UsuarioDeProfesional | null>(null);
+  const [email, setEmail] = useState(profesional.email ?? "");
+  const [clave, setClave] = useState(() => contrasenaSugerida(profesional.nombre));
+  const [cambiandoClave, setCambiandoClave] = useState(false);
+  // La contraseña recién creada o cambiada: es la única vez que se puede
+  // mandar, porque después queda guardada cifrada y nadie la puede leer.
+  const [paraMandar, setParaMandar] = useState<{ email: string; clave: string } | null>(null);
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const cargar = useCallback(() => {
+    usuarioDeProfesional(id)
+      .then(setDatos)
+      .catch(() => setDatos({ disponible: true, usuario: null, autorizoImagenAt: null, actividad: [] }));
+  }, [id]);
+  useEffect(() => {
+    cargar();
+  }, [cargar]);
+
+  function crear() {
+    setError(null);
+    setGuardando(true);
+    crearUsuarioProfesional(id, email, clave)
+      .then((r) => {
+        if (r.error) return setError(r.error);
+        setParaMandar({ email: email.trim().toLowerCase(), clave });
+        cargar();
+      })
+      .finally(() => setGuardando(false));
+  }
+
+  function guardarClave() {
+    setError(null);
+    setGuardando(true);
+    cambiarClaveUsuarioProfesional(id, clave)
+      .then((r) => {
+        if (r.error) return setError(r.error);
+        setParaMandar({ email: datos?.usuario?.email ?? "", clave });
+        setCambiandoClave(false);
+      })
+      .finally(() => setGuardando(false));
+  }
+
+  function cambiarEstado(activo: boolean) {
+    if (!activo && !confirm(`¿Dar de baja el usuario de ${profesional.nombre}? Deja de poder entrar a su espacio.`)) return;
+    setError(null);
+    cambiarEstadoUsuarioProfesional(id, activo).then((r) => (r.error ? setError(r.error) : cargar()));
+  }
+
+  const mensaje = paraMandar
+    ? `Hola ${profesional.nombre}! Te armé tu usuario de WiiGo para que completes tu ficha de la pantalla del local.\n\nEntrá en ${typeof window !== "undefined" ? window.location.origin : "app.wiigo.com.ar"}\nMail: ${paraMandar.email}\nContraseña: ${paraMandar.clave}`
+    : "";
+  const usuario = datos?.usuario ?? null;
+  const activo = usuario?.estado === "ACTIVO";
+
+  return (
+    <Tarjeta titulo="Su usuario" bajada="Con esto entra a su espacio a completar su ficha. Lo que sale en la pantalla del local lo aprobás vos.">
+      {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">{error}</p>}
+      {!datos ? (
+        <p className="text-sm text-neutral-400">Cargando...</p>
+      ) : !datos.disponible ? (
+        <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+          Para darle usuario falta correr <b>sql/profesionales-usuario.sql</b> en Supabase.
+        </p>
+      ) : !usuario ? (
+        <div className="flex flex-col gap-3">
+          <p className="text-sm text-neutral-600">Todavía no tiene usuario.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <label className="flex flex-col gap-1 text-xs font-medium text-neutral-600">
+              Mail para entrar
+              <input
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                type="email"
+                placeholder="su mail"
+                className="border border-neutral-300 rounded-lg px-3 py-2 text-sm text-neutral-900"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-medium text-neutral-600">
+              Contraseña
+              <span className="flex gap-2">
+                <input
+                  value={clave}
+                  onChange={(e) => setClave(e.target.value)}
+                  className="flex-1 min-w-0 border border-neutral-300 rounded-lg px-3 py-2 text-sm font-mono text-neutral-900"
+                />
+                <button type="button" onClick={() => setClave(contrasenaSugerida(profesional.nombre))} className="text-xs font-semibold text-accent px-2">
+                  Inventar otra
+                </button>
+              </span>
+            </label>
+          </div>
+          <div>
+            <button
+              type="button"
+              onClick={crear}
+              disabled={guardando}
+              className="bg-accent text-white text-sm font-bold rounded-lg px-4 py-2 disabled:opacity-50"
+            >
+              {guardando ? "Creando..." : "Crear usuario"}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3">
+          <p className="flex items-center gap-2 text-sm font-semibold text-neutral-800">
+            <span className={`w-2 h-2 rounded-full ${activo ? "bg-emerald-500" : "bg-neutral-300"}`} />
+            {activo ? "Activo" : "Dado de baja"} · {usuario.email}
+            {usuario.ultimoIngreso && <span className="font-normal text-neutral-500">· entró el {fechaCorta(usuario.ultimoIngreso)}</span>}
+            {!usuario.ultimoIngreso && <span className="font-normal text-neutral-500">· todavía no entró</span>}
+          </p>
+          <p className="text-xs text-neutral-500">
+            {datos.autorizoImagenAt
+              ? `Autorizó el uso de su imagen el ${fechaCorta(datos.autorizoImagenAt)}.`
+              : "Todavía no aceptó la autorización de imagen: se la pide la primera vez que entra."}
+          </p>
+
+          {cambiandoClave && (
+            <div className="flex flex-wrap gap-2 items-center">
+              <input
+                value={clave}
+                onChange={(e) => setClave(e.target.value)}
+                className="w-48 border border-neutral-300 rounded-lg px-3 py-1.5 text-sm font-mono"
+              />
+              <button type="button" onClick={() => setClave(contrasenaSugerida(profesional.nombre))} className="text-xs font-semibold text-accent">
+                Inventar otra
+              </button>
+              <button type="button" onClick={guardarClave} disabled={guardando} className="bg-accent text-white text-xs font-bold rounded-lg px-3 py-1.5 disabled:opacity-50">
+                Guardar
+              </button>
+              <button type="button" onClick={() => setCambiandoClave(false)} className="text-xs text-neutral-500">
+                Cancelar
+              </button>
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-2">
+            {!cambiandoClave && (
+              <button type="button" onClick={() => setCambiandoClave(true)} className="text-sm font-semibold border border-neutral-200 rounded-lg px-3 py-1.5 bg-white">
+                Cambiar contraseña
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => cambiarEstado(!activo)}
+              className="text-sm font-semibold border border-neutral-200 rounded-lg px-3 py-1.5 bg-white text-neutral-600"
+            >
+              {activo ? "Dar de baja el usuario" : "Volver a activarlo"}
+            </button>
+          </div>
+
+          <div>
+            <p className="text-xs font-bold text-neutral-500 uppercase tracking-wide mb-1.5">Todo lo que hizo</p>
+            {datos.actividad.length === 0 ? (
+              <p className="text-sm text-neutral-400">Todavía nada.</p>
+            ) : (
+              <ul className="flex flex-col divide-y divide-neutral-100">
+                {datos.actividad.map((a, i) => (
+                  <li key={i} className="flex gap-3 py-1.5 text-sm">
+                    <span className="w-24 shrink-0 text-xs text-neutral-400 tabular-nums pt-0.5">{fechaCorta(a.fecha)}</span>
+                    <span className="text-neutral-800">
+                      {a.accion}
+                      {a.esperaAprobacion && (
+                        <span className="ml-2 text-[11px] font-bold text-amber-700 bg-amber-50 rounded-full px-2 py-0.5">esperando tu OK</span>
+                      )}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
+
+      {paraMandar && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2.5 flex flex-wrap items-center gap-3">
+          <p className="text-sm text-emerald-900 flex-1 min-w-[200px]">
+            Listo. Mandale los datos ahora: la contraseña después no se puede volver a ver.
+          </p>
+          <a
+            href={linkWhatsApp(profesional.telefono, mensaje)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="bg-[#25a35a] text-white text-sm font-bold rounded-lg px-3 py-1.5"
+          >
+            Mandarle los datos por WhatsApp
+          </a>
+        </div>
+      )}
+    </Tarjeta>
+  );
+}
+
 function Tarjeta({ titulo, bajada, children }: { titulo: string; bajada?: string; children: React.ReactNode }) {
   return (
     <section className="bg-white border border-neutral-200 rounded-2xl p-5 flex flex-col gap-4">
@@ -1601,6 +1823,8 @@ function FichaProfesional({
                   />
                 )}
               </Tarjeta>
+
+              <TarjetaUsuarioProfesional profesional={profesional} />
 
               <Tarjeta titulo="Saldo por marca" bajada="Cada marca es una bolsa aparte: no se puede gastar el saldo de una en otra.">
                 {cargandoResumen ? (

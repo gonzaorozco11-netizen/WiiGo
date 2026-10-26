@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 
+// Las profesionales solo pueden estar en su espacio. Se corta acá y no en
+// cada pantalla porque también frena las server actions del sistema interno:
+// cuando una acción no está en la página desde donde se la llama, Next la
+// reenvía con un pedido nuevo a la dirección de su propia página, y ese
+// pedido vuelve a pasar por este proxy con una dirección del sistema interno.
+function esDelEspacioProfesional(pathname: string) {
+  return pathname === "/mi-espacio" || pathname.startsWith("/mi-espacio/");
+}
+
 export const config = {
   // /self-checkout y /asesor quedan públicos (los usan los clientes en el
   // local, sin login). /comprobante también: es lo que abre el cliente en su
@@ -39,6 +48,10 @@ export async function proxy(req: NextRequest) {
     const loginUrl = new URL("/login", req.url);
     loginUrl.searchParams.set("next", pathname);
     return NextResponse.redirect(loginUrl);
+  }
+
+  if (session.rol === "profesional" && !esDelEspacioProfesional(pathname)) {
+    return NextResponse.redirect(new URL("/mi-espacio", req.url));
   }
 
   return NextResponse.next();

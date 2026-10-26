@@ -26,6 +26,7 @@ function formatearFecha(fechaISO: string) {
 function etiquetaRolBase(rol: string | null) {
   if (rol === "admin") return "Dueño";
   if (rol === "marca") return "Marca (portal)";
+  if (rol === "profesional") return "Profesional (su espacio)";
   return "Operativo";
 }
 
@@ -407,6 +408,10 @@ function EditarUsuarioModal({
               <option value="admin">Dueño (acceso total)</option>
               <option value="operativo">Operativo — Persona/Áreas se manejan en "Permisos"</option>
               <option value="marca">Marca — solo entra al portal de su marca</option>
+              {/* Sin esta opción, el select de una profesional mostraba "Dueño"
+                  y al guardar le daba acceso total. Su usuario se maneja desde
+                  su ficha en Profesionales; acá solo se ve. */}
+              {usuario.rol === "profesional" && <option value="profesional">Profesional — solo entra a su espacio</option>}
             </select>
             <p className="text-xs text-amber-600 mt-1">
               Ojo si te estás editando a vos mismo: si te sacás "Dueño", perdés el acceso total al toque.

@@ -6,6 +6,7 @@ import { getSupabaseServerClient, type Consultorio } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { hashPassword } from "@/lib/auth";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
+import { esRolInterno } from "@/lib/rolesInternos";
 import { saldosPorMarca } from "@/lib/canjesProfesionales";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -28,13 +29,13 @@ async function requireAdmin() {
 }
 
 // Las lecturas traen DNI, teléfono y plata de los profesionales. Las server
-// actions se pueden llamar desde cualquier sesión, así que un usuario de
-// marca no tiene que poder pedirlas.
+// actions se pueden llamar desde cualquier sesión, así que ni una marca ni
+// una profesional (que vería los datos de las demás) tienen que poder pedirlas.
 async function requireInterno() {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
   const sesion = await readSessionToken(token, process.env.AUTH_SECRET ?? "");
-  if (!sesion || sesion.rol === "marca") throw new Error("No tenés permiso para ver profesionales.");
+  if (!sesion || !esRolInterno(sesion.rol)) throw new Error("No tenés permiso para ver profesionales.");
 }
 
 function text(formData: FormData, name: string) {
@@ -1191,4 +1192,116 @@ export async function guardarConfigMarca(formData: FormData): Promise<{ error: s
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo guardar la configuración" };
   }
+}
+
+// ===================== SU USUARIO (su espacio en /mi-espacio) =====================
+//
+// El usuario y la contraseña los arma Gonzalo desde la ficha de cada
+// profesional (decisión suya, 2026-10-26). La profesional entra con eso y
+// completa su ficha; lo que sale en la pantalla del local lo aprueba él.
+
+const FALTA_SQL_USUARIO = "Falta correr sql/profesionales-usuario.sql en Supabase.";
+const faltaSqlUsuario = (m: string) => /id_profesional|ultimo_ingreso|autorizo_imagen_at|actividad_profesional|cambios_profesional|schema cache|does not exist/i.test(m);
+
+export type UsuarioDeProfesional = {
+  disponible: boolean;
+  usuario: { idUsuario: string; email: string; estado: string; ultimoIngreso: string | null } | null;
+  autorizoImagenAt: string | null;
+  actividad: { accion: string; fecha: string; esperaAprobacion: boolean }[];
+};
+
+export async function usuarioDeProfesional(idProfesional: string): Promise<UsuarioDeProfesional> {
+  await requireInterno();
+  const supabase = getSupabaseServerClient();
+  const [usuarioRes, profRes, actividadRes] = await Promise.all([
+    supabase.from("usuarios").select("id_usuario, email, estado, ultimo_ingreso").eq("id_profesional", idProfesional).maybeSingle(),
+    supabase.from("profesionales").select("autorizo_imagen_at").eq("id_profesional", idProfesional).maybeSingle(),
+    supabase
+      .from("actividad_profesional")
+      .select("accion, fecha, espera_aprobacion")
+      .eq("id_profesional", idProfesional)
+      .order("fecha", { ascending: false })
+      .limit(30),
+  ]);
+  if (usuarioRes.error && faltaSqlUsuario(usuarioRes.error.message)) {
+    return { disponible: false, usuario: null, autorizoImagenAt: null, actividad: [] };
+  }
+  const u = usuarioRes.data;
+  return {
+    disponible: true,
+    usuario: u
+      ? { idUsuario: u.id_usuario as string, email: u.email as string, estado: u.estado as string, ultimoIngreso: (u.ultimo_ingreso as string | null) ?? null }
+      : null,
+    autorizoImagenAt: (profRes.data?.autorizo_imagen_at as string | null) ?? null,
+    actividad: (actividadRes.data ?? []).map((a) => ({
+      accion: a.accion as string,
+      fecha: a.fecha as string,
+      esperaAprobacion: Boolean(a.espera_aprobacion),
+    })),
+  };
+}
+
+export async function crearUsuarioProfesional(idProfesional: string, emailCrudo: string, password: string): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+
+  const email = emailCrudo.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: "Revisá el mail: no parece un mail válido." };
+  if (password.length < 6) return { error: "La contraseña tiene que tener al menos 6 caracteres." };
+
+  try {
+    const supabase = getSupabaseServerClient();
+    const { data: p } = await supabase.from("profesionales").select("nombre, apellido, estado").eq("id_profesional", idProfesional).maybeSingle();
+    if (!p) return { error: "No encontré a esta profesional." };
+
+    const { data: yaTiene, error: errorBusqueda } = await supabase.from("usuarios").select("id_usuario").eq("id_profesional", idProfesional).maybeSingle();
+    if (errorBusqueda) return { error: faltaSqlUsuario(errorBusqueda.message) ? FALTA_SQL_USUARIO : friendlyDbError(errorBusqueda) };
+    if (yaTiene) return { error: "Esta profesional ya tiene usuario." };
+
+    const { data: mailUsado } = await supabase.from("usuarios").select("id_usuario").eq("email", email).maybeSingle();
+    if (mailUsado) return { error: "Ese mail ya lo usa otro usuario del sistema. Usá otro." };
+
+    const { error } = await supabase.from("usuarios").insert({
+      nombre: [p.nombre, p.apellido].filter(Boolean).join(" "),
+      email,
+      rol: "profesional",
+      id_profesional: idProfesional,
+      password_hash: await hashPassword(password),
+      estado: "ACTIVO",
+    });
+    if (error) return { error: faltaSqlUsuario(error.message) ? FALTA_SQL_USUARIO : friendlyDbError(error) };
+
+    revalidatePath("/profesionales");
+    return { error: null };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo crear el usuario." };
+  }
+}
+
+export async function cambiarClaveUsuarioProfesional(idProfesional: string, password: string): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  if (password.length < 6) return { error: "La contraseña tiene que tener al menos 6 caracteres." };
+  const supabase = getSupabaseServerClient();
+  const { error } = await supabase
+    .from("usuarios")
+    .update({ password_hash: await hashPassword(password) })
+    .eq("id_profesional", idProfesional)
+    .eq("rol", "profesional");
+  if (error) return { error: friendlyDbError(error) };
+  return { error: null };
+}
+
+export async function cambiarEstadoUsuarioProfesional(idProfesional: string, activo: boolean): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  const supabase = getSupabaseServerClient();
+  const { error } = await supabase
+    .from("usuarios")
+    .update({ estado: activo ? "ACTIVO" : "INACTIVO" })
+    .eq("id_profesional", idProfesional)
+    .eq("rol", "profesional");
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath("/profesionales");
+  return { error: null };
 }

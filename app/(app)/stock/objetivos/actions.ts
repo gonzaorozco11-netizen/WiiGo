@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionConPermisos } from "@/lib/permisos";
+import { esRolInterno } from "@/lib/rolesInternos";
 import { friendlyDbError } from "@/lib/errors";
 import { leerDias, huecoMasLargo } from "@/lib/recepcion";
 
@@ -19,7 +20,7 @@ import { leerDias, huecoMasLargo } from "@/lib/recepcion";
 
 async function sesionInterna() {
   const sesion = await obtenerSesionConPermisos();
-  if (!sesion || sesion.rol === "marca") return null;
+  if (!sesion || !esRolInterno(sesion.rol)) return null;
   return sesion;
 }
 

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionConPermisos } from "@/lib/permisos";
+import { esRolInterno } from "@/lib/rolesInternos";
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import { fechaHoraArgentina } from "@/lib/horarios";
 import { armarAlmanaque, type MesAlmanaque } from "@/lib/eventos";
@@ -23,8 +24,8 @@ const MESES_ALMANAQUE = 3;
 
 async function sesionInterna() {
   const sesion = await obtenerSesionConPermisos();
-  // Un usuario de marca no entra acá ni con la URL a mano.
-  if (!sesion || sesion.rol === "marca") return null;
+  // Ni una marca ni una profesional entran acá, ni con la URL a mano.
+  if (!sesion || !esRolInterno(sesion.rol)) return null;
   return sesion;
 }
 

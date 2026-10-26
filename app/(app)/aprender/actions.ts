@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
+import { esRolInterno } from "@/lib/rolesInternos";
 import { hayClaveIA } from "@/lib/ia";
 import { actualizarFichaProducto, actualizarFichaTema, type FichaProducto, type FichaTema } from "@/lib/aprender";
 
@@ -256,7 +257,7 @@ export async function descartarBorrador(idFicha: string): Promise<{ error: strin
 /** Para el legajo: cuánto repasó y cómo le va en las preguntas. */
 export async function progresoAprender(idPersona: string): Promise<{ repasados: number; total: number; preguntas: number; bien: number } | null> {
   const s = await obtenerSesionConPantallas();
-  if (!s || s.rol === "marca") return null;
+  if (!s || !esRolInterno(s.rol)) return null;
   const supabase = getSupabaseServerClient();
   const { data: u } = await supabase.from("usuarios").select("id_usuario").eq("id_persona", idPersona).maybeSingle();
   if (!u) return null;

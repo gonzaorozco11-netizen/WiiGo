@@ -6,6 +6,7 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos";
 import { exigirGestionInterna } from "@/lib/marcaSesion";
+import { esRolInterno } from "@/lib/rolesInternos";
 import { fechaHoraArgentina } from "@/lib/horarios";
 import { generarSkuVariante, generarCodigoBarrasVariante } from "@/lib/codigosVariante";
 import { PLANES, type PlanMarca } from "@/lib/planesMarca";
@@ -345,7 +346,7 @@ export async function marcarEtiquetaHecha(idTarea: string): Promise<{ error: str
 /** Cuántas cosas hay esperando — para el contador del menú. */
 export async function contarPendientes(): Promise<{ solicitudes: number; etiquetas: number; etiquetasVencidas: number }> {
   const sesion = await obtenerSesionConPermisos();
-  if (!sesion || sesion.rol === "marca") return { solicitudes: 0, etiquetas: 0, etiquetasVencidas: 0 };
+  if (!sesion || !esRolInterno(sesion.rol)) return { solicitudes: 0, etiquetas: 0, etiquetasVencidas: 0 };
 
   const supabase = getSupabaseServerClient();
   const ahora = new Date().toISOString();

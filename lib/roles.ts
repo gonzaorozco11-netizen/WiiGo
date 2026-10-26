@@ -15,6 +15,7 @@
 import { cookies } from "next/headers";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
+import { esRolInterno } from "@/lib/rolesInternos";
 
 export type SesionConPantallas = {
   idUsuario: string;
@@ -47,6 +48,11 @@ export async function obtenerSesionConPantallas(): Promise<SesionConPantallas | 
   if (!data || data.estado !== "ACTIVO") return null;
 
   const rol = data.rol ?? "operativo";
+  // Marcas y profesionales no ven ninguna pantalla del sistema interno. Sin
+  // esto caían en el caso 4 de arriba ("sin restricción") y veían todo.
+  if (!esRolInterno(rol)) {
+    return { idUsuario: sesion.sub, nombre: data.nombre, rol, pantallas: [] };
+  }
   if (rol === "admin") {
     return { idUsuario: sesion.sub, nombre: data.nombre, rol, pantallas: null };
   }
