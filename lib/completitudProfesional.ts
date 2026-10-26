@@ -45,7 +45,7 @@ export async function completitudProfesional(supabase: SupabaseClient, idProfesi
     { clave: "objetivos", label: "En qué ayudás", ayuda: "Los objetivos de tus pacientes: bajar de peso, rendir más…", ok: (objRes.data ?? []).length > 0 },
     { clave: "turnos", label: "Cómo sacar turno", ayuda: "Presencial, online y el link de tu agenda.", ok: Boolean(p?.tipo_atencion && (p?.link_reserva || linkConsultorio)) },
     { clave: "historia", label: "Contá tu historia", ayuda: "Es lo primero que se lee en Conóceme.", ok: Boolean(p?.biografia_completa) },
-    { clave: "precio", label: "Precio de tu consulta", ayuda: "Presencial, online o los dos.", ok: p?.precio_presencial != null || p?.precio_online != null },
+    { clave: "precio", label: "Precio de tu consulta", ayuda: "Presencial, online o los dos. Si preferís no mostrarlo, salteá este.", ok: p?.precio_presencial != null || p?.precio_online != null },
     {
       clave: "formacion",
       label: "Dónde y cuándo estudiaste",

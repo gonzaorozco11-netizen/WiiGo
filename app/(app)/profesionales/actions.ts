@@ -8,6 +8,17 @@ import { hashPassword } from "@/lib/auth";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 import { esRolInterno } from "@/lib/rolesInternos";
 import { saldosPorMarca } from "@/lib/canjesProfesionales";
+import {
+  aplicarCambioProfesional,
+  CAMPOS_DATOS,
+  QUE_HIZO,
+  type CampoDatos,
+  type TipoCambio,
+  type ItemFormacion,
+  type ItemTrayectoria,
+  type ItemVideo,
+  type ItemFortaleza,
+} from "@/lib/cambiosProfesional";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 async function usuarioActual() {
@@ -1289,6 +1300,162 @@ export async function cambiarClaveUsuarioProfesional(idProfesional: string, pass
     .eq("id_profesional", idProfesional)
     .eq("rol", "profesional");
   if (error) return { error: friendlyDbError(error) };
+  return { error: null };
+}
+
+// ===================== CAMBIOS QUE MANDAN DESDE SU ESPACIO =====================
+//
+// Lo que una profesional cambia en su ficha espera acá (cambios_profesional)
+// hasta que Gonzalo lo aprueba en Aprobaciones. Recién ahí sale en la
+// pantalla del local.
+
+export type CambioParaAprobar = {
+  idCambio: string;
+  tipo: TipoCambio;
+  que: string;
+  fecha: string;
+  profesional: { id: string; nombre: string; foto: string | null };
+  // Lo que se muestra en la bandeja, ya en palabras: campo por campo, antes y ahora.
+  filas: { campo: string; antes: string; ahora: string }[];
+  fotoNueva: string | null;
+};
+
+const textoDe = (v: unknown) => (v === null || v === undefined || v === "" ? "—" : String(v));
+
+export async function listarCambiosProfesionales(): Promise<CambioParaAprobar[]> {
+  await requireInterno();
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("cambios_profesional")
+    .select("id_cambio, id_profesional, tipo, valor_nuevo, valor_anterior, fecha")
+    .eq("estado", "PENDIENTE")
+    .order("fecha");
+  if (error || !data || data.length === 0) return [];
+
+  const idsProf = [...new Set(data.map((c) => c.id_profesional as string))];
+  const [profRes, fortRes, objRes] = await Promise.all([
+    supabase.from("profesionales").select("id_profesional, nombre, apellido, foto").in("id_profesional", idsProf),
+    supabase.from("fortalezas_profesional").select("id_fortaleza, nombre"),
+    supabase.from("objetivos").select("id_objetivo, nombre"),
+  ]);
+  const prof = new Map((profRes.data ?? []).map((p) => [p.id_profesional as string, p]));
+  const nombreFortaleza = new Map((fortRes.data ?? []).map((f) => [f.id_fortaleza as string, f.nombre as string]));
+  const nombreObjetivo = new Map((objRes.data ?? []).map((o) => [o.id_objetivo as string, o.nombre as string]));
+
+  return data.map((c) => {
+    const tipo = c.tipo as TipoCambio;
+    const nuevo = c.valor_nuevo as unknown;
+    const anterior = c.valor_anterior as unknown;
+    const p = prof.get(c.id_profesional as string);
+    let filas: CambioParaAprobar["filas"] = [];
+    let fotoNueva: string | null = null;
+
+    if (tipo === "DATOS") {
+      const n = (nuevo ?? {}) as Record<string, unknown>;
+      const a = (anterior ?? {}) as Record<string, unknown>;
+      filas = Object.keys(n).map((campo) => ({
+        campo: CAMPOS_DATOS[campo as CampoDatos] ?? campo,
+        antes: textoDe(a[campo]),
+        ahora: textoDe(n[campo]),
+      }));
+    } else if (tipo === "FOTO" || tipo === "FOTO_PERFIL") {
+      fotoNueva = (nuevo as { url?: string })?.url ?? null;
+      const titulo = (nuevo as { titulo?: string | null })?.titulo;
+      if (titulo) filas = [{ campo: "Qué se ve", antes: "—", ahora: titulo }];
+    } else if (tipo === "FORMACION") {
+      filas = (nuevo as ItemFormacion[]).map((f) => ({ campo: "Formación", antes: "", ahora: [f.titulo, f.institucion, f.anio].filter(Boolean).join(" · ") }));
+    } else if (tipo === "TRAYECTORIA") {
+      filas = (nuevo as ItemTrayectoria[]).map((t) => ({
+        campo: "Recorrido",
+        antes: "",
+        ahora: [t.titulo, t.lugar, t.anio_desde && `${t.anio_desde}${t.anio_hasta ? `–${t.anio_hasta}` : "–hoy"}`].filter(Boolean).join(" · "),
+      }));
+    } else if (tipo === "VIDEOS") {
+      filas = (nuevo as ItemVideo[]).map((v) => ({ campo: "Video", antes: "", ahora: [v.titulo, v.url].filter(Boolean).join(" · ") }));
+    } else if (tipo === "FORTALEZAS") {
+      filas = (nuevo as ItemFortaleza[]).map((f) => ({
+        campo: "Se destaca en",
+        antes: "",
+        ahora: `${nombreFortaleza.get(f.id_fortaleza) ?? "—"}${f.principal ? " (principal)" : ""}`,
+      }));
+    } else if (tipo === "OBJETIVOS") {
+      filas = (nuevo as string[]).map((id) => ({ campo: "Ayuda en", antes: "", ahora: nombreObjetivo.get(id) ?? "—" }));
+    }
+
+    return {
+      idCambio: c.id_cambio as string,
+      tipo,
+      que: QUE_HIZO[tipo],
+      fecha: c.fecha as string,
+      profesional: {
+        id: c.id_profesional as string,
+        nombre: p ? [p.nombre, p.apellido].filter(Boolean).join(" ") : "Profesional",
+        foto: (p?.foto as string | null) ?? null,
+      },
+      filas,
+      fotoNueva,
+    };
+  });
+}
+
+async function idUsuarioActual() {
+  const cookieStore = await cookies();
+  const sesion = await readSessionToken(cookieStore.get(SESSION_COOKIE)?.value, process.env.AUTH_SECRET ?? "");
+  return sesion?.sub ?? null;
+}
+
+/** Cierra el "esperando tu OK" de su historial para ese tipo de cambio. */
+async function cerrarEsperaEnHistorial(supabase: SupabaseClient, idProfesional: string, tipo: TipoCambio) {
+  await supabase
+    .from("actividad_profesional")
+    .update({ espera_aprobacion: false })
+    .eq("id_profesional", idProfesional)
+    .eq("accion", QUE_HIZO[tipo])
+    .eq("espera_aprobacion", true);
+}
+
+export async function aprobarCambioProfesional(idCambio: string): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  const supabase = getSupabaseServerClient();
+  const { data: c } = await supabase
+    .from("cambios_profesional")
+    .select("id_profesional, tipo, valor_nuevo, estado")
+    .eq("id_cambio", idCambio)
+    .maybeSingle();
+  if (!c) return { error: "No encontré ese cambio." };
+  if (c.estado !== "PENDIENTE") return { error: "Ese cambio ya estaba resuelto." };
+
+  const error = await aplicarCambioProfesional(supabase, c.id_profesional as string, c.tipo as TipoCambio, c.valor_nuevo);
+  if (error) return { error: `No se pudo aplicar: ${error}` };
+
+  await supabase
+    .from("cambios_profesional")
+    .update({ estado: "APROBADO", resuelto_por: await idUsuarioActual(), fecha_resuelto: new Date().toISOString() })
+    .eq("id_cambio", idCambio);
+  await cerrarEsperaEnHistorial(supabase, c.id_profesional as string, c.tipo as TipoCambio);
+  revalidatePath("/aprobaciones");
+  revalidatePath("/profesionales");
+  return { error: null };
+}
+
+export async function pedirCorreccionProfesional(idCambio: string, nota: string): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  const texto = nota.trim();
+  // Sin explicación no le sirve de nada: no sabe qué cambiar.
+  if (!texto) return { error: "Escribile qué tiene que cambiar." };
+  const supabase = getSupabaseServerClient();
+  const { data: c } = await supabase.from("cambios_profesional").select("id_profesional, tipo, estado").eq("id_cambio", idCambio).maybeSingle();
+  if (!c) return { error: "No encontré ese cambio." };
+  if (c.estado !== "PENDIENTE") return { error: "Ese cambio ya estaba resuelto." };
+  const { error } = await supabase
+    .from("cambios_profesional")
+    .update({ estado: "CORREGIR", nota: texto.slice(0, 500), resuelto_por: await idUsuarioActual(), fecha_resuelto: new Date().toISOString() })
+    .eq("id_cambio", idCambio);
+  if (error) return { error: friendlyDbError(error) };
+  await cerrarEsperaEnHistorial(supabase, c.id_profesional as string, c.tipo as TipoCambio);
+  revalidatePath("/aprobaciones");
   return { error: null };
 }
 

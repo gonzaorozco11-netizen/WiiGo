@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionProfesional } from "@/lib/profesionalSesion";
@@ -8,6 +9,21 @@ export const dynamic = "force-dynamic";
 
 const pesos = (n: number) => `$${Math.round(n).toLocaleString("es-AR")}`;
 
+// Cada cosa que le falta lleva a la parte de «Mi ficha» donde se completa.
+const SECCION_DE_ITEM: Record<string, string> = {
+  foto: "fotos",
+  titulo: "sobre",
+  bio: "sobre",
+  fortalezas: "ayuda",
+  objetivos: "ayuda",
+  turnos: "turnos",
+  historia: "historia",
+  precio: "turnos",
+  formacion: "formacion",
+  fotos: "fotos",
+  video: "videos",
+};
+
 export default async function InicioEspacio() {
   // Cada página mira la sesión por su cuenta: el layout no siempre se vuelve
   // a ejecutar al pasar de una página a otra.
@@ -16,14 +32,17 @@ export default async function InicioEspacio() {
   const id = sesion.idProfesional;
   const supabase = getSupabaseServerClient();
 
-  const [completitud, codigosRes, referidosRes, saldos, profRes, localRes] = await Promise.all([
+  const [completitud, codigosRes, referidosRes, saldos, profRes, localRes, cambiosRes] = await Promise.all([
     completitudProfesional(supabase, id),
     supabase.from("codigos_profesionales").select("codigo, estado").eq("id_profesional", id).eq("estado", "ACTIVO").limit(1),
     supabase.from("referidos_profesionales").select("id_referido, estado").eq("id_profesional", id),
     saldosPorMarca(supabase, id),
     supabase.from("profesionales").select("publicado, id_consultorio").eq("id_profesional", id).maybeSingle(),
     supabase.from("locales").select("nombre, direccion").eq("estado", "ACTIVO").order("nombre").limit(1),
+    supabase.from("cambios_profesional").select("estado").eq("id_profesional", id).in("estado", ["PENDIENTE", "CORREGIR"]),
   ]);
+  const esperando = (cambiosRes.data ?? []).filter((c) => c.estado === "PENDIENTE").length;
+  const paraCorregir = (cambiosRes.data ?? []).filter((c) => c.estado === "CORREGIR").length;
 
   const codigo = (codigosRes.data?.[0]?.codigo as string | undefined) ?? null;
   const compras = (referidosRes.data ?? []).filter((r) => r.estado !== "ANULADO").length;
@@ -81,6 +100,16 @@ export default async function InicioEspacio() {
                   Todavía no estás en la pantalla: WiiGo te publica cuando tu ficha está lista
                 </p>
               )}
+              {paraCorregir > 0 && (
+                <Link className="chip-estado corregir" href="/mi-espacio/ficha">
+                  WiiGo te pidió que corrijas {paraCorregir === 1 ? "algo" : `${paraCorregir} cosas`} ›
+                </Link>
+              )}
+              {esperando > 0 && (
+                <span className="chip-estado">
+                  {esperando === 1 ? "1 cambio esperando que WiiGo lo apruebe" : `${esperando} cambios esperando que WiiGo los apruebe`}
+                </span>
+              )}
             </div>
           </section>
 
@@ -93,14 +122,13 @@ export default async function InicioEspacio() {
                 </h2>
                 <div className="faltas">
                   {faltan.slice(0, 6).map((i) => (
-                    <div key={i.clave} className="falta">
+                    <Link key={i.clave} className="falta" href={`/mi-espacio/ficha?seccion=${SECCION_DE_ITEM[i.clave] ?? "sobre"}`}>
                       <span className="mas">+</span>
                       <b>{i.label}</b>
                       <span>{i.ayuda}</span>
-                    </div>
+                    </Link>
                   ))}
                 </div>
-                <p className="nota">Muy pronto vas a poder completarlo desde acá, en «Mi ficha». Mientras tanto, mandáselo a WiiGo.</p>
               </>
             ) : (
               <p className="completa">¡Tu ficha está completa! Así es como mejor se ve en la pantalla del local.</p>
