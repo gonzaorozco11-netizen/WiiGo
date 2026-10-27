@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { Local, Marca, Producto, VarianteProducto, Stock } from "@/lib/supabase";
 import { precioDe } from "@/lib/precios";
 import {
@@ -14,6 +15,7 @@ import {
 } from "@/app/(app)/pos/actions";
 import { cancelarPedido } from "@/app/(app)/cobros-efectivo/actions";
 import { dispararAvisosDeVenta } from "@/lib/dispararAvisos";
+import { marcarPedidoEntregado } from "@/app/(app)/pedidos/actions";
 
 type Item = {
   variante: VarianteProducto;
@@ -37,6 +39,24 @@ type MedioPago = "EFECTIVO" | "MERCADO_PAGO";
 
 const POLL_MS = 3000;
 
+/**
+ * Un pedido que armó una profesional para su paciente (módulo Pedidos). Entra
+ * a la caja con los productos, el DNI y el código ya puestos. Si no pasaron
+ * 24 h desde que lo armó, se respeta el precio de ese momento (el más bajo de
+ * los dos, por si bajó).
+ */
+export type PedidoParaCobrar = {
+  idPedido: string;
+  numero: number;
+  profesional: string;
+  paciente: string;
+  dni: string;
+  codigo: string | null;
+  idLocal: string | null;
+  preciosVigentes: boolean;
+  items: { idVariante: string; cantidad: number; precioLista: number; precioEfectivo: number }[];
+};
+
 export default function PosApp({
   locales,
   productos,
@@ -44,6 +64,7 @@ export default function PosApp({
   marcas,
   stock,
   ivaGeneralPorcentaje,
+  pedido = null,
 }: {
   locales: Local[];
   productos: Producto[];
@@ -51,12 +72,19 @@ export default function PosApp({
   marcas: Marca[];
   stock: Stock[];
   ivaGeneralPorcentaje: number;
+  pedido?: PedidoParaCobrar | null;
 }) {
-  const [idLocal, setIdLocal] = useState(locales[0]?.id_local ?? "");
-  const [carrito, setCarrito] = useState<Record<string, number>>({});
+  const router = useRouter();
+  const [pedidoActivo, setPedidoActivo] = useState<PedidoParaCobrar | null>(pedido);
+  const [idLocal, setIdLocal] = useState(
+    pedido?.idLocal && locales.some((l) => l.id_local === pedido.idLocal) ? pedido.idLocal : locales[0]?.id_local ?? ""
+  );
+  const [carrito, setCarrito] = useState<Record<string, number>>(() =>
+    pedido ? Object.fromEntries(pedido.items.map((i) => [i.idVariante, i.cantidad])) : {}
+  );
   const [busqueda, setBusqueda] = useState("");
-  const [dni, setDni] = useState("");
-  const [codigoProfesional, setCodigoProfesional] = useState("");
+  const [dni, setDni] = useState(pedido?.dni ?? "");
+  const [codigoProfesional, setCodigoProfesional] = useState(pedido?.codigo ?? "");
   const [montoRecibido, setMontoRecibido] = useState("");
   // A nombre de quién va la factura. Arranca siempre en consumidor final, que
   // es lo que corresponde a la gran mayoría de las ventas: si el cliente no
@@ -145,6 +173,22 @@ export default function PosApp({
     return map;
   }, [stock]);
 
+  // El precio del pedido, si todavía vale (24 h): se cobra el más bajo entre
+  // ese y el de hoy. Pasadas las 24 h, el del día.
+  const preciosPedido = useMemo(
+    () => new Map((pedidoActivo?.preciosVigentes ? pedidoActivo.items : []).map((i) => [i.idVariante, i])),
+    [pedidoActivo]
+  );
+  const precioCon = useCallback(
+    (producto: Producto, variante: VarianteProducto, medio: "EFECTIVO" | "OTRO") => {
+      const hoy = precioDe(producto, variante, medio);
+      const delPedido = preciosPedido.get(variante.id_variante);
+      if (!delPedido) return hoy;
+      return Math.min(hoy, medio === "EFECTIVO" ? delPedido.precioEfectivo : delPedido.precioLista);
+    },
+    [preciosPedido]
+  );
+
   const items = useMemo<Item[]>(() => {
     return variantes
       .map((variante) => {
@@ -163,13 +207,13 @@ export default function PosApp({
           // Depende del medio de pago: en efectivo puede haber otro precio.
           // Por eso `medioPago` está en las dependencias — al cambiarlo se
           // recalcula el carrito entero, que es justo lo que tiene que pasar.
-          precio: precioDe(producto, variante, medioPago === "EFECTIVO" ? "EFECTIVO" : "OTRO"),
+          precio: precioCon(producto, variante, medioPago === "EFECTIVO" ? "EFECTIVO" : "OTRO"),
           cantidadDisponible,
         };
       })
       .filter((i): i is Item => i !== null)
       .sort((a, b) => a.producto.nombre.localeCompare(b.producto.nombre));
-  }, [variantes, productoPorId, marcaPorId, stockPorClave, idLocal, medioPago]);
+  }, [variantes, productoPorId, marcaPorId, stockPorClave, idLocal, medioPago, precioCon]);
 
   const itemPorVariante = useMemo(() => new Map(items.map((i) => [i.variante.id_variante, i])), [items]);
 
@@ -198,11 +242,11 @@ export default function PosApp({
   // Se recalculan desde el producto y no desde `i.precio`, que ya viene con
   // el medio elegido aplicado.
   const totalEfectivo = itemsCarrito.reduce(
-    (acc, i) => acc + precioDe(i.producto, i.variante, "EFECTIVO") * i.cantidad,
+    (acc, i) => acc + precioCon(i.producto, i.variante, "EFECTIVO") * i.cantidad,
     0
   );
   const totalLista = itemsCarrito.reduce(
-    (acc, i) => acc + precioDe(i.producto, i.variante, "OTRO") * i.cantidad,
+    (acc, i) => acc + precioCon(i.producto, i.variante, "OTRO") * i.cantidad,
     0
   );
   const hayDiferenciaDePrecio = totalEfectivo !== totalLista;
@@ -296,6 +340,11 @@ export default function PosApp({
   }
 
   function nuevaVenta() {
+    // Si venía de un pedido, la próxima venta ya no es de ese pedido.
+    if (pedidoActivo) {
+      setPedidoActivo(null);
+      router.replace("/pos");
+    }
     setCarrito({});
     setBusqueda("");
     setDni("");
@@ -354,6 +403,8 @@ export default function PosApp({
           // Los avisos a las marcas van en su propio pedido y no se esperan:
           // el cajero ve el vuelto ya mismo. Ver lib/dispararAvisos.ts.
           dispararAvisosDeVenta(r.venta.idVenta);
+          // Si era un pedido de una profesional, queda entregado.
+          if (pedidoActivo) marcarPedidoEntregado(pedidoActivo.idPedido, r.venta.idVenta).catch(() => {});
         } else if (r.pedido) setPedidoMp(r.pedido);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "No se pudo registrar la venta"))
@@ -379,6 +430,7 @@ export default function PosApp({
             // Acá NO se disparan los avisos: esta venta la acreditó el webhook
             // de Mercado Pago, y los manda él. Si los mandaran los dos, con
             // mala suerte de tiempos la marca recibiría el mail dos veces.
+            if (pedidoActivo) marcarPedidoEntregado(pedidoActivo.idPedido, pedidoMp.idVenta).catch(() => {});
             setPedidoMp(null);
           } else if (r.estado === "CANCELADA") {
             setError("Este pedido se canceló.");
@@ -388,7 +440,7 @@ export default function PosApp({
         .catch(() => {});
     }, POLL_MS);
     return () => clearInterval(intervalo);
-  }, [pedidoMp]);
+  }, [pedidoMp, pedidoActivo]);
 
   function handleCancelarMp() {
     if (!pedidoMp) return;
@@ -471,6 +523,20 @@ export default function PosApp({
 
   return (
     <div className="max-w-md mx-auto">
+      {pedidoActivo && (
+        <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          <p className="font-bold">
+            Pedido N.º {pedidoActivo.numero} de {pedidoActivo.profesional} para {pedidoActivo.paciente}
+          </p>
+          <p className="text-emerald-800">
+            Ya están los productos, el DNI y el código.{" "}
+            {pedidoActivo.preciosVigentes ? "Se respeta el precio del pedido (no pasaron 24 h)." : "Pasaron más de 24 h: va el precio del día."}
+          </p>
+          <button type="button" onClick={nuevaVenta} className="mt-1 text-xs font-semibold underline">
+            No es este pedido: empezar una venta común
+          </button>
+        </div>
+      )}
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-lg font-semibold text-neutral-900">Vender</h1>
         <select

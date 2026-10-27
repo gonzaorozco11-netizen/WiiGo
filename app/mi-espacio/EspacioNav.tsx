@@ -7,6 +7,7 @@ const SECCIONES = [
   { href: "/mi-espacio", label: "Inicio" },
   { href: "/mi-espacio/ficha", label: "Mi ficha" },
   { href: "/mi-espacio/objetivos", label: "Objetivos" },
+  { href: "/mi-espacio/pedidos", label: "Pedidos" },
   { href: "/mi-espacio/saldo", label: "Mi saldo" },
 ];
 

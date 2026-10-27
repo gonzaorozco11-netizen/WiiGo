@@ -8,15 +8,47 @@ import {
 } from "@/lib/supabase";
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import PantallaBloqueada from "@/components/PantallaBloqueada";
-import PosApp from "@/components/PosApp";
+import PosApp, { type PedidoParaCobrar } from "@/components/PosApp";
+import { preciosVigentes } from "@/lib/pedidosProfesional";
 
 export const dynamic = "force-dynamic";
 
-export default async function PosPage() {
+// Un pedido de una profesional que se viene a cobrar (botón "Cobrar" de
+// Pedidos): los productos, el DNI y el código, y si su precio todavía vale.
+async function pedidoParaCobrar(supabase: ReturnType<typeof getSupabaseServerClient>, idPedido: string): Promise<PedidoParaCobrar | null> {
+  const { data: p } = await supabase
+    .from("pedidos_profesional")
+    .select("id_pedido, numero, estado, creado, paciente_nombre, paciente_apellido, paciente_dni, codigo, id_local, id_profesional, pedidos_profesional_items(id_variante, cantidad, precio_lista, precio_efectivo)")
+    .eq("id_pedido", idPedido)
+    .in("estado", ["NUEVO", "LISTO"])
+    .maybeSingle();
+  if (!p) return null;
+  const { data: prof } = await supabase.from("profesionales").select("nombre, apellido").eq("id_profesional", p.id_profesional).maybeSingle();
+  return {
+    idPedido: p.id_pedido as string,
+    numero: Number(p.numero),
+    profesional: prof ? [prof.nombre, prof.apellido].filter(Boolean).join(" ") : "la profesional",
+    paciente: `${p.paciente_nombre} ${p.paciente_apellido}`,
+    dni: p.paciente_dni as string,
+    codigo: (p.codigo as string | null) ?? null,
+    idLocal: (p.id_local as string | null) ?? null,
+    preciosVigentes: preciosVigentes(p.creado as string),
+    items: ((p.pedidos_profesional_items as Record<string, unknown>[] | null) ?? []).map((i) => ({
+      idVariante: i.id_variante as string,
+      cantidad: Number(i.cantidad),
+      precioLista: Number(i.precio_lista),
+      precioEfectivo: Number(i.precio_efectivo),
+    })),
+  };
+}
+
+export default async function PosPage({ searchParams }: { searchParams: Promise<{ pedido?: string }> }) {
   const sesion = await obtenerSesionConPantallas();
   if (!puedeVerPantalla(sesion, "pos")) return <PantallaBloqueada />;
+  const { pedido: idPedido } = await searchParams;
 
   const supabase = getSupabaseServerClient();
+  const pedido = idPedido ? await pedidoParaCobrar(supabase, idPedido).catch(() => null) : null;
 
   const [localesRes, productosRes, variantesRes, marcasRes, stockRes, configRes] = await Promise.all([
     supabase.from("locales").select("*").eq("estado", "ACTIVO").order("nombre", { ascending: true }),
@@ -48,6 +80,7 @@ export default async function PosPage() {
     );
   }
 
+  // La key hace que al entrar a un pedido (o salir de uno) la caja arranque de cero.
   return (
     <PosApp
       locales={(localesRes.data ?? []) as Local[]}
@@ -56,6 +89,8 @@ export default async function PosPage() {
       marcas={(marcasRes.data ?? []) as Marca[]}
       stock={(stockRes.data ?? []) as Stock[]}
       ivaGeneralPorcentaje={ivaGeneralPorcentaje}
+      pedido={pedido}
+      key={pedido?.idPedido ?? "venta"}
     />
   );
 }

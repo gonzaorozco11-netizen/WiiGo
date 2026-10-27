@@ -48,6 +48,10 @@ export const PANTALLAS_DISPONIBLES: PantallaDisponible[] = [
   // La clave puede seguir guardada en áreas viejas de la base: ahí queda
   // inerte, no rompe nada y desaparece la próxima vez que se edite el área.
   { clave: "pos", label: "POS", grupo: "Operaciones" },
+  // Los pedidos que arman las profesionales para sus pacientes: se arman,
+  // se avisa al paciente y se cobran. Va suelto arriba en el menú, con el
+  // número en rojo, como Mis Tareas.
+  { clave: "pedidos", label: "Pedidos de profesionales", grupo: "Operaciones" },
   { clave: "ficha-asistencia", label: "Ficha Asistencia", grupo: "Operaciones" },
   { clave: "ventas", label: "Ventas", grupo: "Operaciones" },
   { clave: "cobros-efectivo", label: "Cobros en efectivo", grupo: "Operaciones" },

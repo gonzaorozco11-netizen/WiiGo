@@ -4,6 +4,7 @@ import sharp from "sharp";
 import { revalidatePath } from "next/cache";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseServerClient } from "@/lib/supabase";
+import { precioDe } from "@/lib/precios";
 import { obtenerSesionProfesional, registrarActividad } from "@/lib/profesionalSesion";
 import {
   CAMPOS_DATOS,
@@ -300,6 +301,108 @@ export async function enviarLista(tipo: ListaTipo, items: unknown[]): Promise<Re
   const r = await dejarPendiente(supabase, id, tipo, valor, null);
   if (r.error) return r;
   return terminar(supabase, id, tipo);
+}
+
+// ---------- Pedidos para sus pacientes ----------
+
+/**
+ * Manda al local el pedido que armó en la consulta. Los precios no se toman
+ * de la pantalla: se calculan acá con los de hoy, y son los que se respetan
+ * 24 horas. El paciente queda como cliente de WiiGo (si ya estaba por su
+ * DNI, se usa ese, sin pisarle los datos).
+ */
+export async function enviarPedido(datos: {
+  items: { idVariante: string; cantidad: number }[];
+  paciente: { nombre: string; apellido: string; dni: string; telefono: string };
+  acepta: boolean;
+  idLocal: string;
+}): Promise<{ error: string | null; numero?: number }> {
+  const sesion = await obtenerSesionProfesional();
+  if (!sesion) return { error: SESION_CERRADA };
+
+  const nombre = datos.paciente.nombre.trim().slice(0, 60);
+  const apellido = datos.paciente.apellido.trim().slice(0, 60);
+  const dni = datos.paciente.dni.replace(/\D/g, "");
+  const telefono = datos.paciente.telefono.trim().slice(0, 30) || null;
+  if (!nombre || !apellido) return { error: "Poné el nombre y el apellido del paciente." };
+  if (dni.length < 7 || dni.length > 9) return { error: "Revisá el DNI: tiene que tener 7 u 8 números." };
+  if (!datos.acepta) return { error: "Falta que el paciente acepte sumarse a WiiGo Club y que le avisen por WhatsApp." };
+
+  const pedidos = new Map<string, number>();
+  for (const i of datos.items ?? []) {
+    const cantidad = Math.floor(Number(i.cantidad));
+    if (!i.idVariante || !Number.isFinite(cantidad) || cantidad < 1 || cantidad > 20) continue;
+    pedidos.set(i.idVariante, (pedidos.get(i.idVariante) ?? 0) + cantidad);
+  }
+  if (pedidos.size === 0) return { error: "Agregá al menos un producto." };
+  if (pedidos.size > 40) return { error: "Son demasiados productos para un pedido." };
+
+  const supabase = getSupabaseServerClient();
+  const [varRes, localesRes, codigoRes] = await Promise.all([
+    supabase.from("variantes_producto").select("id_variante, id_producto, nombre, precio_venta, precio_efectivo, estado").in("id_variante", [...pedidos.keys()]),
+    supabase.from("locales").select("id_local").eq("estado", "ACTIVO").order("nombre"),
+    supabase.from("codigos_profesionales").select("codigo").eq("id_profesional", sesion.idProfesional).eq("estado", "ACTIVO").limit(1),
+  ]);
+  const variantes = (varRes.data ?? []).filter((v) => v.estado === "ACTIVO");
+  if (variantes.length !== pedidos.size) return { error: "Algún producto ya no está disponible. Actualizá la página y armalo de nuevo." };
+  const { data: productos } = await supabase
+    .from("productos")
+    .select("id_producto, nombre, precio_venta, precio_efectivo, descuento_porcentaje, estado")
+    .in("id_producto", [...new Set(variantes.map((v) => v.id_producto as string))]);
+  const productoPorId = new Map((productos ?? []).filter((p) => p.estado === "ACTIVO").map((p) => [p.id_producto as string, p]));
+
+  const idsLocales = (localesRes.data ?? []).map((l) => l.id_local as string);
+  const idLocal = idsLocales.includes(datos.idLocal) ? datos.idLocal : idsLocales[0] ?? null;
+
+  // El paciente como cliente de WiiGo.
+  let idCliente: string | null = null;
+  const { data: cliente } = await supabase.from("clientes").select("id_cliente, telefono").eq("dni", dni).maybeSingle();
+  if (cliente) {
+    idCliente = cliente.id_cliente as string;
+    if (!cliente.telefono && telefono) await supabase.from("clientes").update({ telefono }).eq("id_cliente", idCliente);
+  } else {
+    const { data: nuevo } = await supabase.from("clientes").insert({ nombre, apellido, dni, telefono, estado: "ACTIVO" }).select("id_cliente").single();
+    idCliente = (nuevo?.id_cliente as string | undefined) ?? null;
+  }
+
+  const { data: pedido, error } = await supabase
+    .from("pedidos_profesional")
+    .insert({
+      id_profesional: sesion.idProfesional,
+      id_local: idLocal,
+      id_cliente: idCliente,
+      paciente_nombre: nombre,
+      paciente_apellido: apellido,
+      paciente_dni: dni,
+      paciente_telefono: telefono,
+      acepto_at: new Date().toISOString(),
+      codigo: (codigoRes.data?.[0]?.codigo as string | undefined) ?? null,
+    })
+    .select("id_pedido, numero")
+    .single();
+  if (error || !pedido) return { error: FALTA_SQL };
+
+  const filas = variantes.map((v) => {
+    const p = productoPorId.get(v.id_producto as string);
+    const conNombreVariante = v.nombre && !/^(únic[oa]|unic[oa]|default|estándar|estandar)$/i.test(String(v.nombre).trim());
+    return {
+      id_pedido: pedido.id_pedido,
+      id_variante: v.id_variante,
+      nombre: p ? (conNombreVariante ? `${p.nombre} · ${v.nombre}` : (p.nombre as string)) : String(v.nombre),
+      cantidad: pedidos.get(v.id_variante as string) ?? 1,
+      precio_lista: p ? precioDe(p, v, "OTRO") : Number(v.precio_venta ?? 0),
+      precio_efectivo: p ? precioDe(p, v, "EFECTIVO") : Number(v.precio_efectivo ?? v.precio_venta ?? 0),
+    };
+  });
+  const { error: errorItems } = await supabase.from("pedidos_profesional_items").insert(filas);
+  if (errorItems) {
+    await supabase.from("pedidos_profesional").delete().eq("id_pedido", pedido.id_pedido);
+    return { error: "No se pudo guardar el pedido. Probá de nuevo." };
+  }
+
+  await registrarActividad(supabase, sesion.idProfesional, `Armó el pedido N.º ${pedido.numero} para ${nombre} ${apellido.charAt(0)}.`);
+  revalidatePath("/mi-espacio/pedidos");
+  return { error: null, numero: Number(pedido.numero) };
 }
 
 /** Su teléfono y su mail de contacto: son suyos y no salen en la pantalla, así que se guardan directo. */

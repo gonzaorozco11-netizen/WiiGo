@@ -234,6 +234,7 @@ export default function AppNav({
   puedeEditarConfiguracion,
   pendientesAprobacion = 0,
   etiquetasVencidas = 0,
+  pedidosNuevos = 0,
   nombre,
 }: {
   pantallas: string[] | null;
@@ -247,6 +248,8 @@ export default function AppNav({
   pendientesAprobacion?: number;
   /** Etiquetas cuyo precio ya cambió y el cartel todavía no. Van en rojo. */
   etiquetasVencidas?: number;
+  /** Pedidos de profesionales que llegaron y todavía nadie armó. En rojo. */
+  pedidosNuevos?: number;
   /** Quién está adentro, para el pie del menú. */
   nombre: string | null;
 }) {
@@ -324,6 +327,17 @@ export default function AppNav({
             </span>
           )}
         </Link>
+        {/* Suelto y arriba, como Mis Tareas: un pedido nuevo es algo que hay
+            que hacer ya, y adentro de un grupo cerrado el número no se ve. */}
+        {puedeVer("/pedidos") && (
+          <Link href="/pedidos" className={`mt-0.5 ${claseLink(pathname === "/pedidos")}`}>
+            <Icono nombre="operaciones" className={pathname === "/pedidos" ? "text-accent" : "text-neutral-500"} />
+            Pedidos
+            {pedidosNuevos > 0 && (
+              <span className="ml-auto text-[10.5px] font-bold px-1.5 py-0.5 rounded-full bg-red-600 text-white">{pedidosNuevos}</span>
+            )}
+          </Link>
+        )}
         {/* Solo el Dueño: los seis encargados con IA ven todos los números. */}
         {esAdmin && (
           <Link href="/junta" className={`mt-0.5 ${claseLink(activo?.item.href === "/junta")}`}>
@@ -436,10 +450,15 @@ export default function AppNav({
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/wiigo-wordmark.png" alt="WiiGo" className="h-6 w-auto block" />
         </Link>
+        {pedidosNuevos > 0 && puedeVer("/pedidos") && (
+          <Link href="/pedidos" className="ml-auto text-xs font-bold px-2 py-1 rounded-full bg-red-600 text-white">
+            {pedidosNuevos} {pedidosNuevos === 1 ? "pedido" : "pedidos"}
+          </Link>
+        )}
         {contador > 0 && (
           <Link
             href="/mis-tareas"
-            className={`ml-auto text-xs font-bold px-2 py-1 rounded-full ${
+            className={`${pedidosNuevos > 0 && puedeVer("/pedidos") ? "" : "ml-auto "}text-xs font-bold px-2 py-1 rounded-full ${
               etiquetasVencidas > 0 ? "bg-red-100 text-red-700" : "bg-neutral-200 text-neutral-700"
             }`}
           >

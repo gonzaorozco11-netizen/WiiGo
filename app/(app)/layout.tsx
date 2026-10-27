@@ -2,7 +2,9 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 import { esRolInterno, INICIO_ROL_EXTERNO } from "@/lib/rolesInternos";
-import { obtenerSesionConPantallas } from "@/lib/roles";
+import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
+import { contarPedidosNuevosSinSesion } from "@/lib/pedidosNuevos";
+import AvisoPedidos from "@/components/AvisoPedidos";
 import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos";
 import { verificarAvisoSalida } from "@/app/(app)/ficha-asistencia/actions";
 import { contarPendientes } from "@/app/(app)/aprobaciones/actions";
@@ -37,6 +39,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const avisoSalida = session ? await verificarAvisoSalida() : { debeRecordar: false, horaSalida: null };
   // Contador del menú: lo que las marcas mandaron y las etiquetas vencidas.
   const pendientes = session ? await contarPendientes() : { solicitudes: 0, etiquetas: 0, etiquetasVencidas: 0 };
+  // Los pedidos de las profesionales que nadie armó todavía: el número rojo
+  // del menú. Después lo mantiene al día AvisoPedidos, sin recargar.
+  const vePedidos = puedeVerPantalla(sesionConPantallas, "pedidos");
+  const pedidosNuevos = vePedidos ? await contarPedidosNuevosSinSesion().catch(() => 0) : 0;
 
   return (
     // Menú a la izquierda y la pantalla a la derecha (en la computadora; en
@@ -53,9 +59,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         puedeEditarConfiguracion={puedeEditarConfiguracion}
         pendientesAprobacion={pendientes.solicitudes}
         etiquetasVencidas={pendientes.etiquetasVencidas}
+        pedidosNuevos={pedidosNuevos}
         nombre={sesionConPantallas?.nombre ?? session?.nombre ?? null}
       />
       <div className="flex-1 min-w-0">
+        {vePedidos && <AvisoPedidos inicial={pedidosNuevos} />}
         {avisoSalida.debeRecordar && (
           <div className="print:hidden">
             <AvisoSalidaBanner horaSalida={avisoSalida.horaSalida} />
