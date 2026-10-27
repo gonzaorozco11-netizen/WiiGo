@@ -20,6 +20,7 @@ import {
   type ItemFortaleza,
 } from "@/lib/cambiosProfesional";
 import { reglasProfesionales, PARAM_OBJETIVO_SEMANAL, PARAM_PACIENTES_DESTACADA } from "@/lib/semanaProfesional";
+import { mesesVinculo, PARAM_MESES_VINCULO } from "@/lib/pacientesProfesional";
 import { fechaHoraArgentina } from "@/lib/horarios";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -1315,18 +1316,20 @@ export type FilaDelMes = { idProfesional: string; nombre: string; foto: string |
 
 export async function profesionalesDelMes(): Promise<{
   filas: FilaDelMes[];
-  reglas: { objetivoSemanal: number; pacientesDestacada: number };
+  reglas: { objetivoSemanal: number; pacientesDestacada: number; mesesVinculo: number };
   hayVisitas: boolean;
 }> {
   await requireInterno();
   const supabase = getSupabaseServerClient();
   const primeroDelMes = `${fechaHoraArgentina().fecha.slice(0, 8)}01T00:00:00-03:00`;
-  const [profRes, visRes, refRes, reglas] = await Promise.all([
+  const [profRes, visRes, refRes, reglasBase, meses] = await Promise.all([
     supabase.from("profesionales").select("id_profesional, nombre, apellido, foto").eq("estado", "ACTIVO"),
     supabase.from("visitas_asesor").select("id_profesional").eq("evento", "FICHA").gte("fecha", primeroDelMes),
     supabase.from("referidos_profesionales").select("id_profesional, id_cliente, total_venta").neq("estado", "ANULADO").gte("fecha", primeroDelMes),
     reglasProfesionales(supabase),
+    mesesVinculo(supabase),
   ]);
+  const reglas = { ...reglasBase, mesesVinculo: meses };
 
   const vistas = new Map<string, number>();
   for (const v of visRes.data ?? []) vistas.set(v.id_profesional as string, (vistas.get(v.id_profesional as string) ?? 0) + 1);
@@ -1361,14 +1364,16 @@ export async function profesionalesDelMes(): Promise<{
   return { filas, reglas, hayVisitas: !visRes.error };
 }
 
-export async function guardarReglasProfesionales(objetivoSemanal: number, pacientesDestacada: number): Promise<{ error: string | null }> {
+export async function guardarReglasProfesionales(objetivoSemanal: number, pacientesDestacada: number, meses: number): Promise<{ error: string | null }> {
   const permisoError = await requireAdmin();
   if (permisoError) return { error: permisoError };
   const valores: [string, number][] = [
     [PARAM_OBJETIVO_SEMANAL, objetivoSemanal],
     [PARAM_PACIENTES_DESTACADA, pacientesDestacada],
+    [PARAM_MESES_VINCULO, meses],
   ];
   if (valores.some(([, v]) => !Number.isInteger(v) || v < 1 || v > 999)) return { error: "Poné números enteros, de 1 para arriba." };
+  if (meses > 60) return { error: "Los meses que suma por paciente: como mucho 60." };
   const supabase = getSupabaseServerClient();
   for (const [parametro, valor] of valores) {
     const { data: existe } = await supabase.from("configuracion").select("parametro").eq("parametro", parametro).maybeSingle();

@@ -5,6 +5,7 @@ import { obtenerSesionProfesional } from "@/lib/profesionalSesion";
 import { completitudProfesional } from "@/lib/completitudProfesional";
 import { saldosPorMarca } from "@/lib/canjesProfesionales";
 import { semanaProfesional } from "@/lib/semanaProfesional";
+import { mesesVinculo } from "@/lib/pacientesProfesional";
 import { TarjetaSemana, TarjetaObjetivo } from "./TarjetasSemana";
 
 export const dynamic = "force-dynamic";
@@ -34,7 +35,7 @@ export default async function InicioEspacio() {
   const id = sesion.idProfesional;
   const supabase = getSupabaseServerClient();
 
-  const [completitud, codigosRes, referidosRes, saldos, profRes, localRes, cambiosRes, semana] = await Promise.all([
+  const [completitud, codigosRes, referidosRes, saldos, profRes, localRes, cambiosRes, semana, meses] = await Promise.all([
     completitudProfesional(supabase, id),
     supabase.from("codigos_profesionales").select("codigo, estado").eq("id_profesional", id).eq("estado", "ACTIVO").limit(1),
     supabase.from("referidos_profesionales").select("id_referido, estado").eq("id_profesional", id),
@@ -43,6 +44,7 @@ export default async function InicioEspacio() {
     supabase.from("locales").select("nombre, direccion").eq("estado", "ACTIVO").order("nombre").limit(1),
     supabase.from("cambios_profesional").select("estado").eq("id_profesional", id).in("estado", ["PENDIENTE", "CORREGIR"]),
     semanaProfesional(supabase, id, sesion.nombre),
+    mesesVinculo(supabase),
   ]);
   const esperando = (cambiosRes.data ?? []).filter((c) => c.estado === "PENDIENTE").length;
   const paraCorregir = (cambiosRes.data ?? []).filter((c) => c.estado === "CORREGIR").length;
@@ -73,7 +75,7 @@ export default async function InicioEspacio() {
   const faltan = completitud.items.filter((i) => !i.ok);
   const listos = completitud.items.filter((i) => i.ok);
   const mensajeCodigo = codigo
-    ? `Si pasás por WiiGo${direccion ? ` (${direccion})` : ""}, decí mi código ${codigo} en la caja.`
+    ? `Si pasás por WiiGo${direccion ? ` (${direccion})` : ""}, decí mi código ${codigo} en la caja con tu DNI.`
     : "";
 
   return (
@@ -167,7 +169,10 @@ export default async function InicioEspacio() {
                     Compartir
                   </a>
                 </div>
-                <p className="nota">Tus pacientes lo dicen en la caja y vos sumás saldo para usar en el local.</p>
+                <p className="nota">
+                  Tus pacientes lo dicen en la caja con su DNI: tienen su beneficio la primera vez, y vos sumás saldo por lo que compren durante {meses}{" "}
+                  meses, aunque después no lo digan.
+                </p>
               </>
             ) : (
               <p className="vacio">Todavía no tenés código. Pedíselo a WiiGo.</p>

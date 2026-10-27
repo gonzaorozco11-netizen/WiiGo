@@ -6,6 +6,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { precioDe } from "@/lib/precios";
 import { obtenerSesionProfesional, registrarActividad } from "@/lib/profesionalSesion";
+import { clientePorDni, registrarPaciente } from "@/lib/pacientesProfesional";
 import {
   CAMPOS_DATOS,
   CAMPOS_NUMERICOS,
@@ -354,16 +355,10 @@ export async function enviarPedido(datos: {
   const idsLocales = (localesRes.data ?? []).map((l) => l.id_local as string);
   const idLocal = idsLocales.includes(datos.idLocal) ? datos.idLocal : idsLocales[0] ?? null;
 
-  // El paciente como cliente de WiiGo.
-  let idCliente: string | null = null;
-  const { data: cliente } = await supabase.from("clientes").select("id_cliente, telefono").eq("dni", dni).maybeSingle();
-  if (cliente) {
-    idCliente = cliente.id_cliente as string;
-    if (!cliente.telefono && telefono) await supabase.from("clientes").update({ telefono }).eq("id_cliente", idCliente);
-  } else {
-    const { data: nuevo } = await supabase.from("clientes").insert({ nombre, apellido, dni, telefono, estado: "ACTIVO" }).select("id_cliente").single();
-    idCliente = (nuevo?.id_cliente as string | undefined) ?? null;
-  }
+  // El paciente como cliente de WiiGo, y como paciente de ella: desde hoy
+  // suma para ella lo que compre, durante los meses que diga Configuración.
+  const idCliente = await clientePorDni(supabase, { nombre, apellido, dni, telefono });
+  if (idCliente) await registrarPaciente(supabase, { idProfesional: sesion.idProfesional, idCliente, origen: "PEDIDO" });
 
   const { data: pedido, error } = await supabase
     .from("pedidos_profesional")
@@ -403,6 +398,32 @@ export async function enviarPedido(datos: {
   await registrarActividad(supabase, sesion.idProfesional, `Armó el pedido N.º ${pedido.numero} para ${nombre} ${apellido.charAt(0)}.`);
   revalidatePath("/mi-espacio/pedidos");
   return { error: null, numero: Number(pedido.numero) };
+}
+
+/**
+ * "Sumar paciente": registrar a un paciente sin armarle un pedido. Desde ese
+ * día, lo que compre en WiiGo suma para ella aunque no diga el código, y en su
+ * primera compra tiene el beneficio del código.
+ */
+export async function sumarPaciente(datos: { nombre: string; apellido: string; dni: string; telefono: string; acepta: boolean }): Promise<{ error: string | null; hasta?: string }> {
+  const sesion = await obtenerSesionProfesional();
+  if (!sesion) return { error: SESION_CERRADA };
+  const nombre = datos.nombre.trim().slice(0, 60);
+  const apellido = datos.apellido.trim().slice(0, 60);
+  const dni = datos.dni.replace(/\D/g, "");
+  const telefono = datos.telefono.trim().slice(0, 30) || null;
+  if (!nombre || !apellido) return { error: "Poné el nombre y el apellido del paciente." };
+  if (dni.length < 7 || dni.length > 9) return { error: "Revisá el DNI: tiene que tener 7 u 8 números." };
+  if (!datos.acepta) return { error: "Falta que el paciente acepte sumarse a WiiGo Club." };
+
+  const supabase = getSupabaseServerClient();
+  const idCliente = await clientePorDni(supabase, { nombre, apellido, dni, telefono });
+  if (!idCliente) return { error: "No se pudo registrar. Probá de nuevo." };
+  const r = await registrarPaciente(supabase, { idProfesional: sesion.idProfesional, idCliente, origen: "ESPACIO" });
+  if (r.error) return { error: r.error === "sin-tabla" ? FALTA_SQL : "No se pudo registrar. Probá de nuevo." };
+  await registrarActividad(supabase, sesion.idProfesional, `Sumó como paciente a ${nombre} ${apellido.charAt(0)}.`);
+  revalidatePath("/mi-espacio", "layout");
+  return { error: null, hasta: r.hasta };
 }
 
 /** Su teléfono y su mail de contacto: son suyos y no salen en la pantalla, así que se guardan directo. */

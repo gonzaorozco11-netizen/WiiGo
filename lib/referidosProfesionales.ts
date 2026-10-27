@@ -6,6 +6,7 @@
 // sobre el total de la venta — así una venta con productos de varias marcas
 // reparte bien el beneficio.
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { vinculoActivo, registrarPaciente, marcarBienvenidaUsada, type VinculoActivo } from "@/lib/pacientesProfesional";
 
 export type ItemParaReferido = {
   idVariante?: string | null;
@@ -62,10 +63,16 @@ async function configVigente(supabase: SupabaseClient, idMarca: string, fecha: s
 
 // Se llama ANTES de crear la venta, para saber si hay que restarle un
 // descuento al total (tipo_beneficio_cliente = DESCUENTO).
+//
+// `conBeneficioCliente` en false: la profesional suma igual, pero el paciente
+// no recibe nada (el beneficio del paciente es solo en su primera compra,
+// ver lib/pacientesProfesional.ts).
 export async function calcularBeneficioReferido(
   supabase: SupabaseClient,
-  items: ItemParaReferido[]
+  items: ItemParaReferido[],
+  opciones: { conBeneficioCliente?: boolean } = {}
 ): Promise<ResultadoCalculoReferido> {
+  const conBeneficioCliente = opciones.conBeneficioCliente ?? true;
   const hoy = new Date().toISOString().slice(0, 10);
   const lineas: LineaCalculada[] = [];
   let descuentoTotal = 0;
@@ -82,7 +89,8 @@ export async function calcularBeneficioReferido(
     }
     if (!config) continue; // la marca no participa del programa, o no tiene config vigente
 
-    const beneficioCliente = Math.round(item.importe * (config.porcentaje_cliente / 100));
+    const porcentajeCliente = conBeneficioCliente ? config.porcentaje_cliente : 0;
+    const beneficioCliente = Math.round(item.importe * (porcentajeCliente / 100));
     const recompensaProfesional = Math.round(item.importe * (config.porcentaje_profesional / 100));
 
     lineas.push({
@@ -93,7 +101,7 @@ export async function calcularBeneficioReferido(
       cantidad: item.cantidad,
       precioUnitario: item.precioUnitario,
       importe: item.importe,
-      porcentajeCliente: config.porcentaje_cliente,
+      porcentajeCliente,
       beneficioCliente,
       tipoBeneficioCliente: config.tipo_beneficio_cliente,
       porcentajeProfesional: config.porcentaje_profesional,
@@ -178,9 +186,11 @@ export async function registrarReferido(
     usosActuales: number;
     totalVenta: number;
     resultado: ResultadoCalculoReferido;
+    /** false cuando suma por ser su paciente sin que nadie haya dicho el código: no es un uso del código. */
+    contarUso?: boolean;
   }
 ) {
-  const { idVenta, idCliente, idCodigo, idProfesional, idLocal, usosActuales, totalVenta, resultado } = params;
+  const { idVenta, idCliente, idCodigo, idProfesional, idLocal, usosActuales, totalVenta, resultado, contarUso = true } = params;
   if (resultado.lineas.length === 0) return;
 
   const { data: referido, error } = await supabase
@@ -214,7 +224,159 @@ export async function registrarReferido(
     recompensa_profesional: l.recompensaProfesional,
   }));
   await supabase.from("detalle_referidos_profesionales").insert(filas);
-  await supabase.from("codigos_profesionales").update({ usos: usosActuales + 1 }).eq("id_codigo", idCodigo);
+  if (contarUso) await supabase.from("codigos_profesionales").update({ usos: usosActuales + 1 }).eq("id_codigo", idCodigo);
+}
+
+// ===================== PACIENTES DE CADA PROFESIONAL =====================
+//
+// A quién le suma una venta y si el paciente recibe su beneficio. Lo usan las
+// tres puntas que cobran (POS, totem y la confirmación de cobro), así la
+// regla es una sola. La regla está explicada en lib/pacientesProfesional.ts.
+
+export type ReferidoVenta = {
+  error: string | null;
+  idProfesional: string | null;
+  idCodigo: string | null;
+  usosActuales: number;
+  /** Alguien dijo el código (no es solo por ser su paciente). */
+  contarUso: boolean;
+  /** El paciente recibe el % que la marca pone para él: solo en su primera compra. */
+  conBeneficioCliente: boolean;
+  /** El vínculo que ya tenía con esta profesional. */
+  idVinculo: string | null;
+  /** Dijo el código de una profesional de la que todavía no es paciente: se registra al cobrar. */
+  crearVinculo: boolean;
+};
+
+const SIN_REFERIDO: ReferidoVenta = {
+  error: null,
+  idProfesional: null,
+  idCodigo: null,
+  usosActuales: 0,
+  contarUso: false,
+  conBeneficioCliente: false,
+  idVinculo: null,
+  crearVinculo: false,
+};
+
+export async function resolverReferidoVenta(
+  supabase: SupabaseClient,
+  p: {
+    codigo?: string;
+    idCodigo?: string | null;
+    idCliente: string | null;
+    compradorEsProfesional: boolean;
+    /** Para explicar bien qué falta si el código no se puede usar sin cliente. */
+    dni?: string;
+    donde?: "caja" | "totem";
+  }
+): Promise<ReferidoVenta> {
+  if (p.compradorEsProfesional) return SIN_REFERIDO;
+
+  const vinculo = await vinculoActivo(supabase, p.idCliente);
+
+  // Nadie dijo el código, o dijo el de la profesional de la que ya es
+  // paciente (la caja lo pone sola): suma para ella como su paciente. No es un
+  // uso nuevo del código, así que no cuenta para su tope de usos.
+  async function comoSuPaciente(v: VinculoActivo): Promise<ReferidoVenta> {
+    const [{ data: prof }, { data: codigos }] = await Promise.all([
+      supabase.from("profesionales").select("estado").eq("id_profesional", v.idProfesional).maybeSingle(),
+      supabase.from("codigos_profesionales").select("id_codigo, usos").eq("id_profesional", v.idProfesional).eq("estado", "ACTIVO").limit(1),
+    ]);
+    const suyo = codigos?.[0];
+    if (!prof || prof.estado !== "ACTIVO" || !suyo) return SIN_REFERIDO;
+    return {
+      error: null,
+      idProfesional: v.idProfesional,
+      idCodigo: suyo.id_codigo as string,
+      usosActuales: Number(suyo.usos ?? 0),
+      contarUso: false,
+      conBeneficioCliente: !v.bienvenidaUsada,
+      idVinculo: v.idVinculo,
+      crearVinculo: false,
+    };
+  }
+
+  if (vinculo && vinculo !== "sin-tabla") {
+    let deOtra = false;
+    if (p.codigo?.trim()) {
+      const { data: fila } = await supabase.from("codigos_profesionales").select("id_profesional").eq("codigo", p.codigo.trim().toUpperCase()).maybeSingle();
+      deOtra = Boolean(fila) && fila?.id_profesional !== vinculo.idProfesional;
+    } else if (p.idCodigo) {
+      const { data: fila } = await supabase.from("codigos_profesionales").select("id_profesional").eq("id_codigo", p.idCodigo).maybeSingle();
+      deOtra = Boolean(fila) && fila?.id_profesional !== vinculo.idProfesional;
+    }
+    if (!deOtra) return comoSuPaciente(vinculo);
+  }
+
+  let codigo: { idCodigo: string; idProfesional: string; usos: number } | null = null;
+  if (p.codigo?.trim()) {
+    const r = await resolverCodigoProfesional(supabase, p.codigo);
+    if (r.error) return { ...SIN_REFERIDO, error: r.error };
+    if (r.idCodigo && r.idProfesional) codigo = { idCodigo: r.idCodigo, idProfesional: r.idProfesional, usos: r.usosActuales };
+  } else if (p.idCodigo) {
+    const { data } = await supabase.from("codigos_profesionales").select("id_codigo, id_profesional, usos").eq("id_codigo", p.idCodigo).maybeSingle();
+    if (data) codigo = { idCodigo: data.id_codigo as string, idProfesional: data.id_profesional as string, usos: Number(data.usos ?? 0) };
+  }
+
+  // Sin el SQL de pacientes todavía corrido: el código funciona como siempre.
+  if (vinculo === "sin-tabla") {
+    return codigo
+      ? { ...SIN_REFERIDO, idProfesional: codigo.idProfesional, idCodigo: codigo.idCodigo, usosActuales: codigo.usos, contarUso: true, conBeneficioCliente: true }
+      : SIN_REFERIDO;
+  }
+
+  if (codigo) {
+    // El código sirve una vez por persona: para saber si ya lo usó hace falta
+    // saber quién es.
+    if (!p.idCliente) {
+      const hayDni = Boolean(p.dni?.trim());
+      const error =
+        p.donde === "totem"
+          ? hayDni
+            ? "Para usar el código de una profesional tenés que estar registrado en WiiGo. Pedile al personal que te registre y lo usás."
+            : "Para usar el código de una profesional cargá tu DNI."
+          : hayDni
+            ? "Ese DNI todavía no está en Clientes. Cargalo con su nombre y volvé a cobrar: así queda como paciente de la profesional."
+            : "Para usar el código de una profesional hace falta el DNI del cliente: así queda como su paciente.";
+      return { ...SIN_REFERIDO, error };
+    }
+    // Dijo el código de una profesional de la que todavía no es paciente (si
+    // era de otra, pasa a esta): primera compra con ella, tiene su beneficio.
+    return {
+      error: null,
+      idProfesional: codigo.idProfesional,
+      idCodigo: codigo.idCodigo,
+      usosActuales: codigo.usos,
+      contarUso: true,
+      conBeneficioCliente: true,
+      idVinculo: null,
+      crearVinculo: true,
+    };
+  }
+
+  return SIN_REFERIDO;
+}
+
+/**
+ * Después de cobrar: registra al paciente si dijo el código de una profesional
+ * nueva, y da por usada su bienvenida si la recibió. La bienvenida solo se
+ * gasta si de verdad le dio algo (si nada de lo que compró era de una marca que
+ * participa, la conserva para la próxima).
+ */
+export async function cerrarReferidoVenta(
+  supabase: SupabaseClient,
+  ref: ReferidoVenta,
+  idCliente: string | null,
+  beneficioDado: number
+) {
+  if (!ref.idProfesional || !idCliente) return;
+  const usoBienvenida = ref.conBeneficioCliente && beneficioDado > 0;
+  if (ref.crearVinculo) {
+    await registrarPaciente(supabase, { idProfesional: ref.idProfesional, idCliente, origen: "CAJA", bienvenidaUsada: usoBienvenida });
+  } else if (ref.idVinculo && usoBienvenida) {
+    await marcarBienvenidaUsada(supabase, ref.idVinculo);
+  }
 }
 
 // Puntos extra financiados por las marcas, además de los puntos normales de

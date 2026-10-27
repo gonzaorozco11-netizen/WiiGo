@@ -1006,6 +1006,7 @@ function PanelDelMes({ onAbrir }: { onAbrir: (id: string) => void }) {
   const [abierto, setAbiertoPanel] = useState(false);
   const [objetivo, setObjetivo] = useState("");
   const [destacada, setDestacada] = useState("");
+  const [meses, setMeses] = useState("");
   const [guardando, setGuardando] = useState(false);
   const [mensaje, setMensaje] = useState<string | null>(null);
 
@@ -1015,6 +1016,7 @@ function PanelDelMes({ onAbrir }: { onAbrir: (id: string) => void }) {
         setDatos(d);
         setObjetivo(String(d.reglas.objetivoSemanal));
         setDestacada(String(d.reglas.pacientesDestacada));
+        setMeses(String(d.reglas.mesesVinculo));
       })
       .catch(() => setDatos(null));
   }, []);
@@ -1025,7 +1027,7 @@ function PanelDelMes({ onAbrir }: { onAbrir: (id: string) => void }) {
   function guardar() {
     setMensaje(null);
     setGuardando(true);
-    guardarReglasProfesionales(Number(objetivo), Number(destacada))
+    guardarReglasProfesionales(Number(objetivo), Number(destacada), Number(meses))
       .then((r) => {
         setMensaje(r.error ?? "Guardado. Vale desde ahora para todas.");
         if (!r.error) cargar();
@@ -1094,7 +1096,11 @@ function PanelDelMes({ onAbrir }: { onAbrir: (id: string) => void }) {
 
           <div className="border-t border-neutral-100 pt-4 flex flex-col gap-3">
             <p className="text-xs font-bold text-neutral-500 uppercase tracking-wide">Las reglas, las ponés vos</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <label className="flex flex-col gap-1 text-xs font-medium text-neutral-600">
+                Meses que suma la profesional por cada paciente
+                <input value={meses} onChange={(e) => setMeses(e.target.value)} inputMode="numeric" className="w-24 border border-neutral-300 rounded-lg px-3 py-1.5 text-sm tabular-nums" />
+              </label>
               <label className="flex flex-col gap-1 text-xs font-medium text-neutral-600">
                 Objetivo de la semana (pacientes con su código)
                 <input value={objetivo} onChange={(e) => setObjetivo(e.target.value)} inputMode="numeric" className="w-24 border border-neutral-300 rounded-lg px-3 py-1.5 text-sm tabular-nums" />
@@ -1110,7 +1116,10 @@ function PanelDelMes({ onAbrir }: { onAbrir: (id: string) => void }) {
               </button>
               {mensaje && <span className="text-sm text-neutral-600">{mensaje}</span>}
             </div>
-            <p className="text-xs text-neutral-500">Las fichas destacadas aparecen primero en la pantalla del local.</p>
+            <p className="text-xs text-neutral-500">
+              El paciente tiene el descuento del código solo en su primera compra; la profesional suma su % por todo lo que compre durante esos meses. Si
+              cambiás los meses, vale para los pacientes que se registren desde hoy. Las fichas destacadas aparecen primero en la pantalla del local.
+            </p>
           </div>
         </div>
       )}

@@ -192,7 +192,7 @@ export default function ArmarPedido({
                     </p>
                     {p.participa ? (
                       <span className="cp-suma">
-                        Vos {pct(p.porcentajeProfesional)} · paciente {pct(p.porcentajeCliente)}
+                        Vos {pct(p.porcentajeProfesional)} · paciente {pct(p.porcentajeCliente)} la 1.ª vez
                       </span>
                     ) : (
                       <span className="cp-suma no">Esta marca no participa: no suma</span>
@@ -246,7 +246,12 @@ export default function ArmarPedido({
                   </>
                 )}
               </dl>
-              {descuento("lista") > 0 && <p className="nota">Ya tiene el descuento de tu código ({pesos(descuento("lista"))}).</p>}
+              {descuento("lista") > 0 && (
+                <p className="nota">
+                  Incluye el descuento de bienvenida de tu código ({pesos(descuento("lista"))}): es para su primera compra. Si ya compró antes con tu código,
+                  en la caja se cobra sin ese descuento.
+                </p>
+              )}
               {suma > 0 && <p className="sumas">Cuando lo pague, vos sumás cerca de {pesos(suma)} de saldo.</p>}
               <p className="nota">Estos precios se respetan {HORAS_PRECIO_FIJO} h. Después se cobra el precio del día.</p>
             </>

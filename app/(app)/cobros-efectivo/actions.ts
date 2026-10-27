@@ -6,7 +6,13 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 import { turnoAbiertoDeLocal } from "@/app/(app)/turnos/actions";
-import { calcularBeneficioReferido, registrarReferido, puntosExtraPorMonto } from "@/lib/referidosProfesionales";
+import {
+  calcularBeneficioReferido,
+  registrarReferido,
+  puntosExtraPorMonto,
+  resolverReferidoVenta,
+  cerrarReferidoVenta,
+} from "@/lib/referidosProfesionales";
 import { registrarCanje, esProfesionalActivo } from "@/lib/canjesProfesionales";
 import { calcularCanjePuntos, aplicarCanjePuntos } from "@/lib/puntosWiigo";
 import { facturarAlAcreditarse } from "@/lib/arca/config";
@@ -189,40 +195,45 @@ export async function confirmarCobro(
   // config vigente de ahora mismo (normalmente pasan pocos minutos entre el
   // pedido y el cobro, así que en la práctica es el mismo % que vio el
   // cliente al armar el carrito).
+  //
+  // A quién le suma: a la del código que se guardó en la venta, o —si nadie
+  // lo dijo— a la profesional de la que el cliente es paciente. El paciente
+  // tiene su beneficio solo en su primera compra (lib/pacientesProfesional.ts).
   let puntosExtra = 0;
   let descuentoBeneficioReal = 0;
-  if (venta.id_codigo_profesional) {
-    const { data: codigo } = await supabase
-      .from("codigos_profesionales")
-      .select("id_profesional, usos")
-      .eq("id_codigo", venta.id_codigo_profesional)
-      .maybeSingle();
-    if (codigo) {
-      const resultado = await calcularBeneficioReferido(
-        supabase,
-        (detalle ?? []).map((d) => ({
-          idVariante: d.id_variante,
-          idDetalleVenta: d.id_detalle,
-          idProducto: null,
-          idMarca: d.id_marca,
-          cantidad: d.cantidad,
-          precioUnitario: d.precio_unitario,
-          importe: d.subtotal ?? d.precio_unitario * d.cantidad,
-        }))
-      );
-      descuentoBeneficioReal = resultado.descuentoTotal;
-      await registrarReferido(supabase, {
-        idVenta,
-        idCliente: venta.id_cliente,
-        idCodigo: venta.id_codigo_profesional,
-        idProfesional: codigo.id_profesional,
-        idLocal: venta.id_local,
-        usosActuales: codigo.usos,
-        totalVenta: total,
-        resultado,
-      });
-      if (venta.id_cliente) puntosExtra = await puntosExtraPorMonto(supabase, resultado.puntosExtraMonto);
-    }
+  const referido = await resolverReferidoVenta(supabase, {
+    idCodigo: venta.id_codigo_profesional,
+    idCliente: venta.id_cliente,
+    compradorEsProfesional: false,
+  });
+  if (!referido.error && referido.idCodigo && referido.idProfesional) {
+    const resultado = await calcularBeneficioReferido(
+      supabase,
+      (detalle ?? []).map((d) => ({
+        idVariante: d.id_variante,
+        idDetalleVenta: d.id_detalle,
+        idProducto: null,
+        idMarca: d.id_marca,
+        cantidad: d.cantidad,
+        precioUnitario: d.precio_unitario,
+        importe: d.subtotal ?? d.precio_unitario * d.cantidad,
+      })),
+      { conBeneficioCliente: referido.conBeneficioCliente }
+    );
+    descuentoBeneficioReal = resultado.descuentoTotal;
+    await registrarReferido(supabase, {
+      idVenta,
+      idCliente: venta.id_cliente,
+      idCodigo: referido.idCodigo,
+      idProfesional: referido.idProfesional,
+      idLocal: venta.id_local,
+      usosActuales: referido.usosActuales,
+      totalVenta: total,
+      resultado,
+      contarUso: referido.contarUso,
+    });
+    await cerrarReferidoVenta(supabase, referido, venta.id_cliente, resultado.descuentoTotal + resultado.puntosExtraMonto);
+    if (venta.id_cliente) puntosExtra = await puntosExtraPorMonto(supabase, resultado.puntosExtraMonto);
   }
 
   // Mismo criterio que arriba: el canje con puntos propios de un profesional

@@ -10,10 +10,13 @@ import { facturarAlAcreditarse, montoQuePideDni } from "@/lib/arca/config";
 import {
   calcularBeneficioReferido,
   resolverCodigoProfesional,
+  resolverReferidoVenta,
+  cerrarReferidoVenta,
   registrarReferido,
   puntosExtraPorMonto,
   enlazarDetalleVenta,
 } from "@/lib/referidosProfesionales";
+import { vinculoActivo } from "@/lib/pacientesProfesional";
 import { buscarProfesionalPorDni, verificarPinProfesional, calcularDescuentoCanje, registrarCanje, esProfesionalActivo } from "@/lib/canjesProfesionales";
 import { calcularCanjePuntos, aplicarCanjePuntos } from "@/lib/puntosWiigo";
 import { crearOrdenQrMp } from "@/lib/mercadopago";
@@ -51,18 +54,42 @@ type ItemCarrito = { idVariante: string; idMarca: string | null; cantidad: numbe
 
 // Autocompletar nombre al escribir el DNI, para que el empleado vea a
 // quién le está cargando la venta antes de cobrar.
-export async function buscarClientePorDni(dni: string) {
+// Si es paciente de una profesional, también de quién y hasta cuándo: la
+// caja le pone el código solo, así suma para ella aunque no lo diga.
+export async function buscarClientePorDni(dni: string): Promise<{
+  nombre: string;
+  apellido: string | null;
+  puntos: number;
+  profesional: { nombre: string; codigo: string | null; hasta: string; conBienvenida: boolean } | null;
+} | null> {
   const dniLimpio = dni.trim();
   if (!dniLimpio) return null;
 
   const supabase = getSupabaseServerClient();
   const { data } = await supabase
     .from("clientes")
-    .select("nombre, apellido, puntos")
+    .select("id_cliente, nombre, apellido, puntos")
     .eq("dni", dniLimpio)
     .maybeSingle();
+  if (!data) return null;
 
-  return data ?? null;
+  let profesional = null;
+  const vinculo = await vinculoActivo(supabase, data.id_cliente as string);
+  if (vinculo && vinculo !== "sin-tabla") {
+    const [{ data: p }, { data: c }] = await Promise.all([
+      supabase.from("profesionales").select("nombre, apellido, estado").eq("id_profesional", vinculo.idProfesional).maybeSingle(),
+      supabase.from("codigos_profesionales").select("codigo").eq("id_profesional", vinculo.idProfesional).eq("estado", "ACTIVO").limit(1),
+    ]);
+    if (p && p.estado === "ACTIVO") {
+      profesional = {
+        nombre: [p.nombre, p.apellido].filter(Boolean).join(" "),
+        codigo: (c?.[0]?.codigo as string | undefined) ?? null,
+        hasta: vinculo.hasta,
+        conBienvenida: !vinculo.bienvenidaUsada,
+      };
+    }
+  }
+  return { nombre: data.nombre as string, apellido: (data.apellido as string | null) ?? null, puntos: Number(data.puntos ?? 0), profesional };
 }
 
 // Para que un profesional pueda pagar su propia compra con el saldo que
@@ -103,10 +130,13 @@ export async function previsualizarDescuentoReferidoAction(
 ): Promise<number> {
   if (!codigo.trim() || items.length === 0) return 0;
   const supabase = getSupabaseServerClient();
-  const compradorEsProfesional = await esProfesionalActivo(supabase, dni?.trim() || null);
+  const dniLimpio = dni?.trim() || null;
+  const compradorEsProfesional = await esProfesionalActivo(supabase, dniLimpio);
   if (compradorEsProfesional) return 0;
-  const resuelto = await resolverCodigoProfesional(supabase, codigo);
-  if (resuelto.error || !resuelto.idCodigo) return 0;
+  const { data: cliente } = dniLimpio ? await supabase.from("clientes").select("id_cliente").eq("dni", dniLimpio).maybeSingle() : { data: null };
+  // Misma regla que al cobrar: el paciente tiene su beneficio solo la primera vez.
+  const referido = await resolverReferidoVenta(supabase, { codigo, idCliente: (cliente?.id_cliente as string | undefined) ?? null, compradorEsProfesional: false });
+  if (referido.error || !referido.idCodigo || !referido.conBeneficioCliente) return 0;
   const resultado = await calcularBeneficioReferido(
     supabase,
     items.map((i) => ({
@@ -215,13 +245,14 @@ export async function venderPos(
   // Se comprueba con el mismo DNI que identificó al comprador arriba.
   const compradorEsProfesional = await esProfesionalActivo(supabase, dniLimpio || null);
 
-  const codigoResuelto = compradorEsProfesional
-    ? { error: null, idCodigo: null, idProfesional: null, usosActuales: 0 }
-    : await resolverCodigoProfesional(supabase, codigoProfesional);
-  if (codigoResuelto.error) return { error: codigoResuelto.error };
+  // A quién le suma esta venta: a la del código, o a la profesional de la que
+  // es paciente aunque no lo diga. El paciente tiene su beneficio solo la
+  // primera vez (lib/pacientesProfesional.ts).
+  const referido = await resolverReferidoVenta(supabase, { codigo: codigoProfesional, idCliente, compradorEsProfesional, dni: dniLimpio, donde: "caja" });
+  if (referido.error) return { error: referido.error };
 
   let resultadoReferido = null as Awaited<ReturnType<typeof calcularBeneficioReferido>> | null;
-  if (codigoResuelto.idCodigo) {
+  if (referido.idCodigo) {
     const idsVariante = items.map((i) => i.idVariante);
     const { data: variantes } = await supabase
       .from("variantes_producto")
@@ -238,7 +269,8 @@ export async function venderPos(
         cantidad: i.cantidad,
         precioUnitario: i.precioUnitario,
         importe: i.precioUnitario * i.cantidad,
-      }))
+      })),
+      { conBeneficioCliente: referido.conBeneficioCliente }
     );
   }
   const descuentoBeneficio = resultadoReferido?.descuentoTotal ?? 0;
@@ -336,7 +368,9 @@ export async function venderPos(
         medio_pago: "MERCADO_PAGO",
         usuario,
         terminal: "POS",
-        id_codigo_profesional: codigoResuelto.idCodigo,
+        // Solo si alguien dijo el código. Si suma por ser su paciente, lo
+        // vuelve a encontrar confirmarCobro por el cliente.
+        id_codigo_profesional: referido.contarUso ? referido.idCodigo : null,
         id_profesional_canje: canje && canje.marcas.length > 0 ? canje.idProfesional : null,
         marcas_canje: canje && canje.marcas.length > 0 ? canje.marcas : null,
         ...datosFactura,
@@ -467,19 +501,21 @@ export async function venderPos(
   if (errorDetalle) return { error: friendlyDbError(errorDetalle) };
 
   let puntosExtra = 0;
-  if (resultadoReferido && codigoResuelto.idCodigo && codigoResuelto.idProfesional) {
+  if (resultadoReferido && referido.idCodigo && referido.idProfesional) {
     const mapaVarianteADetalle = new Map((detalleInsertado ?? []).map((d) => [d.id_variante, d.id_detalle]));
     const resultadoConDetalle = enlazarDetalleVenta(resultadoReferido, mapaVarianteADetalle);
     await registrarReferido(supabase, {
       idVenta: venta.id_venta,
       idCliente,
-      idCodigo: codigoResuelto.idCodigo,
-      idProfesional: codigoResuelto.idProfesional,
+      idCodigo: referido.idCodigo,
+      idProfesional: referido.idProfesional,
       idLocal,
-      usosActuales: codigoResuelto.usosActuales,
+      usosActuales: referido.usosActuales,
       totalVenta: total,
       resultado: resultadoConDetalle,
+      contarUso: referido.contarUso,
     });
+    await cerrarReferidoVenta(supabase, referido, idCliente, resultadoReferido.descuentoTotal + resultadoReferido.puntosExtraMonto);
     if (idCliente) puntosExtra = await puntosExtraPorMonto(supabase, resultadoReferido.puntosExtraMonto);
   }
 

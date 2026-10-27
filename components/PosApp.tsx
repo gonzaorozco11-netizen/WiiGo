@@ -103,7 +103,7 @@ export default function PosApp({
   } | null>(null);
   const [pedidoMp, setPedidoMp] = useState<{ idVenta: string; numero: number; total: number; qrImagen?: string } | null>(null);
   const [cancelandoMp, setCancelandoMp] = useState(false);
-  const [clienteEncontrado, setClienteEncontrado] = useState<{ nombre: string; apellido: string | null; puntos: number } | null>(null);
+  const [clienteEncontrado, setClienteEncontrado] = useState<Awaited<ReturnType<typeof buscarClientePorDni>>>(null);
   const [buscandoCliente, setBuscandoCliente] = useState(false);
   const [profesional, setProfesional] = useState<{
     idProfesional: string;
@@ -142,6 +142,13 @@ export default function PosApp({
         .then(([c, p]) => {
           setClienteEncontrado(c);
           setProfesional(p);
+          // Es paciente de una profesional: se le pone su código solo, así
+          // suma para ella aunque no lo diga (y tiene su beneficio si es la
+          // primera vez). Si el cajero ya escribió otro código, se respeta.
+          if (c?.profesional?.codigo) {
+            const suyo = c.profesional.codigo;
+            setCodigoProfesional((actual) => (actual.trim() ? actual : suyo));
+          }
         })
         .finally(() => setBuscandoCliente(false));
     }, 400);
@@ -647,6 +654,14 @@ export default function PosApp({
         {!buscandoCliente && clienteEncontrado && (
           <p className="text-xs text-emerald-600 font-semibold mt-1.5">
             ✓ {clienteEncontrado.nombre} {clienteEncontrado.apellido ?? ""} · {clienteEncontrado.puntos} puntos
+          </p>
+        )}
+        {!buscandoCliente && clienteEncontrado?.profesional && (
+          <p className="text-xs text-accent bg-accent-tint rounded-lg px-3 py-2 mt-1.5">
+            Paciente de {clienteEncontrado.profesional.nombre} hasta el{" "}
+            {new Date(clienteEncontrado.profesional.hasta).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" })}: la compra
+            suma para {clienteEncontrado.profesional.nombre} aunque no diga el código.{" "}
+            {clienteEncontrado.profesional.conBienvenida ? "Es su primera compra: tiene el descuento del código." : "El descuento del código ya lo usó."}
           </p>
         )}
         {!buscandoCliente && !clienteEncontrado && dni.trim().length >= 6 && (

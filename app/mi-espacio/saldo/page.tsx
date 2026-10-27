@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionProfesional } from "@/lib/profesionalSesion";
 import { saldosPorMarca } from "@/lib/canjesProfesionales";
+import { mesesVinculo } from "@/lib/pacientesProfesional";
+import SumarPaciente from "./SumarPaciente";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +20,7 @@ export default async function SaldoEspacio() {
   const supabase = getSupabaseServerClient();
   const hoy = new Date().toISOString().slice(0, 10);
 
-  const [saldos, refRes, confRes, marcasRes] = await Promise.all([
+  const [saldos, refRes, confRes, marcasRes, pacRes, meses] = await Promise.all([
     saldosPorMarca(supabase, id),
     supabase
       .from("referidos_profesionales")
@@ -37,7 +39,25 @@ export default async function SaldoEspacio() {
       .or(`fecha_hasta.is.null,fecha_hasta.gte.${hoy}`)
       .order("fecha_desde", { ascending: false }),
     supabase.from("marcas").select("id_marca, nombre").eq("estado", "ACTIVA"),
+    supabase
+      .from("pacientes_profesional")
+      .select("id_vinculo, hasta, bienvenida_usada, clientes(nombre, apellido)")
+      .eq("id_profesional", id)
+      .is("cerrado_at", null)
+      .gt("hasta", new Date().toISOString())
+      .order("hasta", { ascending: false })
+      .limit(100),
+    mesesVinculo(supabase),
   ]);
+  const pacientes = (pacRes.data ?? []).map((p) => {
+    const c = p.clientes as unknown as { nombre: string; apellido: string | null } | null;
+    return {
+      id: p.id_vinculo as string,
+      nombre: c ? `${c.nombre}${c.apellido ? ` ${c.apellido}` : ""}` : "Paciente",
+      hasta: p.hasta as string,
+      bienvenida: !p.bienvenida_usada,
+    };
+  });
 
   const conSaldo = saldos.filter((s) => s.saldo > 0);
   const nombrePorMarca = new Map((marcasRes.data ?? []).map((m) => [m.id_marca as string, m.nombre as string]));
@@ -90,6 +110,40 @@ export default async function SaldoEspacio() {
         </div>
 
         <div className="esp-col">
+          {!pacRes.error && (
+            <section className="tarjeta">
+              <h2>
+                Tus pacientes <small>suman {meses} meses cada uno</small>
+              </h2>
+              {pacientes.length === 0 ? (
+                <p className="vacio">Todavía no tenés pacientes registrados. Se suman cuando les armás un pedido, desde acá, o cuando dicen tu código en la caja.</p>
+              ) : (
+                <div className="tabla-env">
+                  <table className="tabla">
+                    <thead>
+                      <tr>
+                        <th>Paciente</th>
+                        <th className="num">Suma hasta</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pacientes.map((p) => (
+                        <tr key={p.id}>
+                          <td>
+                            {p.nombre}
+                            {p.bienvenida && <span className="bienvenida">tiene su descuento de bienvenida</span>}
+                          </td>
+                          <td className="num">{fecha(p.hasta)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <SumarPaciente meses={meses} />
+            </section>
+          )}
+
           <section className="tarjeta">
             <h2>Tu saldo</h2>
             {conSaldo.length === 0 ? (
@@ -132,7 +186,7 @@ export default async function SaldoEspacio() {
                       <tr key={m.nombre}>
                         <td>{m.nombre}</td>
                         <td className="num">
-                          {porcentaje(m.cliente)} {m.tipo === "DESCUENTO" ? "desc." : "en puntos"}
+                          {porcentaje(m.cliente)} {m.tipo === "DESCUENTO" ? "desc." : "en puntos"} la 1.ª vez
                         </td>
                         <td className="num">{porcentaje(m.profesional)}</td>
                       </tr>
@@ -141,7 +195,10 @@ export default async function SaldoEspacio() {
                 </table>
               </div>
             )}
-            <p className="nota">Las demás marcas todavía no participan: si tu paciente compra de esas, no suma.</p>
+            <p className="nota">
+              Tu paciente tiene su beneficio en su primera compra; vos sumás tu % en todo lo que compre mientras sea tu paciente. Las demás marcas todavía
+              no participan: si compra de esas, no suma.
+            </p>
           </section>
         </div>
       </div>

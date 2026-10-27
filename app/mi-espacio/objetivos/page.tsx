@@ -77,7 +77,7 @@ export default async function ObjetivosEspacio() {
             ) : (
               <div className="sugerencias">
                 {sugerencias.map((s) => {
-                  const mensaje = `Te recomiendo ${s.nombre}${s.objetivo ? ` para ${s.objetivo.toLowerCase()}` : ""}. Lo conseguís en ${dondeEsta}.${codigo ? ` Decí mi código ${codigo} en la caja.` : ""}`;
+                  const mensaje = `Te recomiendo ${s.nombre}${s.objetivo ? ` para ${s.objetivo.toLowerCase()}` : ""}. Lo conseguís en ${dondeEsta}.${codigo ? ` Decí mi código ${codigo} en la caja con tu DNI.` : ""}`;
                   return (
                     <article key={s.idProducto} className="sugerencia">
                       <div className="sug-cab">
@@ -97,7 +97,7 @@ export default async function ObjetivosEspacio() {
                         </div>
                       </div>
                       <p className="reparto">
-                        Tu paciente: <b>{pct(s.porcentajeCliente)}</b> · Vos: <b>{pct(s.porcentajeProfesional)}</b>
+                        Tu paciente: <b>{pct(s.porcentajeCliente)}</b> en su primera compra · Vos: <b>{pct(s.porcentajeProfesional)}</b>
                       </p>
                       <p className="sug-msj">«{mensaje}»</p>
                       <a className="boton-wa" href={`https://wa.me/?text=${encodeURIComponent(mensaje)}`} target="_blank" rel="noopener noreferrer">
