@@ -54,7 +54,8 @@ export default async function PosPage({ searchParams }: { searchParams: Promise<
 
   const [localesRes, productosRes, variantesRes, marcasRes, stockRes, configRes] = await Promise.all([
     supabase.from("locales").select("*").eq("estado", "ACTIVO").order("nombre", { ascending: true }),
-    supabase.from("productos").select("*").eq("estado", "ACTIVO"),
+    // Sin precio todavía (lo pone la marca y lo aprueba WiiGo) no se vende.
+    supabase.from("productos").select("*").eq("estado", "ACTIVO").gt("precio_venta", 0),
     supabase.from("variantes_producto").select("*").eq("estado", "ACTIVO"),
     supabase.from("marcas").select("*").eq("estado", "ACTIVA"),
     supabase.from("stock").select("*"),

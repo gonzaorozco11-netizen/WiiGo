@@ -37,7 +37,8 @@ export default async function SelfCheckoutPage({ params }: { params: Promise<{ i
   // contratos. Todo eso se quedaba en el HTML, al alcance de un cliente o de la
   // competencia.
   const [productosRes, variantesRes, marcasRes, stockRes] = await Promise.all([
-    supabase.from("productos").select(COLUMNAS_PRODUCTO_PUBLICO).eq("estado", "ACTIVO"),
+    // Sin precio todavía (lo pone la marca y lo aprueba WiiGo) no se muestra.
+    supabase.from("productos").select(COLUMNAS_PRODUCTO_PUBLICO).eq("estado", "ACTIVO").gt("precio_venta", 0),
     supabase.from("variantes_producto").select(COLUMNAS_VARIANTE_TOTEM).eq("estado", "ACTIVO"),
     traerMarcasPublicas(supabase),
     supabase.from("stock").select("id_variante,cantidad").eq("id_local", idLocal),

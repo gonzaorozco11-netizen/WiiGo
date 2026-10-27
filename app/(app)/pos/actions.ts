@@ -218,6 +218,8 @@ export async function venderPos(
   receptorFactura?: { tipo: "CONSUMIDOR_FINAL" | "DNI" | "CUIT"; numero: string }
 ): Promise<{ error: string | null; venta?: ResultadoVenta; pedido?: ResultadoPedidoMp }> {
   if (items.length === 0) return { error: "El carrito está vacío" };
+  // Un producto recién cargado puede no tener precio todavía: no se vende a $0.
+  if (items.some((i) => !(i.precioUnitario > 0))) return { error: "Hay un producto sin precio. Tiene que tener precio aprobado antes de venderlo." };
 
   try {
     const supabase = getSupabaseServerClient();

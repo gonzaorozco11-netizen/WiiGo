@@ -488,6 +488,11 @@ export async function enviarPedido(datos: {
       precio_efectivo: p ? precioDe(p, v, "EFECTIVO") : Number(v.precio_efectivo ?? v.precio_venta ?? 0),
     };
   });
+  // Un producto sin precio todavía no se puede pedir (no se ve en el catálogo, pero por las dudas).
+  if (filas.some((f) => !(f.precio_lista > 0))) {
+    await supabase.from("pedidos_profesional").delete().eq("id_pedido", pedido.id_pedido);
+    return { error: "Algún producto todavía no tiene precio. Sacalo del pedido." };
+  }
   const { error: errorItems } = await supabase.from("pedidos_profesional_items").insert(filas);
   if (errorItems) {
     await supabase.from("pedidos_profesional").delete().eq("id_pedido", pedido.id_pedido);

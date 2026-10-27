@@ -60,7 +60,8 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
     // Columnas explícitas: con "*" viajaban al navegador el royalty, el fee de
     // ingreso, el plan y el contacto de cada marca. Esta pantalla es pública.
     traerMarcasPublicas(supabase, { soloVisiblesEnAsesor: true }),
-    supabase.from("productos").select(COLUMNAS_PRODUCTO_PUBLICO).eq("estado", "ACTIVO").eq("visible_asesor", true),
+    // Sin precio todavía (lo pone la marca y lo aprueba WiiGo) no se muestra.
+    supabase.from("productos").select(COLUMNAS_PRODUCTO_PUBLICO).eq("estado", "ACTIVO").eq("visible_asesor", true).gt("precio_venta", 0),
     supabase.from("variantes_producto").select(COLUMNAS_VARIANTE_PUBLICA).eq("estado", "ACTIVO"),
     supabase.from("subcategorias").select("*").eq("estado", "ACTIVA"),
     supabase.from("profesionales").select(COLUMNAS_PROFESIONAL_PUBLICO).eq("estado", "ACTIVO").eq("publicado", true).order("orden", { ascending: true }),

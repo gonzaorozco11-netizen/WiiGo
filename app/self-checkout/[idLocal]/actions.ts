@@ -218,6 +218,11 @@ export async function confirmarPedido(
         },
         medioPago === "EFECTIVO" ? "EFECTIVO" : "OTRO"
       );
+      // Un producto recién cargado puede no tener precio todavía (lo pone la
+      // marca y lo aprueba WiiGo): no se cobra a $0.
+      if (!(precioReal > 0)) {
+        return { error: "Uno de los productos todavía no tiene precio. Pedí ayuda en la caja." };
+      }
 
       items.push({
         idVariante: itemPedido.idVariante,
