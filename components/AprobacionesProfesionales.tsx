@@ -81,7 +81,10 @@ function TarjetaCambio({ cambio, esAdmin }: { cambio: CambioParaAprobar; esAdmin
         (esLista ? (
           <ul className="px-4 py-3 border-t border-neutral-100 flex flex-col gap-1 text-sm text-neutral-800">
             {cambio.filas.map((f, i) => (
-              <li key={i}>· {f.ahora}</li>
+              <li key={i}>
+                · {f.ahora}
+                {f.nuevo && <span className="ml-1.5 text-[11px] font-bold text-amber-800 bg-amber-100 rounded-full px-2 py-0.5">Nuevo</span>}
+              </li>
             ))}
             <li className="text-xs text-neutral-500 mt-1">Esta lista reemplaza a la que tiene hoy.</li>
           </ul>
@@ -96,6 +99,8 @@ function TarjetaCambio({ cambio, esAdmin }: { cambio: CambioParaAprobar; esAdmin
             ))}
           </div>
         ))}
+
+      {cambio.aviso && <p className="mx-4 mb-3 text-[13px] leading-snug text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">{cambio.aviso}</p>}
 
       <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-t border-neutral-100 bg-neutral-50">
         {hecho ? (

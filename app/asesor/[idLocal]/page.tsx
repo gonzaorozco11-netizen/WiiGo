@@ -16,9 +16,11 @@ import {
   COLUMNAS_PROFESIONAL_PUBLICO,
   traerMarcasPublicas,
 } from "@/lib/supabase";
+import QRCode from "qrcode";
 import { fetchContenidoAsesor } from "@/lib/contenidoAsesor";
 import { profesionalesDestacadas } from "@/lib/semanaProfesional";
-import AsesorApp from "@/components/AsesorApp";
+import { REDES, leerRedes, textoDeRed } from "@/lib/redesProfesional";
+import AsesorApp, { type RedEnFicha } from "@/components/AsesorApp";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +55,7 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
     miembrosRes,
     consultoriosRes,
     destacadas,
+    redesRes,
   ] = await Promise.all([
     // Columnas explícitas: con "*" viajaban al navegador el royalty, el fee de
     // ingreso, el plan y el contacto de cada marca. Esta pantalla es pública.
@@ -67,7 +70,9 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
     supabase.from("filminas_profesional").select("*").eq("visible", true).order("orden", { ascending: true }),
     supabase.from("galeria_profesional").select("id_foto, id_profesional, url, publico, orden"),
     supabase.from("videos_profesional").select("id_video, id_profesional, url, titulo"),
-    supabase.from("formacion_profesional").select("*").eq("publico", true).order("anio", { ascending: false }),
+    // Por el orden que dejó ella; la ficha después lo ordena por año (los que
+    // no tienen año quedan arriba, en este orden).
+    supabase.from("formacion_profesional").select("*").eq("publico", true).order("orden", { ascending: true }),
     supabase.from("trayectoria_profesional").select("*").eq("publico", true).order("orden", { ascending: true }),
     fetchContenidoAsesor(supabase),
     // Aparte de la lista: si todavía no se corrió sql/profesionales-consultorios.sql
@@ -80,6 +85,8 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
       .not("id_consultorio", "is", null),
     supabase.from("consultorios").select("id_consultorio, nombre, link_reserva, link_reserva_online").eq("estado", "ACTIVO"),
     profesionalesDestacadas(supabase).catch(() => new Set<string>()),
+    // Aparte también: sin sql/profesionales-redes.sql falla sola.
+    supabase.from("profesionales").select("id_profesional, redes").eq("estado", "ACTIVO").eq("publicado", true).not("redes", "is", null),
   ]);
 
   // Las fichas destacadas (las que más pacientes trajeron este mes) van
@@ -191,6 +198,24 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
     (trayectoriaPorProfesional[t.id_profesional] ??= []).push(t);
   });
 
+  // Desde la pantalla no se abren links (el cliente se iría de WiiGo): va el
+  // usuario y un QR para escanear con el celular. El QR se arma acá, en SVG,
+  // así la pantalla no carga nada más.
+  const redesPorProfesional: Record<string, RedEnFicha[]> = {};
+  if (!redesRes.error) {
+    for (const fila of (redesRes.data ?? []) as { id_profesional: string; redes: unknown }[]) {
+      const redes = leerRedes(fila.redes);
+      const lista: RedEnFicha[] = [];
+      for (const r of REDES) {
+        const link = redes[r.clave];
+        if (!link) continue;
+        const qr = await QRCode.toString(link, { type: "svg", margin: 0, color: { dark: "#2d2d2d", light: "#0000" } }).catch(() => null);
+        if (qr) lista.push({ clave: r.clave, nombre: r.nombre, texto: textoDeRed(r.clave, link), qr });
+      }
+      if (lista.length > 0) redesPorProfesional[fila.id_profesional] = lista;
+    }
+  }
+
   return (
     <AsesorApp
       local={local as Local}
@@ -206,6 +231,7 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
       conocemePorProfesional={conocemePorProfesional}
       formacionPorProfesional={formacionPorProfesional}
       trayectoriaPorProfesional={trayectoriaPorProfesional}
+      redesPorProfesional={redesPorProfesional}
       objetivos={contenido.objetivosGlobales}
       filtros={contenido.filtrosGlobales}
       fichaPorProducto={contenido.fichaPorProducto}

@@ -11,6 +11,9 @@ import {
   CAMPOS_DATOS,
   CAMPOS_NUMERICOS,
   QUE_HIZO,
+  limpiarNombre,
+  mismoNombre,
+  ordenarPorAnio,
   type CampoDatos,
   type TipoCambio,
   type ItemFormacion,
@@ -18,6 +21,7 @@ import {
   type ItemVideo,
   type ItemFortaleza,
 } from "@/lib/cambiosProfesional";
+import { leerRedes, mismasRedes, normalizarRedes } from "@/lib/redesProfesional";
 
 // Acciones del espacio de cada profesional.
 //
@@ -246,6 +250,8 @@ export async function enviarLista(tipo: ListaTipo, items: unknown[]): Promise<Re
   const id = sesion.idProfesional;
   let valor: unknown;
 
+  // Formación y recorrido se guardan ya ordenados por año, que es como los
+  // lee el cliente: arriba lo primero que hizo, abajo lo de hoy.
   if (tipo === "FORMACION") {
     const lista: ItemFormacion[] = [];
     for (const i of items as Record<string, unknown>[]) {
@@ -253,15 +259,18 @@ export async function enviarLista(tipo: ListaTipo, items: unknown[]): Promise<Re
       if (!titulo) continue;
       lista.push({ titulo, institucion: texto(i.institucion, 120), anio: anio(i.anio) });
     }
-    valor = lista;
+    valor = ordenarPorAnio(lista, (f) => f.anio);
   } else if (tipo === "TRAYECTORIA") {
     const lista: ItemTrayectoria[] = [];
     for (const i of items as Record<string, unknown>[]) {
       const titulo = texto(i.titulo, 120);
       if (!titulo) continue;
-      lista.push({ titulo, lugar: texto(i.lugar, 120), anio_desde: anio(i.anio_desde), anio_hasta: anio(i.anio_hasta) });
+      const desde = anio(i.anio_desde);
+      const hasta = desde ? anio(i.anio_hasta) : null;
+      if (desde && hasta && hasta < desde) return { error: `«${titulo}»: el año de «hasta» es anterior al de «desde».` };
+      lista.push({ titulo, lugar: texto(i.lugar, 120), anio_desde: desde, anio_hasta: hasta });
     }
-    valor = lista;
+    valor = ordenarPorAnio(lista, (t) => t.anio_desde);
   } else if (tipo === "VIDEOS") {
     const lista: ItemVideo[] = [];
     for (const i of items as Record<string, unknown>[]) {
@@ -274,15 +283,27 @@ export async function enviarLista(tipo: ListaTipo, items: unknown[]): Promise<Re
     }
     valor = lista;
   } else if (tipo === "FORTALEZAS") {
-    const pedidas = (items as Record<string, unknown>[]).map((i) => ({ id_fortaleza: String(i.id_fortaleza ?? ""), principal: i.principal === true }));
+    const pedidas = (items as Record<string, unknown>[])
+      .map((i) => ({ id: i.id_fortaleza ? String(i.id_fortaleza) : null, nuevo: limpiarNombre(i.nuevo), principal: i.principal === true }))
+      .filter((p) => p.id || p.nuevo);
     if (pedidas.length > 3) return { error: "Elegí hasta 3." };
-    const { data: catalogo } = await supabase
-      .from("fortalezas_profesional")
-      .select("id_fortaleza")
-      .eq("estado", "ACTIVA")
-      .in("id_fortaleza", pedidas.map((p) => p.id_fortaleza));
-    const validas = new Set((catalogo ?? []).map((c) => c.id_fortaleza as string));
-    const lista: ItemFortaleza[] = pedidas.filter((p) => validas.has(p.id_fortaleza));
+    if (pedidas.some((p) => !p.id && p.nuevo.length < 3)) return { error: "Escribí un poco más en la que sumaste." };
+    const { data: catalogo } = await supabase.from("fortalezas_profesional").select("id_fortaleza, nombre").eq("estado", "ACTIVA");
+    const lista: ItemFortaleza[] = [];
+    for (const p of pedidas) {
+      // Si escribió una que ya está en la lista, va la de la lista.
+      const deLista = p.id
+        ? (catalogo ?? []).find((c) => c.id_fortaleza === p.id)
+        : (catalogo ?? []).find((c) => mismoNombre(c.nombre as string, p.nuevo));
+      const item: ItemFortaleza = deLista
+        ? { id_fortaleza: deLista.id_fortaleza as string, principal: p.principal }
+        : p.id
+          ? { id_fortaleza: null, principal: p.principal }
+          : { id_fortaleza: null, nuevo: p.nuevo, principal: p.principal };
+      if (!item.id_fortaleza && !item.nuevo) continue;
+      const repetida = lista.some((x) => (item.id_fortaleza ? x.id_fortaleza === item.id_fortaleza : x.nuevo && mismoNombre(x.nuevo, item.nuevo ?? "")));
+      if (!repetida) lista.push(item);
+    }
     // Una sola principal: si marcó más de una, queda la primera.
     let hayPrincipal = false;
     for (const f of lista) {
@@ -291,10 +312,7 @@ export async function enviarLista(tipo: ListaTipo, items: unknown[]): Promise<Re
     }
     valor = lista;
   } else if (tipo === "OBJETIVOS") {
-    const pedidos = (items as unknown[]).map(String);
-    const { data: catalogo } = await supabase.from("objetivos").select("id_objetivo").eq("estado", "ACTIVO").in("id_objetivo", pedidos);
-    const validos = new Set((catalogo ?? []).map((c) => c.id_objetivo as string));
-    valor = pedidos.filter((p) => validos.has(p));
+    return enviarObjetivos((items as unknown[]).map(String), []);
   } else {
     return { error: "No se puede cambiar eso desde acá." };
   }
@@ -302,6 +320,61 @@ export async function enviarLista(tipo: ListaTipo, items: unknown[]): Promise<Re
   const r = await dejarPendiente(supabase, id, tipo, valor, null);
   if (r.error) return r;
   return terminar(supabase, id, tipo);
+}
+
+/**
+ * En qué ayuda: los objetivos de la lista y hasta 3 que escriba ella. Los que
+ * escribe esperan a Gonzalo como todo lo demás; si ya hay uno con ese nombre,
+ * se usa ese y no se crea otro igual.
+ */
+export async function enviarObjetivos(ids: string[], nuevos: string[]): Promise<Resultado> {
+  const sesion = await obtenerSesionProfesional();
+  if (!sesion) return { error: SESION_CERRADA };
+  if (!Array.isArray(ids) || !Array.isArray(nuevos) || ids.length > 30) return { error: "Son demasiados. Dejá los más importantes." };
+  const supabase = getSupabaseServerClient();
+
+  const { data: catalogo } = await supabase.from("objetivos").select("id_objetivo, nombre").eq("estado", "ACTIVO");
+  const lista = catalogo ?? [];
+  const elegidos = new Set(ids.map(String).filter((i) => lista.some((o) => o.id_objetivo === i)));
+  const propios: string[] = [];
+  for (const crudo of nuevos) {
+    const nombre = limpiarNombre(crudo);
+    if (!nombre) continue;
+    if (nombre.length < 3) return { error: `«${nombre}» es muy corto. Escribí un poco más.` };
+    const igual = lista.find((o) => mismoNombre(o.nombre as string, nombre));
+    if (igual) elegidos.add(igual.id_objetivo as string);
+    else if (!propios.some((p) => mismoNombre(p, nombre))) propios.push(nombre);
+  }
+  if (propios.length > 3) return { error: "Sumá hasta 3 objetivos nuevos por vez." };
+
+  const r = await dejarPendiente(supabase, sesion.idProfesional, "OBJETIVOS", { ids: [...elegidos], nuevos: propios }, null);
+  if (r.error) return r;
+  return terminar(supabase, sesion.idProfesional, "OBJETIVOS");
+}
+
+/** Sus redes: salen en la pantalla con un QR, así que también esperan a Gonzalo. */
+export async function enviarRedes(escritas: Record<string, string>): Promise<Resultado> {
+  const sesion = await obtenerSesionProfesional();
+  if (!sesion) return { error: SESION_CERRADA };
+  const { redes, error } = normalizarRedes(escritas ?? {});
+  if (error) return { error };
+  const supabase = getSupabaseServerClient();
+
+  // Sin sql/profesionales-redes.sql corrido no hay dónde aplicarlas.
+  const { data: actual, error: errorActual } = await supabase.from("profesionales").select("redes").eq("id_profesional", sesion.idProfesional).maybeSingle();
+  if (errorActual) return { error: FALTA_SQL };
+  const antes = leerRedes(actual?.redes);
+
+  if (mismasRedes(redes, antes)) {
+    // Lo que había mandado coincide con lo que ya está: no queda nada esperando.
+    await supabase.from("cambios_profesional").delete().eq("id_profesional", sesion.idProfesional).eq("tipo", "REDES").in("estado", ["PENDIENTE", "CORREGIR"]);
+    revalidatePath("/mi-espacio", "layout");
+    return { error: "No cambiaste nada: ya está así en tu ficha." };
+  }
+
+  const r = await dejarPendiente(supabase, sesion.idProfesional, "REDES", redes, antes);
+  if (r.error) return r;
+  return terminar(supabase, sesion.idProfesional, "REDES");
 }
 
 // ---------- Pedidos para sus pacientes ----------

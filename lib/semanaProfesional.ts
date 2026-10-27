@@ -137,7 +137,8 @@ export async function semanaProfesional(supabase: SupabaseClient, idProfesional:
   } else if (fichas > fichasSemanaPasada) {
     elogio = `¡Vas muy bien, ${nombre}! Ya te miraron más que en toda la semana pasada.`;
   } else {
-    elogio = `${fichas === 1 ? "Una persona abrió" : `${fichas} personas abrieron`} tu ficha esta semana. Completá lo que te falta para que se vea todavía mejor.`;
+    // Veces, no personas: la pantalla no sabe quién toca.
+    elogio = `Tu ficha se abrió ${fichas === 1 ? "1 vez" : `${fichas} veces`} esta semana. Completá lo que te falta para que se vea todavía mejor.`;
   }
 
   return {

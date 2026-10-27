@@ -71,8 +71,11 @@ import {
   crearUsuarioProfesional,
   cambiarClaveUsuarioProfesional,
   cambiarEstadoUsuarioProfesional,
+  redesDeProfesional,
+  guardarRedesProfesional,
   type UsuarioDeProfesional,
 } from "@/app/(app)/profesionales/actions";
+import { REDES, textoDeRed, type ClaveRed } from "@/lib/redesProfesional";
 
 type Codigo = {
   id_codigo: string;
@@ -2428,6 +2431,13 @@ function FichaProfesional({
                   <SeccionVideos idProfesional={id} />
                 </GuardaSola>
               </Tarjeta>
+              <div className="mt-4">
+                <Tarjeta titulo="Redes" bajada="Salen en su ficha de la pantalla con un QR, para que el cliente la siga desde su celular. Se guardan con su botón.">
+                  <GuardaSola>
+                    <SeccionRedes idProfesional={id} />
+                  </GuardaSola>
+                </Tarjeta>
+              </div>
             </div>
 
             {/* ---------- historia ---------- */}
@@ -3061,6 +3071,66 @@ function SeccionVideos({ idProfesional }: { idProfesional: string }) {
           </button>
         ))}
       <p className="text-[11px] text-neutral-400 mt-1">Un link de YouTube, Instagram, etc. — no se sube ningún archivo de video.</p>
+    </div>
+  );
+}
+
+// Las mismas redes que ella carga desde su espacio; acá las carga Gonzalo
+// directo, sin pasar por Aprobaciones.
+function SeccionRedes({ idProfesional }: { idProfesional: string }) {
+  const [valores, setValores] = useState<Record<ClaveRed, string> | null>(null);
+  const [disponible, setDisponible] = useState(true);
+  const [guardando, setGuardando] = useState(false);
+  const [mensaje, setMensaje] = useState<{ ok: boolean; texto: string } | null>(null);
+
+  useEffect(() => {
+    let vigente = true;
+    redesDeProfesional(idProfesional)
+      .then((r) => {
+        if (!vigente) return;
+        setDisponible(r.disponible);
+        setValores(Object.fromEntries(REDES.map((x) => [x.clave, r.redes[x.clave] ? textoDeRed(x.clave, r.redes[x.clave] as string) : ""])) as Record<ClaveRed, string>);
+      })
+      .catch(() => vigente && setDisponible(false));
+    return () => {
+      vigente = false;
+    };
+  }, [idProfesional]);
+
+  function guardar() {
+    if (!valores) return;
+    setMensaje(null);
+    setGuardando(true);
+    guardarRedesProfesional(idProfesional, valores)
+      .then((r) => setMensaje(r.error ? { ok: false, texto: r.error } : { ok: true, texto: "✓ Redes guardadas" }))
+      .finally(() => setGuardando(false));
+  }
+
+  if (!disponible) return <p className="text-xs text-amber-800 bg-amber-50 rounded-lg px-3 py-2">Falta correr sql/profesionales-redes.sql en Supabase.</p>;
+  if (!valores) return <p className="text-xs text-neutral-400">Cargando...</p>;
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
+        {REDES.map((r) => (
+          <Campo key={r.clave} label={r.nombre}>
+            <input
+              value={valores[r.clave]}
+              onChange={(e) => setValores({ ...valores, [r.clave]: e.target.value })}
+              placeholder={r.ejemplo}
+              autoCapitalize="none"
+              spellCheck={false}
+              className={INPUT}
+            />
+          </Campo>
+        ))}
+      </div>
+      <div className="flex items-center gap-3 flex-wrap">
+        <button type="button" onClick={guardar} disabled={guardando} className="text-sm font-bold text-white bg-accent hover:bg-accent-dark disabled:opacity-40 px-4 py-2 rounded-lg">
+          {guardando ? "Guardando..." : "Guardar redes"}
+        </button>
+        {mensaje && <span className={`text-sm font-semibold ${mensaje.ok ? "text-emerald-700" : "text-red-600"}`}>{mensaje.texto}</span>}
+      </div>
     </div>
   );
 }

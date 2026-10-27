@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { leerRedes } from "@/lib/redesProfesional";
 
 // Los cambios que una profesional manda desde su espacio y que esperan la
 // aprobación de Gonzalo antes de salir en la pantalla del local (tabla
@@ -8,7 +9,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 // bandeja de Aprobaciones para mostrarlo y aplicarlo. Por eso vive acá y no en
 // un archivo de server actions.
 
-export type TipoCambio = "DATOS" | "FOTO_PERFIL" | "FOTO" | "FORMACION" | "TRAYECTORIA" | "VIDEOS" | "FORTALEZAS" | "OBJETIVOS";
+export type TipoCambio = "DATOS" | "FOTO_PERFIL" | "FOTO" | "FORMACION" | "TRAYECTORIA" | "VIDEOS" | "FORTALEZAS" | "OBJETIVOS" | "REDES";
 
 // Los únicos campos de su ficha que puede cambiar ella. Lo demás (publicada,
 // código, links de turnos, consultorio, observaciones) lo maneja WiiGo.
@@ -35,12 +36,51 @@ export const QUE_HIZO: Record<TipoCambio, string> = {
   VIDEOS: "Cambió sus videos",
   FORTALEZAS: "Cambió en qué se destaca",
   OBJETIVOS: "Cambió en qué ayuda",
+  REDES: "Cambió sus redes",
 };
 
 export type ItemFormacion = { titulo: string; institucion: string | null; anio: number | null };
 export type ItemTrayectoria = { titulo: string; lugar: string | null; anio_desde: number | null; anio_hasta: number | null };
 export type ItemVideo = { titulo: string | null; url: string };
-export type ItemFortaleza = { id_fortaleza: string; principal: boolean };
+// Una fortaleza de la lista (id) o una que escribió ella (nuevo): esa se suma
+// a la lista recién cuando Gonzalo la aprueba.
+export type ItemFortaleza = { id_fortaleza: string | null; nuevo?: string | null; principal: boolean };
+// En qué ayuda: los objetivos de la lista y los que escribió ella.
+export type ValorObjetivos = { ids: string[]; nuevos: string[] };
+
+/** Los pedidos viejos guardaban solo la lista de ids. */
+export function leerObjetivos(valor: unknown): ValorObjetivos {
+  if (Array.isArray(valor)) return { ids: valor.map(String), nuevos: [] };
+  const v = (valor ?? {}) as { ids?: unknown; nuevos?: unknown };
+  return {
+    ids: Array.isArray(v.ids) ? v.ids.map(String) : [],
+    nuevos: Array.isArray(v.nuevos) ? v.nuevos.map(String) : [],
+  };
+}
+
+/** Un nombre escrito a mano, prolijo: sin espacios de más y con mayúscula al principio. */
+export function limpiarNombre(v: unknown, maximo = 60): string {
+  const s = String(v ?? "").replace(/\s+/g, " ").trim().slice(0, maximo);
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/** "Energía" y "energia " son el mismo objetivo: así no se duplican al aprobar. */
+export function mismoNombre(a: string, b: string) {
+  const plano = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+  return plano(a) === plano(b);
+}
+
+/**
+ * Arriba lo más viejo, abajo lo de hoy, como lo muestra la pantalla. Lo que no
+ * tiene año va primero (la pantalla lo ordena igual) y entre ellos se respeta
+ * el orden en que estaban.
+ */
+export function ordenarPorAnio<T>(lista: T[], anio: (x: T) => number | null): T[] {
+  return lista
+    .map((x, i) => ({ x, i }))
+    .sort((a, b) => (anio(a.x) ?? -1) - (anio(b.x) ?? -1) || a.i - b.i)
+    .map((o) => o.x);
+}
 
 /**
  * Aplica un cambio aprobado sobre la ficha real. Devuelve el error en texto
@@ -97,7 +137,7 @@ export async function aplicarCambioProfesional(
     if (items.length === 0) return null;
     const { error } = await supabase
       .from("formacion_profesional")
-      .insert(items.map((f) => ({ id_profesional: idProfesional, titulo: f.titulo, institucion: f.institucion, anio: f.anio, publico: true })));
+      .insert(items.map((f, i) => ({ id_profesional: idProfesional, titulo: f.titulo, institucion: f.institucion, anio: f.anio, orden: i, publico: true })));
     return error?.message ?? null;
   }
 
@@ -129,23 +169,67 @@ export async function aplicarCambioProfesional(
     return error?.message ?? null;
   }
 
+  // Las nuevas se crean antes de borrar nada: si falla, su ficha queda como estaba.
   if (tipo === "FORTALEZAS") {
     const items = valor as ItemFortaleza[];
+    const filas: { id_fortaleza: string; principal: boolean }[] = [];
+    const nuevas = items.filter((f) => !f.id_fortaleza && f.nuevo);
+    const { data: catalogo } = nuevas.length
+      ? await supabase.from("fortalezas_profesional").select("id_fortaleza, nombre").eq("estado", "ACTIVA")
+      : { data: [] as { id_fortaleza: string; nombre: string }[] };
+    for (const f of items) {
+      let id = f.id_fortaleza;
+      if (!id && f.nuevo) {
+        const igual = (catalogo ?? []).find((c) => mismoNombre(c.nombre as string, f.nuevo as string));
+        if (igual) id = igual.id_fortaleza as string;
+        else {
+          const { data, error } = await supabase.from("fortalezas_profesional").insert({ nombre: f.nuevo, estado: "ACTIVA" }).select("id_fortaleza").single();
+          if (error) return error.message;
+          id = data.id_fortaleza as string;
+        }
+      }
+      if (id && !filas.some((x) => x.id_fortaleza === id)) filas.push({ id_fortaleza: id, principal: f.principal });
+    }
     await supabase.from("profesional_fortalezas").delete().eq("id_profesional", idProfesional);
-    if (items.length === 0) return null;
-    const { error } = await supabase
-      .from("profesional_fortalezas")
-      .insert(items.map((f) => ({ id_profesional: idProfesional, id_fortaleza: f.id_fortaleza, principal: f.principal })));
+    if (filas.length === 0) return null;
+    const { error } = await supabase.from("profesional_fortalezas").insert(filas.map((f) => ({ id_profesional: idProfesional, ...f })));
     return error?.message ?? null;
   }
 
+  // Un objetivo nuevo se suma a la lista de WiiGo. En "¿Cuál es tu objetivo?"
+  // aparece recién cuando tiene productos asignados en Catálogo asesor.
   if (tipo === "OBJETIVOS") {
-    const ids = valor as string[];
+    const { ids, nuevos } = leerObjetivos(valor);
+    const todos = [...ids];
+    if (nuevos.length > 0) {
+      const { data: catalogo } = await supabase.from("objetivos").select("id_objetivo, nombre, orden, estado");
+      let orden = Math.max(0, ...(catalogo ?? []).map((o) => (o.orden as number | null) ?? 0)) + 1;
+      for (const nombre of nuevos) {
+        const igual = (catalogo ?? []).find((o) => o.estado === "ACTIVO" && mismoNombre(o.nombre as string, nombre));
+        if (igual) {
+          todos.push(igual.id_objetivo as string);
+          continue;
+        }
+        const { data, error } = await supabase.from("objetivos").insert({ nombre, estado: "ACTIVO", orden: orden++ }).select("id_objetivo").single();
+        if (error) return error.message;
+        todos.push(data.id_objetivo as string);
+      }
+    }
+    const unicos = [...new Set(todos)];
     await supabase.from("profesional_objetivos").delete().eq("id_profesional", idProfesional);
-    if (ids.length === 0) return null;
+    if (unicos.length === 0) return null;
     const { error } = await supabase
       .from("profesional_objetivos")
-      .insert(ids.map((id) => ({ id_profesional: idProfesional, id_objetivo: id })));
+      .insert(unicos.map((id) => ({ id_profesional: idProfesional, id_objetivo: id })));
+    return error?.message ?? null;
+  }
+
+  if (tipo === "REDES") {
+    const redes = leerRedes(valor);
+    const { error } = await supabase
+      .from("profesionales")
+      .update({ redes: Object.keys(redes).length > 0 ? redes : null })
+      .eq("id_profesional", idProfesional);
     return error?.message ?? null;
   }
 

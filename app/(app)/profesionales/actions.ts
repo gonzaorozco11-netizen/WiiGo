@@ -12,6 +12,8 @@ import {
   aplicarCambioProfesional,
   CAMPOS_DATOS,
   QUE_HIZO,
+  leerObjetivos,
+  mismoNombre,
   type CampoDatos,
   type TipoCambio,
   type ItemFormacion,
@@ -19,6 +21,7 @@ import {
   type ItemVideo,
   type ItemFortaleza,
 } from "@/lib/cambiosProfesional";
+import { REDES, leerRedes, normalizarRedes, textoDeRed, type Redes } from "@/lib/redesProfesional";
 import { reglasProfesionales, PARAM_OBJETIVO_SEMANAL, PARAM_PACIENTES_DESTACADA } from "@/lib/semanaProfesional";
 import { mesesVinculo, PARAM_MESES_VINCULO } from "@/lib/pacientesProfesional";
 import { fechaHoraArgentina } from "@/lib/horarios";
@@ -1398,9 +1401,12 @@ export type CambioParaAprobar = {
   que: string;
   fecha: string;
   profesional: { id: string; nombre: string; foto: string | null };
-  // Lo que se muestra en la bandeja, ya en palabras: campo por campo, antes y ahora.
-  filas: { campo: string; antes: string; ahora: string }[];
+  // Lo que se muestra en la bandeja, ya en palabras: campo por campo, antes y
+  // ahora. `nuevo`: lo escribió ella y no está en la lista de WiiGo.
+  filas: { campo: string; antes: string; ahora: string; nuevo?: boolean }[];
   fotoNueva: string | null;
+  // Algo que Gonzalo tiene que saber antes de aprobar.
+  aviso: string | null;
 };
 
 const textoDe = (v: unknown) => (v === null || v === undefined || v === "" ? "—" : String(v));
@@ -1432,6 +1438,7 @@ export async function listarCambiosProfesionales(): Promise<CambioParaAprobar[]>
     const p = prof.get(c.id_profesional as string);
     let filas: CambioParaAprobar["filas"] = [];
     let fotoNueva: string | null = null;
+    let aviso: string | null = null;
 
     if (tipo === "DATOS") {
       const n = (nuevo ?? {}) as Record<string, unknown>;
@@ -1456,13 +1463,37 @@ export async function listarCambiosProfesionales(): Promise<CambioParaAprobar[]>
     } else if (tipo === "VIDEOS") {
       filas = (nuevo as ItemVideo[]).map((v) => ({ campo: "Video", antes: "", ahora: [v.titulo, v.url].filter(Boolean).join(" · ") }));
     } else if (tipo === "FORTALEZAS") {
-      filas = (nuevo as ItemFortaleza[]).map((f) => ({
+      const items = nuevo as ItemFortaleza[];
+      filas = items.map((f) => ({
         campo: "Se destaca en",
         antes: "",
-        ahora: `${nombreFortaleza.get(f.id_fortaleza) ?? "—"}${f.principal ? " (principal)" : ""}`,
+        ahora: `${(f.id_fortaleza ? nombreFortaleza.get(f.id_fortaleza) : f.nuevo) ?? "—"}${f.principal ? " (principal)" : ""}`,
+        nuevo: !f.id_fortaleza,
       }));
+      const nuevas = items.filter((f) => !f.id_fortaleza && f.nuevo).map((f) => `«${f.nuevo}»`);
+      if (nuevas.length > 0) {
+        aviso = `${nuevas.join(", ")} no ${nuevas.length === 1 ? "está" : "están"} en la lista. Si lo aprobás, se suma a la lista de fortalezas y las otras profesionales también la van a poder elegir.`;
+      }
     } else if (tipo === "OBJETIVOS") {
-      filas = (nuevo as string[]).map((id) => ({ campo: "Ayuda en", antes: "", ahora: nombreObjetivo.get(id) ?? "—" }));
+      const { ids, nuevos } = leerObjetivos(nuevo);
+      filas = [
+        ...ids.map((id) => ({ campo: "Ayuda en", antes: "", ahora: nombreObjetivo.get(id) ?? "—" })),
+        ...nuevos.map((n) => ({ campo: "Ayuda en", antes: "", ahora: n, nuevo: true })),
+      ];
+      // Si entre que lo mandó y hoy Gonzalo creó uno igual, al aprobar se usa ese.
+      const deVerdadNuevos = nuevos.filter((n) => ![...nombreObjetivo.values()].some((o) => mismoNombre(o, n))).map((n) => `«${n}»`);
+      if (deVerdadNuevos.length > 0) {
+        aviso = `${deVerdadNuevos.join(", ")} no ${deVerdadNuevos.length === 1 ? "está" : "están"} en tu lista de objetivos. Si lo aprobás, se suma a la lista de WiiGo y sale en su ficha al toque. En «¿Cuál es tu objetivo?» de la pantalla aparece recién cuando le asignes productos en Catálogo asesor. Si ya tenés uno parecido, pedile que use ese.`;
+      }
+    } else if (tipo === "REDES") {
+      const n = leerRedes(nuevo);
+      const a = leerRedes(anterior);
+      filas = REDES.filter((r) => n[r.clave] || a[r.clave]).map((r) => ({
+        campo: r.nombre,
+        antes: a[r.clave] ? textoDeRed(r.clave, a[r.clave] as string) : "—",
+        ahora: n[r.clave] ? textoDeRed(r.clave, n[r.clave] as string) : "—",
+      }));
+      aviso = "Mirá que sean sus cuentas profesionales: en la pantalla salen con un QR para que el cliente la siga.";
     }
 
     return {
@@ -1477,8 +1508,36 @@ export async function listarCambiosProfesionales(): Promise<CambioParaAprobar[]>
       },
       filas,
       fotoNueva,
+      aviso,
     };
   });
+}
+
+// ===================== REDES =====================
+
+/** Sus redes, para la ficha interna. `disponible` es falso si falta sql/profesionales-redes.sql. */
+export async function redesDeProfesional(idProfesional: string): Promise<{ disponible: boolean; redes: Redes }> {
+  await requireInterno();
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase.from("profesionales").select("redes").eq("id_profesional", idProfesional).maybeSingle();
+  if (error) return { disponible: false, redes: {} };
+  return { disponible: true, redes: leerRedes(data?.redes) };
+}
+
+/** Las carga Gonzalo directo, sin pasar por Aprobaciones. */
+export async function guardarRedesProfesional(idProfesional: string, escritas: Record<string, string>): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  const { redes, error } = normalizarRedes(escritas ?? {});
+  if (error) return { error };
+  const supabase = getSupabaseServerClient();
+  const { error: errorDb } = await supabase
+    .from("profesionales")
+    .update({ redes: Object.keys(redes).length > 0 ? redes : null })
+    .eq("id_profesional", idProfesional);
+  if (errorDb) return { error: friendlyDbError(errorDb) };
+  revalidatePath("/profesionales");
+  return { error: null };
 }
 
 async function idUsuarioActual() {

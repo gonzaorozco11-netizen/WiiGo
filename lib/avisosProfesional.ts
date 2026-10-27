@@ -144,9 +144,10 @@ export async function mandarResumenesSemanales(): Promise<{ mandados: number; sa
       }
 
       const lineas: string[] = [];
-      if (fichas > 0) lineas.push(`<strong>${fichas}</strong> ${fichas === 1 ? "persona abrió" : "personas abrieron"} tu ficha en la pantalla del local.`);
-      if (conoceme > 0) lineas.push(`<strong>${conoceme}</strong> ${conoceme === 1 ? "vio" : "vieron"} tu Conóceme hasta el final.`);
-      if (pacientes > 0) lineas.push(`<strong>${pacientes}</strong> ${pacientes === 1 ? "paciente usó" : "pacientes usaron"} tu código.`);
+      // Veces, no personas: la pantalla no sabe quién toca.
+      if (fichas > 0) lineas.push(`Tu ficha se abrió <strong>${fichas}</strong> ${fichas === 1 ? "vez" : "veces"} en la pantalla del local.`);
+      if (conoceme > 0) lineas.push(`Tu Conóceme se vio entero <strong>${conoceme}</strong> ${conoceme === 1 ? "vez" : "veces"}.`);
+      if (pacientes > 0) lineas.push(`<strong>${pacientes}</strong> ${pacientes === 1 ? "paciente compró" : "pacientes compraron"} con tu código o como paciente tuyo.`);
       if (lineas.length === 0) lineas.push("La semana pasada nadie abrió tu ficha. ¿Les contás a tus pacientes que estás en la pantalla de WiiGo?");
 
       const asunto = faltan.length > 0 && fichas === 0 && pacientes === 0 ? `${destino.nombre}, te ${faltan.length === 1 ? "falta 1 cosa" : `faltan ${faltan.length} cosas`} para completar tu ficha` : `Tu semana en WiiGo, ${destino.nombre}`;

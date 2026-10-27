@@ -9,18 +9,20 @@ export function TarjetaSemana({ semana }: { semana: SemanaProfesional }) {
       <h2>
         Tu semana en la pantalla <small>desde el lunes</small>
       </h2>
+      {/* Son veces, no personas: la pantalla no sabe quién toca, y la misma
+          persona puede abrir la ficha dos veces. */}
       <div className="vistas">
         <div>
           <b className="mono">{semana.fichas}</b>
-          <span>{semana.fichas === 1 ? "abrió tu ficha" : "abrieron tu ficha"}</span>
+          <span>{semana.fichas === 1 ? "vez se abrió tu ficha" : "veces se abrió tu ficha"}</span>
         </div>
         <div>
           <b className="mono">{semana.conocemeEntero}</b>
-          <span>{semana.conocemeEntero === 1 ? "vio tu Conóceme entero" : "vieron tu Conóceme entero"}</span>
+          <span>{semana.conocemeEntero === 1 ? "vez vieron tu Conóceme entero" : "veces vieron tu Conóceme entero"}</span>
         </div>
         <div>
           <b className="mono">{semana.reservar}</b>
-          <span>{semana.reservar === 1 ? "tocó «Reservar turno»" : "tocaron «Reservar turno»"}</span>
+          <span>{semana.reservar === 1 ? "vez tocaron «Reservar turno»" : "veces tocaron «Reservar turno»"}</span>
         </div>
       </div>
       <p className="elogio">{semana.elogio}</p>

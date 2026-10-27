@@ -23,6 +23,10 @@ import type {
 
 type Pantalla = "home" | "objetivo" | "resultado" | "marcas" | "ofertas" | "profesionales" | "fichaProfesional" | "conoceme" | "reservarTurno";
 
+// Una red de la profesional, lista para mostrar: el usuario y el QR en SVG
+// (se arma en el servidor; ver app/asesor/[idLocal]/page.tsx).
+export type RedEnFicha = { clave: string; nombre: string; texto: string; qr: string };
+
 const IDLE_WARNING_MS = 45000; // sin tocar nada
 const IDLE_COUNTDOWN_S = 10; // después del aviso, segundos para volver sola al inicio
 
@@ -191,6 +195,8 @@ const HOME_I18N = {
     historiaTitulo: "Su historia",
     formacionTitulo: "Formación",
     trayectoriaTitulo: "Trayectoria",
+    redesTitulo: "Sus redes",
+    escaneaQr: "Escaneá el código con tu celular y entrá a su perfil",
     hoy: "hoy",
     matricula: "Matrícula",
     presencial: "Presencial",
@@ -235,6 +241,8 @@ const HOME_I18N = {
     historiaTitulo: "Her story",
     formacionTitulo: "Education",
     trayectoriaTitulo: "Experience",
+    redesTitulo: "Social media",
+    escaneaQr: "Scan the code with your phone to open the profile",
     hoy: "today",
     matricula: "License",
     presencial: "In person",
@@ -279,6 +287,8 @@ const HOME_I18N = {
     historiaTitulo: "Sua história",
     formacionTitulo: "Formação",
     trayectoriaTitulo: "Trajetória",
+    redesTitulo: "Redes sociais",
+    escaneaQr: "Escaneie o código com seu celular para abrir o perfil",
     hoy: "hoje",
     matricula: "Registro",
     presencial: "Presencial",
@@ -840,6 +850,7 @@ export default function AsesorApp({
   conocemePorProfesional,
   formacionPorProfesional,
   trayectoriaPorProfesional,
+  redesPorProfesional,
   objetivos,
   filtros,
   fichaPorProducto,
@@ -859,6 +870,7 @@ export default function AsesorApp({
   conocemePorProfesional: Record<string, ConocemeSlide[]>;
   formacionPorProfesional: Record<string, FormacionProfesional[]>;
   trayectoriaPorProfesional: Record<string, TrayectoriaProfesional[]>;
+  redesPorProfesional: Record<string, RedEnFicha[]>;
   objetivos: Objetivo[];
   filtros: FiltroProducto[];
   fichaPorProducto: Record<string, FichaProducto>;
@@ -1159,11 +1171,16 @@ export default function AsesorApp({
   // sola hoja: media ficha vacía se lee como que la pantalla está a medio hacer.
   const fotosDelProfesionalActual = profesionalId ? fotosPorProfesional[profesionalId] ?? [] : [];
   const [fotoAmpliada, setFotoAmpliada] = useState<string | null>(null);
+  const redesDelProfesionalActual = profesionalId ? redesPorProfesional[profesionalId] ?? [] : [];
+  // La red que se está mostrando. Si la elegida no la tiene esta profesional, va la primera.
+  const [redElegida, setRedElegida] = useState<string | null>(null);
+  const redActual = redesDelProfesionalActual.find((r) => r.clave === redElegida) ?? redesDelProfesionalActual[0] ?? null;
   const tieneHistoria =
     Boolean(profesionalActual?.biografia_completa) ||
     fotosDelProfesionalActual.length > 0 ||
     formacionDelProfesionalActual.length > 0 ||
-    trayectoriaDelProfesionalActual.length > 0;
+    trayectoriaDelProfesionalActual.length > 0 ||
+    redesDelProfesionalActual.length > 0;
   const trayectoriaOrdenada = useMemo(
     () => [...trayectoriaDelProfesionalActual].sort((a, b) => (a.anio_desde ?? 0) - (b.anio_desde ?? 0)),
     [trayectoriaDelProfesionalActual]
@@ -2408,6 +2425,37 @@ export default function AsesorApp({
                       donde: x.lugar,
                     }))}
                   />
+                </BloqueHistoria>
+              )}
+
+              {/* Sus redes: desde la pantalla no se abren (el cliente se iría
+                  de WiiGo), así que va el usuario y un QR para el celular. */}
+              {redActual && (
+                <BloqueHistoria titulo={t("redesTitulo")} contenedor={hojaHistoria}>
+                  <div className="flex items-center gap-4 rounded-2xl bg-white border border-[#e8eade] p-3.5">
+                    <div className="flex-1 min-w-0 flex flex-col gap-2">
+                      <div className="flex flex-wrap gap-1.5">
+                        {redesDelProfesionalActual.map((r) => (
+                          <button
+                            key={r.clave}
+                            onClick={() => setRedElegida(r.clave)}
+                            className="text-[11px] font-bold px-2.5 py-1 rounded-full"
+                            style={r.clave === redActual.clave ? { background: SAGE_DARK, color: "#fff" } : { background: SAGE_TINT, color: SAGE_DARK }}
+                          >
+                            {r.nombre}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-[14px] font-bold break-all" style={{ color: "#2d2d2d" }}>
+                        {redActual.texto}
+                      </p>
+                      <p className="text-[11px] leading-snug text-[#7d8472]">{t("escaneaQr")}</p>
+                    </div>
+                    <span
+                      className="block w-[104px] h-[104px] shrink-0 [&>svg]:w-full [&>svg]:h-full [&>svg]:block"
+                      dangerouslySetInnerHTML={{ __html: redActual.qr }}
+                    />
+                  </div>
                 </BloqueHistoria>
               )}
             </div>
