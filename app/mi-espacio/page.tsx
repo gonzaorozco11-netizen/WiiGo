@@ -4,6 +4,8 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionProfesional } from "@/lib/profesionalSesion";
 import { completitudProfesional } from "@/lib/completitudProfesional";
 import { saldosPorMarca } from "@/lib/canjesProfesionales";
+import { semanaProfesional } from "@/lib/semanaProfesional";
+import { TarjetaSemana, TarjetaObjetivo } from "./TarjetasSemana";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +34,7 @@ export default async function InicioEspacio() {
   const id = sesion.idProfesional;
   const supabase = getSupabaseServerClient();
 
-  const [completitud, codigosRes, referidosRes, saldos, profRes, localRes, cambiosRes] = await Promise.all([
+  const [completitud, codigosRes, referidosRes, saldos, profRes, localRes, cambiosRes, semana] = await Promise.all([
     completitudProfesional(supabase, id),
     supabase.from("codigos_profesionales").select("codigo, estado").eq("id_profesional", id).eq("estado", "ACTIVO").limit(1),
     supabase.from("referidos_profesionales").select("id_referido, estado").eq("id_profesional", id),
@@ -40,6 +42,7 @@ export default async function InicioEspacio() {
     supabase.from("profesionales").select("publicado, id_consultorio").eq("id_profesional", id).maybeSingle(),
     supabase.from("locales").select("nombre, direccion").eq("estado", "ACTIVO").order("nombre").limit(1),
     supabase.from("cambios_profesional").select("estado").eq("id_profesional", id).in("estado", ["PENDIENTE", "CORREGIR"]),
+    semanaProfesional(supabase, id, sesion.nombre),
   ]);
   const esperando = (cambiosRes.data ?? []).filter((c) => c.estado === "PENDIENTE").length;
   const paraCorregir = (cambiosRes.data ?? []).filter((c) => c.estado === "CORREGIR").length;
@@ -149,6 +152,8 @@ export default async function InicioEspacio() {
         </div>
 
         <div className="esp-col">
+          {semana.disponible && <TarjetaSemana semana={semana} />}
+          <TarjetaObjetivo semana={semana} conLink />
           <section className="tarjeta">
             <h2>Tu código</h2>
             {codigo ? (

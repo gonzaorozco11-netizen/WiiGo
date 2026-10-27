@@ -3,6 +3,7 @@ import { enviarMail, plantilla } from "@/lib/mail";
 import { baseUrlPublica } from "@/lib/urlPublica";
 import { fechaHoraArgentina } from "@/lib/horarios";
 import { TOPE_DIARIO, avisoPrendido, type TipoAviso } from "@/lib/avisosMarca";
+import { avisarProfesionalPorVenta } from "@/lib/avisosProfesional";
 
 // Mandar los avisos.
 //
@@ -152,9 +153,15 @@ async function mandar(
  * Una venta recién cerrada: avisar a cada marca que vendió algo.
  *
  * Dos avisos distintos salen de acá, porque pasan en el mismo momento: que
- * vendió, y que con esa venta se le terminó un producto.
+ * vendió, y que con esa venta se le terminó un producto. Y si la venta fue
+ * con el código de una profesional, a ella: «¡Un paciente usó tu código!».
+ * Van a la par: el de una no espera al de la otra.
  */
 export async function avisarVenta(idVenta: string, idLocal: string): Promise<void> {
+  await Promise.all([avisarMarcasPorVenta(idVenta, idLocal), avisarProfesionalPorVenta(idVenta)]);
+}
+
+async function avisarMarcasPorVenta(idVenta: string, idLocal: string): Promise<void> {
   try {
     const supabase = getSupabaseServerClient();
 

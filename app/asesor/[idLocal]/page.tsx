@@ -17,6 +17,7 @@ import {
   traerMarcasPublicas,
 } from "@/lib/supabase";
 import { fetchContenidoAsesor } from "@/lib/contenidoAsesor";
+import { profesionalesDestacadas } from "@/lib/semanaProfesional";
 import AsesorApp from "@/components/AsesorApp";
 
 export const dynamic = "force-dynamic";
@@ -51,6 +52,7 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
     contenido,
     miembrosRes,
     consultoriosRes,
+    destacadas,
   ] = await Promise.all([
     // Columnas explícitas: con "*" viajaban al navegador el royalty, el fee de
     // ingreso, el plan y el contacto de cada marca. Esta pantalla es pública.
@@ -77,11 +79,16 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
       .eq("publicado", true)
       .not("id_consultorio", "is", null),
     supabase.from("consultorios").select("id_consultorio, nombre, link_reserva, link_reserva_online").eq("estado", "ACTIVO"),
+    profesionalesDestacadas(supabase).catch(() => new Set<string>()),
   ]);
 
+  // Las fichas destacadas (las que más pacientes trajeron este mes) van
+  // primero; entre ellas y entre las demás se respeta el orden de siempre.
+  const profesionales = [...((profesionalesRes.data ?? []) as ProfesionalPublico[])].sort(
+    (a, b) => Number(destacadas.has(b.id_profesional)) - Number(destacadas.has(a.id_profesional))
+  );
   // Las que comparten consultorio usan su agenda: el botón de turno abre el
   // link del consultorio, y la ficha muestra con quién atiende.
-  const profesionales = (profesionalesRes.data ?? []) as ProfesionalPublico[];
   const consultorioPorProfesional: Record<string, ConsultorioEnFicha> = {};
   if (!miembrosRes.error && !consultoriosRes.error) {
     const miembros = (miembrosRes.data ?? []) as { id_profesional: string; id_consultorio: string }[];

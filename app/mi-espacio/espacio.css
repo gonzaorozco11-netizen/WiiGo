@@ -227,6 +227,42 @@
 .interruptor[aria-checked="true"]::after { transform: translateX(14px); }
 .subir-foto { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--borde); padding-top: 14px; }
 
+/* ---------- Su semana y objetivos ---------- */
+.tarjeta-link { display: block; text-decoration: none; transition: border-color .2s ease, transform .2s ease; }
+.tarjeta-link:hover { border-color: var(--ocre); transform: translateY(-2px); }
+.vistas { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.vistas div { background: var(--superficie-2); border-radius: 12px; padding: 10px 11px; }
+.vistas b { display: block; font-size: 24px; font-weight: 600; color: var(--salvia-honda); line-height: 1.1; }
+.vistas span { display: block; font-size: 11.5px; color: var(--texto-3); line-height: 1.3; margin-top: 3px; }
+.elogio { margin-top: 12px; font-family: var(--f-titulo), sans-serif; font-weight: 600; font-size: 15px; line-height: 1.35; color: var(--salvia-honda); background: var(--salvia-tenue); border-radius: 12px; padding: 11px 13px; }
+.obj-fila { display: grid; grid-template-columns: 64px 1fr; gap: 14px; align-items: center; }
+.obj-fila b { display: block; font-size: 14px; line-height: 1.3; }
+.obj-fila span { display: block; font-size: 12.5px; color: var(--texto-3); line-height: 1.4; margin-top: 2px; }
+.obj-anillo {
+  width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center;
+  background: radial-gradient(closest-side, var(--superficie) 76%, transparent 78% 100%), conic-gradient(var(--ocre) calc(var(--p) * 1%), var(--borde) 0);
+}
+.obj-anillo b { font-size: 15px; font-weight: 600; color: var(--texto); }
+.semanas { display: flex; gap: 8px; flex-wrap: wrap; }
+.semanas span { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; font-weight: 700; }
+.semanas .si { background: var(--verde-ok); color: var(--superficie); }
+.semanas .ahora { border: 2px dashed var(--ocre); color: var(--ocre-texto); }
+.semanas .no { border: 1.5px solid var(--borde-fuerte); }
+.barra-nivel { height: 9px; border-radius: 999px; background: var(--borde); overflow: hidden; }
+.barra-nivel i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--salvia-fuerte), var(--ocre)); }
+.sugerencias { display: flex; flex-direction: column; gap: 14px; }
+.sugerencia { display: flex; flex-direction: column; gap: 9px; padding-bottom: 14px; border-bottom: 1px solid var(--borde); }
+.sugerencia:last-child { border-bottom: 0; padding-bottom: 0; }
+.sugerencia .boton-wa { align-self: flex-start; }
+.sug-cab { display: grid; grid-template-columns: 64px 1fr; gap: 12px; align-items: center; }
+.sug-cab img, .sug-cab .sin-img { width: 64px; height: 64px; border-radius: 12px; object-fit: contain; background: #fff; border: 1px solid var(--borde); }
+.sug-cab b { display: block; font-family: var(--f-titulo), sans-serif; font-size: 15px; font-weight: 600; line-height: 1.25; }
+.sug-cab span:not(.chip-obj) { display: block; font-size: 12px; color: var(--texto-3); }
+.chip-obj { display: inline-flex; font-size: 11px; font-weight: 700; color: var(--salvia-honda); background: var(--salvia-tenue); border-radius: 999px; padding: 1px 8px; margin-bottom: 4px; }
+.reparto { font-size: 12px; color: var(--texto-3); }
+.reparto b { color: var(--salvia-honda); }
+.sug-msj { font-size: 13px; line-height: 1.45; color: var(--texto-2); background: var(--superficie-2); border-radius: 12px; padding: 9px 11px; }
+
 @media (prefers-reduced-motion: reduce) {
   .espacio *, .espacio *::before, .espacio *::after { transition: none !important; animation: none !important; }
 }

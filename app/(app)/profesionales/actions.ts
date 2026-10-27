@@ -19,6 +19,8 @@ import {
   type ItemVideo,
   type ItemFortaleza,
 } from "@/lib/cambiosProfesional";
+import { reglasProfesionales, PARAM_OBJETIVO_SEMANAL, PARAM_PACIENTES_DESTACADA } from "@/lib/semanaProfesional";
+import { fechaHoraArgentina } from "@/lib/horarios";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 async function usuarioActual() {
@@ -1300,6 +1302,82 @@ export async function cambiarClaveUsuarioProfesional(idProfesional: string, pass
     .eq("id_profesional", idProfesional)
     .eq("rol", "profesional");
   if (error) return { error: friendlyDbError(error) };
+  return { error: null };
+}
+
+// ===================== PROFESIONALES DEL MES Y REGLAS =====================
+//
+// Sin premios en plata (decisión de Gonzalo, 2026-10-26): las reglas solo
+// definen el objetivo de la semana que ve cada una y cuántos pacientes hacen
+// falta para que su ficha salga destacada (primero en la pantalla del local).
+
+export type FilaDelMes = { idProfesional: string; nombre: string; foto: string | null; vistas: number; pacientes: number; vendido: number; destacada: boolean };
+
+export async function profesionalesDelMes(): Promise<{
+  filas: FilaDelMes[];
+  reglas: { objetivoSemanal: number; pacientesDestacada: number };
+  hayVisitas: boolean;
+}> {
+  await requireInterno();
+  const supabase = getSupabaseServerClient();
+  const primeroDelMes = `${fechaHoraArgentina().fecha.slice(0, 8)}01T00:00:00-03:00`;
+  const [profRes, visRes, refRes, reglas] = await Promise.all([
+    supabase.from("profesionales").select("id_profesional, nombre, apellido, foto").eq("estado", "ACTIVO"),
+    supabase.from("visitas_asesor").select("id_profesional").eq("evento", "FICHA").gte("fecha", primeroDelMes),
+    supabase.from("referidos_profesionales").select("id_profesional, id_cliente, total_venta").neq("estado", "ANULADO").gte("fecha", primeroDelMes),
+    reglasProfesionales(supabase),
+  ]);
+
+  const vistas = new Map<string, number>();
+  for (const v of visRes.data ?? []) vistas.set(v.id_profesional as string, (vistas.get(v.id_profesional as string) ?? 0) + 1);
+  const clientes = new Map<string, Set<string>>();
+  const sinCliente = new Map<string, number>();
+  const vendido = new Map<string, number>();
+  for (const r of refRes.data ?? []) {
+    const id = r.id_profesional as string;
+    if (r.id_cliente) {
+      if (!clientes.has(id)) clientes.set(id, new Set());
+      clientes.get(id)!.add(r.id_cliente as string);
+    } else sinCliente.set(id, (sinCliente.get(id) ?? 0) + 1);
+    vendido.set(id, (vendido.get(id) ?? 0) + Number(r.total_venta ?? 0));
+  }
+
+  const filas = (profRes.data ?? [])
+    .map((p) => {
+      const id = p.id_profesional as string;
+      const pacientes = (clientes.get(id)?.size ?? 0) + (sinCliente.get(id) ?? 0);
+      return {
+        idProfesional: id,
+        nombre: [p.nombre, p.apellido].filter(Boolean).join(" "),
+        foto: (p.foto as string | null) ?? null,
+        vistas: vistas.get(id) ?? 0,
+        pacientes,
+        vendido: vendido.get(id) ?? 0,
+        destacada: pacientes >= reglas.pacientesDestacada,
+      };
+    })
+    .sort((a, b) => b.pacientes - a.pacientes || b.vistas - a.vistas || a.nombre.localeCompare(b.nombre, "es"));
+
+  return { filas, reglas, hayVisitas: !visRes.error };
+}
+
+export async function guardarReglasProfesionales(objetivoSemanal: number, pacientesDestacada: number): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  const valores: [string, number][] = [
+    [PARAM_OBJETIVO_SEMANAL, objetivoSemanal],
+    [PARAM_PACIENTES_DESTACADA, pacientesDestacada],
+  ];
+  if (valores.some(([, v]) => !Number.isInteger(v) || v < 1 || v > 999)) return { error: "Poné números enteros, de 1 para arriba." };
+  const supabase = getSupabaseServerClient();
+  for (const [parametro, valor] of valores) {
+    const { data: existe } = await supabase.from("configuracion").select("parametro").eq("parametro", parametro).maybeSingle();
+    const { error } = existe
+      ? await supabase.from("configuracion").update({ valor: String(valor) }).eq("parametro", parametro)
+      : await supabase.from("configuracion").insert({ parametro, valor: String(valor) });
+    if (error) return { error: friendlyDbError(error) };
+  }
+  revalidatePath("/profesionales");
   return { error: null };
 }
 

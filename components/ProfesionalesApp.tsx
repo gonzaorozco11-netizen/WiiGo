@@ -66,6 +66,8 @@ import {
   listarConsultorios,
   guardarConsultorio,
   usuarioDeProfesional,
+  profesionalesDelMes,
+  guardarReglasProfesionales,
   crearUsuarioProfesional,
   cambiarClaveUsuarioProfesional,
   cambiarEstadoUsuarioProfesional,
@@ -358,6 +360,8 @@ function TabProfesionales({ objetivosGlobales }: { objetivosGlobales: Objetivo[]
         <StatCard color="danger" icono="💸" etiqueta="Comisión pendiente" valor={`$${formatearMonto(comisionPendienteTotal)}`} />
         <StatCard color="success" icono="✅" etiqueta="Comisión pagada" valor={`$${formatearMonto(comisionPagadaTotal)}`} />
       </div>
+
+      <PanelDelMes onAbrir={(id) => setAbierto({ id, pestana: "resumen" })} />
 
       {mostrarForm && (
         <FormNuevoProfesional
@@ -994,6 +998,125 @@ const PESTANA_DE_ITEM: Record<string, Pestana> = {
 
 const INPUT =
   "w-full border border-neutral-300 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent";
+
+// ---------- Profesionales del mes y las reglas de los objetivos ----------
+
+function PanelDelMes({ onAbrir }: { onAbrir: (id: string) => void }) {
+  const [datos, setDatos] = useState<Awaited<ReturnType<typeof profesionalesDelMes>> | null>(null);
+  const [abierto, setAbiertoPanel] = useState(false);
+  const [objetivo, setObjetivo] = useState("");
+  const [destacada, setDestacada] = useState("");
+  const [guardando, setGuardando] = useState(false);
+  const [mensaje, setMensaje] = useState<string | null>(null);
+
+  const cargar = useCallback(() => {
+    profesionalesDelMes()
+      .then((d) => {
+        setDatos(d);
+        setObjetivo(String(d.reglas.objetivoSemanal));
+        setDestacada(String(d.reglas.pacientesDestacada));
+      })
+      .catch(() => setDatos(null));
+  }, []);
+  useEffect(() => {
+    cargar();
+  }, [cargar]);
+
+  function guardar() {
+    setMensaje(null);
+    setGuardando(true);
+    guardarReglasProfesionales(Number(objetivo), Number(destacada))
+      .then((r) => {
+        setMensaje(r.error ?? "Guardado. Vale desde ahora para todas.");
+        if (!r.error) cargar();
+      })
+      .finally(() => setGuardando(false));
+  }
+
+  if (!datos) return null;
+  const conMovimiento = datos.filas.filter((f) => f.vistas > 0 || f.pacientes > 0);
+
+  return (
+    <section className="bg-white border border-neutral-200 rounded-2xl mb-5 overflow-hidden">
+      <button type="button" onClick={() => setAbiertoPanel((v) => !v)} className="w-full flex items-center justify-between gap-3 px-5 py-3.5 text-left">
+        <span>
+          <span className="block text-[15px] font-extrabold text-neutral-900">Profesionales del mes</span>
+          <span className="block text-xs text-neutral-500">
+            Quién trae más pacientes y a quién miran más en la pantalla. Sin premios en plata: el premio es que su ficha salga destacada.
+          </span>
+        </span>
+        <span className="text-sm text-neutral-400">{abierto ? "▲" : "▼"}</span>
+      </button>
+      {abierto && (
+        <div className="px-5 pb-5 flex flex-col gap-4">
+          {!datos.hayVisitas && (
+            <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+              Para contar las visitas en la pantalla falta correr <b>sql/profesionales-visitas.sql</b> en Supabase.
+            </p>
+          )}
+          {conMovimiento.length === 0 ? (
+            <p className="text-sm text-neutral-400">Este mes todavía no hay movimiento.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-[11px] uppercase tracking-wide text-neutral-500 text-left">
+                    <th className="pb-2 font-bold">Profesional</th>
+                    <th className="pb-2 font-bold text-right">Vieron su ficha</th>
+                    <th className="pb-2 font-bold text-right">Pacientes</th>
+                    <th className="pb-2 font-bold text-right">Vendido</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {conMovimiento.map((f) => (
+                    <tr key={f.idProfesional} className="border-t border-neutral-100">
+                      <td className="py-2">
+                        <button type="button" onClick={() => onAbrir(f.idProfesional)} className="flex items-center gap-2 font-semibold text-neutral-800 hover:underline">
+                          {f.foto ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={f.foto} alt="" className="w-7 h-7 rounded-full object-cover" />
+                          ) : (
+                            <span className="w-7 h-7 rounded-full bg-neutral-100" />
+                          )}
+                          {f.nombre}
+                          {f.destacada && <span className="text-[10px] font-bold text-amber-700 bg-amber-50 rounded-full px-2 py-0.5">Destacada</span>}
+                        </button>
+                      </td>
+                      <td className="py-2 text-right tabular-nums">{f.vistas}</td>
+                      <td className="py-2 text-right tabular-nums">{f.pacientes}</td>
+                      <td className="py-2 text-right tabular-nums">${formatearMonto(f.vendido)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <div className="border-t border-neutral-100 pt-4 flex flex-col gap-3">
+            <p className="text-xs font-bold text-neutral-500 uppercase tracking-wide">Las reglas, las ponés vos</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label className="flex flex-col gap-1 text-xs font-medium text-neutral-600">
+                Objetivo de la semana (pacientes con su código)
+                <input value={objetivo} onChange={(e) => setObjetivo(e.target.value)} inputMode="numeric" className="w-24 border border-neutral-300 rounded-lg px-3 py-1.5 text-sm tabular-nums" />
+              </label>
+              <label className="flex flex-col gap-1 text-xs font-medium text-neutral-600">
+                Pacientes en el mes para que su ficha salga destacada
+                <input value={destacada} onChange={(e) => setDestacada(e.target.value)} inputMode="numeric" className="w-24 border border-neutral-300 rounded-lg px-3 py-1.5 text-sm tabular-nums" />
+              </label>
+            </div>
+            <div className="flex items-center gap-3">
+              <button type="button" onClick={guardar} disabled={guardando} className="bg-accent text-white text-sm font-bold rounded-lg px-4 py-1.5 disabled:opacity-50">
+                {guardando ? "Guardando..." : "Guardar reglas"}
+              </button>
+              {mensaje && <span className="text-sm text-neutral-600">{mensaje}</span>}
+            </div>
+            <p className="text-xs text-neutral-500">Las fichas destacadas aparecen primero en la pantalla del local.</p>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
 
 // ---------- Su usuario (su espacio en /mi-espacio) ----------
 

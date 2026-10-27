@@ -88,20 +88,22 @@ export async function aplicarCambioProfesional(
   }
 
   // Las listas se reemplazan enteras: lo que mandó es la lista completa como
-  // quiere que quede.
+  // quiere que quede. En formación y recorrido solo se reemplaza lo que se ve
+  // en la pantalla: lo que Gonzalo marcó como no público ella no lo ve en su
+  // espacio, así que tampoco se le borra.
   if (tipo === "FORMACION") {
     const items = valor as ItemFormacion[];
-    await supabase.from("formacion_profesional").delete().eq("id_profesional", idProfesional);
+    await supabase.from("formacion_profesional").delete().eq("id_profesional", idProfesional).or("publico.is.null,publico.eq.true");
     if (items.length === 0) return null;
     const { error } = await supabase
       .from("formacion_profesional")
-      .insert(items.map((f) => ({ id_profesional: idProfesional, titulo: f.titulo, institucion: f.institucion, anio: f.anio })));
+      .insert(items.map((f) => ({ id_profesional: idProfesional, titulo: f.titulo, institucion: f.institucion, anio: f.anio, publico: true })));
     return error?.message ?? null;
   }
 
   if (tipo === "TRAYECTORIA") {
     const items = valor as ItemTrayectoria[];
-    await supabase.from("trayectoria_profesional").delete().eq("id_profesional", idProfesional);
+    await supabase.from("trayectoria_profesional").delete().eq("id_profesional", idProfesional).or("publico.is.null,publico.eq.true");
     if (items.length === 0) return null;
     const { error } = await supabase.from("trayectoria_profesional").insert(
       items.map((t, i) => ({
@@ -111,6 +113,7 @@ export async function aplicarCambioProfesional(
         anio_desde: t.anio_desde,
         anio_hasta: t.anio_hasta,
         orden: i,
+        publico: true,
       }))
     );
     return error?.message ?? null;

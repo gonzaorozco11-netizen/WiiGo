@@ -274,7 +274,11 @@ export async function enviarLista(tipo: ListaTipo, items: unknown[]): Promise<Re
   } else if (tipo === "FORTALEZAS") {
     const pedidas = (items as Record<string, unknown>[]).map((i) => ({ id_fortaleza: String(i.id_fortaleza ?? ""), principal: i.principal === true }));
     if (pedidas.length > 3) return { error: "Elegí hasta 3." };
-    const { data: catalogo } = await supabase.from("fortalezas_profesional").select("id_fortaleza").in("id_fortaleza", pedidas.map((p) => p.id_fortaleza));
+    const { data: catalogo } = await supabase
+      .from("fortalezas_profesional")
+      .select("id_fortaleza")
+      .eq("estado", "ACTIVA")
+      .in("id_fortaleza", pedidas.map((p) => p.id_fortaleza));
     const validas = new Set((catalogo ?? []).map((c) => c.id_fortaleza as string));
     const lista: ItemFortaleza[] = pedidas.filter((p) => validas.has(p.id_fortaleza));
     // Una sola principal: si marcó más de una, queda la primera.

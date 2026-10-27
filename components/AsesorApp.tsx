@@ -1169,8 +1169,24 @@ export default function AsesorApp({
     [trayectoriaDelProfesionalActual]
   );
 
+  // Cuenta qué se mira de cada profesional para mostrárselo en su espacio
+  // ("14 personas abrieron tu ficha"). Son toques en la pantalla, sin nada
+  // de quién toca. No se espera la respuesta: si no llega, la pantalla sigue
+  // igual.
+  function contarVisita(idProfesional: string | null, evento: "FICHA" | "CONOCEME_FIN" | "RESERVAR") {
+    if (!idProfesional) return;
+    fetch("/api/asesor/evento", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ idLocal: local.id_local, idProfesional, evento }),
+      keepalive: true,
+    }).catch(() => {});
+  }
+
   function siguienteSlide() {
-    setSlideIndex((i) => Math.min(i + 1, slidesDelProfesionalActual.length - 1));
+    const ultima = slidesDelProfesionalActual.length - 1;
+    if (slideIndex < ultima && slideIndex + 1 === ultima) contarVisita(profesionalId, "CONOCEME_FIN");
+    setSlideIndex((i) => Math.min(i + 1, ultima));
   }
 
   function atrasSlide() {
@@ -1210,6 +1226,7 @@ export default function AsesorApp({
   }
 
   function irAFichaProfesional(id: string) {
+    contarVisita(id, "FICHA");
     setProfesionalId(id);
     setMostrarComoAyuda(false);
     setFotoAmpliada(null);
@@ -1217,11 +1234,14 @@ export default function AsesorApp({
   }
 
   function irAConoceme() {
+    // Un Conóceme de una sola filmina se vio entero apenas se abre.
+    if (slidesDelProfesionalActual.length === 1) contarVisita(profesionalId, "CONOCEME_FIN");
     setSlideIndex(0);
     setPantalla("conoceme");
   }
 
   function irAReservarTurno() {
+    contarVisita(profesionalId, "RESERVAR");
     setModalidadTurno(null);
     setPantalla("reservarTurno");
   }

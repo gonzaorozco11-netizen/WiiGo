@@ -21,7 +21,7 @@ export async function completitudProfesional(supabase: SupabaseClient, idProfesi
       .maybeSingle(),
     supabase.from("profesional_fortalezas").select("id_fortaleza").eq("id_profesional", idProfesional),
     supabase.from("profesional_objetivos").select("id_objetivo").eq("id_profesional", idProfesional),
-    supabase.from("formacion_profesional").select("institucion, anio").eq("id_profesional", idProfesional),
+    supabase.from("formacion_profesional").select("institucion, anio").eq("id_profesional", idProfesional).or("publico.is.null,publico.eq.true"),
     supabase.from("galeria_profesional").select("publico").eq("id_profesional", idProfesional),
     supabase.from("videos_profesional").select("url").eq("id_profesional", idProfesional),
   ]);

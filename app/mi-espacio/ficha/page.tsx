@@ -16,12 +16,13 @@ export default async function FichaEspacio({ searchParams }: { searchParams: Pro
   const [pRes, galRes, formRes, trayRes, vidRes, fortRes, objRes, catFortRes, catObjRes, pendRes] = await Promise.all([
     supabase.from("profesionales").select(`foto, telefono, email, ${Object.keys(CAMPOS_DATOS).join(", ")}`).eq("id_profesional", id).maybeSingle(),
     supabase.from("galeria_profesional").select("id_foto, url, titulo, publico, orden").eq("id_profesional", id).order("orden"),
-    supabase.from("formacion_profesional").select("titulo, institucion, anio").eq("id_profesional", id).order("anio"),
-    supabase.from("trayectoria_profesional").select("titulo, lugar, anio_desde, anio_hasta").eq("id_profesional", id).order("orden"),
+    // Solo lo que se ve en la pantalla: lo que WiiGo dejó como no público no se le muestra ni se le borra.
+    supabase.from("formacion_profesional").select("titulo, institucion, anio").eq("id_profesional", id).or("publico.is.null,publico.eq.true").order("anio"),
+    supabase.from("trayectoria_profesional").select("titulo, lugar, anio_desde, anio_hasta").eq("id_profesional", id).or("publico.is.null,publico.eq.true").order("orden"),
     supabase.from("videos_profesional").select("titulo, url").eq("id_profesional", id).order("orden"),
     supabase.from("profesional_fortalezas").select("id_fortaleza, principal").eq("id_profesional", id),
     supabase.from("profesional_objetivos").select("id_objetivo").eq("id_profesional", id),
-    supabase.from("fortalezas_profesional").select("id_fortaleza, nombre").order("nombre"),
+    supabase.from("fortalezas_profesional").select("id_fortaleza, nombre").eq("estado", "ACTIVA").order("nombre"),
     supabase.from("objetivos").select("id_objetivo, nombre").eq("estado", "ACTIVO").order("orden"),
     supabase
       .from("cambios_profesional")

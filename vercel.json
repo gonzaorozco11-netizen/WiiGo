@@ -12,6 +12,10 @@
     {
       "path": "/api/cron/junta-reportes",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/profesionales-semanal",
+      "schedule": "0 12 * * 1"
     }
   ]
 }
