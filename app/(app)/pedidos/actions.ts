@@ -33,6 +33,8 @@ export type PedidoEquipo = {
   preciosVigentes: boolean;
   paciente: { nombre: string; apellido: string; dni: string; telefono: string | null };
   profesional: { nombre: string; foto: string | null };
+  // Lo armó para ella y lo paga con su saldo (sql/profesionales-pedido-propio.sql).
+  paraProfesional: boolean;
   notaFalta: string | null;
   items: ItemPedido[];
   totalLista: number;
@@ -44,8 +46,9 @@ export async function listarPedidos(): Promise<{ disponible: boolean; activos: P
   const sesion = await sesionQueVe();
   if (!sesion) return { disponible: true, activos: [], cerrados: [] };
   const supabase = getSupabaseServerClient();
-  const columnas =
-    "id_pedido, numero, estado, creado, listo_at, guardar_hasta, paciente_nombre, paciente_apellido, paciente_dni, paciente_telefono, nota_falta, id_local, id_profesional, pedidos_profesional_items(id_item, id_variante, nombre, cantidad, precio_lista, precio_efectivo, armado)";
+  // Con "*": para_profesional puede no estar todavía, y una columna que falta
+  // nombrada a mano rompería toda la lista.
+  const columnas = "*, pedidos_profesional_items(id_item, id_variante, nombre, cantidad, precio_lista, precio_efectivo, armado)";
   const [activosRes, cerradosRes] = await Promise.all([
     supabase.from("pedidos_profesional").select(columnas).in("estado", ["NUEVO", "LISTO"]).order("creado"),
     supabase.from("pedidos_profesional").select(columnas).in("estado", ["ENTREGADO", "CANCELADO", "DEVUELTO"]).order("creado", { ascending: false }).limit(15),
@@ -90,6 +93,7 @@ export async function listarPedidos(): Promise<{ disponible: boolean; activos: P
         telefono: (f.paciente_telefono as string | null) ?? null,
       },
       profesional: { nombre: p ? [p.nombre, p.apellido].filter(Boolean).join(" ") : "Profesional", foto: (p?.foto as string | null) ?? null },
+      paraProfesional: f.para_profesional === true,
       notaFalta: (f.nota_falta as string | null) ?? null,
       items,
       totalLista: items.reduce((t, i) => t + i.precioLista * i.cantidad, 0),

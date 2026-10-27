@@ -73,15 +73,15 @@ export default function PedidosApp({
               <li key={p.idPedido} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-sm">
                 <span className="font-mono text-neutral-400">N.º {p.numero}</span>
                 <span className="font-semibold text-neutral-800">
-                  {p.paciente.nombre} {p.paciente.apellido}
+                  {p.paraProfesional ? p.profesional.nombre : `${p.paciente.nombre} ${p.paciente.apellido}`}
                 </span>
-                <span className="text-neutral-500">de {p.profesional.nombre}</span>
+                <span className="text-neutral-500">{p.paraProfesional ? "para ella, con su saldo" : `de ${p.profesional.nombre}`}</span>
                 <span
                   className={`ml-auto text-xs font-bold rounded-full px-2 py-0.5 ${
                     p.estado === "ENTREGADO" ? "bg-emerald-50 text-emerald-700" : "bg-neutral-100 text-neutral-600"
                   }`}
                 >
-                  {p.estado === "ENTREGADO" ? "Entregado" : p.estado === "DEVUELTO" ? "No lo retiró" : "Cancelado"}
+                  {p.estado === "ENTREGADO" ? "Entregado y pagado" : p.estado === "DEVUELTO" ? "No lo retiró" : "Cancelado"}
                 </span>
               </li>
             ))}
@@ -135,6 +135,7 @@ function TarjetaPedido({ pedido, puedeCobrar }: { pedido: PedidoEquipo; puedeCob
       totalEfectivo: pedido.totalEfectivo,
       totalLista: pedido.totalLista,
       creado: pedido.creado,
+      paraProfesional: pedido.paraProfesional,
     });
   }
 
@@ -188,9 +189,18 @@ function TarjetaPedido({ pedido, puedeCobrar }: { pedido: PedidoEquipo; puedeCob
           <span className="w-10 h-10 rounded-full bg-neutral-100" />
         )}
         <div className="min-w-0 flex-1">
-          <p className="text-[15px] font-bold text-neutral-900">
-            Pedido de {pedido.profesional.nombre} para {nombrePaciente}
-          </p>
+          {pedido.paraProfesional ? (
+            <p className="text-[15px] font-bold text-neutral-900">
+              Pedido de {pedido.profesional.nombre} para ella
+              <span className="ml-2 align-[2px] text-[11px] font-extrabold tracking-wide text-orange-900 bg-orange-100 rounded-full px-2 py-0.5">
+                PAGA CON SU SALDO
+              </span>
+            </p>
+          ) : (
+            <p className="text-[15px] font-bold text-neutral-900">
+              Pedido de {pedido.profesional.nombre} para {nombrePaciente}
+            </p>
+          )}
           <p className="text-xs text-neutral-500">
             N.º {pedido.numero} · DNI {pedido.paciente.dni} · {pedido.items.length} {pedido.items.length === 1 ? "producto" : "productos"} · llegó {cuando(pedido.creado)}
           </p>
@@ -201,6 +211,11 @@ function TarjetaPedido({ pedido, puedeCobrar }: { pedido: PedidoEquipo; puedeCob
         </div>
       </div>
 
+      {pedido.paraProfesional && (
+        <p className="px-4 py-2 text-sm text-amber-900 bg-amber-50 border-b border-amber-100">
+          Al cobrarlo, la caja ya trae su DNI y su saldo marcado: ella pone su PIN y paga lo que falte. Cuando se cobra, pasa solo a Entregado y pagado.
+        </p>
+      )}
       {pedido.notaFalta && esNuevo && (
         <p className="px-4 py-2 text-sm text-amber-800 bg-amber-50 border-b border-amber-100">Le avisaste a la profesional que falta: {pedido.notaFalta}</p>
       )}

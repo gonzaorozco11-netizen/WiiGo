@@ -5,10 +5,11 @@
 
 export type EstadoPedido = "NUEVO" | "LISTO" | "ENTREGADO" | "CANCELADO" | "DEVUELTO";
 
+// ENTREGADO pasa solo cuando se cobra en la caja: por eso dice también "pagado".
 export const ETIQUETA_ESTADO: Record<EstadoPedido, string> = {
   NUEVO: "Lo están armando",
   LISTO: "Listo para retirar",
-  ENTREGADO: "Retirado",
+  ENTREGADO: "Entregado y pagado",
   CANCELADO: "Cancelado",
   DEVUELTO: "No lo retiró",
 };
@@ -39,7 +40,11 @@ export function linkWhatsApp(telefono: string | null, texto: string) {
   return `https://wa.me/${numero}?text=${encodeURIComponent(texto)}`;
 }
 
-/** El WhatsApp que le manda el local al paciente cuando el pedido está armado. */
+/**
+ * El WhatsApp que le manda el local al paciente cuando el pedido está armado.
+ * Si el pedido es de la profesional para ella (lo paga con su saldo), le
+ * habla a ella.
+ */
 export function mensajePedidoListo(p: {
   paciente: string;
   profesional: string;
@@ -48,8 +53,16 @@ export function mensajePedidoListo(p: {
   totalEfectivo: number;
   totalLista: number;
   creado: string;
+  paraProfesional?: boolean;
 }) {
   const dia = p.guardarHasta.toLocaleDateString("es-AR", { weekday: "long", day: "2-digit", month: "2-digit", timeZone: "America/Argentina/Buenos_Aires" });
+  if (p.paraProfesional) {
+    return [
+      `Hola ${p.paciente}, tu pedido ya está listo en WiiGo${p.direccion ? `, ${p.direccion}` : ""}.`,
+      "",
+      `Te lo guardamos hasta el ${dia}. Al retirarlo ponés tu PIN en la caja y se descuenta de tu saldo; si falta algo, lo pagás ahí.`,
+    ].join("\n");
+  }
   const vence = hastaCuandoVaElPrecio(p.creado);
   const precioVigente = vence.getTime() > Date.now();
   const hora = vence.toLocaleString("es-AR", { weekday: "long", hour: "2-digit", minute: "2-digit", timeZone: "America/Argentina/Buenos_Aires" });

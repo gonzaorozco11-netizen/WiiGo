@@ -390,17 +390,32 @@ export async function enviarPedido(datos: {
   paciente: { nombre: string; apellido: string; dni: string; telefono: string };
   acepta: boolean;
   idLocal: string;
+  // Un pedido para ella, que paga con su saldo (desde "Mi saldo"): van sus
+  // propios datos, no se la registra como paciente y no lleva su código.
+  paraMi?: boolean;
 }): Promise<{ error: string | null; numero?: number }> {
   const sesion = await obtenerSesionProfesional();
   if (!sesion) return { error: SESION_CERRADA };
+  const supabase = getSupabaseServerClient();
+  const paraMi = datos.paraMi === true;
 
-  const nombre = datos.paciente.nombre.trim().slice(0, 60);
-  const apellido = datos.paciente.apellido.trim().slice(0, 60);
-  const dni = datos.paciente.dni.replace(/\D/g, "");
-  const telefono = datos.paciente.telefono.trim().slice(0, 30) || null;
-  if (!nombre || !apellido) return { error: "Poné el nombre y el apellido del paciente." };
-  if (dni.length < 7 || dni.length > 9) return { error: "Revisá el DNI: tiene que tener 7 u 8 números." };
-  if (!datos.acepta) return { error: "Falta que el paciente acepte sumarse a WiiGo Club y que le avisen por WhatsApp." };
+  let nombre: string, apellido: string, dni: string, telefono: string | null;
+  if (paraMi) {
+    const { data: yo } = await supabase.from("profesionales").select("nombre, apellido, dni, telefono").eq("id_profesional", sesion.idProfesional).maybeSingle();
+    nombre = String(yo?.nombre ?? sesion.nombre).trim().slice(0, 60);
+    apellido = String(yo?.apellido ?? "").trim().slice(0, 60) || "-";
+    dni = String(yo?.dni ?? "").replace(/\D/g, "");
+    telefono = String(yo?.telefono ?? "").trim().slice(0, 30) || null;
+    if (dni.length < 7 || dni.length > 9) return { error: "Para pedir con tu saldo, WiiGo tiene que tener cargado tu DNI. Escribinos y lo cargamos." };
+  } else {
+    nombre = datos.paciente.nombre.trim().slice(0, 60);
+    apellido = datos.paciente.apellido.trim().slice(0, 60);
+    dni = datos.paciente.dni.replace(/\D/g, "");
+    telefono = datos.paciente.telefono.trim().slice(0, 30) || null;
+    if (!nombre || !apellido) return { error: "Poné el nombre y el apellido del paciente." };
+    if (dni.length < 7 || dni.length > 9) return { error: "Revisá el DNI: tiene que tener 7 u 8 números." };
+    if (!datos.acepta) return { error: "Falta que el paciente acepte sumarse a WiiGo Club y que le avisen por WhatsApp." };
+  }
 
   const pedidos = new Map<string, number>();
   for (const i of datos.items ?? []) {
@@ -411,7 +426,6 @@ export async function enviarPedido(datos: {
   if (pedidos.size === 0) return { error: "Agregá al menos un producto." };
   if (pedidos.size > 40) return { error: "Son demasiados productos para un pedido." };
 
-  const supabase = getSupabaseServerClient();
   const [varRes, localesRes, codigoRes] = await Promise.all([
     supabase.from("variantes_producto").select("id_variante, id_producto, nombre, precio_venta, precio_efectivo, estado").in("id_variante", [...pedidos.keys()]),
     supabase.from("locales").select("id_local").eq("estado", "ACTIVO").order("nombre"),
@@ -430,8 +444,16 @@ export async function enviarPedido(datos: {
 
   // El paciente como cliente de WiiGo, y como paciente de ella: desde hoy
   // suma para ella lo que compre, durante los meses que diga Configuración.
-  const idCliente = await clientePorDni(supabase, { nombre, apellido, dni, telefono });
-  if (idCliente) await registrarPaciente(supabase, { idProfesional: sesion.idProfesional, idCliente, origen: "PEDIDO" });
+  // Si el pedido es para ella, solo se busca si ya es clienta: no se la da de
+  // alta ni se la registra como paciente de sí misma.
+  let idCliente: string | null;
+  if (paraMi) {
+    const { data: yoCliente } = await supabase.from("clientes").select("id_cliente").eq("dni", dni).maybeSingle();
+    idCliente = (yoCliente?.id_cliente as string | undefined) ?? null;
+  } else {
+    idCliente = await clientePorDni(supabase, { nombre, apellido, dni, telefono });
+    if (idCliente) await registrarPaciente(supabase, { idProfesional: sesion.idProfesional, idCliente, origen: "PEDIDO" });
+  }
 
   const { data: pedido, error } = await supabase
     .from("pedidos_profesional")
@@ -444,7 +466,11 @@ export async function enviarPedido(datos: {
       paciente_dni: dni,
       paciente_telefono: telefono,
       acepto_at: new Date().toISOString(),
-      codigo: (codigoRes.data?.[0]?.codigo as string | undefined) ?? null,
+      // Su propio código no le da nada a ella: no va.
+      codigo: paraMi ? null : ((codigoRes.data?.[0]?.codigo as string | undefined) ?? null),
+      // Solo se manda cuando hace falta: así los pedidos de pacientes andan
+      // aunque no se haya corrido sql/profesionales-pedido-propio.sql.
+      ...(paraMi ? { para_profesional: true } : {}),
     })
     .select("id_pedido, numero")
     .single();
@@ -468,7 +494,11 @@ export async function enviarPedido(datos: {
     return { error: "No se pudo guardar el pedido. Probá de nuevo." };
   }
 
-  await registrarActividad(supabase, sesion.idProfesional, `Armó el pedido N.º ${pedido.numero} para ${nombre} ${apellido.charAt(0)}.`);
+  await registrarActividad(
+    supabase,
+    sesion.idProfesional,
+    paraMi ? `Armó el pedido N.º ${pedido.numero} para ella, con su saldo` : `Armó el pedido N.º ${pedido.numero} para ${nombre} ${apellido.charAt(0)}.`
+  );
   revalidatePath("/mi-espacio/pedidos");
   return { error: null, numero: Number(pedido.numero) };
 }

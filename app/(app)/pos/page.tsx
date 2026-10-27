@@ -15,10 +15,11 @@ export const dynamic = "force-dynamic";
 
 // Un pedido de una profesional que se viene a cobrar (botón "Cobrar" de
 // Pedidos): los productos, el DNI y el código, y si su precio todavía vale.
+// Con "*" porque para_profesional puede no estar todavía.
 async function pedidoParaCobrar(supabase: ReturnType<typeof getSupabaseServerClient>, idPedido: string): Promise<PedidoParaCobrar | null> {
   const { data: p } = await supabase
     .from("pedidos_profesional")
-    .select("id_pedido, numero, estado, creado, paciente_nombre, paciente_apellido, paciente_dni, codigo, id_local, id_profesional, pedidos_profesional_items(id_variante, cantidad, precio_lista, precio_efectivo)")
+    .select("*, pedidos_profesional_items(id_variante, cantidad, precio_lista, precio_efectivo)")
     .eq("id_pedido", idPedido)
     .in("estado", ["NUEVO", "LISTO"])
     .maybeSingle();
@@ -29,6 +30,7 @@ async function pedidoParaCobrar(supabase: ReturnType<typeof getSupabaseServerCli
     numero: Number(p.numero),
     profesional: prof ? [prof.nombre, prof.apellido].filter(Boolean).join(" ") : "la profesional",
     paciente: `${p.paciente_nombre} ${p.paciente_apellido}`,
+    paraProfesional: p.para_profesional === true,
     dni: p.paciente_dni as string,
     codigo: (p.codigo as string | null) ?? null,
     idLocal: (p.id_local as string | null) ?? null,

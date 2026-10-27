@@ -50,6 +50,8 @@ export type PedidoParaCobrar = {
   numero: number;
   profesional: string;
   paciente: string;
+  // Lo armó la profesional para ella: paga con su saldo y su PIN.
+  paraProfesional: boolean;
   dni: string;
   codigo: string | null;
   idLocal: string | null;
@@ -142,10 +144,13 @@ export default function PosApp({
         .then(([c, p]) => {
           setClienteEncontrado(c);
           setProfesional(p);
+          // Su propio pedido, para pagar con su saldo: ya se marcan sus
+          // marcas con saldo y solo falta que ponga el PIN.
+          if (pedidoActivo?.paraProfesional && p) setMarcasCanje(new Set(p.saldosPorMarca.map((s) => s.idMarca)));
           // Es paciente de una profesional: se le pone su código solo, así
           // suma para ella aunque no lo diga (y tiene su beneficio si es la
           // primera vez). Si el cajero ya escribió otro código, se respeta.
-          if (c?.profesional?.codigo) {
+          if (c?.profesional?.codigo && !pedidoActivo?.paraProfesional) {
             const suyo = c.profesional.codigo;
             setCodigoProfesional((actual) => (actual.trim() ? actual : suyo));
           }
@@ -153,7 +158,7 @@ export default function PosApp({
         .finally(() => setBuscandoCliente(false));
     }, 400);
     return () => clearTimeout(timeout);
-  }, [dni]);
+  }, [dni, pedidoActivo]);
 
   // Misma idea que el DNI: confirmar en vivo si el código de profesional
   // existe, para no depender de apretar Cobrar para enterarse.
@@ -532,13 +537,27 @@ export default function PosApp({
     <div className="max-w-md mx-auto">
       {pedidoActivo && (
         <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-          <p className="font-bold">
-            Pedido N.º {pedidoActivo.numero} de {pedidoActivo.profesional} para {pedidoActivo.paciente}
-          </p>
-          <p className="text-emerald-800">
-            Ya están los productos, el DNI y el código.{" "}
-            {pedidoActivo.preciosVigentes ? "Se respeta el precio del pedido (no pasaron 24 h)." : "Pasaron más de 24 h: va el precio del día."}
-          </p>
+          {pedidoActivo.paraProfesional ? (
+            <>
+              <p className="font-bold">
+                Pedido N.º {pedidoActivo.numero} de {pedidoActivo.profesional} para ella: paga con su saldo
+              </p>
+              <p className="text-emerald-800">
+                Ya están los productos y su DNI, y su saldo queda marcado abajo: que ponga su PIN y pague lo que falte.{" "}
+                {pedidoActivo.preciosVigentes ? "Se respeta el precio del pedido (no pasaron 24 h)." : "Pasaron más de 24 h: va el precio del día."}
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="font-bold">
+                Pedido N.º {pedidoActivo.numero} de {pedidoActivo.profesional} para {pedidoActivo.paciente}
+              </p>
+              <p className="text-emerald-800">
+                Ya están los productos, el DNI y el código.{" "}
+                {pedidoActivo.preciosVigentes ? "Se respeta el precio del pedido (no pasaron 24 h)." : "Pasaron más de 24 h: va el precio del día."}
+              </p>
+            </>
+          )}
           <button type="button" onClick={nuevaVenta} className="mt-1 text-xs font-semibold underline">
             No es este pedido: empezar una venta común
           </button>

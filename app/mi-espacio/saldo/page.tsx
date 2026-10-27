@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionProfesional } from "@/lib/profesionalSesion";
@@ -75,8 +76,36 @@ export default async function SaldoEspacio() {
     .sort((a, b) => a.nombre.localeCompare(b.nombre));
   const compras = refRes.data ?? [];
 
+  const totalSaldo = conSaldo.reduce((t, s) => t + s.saldo, 0);
+
   return (
     <main className="esp-lienzo">
+      {/* Arriba de todo: lo que tiene para usar y cómo usarlo. */}
+      <section className="tarjeta usar-saldo">
+        <div>
+          <h2>Tu saldo para usar en el local</h2>
+          <p className="cifra-grande">{pesos(totalSaldo)}</p>
+          {conSaldo.length === 0 ? (
+            <p className="nota">Todavía no tenés saldo. Se suma con lo que compran tus pacientes.</p>
+          ) : (
+            <ul className="saldo-marcas">
+              {conSaldo.map((s) => (
+                <li key={s.idMarca}>
+                  <span>{s.nombreMarca}</span>
+                  <b className="mono">{pesos(s.saldo)}</b>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="nota">El saldo de cada marca se usa en productos de esa marca. En la caja das tu DNI y ponés tu PIN.</p>
+        </div>
+        {conSaldo.length > 0 && (
+          <Link href="/mi-espacio/pedidos?para=mi" className="boton">
+            Hacer un pedido con mi saldo
+          </Link>
+        )}
+      </section>
+
       <div className="esp-dos">
         <div className="esp-col">
           <section className="tarjeta">
@@ -143,27 +172,6 @@ export default async function SaldoEspacio() {
               <SumarPaciente meses={meses} />
             </section>
           )}
-
-          <section className="tarjeta">
-            <h2>Tu saldo</h2>
-            {conSaldo.length === 0 ? (
-              <p className="vacio">Todavía no tenés saldo.</p>
-            ) : (
-              <div className="tabla-env">
-                <table className="tabla">
-                  <tbody>
-                    {conSaldo.map((s) => (
-                      <tr key={s.idMarca}>
-                        <td>{s.nombreMarca}</td>
-                        <td className="num">{pesos(s.saldo)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-            <p className="consejo">Para usarlo: en la caja decís tu código y tu PIN. El saldo de cada marca se usa en productos de esa marca.</p>
-          </section>
 
           <section className="tarjeta">
             <h2>
