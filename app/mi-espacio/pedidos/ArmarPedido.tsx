@@ -44,7 +44,6 @@ export type ParaMi = {
 };
 
 const pesos = (n: number) => `$${Math.round(n).toLocaleString("es-AR")}`;
-const pct = (n: number) => `${n.toLocaleString("es-AR", { maximumFractionDigits: 2 })}%`;
 // Los productos de una marca que no tienen rubro.
 const OTROS = "otros";
 
@@ -125,7 +124,6 @@ export default function ArmarPedido({
       const precio = medio === "lista" ? l.p.precioLista : l.p.precioEfectivo;
       return t + Math.round(precio * l.cantidad * (l.p.porcentajeCliente / 100));
     }, 0);
-  const suma = lineas.reduce((t, l) => (l.p.participa ? t + Math.round(l.p.precioLista * l.cantidad * (l.p.porcentajeProfesional / 100)) : t), 0);
   const unidades = lineas.reduce((t, l) => t + l.cantidad, 0);
 
   // Con su saldo: cuánto cubre de cada marca. Es una cuenta para que se haga
@@ -330,19 +328,14 @@ export default function ArmarPedido({
                           <span className="mono">{pesos(p.precioLista)}</span>
                           {p.precioEfectivo !== p.precioLista && <small>efectivo {pesos(p.precioEfectivo)}</small>}
                         </p>
-                        {paraMi ? (
-                          saldoPorMarca.has(p.idMarca) ? (
+                        {/* Lo que gana ella no se muestra acá: la pantalla la
+                            mira el paciente. Sus % están en Mi saldo. */}
+                        {paraMi &&
+                          (saldoPorMarca.has(p.idMarca) ? (
                             <span className="cp-suma saldo">Podés usar tu saldo</span>
                           ) : (
                             <span className="cp-suma no">Sin saldo de esta marca</span>
-                          )
-                        ) : p.participa ? (
-                          <span className="cp-suma">
-                            Vos {pct(p.porcentajeProfesional)} · paciente {pct(p.porcentajeCliente)} la 1.ª vez
-                          </span>
-                        ) : (
-                          <span className="cp-suma no">Esta marca no participa: no suma</span>
-                        )}
+                          ))}
                         {!p.hayStock ? (
                           <span className="cp-boton sin">Sin stock</span>
                         ) : enCarrito > 0 ? (
@@ -455,11 +448,10 @@ export default function ArmarPedido({
                 </dl>
                 {descuento("lista") > 0 && (
                   <p className="nota">
-                    Incluye el descuento de bienvenida de tu código ({pesos(descuento("lista"))}): es para su primera compra. Si ya compró antes con tu código,
-                    en la caja se cobra sin ese descuento.
+                    Incluye el descuento de bienvenida ({pesos(descuento("lista"))}), que es solo para la primera compra. Si ya compró antes, en la caja se cobra
+                    sin ese descuento.
                   </p>
                 )}
-                {suma > 0 && <p className="sumas">Cuando lo pague, vos sumás cerca de {pesos(suma)} de saldo.</p>}
                 <p className="nota">Estos precios se respetan {HORAS_PRECIO_FIJO} h. Después se cobra el precio del día.</p>
               </>
             )}
