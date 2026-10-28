@@ -32,6 +32,28 @@ const numeroONull = (v: unknown, min = 0, max = Infinity) => {
   return Number.isFinite(n) && n >= min && n <= max ? n : undefined;
 };
 
+/** Lo que cuesta la etiqueta de cada bolsita (Costos de compra → Bolsitas y etiquetas). */
+async function costoEtiqueta(supabase: ReturnType<typeof getSupabaseServerClient>) {
+  const { data } = await supabase.from("configuracion").select("valor").eq("parametro", CLAVES_PRECIOS.etiqueta).maybeSingle();
+  const n = Number(data?.valor ?? 0);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+/**
+ * costos_extra de cada producto embolsado = bolsita + etiqueta. Es lo que
+ * miran Rentabilidad y el resto del sistema; se rehace cuando cambia una de
+ * las dos.
+ */
+async function sincronizarBolsitas(supabase: ReturnType<typeof getSupabaseServerClient>, idEnvase?: string) {
+  const etiqueta = await costoEtiqueta(supabase);
+  let q = supabase.from("envases").select("id_envase, costo");
+  if (idEnvase) q = q.eq("id_envase", idEnvase);
+  const { data: envases } = await q;
+  for (const e of envases ?? []) {
+    await supabase.from("productos").update({ costos_extra: Number(e.costo) + etiqueta }).eq("id_envase", e.id_envase);
+  }
+}
+
 /** El producto tiene que ser de una marca propia: las de consignación ponen su precio. */
 async function productoPropio(supabase: ReturnType<typeof getSupabaseServerClient>, idProducto: string) {
   const { data } = await supabase.from("productos").select("id_producto, id_marca, marcas(tipo_comercializacion)").eq("id_producto", idProducto).maybeSingle();
@@ -88,8 +110,8 @@ export async function guardarProductoPrecio(idProducto: string, cambios: Cambios
       const { data: env } = await supabase.from("envases").select("costo").eq("id_envase", cambios.idEnvase).maybeSingle();
       if (!env) return { error: "No encontré esa bolsita." };
       update.id_envase = cambios.idEnvase;
-      // La bolsita también queda en costos_extra, que es lo que mira el resto del sistema.
-      update.costos_extra = Number(env.costo);
+      // La bolsita y la etiqueta también quedan en costos_extra, que es lo que mira el resto del sistema.
+      update.costos_extra = Number(env.costo) + (await costoEtiqueta(supabase));
     } else {
       update.id_envase = null;
       update.costos_extra = 0;
@@ -215,7 +237,7 @@ export async function guardarEnvase(idEnvase: string | null, datos: { nombre: st
     const { error } = await supabase.from("envases").update({ nombre, costo }).eq("id_envase", id);
     if (error) return { error: FALTA_SQL };
     // Los productos que la usan llevan su costo en costos_extra.
-    await supabase.from("productos").update({ costos_extra: costo }).eq("id_envase", id);
+    await sincronizarBolsitas(supabase, id);
   } else {
     const { data, error } = await supabase.from("envases").insert({ nombre, costo }).select("id_envase").single();
     if (error || !data) return { error: FALTA_SQL };
@@ -242,13 +264,14 @@ export type CambiosConfig = Partial<{
   colchon: number;
   redondeo: number;
   merma: number;
+  etiqueta: number;
   descuentoEfectivo: number;
   tolerancia: number;
 }>;
 
 const LIMITES: Partial<Record<keyof CambiosConfig, [number, number]>> = {
   ivaGeneral: [0, 27], iibb: [0, 20], cheque: [0, 5], sircreb: [0, 20], comisionQr: [0, 20], comisionDebito: [0, 20], comisionCredito: [0, 30],
-  margenDefecto: [0, 95], gastosFijos: [0, 1e12], ventas: [0, 1e13], colchon: [0, 50], redondeo: [1, 10000], merma: [0, 30], descuentoEfectivo: [0, 60], tolerancia: [0, 50],
+  margenDefecto: [0, 95], gastosFijos: [0, 1e12], ventas: [0, 1e13], colchon: [0, 50], redondeo: [1, 10000], merma: [0, 30], etiqueta: [0, 1e6], descuentoEfectivo: [0, 60], tolerancia: [0, 50],
 };
 
 /**
@@ -287,6 +310,7 @@ export async function guardarConfigPrecios(cambios: CambiosConfig): Promise<Resu
     { onConflict: "parametro" }
   );
   if (error) return { error: "No se pudo guardar la configuración." };
+  if ("etiqueta" in cambios) await sincronizarBolsitas(supabase);
   revalidatePath("/precios");
   return { error: null };
 }

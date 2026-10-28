@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
+import Link from "next/link";
 import type {
   Producto,
   Marca,
@@ -89,9 +90,6 @@ export default function ProductoFormModal({
   marcas,
   subcategorias,
   locales = [],
-  margenMinimo = 15,
-  otrosCostos = 0,
-  otrosCostosEfectivo = 0,
   ivaGeneral = 21,
   redondeoPrecio = 0,
   costoMarcaInicial = null,
@@ -109,11 +107,6 @@ export default function ProductoFormModal({
   marcas: Marca[];
   subcategorias: Subcategoria[];
   locales?: Local[];
-  margenMinimo?: number;
-  /** % de la venta neta que se va en IIBB, Mercado Pago e impuesto al cheque. */
-  otrosCostos?: number;
-  /** Lo mismo pero cobrando en efectivo: sin la comisión de Mercado Pago. */
-  otrosCostosEfectivo?: number;
   /** IVA que se usa cuando el producto no tiene el suyo cargado. */
   ivaGeneral?: number;
   /** Múltiplo al que se redondea el precio calculado. 0 = no redondear. */
@@ -311,13 +304,16 @@ export default function ProductoFormModal({
             setIdLocalInicial={setIdLocalInicial}
           />
 
-          {/* Dos calculadoras distintas porque son dos negocios distintos.
-              En la marca propia WiiGo compra y revende: el costo y el margen
-              son suyos. En consignación el producto es de la marca, y lo que
-              se descuenta es el royalty más lo que se le traslada — que cambia
-              según cómo pague el cliente, así que no entra en un "otros
-              costos %" fijo. Ver lib/margenMarca.ts. */}
-          {marcaSeleccionada && marcaSeleccionada.tipo_comercializacion !== "PROPIA" ? (
+          {/* Dos negocios distintos. En la marca propia WiiGo compra y
+              revende: el costo, la bolsita, el margen y el precio se ponen en
+              un solo lugar, Precios (Gonzalo, 2026-10-28: "necesito un solo
+              lugar"). Acá había otra calculadora con su propia cuenta y su
+              propia bolsita, y daban precios distintos. En consignación el
+              precio es de la marca, y lo que se descuenta es el royalty más
+              lo que se le traslada. Ver lib/margenMarca.ts. */}
+          {marcaSeleccionada?.tipo_comercializacion === "PROPIA" ? (
+            <PrecioEnPrecios producto={producto} />
+          ) : marcaSeleccionada ? (
             <PrecioDeMarca
               marca={marcaSeleccionada}
               tasas={tasas}
@@ -328,21 +324,7 @@ export default function ProductoFormModal({
               iva={producto?.iva_porcentaje ?? ivaGeneral}
               redondeo={redondeoPrecio}
             />
-          ) : (
-          <PrecioCalculadora
-            costoInicial={producto?.costo_informado ?? null}
-            costosExtraInicial={producto?.costos_extra ?? null}
-            precioInicial={producto?.precio_venta ?? null}
-            descuentoInicial={producto?.descuento_porcentaje ?? null}
-            precioEfectivoInicial={producto?.precio_efectivo ?? null}
-            labelCosto={marcaSeleccionada?.tipo_comercializacion === "PROPIA" ? "Costo (CMV, sin IVA)" : "Costo informado"}
-            margenMinimo={margenMinimo}
-            otrosCostos={otrosCostos}
-            otrosCostosEfectivo={otrosCostosEfectivo}
-            iva={producto?.iva_porcentaje ?? ivaGeneral}
-            redondeo={redondeoPrecio}
-          />
-          )}
+          ) : null}
 
           {marcaSeleccionada?.tipo_comercializacion === "PROPIA" && proveedoresLiquidacion.length > 0 && (
             <div>
@@ -652,6 +634,45 @@ function Ayuda({ texto }: { texto: string }) {
           document.body
         )}
     </span>
+  );
+}
+
+/**
+ * El precio de lo que compra WiiGo (marca propia): acá solo se muestra.
+ * El costo, la bolsita, la etiqueta, el margen y el precio se cargan en
+ * Precios, que es el único que lo cambia ("Pasar a la venta").
+ */
+function PrecioEnPrecios({ producto }: { producto: Producto | null }) {
+  const precio = producto?.precio_venta ?? 0;
+  const efectivo = producto?.precio_efectivo ?? null;
+  const plata = (n: number) => `$${n.toLocaleString("es-AR", { maximumFractionDigits: 0 })}`;
+  return (
+    <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 space-y-2">
+      <p className="text-sm font-medium text-neutral-700">Precio de venta</p>
+      {precio > 0 ? (
+        <p className="text-lg font-semibold tabular-nums text-neutral-900">
+          {plata(precio)}
+          {efectivo != null && efectivo !== precio && (
+            <span className="ml-2 text-sm font-normal text-neutral-500">en efectivo {plata(efectivo)}</span>
+          )}
+        </p>
+      ) : (
+        <p className="text-sm text-amber-700">Todavía no tiene precio: no aparece a la venta hasta que se lo pongas en Precios.</p>
+      )}
+      <p className="text-xs text-neutral-500">
+        El costo, la bolsita, el margen y el precio de los productos de WiiGo se cargan en Precios, así la cuenta es la misma en todo el sistema.
+      </p>
+      {producto ? (
+        <Link
+          href={`/precios?producto=${producto.id_producto}`}
+          className="inline-block rounded-lg bg-accent text-white px-3 py-1.5 text-sm font-medium hover:bg-accent-dark"
+        >
+          {precio > 0 ? "Cambiar precio en Precios" : "Ponerle precio en Precios"}
+        </Link>
+      ) : (
+        <p className="text-xs text-neutral-600 font-medium">Guardá el producto y después ponele el precio en Precios.</p>
+      )}
+    </div>
   );
 }
 
@@ -1398,493 +1419,6 @@ function PanelReparto({
       </table>
 
       <div className="px-4 py-2.5 border-t border-neutral-200 bg-neutral-50 text-xs text-neutral-600">{pie}</div>
-    </div>
-  );
-}
-
-// Entre el costo de la mercadería y lo que paga el cliente hay tres cosas más:
-// la bolsita, lo que se va en cobrar (IIBB, Mercado Pago, impuesto al cheque) y
-// el IVA. La cuenta es:
-//
-//   costo  = mercadería + bolsita
-//   neto   = costo / (1 − otrosCostos% − margen%)
-//   precio = neto × (1 + IVA%)        ← lo que ve el cliente en la góndola
-//
-// Así el margen que se escribe es el que queda de verdad. La cuenta anterior
-// —precio = costo / (1 − margen)— dividía un costo SIN IVA para llegar a un
-// precio CON IVA, y devolvía la mitad del margen que declaraba: con costo
-// $3.702 y margen 30% daba $5.288, que sobre la venta neta son 15,3%.
-//
-// Los tres siguen editables (Margen, Markup o Precio): se escribe cualquiera y
-// los otros dos se recalculan, no hay que elegir modo.
-function PrecioCalculadora({
-  costoInicial,
-  costosExtraInicial,
-  precioInicial,
-  descuentoInicial,
-  precioEfectivoInicial,
-  labelCosto,
-  margenMinimo,
-  otrosCostos,
-  otrosCostosEfectivo,
-  iva,
-  redondeo,
-}: {
-  costoInicial: number | null;
-  costosExtraInicial: number | null;
-  precioInicial: number | null;
-  descuentoInicial: number | null;
-  precioEfectivoInicial: number | null;
-  labelCosto: string;
-  margenMinimo: number;
-  otrosCostos: number;
-  otrosCostosEfectivo: number;
-  iva: number;
-  redondeo: number;
-}) {
-  const [costo, setCosto] = useState(costoInicial ?? 0);
-  const [extra, setExtra] = useState(costosExtraInicial ?? 0);
-  const [precio, setPrecio] = useState(precioInicial ?? 0);
-  const [descuento, setDescuento] = useState(descuentoInicial ?? 0);
-
-  const fIva = 1 + iva / 100;
-  const pOtros = otrosCostos / 100;
-
-  // Las cuatro son la misma cuenta leída en distinto orden. Reciben el costo
-  // total por parámetro porque quien las llama suele tener un valor más nuevo
-  // que el del estado (React actualiza recién en el próximo render).
-  function precioDeMargen(m: number, costoTotal: number) {
-    // Margen + otros costos llegando a 100% sería precio infinito.
-    const resto = 1 - pOtros - Math.min(m, 99) / 100;
-    return resto > 0.0001 ? (costoTotal / resto) * fIva : 0;
-  }
-  function margenDePrecio(p: number, costoTotal: number) {
-    const neto = p / fIva;
-    return neto > 0 ? (1 - pOtros - costoTotal / neto) * 100 : 0;
-  }
-  function markupDePrecio(p: number, costoTotal: number) {
-    return costoTotal > 0 ? (p / costoTotal - 1) * 100 : 0;
-  }
-  function precioDeMarkup(mk: number, costoTotal: number) {
-    return costoTotal * (1 + mk / 100);
-  }
-
-  // El precio que se guarda tiene que ser el mismo que se imprime en el cartel:
-  // si el tótem cobra $7.274,82 y la góndola dice $7.300, el cliente ve dos
-  // precios distintos y alguno de los dos está mal. Por eso el redondeo no es
-  // una sugerencia al costado, es el precio.
-  //
-  // Para arriba y no al más cercano: redondear para abajo se come margen sin
-  // avisar. Y solo sobre los precios que calcula el sistema — si se escribe uno
-  // a mano se respeta tal cual, que para eso se escribió.
-  function redondear(p: number) {
-    return redondeo > 0 && p > 0 ? Math.ceil(p / redondeo) * redondeo : p;
-  }
-
-  const [markup, setMarkup] = useState(() =>
-    markupDePrecio(precioInicial ?? 0, (costoInicial ?? 0) + (costosExtraInicial ?? 0))
-  );
-  const [margen, setMargen] = useState(() =>
-    margenDePrecio(precioInicial ?? 0, (costoInicial ?? 0) + (costosExtraInicial ?? 0))
-  );
-
-  // Los dos van de la mano: se escribe uno y el otro se completa. Se guardan
-  // por separado para que escribir "14" no le pise los decimales al monto ni
-  // al revés.
-  const [efectivo, setEfectivo] = useState(precioEfectivoInicial ?? 0);
-  const [offEfectivo, setOffEfectivo] = useState(() =>
-    precioInicial && precioEfectivoInicial && precioInicial > 0
-      ? ((precioInicial - precioEfectivoInicial) / precioInicial) * 100
-      : 0
-  );
-
-  function cambiarEfectivoPorMonto(nuevo: number) {
-    setEfectivo(nuevo);
-    setOffEfectivo(precio > 0 && nuevo > 0 ? ((precio - nuevo) / precio) * 100 : 0);
-  }
-
-  function cambiarEfectivoPorPorcentaje(pct: number) {
-    setOffEfectivo(pct);
-    setEfectivo(pct > 0 && precio > 0 ? redondear(precio * (1 - pct / 100)) : 0);
-  }
-
-  // El precio en efectivo se define contra el de lista, así que cuando el de
-  // lista cambia tiene que seguirlo. Si se quedaba en los pesos viejos, el % que
-  // se había elegido se desdibujaba solo: se ponía 10% menos, se subía la
-  // góndola y el efectivo terminaba en un 6% que no decidió nadie.
-  //
-  // Manda el %, no el monto: es lo que se negocia con la marca ("Animalfit da
-  // 14%") y lo que se quiere sostener cuando cambia el precio.
-  function reajustarEfectivo(nuevoPrecio: number) {
-    if (offEfectivo <= 0 || nuevoPrecio <= 0) return;
-    setEfectivo(redondear(nuevoPrecio * (1 - offEfectivo / 100)));
-  }
-
-  // Tocar un costo deja el precio quieto: lo que cambia es cuánto margen deja
-  // ese precio ahora. Si se recalculara el precio, cargar el costo real de una
-  // lista nueva movería los precios de la góndola sin que nadie lo pida.
-  function recalcularDesdeCosto(nuevoCosto: number) {
-    setCosto(nuevoCosto);
-    setMarkup(markupDePrecio(precio, nuevoCosto + extra));
-    setMargen(margenDePrecio(precio, nuevoCosto + extra));
-  }
-
-  function recalcularDesdeExtra(nuevoExtra: number) {
-    setExtra(nuevoExtra);
-    setMarkup(markupDePrecio(precio, costo + nuevoExtra));
-    setMargen(margenDePrecio(precio, costo + nuevoExtra));
-  }
-
-  function recalcularDesdePrecio(nuevoPrecio: number) {
-    setPrecio(nuevoPrecio);
-    setMarkup(markupDePrecio(nuevoPrecio, costo + extra));
-    setMargen(margenDePrecio(nuevoPrecio, costo + extra));
-    reajustarEfectivo(nuevoPrecio);
-  }
-
-  function recalcularDesdeMarkup(nuevoMarkup: number) {
-    setMarkup(nuevoMarkup);
-    const nuevoPrecio = redondear(precioDeMarkup(nuevoMarkup, costo + extra));
-    setPrecio(nuevoPrecio);
-    setMargen(margenDePrecio(nuevoPrecio, costo + extra));
-    reajustarEfectivo(nuevoPrecio);
-  }
-
-  // No se pisa el margen que se está escribiendo: al redondear el precio para
-  // arriba, el margen real queda un poco por encima del que se pidió, y
-  // escribirlo de vuelta en el campo pelearía con quien está tipeando. La
-  // diferencia se muestra debajo del precio.
-  function recalcularDesdeMargen(nuevoMargen: number) {
-    setMargen(nuevoMargen);
-    const nuevoPrecio = redondear(precioDeMargen(nuevoMargen, costo + extra));
-    setPrecio(nuevoPrecio);
-    setMarkup(markupDePrecio(nuevoPrecio, costo + extra));
-    reajustarEfectivo(nuevoPrecio);
-  }
-
-  const costoTotal = costo + extra;
-  const precioRedondeado = Math.round(precio * 100) / 100;
-  const efectivoRedondeado = Math.round(efectivo * 100) / 100;
-
-  // Cuánto margen deja de verdad el precio que quedó, que después de redondear
-  // para arriba es un poco más que el pedido. Es el número honesto: el campo
-  // "Margen que quiero" guarda lo que se escribió, esto es lo que pasa.
-  const margenReal = margenDePrecio(precioRedondeado, costoTotal);
-  const precioSinRedondear = precioDeMargen(margen, costoTotal);
-  const seRedondeo =
-    redondeo > 0 && precioSinRedondear > 0 && Math.abs(precioRedondeado - precioSinRedondear) > 0.5;
-  const margenBajo = precioRedondeado > 0 && margenReal < margenMinimo;
-
-  // A dónde va cada peso de lo que paga el cliente.
-  const neto = precioRedondeado / fIva;
-  const montoIva = precioRedondeado - neto;
-  const costosDeCobrar = neto * pOtros;
-  const ganancia = neto - costoTotal - costosDeCobrar;
-
-  // En efectivo no se paga la comisión de Mercado Pago, así que hay un descuento
-  // que deja la misma ganancia que cobrando con tarjeta. Todo lo que se dé por
-  // encima de ese % sale del margen.
-  const netoMismaGanancia = (costoTotal + ganancia) / (1 - otrosCostosEfectivo / 100);
-  // Redondeado igual que el de góndola, y para arriba: así el precio que sugiere
-  // es uno que se puede poner en el cartel, y de paso queda del lado seguro.
-  const precioMismaGanancia = redondear(netoMismaGanancia * fIva);
-  const offGratis =
-    precioRedondeado > 0 ? Math.max(0, (1 - precioMismaGanancia / precioRedondeado) * 100) : 0;
-
-  // El mismo reparto pero cobrando en efectivo. Si todavía no hay precio de
-  // contado cargado se usa el de lista: así la columna muestra lo que quedaría
-  // cobrando lo mismo, que es justo el descuento que sale gratis.
-  const precioContado = efectivoRedondeado > 0 ? efectivoRedondeado : precioRedondeado;
-  const netoContado = precioContado / fIva;
-  const ivaContado = precioContado - netoContado;
-  const cobrarContado = netoContado * (otrosCostosEfectivo / 100);
-  const quedaContado = netoContado - costoTotal - cobrarContado;
-
-  /**
-   * Los cuatro pedazos de un producto propio.
-   *
-   * Cuatro y no seis: no hay comisión de WiiGo —no se cobra comisión a sí
-   * mismo— ni SIRCREB, que se le retiene a la marca. Y el IVA sí aparece, al
-   * revés que en el de marca: el propio se sabe exacto.
-   */
-  function partesPropias(cobrar: number, montoIvaParte: number, queda: number): ParteReparto[] {
-    return [
-      {
-        etiqueta: extra > 0 ? "Mercadería y bolsita" : "Costo mercadería",
-        color: COLOR_REPARTO.mercaderia,
-        monto: costoTotal,
-      },
-      {
-        etiqueta: "Costos de cobrar",
-        color: COLOR_REPARTO.cobrar,
-        monto: cobrar,
-        ayuda: `Ingresos Brutos, la comisión de Mercado Pago y el impuesto al débito y crédito. Con tarjeta son ${otrosCostos.toLocaleString(
-          "es-AR"
-        )}% y en efectivo ${otrosCostosEfectivo.toLocaleString("es-AR")}%, porque no pagás la comisión de Mercado Pago.`,
-      },
-      {
-        etiqueta: "IVA",
-        color: COLOR_REPARTO.iva,
-        monto: montoIvaParte,
-        ayuda: "Lo cobrás con la venta y lo depositás en ARCA. Contra eso descontás el IVA de lo que comprás, así que lo que terminás pagando es menos.",
-      },
-      { etiqueta: "Te queda a vos", color: COLOR_REPARTO.queda, monto: queda },
-    ];
-  }
-  // El % que terminó quedando después de redondear, no el que se escribió.
-  const offReal =
-    precioRedondeado > 0 && efectivoRedondeado > 0
-      ? ((precioRedondeado - efectivoRedondeado) / precioRedondeado) * 100
-      : 0;
-
-  const pesos = (n: number) =>
-    n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-  return (
-    <div className="border border-neutral-200 rounded-xl p-4 space-y-3">
-      <h3 className="text-sm font-semibold text-neutral-900">📦 Costo por unidad</h3>
-      <p className="text-xs text-neutral-500 -mt-2">
-        Lo que te sale poner una unidad en la góndola, sin IVA.
-      </p>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="costo_informado">
-            {labelCosto}
-          </label>
-          <input
-            id="costo_informado"
-            name="costo_informado"
-            type="number"
-            step="0.01"
-            value={costo || ""}
-            onChange={(e) => recalcularDesdeCosto(Number(e.target.value) || 0)}
-            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-          />
-          <p className="text-[11px] text-neutral-400 mt-1">Lo que te cobra el proveedor por una unidad</p>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="costos_extra">
-            Costos extra por unidad
-            <Ayuda texto="La bolsita, la etiqueta, el precinto: lo que gastás por unidad y no le pagás al proveedor. Va una bolsita entera por paquete, no un pedazo. Se suma al costo solo para calcular el precio — a la marca o al proveedor se le sigue liquidando el costo de arriba." />
-          </label>
-          <input
-            id="costos_extra"
-            name="costos_extra"
-            type="number"
-            step="0.01"
-            value={extra || ""}
-            onChange={(e) => recalcularDesdeExtra(Number(e.target.value) || 0)}
-            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-          />
-          <p className="text-[11px] text-neutral-400 mt-1">Bolsita, etiqueta</p>
-        </div>
-      </div>
-
-      {costoTotal > 0 && (
-        <p className="text-xs text-neutral-600">
-          Costo total de la unidad: <span className="font-semibold text-neutral-900">${pesos(costoTotal)}</span>
-        </p>
-      )}
-
-      <div className="border-t border-neutral-200 pt-3 space-y-3">
-        <h3 className="text-sm font-semibold text-neutral-900">💲 Precio y reparto</h3>
-        <p className="text-xs text-neutral-500 -mt-2">
-          Escribí el margen o el precio — lo que te quede más cómodo. El otro se completa solo.
-        </p>
-
-        {/* Los dos precios del producto, uno al lado del otro. Son los dos
-            números que el cliente puede llegar a pagar, así que se deciden
-            juntos y no en dos partes distintas de la pantalla. */}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="precio_venta_visible">
-              Precio de góndola
-              <Ayuda texto="Escribí el margen que querés ganar y sale el precio. O, si el precio te lo pone la competencia, escribí los pesos y el margen se recalcula al revés. Margen = Ganancia / Venta neta × 100: lo que te queda después de la mercadería, la bolsita, Ingresos Brutos y lo que te cobran por cobrar, antes del alquiler y los sueldos." />
-            </label>
-            <ParPrecio
-              pct={margen}
-              onPct={recalcularDesdeMargen}
-              sufijo="% margen"
-              monto={precio}
-              onMonto={recalcularDesdePrecio}
-              idMonto="precio_venta_visible"
-            />
-            <input type="hidden" name="precio_venta" value={precioRedondeado || 0} />
-            <p className="text-[11px] text-neutral-400 mt-1">
-              {costoTotal > 0 && precioRedondeado > 0 && (
-                <>
-                  Markup <b className="text-neutral-500">{pct1(markup)}%</b> ·{" "}
-                </>
-              )}
-              Otros costos {otrosCostos.toLocaleString("es-AR")}% · IVA {iva.toLocaleString("es-AR")}%
-              <Ayuda texto="El markup es cuántas veces el costo es el precio final: Precio / Costo total − 1. Otros costos son Ingresos Brutos, la comisión de Mercado Pago y el impuesto al débito y crédito: es igual para todos los productos y se cambia en Configuración. El IVA es la alícuota del producto, y el precio de góndola ya lo incluye porque es lo que paga el cliente." />
-            </p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="precio_efectivo_visible">
-              Precio en efectivo
-              <Ayuda texto="El otro precio del producto, no un descuento. Los descuentos NO se suman: la oferta se aplica al precio de tarjeta y el que paga en efectivo se lleva el más barato de los dos. Con lista $3.000 y efectivo $2.700: sin oferta paga $2.700; con oferta del 5% paga $2.700 (gana el de efectivo); con oferta del 20% paga $2.400 (gana el de oferta)." />
-            </label>
-            <ParPrecio
-              pct={offEfectivo}
-              onPct={cambiarEfectivoPorPorcentaje}
-              sufijo="% menos"
-              monto={efectivo}
-              onMonto={cambiarEfectivoPorMonto}
-              idMonto="precio_efectivo_visible"
-            />
-            <input type="hidden" name="precio_efectivo" value={efectivo > 0 ? efectivoRedondeado : ""} />
-            <p className="text-[11px] text-neutral-400 mt-1">
-              {costoTotal > 0 && efectivoRedondeado > 0 ? (
-                <>
-                  Markup{" "}
-                  <b className="text-neutral-500">
-                    {pct1(markupDePrecio(efectivoRedondeado, costoTotal))}%
-                  </b>{" "}
-                  sobre el mismo costo
-                </>
-              ) : (
-                "Dejalo vacío si cobrás lo mismo de las dos formas"
-              )}
-            </p>
-          </div>
-        </div>
-
-        {/* Lo que ahorra el CLIENTE. El panel de más abajo cuenta la otra mitad
-            —lo que te queda a vos— y las dos cosas se deciden juntas. */}
-        {efectivoRedondeado > 0 && precioRedondeado > 0 && (
-          <p
-            className={`text-xs rounded-lg px-3 py-2 ${
-              efectivoRedondeado >= precioRedondeado
-                ? "text-amber-700 bg-amber-50 border border-amber-200"
-                : "text-emerald-800 bg-emerald-50 border border-emerald-200"
-            }`}
-          >
-            {efectivoRedondeado >= precioRedondeado
-              ? "⚠️ El precio en efectivo no es más barato que el de lista — revisalo, porque el cliente no va a ver ningún ahorro."
-              : `El cliente ahorra $${pesos(precioRedondeado - efectivoRedondeado)} pagando en efectivo (${pct1(offReal)}% menos).`}
-          </p>
-        )}
-
-        <div className="rounded-xl border border-accent bg-accent-tint px-4 py-3">
-          <p className="text-[11px] font-semibold text-blue-800 uppercase tracking-wide">
-            Precio de góndola · con IVA · tarjeta o QR
-          </p>
-          <p className="text-3xl font-semibold text-blue-900 tabular-nums leading-none mt-1">
-            ${pesos(precioRedondeado)}
-          </p>
-          {precioRedondeado > 0 && costoTotal > 0 && (
-            <p className="text-[11px] text-blue-800 mt-1.5 leading-snug">
-              {seRedondeo
-                ? `Redondeado para arriba desde $${pesos(precioSinRedondear)} — el margen queda en ${pct1(margenReal)}%.`
-                : `Margen real ${pct1(margenReal)}%.`}{" "}
-              Es el mismo precio que va a cobrar el tótem y el que sale en el cartel.
-            </p>
-          )}
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-1">
-              Markup
-              <Ayuda texto="Cuántas veces el costo es el precio final. Markup = Precio de góndola / Costo total − 1, en porcentaje. Ej: costo $100, precio $213 → markup 113%." />
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              value={Math.round(markup * 10) / 10 || ""}
-              onChange={(e) => recalcularDesdeMarkup(Number(e.target.value) || 0)}
-              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="descuento_porcentaje">
-              Descuento oferta %
-              <Ayuda texto="La oferta que pinta el cartelito «-20%» en el catálogo. Se aplica sobre el precio de tarjeta. Si el producto también tiene precio en efectivo, los descuentos no se suman: el cliente paga el más barato de los dos." />
-            </label>
-            <input
-              id="descuento_porcentaje"
-              name="descuento_porcentaje"
-              type="number"
-              step="0.01"
-              value={descuento || ""}
-              onChange={(e) => setDescuento(Number(e.target.value) || 0)}
-              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-            />
-          </div>
-        </div>
-
-        {/* Las dos formas de cobro, lado a lado. El de efectivo no es el mismo
-            con otro número: cambian el precio (si hay uno de contado) Y los
-            costos, porque en efectivo no hay comisión de Mercado Pago. Verlos
-            al lado es lo que deja decidir el descuento de contado con la plata
-            adelante en vez de a ojo. */}
-        {precioRedondeado > 0 && costoTotal > 0 && (
-          <PanelReparto
-            titulo="A dónde va cada peso que paga el cliente"
-            izquierda={{
-              etiqueta: "Tarjeta o QR",
-              icono: "tarjeta",
-              precio: precioRedondeado,
-              partes: partesPropias(costosDeCobrar, montoIva, ganancia),
-              queda: ganancia,
-              margen: margenReal,
-              baseMargen: "de la venta sin IVA",
-            }}
-            derecha={{
-              etiqueta: "Efectivo",
-              icono: "efectivo",
-              precio: precioContado,
-              partes: partesPropias(cobrarContado, ivaContado, quedaContado),
-              queda: quedaContado,
-              margen: netoContado > 0 ? (quedaContado / netoContado) * 100 : 0,
-              baseMargen: "de la venta sin IVA",
-            }}
-            pie={
-              <>
-                {efectivoRedondeado > 0 ? (
-                  quedaContado >= ganancia - 0.5 ? (
-                    <>
-                      Cobrando <b>${pesos(precioContado)}</b> en efectivo te quedan{" "}
-                      <b className="text-teal-700">${pesos(quedaContado)}</b>, más que los $
-                      {pesos(ganancia)} de la tarjeta: <b>este descuento no te cuesta nada</b>.
-                    </>
-                  ) : (
-                    <>
-                      El descuento de contado te cuesta{" "}
-                      <b className="text-amber-700">${pesos(ganancia - quedaContado)}</b> por unidad.
-                      Hasta <b>${pesos(precioMismaGanancia)}</b> ({pct1(offGratis)}% menos)
-                      ganás lo mismo que con tarjeta.
-                    </>
-                  )
-                ) : (
-                  <>
-                    Todavía no cargaste precio en efectivo. Cobrando lo mismo te quedarían{" "}
-                    <b className="text-teal-700">${pesos(quedaContado)}</b> —$
-                    {pesos(quedaContado - ganancia)} más— porque no pagás la comisión de Mercado
-                    Pago. Hasta <b>${pesos(precioMismaGanancia)}</b> ({pct1(offGratis)}% menos)
-                    ganás igual que con tarjeta.
-                  </>
-                )}
-                <span className="block text-[11px] text-neutral-400 mt-1">
-                  Antes del alquiler, los sueldos y la luz, que no salen de este producto sino del
-                  mes.
-                </span>
-              </>
-            }
-          />
-        )}
-      </div>
-
-      {margenBajo && (
-        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-          ⚠️ Margen bajo: {pct1(margen)}%. Te quedan ${pesos(ganancia)} por unidad. El mínimo recomendado es{" "}
-          {margenMinimo}% para que el producto aguante el alquiler, los sueldos y la luz — ajustable en Configuración.
-        </p>
-      )}
-
     </div>
   );
 }

@@ -99,8 +99,8 @@ async function resolveSubcategoria(supabase: SupabaseClient, formData: FormData,
 
 // El producto es la "familia" (nombre, ficha, objetivos, filtros). El SKU,
 // código de barras y stock viven en sus variantes (ver sincronizarVariantes).
-function productoFromForm(formData: FormData, idMarca: string, idSubcategoria: string | null) {
-  return {
+function productoFromForm(formData: FormData, idMarca: string, idSubcategoria: string | null, propia: boolean) {
+  const datos = {
     id_marca: idMarca,
     id_subcategoria: idSubcategoria,
     nombre: text(formData, "nombre"),
@@ -127,6 +127,21 @@ function productoFromForm(formData: FormData, idMarca: string, idSubcategoria: s
     trazas: text(formData, "trazas"),
     fecha_actualizacion: new Date().toISOString(),
   };
+  // Marca propia: el costo, la bolsita y el precio son del módulo Precios
+  // (el formulario ya no los manda). Sin esto, editar el nombre dejaría el
+  // precio en blanco; y un alta nueva queda sin precio —fuera de la venta—
+  // hasta que se lo pongan ahí.
+  if (propia) {
+    for (const k of ["costo_informado", "costos_extra", "precio_venta", "precio_efectivo", "descuento_porcentaje"] as const) {
+      delete (datos as Partial<typeof datos>)[k];
+    }
+  }
+  return datos;
+}
+
+async function esMarcaPropia(supabase: SupabaseClient, idMarca: string) {
+  const { data } = await supabase.from("marcas").select("tipo_comercializacion").eq("id_marca", idMarca).maybeSingle();
+  return data?.tipo_comercializacion === "PROPIA";
 }
 
 function positivo(n: number | null) {
@@ -519,9 +534,9 @@ export async function createProducto(formData: FormData): Promise<{ error: strin
 
     const supabase = getSupabaseServerClient();
     const idSubcategoria = await resolveSubcategoria(supabase, formData, idMarca);
-    const data = productoFromForm(formData, idMarca, idSubcategoria);
+    const data = productoFromForm(formData, idMarca, idSubcategoria, await esMarcaPropia(supabase, idMarca));
 
-    const insertar = (payload: typeof data) =>
+    const insertar =(payload: typeof data) =>
       supabase.from("productos").insert(payload).select("id_producto").single();
 
     const res = await guardarTolerante(data, insertar);
@@ -552,9 +567,9 @@ export async function updateProducto(id: string, formData: FormData): Promise<{ 
 
     const supabase = getSupabaseServerClient();
     const idSubcategoria = await resolveSubcategoria(supabase, formData, idMarca);
-    const data = productoFromForm(formData, idMarca, idSubcategoria);
+    const data = productoFromForm(formData, idMarca, idSubcategoria, await esMarcaPropia(supabase, idMarca));
 
-    const actualizar = (payload: typeof data) =>
+    const actualizar =(payload: typeof data) =>
       supabase.from("productos").update(payload).eq("id_producto", id);
 
     const res = await guardarTolerante(data, actualizar);

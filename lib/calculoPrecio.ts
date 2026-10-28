@@ -47,6 +47,7 @@ export type ConfigPrecios = {
   colchon: number; // %
   redondeo: number; // $
   merma: number; // % de lo que viene a granel
+  etiqueta: number; // $ por bolsita, aparte de la bolsita (0 = todavía no se sabe)
   descuentoEfectivo: number; // %
   tolerancia: number; // % de diferencia con el precio de hoy antes de avisar
 };
@@ -78,7 +79,7 @@ export type ProductoPrecio = {
   rubro: { margen: number | null; descuentoEfectivo: number | null } | null;
 };
 
-export type Costo = { mercaderia: number; merma: number; envase: number; total: number; porKg: number | null };
+export type Costo = { mercaderia: number; merma: number; envase: number; etiqueta: number; total: number; porKg: number | null };
 
 export function costoPorKg(g: Granel): number | null {
   if (g.unidad === "KG") return g.costo;
@@ -87,16 +88,19 @@ export function costoPorKg(g: Granel): number | null {
 
 export function costoDe(p: ProductoPrecio, cfg: ConfigPrecios, granel: Map<string, Granel>, envases: Map<string, Envase>): Costo | null {
   const envase = p.idEnvase ? envases.get(p.idEnvase)?.costo ?? 0 : p.costoExtra ?? 0;
+  // La etiqueta va en todo lo que se embolsa acá; lo que viene envasado de
+  // fábrica ya trae su rótulo.
+  const etiqueta = p.idEnvase ? cfg.etiqueta : 0;
   if (p.idGranel) {
     const g = granel.get(p.idGranel);
     const porKg = g ? costoPorKg(g) : null;
     if (porKg == null || !p.gramos || p.gramos <= 0) return null;
     const mercaderia = (porKg * p.gramos) / 1000;
     const merma = mercaderia * (cfg.merma / 100);
-    return { mercaderia, merma, envase, total: mercaderia + merma + envase, porKg };
+    return { mercaderia, merma, envase, etiqueta, total: mercaderia + merma + envase + etiqueta, porKg };
   }
   if (p.costoUnidad == null || p.costoUnidad <= 0) return null;
-  return { mercaderia: p.costoUnidad, merma: 0, envase, total: p.costoUnidad + envase, porKg: null };
+  return { mercaderia: p.costoUnidad, merma: 0, envase, etiqueta, total: p.costoUnidad + envase + etiqueta, porKg: null };
 }
 
 /** Costos sobre el total cobrado para un medio, según lo tildado. */
@@ -211,7 +215,7 @@ export const PRUEBA_PRECIO = {
     ivaGeneral: 21, iibb: 3, cheque: 0.6, sircreb: 5, sircrebDescontable: true,
     comisiones: { efectivo: 0, qr: 0.8, debito: 1.24, credito: 6.49 },
     descuenta: DESCUENTA_DEFECTO, escenario: "credito", margenDefecto: 35,
-    gastosFijos: 0, ventas: 0, colchon: 5, redondeo: 50, merma: 0, descuentoEfectivo: 0, tolerancia: 0,
+    gastosFijos: 0, ventas: 0, colchon: 5, redondeo: 50, merma: 0, etiqueta: 0, descuentoEfectivo: 0, tolerancia: 0,
   } satisfies ConfigPrecios,
   producto: {
     id: "prueba", idGranel: null, gramos: null, costoUnidad: 1150, idEnvase: null, costoExtra: 0, iva: 21,

@@ -14,7 +14,9 @@ export const dynamic = "force-dynamic";
 const plex = IBM_Plex_Sans({ subsets: ["latin"], weight: ["400", "500", "600", "700"], variable: "--f-plex", display: "swap" });
 const plexMono = IBM_Plex_Mono({ subsets: ["latin"], weight: ["500", "600"], variable: "--f-plex-mono", display: "swap" });
 
-export default async function PreciosPage() {
+// ?producto=<id>: viene del botón "Cambiar precio" de la ficha del producto.
+export default async function PreciosPage({ searchParams }: { searchParams: Promise<{ producto?: string }> }) {
+  const { producto } = await searchParams;
   const sesion = await obtenerSesionConPantallas();
   if (!puedeVerPantalla(sesion, "precios")) return <PantallaBloqueada />;
 
@@ -43,6 +45,7 @@ export default async function PreciosPage() {
         envases={datos.envases}
         proveedores={datos.proveedores}
         puedeConfigurar={tienePermiso(conPermisos, PERMISOS.EDITAR_CONFIGURACION)}
+        abrir={datos.productos.some((p) => p.id === producto) ? producto : null}
       />
     </div>
   );

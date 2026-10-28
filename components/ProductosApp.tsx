@@ -26,9 +26,6 @@ export default function ProductosApp({
   marcas,
   subcategorias,
   locales,
-  margenMinimo,
-  otrosCostos,
-  otrosCostosEfectivo,
   ivaGeneral,
   redondeoPrecio,
   costoMarcaPorProducto = {},
@@ -48,11 +45,6 @@ export default function ProductosApp({
   marcas: Marca[];
   subcategorias: Subcategoria[];
   locales: Local[];
-  margenMinimo: number;
-  /** % de la venta neta que se va en IIBB, Mercado Pago e impuesto al cheque. */
-  otrosCostos: number;
-  /** Lo mismo pero cobrando en efectivo: sin la comisión de Mercado Pago. */
-  otrosCostosEfectivo: number;
   /** IVA que se usa cuando el producto no tiene el suyo cargado. */
   ivaGeneral: number;
   /** Múltiplo al que se redondea el precio calculado. 0 = no redondear. */
@@ -160,7 +152,15 @@ export default function ProductosApp({
             </option>
           ))}
         </select>
-        {idMarcaFiltro ? (
+        {/* Los precios de la marca propia se cargan solo en Precios. */}
+        {idMarcaFiltro && marcaPorId.get(idMarcaFiltro)?.tipo_comercializacion === "PROPIA" ? (
+          <Link
+            href="/precios"
+            className="rounded-lg border border-neutral-300 text-neutral-700 hover:bg-neutral-50 px-4 py-2 text-sm font-medium whitespace-nowrap"
+          >
+            Ir a Precios
+          </Link>
+        ) : idMarcaFiltro ? (
           <Link
             href={`/productos/importar/${idMarcaFiltro}`}
             className="rounded-lg border border-neutral-300 text-neutral-700 hover:bg-neutral-50 px-4 py-2 text-sm font-medium whitespace-nowrap"
@@ -338,9 +338,6 @@ export default function ProductosApp({
           marcas={marcas}
           subcategorias={subcategorias}
           locales={locales}
-          margenMinimo={margenMinimo}
-          otrosCostos={otrosCostos}
-          otrosCostosEfectivo={otrosCostosEfectivo}
           ivaGeneral={ivaGeneral}
           redondeoPrecio={redondeoPrecio}
           costoMarcaInicial={editing ? costoMarcaPorProducto[editing.id_producto] ?? null : null}

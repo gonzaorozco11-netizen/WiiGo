@@ -25,6 +25,7 @@ export const CLAVES_PRECIOS = {
   colchon: "PRECIOS_COLCHON",
   redondeo: "REDONDEO_PRECIO",
   merma: "PRECIOS_MERMA",
+  etiqueta: "PRECIOS_COSTO_ETIQUETA",
   descuentoEfectivo: "PRECIOS_DESCUENTO_EFECTIVO",
   tolerancia: "PRECIOS_TOLERANCIA",
 } as const;
@@ -44,6 +45,7 @@ export const DEFECTOS_PRECIOS: ConfigPrecios = {
   colchon: 5,
   redondeo: 100,
   merma: 3,
+  etiqueta: 0,
   descuentoEfectivo: 10,
   tolerancia: 3,
 };
@@ -95,6 +97,7 @@ export async function leerConfigPrecios(supabase: SupabaseClient): Promise<Confi
     colchon: numero(v.get(CLAVES_PRECIOS.colchon), d.colchon),
     redondeo: numero(v.get(CLAVES_PRECIOS.redondeo), d.redondeo) || d.redondeo,
     merma: numero(v.get(CLAVES_PRECIOS.merma), d.merma),
+    etiqueta: numero(v.get(CLAVES_PRECIOS.etiqueta), d.etiqueta),
     descuentoEfectivo: numero(v.get(CLAVES_PRECIOS.descuentoEfectivo), d.descuentoEfectivo),
     tolerancia: numero(v.get(CLAVES_PRECIOS.tolerancia), d.tolerancia),
   };

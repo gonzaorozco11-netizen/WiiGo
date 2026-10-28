@@ -41,6 +41,8 @@ type Props = {
   envases: Envase[];
   proveedores: { id: string; nombre: string }[];
   puedeConfigurar: boolean;
+  /** Producto que llega abierto (desde "Cambiar precio" en Productos). */
+  abrir?: string | null;
 };
 
 type Pestana = "lista" | "costos" | "config";
@@ -72,8 +74,8 @@ export default function PreciosApp(props: Props) {
   const [rubros, setRubros] = useState(props.rubros);
   const [granel, setGranel] = useState(props.granel);
   const [envases, setEnvases] = useState(props.envases);
-  const [abierto, setAbierto] = useState<string | null>(null);
-  const [buscar, setBuscar] = useState("");
+  const [abierto, setAbierto] = useState<string | null>(props.abrir ?? null);
+  const [buscar, setBuscar] = useState(() => props.productos.find((p) => p.id === props.abrir)?.nombre ?? "");
   const [filtroRubro, setFiltroRubro] = useState("");
   const [orden, setOrden] = useState<"rubro" | "margen" | "actualizar">("rubro");
   const [aviso, setAviso] = useState<{ texto: string; mal?: boolean } | null>(null);
@@ -469,8 +471,16 @@ function Lista(props: {
                     </td>
                     <td>{r.ok ? <span className="pr-precio">{pesos(r.publico)}</span> : <span className="pr-err">{r.error.length > 30 ? "Revisar" : r.error}</span>}</td>
                     <td>
-                      <span className="pr-hoy">{pesos(p.precioHoy)}</span>
-                      {dif !== 0 && <span className={`pr-delta ${dif > 0 ? "sube" : "baja"}`}>{`${dif > 0 ? "+" : "−"}${pesos(Math.abs(dif))}`}</span>}
+                      {p.precioHoy ? (
+                        <>
+                          <span className="pr-hoy">{pesos(p.precioHoy)}</span>
+                          {dif !== 0 && <span className={`pr-delta ${dif > 0 ? "sube" : "baja"}`}>{`${dif > 0 ? "+" : "−"}${pesos(Math.abs(dif))}`}</span>}
+                        </>
+                      ) : (
+                        <span className="pr-sinprecio" title="No aparece a la venta hasta que lo pases">
+                          Sin precio
+                        </span>
+                      )}
                     </td>
                     <td className="n">
                       {r.ok ? pesos(r.efectivo) : "—"}
@@ -573,6 +583,12 @@ function Detalle({
                 <span className="n">{pesos(r.costo.envase, 2)}</span>
               </li>
             )}
+            {p.idEnvase && (
+              <li>
+                <span>Etiqueta</span>
+                {r.costo.etiqueta > 0 ? <span className="n">{pesos(r.costo.etiqueta, 2)}</span> : <span className="pr-falta">falta cargar en Costos de compra</span>}
+              </li>
+            )}
             <li className="sep">
               <span>Costo neto (sin IVA de la compra)</span>
               <span className="n">{pesos(r.costo.total, 2)}</span>
@@ -616,8 +632,13 @@ function Detalle({
         <h3>Cuánto ganás según cómo paga</h3>
         {r.ok ? (
           <>
-            {MEDIOS.map((m) => filaMedio(m.clave === cfg.escenario ? `${m.nombre.split(" ")[0]} · base` : m.nombre.split(" ")[0], r.porMedio[m.clave]))}
-            {filaMedio(`Efectivo a ${pesos(r.efectivo)}`, r.enEfectivo)}
+            {/* El que paga en efectivo paga el precio de efectivo: una sola fila,
+                no una a precio de lista que nunca se cobra y otra con descuento. */}
+            {MEDIOS.map((m) => {
+              const nombre = m.nombre.split(" ")[0];
+              const titulo = m.clave === "efectivo" && r.descuentoEfectivo > 0 ? `${nombre} (${pesos(r.efectivo)})` : nombre;
+              return filaMedio(m.clave === cfg.escenario ? `${titulo} · base` : titulo, m.clave === "efectivo" ? r.enEfectivo : r.porMedio[m.clave]);
+            })}
             <p className={`pr-nota ${r.descuentoMaximoEfectivo >= r.descuentoEfectivo ? "ok" : "mal"}`}>
               Podés hacer hasta <b>{pct(Math.max(0, r.descuentoMaximoEfectivo))}</b> de descuento en efectivo y seguir arriba del mínimo ({pct(minimo)}).
               {r.descuentoMaximoEfectivo < r.descuentoEfectivo && " El descuento que tiene hoy lo deja abajo."}
@@ -940,7 +961,7 @@ function Costos(props: {
 
       <section className="pr-tarjeta">
         <h2>Bolsitas y etiquetas</h2>
-        <p className="baj">Lo que cuesta envasar cada bolsita. Cambiás el precio una vez y se recalcula todo lo que la usa.</p>
+        <p className="baj">Lo que cuesta cada bolsita, sin la etiqueta. Cambiás el precio una vez y se recalcula todo lo que la usa.</p>
         <table className="pr-costos" style={{ minWidth: 0 }}>
           <tbody>
             {props.envases.map((e) => (
@@ -976,6 +997,25 @@ function Costos(props: {
           <button type="button" className="pr-btn chico" disabled={creando || !nuevoEnv.nombre.trim() || nuevoEnv.costo === ""} onClick={crearEnvase}>
             Agregar bolsita
           </button>
+        </div>
+        {/* Aparte de la bolsita: es la misma para todas y el precio llega
+            después (Gonzalo, 2026-10-28: "todavía no lo tengo"). */}
+        <div className="pr-fila" style={{ marginTop: 14 }}>
+          <span>
+            Etiqueta ($ por bolsita)
+            <small>{props.cfg.etiqueta > 0 ? "Se suma a todo lo que se embolsa." : "Todavía sin cargar: los precios salen sin la etiqueta."}</small>
+          </span>
+          <input
+            type="text"
+            inputMode="decimal"
+            defaultValue={props.cfg.etiqueta || ""}
+            placeholder="0"
+            onChange={(e) => {
+              const v = e.target.value.trim() === "" ? 0 : aNumero(e.target.value);
+              if (v != null && v >= 0) props.cambiarConfig({ etiqueta: v }, { etiqueta: v });
+            }}
+            aria-label="Costo de la etiqueta por bolsita"
+          />
         </div>
       </section>
 

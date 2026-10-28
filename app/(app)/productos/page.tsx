@@ -137,9 +137,6 @@ export default async function ProductosPage() {
       marcas={(marcasRes.data ?? []) as Marca[]}
       subcategorias={(subcategoriasRes.data ?? []) as Subcategoria[]}
       locales={(localesRes.data ?? []) as Local[]}
-      margenMinimo={Number(config.get("MARGEN_MINIMO_PORCENTAJE") ?? 15)}
-      otrosCostos={Number(config.get("OTROS_COSTOS_PORCENTAJE") ?? 0)}
-      otrosCostosEfectivo={Number(config.get("OTROS_COSTOS_EFECTIVO_PORCENTAJE") ?? 0)}
       ivaGeneral={Number(config.get("IVA_GENERAL_PORCENTAJE") ?? 21)}
       redondeoPrecio={Number(config.get("REDONDEO_PRECIO") ?? 0)}
       costoMarcaPorProducto={costoMarcaPorProducto}
