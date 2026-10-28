@@ -65,6 +65,8 @@ const GROUPS: NavGroup[] = [
     icono: "catalogo",
     items: [
       { href: "/productos", label: "Productos" },
+      // Costos, márgenes y precio al público de lo que compra WiiGo.
+      { href: "/precios", label: "Precios" },
       { href: "/codigos", label: "Códigos de barras" },
       { href: "/carteles", label: "Carteles de góndola" },
       { href: "/objetivos", label: "Objetivos del asesor" },

@@ -17,6 +17,9 @@ export const PANTALLAS_DISPONIBLES: PantallaDisponible[] = [
   // Muestra precios de venta, no costos: la puede tener el local sin ver la
   // rentabilidad de nada.
   { clave: "carteles", label: "Carteles de góndola", grupo: "Catálogo" },
+  // Muestra costos y márgenes de lo que compra WiiGo, y cambia precios: no es
+  // para el local.
+  { clave: "precios", label: "Precios (costos y márgenes)", grupo: "Catálogo" },
   { clave: "objetivos", label: "Objetivos del asesor", grupo: "Catálogo" },
   { clave: "catalogo-asesor", label: "Catálogo asesor", grupo: "Catálogo" },
   // Estudiar los productos (lo aprobado) y, aparte, revisar/aprobar lo que
