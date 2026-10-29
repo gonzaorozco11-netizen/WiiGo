@@ -8,6 +8,7 @@ import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos
 import { calcularPrecio, mercaderiaDe, MEDIOS, type Granel, type Medio, type Descuenta } from "@/lib/calculoPrecio";
 import { CLAVES_PRECIOS } from "@/lib/configPrecios";
 import { nombreConTamano } from "@/lib/nombreProducto";
+import { insertarTareasEtiqueta } from "@/lib/tareasEtiqueta";
 import { cargarDatosPrecios } from "@/lib/datosPrecios";
 import { calcularTablero } from "@/app/(app)/resultado-mes/actions";
 
@@ -398,19 +399,19 @@ export async function pasarALaVenta(ids: string[]): Promise<Resultado & { cambia
       });
     }
     // El cartel de góndola: uno por local, porque es físico.
-    if ((locales ?? []).length > 0) {
-      await supabase.from("tareas_etiqueta").insert(
-        (locales ?? []).map((l) => ({
-          id_producto: p.id,
-          id_local: l.id_local,
-          tipo: "CAMBIO_PRECIO",
-          estado: "PENDIENTE",
-          precio_anterior: p.precioHoy,
-          precio_nuevo: r.publico,
-          vence_el: vence,
-        }))
-      );
-    }
+    await insertarTareasEtiqueta(
+      supabase,
+      (locales ?? []).map((l) => ({
+        id_producto: p.id,
+        id_local: l.id_local,
+        tipo: "CAMBIO_PRECIO",
+        estado: "PENDIENTE",
+        precio_anterior: p.precioHoy,
+        efectivo_anterior: p.precioHoy ? p.efectivoHoy ?? p.precioHoy : null,
+        precio_nuevo: r.publico,
+        vence_el: vence,
+      }))
+    );
   }
   revalidatePath("/precios");
   revalidatePath("/productos");

@@ -15,23 +15,25 @@ export default async function CartelesPage() {
   const BASE_PRODUCTO = "id_producto,nombre,id_marca,precio_venta,precio_efectivo,descuento_porcentaje";
   const traerProductos = (columnas: string) =>
     supabase.from("productos").select(columnas).eq("estado", "ACTIVO");
+  const traerTareas = (columnas: string) =>
+    supabase.from("tareas_etiqueta").select(columnas).in("estado", ["PENDIENTE", "VENCIDA"]).limit(500);
 
-  const [productosConPeso, marcasRes, tareasRes, fichasRes] = await Promise.all([
+  const [productosConPeso, marcasRes, tareasConEfectivo, fichasRes] = await Promise.all([
     traerProductos(`${BASE_PRODUCTO},peso_neto_g`),
     supabase.from("marcas").select("id_marca,nombre").eq("estado", "ACTIVA"),
     // Los carteles que quedaron con el precio viejo. La cuenta ya la lleva el
     // circuito de solicitudes de marca; acá solo se lee para poder reimprimir
     // justo esos y no toda la góndola.
-    supabase
-      .from("tareas_etiqueta")
-      .select("id_tarea,id_producto,precio_anterior,precio_nuevo,tipo,vence_el")
-      .in("estado", ["PENDIENTE", "VENCIDA"])
-      .limit(500),
+    traerTareas("id_tarea,id_producto,precio_anterior,efectivo_anterior,precio_nuevo,tipo,vence_el,creada_el"),
     // El país de origen de la ficha del asesor: sale chiquito en el cartel.
     supabase.from("ficha_producto").select("id_producto,origen"),
   ]);
   // Sin sql/rotulado.sql corrido, el cartel sale como antes, sin precio por kilo.
   const productosRes = productosConPeso.error ? await traerProductos(BASE_PRODUCTO) : productosConPeso;
+  // Sin sql/carteles-efectivo-anterior.sql corrido, el efectivo de antes no se sabe.
+  const tareasRes = tareasConEfectivo.error
+    ? await traerTareas("id_tarea,id_producto,precio_anterior,precio_nuevo,tipo,vence_el,creada_el")
+    : tareasConEfectivo;
 
   const error = productosRes.error || marcasRes.error;
   if (error) {
@@ -65,19 +67,37 @@ export default async function CartelesPage() {
 
   // Los que cambiaron de precio y todavía tienen el cartel viejo puesto.
   const ahora = Date.now();
-  const tareas = new Map<string, { idTarea: string; vencida: boolean; tipo: string }>();
-  for (const t of (tareasRes.data ?? []) as {
+  type Abierta = {
+    idTarea: string;
+    vencida: boolean;
+    tipo: string;
+    pedidoEl: string | null;
+    antes: { lista: number | null; efectivo: number | null };
+  };
+  const num = (v: unknown) => (v == null || !Number.isFinite(Number(v)) ? null : Number(v));
+  const tareas = new Map<string, Abierta>();
+  for (const t of (tareasRes.data ?? []) as unknown as {
     id_tarea: string;
     id_producto: string;
     tipo: string;
     vence_el: string;
+    creada_el: string | null;
+    precio_anterior: number | null;
+    efectivo_anterior?: number | null;
   }[]) {
     // Si un producto tiene varias tareas abiertas alcanza con reimprimirlo una
-    // vez: se queda con la más urgente.
+    // vez: se queda con la más urgente. La fecha y los precios "de antes" son
+    // los del pedido más viejo: es lo que dice el cartel que sigue puesto.
     const vencida = new Date(t.vence_el).getTime() < ahora;
     const previa = tareas.get(t.id_producto);
+    const masVieja = !previa?.pedidoEl || (t.creada_el != null && t.creada_el < previa.pedidoEl);
+    const datosViejos = masVieja
+      ? { pedidoEl: t.creada_el ?? previa?.pedidoEl ?? null, antes: { lista: num(t.precio_anterior), efectivo: num(t.efectivo_anterior) } }
+      : { pedidoEl: previa!.pedidoEl, antes: previa!.antes };
     if (!previa || (vencida && !previa.vencida)) {
-      tareas.set(t.id_producto, { idTarea: t.id_tarea, vencida, tipo: t.tipo });
+      tareas.set(t.id_producto, { idTarea: t.id_tarea, vencida, tipo: t.tipo, ...datosViejos });
+    } else {
+      Object.assign(previa, datosViejos);
     }
   }
 
@@ -108,6 +128,8 @@ export default async function CartelesPage() {
         descuento: p.descuento_porcentaje ?? 0,
         idTarea: t?.idTarea ?? null,
         vencida: t?.vencida ?? false,
+        pedidoEl: t?.pedidoEl ?? null,
+        antes: t?.antes ?? null,
         pesoG: p.peso_neto_g && p.peso_neto_g > 0 ? p.peso_neto_g : null,
         origen: origenes.get(p.id_producto) ?? null,
       };

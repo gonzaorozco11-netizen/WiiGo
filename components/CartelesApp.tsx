@@ -20,6 +20,10 @@ export type ItemCartel = {
   /** Si este producto tiene un cartel pendiente de cambiar, su tarea. */
   idTarea: string | null;
   vencida: boolean;
+  /** Cuándo se pidió el cambio de precio (el pedido más viejo sin hacer). */
+  pedidoEl?: string | null;
+  /** Lo que dice el cartel que sigue puesto. lista null = no tenía cartel. */
+  antes?: { lista: number | null; efectivo: number | null } | null;
   /** Peso neto en gramos: con él van el peso al lado del nombre y el precio por kilo. */
   pesoG?: number | null;
   /** País de origen (de la ficha del asesor), chiquito arriba a la derecha. */
@@ -53,6 +57,17 @@ const MEDIDAS = [
 ] as const;
 
 const pesos = (n: number) => "$" + Math.round(n).toLocaleString("es-AR");
+/** "29/10 14:20" en hora de Argentina. */
+const fechaPedido = (iso: string | null | undefined) =>
+  iso
+    ? new Date(iso).toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
+    : "—";
+/** " · hace 3 días" (vacío si fue hoy). */
+const hace = (iso: string | null | undefined, ahora: number) => {
+  if (!iso) return "";
+  const dias = Math.floor((ahora - new Date(iso).getTime()) / 86400000);
+  return dias >= 1 ? ` · hace ${dias} ${dias === 1 ? "día" : "días"}` : "";
+};
 
 /**
  * Cuántos carteles entran en una A4 y dónde arranca la grilla.
@@ -81,7 +96,15 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
 
   const imprimibles = useMemo(() => items.filter((i) => i.tienePrecioEfectivo), [items]);
   const sinEfectivo = items.length - imprimibles.length;
-  const pendientes = useMemo(() => imprimibles.filter((i) => i.idTarea), [imprimibles]);
+  // Los que cambiaron de precio, del pedido más viejo al más nuevo: el que
+  // más tiempo lleva con el cartel mal va primero (Gonzalo, 2026-10-29: "es prioridad").
+  const pendientes = useMemo(
+    () => imprimibles.filter((i) => i.idTarea).sort((a, b) => (a.pedidoEl ?? "").localeCompare(b.pedidoEl ?? "")),
+    [imprimibles]
+  );
+  const vencidos = pendientes.filter((i) => i.vencida);
+  // "Ahora", tomado una vez al abrir la pantalla.
+  const [ahora] = useState(() => Date.now());
 
   const [modo, setModo] = useState<"cambiaron" | "todos">(pendientes.length > 0 ? "cambiaron" : "todos");
   const visibles = modo === "cambiaron" ? pendientes : imprimibles;
@@ -104,8 +127,10 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
       if (!m.has(k)) m.set(k, []);
       m.get(k)!.push(i);
     }
+    // Con los que cambiaron, primero la marca que tiene el pedido más viejo.
+    if (modo === "cambiaron") return [...m.entries()].sort((a, b) => (a[1][0].pedidoEl ?? "").localeCompare(b[1][0].pedidoEl ?? ""));
     return [...m.entries()].sort((a, b) => b[1].length - a[1].length);
-  }, [visibles]);
+  }, [visibles, modo]);
 
   function cambiarModo(nuevo: "cambiaron" | "todos") {
     setModo(nuevo);
@@ -157,6 +182,18 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
 
         {aviso && (
           <p className="mb-4 text-sm rounded-lg px-3 py-2 bg-emerald-50 text-emerald-700">{aviso}</p>
+        )}
+
+        {vencidos.length > 0 && (
+          <div className="flex gap-3 rounded-xl border border-red-200 bg-red-50 p-3.5 mb-4">
+            <span className="text-lg leading-none">⏰</span>
+            <p className="text-sm text-neutral-700 leading-relaxed">
+              <strong className="text-red-700">
+                {vencidos.length === 1 ? "1 cartel lleva" : `${vencidos.length} carteles llevan`} más de un día con el precio viejo.
+              </strong>{" "}
+              El más viejo es del {fechaPedido(vencidos[0].pedidoEl)}. Mientras el cartel diga otra cosa que la caja, hay que cobrar lo del cartel: imprimilos hoy.
+            </p>
+          </div>
         )}
 
         {pendientes.length > 0 && (
@@ -235,18 +272,47 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
                               {i.descuento}% OFF
                             </span>
                           )}
-                          {i.vencida && (
-                            <span className="shrink-0 text-[10px] font-bold text-red-700 bg-red-50 rounded px-1.5 py-0.5">
-                              VENCIDO
+                          {i.idTarea && (
+                            <span
+                              className={`shrink-0 text-[10px] font-bold rounded px-1.5 py-0.5 ${
+                                i.vencida ? "text-red-700 bg-red-50" : "text-neutral-500 bg-neutral-100"
+                              }`}
+                              title="Cuándo se pidió el cambio de precio"
+                            >
+                              {i.vencida ? "VENCIDO · " : ""}pedido {fechaPedido(i.pedidoEl)}
+                              {hace(i.pedidoEl, ahora)}
                             </span>
                           )}
                         </span>
-                        <span className="shrink-0 text-xs text-neutral-400 tabular-nums">
-                          {pesos(i.lista)}
-                        </span>
-                        <span className="shrink-0 text-xs font-semibold text-emerald-700 tabular-nums w-20 text-right">
-                          {pesos(i.efectivo)}
-                        </span>
+                        {modo === "cambiaron" && i.idTarea ? (
+                          // Qué se saca y qué se pone: los dos precios del cartel viejo y los dos del nuevo.
+                          <span className="shrink-0 flex items-center gap-2 tabular-nums text-xs">
+                            <span className="grid text-right w-28">
+                              <span className="text-[10px] uppercase tracking-wide text-neutral-400">Cartel puesto</span>
+                              {i.antes?.lista ? (
+                                <span className="text-neutral-400 line-through">
+                                  {pesos(i.antes.lista)} · ef {i.antes.efectivo != null ? pesos(i.antes.efectivo) : "—"}
+                                </span>
+                              ) : (
+                                <span className="text-neutral-400">no tenía</span>
+                              )}
+                            </span>
+                            <span className="text-neutral-300" aria-hidden="true">→</span>
+                            <span className="grid text-right w-32">
+                              <span className="text-[10px] uppercase tracking-wide text-emerald-700 font-semibold">Cartel nuevo</span>
+                              <span className="font-semibold text-neutral-900">
+                                {pesos(i.lista)} · <span className="text-emerald-700">ef {pesos(i.efectivo)}</span>
+                              </span>
+                            </span>
+                          </span>
+                        ) : (
+                          <>
+                            <span className="shrink-0 text-xs text-neutral-400 tabular-nums">{pesos(i.lista)}</span>
+                            <span className="shrink-0 text-xs font-semibold text-emerald-700 tabular-nums w-20 text-right">
+                              {pesos(i.efectivo)}
+                            </span>
+                          </>
+                        )}
                       </label>
                     ))}
                   </div>

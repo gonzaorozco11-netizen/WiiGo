@@ -8,6 +8,7 @@ import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos
 import { exigirGestionInterna } from "@/lib/marcaSesion";
 import { esRolInterno } from "@/lib/rolesInternos";
 import { fechaHoraArgentina } from "@/lib/horarios";
+import { insertarTareasEtiqueta, type FilaTareaEtiqueta } from "@/lib/tareasEtiqueta";
 import { generarSkuVariante, generarCodigoBarrasVariante } from "@/lib/codigosVariante";
 import { PLANES, type PlanMarca } from "@/lib/planesMarca";
 import {
@@ -212,19 +213,21 @@ async function generarTareasEtiqueta(
 
   const precioNuevo = typeof s.datos.precio === "number" ? (s.datos.precio as number) : null;
   const precioAnterior = typeof s.datosAnteriores.precio === "number" ? (s.datosAnteriores.precio as number) : null;
+  const efectivoAnterior = typeof s.datosAnteriores.precio_efectivo === "number" ? (s.datosAnteriores.precio_efectivo as number) : null;
 
   // Una tarea por local: el cartel es físico y hay uno en cada góndola.
   const { data: locales } = await supabase.from("locales").select("id_local").eq("estado", "ACTIVO");
   const idsLocal = (locales ?? []).map((l) => l.id_local as string);
   if (idsLocal.length === 0) return;
 
-  const filas = idsLocal.map((idLocal) => ({
+  const filas: FilaTareaEtiqueta[] = idsLocal.map((idLocal) => ({
     id_solicitud: s.idSolicitud,
     id_producto: s.idProducto,
     id_local: idLocal,
     tipo: s.tipo === "DESCUENTO" ? "INICIO_PROMO" : "CAMBIO_PRECIO",
     estado: "PENDIENTE",
     precio_anterior: precioAnterior,
+    efectivo_anterior: efectivoAnterior,
     precio_nuevo: precioNuevo,
     vence_el: s.vigencia.toISOString(),
   }));
@@ -248,7 +251,7 @@ async function generarTareasEtiqueta(
     }
   }
 
-  await supabase.from("tareas_etiqueta").insert(filas);
+  await insertarTareasEtiqueta(supabase, filas);
 }
 
 export async function rechazarSolicitud(idSolicitud: string, motivo: string): Promise<{ error: string | null }> {
