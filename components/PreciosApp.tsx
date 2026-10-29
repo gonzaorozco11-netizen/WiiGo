@@ -86,6 +86,11 @@ export default function PreciosApp(props: Props) {
   const [aviso, setAviso] = useState<{ texto: string; mal?: boolean } | null>(null);
   const [pasando, setPasando] = useState(false);
   const [ventanaAlifrut, setVentanaAlifrut] = useState<"traer" | "cambios" | null>(null);
+  const [soloUno, setSoloUno] = useState<string | null>(null);
+  const pasarUno = (id: string) => {
+    setSoloUno(id);
+    setPasando(true);
+  };
   // "Hace 30 días", tomado una sola vez al abrir la pantalla.
   const [hace30] = useState(() => Date.now() - 30 * 86400000);
 
@@ -276,6 +281,7 @@ export default function PreciosApp(props: Props) {
             orden={orden}
             setOrden={setOrden}
             cambiarProducto={cambiarProducto}
+            pasarUno={pasarUno}
             cambiarRubro={cambiarRubro}
           />
         )}
@@ -313,10 +319,18 @@ export default function PreciosApp(props: Props) {
 
       {pasando && (
         <PasarALaVenta
-          items={paraActualizar.map(({ p, r }) => ({ p, r: r as Extract<ResultadoPrecio, { ok: true }> }))}
-          onCerrar={() => setPasando(false)}
-          onListo={(n) => {
+          // Desde el botón del producto abierto: solo ese. Desde arriba: todos los que hay que actualizar.
+          items={(soloUno ? calculados.filter((c) => c.p.id === soloUno && c.r.ok) : paraActualizar).map(({ p, r }) => ({ p, r: r as Extract<ResultadoPrecio, { ok: true }> }))}
+          onCerrar={() => {
             setPasando(false);
+            setSoloUno(null);
+          }}
+          onListo={(n, ids) => {
+            setPasando(false);
+            setSoloUno(null);
+            // El precio de hoy pasa a ser el nuevo, sin recargar la pantalla.
+            const nuevos = new Map(calculados.filter((c) => ids.includes(c.p.id) && c.r.ok).map((c) => [c.p.id, c.r as Extract<ResultadoPrecio, { ok: true }>]));
+            setProductos((ps) => ps.map((p) => (nuevos.has(p.id) ? { ...p, precioHoy: nuevos.get(p.id)!.publico, efectivoHoy: nuevos.get(p.id)!.efectivo } : p)));
             avisar(n === 1 ? "Listo: 1 precio pasado a la venta." : `Listo: ${n} precios pasados a la venta.`);
             router.refresh();
           }}
@@ -367,6 +381,7 @@ function Lista(props: {
   setOrden: (o: "rubro" | "margen" | "actualizar") => void;
   cambiarProducto: (id: string, local: Partial<ProductoDelModulo>, servidor: CambiosProducto) => void;
   cambiarRubro: (id: string, campo: "margen" | "descuentoEfectivo", texto: string) => void;
+  pasarUno: (id: string) => void;
 }) {
   const { cfg, minimo } = props;
   const q = props.buscar.trim().toLowerCase();
@@ -549,7 +564,7 @@ function Lista(props: {
                   filasProd.push(
                     <tr key={`${p.id}-det`} className="detalle">
                       <td colSpan={9}>
-                        <Detalle c={c} cfg={cfg} minimo={minimo} granel={props.granel} envases={props.envases} cambiarProducto={props.cambiarProducto} />
+                        <Detalle c={c} cfg={cfg} minimo={minimo} granel={props.granel} envases={props.envases} cambiarProducto={props.cambiarProducto} pasarUno={props.pasarUno} />
                       </td>
                     </tr>
                   );
@@ -571,6 +586,7 @@ function Detalle({
   granel,
   envases,
   cambiarProducto,
+  pasarUno,
 }: {
   c: Calculado;
   cfg: ConfigPrecios;
@@ -578,6 +594,7 @@ function Detalle({
   granel: GranelDelModulo[];
   envases: Envase[];
   cambiarProducto: (id: string, local: Partial<ProductoDelModulo>, servidor: CambiosProducto) => void;
+  pasarUno: (id: string) => void;
 }) {
   const { p, r } = c;
   const esGranel = Boolean(p.idGranel);
@@ -670,7 +687,16 @@ function Detalle({
               </>
             )}
           </ul>
-        ) : (
+        ) : null}
+        {/* El de arriba de todo queda lejos cuando el producto está abierto más abajo. */}
+        {r.ok && (r.publico !== p.precioHoy || r.efectivo !== (p.efectivoHoy ?? p.precioHoy)) ? (
+          <button type="button" className="pr-btn prim" style={{ marginTop: 12, width: "100%" }} onClick={() => pasarUno(p.id)}>
+            {p.precioHoy ? `Pasar a la venta a ${pesos(r.publico)}` : `Ponerlo a la venta a ${pesos(r.publico)}`}
+          </button>
+        ) : r.ok ? (
+          <p className="pr-nota ok">Ya está a la venta a este precio.</p>
+        ) : null}
+        {!r.costo && (
           <p className="pr-nota mal">{!r.ok ? r.error : ""}</p>
         )}
         {!r.ok && r.costo && <p className="pr-nota mal">{r.error}</p>}
@@ -1323,7 +1349,7 @@ function PasarALaVenta({
 }: {
   items: { p: ProductoDelModulo; r: Extract<ResultadoPrecio, { ok: true }> }[];
   onCerrar: () => void;
-  onListo: (n: number) => void;
+  onListo: (n: number, ids: string[]) => void;
   onError: (e: string) => void;
 }) {
   const [elegidos, setElegidos] = useState<Set<string>>(() => new Set(items.map((i) => i.p.id)));
@@ -1334,7 +1360,7 @@ function PasarALaVenta({
     const r = await pasarALaVenta([...elegidos]);
     setEnviando(false);
     if (r.error) return onError(r.error);
-    onListo(r.cambiados ?? 0);
+    onListo(r.cambiados ?? 0, [...elegidos]);
   }
 
   return (
