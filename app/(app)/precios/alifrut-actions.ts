@@ -158,7 +158,7 @@ export type Tamano = { gramos: number | null; idEnvase: string | null };
  */
 export async function vincularItem(
   idItem: string,
-  opciones: { tamanos: Tamano[]; idSubcategoria: string | null; idProductoExistente: string | null }
+  opciones: { tamanos: Tamano[]; idSubcategoria: string | null; idProductoExistente: string | null; nombre?: string | null }
 ): Promise<{ error: string | null; creados?: number }> {
   if (!(await sesionDePrecios())) return { error: "No tenés permiso para Precios." };
   const tamanos = (opciones.tamanos ?? []).slice(0, 8);
@@ -187,7 +187,9 @@ export async function vincularItem(
     for (const t of tamanos) {
       const gramos = granel.unidad === "CAJA" ? null : t.gramos && t.gramos > 0 ? Math.round(t.gramos) : null;
       if (granel.unidad !== "CAJA" && !gramos) continue;
-      const nombre = nombreConTamano(gFila.nombre as string, gramos);
+      // El nombre que eligió Gonzalo; si no puso ninguno, el de Alifrut.
+      const base = String(opciones.nombre ?? "").replace(/\s+/g, " ").trim().slice(0, 120) || (gFila.nombre as string);
+      const nombre = nombreConTamano(base, gramos);
       const env = t.idEnvase ? (envases ?? []).find((e) => e.id_envase === t.idEnvase) : null;
       const merc = mercaderiaDe(granel, gramos);
       const { data: prod, error } = await supabase

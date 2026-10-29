@@ -5,6 +5,7 @@ import { calcularPrecio, costoPorKg, type ConfigPrecios, type Envase, type Grane
 import type { GranelDelModulo, ProductoDelModulo, RubroDelModulo } from "@/lib/datosPrecios";
 import { granelDesdeItem, type EstadoAlifrut, type ItemCatalogo } from "@/lib/catalogoProveedor";
 import { normalizar, type UnidadLista } from "@/lib/listaAlifrut";
+import { nombreConTamano } from "@/lib/nombreProducto";
 import { aplicarCambiosAlifrut, guardarUnidadItem, importarListaAlifrut, vincularItem, type ResumenLista } from "@/app/(app)/precios/alifrut-actions";
 
 // La lista exclusiva de Alifrut adentro de Precios (Gonzalo, 2026-10-29).
@@ -513,6 +514,9 @@ function Vincular(props: {
   // Primero la pregunta, y un solo camino por vez: con los dos a la vista se
   // unía el producto de Gonzalo y además se creaba otro igual (2026-10-29).
   const palabra = normalizar(item.nombre).split(" ")[0];
+  // El nombre de Alifrut es para Alifrut ("Mani Con Sal Premium Exportacion"):
+  // en WiiGo se pone el que quiera Gonzalo. Arranca sin lo que va entre paréntesis.
+  const [nombre, setNombre] = useState(() => item.nombre.replace(/\s*-?\s*\([^)]*\)/g, "").replace(/\s+/g, " ").trim());
   const [modo, setModo] = useState<"existente" | "nuevo">(() => (props.productos.some((p) => normalizar(p.nombre).includes(palabra)) ? "existente" : "nuevo"));
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -525,6 +529,7 @@ function Vincular(props: {
       tamanos: modo === "nuevo" ? [...tamanos.entries()].map(([gramos, idEnvase]) => ({ gramos, idEnvase: idEnvase || null })) : [],
       idSubcategoria: rubro || null,
       idProductoExistente: modo === "existente" ? existente || null : null,
+      nombre: nombre.trim() || null,
     }).catch(() => ({ error: "No se pudo guardar. Revisá la conexión.", creados: 0 }));
     setGuardando(false);
     if (r.error) return setError(r.error);
@@ -585,8 +590,22 @@ function Vincular(props: {
         </div>
       ) : (
       <div className="pr-m-cuerpo" style={{ paddingTop: 0 }}>
+        <label className="pr-m-campo">
+          Nombre en WiiGo
+          <input
+            id="pr-vinc-nombre"
+            className="pr-m-input"
+            value={nombre}
+            maxLength={120}
+            onChange={(e) => setNombre(e.target.value)}
+            placeholder="Ej: Maní con sal"
+          />
+          <small className="pr-tenue" style={{ fontWeight: 400 }}>
+            Sin el tamaño: lo agrega el sistema. Lo podés cambiar después en Productos.
+          </small>
+        </label>
         <span className="pr-tenue" style={{ fontSize: 13 }}>
-          Quedan «Sin precio», listos para revisar y pasar a la venta. Después les agregás foto y rótulo en Productos.
+          Elegí los tamaños. Quedan «Sin precio», listos para revisar y pasar a la venta.
         </span>
         <div className="pr-m-tamanos">
           {opciones.map((g) => {
@@ -624,6 +643,16 @@ function Vincular(props: {
             );
           })}
         </div>
+        {tamanos.size > 0 && nombre.trim() && (
+          <div className="pr-m-asi">
+            <span>Así va a figurar:</span>
+            {[...tamanos.keys()]
+              .sort((a, b) => (a ?? 0) - (b ?? 0))
+              .map((g) => (
+                <b key={String(g)}>{nombreConTamano(nombre, g)}</b>
+              ))}
+          </div>
+        )}
         {tamanos.size > 0 && (
           <label className="pr-m-campo">
             Rubro
@@ -650,7 +679,7 @@ function Vincular(props: {
           {listo ? "Listo" : "Cancelar"}
         </button>
         {!listo && (
-          <button type="button" className="pr-btn prim" disabled={guardando || (modo === "existente" ? !existente : tamanos.size === 0)} onClick={guardar}>
+          <button type="button" className="pr-btn prim" disabled={guardando || (modo === "existente" ? !existente : tamanos.size === 0 || !nombre.trim())} onClick={guardar}>
             {guardando ? "Guardando…" : modo === "existente" ? "Unir" : tamanos.size === 0 ? "Crear" : `Crear ${tamanos.size === 1 ? "1 producto" : `${tamanos.size} productos`}`}
           </button>
         )}
