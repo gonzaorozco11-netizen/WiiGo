@@ -142,6 +142,11 @@ export function redondearArriba(n: number, multiplo: number) {
   return Math.ceil(Math.round(n * 100) / 100 / m) * m;
 }
 
+export function redondearAbajo(n: number, multiplo: number) {
+  const m = multiplo > 0 ? multiplo : 1;
+  return Math.floor(Math.round(n * 100) / 100 / m) * m;
+}
+
 export type Ganancia = { ganancia: number; margen: number };
 
 export type ResultadoPrecio =
@@ -191,7 +196,12 @@ export function calcularPrecio(p: ProductoPrecio, cfg: ConfigPrecios, granel: Ma
   };
 
   const descuentoEfectivo = (p.descuentoEfectivo ?? p.rubro?.descuentoEfectivo ?? cfg.descuentoEfectivo) / 100;
-  const efectivo = descuentoEfectivo > 0 ? redondearArriba(publico * (1 - descuentoEfectivo), cfg.redondeo) : publico;
+  // El de efectivo se redondea hacia ABAJO: hacia arriba, en lo barato el
+  // redondeo se comía el descuento ($900 − 10 % = $810 volvía a $900). Así el
+  // que paga en efectivo siempre tiene al menos el descuento que dice el
+  // cartel (Gonzalo, 2026-10-29).
+  const conDescuento = publico * (1 - descuentoEfectivo);
+  const efectivo = descuentoEfectivo > 0 ? redondearAbajo(conDescuento, cfg.redondeo) || redondearArriba(conDescuento, 1) : publico;
   const minimo = margenMinimo(cfg);
   // El precio en efectivo que deja el margen real justo en el mínimo.
   const dEf = cfg.descuenta.efectivo;
