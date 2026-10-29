@@ -272,6 +272,7 @@
 .pr-dif.parejo { color: var(--ojo); background: var(--ojo-t); }
 .pr-dif.barato { color: var(--ok); background: var(--ok-t); }
 .pr-dif.nada { color: var(--tinta-3); background: var(--hoja-2); border: 1px dashed var(--linea-2); font-weight: 600; }
+.pr-comp-oferta { display: block; color: var(--ok); font-size: 11.5px; font-weight: 600; }
 .pr-comp-contra { display: block; font-size: 11px; color: var(--tinta-3); margin-top: 2px; }
 .pr-det-comp { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
 .pr-comp-rival { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 9px 0; border-top: 1px solid var(--linea); }

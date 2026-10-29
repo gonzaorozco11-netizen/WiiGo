@@ -6,10 +6,11 @@
 // Mardegan (mix y especias) y Jumbo, la sucursal de Mendoza. Cada precio se
 // lleva al tamaño de WiiGo: si ellos venden 100 g y WiiGo 250 g, se multiplica.
 
-export type Comercio = "BELAVITA" | "REGIO" | "MARDEGAN" | "JUMBO";
+export type Comercio = "BELAVITA" | "MEGANUTS" | "REGIO" | "MARDEGAN" | "JUMBO";
 
 export const COMERCIOS: { clave: Comercio; nombre: string; tipo: string; principal?: boolean }[] = [
   { clave: "BELAVITA", nombre: "Bela Vita", tipo: "dietética · fraccionado", principal: true },
+  { clave: "MEGANUTS", nombre: "Mega Nuts", tipo: "frutos secos · de 500 g a 5 kg" },
   { clave: "REGIO", nombre: "Regio Mendoza", tipo: "por kilo, desde 1 kg" },
   { clave: "MARDEGAN", nombre: "Mardegan", tipo: "mix y especias" },
   { clave: "JUMBO", nombre: "Jumbo Mendoza", tipo: "súper · sucursal Mendoza" },
@@ -22,11 +23,24 @@ export type ItemCompetencia = {
   /** Lo que trae, en gramos. null = no se sabe (no se puede comparar). */
   gramos: number | null;
   porKilo: boolean;
+  /** El precio de hoy: si está en oferta, el de la oferta. */
   precio: number;
+  /** El precio normal cuando está en oferta; null si no hay oferta. */
   precioAntes: number | null;
+  /** Por qué la oferta, si lo publican ("VENCE 4 NOV"). */
+  nota: string | null;
   disponible: boolean;
   vistoEl: string;
 };
+
+/**
+ * El precio normal llevado al tamaño de WiiGo. Contra este se compara: una
+ * oferta puede ser mercadería por vencer (Gonzalo, 2026-10-29), así que se
+ * muestra aparte, como referencia.
+ */
+export function precioNormalATuTamano(item: Pick<ItemCompetencia, "precio" | "precioAntes" | "gramos">, gramos: number): number | null {
+  return precioATuTamano({ precio: item.precioAntes ?? item.precio, gramos: item.gramos }, gramos);
+}
 
 /** Gramos que dice un nombre: "X100GRS", "x 250 g", "1 Kg", "x 1,5 kg". */
 export function gramosDelNombre(nombre: string): number | null {

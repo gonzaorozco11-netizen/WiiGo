@@ -16,7 +16,7 @@ import { nombreBase } from "@/lib/nombreProducto";
 const UA = { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36", Accept: "application/json, text/html;q=0.9" };
 const SUCURSAL_JUMBO = "jumboargentinaj5222mendoza";
 
-type Leido = { clave: string; nombre: string; gramos: number | null; por_kilo: boolean; precio: number; precio_antes: number | null; disponible: boolean };
+type Leido = { clave: string; nombre: string; gramos: number | null; por_kilo: boolean; precio: number; precio_antes: number | null; nota?: string | null; disponible: boolean };
 
 async function json<T>(url: string, init?: RequestInit): Promise<T> {
   const r = await fetch(url, { ...init, headers: { ...UA, ...(init?.headers ?? {}) }, cache: "no-store", signal: AbortSignal.timeout(20000) });
@@ -25,10 +25,40 @@ async function json<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 async function leerBelaVita(): Promise<Leido[]> {
-  const j = await json<{ productos: { id: number; nombre: string; precio: number; precio_antes: number | null; stock: number | null }[] }>("https://dieteticaonlinebelavita.com.ar/api/catalogo");
+  type P = { id: number; nombre: string; precio: number; precio_antes: number | null; stock: number | null; etiqueta_vencimiento?: string | null; oferta_hasta?: string | null };
+  const j = await json<{ productos: P[] }>("https://dieteticaonlinebelavita.com.ar/api/catalogo");
   return j.productos
-    .map((p) => ({ clave: String(p.id), nombre: p.nombre, gramos: gramosDelNombre(p.nombre), por_kilo: false, precio: Number(p.precio), precio_antes: p.precio_antes ? Number(p.precio_antes) : null, disponible: (p.stock ?? 1) > 0 }))
+    .map((p) => {
+      const antes = p.precio_antes && Number(p.precio_antes) > Number(p.precio) ? Number(p.precio_antes) : null;
+      // El motivo de la oferta: "VENCE 4 NOV" (mercadería por vencer) o hasta cuándo dura.
+      const nota = antes ? p.etiqueta_vencimiento || (p.oferta_hasta ? `oferta hasta ${new Date(p.oferta_hasta).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" })}` : null) : null;
+      return { clave: String(p.id), nombre: p.nombre, gramos: gramosDelNombre(p.nombre), por_kilo: false, precio: Number(p.precio), precio_antes: antes, nota, disponible: (p.stock ?? 1) > 0 };
+    })
     .filter((p) => p.gramos && p.precio > 0);
+}
+
+/** Mega Nuts (WooCommerce): cada tamaño (500 g, 1 kg…) es una "variación" con su precio. */
+async function leerMegaNuts(): Promise<Leido[]> {
+  type P = { id: number; name: string; type?: string; variation?: string; is_in_stock?: boolean; prices: { price: string; regular_price: string; sale_price?: string; currency_minor_unit: number } };
+  const salida: Leido[] = [];
+  const pasar = (p: P, gramos: number | null, nombre: string) => {
+    const div = 10 ** (p.prices.currency_minor_unit ?? 2);
+    const precio = Number(p.prices.price) / div;
+    const lista = Number(p.prices.regular_price) / div;
+    if (gramos && precio > 0) salida.push({ clave: String(p.id), nombre, gramos, por_kilo: false, precio, precio_antes: lista > precio ? lista : null, nota: null, disponible: p.is_in_stock !== false });
+  };
+  for (const tipo of ["variation", "simple"]) {
+    for (let page = 1; page <= 20; page++) {
+      const lote = await json<P[]>(`https://meganuts.com.ar/wp-json/wc/store/v1/products?type=${tipo}&per_page=100&page=${page}`);
+      for (const p of lote) {
+        // La variación dice "Gramos: 500gr"; el producto simple lo trae en el nombre.
+        const gramos = tipo === "variation" ? gramosDelNombre(` ${p.variation ?? ""}`) : gramosDelNombre(p.name);
+        pasar(p, gramos, tipo === "variation" && gramos ? `${p.name} x ${gramos >= 1000 ? `${gramos / 1000} kg` : `${gramos} g`}` : p.name);
+      }
+      if (lote.length < 100) break;
+    }
+  }
+  return salida;
 }
 
 async function leerRegio(): Promise<Leido[]> {
@@ -121,6 +151,7 @@ export async function actualizarCompetencia(supabase: SupabaseClient): Promise<R
 
   const lectores: Record<Comercio, () => Promise<Leido[]>> = {
     BELAVITA: leerBelaVita,
+    MEGANUTS: leerMegaNuts,
     REGIO: leerRegio,
     MARDEGAN: leerMardegan,
     JUMBO: () => leerJumbo(busquedas),
@@ -131,8 +162,18 @@ export async function actualizarCompetencia(supabase: SupabaseClient): Promise<R
       try {
         const leidos = await lectores[clave]();
         for (let i = 0; i < leidos.length; i += 300) {
-          const { error } = await supabase.from("competencia_items").upsert(leidos.slice(i, i + 300).map((l) => ({ ...l, comercio: clave, visto_el: ahora })), { onConflict: "comercio,clave" });
-          if (error) throw new Error(error.message);
+          const lote = leidos.slice(i, i + 300).map((l) => ({ ...l, nota: l.nota ?? null, comercio: clave, visto_el: ahora }));
+          let { error } = await supabase.from("competencia_items").upsert(lote, { onConflict: "comercio,clave" });
+          // Sin la columna "nota" (falta correr el SQL nuevo) se guarda igual, sin el motivo de la oferta.
+          if (error && /nota/.test(error.message)) {
+            const sinNota = lote.map((f) => {
+              const c: Partial<typeof f> = { ...f };
+              delete c.nota;
+              return c;
+            });
+            ({ error } = await supabase.from("competencia_items").upsert(sinNota, { onConflict: "comercio,clave" }));
+          }
+          if (error) throw new Error(/check constraint/.test(error.message) ? "falta correr el SQL de Mega Nuts" : error.message);
         }
         // Lo que ya no está en su página queda como no disponible.
         if (clave !== "JUMBO") await supabase.from("competencia_items").update({ disponible: false }).eq("comercio", clave).lt("visto_el", ahora);
@@ -189,6 +230,7 @@ export function filaAItem(f: Record<string, unknown>): ItemCompetencia {
     porKilo: Boolean(f.por_kilo),
     precio: Number(f.precio),
     precioAntes: f.precio_antes == null ? null : Number(f.precio_antes),
+    nota: (f.nota as string | null | undefined) ?? null,
     disponible: Boolean(f.disponible),
     vistoEl: f.visto_el as string,
   };

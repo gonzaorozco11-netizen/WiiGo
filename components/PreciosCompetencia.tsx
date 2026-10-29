@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { COMERCIOS, diferencia, precioATuTamano, type Comercio } from "@/lib/competencia";
+import { COMERCIOS, diferencia, precioATuTamano, precioNormalATuTamano, type Comercio, type ItemCompetencia } from "@/lib/competencia";
 import type { DatosCompetencia, VinculoCompetencia } from "@/lib/competenciaLeer";
 import type { ProductoDelModulo } from "@/lib/datosPrecios";
 import { actualizarCompetenciaAhora, confirmarEquivalente, descartarEquivalente } from "@/app/(app)/precios/competencia-actions";
@@ -56,7 +56,8 @@ export default function PreciosCompetencia(props: { productos: ProductoDelModulo
     });
   }
 
-  const conPrecio = (v: VinculoCompetencia | undefined, g: number | null) => (v?.item && g ? precioATuTamano(v.item, g) : null);
+  // Se compara contra el precio normal; la oferta va aparte, de referencia (puede ser algo por vencer).
+  const conPrecio = (v: VinculoCompetencia | undefined, g: number | null) => (v?.item && g ? precioNormalATuTamano(v.item, g) : null);
   const filas: Fila[] = props.productos.map((p) => {
     const v: Fila["v"] = {};
     for (const x of datos.vinculos[p.id] ?? []) if (x.item) v[x.comercio] = x;
@@ -126,6 +127,7 @@ export default function PreciosCompetencia(props: { productos: ProductoDelModulo
                             {x?.item ? (
                               <span className="pr-comp-celda">
                                 <span className="n">{pesos(conPrecio(x, f.p.gramos))}</span>
+                                <Oferta it={x.item} g={f.p.gramos} />
                                 <small>
                                   {x.item.nombre}
                                   {x.item.porKilo ? " · por kilo" : ""}
@@ -158,12 +160,23 @@ export default function PreciosCompetencia(props: { productos: ProductoDelModulo
   );
 }
 
+/** "oferta $2.160 · VENCE 4 NOV": el precio de oferta llevado a tu tamaño, si hay. */
+function Oferta({ it, g }: { it: ItemCompetencia; g: number | null }) {
+  if (!it.precioAntes || !g) return null;
+  return (
+    <span className="pr-comp-oferta">
+      oferta {pesos(precioATuTamano(it, g))}
+      {it.nota ? ` · ${it.nota}` : ""}
+    </span>
+  );
+}
+
 function Detalle({ f, responder, pendiente }: { f: Fila; responder: (id: string, c: Comercio, si: boolean) => void; pendiente: boolean }) {
   const g = f.p.gramos;
   const lista = COMERCIOS.filter((c) => f.v[c.clave]?.item);
-  const todos = [{ q: "Vos", v: f.p.precioHoy ?? 0, yo: true }, ...lista.map((c) => ({ q: c.nombre, v: g ? precioATuTamano(f.v[c.clave]!.item!, g) ?? 0 : 0, yo: false }))].filter((t) => t.v > 0);
+  const todos = [{ q: "Vos", v: f.p.precioHoy ?? 0, yo: true }, ...lista.map((c) => ({ q: c.nombre, v: g ? precioNormalATuTamano(f.v[c.clave]!.item!, g) ?? 0 : 0, yo: false }))].filter((t) => t.v > 0);
   const max = Math.max(1, ...todos.map((t) => t.v));
-  const ref = f.contra && g ? precioATuTamano(f.v[f.contra]!.item!, g) : null;
+  const ref = f.contra && g ? precioNormalATuTamano(f.v[f.contra]!.item!, g) : null;
   const tope = ref ? Math.floor((ref * 0.98) / 100) * 100 : null;
   return (
     <div className="pr-det pr-det-comp">
@@ -180,9 +193,13 @@ function Detalle({ f, responder, pendiente }: { f: Fila; responder: (id: string,
                 {it.porKilo && <span className="pr-comp-chip kilo">por kilo</span>}
                 {!it.disponible && <span className="pr-comp-chip gris">agotado</span>}
                 <div className="pr-tenue" style={{ fontSize: 12.5 }}>
-                  {it.nombre} · {pesos(it.precio)} {it.gramos && it.gramos >= 1000 ? (it.gramos === 1000 ? "el kg" : `por ${it.gramos / 1000} kg`) : `por ${it.gramos} g`}
-                  {it.precioAntes ? ` (antes ${pesos(it.precioAntes)})` : ""} · {c.tipo}
+                  {it.nombre} · {pesos(it.precioAntes ?? it.precio)} {it.gramos && it.gramos >= 1000 ? (it.gramos === 1000 ? "el kg" : `por ${it.gramos / 1000} kg`) : `por ${it.gramos} g`} · {c.tipo}
                 </div>
+                {it.precioAntes && (
+                  <div className="pr-comp-oferta" style={{ fontSize: 12.5 }}>
+                    En oferta a {pesos(it.precio)} ({Math.round((1 - it.precio / it.precioAntes) * 100)}% menos){it.nota ? ` · ${it.nota}` : ""}
+                  </div>
+                )}
                 {x.estado === "PROPUESTO" && (
                   <div className="pr-comp-preg">
                     ¿Es el mismo producto que el tuyo?
@@ -192,8 +209,9 @@ function Detalle({ f, responder, pendiente }: { f: Fila; responder: (id: string,
                 )}
               </div>
               <div className="pr-comp-tu n">
-                {pesos(g ? precioATuTamano(it, g) : null)}
+                {pesos(g ? precioNormalATuTamano(it, g) : null)}
                 <small>a tus {g ?? "?"} g</small>
+                {it.precioAntes && g && <small className="pr-comp-oferta">oferta {pesos(precioATuTamano(it, g))}</small>}
               </div>
             </div>
           );

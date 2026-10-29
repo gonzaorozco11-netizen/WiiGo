@@ -10,6 +10,8 @@ import PreciosApp from "@/components/PreciosApp";
 import "./precios.css";
 
 export const dynamic = "force-dynamic";
+// "Actualizar ahora" de la competencia lee 5 páginas (Bela Vita y Mega Nuts son grandes): necesita más que los 10 s de siempre.
+export const maxDuration = 60;
 
 // La estética "Profesional" que eligió Gonzalo: números en tipografía de
 // máquina, del mismo ancho, para compararlos en columna.
