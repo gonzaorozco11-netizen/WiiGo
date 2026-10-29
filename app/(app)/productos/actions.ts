@@ -8,6 +8,7 @@ import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 import { esCodigoInterno, limpiarCodigoBarras } from "@/lib/codigos";
 import { generarSkuVariante, generarCodigoBarrasVariante } from "@/lib/codigosVariante";
 import { guardarCosto } from "@/lib/costosMarca";
+import { nombreConTamano } from "@/lib/nombreProducto";
 import { hayClaveIA } from "@/lib/ia";
 import { actualizarFichaProducto, actualizarFichaTema } from "@/lib/aprender";
 import { after } from "next/server";
@@ -135,6 +136,8 @@ function productoFromForm(formData: FormData, idMarca: string, idSubcategoria: s
     for (const k of ["costo_informado", "costos_extra", "precio_venta", "precio_efectivo", "descuento_porcentaje"] as const) {
       delete (datos as Partial<typeof datos>)[k];
     }
+    // Se escribe "Almendra Non Pareil" y el tamaño lo pone el peso neto: "Almendra Non Pareil 250 g".
+    if (datos.nombre) datos.nombre = nombreConTamano(datos.nombre, datos.peso_neto_g);
   }
   return datos;
 }

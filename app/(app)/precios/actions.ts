@@ -7,6 +7,7 @@ import { esRolInterno } from "@/lib/rolesInternos";
 import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos";
 import { calcularPrecio, mercaderiaDe, MEDIOS, type Granel, type Medio, type Descuenta } from "@/lib/calculoPrecio";
 import { CLAVES_PRECIOS } from "@/lib/configPrecios";
+import { nombreConTamano } from "@/lib/nombreProducto";
 import { cargarDatosPrecios } from "@/lib/datosPrecios";
 import { calcularTablero } from "@/app/(app)/resultado-mes/actions";
 
@@ -138,6 +139,9 @@ export async function guardarProductoPrecio(idProducto: string, cambios: Cambios
     const n = numeroONull(cambios.gramos, 1, 100000);
     if (n === undefined) return { error: "Los gramos tienen que ser un número." };
     update.peso_neto_g = n;
+    // El tamaño del nombre sigue al peso: "Almendra Non Pareil 250 g".
+    const { data: actual } = await supabase.from("productos").select("nombre").eq("id_producto", idProducto).maybeSingle();
+    if (actual?.nombre) update.nombre = nombreConTamano(actual.nombre as string, n);
   }
   // Si sale de un granel, su costo por unidad (costo_informado) se recalcula:
   // es el que usan Rentabilidad y las liquidaciones.

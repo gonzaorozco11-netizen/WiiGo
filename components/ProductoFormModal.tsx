@@ -24,6 +24,7 @@ import {
 } from "@/lib/codigos";
 import EscanerCodigo from "@/components/EscanerCodigo";
 import { duracionSugerida } from "@/lib/rotulado";
+import { nombreBase } from "@/lib/nombreProducto";
 import {
   simularMargen,
   type TasasGenerales,
@@ -218,7 +219,17 @@ export default function ProductoFormModal({
             nutricional entera. Por eso se esconden con CSS y no con JSX. */}
         <form action={handleSubmit} className="space-y-3">
           <div className={paso === 1 ? "space-y-3" : "hidden"}>
-          <Field label="Nombre *" name="nombre" defaultValue={producto?.nombre} required />
+          {marcaSeleccionada?.tipo_comercializacion === "PROPIA" ? (
+            <div>
+              {/* El tamaño lo agrega el sistema con el peso neto (lib/nombreProducto.ts). */}
+              <Field label="Nombre *" name="nombre" defaultValue={producto ? (producto.peso_neto_g ? nombreBase(producto.nombre) : producto.nombre) : ""} required />
+              <p className="text-xs text-neutral-500 mt-1">
+                Sin el tamaño: lo agrega el sistema con el peso neto. Por ejemplo, «Almendra Non Pareil» queda «Almendra Non Pareil 250 g».
+              </p>
+            </div>
+          ) : (
+            <Field label="Nombre *" name="nombre" defaultValue={producto?.nombre} required />
+          )}
           <div className="grid grid-cols-2 gap-3">
             <Field label="Nombre (inglés)" name="nombre_en" defaultValue={producto?.nombre_en ?? ""} />
             <Field label="Nombre (portugués)" name="nombre_pt" defaultValue={producto?.nombre_pt ?? ""} />

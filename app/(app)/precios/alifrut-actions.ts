@@ -10,6 +10,7 @@ import { CLAVES_PRECIOS } from "@/lib/configPrecios";
 import { generarCodigoBarrasVariante, generarSkuVariante } from "@/lib/codigosVariante";
 import { pasarALaVenta } from "@/app/(app)/precios/actions";
 import { CLAVES_ALIFRUT, granelDesdeItem } from "@/lib/catalogoProveedor";
+import { nombreConTamano } from "@/lib/nombreProducto";
 
 // La lista exclusiva de Alifrut adentro de Precios (Gonzalo, 2026-10-29):
 // se trae pegándola (hasta que Alifrut pase un link privado), se vincula cada
@@ -186,7 +187,7 @@ export async function vincularItem(
     for (const t of tamanos) {
       const gramos = granel.unidad === "CAJA" ? null : t.gramos && t.gramos > 0 ? Math.round(t.gramos) : null;
       if (granel.unidad !== "CAJA" && !gramos) continue;
-      const nombre = gramos ? `${gFila.nombre} x${gramos >= 1000 && gramos % 1000 === 0 ? `${gramos / 1000}kg` : `${gramos}gr`}` : gFila.nombre;
+      const nombre = nombreConTamano(gFila.nombre as string, gramos);
       const env = t.idEnvase ? (envases ?? []).find((e) => e.id_envase === t.idEnvase) : null;
       const merc = mercaderiaDe(granel, gramos);
       const { data: prod, error } = await supabase
