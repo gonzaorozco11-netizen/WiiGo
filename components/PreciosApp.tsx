@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import {
   calcularPrecio,
@@ -27,6 +27,7 @@ import {
   guardarGranel,
   guardarProductoPrecio,
   guardarRubroPrecio,
+  aplicarRubroATodos,
   pasarALaVenta,
   traerGastosYVentas,
   type CambiosConfig,
@@ -154,6 +155,16 @@ export default function PreciosApp(props: Props) {
     const valor = aNumero(texto);
     setRubros((rs) => rs.map((r) => (r.id === id ? { ...r, [campo]: valor } : r)));
     guardarLuego(`r:${id}:${campo}`, () => guardarRubroPrecio(id, { [campo]: valor }));
+  }
+  // "Sí, a todos": los productos del rubro dejan su % propio y usan el del rubro.
+  // La vuelta hace que los casilleros se vuelvan a dibujar vacíos.
+  const [vuelta, setVuelta] = useState(0);
+  function aplicarATodoElRubro(id: string, campo: "margen" | "descuentoEfectivo", nombre: string) {
+    setProductos((ps) => ps.map((p) => (p.idSubcategoria === id ? { ...p, [campo]: null } : p)));
+    setVuelta((v) => v + 1);
+    aplicarRubroATodos(id, campo)
+      .then((r) => avisar(r.error ?? `Listo: todo ${nombre} usa el ${campo === "margen" ? "margen" : "descuento en efectivo"} del rubro.`, Boolean(r.error)))
+      .catch(() => avisar("No se pudo aplicar. Probá de nuevo.", true));
   }
   function cambiarConfig(local: Partial<ConfigPrecios>, servidor: CambiosConfig) {
     setCfg((c) => ({ ...c, ...local }));
@@ -288,6 +299,8 @@ export default function PreciosApp(props: Props) {
             cambiarProducto={cambiarProducto}
             pasarUno={pasarUno}
             cambiarRubro={cambiarRubro}
+            aplicarATodoElRubro={aplicarATodoElRubro}
+            vuelta={vuelta}
           />
         )}
         {pestana === "competencia" && <PreciosCompetencia productos={productos} datos={props.competencia ?? null} avisar={avisar} />}
@@ -385,6 +398,46 @@ function Margen({ m, minimo }: { m: number; minimo: number }) {
   );
 }
 
+/**
+ * Un color por rubro (color, fondo suave, texto), según el orden de los
+ * rubros: siempre el mismo para cada uno. Ninguno es el azul de tarjeta ni el
+ * verde agua de efectivo.
+ */
+const COLORES_RUBRO: [string, string, string][] = [
+  ["#b7791f", "#fdf6e7", "#7c4a03"], // tostado
+  ["#c2416b", "#fdf0f4", "#8a1f45"], // frambuesa
+  ["#5f8a2e", "#f3f8ec", "#3d5c1a"], // oliva
+  ["#d4622a", "#fdf1ea", "#94380c"], // naranja
+  ["#7a5bb5", "#f5f1fb", "#4f3489"], // lavanda
+  ["#2f7fa8", "#eef6fb", "#1b5272"], // celeste
+  ["#a2571f", "#f9f0e8", "#6b3510"], // canela
+  ["#4f6b7a", "#f0f4f6", "#30444f"], // pizarra
+];
+const COLOR_SIN_RUBRO: [string, string, string] = ["#9ca3af", "#f6f7f9", "#374151"];
+
+/** Las mismas columnas en el encabezado y en la tabla de cada rubro, para que queden alineadas. */
+function ColumnasLista() {
+  return (
+    <colgroup>
+      <col style={{ width: "24%" }} />
+      <col style={{ width: "8%" }} />
+      <col style={{ width: "10%" }} />
+      <col style={{ width: "11%" }} />
+      <col style={{ width: "11%" }} />
+      <col style={{ width: "13%" }} />
+      <col style={{ width: "14%" }} />
+      <col style={{ width: "9%" }} />
+    </colgroup>
+  );
+}
+
+/** Cuánto cambia contra lo que está hoy a la venta. */
+function Delta({ nuevo, hoy }: { nuevo: number | null; hoy: number }) {
+  const dif = nuevo == null ? 0 : nuevo - hoy;
+  if (!dif) return null;
+  return <span className={`pr-delta ${dif > 0 ? "sube" : "baja"}`}>{`${dif > 0 ? "+" : "−"}${pesos(Math.abs(dif))}`}</span>;
+}
+
 function Lista(props: {
   calculados: Calculado[];
   cfg: ConfigPrecios;
@@ -402,9 +455,20 @@ function Lista(props: {
   setOrden: (o: "rubro" | "margen" | "actualizar") => void;
   cambiarProducto: (id: string, local: Partial<ProductoDelModulo>, servidor: CambiosProducto) => void;
   cambiarRubro: (id: string, campo: "margen" | "descuentoEfectivo", texto: string) => void;
+  aplicarATodoElRubro: (id: string, campo: "margen" | "descuentoEfectivo", nombre: string) => void;
+  vuelta: number;
   pasarUno: (id: string) => void;
 }) {
   const { cfg, minimo } = props;
+  // Al terminar de escribir el % de un rubro: si hay productos con el suyo
+  // cargado a mano, pregunta si se lo aplica a todos.
+  const [pregunta, setPregunta] = useState<{ id: string; campo: "margen" | "descuentoEfectivo"; valor: number; cuantos: number } | null>(null);
+  function alSalirDelRubro(r: RubroDelModulo, campo: "margen" | "descuentoEfectivo", texto: string) {
+    const valor = aNumero(texto);
+    if (valor == null) return setPregunta(null);
+    const cuantos = props.calculados.filter((c) => c.p.idSubcategoria === r.id && c.p[campo] != null && c.p[campo] !== valor).length;
+    setPregunta(cuantos > 0 ? { id: r.id, campo, valor, cuantos } : null);
+  }
   const q = props.buscar.trim().toLowerCase();
   let filas = props.calculados.filter(({ p }) => (!q || p.nombre.toLowerCase().includes(q)) && (!props.filtroRubro || p.idSubcategoria === props.filtroRubro));
   const margenDe = (c: Calculado) => (c.r.ok ? c.r.enEscenario.margen : -9);
@@ -460,145 +524,231 @@ function Lista(props: {
           Debajo del mínimo
         </span>
       </div>
+      {/* Cada rubro en su tarjeta, con su color; cada producto en dos renglones:
+          tarjeta arriba (el margen) y efectivo abajo (el descuento, que sigue al
+          precio de tarjeta). Pedido de Gonzalo, 2026-10-29. */}
       <div className="pr-env">
-        <table className="pr-tabla">
-          <thead>
-            <tr>
-              <th>Producto</th>
-              <th>Costo</th>
-              <th>Margen</th>
-              <th>Al público</th>
-              <th>Hoy en venta</th>
-              <th>Efectivo</th>
-              <th>Real {nombreMedio(cfg.escenario).split(" ")[0].toLowerCase()}</th>
-              <th>Real efectivo</th>
-              <th>Competencia</th>
-            </tr>
-          </thead>
-          <tbody>
-            {grupos.map((g) => [
-              <tr key={`g-${g.titulo}`} className="grupo">
-                <td colSpan={3}>
-                  <span className="pr-gn">{g.titulo}</span>
-                  <span className="pr-gm">
-                    {g.filas.length} {g.filas.length === 1 ? "producto" : "productos"}
+        <div className="pr-rubros">
+          <table className="pr-tabla pr-tabla-cab">
+            <ColumnasLista />
+            <thead>
+              <tr>
+                <th>Producto</th>
+                <th>Costo</th>
+                <th className="izq">Cómo paga</th>
+                <th>
+                  Margen<small>o descuento</small>
+                </th>
+                <th>Precio</th>
+                <th>Hoy en venta</th>
+                <th>
+                  Margen real<small>lo que te queda</small>
+                </th>
+                <th>Competencia</th>
+              </tr>
+            </thead>
+          </table>
+          {grupos.map((g) => {
+            const idx = g.rubro ? props.rubros.findIndex((x) => x.id === g.rubro!.id) : -1;
+            const [rc, rt, ro] = idx >= 0 ? COLORES_RUBRO[idx % COLORES_RUBRO.length] : COLOR_SIN_RUBRO;
+            return (
+              <div key={`g-${g.titulo}`} className="pr-rubro" style={{ "--rc": rc, "--rt": rt, "--ro": ro } as CSSProperties}>
+                <div className="pr-rubro-cab">
+                  <span className="nom">
+                    <span className="pr-gn">{g.titulo}</span>
+                    <span className="pr-gm">
+                      {g.filas.length} {g.filas.length === 1 ? "producto" : "productos"}
+                    </span>
                   </span>
-                </td>
-                <td colSpan={6}>
                   {g.rubro && (
                     <span className="pr-gctrl">
                       <label>
-                        Margen del rubro{" "}
+                        Margen tarjeta{" "}
                         <input
                           className="pr-in"
                           inputMode="decimal"
                           defaultValue={g.rubro.margen ?? ""}
                           placeholder={String(cfg.margenDefecto)}
                           onChange={(e) => props.cambiarRubro(g.rubro!.id, "margen", e.target.value)}
+                          onBlur={(e) => alSalirDelRubro(g.rubro!, "margen", e.target.value)}
                           aria-label={`Margen del rubro ${g.titulo}`}
                         />{" "}
                         %
                       </label>
                       <label>
-                        Desc. efectivo{" "}
+                        Descuento efectivo{" "}
                         <input
-                          className="pr-in"
+                          className="pr-in ef"
                           inputMode="decimal"
                           defaultValue={g.rubro.descuentoEfectivo ?? ""}
                           placeholder={String(cfg.descuentoEfectivo)}
                           onChange={(e) => props.cambiarRubro(g.rubro!.id, "descuentoEfectivo", e.target.value)}
+                          onBlur={(e) => alSalirDelRubro(g.rubro!, "descuentoEfectivo", e.target.value)}
                           aria-label={`Descuento por efectivo del rubro ${g.titulo}`}
                         />{" "}
                         %
                       </label>
                     </span>
                   )}
-                </td>
-              </tr>,
-              ...g.filas.flatMap((c) => {
-                const { p, r } = c;
-                const abierto = props.abierto === p.id;
-                const g2 = p.idGranel ? props.granel.find((x) => x.id === p.idGranel) : null;
-                const sub = g2
-                  ? g2.unidad === "CAJA"
-                    ? `1 unidad de ${g2.nombre.toLowerCase()}${(g2.kgBulto ?? 1) > 1 ? ` (caja de ${g2.kgBulto})` : ""}`
-                    : `${p.gramos ?? "?"} g de ${g2.nombre.toLowerCase()}${p.idEnvase ? " + bolsita" : ""}`
-                  : p.idEnvase
-                    ? "por unidad + envase"
-                    : "viene envasado";
-                const dif = r.ok && p.precioHoy ? r.publico - p.precioHoy : 0;
-                const filasProd = [
-                  <tr key={p.id} className={`fila${abierto ? " abierta" : ""}`} onClick={() => props.setAbierto(abierto ? null : p.id)}>
-                    <td className="pr-prod">
-                      <b>{p.nombre}</b>
-                      <small>{sub}</small>
-                    </td>
-                    <td className="n pr-tenue">{r.costo ? pesos(r.costo.total) : "—"}</td>
-                    <td onClick={(e) => e.stopPropagation()}>
-                      <input
-                        className="pr-in"
-                        inputMode="decimal"
-                        defaultValue={p.margen ?? ""}
-                        placeholder={String(Math.round(r.margen * 100))}
-                        onChange={(e) => {
-                          const v = aNumero(e.target.value);
-                          props.cambiarProducto(p.id, { margen: v }, { margen: v });
+                </div>
+                {g.rubro && pregunta?.id === g.rubro.id && (
+                  <div className="pr-rubro-preg" role="alert">
+                    <span>
+                      {pregunta.cuantos === 1 ? "1 producto" : `${pregunta.cuantos} productos`} de {g.titulo} {pregunta.cuantos === 1 ? "tiene" : "tienen"} su propio{" "}
+                      {pregunta.campo === "margen" ? "margen" : "descuento en efectivo"} cargado a mano. ¿Les aplico el{" "}
+                      <b>{pregunta.valor.toLocaleString("es-AR")} %</b> a todos?
+                    </span>
+                    <span className="bot">
+                      <button
+                        type="button"
+                        className="pr-btn prim chico"
+                        onClick={() => {
+                          props.aplicarATodoElRubro(pregunta.id, pregunta.campo, g.titulo);
+                          setPregunta(null);
                         }}
-                        aria-label={`Margen de ${p.nombre}`}
-                      />{" "}
-                      %
-                    </td>
-                    <td>{r.ok ? <span className="pr-precio">{pesos(r.publico)}</span> : <span className="pr-err">{r.error.length > 30 ? "Revisar" : r.error}</span>}</td>
-                    <td>
-                      {p.precioHoy ? (
-                        <>
-                          <span className="pr-hoy">{pesos(p.precioHoy)}</span>
-                          {dif !== 0 && <span className={`pr-delta ${dif > 0 ? "sube" : "baja"}`}>{`${dif > 0 ? "+" : "−"}${pesos(Math.abs(dif))}`}</span>}
-                          {p.cartel && (
-                            <small className="pr-espera" title="La caja cobra el precio de antes hasta que el operativo ponga el cartel nuevo">
-                              espera cartel · caja {pesos(p.cartel.cajaLista)}
-                            </small>
-                          )}
-                        </>
-                      ) : (
-                        <span className="pr-sinprecio" title="No aparece a la venta hasta que lo pases">
-                          Sin precio
-                        </span>
-                      )}
-                    </td>
-                    <td className="n">
-                      {r.ok ? pesos(r.efectivo) : "—"}
-                      {r.ok && p.precioHoy != null && r.efectivo !== (p.efectivoHoy ?? p.precioHoy) && (
-                        <small className="pr-hoy-ef">hoy {pesos(p.efectivoHoy ?? p.precioHoy)}</small>
-                      )}
-                    </td>
-                    <td>{r.ok ? <Margen m={r.enEscenario.margen} minimo={minimo} /> : "—"}</td>
-                    <td>{r.ok ? <Margen m={r.enEfectivo.margen} minimo={minimo} /> : "—"}</td>
-                    <td>
-                      {r.ok && p.competencia ? (
-                        <span className={`pr-comp ${r.publico > p.competencia ? "caro" : "barato"}`}>
-                          {r.publico > p.competencia ? "+" : ""}
-                          {pct(r.publico / p.competencia - 1, 0)}
-                        </span>
-                      ) : (
-                        <span className="pr-tenue">—</span>
-                      )}
-                    </td>
-                  </tr>,
-                ];
-                if (abierto)
-                  filasProd.push(
-                    <tr key={`${p.id}-det`} className="detalle">
-                      <td colSpan={9}>
-                        <Detalle c={c} cfg={cfg} minimo={minimo} granel={props.granel} envases={props.envases} cambiarProducto={props.cambiarProducto} pasarUno={props.pasarUno} />
-                      </td>
-                    </tr>
-                  );
-                return filasProd;
-              }),
-            ])}
-          </tbody>
-        </table>
+                      >
+                        Sí, a todos
+                      </button>
+                      <button type="button" className="pr-btn chico" onClick={() => setPregunta(null)}>
+                        No, dejarlos como están
+                      </button>
+                    </span>
+                  </div>
+                )}
+                <table className="pr-tabla">
+                  <ColumnasLista />
+                  <tbody>
+                    {g.filas.flatMap((c, i) => {
+                      const { p, r } = c;
+                      const abierto = props.abierto === p.id;
+                      const g2 = p.idGranel ? props.granel.find((x) => x.id === p.idGranel) : null;
+                      const sub = g2
+                        ? g2.unidad === "CAJA"
+                          ? `1 unidad de ${g2.nombre.toLowerCase()}${(g2.kgBulto ?? 1) > 1 ? ` (caja de ${g2.kgBulto})` : ""}`
+                          : `${p.gramos ?? "?"} g de ${g2.nombre.toLowerCase()}${p.idEnvase ? " + bolsita" : ""}`
+                        : p.idEnvase
+                          ? "por unidad + envase"
+                          : "viene envasado";
+                      const hoyEf = p.precioHoy ? p.efectivoHoy ?? p.precioHoy : null;
+                      const clase = `fila${i % 2 === 1 ? " par" : ""}${abierto ? " abierta" : ""}`;
+                      const abrir = () => props.setAbierto(abierto ? null : p.id);
+                      const filasProd = [
+                        <tr key={p.id} className={`${clase} t`} onClick={abrir}>
+                          <td className="pr-prod" rowSpan={2}>
+                            <b>{p.nombre}</b>
+                            <small>{sub}</small>
+                          </td>
+                          <td className="n pr-tenue pr-cost" rowSpan={2}>
+                            {r.costo ? pesos(r.costo.total) : "—"}
+                          </td>
+                          <td className="izq">
+                            <span className="pr-medio-chip t">Tarjeta</span>
+                          </td>
+                          <td onClick={(e) => e.stopPropagation()}>
+                            <input
+                              key={`m-${props.vuelta}`}
+                              className="pr-in"
+                              inputMode="decimal"
+                              defaultValue={p.margen ?? ""}
+                              placeholder={String(Math.round(r.margen * 100))}
+                              onChange={(e) => {
+                                const v = aNumero(e.target.value);
+                                props.cambiarProducto(p.id, { margen: v }, { margen: v });
+                              }}
+                              aria-label={`Margen de ${p.nombre}`}
+                            />{" "}
+                            %
+                          </td>
+                          <td>{r.ok ? <span className="pr-precio">{pesos(r.publico)}</span> : <span className="pr-err">{r.error.length > 30 ? "Revisar" : r.error}</span>}</td>
+                          <td>
+                            {p.precioHoy ? (
+                              <>
+                                <span className="pr-hoy">{pesos(p.precioHoy)}</span>
+                                <Delta nuevo={r.ok ? r.publico : null} hoy={p.precioHoy} />
+                                {p.cartel && (
+                                  <small className="pr-espera" title="La caja cobra el precio de antes hasta que el operativo ponga el cartel nuevo">
+                                    espera cartel · caja {pesos(p.cartel.cajaLista)}
+                                  </small>
+                                )}
+                              </>
+                            ) : (
+                              <span className="pr-sinprecio" title="No aparece a la venta hasta que lo pases">
+                                Sin precio
+                              </span>
+                            )}
+                          </td>
+                          <td>
+                            {r.ok ? (
+                              <>
+                                <Margen m={r.enEscenario.margen} minimo={minimo} />
+                                <small className="pr-hoy-ef">pagando con {nombreMedio(cfg.escenario).split(" ")[0].toLowerCase()}</small>
+                              </>
+                            ) : (
+                              "—"
+                            )}
+                          </td>
+                          <td>
+                            {r.ok && p.competencia ? (
+                              <span className={`pr-comp ${r.publico > p.competencia ? "caro" : "barato"}`}>
+                                {r.publico > p.competencia ? "+" : ""}
+                                {pct(r.publico / p.competencia - 1, 0)}
+                              </span>
+                            ) : (
+                              <span className="pr-tenue">—</span>
+                            )}
+                          </td>
+                        </tr>,
+                        <tr key={`${p.id}-ef`} className={`${clase} e`} onClick={abrir}>
+                          <td className="izq">
+                            <span className="pr-medio-chip e">Efectivo</span>
+                          </td>
+                          <td onClick={(e) => e.stopPropagation()}>
+                            <span className="pr-menos">−</span>
+                            <input
+                              key={`d-${props.vuelta}`}
+                              className="pr-in ef"
+                              inputMode="decimal"
+                              defaultValue={p.descuentoEfectivo ?? ""}
+                              placeholder={String(p.rubro?.descuentoEfectivo ?? cfg.descuentoEfectivo)}
+                              onChange={(e) => {
+                                const v = aNumero(e.target.value);
+                                props.cambiarProducto(p.id, { descuentoEfectivo: v }, { descuentoEfectivo: v });
+                              }}
+                              aria-label={`Descuento por efectivo de ${p.nombre}`}
+                            />{" "}
+                            %
+                          </td>
+                          <td>{r.ok ? <span className="pr-precio ef">{pesos(r.efectivo)}</span> : "—"}</td>
+                          <td>
+                            {hoyEf ? (
+                              <>
+                                <span className="pr-hoy">{pesos(hoyEf)}</span>
+                                <Delta nuevo={r.ok ? r.efectivo : null} hoy={hoyEf} />
+                              </>
+                            ) : (
+                              <span className="pr-tenue">—</span>
+                            )}
+                          </td>
+                          <td>{r.ok ? <Margen m={r.enEfectivo.margen} minimo={minimo} /> : "—"}</td>
+                          <td />
+                        </tr>,
+                      ];
+                      if (abierto)
+                        filasProd.push(
+                          <tr key={`${p.id}-det`} className="detalle">
+                            <td colSpan={8}>
+                              <Detalle c={c} cfg={cfg} minimo={minimo} granel={props.granel} envases={props.envases} cambiarProducto={props.cambiarProducto} pasarUno={props.pasarUno} />
+                            </td>
+                          </tr>
+                        );
+                      return filasProd;
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })}
+        </div>
       </div>
       {props.calculados.length === 0 && <p className="pr-tenue" style={{ padding: "16px 0" }}>Todavía no hay productos de marcas propias.</p>}
     </section>
@@ -842,18 +992,6 @@ function Detalle({
               <option value="21">21 %</option>
               <option value="10.5">10,5 %</option>
             </select>
-          </label>
-          <label>
-            Desc. efectivo (%)
-            <input
-              inputMode="decimal"
-              defaultValue={p.descuentoEfectivo ?? ""}
-              placeholder="del rubro"
-              onChange={(e) => {
-                const v = aNumero(e.target.value);
-                cambiarProducto(p.id, { descuentoEfectivo: v }, { descuentoEfectivo: v });
-              }}
-            />
           </label>
           <label>
             Precio competencia ($)

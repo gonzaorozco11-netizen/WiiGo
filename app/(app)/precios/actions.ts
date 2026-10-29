@@ -188,7 +188,30 @@ export async function guardarRubroPrecio(idSubcategoria: string, cambios: { marg
   return { error: null };
 }
 
-export type DatosGranel = { nombre: string; idProveedor: string | null; costo: string | number; unidad: Granel["unidad"]; kgBulto: string | number | null };
+/**
+ * "Aplicar a todo el rubro": los productos del rubro dejan de tener su propio
+ * margen (o descuento en efectivo) y pasan a usar el del rubro. Se borra el
+ * propio en vez de copiar el número, así el próximo cambio del rubro también
+ * les llega (Gonzalo, 2026-10-29).
+ */
+export async function aplicarRubroATodos(idSubcategoria: string, campo: "margen" | "descuentoEfectivo"): Promise<Resultado & { cambiados?: number }> {
+  if (!(await sesionDePrecios())) return { error: "No tenés permiso para Precios." };
+  if (campo !== "margen" && campo !== "descuentoEfectivo") return { error: "Ese campo no existe." };
+  const supabase = getSupabaseServerClient();
+  const { data: sub } = await supabase.from("subcategorias").select("id_subcategoria, marcas(tipo_comercializacion)").eq("id_subcategoria", idSubcategoria).maybeSingle();
+  if ((sub?.marcas as unknown as { tipo_comercializacion: string } | null)?.tipo_comercializacion !== "PROPIA") return { error: "Ese rubro no es de una marca propia." };
+  const columna = campo === "margen" ? "margen_objetivo" : "descuento_efectivo";
+  const { error, count } = await supabase
+    .from("productos")
+    .update({ [columna]: null }, { count: "exact" })
+    .eq("id_subcategoria", idSubcategoria)
+    .not(columna, "is", null);
+  if (error) return { error: "No se pudo aplicar. Probá de nuevo." };
+  revalidatePath("/precios");
+  return { error: null, cambiados: count ?? 0 };
+}
+
+export type DatosGranel ={ nombre: string; idProveedor: string | null; costo: string | number; unidad: Granel["unidad"]; kgBulto: string | number | null };
 
 /** Lo que viene a granel. Un costo nuevo recalcula el costo de todos los tamaños que salen de él. */
 export async function guardarGranel(idGranel: string | null, datos: DatosGranel): Promise<Resultado & { id?: string }> {

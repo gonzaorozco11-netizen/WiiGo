@@ -10,6 +10,7 @@
   --acento: #4338ca; --acento-osc: #3730a3; --acento-t: #eef0ff;
   --ok: #047857; --ok-t: #e7f6ef; --ojo: #b45309; --ojo-t: #fdf3e2; --mal: #b91c1c; --mal-t: #fdecec;
   --barra-fondo: #eef0f3; --cab: #eef1f6;
+  --ef: #0f766e; --ef-t: #ecfaf7;
   font-family: var(--f-plex), "Segoe UI", system-ui, sans-serif;
   color: var(--tinta);
   font-size: 14px;
@@ -73,7 +74,9 @@
 .pr-leyenda i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
 .pr-env { overflow-x: auto; }
 .pr-tabla { border-collapse: collapse; width: 100%; min-width: 1060px; }
-.pr-tabla th { text-align: right; font-size: 10.5px; font-weight: 600; color: var(--tinta-3); padding: 9px 8px; white-space: nowrap; text-transform: uppercase; letter-spacing: .08em; }
+/* Títulos de columna más grandes y oscuros, para saber a qué columna va cada número (Gonzalo, 2026-10-29). */
+.pr-tabla th { text-align: right; font-size: 12.5px; font-weight: 700; color: var(--tinta-2); padding: 11px 8px 9px; white-space: nowrap; text-transform: uppercase; letter-spacing: .06em; vertical-align: bottom; }
+.pr-tabla th small { display: block; font-size: 10.5px; font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--tinta-3); margin-top: 1px; }
 .pr-tabla th:first-child, .pr-tabla td:first-child { text-align: left; padding-left: 0; }
 .pr-tabla td { padding: 10px 8px; border-top: 1px solid var(--linea); text-align: right; vertical-align: middle; }
 .pr-tabla tr.fila { cursor: pointer; }
@@ -106,6 +109,39 @@
 .pr-tenue { color: var(--tinta-3); }
 .pr-falta { font-size: 12px; color: var(--ojo); font-style: italic; }
 .pr-sinprecio { display: inline-block; font-size: 11.5px; font-weight: 700; color: var(--ojo); background: var(--ojo-t); border-radius: 5px; padding: 2px 7px; }
+
+/* Lista: una tarjeta por rubro, con su color, y cada producto en dos renglones (tarjeta y efectivo). */
+.pr-rubros { min-width: 1000px; display: grid; gap: 16px; }
+.pr-rubros .pr-tabla { min-width: 0; table-layout: fixed; }
+.pr-tabla-cab th:first-child { padding-left: 14px; }
+.pr-tabla-cab th { border-bottom: 2px solid var(--linea-2); }
+.pr-rubro { border: 1.5px solid color-mix(in srgb, var(--rc) 35%, transparent); border-radius: 12px; overflow: hidden; background: var(--hoja); }
+.pr-rubro-cab { display: flex; align-items: center; justify-content: space-between; gap: 10px 16px; flex-wrap: wrap; padding: 11px 14px; background: var(--rt); border-bottom: 1.5px solid color-mix(in srgb, var(--rc) 35%, transparent); }
+.pr-rubro-cab .nom { display: flex; align-items: baseline; gap: 10px; }
+.pr-rubro .pr-gn { font-size: 18px; letter-spacing: -0.01em; color: var(--ro); }
+.pr-rubro .pr-gm { margin-left: 0; font-size: 12.5px; }
+.pr-rubro .pr-gctrl { gap: 14px; font-size: 12.5px; }
+.pr-rubro-preg { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 14px; padding: 10px 14px; background: var(--ojo-t); border-bottom: 1px solid color-mix(in srgb, var(--ojo) 25%, transparent); font-size: 13.5px; color: var(--tinta-2); }
+.pr-rubro-preg b { color: var(--tinta); }
+.pr-rubro-preg .bot { display: inline-flex; gap: 8px; flex-wrap: wrap; }
+.pr-rubros .pr-tabla th.izq, .pr-rubros .pr-tabla td.izq { text-align: left; }
+.pr-rubros .pr-tabla td:first-child { padding-left: 14px; }
+.pr-rubros .pr-tabla tbody tr:first-child td { border-top: 0; }
+.pr-rubros .pr-tabla tr.fila td { background: var(--hoja); }
+.pr-rubros .pr-tabla tr.fila.par td { background: var(--hoja-2); }
+.pr-rubros .pr-tabla tr.fila.e td { border-top: 1px dashed var(--linea); }
+.pr-rubros .pr-tabla tr.fila:hover td { background: #f3f4f8; }
+.pr-rubros .pr-tabla tr.fila.abierta td { background: var(--acento-t); }
+.pr-rubros .pr-tabla td.pr-prod, .pr-rubros .pr-tabla td.pr-cost { vertical-align: top; padding-top: 12px; min-width: 0; }
+.pr-rubros .pr-prod b { overflow-wrap: anywhere; }
+.pr-rubros .pr-tabla tr.detalle td { padding-left: 14px; padding-right: 14px; }
+.pr-medio-chip { display: inline-block; font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; border-radius: 5px; padding: 3px 8px; }
+.pr-medio-chip.t { color: var(--acento); background: var(--acento-t); }
+.pr-medio-chip.e { color: var(--ef); background: var(--ef-t); }
+.pr-in.ef { border-color: color-mix(in srgb, var(--ef) 45%, var(--linea-2)); background: var(--ef-t); }
+.pr-precio.ef { color: var(--ef); }
+.pr-menos { color: var(--tinta-3); margin-right: 3px; font-weight: 600; }
+.pr-rubros .pr-in { width: 56px; }
 
 /* Detalle */
 .pr-tabla tr.detalle td { border-top: 0; padding: 4px 0 16px; text-align: left; background: var(--acento-t); cursor: default; }
