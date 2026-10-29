@@ -506,7 +506,8 @@ function Vincular(props: {
   const porUnidad = item.unidad === "CAJA" || item.unidad === "UNIDAD";
   const chica = props.envases.find((e) => /chica/i.test(e.nombre)) ?? props.envases[0];
   const grande = props.envases.find((e) => /grande/i.test(e.nombre)) ?? props.envases[props.envases.length - 1];
-  const opciones = porUnidad ? [null] : [100, 200, 250, 500, 1000];
+  // Los tamaños de bolsita que se arman en el local (120, 130 y 150 g sumados por Gonzalo, 2026-10-29).
+  const opciones = porUnidad ? [null] : [100, 120, 130, 150, 200, 250, 500, 1000];
   const [tamanos, setTamanos] = useState<Map<number | null, string>>(() => new Map(porUnidad ? [[null, ""]] : []));
   const rubroParecido = props.rubros.find((r) => item.categoria && normalizar(r.nombre).includes(normalizar(item.categoria).split(" ")[0]));
   const [rubro, setRubro] = useState(rubroParecido?.id ?? "");
