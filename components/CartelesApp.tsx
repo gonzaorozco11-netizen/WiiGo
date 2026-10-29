@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { marcarCartelesPuestos } from "@/app/(app)/carteles/actions";
 import { pesoTexto, precioPorKilo } from "@/lib/rotulado";
+import { nombreBase } from "@/lib/nombreProducto";
 
 export type ItemCartel = {
   idProducto: string;
@@ -575,8 +576,10 @@ function Cartel({ item, ancho, alto }: { item: ItemCartel; ancho: number; alto: 
             overflow: "hidden",
           }}
         >
-          {item.nombre}
-          {item.pesoG != null && <span style={{ color: "#6b7178", textTransform: "none", whiteSpace: "nowrap" }}> · {pesoTexto(item.pesoG)}</span>}
+          {/* El nombre ya trae el tamaño ("Almendra Guara 250 g", lib/nombreProducto):
+              en negro va el nombre solo, y el tamaño una sola vez, en gris clarito. */}
+          {item.pesoG != null ? nombreBase(item.nombre) : item.nombre}
+          {item.pesoG != null && <span style={{ color: "#a3a8ad", textTransform: "none", whiteSpace: "nowrap" }}> {pesoTexto(item.pesoG)}</span>}
         </div>
       </div>
 

@@ -11,6 +11,7 @@ import {
   loteDe,
   pesoTexto,
 } from "@/lib/rotulado";
+import { nombreBase } from "@/lib/nombreProducto";
 import { guardarCodigoBarras, volverAEtiquetaWiigo } from "@/app/(app)/codigos/actions";
 import type { EntradaPendiente } from "@/lib/entradas";
 import EscanerCodigo from "@/components/EscanerCodigo";
@@ -1236,7 +1237,8 @@ function EtiquetaRotulada({ item, rotulo }: { item: ItemCodigo; rotulo: RotuloIt
             overflow: "hidden",
           }}
         >
-          {nombre}
+          {/* El peso ya va a la derecha como "Peso neto": acá el nombre sin el tamaño. */}
+          {rotulo.pesoG != null ? nombreBase(nombre) : nombre}
         </div>
         {rotulo.pesoG != null && (
           <div style={{ textAlign: "right", whiteSpace: "nowrap", flexShrink: 0 }}>
