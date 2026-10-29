@@ -12,6 +12,7 @@ import {
 } from "@/app/(app)/ficha-asistencia/actions";
 import type { CartelesPendientes } from "@/lib/tareasEtiqueta";
 import { abrirTurno } from "@/app/(app)/turnos/actions";
+import { marcarCartelesPuestos } from "@/app/(app)/carteles/actions";
 import { logout } from "@/app/login/actions";
 import PadFirma from "@/components/PadFirma";
 import ArqueoCaja from "@/components/ArqueoCaja";
@@ -568,30 +569,71 @@ function MotivoSimple({ idFichaje, onListo }: { idFichaje: string; onListo: () =
 function CartelesAntesDeIrse({ carteles, onYaLosPuse, onNoPude }: { carteles: CartelesPendientes; onYaLosPuse: () => void; onNoPude: (motivo: string) => void }) {
   const [noPude, setNoPude] = useState(false);
   const [motivo, setMotivo] = useState("");
-  const muchos = carteles.nombres.length > 8;
+  // Se marcan de a uno, a medida que pone cada cartel en la góndola.
+  const [puestos, setPuestos] = useState<Set<string>>(() => new Set());
+  const [marcando, setMarcando] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const faltan = carteles.items.filter((i) => !puestos.has(i.idProducto));
+
+  function marcar(item: CartelesPendientes["items"][number]) {
+    setMarcando(item.idProducto);
+    setError(null);
+    marcarCartelesPuestos(item.idsTarea)
+      .then((res) => {
+        if ("error" in res && res.error) setError(res.error);
+        else setPuestos((s) => new Set(s).add(item.idProducto));
+      })
+      .catch(() => setError("No se pudo guardar. Probá de nuevo."))
+      .finally(() => setMarcando(null));
+  }
+
   return (
     <div className="max-w-md mx-auto py-8 space-y-4">
-      <div className="rounded-3xl bg-amber-50 text-amber-900 text-center px-6 py-8">
-        <div className="text-5xl mb-3">🏷️</div>
-        <h1 className="text-xl font-extrabold mb-1">Antes de irte, cambiá los carteles</h1>
+      <div className={`rounded-3xl text-center px-6 py-8 ${faltan.length ? "bg-amber-50 text-amber-900" : "bg-emerald-50 text-emerald-800"}`}>
+        <div className="text-5xl mb-3">{faltan.length ? "🏷️" : "✅"}</div>
+        <h1 className="text-xl font-extrabold mb-1">{faltan.length ? "Antes de irte, cambiá los carteles" : "¡Listo, carteles puestos!"}</h1>
         <p className="text-sm">
-          {carteles.cantidad === 1 ? "Hay 1 producto que cambió de precio" : `Hay ${carteles.cantidad} productos que cambiaron de precio`}. La caja cobra el precio nuevo recién
-          cuando el cartel está puesto.
+          {faltan.length
+            ? `${faltan.length === 1 ? "Falta 1 producto" : `Faltan ${faltan.length} productos`}. Poné cada cartel en la góndola y tocá "Lo puse" en ese producto: recién ahí la caja cobra el precio nuevo.`
+            : "La caja ya cobra los precios nuevos. Ya podés fichar la salida."}
         </p>
       </div>
-      <ul className="bg-white border border-neutral-200 rounded-xl px-4 py-3 text-sm text-neutral-800 space-y-1">
-        {carteles.nombres.slice(0, 8).map((n) => (
-          <li key={n}>• {n}</li>
-        ))}
-        {muchos && <li className="text-neutral-400">y {carteles.nombres.length - 8} más</li>}
+      {error && <p className="text-sm text-red-600 text-center">{error}</p>}
+      <ul className="bg-white border border-neutral-200 rounded-xl divide-y divide-neutral-100 max-h-[22rem] overflow-y-auto">
+        {carteles.items.map((i) => {
+          const hecho = puestos.has(i.idProducto);
+          return (
+            <li key={i.idProducto} className="flex items-center justify-between gap-3 px-4 py-2.5">
+              <span className={`text-sm ${hecho ? "text-neutral-400 line-through" : "text-neutral-800"}`}>
+                {i.nombre}
+                {i.precio != null && <b className="block text-xs text-neutral-500 font-semibold no-underline">Cartel nuevo: {pesos(i.precio)}</b>}
+              </span>
+              {hecho ? (
+                <span className="text-xs font-bold text-emerald-700 whitespace-nowrap">Puesto ✓</span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => marcar(i)}
+                  disabled={marcando !== null}
+                  className="text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 rounded-lg px-3 py-2 whitespace-nowrap"
+                >
+                  {marcando === i.idProducto ? "Guardando…" : "Lo puse"}
+                </button>
+              )}
+            </li>
+          );
+        })}
       </ul>
-      <a href="/carteles" className="block text-center w-full rounded-xl bg-neutral-800 hover:bg-neutral-900 text-white font-bold py-3 text-sm">
-        Ir a Carteles: imprimir y marcar puestos
-      </a>
-      <button type="button" onClick={onYaLosPuse} className="block mx-auto text-sm font-semibold text-neutral-600 underline">
-        Ya los puse, volver
-      </button>
-      {noPude ? (
+      {faltan.length === 0 ? (
+        <button type="button" onClick={onYaLosPuse} className="block w-full rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold py-3 text-sm">
+          Seguir con la salida
+        </button>
+      ) : (
+        <a href="/carteles" className="block text-center w-full rounded-xl bg-neutral-800 hover:bg-neutral-900 text-white font-bold py-3 text-sm">
+          Ir a Carteles para imprimirlos
+        </a>
+      )}
+      {faltan.length === 0 ? null : noPude ? (
         <div className="border border-neutral-200 rounded-xl p-3 space-y-2 text-left">
           <label htmlFor="motivo-carteles" className="block text-xs font-semibold text-neutral-500">
             ¿Por qué no pudiste ponerlos? Le llega a administración.

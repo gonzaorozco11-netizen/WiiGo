@@ -149,19 +149,19 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
     });
   }
 
-  function confirmarPuestos() {
-    const conTarea = aImprimir.filter((i) => i.idTarea);
-    const tareas = conTarea.flatMap((i) => [i.idTarea as string, ...(i.otrasTareas ?? [])]);
+  // Cada cartel se marca puesto de a uno, cuando está en la góndola (Gonzalo,
+  // 2026-10-29: "uno por uno, no en general"). Si es de la marca propia, recién
+  // ahí la caja cobra el precio nuevo.
+  const [marcando, setMarcando] = useState<string | null>(null);
+  function marcarUno(i: ItemCartel) {
+    if (!i.idTarea) return;
+    setMarcando(i.idProducto);
     startTransition(async () => {
-      const res = await marcarCartelesPuestos(tareas);
+      const res = await marcarCartelesPuestos([i.idTarea as string, ...(i.otrasTareas ?? [])]);
+      setMarcando(null);
       if (res.error) setAviso(res.error);
       else {
-        const cuantos = conTarea.length;
-        const aplicados = res.aplicados ?? 0;
-        setAviso(
-          `Listo: ${cuantos} ${cuantos === 1 ? "cartel marcado" : "carteles marcados"} como puestos.` +
-            (aplicados > 0 ? ` La caja ya cobra ${aplicados === 1 ? "el precio nuevo" : `los ${aplicados} precios nuevos`}.` : "")
-        );
+        setAviso(`Listo: ${i.nombre} puesto.` + ((res.aplicados ?? 0) > 0 ? " La caja ya cobra el precio nuevo." : ""));
         router.refresh();
       }
     });
@@ -312,6 +312,19 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
                                 {pesos(i.lista)} · <span className="text-emerald-700">ef {pesos(i.efectivo)}</span>
                               </span>
                             </span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                marcarUno(i);
+                              }}
+                              disabled={enviando}
+                              className="ml-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white text-xs font-bold px-3 py-2 whitespace-nowrap"
+                              title="Tocalo cuando el cartel nuevo ya está en la góndola"
+                            >
+                              {marcando === i.idProducto ? "Guardando…" : "Lo puse"}
+                            </button>
                           </span>
                         ) : (
                           <>
@@ -424,21 +437,12 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
               recortan por la línea punteada.
             </p>
 
-            {aImprimir.some((i) => i.idTarea) && (
-              <div className="mt-4 rounded-xl border border-neutral-200 bg-white p-4 flex items-center gap-4 flex-wrap">
-                <p className="text-sm text-neutral-600 flex-1 min-w-[260px]">
-                  Cuando ya los hayas puesto en la góndola, marcalos acá y salen de la lista de pendientes.{" "}
-                  <b className="text-neutral-900">No lo aprietes al imprimir</b> — recién cuando estén puestos.
-                </p>
-                <button
-                  type="button"
-                  onClick={confirmarPuestos}
-                  disabled={enviando}
-                  className="rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm font-medium hover:bg-neutral-50 disabled:opacity-40"
-                >
-                  {enviando ? "Guardando…" : "Ya los puse en la góndola"}
-                </button>
-              </div>
+            {modo === "cambiaron" && aImprimir.some((i) => i.idTarea) && (
+              <p className="mt-4 rounded-xl border border-neutral-200 bg-white p-4 text-sm text-neutral-600">
+                Después de imprimir, poné cada cartel en la góndola y tocá <b className="text-neutral-900">Lo puse</b> en ese producto.{" "}
+                <b className="text-neutral-900">No lo toques al imprimir</b>: recién cuando el cartel está puesto, porque en ese momento la caja empieza a
+                cobrar el precio nuevo.
+              </p>
             )}
           </>
         )}

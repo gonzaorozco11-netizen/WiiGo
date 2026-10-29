@@ -109,19 +109,34 @@ export async function aplicarPreciosDeCarteles(supabase: SupabaseClient, idsTare
   return aplicados;
 }
 
-export type CartelesPendientes = { cantidad: number; nombres: string[] };
+/** Un producto con el cartel sin poner: se marca puesto de a uno, con todas sus tareas de ese local. */
+export type CartelPendiente = { idProducto: string; nombre: string; precio: number | null; idsTarea: string[] };
+export type CartelesPendientes = { cantidad: number; items: CartelPendiente[] };
 
 /** Los carteles con precio cambiado que siguen sin poner en un local (para no irse sin ponerlos). */
 export async function cartelesPendientesDelLocal(supabase: SupabaseClient, idLocal: string): Promise<CartelesPendientes | null> {
   const { data, error } = await supabase
     .from("tareas_etiqueta")
-    .select("id_producto, productos(nombre)")
+    .select("id_tarea, id_producto, precio_nuevo, creada_el, productos(nombre)")
     .eq("tipo", "CAMBIO_PRECIO")
     .in("estado", ["PENDIENTE", "VENCIDA"])
-    .or(`id_local.eq.${idLocal},id_local.is.null`);
+    .or(`id_local.eq.${idLocal},id_local.is.null`)
+    .order("creada_el");
   if (error || !data?.length) return null;
-  const nombres = [...new Set(data.map((t) => (t.productos as unknown as { nombre: string } | null)?.nombre ?? "Producto"))].sort((a, b) => a.localeCompare(b, "es"));
-  return { cantidad: nombres.length, nombres };
+  const porProducto = new Map<string, CartelPendiente>();
+  for (const t of data) {
+    const id = t.id_producto as string;
+    const previo = porProducto.get(id);
+    porProducto.set(id, {
+      idProducto: id,
+      nombre: (t.productos as unknown as { nombre: string } | null)?.nombre ?? "Producto",
+      // El del pedido más nuevo: es el que va en el cartel.
+      precio: t.precio_nuevo == null ? previo?.precio ?? null : Number(t.precio_nuevo),
+      idsTarea: [...(previo?.idsTarea ?? []), t.id_tarea as string],
+    });
+  }
+  const items = [...porProducto.values()].sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+  return { cantidad: items.length, items };
 }
 
 /** El operativo se va sin poder ponerlos: queda el motivo y le aparece a administración. */
