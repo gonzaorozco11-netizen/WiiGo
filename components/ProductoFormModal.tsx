@@ -480,7 +480,7 @@ export default function ProductoFormModal({
 function Pasos({ paso, onPaso }: { paso: number; onPaso: (n: number) => void }) {
   const items = [
     { n: 1, titulo: "El producto", pie: "Nombre, marca, foto" },
-    { n: 2, titulo: "Precio y stock", pie: "Costo, precio, variantes" },
+    { n: 2, titulo: "Precio y stock", pie: "Precio, variantes, stock" },
     { n: 3, titulo: "Ficha del asesor", pie: "Opcional" },
   ];
   return (
