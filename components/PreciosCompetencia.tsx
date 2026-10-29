@@ -34,6 +34,7 @@ export default function PreciosCompetencia(
 ) {
   const router = useRouter();
   const [abierto, setAbierto] = useState<string | null>(null);
+  const [buscar, setBuscar] = useState("");
   const [pendiente, startTransition] = useTransition();
 
   if (!props.datos) {
@@ -73,6 +74,12 @@ export default function PreciosCompetencia(
     return { p, v, dif, contra };
   });
   const columnas = COMERCIOS.filter((c) => filas.some((f) => f.v[c.clave]));
+  // Buscador: por tu producto o por el nombre que tiene en la competencia, sin importar tildes.
+  const sinTildes = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  const q = sinTildes(buscar.trim());
+  const visibles = q
+    ? filas.filter((f) => sinTildes(f.p.nombre).includes(q) || Object.values(f.v).some((x) => x?.item && sinTildes(x.item.nombre).includes(q)))
+    : filas;
   const caros = filas.filter((f) => f.dif != null && f.dif > 0.08);
   const baratos = filas.filter((f) => f.dif != null && f.dif < -0.08);
   const parejos = filas.filter((f) => f.dif != null && Math.abs(f.dif) <= 0.08);
@@ -136,6 +143,21 @@ export default function PreciosCompetencia(
       </section>
 
       <section className="pr-tarjeta" style={{ padding: 0 }}>
+        <div className="pr-filtros pr-comp-buscar">
+          <input
+            id="buscar-competencia"
+            type="search"
+            value={buscar}
+            onChange={(e) => setBuscar(e.target.value)}
+            placeholder="Buscar producto (ej: almendra, maní)"
+            aria-label="Buscar producto en la competencia"
+          />
+          {q && (
+            <span className="info">
+              {visibles.length} de {filas.length}
+            </span>
+          )}
+        </div>
         <div className="pr-env">
           <table className="pr-tabla pr-tabla-comp">
             <thead>
@@ -147,7 +169,14 @@ export default function PreciosCompetencia(
               </tr>
             </thead>
             <tbody>
-              {filas
+              {visibles.length === 0 && (
+                <tr>
+                  <td colSpan={3 + columnas.length} className="pr-tenue" style={{ padding: "18px 14px" }}>
+                    Ningún producto coincide con “{buscar.trim()}”.
+                  </td>
+                </tr>
+              )}
+              {[...visibles]
                 .sort((a, b) => (b.dif ?? -9) - (a.dif ?? -9))
                 .flatMap((f) => {
                   const abiertaEsta = abierto === f.p.id;
