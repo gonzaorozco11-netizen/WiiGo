@@ -188,4 +188,61 @@
 .pr-toast { position: fixed; right: 16px; bottom: 16px; z-index: 50; background: #111827; color: #fff; border-radius: 8px; padding: 9px 13px; font-size: 13px; box-shadow: 0 8px 24px rgba(0,0,0,.2); }
 .pr-toast.mal { background: var(--mal); }
 
+/* Alifrut: aviso, estado, catálogo y sus ventanas */
+.pr-alerta { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: space-between; background: var(--ojo-t); border: 1px solid color-mix(in srgb, var(--ojo) 35%, transparent); border-radius: 10px; padding: 12px 16px; }
+.pr-alerta > div { display: grid; gap: 2px; min-width: 0; }
+.pr-alerta b { color: var(--ojo); font-weight: 600; }
+.pr-alerta small { color: var(--tinta-2); font-size: 13px; }
+.pr-alerta.suave { background: var(--acento-t); border-color: color-mix(in srgb, var(--acento) 25%, transparent); }
+.pr-alerta.suave b { color: var(--acento); }
+.pr-btn.ojo { background: var(--ojo); border-color: var(--ojo); color: #fff; }
+.pr-estado { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12.5px; color: var(--tinta-3); }
+.pr-estado span { display: inline-flex; align-items: center; gap: 6px; }
+.pr-estado i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
+.pr-estado i.ojo { background: var(--ojo); }
+
+.pr-cat { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 14px; align-items: start; }
+.pr-cats { padding: 8px; display: grid; gap: 1px; max-height: 75vh; overflow-y: auto; position: sticky; top: 10px; }
+.pr-cats button { display: flex; justify-content: space-between; gap: 8px; border: 0; background: none; text-align: left; padding: 6px 9px; border-radius: 6px; color: var(--tinta-2); font-size: 13.5px; cursor: pointer; }
+.pr-cats button:hover { background: var(--hoja-2); }
+.pr-cats button[aria-pressed="true"] { background: var(--acento-t); color: var(--acento); font-weight: 600; }
+.pr-cats button span { font-family: var(--f-plex-mono), monospace; font-size: 11.5px; color: var(--tinta-3); }
+.pr-cats hr { border: 0; border-top: 1px solid var(--linea); margin: 6px 4px; }
+.pr-cat-filtros { padding: 12px 14px; border-bottom: 1px solid var(--linea); }
+.pr-cat-filtros input { width: 100%; border: 1px solid var(--linea-2); border-radius: 7px; padding: 7px 11px; background: var(--hoja); }
+.pr-tabla.pr-tabla-ali { min-width: 900px; }
+.pr-tabla-ali th, .pr-tabla-ali td { text-align: left; }
+.pr-tabla-ali th:first-child, .pr-tabla-ali td:first-child { padding-left: 14px; }
+.pr-tabla-ali tr.pr-gris td { opacity: .55; }
+.pr-viene { display: inline-flex; gap: 5px; align-items: center; }
+.pr-viene select { border: 1px solid var(--linea-2); border-radius: 6px; padding: 3px 5px; background: var(--hoja); font-size: 13px; }
+.pr-viene .pr-in { width: 54px; }
+.pr-tabla-ali .pr-falta { display: block; margin-top: 2px; font-size: 11.5px; }
+.pr-vinc { display: inline-block; font-size: 12px; color: var(--acento); background: var(--acento-t); border-radius: 5px; padding: 1px 7px; margin: 0 4px 4px 0; }
+.pr-vacio { display: grid; gap: 8px; justify-items: start; padding: 24px; }
+
+.pr-modal-ali { overflow: auto; }
+.pr-m-cuerpo { padding: 12px 18px 14px; display: grid; gap: 10px; }
+.pr-m-pasos { margin: 0; padding-left: 20px; display: grid; gap: 4px; color: var(--tinta-2); }
+.pr-m-pasos a { color: var(--acento); }
+.pr-pegar { width: 100%; min-height: 96px; border: 1px dashed var(--linea-2); border-radius: 8px; padding: 10px; background: var(--hoja-2); resize: vertical; font-size: 13px; }
+.pr-m-pie { padding: 12px 18px; border-top: 1px solid var(--linea); display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.pr-m-cambio { padding: 12px 18px; border-top: 1px solid var(--linea); display: grid; gap: 6px; }
+.pr-m-cambio .tit { display: flex; gap: 8px 10px; align-items: baseline; flex-wrap: wrap; }
+.pr-m-cambio .afecta { display: grid; gap: 3px; padding-left: 24px; }
+.pr-m-cambio .afecta div { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 13px; color: var(--tinta-2); }
+.pr-m-tamanos { display: flex; flex-wrap: wrap; gap: 8px; }
+.pr-m-tamanos > div { border: 1px solid var(--linea-2); border-radius: 8px; padding: 7px 10px; display: grid; gap: 6px; }
+.pr-m-tamanos > div.sel { border-color: var(--acento); background: var(--acento-t); }
+.pr-m-tamanos label { display: inline-flex; gap: 7px; align-items: center; font-weight: 600; cursor: pointer; }
+.pr-m-tamanos select, .pr-m-campo select { border: 1px solid var(--linea-2); border-radius: 6px; padding: 5px 7px; background: var(--hoja); }
+.pr-m-campo { display: grid; gap: 4px; font-weight: 600; font-size: 13.5px; }
+
+@media (max-width: 760px) {
+  .pr-cat { grid-template-columns: minmax(0, 1fr); }
+  .pr-cats { position: static; max-height: none; display: flex; flex-wrap: wrap; gap: 4px; }
+  .pr-cats hr { display: none; }
+  .pr-cats button { border: 1px solid var(--linea); }
+}
+
 @media (prefers-reduced-motion: reduce) { .precios * { transition: none !important; } }

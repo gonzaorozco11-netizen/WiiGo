@@ -3,6 +3,7 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos";
 import { cargarDatosPrecios } from "@/lib/datosPrecios";
+import { cargarCatalogoAlifrut } from "@/lib/catalogoProveedor";
 import PantallaBloqueada from "@/components/PantallaBloqueada";
 import PreciosApp from "@/components/PreciosApp";
 import "./precios.css";
@@ -21,7 +22,7 @@ export default async function PreciosPage({ searchParams }: { searchParams: Prom
   if (!puedeVerPantalla(sesion, "precios")) return <PantallaBloqueada />;
 
   const supabase = getSupabaseServerClient();
-  const [datos, conPermisos] = await Promise.all([cargarDatosPrecios(supabase), obtenerSesionConPermisos()]);
+  const [datos, conPermisos, alifrut] = await Promise.all([cargarDatosPrecios(supabase), obtenerSesionConPermisos(), cargarCatalogoAlifrut(supabase)]);
 
   if (!datos.disponible) {
     return (
@@ -46,6 +47,7 @@ export default async function PreciosPage({ searchParams }: { searchParams: Prom
         proveedores={datos.proveedores}
         puedeConfigurar={tienePermiso(conPermisos, PERMISOS.EDITAR_CONFIGURACION)}
         abrir={datos.productos.some((p) => p.id === producto) ? producto : null}
+        alifrut={alifrut}
       />
     </div>
   );

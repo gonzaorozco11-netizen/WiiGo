@@ -59,8 +59,12 @@ export const DESCUENTA_DEFECTO: Record<Medio, Descuenta> = {
   credito: { iva: true, iibb: true, com: true, cheque: true, sircreb: true },
 };
 
-/** Lo que viene a granel: el costo de la lista del proveedor, por kg o por bolsa. */
-export type Granel = { id: string; nombre: string; costo: number; unidad: "KG" | "BULTO"; kgBulto: number | null };
+/**
+ * Lo que se le compra al proveedor: el costo de su lista, por kg, por bolsa
+ * (BULTO: kgBulto son los kg que trae) o por caja (CAJA: kgBulto son las
+ * unidades que trae; cada producto que sale de ahí es una unidad).
+ */
+export type Granel = { id: string; nombre: string; costo: number; unidad: "KG" | "BULTO" | "CAJA"; kgBulto: number | null };
 export type Envase = { id: string; nombre: string; costo: number };
 
 export type ProductoPrecio = {
@@ -81,9 +85,18 @@ export type ProductoPrecio = {
 
 export type Costo = { mercaderia: number; merma: number; envase: number; etiqueta: number; total: number; porKg: number | null };
 
+/** Costo por kg; en una CAJA, costo por unidad. */
 export function costoPorKg(g: Granel): number | null {
   if (g.unidad === "KG") return g.costo;
   return g.kgBulto && g.kgBulto > 0 ? g.costo / g.kgBulto : null;
+}
+
+/** Lo que cuesta la mercadería de un producto que sale de ese granel (sin merma ni bolsita). */
+export function mercaderiaDe(g: Granel, gramos: number | null): number | null {
+  const base = costoPorKg(g);
+  if (base == null) return null;
+  if (g.unidad === "CAJA") return base;
+  return gramos && gramos > 0 ? (base * gramos) / 1000 : null;
 }
 
 export function costoDe(p: ProductoPrecio, cfg: ConfigPrecios, granel: Map<string, Granel>, envases: Map<string, Envase>): Costo | null {
@@ -94,6 +107,10 @@ export function costoDe(p: ProductoPrecio, cfg: ConfigPrecios, granel: Map<strin
   if (p.idGranel) {
     const g = granel.get(p.idGranel);
     const porKg = g ? costoPorKg(g) : null;
+    if (g && g.unidad === "CAJA" && porKg != null) {
+      // Se vende de a una, como viene: no hay fraccionado ni merma.
+      return { mercaderia: porKg, merma: 0, envase, etiqueta, total: porKg + envase + etiqueta, porKg: null };
+    }
     if (porKg == null || !p.gramos || p.gramos <= 0) return null;
     const mercaderia = (porKg * p.gramos) / 1000;
     const merma = mercaderia * (cfg.merma / 100);

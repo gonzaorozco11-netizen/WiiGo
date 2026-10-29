@@ -17,7 +17,13 @@ export type ProductoDelModulo = ProductoPrecio & {
   costoActualizadoEl: string | null;
 };
 export type RubroDelModulo = { id: string; nombre: string; idMarca: string; margen: number | null; descuentoEfectivo: number | null };
-export type GranelDelModulo = Granel & { idProveedor: string | null; costoAnterior: number | null; actualizadoEl: string };
+export type GranelDelModulo = Granel & {
+  idProveedor: string | null;
+  costoAnterior: number | null;
+  actualizadoEl: string;
+  /** El producto de la lista de Alifrut del que sale (sql/precios-alifrut.sql). */
+  idItem: string | null;
+};
 
 export type DatosPrecios =
   | { disponible: false }
@@ -100,8 +106,9 @@ export async function cargarDatosPrecios(supabase: SupabaseClient): Promise<Dato
       id: g.id_granel as string,
       nombre: g.nombre as string,
       costo: Number(g.costo_neto),
-      unidad: g.unidad === "BULTO" ? "BULTO" : "KG",
+      unidad: g.unidad === "BULTO" || g.unidad === "CAJA" ? g.unidad : "KG",
       kgBulto: num(g.kg_bulto),
+      idItem: (g.id_item as string | null | undefined) ?? null,
       idProveedor: (g.id_proveedor as string | null) ?? null,
       costoAnterior: num(g.costo_anterior),
       actualizadoEl: g.costo_actualizado_el as string,

@@ -12,10 +12,13 @@ import {
   type ConfigPrecios,
   type Descuenta,
   type Envase,
+  type Granel,
   type Medio,
   type ResultadoPrecio,
 } from "@/lib/calculoPrecio";
 import type { GranelDelModulo, ProductoDelModulo, RubroDelModulo } from "@/lib/datosPrecios";
+import type { EstadoAlifrut, ItemCatalogo } from "@/lib/catalogoProveedor";
+import { AvisoAlifrut, CambiosAlifrut, CatalogoAlifrut, TraerLista, calcularPendientes } from "@/components/PreciosAlifrut";
 import {
   guardarConfigPrecios,
   guardarEnvase,
@@ -43,9 +46,11 @@ type Props = {
   puedeConfigurar: boolean;
   /** Producto que llega abierto (desde "Cambiar precio" en Productos). */
   abrir?: string | null;
+  /** La lista de Alifrut; null si falta correr sql/precios-alifrut.sql. */
+  alifrut?: { items: ItemCatalogo[]; estado: EstadoAlifrut } | null;
 };
 
-type Pestana = "lista" | "costos" | "config";
+type Pestana = "lista" | "alifrut" | "costos" | "config";
 
 const pesos = (n: number | null | undefined, dec = 0) =>
   n == null || !Number.isFinite(n) ? "—" : `$${n.toLocaleString("es-AR", { minimumFractionDigits: dec, maximumFractionDigits: dec })}`;
@@ -80,6 +85,7 @@ export default function PreciosApp(props: Props) {
   const [orden, setOrden] = useState<"rubro" | "margen" | "actualizar">("rubro");
   const [aviso, setAviso] = useState<{ texto: string; mal?: boolean } | null>(null);
   const [pasando, setPasando] = useState(false);
+  const [ventanaAlifrut, setVentanaAlifrut] = useState<"traer" | "cambios" | null>(null);
   // "Hace 30 días", tomado una sola vez al abrir la pantalla.
   const [hace30] = useState(() => Date.now() - 30 * 86400000);
 
@@ -117,6 +123,12 @@ export default function PreciosApp(props: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [productos, rubros, cfg, granelPorId, envasePorId]
   );
+  const pendientesAlifrut = useMemo(
+    () => (props.alifrut ? calcularPendientes(props.alifrut.items, granel, productos, cfg, envasePorId, conRubro) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [props.alifrut, granel, productos, rubros, cfg, envasePorId]
+  );
+  const cerrarVentanaAlifrut = (recargar: boolean) => (recargar ? window.location.reload() : setVentanaAlifrut(null));
   const minimo = margenMinimo(cfg);
   const paraActualizar = calculados.filter(({ p, r }) => r.ok && (hayQueActualizar(r.publico, p.precioHoy, cfg.tolerancia) || (p.precioHoy != null && r.efectivo !== (p.efectivoHoy ?? p.precioHoy) && hayQueActualizar(r.efectivo, p.efectivoHoy ?? p.precioHoy, cfg.tolerancia))));
   const okCalc = calculados.filter((c) => c.r.ok) as { p: ProductoDelModulo; r: Extract<ResultadoPrecio, { ok: true }> }[];
@@ -189,6 +201,11 @@ export default function PreciosApp(props: Props) {
             <button type="button" className="pr-btn" onClick={exportar}>
               Exportar a Excel
             </button>
+            {props.alifrut && (
+              <button type="button" className="pr-btn" onClick={() => setVentanaAlifrut("traer")}>
+                Traer mis precios de Alifrut
+              </button>
+            )}
             <button type="button" className="pr-btn prim" disabled={paraActualizar.length === 0} onClick={() => setPasando(true)}>
               Pasar a la venta{paraActualizar.length ? ` (${paraActualizar.length})` : ""}
             </button>
@@ -197,6 +214,11 @@ export default function PreciosApp(props: Props) {
       </header>
 
       <div className="pr-pagina">
+        {props.alifrut ? (
+          <AvisoAlifrut estado={props.alifrut.estado} pendientes={pendientesAlifrut} onCambios={() => setVentanaAlifrut("cambios")} onTraer={() => setVentanaAlifrut("traer")} />
+        ) : (
+          <p className="pr-nota">Para traer la lista de Alifrut falta correr sql/precios-alifrut.sql en Supabase.</p>
+        )}
         <section className="pr-kpis" aria-label="Resumen">
           <div className={`pr-kpi ${paraActualizar.length ? "ojo" : "ok"}`}>
             <span>Precios para actualizar</span>
@@ -226,6 +248,7 @@ export default function PreciosApp(props: Props) {
           {(
             [
               ["lista", "Lista de precios"],
+              ...(props.alifrut ? ([["alifrut", `Productos Alifrut${props.alifrut.items.length ? ` (${props.alifrut.items.length})` : ""}`]] as [Pestana, string][]) : []),
               ["costos", "Costos de compra"],
               ["config", "Configuración"],
             ] as [Pestana, string][]
@@ -256,6 +279,20 @@ export default function PreciosApp(props: Props) {
             cambiarRubro={cambiarRubro}
           />
         )}
+        {pestana === "alifrut" && props.alifrut && (
+          <CatalogoAlifrut
+            items={props.alifrut.items}
+            estado={props.alifrut.estado}
+            granel={granel}
+            productos={productos}
+            rubros={rubros}
+            envases={envases}
+            avisar={avisar}
+            onTraer={() => setVentanaAlifrut("traer")}
+          />
+        )}
+        {ventanaAlifrut === "traer" && <TraerLista onCerrar={cerrarVentanaAlifrut} />}
+        {ventanaAlifrut === "cambios" && <CambiosAlifrut pendientes={pendientesAlifrut} onCerrar={cerrarVentanaAlifrut} />}
         {pestana === "costos" && (
           <Costos
             granel={granel}
@@ -446,7 +483,13 @@ function Lista(props: {
                 const { p, r } = c;
                 const abierto = props.abierto === p.id;
                 const g2 = p.idGranel ? props.granel.find((x) => x.id === p.idGranel) : null;
-                const sub = g2 ? `${p.gramos ?? "?"} g de ${g2.nombre.toLowerCase()}${p.idEnvase ? " + bolsita" : ""}` : p.idEnvase ? "por unidad + envase" : "viene envasado";
+                const sub = g2
+                  ? g2.unidad === "CAJA"
+                    ? `1 unidad de ${g2.nombre.toLowerCase()}${(g2.kgBulto ?? 1) > 1 ? ` (caja de ${g2.kgBulto})` : ""}`
+                    : `${p.gramos ?? "?"} g de ${g2.nombre.toLowerCase()}${p.idEnvase ? " + bolsita" : ""}`
+                  : p.idEnvase
+                    ? "por unidad + envase"
+                    : "viene envasado";
                 const dif = r.ok && p.precioHoy ? r.publico - p.precioHoy : 0;
                 const filasProd = [
                   <tr key={p.id} className={`fila${abierto ? " abierta" : ""}`} onClick={() => props.setAbierto(abierto ? null : p.id)}>
@@ -558,7 +601,12 @@ function Detalle({
         <h3>Cómo se llega al precio</h3>
         {r.costo ? (
           <ul className="pr-pasos">
-            {esGranel && porKg != null ? (
+            {esGranel && g?.unidad === "CAJA" ? (
+              <li>
+                <span>{(g.kgBulto ?? 1) > 1 ? `1 unidad de una caja de ${g.kgBulto}` : "Costo del proveedor"}</span>
+                <span className="n">{pesos(r.costo.mercaderia, 2)}</span>
+              </li>
+            ) : esGranel && porKg != null ? (
               <>
                 <li>
                   <span>
@@ -672,17 +720,18 @@ function Detalle({
           </div>
           {esGranel ? (
             <>
-              <label>
-                De qué granel
+              <label className={g?.unidad === "CAJA" ? "ancho" : undefined}>
+                De qué producto del proveedor
                 <select value={p.idGranel ?? ""} onChange={(e) => cambiarProducto(p.id, { idGranel: e.target.value }, { idGranel: e.target.value })}>
                   {granel.map((x) => (
                     <option key={x.id} value={x.id}>
                       {x.nombre}
+                      {x.idItem ? " · Alifrut" : ""}
                     </option>
                   ))}
                 </select>
               </label>
-              <label>
+              <label hidden={g?.unidad === "CAJA"}>
                 Gramos de la bolsita
                 <input
                   inputMode="numeric"
@@ -791,7 +840,7 @@ function Costos(props: {
   cambiarConfig: (local: Partial<ConfigPrecios>, servidor: CambiosConfig) => void;
   avisar: (t: string, mal?: boolean) => void;
 }) {
-  const [nuevo, setNuevo] = useState({ nombre: "", costo: "", unidad: "KG" as "KG" | "BULTO", kgBulto: "", idProveedor: "" });
+  const [nuevo, setNuevo] = useState({ nombre: "", costo: "", unidad: "KG" as Granel["unidad"], kgBulto: "", idProveedor: "" });
   const [nuevoEnv, setNuevoEnv] = useState({ nombre: "", costo: "" });
   const [creando, setCreando] = useState(false);
 
@@ -807,7 +856,8 @@ function Costos(props: {
         nombre: nuevo.nombre.trim(),
         costo: aNumero(nuevo.costo) ?? 0,
         unidad: nuevo.unidad,
-        kgBulto: nuevo.unidad === "BULTO" ? aNumero(nuevo.kgBulto) : null,
+        kgBulto: nuevo.unidad !== "KG" ? aNumero(nuevo.kgBulto) : null,
+        idItem: null,
         idProveedor: nuevo.idProveedor || null,
         costoAnterior: null,
         actualizadoEl: new Date().toISOString(),
@@ -829,7 +879,8 @@ function Costos(props: {
   return (
     <div className="pr-grid">
       <section className="pr-tarjeta pr-ancho">
-        <h2>Lo que se compra a granel</h2>
+        <h2>Lo que se compra a otros proveedores</h2>
+        <p className="baj">Lo de Alifrut no se carga acá: sale de su lista, en la pestaña Productos Alifrut.</p>
         <p className="baj">
           El costo de la lista del proveedor, sin IVA. Si viene por bolsa (por ejemplo, avena en bolsa de 3 kg), poné el precio de la bolsa y cuántos kg trae: el
           sistema saca el costo por kg. Un cambio acá recalcula todos los tamaños que salen de él (100 g, 250 g…).
@@ -842,14 +893,14 @@ function Costos(props: {
                 <th>Proveedor</th>
                 <th style={{ textAlign: "right" }}>Costo neto</th>
                 <th>Viene</th>
-                <th style={{ textAlign: "right" }}>Kg de la bolsa</th>
-                <th style={{ textAlign: "right" }}>Por kg</th>
+                <th style={{ textAlign: "right" }}>Kg / unidades</th>
+                <th style={{ textAlign: "right" }}>Por kg / c.u.</th>
                 <th>Tamaños</th>
                 <th>Actualizado</th>
               </tr>
             </thead>
             <tbody>
-              {props.granel.map((g) => {
+              {props.granel.filter((g) => !g.idItem).map((g) => {
                 const porKg = costoPorKg(g);
                 const usos = props.productos.filter((p) => p.idGranel === g.id).length;
                 return (
@@ -880,13 +931,14 @@ function Costos(props: {
                       />
                     </td>
                     <td style={{ width: 120 }}>
-                      <select value={g.unidad} onChange={(e) => props.cambiarGranel(g.id, { unidad: e.target.value as "KG" | "BULTO", kgBulto: e.target.value === "BULTO" ? g.kgBulto ?? 1 : null })} aria-label="Viene">
+                      <select value={g.unidad} onChange={(e) => props.cambiarGranel(g.id, { unidad: e.target.value as Granel["unidad"], kgBulto: e.target.value !== "KG" ? g.kgBulto ?? 1 : null })} aria-label="Viene">
                         <option value="KG">por kg</option>
                         <option value="BULTO">por bolsa</option>
+                        <option value="CAJA">por caja</option>
                       </select>
                     </td>
                     <td style={{ width: 110 }}>
-                      {g.unidad === "BULTO" ? (
+                      {g.unidad !== "KG" ? (
                         <input
                           className="n"
                           inputMode="decimal"
@@ -895,7 +947,7 @@ function Costos(props: {
                             const v = aNumero(e.target.value);
                             if (v && v > 0) props.cambiarGranel(g.id, { kgBulto: v });
                           }}
-                          aria-label="Kg de la bolsa"
+                          aria-label={g.unidad === "CAJA" ? "Unidades de la caja" : "Kg de la bolsa"}
                         />
                       ) : (
                         <span className="pr-tenue">—</span>
@@ -935,14 +987,15 @@ function Costos(props: {
                   <input className="n" inputMode="decimal" value={nuevo.costo} onChange={(e) => setNuevo({ ...nuevo, costo: e.target.value })} placeholder="Costo" aria-label="Costo del nuevo" />
                 </td>
                 <td>
-                  <select value={nuevo.unidad} onChange={(e) => setNuevo({ ...nuevo, unidad: e.target.value as "KG" | "BULTO" })} aria-label="Viene">
+                  <select value={nuevo.unidad} onChange={(e) => setNuevo({ ...nuevo, unidad: e.target.value as Granel["unidad"] })} aria-label="Viene">
                     <option value="KG">por kg</option>
                     <option value="BULTO">por bolsa</option>
+                    <option value="CAJA">por caja</option>
                   </select>
                 </td>
                 <td>
-                  {nuevo.unidad === "BULTO" && (
-                    <input className="n" inputMode="decimal" value={nuevo.kgBulto} onChange={(e) => setNuevo({ ...nuevo, kgBulto: e.target.value })} placeholder="kg" aria-label="Kg de la bolsa nueva" />
+                  {nuevo.unidad !== "KG" && (
+                    <input className="n" inputMode="decimal" value={nuevo.kgBulto} onChange={(e) => setNuevo({ ...nuevo, kgBulto: e.target.value })} placeholder={nuevo.unidad === "CAJA" ? "unid." : "kg"} aria-label="Kg de la bolsa o unidades de la caja" />
                   )}
                 </td>
                 <td colSpan={3}>

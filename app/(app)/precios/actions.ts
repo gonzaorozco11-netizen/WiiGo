@@ -5,7 +5,7 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import { esRolInterno } from "@/lib/rolesInternos";
 import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos";
-import { calcularPrecio, costoPorKg, MEDIOS, type Medio, type Descuenta } from "@/lib/calculoPrecio";
+import { calcularPrecio, mercaderiaDe, MEDIOS, type Granel, type Medio, type Descuenta } from "@/lib/calculoPrecio";
 import { CLAVES_PRECIOS } from "@/lib/configPrecios";
 import { cargarDatosPrecios } from "@/lib/datosPrecios";
 import { calcularTablero } from "@/app/(app)/resultado-mes/actions";
@@ -51,6 +51,22 @@ async function sincronizarBolsitas(supabase: ReturnType<typeof getSupabaseServer
   const { data: envases } = await q;
   for (const e of envases ?? []) {
     await supabase.from("productos").update({ costos_extra: Number(e.costo) + etiqueta }).eq("id_envase", e.id_envase);
+  }
+}
+
+const unidadGranel = (u: unknown): Granel["unidad"] => (u === "BULTO" || u === "CAJA" ? u : "KG");
+function granelDeFila(id: string, g: { costo_neto: unknown; unidad: unknown; kg_bulto: unknown }): Granel {
+  return { id, nombre: "", costo: Number(g.costo_neto), unidad: unidadGranel(g.unidad), kgBulto: g.kg_bulto == null ? null : Number(g.kg_bulto) };
+}
+
+/** Rehace el costo por unidad (costo_informado) de todos los productos que salen de un granel. */
+async function recalcularHijos(supabase: ReturnType<typeof getSupabaseServerClient>, g: Granel, ahora: string) {
+  const { data: hijos } = await supabase.from("productos").select("id_producto, peso_neto_g").eq("id_granel", g.id);
+  for (const h of hijos ?? []) {
+    const merc = mercaderiaDe(g, Number(h.peso_neto_g ?? 0) || null);
+    if (merc != null) {
+      await supabase.from("productos").update({ costo_informado: Math.round(merc * 100) / 100, costo_actualizado_el: ahora }).eq("id_producto", h.id_producto);
+    }
   }
 }
 
@@ -129,11 +145,11 @@ export async function guardarProductoPrecio(idProducto: string, cambios: Cambios
     const { data: actual } = await supabase.from("productos").select("id_granel, peso_neto_g").eq("id_producto", idProducto).maybeSingle();
     const idGranel = "idGranel" in cambios ? (cambios.idGranel || null) : (actual?.id_granel as string | null);
     const gramos = "gramos" in cambios ? (update.peso_neto_g as number | null) : Number(actual?.peso_neto_g ?? 0) || null;
-    if (idGranel && gramos) {
+    if (idGranel) {
       const { data: g } = await supabase.from("costos_granel").select("costo_neto, unidad, kg_bulto").eq("id_granel", idGranel).maybeSingle();
-      const porKg = g ? costoPorKg({ id: idGranel, nombre: "", costo: Number(g.costo_neto), unidad: g.unidad === "BULTO" ? "BULTO" : "KG", kgBulto: g.kg_bulto == null ? null : Number(g.kg_bulto) }) : null;
-      if (porKg != null) {
-        update.costo_informado = Math.round(((porKg * gramos) / 1000) * 100) / 100;
+      const merc = g ? mercaderiaDe(granelDeFila(idGranel, g), gramos) : null;
+      if (merc != null) {
+        update.costo_informado = Math.round(merc * 100) / 100;
         update.costo_actualizado_el = ahora;
       }
     }
@@ -167,18 +183,19 @@ export async function guardarRubroPrecio(idSubcategoria: string, cambios: { marg
   return { error: null };
 }
 
-export type DatosGranel = { nombre: string; idProveedor: string | null; costo: string | number; unidad: "KG" | "BULTO"; kgBulto: string | number | null };
+export type DatosGranel = { nombre: string; idProveedor: string | null; costo: string | number; unidad: Granel["unidad"]; kgBulto: string | number | null };
 
 /** Lo que viene a granel. Un costo nuevo recalcula el costo de todos los tamaños que salen de él. */
 export async function guardarGranel(idGranel: string | null, datos: DatosGranel): Promise<Resultado & { id?: string }> {
   if (!(await sesionDePrecios())) return { error: "No tenés permiso para Precios." };
   const nombre = String(datos.nombre ?? "").trim().slice(0, 120);
   const costo = numeroONull(datos.costo, 0);
-  const unidad = datos.unidad === "BULTO" ? "BULTO" : "KG";
-  const kgBulto = unidad === "BULTO" ? numeroONull(datos.kgBulto, 0.001) : null;
+  const unidad = unidadGranel(datos.unidad);
+  const kgBulto = unidad === "KG" ? null : numeroONull(datos.kgBulto, 0.001);
   if (!nombre) return { error: "Poné el nombre." };
   if (costo === undefined || costo === null || costo <= 0) return { error: "El costo tiene que ser mayor a 0." };
   if (unidad === "BULTO" && !kgBulto) return { error: "Si viene por bolsa, poné cuántos kg trae." };
+  if (unidad === "CAJA" && !kgBulto) return { error: "Si viene por caja, poné cuántas unidades trae." };
 
   const supabase = getSupabaseServerClient();
   const ahora = new Date().toISOString();
@@ -210,17 +227,7 @@ export async function guardarGranel(idGranel: string | null, datos: DatosGranel)
   }
 
   // El costo por unidad de cada tamaño, para Rentabilidad y las liquidaciones.
-  const porKg = unidad === "KG" ? costo : costo / (kgBulto as number);
-  const { data: hijos } = await supabase.from("productos").select("id_producto, peso_neto_g").eq("id_granel", id);
-  for (const h of hijos ?? []) {
-    const gramos = Number(h.peso_neto_g ?? 0);
-    if (gramos > 0) {
-      await supabase
-        .from("productos")
-        .update({ costo_informado: Math.round(((porKg * gramos) / 1000) * 100) / 100, costo_actualizado_el: ahora })
-        .eq("id_producto", h.id_producto);
-    }
-  }
+  if (id) await recalcularHijos(supabase, { id, nombre, costo, unidad, kgBulto: kgBulto ?? null }, ahora);
   revalidatePath("/precios");
   return { error: null, id: id ?? undefined };
 }
