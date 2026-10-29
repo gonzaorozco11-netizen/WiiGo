@@ -7,6 +7,7 @@ import { fechaHoraArgentina, minutosDeHora } from "@/lib/horarios";
 import { EMISOR } from "@/lib/emisor";
 import { textoLlamado, textoApercibimiento, APERCIBIMIENTO_DESDE_DEFECTO, type Antecedente } from "@/lib/sanciones";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { cartelesPendientesDelLocal, postergarCarteles, type CartelesPendientes } from "@/lib/tareasEtiqueta";
 
 async function personaActual() {
   const cookieStore = await cookies();
@@ -99,6 +100,8 @@ export type EstadoFicha = {
   pideFirma: boolean;
   /** La caja de su local: para abrirla al entrar o cerrarla con el arqueo antes de irse. */
   caja: CajaFicha | null;
+  /** Al irse: los carteles de precio que quedan sin poner en su local. */
+  carteles: CartelesPendientes | null;
 };
 
 // El usuario que ficha tiene que estar vinculado a una Persona en
@@ -107,7 +110,7 @@ export type EstadoFicha = {
 export async function obtenerEstadoFicha(): Promise<EstadoFicha> {
   const persona = await personaActual();
   if (!persona) {
-    return { persona: null, sinPersonaVinculada: true, siguienteTipo: "ENTRADA", horarios: [], idHorarioSugerido: null, horarioDeHoy: null, pideFirma: false, caja: null };
+    return { persona: null, sinPersonaVinculada: true, siguienteTipo: "ENTRADA", horarios: [], idHorarioSugerido: null, horarioDeHoy: null, pideFirma: false, caja: null, carteles: null };
   }
 
   const supabase = getSupabaseServerClient();
@@ -182,7 +185,18 @@ export async function obtenerEstadoFicha(): Promise<EstadoFicha> {
     horarioDeHoy,
     pideFirma: Boolean(persona.id_horario),
     caja,
+    carteles: siguienteTipo === "SALIDA" ? await cartelesAlIrse(supabase, persona) : null,
   };
+}
+
+/**
+ * Nadie del local se va con carteles de precio sin poner (Gonzalo,
+ * 2026-10-29): mientras el cartel no está, la caja de la marca propia sigue
+ * cobrando el precio viejo. Solo los operativos (horario fijo y local).
+ */
+async function cartelesAlIrse(supabase: SupabaseClient, persona: Persona): Promise<CartelesPendientes | null> {
+  if (!persona.id_horario || !persona.id_local) return null;
+  return cartelesPendientesDelLocal(supabase, persona.id_local as string);
 }
 
 /** Una firma válida: PNG en base64 y de tamaño razonable (las del recuadro pesan unos pocos KB). */
@@ -210,6 +224,8 @@ export type ResultadoFichaje = {
   caja?: CajaFicha | null;
   /** true si no pudo fichar la salida porque tiene su caja abierta. */
   cajaPendiente?: boolean;
+  /** Si no pudo fichar la salida porque quedan carteles de precio sin poner. */
+  cartelesPendientes?: CartelesPendientes;
 };
 
 const ANTES_IDEAL = 5;
@@ -335,13 +351,30 @@ async function crearSancion(
 //
 // firma: la que hizo con el dedo en el recuadro. Se exige a quien tiene
 // horario fijo (ver pideFirma).
-export async function fichar(tipo: "ENTRADA" | "SALIDA", idHorarioElegido: string | null, firma?: string | null): Promise<ResultadoFichaje> {
+// motivoCarteles: si se va sin poder poner los carteles de precio (por ejemplo,
+// no anda la impresora), por qué. Queda en la tarea y le aparece a administración.
+export async function fichar(
+  tipo: "ENTRADA" | "SALIDA",
+  idHorarioElegido: string | null,
+  firma?: string | null,
+  motivoCarteles?: string | null
+): Promise<ResultadoFichaje> {
   const persona = await personaActual();
   if (!persona) return { error: "Tu usuario no está vinculado a ninguna persona — avisale a administración." };
   if (persona.id_horario && !firmaValida(firma)) return { error: "Falta tu firma. Firmá en el recuadro y volvé a confirmar." };
 
   const supabase = getSupabaseServerClient();
   const ahora = new Date();
+
+  // Antes de irse, los carteles de precio puestos (o el motivo de por qué no).
+  if (tipo === "SALIDA") {
+    const carteles = await cartelesAlIrse(supabase, persona);
+    if (carteles) {
+      const motivo = (motivoCarteles ?? "").trim().slice(0, 500);
+      if (motivo.length < 5) return { error: "Antes de fichar la salida poné los carteles de precio nuevos.", cartelesPendientes: carteles };
+      await postergarCarteles(supabase, persona.id_local as string, motivo, `${persona.nombre}${persona.apellido ? ` ${persona.apellido}` : ""}`);
+    }
+  }
 
   // No se puede fichar la salida con la caja propia abierta: primero el arqueo.
   if (tipo === "SALIDA") {

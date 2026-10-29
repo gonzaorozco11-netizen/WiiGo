@@ -18,22 +18,23 @@ export default async function CartelesPage() {
   const traerTareas = (columnas: string) =>
     supabase.from("tareas_etiqueta").select(columnas).in("estado", ["PENDIENTE", "VENCIDA"]).limit(500);
 
-  const [productosConPeso, marcasRes, tareasConEfectivo, fichasRes] = await Promise.all([
+  const [productosConPeso, marcasRes, tareasCompletas, fichasRes] = await Promise.all([
     traerProductos(`${BASE_PRODUCTO},peso_neto_g`),
     supabase.from("marcas").select("id_marca,nombre").eq("estado", "ACTIVA"),
     // Los carteles que quedaron con el precio viejo. La cuenta ya la lleva el
     // circuito de solicitudes de marca; acá solo se lee para poder reimprimir
     // justo esos y no toda la góndola.
-    traerTareas("id_tarea,id_producto,precio_anterior,efectivo_anterior,precio_nuevo,tipo,vence_el,creada_el"),
+    traerTareas("id_tarea,id_producto,precio_anterior,efectivo_anterior,precio_nuevo,efectivo_nuevo,aplicar_al_poner,tipo,vence_el,creada_el"),
     // El país de origen de la ficha del asesor: sale chiquito en el cartel.
     supabase.from("ficha_producto").select("id_producto,origen"),
   ]);
   // Sin sql/rotulado.sql corrido, el cartel sale como antes, sin precio por kilo.
   const productosRes = productosConPeso.error ? await traerProductos(BASE_PRODUCTO) : productosConPeso;
-  // Sin sql/carteles-efectivo-anterior.sql corrido, el efectivo de antes no se sabe.
-  const tareasRes = tareasConEfectivo.error
-    ? await traerTareas("id_tarea,id_producto,precio_anterior,precio_nuevo,tipo,vence_el,creada_el")
-    : tareasConEfectivo;
+  // Sin sql/carteles-precio-al-poner.sql (o sin el del efectivo de antes) se
+  // lee lo que haya: el cartel sale con el precio de la caja, como antes.
+  let tareasRes = tareasCompletas;
+  if (tareasRes.error) tareasRes = await traerTareas("id_tarea,id_producto,precio_anterior,efectivo_anterior,precio_nuevo,tipo,vence_el,creada_el");
+  if (tareasRes.error) tareasRes = await traerTareas("id_tarea,id_producto,precio_anterior,precio_nuevo,tipo,vence_el,creada_el");
 
   const error = productosRes.error || marcasRes.error;
   if (error) {
@@ -74,6 +75,8 @@ export default async function CartelesPage() {
     pedidoEl: string | null;
     antes: { lista: number | null; efectivo: number | null };
     todas: string[];
+    /** El precio que espera este cartel para entrar en la caja (marca propia). */
+    espera: { lista: number; efectivo: number } | null;
   };
   const num = (v: unknown) => (v == null || !Number.isFinite(Number(v)) ? null : Number(v));
   const tareas = new Map<string, Abierta>();
@@ -85,7 +88,12 @@ export default async function CartelesPage() {
     creada_el: string | null;
     precio_anterior: number | null;
     efectivo_anterior?: number | null;
+    precio_nuevo: number | null;
+    efectivo_nuevo?: number | null;
+    aplicar_al_poner?: boolean;
   }[]) {
+    const nuevo = num(t.precio_nuevo);
+    const espera = t.aplicar_al_poner && nuevo ? { lista: nuevo, efectivo: num(t.efectivo_nuevo) ?? nuevo } : null;
     // Si un producto tiene varias tareas abiertas alcanza con reimprimirlo una
     // vez: se queda con la más urgente. La fecha y los precios "de antes" son
     // los del pedido más viejo: es lo que dice el cartel que sigue puesto.
@@ -99,9 +107,9 @@ export default async function CartelesPage() {
     // el producto volvería a aparecer como pendiente.
     const todas = [...(previa?.todas ?? []), t.id_tarea];
     if (!previa || (vencida && !previa.vencida)) {
-      tareas.set(t.id_producto, { idTarea: t.id_tarea, vencida, tipo: t.tipo, ...datosViejos, todas });
+      tareas.set(t.id_producto, { idTarea: t.id_tarea, vencida, tipo: t.tipo, ...datosViejos, todas, espera: espera ?? previa?.espera ?? null });
     } else {
-      Object.assign(previa, datosViejos, { todas });
+      Object.assign(previa, datosViejos, { todas, espera: espera ?? previa.espera });
     }
   }
 
@@ -110,15 +118,17 @@ export default async function CartelesPage() {
       // La cuenta de los dos precios —oferta incluida— vive en lib/precios.ts y
       // la comparten el POS, el tótem y el asesor. Un cartel que diga otra cosa
       // que la caja es peor que no tener cartel.
+      // Si el precio espera este cartel para entrar en la caja, el cartel sale
+      // con ese: la caja lo cobra apenas lo marcan como puesto.
+      const t = tareas.get(p.id_producto);
       const { lista, efectivo } = ambosPrecios(
         {
-          precio_venta: p.precio_venta,
-          precio_efectivo: p.precio_efectivo,
+          precio_venta: t?.espera?.lista ?? p.precio_venta,
+          precio_efectivo: t?.espera?.efectivo ?? p.precio_efectivo,
           descuento_porcentaje: p.descuento_porcentaje,
         },
         null
       );
-      const t = tareas.get(p.id_producto);
       return {
         idProducto: p.id_producto,
         nombre: p.nombre,
@@ -127,7 +137,7 @@ export default async function CartelesPage() {
         efectivo,
         // Sin precio de efectivo cargado el cartel mentiría a medias, así que
         // esos no se pueden imprimir hasta que la marca lo cargue.
-        tienePrecioEfectivo: p.precio_efectivo != null,
+        tienePrecioEfectivo: (t?.espera?.efectivo ?? p.precio_efectivo) != null,
         enOferta: (p.descuento_porcentaje ?? 0) > 0,
         descuento: p.descuento_porcentaje ?? 0,
         idTarea: t?.idTarea ?? null,

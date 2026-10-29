@@ -10,6 +10,7 @@ import {
   type ResultadoFichaje,
   type CajaFicha,
 } from "@/app/(app)/ficha-asistencia/actions";
+import type { CartelesPendientes } from "@/lib/tareasEtiqueta";
 import { abrirTurno } from "@/app/(app)/turnos/actions";
 import { logout } from "@/app/login/actions";
 import PadFirma from "@/components/PadFirma";
@@ -21,8 +22,9 @@ import ArqueoCaja from "@/components/ArqueoCaja";
 // más, con la racha; amarillo si llegó justo; rojo si llegó tarde, con el
 // llamado de atención para leer y firmar) y, si la caja del local está
 // cerrada, abrirla ahí mismo con el sobre de cambio.
-// Al irse: si tiene la caja abierta, primero el arqueo (conteo, sobres, foto
-// y firma); la firma del arqueo es también la de la salida.
+// Al irse: si quedan carteles de precio sin poner en la góndola, primero esos
+// (o el motivo de por qué no pudo); si tiene la caja abierta, el arqueo
+// (conteo, sobres, foto y firma); la firma del arqueo es también la de la salida.
 
 const pesos = (n: number) => `$${Math.round(n).toLocaleString("es-AR")}`;
 
@@ -39,6 +41,10 @@ export default function FichaAsistenciaApp({ antesDeSalir = false }: { antesDeSa
   const [sancionHecha, setSancionHecha] = useState(false);
   const [cajaHecha, setCajaHecha] = useState(false);
   const [cajaOmitida, setCajaOmitida] = useState(false);
+  // Al irse con carteles de precio sin poner: la pantalla que lo frena, y el
+  // motivo si no pudo ponerlos (con eso sí puede fichar la salida).
+  const [cartelesVista, setCartelesVista] = useState<CartelesPendientes | null>(null);
+  const [motivoCarteles, setMotivoCarteles] = useState<string | null>(null);
   const volverRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function recargar() {
@@ -58,6 +64,8 @@ export default function FichaAsistenciaApp({ antesDeSalir = false }: { antesDeSa
 
   function volverAlInicio() {
     if (volverRef.current) clearTimeout(volverRef.current);
+    setCartelesVista(null);
+    setMotivoCarteles(null);
     setResultado(null);
     setSancionHecha(false);
     setCajaHecha(false);
@@ -83,8 +91,13 @@ export default function FichaAsistenciaApp({ antesDeSalir = false }: { antesDeSa
     if (!estado) return;
     setConfirmando(false);
     setFichando(true);
-    fichar(estado.siguienteTipo, estado.siguienteTipo === "ENTRADA" ? idHorarioSeleccionado : null, estado.pideFirma ? firmaUsada : null)
+    fichar(estado.siguienteTipo, estado.siguienteTipo === "ENTRADA" ? idHorarioSeleccionado : null, estado.pideFirma ? firmaUsada : null, motivoCarteles)
       .then((res) => {
+        if (res.cartelesPendientes) {
+          setFirma(null);
+          setCartelesVista(res.cartelesPendientes);
+          return;
+        }
         if (res.cajaPendiente) {
           setArqueando(true);
           return;
@@ -103,6 +116,23 @@ export default function FichaAsistenciaApp({ antesDeSalir = false }: { antesDeSa
           Tu usuario no está vinculado a ninguna persona en Organización — avisale a administración para poder fichar.
         </p>
       </div>
+    );
+  }
+
+  // ---------- Al irse con carteles de precio sin poner ----------
+  if (cartelesVista) {
+    return (
+      <CartelesAntesDeIrse
+        carteles={cartelesVista}
+        onYaLosPuse={() => {
+          setCartelesVista(null);
+          recargar();
+        }}
+        onNoPude={(motivo) => {
+          setMotivoCarteles(motivo);
+          setCartelesVista(null);
+        }}
+      />
     );
   }
 
@@ -195,6 +225,7 @@ export default function FichaAsistenciaApp({ antesDeSalir = false }: { antesDeSa
   const esEntrada = estado?.siguienteTipo === "ENTRADA";
   const pideFirma = Boolean(estado?.pideFirma);
   const cajaMiaAbierta = !esEntrada && Boolean(estado?.caja?.abierta?.esMia);
+  const cartelesSinPoner = !esEntrada && !motivoCarteles ? estado?.carteles ?? null : null;
 
   return (
     <div className="max-w-md mx-auto text-center py-16">
@@ -270,6 +301,19 @@ export default function FichaAsistenciaApp({ antesDeSalir = false }: { antesDeSa
         </p>
       )}
 
+      {cartelesSinPoner && (
+        <p className="text-sm font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+          Hay {cartelesSinPoner.cantidad === 1 ? "1 cartel de precio" : `${cartelesSinPoner.cantidad} carteles de precio`} para cambiar antes de irte.{" "}
+          <a href="/carteles" className="underline">
+            Ir a Carteles
+          </a>
+        </p>
+      )}
+      {motivoCarteles && !esEntrada && (
+        <p className="text-xs text-neutral-500 bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2 mb-3">
+          Te vas sin poner los carteles. Le avisamos a administración: “{motivoCarteles}”
+        </p>
+      )}
       {cajaMiaAbierta && (
         <p className="text-sm font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-5">
           Tenés la caja abierta: al fichar la salida primero hacés el arqueo.
@@ -294,7 +338,8 @@ export default function FichaAsistenciaApp({ antesDeSalir = false }: { antesDeSa
 
       <button
         onClick={() => {
-          if (cajaMiaAbierta) setArqueando(true);
+          if (cartelesSinPoner) setCartelesVista(cartelesSinPoner);
+          else if (cajaMiaAbierta) setArqueando(true);
           else if (confirmando) handleFichar();
           else setConfirmando(true);
         }}
@@ -511,6 +556,73 @@ function MotivoSimple({ idFichaje, onListo }: { idFichaje: string; onListo: () =
           Guardar motivo
         </button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Antes de irse, los carteles de precio: mientras no estén puestos, la caja
+ * sigue cobrando el precio viejo. Si de verdad no puede (no anda la
+ * impresora), escribe por qué y se va igual: le llega a administración.
+ */
+function CartelesAntesDeIrse({ carteles, onYaLosPuse, onNoPude }: { carteles: CartelesPendientes; onYaLosPuse: () => void; onNoPude: (motivo: string) => void }) {
+  const [noPude, setNoPude] = useState(false);
+  const [motivo, setMotivo] = useState("");
+  const muchos = carteles.nombres.length > 8;
+  return (
+    <div className="max-w-md mx-auto py-8 space-y-4">
+      <div className="rounded-3xl bg-amber-50 text-amber-900 text-center px-6 py-8">
+        <div className="text-5xl mb-3">🏷️</div>
+        <h1 className="text-xl font-extrabold mb-1">Antes de irte, cambiá los carteles</h1>
+        <p className="text-sm">
+          {carteles.cantidad === 1 ? "Hay 1 producto que cambió de precio" : `Hay ${carteles.cantidad} productos que cambiaron de precio`}. La caja cobra el precio nuevo recién
+          cuando el cartel está puesto.
+        </p>
+      </div>
+      <ul className="bg-white border border-neutral-200 rounded-xl px-4 py-3 text-sm text-neutral-800 space-y-1">
+        {carteles.nombres.slice(0, 8).map((n) => (
+          <li key={n}>• {n}</li>
+        ))}
+        {muchos && <li className="text-neutral-400">y {carteles.nombres.length - 8} más</li>}
+      </ul>
+      <a href="/carteles" className="block text-center w-full rounded-xl bg-neutral-800 hover:bg-neutral-900 text-white font-bold py-3 text-sm">
+        Ir a Carteles: imprimir y marcar puestos
+      </a>
+      <button type="button" onClick={onYaLosPuse} className="block mx-auto text-sm font-semibold text-neutral-600 underline">
+        Ya los puse, volver
+      </button>
+      {noPude ? (
+        <div className="border border-neutral-200 rounded-xl p-3 space-y-2 text-left">
+          <label htmlFor="motivo-carteles" className="block text-xs font-semibold text-neutral-500">
+            ¿Por qué no pudiste ponerlos? Le llega a administración.
+          </label>
+          <textarea
+            id="motivo-carteles"
+            value={motivo}
+            onChange={(e) => setMotivo(e.target.value)}
+            rows={2}
+            placeholder="Por ejemplo: no anda la impresora"
+            className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm"
+          />
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => setNoPude(false)} className="text-xs font-semibold text-neutral-400 px-3 py-1.5">
+              Volver
+            </button>
+            <button
+              type="button"
+              onClick={() => onNoPude(motivo.trim())}
+              disabled={motivo.trim().length < 5}
+              className="text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-40 px-3 py-1.5 rounded-lg"
+            >
+              Seguir con la salida
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button type="button" onClick={() => setNoPude(true)} className="block mx-auto text-xs font-semibold text-neutral-400">
+          No pude ponerlos
+        </button>
+      )}
     </div>
   );
 }

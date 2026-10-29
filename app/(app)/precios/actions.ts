@@ -358,17 +358,21 @@ export async function traerGastosYVentas(): Promise<Resultado & { gastos?: numbe
 }
 
 /**
- * Pasa a la venta el precio que da la cuenta: cambia el precio de tarjeta y
- * el de efectivo en todo el sistema (caja, tótem, asesor, pedidos), deja el
- * cambio en el historial y una tarea de cartel por local.
+ * Pasa a la venta el precio que da la cuenta. Si el producto ya tenía precio
+ * (y cartel en la góndola), el precio nuevo NO entra todavía: se crea la tarea
+ * de cartel y la caja, el tótem y el asesor lo cobran recién cuando el
+ * operativo marca el cartel como puesto. Así nunca se cobra distinto de lo
+ * que dice la góndola (Gonzalo, 2026-10-29). Un producto sin precio todavía
+ * no tiene cartel que contradiga: ese entra al toque.
  */
-export async function pasarALaVenta(ids: string[]): Promise<Resultado & { cambiados?: number }> {
+export async function pasarALaVenta(ids: string[]): Promise<Resultado & { cambiados?: number; esperan?: number }> {
   const sesion = await sesionDePrecios();
   if (!sesion) return { error: "No tenés permiso para Precios." };
   if (!Array.isArray(ids) || ids.length === 0) return { error: "No elegiste ningún producto." };
   const supabase = getSupabaseServerClient();
   const datos = await cargarDatosPrecios(supabase);
   if (!datos.disponible) return { error: FALTA_SQL };
+  if (!datos.esperaCartel) return { error: "Falta correr sql/carteles-precio-al-poner.sql en Supabase (SQL Editor → New query → pegar → Run)." };
 
   const granel = new Map(datos.granel.map((g) => [g.id, g]));
   const envases = new Map(datos.envases.map((e) => [e.id, e]));
@@ -376,28 +380,49 @@ export async function pasarALaVenta(ids: string[]): Promise<Resultado & { cambia
   const ahora = new Date();
   const vence = new Date(ahora.getTime() + 24 * 3600 * 1000).toISOString();
   let cambiados = 0;
+  let esperan = 0;
 
   for (const p of datos.productos.filter((x) => ids.includes(x.id))) {
     const r = calcularPrecio(p, datos.config, granel, envases);
     if (!r.ok) continue;
-    const cambiaLista = r.publico !== p.precioHoy;
-    const cambiaEfectivo = r.efectivo !== (p.efectivoHoy ?? p.precioHoy);
-    if (!cambiaLista && !cambiaEfectivo) continue;
-    const { error } = await supabase
-      .from("productos")
-      .update({ precio_venta: r.publico, precio_efectivo: r.efectivo, fecha_actualizacion: ahora.toISOString() })
-      .eq("id_producto", p.id);
-    if (error) continue;
-    cambiados++;
-    if (cambiaLista) {
+    // Lo que cobra hoy la caja (y dice el cartel puesto).
+    const cajaLista = p.cartel ? p.cartel.cajaLista : p.precioHoy;
+    const cajaEfectivo = p.cartel ? p.cartel.cajaEfectivo : p.efectivoHoy;
+    // Comparado con lo que ya está pedido (o con la caja, si no hay nada pedido).
+    if (r.publico === p.precioHoy && r.efectivo === (p.efectivoHoy ?? p.precioHoy)) continue;
+
+    // Vuelve a lo que ya cobra la caja: el cartel puesto está bien, no hay nada que cambiar.
+    if (p.cartel && r.publico === cajaLista && r.efectivo === (cajaEfectivo ?? cajaLista)) {
+      await supabase
+        .from("tareas_etiqueta")
+        .update({ estado: "ANULADA", hecha_el: ahora.toISOString() })
+        .eq("id_producto", p.id)
+        .eq("aplicar_al_poner", true)
+        .in("estado", ["PENDIENTE", "VENCIDA"]);
+      cambiados++;
+      continue;
+    }
+
+    // Sin precio todavía: no hay cartel viejo que contradiga, entra ya.
+    const entraYa = !cajaLista || (locales ?? []).length === 0;
+    if (entraYa) {
+      const { error } = await supabase
+        .from("productos")
+        .update({ precio_venta: r.publico, precio_efectivo: r.efectivo, fecha_actualizacion: ahora.toISOString() })
+        .eq("id_producto", p.id);
+      if (error) continue;
       await supabase.from("historial_precios").insert({
         id_producto: p.id,
-        precio_anterior: p.precioHoy,
+        precio_anterior: cajaLista,
         precio_nuevo: r.publico,
         cambiado_por: sesion.idUsuario,
         motivo: "Módulo Precios",
       });
+    } else {
+      esperan++;
     }
+    cambiados++;
+
     // El cartel de góndola: uno por local, porque es físico.
     await insertarTareasEtiqueta(
       supabase,
@@ -406,9 +431,11 @@ export async function pasarALaVenta(ids: string[]): Promise<Resultado & { cambia
         id_local: l.id_local,
         tipo: "CAMBIO_PRECIO",
         estado: "PENDIENTE",
-        precio_anterior: p.precioHoy,
-        efectivo_anterior: p.precioHoy ? p.efectivoHoy ?? p.precioHoy : null,
+        precio_anterior: cajaLista,
+        efectivo_anterior: cajaLista ? cajaEfectivo ?? cajaLista : null,
         precio_nuevo: r.publico,
+        efectivo_nuevo: r.efectivo,
+        aplicar_al_poner: !entraYa,
         vence_el: vence,
       }))
     );
@@ -416,5 +443,5 @@ export async function pasarALaVenta(ids: string[]): Promise<Resultado & { cambia
   revalidatePath("/precios");
   revalidatePath("/productos");
   revalidatePath("/carteles");
-  return { error: null, cambiados };
+  return { error: null, cambiados, esperan };
 }

@@ -157,7 +157,11 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
       if (res.error) setAviso(res.error);
       else {
         const cuantos = conTarea.length;
-        setAviso(`Listo: ${cuantos} ${cuantos === 1 ? "cartel marcado" : "carteles marcados"} como puestos.`);
+        const aplicados = res.aplicados ?? 0;
+        setAviso(
+          `Listo: ${cuantos} ${cuantos === 1 ? "cartel marcado" : "carteles marcados"} como puestos.` +
+            (aplicados > 0 ? ` La caja ya cobra ${aplicados === 1 ? "el precio nuevo" : `los ${aplicados} precios nuevos`}.` : "")
+        );
         router.refresh();
       }
     });

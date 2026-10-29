@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
+import { aplicarPreciosDeCarteles } from "@/lib/tareasEtiqueta";
 
 /**
  * Da por cambiados los carteles que se acaban de imprimir.
@@ -30,7 +31,15 @@ export async function marcarCartelesPuestos(idsTarea: string[]) {
 
   if (error) return { error: friendlyDbError(error) };
 
+  // Los precios de la marca propia que esperaban el cartel entran ahora en la
+  // caja, el tótem y el asesor (lib/tareasEtiqueta.ts).
+  const aplicados = await aplicarPreciosDeCarteles(supabase, idsTarea, sesion?.idUsuario ?? null);
+
   revalidatePath("/carteles");
   revalidatePath("/aprobaciones");
-  return { ok: true as const, cuantas: count ?? idsTarea.length };
+  if (aplicados > 0) {
+    revalidatePath("/precios");
+    revalidatePath("/productos");
+  }
+  return { ok: true as const, cuantas: count ?? idsTarea.length, aplicados };
 }

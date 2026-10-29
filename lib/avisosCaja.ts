@@ -9,6 +9,7 @@ import type { ItemTablero } from "@/lib/tablero";
 // - Caja abierta de un día anterior: alguien se fue sin cerrar.
 // - Caja abierta con otra cantidad en el sobre de cambio.
 // - Sobres de recaudación sin contar.
+// - Carteles de precio que el operativo no pudo poner antes de irse.
 // - Llamados del mes: quién se negó a firmar, quién no firmó, y los
 //   apercibimientos.
 //
@@ -21,13 +22,20 @@ const MEDIA_HORA = 30;
 export async function avisosCajaYLlamados(supabase: SupabaseClient): Promise<{ urgentes: ItemTablero[]; seguimiento: ItemTablero[] }> {
   const ahora = fechaHoraArgentina();
   const periodo = ahora.fecha.slice(0, 7);
-  const [locales, abiertos, horarios, sinContar, sanciones, aprender] = await Promise.all([
+  const [locales, abiertos, horarios, sinContar, sanciones, aprender, postergados] = await Promise.all([
     supabase.from("locales").select("id_local, nombre").eq("estado", "ACTIVO"),
     supabase.from("turnos").select("*").eq("estado", "ABIERTO"),
     supabase.from("horarios_trabajo").select("nombre, hora_entrada, hora_salida, dias_semana").eq("estado", "ACTIVO"),
     supabase.from("turnos").select("id_turno", { count: "exact", head: true }).eq("estado", "CERRADO").not("recaudacion", "is", null).is("recuento", null),
     supabase.from("sanciones").select("id_persona, tipo, se_nego, firmado_en, creado_en, estado").eq("periodo", periodo).eq("estado", "VIGENTE"),
     supabase.from("aprender_fichas").select("id_ficha", { count: "exact", head: true }).not("borrador", "is", null),
+    // Carteles de precio que el operativo no pudo poner antes de irse (sql/carteles-precio-al-poner.sql).
+    supabase
+      .from("tareas_etiqueta")
+      .select("id_producto, postergada_motivo, postergada_por, postergada_el")
+      .in("estado", ["PENDIENTE", "VENCIDA"])
+      .not("postergada_el", "is", null)
+      .order("postergada_el", { ascending: false }),
   ]);
 
   // Aprender: explicaciones que escribió la IA esperando tu aprobación.
@@ -35,6 +43,19 @@ export async function avisosCajaYLlamados(supabase: SupabaseClient): Promise<{ u
 
   const urgentes: ItemTablero[] = [];
   const seguimiento: ItemTablero[] = [];
+  // Se fue sin poner los carteles: la caja sigue cobrando el precio viejo de esos productos.
+  if (!postergados.error && postergados.data?.length) {
+    const ultimo = postergados.data[0];
+    const productos = new Set(postergados.data.map((t) => t.id_producto as string)).size;
+    urgentes.push({
+      color: "ambar",
+      titulo: `${productos === 1 ? "Un cartel de precio quedó" : `${productos} carteles de precio quedaron`} sin poner`,
+      detalle: `${(ultimo.postergada_por as string | null) ?? "El operativo"} se fue sin ponerlos: “${ultimo.postergada_motivo as string}”. La caja sigue cobrando el precio de antes`,
+      valor: String(productos),
+      href: "/carteles",
+    });
+  }
+
   const abiertosPorLocal = new Map((abiertos.data ?? []).map((t) => [t.id_local as string, t as Record<string, unknown>]));
 
   // Caja sin abrir con un turno de trabajo en curso.

@@ -331,13 +331,28 @@ export default function PreciosApp(props: Props) {
             setPasando(false);
             setSoloUno(null);
           }}
-          onListo={(n, ids) => {
+          onListo={(n, ids, esperan) => {
             setPasando(false);
             setSoloUno(null);
-            // El precio de hoy pasa a ser el nuevo, sin recargar la pantalla.
+            // El precio de hoy pasa a ser el nuevo, sin recargar la pantalla. Si
+            // ya tenía precio, la caja lo cobra recién cuando pongan el cartel.
             const nuevos = new Map(calculados.filter((c) => ids.includes(c.p.id) && c.r.ok).map((c) => [c.p.id, c.r as Extract<ResultadoPrecio, { ok: true }>]));
-            setProductos((ps) => ps.map((p) => (nuevos.has(p.id) ? { ...p, precioHoy: nuevos.get(p.id)!.publico, efectivoHoy: nuevos.get(p.id)!.efectivo } : p)));
-            avisar(n === 1 ? "Listo: 1 precio pasado a la venta." : `Listo: ${n} precios pasados a la venta.`);
+            const desde = new Date().toISOString();
+            setProductos((ps) =>
+              ps.map((p) => {
+                const r = nuevos.get(p.id);
+                if (!r) return p;
+                const cajaLista = p.cartel ? p.cartel.cajaLista : p.precioHoy;
+                const cajaEfectivo = p.cartel ? p.cartel.cajaEfectivo : p.efectivoHoy;
+                const vuelve = r.publico === cajaLista && r.efectivo === (cajaEfectivo ?? cajaLista);
+                const cartel = !cajaLista || vuelve ? null : { desde: p.cartel?.desde ?? desde, cajaLista, cajaEfectivo };
+                return { ...p, precioHoy: r.publico, efectivoHoy: r.efectivo, cartel };
+              })
+            );
+            avisar(
+              (n === 1 ? "Listo: 1 precio pasado a la venta." : `Listo: ${n} precios pasados a la venta.`) +
+                (esperan > 0 ? " La caja los cobra cuando el operativo ponga el cartel." : "")
+            );
             router.refresh();
           }}
           onError={(e) => avisar(e, true)}
@@ -539,6 +554,11 @@ function Lista(props: {
                         <>
                           <span className="pr-hoy">{pesos(p.precioHoy)}</span>
                           {dif !== 0 && <span className={`pr-delta ${dif > 0 ? "sube" : "baja"}`}>{`${dif > 0 ? "+" : "−"}${pesos(Math.abs(dif))}`}</span>}
+                          {p.cartel && (
+                            <small className="pr-espera" title="La caja cobra el precio de antes hasta que el operativo ponga el cartel nuevo">
+                              espera cartel · caja {pesos(p.cartel.cajaLista)}
+                            </small>
+                          )}
                         </>
                       ) : (
                         <span className="pr-sinprecio" title="No aparece a la venta hasta que lo pases">
@@ -699,6 +719,11 @@ function Detalle({
           <button type="button" className="pr-btn prim" style={{ marginTop: 12, width: "100%" }} onClick={() => pasarUno(p.id)}>
             {p.precioHoy ? `Pasar a la venta a ${pesos(r.publico)}` : `Ponerlo a la venta a ${pesos(r.publico)}`}
           </button>
+        ) : r.ok && p.cartel ? (
+          <p className="pr-nota ojo">
+            Pasado a la venta: la caja lo cobra cuando el operativo ponga el cartel. Hasta entonces cobra {pesos(p.cartel.cajaLista)} (efectivo{" "}
+            {pesos(p.cartel.cajaEfectivo ?? p.cartel.cajaLista)}).
+          </p>
         ) : r.ok ? (
           <p className="pr-nota ok">Ya está a la venta a este precio.</p>
         ) : null}
@@ -1355,7 +1380,7 @@ function PasarALaVenta({
 }: {
   items: { p: ProductoDelModulo; r: Extract<ResultadoPrecio, { ok: true }> }[];
   onCerrar: () => void;
-  onListo: (n: number, ids: string[]) => void;
+  onListo: (n: number, ids: string[], esperan: number) => void;
   onError: (e: string) => void;
 }) {
   const [elegidos, setElegidos] = useState<Set<string>>(() => new Set(items.map((i) => i.p.id)));
@@ -1366,7 +1391,7 @@ function PasarALaVenta({
     const r = await pasarALaVenta([...elegidos]);
     setEnviando(false);
     if (r.error) return onError(r.error);
-    onListo(r.cambiados ?? 0, [...elegidos]);
+    onListo(r.cambiados ?? 0, [...elegidos], r.esperan ?? 0);
   }
 
   return (
@@ -1375,8 +1400,9 @@ function PasarALaVenta({
         <header>
           <h2 id="pasar-titulo">Pasar a la venta</h2>
           <p>
-            Cambia el precio de tarjeta y el de efectivo en todo el sistema: caja, tótem, pantalla asesora y pedidos. Queda en el historial y se crea la tarea de
-            cambiar el cartel de góndola.
+            Se crea la tarea de cambiar el cartel de góndola. La caja, el tótem, la pantalla asesora y los pedidos cobran el precio nuevo{" "}
+            <b>recién cuando el operativo pone el cartel</b> y lo marca como puesto: así nunca se cobra distinto de lo que dice la góndola. Un producto que
+            todavía no tenía precio entra al toque.
           </p>
         </header>
         <div className="cuerpo">
