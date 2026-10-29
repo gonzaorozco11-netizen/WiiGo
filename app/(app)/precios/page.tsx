@@ -5,6 +5,7 @@ import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos
 import { cargarDatosPrecios } from "@/lib/datosPrecios";
 import { cargarCatalogoAlifrut } from "@/lib/catalogoProveedor";
 import { cargarCompetencia } from "@/lib/competenciaLeer";
+import { cargarGondola } from "@/lib/gondola";
 import PantallaBloqueada from "@/components/PantallaBloqueada";
 import PreciosApp from "@/components/PreciosApp";
 import "./precios.css";
@@ -25,12 +26,17 @@ export default async function PreciosPage({ searchParams }: { searchParams: Prom
   if (!puedeVerPantalla(sesion, "precios")) return <PantallaBloqueada />;
 
   const supabase = getSupabaseServerClient();
-  const [datos, conPermisos, alifrut, competencia] = await Promise.all([
+  const [datos, conPermisos, alifrut, competencia, localesRes] = await Promise.all([
     cargarDatosPrecios(supabase),
     obtenerSesionConPermisos(),
     cargarCatalogoAlifrut(supabase),
     cargarCompetencia(supabase),
+    supabase.from("locales").select("id_local, nombre").eq("estado", "ACTIVO").order("nombre"),
   ]);
+  // La góndola de cada local (sql/gondola.sql). null = falta el SQL.
+  const locales = (localesRes.data ?? []) as { id_local: string; nombre: string }[];
+  const gondolas = await Promise.all(locales.map(async (l) => ({ idLocal: l.id_local, nombre: l.nombre, modulos: await cargarGondola(supabase, l.id_local) })));
+  const gondola = gondolas.some((g) => g.modulos === null) ? null : gondolas.map((g) => ({ ...g, modulos: g.modulos ?? [] }));
 
   if (!datos.disponible) {
     return (
@@ -57,6 +63,7 @@ export default async function PreciosPage({ searchParams }: { searchParams: Prom
         abrir={datos.productos.some((p) => p.id === producto) ? producto : null}
         alifrut={alifrut}
         competencia={competencia}
+        gondola={gondola}
       />
     </div>
   );

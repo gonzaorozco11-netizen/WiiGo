@@ -21,6 +21,7 @@ import { fetchContenidoAsesor } from "@/lib/contenidoAsesor";
 import { profesionalesDestacadas } from "@/lib/semanaProfesional";
 import { REDES, leerRedes, textoDeRed } from "@/lib/redesProfesional";
 import AsesorApp, { type RedEnFicha } from "@/components/AsesorApp";
+import { cargarGondola } from "@/lib/gondola";
 
 export const dynamic = "force-dynamic";
 
@@ -56,6 +57,7 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
     consultoriosRes,
     destacadas,
     redesRes,
+    gondola,
   ] = await Promise.all([
     // Columnas explícitas: con "*" viajaban al navegador el royalty, el fee de
     // ingreso, el plan y el contacto de cada marca. Esta pantalla es pública.
@@ -88,6 +90,8 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
     profesionalesDestacadas(supabase).catch(() => new Set<string>()),
     // Aparte también: sin sql/profesionales-redes.sql falla sola.
     supabase.from("profesionales").select("id_profesional, redes").eq("estado", "ACTIVO").eq("publicado", true).not("redes", "is", null),
+    // Dónde está cada producto en la góndola (sql/gondola.sql). Sin el SQL, no hay botón.
+    cargarGondola(supabase, idLocal).catch(() => null),
   ]);
 
   // Las fichas destacadas (las que más pacientes trajeron este mes) van
@@ -238,6 +242,7 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
       fichaPorProducto={contenido.fichaPorProducto}
       objetivosPorProducto={contenido.objetivosPorProducto}
       filtrosPorProducto={contenido.filtrosPorProducto}
+      gondola={gondola ?? []}
     />
   );
 }

@@ -20,6 +20,8 @@ import type {
   FormacionProfesional,
   TrayectoriaProfesional,
 } from "@/lib/supabase";
+import { ubicacionDe, textoPosicionModulo, NOMBRE_ALTURA, type ModuloGondola, type UbicacionGondola } from "@/lib/gondola";
+import { MuebleFrente, Pared3D } from "@/components/Gondola3D";
 
 type Pantalla = "home" | "objetivo" | "resultado" | "marcas" | "ofertas" | "profesionales" | "fichaProfesional" | "conoceme" | "reservarTurno";
 
@@ -856,6 +858,7 @@ export default function AsesorApp({
   fichaPorProducto,
   objetivosPorProducto,
   filtrosPorProducto,
+  gondola = [],
 }: {
   local: Local;
   marcas: MarcaPublica[];
@@ -876,6 +879,8 @@ export default function AsesorApp({
   fichaPorProducto: Record<string, FichaProducto>;
   objetivosPorProducto: Record<string, string[]>;
   filtrosPorProducto: Record<string, string[]>;
+  /** Los módulos del local y dónde va cada producto (Precios → Góndola). */
+  gondola?: ModuloGondola[];
 }) {
   const [pantalla, setPantalla] = useState<Pantalla>("home");
   const [objetivoId, setObjetivoId] = useState<string | null>(null);
@@ -2860,6 +2865,8 @@ export default function AsesorApp({
               variantes={variantesPorProducto[p.id_producto] ?? []}
               idioma={idioma}
               onClose={() => setProductoAbierto(null)}
+              gondola={gondola}
+              ubicacion={ubicacionDe(gondola, p.id_producto)}
             />
           );
         })()}
@@ -2933,6 +2940,77 @@ const MACROS_INFO: Record<
   },
 };
 
+/**
+ * "¿Dónde lo encuentro?": la góndola en 3D con el módulo adelante y el lugar
+ * latiendo en naranja, y el mueble de frente. Tapa la ficha; "Volver" la
+ * deja como estaba (Gonzalo, 2026-10-29).
+ */
+function DondeEsta({
+  gondola,
+  ubicacion,
+  nombre,
+  idioma,
+  onVolver,
+}: {
+  gondola: ModuloGondola[];
+  ubicacion: UbicacionGondola;
+  nombre: string;
+  idioma: Idioma;
+  onVolver: () => void;
+}) {
+  const { modulo, fila, columna } = ubicacion;
+  const numero = gondola.indexOf(modulo) + 1;
+  const altura = modulo.filas[fila]?.altura ?? "manos";
+  const filaTexto =
+    idioma === "en"
+      ? { arriba: "top shelf", ojos: "eye-level shelf", manos: "middle shelf", abajo: "bottom shelf" }[altura]
+      : idioma === "pt"
+        ? { arriba: "prateleira de cima", ojos: "altura dos olhos", manos: "prateleira do meio", abajo: "prateleira de baixo" }[altura]
+        : `fila de ${NOMBRE_ALTURA[altura].toLowerCase()}`;
+  const lugarTexto =
+    idioma === "en" ? `spot ${columna + 1} from the left` : idioma === "pt" ? `${columna + 1}º lugar da esquerda` : `${columna + 1}.º lugar desde la izquierda`;
+  return (
+    <div className="absolute inset-0 z-30 overflow-y-auto bg-white px-5 pt-5 pb-6 flex flex-col gap-4" onClick={(e) => e.stopPropagation()}>
+      <div className="flex items-center gap-3 pr-12">
+        <span className="grid place-items-center w-11 h-11 rounded-full text-white text-[19px] font-extrabold shrink-0" style={{ background: "#e9592a" }}>
+          {numero}
+        </span>
+        <div className="min-w-0">
+          <p className="text-[12px] font-extrabold uppercase tracking-[.16em] text-[#98a08b]">{nombre}</p>
+          <p className="text-[18px] md:text-[20px] font-bold leading-snug text-[#2d2d2d]">
+            {idioma === "en" ? "Module" : "Módulo"} {numero} · “{modulo.titulo}” — {filaTexto}, {lugarTexto}
+          </p>
+        </div>
+      </div>
+      {idioma === "es" && (
+        <div className="flex flex-wrap gap-2">
+          <span className="rounded-full px-3 py-1 text-[13px] font-bold" style={{ background: "#fdeee6", color: "#8a3413" }}>
+            {textoPosicionModulo(numero, gondola.length)}
+          </span>
+          <span className="rounded-full px-3 py-1 text-[13px] font-bold" style={{ background: "#fdeee6", color: "#8a3413" }}>
+            Cartel “{modulo.titulo}”
+          </span>
+        </div>
+      )}
+      <Pared3D modulos={gondola} sel={modulo.id} aca={{ idModulo: modulo.id, fila, columna }} foco />
+      <MuebleFrente
+        modulo={modulo}
+        numero={numero}
+        aca={{ fila, columna }}
+        textoAca={idioma === "en" ? "Here it is!" : idioma === "pt" ? "Está aqui!" : "¡Acá está!"}
+      />
+      <button
+        type="button"
+        onClick={onVolver}
+        className="self-center rounded-full px-6 py-3 text-[14px] font-bold text-white"
+        style={{ background: SAGE_DARK }}
+      >
+        {idioma === "en" ? "Back to the product" : idioma === "pt" ? "Voltar ao produto" : "Volver al producto"}
+      </button>
+    </div>
+  );
+}
+
 function ProductoDetalleModal({
   producto,
   marca,
@@ -2940,6 +3018,8 @@ function ProductoDetalleModal({
   variantes,
   idioma,
   onClose,
+  gondola,
+  ubicacion,
 }: {
   producto: ProductoPublico;
   marca: MarcaPublica | undefined;
@@ -2947,7 +3027,10 @@ function ProductoDetalleModal({
   variantes: VarianteProductoPublica[];
   idioma: Idioma;
   onClose: () => void;
+  gondola: ModuloGondola[];
+  ubicacion: UbicacionGondola | null;
 }) {
+  const [verDonde, setVerDonde] = useState(false);
   const fotos = [producto.imagen, ficha?.foto_extra_1, ficha?.foto_extra_2, ficha?.foto_extra_3].filter(
     (f): f is string => Boolean(f)
   );
@@ -3079,6 +3162,22 @@ function ProductoDetalleModal({
         </div>
       </div>
 
+      {/* Dónde está en el local: abre la góndola en 3D con el lugar marcado. */}
+      {ubicacion && (
+        <button
+          type="button"
+          onClick={() => setVerDonde(true)}
+          className="self-start inline-flex items-center gap-2.5 rounded-full px-4 py-2.5 text-[14px] font-bold text-white"
+          style={{ background: "#e9592a", boxShadow: "0 10px 20px -12px rgba(233,89,42,.9)" }}
+        >
+          <span aria-hidden="true">📍</span>
+          {idioma === "en" ? "Where do I find it?" : idioma === "pt" ? "Onde encontro?" : "¿Dónde lo encuentro?"}
+          <span className="rounded-full bg-white/25 px-2 py-0.5 text-[12px]">
+            {idioma === "en" ? "Module" : "Módulo"} {gondola.indexOf(ubicacion.modulo) + 1}
+          </span>
+        </button>
+      )}
+
       {sabores.length > 0 && (
         <div className="flex flex-col gap-2">
           <p className="text-[10.5px] font-extrabold uppercase tracking-[.2em] text-[#98a08b]">
@@ -3147,6 +3246,16 @@ function ProductoDetalleModal({
         >
           ✕
         </button>
+
+        {verDonde && ubicacion && (
+          <DondeEsta
+            gondola={gondola}
+            ubicacion={ubicacion}
+            nombre={traducir(idioma, producto.nombre, producto.nombre_en, producto.nombre_pt)}
+            idioma={idioma}
+            onVolver={() => setVerDonde(false)}
+          />
+        )}
 
         {/* ---------- hoja izquierda: la foto ---------- */}
         <div className="bg-white overflow-y-auto flex flex-col min-h-0">

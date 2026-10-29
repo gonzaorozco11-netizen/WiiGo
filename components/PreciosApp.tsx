@@ -21,6 +21,7 @@ import type { GranelDelModulo, ProductoDelModulo, RubroDelModulo } from "@/lib/d
 import type { EstadoAlifrut, ItemCatalogo } from "@/lib/catalogoProveedor";
 import { AvisoAlifrut, CambiosAlifrut, CatalogoAlifrut, TraerLista, calcularPendientes } from "@/components/PreciosAlifrut";
 import PreciosCompetencia from "@/components/PreciosCompetencia";
+import PreciosGondola, { type GondolaLocal } from "@/components/PreciosGondola";
 import type { DatosCompetencia } from "@/lib/competenciaLeer";
 import {
   guardarConfigPrecios,
@@ -54,9 +55,11 @@ type Props = {
   alifrut?: { items: ItemCatalogo[]; estado: EstadoAlifrut } | null;
   /** La competencia de Mendoza; null si falta correr sql/precios-competencia.sql. */
   competencia?: DatosCompetencia | null;
+  /** La góndola de cada local; null si falta correr sql/gondola.sql. */
+  gondola?: GondolaLocal[] | null;
 };
 
-type Pestana = "lista" | "competencia" | "alifrut" | "costos" | "config";
+type Pestana = "lista" | "competencia" | "gondola" | "alifrut" | "costos" | "config";
 
 const pesos = (n: number | null | undefined, dec = 0) =>
   n == null || !Number.isFinite(n) ? "—" : `$${n.toLocaleString("es-AR", { minimumFractionDigits: dec, maximumFractionDigits: dec })}`;
@@ -302,6 +305,7 @@ export default function PreciosApp(props: Props) {
             [
               ["lista", "Lista de precios"],
               ["competencia", "Competencia"],
+              ["gondola", "Góndola"],
               ...(props.alifrut ? ([["alifrut", `Productos Alifrut${props.alifrut.items.length ? ` (${props.alifrut.items.length})` : ""}`]] as [Pestana, string][]) : []),
               ["costos", "Costos de compra"],
               ["config", "Configuración"],
@@ -339,6 +343,7 @@ export default function PreciosApp(props: Props) {
         {pestana === "competencia" && (
           <PreciosCompetencia productos={productos} datos={props.competencia ?? null} avisar={avisar} margenPara={margenParaPrecio} llevarA={llevarAPrecio} minimo={minimo} />
         )}
+        {pestana === "gondola" && <PreciosGondola locales={props.gondola ?? null} productos={productos} avisar={avisar} />}
         {pestana === "alifrut" && props.alifrut && (
           <CatalogoAlifrut
             items={props.alifrut.items}

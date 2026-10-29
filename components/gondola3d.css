@@ -1,0 +1,78 @@
+/* La góndola del local en 3D (components/Gondola3D.tsx). La usan Precios →
+   Góndola y la ficha del producto de la pantalla asesora. Los muebles van
+   siempre con sus colores reales: marco verde, franja de madera, pared
+   ranurada y bolsas kraft, como el plano que se armó con Gonzalo. */
+
+.gd {
+  --gd-marco: #9db394; --gd-marco-osc: #7f9776; --gd-marco-claro: #b4c7ac;
+  --gd-madera: #e6d3ad; --gd-madera-osc: #d2b98a;
+  --gd-pared: #f3eee2; --gd-ranura: #c3b69c;
+  --gd-kraft: #c9a26b; --gd-kraft-osc: #b08852;
+  --gd-cartel: #fbf8f1; --gd-cartel-texto: #3f5a3b;
+  --gd-pulso: #e9592a; --gd-verde: #3d5a3a;
+}
+
+/* ---------- La pared en 3D ---------- */
+.gd-escenario { perspective: 1500px; perspective-origin: 50% 20%; overflow: hidden; padding: 26px 0 36px; border-radius: 12px;
+  background: radial-gradient(120% 90% at 50% 0%, #fbfaf6 0%, #ece7da 70%, #e2dccb 100%); position: relative; }
+.gd-piso { position: absolute; left: -10%; right: -10%; bottom: 0; height: 120px; background: linear-gradient(180deg, transparent, rgba(150, 130, 95, .18)); pointer-events: none; }
+.gd-pared3d { display: flex; justify-content: center; transform-style: preserve-3d; transform: rotateX(6deg) rotateY(-16deg); transition: transform .6s ease; position: relative; }
+.gd-pared3d.foco { transform: rotateX(4deg) rotateY(-8deg); }
+/* Se achica con la pantalla para que entren los 5 sin cortarse. */
+.gd-mod3d { --w: clamp(92px, 14vw, 148px); --h: calc(var(--w) * 1.6); --d: calc(var(--w) * .23); width: var(--w); height: var(--h); margin: 0 3px; position: relative; transform-style: preserve-3d; transition: transform .35s ease, opacity .35s ease; flex: none; }
+button.gd-mod3d { border: 0; padding: 0; background: none; font: inherit; cursor: pointer; }
+button.gd-mod3d:hover { transform: translateZ(14px); }
+button.gd-mod3d:focus-visible { outline: 3px solid var(--gd-verde); outline-offset: 4px; }
+.gd-mod3d.sel { transform: translateZ(30px); }
+.gd-mod3d.apagado { opacity: .45; }
+.gd-cara { position: absolute; }
+.gd-frente { left: 0; top: 0; right: 0; bottom: 0; background: var(--gd-marco); border-radius: 2px; padding: 0 6px 6px; display: flex; flex-direction: column; box-shadow: 0 20px 26px -18px rgba(0, 0, 0, .5); }
+.gd-lado { top: 0; right: 0; width: var(--d); height: var(--h); background: linear-gradient(90deg, var(--gd-marco-osc), #6d8566); transform-origin: right center; transform: rotateY(90deg); }
+.gd-techo { left: 0; top: 0; width: var(--w); height: var(--d); background: var(--gd-marco-claro); transform-origin: center top; transform: rotateX(90deg); }
+.gd-f-franja { background: linear-gradient(180deg, var(--gd-madera), var(--gd-madera-osc)); margin: 0 -6px; padding: 6px 7px; }
+.gd-f-cartel { background: var(--gd-cartel); color: var(--gd-cartel-texto); font-weight: 800; font-size: 11.5px; line-height: 1.05; text-align: center; padding: 5px 3px 4px; border-radius: 1px; min-height: 36px; display: grid; place-content: center; }
+.gd-f-cartel small { display: block; font-weight: 700; font-size: 6px; letter-spacing: .12em; text-transform: uppercase; color: #7a8f74; margin-top: 2px; }
+.gd-f-pared { flex: 1; background-color: var(--gd-pared); background-image: repeating-linear-gradient(180deg, transparent 0 11px, var(--gd-ranura) 11px 12px); padding: 6px 5px; display: flex; flex-direction: column; justify-content: space-around; }
+.gd-f-fila { display: grid; gap: 3px; position: relative; }
+.gd-f-fila::after { content: ""; position: absolute; left: -5px; right: -5px; bottom: -4px; height: 3px; background: #b9ab8e; box-shadow: 0 3px 4px -2px rgba(0, 0, 0, .35); }
+.gd-f-fila i { height: 22px; border-radius: 2px 2px 3px 3px; background: linear-gradient(90deg, var(--gd-kraft-osc) 0 2px, var(--gd-kraft) 2px calc(100% - 2px), var(--gd-kraft-osc) calc(100% - 2px)); position: relative; box-shadow: 0 3px 4px -3px rgba(0, 0, 0, .5); }
+.gd-f-fila.grande i { height: 34px; }
+.gd-f-fila i::after { content: ""; position: absolute; left: 20%; right: 20%; top: 45%; height: 26%; background: var(--r, #b98a4f); border-radius: 1px; }
+.gd-f-fila i.vacio { background: transparent; box-shadow: none; border: 1px dashed #b9b4a4; }
+.gd-f-fila i.vacio::after { display: none; }
+.gd-f-fila i.aca { outline: 3px solid var(--gd-pulso); outline-offset: 1px; animation: gd-latido 1.1s ease-in-out infinite; z-index: 2; }
+.gd-num3d { position: absolute; left: 0; right: 0; bottom: -24px; text-align: center; font-size: 11px; font-weight: 700; color: #6b6f63; letter-spacing: .06em; text-transform: uppercase; }
+.gd-mod3d.sel .gd-num3d { color: var(--gd-pulso); }
+@keyframes gd-latido { 0%, 100% { box-shadow: 0 0 0 0 rgba(233, 89, 42, .55); } 50% { box-shadow: 0 0 0 7px rgba(233, 89, 42, 0); } }
+
+/* ---------- Un mueble de frente ---------- */
+.gd-escena { overflow-x: auto; padding: 30px 0 6px; min-width: 0; }
+.gd-mueble { width: 700px; margin: 0 auto; background: var(--gd-marco); padding: 0 12px 12px; border-radius: 3px; box-shadow: inset -6px 0 0 var(--gd-marco-osc), 0 18px 30px -22px rgba(0, 0, 0, .45); }
+.gd-franja { background: linear-gradient(180deg, var(--gd-madera), var(--gd-madera-osc)); margin: 0 -12px; padding: 10px 30px; }
+.gd-cartel { background: var(--gd-cartel); color: var(--gd-cartel-texto); font-weight: 800; font-size: 24px; padding: 6px 20px 7px; border-radius: 2px; text-align: center; line-height: 1.1; }
+.gd-cartel small { display: block; font-weight: 700; font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase; color: #7a8f74; margin-top: 3px; }
+.gd-pared { background-color: var(--gd-pared); background-image: repeating-linear-gradient(180deg, transparent 0 21px, var(--gd-ranura) 21px 23px); padding: 14px 10px 16px 0; display: grid; gap: 12px; }
+.gd-fila { display: grid; gap: 8px; align-items: start; }
+.gd-altura { align-self: center; }
+.gd-altura span { display: inline-block; background: var(--gd-cartel-texto); color: #fff; font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; padding: 3px 7px; border-radius: 0 3px 3px 0; }
+.gd-altura.ojos span { background: #c0612b; }
+.gd-gancho { display: grid; justify-items: center; gap: 4px; border: 0; background: transparent; padding: 3px 0; font: inherit; color: inherit; border-radius: 6px; position: relative; min-width: 0; }
+button.gd-gancho { cursor: pointer; }
+button.gd-gancho:hover { background: rgba(61, 90, 58, .08); }
+button.gd-gancho:focus-visible { outline: 2px solid var(--gd-verde); outline-offset: 1px; }
+.gd-gancho.elegido { background: rgba(61, 90, 58, .14); outline: 2px solid var(--gd-verde); }
+.gd-porta { width: 94%; min-height: 30px; background: rgba(255, 255, 255, .9); border: 1px solid #c9ccc6; border-radius: 2px; font-size: 10px; line-height: 1.15; color: #2c3329; text-align: center; padding: 3px; display: grid; place-items: center; font-weight: 600; overflow-wrap: anywhere; }
+.gd-bolsa { width: 64px; height: 78px; background: linear-gradient(90deg, var(--gd-kraft-osc) 0 3px, var(--gd-kraft) 3px calc(100% - 3px), var(--gd-kraft-osc) calc(100% - 3px)); border-radius: 3px 3px 5px 5px; position: relative; box-shadow: 0 6px 10px -6px rgba(0, 0, 0, .4); }
+.gd-fila.grande .gd-bolsa { width: 76px; height: 124px; }
+.gd-ventana { position: absolute; left: 13%; right: 13%; top: 44%; height: 24%; border-radius: 2px; border: 1px solid rgba(0, 0, 0, .18); background: var(--relleno, #b98a4f); }
+.gd-gancho.vacio .gd-bolsa { background: transparent; box-shadow: none; border: 2px dashed #b9b4a4; display: grid; place-items: center; }
+.gd-gancho.vacio .gd-bolsa span { font-size: 22px; color: #a39d8b; font-weight: 300; }
+.gd-gancho.vacio .gd-porta { color: #8c8573; font-weight: 500; }
+.gd-gancho.aca .gd-bolsa { outline: 3px solid var(--gd-pulso); outline-offset: 2px; animation: gd-latido 1.1s ease-in-out infinite; }
+.gd-gancho.aca::before { content: attr(data-aca); position: absolute; top: -26px; left: 50%; transform: translateX(-50%); background: var(--gd-pulso); color: #fff; font-weight: 800; font-size: 11px; padding: 3px 8px; border-radius: 999px; white-space: nowrap; z-index: 3; }
+.gd-gancho.atenuado { opacity: .45; }
+
+@media (prefers-reduced-motion: reduce) {
+  .gd-f-fila i.aca, .gd-gancho.aca .gd-bolsa { animation: none; }
+  .gd-pared3d, .gd-mod3d { transition: none; }
+}
