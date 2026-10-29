@@ -126,11 +126,14 @@ async function leerJumbo(busquedas: string[]): Promise<Leido[]> {
     const porId = new Map((sim.items ?? []).map((i) => [i.id, i]));
     for (const { p, it } of items) {
       const s = porId.get(it.itemId);
-      const precio = (s?.sellingPrice ?? s?.price ?? 0) / 100;
+      const precio = (s?.sellingPrice || s?.price || 0) / 100;
       if (!s || precio <= 0) continue;
       // Lo que se vende por peso viene de a 100 g (unitMultiplier 0.1 kg).
       const porPeso = it.measurementUnit === "kg" && it.unitMultiplier < 1;
-      const lista = (s.listPrice ?? 0) / 100;
+      // Su "listPrice" viene roto (es el precio sin IVA × 100: $152.893 por
+      // una avena de $1.850). El precio normal de la sucursal es "price"; si
+      // está en oferta, "sellingPrice" es más bajo.
+      const lista = (s.price ?? 0) / 100;
       salida.set(it.itemId, {
         clave: it.itemId,
         nombre: p.productName,
@@ -233,6 +236,10 @@ export async function cargarCompetencia(supabase: SupabaseClient): Promise<Datos
 }
 
 export function filaAItem(f: Record<string, unknown>): ItemCompetencia {
+  // Un "precio antes" de más del triple no es una oferta: es un dato roto
+  // (pasó con Jumbo). Se descarta también en lo ya guardado.
+  const antes = f.precio_antes == null ? null : Number(f.precio_antes);
+  const precioAntes = antes != null && antes > Number(f.precio) * 3 ? null : antes;
   return {
     id: f.id_item as string,
     comercio: f.comercio as Comercio,
@@ -240,7 +247,7 @@ export function filaAItem(f: Record<string, unknown>): ItemCompetencia {
     gramos: f.gramos == null ? null : Number(f.gramos),
     porKilo: Boolean(f.por_kilo),
     precio: Number(f.precio),
-    precioAntes: f.precio_antes == null ? null : Number(f.precio_antes),
+    precioAntes,
     nota: (f.nota as string | null | undefined) ?? null,
     url: link(f.url),
     disponible: Boolean(f.disponible),
