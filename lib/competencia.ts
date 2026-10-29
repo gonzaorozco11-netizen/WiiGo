@@ -47,6 +47,8 @@ export function precioATuTamano(item: Pick<ItemCompetencia, "precio" | "gramos">
 const VACIAS = new Set(["x", "de", "del", "la", "el", "los", "las", "y", "en", "por", "a", "al", "gr", "grs", "g", "kg", "kgs", "un", "u", "premium", "tipo", "natural", "belavita", "bolsa", "granel", "suelto", "sueltas", "sueltos"]);
 // Palabras que cambian el producto: con una sí y la otra no, no es el mismo.
 const DECISIVAS = [["con", "sal"], ["sin", "sal"]];
+// Variedades que se excluyen: pasas negras no son rubias (Jumbo proponía "pasas rubias" para las negras).
+const EXCLUYENTES = [["negra", "rubia"]];
 const SINONIMOS: Record<string, string> = {
   nueces: "nuez", almendras: "almendra", castanas: "caju", castana: "caju", cajus: "caju", avellanas: "avellana",
   datiles: "datil", pasas: "pasa", morochas: "negra", morocha: "negra", negras: "negra", rubias: "rubia",
@@ -94,6 +96,11 @@ export function parecido(nuestro: string, suyo: string): number {
   const ta = normalizarTexto(nuestro);
   const tb = normalizarTexto(suyo);
   for (const f of DECISIVAS) if (tieneFrase(ta, f) !== tieneFrase(tb, f) && (tieneFrase(ta, f) || tieneFrase(tb, f))) return 0;
+  for (const grupo of EXCLUYENTES) {
+    const nuestra = grupo.find((w) => a.includes(w));
+    const suya = grupo.find((w) => b.has(w));
+    if (nuestra && suya && nuestra !== suya) return 0;
+  }
   const comunes = a.filter((w) => b.has(w)).length;
   return comunes / new Set([...a, ...b]).size + 0.5 * (comunes / a.length);
 }

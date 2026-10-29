@@ -75,7 +75,7 @@ export default function PreciosCompetencia(props: { productos: ProductoDelModulo
   const enLista = (l: string[]) => (l.length > 1 ? `${l.slice(0, -1).join(", ")} y ${l[l.length - 1]}` : l[0]);
 
   return (
-    <div className="pr-grid">
+    <div className="pr-comp">
       <div className="pr-comp-cab">
         <p>
           Todo de Mendoza: {COMERCIOS.map((c) => c.nombre).join(", ")}. Leído el <b>{fechaHora(datos.leidaEl)}</b> · se lee solo cada lunes.
