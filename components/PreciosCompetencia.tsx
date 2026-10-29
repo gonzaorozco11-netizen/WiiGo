@@ -68,7 +68,11 @@ export default function PreciosCompetencia(
     const v: Fila["v"] = {};
     for (const x of datos.vinculos[p.id] ?? []) if (x.item) v[x.comercio] = x;
     // Contra la dietética (Bela Vita); si no la tiene, contra el más barato de los otros.
-    const otros = (Object.keys(v) as Comercio[]).map((c) => ({ c, precio: conPrecio(v[c], p.gramos) })).filter((x) => x.precio);
+    // Alifrut no entra: es el proveedor, su precio al público va solo de referencia.
+    const otros = (Object.keys(v) as Comercio[])
+      .filter((c) => c !== "ALIFRUT")
+      .map((c) => ({ c, precio: conPrecio(v[c], p.gramos) }))
+      .filter((x) => x.precio);
     const contra: Comercio | null = v.BELAVITA && conPrecio(v.BELAVITA, p.gramos) ? "BELAVITA" : otros.sort((a, b) => (a.precio as number) - (b.precio as number))[0]?.c ?? null;
     const dif = contra && p.precioHoy ? diferencia(p.precioHoy, conPrecio(v[contra], p.gramos)) : null;
     return { p, v, dif, contra };

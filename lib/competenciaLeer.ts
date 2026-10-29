@@ -111,6 +111,40 @@ async function leerMardegan(): Promise<Leido[]> {
   return [...vistos.values()].filter((p) => p.gramos && p.precio > 0);
 }
 
+/**
+ * Alifrut, su lista AL PÚBLICO (/api/buscador, sin sesión): no la exclusiva de
+ * Gonzalo, que sale de /api/mis-precios con su usuario. Se toma el tamaño de
+ * 1 kg; lo que no viene por kilo, por el tamaño del nombre o de la variante.
+ */
+async function leerAlifrutPublico(): Promise<Leido[]> {
+  type V = { nombre: string; sku: string; precio: number; precioAnterior: number | null; cartelOferta?: string | null; sinStock?: boolean };
+  type P = { id: string; nombre: string; precio: number; precioAnterior: number | null; cartelOferta?: string | null; sinStock?: boolean; sku?: string; variantes: V[] };
+  const lista = await json<P[]>("https://www.alifrut-distribuidora.com.ar/api/buscador");
+  const salida: Leido[] = [];
+  for (const p of lista) {
+    const url = link(`https://www.alifrut-distribuidora.com.ar/producto/${encodeURIComponent(p.id)}`);
+    const kilo = p.variantes.find((v) => /^x?\s*1\s*kg$/i.test(v.nombre.trim()));
+    const otra = kilo ? null : p.variantes.find((v) => gramosDelNombre(` ${v.nombre.replace(/^x/i, "")}`));
+    const v = kilo ?? otra;
+    const precio = Number(v ? v.precio : p.precio);
+    const antes = Number(v ? v.precioAnterior : p.precioAnterior) || null;
+    const gramos = kilo ? 1000 : v ? gramosDelNombre(` ${v.nombre.replace(/^x/i, "")}`) : gramosDelNombre(p.nombre);
+    if (!gramos || !(precio > 0)) continue;
+    salida.push({
+      clave: v?.sku ?? p.sku ?? p.id,
+      nombre: kilo ? `${p.nombre} x 1 kg` : p.nombre,
+      gramos,
+      por_kilo: Boolean(kilo),
+      precio,
+      precio_antes: antes && antes > precio ? antes : null,
+      nota: antes && antes > precio ? (v?.cartelOferta ?? p.cartelOferta ?? null) : null,
+      url,
+      disponible: !(v ? v.sinStock : p.sinStock),
+    });
+  }
+  return salida;
+}
+
 /** Jumbo tiene miles de productos: se busca solo lo parecido a cada producto de WiiGo. */
 async function leerJumbo(busquedas: string[]): Promise<Leido[]> {
   type P = { productName: string; link?: string; items: { itemId: string; unitMultiplier: number; measurementUnit: string }[] };
@@ -168,6 +202,7 @@ export async function actualizarCompetencia(supabase: SupabaseClient): Promise<R
     REGIO: leerRegio,
     MARDEGAN: leerMardegan,
     JUMBO: () => leerJumbo(busquedas),
+    ALIFRUT: leerAlifrutPublico,
   };
   const comercios = {} as ResultadoLectura["comercios"];
   await Promise.all(
@@ -187,7 +222,7 @@ export async function actualizarCompetencia(supabase: SupabaseClient): Promise<R
             });
             ({ error } = await supabase.from("competencia_items").upsert(sinNota, { onConflict: "comercio,clave" }));
           }
-          if (error) throw new Error(/check constraint/.test(error.message) ? "falta correr el SQL de Mega Nuts" : error.message);
+          if (error) throw new Error(/check constraint/.test(error.message) ? `falta correr el SQL de ${clave === "ALIFRUT" ? "Alifrut público" : "Mega Nuts"}` : error.message);
         }
         // Lo que ya no está en su página queda como no disponible.
         if (clave !== "JUMBO") await supabase.from("competencia_items").update({ disponible: false }).eq("comercio", clave).lt("visto_el", ahora);
@@ -199,7 +234,8 @@ export async function actualizarCompetencia(supabase: SupabaseClient): Promise<R
   );
 
   // Propuestas para lo que todavía no tiene equivalente confirmado.
-  const { data: itemsRaw } = await supabase.from("competencia_items").select("*").eq("disponible", true);
+  // De Alifrut entra también lo agotado: es el proveedor, y saber que no tiene sirve (sale con "agotado").
+  const { data: itemsRaw } = await supabase.from("competencia_items").select("*").or("disponible.eq.true,comercio.eq.ALIFRUT");
   const items = (itemsRaw ?? []).map(filaAItem);
   const { data: vinc } = await supabase.from("competencia_vinculos").select("id_producto, comercio, estado, rechazados, id_item");
   const vincPor = new Map((vinc ?? []).map((v) => [`${v.id_producto}:${v.comercio}`, v]));
