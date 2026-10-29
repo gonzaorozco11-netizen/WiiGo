@@ -19,6 +19,8 @@ import {
 import type { GranelDelModulo, ProductoDelModulo, RubroDelModulo } from "@/lib/datosPrecios";
 import type { EstadoAlifrut, ItemCatalogo } from "@/lib/catalogoProveedor";
 import { AvisoAlifrut, CambiosAlifrut, CatalogoAlifrut, TraerLista, calcularPendientes } from "@/components/PreciosAlifrut";
+import PreciosCompetencia from "@/components/PreciosCompetencia";
+import type { DatosCompetencia } from "@/lib/competenciaLeer";
 import {
   guardarConfigPrecios,
   guardarEnvase,
@@ -48,9 +50,11 @@ type Props = {
   abrir?: string | null;
   /** La lista de Alifrut; null si falta correr sql/precios-alifrut.sql. */
   alifrut?: { items: ItemCatalogo[]; estado: EstadoAlifrut } | null;
+  /** La competencia de Mendoza; null si falta correr sql/precios-competencia.sql. */
+  competencia?: DatosCompetencia | null;
 };
 
-type Pestana = "lista" | "alifrut" | "costos" | "config";
+type Pestana = "lista" | "competencia" | "alifrut" | "costos" | "config";
 
 const pesos = (n: number | null | undefined, dec = 0) =>
   n == null || !Number.isFinite(n) ? "—" : `$${n.toLocaleString("es-AR", { minimumFractionDigits: dec, maximumFractionDigits: dec })}`;
@@ -253,6 +257,7 @@ export default function PreciosApp(props: Props) {
           {(
             [
               ["lista", "Lista de precios"],
+              ["competencia", "Competencia"],
               ...(props.alifrut ? ([["alifrut", `Productos Alifrut${props.alifrut.items.length ? ` (${props.alifrut.items.length})` : ""}`]] as [Pestana, string][]) : []),
               ["costos", "Costos de compra"],
               ["config", "Configuración"],
@@ -285,6 +290,7 @@ export default function PreciosApp(props: Props) {
             cambiarRubro={cambiarRubro}
           />
         )}
+        {pestana === "competencia" && <PreciosCompetencia productos={productos} datos={props.competencia ?? null} avisar={avisar} />}
         {pestana === "alifrut" && props.alifrut && (
           <CatalogoAlifrut
             items={props.alifrut.items}

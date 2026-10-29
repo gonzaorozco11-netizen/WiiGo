@@ -253,6 +253,42 @@
 .pr-m-modo span { display: grid; gap: 1px; }
 .pr-m-modo small { color: var(--tinta-3); font-size: 12.5px; font-weight: 400; }
 
+/* Competencia */
+.pr-comp-cab { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; font-size: 13px; color: var(--tinta-3); }
+.pr-comp-cab b { color: var(--tinta-2); }
+.pr-alerta-comp { background: var(--mal-t); border: 1px solid color-mix(in srgb, var(--mal) 30%, transparent); border-radius: 10px; padding: 11px 14px; font-size: 13.5px; color: var(--tinta-2); }
+.pr-alerta-comp b { color: var(--mal); }
+.pr-tabla.pr-tabla-comp { min-width: 900px; }
+.pr-tabla-comp th, .pr-tabla-comp td { text-align: left; }
+.pr-tabla-comp th:first-child, .pr-tabla-comp td:first-child { padding-left: 14px; }
+.pr-comp-celda { display: grid; font-size: 13px; }
+.pr-comp-celda small { color: var(--tinta-3); font-size: 11.5px; }
+.pr-dif { display: inline-block; font-size: 12px; font-weight: 700; border-radius: 6px; padding: 3px 8px; white-space: nowrap; }
+.pr-dif.caro { color: var(--mal); background: var(--mal-t); }
+.pr-dif.parejo { color: var(--ojo); background: var(--ojo-t); }
+.pr-dif.barato { color: var(--ok); background: var(--ok-t); }
+.pr-dif.nada { color: var(--tinta-3); background: var(--hoja-2); border: 1px dashed var(--linea-2); font-weight: 600; }
+.pr-comp-contra { display: block; font-size: 11px; color: var(--tinta-3); margin-top: 2px; }
+.pr-det-comp { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
+.pr-comp-rival { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 9px 0; border-top: 1px solid var(--linea); }
+.pr-comp-rival:first-of-type { border-top: 0; }
+.pr-comp-tu { text-align: right; }
+.pr-comp-tu small { display: block; font-size: 11.5px; color: var(--tinta-3); font-weight: 400; font-family: var(--f-plex), sans-serif; }
+.pr-comp-chip { font-size: 10.5px; font-weight: 700; border-radius: 4px; padding: 1px 6px; margin-left: 6px; }
+.pr-comp-chip.kilo { color: var(--ojo); background: var(--ojo-t); }
+.pr-comp-chip.gris { color: var(--tinta-3); background: var(--hoja-2); border: 1px solid var(--linea); }
+.pr-comp-preg { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 5px; font-size: 12.5px; color: var(--ojo); }
+.pr-comp-preg button { border: 1px solid var(--linea-2); background: var(--hoja); border-radius: 6px; padding: 2px 10px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.pr-comp-preg button.si { border-color: var(--ok); color: var(--ok); }
+.pr-comp-barras { display: grid; gap: 7px; }
+.pr-comp-barra { display: grid; grid-template-columns: 110px minmax(0, 1fr) 76px; gap: 8px; align-items: center; font-size: 13px; }
+.pr-comp-barra .t { height: 12px; background: var(--hoja-2); border-radius: 6px; overflow: hidden; }
+.pr-comp-barra .t i { display: block; height: 100%; border-radius: 6px; background: var(--linea-2); }
+.pr-comp-barra.yo { font-weight: 700; }
+.pr-comp-barra.yo .t i { background: var(--acento); }
+.pr-comp-barra .n { text-align: right; }
+@media (max-width: 860px) { .pr-det-comp { grid-template-columns: minmax(0, 1fr); } }
+
 /* En el celular sí se desliza: no hay ancho para seis columnas. */
 @media (max-width: 900px) { .pr-tabla.pr-tabla-ali { min-width: 760px; } }
 @media (max-width: 760px) {
