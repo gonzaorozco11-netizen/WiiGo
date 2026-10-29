@@ -480,6 +480,7 @@ export function CatalogoAlifrut(props: {
           rubros={props.rubros}
           envases={props.envases}
           productos={props.productos.filter((p) => !usosPorItem.get(vinculando.id)?.some((u) => u.id === p.id))}
+          usos={usosPorItem.get(vinculando.id) ?? []}
           granel={props.granel}
           onCerrar={(recargar) => (recargar ? window.location.reload() : setVinculando(null))}
         />
@@ -490,7 +491,16 @@ export function CatalogoAlifrut(props: {
 
 // ---------- Vincular ----------
 
-function Vincular(props: { item: ItemCatalogo; rubros: RubroDelModulo[]; envases: Envase[]; productos: ProductoDelModulo[]; granel: GranelDelModulo[]; onCerrar: (recargar: boolean) => void }) {
+function Vincular(props: {
+  item: ItemCatalogo;
+  rubros: RubroDelModulo[];
+  envases: Envase[];
+  productos: ProductoDelModulo[];
+  /** Los productos de WiiGo que ya salen de este. */
+  usos: ProductoDelModulo[];
+  granel: GranelDelModulo[];
+  onCerrar: (recargar: boolean) => void;
+}) {
   const { item } = props;
   const porUnidad = item.unidad === "CAJA" || item.unidad === "UNIDAD";
   const chica = props.envases.find((e) => /chica/i.test(e.nombre)) ?? props.envases[0];
@@ -500,6 +510,10 @@ function Vincular(props: { item: ItemCatalogo; rubros: RubroDelModulo[]; envases
   const rubroParecido = props.rubros.find((r) => item.categoria && normalizar(r.nombre).includes(normalizar(item.categoria).split(" ")[0]));
   const [rubro, setRubro] = useState(rubroParecido?.id ?? "");
   const [existente, setExistente] = useState("");
+  // Primero la pregunta, y un solo camino por vez: con los dos a la vista se
+  // unía el producto de Gonzalo y además se creaba otro igual (2026-10-29).
+  const palabra = normalizar(item.nombre).split(" ")[0];
+  const [modo, setModo] = useState<"existente" | "nuevo">(() => (props.productos.some((p) => normalizar(p.nombre).includes(palabra)) ? "existente" : "nuevo"));
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [listo, setListo] = useState<string | null>(null);
@@ -508,23 +522,71 @@ function Vincular(props: { item: ItemCatalogo; rubros: RubroDelModulo[]; envases
     setGuardando(true);
     setError(null);
     const r = await vincularItem(item.id, {
-      tamanos: [...tamanos.entries()].map(([gramos, idEnvase]) => ({ gramos, idEnvase: idEnvase || null })),
+      tamanos: modo === "nuevo" ? [...tamanos.entries()].map(([gramos, idEnvase]) => ({ gramos, idEnvase: idEnvase || null })) : [],
       idSubcategoria: rubro || null,
-      idProductoExistente: existente || null,
+      idProductoExistente: modo === "existente" ? existente || null : null,
     }).catch(() => ({ error: "No se pudo guardar. Revisá la conexión.", creados: 0 }));
     setGuardando(false);
     if (r.error) return setError(r.error);
     setListo(
-      `${r.creados ? `Creé ${r.creados === 1 ? "1 producto" : `${r.creados} productos`} en Productos, «Sin precio». ` : ""}${existente ? "Quedó vinculado tu producto. " : ""}Revisalos en la Lista de precios y pasalos a la venta.`
+      modo === "existente"
+        ? "Listo: tu producto ahora toma el costo de Alifrut. Revisalo en la Lista de precios."
+        : `Creé ${r.creados === 1 ? "1 producto" : `${r.creados} productos`} en Productos, «Sin precio». Revisalos en la Lista de precios y pasalos a la venta.`
     );
   }
+  const yaUsan = props.usos;
 
   return (
     <Modal titulo={`Vincular «${item.nombre}»`} bajada={porUnidad ? `Se vende de a una. Costo por unidad: ${pesos(granelDesdeItem({ costo_neto: item.costo, unidad: item.unidad, cantidad: item.cantidad }).costo / (item.unidad === "CAJA" ? item.cantidad : 1), 2)}.` : `Costo ${pesos(costoPorKg({ ...granelDesdeItem({ costo_neto: item.costo, unidad: item.unidad, cantidad: item.cantidad }), id: "" }), 2)} el kg, sin IVA.`} onCerrar={() => props.onCerrar(Boolean(listo))}>
       <div className="pr-m-cuerpo">
-        <b>Crear tus tamaños</b>
+        <b>¿Ya tenés este producto cargado en WiiGo?</b>
+        <div className="pr-m-modo" role="radiogroup" aria-label="¿Ya tenés este producto cargado?">
+          <label className={modo === "existente" ? "sel" : undefined}>
+            <input type="radio" name="pr-modo" id="pr-modo-existente" checked={modo === "existente"} onChange={() => setModo("existente")} />
+            <span>
+              <b>Sí, ya lo tengo</b>
+              <small>Lo uno a este de Alifrut. No se crea nada nuevo.</small>
+            </span>
+          </label>
+          <label className={modo === "nuevo" ? "sel" : undefined}>
+            <input type="radio" name="pr-modo" id="pr-modo-nuevo" checked={modo === "nuevo"} onChange={() => setModo("nuevo")} />
+            <span>
+              <b>No, crearlo</b>
+              <small>Se crean los tamaños que elijas, con código de barras.</small>
+            </span>
+          </label>
+        </div>
+        {yaUsan.length > 0 && (
+          <p className="pr-nota">Ya lo usan: {yaUsan.map((p) => p.nombre).join(", ")}.</p>
+        )}
+      </div>
+      {modo === "existente" ? (
+        <div className="pr-m-cuerpo" style={{ paddingTop: 0 }}>
+          <label className="pr-m-campo">
+            Tu producto
+            <select value={existente} onChange={(e) => setExistente(e.target.value)}>
+              <option value="">Elegí…</option>
+              {props.productos.map((p) => {
+                const hoy = p.idGranel ? props.granel.find((g) => g.id === p.idGranel)?.nombre : null;
+                return (
+                  <option key={p.id} value={p.id}>
+                    {p.nombre}
+                    {hoy ? ` · hoy sale de ${hoy}` : ""}
+                  </option>
+                );
+              })}
+            </select>
+          </label>
+          {existente && props.productos.find((p) => p.id === existente)?.idGranel && (
+            <p className="pr-nota">
+              Lo cambiás de proveedor: desde ahora su costo sale de este. El stock que ya tenés se sigue vendiendo con el mismo producto y al precio nuevo.
+            </p>
+          )}
+        </div>
+      ) : (
+      <div className="pr-m-cuerpo" style={{ paddingTop: 0 }}>
         <span className="pr-tenue" style={{ fontSize: 13 }}>
-          Se crean en Productos con su código de barras, «Sin precio», listos para revisar y pasar a la venta. Después les agregás foto y rótulo.
+          Quedan «Sin precio», listos para revisar y pasar a la venta. Después les agregás foto y rótulo en Productos.
         </span>
         <div className="pr-m-tamanos">
           {opciones.map((g) => {
@@ -575,36 +637,21 @@ function Vincular(props: { item: ItemCatalogo; rubros: RubroDelModulo[]; envases
             </select>
           </label>
         )}
-        <label className="pr-m-campo">
-          O unirlo a un producto que ya tenés
-          <select value={existente} onChange={(e) => setExistente(e.target.value)}>
-            <option value="">—</option>
-            {props.productos.map((p) => {
-              const hoy = p.idGranel ? props.granel.find((g) => g.id === p.idGranel)?.nombre : null;
-              return (
-                <option key={p.id} value={p.id}>
-                  {p.nombre}
-                  {hoy ? ` · hoy sale de ${hoy}` : ""}
-                </option>
-              );
-            })}
-          </select>
-        </label>
-        {existente && props.productos.find((p) => p.id === existente)?.idGranel && (
-          <p className="pr-nota">
-            Lo cambiás de proveedor: desde ahora su costo sale de este. El stock que ya tenés se sigue vendiendo con el mismo producto y al precio nuevo.
-          </p>
-        )}
-        {error && <p className="pr-nota mal">{error}</p>}
-        {listo && <p className="pr-nota ok">{listo}</p>}
       </div>
+      )}
+      {(error || listo) && (
+        <div className="pr-m-cuerpo" style={{ paddingTop: 0 }}>
+          {error && <p className="pr-nota mal">{error}</p>}
+          {listo && <p className="pr-nota ok">{listo}</p>}
+        </div>
+      )}
       <footer className="pr-m-pie">
         <button type="button" className="pr-btn" onClick={() => props.onCerrar(Boolean(listo))}>
           {listo ? "Listo" : "Cancelar"}
         </button>
         {!listo && (
-          <button type="button" className="pr-btn prim" disabled={guardando || (tamanos.size === 0 && !existente)} onClick={guardar}>
-            {guardando ? "Guardando…" : "Vincular"}
+          <button type="button" className="pr-btn prim" disabled={guardando || (modo === "existente" ? !existente : tamanos.size === 0)} onClick={guardar}>
+            {guardando ? "Guardando…" : modo === "existente" ? "Unir" : tamanos.size === 0 ? "Crear" : `Crear ${tamanos.size === 1 ? "1 producto" : `${tamanos.size} productos`}`}
           </button>
         )}
       </footer>
