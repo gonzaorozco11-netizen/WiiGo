@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   calcularPrecio,
   costoPorKg,
+  costosSobreTotal,
   hayQueActualizar,
   margenMinimo,
   MEDIOS,
@@ -166,6 +167,38 @@ export default function PreciosApp(props: Props) {
       .then((r) => avisar(r.error ?? `Listo: todo ${nombre} usa el ${campo === "margen" ? "margen" : "descuento en efectivo"} del rubro.`, Boolean(r.error)))
       .catch(() => avisar("No se pudo aplicar. Probá de nuevo.", true));
   }
+  /**
+   * El margen (con tarjeta) que da justo ese precio al público, para "Llevarlo
+   * a $1.800" desde Competencia. null si no se puede (falta el costo, o no
+   * cubre el costo). Se busca hacia abajo de a 0,01 % hasta que el redondeo
+   * dé exactamente ese precio.
+   */
+  function margenParaPrecio(id: string, precio: number): number | null {
+    const p = productos.find((x) => x.id === id);
+    if (!p) return null;
+    const r = calcularPrecio(conRubro(p), cfg, granelPorId, envasePorId);
+    if (!r.costo) return null;
+    const iva = (p.iva ?? cfg.ivaGeneral) / 100;
+    const exacto = 1 - cfg.iibb / 100 - (1 + iva) * costosSobreTotal(cfg.escenario, cfg) - r.costo.total / (precio / (1 + iva));
+    let m = Math.floor(exacto * 10000) / 100;
+    for (let i = 0; i < 20 && m > 0; i++) {
+      const prueba = calcularPrecio({ ...conRubro(p), margen: m }, cfg, granelPorId, envasePorId);
+      if (prueba.ok && prueba.publico === precio) return m;
+      if (prueba.ok && prueba.publico < precio) return null;
+      m = Math.round((m - 0.01) * 100) / 100;
+    }
+    return null;
+  }
+  async function llevarAPrecio(id: string, precio: number) {
+    const m = margenParaPrecio(id, precio);
+    if (m == null || m <= 0) return avisar(`A ${pesos(precio)} no se cubre el costo.`, true);
+    setProductos((ps) => ps.map((p) => (p.id === id ? { ...p, margen: m } : p)));
+    setVuelta((v) => v + 1);
+    // Se guarda ya (sin esperar): "Pasar a la venta" recalcula con lo que está en la base.
+    const r = await guardarProductoPrecio(id, { margen: m }).catch(() => ({ error: "No se pudo guardar el margen." }));
+    if (r.error) return avisar(r.error, true);
+    pasarUno(id);
+  }
   function cambiarConfig(local: Partial<ConfigPrecios>, servidor: CambiosConfig) {
     setCfg((c) => ({ ...c, ...local }));
     if (!props.puedeConfigurar) return avisar("No tenés permiso para cambiar la Configuración: el cambio no se guarda.", true);
@@ -303,7 +336,9 @@ export default function PreciosApp(props: Props) {
             vuelta={vuelta}
           />
         )}
-        {pestana === "competencia" && <PreciosCompetencia productos={productos} datos={props.competencia ?? null} avisar={avisar} />}
+        {pestana === "competencia" && (
+          <PreciosCompetencia productos={productos} datos={props.competencia ?? null} avisar={avisar} margenPara={margenParaPrecio} llevarA={llevarAPrecio} minimo={minimo} />
+        )}
         {pestana === "alifrut" && props.alifrut && (
           <CatalogoAlifrut
             items={props.alifrut.items}
@@ -773,6 +808,7 @@ function Detalle({
   pasarUno: (id: string) => void;
 }) {
   const { p, r } = c;
+  const [editando, setEditando] = useState(false);
   const esGranel = Boolean(p.idGranel);
   const g = p.idGranel ? granel.find((x) => x.id === p.idGranel) : null;
   const porKg = g ? costoPorKg(g) : null;
@@ -906,7 +942,52 @@ function Detalle({
       </div>
 
       <div className="pr-caja">
-        <h3>Datos del producto</h3>
+        {/* Con candado: se ven, y para cambiarlos hay que tocar "Editar datos".
+            Así un toque sin querer no cambia el costo (Gonzalo, 2026-10-29). */}
+        <h3 className="pr-h3-fila">
+          Datos del producto
+          <button type="button" className={`pr-btn chico${editando ? " prim" : ""}`} onClick={() => setEditando((x) => !x)}>
+            {editando ? "Listo" : "Editar datos"}
+          </button>
+        </h3>
+        {!editando ? (
+          <dl className="pr-datos">
+            <div>
+              <dt>Se compra</dt>
+              <dd>{esGranel ? (g?.unidad === "CAJA" ? "Por caja" : "A granel") : "Envasado"}</dd>
+            </div>
+            {esGranel ? (
+              <>
+                <div>
+                  <dt>Producto del proveedor</dt>
+                  <dd>
+                    {g?.nombre ?? "—"}
+                    {g?.idItem ? " · Alifrut" : ""}
+                  </dd>
+                </div>
+                {g?.unidad !== "CAJA" && (
+                  <div>
+                    <dt>Gramos de la bolsita</dt>
+                    <dd>{p.gramos ? `${p.gramos} g` : "—"}</dd>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div>
+                <dt>Costo neto por unidad</dt>
+                <dd>{p.costoUnidad ? pesos(p.costoUnidad, 2) : "—"}</dd>
+              </div>
+            )}
+            <div>
+              <dt>Bolsita / envase</dt>
+              <dd>{p.idEnvase ? (() => { const e = envases.find((x) => x.id === p.idEnvase); return e ? `${e.nombre} · ${pesos(e.costo)}` : "—"; })() : "Sin envase"}</dd>
+            </div>
+            <div>
+              <dt>IVA de venta</dt>
+              <dd>{(p.iva ?? cfg.ivaGeneral).toLocaleString("es-AR")} %</dd>
+            </div>
+          </dl>
+        ) : (
         <div className="pr-campos">
           <div className="ancho" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <span style={{ fontWeight: 600, color: "var(--tinta-2)" }}>Se compra</span>
@@ -993,19 +1074,8 @@ function Detalle({
               <option value="10.5">10,5 %</option>
             </select>
           </label>
-          <label>
-            Precio competencia ($)
-            <input
-              inputMode="numeric"
-              defaultValue={p.competencia ?? ""}
-              placeholder="opcional"
-              onChange={(e) => {
-                const v = aNumero(e.target.value);
-                cambiarProducto(p.id, { competencia: v }, { competencia: v });
-              }}
-            />
-          </label>
         </div>
+        )}
         <p className="pr-tenue" style={{ fontSize: 12, marginTop: 9 }}>
           Costo actualizado el {fecha(g?.actualizadoEl ?? p.costoActualizadoEl)}
           {g && g.costoAnterior != null && g.costo !== g.costoAnterior && (

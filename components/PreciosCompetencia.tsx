@@ -26,7 +26,12 @@ function chip(dif: number | null) {
   return <span className="pr-dif parejo">Parejo ({dif >= 0 ? "+" : "−"}{pct}%)</span>;
 }
 
-export default function PreciosCompetencia(props: { productos: ProductoDelModulo[]; datos: DatosCompetencia | null; avisar: (t: string, mal?: boolean) => void }) {
+/** "Llevarlo a $1.800": el margen que da ese precio, y ponerlo (abre "Pasar a la venta"). Viven en PreciosApp. */
+type Llevar = { margenPara: (id: string, precio: number) => number | null; llevarA: (id: string, precio: number) => void; minimo: number };
+
+export default function PreciosCompetencia(
+  props: { productos: ProductoDelModulo[]; datos: DatosCompetencia | null; avisar: (t: string, mal?: boolean) => void } & Llevar
+) {
   const router = useRouter();
   const [abierto, setAbierto] = useState<string | null>(null);
   const [pendiente, startTransition] = useTransition();
@@ -74,6 +79,10 @@ export default function PreciosCompetencia(props: { productos: ProductoDelModulo
   const muyCaros = caros.filter((f) => (f.dif as number) > 0.5).map((f) => f.p.nombre);
   const porConfirmar = filas.reduce((t, f) => t + Object.values(f.v).filter((x) => x?.estado === "PROPUESTO").length, 0);
   const enLista = (l: string[]) => (l.length > 1 ? `${l.slice(0, -1).join(", ")} y ${l[l.length - 1]}` : l[0]);
+  // Lo que la competencia tiene en oferta: se avisa aparte para tenerlo en cuenta al comparar (Gonzalo, 2026-10-29).
+  const conOferta = filas
+    .map((f) => ({ f, de: (Object.keys(f.v) as Comercio[]).filter((c) => f.v[c]?.item?.precioAntes) }))
+    .filter((x) => x.de.length > 0);
 
   return (
     <div className="pr-comp">
@@ -91,6 +100,32 @@ export default function PreciosCompetencia(props: { productos: ProductoDelModulo
         <p className="pr-alerta-comp">
           <b>{enLista(muyCaros)}: más de 50% arriba.</b> Seguramente tienen el margen mal cargado: abrilos en la Lista de precios y revisalo.
         </p>
+      )}
+
+      {conOferta.length > 0 && (
+        <div className="pr-alerta-oferta">
+          <b>
+            🏷️ La competencia tiene {conOferta.length === 1 ? "1 producto tuyo" : `${conOferta.length} productos tuyos`} en oferta
+          </b>
+          <ul>
+            {conOferta.map(({ f, de }) => (
+              <li key={f.p.id}>
+                <button type="button" onClick={() => setAbierto(f.p.id)}>
+                  {f.p.nombre}
+                </button>
+                {": "}
+                {de
+                  .map((c) => {
+                    const it = f.v[c]!.item!;
+                    const a = f.p.gramos ? precioATuTamano(it, f.p.gramos) : null;
+                    return `${nombreDe(c)} a ${pesos(a)} a tus ${f.p.gramos ?? "?"} g${it.nota ? ` (${it.nota})` : ""}`;
+                  })
+                  .join(" · ")}
+              </li>
+            ))}
+          </ul>
+          <small>La comparación de más caro / más barato es contra su precio normal: la oferta puede ser algo por vencer o de pocos días.</small>
+        </div>
       )}
 
       <section className="pr-kpis" aria-label="Resumen contra la competencia">
@@ -140,14 +175,18 @@ export default function PreciosCompetencia(props: { productos: ProductoDelModulo
                           </td>
                         );
                       })}
-                      <td>{chip(f.dif)}{f.contra && f.dif != null && <small className="pr-comp-contra">contra {nombreDe(f.contra)}</small>}</td>
+                      <td>
+                        {chip(f.dif)}
+                        {f.contra && f.dif != null && <small className="pr-comp-contra">contra {nombreDe(f.contra)}</small>}
+                        {(Object.keys(f.v) as Comercio[]).some((c) => f.v[c]?.item?.precioAntes) && <span className="pr-comp-chip oferta">🏷️ hay oferta</span>}
+                      </td>
                     </tr>
                   );
                   if (!abiertaEsta) return [fila];
                   return [fila, (
                     <tr key={`${f.p.id}-d`} className="detalle">
                       <td colSpan={3 + columnas.length}>
-                        <Detalle f={f} responder={responder} pendiente={pendiente} />
+                        <Detalle f={f} responder={responder} pendiente={pendiente} margenPara={props.margenPara} llevarA={props.llevarA} minimo={props.minimo} />
                       </td>
                     </tr>
                   )];
@@ -171,7 +210,14 @@ function Oferta({ it, g }: { it: ItemCompetencia; g: number | null }) {
   );
 }
 
-function Detalle({ f, responder, pendiente }: { f: Fila; responder: (id: string, c: Comercio, si: boolean) => void; pendiente: boolean }) {
+function Detalle({
+  f,
+  responder,
+  pendiente,
+  margenPara,
+  llevarA,
+  minimo,
+}: { f: Fila; responder: (id: string, c: Comercio, si: boolean) => void; pendiente: boolean } & Llevar) {
   const g = f.p.gramos;
   const lista = COMERCIOS.filter((c) => f.v[c.clave]?.item);
   const todos = [{ q: "Vos", v: f.p.precioHoy ?? 0, yo: true }, ...lista.map((c) => ({ q: c.nombre, v: g ? precioNormalATuTamano(f.v[c.clave]!.item!, g) ?? 0 : 0, yo: false }))].filter((t) => t.v > 0);
@@ -240,13 +286,45 @@ function Detalle({ f, responder, pendiente }: { f: Fila; responder: (id: string,
         </div>
         {f.dif != null && tope != null && (
           f.dif > 0.08 ? (
-            <p className="pr-nota mal">Estás {Math.round(f.dif * 100)}% arriba de {nombreDe(f.contra as Comercio)}. Para quedar parejo, el precio sería {pesos(tope)}: revisá en la Lista de precios si con ese precio te sigue dando el margen.</p>
+            <p className="pr-nota mal">Estás {Math.round(f.dif * 100)}% arriba de {nombreDe(f.contra as Comercio)}. Para quedar parejo, el precio sería {pesos(tope)}.</p>
           ) : f.dif < -0.08 ? (
             <p className="pr-nota ok">Estás {Math.round(-f.dif * 100)}% abajo de {nombreDe(f.contra as Comercio)}. Podrías llevarlo a {pesos(tope)} y seguir más barato: son {pesos(tope - (f.p.precioHoy ?? 0))} más por unidad.</p>
           ) : (
             <p className="pr-nota ok">Estás parejo con {nombreDe(f.contra as Comercio)}.</p>
           )
         )}
+        {/* La oferta, bien a la vista antes de decidir. */}
+        {g &&
+          lista
+            .filter((c) => f.v[c.clave]?.item?.precioAntes)
+            .map((c) => {
+              const it = f.v[c.clave]!.item!;
+              const enOferta = precioATuTamano(it, g);
+              const vs = f.p.precioHoy && enOferta ? diferencia(f.p.precioHoy, enOferta) : null;
+              return (
+                <p key={`of-${c.clave}`} className="pr-nota ojo">
+                  🏷️ <b>{c.nombre} lo tiene en oferta</b> a {pesos(enOferta)} a tus {g} g (normal {pesos(precioNormalATuTamano(it, g))}){it.nota ? `, ${it.nota}` : ""}.
+                  {vs != null && ` Contra la oferta estás ${Math.round(Math.abs(vs) * 100)}% ${vs > 0 ? "arriba" : "abajo"}.`}
+                </p>
+              );
+            })}
+        {/* Un botón que pone el margen que da ese precio; el efectivo sigue solo con su descuento. */}
+        {f.dif != null && tope != null && Math.abs(f.dif) > 0.08 && tope !== f.p.precioHoy && (() => {
+          const m = margenPara(f.p.id, tope);
+          if (m == null || m <= 0) return <p className="pr-nota mal">A {pesos(tope)} no se cubre el costo: no conviene bajarlo tanto.</p>;
+          const bajo = m / 100 < minimo;
+          return (
+            <div className="pr-comp-llevar">
+              <button type="button" className="pr-btn prim" onClick={() => llevarA(f.p.id, tope)}>
+                Llevarlo a {pesos(tope)}
+              </button>
+              <span className={bajo ? "mal" : ""}>
+                Queda con margen <b>{m.toLocaleString("es-AR", { maximumFractionDigits: 1 })} %</b> con tarjeta
+                {bajo ? ", debajo del mínimo" : ""}. El efectivo sigue con su descuento.
+              </span>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
