@@ -19,6 +19,8 @@ export type ItemCartel = {
   descuento: number;
   /** Si este producto tiene un cartel pendiente de cambiar, su tarea. */
   idTarea: string | null;
+  /** Las demás tareas abiertas del mismo producto (pedidos viejos): se cierran todas juntas con un solo cartel. */
+  otrasTareas?: string[];
   vencida: boolean;
   /** Cuándo se pidió el cambio de precio (el pedido más viejo sin hacer). */
   pedidoEl?: string | null;
@@ -148,12 +150,14 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
   }
 
   function confirmarPuestos() {
-    const tareas = aImprimir.map((i) => i.idTarea).filter((t): t is string => Boolean(t));
+    const conTarea = aImprimir.filter((i) => i.idTarea);
+    const tareas = conTarea.flatMap((i) => [i.idTarea as string, ...(i.otrasTareas ?? [])]);
     startTransition(async () => {
       const res = await marcarCartelesPuestos(tareas);
       if (res.error) setAviso(res.error);
       else {
-        setAviso(`Listo: ${res.cuantas} ${res.cuantas === 1 ? "cartel marcado" : "carteles marcados"} como puestos.`);
+        const cuantos = conTarea.length;
+        setAviso(`Listo: ${cuantos} ${cuantos === 1 ? "cartel marcado" : "carteles marcados"} como puestos.`);
         router.refresh();
       }
     });

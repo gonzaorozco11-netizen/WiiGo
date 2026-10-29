@@ -4,3 +4,5 @@ alter table competencia_items drop constraint if exists competencia_items_comerc
 alter table competencia_items add constraint competencia_items_comercio_check
   check (comercio in ('BELAVITA', 'MEGANUTS', 'REGIO', 'MARDEGAN', 'JUMBO'));
 alter table competencia_items add column if not exists nota text;
+-- El link a la página del producto, para verificar que sea el mismo.
+alter table competencia_items add column if not exists url text;

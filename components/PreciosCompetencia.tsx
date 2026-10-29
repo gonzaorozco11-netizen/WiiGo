@@ -193,7 +193,12 @@ function Detalle({ f, responder, pendiente }: { f: Fila; responder: (id: string,
                 {it.porKilo && <span className="pr-comp-chip kilo">por kilo</span>}
                 {!it.disponible && <span className="pr-comp-chip gris">agotado</span>}
                 <div className="pr-tenue" style={{ fontSize: 12.5 }}>
-                  {it.nombre} · {pesos(it.precioAntes ?? it.precio)} {it.gramos && it.gramos >= 1000 ? (it.gramos === 1000 ? "el kg" : `por ${it.gramos / 1000} kg`) : `por ${it.gramos} g`} · {c.tipo}
+                  {it.url ? (
+                    <a className="pr-comp-link" href={it.url} target="_blank" rel="noopener noreferrer">{it.nombre} ↗</a>
+                  ) : (
+                    it.nombre
+                  )}{" "}
+                  · {pesos(it.precioAntes ?? it.precio)} {it.gramos && it.gramos >= 1000 ? (it.gramos === 1000 ? "el kg" : `por ${it.gramos / 1000} kg`) : `por ${it.gramos} g`} · {c.tipo}
                 </div>
                 {it.precioAntes && (
                   <div className="pr-comp-oferta" style={{ fontSize: 12.5 }}>
@@ -203,6 +208,9 @@ function Detalle({ f, responder, pendiente }: { f: Fila; responder: (id: string,
                 {x.estado === "PROPUESTO" && (
                   <div className="pr-comp-preg">
                     ¿Es el mismo producto que el tuyo?
+                    {it.url && (
+                      <a className="ver" href={it.url} target="_blank" rel="noopener noreferrer">Ver en {c.nombre} ↗</a>
+                    )}
                     <button type="button" className="si" disabled={pendiente} onClick={() => responder(f.p.id, c.clave, true)}>✓ Sí</button>
                     <button type="button" disabled={pendiente} onClick={() => responder(f.p.id, c.clave, false)}>✗ No</button>
                   </div>

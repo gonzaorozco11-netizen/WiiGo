@@ -16,7 +16,12 @@ import { nombreBase } from "@/lib/nombreProducto";
 const UA = { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36", Accept: "application/json, text/html;q=0.9" };
 const SUCURSAL_JUMBO = "jumboargentinaj5222mendoza";
 
-type Leido = { clave: string; nombre: string; gramos: number | null; por_kilo: boolean; precio: number; precio_antes: number | null; nota?: string | null; disponible: boolean };
+type Leido = { clave: string; nombre: string; gramos: number | null; por_kilo: boolean; precio: number; precio_antes: number | null; nota?: string | null; url?: string | null; disponible: boolean };
+
+/** El link a la página del producto, para que Gonzalo verifique que sea el mismo. Solo https: viene de páginas ajenas. */
+function link(u: unknown): string | null {
+  return typeof u === "string" && /^https:\/\/[^\s"'<>]+$/.test(u) ? u : null;
+}
 
 async function json<T>(url: string, init?: RequestInit): Promise<T> {
   const r = await fetch(url, { ...init, headers: { ...UA, ...(init?.headers ?? {}) }, cache: "no-store", signal: AbortSignal.timeout(20000) });
@@ -32,20 +37,23 @@ async function leerBelaVita(): Promise<Leido[]> {
       const antes = p.precio_antes && Number(p.precio_antes) > Number(p.precio) ? Number(p.precio_antes) : null;
       // El motivo de la oferta: "VENCE 4 NOV" (mercadería por vencer) o hasta cuándo dura.
       const nota = antes ? p.etiqueta_vencimiento || (p.oferta_hasta ? `oferta hasta ${new Date(p.oferta_hasta).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" })}` : null) : null;
-      return { clave: String(p.id), nombre: p.nombre, gramos: gramosDelNombre(p.nombre), por_kilo: false, precio: Number(p.precio), precio_antes: antes, nota, disponible: (p.stock ?? 1) > 0 };
+      // El botón "compartir" de su tienda arma este mismo link.
+      const url = `https://dieteticaonlinebelavita.com.ar/?producto=${encodeURIComponent(String(p.id))}`;
+      return { clave: String(p.id), nombre: p.nombre, gramos: gramosDelNombre(p.nombre), por_kilo: false, precio: Number(p.precio), precio_antes: antes, nota, url, disponible: (p.stock ?? 1) > 0 };
     })
     .filter((p) => p.gramos && p.precio > 0);
 }
 
 /** Mega Nuts (WooCommerce): cada tamaño (500 g, 1 kg…) es una "variación" con su precio. */
 async function leerMegaNuts(): Promise<Leido[]> {
-  type P = { id: number; name: string; type?: string; variation?: string; is_in_stock?: boolean; prices: { price: string; regular_price: string; sale_price?: string; currency_minor_unit: number } };
+  type P = { id: number; name: string; type?: string; variation?: string; permalink?: string; is_in_stock?: boolean; prices: { price: string; regular_price: string; sale_price?: string; currency_minor_unit: number } };
   const salida: Leido[] = [];
   const pasar = (p: P, gramos: number | null, nombre: string) => {
     const div = 10 ** (p.prices.currency_minor_unit ?? 2);
     const precio = Number(p.prices.price) / div;
     const lista = Number(p.prices.regular_price) / div;
-    if (gramos && precio > 0) salida.push({ clave: String(p.id), nombre, gramos, por_kilo: false, precio, precio_antes: lista > precio ? lista : null, nota: null, disponible: p.is_in_stock !== false });
+    // El link de una variación ya abre el producto con ese tamaño elegido.
+    if (gramos && precio > 0) salida.push({ clave: String(p.id), nombre, gramos, por_kilo: false, precio, precio_antes: lista > precio ? lista : null, nota: null, url: link(p.permalink), disponible: p.is_in_stock !== false });
   };
   for (const tipo of ["variation", "simple"]) {
     for (let page = 1; page <= 20; page++) {
@@ -62,7 +70,7 @@ async function leerMegaNuts(): Promise<Leido[]> {
 }
 
 async function leerRegio(): Promise<Leido[]> {
-  type P = { id: number; name: string; is_in_stock?: boolean; prices: { price: string; regular_price: string; currency_minor_unit: number } };
+  type P = { id: number; name: string; permalink?: string; is_in_stock?: boolean; prices: { price: string; regular_price: string; currency_minor_unit: number } };
   const todos: P[] = [];
   for (let page = 1; page <= 10; page++) {
     const lote = await json<P[]>(`https://regiomendoza.com/wp-json/wc/store/v1/products?per_page=100&page=${page}`);
@@ -75,7 +83,7 @@ async function leerRegio(): Promise<Leido[]> {
       const precio = Number(p.prices.price) / div;
       const lista = Number(p.prices.regular_price) / div;
       // Venden por kilo: el precio publicado es el de 1 kg.
-      return { clave: String(p.id), nombre: p.name, gramos: 1000, por_kilo: true, precio, precio_antes: lista > precio ? lista : null, disponible: p.is_in_stock !== false };
+      return { clave: String(p.id), nombre: p.name, gramos: 1000, por_kilo: true, precio, precio_antes: lista > precio ? lista : null, url: link(p.permalink), disponible: p.is_in_stock !== false };
     })
     .filter((p) => p.precio > 0);
 }
@@ -89,10 +97,11 @@ async function leerMardegan(): Promise<Leido[]> {
     const antes = vistos.size;
     for (const m of html.matchAll(/<script type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g)) {
       try {
-        const d = JSON.parse(m[1]) as { "@type"?: string; name?: string; sku?: string; offers?: { price?: string | number; availability?: string } };
+        const d = JSON.parse(m[1]) as { "@type"?: string; name?: string; sku?: string; mainEntityOfPage?: { "@id"?: string }; offers?: { price?: string | number; availability?: string; url?: string } };
         if (d["@type"] !== "Product" || !d.name || !d.offers?.price) continue;
         const clave = String(d.sku ?? d.name);
-        vistos.set(clave, { clave, nombre: d.name, gramos: gramosDelNombre(d.name), por_kilo: false, precio: Number(d.offers.price), precio_antes: null, disponible: !/OutOfStock/i.test(d.offers.availability ?? "") });
+        const url = link(d.mainEntityOfPage?.["@id"]) ?? link(d.offers.url);
+        vistos.set(clave, { clave, nombre: d.name, gramos: gramosDelNombre(d.name), por_kilo: false, precio: Number(d.offers.price), precio_antes: null, url, disponible: !/OutOfStock/i.test(d.offers.availability ?? "") });
       } catch {
         // Un bloque roto no frena el resto.
       }
@@ -104,7 +113,7 @@ async function leerMardegan(): Promise<Leido[]> {
 
 /** Jumbo tiene miles de productos: se busca solo lo parecido a cada producto de WiiGo. */
 async function leerJumbo(busquedas: string[]): Promise<Leido[]> {
-  type P = { productName: string; items: { itemId: string; unitMultiplier: number; measurementUnit: string }[] };
+  type P = { productName: string; link?: string; items: { itemId: string; unitMultiplier: number; measurementUnit: string }[] };
   const salida = new Map<string, Leido>();
   for (const q of busquedas) {
     const lista = await json<P[]>(`https://www.jumbo.com.ar/api/catalog_system/pub/products/search?ft=${encodeURIComponent(q)}&_from=0&_to=7&sc=32`).catch(() => [] as P[]);
@@ -129,6 +138,7 @@ async function leerJumbo(busquedas: string[]): Promise<Leido[]> {
         por_kilo: porPeso,
         precio,
         precio_antes: lista > precio ? lista : null,
+        url: link(p.link),
         disponible: s.availability === "available",
       });
     }
@@ -162,13 +172,14 @@ export async function actualizarCompetencia(supabase: SupabaseClient): Promise<R
       try {
         const leidos = await lectores[clave]();
         for (let i = 0; i < leidos.length; i += 300) {
-          const lote = leidos.slice(i, i + 300).map((l) => ({ ...l, nota: l.nota ?? null, comercio: clave, visto_el: ahora }));
+          const lote = leidos.slice(i, i + 300).map((l) => ({ ...l, nota: l.nota ?? null, url: l.url ?? null, comercio: clave, visto_el: ahora }));
           let { error } = await supabase.from("competencia_items").upsert(lote, { onConflict: "comercio,clave" });
-          // Sin la columna "nota" (falta correr el SQL nuevo) se guarda igual, sin el motivo de la oferta.
-          if (error && /nota/.test(error.message)) {
+          // Sin las columnas "nota" y "url" (falta correr el SQL nuevo) se guarda igual, sin el motivo de la oferta ni el link.
+          if (error && /nota|url/.test(error.message)) {
             const sinNota = lote.map((f) => {
               const c: Partial<typeof f> = { ...f };
               delete c.nota;
+              delete c.url;
               return c;
             });
             ({ error } = await supabase.from("competencia_items").upsert(sinNota, { onConflict: "comercio,clave" }));
@@ -231,6 +242,7 @@ export function filaAItem(f: Record<string, unknown>): ItemCompetencia {
     precio: Number(f.precio),
     precioAntes: f.precio_antes == null ? null : Number(f.precio_antes),
     nota: (f.nota as string | null | undefined) ?? null,
+    url: link(f.url),
     disponible: Boolean(f.disponible),
     vistoEl: f.visto_el as string,
   };

@@ -29,6 +29,8 @@ export type ItemCompetencia = {
   precioAntes: number | null;
   /** Por qué la oferta, si lo publican ("VENCE 4 NOV"). */
   nota: string | null;
+  /** La página del producto en su tienda, para verificar que sea el mismo. null = todavía no se leyó. */
+  url: string | null;
   disponible: boolean;
   vistoEl: string;
 };

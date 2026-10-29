@@ -73,6 +73,7 @@ export default async function CartelesPage() {
     tipo: string;
     pedidoEl: string | null;
     antes: { lista: number | null; efectivo: number | null };
+    todas: string[];
   };
   const num = (v: unknown) => (v == null || !Number.isFinite(Number(v)) ? null : Number(v));
   const tareas = new Map<string, Abierta>();
@@ -94,10 +95,13 @@ export default async function CartelesPage() {
     const datosViejos = masVieja
       ? { pedidoEl: t.creada_el ?? previa?.pedidoEl ?? null, antes: { lista: num(t.precio_anterior), efectivo: num(t.efectivo_anterior) } }
       : { pedidoEl: previa!.pedidoEl, antes: previa!.antes };
+    // Al poner el cartel nuevo se cierran todas juntas: si quedara una abierta,
+    // el producto volvería a aparecer como pendiente.
+    const todas = [...(previa?.todas ?? []), t.id_tarea];
     if (!previa || (vencida && !previa.vencida)) {
-      tareas.set(t.id_producto, { idTarea: t.id_tarea, vencida, tipo: t.tipo, ...datosViejos });
+      tareas.set(t.id_producto, { idTarea: t.id_tarea, vencida, tipo: t.tipo, ...datosViejos, todas });
     } else {
-      Object.assign(previa, datosViejos);
+      Object.assign(previa, datosViejos, { todas });
     }
   }
 
@@ -127,6 +131,7 @@ export default async function CartelesPage() {
         enOferta: (p.descuento_porcentaje ?? 0) > 0,
         descuento: p.descuento_porcentaje ?? 0,
         idTarea: t?.idTarea ?? null,
+        otrasTareas: t ? t.todas.filter((id) => id !== t.idTarea) : [],
         vencida: t?.vencida ?? false,
         pedidoEl: t?.pedidoEl ?? null,
         antes: t?.antes ?? null,
