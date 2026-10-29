@@ -471,7 +471,8 @@ export function CatalogoAlifrut(props: {
           item={vinculando}
           rubros={props.rubros}
           envases={props.envases}
-          productos={props.productos.filter((p) => !p.idGranel)}
+          productos={props.productos.filter((p) => !usosPorItem.get(vinculando.id)?.some((u) => u.id === p.id))}
+          granel={props.granel}
           onCerrar={(recargar) => (recargar ? window.location.reload() : setVinculando(null))}
         />
       )}
@@ -481,7 +482,7 @@ export function CatalogoAlifrut(props: {
 
 // ---------- Vincular ----------
 
-function Vincular(props: { item: ItemCatalogo; rubros: RubroDelModulo[]; envases: Envase[]; productos: ProductoDelModulo[]; onCerrar: (recargar: boolean) => void }) {
+function Vincular(props: { item: ItemCatalogo; rubros: RubroDelModulo[]; envases: Envase[]; productos: ProductoDelModulo[]; granel: GranelDelModulo[]; onCerrar: (recargar: boolean) => void }) {
   const { item } = props;
   const porUnidad = item.unidad === "CAJA" || item.unidad === "UNIDAD";
   const chica = props.envases.find((e) => /chica/i.test(e.nombre)) ?? props.envases[0];
@@ -570,13 +571,22 @@ function Vincular(props: { item: ItemCatalogo; rubros: RubroDelModulo[]; envases
           O unirlo a un producto que ya tenés
           <select value={existente} onChange={(e) => setExistente(e.target.value)}>
             <option value="">—</option>
-            {props.productos.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.nombre}
-              </option>
-            ))}
+            {props.productos.map((p) => {
+              const hoy = p.idGranel ? props.granel.find((g) => g.id === p.idGranel)?.nombre : null;
+              return (
+                <option key={p.id} value={p.id}>
+                  {p.nombre}
+                  {hoy ? ` · hoy sale de ${hoy}` : ""}
+                </option>
+              );
+            })}
           </select>
         </label>
+        {existente && props.productos.find((p) => p.id === existente)?.idGranel && (
+          <p className="pr-nota">
+            Lo cambiás de proveedor: desde ahora su costo sale de este. El stock que ya tenés se sigue vendiendo con el mismo producto y al precio nuevo.
+          </p>
+        )}
         {error && <p className="pr-nota mal">{error}</p>}
         {listo && <p className="pr-nota ok">{listo}</p>}
       </div>
