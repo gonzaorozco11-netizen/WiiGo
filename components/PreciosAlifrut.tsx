@@ -369,12 +369,20 @@ export function CatalogoAlifrut(props: {
         </div>
         <div className="pr-env">
           <table className="pr-tabla pr-tabla-ali">
+            <colgroup>
+              <col />
+              <col style={{ width: 146 }} />
+              <col style={{ width: 116 }} />
+              <col style={{ width: 134 }} />
+              <col style={{ width: 70 }} />
+              <col style={{ width: 124 }} />
+            </colgroup>
             <thead>
               <tr>
                 <th>Producto de Alifrut</th>
                 <th>Viene</th>
                 <th style={{ textAlign: "right" }}>Costo sin IVA</th>
-                <th style={{ textAlign: "right" }}>Por kg / c.u.</th>
+                <th style={{ textAlign: "right" }}>Por kg o c/u</th>
                 <th>Cambio</th>
                 <th>Lo usás en</th>
               </tr>
@@ -432,7 +440,7 @@ export function CatalogoAlifrut(props: {
                         {i.unidad === "BOLSA" && <span className="pr-tenue">kg</span>}
                         {i.unidad === "CAJA" && <span className="pr-tenue">u.</span>}
                       </span>
-                      {!i.revisada && <small className="pr-falta">revisalo: lo saqué del nombre</small>}
+                      {!i.revisada && <small className="pr-falta">revisá cómo viene</small>}
                     </td>
                     <td className="n" style={{ textAlign: "right" }}>
                       {pesos(i.costo, 2)}

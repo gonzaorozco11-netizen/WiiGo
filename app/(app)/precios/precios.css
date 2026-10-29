@@ -201,7 +201,7 @@
 .pr-estado i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
 .pr-estado i.ojo { background: var(--ojo); }
 
-.pr-cat { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 14px; align-items: start; }
+.pr-cat { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 12px; align-items: start; }
 .pr-cats { padding: 8px; display: grid; gap: 1px; max-height: 75vh; overflow-y: auto; position: sticky; top: 10px; }
 .pr-cats button { display: flex; justify-content: space-between; gap: 8px; border: 0; background: none; text-align: left; padding: 6px 9px; border-radius: 6px; color: var(--tinta-2); font-size: 13.5px; cursor: pointer; }
 .pr-cats button:hover { background: var(--hoja-2); }
@@ -210,8 +210,13 @@
 .pr-cats hr { border: 0; border-top: 1px solid var(--linea); margin: 6px 4px; }
 .pr-cat-filtros { padding: 12px 14px; border-bottom: 1px solid var(--linea); }
 .pr-cat-filtros input { width: 100%; border: 1px solid var(--linea-2); border-radius: 7px; padding: 7px 11px; background: var(--hoja); }
-.pr-tabla.pr-tabla-ali { min-width: 900px; }
+/* Tiene que entrar entera en la pantalla de la compu, sin deslizar (Gonzalo, 2026-10-29). */
+.pr-tabla.pr-tabla-ali { min-width: 0; table-layout: fixed; }
 .pr-tabla-ali th, .pr-tabla-ali td { text-align: left; }
+.pr-tabla-ali td { overflow-wrap: anywhere; }
+.pr-tabla-ali td.n { white-space: nowrap; overflow-wrap: normal; }
+.pr-tabla-ali th { white-space: normal; }
+.pr-tabla-ali .pr-btn.chico { white-space: nowrap; }
 .pr-tabla-ali th:first-child, .pr-tabla-ali td:first-child { padding-left: 14px; }
 .pr-tabla-ali tr.pr-gris td { opacity: .55; }
 .pr-viene { display: inline-flex; gap: 5px; align-items: center; }
@@ -238,6 +243,8 @@
 .pr-m-tamanos select, .pr-m-campo select { border: 1px solid var(--linea-2); border-radius: 6px; padding: 5px 7px; background: var(--hoja); }
 .pr-m-campo { display: grid; gap: 4px; font-weight: 600; font-size: 13.5px; }
 
+/* En el celular sí se desliza: no hay ancho para seis columnas. */
+@media (max-width: 900px) { .pr-tabla.pr-tabla-ali { min-width: 760px; } }
 @media (max-width: 760px) {
   .pr-cat { grid-template-columns: minmax(0, 1fr); }
   .pr-cats { position: static; max-height: none; display: flex; flex-wrap: wrap; gap: 4px; }
