@@ -29,6 +29,11 @@ export type GranelDelModulo = Granel & {
   actualizadoEl: string;
   /** El producto de la lista de Alifrut del que sale (sql/precios-alifrut.sql). */
   idItem: string | null;
+  /**
+   * La marca que le compra a Alifrut (Granix, Tres Arroyos, Ying Yang…), de su
+   * lista. Solo para uso interno: al cliente no se le muestra (Gonzalo, 2026-10-29).
+   */
+  marcaOrigen: string | null;
 };
 
 export type DatosPrecios =
@@ -95,6 +100,14 @@ export async function cargarDatosPrecios(supabase: SupabaseClient): Promise<Dato
   }));
   const rubroPorId = new Map(rubros.map((r) => [r.id, r]));
 
+  // La marca de cada producto de Alifrut, de su lista (sin sql/precios-alifrut.sql, ninguna).
+  const idsItem = (granelRes.data ?? []).map((g) => g.id_item as string | null | undefined).filter((x): x is string => Boolean(x));
+  const marcaItem = new Map<string, string>();
+  if (idsItem.length) {
+    const { data: cat } = await supabase.from("catalogo_proveedor").select("id_item, marca").in("id_item", idsItem);
+    for (const c of cat ?? []) if (c.marca && String(c.marca).trim()) marcaItem.set(c.id_item as string, String(c.marca).trim());
+  }
+
   const productos: ProductoDelModulo[] = (prodRes.data ?? []).map((p) => {
     const rubro = p.id_subcategoria ? rubroPorId.get(p.id_subcategoria as string) : undefined;
     const espera = esperan.get(p.id_producto as string);
@@ -134,6 +147,7 @@ export async function cargarDatosPrecios(supabase: SupabaseClient): Promise<Dato
       unidad: g.unidad === "BULTO" || g.unidad === "CAJA" ? g.unidad : "KG",
       kgBulto: num(g.kg_bulto),
       idItem: (g.id_item as string | null | undefined) ?? null,
+      marcaOrigen: g.id_item ? marcaItem.get(g.id_item as string) ?? null : null,
       idProveedor: (g.id_proveedor as string | null) ?? null,
       costoAnterior: num(g.costo_anterior),
       actualizadoEl: g.costo_actualizado_el as string,

@@ -720,6 +720,8 @@ function Lista(props: {
                           <td className="pr-prod" rowSpan={2}>
                             <b>{p.nombre}</b>
                             <small>{sub}</small>
+                            {/* La marca que le compra a Alifrut: solo para él, el cliente no la ve. */}
+                            {g2?.marcaOrigen && <span className="pr-marca-origen">{g2.marcaOrigen}</span>}
                           </td>
                           <td className="n pr-tenue pr-cost" rowSpan={2}>
                             {r.costo ? pesos(r.costo.total) : "—"}
@@ -1008,6 +1010,12 @@ function Detalle({
                     {g?.idItem ? " · Alifrut" : ""}
                   </dd>
                 </div>
+                {g?.idItem && (
+                  <div>
+                    <dt>Marca (solo interno)</dt>
+                    <dd>{g.marcaOrigen ?? "Sin marca · a granel de Alifrut"}</dd>
+                  </div>
+                )}
                 {g?.unidad !== "CAJA" && (
                   <div>
                     <dt>Gramos de la bolsita</dt>
@@ -1166,6 +1174,7 @@ function Costos(props: {
         unidad: nuevo.unidad,
         kgBulto: nuevo.unidad !== "KG" ? aNumero(nuevo.kgBulto) : null,
         idItem: null,
+        marcaOrigen: null,
         idProveedor: nuevo.idProveedor || null,
         costoAnterior: null,
         actualizadoEl: new Date().toISOString(),

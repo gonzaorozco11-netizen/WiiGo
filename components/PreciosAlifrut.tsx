@@ -543,7 +543,7 @@ function Vincular(props: {
   const yaUsan = props.usos;
 
   return (
-    <Modal titulo={`Vincular «${item.nombre}»`} bajada={porUnidad ? `Se vende de a una. Costo por unidad: ${pesos(granelDesdeItem({ costo_neto: item.costo, unidad: item.unidad, cantidad: item.cantidad }).costo / (item.unidad === "CAJA" ? item.cantidad : 1), 2)}.` : `Costo ${pesos(costoPorKg({ ...granelDesdeItem({ costo_neto: item.costo, unidad: item.unidad, cantidad: item.cantidad }), id: "" }), 2)} el kg, sin IVA.`} onCerrar={() => props.onCerrar(Boolean(listo))}>
+    <Modal titulo={`Vincular «${item.nombre}»${item.marca ? ` · ${item.marca}` : ""}`} bajada={porUnidad ? `Se vende de a una. Costo por unidad: ${pesos(granelDesdeItem({ costo_neto: item.costo, unidad: item.unidad, cantidad: item.cantidad }).costo / (item.unidad === "CAJA" ? item.cantidad : 1), 2)}.` : `Costo ${pesos(costoPorKg({ ...granelDesdeItem({ costo_neto: item.costo, unidad: item.unidad, cantidad: item.cantidad }), id: "" }), 2)} el kg, sin IVA.`} onCerrar={() => props.onCerrar(Boolean(listo))}>
       <div className="pr-m-cuerpo">
         <b>¿Ya tenés este producto cargado en WiiGo?</b>
         <div className="pr-m-modo" role="radiogroup" aria-label="¿Ya tenés este producto cargado?">

@@ -142,6 +142,7 @@
 .pr-precio.ef { color: var(--ef); }
 .pr-menos { color: var(--tinta-3); margin-right: 3px; font-weight: 600; }
 .pr-rubros .pr-in { width: 56px; }
+.pr-marca-origen { display: inline-block; margin-top: 3px; font-size: 11px; font-weight: 700; color: var(--tinta-2); background: var(--hoja-2); border: 1px solid var(--linea); border-radius: 5px; padding: 0 6px; }
 .pr-ali { display: inline-grid; justify-items: end; gap: 2px; }
 .pr-ali .n { font-weight: 600; }
 .pr-ali .pr-comp { font-size: 11px; padding: 1px 6px; }
