@@ -31,9 +31,7 @@ export type ProductoLista = {
 // Lo que va arriba de la primera hoja.
 const SUCURSAL = { nombre: "Sucursal 1", direccion: "Arístides Villanueva 256, Mendoza", horario: "9 a 13 h y 17 a 21 h", dias: "Lunes a sábado", instagram: "@wiigo.arg" };
 
-// Las secciones grandes: para qué es, con el nombre de la marca al lado.
-const SECCION_DE_MARCA: Record<string, string> = { Animalfit: "Suplementación", Fruppi: "Snacks saludables" };
-const ORDEN_SECCION = ["Alimentos", "Snacks saludables", "Suplementación"];
+// Cada sección es una marca, con su nombre como título (Gonzalo, 2026-10-30): WiiGo primero, después las demás.
 const NOMBRE_RUBRO: Record<string, string> = { "Frutos Secos Nacionales e importados": "Frutos secos", "Avenas y derivados": "Avenas", "Cacaos y chocolates": "Cacao" };
 const ORDEN_RUBRO_PROPIO = ["frutos secos", "mix", "frutas", "cereales", "avena", "granola", "cacao"];
 const COLORES = ["#a8701d", "#c2603a", "#b8405f", "#5f8a2e", "#8a7a3a", "#7a5bb5", "#6b4430", "#2f7fa8", "#3f7a5a", "#4f6b7a"];
@@ -70,28 +68,20 @@ function partes(nombre: string): [string, string] {
 
 type Rubro = { nombre: string; color: string; icono: string };
 type Bloque =
-  | { tipo: "seccion"; titulo: string; marca: string; n: number }
+  | { tipo: "seccion"; titulo: string; n: number }
   | { tipo: "rubro"; rubro: Rubro; sigue?: boolean }
   | { tipo: "fila"; p: ProductoLista; rubro: Rubro };
 
 function armarBloques(productos: ProductoLista[]): Bloque[] {
-  const seccionDe = (p: ProductoLista) => (p.propia ? "Alimentos" : SECCION_DE_MARCA[p.marca] ?? p.marca);
   const grupos = new Map<string, ProductoLista[]>();
   for (const p of productos) {
-    const k = `${seccionDe(p)}|${p.marca}`;
-    if (!grupos.has(k)) grupos.set(k, []);
-    grupos.get(k)!.push(p);
+    if (!grupos.has(p.idMarca)) grupos.set(p.idMarca, []);
+    grupos.get(p.idMarca)!.push(p);
   }
-  const claves = [...grupos.keys()].sort((a, b) => {
-    const [sa, ma] = a.split("|"), [sb, mb] = b.split("|");
-    const ia = ORDEN_SECCION.indexOf(sa), ib = ORDEN_SECCION.indexOf(sb);
-    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || sa.localeCompare(sb) || ma.localeCompare(mb);
-  });
+  const marcas = [...grupos.values()].sort((a, b) => Number(b[0].propia) - Number(a[0].propia) || a[0].marca.localeCompare(b[0].marca));
   const out: Bloque[] = [];
-  for (const k of claves) {
-    const [titulo, marca] = k.split("|");
-    const deSeccion = grupos.get(k)!;
-    out.push({ tipo: "seccion", titulo, marca: deSeccion[0].propia ? "WiiGo" : marca, n: deSeccion.length });
+  for (const deSeccion of marcas) {
+    out.push({ tipo: "seccion", titulo: deSeccion[0].propia ? "WiiGo" : deSeccion[0].marca, n: deSeccion.length });
     const rubros = [...new Set(deSeccion.map((p) => p.rubro))].sort((a, b) => {
       const pos = (r: string) => { const i = ORDEN_RUBRO_PROPIO.findIndex((x) => (NOMBRE_RUBRO[r] ?? r).toLowerCase().includes(x)); return i < 0 ? 99 : i; };
       return pos(a) - pos(b) || a.localeCompare(b);
@@ -110,33 +100,46 @@ const ALTO_HOJA = 1123, ALTO_PORTADA = 232, ALTO_CAB = 62, ALTO_PIE = 84, AIRE_A
 const DISPONIBLE_PRIMERA = ALTO_HOJA - ALTO_PORTADA - ALTO_PIE - AIRE_ARRIBA - MARGEN_SEGURIDAD;
 const DISPONIBLE_RESTO = ALTO_HOJA - ALTO_CAB - ALTO_PIE - AIRE_ARRIBA - MARGEN_SEGURIDAD;
 
+/** Una hoja: el título de la marca (a todo el ancho, si la marca arranca acá) y las dos columnas. */
+type Hoja = { marca: Extract<Bloque, { tipo: "seccion" }> | null; cols: Bloque[][] };
+
 /** Reparte los bloques medidos en hojas de dos columnas, sin partir nada. */
-function repartir(bloques: Bloque[], alto: number[], altoSigue: number): Bloque[][][] {
-  const hojas: Bloque[][][] = [[[], []]];
-  let col = 0, usado = 0;
+function repartir(bloques: Bloque[], alto: number[], altoSigue: number): Hoja[] {
+  const hojas: Hoja[] = [{ marca: null, cols: [[], []] }];
+  let col = 0, usado = 0, reserva = 0;
   let rubroActual: Rubro | null = null;
+  const actual = () => hojas[hojas.length - 1];
   const max = () => (hojas.length === 1 ? DISPONIBLE_PRIMERA : DISPONIBLE_RESTO);
   const avanzar = () => {
     if (col === 0) col = 1;
-    else { hojas.push([[], []]); col = 0; }
-    usado = 0;
+    else { hojas.push({ marca: null, cols: [[], []] }); col = 0; reserva = 0; }
+    usado = reserva;
   };
   bloques.forEach((b, i) => {
+    // Cada marca arranca en una hoja nueva, con su nombre a todo el ancho
+    // (Gonzalo, 2026-10-30: "cuando arranca una nueva marca, que haga un corte").
+    if (b.tipo === "seccion") {
+      if (i > 0) hojas.push({ marca: null, cols: [[], []] });
+      actual().marca = b;
+      col = 0;
+      reserva = alto[i];
+      usado = reserva;
+      rubroActual = null;
+      return;
+    }
     let necesita = alto[i];
-    // Lo que tiene que ir pegado: la sección con su primer rubro y dos productos; el rubro con dos productos.
-    if (b.tipo === "seccion") for (let k = 1; k <= 3 && i + k < bloques.length && bloques[i + k].tipo !== "seccion"; k++) necesita += alto[i + k];
+    // Lo que tiene que ir pegado: el título del rubro con sus dos primeros productos.
     if (b.tipo === "rubro") for (let k = 1; k <= 2 && i + k < bloques.length && bloques[i + k].tipo === "fila"; k++) necesita += alto[i + k];
-    if (usado > 0 && usado + necesita > max()) {
+    if (actual().cols[col].length > 0 && usado + necesita > max()) {
       avanzar();
       if (b.tipo === "fila" && rubroActual) {
-        hojas[hojas.length - 1][col].push({ tipo: "rubro", rubro: rubroActual, sigue: true });
+        actual().cols[col].push({ tipo: "rubro", rubro: rubroActual, sigue: true });
         usado += altoSigue;
       }
     }
-    hojas[hojas.length - 1][col].push(b);
+    actual().cols[col].push(b);
     usado += alto[i];
     if (b.tipo === "rubro") rubroActual = b.rubro;
-    if (b.tipo === "seccion") rubroActual = null;
   });
   return hojas;
 }
@@ -147,7 +150,7 @@ function VistaBloque({ b }: { b: Bloque }) {
       <div className="lp-seccion">
         <h3>{b.titulo}</h3>
         <span>
-          <b>{b.marca}</b> · {b.n} {b.n === 1 ? "producto" : "productos"}
+          {b.n} {b.n === 1 ? "producto" : "productos"}
         </span>
       </div>
     );
@@ -212,7 +215,7 @@ export default function ListaPreciosPdf({ productos, hoy }: { productos: Product
   const filtrados = useMemo(() => productos.filter((p) => elegidas.has(p.idMarca)), [productos, elegidas]);
   const bloques = useMemo(() => armarBloques(filtrados), [filtrados]);
   const medidor = useRef<HTMLDivElement>(null);
-  const [hojas, setHojas] = useState<Bloque[][][] | null>(null);
+  const [hojas, setHojas] = useState<Hoja[] | null>(null);
 
   // Medir cada bloque ya dibujado (con la letra cargada) y recién ahí repartir en hojas.
   useEffect(() => {
@@ -330,7 +333,12 @@ export default function ListaPreciosPdf({ productos, hoy }: { productos: Product
                 </header>
               )}
               <div className="lp-cuerpo">
-                {h.map((col, c) => (
+                {h.marca && (
+                  <div className="lp-marca-ancha">
+                    <VistaBloque b={h.marca} />
+                  </div>
+                )}
+                {h.cols.map((col, c) => (
                   <div className="lp-col" key={c}>
                     {col.map((b, k) => (
                       <VistaBloque key={k} b={b} />

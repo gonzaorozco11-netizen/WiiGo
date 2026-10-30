@@ -51,8 +51,11 @@
 .lp-pie .lp-verde { color: var(--lp-verde); }
 .lp-num { text-align: right; white-space: nowrap; }
 
-.lp-seccion { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 2px 0 9px; margin: 0 0 4px; border-bottom: 1.5px solid var(--lp-tinta); }
-.lp-seccion h3 { margin: 0; font-family: var(--f-lista-titulo), Georgia, serif; font-weight: 600; font-size: 24px; letter-spacing: -0.01em; }
+/* El nombre de la marca, a todo el ancho arriba de las dos columnas. Se mide al ancho de
+   una columna, pero ocupa una sola línea igual, así que el alto da lo mismo. */
+.lp-marca-ancha { grid-column: 1 / -1; }
+.lp-seccion { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 2px 0 10px; margin: 0 0 6px; border-bottom: 2px solid var(--lp-tinta); }
+.lp-seccion h3 { margin: 0; font-family: var(--f-lista-titulo), Georgia, serif; font-weight: 600; font-size: 30px; letter-spacing: -0.01em; line-height: 1.1; }
 .lp-seccion span { font-size: 10px; color: var(--lp-tinta-2); text-align: right; }
 .lp-seccion b { color: var(--lp-tinta); font-size: 11px; letter-spacing: .04em; }
 .lp-rubro { padding-top: 14px; }
