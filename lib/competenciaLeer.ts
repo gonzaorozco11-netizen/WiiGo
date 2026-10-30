@@ -128,8 +128,10 @@ async function leerAlifrutPublico(): Promise<Leido[]> {
     const v = kilo ?? otra;
     const precio = Number(v ? v.precio : p.precio);
     const antes = Number(v ? v.precioAnterior : p.precioAnterior) || null;
+    // Sin tamaño (como el kiwi, que no lo dice) se guarda igual: el tamaño lo
+    // pone después lo que Gonzalo cargó en Costos de compra (ver actualizarCompetencia).
     const gramos = kilo ? 1000 : v ? gramosDelNombre(` ${v.nombre.replace(/^x/i, "")}`) : gramosDelNombre(p.nombre);
-    if (!gramos || !(precio > 0)) continue;
+    if (!(precio > 0)) continue;
     salida.push({
       clave: v?.sku ?? p.sku ?? p.id,
       nombre: kilo ? `${p.nombre} x 1 kg` : p.nombre,
@@ -183,18 +185,24 @@ async function leerJumbo(busquedas: string[]): Promise<Leido[]> {
   return [...salida.values()].filter((p) => p.gramos);
 }
 
-/** Granel → nombre del producto de la lista exclusiva de Alifrut del que sale. Vacío si falta sql/precios-alifrut.sql. */
-async function nombresListaPrivada(supabase: SupabaseClient): Promise<Map<string, string>> {
+/**
+ * Granel → el producto de la lista exclusiva de Alifrut del que sale, y
+ * cuántos gramos trae lo que se compra (por kilo: 1000; por bolsa: los kg de
+ * la bolsa). Vacío si falta sql/precios-alifrut.sql.
+ */
+async function nombresListaPrivada(supabase: SupabaseClient): Promise<Map<string, { nombre: string; gramos: number | null }>> {
   const [gran, cat] = await Promise.all([
-    supabase.from("costos_granel").select("id_granel, id_item").not("id_item", "is", null),
+    supabase.from("costos_granel").select("id_granel, id_item, unidad, kg_bulto").not("id_item", "is", null),
     supabase.from("catalogo_proveedor").select("id_item, nombre"),
   ]);
   if (gran.error || cat.error) return new Map();
   const nombreItem = new Map((cat.data ?? []).map((c) => [c.id_item as string, c.nombre as string]));
-  const salida = new Map<string, string>();
+  const salida = new Map<string, { nombre: string; gramos: number | null }>();
   for (const g of gran.data ?? []) {
     const n = nombreItem.get(g.id_item as string);
-    if (n) salida.set(g.id_granel as string, n);
+    const kg = Number(g.kg_bulto);
+    const gramos = g.unidad === "KG" ? 1000 : g.unidad === "BULTO" && kg > 0 ? Math.round(kg * 1000) : null;
+    if (n) salida.set(g.id_granel as string, { nombre: n, gramos });
   }
   return salida;
 }
@@ -296,18 +304,37 @@ export async function actualizarCompetencia(supabase: SupabaseClient): Promise<R
       if (v?.estado === "CONFIRMADO" && v.id_item) continue;
       const rechazados = (v?.rechazados as string[] | null) ?? [];
       if (clave === "ALIFRUT" && p.idGranel && nombrePrivado.has(p.idGranel)) {
-        const mismo = mismoDeAlifrut(nombrePrivado.get(p.idGranel)!, itemsAlifrut, rechazados);
+        const mismo = mismoDeAlifrut(nombrePrivado.get(p.idGranel)!.nombre, itemsAlifrut, rechazados);
         if (mismo) {
           filas.push({ id_producto: p.id, comercio: clave, id_item: mismo.id, estado: "CONFIRMADO", rechazados, actualizado_el: ahora });
           continue;
         }
       }
-      const cand = mejorCandidato({ nombre: nombreBase(p.nombre), gramos: p.gramos }, items.filter((i) => i.comercio === clave), rechazados);
+      // Por parecido solo entra lo que tiene tamaño: sin él no se puede comparar.
+      const cand = mejorCandidato({ nombre: nombreBase(p.nombre), gramos: p.gramos }, items.filter((i) => i.comercio === clave && i.gramos), rechazados);
       if ((cand?.id ?? null) === (v?.id_item ?? null) && v) continue;
       filas.push({ id_producto: p.id, comercio: clave, id_item: cand?.id ?? null, estado: "PROPUESTO", rechazados, actualizado_el: ahora });
     }
   }
   if (filas.length) await supabase.from("competencia_vinculos").upsert(filas, { onConflict: "id_producto,comercio" });
+
+  // Lo de Alifrut que no dice su tamaño (el kiwi): se toma el de cómo lo
+  // compra Gonzalo (Costos de compra: por kilo, o bolsa de tantos kg). Se hace
+  // en cada lectura porque la lectura lo vuelve a dejar sin tamaño.
+  const sinTamano = new Set(itemsAlifrut.filter((i) => !i.gramos).map((i) => i.id));
+  if (sinTamano.size) {
+    const { data: vAli } = await supabase.from("competencia_vinculos").select("id_producto, id_item").eq("comercio", "ALIFRUT").not("id_item", "is", null);
+    const granelDe = new Map(productos.map((p) => [p.id, p.idGranel]));
+    const hechos = new Set<string>();
+    for (const v of vAli ?? []) {
+      const idItem = v.id_item as string;
+      const idGranel = granelDe.get(v.id_producto as string);
+      const gramos = idGranel ? nombrePrivado.get(idGranel)?.gramos : null;
+      if (!sinTamano.has(idItem) || !gramos || hechos.has(idItem)) continue;
+      hechos.add(idItem);
+      await supabase.from("competencia_items").update({ gramos, por_kilo: gramos === 1000 }).eq("id_item", idItem);
+    }
+  }
   await supabase.from("configuracion").upsert([{ parametro: "COMPETENCIA_LEIDA_EL", valor: ahora, fecha_actualizacion: ahora }], { onConflict: "parametro" });
   // El descuento en efectivo que publica Alifrut en su lista al público (hoy 5 %).
   try {
