@@ -26,6 +26,7 @@ import {
   type ValorObjetivos,
 } from "@/lib/cambiosProfesional";
 import { REDES, leerRedes, linkDeRed, textoDeRed, type ClaveRed, type Redes } from "@/lib/redesProfesional";
+import IconoRed, { colorDeRed } from "@/components/IconoRed";
 
 export type DatosFicha = {
   nombre: string;
@@ -1075,8 +1076,8 @@ function SeccionRedes({
       <div className="redes">
         {revisadas.map((r) => (
           <div key={r.clave} className="red">
-            <span className={`sello ${r.clave}`} aria-hidden="true">
-              {r.sello}
+            <span className="sello" style={{ background: colorDeRed(r.clave) }} aria-hidden="true">
+              <IconoRed clave={r.clave} className="sello-logo" />
             </span>
             <label className="campo">
               <span>{r.nombre}</span>

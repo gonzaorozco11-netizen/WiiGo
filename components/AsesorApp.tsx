@@ -22,6 +22,8 @@ import type {
 } from "@/lib/supabase";
 import { ubicacionDe, textoPosicionModulo, NOMBRE_ALTURA, type ModuloGondola, type UbicacionGondola } from "@/lib/gondola";
 import { MuebleFrente, Pared3D } from "@/components/Gondola3D";
+import IconoRed, { colorDeRed } from "@/components/IconoRed";
+import type { ClaveRed } from "@/lib/redesProfesional";
 
 type Pantalla = "home" | "objetivo" | "resultado" | "marcas" | "ofertas" | "profesionales" | "fichaProfesional" | "conoceme" | "reservarTurno";
 
@@ -2444,9 +2446,12 @@ export default function AsesorApp({
                           <button
                             key={r.clave}
                             onClick={() => setRedElegida(r.clave)}
-                            className="text-[11px] font-bold px-2.5 py-1 rounded-full"
+                            className="inline-flex items-center gap-1.5 text-[11px] font-bold pl-1 pr-2.5 py-1 rounded-full"
                             style={r.clave === redActual.clave ? { background: SAGE_DARK, color: "#fff" } : { background: SAGE_TINT, color: SAGE_DARK }}
                           >
+                            <span className="grid place-items-center w-5 h-5 rounded-full text-white" style={{ background: colorDeRed(r.clave as ClaveRed) }}>
+                              <IconoRed clave={r.clave as ClaveRed} className="w-3 h-3" />
+                            </span>
                             {r.nombre}
                           </button>
                         ))}
