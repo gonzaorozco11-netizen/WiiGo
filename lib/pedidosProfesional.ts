@@ -56,11 +56,17 @@ export function mensajePedidoListo(p: {
   paraProfesional?: boolean;
 }) {
   const dia = p.guardarHasta.toLocaleDateString("es-AR", { weekday: "long", day: "2-digit", month: "2-digit", timeZone: "America/Argentina/Buenos_Aires" });
+  // Con caritas, más cálido (Gonzalo, 2026-10-30: "que sea más divertido, tipo ¡Hola Juan!").
   if (p.paraProfesional) {
     return [
-      `Hola ${p.paciente}, tu pedido ya está listo en WiiGo${p.direccion ? `, ${p.direccion}` : ""}.`,
+      `¡Hola ${p.paciente}! 👋🔥`,
+      "Tu pedido ya está listo en WiiGo 🛍️✨",
+      ...(p.direccion ? [`📍 ${p.direccion}`] : []),
       "",
-      `Te lo guardamos hasta el ${dia}. Al retirarlo ponés tu PIN en la caja y se descuenta de tu saldo; si falta algo, lo pagás ahí.`,
+      `🗓️ Te lo guardamos hasta el ${dia}.`,
+      "💳 Al retirarlo ponés tu PIN en la caja y se descuenta de tu saldo; si falta algo, lo pagás ahí.",
+      "",
+      "¡Te esperamos! 🌿",
     ].join("\n");
   }
   const vence = hastaCuandoVaElPrecio(p.creado);
@@ -71,8 +77,14 @@ export function mensajePedidoListo(p: {
       ? `${pesos(p.totalEfectivo)} en efectivo o ${pesos(p.totalLista)} con tarjeta o Mercado Pago`
       : pesos(p.totalLista);
   return [
-    `Hola ${p.paciente}, tu pedido de ${p.profesional} ya está listo en WiiGo${p.direccion ? `, ${p.direccion}` : ""}.`,
+    `¡Hola ${p.paciente}! 👋🔥`,
+    `Tu pedido de ${p.profesional} ya está listo en WiiGo 🛍️✨`,
+    ...(p.direccion ? [`📍 ${p.direccion}`] : []),
     "",
-    `Te lo guardamos hasta el ${dia} y lo pagás cuando lo retirás: ${precios}.${precioVigente ? ` Ese precio vale hasta el ${hora}; después se cobra el del día.` : ""}`,
+    `🗓️ Te lo guardamos hasta el ${dia}.`,
+    `💵 Lo pagás cuando lo retirás: ${precios}.`,
+    ...(precioVigente ? [`⏰ Ese precio vale hasta el ${hora}; después se cobra el del día.`] : []),
+    "",
+    "¡Te esperamos! 🌿",
   ].join("\n");
 }
