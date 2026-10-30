@@ -23,6 +23,7 @@ import { AvisoAlifrut, CambiosAlifrut, CatalogoAlifrut, TraerLista, calcularPend
 import PreciosCompetencia from "@/components/PreciosCompetencia";
 import PreciosGondola, { type GondolaLocal } from "@/components/PreciosGondola";
 import type { DatosCompetencia } from "@/lib/competenciaLeer";
+import { precioATuTamano } from "@/lib/competencia";
 import {
   guardarConfigPrecios,
   guardarEnvase,
@@ -338,6 +339,7 @@ export default function PreciosApp(props: Props) {
             cambiarRubro={cambiarRubro}
             aplicarATodoElRubro={aplicarATodoElRubro}
             vuelta={vuelta}
+            competencia={props.competencia ?? null}
           />
         )}
         {pestana === "competencia" && (
@@ -459,15 +461,52 @@ const COLOR_SIN_RUBRO: [string, string, string] = ["#9ca3af", "#f6f7f9", "#37415
 function ColumnasLista() {
   return (
     <colgroup>
-      <col style={{ width: "24%" }} />
+      <col style={{ width: "22%" }} />
       <col style={{ width: "8%" }} />
       <col style={{ width: "10%" }} />
-      <col style={{ width: "11%" }} />
-      <col style={{ width: "11%" }} />
+      <col style={{ width: "10%" }} />
+      <col style={{ width: "10%" }} />
       <col style={{ width: "13%" }} />
       <col style={{ width: "14%" }} />
-      <col style={{ width: "9%" }} />
+      <col style={{ width: "13%" }} />
     </colgroup>
+  );
+}
+
+/**
+ * Lo que cobra Alifrut al público por tu mismo tamaño (de la pestaña
+ * Competencia): con tarjeta y en efectivo, con su descuento publicado. Para
+ * ver cómo estás contra tu propio proveedor (Gonzalo, 2026-10-29).
+ */
+type Alifrut = { normal: number; efectivo: number; oferta: boolean; agotado: boolean; sinConfirmar: boolean; desc: number } | null;
+function alifrutDe(datos: DatosCompetencia | null, p: ProductoDelModulo): Alifrut {
+  const v = datos?.vinculos[p.id]?.find((x) => x.comercio === "ALIFRUT");
+  if (!v?.item || !p.gramos) return null;
+  const normal = precioATuTamano(v.item, p.gramos);
+  if (normal == null) return null;
+  const desc = datos?.alifrutDescEfectivo ?? 5;
+  return { normal, efectivo: normal * (1 - desc / 100), oferta: Boolean(v.item.precioAntes), agotado: !v.item.disponible, sinConfirmar: v.estado === "PROPUESTO", desc };
+}
+
+function PrecioAlifrut({ a, tuyo, efectivo = false }: { a: Alifrut; tuyo: number | null; efectivo?: boolean }) {
+  if (!a) return <span className="pr-tenue">—</span>;
+  const suyo = efectivo ? a.efectivo : a.normal;
+  const dif = tuyo && suyo > 0 ? tuyo / suyo - 1 : null;
+  return (
+    <span className="pr-ali">
+      <span className="n">{pesos(suyo)}</span>
+      {dif != null && (
+        <span className={`pr-comp ${dif > 0 ? "caro" : "barato"}`} title={dif > 0 ? "Tu precio está arriba del de Alifrut" : "Tu precio está abajo del de Alifrut"}>
+          {dif > 0 ? "+" : "−"}
+          {Math.round(Math.abs(dif) * 100)}%
+        </span>
+      )}
+      <small>
+        {efectivo ? `efectivo −${a.desc.toLocaleString("es-AR")} %` : a.oferta ? "en oferta" : "con tarjeta"}
+        {!efectivo && a.agotado ? " · agotado" : ""}
+        {!efectivo && a.sinConfirmar ? " · sin confirmar" : ""}
+      </small>
+    </span>
   );
 }
 
@@ -498,6 +537,7 @@ function Lista(props: {
   aplicarATodoElRubro: (id: string, campo: "margen" | "descuentoEfectivo", nombre: string) => void;
   vuelta: number;
   pasarUno: (id: string) => void;
+  competencia: DatosCompetencia | null;
 }) {
   const { cfg, minimo } = props;
   // Al terminar de escribir el % de un rubro: si hay productos con el suyo
@@ -584,7 +624,9 @@ function Lista(props: {
                 <th>
                   Margen real<small>lo que te queda</small>
                 </th>
-                <th>Competencia</th>
+                <th>
+                  Alifrut<small>al público, a tu tamaño</small>
+                </th>
               </tr>
             </thead>
           </table>
@@ -670,6 +712,7 @@ function Lista(props: {
                           ? "por unidad + envase"
                           : "viene envasado";
                       const hoyEf = p.precioHoy ? p.efectivoHoy ?? p.precioHoy : null;
+                      const ali = alifrutDe(props.competencia, p);
                       const clase = `fila${i % 2 === 1 ? " par" : ""}${abierto ? " abierta" : ""}`;
                       const abrir = () => props.setAbierto(abierto ? null : p.id);
                       const filasProd = [
@@ -728,14 +771,7 @@ function Lista(props: {
                             )}
                           </td>
                           <td>
-                            {r.ok && p.competencia ? (
-                              <span className={`pr-comp ${r.publico > p.competencia ? "caro" : "barato"}`}>
-                                {r.publico > p.competencia ? "+" : ""}
-                                {pct(r.publico / p.competencia - 1, 0)}
-                              </span>
-                            ) : (
-                              <span className="pr-tenue">—</span>
-                            )}
+                            <PrecioAlifrut a={ali} tuyo={r.ok ? r.publico : null} />
                           </td>
                         </tr>,
                         <tr key={`${p.id}-ef`} className={`${clase} e`} onClick={abrir}>
@@ -770,7 +806,9 @@ function Lista(props: {
                             )}
                           </td>
                           <td>{r.ok ? <Margen m={r.enEfectivo.margen} minimo={minimo} /> : "—"}</td>
-                          <td />
+                          <td>
+                            <PrecioAlifrut a={ali} tuyo={r.ok ? r.efectivo : null} efectivo />
+                          </td>
                         </tr>,
                       ];
                       if (abierto)

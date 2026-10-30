@@ -142,6 +142,10 @@
 .pr-precio.ef { color: var(--ef); }
 .pr-menos { color: var(--tinta-3); margin-right: 3px; font-weight: 600; }
 .pr-rubros .pr-in { width: 56px; }
+.pr-ali { display: inline-grid; justify-items: end; gap: 2px; }
+.pr-ali .n { font-weight: 600; }
+.pr-ali .pr-comp { font-size: 11px; padding: 1px 6px; }
+.pr-ali small { font-size: 10.5px; color: var(--tinta-3); white-space: nowrap; }
 
 /* Detalle */
 .pr-tabla tr.detalle td { border-top: 0; padding: 4px 0 16px; text-align: left; background: var(--acento-t); cursor: default; }

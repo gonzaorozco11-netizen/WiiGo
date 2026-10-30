@@ -252,23 +252,42 @@ export async function actualizarCompetencia(supabase: SupabaseClient): Promise<R
   }
   if (filas.length) await supabase.from("competencia_vinculos").upsert(filas, { onConflict: "id_producto,comercio" });
   await supabase.from("configuracion").upsert([{ parametro: "COMPETENCIA_LEIDA_EL", valor: ahora, fecha_actualizacion: ahora }], { onConflict: "parametro" });
+  // El descuento en efectivo que publica Alifrut en su lista al público (hoy 5 %).
+  try {
+    const l = await json<{ descuentoPct?: number; textoDescuento?: string }>("https://www.alifrut-distribuidora.com.ar/api/lista-precios");
+    const pct = Number(l.descuentoPct);
+    if (Number.isFinite(pct) && pct >= 0 && pct < 50 && /efectivo/i.test(l.textoDescuento ?? "efectivo")) {
+      await supabase.from("configuracion").upsert([{ parametro: CLAVE_DESC_ALIFRUT, valor: String(pct), fecha_actualizacion: ahora }], { onConflict: "parametro" });
+    }
+  } catch {
+    // Si no se puede leer, queda el último guardado.
+  }
   return { comercios, propuestos: filas.filter((f) => f.id_item).length };
 }
 
 export type VinculoCompetencia = { comercio: Comercio; estado: "PROPUESTO" | "CONFIRMADO"; item: ItemCompetencia | null };
-export type DatosCompetencia = { leidaEl: string | null; vinculos: Record<string, VinculoCompetencia[]> };
+export type DatosCompetencia = {
+  leidaEl: string | null;
+  vinculos: Record<string, VinculoCompetencia[]>;
+  /** % de descuento pagando en efectivo de la lista al público de Alifrut. */
+  alifrutDescEfectivo: number;
+};
+
+const CLAVE_DESC_ALIFRUT = "ALIFRUT_PUBLICO_DESC_EFECTIVO";
 
 /** Para la pantalla: el equivalente de cada comercio para cada producto. null si falta el SQL. */
 export async function cargarCompetencia(supabase: SupabaseClient): Promise<DatosCompetencia | null> {
   const { data: vinc, error } = await supabase.from("competencia_vinculos").select("id_producto, comercio, estado, competencia_items(*)");
   if (error) return null;
-  const { data: cfg } = await supabase.from("configuracion").select("valor").eq("parametro", "COMPETENCIA_LEIDA_EL").maybeSingle();
+  const { data: cfgs } = await supabase.from("configuracion").select("parametro, valor").in("parametro", ["COMPETENCIA_LEIDA_EL", CLAVE_DESC_ALIFRUT]);
+  const cfg = (cfgs ?? []).find((c) => c.parametro === "COMPETENCIA_LEIDA_EL");
+  const desc = Number((cfgs ?? []).find((c) => c.parametro === CLAVE_DESC_ALIFRUT)?.valor);
   const vinculos: Record<string, VinculoCompetencia[]> = {};
   for (const v of vinc ?? []) {
     const fila = v.competencia_items as unknown as Record<string, unknown> | null;
     (vinculos[v.id_producto as string] ??= []).push({ comercio: v.comercio as Comercio, estado: v.estado as VinculoCompetencia["estado"], item: fila ? filaAItem(fila) : null });
   }
-  return { leidaEl: (cfg?.valor as string | null) ?? null, vinculos };
+  return { leidaEl: (cfg?.valor as string | null) ?? null, vinculos, alifrutDescEfectivo: Number.isFinite(desc) ? desc : 5 };
 }
 
 export function filaAItem(f: Record<string, unknown>): ItemCompetencia {
