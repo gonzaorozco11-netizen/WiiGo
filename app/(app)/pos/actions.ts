@@ -18,7 +18,7 @@ import {
 } from "@/lib/referidosProfesionales";
 import { vinculoActivo } from "@/lib/pacientesProfesional";
 import { buscarProfesionalPorDni, verificarPinProfesional, calcularDescuentoCanje, registrarCanje, esProfesionalActivo } from "@/lib/canjesProfesionales";
-import { calcularCanjePuntos, aplicarCanjePuntos } from "@/lib/puntosWiigo";
+import { calcularCanjePuntos, aplicarCanjePuntos, calcularPuntosGanados, type LineaPuntos } from "@/lib/puntosWiigo";
 import { crearOrdenQrMp } from "@/lib/mercadopago";
 import { confirmarCobro } from "@/app/(app)/cobros-efectivo/actions";
 import { descontarStockDeVenta } from "@/lib/stockVenta";
@@ -30,24 +30,6 @@ async function usuarioActual() {
   const token = cookieStore.get(SESSION_COOKIE)?.value;
   const session = await readSessionToken(token, process.env.AUTH_SECRET ?? "");
   return session?.nombre ?? null;
-}
-
-// Los puntos WiiGo Club no son por producto: son una regla general
-// configurable en /configuracion ("N puntos cada $X gastados"), ver
-// ConfiguracionApp.tsx — misma fórmula acá.
-async function calcularPuntos(supabase: SupabaseClient, total: number) {
-  const { data } = await supabase
-    .from("configuracion")
-    .select("parametro, valor")
-    .in("parametro", ["PUNTOS_ACTIVO", "PUNTOS_CADA_MONTO", "PUNTOS_OTORGADOS"]);
-  const config = Object.fromEntries((data ?? []).map((r) => [r.parametro, r.valor]));
-  if (config.PUNTOS_ACTIVO !== "true") return 0;
-
-  const cadaMonto = Number(config.PUNTOS_CADA_MONTO ?? 0);
-  const otorgados = Number(config.PUNTOS_OTORGADOS ?? 0);
-  if (!cadaMonto || cadaMonto <= 0) return 0;
-
-  return Math.floor((total / cadaMonto) * otorgados);
 }
 
 type ItemCarrito = { idVariante: string; idMarca: string | null; cantidad: number; precioUnitario: number };
@@ -153,13 +135,13 @@ export async function previsualizarDescuentoReferidoAction(
 // Para mostrarle al empleado, en vivo, cuánto puede cubrir el cliente con
 // sus puntos WiiGo antes de cobrar (mismo criterio que el resto de las
 // validaciones en vivo de esta pantalla).
-export async function infoCanjePuntosAction(dni: string, montoAPagar: number) {
+export async function infoCanjePuntosAction(dni: string, montoAPagar: number, lineas: LineaPuntos[]) {
   const supabase = getSupabaseServerClient();
   const dniLimpio = dni.trim();
   if (!dniLimpio) return null;
   const { data: cliente } = await supabase.from("clientes").select("id_cliente").eq("dni", dniLimpio).maybeSingle();
   if (!cliente) return null;
-  return calcularCanjePuntos(supabase, cliente.id_cliente, montoAPagar);
+  return calcularCanjePuntos(supabase, cliente.id_cliente, montoAPagar, lineas);
 }
 
 // Venta mostrador: en Efectivo el mismo empleado arma el pedido y cobra en
@@ -240,6 +222,7 @@ export async function venderPos(
     }
 
   const subtotal = items.reduce((acc, i) => acc + i.precioUnitario * i.cantidad, 0);
+  const lineasPuntos: LineaPuntos[] = items.map((i) => ({ idMarca: i.idMarca, importe: i.precioUnitario * i.cantidad }));
 
   // Una profesional no puede usar el código de descuento de otra (ni el
   // suyo propio) para su propia compra — el beneficio de referido es para
@@ -302,7 +285,7 @@ export async function venderPos(
   let puntosACanjear = 0;
   if (usarPuntosWiigo && idCliente) {
     const montoAntesDePuntos = Math.max(subtotal - descuentoBeneficio - descuentoCanje, 0);
-    const infoPuntos = await calcularCanjePuntos(supabase, idCliente, montoAntesDePuntos);
+    const infoPuntos = await calcularCanjePuntos(supabase, idCliente, montoAntesDePuntos, lineasPuntos);
     descuentoPuntos = infoPuntos.maxDescuento;
     puntosACanjear = infoPuntos.puntosNecesarios;
   }
@@ -552,7 +535,7 @@ export async function venderPos(
   // no suma puntos de club en sus propias compras (ver esProfesionalActivo).
   // Los puntos extra por código de profesional (financiados por la marca,
   // para el cliente que referenció) se suman aparte, arriba de los normales.
-  const puntosGenerados = (idCliente && !compradorEsProfesional ? await calcularPuntos(supabase, total) : 0) + puntosExtra;
+  const puntosGenerados = (idCliente && !compradorEsProfesional ? await calcularPuntosGanados(supabase, lineasPuntos, total) : 0) + puntosExtra;
   await supabase.from("ventas").update({ puntos_generados: puntosGenerados }).eq("id_venta", venta.id_venta);
 
   if (idCliente && puntosGenerados > 0) {

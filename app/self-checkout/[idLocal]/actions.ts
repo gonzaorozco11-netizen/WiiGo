@@ -4,7 +4,7 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { calcularBeneficioReferido, resolverCodigoProfesional, resolverReferidoVenta } from "@/lib/referidosProfesionales";
 import { buscarProfesionalPorDni, verificarPinProfesional, calcularDescuentoCanje, esProfesionalActivo } from "@/lib/canjesProfesionales";
-import { calcularCanjePuntos } from "@/lib/puntosWiigo";
+import { calcularCanjePuntos, type LineaPuntos } from "@/lib/puntosWiigo";
 import { crearOrdenQrMp } from "@/lib/mercadopago";
 import { precioDe } from "@/lib/precios";
 import { turnoAbiertoDeLocal } from "@/app/(app)/turnos/actions";
@@ -134,13 +134,13 @@ export async function previsualizarDescuentoReferidoAction(
 
 // Para mostrarle al cliente, en vivo, cuánto puede cubrir con sus puntos
 // WiiGo antes de confirmar el pedido.
-export async function infoCanjePuntosAction(dni: string, montoAPagar: number) {
+export async function infoCanjePuntosAction(dni: string, montoAPagar: number, lineas: LineaPuntos[]) {
   const supabase = getSupabaseServerClient();
   const dniLimpio = dni.trim();
   if (!dniLimpio) return null;
   const { data: cliente } = await supabase.from("clientes").select("id_cliente").eq("dni", dniLimpio).maybeSingle();
   if (!cliente) return null;
-  return calcularCanjePuntos(supabase, cliente.id_cliente, montoAPagar);
+  return calcularCanjePuntos(supabase, cliente.id_cliente, montoAPagar, lineas);
 }
 
 export async function confirmarPedido(
@@ -305,7 +305,12 @@ export async function confirmarPedido(
   let puntosACanjear = 0;
   if (usarPuntosWiigo && idCliente) {
     const montoAntesDePuntos = Math.max(subtotal - descuentoBeneficio - descuentoCanje, 0);
-    const infoPuntos = await calcularCanjePuntos(supabase, idCliente, montoAntesDePuntos);
+    const infoPuntos = await calcularCanjePuntos(
+      supabase,
+      idCliente,
+      montoAntesDePuntos,
+      items.map((i) => ({ idMarca: i.idMarca, importe: i.precioUnitario * i.cantidad }))
+    );
     descuentoPuntos = infoPuntos.maxDescuento;
     puntosACanjear = infoPuntos.puntosNecesarios;
   }

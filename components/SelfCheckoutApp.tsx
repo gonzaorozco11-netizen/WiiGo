@@ -1613,6 +1613,7 @@ export default function SelfCheckoutApp({
     topePorcentaje: number;
     maxDescuento: number;
     puntosNecesarios: number;
+    soloPropios: boolean;
   } | null>(null);
   const [usarPuntosWiigo, setUsarPuntosWiigo] = useState(false);
 
@@ -1856,10 +1857,15 @@ export default function SelfCheckoutApp({
       return;
     }
     const timeout = setTimeout(() => {
-      infoCanjePuntosAction(dniLimpio, totalConCanje).then(setInfoPuntos);
+      infoCanjePuntosAction(
+        dniLimpio,
+        totalConCanje,
+        itemsCarrito.map((i) => ({ idMarca: i.producto.id_marca, importe: precioSegunMedio(i) * i.cantidad }))
+      ).then(setInfoPuntos);
     }, 400);
     return () => clearTimeout(timeout);
-  }, [dni, totalConCanje]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dni, totalConCanje, itemsCarrito]);
 
   function toggleMarcaCanje(idMarca: string) {
     setMarcasCanje((prev) => {
@@ -2632,6 +2638,14 @@ export default function SelfCheckoutApp({
                   </label>
                   <p className="sc-puntos-detalle">
                     Usa {infoPuntos.puntosNecesarios} de tus {infoPuntos.puntosDisponibles} puntos.
+                    {infoPuntos.soloPropios && " Valen en productos WiiGo (granel y marca propia)."}
+                  </p>
+                </div>
+              )}
+              {infoPuntos && infoPuntos.maxDescuento <= 0 && infoPuntos.soloPropios && infoPuntos.valorPorPunto > 0 && infoPuntos.puntosDisponibles > 0 && (
+                <div className="sc-card sc-card-amber">
+                  <p className="sc-puntos-detalle">
+                    ⭐ Tenés {infoPuntos.puntosDisponibles} puntos (${formatearMonto(infoPuntos.puntosDisponibles * infoPuntos.valorPorPunto)}). Los podés usar en productos WiiGo: granel y marca propia.
                   </p>
                 </div>
               )}

@@ -124,6 +124,7 @@ export default function PosApp({
     topePorcentaje: number;
     maxDescuento: number;
     puntosNecesarios: number;
+    soloPropios: boolean;
   } | null>(null);
   const [usarPuntosWiigo, setUsarPuntosWiigo] = useState(false);
 
@@ -326,10 +327,14 @@ export default function PosApp({
       return;
     }
     const timeout = setTimeout(() => {
-      infoCanjePuntosAction(dniLimpio, totalConCanje).then(setInfoPuntos);
+      infoCanjePuntosAction(
+        dniLimpio,
+        totalConCanje,
+        itemsCarrito.map((i) => ({ idMarca: i.producto.id_marca, importe: i.precio * i.cantidad }))
+      ).then(setInfoPuntos);
     }, 400);
     return () => clearTimeout(timeout);
-  }, [dni, totalConCanje]);
+  }, [dni, totalConCanje, itemsCarrito]);
 
   // Sin tope por stock, a propósito: si el producto está en la mano del
   // cliente, existe. El tope lo pone la realidad; el sistema avisa y marca.
@@ -752,7 +757,17 @@ export default function PosApp({
             </span>
             <input type="checkbox" checked={usarPuntosWiigo} onChange={(e) => setUsarPuntosWiigo(e.target.checked)} className="w-5 h-5" />
           </label>
+          {infoPuntos.soloPropios && (
+            <p className="text-xs text-amber-800 mt-1.5">Los puntos se usan solo en productos WiiGo (granel y marca propia).</p>
+          )}
         </div>
+      )}
+      {/* Tiene puntos pero no lleva nada de WiiGo: que el cajero se lo
+          ofrezca, es la idea del canje solo en lo propio. */}
+      {infoPuntos && infoPuntos.maxDescuento <= 0 && infoPuntos.soloPropios && infoPuntos.valorPorPunto > 0 && infoPuntos.puntosDisponibles > 0 && (
+        <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4">
+          ⭐ Tiene {infoPuntos.puntosDisponibles} puntos (${formatearMonto(infoPuntos.puntosDisponibles * infoPuntos.valorPorPunto)}). Se usan en productos WiiGo: ofrecele algo del granel.
+        </p>
       )}
 
       {/* Con dos precios, elegir el medio de pago cambia el total. El monto

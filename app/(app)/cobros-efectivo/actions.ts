@@ -14,7 +14,7 @@ import {
   cerrarReferidoVenta,
 } from "@/lib/referidosProfesionales";
 import { registrarCanje, esProfesionalActivo } from "@/lib/canjesProfesionales";
-import { calcularCanjePuntos, aplicarCanjePuntos } from "@/lib/puntosWiigo";
+import { calcularCanjePuntos, aplicarCanjePuntos, calcularPuntosGanados } from "@/lib/puntosWiigo";
 import { facturarAlAcreditarse } from "@/lib/arca/config";
 import { descontarStockDeVenta } from "@/lib/stockVenta";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -24,24 +24,6 @@ async function usuarioActual() {
   const token = cookieStore.get(SESSION_COOKIE)?.value;
   const session = await readSessionToken(token, process.env.AUTH_SECRET ?? "");
   return session?.nombre ?? null;
-}
-
-// Los puntos WiiGo Club no son por producto: son una regla general
-// configurable en /configuracion ("N puntos cada $X gastados"), ver
-// ConfiguracionApp.tsx — misma fórmula acá.
-async function calcularPuntos(supabase: SupabaseClient, total: number) {
-  const { data } = await supabase
-    .from("configuracion")
-    .select("parametro, valor")
-    .in("parametro", ["PUNTOS_ACTIVO", "PUNTOS_CADA_MONTO", "PUNTOS_OTORGADOS"]);
-  const config = Object.fromEntries((data ?? []).map((r) => [r.parametro, r.valor]));
-  if (config.PUNTOS_ACTIVO !== "true") return 0;
-
-  const cadaMonto = Number(config.PUNTOS_CADA_MONTO ?? 0);
-  const otorgados = Number(config.PUNTOS_OTORGADOS ?? 0);
-  if (!cadaMonto || cadaMonto <= 0) return 0;
-
-  return Math.floor((total / cadaMonto) * otorgados);
 }
 
 // Coincide con las tasas que se cargan en Configuración → Comisión de
@@ -104,6 +86,10 @@ export async function confirmarCobro(
       .eq("id_venta", idVenta);
     if (errorDetalle) return { error: friendlyDbError(errorDetalle) };
     const lineas = detalle ?? [];
+    const lineasPuntos = lineas.map((l) => ({
+      idMarca: (l.id_marca as string | null) ?? null,
+      importe: Number(l.subtotal ?? l.precio_unitario * l.cantidad) || 0,
+    }));
 
     // Acá ya no se frena por stock. Antes, si dos pedidos se armaron con la
     // misma última unidad (dos totems, o totem + mostrador), el segundo se
@@ -263,7 +249,7 @@ export async function confirmarCobro(
   if (venta.id_cliente && (venta.puntos_canjeados ?? 0) > 0) {
     const subtotalReal = (detalle ?? []).reduce((acc, d) => acc + (d.subtotal ?? d.precio_unitario * d.cantidad), 0);
     const montoAntesDePuntos = Math.max(subtotalReal - descuentoBeneficioReal - descuentoCanjeProfesionalReal, 0);
-    const infoPuntos = await calcularCanjePuntos(supabase, venta.id_cliente, montoAntesDePuntos);
+    const infoPuntos = await calcularCanjePuntos(supabase, venta.id_cliente, montoAntesDePuntos, lineasPuntos);
     await aplicarCanjePuntos(supabase, venta.id_cliente, infoPuntos.puntosNecesarios);
   }
 
@@ -277,7 +263,7 @@ export async function confirmarCobro(
     const { data: clienteDni } = await supabase.from("clientes").select("dni").eq("id_cliente", venta.id_cliente).maybeSingle();
     esProfesional = await esProfesionalActivo(supabase, clienteDni?.dni ?? null);
   }
-  const puntosGenerados = (venta.id_cliente && !esProfesional ? await calcularPuntos(supabase, total) : 0) + puntosExtra;
+  const puntosGenerados = (venta.id_cliente && !esProfesional ? await calcularPuntosGanados(supabase, lineasPuntos, total) : 0) + puntosExtra;
   await supabase.from("ventas").update({ puntos_generados: puntosGenerados }).eq("id_venta", idVenta);
 
   if (venta.id_cliente && puntosGenerados > 0) {

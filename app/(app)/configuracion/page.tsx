@@ -28,6 +28,8 @@ export default async function ConfiguracionPage() {
       "PUNTOS_ACTIVO",
       "PUNTOS_CADA_MONTO",
       "PUNTOS_OTORGADOS",
+      "PUNTOS_OTORGADOS_PROPIOS",
+      "PUNTOS_CANJE_SOLO_PROPIOS",
       "PUNTOS_TOPE_CANJE_PORCENTAJE",
       "PUNTOS_VALOR_PESOS",
       "IMP_CREDITOS_PORCENTAJE",
@@ -83,6 +85,8 @@ export default async function ConfiguracionPage() {
       puntosActivo={valores.get("PUNTOS_ACTIVO") === "true"}
       puntosCadaMonto={Number(valores.get("PUNTOS_CADA_MONTO") ?? 1000)}
       puntosOtorgados={Number(valores.get("PUNTOS_OTORGADOS") ?? 10)}
+      puntosOtorgadosPropios={Number(valores.get("PUNTOS_OTORGADOS_PROPIOS") ?? valores.get("PUNTOS_OTORGADOS") ?? 10)}
+      puntosCanjeSoloPropios={valores.get("PUNTOS_CANJE_SOLO_PROPIOS") !== "false"}
       puntosTopeCanjePorcentaje={Number(valores.get("PUNTOS_TOPE_CANJE_PORCENTAJE") ?? 0)}
       puntosValorPesos={Number(valores.get("PUNTOS_VALOR_PESOS") ?? 0)}
       impCreditosPorcentaje={Number(valores.get("IMP_CREDITOS_PORCENTAJE") ?? 0.6)}

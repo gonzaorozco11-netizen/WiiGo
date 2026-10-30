@@ -380,14 +380,18 @@ export async function cerrarReferidoVenta(
 }
 
 // Puntos extra financiados por las marcas, además de los puntos normales de
-// WiiGo Club — misma tasa de conversión que la regla general (Configuración).
+// WiiGo Club. `monto` son pesos que pone la marca: se pasan a puntos con lo
+// que vale un punto al canjear (PUNTOS_VALOR_PESOS), así el cliente recibe
+// exactamente esa plata. Antes se pasaba con la tasa de acumulación (5 cada
+// $1.000), que convertía $150 de la marca en 0 puntos.
 export async function puntosExtraPorMonto(supabase: SupabaseClient, monto: number) {
   if (monto <= 0) return 0;
   const { data } = await supabase
     .from("configuracion")
     .select("parametro, valor")
-    .in("parametro", ["PUNTOS_CADA_MONTO", "PUNTOS_OTORGADOS"]);
+    .in("parametro", ["PUNTOS_CADA_MONTO", "PUNTOS_OTORGADOS", "PUNTOS_VALOR_PESOS"]);
   const config = Object.fromEntries((data ?? []).map((r) => [r.parametro, Number(r.valor ?? 0)]));
+  if (config.PUNTOS_VALOR_PESOS > 0) return Math.floor(monto / config.PUNTOS_VALOR_PESOS);
   if (!config.PUNTOS_CADA_MONTO) return 0;
   return Math.floor((monto / config.PUNTOS_CADA_MONTO) * (config.PUNTOS_OTORGADOS ?? 0));
 }

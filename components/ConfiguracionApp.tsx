@@ -23,6 +23,8 @@ export default function ConfiguracionApp({
   puntosActivo,
   puntosCadaMonto,
   puntosOtorgados,
+  puntosOtorgadosPropios,
+  puntosCanjeSoloPropios,
   puntosTopeCanjePorcentaje,
   puntosValorPesos,
   impCreditosPorcentaje,
@@ -63,6 +65,8 @@ export default function ConfiguracionApp({
   puntosActivo: boolean;
   puntosCadaMonto: number;
   puntosOtorgados: number;
+  puntosOtorgadosPropios: number;
+  puntosCanjeSoloPropios: boolean;
   puntosTopeCanjePorcentaje: number;
   puntosValorPesos: number;
   impCreditosPorcentaje: number;
@@ -106,6 +110,8 @@ export default function ConfiguracionApp({
   const [activo, setActivo] = useState(puntosActivo);
   const [cadaMonto, setCadaMonto] = useState(puntosCadaMonto);
   const [otorgados, setOtorgados] = useState(puntosOtorgados);
+  const [otorgadosPropios, setOtorgadosPropios] = useState(puntosOtorgadosPropios);
+  const [soloPropios, setSoloPropios] = useState(puntosCanjeSoloPropios);
   const [topeCanje, setTopeCanje] = useState(puntosTopeCanjePorcentaje);
   const [valorPunto, setValorPunto] = useState(puntosValorPesos);
   const [compraEjemplo, setCompraEjemplo] = useState(23500);
@@ -172,14 +178,19 @@ export default function ConfiguracionApp({
   const [diasDevolucion, setDiasDevolucion] = useState(devolucionDiasAviso);
 
   const puntosCalculados = useMemo(() => {
-    if (!cadaMonto || cadaMonto <= 0) return 0;
-    return Math.floor((compraEjemplo / cadaMonto) * otorgados);
-  }, [compraEjemplo, cadaMonto, otorgados]);
+    if (!cadaMonto || cadaMonto <= 0) return { marcas: 0, propios: 0 };
+    return {
+      marcas: Math.floor((compraEjemplo / cadaMonto) * otorgados),
+      propios: Math.floor((compraEjemplo / cadaMonto) * otorgadosPropios),
+    };
+  }, [compraEjemplo, cadaMonto, otorgados, otorgadosPropios]);
 
   // Cuánto de cada venta se devuelve en puntos: (puntos que gana × lo que
   // vale cada punto) sobre lo que gastó. Es el número que decide si el
   // programa es sostenible, y es el que antes no se veía en ningún lado.
+  // Uno por nivel: en marcas se compara con el royalty, en lo propio con el margen.
   const cashbackPct = cadaMonto > 0 ? ((otorgados * valorPunto) / cadaMonto) * 100 : 0;
+  const cashbackPropiosPct = cadaMonto > 0 ? ((otorgadosPropios * valorPunto) / cadaMonto) * 100 : 0;
   // El tope acota cuánto se puede usar en UNA compra, pero no cambia el
   // cashback: los puntos se siguen acumulando para las siguientes.
   const maxCanjeEjemplo = valorPunto > 0 ? Math.round(compraEjemplo * (topeCanje / 100)) : 0;
@@ -295,7 +306,7 @@ export default function ConfiguracionApp({
           </span>
         </label>
 
-        <div className="grid grid-cols-2 gap-3 mb-4">
+        <div className="grid grid-cols-3 gap-3 mb-1">
           <div>
             <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="puntos_cada_monto">
               Cada $
@@ -310,24 +321,44 @@ export default function ConfiguracionApp({
             />
           </div>
           <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="puntos_otorgados_propios">
+              Puntos en productos WiiGo
+            </label>
+            <input
+              id="puntos_otorgados_propios"
+              name="puntos_otorgados_propios"
+              type="number"
+              min={0}
+              value={otorgadosPropios}
+              onChange={(e) => setOtorgadosPropios(Number(e.target.value))}
+              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+          </div>
+          <div>
             <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="puntos_otorgados">
-              Puntos otorgados
+              Puntos en productos de marcas
             </label>
             <input
               id="puntos_otorgados"
               name="puntos_otorgados"
               type="number"
+              min={0}
               value={otorgados}
               onChange={(e) => setOtorgados(Number(e.target.value))}
               className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
             />
           </div>
         </div>
+        <p className="text-xs text-neutral-400 mb-3">
+          Productos WiiGo: granel, fraccionado y marca propia, donde te queda todo el margen. Marcas: las que están en
+          consignación, donde te queda el royalty.
+        </p>
 
         <div className="bg-neutral-50 border border-neutral-100 rounded-lg px-3 py-2 mb-4">
           <p className="text-xs text-neutral-500">Regla actual</p>
           <p className="text-sm font-semibold text-neutral-900">
-            {otorgados} puntos cada ${cadaMonto.toLocaleString("es-AR")}
+            {otorgadosPropios} puntos cada ${cadaMonto.toLocaleString("es-AR")} en productos WiiGo · {otorgados} en
+            productos de marcas
           </p>
         </div>
 
@@ -344,7 +375,8 @@ export default function ConfiguracionApp({
           />
           <p className="text-sm text-neutral-600">
             Compra de ${compraEjemplo.toLocaleString("es-AR")} →{" "}
-            <strong className="text-neutral-900">{puntosCalculados} puntos</strong>
+            <strong className="text-neutral-900">{puntosCalculados.propios} puntos</strong> si es de productos WiiGo,{" "}
+            <strong className="text-neutral-900">{puntosCalculados.marcas} puntos</strong> si es de marcas
           </p>
         </div>
 
@@ -387,43 +419,56 @@ export default function ConfiguracionApp({
           {/* El número que importa no es cuánto vale un punto, sino qué % de
               cada venta estás regalando. Antes no se veía en ningún lado, y
               por eso pasó desapercibido que el programa devolvía el 100%. */}
-          <div
-            className={`rounded-lg px-3 py-2.5 mb-3 border ${
-              valorPunto <= 0
-                ? "bg-neutral-50 border-neutral-200"
-                : cashbackPct > 10
-                  ? "bg-red-50 border-red-200"
-                  : cashbackPct > 5
-                    ? "bg-amber-50 border-amber-200"
-                    : "bg-emerald-50 border-emerald-200"
-            }`}
-          >
-            {valorPunto <= 0 ? (
+          <label className="flex items-start gap-2 mb-4 cursor-pointer">
+            <input
+              type="checkbox"
+              name="puntos_canje_solo_propios"
+              checked={soloPropios}
+              onChange={(e) => setSoloPropios(e.target.checked)}
+              className="w-4 h-4 mt-0.5"
+            />
+            <span className="text-sm text-neutral-700">
+              <b className="text-neutral-900">Canjear solo en productos WiiGo.</b> Canjear en una marca te obliga a
+              pagarle el precio de lista entero; en lo tuyo te cuesta solo la mercadería.
+            </span>
+          </label>
+
+          {valorPunto <= 0 ? (
+            <div className="rounded-lg px-3 py-2.5 mb-3 border bg-neutral-50 border-neutral-200">
               <p className="text-sm text-neutral-600">
                 <b className="text-neutral-900">El canje está apagado.</b> Los clientes siguen acumulando puntos,
                 pero no los pueden usar hasta que definas cuánto vale uno.
               </p>
-            ) : (
-              <>
-                <p className="text-xs text-neutral-500">Le estás devolviendo al cliente</p>
-                <p
-                  className={`text-2xl font-bold ${
-                    cashbackPct > 10 ? "text-red-700" : cashbackPct > 5 ? "text-amber-700" : "text-emerald-700"
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              {[
+                { titulo: "En productos WiiGo", pct: cashbackPropiosPct, rojo: 6, amarillo: 3, nota: "Sale de tu margen." },
+                { titulo: "En productos de marcas", pct: cashbackPct, rojo: 1.5, amarillo: 0.75, nota: "Sale de tu royalty (5 %): a la marca se le liquida la lista igual." },
+              ].map((c) => (
+                <div
+                  key={c.titulo}
+                  className={`rounded-lg px-3 py-2.5 border ${
+                    c.pct > c.rojo ? "bg-red-50 border-red-200" : c.pct > c.amarillo ? "bg-amber-50 border-amber-200" : "bg-emerald-50 border-emerald-200"
                   }`}
                 >
-                  {cashbackPct.toLocaleString("es-AR", { maximumFractionDigits: 2 })}%
-                </p>
-                <p className="text-xs text-neutral-500 mt-0.5">
-                  de todo lo que compra, en puntos. Sale entero de tu comisión: a la marca se le liquida el precio de
-                  lista igual.
-                  {cashbackPct > 5 && " Comparalo con el royalty que te cobran las marcas antes de dejarlo así."}
-                </p>
-              </>
-            )}
-          </div>
+                  <p className="text-xs text-neutral-500">{c.titulo} le devolvés</p>
+                  <p
+                    className={`text-2xl font-bold ${
+                      c.pct > c.rojo ? "text-red-700" : c.pct > c.amarillo ? "text-amber-700" : "text-emerald-700"
+                    }`}
+                  >
+                    {c.pct.toLocaleString("es-AR", { maximumFractionDigits: 2 })}%
+                  </p>
+                  <p className="text-xs text-neutral-500 mt-0.5">de lo que compra, en puntos. {c.nota}</p>
+                </div>
+              ))}
+            </div>
+          )}
 
           <p className="text-sm text-neutral-600">
-            Compra de ${compraEjemplo.toLocaleString("es-AR")} → como máximo se pueden pagar{" "}
+            Compra de ${compraEjemplo.toLocaleString("es-AR")}
+            {soloPropios ? " en productos WiiGo" : ""} → como máximo se pueden pagar{" "}
             <strong className="text-neutral-900">${maxCanjeEjemplo.toLocaleString("es-AR")}</strong> con puntos.
           </p>
         </div>
