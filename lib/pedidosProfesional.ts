@@ -56,11 +56,12 @@ export function mensajePedidoListo(p: {
   paraProfesional?: boolean;
 }) {
   const dia = p.guardarHasta.toLocaleDateString("es-AR", { weekday: "long", day: "2-digit", month: "2-digit", timeZone: "America/Argentina/Buenos_Aires" });
-  // Con caritas, más cálido (Gonzalo, 2026-10-30: "que sea más divertido, tipo ¡Hola Juan!").
+  // Con caritas, más cálido (Gonzalo, 2026-10-30: "que sea más divertido, tipo ¡Hola Juan!"),
+  // pero pocas: una por renglón, sin fueguitos ni brillitos ("tampoco tantos").
   if (p.paraProfesional) {
     return [
-      `¡Hola ${p.paciente}! 👋🔥`,
-      "Tu pedido ya está listo en WiiGo 🛍️✨",
+      `¡Hola ${p.paciente}! 👋`,
+      "Tu pedido ya está listo en WiiGo 🛍️",
       ...(p.direccion ? [`📍 ${p.direccion}`] : []),
       "",
       `🗓️ Te lo guardamos hasta el ${dia}.`,
@@ -77,8 +78,8 @@ export function mensajePedidoListo(p: {
       ? `${pesos(p.totalEfectivo)} en efectivo o ${pesos(p.totalLista)} con tarjeta o Mercado Pago`
       : pesos(p.totalLista);
   return [
-    `¡Hola ${p.paciente}! 👋🔥`,
-    `Tu pedido de ${p.profesional} ya está listo en WiiGo 🛍️✨`,
+    `¡Hola ${p.paciente}! 👋`,
+    `Tu pedido de ${p.profesional} ya está listo en WiiGo 🛍️`,
     ...(p.direccion ? [`📍 ${p.direccion}`] : []),
     "",
     `🗓️ Te lo guardamos hasta el ${dia}.`,
