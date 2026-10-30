@@ -183,17 +183,61 @@ async function leerJumbo(busquedas: string[]): Promise<Leido[]> {
   return [...salida.values()].filter((p) => p.gramos);
 }
 
-export type ResultadoLectura = { comercios: Record<Comercio, { leidos: number; error: string | null }>; propuestos: number };
+/** Granel → nombre del producto de la lista exclusiva de Alifrut del que sale. Vacío si falta sql/precios-alifrut.sql. */
+async function nombresListaPrivada(supabase: SupabaseClient): Promise<Map<string, string>> {
+  const [gran, cat] = await Promise.all([
+    supabase.from("costos_granel").select("id_granel, id_item").not("id_item", "is", null),
+    supabase.from("catalogo_proveedor").select("id_item, nombre"),
+  ]);
+  if (gran.error || cat.error) return new Map();
+  const nombreItem = new Map((cat.data ?? []).map((c) => [c.id_item as string, c.nombre as string]));
+  const salida = new Map<string, string>();
+  for (const g of gran.data ?? []) {
+    const n = nombreItem.get(g.id_item as string);
+    if (n) salida.set(g.id_granel as string, n);
+  }
+  return salida;
+}
+
+/** "Copos De Maiz Con Azucar x4kg" y "Mix Clasico x 1 kg" → sin tildes, sin el tamaño, en minúscula. */
+function sinTamano(s: string) {
+  return s
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/\bx\s*\d+(?:[.,]\d+)?\s*(?:kgs?|grs?|g|unidades|u)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** El mismo producto en la lista al público: primero con el mismo tamaño, si no el mismo nombre. */
+function mismoDeAlifrut(nombre: string, items: ItemCompetencia[], rechazados: string[]): ItemCompetencia | null {
+  const posibles = items.filter((i) => !rechazados.includes(i.id));
+  const exacto = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+  const conTamano = posibles.find((i) => exacto(i.nombre) === exacto(nombre));
+  if (conTamano) return conTamano;
+  const base = sinTamano(nombre);
+  const mismos = posibles.filter((i) => sinTamano(i.nombre) === base);
+  // Si hay varios tamaños, el que tenga stock y, entre esos, el de 1 kg.
+  return mismos.sort((a, b) => Number(b.disponible) - Number(a.disponible) || Math.abs((a.gramos ?? 0) - 1000) - Math.abs((b.gramos ?? 0) - 1000))[0] ?? null;
+}
+
+export type ResultadoLectura ={ comercios: Record<Comercio, { leidos: number; error: string | null }>; propuestos: number };
 
 export async function actualizarCompetencia(supabase: SupabaseClient): Promise<ResultadoLectura> {
   const ahora = new Date().toISOString();
   const { data: marcas } = await supabase.from("marcas").select("id_marca").eq("tipo_comercializacion", "PROPIA");
   const { data: prods } = await supabase
     .from("productos")
-    .select("id_producto, nombre, peso_neto_g")
+    .select("id_producto, nombre, peso_neto_g, id_granel")
     .in("id_marca", (marcas ?? []).map((m) => m.id_marca))
     .eq("estado", "ACTIVO");
-  const productos = (prods ?? []).map((p) => ({ id: p.id_producto as string, nombre: p.nombre as string, gramos: Number(p.peso_neto_g) || null }));
+  const productos = (prods ?? []).map((p) => ({
+    id: p.id_producto as string,
+    nombre: p.nombre as string,
+    gramos: Number(p.peso_neto_g) || null,
+    idGranel: (p.id_granel as string | null) ?? null,
+  }));
   const busquedas = [...new Set(productos.map((p) => nombreBase(p.nombre).toLowerCase()))];
 
   const lectores: Record<Comercio, () => Promise<Leido[]>> = {
@@ -239,12 +283,25 @@ export async function actualizarCompetencia(supabase: SupabaseClient): Promise<R
   const items = (itemsRaw ?? []).map(filaAItem);
   const { data: vinc } = await supabase.from("competencia_vinculos").select("id_producto, comercio, estado, rechazados, id_item");
   const vincPor = new Map((vinc ?? []).map((v) => [`${v.id_producto}:${v.comercio}`, v]));
+  // Alifrut: el producto ya está vinculado a su lista exclusiva (de qué
+  // producto de Alifrut sale). Ese mismo producto en la lista al público es el
+  // equivalente, en el tamaño que sea, y queda confirmado solo: no hace falta
+  // adivinar por el nombre (Gonzalo, 2026-10-29).
+  const nombrePrivado = await nombresListaPrivada(supabase);
+  const itemsAlifrut = items.filter((i) => i.comercio === "ALIFRUT");
   const filas: Record<string, unknown>[] = [];
   for (const p of productos) {
     for (const { clave } of COMERCIOS) {
       const v = vincPor.get(`${p.id}:${clave}`);
       if (v?.estado === "CONFIRMADO" && v.id_item) continue;
       const rechazados = (v?.rechazados as string[] | null) ?? [];
+      if (clave === "ALIFRUT" && p.idGranel && nombrePrivado.has(p.idGranel)) {
+        const mismo = mismoDeAlifrut(nombrePrivado.get(p.idGranel)!, itemsAlifrut, rechazados);
+        if (mismo) {
+          filas.push({ id_producto: p.id, comercio: clave, id_item: mismo.id, estado: "CONFIRMADO", rechazados, actualizado_el: ahora });
+          continue;
+        }
+      }
       const cand = mejorCandidato({ nombre: nombreBase(p.nombre), gramos: p.gramos }, items.filter((i) => i.comercio === clave), rechazados);
       if ((cand?.id ?? null) === (v?.id_item ?? null) && v) continue;
       filas.push({ id_producto: p.id, comercio: clave, id_item: cand?.id ?? null, estado: "PROPUESTO", rechazados, actualizado_el: ahora });
