@@ -5,7 +5,7 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import { esRolInterno } from "@/lib/rolesInternos";
 import { COMERCIOS, mejorCandidato, type Comercio } from "@/lib/competencia";
-import { actualizarCompetencia, filaAItem } from "@/lib/competenciaLeer";
+import { actualizarCompetencia, filaAItem, todasLasFilas } from "@/lib/competenciaLeer";
 import { nombreBase } from "@/lib/nombreProducto";
 
 // La competencia de Mendoza en Precios: se lee sola cada lunes (cron), y
@@ -57,9 +57,12 @@ export async function descartarEquivalente(idProducto: string, comercio: string)
   const { data: v, error } = await supabase.from("competencia_vinculos").select("id_item, rechazados").eq("id_producto", idProducto).eq("comercio", comercio).maybeSingle();
   if (error) return { error: FALTA_SQL };
   const rechazados = [...new Set([...((v?.rechazados as string[] | null) ?? []), ...(v?.id_item ? [v.id_item as string] : [])])];
-  const [{ data: prod }, { data: items }] = await Promise.all([
+  const [{ data: prod }, items] = await Promise.all([
     supabase.from("productos").select("nombre, peso_neto_g").eq("id_producto", idProducto).maybeSingle(),
-    supabase.from("competencia_items").select("*").eq("comercio", comercio).eq("disponible", true),
+    // De a 1.000: un comercio grande (Bela Vita, Mega Nuts) pasa ese tope.
+    todasLasFilas<Record<string, unknown>>((desde, hasta) =>
+      supabase.from("competencia_items").select("*").eq("comercio", comercio).eq("disponible", true).not("gramos", "is", null).order("id_item").range(desde, hasta)
+    ),
   ]);
   const siguiente = prod ? mejorCandidato({ nombre: nombreBase(prod.nombre as string), gramos: Number(prod.peso_neto_g) || null }, (items ?? []).map(filaAItem), rechazados) : null;
   await supabase

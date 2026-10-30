@@ -186,6 +186,21 @@ async function leerJumbo(busquedas: string[]): Promise<Leido[]> {
 }
 
 /**
+ * Todas las filas de una consulta, de a 1.000: la base no devuelve más que
+ * eso por vez, y sin avisar (así se perdían productos de la competencia).
+ */
+export async function todasLasFilas<T>(consulta: (desde: number, hasta: number) => PromiseLike<{ data: T[] | null; error: unknown }>): Promise<T[]> {
+  const salida: T[] = [];
+  for (let desde = 0; desde < 100000; desde += 1000) {
+    const { data, error } = await consulta(desde, desde + 999);
+    if (error || !data?.length) break;
+    salida.push(...data);
+    if (data.length < 1000) break;
+  }
+  return salida;
+}
+
+/**
  * Granel → el producto de la lista exclusiva de Alifrut del que sale, y
  * cuántos gramos trae lo que se compra (por kilo: 1000; por bolsa: los kg de
  * la bolsa). Vacío si falta sql/precios-alifrut.sql.
@@ -287,9 +302,15 @@ export async function actualizarCompetencia(supabase: SupabaseClient): Promise<R
 
   // Propuestas para lo que todavía no tiene equivalente confirmado.
   // De Alifrut entra también lo agotado: es el proveedor, y saber que no tiene sirve (sale con "agotado").
-  const { data: itemsRaw } = await supabase.from("competencia_items").select("*").or("disponible.eq.true,comercio.eq.ALIFRUT");
-  const items = (itemsRaw ?? []).map(filaAItem);
-  const { data: vinc } = await supabase.from("competencia_vinculos").select("id_producto, comercio, estado, rechazados, id_item");
+  // Entre todos los comercios son varios miles: con una sola consulta quedaban
+  // afuera, por ejemplo, la quinoa pop y el pomelo de Alifrut.
+  const itemsRaw = await todasLasFilas<Record<string, unknown>>((desde, hasta) =>
+    supabase.from("competencia_items").select("*").or("disponible.eq.true,comercio.eq.ALIFRUT").order("id_item").range(desde, hasta)
+  );
+  const items = itemsRaw.map(filaAItem);
+  const vinc = await todasLasFilas<Record<string, unknown>>((desde, hasta) =>
+    supabase.from("competencia_vinculos").select("id_producto, comercio, estado, rechazados, id_item").order("id_producto").order("comercio").range(desde, hasta)
+  );
   const vincPor = new Map((vinc ?? []).map((v) => [`${v.id_producto}:${v.comercio}`, v]));
   // Alifrut: el producto ya está vinculado a su lista exclusiva (de qué
   // producto de Alifrut sale). Ese mismo producto en la lista al público es el
@@ -323,7 +344,9 @@ export async function actualizarCompetencia(supabase: SupabaseClient): Promise<R
   // en cada lectura porque la lectura lo vuelve a dejar sin tamaño.
   const sinTamano = new Set(itemsAlifrut.filter((i) => !i.gramos).map((i) => i.id));
   if (sinTamano.size) {
-    const { data: vAli } = await supabase.from("competencia_vinculos").select("id_producto, id_item").eq("comercio", "ALIFRUT").not("id_item", "is", null);
+    const vAli = await todasLasFilas<Record<string, unknown>>((desde, hasta) =>
+      supabase.from("competencia_vinculos").select("id_producto, id_item").eq("comercio", "ALIFRUT").not("id_item", "is", null).order("id_producto").range(desde, hasta)
+    );
     const granelDe = new Map(productos.map((p) => [p.id, p.idGranel]));
     const hechos = new Set<string>();
     for (const v of vAli ?? []) {
@@ -361,8 +384,11 @@ const CLAVE_DESC_ALIFRUT = "ALIFRUT_PUBLICO_DESC_EFECTIVO";
 
 /** Para la pantalla: el equivalente de cada comercio para cada producto. null si falta el SQL. */
 export async function cargarCompetencia(supabase: SupabaseClient): Promise<DatosCompetencia | null> {
-  const { data: vinc, error } = await supabase.from("competencia_vinculos").select("id_producto, comercio, estado, competencia_items(*)");
+  const { error } = await supabase.from("competencia_vinculos").select("id_producto", { head: true, count: "exact" });
   if (error) return null;
+  const vinc = await todasLasFilas<Record<string, unknown>>((desde, hasta) =>
+    supabase.from("competencia_vinculos").select("id_producto, comercio, estado, competencia_items(*)").order("id_producto").order("comercio").range(desde, hasta)
+  );
   const { data: cfgs } = await supabase.from("configuracion").select("parametro, valor").in("parametro", ["COMPETENCIA_LEIDA_EL", CLAVE_DESC_ALIFRUT]);
   const cfg = (cfgs ?? []).find((c) => c.parametro === "COMPETENCIA_LEIDA_EL");
   const desc = Number((cfgs ?? []).find((c) => c.parametro === CLAVE_DESC_ALIFRUT)?.valor);
