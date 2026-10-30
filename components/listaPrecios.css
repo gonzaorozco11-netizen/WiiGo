@@ -61,8 +61,8 @@
 .lp-rubro-nombre::after { content: ""; flex: 1; height: 1px; background: color-mix(in srgb, var(--c) 30%, transparent); }
 .lp-cols { display: grid; grid-template-columns: 42px 1fr 58px 58px; gap: 9px; padding: 0 6px 3px; font-size: 7.5px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--lp-tinta-2); }
 .lp-cols span:nth-child(n + 3) { text-align: right; }
-.lp-fila { display: grid; grid-template-columns: 42px 1fr 58px 58px; gap: 9px; align-items: center; padding: 5px 6px; border-radius: 7px; font-variant-numeric: tabular-nums; break-inside: avoid; }
-.lp-col > .lp-fila:nth-child(even) { background: var(--lp-salvia-t); }
+/* Todos los renglones iguales, separados por una línea finita (Gonzalo: "que no se vea uno pintado y el otro no"). */
+.lp-fila { display: grid; grid-template-columns: 42px 1fr 58px 58px; gap: 9px; align-items: center; padding: 6px 6px; border-bottom: 1px solid var(--lp-raya); font-variant-numeric: tabular-nums; break-inside: avoid; }
 .lp-img, .lp-icono { width: 42px; height: 42px; border-radius: 8px; border: 1px solid var(--lp-raya); background: #fff; display: grid; place-items: center; overflow: hidden; }
 .lp-img img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .lp-icono { background: color-mix(in srgb, var(--c) 12%, #fff); }
