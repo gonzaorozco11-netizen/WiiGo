@@ -702,6 +702,8 @@ export type GananciaRealPortal = {
   sircreb: number;
   impCreditos: number;
   impDebitos: number;
+  /** Descuento a pacientes + lo que sumaron las profesionales con productos de la marca. */
+  programaProfesionales: number;
   netoTrasComision: number;
   cargosDelMes: number;
   detalleCargos: { concepto: string; importe: number }[];
@@ -734,6 +736,7 @@ export async function gananciaRealPortal(): Promise<GananciaRealPortal | null> {
   let sircreb = 0;
   let impCreditos = 0;
   let impDebitos = 0;
+  let programaProfesionales = 0;
   let netoTrasComision = 0;
   try {
     const r = (await calcularRendicion(sesion.idMarca, desde, hoyISO)).resumen;
@@ -744,6 +747,7 @@ export async function gananciaRealPortal(): Promise<GananciaRealPortal | null> {
     sircreb = r.sircreb;
     impCreditos = r.impCreditos;
     impDebitos = r.impDebitos;
+    programaProfesionales = r.programaProfesionales;
     netoTrasComision = r.netoARendir;
   } catch {
     return null; // antes de mostrar un número armado a medias, no se muestra nada
@@ -779,6 +783,7 @@ export async function gananciaRealPortal(): Promise<GananciaRealPortal | null> {
     sircreb,
     impCreditos,
     impDebitos,
+    programaProfesionales,
     netoTrasComision,
     cargosDelMes,
     detalleCargos,
@@ -795,6 +800,7 @@ export type GananciaPorProducto = {
   sircreb: number;
   impCreditos: number;
   impDebitos: number;
+  programaProfesionales: number;
   neto: number;
   porcentaje: number;
 };
@@ -815,6 +821,7 @@ export type LineaVentaMarca = {
   sircreb: number;
   impCreditos: number;
   impDebitos: number;
+  programaProfesionales: number;
   neto: number;
 };
 
@@ -858,6 +865,7 @@ function mapearLineasParaPortal(lineas: Awaited<ReturnType<typeof calcularRendic
       sircreb: l.sircreb,
       impCreditos: l.impCreditos,
       impDebitos: l.impDebitos,
+      programaProfesionales: l.programaProfesionales,
       neto: l.netoARendir,
     }));
 }
@@ -921,6 +929,7 @@ export async function detalleMesPortal(): Promise<DetalleMesPortal> {
     sircreb: number;
     impCreditos: number;
     impDebitos: number;
+    programaProfesionales: number;
     neto: number;
   };
   const vacio = (): Acumulado => ({
@@ -931,6 +940,7 @@ export async function detalleMesPortal(): Promise<DetalleMesPortal> {
     sircreb: 0,
     impCreditos: 0,
     impDebitos: 0,
+    programaProfesionales: 0,
     neto: 0,
   });
 
@@ -944,6 +954,7 @@ export async function detalleMesPortal(): Promise<DetalleMesPortal> {
     actual.sircreb += l.sircreb;
     actual.impCreditos += l.impCreditos;
     actual.impDebitos += l.impDebitos;
+    actual.programaProfesionales += l.programaProfesionales;
     actual.neto += l.netoARendir;
     porProductoMapa.set(l.producto, actual);
   }

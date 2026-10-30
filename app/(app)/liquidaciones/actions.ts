@@ -76,6 +76,14 @@ export type LineaRendicion = {
   feeMp: number;
   sircreb: number;
   impDebitos: number;
+  /**
+   * Lo que la marca pone en el programa de profesionales en ese renglón: el
+   * descuento que se le dio al paciente más lo que sumó la profesional (cada
+   * marca define sus %, en config_profesionales_marca). Si la profesional
+   * después canjea su saldo en productos de la marca, esa plata ya la puso la
+   * marca acá: el canje no se vuelve a cobrar (Gonzalo, 2026-10-30).
+   */
+  programaProfesionales: number;
   netoARendir: number;
 };
 
@@ -88,6 +96,7 @@ function vacioResumen() {
     feeMp: 0,
     sircreb: 0,
     impDebitos: 0,
+    programaProfesionales: 0,
     netoARendir: 0,
     netoEfectivo: 0,
     netoTransferencia: 0,
@@ -184,6 +193,23 @@ export async function construirLineas(
     .in("id_pago", idsPago.length > 0 ? idsPago : ["00000000-0000-0000-0000-000000000000"]);
   const formaPagoPorIdPago = new Map((pagos ?? []).map((p) => [p.id_pago, p.forma_pago_cliente]));
 
+  // El programa de profesionales de cada renglón vendido con código o a un
+  // paciente: beneficio del paciente + lo que sumó la profesional. Las ventas
+  // anuladas no cuentan (su referido queda ANULADO).
+  const programaPorDetalle = new Map<string, number>();
+  const idsDetalle = (detalle ?? []).map((d) => d.id_detalle as string);
+  for (let i = 0; i < idsDetalle.length; i += 300) {
+    const { data: refs } = await supabase
+      .from("detalle_referidos_profesionales")
+      .select("id_detalle_venta, beneficio_cliente, recompensa_profesional, referidos_profesionales!inner(estado)")
+      .in("id_detalle_venta", idsDetalle.slice(i, i + 300))
+      .neq("referidos_profesionales.estado", "ANULADO");
+    for (const r of refs ?? []) {
+      const id = r.id_detalle_venta as string;
+      programaPorDetalle.set(id, (programaPorDetalle.get(id) ?? 0) + Number(r.beneficio_cliente ?? 0) + Number(r.recompensa_profesional ?? 0));
+    }
+  }
+
   const lineas: LineaRendicion[] = [];
 
   for (const linea of detalle ?? []) {
@@ -244,8 +270,12 @@ export async function construirLineas(
     // resto, cargada en Configuración.
     const impDebitosLinea =
       !esEfectivo && marca.trasladar_imp_debitos ? redondear2(ventaBruta * (tasas.impDebitos / 100)) : 0;
+    // Si se devolvió parte del renglón, el programa baja en la misma proporción.
+    const subtotalOriginal = Number(linea.subtotal ?? linea.precio_unitario * linea.cantidad) || 0;
+    const parteQueQueda = subtotalOriginal > 0 ? Math.min(1, neto.subtotal / subtotalOriginal) : 1;
+    const programaLinea = redondear2((programaPorDetalle.get(linea.id_detalle as string) ?? 0) * parteQueQueda);
     const netoARendir = redondear2(
-      ventaBruta - comisionWiigo - ivaComision - impCreditosLinea - feeMp - sircrebLinea - impDebitosLinea
+      ventaBruta - comisionWiigo - ivaComision - impCreditosLinea - feeMp - sircrebLinea - impDebitosLinea - programaLinea
     );
 
     lineas.push({
@@ -263,6 +293,7 @@ export async function construirLineas(
       feeMp,
       sircreb: sircrebLinea,
       impDebitos: impDebitosLinea,
+      programaProfesionales: programaLinea,
       netoARendir,
     });
   }
@@ -278,6 +309,7 @@ export async function construirLineas(
       feeMp: redondear2(acc.feeMp + l.feeMp),
       sircreb: redondear2(acc.sircreb + l.sircreb),
       impDebitos: redondear2(acc.impDebitos + l.impDebitos),
+      programaProfesionales: redondear2(acc.programaProfesionales + l.programaProfesionales),
       netoARendir: redondear2(acc.netoARendir + l.netoARendir),
       // Dos plata distintas: lo que se le entrega en mano (efectivo) y lo
       // que se le transfiere por banco — no se pueden mezclar en un solo
@@ -453,6 +485,7 @@ export async function marcarComoLiquidada(
     feeMp: number;
     sircreb: number;
     impDebitos: number;
+    programaProfesionales?: number;
     netoARendir: number;
     netoEfectivo: number;
     netoTransferencia: number;
@@ -462,8 +495,11 @@ export async function marcarComoLiquidada(
     const supabase = getSupabaseServerClient();
     const usuario = await usuarioActual();
 
+    const programa = resumen.programaProfesionales ?? 0;
     const totalComisiones = redondear2(resumen.comisionWiigo + resumen.ivaComision + resumen.feeMp);
-    const totalRetenciones = redondear2(totalComisiones + resumen.impCreditos + resumen.sircreb + resumen.impDebitos);
+    // El programa de profesionales entra en lo descontado (sin columna propia:
+    // queda anotado en las observaciones y se vuelve a ver en el comprobante).
+    const totalRetenciones = redondear2(totalComisiones + resumen.impCreditos + resumen.sircreb + resumen.impDebitos + programa);
 
     const { data: liquidacion, error: errorLiquidacion } = await supabase
       .from("liquidaciones")
@@ -483,7 +519,7 @@ export async function marcarComoLiquidada(
         total_retenciones: totalRetenciones,
         neto_a_transferir: resumen.netoARendir,
         estado: "LIQUIDADA",
-        observaciones: `Confirmado por ${usuario ?? "—"} · Efectivo entregado: $${resumen.netoEfectivo} · Transferido por banco: $${resumen.netoTransferencia}`,
+        observaciones: `Confirmado por ${usuario ?? "—"} · Efectivo entregado: $${resumen.netoEfectivo} · Transferido por banco: $${resumen.netoTransferencia}${programa > 0 ? ` · Programa de profesionales: $${programa}` : ""}`,
       })
       .select("id_liquidacion")
       .single();

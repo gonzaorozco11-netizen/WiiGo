@@ -21,6 +21,7 @@ type Resumen = {
   feeMp: number;
   sircreb: number;
   impDebitos: number;
+  programaProfesionales: number;
   netoARendir: number;
   netoEfectivo: number;
   netoTransferencia: number;
@@ -265,6 +266,9 @@ export default function LiquidacionesApp({ marcas }: { marcas: Marca[] }) {
                       <th className="p-3 text-right">Fee MP</th>
                       <th className="p-3 text-right">SIRCREB</th>
                       <th className="p-3 text-right">Imp. déb.</th>
+                      {resultado.resumen.programaProfesionales > 0 && (
+                        <th className="p-3 text-right" title="Descuento del paciente + lo que sumó la profesional">Prog. profesionales</th>
+                      )}
                       <th className="p-3 text-right">Neto a rendir</th>
                     </tr>
                   </thead>
@@ -296,6 +300,11 @@ export default function LiquidacionesApp({ marcas }: { marcas: Marca[] }) {
                         <td className="p-3 text-right tabular-nums text-red-600">
                           {l.impDebitos > 0 ? `-$${formatearMonto(l.impDebitos)}` : "—"}
                         </td>
+                        {resultado.resumen.programaProfesionales > 0 && (
+                          <td className="p-3 text-right tabular-nums text-red-600">
+                            {l.programaProfesionales > 0 ? `-$${formatearMonto(l.programaProfesionales)}` : "—"}
+                          </td>
+                        )}
                         <td className="p-3 text-right tabular-nums font-semibold">${formatearMonto(l.netoARendir)}</td>
                       </tr>
                     ))}
@@ -313,6 +322,9 @@ export default function LiquidacionesApp({ marcas }: { marcas: Marca[] }) {
                   <ResumenCampo etiqueta="Fee Mercado Pago" valor={-resultado.resumen.feeMp} />
                   <ResumenCampo etiqueta="SIRCREB retenido" valor={-resultado.resumen.sircreb} />
                   <ResumenCampo etiqueta="Imp. a los débitos" valor={-resultado.resumen.impDebitos} />
+                  {resultado.resumen.programaProfesionales > 0 && (
+                    <ResumenCampo etiqueta="Programa profesionales" valor={-resultado.resumen.programaProfesionales} />
+                  )}
                   <ResumenCampo
                     etiqueta="Total deducciones"
                     valor={-(
@@ -321,7 +333,8 @@ export default function LiquidacionesApp({ marcas }: { marcas: Marca[] }) {
                       resultado.resumen.impCreditos +
                       resultado.resumen.feeMp +
                       resultado.resumen.sircreb +
-                      resultado.resumen.impDebitos
+                      resultado.resumen.impDebitos +
+                      resultado.resumen.programaProfesionales
                     )}
                   />
                 </div>

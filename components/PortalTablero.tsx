@@ -668,6 +668,12 @@ export default function PortalTablero({
                 <span className="v resta mono">-${pesos(ganancia.impDebitos)}</span>
               </li>
             )}
+            {ganancia.programaProfesionales > 0 && (
+              <li>
+                <span className="k">Programa de profesionales (descuento al paciente + profesional)</span>
+                <span className="v resta mono">-${pesos(ganancia.programaProfesionales)}</span>
+              </li>
+            )}
             <li>
               <span className="k">Neto a cobrar</span>
               <span className="v mono">${pesos(ganancia.netoTrasComision)}</span>
@@ -960,6 +966,7 @@ export default function PortalTablero({
                         concepto que ETIQUETA_RETENCION — ver margenMarca.ts. */}
                     <th>{ETIQUETA_RETENCION_CORTA}</th>
                     <th>Imp. déb.</th>
+                    <th title="Descuento al paciente + lo que sumó la profesional">Prog. prof.</th>
                     <th>Neto a rendir</th>
                     <th>%</th>
                   </tr>
@@ -981,6 +988,7 @@ export default function PortalTablero({
                         <td className="mono resta">{pesosDecOGuion(l.comisionMp)}</td>
                         <td className="mono resta">{pesosDecOGuion(l.sircreb)}</td>
                         <td className="mono resta">{pesosDecOGuion(l.impDebitos)}</td>
+                        <td className="mono resta">{pesosDecOGuion(l.programaProfesionales)}</td>
                         <td className="mono">${pesosDec(l.neto)}</td>
                         <td>
                           <span className={`pct${porcentaje < 70 ? " bajo" : ""}`}>{porcentaje.toFixed(0)}%</span>
