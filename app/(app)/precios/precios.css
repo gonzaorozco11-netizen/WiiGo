@@ -29,6 +29,7 @@
 .pr-cab p { color: var(--tinta-3); font-size: 13px; margin-top: 3px; }
 .pr-acciones { display: flex; gap: 8px; flex-wrap: wrap; }
 .pr-btn { border: 1px solid var(--linea-2); background: var(--hoja); border-radius: 7px; padding: 8px 14px; font-weight: 600; cursor: pointer; }
+a.pr-btn { color: inherit; text-decoration: none; display: inline-flex; align-items: center; }
 .pr-btn:hover { border-color: var(--tinta-3); }
 .pr-btn.prim { background: var(--acento); border-color: var(--acento); color: #fff; }
 .pr-btn.prim:hover { background: var(--acento-osc); }

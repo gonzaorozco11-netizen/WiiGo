@@ -255,6 +255,10 @@ export default function PreciosApp(props: Props) {
             </p>
           </div>
           <div className="pr-acciones">
+            {/* La lista de precios para clientes, lista para guardar en PDF (app/(app)/precios/lista). */}
+            <a className="pr-btn" href="/precios/lista" target="_blank" rel="noopener">
+              ⬇ Lista de precios (PDF)
+            </a>
             <button type="button" className="pr-btn" onClick={exportar}>
               Exportar a Excel
             </button>
