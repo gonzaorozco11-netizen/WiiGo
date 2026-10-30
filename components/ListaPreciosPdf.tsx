@@ -11,7 +11,9 @@ import "./listaPrecios.css";
 // Los cortes: antes de armar las hojas se MIDE cada renglón tal como se ve, y
 // recién ahí se reparte. Ningún producto queda partido, un título de rubro
 // nunca queda solo al pie (va con al menos dos productos), y si un rubro sigue
-// en la otra columna se repite su título con "(sigue)".
+// en la otra columna, sigue sin repetir el título (Gonzalo no quiere "Frutos
+// secos" dos veces). Cada marca arranca con su nombre a todo el ancho, abajo de
+// la anterior, con sus productos repartidos parejo en las dos columnas.
 
 export type ProductoLista = {
   id: string;
@@ -69,7 +71,7 @@ function partes(nombre: string): [string, string] {
 type Rubro = { nombre: string; color: string; icono: string };
 type Bloque =
   | { tipo: "seccion"; titulo: string; n: number }
-  | { tipo: "rubro"; rubro: Rubro; sigue?: boolean }
+  | { tipo: "rubro"; rubro: Rubro }
   | { tipo: "fila"; p: ProductoLista; rubro: Rubro };
 
 function armarBloques(productos: ProductoLista[]): Bloque[] {
@@ -80,8 +82,10 @@ function armarBloques(productos: ProductoLista[]): Bloque[] {
   }
   const marcas = [...grupos.values()].sort((a, b) => Number(b[0].propia) - Number(a[0].propia) || a[0].marca.localeCompare(b[0].marca));
   const out: Bloque[] = [];
+  // Sin el nombre de la marca: solo los rubros, primero los de WiiGo y después
+  // los de las demás (Gonzalo, 2026-10-30: "sacá el nombre de las marcas y que
+  // solo estén las subcategorías"). El bloque "seccion" queda por si se vuelve a querer.
   for (const deSeccion of marcas) {
-    out.push({ tipo: "seccion", titulo: deSeccion[0].propia ? "WiiGo" : deSeccion[0].marca, n: deSeccion.length });
     const rubros = [...new Set(deSeccion.map((p) => p.rubro))].sort((a, b) => {
       const pos = (r: string) => { const i = ORDEN_RUBRO_PROPIO.findIndex((x) => (NOMBRE_RUBRO[r] ?? r).toLowerCase().includes(x)); return i < 0 ? 99 : i; };
       return pos(a) - pos(b) || a.localeCompare(b);
@@ -100,48 +104,87 @@ const ALTO_HOJA = 1123, ALTO_PORTADA = 232, ALTO_CAB = 62, ALTO_PIE = 84, AIRE_A
 const DISPONIBLE_PRIMERA = ALTO_HOJA - ALTO_PORTADA - ALTO_PIE - AIRE_ARRIBA - MARGEN_SEGURIDAD;
 const DISPONIBLE_RESTO = ALTO_HOJA - ALTO_CAB - ALTO_PIE - AIRE_ARRIBA - MARGEN_SEGURIDAD;
 
-/** Una hoja: el título de la marca (a todo el ancho, si la marca arranca acá) y las dos columnas. */
-type Hoja = { marca: Extract<Bloque, { tipo: "seccion" }> | null; cols: Bloque[][] };
+/**
+ * Una franja de la hoja: el nombre de la marca a todo el ancho (si la marca
+ * arranca acá) y abajo sus productos en dos columnas. Una hoja puede tener
+ * varias franjas: cuando una marca termina, la siguiente empieza abajo, con su
+ * nombre (Gonzalo, 2026-10-30: "cuando termina cacao, que aparezca abajo Animalfit").
+ */
+type Franja = { marca: Extract<Bloque, { tipo: "seccion" }> | null; cols: Bloque[][]; alto: number };
+type Hoja = { franjas: Franja[] };
+const AIRE_ENTRE_MARCAS = 30;
 
-/** Reparte los bloques medidos en hojas de dos columnas, sin partir nada. */
-function repartir(bloques: Bloque[], alto: number[], altoSigue: number): Hoja[] {
-  const hojas: Hoja[] = [{ marca: null, cols: [[], []] }];
-  let col = 0, usado = 0, reserva = 0;
-  let rubroActual: Rubro | null = null;
-  const actual = () => hojas[hojas.length - 1];
-  const max = () => (hojas.length === 1 ? DISPONIBLE_PRIMERA : DISPONIBLE_RESTO);
-  const avanzar = () => {
-    if (col === 0) col = 1;
-    else { hojas.push({ marca: null, cols: [[], []] }); col = 0; reserva = 0; }
-    usado = reserva;
-  };
-  bloques.forEach((b, i) => {
-    // Cada marca arranca en una hoja nueva, con su nombre a todo el ancho
-    // (Gonzalo, 2026-10-30: "cuando arranca una nueva marca, que haga un corte").
-    if (b.tipo === "seccion") {
-      if (i > 0) hojas.push({ marca: null, cols: [[], []] });
-      actual().marca = b;
-      col = 0;
-      reserva = alto[i];
-      usado = reserva;
-      rubroActual = null;
-      return;
-    }
+/**
+ * Llena dos columnas de alto H con los bloques desde `desde` hasta que termina
+ * la marca o no entra más. Nada se parte, y un título de rubro va siempre con
+ * sus dos primeros productos.
+ */
+function llenar(bloques: Bloque[], alto: number[], desde: number, H: number) {
+  const cols: Bloque[][] = [[], []];
+  const usado = [0, 0];
+  let col = 0, i = desde;
+  while (i < bloques.length && bloques[i].tipo !== "seccion") {
+    const b = bloques[i];
     let necesita = alto[i];
-    // Lo que tiene que ir pegado: el título del rubro con sus dos primeros productos.
     if (b.tipo === "rubro") for (let k = 1; k <= 2 && i + k < bloques.length && bloques[i + k].tipo === "fila"; k++) necesita += alto[i + k];
-    if (actual().cols[col].length > 0 && usado + necesita > max()) {
-      avanzar();
-      if (b.tipo === "fila" && rubroActual) {
-        actual().cols[col].push({ tipo: "rubro", rubro: rubroActual, sigue: true });
-        usado += altoSigue;
-      }
+    if (usado[col] + necesita > H) {
+      if (col === 0) { col = 1; continue; }
+      break;
     }
-    actual().cols[col].push(b);
-    usado += alto[i];
-    if (b.tipo === "rubro") rubroActual = b.rubro;
-  });
-  return hojas;
+    cols[col].push(b);
+    usado[col] += alto[i];
+    i++;
+  }
+  return { cols, hasta: i, alto: Math.max(usado[0], usado[1]) };
+}
+
+/** Reparte los bloques medidos en hojas, en franjas de dos columnas, sin partir nada. */
+function repartir(bloques: Bloque[], alto: number[]): Hoja[] {
+  const hojas: Hoja[] = [{ franjas: [] }];
+  let restante = DISPONIBLE_PRIMERA;
+  const nuevaHoja = () => { hojas.push({ franjas: [] }); restante = DISPONIBLE_RESTO; };
+  const hoja = () => hojas[hojas.length - 1];
+  let i = 0;
+  while (i < bloques.length) {
+    let marca: Franja["marca"] = null;
+    let altoMarca = 0;
+    if (bloques[i].tipo === "seccion") {
+      marca = bloques[i] as Extract<Bloque, { tipo: "seccion" }>;
+      altoMarca = alto[i];
+      // El nombre de la marca no queda solo al pie: tiene que entrar con su primer rubro y dos productos.
+      let minimo = AIRE_ENTRE_MARCAS + altoMarca;
+      for (let k = 1; k <= 3 && i + k < bloques.length && bloques[i + k].tipo !== "seccion"; k++) minimo += alto[i + k];
+      if (hoja().franjas.length && minimo > restante) nuevaHoja();
+      restante -= (hoja().franjas.length ? AIRE_ENTRE_MARCAS : 0) + altoMarca;
+      i++;
+    }
+    let r = llenar(bloques, alto, i, restante);
+    if (r.hasta === i && hoja().franjas.length) {
+      // No entró nada: a la hoja siguiente, con el nombre de la marca si arrancaba acá.
+      nuevaHoja();
+      restante -= altoMarca;
+      r = llenar(bloques, alto, i, restante);
+    }
+    if (r.hasta === i) break; // un bloque más alto que una hoja entera: no pasa nunca, pero no se cuelga
+    // Si la marca termina en esta franja, sus productos se reparten parejo en
+    // las dos columnas, así la franja termina derecha y la marca siguiente va abajo.
+    const terminaAca = r.hasta >= bloques.length || bloques[r.hasta].tipo === "seccion";
+    if (terminaAca) {
+      let lo = Math.ceil(r.alto / 2), hi = r.alto;
+      while (lo < hi) {
+        const mid = Math.floor((lo + hi) / 2);
+        if (llenar(bloques, alto, i, mid).hasta >= r.hasta) hi = mid;
+        else lo = mid + 1;
+      }
+      r = llenar(bloques, alto, i, hi);
+    }
+    hoja().franjas.push({ marca, cols: r.cols, alto: r.alto });
+    restante -= r.alto;
+    i = r.hasta;
+    // La marca sigue: a la hoja siguiente.
+    if (i < bloques.length && bloques[i].tipo !== "seccion") nuevaHoja();
+  }
+  return hojas.filter((h) => h.franjas.length);
 }
 
 function VistaBloque({ b }: { b: Bloque }) {
@@ -159,7 +202,6 @@ function VistaBloque({ b }: { b: Bloque }) {
       <div className="lp-rubro" style={{ "--c": b.rubro.color } as CSSProperties}>
         <div className="lp-rubro-nombre">
           {b.rubro.nombre}
-          {b.sigue && <small> (sigue)</small>}
         </div>
         <div className="lp-cols">
           <span />
@@ -225,8 +267,7 @@ export default function ListaPreciosPdf({ productos, hoy }: { productos: Product
       const nodos = medidor.current?.querySelectorAll<HTMLElement>("[data-medir]");
       if (!nodos || !vivo) return;
       const altos = [...nodos].map((n) => n.getBoundingClientRect().height);
-      const altoSigue = altos.pop() ?? 40;
-      setHojas(repartir(bloques, altos, altoSigue));
+      setHojas(repartir(bloques, altos));
     })();
     return () => {
       vivo = false;
@@ -276,16 +317,13 @@ export default function ListaPreciosPdf({ productos, hoy }: { productos: Product
         </div>
       </div>
 
-      {/* Fuera de la vista: cada bloque al ancho de una columna, para medirlo. El último es un título "(sigue)". */}
+      {/* Fuera de la vista: cada bloque al ancho de una columna, para medirlo. */}
       <div className="lp-medidor" ref={medidor} aria-hidden="true">
         {bloques.map((b, i) => (
           <div key={i} data-medir>
             <VistaBloque b={b} />
           </div>
         ))}
-        <div data-medir>
-          <VistaBloque b={{ tipo: "rubro", rubro: { nombre: "Medida", color: "#000", icono: "bowl" }, sigue: true }} />
-        </div>
       </div>
 
       {filtrados.length === 0 ? (
@@ -333,17 +371,21 @@ export default function ListaPreciosPdf({ productos, hoy }: { productos: Product
                 </header>
               )}
               <div className="lp-cuerpo">
-                {h.marca && (
-                  <div className="lp-marca-ancha">
-                    <VistaBloque b={h.marca} />
-                  </div>
-                )}
-                {h.cols.map((col, c) => (
-                  <div className="lp-col" key={c}>
-                    {col.map((b, k) => (
-                      <VistaBloque key={k} b={b} />
+                {h.franjas.map((f, n) => (
+                  <section className="lp-franja" key={n}>
+                    {f.marca && (
+                      <div className="lp-marca-ancha">
+                        <VistaBloque b={f.marca} />
+                      </div>
+                    )}
+                    {f.cols.map((col, c) => (
+                      <div className="lp-col" key={c}>
+                        {col.map((b, k) => (
+                          <VistaBloque key={k} b={b} />
+                        ))}
+                      </div>
                     ))}
-                  </div>
+                  </section>
                 ))}
               </div>
               <footer className="lp-pie">
