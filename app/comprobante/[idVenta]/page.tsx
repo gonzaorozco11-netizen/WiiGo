@@ -124,12 +124,6 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
   const descuento = Math.max(sumaLineas - total, 0);
   const medioPago = MEDIO_PAGO_LABEL[venta.medio_pago as string] ?? (venta.medio_pago as string);
   const puntos = (venta.puntos_generados as number) ?? 0;
-  // Dónde los puede usar: si el canje es solo en productos WiiGo, se lo dice.
-  const { data: cfgCanje } =
-    puntos > 0
-      ? await supabase.from("configuracion").select("valor").eq("parametro", "PUNTOS_CANJE_SOLO_PROPIOS").maybeSingle()
-      : { data: null };
-  const canjeSoloPropios = cfgCanje?.valor !== "false";
 
   // Si el medio de pago está configurado para facturarse solo pero el CAE
   // todavía no llegó, es casi seguro que está en camino: se avisa y se
@@ -225,9 +219,7 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
                 <b className="block text-[13px] text-amber-900">
                   Sumaste {puntos} punto{puntos === 1 ? "" : "s"} WiiGo
                 </b>
-                {canjeSoloPropios
-                  ? "Usalos como descuento la próxima, en productos WiiGo (granel y marca propia)."
-                  : "Usalos como descuento la próxima."}
+                Usalos como descuento la próxima.
               </span>
             </div>
           )}
