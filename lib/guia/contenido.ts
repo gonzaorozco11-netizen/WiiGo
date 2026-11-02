@@ -617,6 +617,23 @@ export const GUIAS: Guia[] = [
     ],
   },
   {
+    id: "ver-portal",
+    audiencias: [...I],
+    soloAdmin: true,
+    tema: "Marcas",
+    titulo: "Ver el portal como lo ve la marca",
+    donde: "Marcas → la marca → 👁 Ver su portal como lo ve la marca",
+    rutas: ["/marcas"],
+    nueva: "2026-11-02",
+    pasos: [
+      "Entrá a <b>Marcas</b> y abrí la marca (tiene que estar activa y en consignación).",
+      "Tocá <b>👁 Ver su portal como lo ve la marca</b>.",
+      "Ves su tablero, sus productos, reponer y sus liquidaciones igual que ella, con una franja naranja arriba. Es solo para mirar: no se manda ni se cambia nada.",
+      "Para salir, tocá <b>Volver a la marca</b>.",
+    ],
+    tip: "No entres con el usuario y la contraseña de la marca: quedaría registrado como si hubiera entrado ella.",
+  },
+  {
     id: "calendario",
     audiencias: [...I],
     pantalla: "calendario",

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase";
-import { obtenerSesionMarca } from "@/lib/marcaSesion";
+import { obtenerSesionMarca, sesionDelPortal, motivoSinSesionMarca } from "@/lib/marcaSesion";
 import { MAX_MAILS, TIPOS_AVISO, avisoPrendido, mailValido, type TipoAviso } from "@/lib/avisosMarca";
 import { NIVEL, type PlanMarca } from "@/lib/planesMarca";
 
@@ -19,7 +19,7 @@ export type AvisosPortal = {
 };
 
 export async function misAvisos(): Promise<AvisosPortal | null> {
-  const sesion = await obtenerSesionMarca();
+  const sesion = await sesionDelPortal();
   if (!sesion) return null;
 
   const supabase = getSupabaseServerClient();
@@ -60,7 +60,7 @@ export async function guardarAvisos(datos: {
   mails: string[];
 }): Promise<{ error: string | null }> {
   const sesion = await obtenerSesionMarca();
-  if (!sesion) return { error: "Tenés que entrar de nuevo." };
+  if (!sesion) return { error: (await sesionDelPortal())?.soloLectura ? await motivoSinSesionMarca() : "Tenés que entrar de nuevo." };
   // El plan se vuelve a mirar acá: un botón apagado no protege nada.
   if (NIVEL[sesion.plan] < NIVEL.METAL) {
     return { error: "Los avisos por mail son del plan Silver para arriba." };

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase";
-import { obtenerSesionMarca } from "@/lib/marcaSesion";
+import { obtenerSesionMarca, sesionDelPortal, motivoSinSesionMarca } from "@/lib/marcaSesion";
 import { calcularRendicion } from "@/app/(app)/liquidaciones/actions";
 import { fechaHoraArgentina } from "@/lib/horarios";
 import { costosVigentes, guardarCosto, SIN_SUBCATEGORIA, type CostoDeMarca } from "@/lib/costosMarca";
@@ -141,7 +141,7 @@ export type ResumenPortal = {
 };
 
 export async function resumenPortal(): Promise<ResumenPortal | null> {
-  const sesion = await obtenerSesionMarca();
+  const sesion = await sesionDelPortal();
   if (!sesion) return null;
 
   const supabase = getSupabaseServerClient();
@@ -265,7 +265,7 @@ export type VentaDelDia = {
  * hay que reclamar algo.
  */
 export async function ventasDeHoy(): Promise<VentaDelDia[]> {
-  const sesion = await obtenerSesionMarca();
+  const sesion = await sesionDelPortal();
   if (!sesion) return [];
 
   const hoyISO = fechaHoraArgentina().fecha;
@@ -353,7 +353,7 @@ export type OrdenPortal = {
 export async function urlFotoDiferenciaMarca(
   idDetalleRecepcion: string
 ): Promise<{ url: string | null; error: string | null }> {
-  const sesion = await obtenerSesionMarca();
+  const sesion = await sesionDelPortal();
   if (!sesion) return { url: null, error: "Sesión no válida" };
   try {
     const supabase = getSupabaseServerClient();
@@ -396,7 +396,7 @@ const TOPE_ORDENES = 200;
 
 /** Órdenes de reposición de esta marca y cómo se recibieron en el local. */
 export async function reposicionPortal(): Promise<OrdenPortal[]> {
-  const sesion = await obtenerSesionMarca();
+  const sesion = await sesionDelPortal();
   if (!sesion) return [];
 
   const supabase = getSupabaseServerClient();
@@ -504,7 +504,7 @@ export type PagoPortal = { fecha: string | null; concepto: string; importe: numb
  * marca — un solo lugar donde vive la verdad.
  */
 export async function pagosPortal(): Promise<{ pagos: PagoPortal[]; total: number }> {
-  const sesion = await obtenerSesionMarca();
+  const sesion = await sesionDelPortal();
   if (!sesion) return { pagos: [], total: 0 };
 
   const supabase = getSupabaseServerClient();
@@ -567,7 +567,7 @@ export type MisCostosPortal = {
 };
 
 export async function misCostosPortal(): Promise<MisCostosPortal | null> {
-  const sesion = await obtenerSesionMarca();
+  const sesion = await sesionDelPortal();
   if (!sesion) return null;
 
   const supabase = getSupabaseServerClient();
@@ -671,8 +671,9 @@ export async function guardarMiCosto(params: {
   costo: number;
   vigenteDesde: string;
 }): Promise<{ error: string | null }> {
+  // Guarda: solo la marca de verdad, nunca Gonzalo mirando su portal.
   const sesion = await obtenerSesionMarca();
-  if (!sesion) return { error: "Sesión no válida" };
+  if (!sesion) return { error: await motivoSinSesionMarca() };
 
   const supabase = getSupabaseServerClient();
   const r = await guardarCosto(supabase, {
@@ -722,7 +723,7 @@ export type GananciaRealPortal = {
  * que arma el comprobante de la liquidación. No se recalcula nada acá.
  */
 export async function gananciaRealPortal(): Promise<GananciaRealPortal | null> {
-  const sesion = await obtenerSesionMarca();
+  const sesion = await sesionDelPortal();
   if (!sesion) return null;
 
   const supabase = getSupabaseServerClient();
@@ -878,7 +879,7 @@ function mapearLineasParaPortal(lineas: Awaited<ReturnType<typeof calcularRendic
  * rango lo elige quien mira el tablero en vez de estar fijo al mes en curso.
  */
 export async function lineasVentaPortal(desde: string, hasta: string): Promise<{ lineas: LineaVentaMarca[]; total: number }> {
-  const sesion = await obtenerSesionMarca();
+  const sesion = await sesionDelPortal();
   if (!sesion) return { lineas: [], total: 0 };
 
   if (!esFechaValida(desde) || !esFechaValida(hasta)) throw new Error("Fechas inválidas");
@@ -908,7 +909,7 @@ export async function lineasVentaPortal(desde: string, hasta: string): Promise<{
  * — es la garantía de que el detalle no puede contradecir al resumen.
  */
 export async function detalleMesPortal(): Promise<DetalleMesPortal> {
-  const sesion = await obtenerSesionMarca();
+  const sesion = await sesionDelPortal();
   if (!sesion) return { porProducto: [], porVenta: [], totalLineas: 0 };
 
   const hoyISO = fechaHoraArgentina().fecha;
@@ -1014,7 +1015,7 @@ const DIA_MS = 86400000;
  * mes.
  */
 export async function analisisPortal(): Promise<AnalisisPortal | null> {
-  const sesion = await obtenerSesionMarca();
+  const sesion = await sesionDelPortal();
   if (!sesion) return null;
 
   const supabase = getSupabaseServerClient();
@@ -1231,7 +1232,7 @@ const ORDEN_DIAS = [
 ];
 
 export async function goldPortal(): Promise<GoldPortal | null> {
-  const sesion = await obtenerSesionMarca();
+  const sesion = await sesionDelPortal();
   if (!sesion) return null;
 
   const supabase = getSupabaseServerClient();
@@ -1459,7 +1460,7 @@ export type LiquidacionPortal = {
 };
 
 export async function liquidacionesPortal(): Promise<LiquidacionPortal[]> {
-  const sesion = await obtenerSesionMarca();
+  const sesion = await sesionDelPortal();
   if (!sesion) return [];
 
   const supabase = getSupabaseServerClient();
@@ -1570,7 +1571,7 @@ export type TareasPortal = {
  * semanas de ventas para decir algo que no sea ruido. Entra cuando las haya.
  */
 export async function misTareas(): Promise<TareasPortal | null> {
-  const sesion = await obtenerSesionMarca();
+  const sesion = await sesionDelPortal();
   if (!sesion) return null;
 
   const supabase = getSupabaseServerClient();
@@ -1815,7 +1816,7 @@ export type BienvenidaPortal = {
  * justamente viene a construir.
  */
 export async function bienvenidaPortal(): Promise<BienvenidaPortal | null> {
-  const sesion = await obtenerSesionMarca();
+  const sesion = await sesionDelPortal();
   if (!sesion) return null;
 
   const supabase = getSupabaseServerClient();

@@ -20,6 +20,7 @@ import type {
   VarianteProducto,
 } from "@/lib/supabase";
 import { deleteSubcategoria } from "@/app/(app)/marcas/actions";
+import { verPortalComoMarca } from "@/app/(app)/marcas/ver-portal-actions";
 import { deleteProducto } from "@/app/(app)/productos/actions";
 import MarcaFormModal from "@/components/MarcaFormModal";
 import type { TasasGenerales } from "@/lib/margenMarca";
@@ -129,7 +130,23 @@ export default function MarcaDetail({
             {marca.estado}
           </span>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap justify-end">
+          {/* Solo marcas activas en consignación tienen portal. Si no es el
+              Dueño, el servidor lo rechaza y avisa. */}
+          {marca.estado === "ACTIVA" && marca.tipo_comercializacion === "CONSIGNACION" && (
+            <button
+              onClick={() =>
+                verPortalComoMarca(marca.id_marca).then((r) => {
+                  if (r.error) alert(r.error);
+                  else window.location.href = "/portal";
+                })
+              }
+              className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:border-accent hover:text-accent"
+              title="Abre su portal tal como lo ve la marca, solo para mirar"
+            >
+              👁 Ver su portal como lo ve la marca
+            </button>
+          )}
           <button
             onClick={() => setEditMarcaOpen(true)}
             className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700"

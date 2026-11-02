@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import { Outfit, Manrope, JetBrains_Mono } from "next/font/google";
 import { logout } from "@/app/login/actions";
-import { obtenerSesionMarca, ETIQUETA_PLAN } from "@/lib/marcaSesion";
+import { sesionDelPortal, ETIQUETA_PLAN } from "@/lib/marcaSesion";
+import { dejarDeVerPortal } from "@/app/(app)/marcas/ver-portal-actions";
 import { WIIGO_LOGO_DATA_URI } from "@/lib/wiigo-logo-data";
 import PortalNav from "@/components/PortalNav";
 import PortalLocal from "@/components/PortalLocal";
@@ -33,8 +34,9 @@ const mono = JetBrains_Mono({ subsets: ["latin"], weight: ["400", "500", "600"],
 export const dynamic = "force-dynamic";
 
 export default async function PortalLayout({ children }: { children: React.ReactNode }) {
-  const sesion = await obtenerSesionMarca();
-  // Sin sesión de marca no hay portal: ni admin, ni empleado, ni deslogueado.
+  // Sin sesión de marca no hay portal: ni empleado, ni deslogueado. El admin
+  // solo entra mirando una marca, en solo lectura (ver sesionDelPortal).
+  const sesion = await sesionDelPortal();
   if (!sesion) redirect("/login?next=/portal");
 
   // De dónde son los números que está mirando. Va en el layout y no en el
@@ -59,6 +61,17 @@ export default async function PortalLayout({ children }: { children: React.React
 
   return (
     <div className={`portal ${outfit.variable} ${manrope.variable} ${mono.variable}`}>
+      {/* Gonzalo mirando el portal desde la ficha de la marca: que no se confunda. */}
+      {sesion.soloLectura && (
+        <div className="portal-mirando">
+          <span>
+            👁 Estás viendo el portal de <b>{sesion.nombreMarca}</b> tal como lo ve la marca. Solo para mirar: no podés mandar ni cambiar nada desde acá.
+          </span>
+          <form action={dejarDeVerPortal}>
+            <button type="submit">Volver a la marca</button>
+          </form>
+        </div>
+      )}
       <header className="portal-top">
         <div className="portal-top-int">
           <div className="portal-identidad">
@@ -86,11 +99,14 @@ export default async function PortalLayout({ children }: { children: React.React
               <span className="punto" />
               {ETIQUETA_PLAN[sesion.plan]}
             </span>
-            <form action={logout}>
-              <button className="portal-salir" type="submit">
-                Salir
-              </button>
-            </form>
+            {/* Mirando, "Salir" cerraría la sesión de Gonzalo: no se muestra. */}
+            {!sesion.soloLectura && (
+              <form action={logout}>
+                <button className="portal-salir" type="submit">
+                  Salir
+                </button>
+              </form>
+            )}
           </div>
         </div>
       </header>

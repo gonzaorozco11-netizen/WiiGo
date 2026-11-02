@@ -1,4 +1,4 @@
-import { obtenerSesionMarca } from "@/lib/marcaSesion";
+import { sesionDelPortal } from "@/lib/marcaSesion";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerPolitica } from "@/lib/solicitudesMarca";
 import { misProductos, misSolicitudes } from "@/app/portal/cambios/actions";
@@ -8,7 +8,7 @@ import PortalCambios from "@/components/PortalCambios";
 export const dynamic = "force-dynamic";
 
 export default async function PortalCambiosPage() {
-  const sesion = await obtenerSesionMarca();
+  const sesion = await sesionDelPortal();
   if (!sesion) return <p className="vacio">No se pudo cargar la pantalla. Probá recargar.</p>;
 
   const supabase = getSupabaseServerClient();

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
-import { obtenerSesionMarca } from "@/lib/marcaSesion";
+import { obtenerSesionMarca, sesionDelPortal, motivoSinSesionMarca } from "@/lib/marcaSesion";
 import {
   obtenerPolitica,
   validarPrecio,
@@ -33,8 +33,17 @@ import { costosVigentes } from "@/lib/costosMarca";
 // tocarlo. Si no, cambiando un id una marca pediría cambios sobre productos
 // de otra.
 
+// Para lo que GUARDA (pedir cambios, altas, bajas): solo la marca de verdad.
+// Gonzalo mirando el portal no manda nada en nombre de la marca.
 async function sesionOError() {
   const sesion = await obtenerSesionMarca();
+  if (!sesion) throw new Error(await motivoSinSesionMarca());
+  return sesion;
+}
+
+// Para lo que solo LEE (sus productos, sus solicitudes): también Gonzalo mirando.
+async function sesionParaLeer() {
+  const sesion = await sesionDelPortal();
   if (!sesion) throw new Error("Sesión no válida");
   return sesion;
 }
@@ -140,7 +149,7 @@ export type ProductoPropio = {
 };
 
 export async function misProductos(): Promise<ProductoPropio[]> {
-  const sesion = await sesionOError();
+  const sesion = await sesionParaLeer();
   const supabase = getSupabaseServerClient();
 
   const { data: productos } = await supabase
@@ -262,7 +271,7 @@ export type SolicitudPropia = {
 
 /** Todo lo que mandó esta marca, lo último arriba. */
 export async function misSolicitudes(): Promise<SolicitudPropia[]> {
-  const sesion = await sesionOError();
+  const sesion = await sesionParaLeer();
   const supabase = getSupabaseServerClient();
 
   const { data } = await supabase

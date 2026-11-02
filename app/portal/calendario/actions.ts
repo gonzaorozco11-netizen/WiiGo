@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase";
-import { obtenerSesionMarca } from "@/lib/marcaSesion";
+import { obtenerSesionMarca, sesionDelPortal } from "@/lib/marcaSesion";
 import { fechaHoraArgentina } from "@/lib/horarios";
 import {
   armarAlmanaque,
@@ -59,7 +59,9 @@ export type CalendarioPortal = {
 };
 
 export async function calendarioPortal(): Promise<CalendarioPortal | null> {
-  const sesion = await obtenerSesionMarca();
+  // Lectura: también Gonzalo mirando el portal. Anotarse, responder y
+  // proponer siguen con obtenerSesionMarca (solo la marca de verdad).
+  const sesion = await sesionDelPortal();
   if (!sesion) return null;
 
   const supabase = getSupabaseServerClient();

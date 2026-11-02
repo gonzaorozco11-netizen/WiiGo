@@ -1,4 +1,4 @@
-import { obtenerSesionMarca, sesionIncluye } from "@/lib/marcaSesion";
+import { sesionDelPortal, sesionIncluye } from "@/lib/marcaSesion";
 import {
   resumenPortal,
   ventasDeHoy,
@@ -15,7 +15,7 @@ import PortalTablero from "@/components/PortalTablero";
 export const dynamic = "force-dynamic";
 
 export default async function PortalPage() {
-  const sesion = await obtenerSesionMarca();
+  const sesion = await sesionDelPortal();
   // El análisis de productos es del plan Metal para arriba. No se calcula si
   // no corresponde: además de no mostrarlo, no se gasta la consulta.
   const conAnalisis = sesionIncluye(sesion, "METAL");

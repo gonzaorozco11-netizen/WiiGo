@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase";
-import { obtenerSesionMarca } from "@/lib/marcaSesion";
+import { obtenerSesionMarca, sesionDelPortal } from "@/lib/marcaSesion";
 import { friendlyDbError } from "@/lib/errors";
 import { fechaHoraArgentina } from "@/lib/horarios";
 import { sugerirReposicion, topeDeVariante, SEMANAS_HISTORIA } from "@/lib/reposicionSugerida";
@@ -79,7 +79,8 @@ export type DatosReponer = {
 };
 
 export async function miReposicion(): Promise<DatosReponer | null> {
-  const sesion = await obtenerSesionMarca();
+  // Lectura: también Gonzalo mirando el portal. Mandar y cancelar, no.
+  const sesion = await sesionDelPortal();
   if (!sesion) return null;
 
   const supabase = getSupabaseServerClient();
@@ -266,7 +267,7 @@ export async function miReposicion(): Promise<DatosReponer | null> {
  */
 export async function cuantosFaltan(): Promise<number> {
   try {
-    const sesion = await obtenerSesionMarca();
+    const sesion = await sesionDelPortal();
     if (!sesion) return 0;
 
     const supabase = getSupabaseServerClient();

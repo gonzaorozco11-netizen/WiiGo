@@ -5,7 +5,7 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 import { esRolInterno } from "@/lib/rolesInternos";
 import { obtenerSesionConPantallas, puedeVerPantalla, type SesionConPantallas } from "@/lib/roles";
-import { obtenerSesionMarca } from "@/lib/marcaSesion";
+import { sesionDelPortal } from "@/lib/marcaSesion";
 import { obtenerSesionProfesional } from "@/lib/profesionalSesion";
 import { mesesVinculo } from "@/lib/pacientesProfesional";
 import { reglasPuntos } from "@/lib/puntosProfesionales";
@@ -48,14 +48,15 @@ async function quienEs(audiencia: Audiencia): Promise<Quien | null> {
     };
   }
   if (audiencia === "marca") {
-    const sesion = await obtenerSesionMarca();
+    // También Gonzalo mirando el portal de una marca: ve la guía de ella, sin preguntar.
+    const sesion = await sesionDelPortal();
     if (!sesion) return null;
     return {
       audiencia,
       idUsuario: sesion.idUsuario,
       nombre: `${sesion.nombreUsuario} (${sesion.nombreMarca})`,
       esAdmin: false,
-      puedePreguntar: true,
+      puedePreguntar: !sesion.soloLectura,
       pantallas: null,
       idMarca: sesion.idMarca,
       nombreMarca: sesion.nombreMarca,

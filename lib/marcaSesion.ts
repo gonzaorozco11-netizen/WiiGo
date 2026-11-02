@@ -85,6 +85,59 @@ export async function obtenerSesionMarca(): Promise<SesionMarca | null> {
   };
 }
 
+// ===================== VER EL PORTAL COMO LA MARCA =====================
+//
+// Gonzalo mira el portal de una marca tal como lo ve ella, desde la ficha de
+// la marca (pedido de Gonzalo, 2026-11-02). Mismo criterio que "Ver su
+// espacio" de las profesionales (lib/profesionalSesion.ts):
+//
+// - La cookie solo vale con una sesión de admin: para cualquier otro rol se
+//   ignora, así que cambiarla a mano no sirve para ver otra marca.
+// - Es SOLO LECTURA. Las pantallas y lecturas del portal usan sesionDelPortal;
+//   todo lo que guarda (pedir cambios, mandar reposición, anotarse a un
+//   evento…) sigue usando obtenerSesionMarca, que con Gonzalo mirando da null.
+// - obtenerSesionMarca NO cambia: la usan también exigirLecturaDeMarca y las
+//   pantallas internas (Liquidaciones, Situación de marca). Si mirando una
+//   marca pasara a "ser" esa marca, esas pantallas le bloquearían las demás.
+
+export const COOKIE_VER_MARCA = "wiigo_ver_marca";
+
+export type SesionPortal = SesionMarca & { soloLectura: boolean };
+
+/** La marca del portal: la del usuario de marca, o la que el admin está mirando. */
+export async function sesionDelPortal(): Promise<SesionPortal | null> {
+  const propia = await obtenerSesionMarca();
+  if (propia) return { ...propia, soloLectura: false };
+
+  const cookieStore = await cookies();
+  const sesion = await readSessionToken(cookieStore.get(SESSION_COOKIE)?.value, process.env.AUTH_SECRET ?? "");
+  if (!sesion || sesion.rol !== "admin") return null;
+  const idMarca = cookieStore.get(COOKIE_VER_MARCA)?.value;
+  if (!idMarca) return null;
+
+  const { data: marca } = await getSupabaseServerClient()
+    .from("marcas")
+    .select("id_marca, nombre, estado, plan, logo")
+    .eq("id_marca", idMarca)
+    .maybeSingle();
+  if (!marca || marca.estado !== "ACTIVA") return null;
+  return {
+    idUsuario: sesion.sub,
+    nombreUsuario: sesion.nombre ?? "WiiGo",
+    idMarca: marca.id_marca as string,
+    nombreMarca: marca.nombre as string,
+    logoMarca: (marca.logo as string | null) ?? null,
+    plan: normalizarPlan(marca.plan),
+    soloLectura: true,
+  };
+}
+
+/** Para las acciones que guardan: el mensaje cuando es Gonzalo mirando. */
+export async function motivoSinSesionMarca(): Promise<string> {
+  const mirando = await sesionDelPortal();
+  return mirando?.soloLectura ? "Estás mirando el portal de la marca: desde acá no se manda ni se cambia nada." : "Sesión no válida";
+}
+
 /**
  * El plan sobre la sesión, para usar directo en las pantallas.
  * Sin sesión responde false: nada se muestra "por las dudas".

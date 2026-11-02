@@ -52,6 +52,14 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* ---------- Gonzalo mirando el portal ---------- */
+.portal-mirando {
+  background: #b97a52; color: #fff; padding: 10px 16px; font-size: 14px;
+  display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;
+  position: sticky; top: 0; z-index: 50;
+}
+.portal .portal-mirando button { border: 1.5px solid rgba(255, 255, 255, .75); background: transparent; color: #fff; border-radius: 8px; padding: 5px 12px; font-weight: 700; cursor: pointer; font-size: 14px; }
+
 /* ---------- Cabecera ---------- */
 .portal-top {
   background: var(--superficie);
