@@ -7,7 +7,9 @@ const SECCIONES = [
   { href: "/mi-espacio", label: "Inicio" },
   { href: "/mi-espacio/ficha", label: "Mi ficha" },
   { href: "/mi-espacio/objetivos", label: "Objetivos" },
-  { href: "/mi-espacio/pedidos", label: "Pedidos" },
+  // Dos solapas a propósito: en una arma, en la otra sigue lo que armó.
+  { href: "/mi-espacio/pedidos", label: "Armar pedido" },
+  { href: "/mi-espacio/mis-pedidos", label: "Mis pedidos" },
   { href: "/mi-espacio/saldo", label: "Mi saldo" },
 ];
 

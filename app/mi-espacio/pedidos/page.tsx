@@ -3,8 +3,7 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionProfesional } from "@/lib/profesionalSesion";
 import { precioDe } from "@/lib/precios";
 import { saldosPorMarca } from "@/lib/canjesProfesionales";
-import type { EstadoPedido } from "@/lib/pedidosProfesional";
-import ArmarPedido, { type ProductoCatalogo, type PedidoHecho, type MarcaCatalogo, type RubroCatalogo } from "./ArmarPedido";
+import ArmarPedido, { type ProductoCatalogo, type MarcaCatalogo, type RubroCatalogo } from "./ArmarPedido";
 
 export const dynamic = "force-dynamic";
 
@@ -38,13 +37,8 @@ export default async function PedidosEspacio({ searchParams }: { searchParams: P
     supabase.from("profesional_objetivos").select("id_objetivo").eq("id_profesional", id),
     supabase.from("locales").select("id_local, nombre, direccion").eq("estado", "ACTIVO").order("nombre"),
     supabase.from("stock").select("id_variante, id_local, cantidad"),
-    // Con "*": la columna para_profesional puede no estar todavía (sql/profesionales-pedido-propio.sql).
-    supabase
-      .from("pedidos_profesional")
-      .select("*, pedidos_profesional_items(cantidad, precio_lista)")
-      .eq("id_profesional", id)
-      .order("creado", { ascending: false })
-      .limit(15),
+    // Solo para saber si la tabla existe: los pedidos hechos se ven en Mis pedidos.
+    supabase.from("pedidos_profesional").select("id_pedido").eq("id_profesional", id).limit(1),
     paraMi ? saldosPorMarca(supabase, id) : Promise.resolve([]),
     paraMi ? supabase.from("profesionales").select("dni, pin_hash").eq("id_profesional", id).maybeSingle() : Promise.resolve({ data: null }),
   ]);
@@ -118,19 +112,6 @@ export default async function PedidosEspacio({ searchParams }: { searchParams: P
     .map((s) => ({ id: s.id_subcategoria as string, idMarca: s.id_marca as string, nombre: s.nombre as string }))
     .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
 
-  const pedidos: PedidoHecho[] = (pedidosRes.data ?? []).map((p) => {
-    const items = (p.pedidos_profesional_items as { cantidad: number; precio_lista: number }[] | null) ?? [];
-    return {
-      idPedido: p.id_pedido as string,
-      numero: Number(p.numero),
-      paciente: p.para_profesional === true ? "Para vos" : `${p.paciente_nombre} ${p.paciente_apellido}`,
-      estado: p.estado as EstadoPedido,
-      creado: p.creado as string,
-      notaFalta: (p.nota_falta as string | null) ?? null,
-      total: items.reduce((t, i) => t + Number(i.precio_lista) * Number(i.cantidad), 0),
-    };
-  });
-
   const yo = (yoRes.data ?? null) as { dni: string | null; pin_hash: string | null } | null;
 
   return (
@@ -143,7 +124,6 @@ export default async function PedidosEspacio({ searchParams }: { searchParams: P
         objetivos={(objRes.data ?? []).map((o) => ({ id: o.id_objetivo as string, nombre: o.nombre as string }))}
         objetivosPropios={(propiosRes.data ?? []).map((o) => o.id_objetivo as string)}
         locales={(localesRes.data ?? []).map((l) => ({ id: l.id_local as string, nombre: l.nombre as string, direccion: (l.direccion as string | null) ?? null }))}
-        pedidos={pedidos}
         disponible={!pedidosRes.error}
         paraMi={
           paraMi

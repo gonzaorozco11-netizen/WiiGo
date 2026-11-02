@@ -509,6 +509,49 @@
   .obj-tarea > :last-child { grid-column: 2; justify-self: start; }
 }
 
+/* ---------- Mis pedidos ---------- */
+.mp { display: flex; flex-direction: column; gap: 14px; }
+.mp-cab { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.mp-cab h1 { font-size: clamp(24px, 3vw, 30px); font-weight: 600; }
+.mp-cab p { color: var(--texto-3); margin-top: 2px; }
+.mp-cab .boton { text-decoration: none; }
+.mp-controles { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; justify-content: space-between; }
+.mp-vista { display: inline-flex; background: var(--superficie); border: 1px solid var(--borde); border-radius: 12px; padding: 3px; }
+.mp-vista button { border: 0; background: none; padding: 8px 16px; border-radius: 9px; font-size: 15px; font-weight: 700; color: var(--texto-2); cursor: pointer; }
+.mp-vista button[aria-selected="true"] { background: var(--salvia-tenue); color: var(--salvia-honda); }
+.mp-busca { flex: 1; min-width: 220px; max-width: 360px; font: inherit; font-size: 15px; border: 1px solid var(--borde-fuerte); border-radius: 12px; padding: 9px 13px; background: var(--superficie); color: var(--texto); }
+.mp-filtros { display: flex; gap: 6px; flex-wrap: wrap; }
+.mp-filtros button { border: 1px solid var(--borde); background: var(--superficie); border-radius: 999px; padding: 6px 14px; font-size: 14px; font-weight: 600; color: var(--texto-2); cursor: pointer; }
+.mp-filtros button[aria-pressed="true"] { border-color: var(--salvia-fuerte); background: var(--salvia-tenue); color: var(--salvia-honda); }
+.mp-lista { display: flex; flex-direction: column; gap: 10px; }
+.mp-pedido { background: var(--superficie); border: 1px solid var(--borde); border-radius: 16px; overflow: hidden; }
+.mp-pedido summary { list-style: none; cursor: pointer; display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: 14px; align-items: center; padding: 14px 18px; }
+.mp-pedido summary::-webkit-details-marker { display: none; }
+.mp-pac summary { grid-template-columns: minmax(0, 1fr) auto auto; }
+.mp-pedido summary::after { content: "▾"; color: var(--texto-3); font-size: 14px; transition: transform .2s ease; }
+.mp-pedido[open] summary::after { transform: rotate(180deg); }
+.mp-pedido summary:hover { background: var(--superficie-2); }
+.mp-num { font-size: 14px; font-weight: 600; color: var(--texto-3); }
+.mp-quien { display: flex; flex-direction: column; min-width: 0; }
+.mp-quien b { font-size: 16px; }
+.mp-quien small { font-size: 13.5px; color: var(--texto-3); }
+.mp-total { font-size: 16px; font-weight: 600; }
+.mp-pedido .estado-ped { font-size: 13px; }
+.mp-sub { font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--texto-3); padding: 12px 18px 0; }
+.mp-items { list-style: none; margin: 0; padding: 6px 18px 14px; border-top: 1px solid var(--borde); }
+.mp-sub + .mp-items { border-top: 0; }
+.mp-items li { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: 10px; align-items: baseline; padding: 8px 0; border-bottom: 1px dashed var(--borde); font-size: 15px; }
+.mp-items li:last-child { border-bottom: 0; }
+.mp-items li .mono { color: var(--texto-2); }
+.mp-nota { margin-top: 4px; }
+@media (max-width: 640px) {
+  .mp-pedido summary { grid-template-columns: minmax(0, 1fr) auto; padding: 12px 14px; }
+  .mp-pedido summary::after { display: none; }
+  .mp-num { grid-column: 1 / -1; }
+  .mp-items { padding: 6px 14px 12px; }
+  .mp-items li { grid-template-columns: 48px minmax(0, 1fr) auto; }
+}
+
 /* ---------- Ranking del mes ---------- */
 .rk-puesto { display: flex; align-items: center; gap: 14px; }
 .rk-num { width: 64px; height: 64px; border-radius: 50%; background: var(--ocre-tenue); color: var(--ocre-texto); display: grid; place-items: center; font-family: var(--f-titulo), sans-serif; font-weight: 700; font-size: 26px; flex: none; }

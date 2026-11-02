@@ -1,9 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { enviarPedido } from "../actions";
-import { ETIQUETA_ESTADO, HORAS_PRECIO_FIJO, type EstadoPedido } from "@/lib/pedidosProfesional";
+import { HORAS_PRECIO_FIJO } from "@/lib/pedidosProfesional";
 
 export type ProductoCatalogo = {
   idVariante: string;
@@ -25,16 +26,6 @@ export type ProductoCatalogo = {
 export type MarcaCatalogo = { id: string; nombre: string; logo: string | null };
 export type RubroCatalogo = { id: string; idMarca: string; nombre: string };
 
-export type PedidoHecho = {
-  idPedido: string;
-  numero: number;
-  paciente: string;
-  estado: EstadoPedido;
-  creado: string;
-  notaFalta: string | null;
-  total: number;
-};
-
 // Un pedido para ella, que paga con su saldo. El saldo de cada marca paga
 // solo productos de esa marca (lib/canjesProfesionales.ts).
 export type ParaMi = {
@@ -54,7 +45,6 @@ export default function ArmarPedido({
   objetivos,
   objetivosPropios,
   locales,
-  pedidos,
   disponible,
   paraMi,
 }: {
@@ -64,7 +54,6 @@ export default function ArmarPedido({
   objetivos: { id: string; nombre: string }[];
   objetivosPropios: string[];
   locales: { id: string; nombre: string; direccion: string | null }[];
-  pedidos: PedidoHecho[];
   disponible: boolean;
   paraMi: ParaMi | null;
 }) {
@@ -228,7 +217,7 @@ export default function ArmarPedido({
       </div>
       {enviado && (
         <p className="aviso-ok" role="status">
-          {enviado}
+          {enviado} <Link href="/mi-espacio/mis-pedidos">Seguilo en Mis pedidos →</Link>
         </p>
       )}
 
@@ -500,38 +489,7 @@ export default function ArmarPedido({
         </div>
       )}
 
-      {pedidos.length > 0 && (
-        <section className="tarjeta">
-          <h2>Tus últimos pedidos</h2>
-          <div className="tabla-env">
-            <table className="tabla">
-              <thead>
-                <tr>
-                  <th>N.º</th>
-                  <th>Para</th>
-                  <th>Cómo va</th>
-                  <th className="num">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pedidos.map((p) => (
-                  <tr key={p.idPedido}>
-                    <td className="mono">{p.numero}</td>
-                    <td>
-                      {p.paciente}
-                      {p.notaFalta && p.estado === "NUEVO" && <span className="falta-nota">Falta: {p.notaFalta}</span>}
-                    </td>
-                    <td>
-                      <span className={`estado-ped ${p.estado.toLowerCase()}`}>{ETIQUETA_ESTADO[p.estado]}</span>
-                    </td>
-                    <td className="num">{pesos(p.total)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
+      {/* Los pedidos ya hechos viven en su propia solapa, Mis pedidos (Gonzalo, 2026-11-02). */}
     </div>
   );
 }
