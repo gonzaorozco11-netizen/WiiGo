@@ -16,7 +16,7 @@ import {
   puntosExtraPorMonto,
   enlazarDetalleVenta,
 } from "@/lib/referidosProfesionales";
-import { vinculoActivo } from "@/lib/pacientesProfesional";
+import { vinculoActivo, permisoCompras, cambiarPermisoCompras } from "@/lib/pacientesProfesional";
 import { buscarProfesionalPorDni, verificarPinProfesional, calcularDescuentoCanje, registrarCanje, esProfesionalActivo } from "@/lib/canjesProfesionales";
 import { calcularCanjePuntos, aplicarCanjePuntos, calcularPuntosGanados, type LineaPuntos } from "@/lib/puntosWiigo";
 import { crearOrdenQrMp } from "@/lib/mercadopago";
@@ -42,7 +42,14 @@ export async function buscarClientePorDni(dni: string): Promise<{
   nombre: string;
   apellido: string | null;
   puntos: number;
-  profesional: { nombre: string; codigo: string | null; hasta: string; conBienvenida: boolean } | null;
+  profesional: {
+    nombre: string;
+    codigo: string | null;
+    hasta: string;
+    conBienvenida: boolean;
+    /** Si dejó que ella vea sus compras; null si falta sql/profesionales-permiso-compras.sql. */
+    comparteCompras: boolean | null;
+  } | null;
 } | null> {
   const dniLimpio = dni.trim();
   if (!dniLimpio) return null;
@@ -58,9 +65,10 @@ export async function buscarClientePorDni(dni: string): Promise<{
   let profesional = null;
   const vinculo = await vinculoActivo(supabase, data.id_cliente as string);
   if (vinculo && vinculo !== "sin-tabla") {
-    const [{ data: p }, { data: c }] = await Promise.all([
+    const [{ data: p }, { data: c }, comparte] = await Promise.all([
       supabase.from("profesionales").select("nombre, apellido, estado").eq("id_profesional", vinculo.idProfesional).maybeSingle(),
       supabase.from("codigos_profesionales").select("codigo").eq("id_profesional", vinculo.idProfesional).eq("estado", "ACTIVO").limit(1),
+      permisoCompras(supabase, vinculo.idVinculo),
     ]);
     if (p && p.estado === "ACTIVO") {
       profesional = {
@@ -68,10 +76,29 @@ export async function buscarClientePorDni(dni: string): Promise<{
         codigo: (c?.[0]?.codigo as string | undefined) ?? null,
         hasta: vinculo.hasta,
         conBienvenida: !vinculo.bienvenidaUsada,
+        comparteCompras: comparte,
       };
     }
   }
   return { nombre: data.nombre as string, apellido: (data.apellido as string | null) ?? null, puntos: Number(data.puntos ?? 0), profesional };
+}
+
+/**
+ * El paciente le dice al cajero si acepta (o ya no) que su profesional vea lo
+ * que compra en WiiGo. Se lo pregunta el cajero a él: es el lugar donde el
+ * permiso lo da el paciente en persona.
+ */
+export async function permisoComprasCajaAction(dni: string, acepta: boolean): Promise<{ error: string | null }> {
+  const dniLimpio = dni.trim();
+  if (!dniLimpio) return { error: "Falta el DNI." };
+  const supabase = getSupabaseServerClient();
+  const { data: cliente } = await supabase.from("clientes").select("id_cliente").eq("dni", dniLimpio).maybeSingle();
+  if (!cliente) return { error: "No encontré a ese cliente." };
+  const vinculo = await vinculoActivo(supabase, cliente.id_cliente as string);
+  if (!vinculo || vinculo === "sin-tabla") return { error: "No es paciente de ninguna profesional." };
+  const r = await cambiarPermisoCompras(supabase, vinculo.idVinculo, acepta, "CAJA");
+  if (r.error) return { error: "Todavía no se puede guardar el permiso: falta preparar el sistema." };
+  return { error: null };
 }
 
 // Para que un profesional pueda pagar su propia compra con el saldo que

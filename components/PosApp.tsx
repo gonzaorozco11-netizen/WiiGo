@@ -12,6 +12,7 @@ import {
   buscarCodigoProfesionalAction,
   previsualizarDescuentoReferidoAction,
   infoCanjePuntosAction,
+  permisoComprasCajaAction,
 } from "@/app/(app)/pos/actions";
 import { cancelarPedido } from "@/app/(app)/cobros-efectivo/actions";
 import { dispararAvisosDeVenta } from "@/lib/dispararAvisos";
@@ -58,6 +59,51 @@ export type PedidoParaCobrar = {
   preciosVigentes: boolean;
   items: { idVariante: string; cantidad: number; precioLista: number; precioEfectivo: number }[];
 };
+
+/**
+ * "¿Acepta que su profesional vea lo que compra?" El cajero se lo pregunta al
+ * cliente y marca la respuesta. Lo que se compra en una dietética dice mucho
+ * de la salud: sin este sí, la profesional no ve nada (ver
+ * sql/profesionales-permiso-compras.sql).
+ */
+function PermisoCompras({ dni, profesional, acepta, onCambio }: { dni: string; profesional: string; acepta: boolean; onCambio: (acepta: boolean) => void }) {
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  function cambiar(nuevo: boolean) {
+    setError(null);
+    setGuardando(true);
+    permisoComprasCajaAction(dni, nuevo)
+      .then((r) => (r.error ? setError(r.error) : onCambio(nuevo)))
+      .finally(() => setGuardando(false));
+  }
+  return (
+    <div className="text-xs bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2 mt-1.5">
+      {acepta ? (
+        <p className="text-neutral-700">
+          ✓ Aceptó que {profesional} vea lo que compra en WiiGo.{" "}
+          <button type="button" disabled={guardando} onClick={() => cambiar(false)} className="font-semibold text-red-600 underline disabled:opacity-50">
+            Ya no quiere
+          </button>
+        </p>
+      ) : (
+        <>
+          <p className="text-neutral-700 mb-1.5">
+            Preguntale: <b>«¿Aceptás que {profesional} vea lo que comprás en WiiGo mientras te acompaña?»</b> Es opcional.
+          </p>
+          <button
+            type="button"
+            disabled={guardando}
+            onClick={() => cambiar(true)}
+            className="font-bold text-white bg-accent rounded-md px-2.5 py-1 disabled:opacity-50"
+          >
+            Sí, acepta
+          </button>
+        </>
+      )}
+      {error && <p className="text-red-600 mt-1">{error}</p>}
+    </div>
+  );
+}
 
 export default function PosApp({
   locales,
@@ -687,6 +733,18 @@ export default function PosApp({
             suma para {clienteEncontrado.profesional.nombre} aunque no diga el código.{" "}
             {clienteEncontrado.profesional.conBienvenida ? "Es su primera compra: tiene el descuento del código." : "El descuento del código ya lo usó."}
           </p>
+        )}
+        {/* El permiso para que su profesional vea lo que compra: se lo pregunta
+            el cajero al cliente, en persona. Sin el SQL no aparece. */}
+        {!buscandoCliente && clienteEncontrado?.profesional && clienteEncontrado.profesional.comparteCompras !== null && (
+          <PermisoCompras
+            dni={dni}
+            profesional={clienteEncontrado.profesional.nombre}
+            acepta={clienteEncontrado.profesional.comparteCompras}
+            onCambio={(acepta) =>
+              setClienteEncontrado((c) => (c?.profesional ? { ...c, profesional: { ...c.profesional, comparteCompras: acepta } } : c))
+            }
+          />
         )}
         {!buscandoCliente && !clienteEncontrado && dni.trim().length >= 6 && (
           <p className="text-xs text-neutral-500 font-semibold mt-1.5">

@@ -10,6 +10,7 @@ export default function SumarPaciente({ meses }: { meses: number }) {
   const [abierto, setAbierto] = useState(false);
   const [datos, setDatos] = useState({ nombre: "", apellido: "", dni: "", telefono: "" });
   const [acepta, setAcepta] = useState(false);
+  const [comparteCompras, setComparteCompras] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [listo, setListo] = useState<string | null>(null);
@@ -17,13 +18,14 @@ export default function SumarPaciente({ meses }: { meses: number }) {
   function sumar() {
     setError(null);
     setEnviando(true);
-    sumarPaciente({ ...datos, acepta })
+    sumarPaciente({ ...datos, acepta, comparteCompras })
       .then((r) => {
         if (r.error) return setError(r.error);
         const hasta = r.hasta ? new Date(r.hasta).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" }) : "";
         setListo(`Listo: ${datos.nombre} quedó como tu paciente${hasta ? ` hasta el ${hasta}` : ""}.`);
         setDatos({ nombre: "", apellido: "", dni: "", telefono: "" });
         setAcepta(false);
+        setComparteCompras(false);
         setAbierto(false);
         router.refresh();
       })
@@ -67,6 +69,13 @@ export default function SumarPaciente({ meses }: { meses: number }) {
       <label className="acepta">
         <input type="checkbox" checked={acepta} onChange={(e) => setAcepta(e.target.checked)} />
         <span>{datos.nombre || "Mi paciente"} acepta sumarse a WiiGo Club.</span>
+      </label>
+      <label className="acepta">
+        <input type="checkbox" checked={comparteCompras} onChange={(e) => setComparteCompras(e.target.checked)} />
+        <span>
+          <b>Opcional:</b> {datos.nombre || "mi paciente"} acepta que yo vea lo que compra en WiiGo mientras lo acompaño. Lo puede retirar cuando quiera en
+          la caja.
+        </span>
       </label>
       {error && <p className="error">{error}</p>}
       <div className="botones-fila">

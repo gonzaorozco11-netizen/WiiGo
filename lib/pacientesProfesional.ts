@@ -30,6 +30,13 @@ export type VinculoActivo = {
   bienvenidaUsada: boolean;
 };
 
+/** Si el paciente dejó que su profesional vea sus compras (null si falta el SQL). */
+export async function permisoCompras(supabase: SupabaseClient, idVinculo: string): Promise<boolean | null> {
+  const { data, error } = await supabase.from("pacientes_profesional").select("comparte_compras").eq("id_vinculo", idVinculo).maybeSingle();
+  if (error) return null;
+  return Boolean(data?.comparte_compras);
+}
+
 export async function mesesVinculo(supabase: SupabaseClient): Promise<number> {
   const { data } = await supabase.from("configuracion").select("valor").eq("parametro", PARAM_MESES_VINCULO).maybeSingle();
   const n = Number(data?.valor);
@@ -62,6 +69,32 @@ export async function vinculoActivo(supabase: SupabaseClient, idCliente: string 
  * de otra, se le cierra ese vínculo.
  */
 export async function registrarPaciente(
+  supabase: SupabaseClient,
+  p: { idProfesional: string; idCliente: string; origen: OrigenPaciente; bienvenidaUsada?: boolean; comparteCompras?: boolean }
+): Promise<{ error: string | null; hasta?: string }> {
+  const r = await registrarVinculo(supabase, p);
+  // El permiso de compras va aparte: si falta sql/profesionales-permiso-compras.sql
+  // el registro sale igual, solo sin el permiso.
+  if (!r.error && p.comparteCompras) {
+    const vinculo = await vinculoActivo(supabase, p.idCliente);
+    if (vinculo && vinculo !== "sin-tabla") await cambiarPermisoCompras(supabase, vinculo.idVinculo, true, p.origen);
+  }
+  return r;
+}
+
+/**
+ * El paciente acepta (o deja de aceptar) que su profesional vea lo que
+ * compra en WiiGo. Al aceptar de nuevo, se le muestra desde ese momento.
+ */
+export async function cambiarPermisoCompras(supabase: SupabaseClient, idVinculo: string, acepta: boolean, donde: OrigenPaciente) {
+  const { error } = await supabase
+    .from("pacientes_profesional")
+    .update({ comparte_compras: acepta, comparte_compras_at: acepta ? new Date().toISOString() : null, comparte_compras_donde: donde })
+    .eq("id_vinculo", idVinculo);
+  return { error: error?.message ?? null };
+}
+
+async function registrarVinculo(
   supabase: SupabaseClient,
   p: { idProfesional: string; idCliente: string; origen: OrigenPaciente; bienvenidaUsada?: boolean }
 ): Promise<{ error: string | null; hasta?: string }> {

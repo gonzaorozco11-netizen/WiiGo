@@ -16,6 +16,13 @@ export type PedidoConItems = {
   total: number;
 };
 
+export type HistorialCompra = { fecha: string; items: { nombre: string; cantidad: number }[] };
+export type Historial = {
+  /** false si falta sql/profesionales-permiso-compras.sql. */
+  disponible: boolean;
+  pacientes: { idCliente: string; nombre: string; hasta: string; comparte: boolean; desde: string | null; compras: HistorialCompra[] }[];
+};
+
 type Filtro = "todos" | "curso" | "entregados" | "otros";
 
 const FILTROS: { clave: Filtro; label: string; estados: EstadoPedido[] | null }[] = [
@@ -30,8 +37,8 @@ const fecha = (iso: string) =>
   new Date(iso).toLocaleDateString("es-AR", { day: "numeric", month: "short", year: "numeric", timeZone: "America/Argentina/Buenos_Aires" });
 const sinTildes = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
-export default function MisPedidos({ pedidos, disponible }: { pedidos: PedidoConItems[]; disponible: boolean }) {
-  const [vista, setVista] = useState<"pedido" | "paciente">("pedido");
+export default function MisPedidos({ pedidos, disponible, historial }: { pedidos: PedidoConItems[]; disponible: boolean; historial: Historial }) {
+  const [vista, setVista] = useState<"pedido" | "paciente" | "compras">("pedido");
   const [filtro, setFiltro] = useState<Filtro>("todos");
   const [busca, setBusca] = useState("");
 
@@ -71,14 +78,27 @@ export default function MisPedidos({ pedidos, disponible }: { pedidos: PedidoCon
       <div className="mp-cab">
         <div>
           <h1>Mis pedidos</h1>
-          <p>Los pedidos que armaste y qué llevó cada paciente.</p>
+          <p>Los pedidos que armaste, qué llevó cada paciente y sus compras en WiiGo.</p>
         </div>
         <Link className="boton" href="/mi-espacio/pedidos">
           + Armar un pedido
         </Link>
       </div>
 
-      {pedidos.length === 0 ? (
+      {historial.disponible && (
+        <div className="mp-vista mp-vista-arriba" role="tablist" aria-label="Qué ver">
+          <button type="button" role="tab" aria-selected={vista !== "compras"} onClick={() => setVista("pedido")}>
+            Mis pedidos
+          </button>
+          <button type="button" role="tab" aria-selected={vista === "compras"} onClick={() => setVista("compras")}>
+            Compras de tus pacientes
+          </button>
+        </div>
+      )}
+
+      {vista === "compras" ? (
+        <ComprasPacientes historial={historial} />
+      ) : pedidos.length === 0 ? (
         <section className="tarjeta">
           <p className="vacio">Todavía no armaste ningún pedido. Cuando armes uno, lo vas a seguir desde acá.</p>
         </section>
@@ -178,9 +198,98 @@ export default function MisPedidos({ pedidos, disponible }: { pedidos: PedidoCon
               ))}
             </div>
           )}
-          <p className="nota mp-nota">Acá están los pedidos que armaste vos. Lo que tus pacientes compran solos en el local no se muestra: es de ellos.</p>
+          <p className="nota mp-nota">Acá están los pedidos que armaste vos. Lo que tus pacientes compran por su cuenta está en «Compras de tus pacientes», si te dieron permiso.</p>
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * Lo que compraron en WiiGo, solo los pacientes que le dieron permiso y desde
+ * que lo dieron. Los que no, aparecen con cómo pedírselo.
+ */
+function ComprasPacientes({ historial }: { historial: Historial }) {
+  const [busca, setBusca] = useState("");
+  const q = sinTildes(busca.trim());
+  const lista = historial.pacientes.filter((p) => !q || sinTildes(p.nombre).includes(q));
+  const conPermiso = lista.filter((p) => p.comparte);
+  const sinPermiso = lista.filter((p) => !p.comparte);
+
+  if (historial.pacientes.length === 0) {
+    return (
+      <section className="tarjeta">
+        <p className="vacio">Todavía no tenés pacientes vigentes. Se suman cuando les armás un pedido, desde «Sumar paciente» o cuando dicen tu código en la caja.</p>
+      </section>
+    );
+  }
+
+  return (
+    <>
+      <div className="mp-controles">
+        <p className="mp-explica">
+          Solo de los pacientes que aceptaron que veas sus compras, desde el día que aceptaron. Sin montos ni forma de pago.
+        </p>
+        <input className="mp-busca" type="search" value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar paciente" aria-label="Buscar paciente" />
+      </div>
+
+      {conPermiso.length > 0 && (
+        <div className="mp-lista">
+          {conPermiso.map((p) => {
+            const total = p.compras.reduce((t, c) => t + c.items.reduce((s, i) => s + i.cantidad, 0), 0);
+            return (
+              <details key={p.idCliente} className="mp-pedido mp-pac">
+                <summary>
+                  <span className="mp-quien">
+                    <b>{p.nombre}</b>
+                    <small>
+                      {p.compras.length === 0
+                        ? "Todavía no compró desde que aceptó"
+                        : `${p.compras.length} ${p.compras.length === 1 ? "compra" : "compras"} · ${total} productos · la última el ${fecha(p.compras[0].fecha)}`}
+                    </small>
+                  </span>
+                  <span className="estado-ped listo">Aceptó</span>
+                </summary>
+                {p.compras.length > 0 ? (
+                  p.compras.map((c, i) => (
+                    <div key={i}>
+                      <p className="mp-sub">{fecha(c.fecha)}</p>
+                      <ul className="mp-items">
+                        {c.items.map((it, k) => (
+                          <li key={k}>
+                            <span className="mono">{it.cantidad} ×</span>
+                            <span>{it.nombre}</span>
+                            <span />
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))
+                ) : (
+                  <p className="mp-sub">Aceptó el {p.desde ? fecha(p.desde) : "—"}. Cuando compre, lo vas a ver acá.</p>
+                )}
+              </details>
+            );
+          })}
+        </div>
+      )}
+
+      {sinPermiso.length > 0 && (
+        <section className="tarjeta">
+          <h2>
+            Sin permiso para ver sus compras <small>{sinPermiso.length}</small>
+          </h2>
+          <ul className="mp-sin">
+            {sinPermiso.map((p) => (
+              <li key={p.idCliente}>{p.nombre}</li>
+            ))}
+          </ul>
+          <p className="nota">
+            Si querés ver lo que compran, pediles que lo acepten: lo pueden hacer en la caja la próxima vez que vengan, o vos lo marcás con ellos al armarles un
+            pedido. Es opcional y lo pueden retirar cuando quieran.
+          </p>
+        </section>
+      )}
+    </>
   );
 }

@@ -544,6 +544,10 @@
 .mp-items li:last-child { border-bottom: 0; }
 .mp-items li .mono { color: var(--texto-2); }
 .mp-nota { margin-top: 4px; }
+.mp-vista-arriba { align-self: flex-start; }
+.mp-explica { font-size: 14px; color: var(--texto-3); max-width: 60ch; }
+.mp-sin { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.mp-sin li { font-size: 14px; background: var(--superficie-2); border: 1px solid var(--borde); border-radius: 999px; padding: 4px 12px; }
 @media (max-width: 640px) {
   .mp-pedido summary { grid-template-columns: minmax(0, 1fr) auto; padding: 12px 14px; }
   .mp-pedido summary::after { display: none; }

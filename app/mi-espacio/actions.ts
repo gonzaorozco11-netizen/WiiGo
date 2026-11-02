@@ -397,6 +397,8 @@ export async function enviarPedido(datos: {
   items: { idVariante: string; cantidad: number }[];
   paciente: { nombre: string; apellido: string; dni: string; telefono: string };
   acepta: boolean;
+  /** Opcional y aparte: que ella vea lo que el paciente compra en WiiGo mientras lo acompaña. */
+  comparteCompras?: boolean;
   idLocal: string;
   // Un pedido para ella, que paga con su saldo (desde "Mi saldo"): van sus
   // propios datos, no se la registra como paciente y no lleva su código.
@@ -460,7 +462,8 @@ export async function enviarPedido(datos: {
     idCliente = (yoCliente?.id_cliente as string | undefined) ?? null;
   } else {
     idCliente = await clientePorDni(supabase, { nombre, apellido, dni, telefono });
-    if (idCliente) await registrarPaciente(supabase, { idProfesional: sesion.idProfesional, idCliente, origen: "PEDIDO" });
+    if (idCliente)
+      await registrarPaciente(supabase, { idProfesional: sesion.idProfesional, idCliente, origen: "PEDIDO", comparteCompras: Boolean(datos.comparteCompras) });
   }
 
   const { data: pedido, error } = await supabase
@@ -521,7 +524,14 @@ export async function enviarPedido(datos: {
  * día, lo que compre en WiiGo suma para ella aunque no diga el código, y en su
  * primera compra tiene el beneficio del código.
  */
-export async function sumarPaciente(datos: { nombre: string; apellido: string; dni: string; telefono: string; acepta: boolean }): Promise<{ error: string | null; hasta?: string }> {
+export async function sumarPaciente(datos: {
+  nombre: string;
+  apellido: string;
+  dni: string;
+  telefono: string;
+  acepta: boolean;
+  comparteCompras?: boolean;
+}): Promise<{ error: string | null; hasta?: string }> {
   const sesion = await sesionQuePuedeCambiar();
   if (!sesion) return { error: await porQueNoPuede() };
   const nombre = datos.nombre.trim().slice(0, 60);
@@ -535,7 +545,7 @@ export async function sumarPaciente(datos: { nombre: string; apellido: string; d
   const supabase = getSupabaseServerClient();
   const idCliente = await clientePorDni(supabase, { nombre, apellido, dni, telefono });
   if (!idCliente) return { error: "No se pudo registrar. Probá de nuevo." };
-  const r = await registrarPaciente(supabase, { idProfesional: sesion.idProfesional, idCliente, origen: "ESPACIO" });
+  const r = await registrarPaciente(supabase, { idProfesional: sesion.idProfesional, idCliente, origen: "ESPACIO", comparteCompras: Boolean(datos.comparteCompras) });
   if (r.error) return { error: r.error === "sin-tabla" ? FALTA_SQL : "No se pudo registrar. Probá de nuevo." };
   await registrarActividad(supabase, sesion.idProfesional, `Sumó como paciente a ${nombre} ${apellido.charAt(0)}.`);
   revalidatePath("/mi-espacio", "layout");

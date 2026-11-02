@@ -68,6 +68,8 @@ export default function ArmarPedido({
   const [carrito, setCarrito] = useState<Record<string, number>>({});
   const [paciente, setPaciente] = useState({ nombre: "", apellido: "", dni: "", telefono: "" });
   const [acepta, setAcepta] = useState(false);
+  // Aparte y opcional: que ella vea lo que el paciente compra en WiiGo.
+  const [comparteCompras, setComparteCompras] = useState(false);
   const [idLocal, setIdLocal] = useState(locales[0]?.id ?? "");
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -161,6 +163,7 @@ export default function ArmarPedido({
       items: lineas.map((l) => ({ idVariante: l.p.idVariante, cantidad: l.cantidad })),
       paciente,
       acepta,
+      comparteCompras,
       idLocal,
       paraMi: Boolean(paraMi),
     })
@@ -469,6 +472,13 @@ export default function ArmarPedido({
             <label className="acepta">
               <input type="checkbox" checked={acepta} onChange={(e) => setAcepta(e.target.checked)} />
               <span>{paciente.nombre || "Mi paciente"} acepta sumarse a WiiGo Club y que le avisen por WhatsApp cuando su pedido esté listo.</span>
+            </label>
+            <label className="acepta">
+              <input type="checkbox" checked={comparteCompras} onChange={(e) => setComparteCompras(e.target.checked)} />
+              <span>
+                <b>Opcional:</b> {paciente.nombre || "mi paciente"} acepta que yo vea lo que compra en WiiGo mientras lo acompaño. Lo puede retirar cuando
+                quiera en la caja.
+              </span>
             </label>
             {error && <p className="error">{error}</p>}
             <button type="button" className="boton" disabled={enviando || lineas.length === 0} onClick={enviar}>
