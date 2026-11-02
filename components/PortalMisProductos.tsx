@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   guardarMiCosto,
+  borrarMiCosto,
   type MisCostosPortal,
   type ProductoConMargen,
 } from "@/app/portal/actions";
@@ -411,6 +412,23 @@ function Fila({
   function guardar() {
     // Mirando: no se guarda nada, solo se ve.
     if (prueba) return;
+    // Casillero vacío con un costo cargado: lo quiere borrar. Antes esto no
+    // hacía nada y al recargar volvía el costo de siempre.
+    if (valor.trim() === "" && original.costo != null) {
+      setError(null);
+      empezar(async () => {
+        const r = await borrarMiCosto(original.idProducto);
+        if (r.error) {
+          setError(r.error);
+          setValor(String(original.costo));
+        } else {
+          setRecienGuardado(true);
+          setTimeout(() => setRecienGuardado(false), 1400);
+          router.refresh();
+        }
+      });
+      return;
+    }
     const n = Number(valor);
     if (!(n > 0) || n === p.costo) return;
     setError(null);

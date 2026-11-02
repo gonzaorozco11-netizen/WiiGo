@@ -200,6 +200,26 @@ export async function guardarCosto(
   return { error: null };
 }
 
+/**
+ * Borrar el costo de un producto: la marca vacía el casillero en Mis
+ * productos (Gonzalo, 2026-11-02: lo borraba y volvía).
+ *
+ * Se borra todo su historial y no solo el de hoy: si quedara una fila más
+ * vieja, esa pasaría a regir y el casillero "volvería" con otro número. Este
+ * costo lo usa solo la marca para ver su margen; las liquidaciones no lo usan.
+ */
+export async function borrarCosto(
+  supabase: SupabaseClient,
+  params: { idMarca: string; idProducto: string }
+): Promise<{ error: string | null }> {
+  const { data: producto } = await supabase.from("productos").select("id_marca").eq("id_producto", params.idProducto).maybeSingle();
+  if (!producto) return { error: "No se encontró ese producto." };
+  if (producto.id_marca !== params.idMarca) return { error: "Ese producto no es de esta marca." };
+  const { error } = await supabase.from("costos_marca").delete().eq("id_producto", params.idProducto).eq("id_marca", params.idMarca);
+  if (error) return { error: error.message };
+  return { error: null };
+}
+
 async function nombresDeUsuario(supabase: SupabaseClient, ids: (string | null)[]) {
   const limpios = [...new Set(ids.filter((x): x is string => Boolean(x)))];
   if (limpios.length === 0) return new Map<string, { nombre: string; rol: string }>();

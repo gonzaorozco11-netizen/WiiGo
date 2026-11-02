@@ -5,7 +5,7 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionMarca, sesionDelPortal, motivoSinSesionMarca } from "@/lib/marcaSesion";
 import { calcularRendicion } from "@/app/(app)/liquidaciones/actions";
 import { fechaHoraArgentina } from "@/lib/horarios";
-import { costosVigentes, guardarCosto, SIN_SUBCATEGORIA, type CostoDeMarca } from "@/lib/costosMarca";
+import { costosVigentes, guardarCosto, borrarCosto, SIN_SUBCATEGORIA, type CostoDeMarca } from "@/lib/costosMarca";
 import { PENDIENTE, PROPUESTA, type OrigenOrden } from "@/lib/estadosOrden";
 import { diasHasta } from "@/lib/eventos";
 import { sugerirReposicion, topeDeVariante } from "@/lib/reposicionSugerida";
@@ -691,6 +691,16 @@ export async function guardarMiCosto(params: {
   });
   if (r.error) return r;
 
+  revalidatePath("/portal");
+  return { error: null };
+}
+
+/** La marca vacía el casillero de su costo: se borra de verdad (antes volvía al recargar). */
+export async function borrarMiCosto(idProducto: string): Promise<{ error: string | null }> {
+  const sesion = await obtenerSesionMarca();
+  if (!sesion) return { error: await motivoSinSesionMarca() };
+  const r = await borrarCosto(getSupabaseServerClient(), { idMarca: sesion.idMarca, idProducto });
+  if (r.error) return r;
   revalidatePath("/portal");
   return { error: null };
 }
