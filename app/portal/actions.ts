@@ -1593,13 +1593,13 @@ export async function misTareas(): Promise<TareasPortal | null> {
   const supabase = getSupabaseServerClient();
   const { data: productos } = await supabase
     .from("productos")
-    .select("id_producto, nombre, descripcion, imagen")
+    .select("id_producto, nombre, descripcion, imagen, precio_venta")
     .eq("id_marca", sesion.idMarca)
     .eq("estado", "ACTIVO");
 
   const ids = (productos ?? []).map((p) => p.id_producto as string);
 
-  const [costos, { data: fichas }, { data: rechazadas }, { data: liquidaciones }] = await Promise.all([
+  const [costos, { data: fichas }, { data: rechazadas }, { data: liquidaciones }, { data: preciosPedidos }] = await Promise.all([
     costosVigentes(supabase, sesion.idMarca),
     ids.length
       ? supabase
@@ -1619,6 +1619,8 @@ export async function misTareas(): Promise<TareasPortal | null> {
       .eq("estado", "PAGADA")
       .order("fecha_hasta", { ascending: false })
       .limit(1),
+    // Los precios que ya mandó y esperan aprobación: ese producto ya no le falta a ella.
+    supabase.from("solicitudes_marca").select("id_producto").eq("id_marca", sesion.idMarca).eq("estado", "PENDIENTE"),
   ]);
 
   // Una ficha existe pero vacía cuenta como que falta: la fila se crea sola al
@@ -1666,16 +1668,32 @@ export async function misTareas(): Promise<TareasPortal | null> {
   ).length;
   const agotados = lista.filter((p) => (stockPorProducto.get(p.id_producto as string) ?? 0) === 0).length;
   const noAprobadas = (rechazadas ?? []).length;
+  // Sin precio no se venden: no salen en el local y la caja no los cobra.
+  // Los que ya tienen un pedido esperando aprobación no cuentan.
+  const yaPidio = new Set((preciosPedidos ?? []).map((s) => s.id_producto as string | null).filter(Boolean));
+  const sinPrecio = lista.filter((p) => !(((p.precio_venta as number | null) ?? 0) > 0) && !yaPidio.has(p.id_producto as string)).length;
 
   const tareas: Tarea[] = [];
+  if (sinPrecio > 0) {
+    tareas.push({
+      id: "precios",
+      grupo: "FRENA",
+      cuantas: sinPrecio,
+      titulo: sinPrecio === 1 ? "Un producto sin precio" : "Productos sin precio",
+      porque: "Sin precio no se venden: no aparecen en el local y la caja no los puede cobrar. Mandanos el precio y lo aprobamos.",
+      accion: "Poner precios",
+      href: "/portal/cambios",
+    });
+  }
   if (sinCosto > 0) {
     tareas.push({
       id: "costos",
-      grupo: "FRENA",
+      // No frena nada: la liquidación no usa el costo de la marca. Antes
+      // decía que sin costo quedaban afuera del pago, y no era cierto.
+      grupo: "VENDER",
       cuantas: sinCosto,
       titulo: sinCosto === 1 ? "Un producto sin tu costo informado" : "Productos sin tu costo informado",
-      porque:
-        "Sin el costo no podemos calcular tu liquidación: quedan afuera del próximo pago.",
+      porque: "Sin tu costo no ves cuánto ganás de verdad con cada venta. Lo ves solo vos y WiiGo, nunca un cliente.",
       accion: "Cargar costos",
       href: "/portal/productos",
     });
@@ -1742,6 +1760,7 @@ export async function misTareas(): Promise<TareasPortal | null> {
   }
 
   const alDia: string[] = [];
+  if (total > 0 && sinPrecio === 0) alDia.push("Todos tus productos tienen precio");
   if (total > 0 && sinCosto === 0) alDia.push("Todos tus productos tienen el costo cargado");
   if (total > 0 && incompletos === 0) alDia.push("Todas tus fichas están completas");
   if (total > 0 && agotados === 0) alDia.push("No tenés ningún producto agotado");
@@ -1753,6 +1772,12 @@ export async function misTareas(): Promise<TareasPortal | null> {
   // algún lado: lo que importa no es que hayan mirado la pantalla, es que el
   // producto esté cargado.
   const pasos: PrimerPaso[] = [
+    {
+      id: "precio",
+      texto: "Poné precio a todos tus productos",
+      hecho: total > 0 && sinPrecio === 0,
+      href: "/portal/cambios",
+    },
     {
       id: "costo",
       texto: "Cargá el costo de tus productos",
@@ -1814,6 +1839,8 @@ export type BienvenidaPortal = {
     hayCosto: boolean;
     partes: ParteBienvenida[];
   } | null;
+  /** Sin precio no se venden: es lo primero que tiene que cargar. */
+  sinPrecio: number;
   sinCosto: number;
   sinFoto: number;
   sinFicha: number;
@@ -1939,6 +1966,7 @@ export async function bienvenidaPortal(): Promise<BienvenidaPortal | null> {
     local,
     productos: lista.length,
     ejemplo,
+    sinPrecio: lista.filter((p) => !(((p.precio_venta as number | null) ?? 0) > 0)).length,
     sinCosto: lista.filter((p) => !costos.get(p.id_producto as string)).length,
     sinFoto: lista.filter((p) => !p.imagen).length,
     sinFicha: lista.filter((p) => !conFicha.has(p.id_producto as string)).length,

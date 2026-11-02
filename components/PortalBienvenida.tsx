@@ -272,11 +272,18 @@ function Tres() {
 function Cuatro({ datos }: { datos: BienvenidaPortal }) {
   const items = [
     {
-      n: datos.sinCosto,
+      n: datos.sinPrecio,
       clase: "rojo",
+      titulo: "El precio de tus productos nuevos",
+      texto: "Sin precio no se venden: no aparecen en el local y la caja no los puede cobrar. Nos lo mandás y lo aprobamos.",
+    },
+    {
+      n: datos.sinCosto,
+      clase: "ocre",
+      // Antes decía que sin el costo no entraban en la liquidación: no es así,
+      // la liquidación no usa el costo de la marca (Gonzalo, 2026-11-02).
       titulo: "El costo de cada producto",
-      texto:
-        "Lo que te cuesta a vos. No lo ve ningún cliente: sirve para que veas tu ganancia real, y sin eso no entrás en la liquidación.",
+      texto: "Lo que te cuesta a vos. Lo ven solo tu marca y WiiGo, nunca un cliente: sirve para que veas tu ganancia real.",
     },
     {
       n: datos.sinFoto,
