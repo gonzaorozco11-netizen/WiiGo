@@ -509,6 +509,58 @@
   .obj-tarea > :last-child { grid-column: 2; justify-self: start; }
 }
 
+/* ---------- Tus primeros pasos (Inicio) ---------- */
+.pp { border: 1.5px solid var(--ocre); background: linear-gradient(180deg, #fffdf8, var(--superficie)); }
+.pp-barra { height: 10px; background: var(--ocre-tenue); border-radius: 99px; overflow: hidden; margin: -4px 0 14px; }
+.pp-barra i { display: block; height: 100%; background: var(--ocre); border-radius: inherit; transition: width .4s ease; }
+.pp-lista { display: flex; flex-direction: column; gap: 8px; }
+.pp-item { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 11px 12px; border: 1px solid var(--borde); border-radius: 14px; background: var(--superficie); text-decoration: none; color: inherit; }
+a.pp-item:hover { border-color: var(--ocre); }
+.pp-tilde { width: 30px; height: 30px; border-radius: 50%; border: 2px solid var(--borde-fuerte); display: grid; place-items: center; font-weight: 800; color: #fff; }
+.pp-item.hecho .pp-tilde { background: var(--verde-ok); border-color: var(--verde-ok); }
+.pp-item b { display: block; font-size: 15.5px; line-height: 1.3; }
+.pp-item.hecho b { color: var(--texto-3); text-decoration: line-through; text-decoration-color: var(--borde-fuerte); }
+.pp-item small { font-size: 13px; color: var(--texto-3); }
+.pp-ir { font-size: 13.5px; font-weight: 700; color: var(--ocre-texto); white-space: nowrap; }
+.pp-item.hecho .pp-ir { color: var(--verde-ok); }
+.pp-rever { display: inline-flex; margin-top: 12px; font-size: 13.5px; font-weight: 700; color: var(--salvia-honda); text-decoration: none; }
+@media (max-width: 640px) {
+  .pp-item { grid-template-columns: 28px minmax(0, 1fr); }
+  .pp-ir { grid-column: 2; }
+}
+
+/* ---------- Presentación de bienvenida ---------- */
+.pr-fondo { position: fixed; inset: 0; z-index: 80; background: rgba(30, 36, 26, .5); display: grid; place-items: center; padding: 16px; overflow-y: auto; }
+.pr-modal { width: min(620px, 100%); background: var(--superficie); border-radius: 24px; box-shadow: 0 30px 70px -30px rgba(40, 50, 30, .55); overflow: hidden; display: flex; flex-direction: column; }
+.pr-ilus { height: 180px; display: grid; place-items: center; }
+.pr-ilus.s1 { background: linear-gradient(150deg, #e7eedd, #cfdcbf); }
+.pr-ilus.s2 { background: linear-gradient(150deg, #f7ecd4, #ead3a2); }
+.pr-ilus.s3 { background: linear-gradient(150deg, #e9efe4, #d6e2cc); }
+.pr-ilus.s4 { background: linear-gradient(150deg, #eef0ea, #d9ddd0); }
+.pr-ilus.s5 { background: linear-gradient(150deg, #f6ead9, #e4c9a1); }
+.pr-emoji { font-size: 62px; line-height: 1; }
+.pr-codigo { font-family: var(--f-mono), monospace; font-size: clamp(30px, 7vw, 44px); font-weight: 600; color: var(--salvia-honda); background: #fff; border-radius: 16px; padding: 10px 22px; box-shadow: 0 10px 30px -14px rgba(60, 70, 40, .5); }
+.pr-cuerpo { padding: 24px 28px 6px; }
+.pr-paso { font-size: 12px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--salvia-fuerte); }
+.pr-cuerpo h2 { font-size: clamp(22px, 3.4vw, 27px); font-weight: 600; margin: 4px 0 10px; line-height: 1.15; }
+.pr-lead { color: var(--texto-2); font-size: 16px; }
+.pr-puntos { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 10px; }
+.pr-puntos li { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 8px; align-items: start; font-size: 15px; }
+.pr-i { width: 30px; height: 30px; border-radius: 9px; background: var(--salvia-tenue); display: grid; place-items: center; font-size: 15px; }
+.pr-pie { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 28px 22px; flex-wrap: wrap; }
+.pr-puntitos { display: flex; gap: 6px; }
+.pr-puntitos i { width: 8px; height: 8px; border-radius: 99px; background: var(--borde-fuerte); transition: width .25s ease, background .25s ease; }
+.pr-puntitos i.on { width: 24px; background: var(--salvia-fuerte); }
+.pr-botones { display: flex; gap: 8px; align-items: center; margin-left: auto; }
+.pr-saltear { background: none; border: 0; color: var(--texto-3); font-weight: 600; font-size: 14px; padding: 8px; cursor: pointer; }
+.pr-btn { border: 0; border-radius: 12px; padding: 11px 20px; font-weight: 700; font-size: 15px; background: var(--salvia-honda); color: #fff; cursor: pointer; }
+.pr-btn.sec { background: var(--superficie); color: var(--texto); border: 1px solid var(--borde-fuerte); }
+@media (max-width: 640px) {
+  .pr-ilus { height: 140px; }
+  .pr-cuerpo { padding: 20px 18px 4px; }
+  .pr-pie { padding: 14px 18px 18px; }
+}
+
 /* ---------- Mis pedidos ---------- */
 .mp { display: flex; flex-direction: column; gap: 14px; }
 .mp-cab { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }

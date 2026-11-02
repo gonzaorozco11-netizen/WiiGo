@@ -22,6 +22,7 @@ import {
   type ItemFortaleza,
 } from "@/lib/cambiosProfesional";
 import { leerRedes, mismasRedes, normalizarRedes } from "@/lib/redesProfesional";
+import { ACCION_PRESENTACION, vioPresentacion } from "@/lib/primerosPasos";
 
 // Acciones del espacio de cada profesional.
 //
@@ -566,6 +567,22 @@ export async function guardarContacto(telefono: string, email: string): Promise<
   const que = [antes?.telefono !== tel ? "su teléfono" : null, antes?.email !== mail ? "su mail de contacto" : null].filter(Boolean);
   if (que.length > 0) await registrarActividad(supabase, sesion.idProfesional, `Cambió ${que.join(" y ")}`);
   revalidatePath("/mi-espacio", "layout");
+  return { error: null };
+}
+
+// ---------- Bienvenida ----------
+
+/**
+ * Terminó (o salteó) la presentación de bienvenida: no se le vuelve a abrir
+ * sola. Se guarda en su historial (ver lib/primerosPasos.ts). Gonzalo
+ * mirando su espacio no deja marca.
+ */
+export async function marcarPresentacionVista(): Promise<Resultado> {
+  const sesion = await sesionQuePuedeCambiar();
+  if (!sesion) return { error: null };
+  const supabase = getSupabaseServerClient();
+  if (await vioPresentacion(supabase, sesion.idProfesional)) return { error: null };
+  await registrarActividad(supabase, sesion.idProfesional, ACCION_PRESENTACION);
   return { error: null };
 }
 

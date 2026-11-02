@@ -6,6 +6,7 @@ import { completitudProfesional } from "@/lib/completitudProfesional";
 import { saldosPorMarca } from "@/lib/canjesProfesionales";
 import { semanaProfesional } from "@/lib/semanaProfesional";
 import { mesesVinculo } from "@/lib/pacientesProfesional";
+import { primerosPasos } from "@/lib/primerosPasos";
 import { TarjetaSemana, TarjetaObjetivo } from "./TarjetasSemana";
 
 export const dynamic = "force-dynamic";
@@ -35,7 +36,7 @@ export default async function InicioEspacio() {
   const id = sesion.idProfesional;
   const supabase = getSupabaseServerClient();
 
-  const [completitud, codigosRes, referidosRes, saldos, profRes, localRes, cambiosRes, semana, meses] = await Promise.all([
+  const [completitud, codigosRes, referidosRes, saldos, profRes, localRes, cambiosRes, semana, meses, pasos] = await Promise.all([
     completitudProfesional(supabase, id),
     supabase.from("codigos_profesionales").select("codigo, estado").eq("id_profesional", id).eq("estado", "ACTIVO").limit(1),
     supabase.from("referidos_profesionales").select("id_referido, estado").eq("id_profesional", id),
@@ -45,7 +46,9 @@ export default async function InicioEspacio() {
     supabase.from("cambios_profesional").select("estado").eq("id_profesional", id).in("estado", ["PENDIENTE", "CORREGIR"]),
     semanaProfesional(supabase, id, sesion.nombre),
     mesesVinculo(supabase),
+    primerosPasos(supabase, id),
   ]);
+  const pasosHechos = pasos.filter((p) => p.hecho).length;
   const esperando = (cambiosRes.data ?? []).filter((c) => c.estado === "PENDIENTE").length;
   const paraCorregir = (cambiosRes.data ?? []).filter((c) => c.estado === "CORREGIR").length;
 
@@ -117,6 +120,49 @@ export default async function InicioEspacio() {
               )}
             </div>
           </section>
+
+          {/* Tus primeros pasos: se tildan solos y la tarjeta se va cuando están los 5. */}
+          {pasosHechos < pasos.length && (
+            <section className="tarjeta pp" aria-labelledby="pp-titulo">
+              <h2 id="pp-titulo">
+                Tus primeros pasos{" "}
+                <small>
+                  {pasosHechos} de {pasos.length} · {Math.round((pasosHechos / pasos.length) * 100)} %
+                </small>
+              </h2>
+              <div className="pp-barra" aria-hidden="true">
+                <i style={{ width: `${(pasosHechos / pasos.length) * 100}%` }} />
+              </div>
+              <div className="pp-lista">
+                {pasos.map((p) =>
+                  p.hecho ? (
+                    <div key={p.clave} className="pp-item hecho">
+                      <span className="pp-tilde" aria-hidden="true">
+                        ✓
+                      </span>
+                      <span>
+                        <b>{p.titulo}</b>
+                        <small>{p.ayuda}</small>
+                      </span>
+                      <span className="pp-ir">Listo</span>
+                    </div>
+                  ) : (
+                    <Link key={p.clave} className="pp-item" href={p.href}>
+                      <span className="pp-tilde" aria-hidden="true" />
+                      <span>
+                        <b>{p.titulo}</b>
+                        <small>{p.ayuda}</small>
+                      </span>
+                      <span className="pp-ir">{p.boton} →</span>
+                    </Link>
+                  )
+                )}
+              </div>
+              <Link className="pp-rever" href="/mi-espacio?presentacion=1">
+                ↺ Ver de nuevo la presentación
+              </Link>
+            </section>
+          )}
 
           <section className="tarjeta">
             {faltan.length > 0 ? (

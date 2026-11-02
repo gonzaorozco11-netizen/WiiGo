@@ -834,6 +834,22 @@ export const GUIAS: Guia[] = [
     rel: ["canjear", "sumar-paciente", "pedido-paciente"],
   },
   {
+    id: "primeros-pasos",
+    audiencias: [...P],
+    tema: "Cómo funciona",
+    titulo: "Tus primeros pasos y la presentación",
+    donde: "Inicio",
+    rutas: ["=/mi-espacio"],
+    nueva: "2026-11-02",
+    puntos: [
+      "La primera vez que entrás aparece una <b>presentación de 5 pasos</b> con lo más importante: tu código, tu ficha, los pedidos, tu saldo y tus objetivos.",
+      "En <b>Inicio</b> está <b>Tus primeros pasos</b>: foto, presentación, redes, primer paciente y primera historia. Cada uno se tilda solo cuando lo hacés.",
+      "Cuando completás los 5, la tarjeta desaparece.",
+      "Para volver a ver la presentación, tocá <b>Ver de nuevo la presentación</b> en esa tarjeta.",
+    ],
+    rel: ["como-funciona"],
+  },
+  {
     id: "canjear",
     audiencias: [...P],
     tema: "Tu saldo",

@@ -6,6 +6,10 @@ import { dejarDeVerEspacio } from "@/app/(app)/profesionales/actions";
 import { WIIGO_LOGO_DATA_URI } from "@/lib/wiigo-logo-data";
 import EspacioNav from "./EspacioNav";
 import GuiaWiigo from "@/components/GuiaWiigo";
+import Presentacion from "./Presentacion";
+import { Suspense } from "react";
+import { getSupabaseServerClient } from "@/lib/supabase";
+import { datosPresentacion, vioPresentacion } from "@/lib/primerosPasos";
 import Autorizacion from "./Autorizacion";
 import "./espacio.css";
 
@@ -30,6 +34,13 @@ export default async function EspacioLayout({ children }: { children: React.Reac
   // puede aceptar por ella (solo lectura), así que a él se le muestra el
   // espacio igual, con el aviso de que todavía falta.
   const veElEspacio = Boolean(sesion.autorizoImagenAt) || sesion.soloLectura;
+
+  // La presentación de bienvenida: se abre sola la primera vez que entra ella
+  // (no cuando Gonzalo mira; él la abre con «Ver de nuevo la presentación»).
+  const supabase = getSupabaseServerClient();
+  const [datosBienvenida, yaLaVio] = veElEspacio
+    ? await Promise.all([datosPresentacion(supabase, sesion.idProfesional, sesion.nombre), vioPresentacion(supabase, sesion.idProfesional)])
+    : [null, true];
 
   return (
     <div className={`espacio ${outfit.variable} ${manrope.variable} ${mono.variable}`}>
@@ -78,6 +89,11 @@ export default async function EspacioLayout({ children }: { children: React.Reac
       {/* Sin la autorización no ve nada más: es lo primero que se le pide. */}
       {veElEspacio ? children : <Autorizacion nombre={sesion.nombre} logo={WIIGO_LOGO_DATA_URI} />}
       {veElEspacio && <GuiaWiigo audiencia="profesional" />}
+      {datosBienvenida && (
+        <Suspense fallback={null}>
+          <Presentacion datos={datosBienvenida} abrirSola={!yaLaVio && !sesion.soloLectura} />
+        </Suspense>
+      )}
     </div>
   );
 }
