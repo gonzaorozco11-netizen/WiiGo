@@ -264,18 +264,32 @@ export function TarjetaRanking({
       <div className="rk-premios">
         <b>¿Para qué sirve cumplir tus objetivos?</b>
         <p>Las 3 primeras del mes:</p>
+        {/* Cada renglón: el ícono y el texto en su propio <span>. Sin el
+            segundo span, la grilla del <li> partía el texto palabra por palabra. */}
         <ul>
           <li>
-            <span aria-hidden="true">📺</span> Salen en las <b>pantallas del local</b>, con su foto y su especialidad.
+            <span aria-hidden="true">📺</span>
+            <span>
+              Salen en las <b>pantallas del local</b>, con su foto y su especialidad.
+            </span>
           </li>
           <li>
-            <span aria-hidden="true">📣</span> WiiGo <b>les pauta contenido</b> en redes, pagado por WiiGo.
+            <span aria-hidden="true">📣</span>
+            <span>
+              WiiGo <b>les pauta contenido</b> en redes, pagado por WiiGo.
+            </span>
           </li>
           <li>
-            <span aria-hidden="true">🔁</span> WiiGo <b>comparte sus publicaciones</b> en @wiigo.arg.
+            <span aria-hidden="true">🔁</span>
+            <span>
+              WiiGo <b>comparte sus publicaciones</b> en @wiigo.arg.
+            </span>
           </li>
           <li>
-            <span aria-hidden="true">⭐</span> Salen <b>primeras en la pantalla asesora</b>, con la insignia Destacada.
+            <span aria-hidden="true">⭐</span>
+            <span>
+              Salen <b>primeras en la pantalla asesora</b>, con la insignia Destacada.
+            </span>
           </li>
         </ul>
         <small>Más objetivos cumplidos = más gente que te conoce = más pacientes.</small>

@@ -535,7 +535,11 @@ export async function venderPos(
   // no suma puntos de club en sus propias compras (ver esProfesionalActivo).
   // Los puntos extra por código de profesional (financiados por la marca,
   // para el cliente que referenció) se suman aparte, arriba de los normales.
-  const puntosGenerados = (idCliente && !compradorEsProfesional ? await calcularPuntosGanados(supabase, lineasPuntos, total) : 0) + puntosExtra;
+  // La primera compra con el descuento de una profesional no suma puntos del
+  // club: ya tiene su beneficio (Gonzalo, 2026-11-02). Las siguientes, sí.
+  const conBienvenida = descuentoBeneficio > 0;
+  const puntosGenerados =
+    (idCliente && !compradorEsProfesional && !conBienvenida ? await calcularPuntosGanados(supabase, lineasPuntos, total) : 0) + puntosExtra;
   await supabase.from("ventas").update({ puntos_generados: puntosGenerados }).eq("id_venta", venta.id_venta);
 
   if (idCliente && puntosGenerados > 0) {

@@ -73,7 +73,7 @@ export default async function ObjetivosEspacio() {
 
           <section className="tarjeta">
             <h2>
-              {semana.racha > 0 ? `${semana.racha} ${semana.racha === 1 ? "semana" : "semanas"} seguidas` : "Tu racha"}
+              {semana.racha > 0 ? `${semana.racha} ${semana.racha === 1 ? "semana seguida" : "semanas seguidas"}` : "Tu racha"}
               <small>con pacientes que usan tu código</small>
             </h2>
             <div className="semanas" aria-label="Últimas 6 semanas">

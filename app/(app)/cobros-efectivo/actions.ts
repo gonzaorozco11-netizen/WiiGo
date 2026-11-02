@@ -263,7 +263,11 @@ export async function confirmarCobro(
     const { data: clienteDni } = await supabase.from("clientes").select("dni").eq("id_cliente", venta.id_cliente).maybeSingle();
     esProfesional = await esProfesionalActivo(supabase, clienteDni?.dni ?? null);
   }
-  const puntosGenerados = (venta.id_cliente && !esProfesional ? await calcularPuntosGanados(supabase, lineasPuntos, total) : 0) + puntosExtra;
+  // La primera compra con el descuento de una profesional no suma puntos del
+  // club: ya tiene su beneficio (Gonzalo, 2026-11-02). Las siguientes, sí.
+  const conBienvenida = descuentoBeneficioReal > 0;
+  const puntosGenerados =
+    (venta.id_cliente && !esProfesional && !conBienvenida ? await calcularPuntosGanados(supabase, lineasPuntos, total) : 0) + puntosExtra;
   await supabase.from("ventas").update({ puntos_generados: puntosGenerados }).eq("id_venta", idVenta);
 
   if (venta.id_cliente && puntosGenerados > 0) {
