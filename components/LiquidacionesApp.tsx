@@ -264,7 +264,7 @@ export default function LiquidacionesApp({ marcas }: { marcas: Marca[] }) {
                       <th className="p-3 text-right">IVA s/comisión</th>
                       <th className="p-3 text-right">Imp. créd.</th>
                       <th className="p-3 text-right">Fee MP</th>
-                      <th className="p-3 text-right">SIRCREB</th>
+                      <th className="p-3 text-right">Retenciones</th>
                       <th className="p-3 text-right">Imp. déb.</th>
                       {resultado.resumen.programaProfesionales > 0 && (
                         <th className="p-3 text-right" title="Descuento del paciente + lo que sumó la profesional">Prog. profesionales</th>
@@ -320,7 +320,7 @@ export default function LiquidacionesApp({ marcas }: { marcas: Marca[] }) {
                   <ResumenCampo etiqueta="IVA s/comisión" valor={-resultado.resumen.ivaComision} />
                   <ResumenCampo etiqueta="Imp. a los créditos" valor={-resultado.resumen.impCreditos} />
                   <ResumenCampo etiqueta="Fee Mercado Pago" valor={-resultado.resumen.feeMp} />
-                  <ResumenCampo etiqueta="SIRCREB retenido" valor={-resultado.resumen.sircreb} />
+                  <ResumenCampo etiqueta="Retenciones impositivas" valor={-resultado.resumen.sircreb} />
                   <ResumenCampo etiqueta="Imp. a los débitos" valor={-resultado.resumen.impDebitos} />
                   {resultado.resumen.programaProfesionales > 0 && (
                     <ResumenCampo etiqueta="Programa profesionales" valor={-resultado.resumen.programaProfesionales} />
@@ -339,11 +339,6 @@ export default function LiquidacionesApp({ marcas }: { marcas: Marca[] }) {
                   />
                 </div>
 
-                {resultado.resumen.sircreb > 0 && (
-                  <p className="text-xs text-purple-700 bg-purple-50 border border-purple-200 rounded-lg px-3 py-2 mb-4">
-                    ⓘ El SIRCREB retenido (${formatearMonto(resultado.resumen.sircreb)}) no es ganancia de WiiGo — queda en la cuenta corriente de retenciones de {resultado.marca}, pendiente de compensar o devolver.
-                  </p>
-                )}
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
                   <div className="bg-white border-2 border-emerald-200 rounded-xl p-4">
@@ -447,7 +442,7 @@ function ResumenCampo({ etiqueta, valor, destacado }: { etiqueta: string; valor:
 }
 
 const ETIQUETA_TIPO_RETENCION: Record<string, string> = {
-  SIRCREB: "SIRCREB",
+  SIRCREB: "Retenciones impositivas",
   IMP_DEBITO_CREDITO: "Impuesto a los créditos/débitos",
   OTRO: "Otros",
 };
@@ -496,7 +491,7 @@ export function RetencionesMarca({ idMarca }: { idMarca: string }) {
         <span className="text-lg font-extrabold text-purple-700 tabular-nums">${formatearMonto(totalPendiente)}</span>
       </div>
       <p className="text-xs text-neutral-400 mb-3">
-        Retenido preventivamente en liquidaciones (ej. SIRCREB) — no es ganancia de WiiGo, queda pendiente de compensar o devolver.
+        Lo que se le descontó a la marca en sus liquidaciones como retenciones impositivas.
       </p>
       {saldos.length > 0 && (
         <div className="space-y-1.5 mb-3">
