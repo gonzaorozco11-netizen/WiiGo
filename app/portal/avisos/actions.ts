@@ -71,11 +71,10 @@ export async function guardarAvisos(datos: {
   const malo = mails.find((m) => !mailValido(m));
   if (malo) return { error: `«${malo}» no parece un mail.` };
 
-  // Solo se guardan los tipos conocidos: lo que venga de más no entra a la
-  // base, que es donde después se lee sin volver a revisar.
-  const avisos = Object.fromEntries(
-    TIPOS_AVISO.map((t) => [t, Boolean(datos.prendidos[t])])
-  );
+  // Los avisos no se pueden apagar (Gonzalo, 2026-11-02): se guardan todos
+  // prendidos, venga lo que venga del navegador. Lo único que elige la marca
+  // son los mails.
+  const avisos = Object.fromEntries(TIPOS_AVISO.map((t) => [t, true]));
 
   const { error } = await getSupabaseServerClient()
     .from("marcas")

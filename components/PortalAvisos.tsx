@@ -19,7 +19,8 @@ function cuando(iso: string) {
 }
 
 export default function PortalAvisos({ datos }: { datos: AvisosPortal }) {
-  const [prendidos, setPrendidos] = useState<Record<string, boolean>>(datos.prendidos);
+  // Los avisos no se pueden apagar (Gonzalo, 2026-11-02): siempre van todos.
+  const prendidos = datos.prendidos;
   const [mails, setMails] = useState<string[]>(datos.mails);
   const [nuevo, setNuevo] = useState("");
   const [pendiente, empezar] = useTransition();
@@ -60,12 +61,6 @@ export default function PortalAvisos({ datos }: { datos: AvisosPortal }) {
     });
   }
 
-  function alternar(tipo: TipoAviso) {
-    const siguientes = { ...prendidos, [tipo]: !prendidos[tipo] };
-    setPrendidos(siguientes);
-    guardar(siguientes, mails);
-  }
-
   function agregarMail() {
     const m = nuevo.trim();
     if (!m) return;
@@ -96,14 +91,14 @@ export default function PortalAvisos({ datos }: { datos: AvisosPortal }) {
       {mails.length === 0 && (
         <div className="av-sinmail">
           <b>Todavía no nos dijiste a dónde escribirte.</b> Cargá un mail abajo: hasta que no haya
-          uno, no sale ningún aviso aunque los tengas todos prendidos.
+          uno, no te llega ningún aviso.
         </div>
       )}
 
       <div className="av-grid">
         <section className="av-caja">
           <h2>Qué te avisamos</h2>
-          <p className="sub">Prendé solo lo que te sirva. Se guarda solo.</p>
+          <p className="sub">Te avisamos de todo esto, para que no se te pase nada. Vos elegís a qué mails.</p>
 
           {AVISOS.map((a) => (
             <div className="av-fila" key={a.tipo}>
@@ -114,17 +109,7 @@ export default function PortalAvisos({ datos }: { datos: AvisosPortal }) {
                 </p>
                 <p className="d">{a.detalle}</p>
               </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={Boolean(prendidos[a.tipo])}
-                aria-label={a.titulo}
-                className={`av-sw${prendidos[a.tipo] ? " on" : ""}`}
-                disabled={pendiente}
-                onClick={() => alternar(a.tipo)}
-              >
-                <b />
-              </button>
+              <span className="av-siempre">Siempre activo</span>
             </div>
           ))}
         </section>

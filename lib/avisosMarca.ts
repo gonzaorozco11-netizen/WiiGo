@@ -89,11 +89,13 @@ export const TOPE_DIARIO: Record<TipoAviso, number> = {
 /** Hasta cuántas direcciones puede cargar una marca. */
 export const MAX_MAILS = 3;
 
-/** ¿Está prendido este aviso? Lo que no está guardado vale el de fábrica. */
-export function avisoPrendido(avisos: Record<string, unknown>, tipo: TipoAviso): boolean {
-  const guardado = avisos?.[tipo];
-  if (typeof guardado === "boolean") return guardado;
-  return AVISOS.find((a) => a.tipo === tipo)?.porDefecto ?? false;
+/**
+ * ¿Está prendido este aviso? Siempre: la marca no los puede apagar (Gonzalo,
+ * 2026-11-02). Elige solo a qué mails le llegan. Se deja la función (y lo
+ * guardado en marcas.avisos) por si algún día vuelven a ser opcionales.
+ */
+export function avisoPrendido(_avisos: Record<string, unknown>, tipo: TipoAviso): boolean {
+  return AVISOS.some((a) => a.tipo === tipo);
 }
 
 /** Un mail con forma de mail. Sin esto se cargan nombres y no llega nada. */

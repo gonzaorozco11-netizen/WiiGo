@@ -1876,6 +1876,8 @@
 .av-sw.on { background: var(--salvia-fuerte); }
 .av-sw.on b { left: 21px; }
 .av-sw:disabled { opacity: .6; cursor: default; }
+/* Los avisos ya no se apagan: en lugar del interruptor, esta etiqueta. */
+.av-siempre { flex: none; font-size: 12px; font-weight: 700; color: var(--salvia-honda); background: var(--salvia-tenue); border-radius: 999px; padding: 3px 10px; white-space: nowrap; }
 
 .av-mail {
   display: flex; align-items: center; gap: 10px; border-top: 1px solid #eef1e9;
