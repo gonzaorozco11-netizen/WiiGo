@@ -130,7 +130,13 @@ export default function ProductoFormModal({
   // Controlado para poder explicar abajo qué implica el proveedor elegido:
   // con uno de liquidación mensual la plata funciona distinto que con uno
   // que te factura por entrega.
-  const [idProveedorProducto, setIdProveedorProducto] = useState(producto?.id_proveedor_liquidacion ?? "");
+  // En un producto nuevo arranca con el proveedor de liquidación mensual
+  // (Alifrut): es de donde sale casi todo lo de WiiGo Dietética (Gonzalo,
+  // 2026-11-02). Se cambia si es de otro.
+  const [idProveedorProducto, setIdProveedorProducto] = useState(
+    producto?.id_proveedor_liquidacion ??
+      (producto ? "" : proveedoresLiquidacion.find((p) => p.modo_facturacion === "LIQUIDACION_VENTA")?.id_proveedor ?? "")
+  );
   const proveedorElegido = proveedoresLiquidacion.find((p) => p.id_proveedor === idProveedorProducto);
   const [nuevaSubcategoria, setNuevaSubcategoria] = useState(false);
   const [variantes, setVariantes] = useState<VarianteForm[]>(
@@ -345,17 +351,21 @@ export default function ProductoFormModal({
                   no sabe qué sugerirle a cada proveedor. Lo que cambia según
                   el modo es qué pasa después, y eso lo aclara el texto de
                   abajo. */}
+              {/* Obligatorio en los productos propios: sin el proveedor, lo que
+                  se vende no entra en lo que se le paga a Alifrut a fin de mes
+                  (Proveedores → Liquidación). Pasó con la primera venta. */}
               <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="id_proveedor_liquidacion">
-                Proveedor de este producto (opcional)
+                ¿De qué proveedor es? *
               </label>
               <select
                 id="id_proveedor_liquidacion"
                 name="id_proveedor_liquidacion"
                 value={idProveedorProducto}
                 onChange={(e) => setIdProveedorProducto(e.target.value)}
+                required
                 className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
               >
-                <option value="">Ninguno</option>
+                <option value="">Elegí el proveedor</option>
                 {proveedoresLiquidacion.map((p) => (
                   <option key={p.id_proveedor} value={p.id_proveedor}>
                     {p.nombre}

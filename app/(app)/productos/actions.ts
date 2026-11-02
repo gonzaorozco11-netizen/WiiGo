@@ -139,6 +139,11 @@ function productoFromForm(formData: FormData, idMarca: string, idSubcategoria: s
     // Se escribe "Almendra Non Pareil" y el tamaño lo pone el peso neto: "Almendra Non Pareil 250 g".
     if (datos.nombre) datos.nombre = nombreConTamano(datos.nombre, datos.peso_neto_g);
   }
+  // Si el formulario no trajo el campo del proveedor (por ejemplo, abierto
+  // desde la ficha de la marca, que no carga la lista), no se toca: si no,
+  // guardar el nombre le borraba el proveedor y el producto dejaba de entrar
+  // en lo que se le paga a Alifrut.
+  if (!formData.has("id_proveedor_liquidacion")) delete (datos as Partial<typeof datos>).id_proveedor_liquidacion;
   return datos;
 }
 

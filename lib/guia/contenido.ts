@@ -123,12 +123,12 @@ export const GUIAS: Guia[] = [
     rutas: ["/productos"],
     pasos: [
       "Entrá a <b>Productos</b> y tocá <b>+ Nuevo producto</b>.",
-      "<b>1 · El producto:</b> elegí la marca y la subcategoría, y poné el nombre. Si es de WiiGo Dietética, <b>sin el tamaño</b>: el sistema lo agrega solo con el peso neto («Almendra Non Pareil» queda «Almendra Non Pareil 250 g»). Subí la foto.",
+      "<b>1 · El producto:</b> elegí la marca y la subcategoría, y poné el nombre. Si es de WiiGo Dietética, <b>sin el tamaño</b>: el sistema lo agrega solo con el peso neto («Almendra Non Pareil» queda «Almendra Non Pareil 250 g»). Elegí <b>de qué proveedor es</b> (viene puesto Alifrut) y subí la foto.",
       "<b>2 · Precio y stock:</b> cargá los sabores o tamaños, el código de barras y el stock.",
       "<b>3 · Ficha del asesor</b> es opcional: ingredientes, tabla nutricional y fotos extra. Es lo que ve el cliente en la pantalla del local.",
       "Guardá. Si es de WiiGo Dietética, el precio se pone en <b>Precios</b>. Si es de una marca, el precio lo carga la marca desde su portal y se aprueba en <b>Aprobaciones</b>.",
     ],
-    tip: "Un producto sin precio no aparece en el asesor ni en el totem, y la caja no lo cobra. Fotos: cuadradas, fondo blanco, 1000 × 1000.",
+    tip: "Un producto sin precio no aparece en el asesor ni en el totem, y la caja no lo cobra. Sin proveedor, lo que se vende no entra en lo que se le paga a Alifrut a fin de mes. Fotos: cuadradas, fondo blanco, 1000 × 1000.",
     rel: ["precio-wiigo"],
   },
   {
