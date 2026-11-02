@@ -26,6 +26,10 @@ export default async function EspacioLayout({ children }: { children: React.Reac
   if (!sesion) redirect("/login?next=/mi-espacio");
 
   const nombreCompleto = [sesion.nombre, sesion.apellido].filter(Boolean).join(" ");
+  // Ella no pasa de la autorización hasta aceptarla. Gonzalo mirando no la
+  // puede aceptar por ella (solo lectura), así que a él se le muestra el
+  // espacio igual, con el aviso de que todavía falta.
+  const veElEspacio = Boolean(sesion.autorizoImagenAt) || sesion.soloLectura;
 
   return (
     <div className={`espacio ${outfit.variable} ${manrope.variable} ${mono.variable}`}>
@@ -34,6 +38,12 @@ export default async function EspacioLayout({ children }: { children: React.Reac
         <div className="esp-mirando">
           <span>
             👁 Estás viendo el espacio de <b>{sesion.nombre}</b> tal como lo ve ella. Solo para mirar: no podés cambiar nada desde acá.
+            {!sesion.autorizoImagenAt && (
+              <>
+                {" "}
+                <b>Todavía no aceptó la autorización de imagen:</b> es lo primero que le va a aparecer cuando entre.
+              </>
+            )}
           </span>
           <form action={dejarDeVerEspacio}>
             <button type="submit">Volver a su ficha</button>
@@ -52,7 +62,7 @@ export default async function EspacioLayout({ children }: { children: React.Reac
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            {sesion.autorizoImagenAt && <EspacioNav />}
+            {veElEspacio && <EspacioNav />}
             {/* Mirando, "Salir" cerraría la sesión de Gonzalo: no se muestra. */}
             {!sesion.soloLectura && (
               <form action={logout}>
@@ -66,8 +76,8 @@ export default async function EspacioLayout({ children }: { children: React.Reac
       </header>
 
       {/* Sin la autorización no ve nada más: es lo primero que se le pide. */}
-      {sesion.autorizoImagenAt ? children : <Autorizacion nombre={sesion.nombre} logo={WIIGO_LOGO_DATA_URI} />}
-      {sesion.autorizoImagenAt && <GuiaWiigo audiencia="profesional" />}
+      {veElEspacio ? children : <Autorizacion nombre={sesion.nombre} logo={WIIGO_LOGO_DATA_URI} />}
+      {veElEspacio && <GuiaWiigo audiencia="profesional" />}
     </div>
   );
 }
