@@ -231,6 +231,7 @@ export default function PortalMisProductos({ datos }: { datos: MisCostosPortal }
                       <Fila
                         key={p.idProducto}
                         p={p}
+                        prueba={datos.soloLectura}
                         conSubcategoria
                         abierta={abierta === p.idProducto}
                         onAbrir={() => setAbierta((a) => (a === p.idProducto ? null : p.idProducto))}
@@ -278,6 +279,7 @@ export default function PortalMisProductos({ datos }: { datos: MisCostosPortal }
                               <Fila
                                 key={p.idProducto}
                                 p={p}
+                                prueba={datos.soloLectura}
                                 abierta={abierta === p.idProducto}
                                 onAbrir={() =>
                                   setAbierta((a) => (a === p.idProducto ? null : p.idProducto))
@@ -363,22 +365,43 @@ function Stock({ p }: { p: ProductoConMargen }) {
 }
 
 function Fila({
-  p,
+  p: original,
   abierta,
   onAbrir,
   conSubcategoria,
+  prueba = false,
 }: {
   p: ProductoConMargen;
   abierta: boolean;
   onAbrir: () => void;
   /** En la lista plana, porque no hay encabezado que lo diga. */
   conSubcategoria?: boolean;
+  /**
+   * Gonzalo mirando el portal: el costo que escribe se usa para dibujar cómo
+   * le quedaría a la marca, pero no se guarda (Gonzalo, 2026-11-02).
+   */
+  prueba?: boolean;
 }) {
   const router = useRouter();
-  const [valor, setValor] = useState(p.costo != null ? String(p.costo) : "");
+  const [valor, setValor] = useState(original.costo != null ? String(original.costo) : "");
   const [guardando, empezar] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [recienGuardado, setRecienGuardado] = useState(false);
+
+  // En prueba, la cuenta se rehace con el costo escrito: lo que le queda es lo
+  // que le transferimos menos su costo (como en simularMargen).
+  const costoPrueba = Number(valor);
+  const p: ProductoConMargen =
+    prueba && costoPrueba > 0
+      ? {
+          ...original,
+          costo: costoPrueba,
+          porMedio: original.porMedio.map((m) => {
+            const leQueda = Math.round((m.leTransferimos - costoPrueba) * 100) / 100;
+            return { ...m, costo: costoPrueba, leQueda, porcentaje: original.precio > 0 ? Math.round((leQueda / original.precio) * 10000) / 100 : null };
+          }),
+        }
+      : original;
 
   // El peor caso: con crédito es cuando menos le queda, así que la columna
   // nunca le promete de más.
@@ -386,6 +409,8 @@ function Fila({
   const queda = p.costo != null && peor ? peor.leQueda ?? 0 : null;
 
   function guardar() {
+    // Mirando: no se guarda nada, solo se ve.
+    if (prueba) return;
     const n = Number(valor);
     if (!(n > 0) || n === p.costo) return;
     setError(null);
@@ -460,6 +485,7 @@ function Fila({
             onKeyDown={alTeclear}
           />
           {recienGuardado && <span className="guardado">guardado ✓</span>}
+          {prueba && costoPrueba > 0 && costoPrueba !== original.costo && <span className="guardado">prueba · no se guarda</span>}
           {error && <span className="err-costo">{error}</span>}
         </td>
         <td data-et="te queda" className="num">

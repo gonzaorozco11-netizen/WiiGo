@@ -629,6 +629,7 @@ export const GUIAS: Guia[] = [
       "Entrá a <b>Marcas</b> y abrí la marca (tiene que estar activa y en consignación).",
       "Tocá <b>👁 Ver su portal como lo ve la marca</b>.",
       "Ves su tablero, sus productos, reponer y sus liquidaciones igual que ella, con una franja naranja arriba. Es solo para mirar: no se manda ni se cambia nada.",
+      "En <b>Mis productos</b> podés escribir un costo para ver cómo le queda a la marca (la torta y «Te queda por venta»). Es una prueba: no se guarda.",
       "Para salir, tocá <b>Volver a la marca</b>.",
     ],
     tip: "No entres con el usuario y la contraseña de la marca: quedaría registrado como si hubiera entrado ella.",

@@ -564,6 +564,11 @@ export type MisCostosPortal = {
   sinCosto: number;
   /** Los que están por debajo del mínimo, agotados incluidos. */
   sinStock: number;
+  /**
+   * Gonzalo mirando el portal: el costo que escribe se usa para ver cómo le
+   * queda a la marca, pero no se guarda.
+   */
+  soloLectura: boolean;
 };
 
 export async function misCostosPortal(): Promise<MisCostosPortal | null> {
@@ -642,6 +647,7 @@ export async function misCostosPortal(): Promise<MisCostosPortal | null> {
     productos: lista,
     sinCosto: lista.filter((p) => p.costo == null).length,
     sinStock: lista.filter((p) => p.stock < p.stockMinimo || p.stock === 0).length,
+    soloLectura: sesion.soloLectura,
   };
 }
 
