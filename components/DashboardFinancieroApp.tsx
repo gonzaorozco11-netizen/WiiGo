@@ -202,7 +202,10 @@ export default function DashboardFinancieroApp() {
             <div className="text-sm divide-y divide-dashed divide-neutral-200">
               <Fila etiqueta="Caja del período" valor={resumen.caja} />
               <Fila etiqueta="− Liquidaciones pendientes de todas las marcas" valor={-resumen.situacion.liquidaciones} />
-              <Fila etiqueta="− Retenciones pendientes de devolver" valor={-resumen.situacion.retenciones} />
+              {/* Hoy en 0: las retenciones no se devuelven (ver RETENCIONES_SE_DEVUELVEN en dashboard/actions.ts). */}
+              {resumen.situacion.retenciones > 0 && (
+                <Fila etiqueta="− Retenciones pendientes de devolver" valor={-resumen.situacion.retenciones} />
+              )}
               <Fila etiqueta="+ Lo que las marcas te deben (cuenta comercial)" valor={resumen.situacion.comercial} />
               <Fila etiqueta="Disponible real" valor={resumen.disponibleReal} fuerte />
             </div>
@@ -280,7 +283,7 @@ export default function DashboardFinancieroApp() {
                   <tr className="text-left text-[10px] font-bold uppercase tracking-wide text-red-700/60 border-b border-red-100">
                     <th className="px-4 py-2">Marca</th>
                     <th className="px-4 py-2 text-right">Pendiente de liquidar/pagar</th>
-                    <th className="px-4 py-2 text-right">Retenciones a devolver</th>
+                    {platas.totalRetenciones > 0 && <th className="px-4 py-2 text-right">Retenciones a devolver</th>}
                     <th className="px-4 py-2 text-right">Total que no es tuyo</th>
                   </tr>
                 </thead>
@@ -289,14 +292,14 @@ export default function DashboardFinancieroApp() {
                     <tr key={f.idMarca} className="border-b border-red-100 last:border-0">
                       <td className="px-4 py-2.5">{f.nombre}</td>
                       <td className="px-4 py-2.5 text-right tabular-nums">${formatearMonto(f.pendiente)}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums">${formatearMonto(f.retenciones)}</td>
+                      {platas.totalRetenciones > 0 && <td className="px-4 py-2.5 text-right tabular-nums">${formatearMonto(f.retenciones)}</td>}
                       <td className="px-4 py-2.5 text-right tabular-nums font-bold text-red-700">${formatearMonto(f.total)}</td>
                     </tr>
                   ))}
                   <tr className="bg-red-100/60 font-bold">
                     <td className="px-4 py-2.5">Total reservado (no gastable)</td>
                     <td className="px-4 py-2.5 text-right tabular-nums">${formatearMonto(platas.totalLiquidaciones)}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums">${formatearMonto(platas.totalRetenciones)}</td>
+                    {platas.totalRetenciones > 0 && <td className="px-4 py-2.5 text-right tabular-nums">${formatearMonto(platas.totalRetenciones)}</td>}
                     <td className="px-4 py-2.5 text-right tabular-nums text-red-700">${formatearMonto(platas.totalGeneral)}</td>
                   </tr>
                 </tbody>

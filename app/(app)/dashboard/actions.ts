@@ -140,6 +140,14 @@ async function cajaPeriodo(supabase: SupabaseClient, desde: string, hasta: strin
   return Math.round(cobrado - pagado);
 }
 
+// Las retenciones impositivas que se les descuentan a las marcas (SIRCREB):
+// Gonzalo decidió no devolverlas, al menos por ahora (2026-11-02). Mientras
+// esté en false cuentan como plata de WiiGo en el disponible real y no
+// figuran en "Plata que le corresponde a cada marca". Si algún día se
+// devuelven, se pasa a true y vuelven a restarse.
+const RETENCIONES_SE_DEVUELVEN = false;
+const retencionesQueSeDeben = (n: number) => (RETENCIONES_SE_DEVUELVEN ? n : 0);
+
 // Lo que hay que devolver/cruzar con las marcas, sumado entre todas — es
 // el mismo cálculo de las tres cuentas de Situación de marca, agregado.
 async function situacionAgregadaMarcas(supabase: SupabaseClient) {
@@ -177,7 +185,7 @@ export async function resumenFinanciero(desde: string, hasta: string) {
 
   const ingresoReal = royalty + margenPropia + otrosIngresos;
   const rentabilidad = ingresoReal - gastos.total;
-  const disponibleReal = caja - situacion.liquidaciones - situacion.retenciones + situacion.comercial;
+  const disponibleReal = caja - situacion.liquidaciones - retencionesQueSeDeben(situacion.retenciones) + situacion.comercial;
 
   return {
     venta,
@@ -188,7 +196,7 @@ export async function resumenFinanciero(desde: string, hasta: string) {
     rentabilidadPorcentaje: venta > 0 ? (rentabilidad / venta) * 100 : 0,
     caja,
     disponibleReal,
-    situacion,
+    situacion: { ...situacion, retenciones: retencionesQueSeDeben(situacion.retenciones) },
   };
 }
 
@@ -309,7 +317,7 @@ export async function platasDeMarcas() {
   for (const m of consignacion ?? []) {
     const pendiente = await saldoLiquidacionesPendiente(m.id_marca);
     const saldosRet = await saldosRetencionPorMarca(supabase, m.id_marca);
-    const retenciones = saldosRet.reduce((acc, s) => acc + s.saldo, 0);
+    const retenciones = retencionesQueSeDeben(saldosRet.reduce((acc, s) => acc + s.saldo, 0));
     if (pendiente <= 0 && retenciones <= 0) continue;
     filas.push({
       idMarca: m.id_marca,
@@ -338,5 +346,5 @@ export async function disponibleRealActual() {
   const supabase = getSupabaseServerClient();
   const hoy = new Date().toISOString().slice(0, 10);
   const [caja, situacion] = await Promise.all([cajaPeriodo(supabase, "2000-01-01", hoy), situacionAgregadaMarcas(supabase)]);
-  return Math.round(caja - situacion.liquidaciones - situacion.retenciones + situacion.comercial);
+  return Math.round(caja - situacion.liquidaciones - retencionesQueSeDeben(situacion.retenciones) + situacion.comercial);
 }
