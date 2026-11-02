@@ -480,8 +480,8 @@ export default function LiquidacionProveedorModal({
                         <p className="text-2xl font-bold text-emerald-700 tabular-nums">${formatearMonto(g.totales.margen)}</p>
                         <p className="text-xs text-emerald-700/80">
                           Vendiste ${formatearMonto(g.totales.ventaTotal)} · te costó ${formatearMonto(g.totales.costoNeto)} ·
-                          margen del {pct(g.totales.ventaNeta > 0 ? (g.totales.margen / g.totales.ventaNeta) * 100 : 0)} sobre la
-                          venta neta
+                          margen del {pct(g.totales.ventaNeta > 0 ? (g.totales.margen / g.totales.ventaNeta) * 100 : 0)}, contado
+                          igual que en Precios
                         </p>
                       </div>
                     </div>
@@ -510,10 +510,18 @@ export default function LiquidacionProveedorModal({
               </span>
               <span className="tabular-nums">${formatearMonto(detalle?.totales.ventaTotal ?? 0)}</span>
             </div>
+            {/* Igual que Precios: el IVA se saca solo donde está tildado en
+                Precios → Configuración (en efectivo, hoy no). */}
             <div className="flex justify-between text-xs py-0.5">
-              <span className="text-neutral-400">Venta sin IVA</span>
+              <span className="text-neutral-400">Venta neta (como la cuenta Precios)</span>
               <span className="tabular-nums text-neutral-400">${formatearMonto(detalle?.totales.ventaNeta ?? 0)}</span>
             </div>
+            {(detalle?.totales.gastos ?? 0) > 0 && (
+              <div className="flex justify-between text-xs py-0.5">
+                <span className="text-neutral-400">Bolsita, etiqueta e impuestos tildados en Precios</span>
+                <span className="tabular-nums text-neutral-400">−${formatearMonto(detalle?.totales.gastos ?? 0)}</span>
+              </div>
+            )}
             <div className="flex justify-between text-sm py-0.5 border-t border-neutral-200 mt-1.5 pt-1.5">
               <span className="text-neutral-500">Costo neto de lo vendido</span>
               <span className="tabular-nums">${formatearMonto(detalle?.totales.costoNeto ?? 0)}</span>

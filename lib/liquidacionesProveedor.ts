@@ -18,6 +18,8 @@ import {
   type ConsumoLote,
 } from "./fifoProveedor";
 import { devueltoPorDetalle, netearRenglon } from "./devueltoPorDetalle";
+import { leerConfigPrecios } from "./configPrecios";
+import { costosSobreTotal, type Medio } from "./calculoPrecio";
 
 // ===================== DETALLE PARA PANTALLA =====================
 //
@@ -54,8 +56,15 @@ export type LineaDetalle = {
   cantidad: number;
   costoNeto: number;
   iva: number;
+  /**
+   * La venta como la cuenta Precios: sin IVA solo si para esa forma de pago
+   * está tildado "IVA" en Precios → Configuración (Gonzalo, 2026-11-02: "que
+   * me quede igual a Precios").
+   */
   ventaNeta: number;
   ventaTotal: number;
+  /** Bolsita y etiqueta, más IIBB, comisión e impuesto al cheque si están tildados. */
+  gastos: number;
   margen: number;
   lotes: LoteDeLinea[];
   /** Solo en las líneas de merma: por qué se perdió. "3 rotura · 1 vencimiento". */
@@ -69,6 +78,7 @@ export type TotalesDetalle = {
   total: number;
   ventaNeta: number;
   ventaTotal: number;
+  gastos: number;
   margen: number;
 };
 
@@ -79,8 +89,19 @@ export type DetalleLiquidacion = {
 };
 
 function totalesVacios(): TotalesDetalle {
-  return { cantidad: 0, costoNeto: 0, iva: 0, total: 0, ventaNeta: 0, ventaTotal: 0, margen: 0 };
+  return { cantidad: 0, costoNeto: 0, iva: 0, total: 0, ventaNeta: 0, ventaTotal: 0, gastos: 0, margen: 0 };
 }
+
+// La forma de pago de Mercado Pago → el medio de Precios, para usar lo que
+// Gonzalo tildó en cada uno (Precios → Configuración).
+const MEDIO_PRECIOS: Record<string, Medio> = {
+  EFECTIVO: "efectivo",
+  DINERO_CUENTA: "qr",
+  DEBITO: "debito",
+  PREPAGA: "debito",
+  CREDITO: "credito",
+  CUOTAS_SIN_INTERES: "credito",
+};
 
 function redondear2(v: number) {
   return Math.round(v * 100) / 100;
@@ -93,6 +114,7 @@ function acumular(t: TotalesDetalle, l: LineaDetalle) {
   t.total = redondear2(t.costoNeto + t.iva);
   t.ventaNeta = redondear2(t.ventaNeta + l.ventaNeta);
   t.ventaTotal = redondear2(t.ventaTotal + l.ventaTotal);
+  t.gastos = redondear2(t.gastos + l.gastos);
   t.margen = redondear2(t.margen + l.margen);
 }
 
@@ -276,10 +298,21 @@ export async function detalleLiquidacionProveedor(
 
   const { data: productos } = await supabase
     .from("productos")
-    .select("id_producto, nombre, costo_informado, iva_porcentaje")
+    .select("id_producto, nombre, costo_informado, iva_porcentaje, id_envase, costos_extra")
     .eq("id_proveedor_liquidacion", idProveedor);
   if (!productos || productos.length === 0) return vacio;
   const productoPorId = new Map(productos.map((p) => [p.id_producto as string, p]));
+
+  // El margen se calcula igual que en Precios: la misma configuración (qué se
+  // descuenta en cada forma de pago) y los mismos costos de la bolsita.
+  const [cfg, { data: envasesData }] = await Promise.all([
+    leerConfigPrecios(supabase),
+    supabase.from("envases").select("id_envase, costo"),
+  ]);
+  const costoEnvase = new Map((envasesData ?? []).map((e) => [e.id_envase as string, Number(e.costo ?? 0)]));
+  // Bolsita y etiqueta por unidad, como en costoDe (lib/calculoPrecio.ts).
+  const bolsitaDe = (p: Record<string, unknown>) =>
+    p.id_envase ? (costoEnvase.get(p.id_envase as string) ?? 0) + cfg.etiqueta : Number(p.costos_extra ?? 0);
 
   const { data: variantes } = await supabase
     .from("variantes_producto")
@@ -291,12 +324,25 @@ export async function detalleLiquidacionProveedor(
   // Las ventas en orden: es lo que define qué lote le toca a cada una.
   const { data: ventas } = await supabase
     .from("ventas")
-    .select("id_venta, medio_pago, fecha")
+    .select("id_venta, medio_pago, fecha, id_pago")
     .eq("estado", "PAGADA")
     .gte("fecha", `${fechaDesde}T00:00:00`)
     .lte("fecha", `${fechaHasta}T23:59:59`)
     .order("fecha", { ascending: true });
   const ventaPorId = new Map((ventas ?? []).map((v) => [v.id_venta as string, v]));
+
+  // Cómo pagó cada venta electrónica (QR, débito, crédito): en Precios cada
+  // una descuenta cosas distintas.
+  const idsPago = [...new Set((ventas ?? []).map((v) => v.id_pago as string | null).filter((x): x is string => Boolean(x)))];
+  const formaPorPago = new Map<string, string>();
+  for (let i = 0; i < idsPago.length; i += 200) {
+    const { data: pagos } = await supabase.from("pagos").select("id_pago, forma_pago_cliente").in("id_pago", idsPago.slice(i, i + 200));
+    for (const pg of pagos ?? []) formaPorPago.set(pg.id_pago as string, (pg.forma_pago_cliente as string) ?? "");
+  }
+  const medioPrecios = (v: Record<string, unknown> | undefined): Medio => {
+    if (!v || v.medio_pago === "EFECTIVO") return "efectivo";
+    return MEDIO_PRECIOS[formaPorPago.get(v.id_pago as string) ?? ""] ?? cfg.escenario;
+  };
 
   const mermas = await mermasSinLiquidar(supabase, [...variantePorId.keys()], fechaDesde, fechaHasta);
 
@@ -324,6 +370,8 @@ export async function detalleLiquidacionProveedor(
     medio: MedioLiquidacion;
     /** Lo que entró por esa venta. En una merma es 0: no entró nada. */
     subtotalVenta: number;
+    /** El medio de Precios (efectivo, qr, débito, crédito). En merma no se usa. */
+    medioPrecios: Medio;
   };
 
   const eventos: Evento[] = [
@@ -336,6 +384,7 @@ export async function detalleLiquidacionProveedor(
         cantidad,
         medio: (venta?.medio_pago === "EFECTIVO" ? "EFECTIVO" : "ELECTRONICO") as MedioLiquidacion,
         subtotalVenta: (d.subtotal as number | null) ?? ((d.precio_unitario as number) ?? 0) * cantidad,
+        medioPrecios: medioPrecios(venta as Record<string, unknown> | undefined),
       };
     }),
     ...mermas.map((m) => ({
@@ -344,6 +393,7 @@ export async function detalleLiquidacionProveedor(
       cantidad: m.cantidad,
       medio: "MERMA" as MedioLiquidacion,
       subtotalVenta: 0,
+      medioPrecios: "efectivo" as Medio,
     })),
   ].sort((a, b) => a.fecha.localeCompare(b.fecha));
 
@@ -389,11 +439,24 @@ export async function detalleLiquidacionProveedor(
         iva: 0,
         ventaNeta: 0,
         ventaTotal: 0,
+        gastos: 0,
         margen: 0,
         lotes: [],
         _lotes: new Map(),
       };
       acumulado.set(clave, linea);
+    }
+
+    // La venta y sus gastos, como en Precios (ver ganancia en calcularPrecio):
+    // el IVA y el IIBB se restan solo si están tildados para esa forma de
+    // pago; la comisión y el cheque, sobre el total cobrado. Más la bolsita.
+    if (medio !== "MERMA") {
+      const d = cfg.descuenta[ev.medioPrecios];
+      const ivaProducto = ((p.iva_porcentaje as number | null) ?? cfg.ivaGeneral) / 100;
+      const netoReal = d.iva ? ev.subtotalVenta / (1 + ivaProducto) : ev.subtotalVenta;
+      const impuestos = (d.iibb ? netoReal * (cfg.iibb / 100) : 0) + ev.subtotalVenta * costosSobreTotal(ev.medioPrecios, cfg);
+      linea.ventaNeta = redondear2(linea.ventaNeta + netoReal);
+      linea.gastos = redondear2(linea.gastos + impuestos + cantidad * bolsitaDe(p));
     }
 
     // El precio de venta se muestra como el unitario real de la línea. Si en
@@ -439,13 +502,12 @@ export async function detalleLiquidacionProveedor(
         ...resto,
         lotes: [..._lotes.values()].sort((a, b) => a.fechaRecepcion.localeCompare(b.fechaRecepcion)),
         iva: redondear2(acc.costoNeto * (acc.ivaPorcentaje / 100)),
-        // El precio de góndola incluye IVA: se le saca para poder compararlo
-        // contra el costo, que va neto. En merma es 0 y el margen queda en
-        // menos el costo entero, que es exactamente lo que se perdió.
-        ventaNeta: redondear2(acc.ventaTotal / (1 + acc.ivaPorcentaje / 100)),
+        // ventaNeta y gastos ya vienen sumados venta por venta con la regla de
+        // Precios. En merma son 0 y el margen queda en menos el costo entero,
+        // que es exactamente lo que se perdió.
         margen: 0,
       };
-      l.margen = redondear2(l.ventaNeta - l.costoNeto);
+      l.margen = redondear2(l.ventaNeta - l.costoNeto - l.gastos);
       if (medio === "MERMA") {
         l.motivos = resumirMotivos(mermasPorVariante.get(acc.idVariante) ?? []);
       }
