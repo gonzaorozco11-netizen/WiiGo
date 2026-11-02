@@ -25,6 +25,9 @@ import { REDES, leerRedes, normalizarRedes, textoDeRed, type Redes } from "@/lib
 import { reglasProfesionales, PARAM_OBJETIVO_SEMANAL, PARAM_PACIENTES_DESTACADA } from "@/lib/semanaProfesional";
 import { mesesVinculo, PARAM_MESES_VINCULO } from "@/lib/pacientesProfesional";
 import { fechaHoraArgentina } from "@/lib/horarios";
+import { rankingDelMes, podio, reglasPuntos, PARAMS_PUNTOS, type ReglasPuntos } from "@/lib/puntosProfesionales";
+import { COOKIE_VER_PROFESIONAL, registrarActividad } from "@/lib/profesionalSesion";
+import { redirect } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 async function usuarioActual() {
@@ -1315,24 +1318,42 @@ export async function cambiarClaveUsuarioProfesional(idProfesional: string, pass
 // definen el objetivo de la semana que ve cada una y cuántos pacientes hacen
 // falta para que su ficha salga destacada (primero en la pantalla del local).
 
-export type FilaDelMes = { idProfesional: string; nombre: string; foto: string | null; vistas: number; pacientes: number; vendido: number; destacada: boolean };
+export type FilaDelMes = {
+  idProfesional: string;
+  nombre: string;
+  foto: string | null;
+  vistas: number;
+  pacientes: number;
+  vendido: number;
+  destacada: boolean;
+  /** Puntos del ranking del mes (pacientes + historias y reels verificados). */
+  puntos: number;
+  puesto: number;
+  historias: number;
+  reels: number;
+};
 
 export async function profesionalesDelMes(): Promise<{
   filas: FilaDelMes[];
   reglas: { objetivoSemanal: number; pacientesDestacada: number; mesesVinculo: number };
+  reglasPuntos: ReglasPuntos;
   hayVisitas: boolean;
+  hayRedes: boolean;
 }> {
   await requireInterno();
   const supabase = getSupabaseServerClient();
   const primeroDelMes = `${fechaHoraArgentina().fecha.slice(0, 8)}01T00:00:00-03:00`;
-  const [profRes, visRes, refRes, reglasBase, meses] = await Promise.all([
+  const [profRes, visRes, refRes, reglasBase, meses, ranking] = await Promise.all([
     supabase.from("profesionales").select("id_profesional, nombre, apellido, foto").eq("estado", "ACTIVO"),
     supabase.from("visitas_asesor").select("id_profesional").eq("evento", "FICHA").gte("fecha", primeroDelMes),
     supabase.from("referidos_profesionales").select("id_profesional, id_cliente, total_venta").neq("estado", "ANULADO").gte("fecha", primeroDelMes),
     reglasProfesionales(supabase),
     mesesVinculo(supabase),
+    rankingDelMes(supabase),
   ]);
   const reglas = { ...reglasBase, mesesVinculo: meses };
+  const puestoDe = new Map(ranking.filas.map((f) => [f.idProfesional, f]));
+  const delPodio = podio(ranking.filas);
 
   const vistas = new Map<string, number>();
   for (const v of visRes.data ?? []) vistas.set(v.id_profesional as string, (vistas.get(v.id_profesional as string) ?? 0) + 1);
@@ -1352,6 +1373,7 @@ export async function profesionalesDelMes(): Promise<{
     .map((p) => {
       const id = p.id_profesional as string;
       const pacientes = (clientes.get(id)?.size ?? 0) + (sinCliente.get(id) ?? 0);
+      const r = puestoDe.get(id);
       return {
         idProfesional: id,
         nombre: [p.nombre, p.apellido].filter(Boolean).join(" "),
@@ -1359,12 +1381,142 @@ export async function profesionalesDelMes(): Promise<{
         vistas: vistas.get(id) ?? 0,
         pacientes,
         vendido: vendido.get(id) ?? 0,
-        destacada: pacientes >= reglas.pacientesDestacada,
+        destacada: pacientes >= reglas.pacientesDestacada || delPodio.has(id),
+        puntos: r?.puntos ?? 0,
+        puesto: r?.puesto ?? 0,
+        historias: r?.historias ?? 0,
+        reels: r?.reels ?? 0,
       };
     })
-    .sort((a, b) => b.pacientes - a.pacientes || b.vistas - a.vistas || a.nombre.localeCompare(b.nombre, "es"));
+    .sort((a, b) => b.puntos - a.puntos || b.pacientes - a.pacientes || b.vistas - a.vistas || a.nombre.localeCompare(b.nombre, "es"));
 
-  return { filas, reglas, hayVisitas: !visRes.error };
+  return { filas, reglas, reglasPuntos: ranking.reglas, hayVisitas: !visRes.error, hayRedes: ranking.disponible };
+}
+
+/** Los puntos del ranking: cuánto vale cada cosa y los topes. */
+export async function guardarReglasPuntos(reglas: ReglasPuntos): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  const valores = Object.entries(PARAMS_PUNTOS).map(([clave, parametro]) => [parametro, reglas[clave as keyof ReglasPuntos]] as const);
+  if (valores.some(([, v]) => !Number.isInteger(v) || v < 0 || v > 999)) return { error: "Poné números enteros, de 0 a 999." };
+  if (reglas.reelCadaDias < 1) return { error: "Cada cuántos días suma un reel: como mínimo 1." };
+  const supabase = getSupabaseServerClient();
+  for (const [parametro, valor] of valores) {
+    const { error } = await supabase.from("configuracion").upsert({ parametro, valor: String(valor) }, { onConflict: "parametro" });
+    if (error) return { error: friendlyDbError(error) };
+  }
+  revalidatePath("/profesionales");
+  return { error: null };
+}
+
+// ===================== REDES: LO QUE AVISAN QUE SUBIERON =====================
+//
+// La profesional avisa desde su espacio que subió una historia (con la
+// captura) o un reel (con el link). Recién cuando Gonzalo lo verifica suma
+// puntos (lib/puntosProfesionales.ts).
+
+export type PublicacionParaVerificar = {
+  idPublicacion: string;
+  tipo: "HISTORIA" | "REEL";
+  fecha: string;
+  captura: string | null; // link firmado, vence en una hora
+  link: string | null;
+  puntos: number;
+  profesional: { id: string; nombre: string; foto: string | null };
+};
+
+export async function listarPublicacionesParaVerificar(): Promise<PublicacionParaVerificar[]> {
+  await requireInterno();
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("publicaciones_profesional")
+    .select("id_publicacion, id_profesional, tipo, captura, link, creada_el")
+    .eq("estado", "PENDIENTE")
+    .order("creada_el");
+  if (error || !data || data.length === 0) return [];
+  const ids = [...new Set(data.map((p) => p.id_profesional as string))];
+  const [{ data: profs }, reglas] = await Promise.all([
+    supabase.from("profesionales").select("id_profesional, nombre, apellido, foto").in("id_profesional", ids),
+    reglasPuntos(supabase),
+  ]);
+  const porId = new Map((profs ?? []).map((p) => [p.id_profesional as string, p]));
+  return Promise.all(
+    data.map(async (p) => {
+      const prof = porId.get(p.id_profesional as string);
+      let captura: string | null = null;
+      if (p.captura) {
+        const { data: firmado } = await supabase.storage.from("capturas-profesionales").createSignedUrl(p.captura as string, 3600);
+        captura = firmado?.signedUrl ?? null;
+      }
+      return {
+        idPublicacion: p.id_publicacion as string,
+        tipo: p.tipo as "HISTORIA" | "REEL",
+        fecha: p.creada_el as string,
+        captura,
+        link: (p.link as string | null) ?? null,
+        puntos: p.tipo === "REEL" ? reglas.ptsReel : reglas.ptsHistoria,
+        profesional: {
+          id: p.id_profesional as string,
+          nombre: prof ? [prof.nombre, prof.apellido].filter(Boolean).join(" ") : "Profesional",
+          foto: (prof?.foto as string | null) ?? null,
+        },
+      };
+    })
+  );
+}
+
+/** Verificada suma puntos; "No cumple" le llega a ella con el motivo, para que lo corrija. */
+export async function verificarPublicacion(idPublicacion: string, cumple: boolean, motivo?: string): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  const nota = (motivo ?? "").trim().slice(0, 200);
+  if (!cumple && !nota) return { error: "Escribile por qué no cumple, así lo puede corregir." };
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("publicaciones_profesional")
+    .update({
+      estado: cumple ? "VERIFICADA" : "RECHAZADA",
+      motivo: cumple ? null : nota,
+      revisada_el: new Date().toISOString(),
+      revisada_por: await usuarioActual(),
+    })
+    .eq("id_publicacion", idPublicacion)
+    .eq("estado", "PENDIENTE")
+    .select("id_profesional, tipo")
+    .maybeSingle();
+  if (error) return { error: friendlyDbError(error) };
+  if (!data) return { error: "Esa publicación ya estaba revisada." };
+  const que = data.tipo === "REEL" ? "su reel" : "su historia";
+  await registrarActividad(supabase, data.id_profesional as string, cumple ? `WiiGo verificó ${que}` : `WiiGo no aprobó ${que}: ${nota}`);
+  revalidatePath("/aprobaciones");
+  revalidatePath("/profesionales");
+  return { error: null };
+}
+
+// ===================== VER SU ESPACIO COMO LO VE ELLA =====================
+
+/**
+ * Deja a Gonzalo mirando el espacio de una profesional, en solo lectura (ver
+ * COOKIE_VER_PROFESIONAL en lib/profesionalSesion.ts). No entra con el
+ * usuario de ella ni toca su sesión.
+ */
+export async function verEspacioComoElla(idProfesional: string): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  const supabase = getSupabaseServerClient();
+  const { data } = await supabase.from("profesionales").select("estado").eq("id_profesional", idProfesional).maybeSingle();
+  if (!data) return { error: "No encontré a esa profesional." };
+  if (data.estado !== "ACTIVO") return { error: "Está desactivada: no tiene espacio para mirar." };
+  const cookieStore = await cookies();
+  cookieStore.set(COOKIE_VER_PROFESIONAL, idProfesional, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: 60 * 60 });
+  return { error: null };
+}
+
+export async function dejarDeVerEspacio(): Promise<void> {
+  const cookieStore = await cookies();
+  const id = cookieStore.get(COOKIE_VER_PROFESIONAL)?.value;
+  cookieStore.delete(COOKIE_VER_PROFESIONAL);
+  redirect(id ? `/profesionales?abrir=${encodeURIComponent(id)}` : "/profesionales");
 }
 
 export async function guardarReglasProfesionales(objetivoSemanal: number, pacientesDestacada: number, meses: number): Promise<{ error: string | null }> {

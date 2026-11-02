@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { precioDe } from "@/lib/precios";
-import { obtenerSesionProfesional, registrarActividad } from "@/lib/profesionalSesion";
+import { obtenerSesionProfesional, registrarActividad, sesionQuePuedeCambiar } from "@/lib/profesionalSesion";
 import { clientePorDni, registrarPaciente } from "@/lib/pacientesProfesional";
 import {
   CAMPOS_DATOS,
@@ -37,10 +37,18 @@ type Resultado = { error: string | null };
 const SESION_CERRADA = "Tu sesión se cerró. Volvé a entrar.";
 const FALTA_SQL = "Todavía no se puede guardar: WiiGo tiene que terminar de prepararlo. Probá más tarde.";
 
+// Todas las acciones de acá guardan algo, así que usan sesionQuePuedeCambiar:
+// si es Gonzalo mirando su espacio ("Ver su espacio como lo ve ella"), no
+// se guarda nada y se le dice por qué.
+async function porQueNoPuede() {
+  const mirando = await obtenerSesionProfesional();
+  return mirando?.soloLectura ? "Estás mirando su espacio: desde acá no se cambia nada." : SESION_CERRADA;
+}
+
 /** La primera vez que entra acepta que WiiGo muestre su foto, textos y matrícula. */
 export async function aceptarAutorizacion(): Promise<Resultado> {
-  const sesion = await obtenerSesionProfesional();
-  if (!sesion) return { error: SESION_CERRADA };
+  const sesion = await sesionQuePuedeCambiar();
+  if (!sesion) return { error: await porQueNoPuede() };
   if (sesion.autorizoImagenAt) return { error: null };
 
   const supabase = getSupabaseServerClient();
@@ -104,8 +112,8 @@ const LARGO_MAXIMO: Partial<Record<CampoDatos, number>> = { bio: 320, biografia_
 
 /** Textos y precios de su ficha. Solo se guarda lo que de verdad cambió. */
 export async function enviarDatos(campos: Partial<Record<CampoDatos, string | number | null>>): Promise<Resultado> {
-  const sesion = await obtenerSesionProfesional();
-  if (!sesion) return { error: SESION_CERRADA };
+  const sesion = await sesionQuePuedeCambiar();
+  if (!sesion) return { error: await porQueNoPuede() };
   const supabase = getSupabaseServerClient();
 
   const nuevos: Record<string, string | number | null> = {};
@@ -188,8 +196,8 @@ async function subirFoto(supabase: SupabaseClient, idProfesional: string, archiv
 }
 
 export async function enviarFotoPerfil(formData: FormData): Promise<Resultado> {
-  const sesion = await obtenerSesionProfesional();
-  if (!sesion) return { error: SESION_CERRADA };
+  const sesion = await sesionQuePuedeCambiar();
+  if (!sesion) return { error: await porQueNoPuede() };
   const supabase = getSupabaseServerClient();
   const subida = await subirFoto(supabase, sesion.idProfesional, formData.get("archivo") as File | null);
   if (subida.error || !subida.url) return { error: subida.error };
@@ -199,8 +207,8 @@ export async function enviarFotoPerfil(formData: FormData): Promise<Resultado> {
 }
 
 export async function enviarFotoGaleria(formData: FormData): Promise<Resultado> {
-  const sesion = await obtenerSesionProfesional();
-  if (!sesion) return { error: SESION_CERRADA };
+  const sesion = await sesionQuePuedeCambiar();
+  if (!sesion) return { error: await porQueNoPuede() };
   const supabase = getSupabaseServerClient();
   const titulo = String(formData.get("titulo") ?? "").trim().slice(0, 80) || null;
   const subida = await subirFoto(supabase, sesion.idProfesional, formData.get("archivo") as File | null);
@@ -215,8 +223,8 @@ export async function enviarFotoGaleria(formData: FormData): Promise<Resultado> 
  * nadie: ocultar solo saca, y volver a mostrar es una foto que WiiGo ya vio.
  */
 export async function cambiarVisibilidadFoto(idFoto: string, publico: boolean): Promise<Resultado> {
-  const sesion = await obtenerSesionProfesional();
-  if (!sesion) return { error: SESION_CERRADA };
+  const sesion = await sesionQuePuedeCambiar();
+  if (!sesion) return { error: await porQueNoPuede() };
   const supabase = getSupabaseServerClient();
   const { data: foto } = await supabase
     .from("galeria_profesional")
@@ -243,8 +251,8 @@ type ListaTipo = "FORMACION" | "TRAYECTORIA" | "VIDEOS" | "FORTALEZAS" | "OBJETI
 
 /** Las listas (formación, recorrido, videos, en qué se destaca, en qué ayuda) se mandan enteras. */
 export async function enviarLista(tipo: ListaTipo, items: unknown[]): Promise<Resultado> {
-  const sesion = await obtenerSesionProfesional();
-  if (!sesion) return { error: SESION_CERRADA };
+  const sesion = await sesionQuePuedeCambiar();
+  if (!sesion) return { error: await porQueNoPuede() };
   if (!Array.isArray(items) || items.length > 30) return { error: "Son demasiados. Dejá los más importantes." };
   const supabase = getSupabaseServerClient();
   const id = sesion.idProfesional;
@@ -328,8 +336,8 @@ export async function enviarLista(tipo: ListaTipo, items: unknown[]): Promise<Re
  * se usa ese y no se crea otro igual.
  */
 export async function enviarObjetivos(ids: string[], nuevos: string[]): Promise<Resultado> {
-  const sesion = await obtenerSesionProfesional();
-  if (!sesion) return { error: SESION_CERRADA };
+  const sesion = await sesionQuePuedeCambiar();
+  if (!sesion) return { error: await porQueNoPuede() };
   if (!Array.isArray(ids) || !Array.isArray(nuevos) || ids.length > 30) return { error: "Son demasiados. Dejá los más importantes." };
   const supabase = getSupabaseServerClient();
 
@@ -354,8 +362,8 @@ export async function enviarObjetivos(ids: string[], nuevos: string[]): Promise<
 
 /** Sus redes: salen en la pantalla con un QR, así que también esperan a Gonzalo. */
 export async function enviarRedes(escritas: Record<string, string>): Promise<Resultado> {
-  const sesion = await obtenerSesionProfesional();
-  if (!sesion) return { error: SESION_CERRADA };
+  const sesion = await sesionQuePuedeCambiar();
+  if (!sesion) return { error: await porQueNoPuede() };
   const { redes, error } = normalizarRedes(escritas ?? {});
   if (error) return { error };
   const supabase = getSupabaseServerClient();
@@ -394,8 +402,8 @@ export async function enviarPedido(datos: {
   // propios datos, no se la registra como paciente y no lleva su código.
   paraMi?: boolean;
 }): Promise<{ error: string | null; numero?: number }> {
-  const sesion = await obtenerSesionProfesional();
-  if (!sesion) return { error: SESION_CERRADA };
+  const sesion = await sesionQuePuedeCambiar();
+  if (!sesion) return { error: await porQueNoPuede() };
   const supabase = getSupabaseServerClient();
   const paraMi = datos.paraMi === true;
 
@@ -514,8 +522,8 @@ export async function enviarPedido(datos: {
  * primera compra tiene el beneficio del código.
  */
 export async function sumarPaciente(datos: { nombre: string; apellido: string; dni: string; telefono: string; acepta: boolean }): Promise<{ error: string | null; hasta?: string }> {
-  const sesion = await obtenerSesionProfesional();
-  if (!sesion) return { error: SESION_CERRADA };
+  const sesion = await sesionQuePuedeCambiar();
+  if (!sesion) return { error: await porQueNoPuede() };
   const nombre = datos.nombre.trim().slice(0, 60);
   const apellido = datos.apellido.trim().slice(0, 60);
   const dni = datos.dni.replace(/\D/g, "");
@@ -536,8 +544,8 @@ export async function sumarPaciente(datos: { nombre: string; apellido: string; d
 
 /** Su teléfono y su mail de contacto: son suyos y no salen en la pantalla, así que se guardan directo. */
 export async function guardarContacto(telefono: string, email: string): Promise<Resultado> {
-  const sesion = await obtenerSesionProfesional();
-  if (!sesion) return { error: SESION_CERRADA };
+  const sesion = await sesionQuePuedeCambiar();
+  if (!sesion) return { error: await porQueNoPuede() };
   const tel = telefono.trim().slice(0, 30) || null;
   const mail = email.trim().toLowerCase().slice(0, 120) || null;
   if (mail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) return { error: "Revisá el mail: no parece un mail válido." };
@@ -547,6 +555,65 @@ export async function guardarContacto(telefono: string, email: string): Promise<
   if (error) return { error: "No se pudo guardar. Probá de nuevo." };
   const que = [antes?.telefono !== tel ? "su teléfono" : null, antes?.email !== mail ? "su mail de contacto" : null].filter(Boolean);
   if (que.length > 0) await registrarActividad(supabase, sesion.idProfesional, `Cambió ${que.join(" y ")}`);
+  revalidatePath("/mi-espacio", "layout");
+  return { error: null };
+}
+
+// ---------- Objetivos en redes ----------
+
+/** Solo links de Instagram o TikTok, con https: es lo que Gonzalo abre para verificar. */
+function linkDeRed(crudo: string) {
+  try {
+    const url = new URL(crudo.trim());
+    if (url.protocol !== "https:") return null;
+    const host = url.hostname.replace(/^www\./, "");
+    if (!["instagram.com", "tiktok.com", "vm.tiktok.com"].includes(host)) return null;
+    return url.toString().slice(0, 300);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * "Ya lo subí": avisa una historia (con la captura, porque duran 24 h) o un
+ * reel (con el link). No suma sola: queda esperando a que Gonzalo la
+ * verifique en Aprobaciones (ver lib/puntosProfesionales.ts).
+ */
+export async function avisarPublicacion(formData: FormData): Promise<Resultado> {
+  const sesion = await sesionQuePuedeCambiar();
+  if (!sesion) return { error: await porQueNoPuede() };
+  const tipo = formData.get("tipo") === "REEL" ? "REEL" : "HISTORIA";
+  if (formData.get("menciono") !== "on") return { error: "Para que sume, tiene que mencionar a @wiigo.arg. Tildá la casilla si lo hiciste." };
+  const supabase = getSupabaseServerClient();
+
+  let captura: string | null = null;
+  let link: string | null = null;
+  if (tipo === "HISTORIA") {
+    const archivo = formData.get("archivo") as File | null;
+    if (!archivo || archivo.size === 0) return { error: "Subí la captura de tu historia." };
+    if (!archivo.type.startsWith("image/")) return { error: "Eso no es una imagen. Subí la captura de pantalla." };
+    // La pantalla ya la achica antes de mandarla (Vercel no acepta pedidos de más de 4,5 MB).
+    if (archivo.size > 10 * 1024 * 1024) return { error: "La imagen es muy pesada. Probá con otra captura." };
+    try {
+      const original = Buffer.from(await archivo.arrayBuffer());
+      const chica = await sharp(original).rotate().resize({ width: 1080, height: 1920, fit: "inside", withoutEnlargement: true }).webp({ quality: 75 }).toBuffer();
+      const ruta = `${sesion.idProfesional}/${Date.now()}.webp`;
+      const { error } = await supabase.storage.from("capturas-profesionales").upload(ruta, chica, { contentType: "image/webp" });
+      if (error) return { error: FALTA_SQL };
+      captura = ruta;
+    } catch {
+      return { error: "No se pudo leer la imagen. Probá con otra captura." };
+    }
+  } else {
+    link = linkDeRed(String(formData.get("link") ?? ""));
+    if (!link) return { error: "Pegá el link del reel, de Instagram o TikTok (empieza con https://)." };
+  }
+
+  const { error } = await supabase
+    .from("publicaciones_profesional")
+    .insert({ id_profesional: sesion.idProfesional, tipo, captura, link, menciono: true });
+  if (error) return { error: FALTA_SQL };
+  await registrarActividad(supabase, sesion.idProfesional, tipo === "HISTORIA" ? "Avisó que subió una historia mencionando a WiiGo" : "Avisó que subió un reel mencionando a WiiGo", true);
   revalidatePath("/mi-espacio", "layout");
   return { error: null };
 }

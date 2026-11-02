@@ -3,12 +3,15 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionProfesional } from "@/lib/profesionalSesion";
 import { semanaProfesional } from "@/lib/semanaProfesional";
 import { sugerenciasParaProfesional } from "@/lib/sugerenciasProfesional";
-import { TarjetaSemana, TarjetaObjetivo } from "../TarjetasSemana";
+import { objetivosRedes, rankingDelMes } from "@/lib/puntosProfesionales";
+import { TarjetaSemana } from "../TarjetasSemana";
+import { TarjetaObjetivosSemana, TarjetaRanking, type FilaRanking } from "./ObjetivosRedes";
 
 export const dynamic = "force-dynamic";
 
 const pesos = (n: number) => `$${Math.round(n).toLocaleString("es-AR")}`;
 const pct = (n: number) => `${n.toLocaleString("es-AR", { maximumFractionDigits: 2 })}%`;
+const LETRAS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 export default async function ObjetivosEspacio() {
   const sesion = await obtenerSesionProfesional();
@@ -16,22 +19,57 @@ export default async function ObjetivosEspacio() {
   const id = sesion.idProfesional;
   const supabase = getSupabaseServerClient();
 
-  const [semana, sugerencias, codigoRes, localRes] = await Promise.all([
+  const [semana, sugerencias, codigoRes, localRes, redes, ranking] = await Promise.all([
     semanaProfesional(supabase, id, sesion.nombre),
     sugerenciasParaProfesional(supabase, id),
     supabase.from("codigos_profesionales").select("codigo").eq("id_profesional", id).eq("estado", "ACTIVO").limit(1),
     supabase.from("locales").select("direccion").eq("estado", "ACTIVO").order("nombre").limit(1),
+    objetivosRedes(supabase, id),
+    rankingDelMes(supabase),
   ]);
   const codigo = (codigoRes.data?.[0]?.codigo as string | undefined) ?? null;
   const direccion = (localRes.data?.[0]?.direccion as string | undefined) ?? null;
   const dondeEsta = `WiiGo${direccion ? `, ${direccion}` : ""}`;
 
+  // El ranking sin nombres: ella se ve como "Vos" y las demás como Profesional A, B…
+  const mia = ranking.filas.find((f) => f.idProfesional === id);
+  const misPuntos = mia?.puntos ?? 0;
+  const miPuesto = mia?.puesto ?? ranking.filas.length;
+  let letra = 0;
+  const conEtiqueta: FilaRanking[] = ranking.filas
+    .filter((f) => f.puntos > 0 || f.idProfesional === id)
+    .map((f) => ({ puesto: f.puesto, puntos: f.puntos, yo: f.idProfesional === id, etiqueta: f.idProfesional === id ? "Vos" : `Profesional ${LETRAS[letra++ % 26]}` }));
+  const filasRanking = conEtiqueta.filter((f, i) => i < 3 || f.yo);
+
+  // Cuánto le falta para subir un puesto, en cosas que puede hacer.
+  const r = ranking.reglas;
+  const arriba = ranking.filas.filter((f) => f.puntos > misPuntos).at(-1);
+  const formas = `una historia suma ${r.ptsHistoria}, un paciente ${r.ptsPaciente} y un reel ${r.ptsReel}`;
+  const consejo = !ranking.filas.some((f) => f.puntos > 0)
+    ? `Este mes todavía nadie sumó: tu primer paciente o tu primera historia te ponen arriba (${formas}).`
+    : !arriba
+      ? "¡Vas primera! Seguí así para quedarte con el 1.er lugar del mes."
+      : `Te ${arriba.puntos - misPuntos + 1 === 1 ? "falta 1 punto" : `faltan ${arriba.puntos - misPuntos + 1} puntos`} para el ${arriba.puesto}.º lugar: ${formas}.`;
+
+  // Una idea de historia con los productos de lo que ella trabaja.
+  const productos = sugerencias.slice(0, 3).map((s) => s.nombre);
+  const idea = productos.length
+    ? `«Lo que les recomiendo a mis pacientes: ${productos[0]}. Lo consiguen en @wiigo.arg 🌿»`
+    : "«Mis pacientes me preguntan dónde comprar lo que les recomiendo: en @wiigo.arg 🌿»";
+
   return (
     <main className="esp-lienzo">
       <div className="esp-dos">
         <div className="esp-col">
+          <TarjetaObjetivosSemana redes={redes} pacientes={semana.objetivo} soloLectura={sesion.soloLectura} />
+          <section className="tarjeta obj-idea">
+            <h2>
+              💡 Idea para tu historia de hoy <small>copiala o hacela tuya</small>
+            </h2>
+            <p>{idea}</p>
+            {productos.length > 0 && <p className="nota">Productos de tus objetivos: {productos.join(", ")}.</p>}
+          </section>
           <TarjetaSemana semana={semana} />
-          <TarjetaObjetivo semana={semana} />
 
           <section className="tarjeta">
             <h2>
@@ -68,6 +106,7 @@ export default async function ObjetivosEspacio() {
         </div>
 
         <div className="esp-col">
+          <TarjetaRanking puesto={miPuesto} puntos={misPuntos} filas={filasRanking} consejo={consejo} />
           <section className="tarjeta">
             <h2>
               Avisale a tus pacientes <small>lo mandás vos, desde tu WhatsApp</small>

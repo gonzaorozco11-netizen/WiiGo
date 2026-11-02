@@ -18,7 +18,7 @@ import {
 } from "@/lib/supabase";
 import QRCode from "qrcode";
 import { fetchContenidoAsesor } from "@/lib/contenidoAsesor";
-import { profesionalesDestacadas } from "@/lib/semanaProfesional";
+import { destacadasDelMes } from "@/lib/puntosProfesionales";
 import { REDES, leerRedes, textoDeRed } from "@/lib/redesProfesional";
 import AsesorApp, { type RedEnFicha } from "@/components/AsesorApp";
 import { cargarGondola } from "@/lib/gondola";
@@ -87,14 +87,15 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
       .eq("publicado", true)
       .not("id_consultorio", "is", null),
     supabase.from("consultorios").select("id_consultorio, nombre, link_reserva, link_reserva_online").eq("estado", "ACTIVO"),
-    profesionalesDestacadas(supabase).catch(() => new Set<string>()),
+    // Las que llegaron a los pacientes del mes y las 3 primeras del ranking de puntos.
+    destacadasDelMes(supabase).catch(() => new Set<string>()),
     // Aparte también: sin sql/profesionales-redes.sql falla sola.
     supabase.from("profesionales").select("id_profesional, redes").eq("estado", "ACTIVO").eq("publicado", true).not("redes", "is", null),
     // Dónde está cada producto en la góndola (sql/gondola.sql). Sin el SQL, no hay botón.
     cargarGondola(supabase, idLocal).catch(() => null),
   ]);
 
-  // Las fichas destacadas (las que más pacientes trajeron este mes) van
+  // Las fichas destacadas (las que más pacientes trajeron este mes y el podio de puntos) van
   // primero; entre ellas y entre las demás se respeta el orden de siempre.
   const profesionales = [...((profesionalesRes.data ?? []) as ProfesionalPublico[])].sort(
     (a, b) => Number(destacadas.has(b.id_profesional)) - Number(destacadas.has(a.id_profesional))

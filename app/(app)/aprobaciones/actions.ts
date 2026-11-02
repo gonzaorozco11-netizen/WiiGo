@@ -354,7 +354,7 @@ export async function contarPendientes(): Promise<{ solicitudes: number; etiquet
   const supabase = getSupabaseServerClient();
   const ahora = new Date().toISOString();
 
-  const [sol, etq, venc, prof] = await Promise.all([
+  const [sol, etq, venc, prof, redes] = await Promise.all([
     supabase.from("solicitudes_marca").select("id_solicitud", { count: "exact", head: true }).eq("estado", "PENDIENTE"),
     supabase.from("tareas_etiqueta").select("id_tarea", { count: "exact", head: true }).in("estado", ["PENDIENTE", "VENCIDA"]),
     supabase
@@ -365,10 +365,12 @@ export async function contarPendientes(): Promise<{ solicitudes: number; etiquet
     // Lo que mandaron las profesionales desde su espacio. Sin el SQL corrido
     // la tabla no existe y el conteo da error: cuenta como cero.
     supabase.from("cambios_profesional").select("id_cambio", { count: "exact", head: true }).eq("estado", "PENDIENTE"),
+    // Historias y reels que avisaron y esperan que los verifiques (sql/profesionales-objetivos-redes.sql).
+    supabase.from("publicaciones_profesional").select("id_publicacion", { count: "exact", head: true }).eq("estado", "PENDIENTE"),
   ]);
 
   return {
-    solicitudes: (sol.count ?? 0) + (prof.error ? 0 : prof.count ?? 0),
+    solicitudes: (sol.count ?? 0) + (prof.error ? 0 : prof.count ?? 0) + (redes.error ? 0 : redes.count ?? 0),
     etiquetas: etq.count ?? 0,
     etiquetasVencidas: venc.count ?? 0,
   };

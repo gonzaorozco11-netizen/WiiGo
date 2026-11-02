@@ -68,6 +68,8 @@ import {
   usuarioDeProfesional,
   profesionalesDelMes,
   guardarReglasProfesionales,
+  guardarReglasPuntos,
+  verEspacioComoElla,
   crearUsuarioProfesional,
   cambiarClaveUsuarioProfesional,
   cambiarEstadoUsuarioProfesional,
@@ -290,6 +292,12 @@ function TabProfesionales({ objetivosGlobales }: { objetivosGlobales: Objetivo[]
   }
 
   useEffect(recargar, [desde, hasta]);
+
+  // Al volver de "Ver su espacio como lo ve ella" (/profesionales?abrir=id) se reabre su ficha.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("abrir");
+    if (id) setAbierto({ id, pestana: "resumen" });
+  }, []);
 
   const activos = filas.filter((f) => f.estado === "ACTIVO").length;
   const ventasTotales = filas.reduce((acc, f) => acc + f.ventasReferidas, 0);
@@ -1010,6 +1018,7 @@ function PanelDelMes({ onAbrir }: { onAbrir: (id: string) => void }) {
   const [objetivo, setObjetivo] = useState("");
   const [destacada, setDestacada] = useState("");
   const [meses, setMeses] = useState("");
+  const [puntos, setPuntos] = useState<Record<string, string>>({});
   const [guardando, setGuardando] = useState(false);
   const [mensaje, setMensaje] = useState<string | null>(null);
 
@@ -1020,6 +1029,7 @@ function PanelDelMes({ onAbrir }: { onAbrir: (id: string) => void }) {
         setObjetivo(String(d.reglas.objetivoSemanal));
         setDestacada(String(d.reglas.pacientesDestacada));
         setMeses(String(d.reglas.mesesVinculo));
+        setPuntos(Object.fromEntries(Object.entries(d.reglasPuntos).map(([k, v]) => [k, String(v)])));
       })
       .catch(() => setDatos(null));
   }, []);
@@ -1030,7 +1040,15 @@ function PanelDelMes({ onAbrir }: { onAbrir: (id: string) => void }) {
   function guardar() {
     setMensaje(null);
     setGuardando(true);
+    const reglasPuntosNuevas = {
+      ptsPaciente: Number(puntos.ptsPaciente),
+      ptsHistoria: Number(puntos.ptsHistoria),
+      historiasSemana: Number(puntos.historiasSemana),
+      ptsReel: Number(puntos.ptsReel),
+      reelCadaDias: Number(puntos.reelCadaDias),
+    };
     guardarReglasProfesionales(Number(objetivo), Number(destacada), Number(meses))
+      .then((r) => (r.error ? r : guardarReglasPuntos(reglasPuntosNuevas)))
       .then((r) => {
         setMensaje(r.error ?? "Guardado. Vale desde ahora para todas.");
         if (!r.error) cargar();
@@ -1039,7 +1057,14 @@ function PanelDelMes({ onAbrir }: { onAbrir: (id: string) => void }) {
   }
 
   if (!datos) return null;
-  const conMovimiento = datos.filas.filter((f) => f.vistas > 0 || f.pacientes > 0);
+  const conMovimiento = datos.filas.filter((f) => f.vistas > 0 || f.pacientes > 0 || f.puntos > 0);
+  const CAMPOS_PUNTOS: { clave: string; label: string }[] = [
+    { clave: "ptsPaciente", label: "Puntos por cada paciente del mes" },
+    { clave: "ptsHistoria", label: "Puntos por historia verificada" },
+    { clave: "historiasSemana", label: "Historias por semana que suman" },
+    { clave: "ptsReel", label: "Puntos por reel verificado" },
+    { clave: "reelCadaDias", label: "Cada cuántos días suma un reel" },
+  ];
 
   return (
     <section className="bg-white border border-neutral-200 rounded-2xl mb-5 overflow-hidden">
@@ -1047,7 +1072,8 @@ function PanelDelMes({ onAbrir }: { onAbrir: (id: string) => void }) {
         <span>
           <span className="block text-[15px] font-extrabold text-neutral-900">Profesionales del mes</span>
           <span className="block text-xs text-neutral-500">
-            Quién trae más pacientes y a quién miran más en la pantalla. Sin premios en plata: el premio es que su ficha salga destacada.
+            El ranking de puntos: pacientes, historias y reels. Sin premios en plata: las 3 primeras salen en las pantallas del local, con pauta y
+            repost de WiiGo, y primeras en la pantalla asesora.
           </span>
         </span>
         <span className="text-sm text-neutral-400">{abierto ? "▲" : "▼"}</span>
@@ -1059,6 +1085,11 @@ function PanelDelMes({ onAbrir }: { onAbrir: (id: string) => void }) {
               Para contar las visitas en la pantalla falta correr <b>sql/profesionales-visitas.sql</b> en Supabase.
             </p>
           )}
+          {!datos.hayRedes && (
+            <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+              Para que puedan avisar sus historias y reels falta correr <b>sql/profesionales-objetivos-redes.sql</b> en Supabase.
+            </p>
+          )}
           {conMovimiento.length === 0 ? (
             <p className="text-sm text-neutral-400">Este mes todavía no hay movimiento.</p>
           ) : (
@@ -1066,15 +1097,23 @@ function PanelDelMes({ onAbrir }: { onAbrir: (id: string) => void }) {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-[11px] uppercase tracking-wide text-neutral-500 text-left">
+                    <th className="pb-2 font-bold">Puesto</th>
                     <th className="pb-2 font-bold">Profesional</th>
-                    <th className="pb-2 font-bold text-right">Vieron su ficha</th>
+                    <th className="pb-2 font-bold text-right">Puntos</th>
                     <th className="pb-2 font-bold text-right">Pacientes</th>
+                    <th className="pb-2 font-bold text-right">Historias</th>
+                    <th className="pb-2 font-bold text-right">Reels</th>
+                    <th className="pb-2 font-bold text-right">Vieron su ficha</th>
                     <th className="pb-2 font-bold text-right">Vendido</th>
                   </tr>
                 </thead>
                 <tbody>
                   {conMovimiento.map((f) => (
                     <tr key={f.idProfesional} className="border-t border-neutral-100">
+                      <td className="py-2 font-extrabold tabular-nums text-neutral-700">
+                        {f.puntos > 0 ? `${f.puesto}.º` : "—"}
+                        {f.puntos > 0 && f.puesto <= 3 && <span className="ml-1">🏆</span>}
+                      </td>
                       <td className="py-2">
                         <button type="button" onClick={() => onAbrir(f.idProfesional)} className="flex items-center gap-2 font-semibold text-neutral-800 hover:underline">
                           {f.foto ? (
@@ -1087,8 +1126,11 @@ function PanelDelMes({ onAbrir }: { onAbrir: (id: string) => void }) {
                           {f.destacada && <span className="text-[10px] font-bold text-amber-700 bg-amber-50 rounded-full px-2 py-0.5">Destacada</span>}
                         </button>
                       </td>
-                      <td className="py-2 text-right tabular-nums">{f.vistas}</td>
+                      <td className="py-2 text-right tabular-nums font-bold">{f.puntos}</td>
                       <td className="py-2 text-right tabular-nums">{f.pacientes}</td>
+                      <td className="py-2 text-right tabular-nums">{f.historias}</td>
+                      <td className="py-2 text-right tabular-nums">{f.reels}</td>
+                      <td className="py-2 text-right tabular-nums">{f.vistas}</td>
                       <td className="py-2 text-right tabular-nums">${formatearMonto(f.vendido)}</td>
                     </tr>
                   ))}
@@ -1112,6 +1154,19 @@ function PanelDelMes({ onAbrir }: { onAbrir: (id: string) => void }) {
                 Pacientes en el mes para que su ficha salga destacada
                 <input value={destacada} onChange={(e) => setDestacada(e.target.value)} inputMode="numeric" className="w-24 border border-neutral-300 rounded-lg px-3 py-1.5 text-sm tabular-nums" />
               </label>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {CAMPOS_PUNTOS.map((c) => (
+                <label key={c.clave} className="flex flex-col gap-1 text-xs font-medium text-neutral-600">
+                  {c.label}
+                  <input
+                    value={puntos[c.clave] ?? ""}
+                    onChange={(e) => setPuntos((p) => ({ ...p, [c.clave]: e.target.value }))}
+                    inputMode="numeric"
+                    className="w-24 border border-neutral-300 rounded-lg px-3 py-1.5 text-sm tabular-nums"
+                  />
+                </label>
+              ))}
             </div>
             <div className="flex items-center gap-3">
               <button type="button" onClick={guardar} disabled={guardando} className="bg-accent text-white text-sm font-bold rounded-lg px-4 py-1.5 disabled:opacity-50">
@@ -1793,7 +1848,22 @@ function FichaProfesional({
                 )}
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              {activo && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    verEspacioComoElla(id).then((r) => {
+                      if (r.error) alert(r.error);
+                      else window.location.href = "/mi-espacio";
+                    })
+                  }
+                  className="rounded-xl border border-neutral-200 bg-white px-3 py-2 text-xs font-bold text-neutral-700 hover:border-accent hover:text-accent"
+                  title="Abre su espacio tal como lo ve ella, solo para mirar"
+                >
+                  👁 Ver su espacio como lo ve ella
+                </button>
+              )}
               <button
                 type="button"
                 onClick={togglePublicado}

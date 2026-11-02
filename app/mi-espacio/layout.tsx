@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { Outfit, Manrope, JetBrains_Mono } from "next/font/google";
 import { logout } from "@/app/login/actions";
 import { obtenerSesionProfesional } from "@/lib/profesionalSesion";
+import { dejarDeVerEspacio } from "@/app/(app)/profesionales/actions";
 import { WIIGO_LOGO_DATA_URI } from "@/lib/wiigo-logo-data";
 import EspacioNav from "./EspacioNav";
 import Autorizacion from "./Autorizacion";
@@ -27,6 +28,17 @@ export default async function EspacioLayout({ children }: { children: React.Reac
 
   return (
     <div className={`espacio ${outfit.variable} ${manrope.variable} ${mono.variable}`}>
+      {/* Gonzalo mirando desde la ficha interna: que no se confunda con su propia sesión. */}
+      {sesion.soloLectura && (
+        <div className="esp-mirando">
+          <span>
+            👁 Estás viendo el espacio de <b>{sesion.nombre}</b> tal como lo ve ella. Solo para mirar: no podés cambiar nada desde acá.
+          </span>
+          <form action={dejarDeVerEspacio}>
+            <button type="submit">Volver a su ficha</button>
+          </form>
+        </div>
+      )}
       <header className="esp-cab">
         <div className="esp-cab-int">
           <div className="esp-id">
@@ -40,11 +52,14 @@ export default async function EspacioLayout({ children }: { children: React.Reac
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             {sesion.autorizoImagenAt && <EspacioNav />}
-            <form action={logout}>
-              <button className="esp-salir" type="submit">
-                Salir
-              </button>
-            </form>
+            {/* Mirando, "Salir" cerraría la sesión de Gonzalo: no se muestra. */}
+            {!sesion.soloLectura && (
+              <form action={logout}>
+                <button className="esp-salir" type="submit">
+                  Salir
+                </button>
+              </form>
+            )}
           </div>
         </div>
       </header>

@@ -20,39 +20,81 @@ export type SesionProfesional = {
   foto: string | null;
   publicado: boolean;
   autorizoImagenAt: string | null;
+  /**
+   * Gonzalo mirando su espacio desde la ficha interna ("Ver su espacio como
+   * lo ve ella"). Ve lo mismo que ella, pero no puede cambiar nada: las
+   * acciones de su espacio usan sesionQuePuedeCambiar, que acá da null.
+   */
+  soloLectura: boolean;
 };
+
+/**
+ * La cookie con la profesional que el admin está mirando. Solo vale con una
+ * sesión de admin: para cualquier otro rol se ignora, así que no sirve
+ * cambiarla a mano para ver el espacio de otra.
+ */
+export const COOKIE_VER_PROFESIONAL = "wiigo_ver_profesional";
+
+async function profesionalActiva(idProfesional: string) {
+  const supabase = getSupabaseServerClient();
+  const { data: p } = await supabase
+    .from("profesionales")
+    .select("id_profesional, nombre, apellido, foto, estado, publicado, autorizo_imagen_at")
+    .eq("id_profesional", idProfesional)
+    .maybeSingle();
+  // Profesional desactivada: el usuario deja de entrar aunque siga activo.
+  if (!p || p.estado !== "ACTIVO") return null;
+  return p;
+}
 
 export async function obtenerSesionProfesional(): Promise<SesionProfesional | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
   const sesion = await readSessionToken(token, process.env.AUTH_SECRET ?? "");
-  if (!sesion || sesion.rol !== "profesional") return null;
+  if (!sesion) return null;
 
-  const supabase = getSupabaseServerClient();
-  const { data: usuario } = await supabase
-    .from("usuarios")
-    .select("id_usuario, rol, estado, id_profesional")
-    .eq("id_usuario", sesion.sub)
-    .maybeSingle();
-  if (!usuario || usuario.estado !== "ACTIVO" || usuario.rol !== "profesional" || !usuario.id_profesional) return null;
+  let idUsuario: string;
+  let idProfesional: string;
+  let soloLectura = false;
+  if (sesion.rol === "admin") {
+    const mirando = cookieStore.get(COOKIE_VER_PROFESIONAL)?.value;
+    if (!mirando) return null;
+    idUsuario = sesion.sub;
+    idProfesional = mirando;
+    soloLectura = true;
+  } else if (sesion.rol === "profesional") {
+    const supabase = getSupabaseServerClient();
+    const { data: usuario } = await supabase
+      .from("usuarios")
+      .select("id_usuario, rol, estado, id_profesional")
+      .eq("id_usuario", sesion.sub)
+      .maybeSingle();
+    if (!usuario || usuario.estado !== "ACTIVO" || usuario.rol !== "profesional" || !usuario.id_profesional) return null;
+    idUsuario = usuario.id_usuario as string;
+    idProfesional = usuario.id_profesional as string;
+  } else {
+    return null;
+  }
 
-  const { data: p } = await supabase
-    .from("profesionales")
-    .select("id_profesional, nombre, apellido, foto, estado, publicado, autorizo_imagen_at")
-    .eq("id_profesional", usuario.id_profesional)
-    .maybeSingle();
-  // Profesional desactivada: el usuario deja de entrar aunque siga activo.
-  if (!p || p.estado !== "ACTIVO") return null;
+  const p = await profesionalActiva(idProfesional);
+  if (!p) return null;
 
   return {
-    idUsuario: usuario.id_usuario as string,
+    idUsuario,
     idProfesional: p.id_profesional as string,
     nombre: p.nombre as string,
     apellido: (p.apellido as string | null) ?? null,
     foto: (p.foto as string | null) ?? null,
     publicado: Boolean(p.publicado),
     autorizoImagenAt: (p.autorizo_imagen_at as string | null) ?? null,
+    soloLectura,
   };
+}
+
+/** Para las acciones que guardan algo: la profesional misma, nunca el admin mirando. */
+export async function sesionQuePuedeCambiar(): Promise<SesionProfesional | null> {
+  const sesion = await obtenerSesionProfesional();
+  return sesion && !sesion.soloLectura ? sesion : null;
 }
 
 /**
