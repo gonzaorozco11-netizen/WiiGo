@@ -5,6 +5,7 @@ import { obtenerSesionProfesional } from "@/lib/profesionalSesion";
 import { dejarDeVerEspacio } from "@/app/(app)/profesionales/actions";
 import { WIIGO_LOGO_DATA_URI } from "@/lib/wiigo-logo-data";
 import EspacioNav from "./EspacioNav";
+import GuiaWiigo from "@/components/GuiaWiigo";
 import Autorizacion from "./Autorizacion";
 import "./espacio.css";
 
@@ -66,6 +67,7 @@ export default async function EspacioLayout({ children }: { children: React.Reac
 
       {/* Sin la autorización no ve nada más: es lo primero que se le pide. */}
       {sesion.autorizoImagenAt ? children : <Autorizacion nombre={sesion.nombre} logo={WIIGO_LOGO_DATA_URI} />}
+      {sesion.autorizoImagenAt && <GuiaWiigo audiencia="profesional" />}
     </div>
   );
 }

@@ -9,6 +9,7 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { misTareas, bienvenidaPortal } from "@/app/portal/actions";
 import { cuantosFaltan } from "@/app/portal/reponer/actions";
 import PortalBienvenida from "@/components/PortalBienvenida";
+import GuiaWiigo from "@/components/GuiaWiigo";
 import "./portal.css";
 
 // Tipografías propias del portal. Outfit es geométrica y redondeada, de la
@@ -95,6 +96,7 @@ export default async function PortalLayout({ children }: { children: React.React
       </header>
 
       {children}
+      <GuiaWiigo audiencia="marca" />
     </div>
   );
 }

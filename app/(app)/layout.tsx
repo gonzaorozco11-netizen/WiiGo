@@ -10,6 +10,8 @@ import { verificarAvisoSalida } from "@/app/(app)/ficha-asistencia/actions";
 import { contarPendientes } from "@/app/(app)/aprobaciones/actions";
 import AppNav, { MigaDePan } from "@/components/AppNav";
 import AvisoSalidaBanner from "@/components/AvisoSalidaBanner";
+import GuiaWiigo from "@/components/GuiaWiigo";
+import { getSupabaseServerClient } from "@/lib/supabase";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const cookieStore = await cookies();
@@ -43,6 +45,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // del menú. Después lo mantiene al día AvisoPedidos, sin recargar.
   const vePedidos = puedeVerPantalla(sesionConPantallas, "pedidos");
   const pedidosNuevos = vePedidos ? await contarPedidosNuevosSinSesion().catch(() => 0) : 0;
+  // Las preguntas de la Guía que esperan respuesta: las responde el Dueño, el
+  // número sale en su botón "¿Alguna duda?". Sin sql/guia-preguntas.sql da 0.
+  const preguntasGuia =
+    session?.rol === "admin"
+      ? ((await getSupabaseServerClient().from("preguntas_guia").select("id_pregunta", { count: "exact", head: true }).eq("estado", "PENDIENTE")).count ?? 0)
+      : 0;
 
   return (
     // Menú a la izquierda y la pantalla a la derecha (en la computadora; en
@@ -75,6 +83,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           {children}
         </main>
       </div>
+      {session && <GuiaWiigo audiencia="interno" preguntasSinResponder={preguntasGuia} />}
     </div>
   );
 }
