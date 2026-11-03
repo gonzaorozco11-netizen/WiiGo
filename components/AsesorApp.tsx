@@ -20,7 +20,7 @@ import type {
   FormacionProfesional,
   TrayectoriaProfesional,
 } from "@/lib/supabase";
-import { ubicacionDe, type ModuloGondola, type UbicacionGondola } from "@/lib/gondola";
+import { colorDeProducto, ubicacionDe, type ModuloGondola, type UbicacionGondola } from "@/lib/gondola";
 import ViajeGondola from "@/components/ViajeGondola";
 import IconoRed, { colorDeRed } from "@/components/IconoRed";
 import type { ClaveRed } from "@/lib/redesProfesional";
@@ -375,6 +375,39 @@ function IconoEtiqueta({ className }: { className?: string }) {
     </svg>
   );
 }
+/**
+ * La bolsita de WiiGo dibujada, para el producto que todavía no tiene foto:
+ * flotando en la ficha se ve como el producto y no como un ícono vacío.
+ */
+function Doypack({ nombre }: { nombre: string }) {
+  const etiqueta = (nombre.trim().split(/\s+/)[0] ?? "").slice(0, 9).toUpperCase();
+  return (
+    <span
+      // El alto va en padding (que se mide contra el ancho del que la contiene)
+      // y no con aspect-ratio, que un navegador viejo no entiende.
+      className="relative block w-[46%] rounded-[22px_22px_30px_30px]"
+      style={{
+        paddingBottom: "64%",
+        background: "linear-gradient(160deg, #fbfaf6, #ece6d8)",
+        boxShadow: "inset 0 -10px 18px rgba(0,0,0,.05), 0 18px 26px -18px rgba(0,0,0,.35)",
+      }}
+      aria-hidden
+    >
+      <span
+        className="absolute left-[7%] right-[7%] top-[5%] h-[4%] rounded"
+        style={{ background: "repeating-linear-gradient(90deg, #d8d0bf 0 4px, transparent 4px 7px)" }}
+      />
+      <span className="absolute left-[16%] right-[16%] top-[24%] h-[36%] rounded-[44px]" style={{ background: colorDeProducto(nombre) }} />
+      <span
+        className={`${titular.className} absolute left-[9%] right-[9%] bottom-[10%] h-[19%] rounded-[10px] grid place-items-center text-[#f5efe3] font-extrabold text-[clamp(11px,1.3vw,18px)] tracking-[.02em]`}
+        style={{ background: "#22301f" }}
+      >
+        {etiqueta}
+      </span>
+    </span>
+  );
+}
+
 function IconoBrujula({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round">
@@ -3317,21 +3350,40 @@ function ProductoDetalleModal({
           <div className="relative bg-white px-5 pt-5">
             {/* Techo al alto de la foto: si crece libre empuja el precio fuera
                 de la ficha y hay que buscarlo deslizando. */}
+            {/* El producto flota (vista previa aprobada el 2026-11-02): se
+                mece en el aire con una sombra que respira abajo. El centro
+                del fondo es blanco para que las fotos, que vienen sobre
+                blanco, no se vean como un cuadrado pegado. La sombra es un
+                degradé y no un desenfoque: en la placa de la all-in-one el
+                desenfoque cuesta carísimo. */}
             <div
-              className="relative w-full aspect-square max-h-[34vh] md:max-h-[46vh] flex items-center justify-center"
+              className="relative w-full aspect-square max-h-[34vh] md:max-h-[46vh] flex items-center justify-center rounded-[26px] overflow-hidden"
               style={{
+                background: "radial-gradient(circle at 50% 44%, #ffffff 0%, #ffffff 38%, #fbeee0 70%, #f3d9bd 100%)",
+                perspective: 900,
                 transform: abierto ? "scale(1)" : "scale(1.06)",
                 transition: "transform .9s cubic-bezier(.2,.8,.2,1)",
               }}
             >
-              {fotoActiva ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={fotoActiva} alt="" className="w-full h-full object-contain" />
-              ) : (
-                <span style={{ color: SAGE_DARK }}>
-                  <IconoBolsa className="w-12 h-12" />
-                </span>
-              )}
+              <span
+                className="absolute left-1/2 bottom-[7%] w-[46%] h-[7%] -ml-[23%] rounded-[50%] pointer-events-none"
+                style={{
+                  background: "radial-gradient(ellipse at center, rgba(90,50,15,.32) 0%, rgba(90,50,15,0) 70%)",
+                  animation: "asesorSombraFlotar 5s ease-in-out infinite",
+                }}
+                aria-hidden
+              />
+              <div
+                className="relative w-[78%] h-[78%] flex items-center justify-center"
+                style={{ animation: "asesorProductoFlotar 5s ease-in-out infinite", willChange: "transform" }}
+              >
+                {fotoActiva ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={fotoActiva} alt="" className="w-full h-full object-contain" />
+                ) : (
+                  <Doypack nombre={producto.nombre} />
+                )}
+              </div>
             </div>
             {ficha?.origen && (
               <span

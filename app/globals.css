@@ -67,6 +67,19 @@ body {
   50% { transform: translate3d(0, -12px, 0); }
 }
 
+/* El producto de la ficha del asesor, flotando, y su sombra en el piso. */
+@keyframes asesorProductoFlotar {
+  0%, 100% { transform: rotateY(-12deg) translate3d(0, 0, 0); }
+  50% { transform: rotateY(10deg) translate3d(0, -12px, 0); }
+}
+@keyframes asesorSombraFlotar {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(.85); opacity: .7; }
+}
+@media (prefers-reduced-motion: reduce) {
+  [style*="asesorProductoFlotar"], [style*="asesorSombraFlotar"] { animation: none !important; }
+}
+
 /* La foto de la profesional, yendo y viniendo en 26 segundos. Tan lento que no
    se la ve moverse, pero la pantalla deja de parecer un cartel. Crece desde
    arriba (transform-origin en el componente): desde el centro le comería la
