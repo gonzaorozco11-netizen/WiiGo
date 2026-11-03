@@ -1,16 +1,14 @@
-/* El viaje 3D de "¿Dónde lo encuentro?" (components/ViajeGondola.tsx).
-   Los muebles copiados de los del local. Para la all-in-one: sin `gap` en
-   flex, sin `inset`, sin `aspect-ratio`, sin desenfoques; solo se animan
-   transform y opacity. Los brillos de la luz son quietos. */
+/* El viaje por el local de "¿Dónde lo encuentro?" (components/ViajeGondola.tsx).
+   Para la all-in-one: sin `gap` en flex, sin `inset`, sin `aspect-ratio`, sin
+   desenfoques ni will-change; solo se animan transform y opacity. Los brillos
+   de la luz son quietos. Medidas: 3 px = 1 cm. */
 
 .vg {
   position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 60; overflow: hidden; color: #1f261c;
-  background: linear-gradient(#efe9dc 0%, #e7dfcf 62%, #cfccc5 62.2%, #bdbab3 100%);
+  background: linear-gradient(#a7ad8c 0%, #b9bd9d 20%, #e4ddcc 21%, #ddd5c3 50%, #c3c0b9 50.2%, #aeaba4 100%);
 }
 .vg button { font: inherit; cursor: pointer; }
 
-/* Franja de arriba con fondo propio: si el producto está abajo, la cámara sube
-   y los carteles de los muebles quedarían debajo del título. */
 .vg-arriba {
   position: absolute; top: 0; left: 0; right: 0; z-index: 5; display: flex; justify-content: space-between; align-items: center;
   padding: 16px 24px 26px; background: linear-gradient(#efe9dc 0%, #efe9dc 72%, rgba(239, 233, 220, 0) 100%);
@@ -18,19 +16,25 @@
 .vg-arriba b { font-size: 24px; font-weight: 800; letter-spacing: -.01em; }
 .vg-arriba button { border: 0; background: #22301f; color: #fff; border-radius: 999px; height: 54px; padding: 0 24px; font-weight: 800; font-size: 17px; margin-left: 12px; box-shadow: 0 10px 20px -12px rgba(0, 0, 0, .6); }
 
-.vg-camara { position: absolute; top: 0; right: 0; bottom: 0; left: 0; perspective: 1300px; perspective-origin: 50% 42%; }
-/* Sin `will-change`: con él el navegador congela la imagen de la escena y al
-   acercar la cámara la agranda borrosa. Sin él la vuelve a dibujar nítida al
-   terminar cada movimiento. */
-.vg-escena { position: absolute; left: 50%; top: 50%; transform-style: preserve-3d; transition: transform .95s cubic-bezier(.65, 0, .25, 1); }
-.vg-escena.salto, .vg-escena.salto .vg-velo, .vg-escena.salto .vg-obj { transition: none; }
-.vg-c { position: absolute; }
+.vg-camara { position: absolute; top: 0; right: 0; bottom: 0; left: 0; perspective: 760px; perspective-origin: 50% 48%; }
+.vg-escena { position: absolute; left: 50%; top: 55%; width: 0; height: 0; transform-style: preserve-3d; transition: transform .95s cubic-bezier(.65, 0, .25, 1); }
+.vg-escena.salto, .vg-escena.salto .vg-obj { transition: none; }
+.vg-c, .vg-p, .vg-fila { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.vg-p, .vg-grupo, .vg-fila, .vg-pos, .vg-obj { transform-style: preserve-3d; }
+.vg-grupo { position: absolute; left: 0; top: 0; }
+/* Lo que queda a la espalda de la cámara no se dibuja */
+.vg-grupo.oculto { visibility: hidden; }
 
-/* La pared y el piso los pone el fondo de .vg. Antes eran dos planos 3D de
-   7000 px y la placa los arrastraba en cada cuadro: eso trababa el viaje. */
+/* El local: colores lisos */
+.vg-piso { background: #b9b6af; }
+.vg-piso i { position: absolute; background: rgba(255, 255, 255, .3); }
+.vg-techo { background: #9aa17e; }
+.vg-pared { background: #e2dbca; }
+.vg-fondo { background: #4a554a; }
+.vg-tele { background: #1d1d1d; border: 6px solid #111; border-radius: 6px; }
 
-/* Un mueble: 300 de ancho, 570 de alto, 100 de fondo */
-.vg-mb { position: absolute; width: 300px; height: 570px; transform-style: preserve-3d; }
+/* ===== Módulos de ganchos de la pared izquierda ===== */
+.vg-mb { position: absolute; left: 0; top: 0; width: 300px; height: 570px; transform-style: preserve-3d; transform-origin: 0 0; }
 .vg-ranurado {
   left: 0; top: 70px; width: 300px; height: 380px; transform: translateZ(-100px);
   background: linear-gradient(rgba(255, 196, 92, .85) 0%, rgba(255, 206, 120, .55) 22%, rgba(255, 214, 140, .22) 48%, rgba(255, 225, 170, 0) 75%),
@@ -40,20 +44,14 @@
 .vg-alacena-bajo { left: -4px; top: 70px; width: 308px; height: 116px; transform-origin: 50% 0; transform: translateZ(12px) rotateX(-90deg); background: #e7e2d8; }
 .vg-led { left: 10px; top: 71px; width: 280px; height: 7px; border-radius: 4px; transform: translateZ(-4px); background: #fffdf2; box-shadow: 0 0 8px 3px rgba(255, 240, 190, 1), 0 6px 30px 12px rgba(255, 200, 110, .75); }
 .vg-halo { left: 0; top: 70px; width: 300px; height: 150px; transform: translateZ(-40px); pointer-events: none; background: radial-gradient(75% 70% at 50% 0%, rgba(255, 206, 120, .5), rgba(255, 214, 140, 0) 72%); }
-
 .vg-ganchos { left: 0; width: 300px; height: 74px; transform-origin: 50% 0; transform: translateZ(-100px) rotateX(90deg); }
 .vg-ganchos i { position: absolute; top: 0; width: 3px; height: 100%; background: #fafafa; box-shadow: 0 0 0 .5px #bdbdbd; }
 .vg-capa { left: 0; top: 0; width: 300px; height: 570px; }
 .vg-portas { transform: translateZ(-27px); }
 .vg-portas i { position: absolute; width: 28px; height: 15px; border-radius: 2px; background: rgba(255, 255, 255, .7); border: 1px solid #c9d0d4; }
-
 .vg-bolsa { position: absolute; display: block; border-radius: 5px 5px 7px 7px; background: linear-gradient(170deg, #cfa877, #b98f5d); box-shadow: 0 8px 10px -7px rgba(60, 40, 10, .6); }
 .vg-bolsa::before { content: ""; position: absolute; left: 10%; right: 10%; top: 8%; height: 2px; background: rgba(90, 60, 25, .35); }
 .vg-bolsa i { position: absolute; left: 12%; right: 12%; top: 43%; height: 25%; border-radius: 2px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .35); }
-.vg-bolsa i::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: radial-gradient(circle at 30% 40%, rgba(255, 255, 255, .28) 0 2px, transparent 3px) 0 0 / 8px 7px; }
-.vg-foto { background: #fff; overflow: hidden; }
-.vg-foto img { position: absolute; left: 4%; top: 4%; width: 92%; height: 92%; object-fit: contain; }
-
 .vg-poste { top: 70px; width: 9px; height: 380px; background: linear-gradient(90deg, #a3c19b, #87a780); }
 .vg-poste.i { left: -1px; }
 .vg-poste.d { left: 292px; }
@@ -62,14 +60,8 @@
 .vg-marco-lado.i { left: 0; }
 .vg-marco-lado.d { left: 300px; border-color: #87a780; }
 .vg-marco-lado.d::after { background: #87a780; }
-
-.vg-bajo {
-  left: 0; top: 450px; width: 300px; height: 120px; transform: translateZ(28px);
-  background: linear-gradient(90deg, transparent 0 49.6%, rgba(120, 90, 50, .35) 49.6% 50.4%, transparent 50.4%), linear-gradient(#e2cfaf, #dcc6a3);
-}
+.vg-bajo { left: 0; top: 450px; width: 300px; height: 120px; transform: translateZ(28px); background: linear-gradient(90deg, transparent 0 49.6%, rgba(120, 90, 50, .35) 49.6% 50.4%, transparent 50.4%), linear-gradient(#e2cfaf, #dcc6a3); }
 .vg-bajo-tapa { left: 0; top: 450px; width: 300px; height: 128px; transform-origin: 50% 0; transform: translateZ(28px) rotateX(-90deg); background: linear-gradient(#e6d5b8, #d8c19c); }
-.vg-bajo-lado { left: 300px; top: 450px; width: 128px; height: 120px; transform-origin: 0 50%; transform: translateZ(28px) rotateY(90deg); background: #c9ae86; }
-
 .vg-alacena {
   left: -4px; top: 0; width: 308px; height: 70px; transform: translateZ(12px); background: linear-gradient(#ffffff, #f1eee8); border-bottom: 2px solid #d9d4ca;
   display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
@@ -78,46 +70,94 @@
 .vg-alacena span { font-size: 11px; font-weight: 700; color: #6d7564; margin-top: 3px; }
 .vg-mb.foco .vg-alacena { box-shadow: 0 0 0 4px #e8743b; }
 
-/* Apaga los otros muebles. Pegado al frente (z 34, apenas delante del mueble
-   de roble): más adelante, la perspectiva lo agrandaba y tapaba también el
-   mueble elegido, que se veía lavado. */
-.vg-velo { left: -2px; top: -2px; width: 304px; height: 574px; background: #efe9dc; opacity: 0; transition: opacity .5s; transform: translateZ(34px); pointer-events: none; }
-.vg-escena.paso1 .vg-mb:not(.foco) .vg-velo, .vg-escena.paso2 .vg-mb:not(.foco) .vg-velo { opacity: .55; }
+/* ===== Islas: mueble bajo de roble, estantes flotantes, postes verdes ===== */
+.vg-isla-puertas {
+  background: linear-gradient(90deg, transparent 0 24.8%, rgba(110, 80, 45, .4) 24.8% 25.2%, transparent 25.2% 49.8%, rgba(110, 80, 45, .4) 49.8% 50.2%, transparent 50.2% 74.8%, rgba(110, 80, 45, .4) 74.8% 75.2%, transparent 75.2%),
+    linear-gradient(#e7d5b6, #d6be97);
+}
+.vg-isla-tapa { background: linear-gradient(90deg, #e6d4b3, #d9c29c); }
+.vg-isla-canto { background: linear-gradient(#d9c39c, #c3a77c); }
+.vg-isla-cabeza { background: linear-gradient(#e2cfae, #d1b88f); }
+.vg-isla-poste { background: linear-gradient(90deg, #9cbc94, #7f9f78); }
 
-/* El producto: sale apenas del gancho y queda flotando, marcado */
-.vg-pos { transform: translateZ(-62px); transform-style: preserve-3d; }
-.vg-obj { position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform-style: preserve-3d; transition: transform .6s cubic-bezier(.2, .9, .2, 1) .05s; }
-.vg-escena.paso2 .vg-obj { transform: translate3d(0, -4px, 48px) scale(1.3); }
-.vg-flota { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
-.vg-escena.paso2 .vg-flota { animation: vg-flotar 3.2s ease-in-out .7s infinite; }
-@keyframes vg-flotar { 0%, 100% { transform: translate3d(0, 0, 0) rotateY(-8deg); } 50% { transform: translate3d(0, -4px, 0) rotateY(8deg); } }
-.vg-flota .vg-bolsa { left: 0; top: 0; width: 100%; height: 100%; }
-.vg-escena.paso2 .vg-flota .vg-bolsa { box-shadow: 0 0 0 2px #e8743b, 0 18px 22px -10px rgba(60, 40, 10, .6); }
-.vg-anillo { position: absolute; left: 50%; top: 50%; width: 64px; height: 64px; margin: -32px 0 0 -32px; border-radius: 50%; border: 3px solid #e8743b; opacity: 0; pointer-events: none; }
-.vg-escena.paso2 .vg-anillo { animation: vg-onda 1.5s ease-out .6s infinite; }
-@keyframes vg-onda { 0% { opacity: .95; transform: scale(.6); } 100% { opacity: 0; transform: scale(1.9); } }
-.vg-pin { position: absolute; left: 50%; bottom: 100%; margin-bottom: 8px; transform: translateX(-50%); background: #e8743b; color: #fff; font-weight: 800; font-size: 15px; padding: 5px 10px; border-radius: 8px; white-space: nowrap; opacity: 0; transition: opacity .25s .6s; box-shadow: 0 8px 16px -8px rgba(0, 0, 0, .5); }
-.vg-pin.abajo { bottom: auto; top: 100%; margin: 8px 0 0; }
-.vg-pin.izq { left: 0; transform: none; }
-.vg-pin.der { left: auto; right: 0; transform: none; }
-.vg-escena.paso2 .vg-pin { opacity: 1; }
+/* Productos de pie (islas y estantería): frascos, doypacks, potes y sobres */
+.vg-fila { height: 62px; }
+.vg-pr { position: absolute; bottom: 0; }
+.vg-frasco { width: 34px; height: 46px; border-radius: 5px 5px 7px 7px; background: linear-gradient(90deg, rgba(0, 0, 0, .18), rgba(255, 255, 255, .32) 28%, rgba(255, 255, 255, 0) 50%, rgba(0, 0, 0, .14)), var(--c); }
+.vg-frasco::before { content: ""; position: absolute; left: 3px; right: 3px; top: -9px; height: 10px; border-radius: 3px 3px 1px 1px; background: linear-gradient(#e7c86a, #b8902f); }
+.vg-frasco::after { content: ""; position: absolute; left: 0; right: 0; top: 15px; height: 16px; background: rgba(255, 255, 255, .82); }
+.vg-doy { width: 38px; height: 56px; border-radius: 5px 5px 6px 6px; background: linear-gradient(170deg, #cfa877, #b98f5d); }
+.vg-doy::after { content: ""; position: absolute; left: 5px; right: 5px; top: 24px; height: 14px; border-radius: 2px; background: var(--c); }
+.vg-pote { width: 46px; height: 56px; border-radius: 4px 4px 6px 6px; background: linear-gradient(90deg, rgba(0, 0, 0, .12), rgba(255, 255, 255, .4) 30%, rgba(255, 255, 255, 0) 55%, rgba(0, 0, 0, .1)), #fbfbf8; }
+.vg-pote::before { content: ""; position: absolute; left: -2px; right: -2px; top: -8px; height: 10px; border-radius: 3px; background: #1d1d1d; }
+.vg-pote::after { content: ""; position: absolute; left: 0; right: 0; top: 16px; height: 22px; background: var(--c); }
+.vg-sobre { width: 46px; height: 62px; border-radius: 4px 4px 3px 3px; background: linear-gradient(180deg, rgba(255, 255, 255, .4), rgba(0, 0, 0, .05)), #f4f4f0; }
+.vg-sobre::after { content: ""; position: absolute; left: 5px; right: 5px; top: 22px; height: 18px; border-radius: 2px; background: var(--c); }
 
-/* El cartel de abajo con los pasos */
+/* ===== Estantería de Animalfit ===== */
+.vg-af-marco { border-radius: 70px; background: #7d8b7e; }
+.vg-af-hueco { border-radius: 46px; background: linear-gradient(#5c6a5e, #53604f); }
+.vg-af-col { background: linear-gradient(90deg, #d9c39e, #cdb48b 50%, #d9c39e); }
+.vg-af-led { background: #fffbe6; box-shadow: 0 0 10px 3px rgba(255, 238, 185, .95), 0 0 32px 10px rgba(255, 210, 130, .45); }
+.vg-af-estante { transform: translateZ(1px) rotateX(90deg); background: linear-gradient(#e7d5b4, #d3ba92); }
+.vg-af-canto { background: linear-gradient(#ddc7a1, #c7ac82); }
+.vg-af-cartel { color: #eef2ee; text-align: center; font-weight: 700; letter-spacing: .22em; line-height: 1; }
+.vg-af-cartel b { display: block; font-size: 66px; font-weight: 600; letter-spacing: .16em; }
+.vg-af-cartel span { font-size: 24px; letter-spacing: .3em; }
+
+/* ===== El producto elegido: sale apenas de su lugar ===== */
+.vg-pos { position: absolute; }
+.vg-obj { position: relative; transition: transform .6s cubic-bezier(.2, .9, .2, 1) .05s; }
+.vg-escena.paso2 .vg-obj { transform: translate3d(0, -6px, 44px) scale(1.3); }
+.vg-obj > .vg-pr, .vg-obj > .vg-bolsa, .vg-obj > .vg-foto { position: absolute; }
+.vg-escena.paso2 .vg-obj > * { box-shadow: 0 0 0 3px #e8743b, 0 16px 20px -10px rgba(0, 0, 0, .6); }
+.vg-foto { left: 0; top: 0; width: 100%; height: 100%; border-radius: 6px; background: #fff; overflow: hidden; }
+.vg-foto img { position: absolute; left: 4%; top: 4%; width: 92%; height: 92%; object-fit: contain; }
+
+/* ===== Al llegar: el resto se oscurece un poco, el producto queda iluminado =====
+   Una capa plana y quieta por encima de la escena: no cuesta nada. El cartel y
+   el anillo también van acá arriba, así ningún caño ni estante los tapa. */
+.vg-foco {
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 4; pointer-events: none; opacity: 0; transition: opacity .5s;
+  background: radial-gradient(circle var(--r, 150px) at var(--x, 50%) var(--y, 50%), rgba(14, 18, 12, 0) 0, rgba(14, 18, 12, 0) 55%, rgba(14, 18, 12, .42) 100%);
+}
+.vg.foco-on .vg-foco { opacity: 1; }
+.vg-pin2d {
+  position: absolute; z-index: 4; left: var(--x, 50%); top: var(--pin-y, 40%); transform: translate(-50%, -100%);
+  background: #e8743b; color: #fff; font-weight: 800; font-size: 22px; padding: 7px 14px; border-radius: 10px; white-space: nowrap;
+  opacity: 0; transition: opacity .3s; box-shadow: 0 10px 20px -10px rgba(0, 0, 0, .55); pointer-events: none;
+}
+.vg-pin2d::after { content: ""; position: absolute; left: 50%; bottom: -7px; margin-left: -7px; border: 7px solid transparent; border-bottom: 0; border-top-color: #e8743b; }
+.vg-anillo2d {
+  position: absolute; z-index: 4; left: var(--x, 50%); top: var(--y, 50%); width: var(--d, 100px); height: var(--d, 100px);
+  margin: calc(var(--d, 100px) / -2) 0 0 calc(var(--d, 100px) / -2); border-radius: 50%; border: 4px solid #e8743b; opacity: 0; pointer-events: none;
+}
+.vg.foco-on .vg-pin2d { opacity: 1; }
+.vg.foco-on .vg-anillo2d { animation: vg-onda 1.5s ease-out infinite; }
+@keyframes vg-onda { 0% { opacity: .95; transform: scale(.6); } 100% { opacity: 0; transform: scale(1.7); } }
+
+/* ===== El cartel de abajo con los pasos ===== */
 .vg-indic {
-  position: absolute; left: 50%; bottom: 26px; width: 780px; max-width: calc(100% - 32px); margin-left: -390px; z-index: 5;
+  position: absolute; left: 50%; bottom: 26px; width: 760px; max-width: calc(100% - 210px); margin-left: -380px; z-index: 5;
   background: #fff; color: #1f261c; border: 1px solid #e8dfcd; border-radius: 24px; padding: 16px 18px; display: flex; align-items: center;
   box-shadow: 0 30px 60px -30px rgba(0, 0, 0, .6); opacity: 0; transform: translateY(20px); transition: opacity .3s .8s, transform .3s .8s;
 }
-@media (max-width: 812px) { .vg-indic { left: 16px; margin-left: 0; } }
+@media (max-width: 980px) { .vg-indic { left: 16px; margin-left: 0; max-width: calc(100% - 32px); } }
 .vg.listo .vg-indic { opacity: 1; transform: none; }
-.vg-n { flex: none; width: 56px; height: 56px; border-radius: 16px; background: #e8743b; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 28px; margin-right: 14px; }
+.vg-n { flex: none; width: 56px; height: 56px; border-radius: 16px; background: #e8743b; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 24px; margin-right: 14px; }
 .vg-texto { flex: 1; min-width: 0; }
-.vg-texto b { font-size: 21px; font-weight: 800; display: block; line-height: 1.15; }
+.vg-texto b { font-size: 20px; font-weight: 800; display: block; line-height: 1.15; }
 .vg-pasos { display: flex; flex-wrap: wrap; margin-top: 4px; }
 .vg-pasos span { font-size: 13.5px; font-weight: 700; background: #f5efe3; border: 1px solid #e8dfcd; border-radius: 999px; padding: 4px 10px; margin: 4px 6px 0 0; }
 .vg-indic button { flex: none; border: 0; background: #22301f; color: #fff; border-radius: 14px; padding: 14px 18px; font-weight: 800; font-size: 16px; margin-left: 14px; }
 
+/* El mapita del local */
+.vg-planta { position: absolute; right: 20px; bottom: 24px; z-index: 6; width: 150px; background: rgba(255, 250, 242, .96); border: 1px solid #e8dfcd; border-radius: 16px; padding: 10px; }
+.vg-planta b { display: block; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: #857f6f; margin-bottom: 6px; }
+.vg-planta svg { display: block; width: 100%; height: auto; }
+@media (max-width: 980px) { .vg-planta { display: none; } }
+
 @media (prefers-reduced-motion: reduce) {
-  .vg-escena, .vg-obj, .vg-indic, .vg-pin, .vg-velo { transition: none; }
-  .vg-escena.paso2 .vg-flota, .vg-escena.paso2 .vg-anillo { animation: none; }
+  .vg-escena, .vg-obj, .vg-indic, .vg-foco, .vg-pin2d { transition: none; }
+  .vg.foco-on .vg-anillo2d { animation: none; }
 }

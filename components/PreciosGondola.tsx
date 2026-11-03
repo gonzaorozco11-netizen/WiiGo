@@ -2,17 +2,35 @@
 
 import { useState, useTransition } from "react";
 import { MuebleFrente, Pared3D } from "@/components/Gondola3D";
-import { NOMBRE_ALTURA, type ModuloGondola } from "@/lib/gondola";
-import type { ProductoDelModulo } from "@/lib/datosPrecios";
+import { NOMBRE_ALTURA, nombreCortoZona, soloModulos, type ModuloGondola } from "@/lib/gondola";
 import { moverModulo, ponerEnLugar } from "@/app/(app)/precios/gondola-actions";
 
-// Precios → Góndola: los módulos del local en 3D. Se toca un módulo, después
-// un lugar, y se elige qué producto va ahí. La pantalla asesora usa esto para
-// decirle al cliente dónde está cada producto (Gonzalo, 2026-10-29).
+// Precios → Góndola: el local entero (Gonzalo, 2026-11-03). Arriba se elige la
+// zona —los módulos de la pared izquierda, una de las dos islas del centro o la
+// estantería de Animalfit— y después, igual que siempre, se toca un lugar y se
+// elige qué producto va ahí. La pantalla asesora usa esto para llevar al
+// cliente, en 3D, hasta cada producto.
 
 export type GondolaLocal = { idLocal: string; nombre: string; modulos: ModuloGondola[] };
+/** Un producto que se puede ubicar: de cualquier marca. */
+export type ProductoGondola = { id: string; nombre: string; marca: string | null };
+
+type Zona = "MODULOS" | "ISLA1" | "ISLA2" | "ESTANTERIA";
 
 const sinTildes = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
+/** Cómo se llama la fila en cada mueble: en las islas son pisos, en la estantería estantes. */
+function nombreFila(m: ModuloGondola, fila: number) {
+  if (m.tipo === "ISLA") return ["piso de arriba", "piso del medio", "piso de abajo"][fila] ?? `piso ${fila + 1}`;
+  if (m.tipo === "ESTANTERIA") return `estante ${m.filas.length - fila} desde abajo`;
+  return `fila ${NOMBRE_ALTURA[m.filas[fila]?.altura ?? "manos"].toLowerCase()}`;
+}
+
+/** "Isla 1 · lado de los módulos", "Mueble 3 · A cualquier hora". */
+function etiquetaZona(gondola: ModuloGondola[], m: ModuloGondola) {
+  if (m.tipo === "MODULO") return `${nombreCortoZona(gondola, m)} · ${m.titulo}`;
+  return `${m.titulo} · ${(m.subtitulo ?? "").toLowerCase()}`;
+}
 
 export default function PreciosGondola({
   locales,
@@ -20,12 +38,14 @@ export default function PreciosGondola({
   avisar,
 }: {
   locales: GondolaLocal[] | null;
-  productos: ProductoDelModulo[];
+  productos: ProductoGondola[];
   avisar: (t: string, mal?: boolean) => void;
 }) {
   const [idLocal, setIdLocal] = useState(locales?.[0]?.idLocal ?? "");
   const [porLocal, setPorLocal] = useState<Record<string, ModuloGondola[]>>(() => Object.fromEntries((locales ?? []).map((l) => [l.idLocal, l.modulos])));
-  const modulos = porLocal[idLocal] ?? [];
+  const gondola = porLocal[idLocal] ?? [];
+  const modulos = soloModulos(gondola);
+  const [zona, setZona] = useState<Zona>("MODULOS");
   const [idModulo, setIdModulo] = useState<string | null>(modulos[0]?.id ?? null);
   const [lugar, setLugar] = useState<{ fila: number; columna: number } | null>(null);
   const [buscar, setBuscar] = useState("");
@@ -48,15 +68,30 @@ export default function PreciosGondola({
     );
   }
 
-  const modulo = modulos.find((m) => m.id === idModulo) ?? modulos[0];
+  // Las zonas que existen en este local (las islas y la estantería las crea sql/gondola-local-entero.sql).
+  const islas = (n: number) => gondola.filter((m) => m.tipo === "ISLA" && m.numero === n).sort((a, b) => (a.lado === "IZQ" ? -1 : 1) - (b.lado === "IZQ" ? -1 : 1));
+  const estanteria = gondola.filter((m) => m.tipo === "ESTANTERIA").sort((a, b) => (a.numero ?? 0) - (b.numero ?? 0));
+  const deLaZona: Record<Zona, ModuloGondola[]> = { MODULOS: modulos, ISLA1: islas(1), ISLA2: islas(2), ESTANTERIA: estanteria };
+  const hayLocalEntero = estanteria.length > 0 || islas(1).length > 0;
+
+  const enZona = deLaZona[zona];
+  const modulo = enZona.find((m) => m.id === idModulo) ?? enZona[0] ?? modulos[0];
   const numero = modulos.indexOf(modulo) + 1;
-  const dondeEsta = new Map(modulos.flatMap((m, i) => m.lugares.map((l) => [l.idProducto, { m, i, l }] as const)));
+  const dondeEsta = new Map(gondola.flatMap((m) => m.lugares.map((l) => [l.idProducto, { m, l }] as const)));
   const sinLugar = productos.filter((p) => !dondeEsta.has(p.id));
   const ubicados = productos.length - sinLugar.length;
   const actual = lugar ? modulo.lugares.find((l) => l.fila === lugar.fila && l.columna === lugar.columna) ?? null : null;
   const q = sinTildes(buscar.trim());
   // Primero los que no tienen lugar; los demás también, para moverlos.
-  const opciones = [...sinLugar, ...productos.filter((p) => dondeEsta.has(p.id))].filter((p) => p.id !== actual?.idProducto && (!q || sinTildes(p.nombre).includes(q)));
+  const opciones = [...sinLugar, ...productos.filter((p) => dondeEsta.has(p.id))].filter(
+    (p) => p.id !== actual?.idProducto && (!q || sinTildes(`${p.nombre} ${p.marca ?? ""}`).includes(q))
+  );
+
+  function elegirZona(z: Zona) {
+    setZona(z);
+    setIdModulo(deLaZona[z][0]?.id ?? null);
+    setLugar(null);
+  }
 
   function poner(idProducto: string | null) {
     if (!lugar) return;
@@ -77,7 +112,7 @@ export default function PreciosGondola({
           return { ...m, lugares };
         }),
       }));
-      avisar(p ? `${p.nombre}: módulo ${numero}, fila ${NOMBRE_ALTURA[modulo.filas[destino.fila].altura].toLowerCase()}, lugar ${destino.columna + 1}.` : "Lugar liberado.");
+      avisar(p ? `${p.nombre}: ${etiquetaZona(gondola, modulo)}, ${nombreFila(modulo, destino.fila)}, lugar ${destino.columna + 1}.` : "Lugar liberado.");
       setLugar(null);
       setBuscar("");
     });
@@ -90,15 +125,20 @@ export default function PreciosGondola({
       const nuevo = r.orden;
       setPorLocal((todo) => {
         const lista = todo[idLocal] ?? [];
-        const ordenados = nuevo.map((id, k) => {
-          const m = lista.find((x) => x.id === id)!;
-          return { ...m, orden: k + 1 };
-        });
-        return { ...todo, [idLocal]: ordenados };
+        const ordenados = nuevo.map((id, k) => ({ ...lista.find((x) => x.id === id)!, orden: k + 1 }));
+        // Las islas y la estantería quedan como estaban, después de los módulos.
+        return { ...todo, [idLocal]: [...ordenados, ...lista.filter((m) => m.tipo !== "MODULO")] };
       });
-      avisar(`«${modulo.titulo}» ahora es el módulo ${nuevo.indexOf(modulo.id) + 1}.`);
+      avisar(`«${modulo.titulo}» ahora es el mueble ${nuevo.indexOf(modulo.id) + 1}.`);
     });
   }
+
+  const ZONAS: { z: Zona; nombre: string; detalle: string }[] = [
+    { z: "MODULOS", nombre: "Pared izquierda", detalle: `${modulos.length} módulos de ganchos` },
+    ...(islas(1).length ? [{ z: "ISLA1" as Zona, nombre: "Isla 1", detalle: "La de la entrada · 3 pisos" }] : []),
+    ...(islas(2).length ? [{ z: "ISLA2" as Zona, nombre: "Isla 2", detalle: "La del fondo · 3 pisos" }] : []),
+    ...(estanteria.length ? [{ z: "ESTANTERIA" as Zona, nombre: "Estantería Animalfit", detalle: "Pared derecha · 6 estantes" }] : []),
+  ];
 
   return (
     <div className="pr-gd">
@@ -107,7 +147,7 @@ export default function PreciosGondola({
           <div>
             <h2>Góndola · dónde va cada producto</h2>
             <p className="baj">
-              Tocá un módulo para verlo de frente; después tocá un lugar y elegí qué va ahí. La pantalla asesora le muestra al cliente, en 3D, dónde está cada producto.{" "}
+              Elegí la zona del local, tocá un lugar y elegí qué va ahí. La pantalla asesora lleva al cliente, en 3D, hasta cada producto.{" "}
               <b>
                 {ubicados} de {productos.length} ubicados
               </b>
@@ -119,7 +159,8 @@ export default function PreciosGondola({
               value={idLocal}
               onChange={(e) => {
                 setIdLocal(e.target.value);
-                setIdModulo(porLocal[e.target.value]?.[0]?.id ?? null);
+                setZona("MODULOS");
+                setIdModulo(soloModulos(porLocal[e.target.value] ?? [])[0]?.id ?? null);
                 setLugar(null);
               }}
               aria-label="Local"
@@ -132,29 +173,73 @@ export default function PreciosGondola({
             </select>
           )}
         </div>
-        <Pared3D
-          modulos={modulos}
-          sel={modulo.id}
-          onElegir={(id) => {
-            setIdModulo(id);
-            setLugar(null);
-          }}
-        />
+
+        {/* Las zonas del local, como el mapita de la pantalla asesora */}
+        <div className="pr-gd-zonas" role="tablist" aria-label="Zona del local">
+          {ZONAS.map((x) => (
+            <button key={x.z} type="button" role="tab" aria-selected={zona === x.z} className={zona === x.z ? "on" : undefined} onClick={() => elegirZona(x.z)}>
+              <b>{x.nombre}</b>
+              <small>{x.detalle}</small>
+            </button>
+          ))}
+        </div>
+        {!hayLocalEntero && (
+          <p className="baj">
+            Para ubicar productos en las islas y en la estantería de Animalfit, corré <b>sql/gondola-local-entero.sql</b> en Supabase.
+          </p>
+        )}
+
+        {zona === "MODULOS" ? (
+          <Pared3D
+            modulos={modulos}
+            sel={modulo.id}
+            onElegir={(id) => {
+              setIdModulo(id);
+              setLugar(null);
+            }}
+          />
+        ) : (
+          // Lado de la isla o parte de la estantería
+          <div className="pr-gd-lados" role="group" aria-label={zona === "ESTANTERIA" ? "Parte" : "Lado"}>
+            {enZona.map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                className={m.id === modulo.id ? "on" : undefined}
+                aria-pressed={m.id === modulo.id}
+                onClick={() => {
+                  setIdModulo(m.id);
+                  setLugar(null);
+                }}
+              >
+                {m.subtitulo ?? m.titulo}
+                <small>{m.lugares.length} ubicados</small>
+              </button>
+            ))}
+          </div>
+        )}
       </section>
 
       <div className="pr-gd-detalle">
         <section className="pr-tarjeta" style={{ minWidth: 0 }}>
-          <MuebleFrente modulo={modulo} numero={numero} elegido={lugar} onLugar={(fila, columna) => { setLugar({ fila, columna }); setBuscar(""); }} />
+          <MuebleFrente
+            modulo={modulo}
+            numero={numero}
+            etiqueta={modulo.tipo === "MODULO" ? undefined : `${modulo.titulo} · ${modulo.subtitulo ?? ""}`}
+            elegido={lugar}
+            onLugar={(fila, columna) => {
+              setLugar({ fila, columna });
+              setBuscar("");
+            }}
+          />
         </section>
 
         <aside className="pr-tarjeta pr-gd-panel">
           {!lugar ? (
             <>
-              <h3>
-                Módulo {numero} · {modulo.titulo}
-              </h3>
+              <h3>{etiquetaZona(gondola, modulo)}</h3>
               <p className="baj">Tocá un lugar del mueble para poner o cambiar el producto.</p>
-              {modulos.length > 1 && (
+              {modulo.tipo === "MODULO" && modulos.length > 1 && (
                 <div>
                   <b>¿Lo cambiaste de lugar en el local?</b>
                   <p className="baj">Se mueve con todos sus productos.</p>
@@ -171,7 +256,7 @@ export default function PreciosGondola({
               <div>
                 <b>Sin lugar todavía ({sinLugar.length})</b>
                 {sinLugar.length === 0 ? (
-                  <p className="baj">Todos tus productos tienen su lugar.</p>
+                  <p className="baj">Todos los productos tienen su lugar.</p>
                 ) : (
                   <>
                     <div className="pr-gd-chips">
@@ -191,12 +276,12 @@ export default function PreciosGondola({
             <>
               <h3>{actual ? actual.nombre : "Lugar libre"}</h3>
               <p className="baj">
-                Módulo <b>{numero}</b> · fila <b>{NOMBRE_ALTURA[modulo.filas[lugar.fila].altura].toLowerCase()}</b> · lugar <b>{lugar.columna + 1}</b> desde la izquierda
+                <b>{etiquetaZona(gondola, modulo)}</b> · {nombreFila(modulo, lugar.fila)} · lugar <b>{lugar.columna + 1}</b> desde la izquierda
               </p>
               <label htmlFor="gd-buscar" className="pr-gd-label">
                 {actual ? "Cambiarlo por:" : "¿Qué va acá?"}
               </label>
-              <input id="gd-buscar" className="pr-gd-buscar" value={buscar} onChange={(e) => setBuscar(e.target.value)} placeholder="Buscar producto" autoFocus />
+              <input id="gd-buscar" className="pr-gd-buscar" value={buscar} onChange={(e) => setBuscar(e.target.value)} placeholder="Buscar producto o marca" autoFocus />
               <ul className="pr-gd-opciones">
                 {opciones.slice(0, 60).map((p) => {
                   const d = dondeEsta.get(p.id);
@@ -204,7 +289,10 @@ export default function PreciosGondola({
                     <li key={p.id}>
                       <button type="button" disabled={guardando} onClick={() => poner(p.id)}>
                         <span>{p.nombre}</span>
-                        <small>{d ? `está en el ${d.i + 1}, ${NOMBRE_ALTURA[d.m.filas[d.l.fila]?.altura ?? "manos"].toLowerCase()} · moverlo` : "sin lugar"}</small>
+                        <small>
+                          {p.marca ? `${p.marca} · ` : ""}
+                          {d ? `está en ${nombreCortoZona(gondola, d.m)}, ${nombreFila(d.m, d.l.fila)} · moverlo` : "sin lugar"}
+                        </small>
                       </button>
                     </li>
                   );

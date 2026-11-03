@@ -8,6 +8,16 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export type AlturaFila = "arriba" | "ojos" | "manos" | "abajo";
 export type FilaGondola = { altura: AlturaFila; lugares: number; grande?: boolean };
 export type LugarGondola = { fila: number; columna: number; idProducto: string; nombre: string };
+/**
+ * Qué mueble del local es (sql/gondola-local-entero.sql):
+ * - MODULO: módulo de ganchos de la pared izquierda.
+ * - ISLA: un lado de una isla del centro (numero 1 = la de la entrada, 2 = la
+ *   del fondo; lado IZQ = mirando a los módulos, DER = mirando a Animalfit).
+ * - ESTANTERIA: una parte de la estantería de la pared derecha (numero 1 =
+ *   adelante, 2 = fondo).
+ */
+export type TipoZona = "MODULO" | "ISLA" | "ESTANTERIA";
+
 export type ModuloGondola = {
   id: string;
   orden: number;
@@ -15,6 +25,9 @@ export type ModuloGondola = {
   subtitulo: string | null;
   filas: FilaGondola[];
   lugares: LugarGondola[];
+  tipo: TipoZona;
+  numero: number | null;
+  lado: "IZQ" | "DER" | null;
 };
 export type UbicacionGondola = { modulo: ModuloGondola; fila: number; columna: number };
 
@@ -33,16 +46,25 @@ function leerFilas(v: unknown): FilaGondola[] {
 
 /** Los módulos de un local con lo que hay en cada lugar. null si falta correr sql/gondola.sql. */
 export async function cargarGondola(supabase: SupabaseClient, idLocal: string): Promise<ModuloGondola[] | null> {
-  const [mods, lugares] = await Promise.all([
-    supabase.from("gondola_modulos").select("id_modulo, orden, titulo, subtitulo, filas").eq("id_local", idLocal).order("orden"),
+  const [conTipo, lugares] = await Promise.all([
+    supabase.from("gondola_modulos").select("id_modulo, orden, titulo, subtitulo, filas, tipo, numero, lado").eq("id_local", idLocal).order("orden"),
     supabase.from("gondola_lugares").select("id_modulo, fila, columna, id_producto, productos(nombre)").eq("id_local", idLocal),
   ]);
+  // Sin sql/gondola-local-entero.sql no existen tipo/numero/lado: se piden sin
+  // ellas y todo es módulo, como antes.
+  let mods = conTipo as { data: Record<string, unknown>[] | null; error: unknown };
+  if (conTipo.error) {
+    mods = (await supabase.from("gondola_modulos").select("id_modulo, orden, titulo, subtitulo, filas").eq("id_local", idLocal).order("orden")) as typeof mods;
+  }
   if (mods.error || lugares.error) return null;
   return (mods.data ?? []).map((m) => ({
     id: m.id_modulo as string,
     orden: Number(m.orden),
     titulo: m.titulo as string,
     subtitulo: (m.subtitulo as string | null) ?? null,
+    tipo: m.tipo === "ISLA" || m.tipo === "ESTANTERIA" ? (m.tipo as TipoZona) : "MODULO",
+    numero: m.numero == null ? null : Number(m.numero),
+    lado: m.lado === "IZQ" || m.lado === "DER" ? (m.lado as "IZQ" | "DER") : null,
     filas: leerFilas(m.filas),
     lugares: (lugares.data ?? [])
       .filter((l) => l.id_modulo === m.id_modulo)
@@ -61,6 +83,18 @@ export function ubicacionDe(modulos: ModuloGondola[], idProducto: string): Ubica
     if (l) return { modulo, fila: l.fila, columna: l.columna };
   }
   return null;
+}
+
+/** Solo los módulos de ganchos de la pared izquierda, en su orden. */
+export function soloModulos(gondola: ModuloGondola[]) {
+  return gondola.filter((m) => m.tipo === "MODULO");
+}
+
+/** "Mueble 4", "Isla 1", "Estantería": el nombre corto de dónde está, para botones y carteles. */
+export function nombreCortoZona(gondola: ModuloGondola[], m: ModuloGondola) {
+  if (m.tipo === "ISLA") return `Isla ${m.numero ?? ""}`.trim();
+  if (m.tipo === "ESTANTERIA") return m.titulo;
+  return `Mueble ${soloModulos(gondola).indexOf(m) + 1}`;
 }
 
 /** "El primero de la izquierda", "el 3.º desde la izquierda", "el último, a la derecha". */

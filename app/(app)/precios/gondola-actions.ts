@@ -29,10 +29,23 @@ export async function moverModulo(idModulo: string, direccion: -1 | 1): Promise<
   const { data: modulo, error: e1 } = await supabase.from("gondola_modulos").select("id_local").eq("id_modulo", idModulo).maybeSingle();
   if (e1) return { error: FALTA_SQL };
   if (!modulo) return { error: "No encontré ese módulo." };
-  const { data: todos, error: e2 } = await supabase.from("gondola_modulos").select("id_modulo, orden").eq("id_local", modulo.id_local).order("orden");
-  if (e2 || !todos) return { error: "No se pudo leer la góndola. Probá de nuevo." };
+  // Solo se reordenan los módulos de ganchos: las islas y la estantería tienen
+  // su lugar fijo en el local. Sin sql/gondola-local-entero.sql no hay tipo y
+  // todo es módulo.
+  let todos: { id_modulo: string; orden: number; tipo?: string }[] | null = null;
+  const conTipo = await supabase.from("gondola_modulos").select("id_modulo, orden, tipo").eq("id_local", modulo.id_local).order("orden");
+  if (conTipo.error) {
+    const sinTipo = await supabase.from("gondola_modulos").select("id_modulo, orden").eq("id_local", modulo.id_local).order("orden");
+    if (sinTipo.error) return { error: "No se pudo leer la góndola. Probá de nuevo." };
+    todos = sinTipo.data;
+  } else {
+    todos = conTipo.data;
+  }
+  if (!todos) return { error: "No se pudo leer la góndola. Probá de nuevo." };
+  const esteTipo = todos.find((m) => m.id_modulo === idModulo)?.tipo ?? "MODULO";
+  if (esteTipo !== "MODULO") return { error: "Las islas y la estantería no se mueven: tienen su lugar fijo en el local." };
 
-  const ids = todos.map((m) => m.id_modulo as string);
+  const ids = todos.filter((m) => (m.tipo ?? "MODULO") === "MODULO").map((m) => m.id_modulo as string);
   const i = ids.indexOf(idModulo);
   const j = i + direccion;
   if (j < 0 || j >= ids.length) return { error: direccion < 0 ? "Ya es el primero de la izquierda." : "Ya es el último de la derecha." };

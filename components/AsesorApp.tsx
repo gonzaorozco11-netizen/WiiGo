@@ -1160,13 +1160,22 @@ export default function AsesorApp({
   const muebleDelRubro = useMemo(() => {
     if (gondola.length === 0 || productosDeMarca.length === 0) return null;
     const ids = new Set(productosDeMarca.map((p) => p.id_producto));
-    let mejor: { numero: number; titulo: string; cuantos: number } | null = null;
-    gondola.forEach((m, i) => {
+    const modulos = gondola.filter((m) => m.tipo === "MODULO");
+    let mejor: { texto: string; cuantos: number } | null = null;
+    gondola.forEach((m) => {
       const cuantos = m.lugares.filter((l) => ids.has(l.idProducto)).length;
-      if (cuantos > 0 && (!mejor || cuantos > mejor.cuantos)) mejor = { numero: i + 1, titulo: m.titulo, cuantos };
+      if (cuantos === 0 || (mejor && cuantos <= mejor.cuantos)) return;
+      // "Mueble 4 · «A cualquier hora»", "Isla 1", "Estantería Animalfit"
+      const texto =
+        m.tipo === "ISLA"
+          ? `${idioma === "en" ? "Island" : idioma === "pt" ? "Ilha" : "Isla"} ${m.numero ?? ""}`
+          : m.tipo === "ESTANTERIA"
+            ? m.titulo
+            : `${idioma === "en" ? "Shelf" : idioma === "pt" ? "Móvel" : "Mueble"} ${modulos.indexOf(m) + 1} · «${m.titulo}»`;
+      mejor = { texto, cuantos };
     });
-    return mejor as { numero: number; titulo: string; cuantos: number } | null;
-  }, [gondola, productosDeMarca]);
+    return mejor as { texto: string; cuantos: number } | null;
+  }, [gondola, productosDeMarca, idioma]);
 
   /**
    * El rubro que queda elegido al entrar a una marca: el primero que tenga
@@ -1972,8 +1981,7 @@ export default function AsesorApp({
                         <span
                           className="rounded-[12px] border border-dashed border-[#d9cdb6] bg-white px-3 py-1.5 text-[13px] md:text-[14px] font-bold text-[#4d5545]"
                         >
-                          <span style={{ color: "#e8743b" }}>●</span> {idioma === "en" ? "Shelf" : idioma === "pt" ? "Móvel" : "Mueble"} {muebleDelRubro.numero} · «
-                          {muebleDelRubro.titulo}»
+                          <span style={{ color: "#e8743b" }}>●</span> {muebleDelRubro.texto}
                         </span>
                       )}
                       <span className="text-[12px] md:text-[13px] text-[#8a9180] font-semibold">
@@ -3360,7 +3368,11 @@ function ProductoDetalleModal({
           <span aria-hidden="true">📍</span>
           {idioma === "en" ? "Where do I find it?" : idioma === "pt" ? "Onde encontro?" : "¿Dónde lo encuentro?"}
           <span className="rounded-full bg-white/25 px-2 py-0.5 text-[12px]">
-            {idioma === "en" ? "Module" : "Módulo"} {gondola.indexOf(ubicacion.modulo) + 1}
+            {ubicacion.modulo.tipo === "ISLA"
+              ? `${idioma === "en" ? "Island" : idioma === "pt" ? "Ilha" : "Isla"} ${ubicacion.modulo.numero ?? ""}`
+              : ubicacion.modulo.tipo === "ESTANTERIA"
+                ? ubicacion.modulo.titulo
+                : `${idioma === "en" ? "Shelf" : idioma === "pt" ? "Móvel" : "Mueble"} ${gondola.filter((m) => m.tipo === "MODULO").indexOf(ubicacion.modulo) + 1}`}
           </span>
         </button>
       )}

@@ -90,6 +90,7 @@ export function Pared3D({
 export function MuebleFrente({
   modulo,
   numero,
+  etiqueta,
   elegido = null,
   aca = null,
   textoAca = "¡Acá está!",
@@ -97,6 +98,8 @@ export function MuebleFrente({
 }: {
   modulo: ModuloGondola;
   numero: number;
+  /** Para las islas y la estantería: «Isla 1 · Lado de los módulos». Sin esto dice «Módulo N». */
+  etiqueta?: string;
   elegido?: { fila: number; columna: number } | null;
   aca?: { fila: number; columna: number } | null;
   textoAca?: string;
@@ -105,13 +108,12 @@ export function MuebleFrente({
   return (
     <div className="gd">
       <div className="gd-escena">
-        <div className="gd-mueble" role={onLugar ? undefined : "img"} aria-label={`Módulo ${numero} de frente`}>
+        <div className="gd-mueble" role={onLugar ? undefined : "img"} aria-label={`${etiqueta ?? `Módulo ${numero}`} de frente`}>
           <div className="gd-franja">
             <div className="gd-cartel">
-              {modulo.titulo}
+              {etiqueta ? modulo.subtitulo ?? modulo.titulo : modulo.titulo}
               <small>
-                Módulo {numero}
-                {modulo.subtitulo ? ` · ${modulo.subtitulo}` : ""}
+                {etiqueta ? modulo.titulo : `Módulo ${numero}${modulo.subtitulo ? ` · ${modulo.subtitulo}` : ""}`}
               </small>
             </div>
           </div>

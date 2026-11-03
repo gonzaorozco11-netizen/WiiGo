@@ -37,6 +37,18 @@ export default async function PreciosPage({ searchParams }: { searchParams: Prom
   const locales = (localesRes.data ?? []) as { id_local: string; nombre: string }[];
   const gondolas = await Promise.all(locales.map(async (l) => ({ idLocal: l.id_local, nombre: l.nombre, modulos: await cargarGondola(supabase, l.id_local) })));
   const gondola = gondolas.some((g) => g.modulos === null) ? null : gondolas.map((g) => ({ ...g, modulos: g.modulos ?? [] }));
+  // En la góndola van los productos de todas las marcas (las islas tienen
+  // Crislo y la estantería es de Animalfit), no solo los de WiiGo.
+  const { data: todosProductos } = await supabase
+    .from("productos")
+    .select("id_producto, nombre, marcas(nombre)")
+    .eq("estado", "ACTIVO")
+    .order("nombre");
+  const productosGondola = (todosProductos ?? []).map((p) => ({
+    id: p.id_producto as string,
+    nombre: p.nombre as string,
+    marca: (p.marcas as unknown as { nombre: string } | null)?.nombre ?? null,
+  }));
 
   if (!datos.disponible) {
     return (
@@ -64,6 +76,7 @@ export default async function PreciosPage({ searchParams }: { searchParams: Prom
         alifrut={alifrut}
         competencia={competencia}
         gondola={gondola}
+        productosGondola={productosGondola}
       />
     </div>
   );

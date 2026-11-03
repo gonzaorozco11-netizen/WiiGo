@@ -21,7 +21,7 @@ import type { GranelDelModulo, ProductoDelModulo, RubroDelModulo } from "@/lib/d
 import type { EstadoAlifrut, ItemCatalogo } from "@/lib/catalogoProveedor";
 import { AvisoAlifrut, CambiosAlifrut, CatalogoAlifrut, TraerLista, calcularPendientes } from "@/components/PreciosAlifrut";
 import PreciosCompetencia from "@/components/PreciosCompetencia";
-import PreciosGondola, { type GondolaLocal } from "@/components/PreciosGondola";
+import PreciosGondola, { type GondolaLocal, type ProductoGondola } from "@/components/PreciosGondola";
 import type { DatosCompetencia } from "@/lib/competenciaLeer";
 import { precioATuTamano } from "@/lib/competencia";
 import {
@@ -58,6 +58,8 @@ type Props = {
   competencia?: DatosCompetencia | null;
   /** La góndola de cada local; null si falta correr sql/gondola.sql. */
   gondola?: GondolaLocal[] | null;
+  /** Todos los productos activos de todas las marcas, para ubicarlos en la góndola. */
+  productosGondola?: ProductoGondola[];
 };
 
 type Pestana = "lista" | "competencia" | "gondola" | "alifrut" | "costos" | "config";
@@ -349,7 +351,13 @@ export default function PreciosApp(props: Props) {
         {pestana === "competencia" && (
           <PreciosCompetencia productos={productos} datos={props.competencia ?? null} avisar={avisar} margenPara={margenParaPrecio} llevarA={llevarAPrecio} minimo={minimo} />
         )}
-        {pestana === "gondola" && <PreciosGondola locales={props.gondola ?? null} productos={productos} avisar={avisar} />}
+        {pestana === "gondola" && (
+          <PreciosGondola
+            locales={props.gondola ?? null}
+            productos={props.productosGondola ?? productos.map((p) => ({ id: p.id, nombre: p.nombre, marca: null }))}
+            avisar={avisar}
+          />
+        )}
         {pestana === "alifrut" && props.alifrut && (
           <CatalogoAlifrut
             items={props.alifrut.items}
