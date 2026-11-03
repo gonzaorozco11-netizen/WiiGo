@@ -347,6 +347,16 @@
 /* ---------- Pedidos ---------- */
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .esp-lienzo.esp-ancho { max-width: 1280px; }
+
+/* Pedidos cerrado por ahora: «¡Próximamente!» */
+.proximamente { max-width: 560px; width: 100%; margin: 30px auto 0; padding: 32px 26px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.proximamente-emoji { font-size: 46px; line-height: 1; }
+.chip-pronto { display: inline-flex; font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--ocre-texto); background: var(--ocre-tenue); border-radius: 999px; padding: 4px 12px; }
+.proximamente h1 { font-family: var(--f-titulo), sans-serif; font-size: 24px; font-weight: 600; text-wrap: balance; }
+.proximamente p { font-size: 15px; line-height: 1.5; color: var(--texto-2); max-width: 44ch; }
+.proximamente .nota { margin-top: 0; }
+.proximamente .boton { margin-top: 6px; text-decoration: none; }
+.esp-nav .pronto { margin-left: 6px; font-size: 10.5px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--ocre-texto); background: var(--ocre-tenue); border-radius: 999px; padding: 2px 7px; vertical-align: 1px; }
 .pedidos-esp { display: flex; flex-direction: column; gap: 16px; }
 .modo-propio { display: inline-flex; margin-bottom: 8px; font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--ocre-texto); background: var(--ocre-tenue); border-radius: 999px; padding: 3px 11px; }
 .arma { display: grid; gap: 16px; align-items: start; }

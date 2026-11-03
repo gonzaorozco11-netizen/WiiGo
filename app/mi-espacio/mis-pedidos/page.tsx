@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionProfesional } from "@/lib/profesionalSesion";
-import type { EstadoPedido } from "@/lib/pedidosProfesional";
+import { PEDIDOS_ABIERTOS_PROFESIONALES, type EstadoPedido } from "@/lib/pedidosProfesional";
+import PedidosProximamente from "../PedidosProximamente";
 import { devueltoPorDetalle } from "@/lib/devueltoPorDetalle";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import MisPedidos, { type PedidoConItems, type Historial, type HistorialCompra } from "./MisPedidos";
@@ -17,6 +18,7 @@ export const dynamic = "force-dynamic";
 export default async function MisPedidosEspacio() {
   const sesion = await obtenerSesionProfesional();
   if (!sesion) redirect("/login?next=/mi-espacio/mis-pedidos");
+  if (!PEDIDOS_ABIERTOS_PROFESIONALES) return <PedidosProximamente />;
   const supabase = getSupabaseServerClient();
 
   // Con "*": la columna para_profesional puede no estar (sql/profesionales-pedido-propio.sql).

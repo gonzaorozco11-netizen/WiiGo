@@ -4,6 +4,7 @@ import { leerRedes } from "@/lib/redesProfesional";
 import { mesesVinculo } from "@/lib/pacientesProfesional";
 import { reglasPuntos } from "@/lib/puntosProfesionales";
 import { fechaHoraArgentina } from "@/lib/horarios";
+import { PEDIDOS_ABIERTOS_PROFESIONALES } from "@/lib/pedidosProfesional";
 
 // La bienvenida de las profesionales (Gonzalo, 2026-11-02; vista previa
 // aprobada: https://claude.ai/artifact/RFEFyMgpwcLpXwp2odSQii):
@@ -125,9 +126,9 @@ export async function primerosPasos(supabase: SupabaseClient, idProfesional: str
     {
       clave: "paciente",
       titulo: "Sumá tu primer paciente",
-      ayuda: "Armándole un pedido o desde «Sumar paciente» en Mi saldo.",
-      href: "/mi-espacio/pedidos",
-      boton: "Armar pedido",
+      ...(PEDIDOS_ABIERTOS_PROFESIONALES
+        ? { ayuda: "Armándole un pedido o desde «Sumar paciente» en Mi saldo.", href: "/mi-espacio/pedidos", boton: "Armar pedido" }
+        : { ayuda: "Desde «Sumar paciente» en Mi saldo, o cuando dice tu código en la caja.", href: "/mi-espacio/saldo", boton: "Ir a Mi saldo" }),
       hecho: (pacRes.data ?? []).length > 0 || (refRes.data ?? []).length > 0,
     },
     {

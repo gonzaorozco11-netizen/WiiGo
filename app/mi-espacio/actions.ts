@@ -23,6 +23,7 @@ import {
 } from "@/lib/cambiosProfesional";
 import { leerRedes, mismasRedes, normalizarRedes } from "@/lib/redesProfesional";
 import { ACCION_PRESENTACION, vioPresentacion } from "@/lib/primerosPasos";
+import { PEDIDOS_ABIERTOS_PROFESIONALES } from "@/lib/pedidosProfesional";
 
 // Acciones del espacio de cada profesional.
 //
@@ -405,6 +406,7 @@ export async function enviarPedido(datos: {
   // propios datos, no se la registra como paciente y no lleva su código.
   paraMi?: boolean;
 }): Promise<{ error: string | null; numero?: number }> {
+  if (!PEDIDOS_ABIERTOS_PROFESIONALES) return { error: "Los pedidos todavía no están abiertos. ¡Próximamente!" };
   const sesion = await sesionQuePuedeCambiar();
   if (!sesion) return { error: await porQueNoPuede() };
   const supabase = getSupabaseServerClient();

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { marcarPresentacionVista } from "./actions";
 import type { DatosPresentacion } from "@/lib/primerosPasos";
+import { PEDIDOS_ABIERTOS_PROFESIONALES } from "@/lib/pedidosProfesional";
 
 // La presentación de bienvenida: 5 pasos la primera vez que entra (después de
 // aceptar la autorización de imagen). Se vuelve a abrir con ?presentacion=1
@@ -47,17 +48,29 @@ function armarPasos(d: DatosPresentacion): Paso[] {
         ["✅", <>WiiGo la revisa antes de que salga. Si algo hay que cambiar, te llega la nota.</>],
       ],
     },
-    {
-      fondo: "s4",
-      ilustracion: <span className="pr-emoji">🛍️</span>,
-      titulo: "Pedidos y tu saldo",
-      lead: "Armale el pedido a tu paciente en la consulta y mandalo al local.",
-      puntos: [
-        ["📲", <>El local lo arma y le avisa por WhatsApp. <b>Lo paga cuando lo retira.</b></>],
-        ["💳", <><b>Tu saldo</b> es en pesos y por marca: lo usás en la caja con tu DNI y tu PIN.</>],
-        ["📋", <>En <b>Mis pedidos</b> ves cómo va cada uno y qué llevó cada paciente.</>],
-      ],
-    },
+    PEDIDOS_ABIERTOS_PROFESIONALES
+      ? {
+          fondo: "s4",
+          ilustracion: <span className="pr-emoji">🛍️</span>,
+          titulo: "Pedidos y tu saldo",
+          lead: "Armale el pedido a tu paciente en la consulta y mandalo al local.",
+          puntos: [
+            ["📲", <>El local lo arma y le avisa por WhatsApp. <b>Lo paga cuando lo retira.</b></>],
+            ["💳", <><b>Tu saldo</b> es en pesos y por marca: lo usás en la caja con tu DNI y tu PIN.</>],
+            ["📋", <>En <b>Mis pedidos</b> ves cómo va cada uno y qué llevó cada paciente.</>],
+          ],
+        }
+      : {
+          fondo: "s4",
+          ilustracion: <span className="pr-emoji">💳</span>,
+          titulo: "Tu saldo y tus pacientes",
+          lead: "Lo que sumás con tus pacientes queda en tu saldo, para usar en el local.",
+          puntos: [
+            ["💳", <><b>Tu saldo</b> es en pesos y por marca: lo usás en la caja con tu DNI y tu PIN.</>],
+            ["🙋", <>Sumá pacientes desde <b>Mi saldo → Sumar paciente</b>, o cuando dicen tu código en la caja.</>],
+            ["🛍️", <><b>¡Próximamente!</b> Vas a poder armarle el pedido a tu paciente y mandarlo al local.</>],
+          ],
+        },
     {
       fondo: "s5",
       ilustracion: <span className="pr-emoji">🏆</span>,

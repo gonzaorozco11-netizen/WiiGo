@@ -1,4 +1,5 @@
 import type { Guia, Novedad, Termino } from "./tipos";
+import { PEDIDOS_ABIERTOS_PROFESIONALES } from "@/lib/pedidosProfesional";
 
 // El contenido de la Guía WiiGo ("¿Alguna duda?").
 //
@@ -19,6 +20,10 @@ import type { Guia, Novedad, Termino } from "./tipos";
 const I = ["interno"] as const;
 const M = ["marca"] as const;
 const P = ["profesional"] as const;
+// Los pedidos de su espacio están cerrados por ahora («Próximamente»): sus
+// guías no se muestran hasta que se abran (lib/pedidosProfesional.ts).
+const P_PEDIDOS = PEDIDOS_ABIERTOS_PROFESIONALES ? P : ([] as const);
+const conPedidos = (texto: string) => (PEDIDOS_ABIERTOS_PROFESIONALES ? texto : "");
 
 export const GUIAS: Guia[] = [
   // ===================== EQUIPO: CAJA =====================
@@ -815,14 +820,14 @@ export const GUIAS: Guia[] = [
     rutas: ["=/mi-espacio", "/mi-espacio/saldo"],
     nueva: "2026-11-02",
     puntos: [
-      "<b>Tu código:</b> tus pacientes lo dicen en la caja de WiiGo junto con su DNI. También quedan registrados si les armás un pedido o los sumás desde «Sumar paciente».",
+      `<b>Tu código:</b> tus pacientes lo dicen en la caja de WiiGo junto con su DNI. También quedan registrados si ${conPedidos("les armás un pedido o ")}los sumás desde «Sumar paciente».`,
       "<b>Tu paciente:</b> en su <b>primera compra</b> tiene un descuento en los productos de las marcas que participan (hoy {marcasPrograma}, con {pctCliente}); esa compra no suma puntos del WiiGo Club. Después es un cliente WiiGo común y suma puntos en cada compra.",
       "<b>Vos:</b> sumás el % de cada marca (hoy {pctProfesional}) de <b>todo lo que compre tu paciente durante {meses} meses</b>, aunque no diga tu código: la caja lo reconoce por el DNI.",
       "<b>Si otra profesional lo registra</b>, pasa a ser paciente de ella.",
       "<b>Tu saldo:</b> está en pesos y <b>separado por marca</b>: lo que sumaste con una marca lo usás en productos de esa marca. Lo ves en Mi saldo.",
-      "<b>Cómo lo usás:</b> en la caja decís tu DNI, elegís las marcas y ponés tu PIN. Podés usar una parte y guardar el resto. También podés armar un «Pedido para mí».",
+      `<b>Cómo lo usás:</b> en la caja decís tu DNI, elegís las marcas y ponés tu PIN. Podés usar una parte y guardar el resto.${conPedidos(" También podés armar un «Pedido para mí».")}`,
       "<b>Quién lo paga:</b> las marcas, no tus pacientes.",
-      "<b>Sus compras en WiiGo</b> las ves solo si el paciente te dio permiso (ver «Ver lo que compra tu paciente en WiiGo»).",
+      ...(PEDIDOS_ABIERTOS_PROFESIONALES ? ["<b>Sus compras en WiiGo</b> las ves solo si el paciente te dio permiso (ver «Ver lo que compra tu paciente en WiiGo»)."] : []),
       "<b>En tus propias compras</b> no podés usar tu código ni el de otra profesional.",
     ],
     tabla: {
@@ -845,7 +850,7 @@ export const GUIAS: Guia[] = [
     rutas: ["=/mi-espacio"],
     nueva: "2026-11-02",
     puntos: [
-      "La primera vez que entrás aparece una <b>presentación de 5 pasos</b> con lo más importante: tu código, tu ficha, los pedidos, tu saldo y tus objetivos.",
+      `La primera vez que entrás aparece una <b>presentación de 5 pasos</b> con lo más importante: tu código, tu ficha, ${PEDIDOS_ABIERTOS_PROFESIONALES ? "los pedidos, tu saldo" : "tu saldo, tus pacientes"} y tus objetivos.`,
       "En <b>Inicio</b> está <b>Tus primeros pasos</b>: foto, presentación, redes, primer paciente y primera historia. Cada uno se tilda solo cuando lo hacés.",
       "Cuando completás los 5, la tarjeta desaparece.",
       "Para volver a ver la presentación, tocá <b>Ver de nuevo la presentación</b> en esa tarjeta.",
@@ -864,14 +869,14 @@ export const GUIAS: Guia[] = [
       "En la caja decí tu <b>DNI</b> y qué marcas querés usar.",
       "Poné tu <b>PIN</b> en la caja.",
       "Se descuenta de los productos de esas marcas. Podés usar una parte y guardar el resto; si no alcanza, lo que falta lo pagás ahí.",
-      "También podés tocar <b>Pedido para mí</b> en Mi saldo: armás tu pedido y lo retirás ya preparado.",
+      ...(PEDIDOS_ABIERTOS_PROFESIONALES ? ["También podés tocar <b>Pedido para mí</b> en Mi saldo: armás tu pedido y lo retirás ya preparado."] : []),
     ],
     tip: "El PIN es solo para pagar en la caja: no es tu contraseña.",
     rel: ["como-funciona"],
   },
   {
     id: "pedido-paciente",
-    audiencias: [...P],
+    audiencias: [...P_PEDIDOS],
     tema: "Pedidos",
     titulo: "Armar un pedido para un paciente",
     donde: "Armar pedido",
@@ -887,7 +892,7 @@ export const GUIAS: Guia[] = [
   },
   {
     id: "mis-pedidos",
-    audiencias: [...P],
+    audiencias: [...P_PEDIDOS],
     tema: "Pedidos",
     titulo: "Seguir tus pedidos y ver qué llevó cada paciente",
     donde: "Mis pedidos",
@@ -903,7 +908,7 @@ export const GUIAS: Guia[] = [
   },
   {
     id: "historial-paciente",
-    audiencias: [...P],
+    audiencias: [...P_PEDIDOS],
     tema: "Pedidos",
     titulo: "Ver lo que compra tu paciente en WiiGo",
     donde: "Mis pedidos → Compras de tus pacientes",

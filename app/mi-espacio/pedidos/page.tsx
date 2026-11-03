@@ -3,6 +3,8 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionProfesional } from "@/lib/profesionalSesion";
 import { precioDe } from "@/lib/precios";
 import { saldosPorMarca } from "@/lib/canjesProfesionales";
+import { PEDIDOS_ABIERTOS_PROFESIONALES } from "@/lib/pedidosProfesional";
+import PedidosProximamente from "../PedidosProximamente";
 import ArmarPedido, { type ProductoCatalogo, type MarcaCatalogo, type RubroCatalogo } from "./ArmarPedido";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +17,7 @@ export default async function PedidosEspacio({ searchParams }: { searchParams: P
   const paraMi = para === "mi";
   const sesion = await obtenerSesionProfesional();
   if (!sesion) redirect(`/login?next=/mi-espacio/pedidos${paraMi ? "?para=mi" : ""}`);
+  if (!PEDIDOS_ABIERTOS_PROFESIONALES) return <PedidosProximamente />;
   const id = sesion.idProfesional;
   const supabase = getSupabaseServerClient();
   const hoy = new Date().toISOString().slice(0, 10);

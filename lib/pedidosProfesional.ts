@@ -3,6 +3,13 @@
 // Pedidos del equipo y la caja. Sin imports de servidor: lo usan también
 // componentes de cliente.
 
+/**
+ * «Armar pedido» y «Mis pedidos» en el espacio de las profesionales. Cerrados
+ * a propósito mientras Gonzalo los sigue ajustando (2026-11-03): ellas ven
+ * «Próximamente» y no pueden mandar pedidos. Para abrirlos, pasar a true.
+ */
+export const PEDIDOS_ABIERTOS_PROFESIONALES = false;
+
 export type EstadoPedido = "NUEVO" | "LISTO" | "ENTREGADO" | "CANCELADO" | "DEVUELTO";
 
 // ENTREGADO pasa solo cuando se cobra en la caja: por eso dice también "pagado".

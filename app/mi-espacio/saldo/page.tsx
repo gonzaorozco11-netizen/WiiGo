@@ -4,6 +4,7 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionProfesional } from "@/lib/profesionalSesion";
 import { saldosPorMarca } from "@/lib/canjesProfesionales";
 import { mesesVinculo } from "@/lib/pacientesProfesional";
+import { PEDIDOS_ABIERTOS_PROFESIONALES } from "@/lib/pedidosProfesional";
 import SumarPaciente from "./SumarPaciente";
 
 export const dynamic = "force-dynamic";
@@ -99,7 +100,7 @@ export default async function SaldoEspacio() {
           )}
           <p className="nota">El saldo de cada marca se usa en productos de esa marca. En la caja das tu DNI y ponés tu PIN.</p>
         </div>
-        {conSaldo.length > 0 && (
+        {PEDIDOS_ABIERTOS_PROFESIONALES && conSaldo.length > 0 && (
           <Link href="/mi-espacio/pedidos?para=mi" className="boton">
             Hacer un pedido con mi saldo
           </Link>
@@ -145,7 +146,7 @@ export default async function SaldoEspacio() {
                 Tus pacientes <small>suman {meses} meses cada uno</small>
               </h2>
               {pacientes.length === 0 ? (
-                <p className="vacio">Todavía no tenés pacientes registrados. Se suman cuando les armás un pedido, desde acá, o cuando dicen tu código en la caja.</p>
+                <p className="vacio">Todavía no tenés pacientes registrados. Se suman {PEDIDOS_ABIERTOS_PROFESIONALES ? "cuando les armás un pedido, " : ""}desde acá, o cuando dicen tu código en la caja.</p>
               ) : (
                 <div className="tabla-env">
                   <table className="tabla">
