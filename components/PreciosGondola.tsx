@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { MuebleFrente, Pared3D } from "@/components/Gondola3D";
 import { NOMBRE_ALTURA, type ModuloGondola } from "@/lib/gondola";
 import type { ProductoDelModulo } from "@/lib/datosPrecios";
-import { ponerEnLugar } from "@/app/(app)/precios/gondola-actions";
+import { moverModulo, ponerEnLugar } from "@/app/(app)/precios/gondola-actions";
 
 // Precios → Góndola: los módulos del local en 3D. Se toca un módulo, después
 // un lugar, y se elige qué producto va ahí. La pantalla asesora usa esto para
@@ -83,6 +83,23 @@ export default function PreciosGondola({
     });
   }
 
+  function mover(direccion: -1 | 1) {
+    startTransition(async () => {
+      const r = await moverModulo(modulo.id, direccion).catch(() => ({ error: "No se pudo mover. Probá de nuevo.", orden: undefined }));
+      if (r.error || !r.orden) return avisar(r.error ?? "No se pudo mover. Probá de nuevo.", true);
+      const nuevo = r.orden;
+      setPorLocal((todo) => {
+        const lista = todo[idLocal] ?? [];
+        const ordenados = nuevo.map((id, k) => {
+          const m = lista.find((x) => x.id === id)!;
+          return { ...m, orden: k + 1 };
+        });
+        return { ...todo, [idLocal]: ordenados };
+      });
+      avisar(`«${modulo.titulo}» ahora es el módulo ${nuevo.indexOf(modulo.id) + 1}.`);
+    });
+  }
+
   return (
     <div className="pr-gd">
       <section className="pr-tarjeta">
@@ -137,6 +154,20 @@ export default function PreciosGondola({
                 Módulo {numero} · {modulo.titulo}
               </h3>
               <p className="baj">Tocá un lugar del mueble para poner o cambiar el producto.</p>
+              {modulos.length > 1 && (
+                <div>
+                  <b>¿Lo cambiaste de lugar en el local?</b>
+                  <p className="baj">Se mueve con todos sus productos.</p>
+                  <div className="pr-gd-bot">
+                    <button type="button" className="pr-btn" disabled={guardando || numero === 1} onClick={() => mover(-1)}>
+                      ← A la izquierda
+                    </button>
+                    <button type="button" className="pr-btn" disabled={guardando || numero === modulos.length} onClick={() => mover(1)}>
+                      A la derecha →
+                    </button>
+                  </div>
+                </div>
+              )}
               <div>
                 <b>Sin lugar todavía ({sinLugar.length})</b>
                 {sinLugar.length === 0 ? (

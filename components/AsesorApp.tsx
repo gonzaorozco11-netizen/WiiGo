@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { ambosPrecios } from "@/lib/precios";
-import { Fredoka, Bodoni_Moda } from "next/font/google";
+import { Bricolage_Grotesque } from "next/font/google";
 import type {
   Local,
   MarcaPublica,
@@ -20,8 +20,8 @@ import type {
   FormacionProfesional,
   TrayectoriaProfesional,
 } from "@/lib/supabase";
-import { ubicacionDe, textoPosicionModulo, NOMBRE_ALTURA, type ModuloGondola, type UbicacionGondola } from "@/lib/gondola";
-import { MuebleFrente, Pared3D } from "@/components/Gondola3D";
+import { ubicacionDe, type ModuloGondola, type UbicacionGondola } from "@/lib/gondola";
+import ViajeGondola from "@/components/ViajeGondola";
 import IconoRed, { colorDeRed } from "@/components/IconoRed";
 import type { ClaveRed } from "@/lib/redesProfesional";
 
@@ -124,10 +124,20 @@ const TONOS_OBJETIVO = [
   "linear-gradient(145deg, #2f6b52, #1f4a38)",
 ];
 
-// Solo para la ficha ampliada de producto (ProductoDetalleModal) — el resto
-// del Asesor sigue con Manrope (ver app/asesor/layout.tsx).
-const fredoka = Fredoka({ subsets: ["latin"], weight: ["500", "600", "700"] });
-const bodoniModa = Bodoni_Moda({ subsets: ["latin"], style: ["italic"], weight: ["500", "600"] });
+// Los cuadros de objetivos de la portada. Como en TONOS_OBJETIVO, el color va
+// por posición: si Gonzalo agrega un objetivo, se pinta solo.
+const TONOS_INICIO = [
+  { fondo: "#e8743b", texto: "#ffffff" },
+  { fondo: "#2e3f29", texto: "#f5efe3" },
+  { fondo: "#f1c75b", texto: "#3b2f0e" },
+  { fondo: "#a8c08a", texto: "#1f2b17" },
+  { fondo: "#d9a37f", texto: "#3a2010" },
+];
+
+// Títulos y precios. El texto corrido va en Figtree (ver app/asesor/layout.tsx).
+// Antes eran Bodoni en cursiva y Fredoka; se cambió con el rediseño del
+// 2026-11-02 porque de lejos, en la pantalla de 27", la Bodoni fina no se leía.
+const titular = Bricolage_Grotesque({ subsets: ["latin"], weight: ["500", "600", "700", "800"] });
 
 // Idioma de la pantalla — arranca en español, y se auto-detecta el del
 // dispositivo al cargar (ver el useEffect en AsesorApp). Por ahora solo
@@ -165,15 +175,25 @@ function contarProductos(n: number, idioma: Idioma, sufijo?: "descuento" | "disp
 }
 const HOME_I18N = {
   es: {
-    pregunta: "¿Qué estás buscando hoy?",
-    ctaObjetivo: "Encontrar<br />productos para mí",
-    ctaMarcas: "Marcas y<br />productos",
-    ctaOfertas: "Ofertas en<br />la tienda",
-    ctaProfesionales: "Profesionales",
+    inicioTitulo1: "¿Qué querés",
+    inicioTituloAcento: "lograr",
+    inicioTitulo2: "hoy?",
+    inicioBajada: "Tocá lo que buscás y te mostramos qué te sirve y en qué mueble está.",
+    inicioBajadaSinGondola: "Tocá lo que buscás y te mostramos qué te sirve.",
+    masObjetivos: "Más objetivos",
+    objetivosPalabra: "objetivos",
+    verTodo: "Ver todo",
+    verTodoDesc: "Por marca y por rubro",
+    nuestrasMarcas: "Nuestras marcas",
+    ofertasHoy: "Ofertas de hoy",
+    teAsesora: "Te asesoran en WiiGo",
+    verTodas: "Ver todas",
+    conocerla: "Ver su ficha y reservar turno",
+    efectivoTitulo: "Pagando en efectivo, pagás menos",
+    efectivoTexto: "El precio en efectivo está en cada producto.",
+    efectivoChip: "efectivo",
     objetivoTitulo: "¿Cuál es tu objetivo hoy?",
     resultadoTitulo: "Te recomendamos",
-    ctaEyebrow: "Recomendado",
-    ctaDescripcion: "Contanos qué buscás y te mostramos lo que mejor te queda",
     objetivoSubtitulo: "Elegí uno y te recomendamos lo que mejor te queda",
     objetivoVacio: "Todavía no cargaste objetivos en Catálogo asesor.",
     marcasTitulo: "Marcas y productos",
@@ -185,9 +205,6 @@ const HOME_I18N = {
     preferenciaVacio: "Todavía no cargaste preferencias en Catálogo asesor.",
     sinResultados: "No encontramos productos con esa combinación — probá sacando alguna preferencia.",
     todas: "Todas",
-    descMarcas: "Mirá las marcas que están en la tienda y todo lo que traen",
-    descOfertas: "Los combos y descuentos que hay hoy en el local",
-    descProfesionales: "Conocelos y sacá tu turno desde acá",
     railRubro: "Rubro",
     railSin: "Preferencias",
     railObjetivo: "Objetivo",
@@ -211,15 +228,25 @@ const HOME_I18N = {
     fotosTitulo: "Fotos",
   },
   en: {
-    pregunta: "What are you looking for today?",
-    ctaObjetivo: "Find<br />products for me",
-    ctaMarcas: "Brands &<br />products",
-    ctaOfertas: "Offers in<br />the store",
-    ctaProfesionales: "Professionals",
+    inicioTitulo1: "What do you",
+    inicioTituloAcento: "want",
+    inicioTitulo2: "today?",
+    inicioBajada: "Tap what you're after and we'll show you what fits and which shelf it's on.",
+    inicioBajadaSinGondola: "Tap what you're after and we'll show you what fits.",
+    masObjetivos: "More goals",
+    objetivosPalabra: "goals",
+    verTodo: "See everything",
+    verTodoDesc: "By brand and category",
+    nuestrasMarcas: "Our brands",
+    ofertasHoy: "Today's offers",
+    teAsesora: "Get advice at WiiGo",
+    verTodas: "See all",
+    conocerla: "See profile and book",
+    efectivoTitulo: "Pay cash, pay less",
+    efectivoTexto: "Every product shows its cash price.",
+    efectivoChip: "cash",
     objetivoTitulo: "What's your goal today?",
     resultadoTitulo: "We recommend",
-    ctaEyebrow: "Recommended",
-    ctaDescripcion: "Tell us what you need and we'll show you what fits best",
     objetivoSubtitulo: "Pick one and we'll recommend what fits best",
     objetivoVacio: "No goals loaded in Advisor Catalog yet.",
     marcasTitulo: "Brands & products",
@@ -231,9 +258,6 @@ const HOME_I18N = {
     preferenciaVacio: "No preferences loaded in Advisor Catalog yet.",
     sinResultados: "We couldn't find products matching that combination — try removing a preference.",
     todas: "All",
-    descMarcas: "See the brands in the store and everything they carry",
-    descOfertas: "The combos and discounts available today in store",
-    descProfesionales: "Meet them and book your appointment right here",
     railRubro: "Category",
     railSin: "Preferences",
     railObjetivo: "Goal",
@@ -257,15 +281,25 @@ const HOME_I18N = {
     fotosTitulo: "Photos",
   },
   pt: {
-    pregunta: "O que você está procurando hoje?",
-    ctaObjetivo: "Encontrar<br />produtos pra mim",
-    ctaMarcas: "Marcas e<br />produtos",
-    ctaOfertas: "Ofertas<br />da loja",
-    ctaProfesionales: "Profissionais",
+    inicioTitulo1: "O que você",
+    inicioTituloAcento: "quer",
+    inicioTitulo2: "hoje?",
+    inicioBajada: "Toque no que procura e mostramos o que serve e em qual móvel está.",
+    inicioBajadaSinGondola: "Toque no que procura e mostramos o que serve.",
+    masObjetivos: "Mais objetivos",
+    objetivosPalabra: "objetivos",
+    verTodo: "Ver tudo",
+    verTodoDesc: "Por marca e categoria",
+    nuestrasMarcas: "Nossas marcas",
+    ofertasHoy: "Ofertas de hoje",
+    teAsesora: "Atendimento na WiiGo",
+    verTodas: "Ver todas",
+    conocerla: "Ver perfil e agendar",
+    efectivoTitulo: "Pagando em dinheiro, paga menos",
+    efectivoTexto: "Cada produto mostra o preço em dinheiro.",
+    efectivoChip: "dinheiro",
     objetivoTitulo: "Qual é o seu objetivo hoje?",
     resultadoTitulo: "Recomendamos",
-    ctaEyebrow: "Recomendado",
-    ctaDescripcion: "Conte o que você precisa e mostramos o que combina com você",
     objetivoSubtitulo: "Escolha um e recomendamos o que combina melhor com você",
     objetivoVacio: "Ainda não há objetivos cadastrados no Catálogo consultor.",
     marcasTitulo: "Marcas e produtos",
@@ -277,9 +311,6 @@ const HOME_I18N = {
     preferenciaVacio: "Ainda não há preferências cadastradas no Catálogo consultor.",
     sinResultados: "Não encontramos produtos com essa combinação — tente remover alguma preferência.",
     todas: "Todas",
-    descMarcas: "Veja as marcas da loja e tudo o que elas trazem",
-    descOfertas: "Os combos e descontos de hoje na loja",
-    descProfesionales: "Conheça-os e marque seu horário aqui",
     railRubro: "Categoria",
     railSin: "Preferências",
     railObjetivo: "Objetivo",
@@ -344,73 +375,12 @@ function IconoEtiqueta({ className }: { className?: string }) {
     </svg>
   );
 }
-function IconoPersona({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="7.8" r="3.3" />
-      <path d="M5.3 20c0-3.7 3-6.2 6.7-6.2s6.7 2.5 6.7 6.2" />
-    </svg>
-  );
-}
 function IconoBrujula({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="8.6" />
       <path d="M15.4 8.6l-1.9 4.9-4.9 1.9 1.9-4.9 4.9-1.9z" />
     </svg>
-  );
-}
-
-/**
- * Una de las cuatro puertas de la pantalla principal. Todas del mismo tamaño
- * a propósito: el que ya sabe qué quiere no tiene que pasar por la primera.
- */
-function Puerta({
-  onClick,
-  fondo,
-  icono,
-  titulo,
-  descripcion,
-  destacada,
-}: {
-  onClick: () => void;
-  fondo: string;
-  icono: React.ReactNode;
-  /** Puede traer <br /> desde los textos traducidos. */
-  titulo: string;
-  descripcion: string;
-  destacada?: string;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className="relative overflow-hidden rounded-3xl p-5 md:p-6 text-left text-white flex flex-col gap-3 min-h-[148px] md:min-h-[190px] transition-transform active:scale-[.98]"
-      style={{ background: fondo, boxShadow: "0 18px 34px -22px rgba(20,28,14,.6)" }}
-    >
-      <span
-        className="absolute rounded-full pointer-events-none"
-        style={{ width: 130, height: 130, right: -34, bottom: -48, background: "rgba(255,255,255,.09)" }}
-      />
-      {destacada && (
-        <span
-          className="absolute top-3.5 right-3.5 text-[8.5px] md:text-[9.5px] font-extrabold uppercase tracking-[.14em] px-2.5 py-1 rounded-full"
-          style={{ background: "rgba(255,255,255,.22)" }}
-        >
-          {destacada}
-        </span>
-      )}
-      <span
-        className="relative grid place-items-center rounded-full w-11 h-11 md:w-14 md:h-14 shrink-0"
-        style={{ background: "rgba(255,255,255,.18)" }}
-      >
-        {icono}
-      </span>
-      <span
-        className="relative text-[16px] md:text-[20px] font-extrabold leading-tight"
-        dangerouslySetInnerHTML={{ __html: titulo }}
-      />
-      <span className="relative text-[11px] md:text-[12.5px] leading-snug opacity-80 mt-auto">{descripcion}</span>
-    </button>
   );
 }
 
@@ -484,19 +454,19 @@ function Navbar({ onVolver, onInicio, idioma }: { onVolver: () => void; onInicio
 function PrecioTarjeta({ producto }: { producto: ProductoPublico }) {
   const { lista, efectivo, ahorro } = ambosPrecios(producto, null);
   return (
-    <div className="mt-0.5 flex flex-col gap-0.5">
-      <span className={`${fredoka.className} text-[13.5px] font-semibold leading-none`}>
+    <div className="mt-1 flex flex-col gap-1">
+      <span className={`${titular.className} text-[17px] lg:text-[20px] font-extrabold leading-none tracking-[-.01em] text-[#1f261c]`}>
         {formatoPrecio(lista)}
       </span>
       {ahorro !== null && (
         <span
-          className="self-start inline-flex items-baseline gap-1 rounded px-1.5 py-0.5"
-          style={{ background: "#eaf3dc" }}
+          className="self-start inline-flex items-baseline gap-1.5 rounded-full px-2.5 py-1"
+          style={{ background: "#e6eedb" }}
         >
-          <span className="text-[7.5px] font-extrabold uppercase tracking-[.1em]" style={{ color: "#6e8f52" }}>
+          <span className="text-[9px] lg:text-[10px] font-extrabold uppercase tracking-[.1em]" style={{ color: "#5d7348" }}>
             Efectivo
           </span>
-          <span className={`${fredoka.className} text-[11px] font-semibold`} style={{ color: "#3d6b28" }}>
+          <span className={`${titular.className} text-[13px] lg:text-[14px] font-bold`} style={{ color: "#33521f" }}>
             {formatoPrecio(efectivo)}
           </span>
         </span>
@@ -622,20 +592,22 @@ function TarjetaResultado({
   return (
     <div
       onClick={onClick}
-      className={`rounded-2xl bg-white overflow-hidden shadow-sm flex flex-col cursor-pointer ${
-        compacta ? "w-[146px] shrink-0" : ""
+      // Rediseño 2026-11-02: más grande y redonda, la foto sobre un fondo crema
+      // para que el doypack blanco no se pierda contra la tarjeta blanca.
+      className={`rounded-[22px] bg-white overflow-hidden flex flex-col cursor-pointer border border-[#ece4d4] transition-transform active:scale-[.98] ${
+        compacta ? "w-[160px] lg:w-[180px] shrink-0" : ""
       }`}
+      style={{ boxShadow: "0 14px 26px -20px rgba(34,48,31,.55)" }}
     >
       <div
         // La foto es lo que vende: en una pantalla táctil de 27" 88px de alto
         // es una miniatura, no un producto. Crece con el ancho disponible.
-        className={`relative flex items-center justify-center ${compacta ? "h-[104px] lg:h-[132px]" : "h-[88px] lg:h-[124px] xl:h-[150px]"} ${
-          producto.imagen ? "bg-white" : "bg-gradient-to-br from-[#f0f2ec] to-[#d8d8d8]"
-        }`}
+        className={`relative flex items-center justify-center m-2 mb-0 rounded-[16px] ${compacta ? "h-[110px] lg:h-[140px]" : "h-[110px] lg:h-[150px] xl:h-[176px]"}`}
+        style={{ background: producto.imagen ? "#f7f2e8" : "linear-gradient(145deg, #f3ecdd, #e2d7c1)" }}
       >
         {marca && (
           <span
-            className="absolute top-1.5 left-1.5 text-[7.5px] font-extrabold uppercase tracking-wide bg-white/85 px-1.5 py-0.5 rounded-full"
+            className="absolute top-2 left-2 text-[8.5px] lg:text-[9.5px] font-extrabold uppercase tracking-wide bg-white px-2 py-0.5 rounded-full"
             style={{ color: "var(--acento, #4d7635)" }}
           >
             {marca.nombre}
@@ -643,18 +615,18 @@ function TarjetaResultado({
         )}
         {producto.imagen ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={producto.imagen} alt="" className="w-full h-full object-contain p-1" />
+          <img src={producto.imagen} alt="" className="w-full h-full object-contain p-2" />
         ) : (
           <span style={{ color: SAGE_DARK }}>
-            <IconoBolsa className="w-6 h-6" />
+            <IconoBolsa className="w-7 h-7" />
           </span>
         )}
       </div>
-      <div className="p-2.5 flex flex-col gap-1">
-        <p className="text-[12px] font-bold leading-tight line-clamp-2">{nombre}</p>
+      <div className="px-3 pt-2.5 pb-3 flex flex-col gap-1">
+        <p className="text-[13.5px] lg:text-[15px] font-bold leading-tight line-clamp-2 text-[#1f261c]">{nombre}</p>
         {etiqueta && !compacta && (
           <span
-            className="self-start text-[8px] font-extrabold px-2 py-0.5 rounded-full"
+            className="self-start text-[9.5px] font-extrabold px-2 py-0.5 rounded-full"
             style={{ background: "#cfe8a6", color: "#3d5c2a" }}
           >
             {etiqueta}
@@ -663,22 +635,6 @@ function TarjetaResultado({
         <PrecioTarjeta producto={producto} />
       </div>
     </div>
-  );
-}
-
-/**
- * Una de las formas difusas que se mueven de fondo en la principal.
- *
- * `willChange: transform` le pide al navegador que le dé su propia capa en la
- * placa de video: así se mueve sin que nada se repinte.
- */
-function Mancha({ estilo }: { estilo: React.CSSProperties }) {
-  return (
-    <div
-      className="absolute rounded-full pointer-events-none"
-      style={{ willChange: "transform", ...estilo }}
-      aria-hidden
-    />
   );
 }
 
@@ -1083,13 +1039,35 @@ export default function AsesorApp({
     return productosDeMarcaSinRubro;
   }, [productosDeMarcaSinRubro, subcategoriaId]);
 
-  /** El rubro que queda elegido al entrar a una marca: el primero que tenga. */
+  // En qué mueble del local está el rubro que se está mirando: el que tiene más
+  // productos de ese rubro. Sale arriba del catálogo, para que el cliente
+  // sepa adónde ir sin abrir cada producto.
+  const muebleDelRubro = useMemo(() => {
+    if (gondola.length === 0 || productosDeMarca.length === 0) return null;
+    const ids = new Set(productosDeMarca.map((p) => p.id_producto));
+    let mejor: { numero: number; titulo: string; cuantos: number } | null = null;
+    gondola.forEach((m, i) => {
+      const cuantos = m.lugares.filter((l) => ids.has(l.idProducto)).length;
+      if (cuantos > 0 && (!mejor || cuantos > mejor.cuantos)) mejor = { numero: i + 1, titulo: m.titulo, cuantos };
+    });
+    return mejor as { numero: number; titulo: string; cuantos: number } | null;
+  }, [gondola, productosDeMarca]);
+
+  /**
+   * El rubro que queda elegido al entrar a una marca: el primero que tenga
+   * productos. Antes era el primero por orden alfabético, y en WiiGo Dietética
+   * se entraba a "Aceite de coco" vacío (2026-11-02).
+   */
   function primerRubroDe(idMarca: string): string | null {
+    const deLaMarca = productos.filter((p) => p.id_marca === idMarca);
+    const conProductos = new Set(deLaMarca.map((p) => p.id_subcategoria));
     const suyas = subcategorias
       .filter((s) => s.id_marca === idMarca)
       .sort((a, b) => a.nombre.localeCompare(b.nombre));
-    if (suyas.length > 0) return suyas[0].id_subcategoria;
-    return productos.some((p) => p.id_marca === idMarca && !p.id_subcategoria) ? SIN_RUBRO : null;
+    const primera = suyas.find((s) => conProductos.has(s.id_subcategoria)) ?? suyas[0];
+    if (primera && conProductos.has(primera.id_subcategoria)) return primera.id_subcategoria;
+    if (deLaMarca.some((p) => !p.id_subcategoria)) return SIN_RUBRO;
+    return primera?.id_subcategoria ?? null;
   }
 
   const productosEnOferta = useMemo(
@@ -1232,6 +1210,14 @@ export default function AsesorApp({
     // Las preferencias son compartidas con la pantalla de resultados: si no se
     // limpian, el que viene de buscar entra a Marcas con filtros puestos que no
     // pidió y le parece que faltan productos.
+    setFiltrosSeleccionados(new Set());
+    setPantalla("marcas");
+  }
+
+  /** Desde los logos de la portada: entra a Marcas con esa marca ya elegida. */
+  function irAMarca(idMarca: string) {
+    setMarcaId(idMarca);
+    setSubcategoriaId(primerRubroDe(idMarca));
     setFiltrosSeleccionados(new Set());
     setPantalla("marcas");
   }
@@ -1415,6 +1401,15 @@ export default function AsesorApp({
     return objetivos.filter((o) => conAlgo.has(o.id_objetivo));
   }, [objetivos, productos, objetivosPorProducto]);
 
+  // En la portada entran seis cuadros (3 x 2): hasta cinco objetivos y "Ver
+  // todo". Si hay más, van cuatro y el quinto lleva a la pantalla con todos.
+  const hayMasObjetivos = objetivosConProductos.length > 5;
+  const objetivosEnInicio = objetivosConProductos.slice(0, hayMasObjetivos ? 4 : 5);
+
+  // La nota de "en efectivo pagás menos" solo si de verdad hay algún producto
+  // con precio en efectivo más bajo.
+  const hayPrecioEfectivo = useMemo(() => productos.some((p) => ambosPrecios(p, null).ahorro !== null), [productos]);
+
   function porQue(p: ProductoPublico): { texto: string; tag: string } {
     const propios = filtrosPorProducto[p.id_producto] ?? [];
     const nombresFiltros = propios
@@ -1481,117 +1476,232 @@ export default function AsesorApp({
         )}
       </div>
 
-      {/* La principal: las cuatro puertas, todas del mismo peso. Es la primera
-          pantalla: no hay vidriera intermedia, el cliente entra y ya puede
-          tocar lo que quiera. */}
+      {/* La principal, rediseñada el 2026-11-02 (vista previa aprobada:
+          https://claude.ai/artifact/KHCcZNFtaSzt6rsgriKqR1). En vez de cuatro
+          puertas que llevan a otra pregunta, la pregunta ya está acá: los
+          objetivos se tocan directo. Al costado, las marcas, las ofertas y la
+          profesional destacada, para el que viene a otra cosa.
+          Sin buscador a propósito (ver el comentario arriba de AsesorApp).
+          Los separadores son de grilla y no `gap` de flex: la placa de la
+          all-in-one puede tener un navegador que no lo entiende. */}
       {pantalla === "home" && (
         <div
-          // El fondo es un degradé quieto y el movimiento lo ponen las tres
-          // formas de abajo, que se mueven con `transform` —lo resuelve la placa
-          // de video, igual que la lluvia del tótem—. Antes se animaba la
-          // posición del degradé, que obliga al procesador a repintar la
-          // pantalla entera en cada cuadro: eso es lo que la frenaba.
-          className="relative flex-1 min-h-0 flex flex-col items-center justify-center px-6 py-10 text-center overflow-hidden"
-          style={{ background: "linear-gradient(160deg, #fbfbfb, #e2e6da)" }}
+          className="relative flex-1 min-h-0 overflow-y-auto"
+          // Degradés quietos: no se mueven, así que para la placa son como un
+          // color plano. El grano de encima evita que se vean en franjas.
+          style={{
+            background:
+              "radial-gradient(900px 500px at 88% -10%, #f9dcc6 0%, rgba(249,220,198,0) 60%), radial-gradient(800px 600px at -10% 110%, #dde7cc 0%, rgba(221,231,204,0) 60%), #f5efe3",
+          }}
         >
-          {/* La pantalla muestra 8 bits por color y un degradé grande se le
-              escalona en franjas —esa es la línea que cruza la pantalla—. Este
-              mosaico de grano de 96x96 la rompe. Es una imagen que se repite, no
-              un filtro: para la placa cuesta lo mismo que un color plano. */}
           <div
             className="absolute inset-0 pointer-events-none"
             style={{ backgroundImage: "url(/grano.png)", backgroundRepeat: "repeat" }}
             aria-hidden
           />
-          {/* Difusas por degradé radial, no por desenfoque: el desenfoque en
-              Android lo hace el procesador y cuesta carísimo. */}
-          <Mancha
-            estilo={{
-              width: 420, height: 420, top: "-12%", right: "-9%",
-              background: "radial-gradient(circle, rgba(182,188,162,.85), transparent 68%)",
-              animation: "asesorBlob1 7s ease-in-out infinite",
-            }}
-          />
-          <Mancha
-            estilo={{
-              width: 300, height: 300, bottom: "-8%", left: "-6%",
-              background: "radial-gradient(circle, rgba(111,160,80,.5), transparent 68%)",
-              animation: "asesorBlob2 8.5s ease-in-out infinite",
-              animationDelay: "-1.5s",
-            }}
-          />
-          <Mancha
-            estilo={{
-              width: 560, height: 560, top: "22%", left: "28%",
-              background: "radial-gradient(circle, rgba(207,232,166,.4), transparent 70%)",
-              animation: "asesorBlob3 21s ease-in-out infinite",
-              animationDelay: "-6s",
-            }}
-          />
+          <div className="relative min-h-full grid content-center px-6 md:px-10 xl:px-14 pt-6 pb-8">
+            <div className="w-full max-w-[1600px] mx-auto grid lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] gap-7 xl:gap-10 items-start">
+              {/* ---- izquierda: la pregunta y los objetivos ---- */}
+              <div className="grid gap-5 md:gap-6">
+                <div className="w-[180px] md:w-[230px] xl:w-[270px]">
+                  <Image
+                    src="/wiigo-logo-negro.png"
+                    alt="WiiGo — Estaciones de bienestar"
+                    width={2172}
+                    height={448}
+                    sizes="270px"
+                    className="w-full h-auto"
+                    priority
+                  />
+                </div>
+                <div>
+                  <h1
+                    className={`${titular.className} font-extrabold text-[clamp(40px,5.2vw,84px)] leading-[.95] tracking-[-.035em] text-[#1f261c]`}
+                  >
+                    {t("inicioTitulo1")}
+                    <br />
+                    <span style={{ color: "#e8743b" }}>{t("inicioTituloAcento")}</span> {t("inicioTitulo2")}
+                  </h1>
+                  <p className="mt-3 text-[17px] md:text-[20px] xl:text-[22px] text-[#4d5545] max-w-[40ch] leading-snug">
+                    {gondola.length > 0 ? t("inicioBajada") : t("inicioBajadaSinGondola")}
+                  </p>
+                </div>
 
-          {/* Sin `overflow` acá: recortaba las sombras de las cuatro puertas
-              justo en el borde y dejaba una línea dura debajo de los cuadros. */}
-          <div className="relative w-full max-w-6xl flex flex-col items-center gap-7 md:gap-10">
-            {/* Sigue flotando, pero sin filtro encima: un elemento con filtro
-                Y movimiento, Android lo dibuja una vez en una capa y después la
-                estira — por eso se veía lavado. El archivo ya viene negro, así
-                que el filtro no aportaba nada. `sizes` evita que baje el archivo
-                grande para mostrarlo chico. */}
-            {/* En el monitor de 27" el logo tiene que leerse desde lejos: crece
-                con la pantalla en vez de quedarse en un tamaño fijo de celular. */}
-            <div
-              className="w-full max-w-[240px] sm:max-w-[340px] md:max-w-[450px] lg:max-w-[580px] mx-auto"
-              style={{ animation: "asesorLogoFlotar 4.5s ease-in-out infinite", willChange: "transform" }}
-            >
-              <Image
-                src="/wiigo-logo-negro.png"
-                alt="WiiGo — Estaciones de bienestar"
-                width={2172}
-                height={448}
-                sizes="(min-width: 1024px) 580px, (min-width: 768px) 450px, 340px"
-                className="w-full h-auto"
-                priority
-              />
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
+                  {objetivosEnInicio.map((o, i) => {
+                    const tono = TONOS_INICIO[i % TONOS_INICIO.length];
+                    const cuantos = conteoPorObjetivo[o.id_objetivo] ?? 0;
+                    return (
+                      <button
+                        key={o.id_objetivo}
+                        onClick={() => elegirObjetivo(o.id_objetivo)}
+                        className="relative overflow-hidden rounded-[26px] p-4 md:p-5 text-left grid content-between gap-4 min-h-[140px] md:min-h-[170px] xl:min-h-[200px] transition-transform active:scale-[.97]"
+                        style={{ background: tono.fondo, color: tono.texto, boxShadow: "0 14px 30px -20px rgba(40,40,20,.55)" }}
+                      >
+                        <span
+                          className="absolute rounded-full pointer-events-none"
+                          style={{ width: 130, height: 130, right: -34, bottom: -40, background: "rgba(255,255,255,.16)" }}
+                        />
+                        <span
+                          className="relative w-12 h-12 xl:w-14 xl:h-14 rounded-2xl overflow-hidden grid place-items-center"
+                          style={{ background: "rgba(255,255,255,.22)" }}
+                        >
+                          {o.imagen ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={o.imagen} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            <span className={`${titular.className} font-extrabold text-[22px]`}>{o.nombre.charAt(0).toUpperCase()}</span>
+                          )}
+                        </span>
+                        <span className="relative">
+                          <span className={`${titular.className} block font-extrabold text-[20px] md:text-[23px] xl:text-[27px] leading-[1.05] tracking-[-.02em]`}>
+                            {tr(o.nombre, o.nombre_en, o.nombre_pt)}
+                          </span>
+                          <span className="block mt-1 text-[13px] xl:text-[14.5px] font-semibold opacity-80">{contarProductos(cuantos, idioma)}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                  {hayMasObjetivos && (
+                    <button
+                      onClick={irAObjetivo}
+                      className="relative overflow-hidden rounded-[26px] p-4 md:p-5 text-left grid content-between gap-4 min-h-[140px] md:min-h-[170px] xl:min-h-[200px] transition-transform active:scale-[.97]"
+                      style={{ background: "#22301f", color: "#f5efe3", boxShadow: "0 14px 30px -20px rgba(40,40,20,.55)" }}
+                    >
+                      <span className="relative w-12 h-12 xl:w-14 xl:h-14 rounded-2xl grid place-items-center" style={{ background: "rgba(255,255,255,.14)" }}>
+                        <IconoBrujula className="w-7 h-7" />
+                      </span>
+                      <span className="relative">
+                        <span className={`${titular.className} block font-extrabold text-[20px] md:text-[23px] xl:text-[27px] leading-[1.05] tracking-[-.02em]`}>
+                          {t("masObjetivos")}
+                        </span>
+                        <span className="block mt-1 text-[13px] xl:text-[14.5px] font-semibold opacity-80">
+                          {objetivosConProductos.length} {t("objetivosPalabra")}
+                        </span>
+                      </span>
+                    </button>
+                  )}
+                  <button
+                    onClick={irAMarcas}
+                    className="relative overflow-hidden rounded-[26px] p-4 md:p-5 text-left grid content-between gap-4 min-h-[140px] md:min-h-[170px] xl:min-h-[200px] transition-transform active:scale-[.97] border-[1.5px] border-[#e8dfcd]"
+                    style={{ background: "#fffaf2", color: "#22301f", boxShadow: "0 14px 30px -24px rgba(40,40,20,.5)" }}
+                  >
+                    <span className="relative w-12 h-12 xl:w-14 xl:h-14 rounded-2xl grid place-items-center" style={{ background: "#e6ecdb", color: "#4d6a3a" }}>
+                      <IconoBolsa className="w-7 h-7" />
+                    </span>
+                    <span className="relative">
+                      <span className={`${titular.className} block font-extrabold text-[20px] md:text-[23px] xl:text-[27px] leading-[1.05] tracking-[-.02em]`}>
+                        {t("verTodo")}
+                      </span>
+                      <span className="block mt-1 text-[13px] xl:text-[14.5px] font-semibold text-[#857f6f]">{t("verTodoDesc")}</span>
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              {/* ---- derecha: marcas, ofertas, la profesional y el efectivo ---- */}
+              <div className="grid gap-4 lg:pt-[72px] xl:pt-[84px]">
+                {marcasOrdenadas.length > 0 && (
+                  <div className="rounded-[24px] border border-[#e8dfcd] px-5 py-4" style={{ background: "#fffaf2" }}>
+                    <div className="flex items-baseline justify-between mb-3">
+                      <h2 className={`${titular.className} font-extrabold text-[20px] xl:text-[23px] tracking-[-.01em] text-[#1f261c]`}>{t("nuestrasMarcas")}</h2>
+                      <span className="text-[13px] font-semibold text-[#857f6f] ml-3">{contarProductos(productos.length, idioma)}</span>
+                    </div>
+                    <div className="flex overflow-x-auto -mx-1 pb-1">
+                      {marcasOrdenadas.map((m) => (
+                        <button key={m.id_marca} onClick={() => irAMarca(m.id_marca)} className="shrink-0 grid justify-items-center w-[84px] xl:w-[96px] mx-1">
+                          <span
+                            className="w-[66px] h-[66px] xl:w-[76px] xl:h-[76px] rounded-full overflow-hidden grid place-items-center bg-white"
+                            style={{ boxShadow: "0 0 0 3px #fffaf2, 0 0 0 4.5px #e8dfcd" }}
+                          >
+                            {m.logo ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={m.logo} alt="" className="w-full h-full object-cover" />
+                            ) : (
+                              <span className={`${titular.className} font-extrabold text-[22px] text-[#6d8058]`}>{m.nombre.charAt(0).toUpperCase()}</span>
+                            )}
+                          </span>
+                          <span className="mt-1.5 text-[12.5px] xl:text-[13.5px] font-bold text-[#4d5545] leading-tight text-center">{m.nombre}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {productosEnOferta.length > 0 && (
+                  <button
+                    onClick={irAOfertas}
+                    className="rounded-[24px] px-5 py-4 text-left flex items-center transition-transform active:scale-[.98]"
+                    style={{ background: "#e8743b", color: "#fff", boxShadow: "0 16px 30px -18px rgba(232,116,59,.9)" }}
+                  >
+                    <span className="w-12 h-12 rounded-2xl grid place-items-center shrink-0 mr-4" style={{ background: "rgba(255,255,255,.2)" }}>
+                      <IconoEtiqueta className="w-7 h-7" />
+                    </span>
+                    <span className="flex-1 min-w-0">
+                      <span className={`${titular.className} block font-extrabold text-[20px] xl:text-[23px] leading-tight`}>{t("ofertasHoy")}</span>
+                      <span className="block text-[14px] font-semibold opacity-90">{contarProductos(productosEnOferta.length, idioma, "descuento")}</span>
+                    </span>
+                    <span className="text-[26px] font-bold ml-3" aria-hidden>
+                      →
+                    </span>
+                  </button>
+                )}
+
+                {profesionales.length > 0 && (
+                  <div className="rounded-[24px] border border-[#e8dfcd] px-5 py-4" style={{ background: "#fffaf2" }}>
+                    <div className="flex items-baseline justify-between mb-3">
+                      <h2 className={`${titular.className} font-extrabold text-[20px] xl:text-[23px] tracking-[-.01em] text-[#1f261c]`}>
+                        {t("teAsesora")}
+                      </h2>
+                      {profesionales.length > 1 && (
+                        <button onClick={() => setPantalla("profesionales")} className="text-[13.5px] font-bold text-[#6d8058] ml-3 whitespace-nowrap">
+                          {t("verTodas")} ({profesionales.length}) →
+                        </button>
+                      )}
+                    </div>
+                    <button onClick={() => irAFichaProfesional(profesionales[0].id_profesional)} className="w-full flex items-center text-left">
+                      <span
+                        className="w-[72px] h-[72px] xl:w-[84px] xl:h-[84px] rounded-[22px] overflow-hidden grid place-items-center shrink-0 mr-4 text-white"
+                        style={{ background: "linear-gradient(150deg,#c9d7b4,#8ea377)" }}
+                      >
+                        {profesionales[0].foto ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={profesionales[0].foto} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <span className={`${titular.className} font-extrabold text-[26px]`}>
+                            {profesionales[0].nombre.charAt(0).toUpperCase()}
+                            {(profesionales[0].apellido ?? "").charAt(0).toUpperCase()}
+                          </span>
+                        )}
+                      </span>
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-[17px] xl:text-[19px] font-bold text-[#1f261c] leading-tight">
+                          {profesionales[0].nombre} {profesionales[0].apellido ?? ""}
+                        </span>
+                        <span className="block text-[14px] text-[#857f6f] mt-0.5">
+                          {profesionales[0].especialidad || profesionales[0].titulo || profesionales[0].categoria || ""}
+                        </span>
+                        <span className="inline-block mt-2 rounded-full px-3 py-1 text-[12.5px] font-extrabold" style={{ background: "#fde7d9", color: "#a34713" }}>
+                          {t("conocerla")} →
+                        </span>
+                      </span>
+                    </button>
+                  </div>
+                )}
+
+                {hayPrecioEfectivo && (
+                  <div className="rounded-[24px] border border-[#e8dfcd] px-5 py-4 flex items-center" style={{ background: "#fffaf2" }}>
+                    <span className="flex-1 min-w-0">
+                      <b className="block text-[16px] xl:text-[18px] text-[#1f261c]">{t("efectivoTitulo")}</b>
+                      <span className="block text-[14px] text-[#857f6f]">{t("efectivoTexto")}</span>
+                    </span>
+                    <span className="rounded-full px-3 py-1 text-[14px] font-extrabold ml-3" style={{ background: "#e6ecdb", color: "#3f5130" }}>
+                      {t("efectivoChip")}
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
-
-            <p className={`${bodoniModa.className} italic text-[clamp(22px,3.2vw,40px)] leading-tight text-[#2a3324]`}>
-              {t("pregunta")}
-            </p>
-
-            {/* Las cuatro del mismo tamaño: el que ya sabe qué quiere no tiene
-                por qué pasar por la primera. */}
-            <div className="w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-              <Puerta
-                onClick={irAObjetivo}
-                fondo="linear-gradient(150deg, #4d7635, #335023)"
-                icono={<IconoBrujula className="w-6 h-6 md:w-7 md:h-7" />}
-                titulo={t("ctaObjetivo")}
-                descripcion={t("ctaDescripcion")}
-                destacada={t("ctaEyebrow")}
-              />
-              <Puerta
-                onClick={irAMarcas}
-                fondo="linear-gradient(150deg, #b5763c, #8d5726)"
-                icono={<IconoBolsa className="w-6 h-6 md:w-7 md:h-7" />}
-                titulo={t("ctaMarcas")}
-                descripcion={t("descMarcas")}
-              />
-              <Puerta
-                onClick={irAOfertas}
-                fondo="linear-gradient(150deg, #c06a45, #96492b)"
-                icono={<IconoEtiqueta className="w-6 h-6 md:w-7 md:h-7" />}
-                titulo={t("ctaOfertas")}
-                descripcion={t("descOfertas")}
-              />
-              <Puerta
-                onClick={() => setPantalla("profesionales")}
-                fondo="linear-gradient(150deg, #42797c, #2d585b)"
-                icono={<IconoPersona className="w-6 h-6 md:w-7 md:h-7" />}
-                titulo={t("ctaProfesionales")}
-                descripcion={t("descProfesionales")}
-              />
-            </div>
-
           </div>
         </div>
       )}
@@ -1603,7 +1713,7 @@ export default function AsesorApp({
           <Navbar onVolver={volverAInicio} onInicio={volverAInicio} idioma={idioma} />
           <div className="flex-1 min-h-0 overflow-y-auto flex flex-col items-center justify-center px-6 pt-4 pb-10 gap-6 md:gap-8">
             <div className="text-center">
-              <h2 className={`${bodoniModa.className} italic text-[clamp(26px,3.4vw,44px)] leading-tight`}>
+              <h2 className={`${titular.className} font-extrabold tracking-[-.02em] text-[clamp(26px,3.4vw,44px)] leading-tight`}>
                 {t("objetivoTitulo")}
               </h2>
               <p className="text-[13px] md:text-[15px] text-[#8a8a8a] mt-1.5">{t("objetivoSubtitulo")}</p>
@@ -1729,7 +1839,7 @@ export default function AsesorApp({
                         {marcaId ? (marcaPorId[marcaId]?.nombre ?? t("marcasTitulo")) : t("marcasTitulo")}
                       </p>
                       <h2
-                        className={`${bodoniModa.className} italic text-[clamp(21px,2.6vw,34px)] leading-tight mt-0.5`}
+                        className={`${titular.className} font-extrabold tracking-[-.02em] text-[clamp(21px,2.6vw,34px)] leading-tight mt-0.5`}
                       >
                         {subcategoriaId === SIN_RUBRO
                           ? t("otros")
@@ -1737,9 +1847,19 @@ export default function AsesorApp({
                             t("marcasTitulo"))}
                       </h2>
                     </div>
-                    <span className="text-[12px] md:text-[13px] text-[#8a9180] font-semibold shrink-0">
-                      {contarProductos(productosDeMarca.length, idioma)}
-                    </span>
+                    <div className="shrink-0 grid justify-items-end gap-1.5">
+                      {muebleDelRubro && (
+                        <span
+                          className="rounded-[12px] border border-dashed border-[#d9cdb6] bg-white px-3 py-1.5 text-[13px] md:text-[14px] font-bold text-[#4d5545]"
+                        >
+                          <span style={{ color: "#e8743b" }}>●</span> {idioma === "en" ? "Shelf" : idioma === "pt" ? "Móvel" : "Mueble"} {muebleDelRubro.numero} · «
+                          {muebleDelRubro.titulo}»
+                        </span>
+                      )}
+                      <span className="text-[12px] md:text-[13px] text-[#8a9180] font-semibold">
+                        {contarProductos(productosDeMarca.length, idioma)}
+                      </span>
+                    </div>
                   </div>
 
                   {productosDeMarca.length === 0 ? (
@@ -1773,7 +1893,7 @@ export default function AsesorApp({
           <Navbar onVolver={volverAInicio} onInicio={volverAInicio} idioma={idioma} />
           <div className="flex-1 min-h-0 overflow-y-auto px-5 md:px-8 pt-5 pb-10 max-w-7xl mx-auto w-full">
             <div className="flex items-end justify-between gap-4 mb-5">
-              <h2 className={`${bodoniModa.className} italic text-[clamp(23px,2.8vw,38px)] leading-tight`}>
+              <h2 className={`${titular.className} font-extrabold tracking-[-.02em] text-[clamp(23px,2.8vw,38px)] leading-tight`}>
                 {t("ofertasTitulo")}
               </h2>
               <span className="text-[12px] md:text-[13px] text-[#8a9180] font-semibold shrink-0">
@@ -1845,7 +1965,7 @@ export default function AsesorApp({
                                   {tr(p.nombre, p.nombre_en, p.nombre_pt)}
                                 </p>
                                 <div className="flex items-baseline gap-1.5 mt-1">
-                                  <span className={`text-[13.5px] font-semibold ${fredoka.className}`} style={{ color: C3 }}>
+                                  <span className={`text-[13.5px] font-semibold ${titular.className}`} style={{ color: C3 }}>
                                     {formatoPrecio(precioConDescuento(p))}
                                   </span>
                                   <span className="text-[10px] text-[#a8a8a8] line-through">
@@ -1864,7 +1984,7 @@ export default function AsesorApp({
                                       Efectivo
                                     </span>
                                     <span
-                                      className={`${fredoka.className} text-[11px] font-semibold`}
+                                      className={`${titular.className} text-[11px] font-semibold`}
                                       style={{ color: "#3d6b28" }}
                                     >
                                       {formatoPrecio(ambosPrecios(p, null).efectivo)}
@@ -1945,7 +2065,7 @@ export default function AsesorApp({
 
                   <div className="flex-1 min-w-0 overflow-y-auto pt-5 md:pt-0">
                     <div className="flex items-end justify-between gap-4 mb-4">
-                      <h3 className={`${bodoniModa.className} italic text-[clamp(21px,2.6vw,34px)] leading-tight`}>
+                      <h3 className={`${titular.className} font-extrabold tracking-[-.02em] text-[clamp(21px,2.6vw,34px)] leading-tight`}>
                         {objetivoId
                           ? (() => {
                               const o = objetivos.find((x) => x.id_objetivo === objetivoId);
@@ -1991,7 +2111,7 @@ export default function AsesorApp({
           <Navbar onVolver={volverAInicio} onInicio={volverAInicio} idioma={idioma} />
           <div className="flex-1 min-h-0 overflow-y-auto px-5 md:px-8 pt-5 pb-10 max-w-6xl mx-auto w-full flex flex-col items-center gap-5 md:gap-7">
             <div className="text-center">
-              <h2 className={`${bodoniModa.className} italic text-[clamp(24px,3vw,40px)] leading-tight`}>
+              <h2 className={`${titular.className} font-extrabold tracking-[-.02em] text-[clamp(24px,3vw,40px)] leading-tight`}>
                 {t("profesionalesTitulo")}
               </h2>
               <p className="text-[13px] md:text-[15px] text-[#8a8a8a] mt-1.5">{t("profesionalesSub")}</p>
@@ -2076,7 +2196,7 @@ export default function AsesorApp({
                         style={{ background: "linear-gradient(180deg, rgba(0,0,0,0) 45%, rgba(20,24,16,.78) 100%)" }}
                       />
                       <span className="absolute left-0 right-0 bottom-0 p-3 text-left">
-                        <span className={`${bodoniModa.className} block italic text-[19px] md:text-[21px] text-white leading-tight`}>
+                        <span className={`${titular.className} block font-extrabold tracking-[-.02em] text-[19px] md:text-[21px] text-white leading-tight`}>
                           {prof.nombre} {prof.apellido ?? ""}
                         </span>
                         {(prof.titulo || prof.especialidad) && (
@@ -2190,7 +2310,7 @@ export default function AsesorApp({
                 </span>
               )}
               <div className="absolute inset-x-0 bottom-0 p-4">
-                <p className={`${bodoniModa.className} italic text-[26px] md:text-[30px] text-white leading-tight`}>
+                <p className={`${titular.className} font-extrabold tracking-[-.02em] text-[26px] md:text-[30px] text-white leading-tight`}>
                   {profesionalActual.nombre} {profesionalActual.apellido ?? ""}
                 </p>
                 {(profesionalActual.titulo || profesionalActual.especialidad) && (
@@ -2269,7 +2389,7 @@ export default function AsesorApp({
                       style={{ background: SAGE_TINT, color: SAGE_DARK }}
                     >
                       {t("presencial")}
-                      <span className={`${fredoka.className} block text-[15px]`}>
+                      <span className={`${titular.className} block text-[15px]`}>
                         {formatoPrecio(profesionalActual.precio_presencial)}
                       </span>
                     </span>
@@ -2280,7 +2400,7 @@ export default function AsesorApp({
                       style={{ background: SAGE_TINT, color: SAGE_DARK }}
                     >
                       {t("online")}
-                      <span className={`${fredoka.className} block text-[15px]`}>
+                      <span className={`${titular.className} block text-[15px]`}>
                         {formatoPrecio(profesionalActual.precio_online)}
                       </span>
                     </span>
@@ -2492,7 +2612,7 @@ export default function AsesorApp({
           <div className="flex-1 min-h-0 overflow-y-auto px-6 pt-4 pb-6 max-w-md mx-auto w-full flex flex-col">
             {eligiendoModalidadTurno && (
               <>
-                <h2 className={`${bodoniModa.className} italic text-[22px] mb-1`}>Reservar turno</h2>
+                <h2 className={`${titular.className} font-extrabold tracking-[-.02em] text-[22px] mb-1`}>Reservar turno</h2>
                 <p className="text-[12px] text-[#686868] mb-4">¿Cómo preferís tu consulta?</p>
                 <div className="flex flex-col gap-2.5">
                   <button
@@ -2945,77 +3065,6 @@ const MACROS_INFO: Record<
   },
 };
 
-/**
- * "¿Dónde lo encuentro?": la góndola en 3D con el módulo adelante y el lugar
- * latiendo en naranja, y el mueble de frente. Tapa la ficha; "Volver" la
- * deja como estaba (Gonzalo, 2026-10-29).
- */
-function DondeEsta({
-  gondola,
-  ubicacion,
-  nombre,
-  idioma,
-  onVolver,
-}: {
-  gondola: ModuloGondola[];
-  ubicacion: UbicacionGondola;
-  nombre: string;
-  idioma: Idioma;
-  onVolver: () => void;
-}) {
-  const { modulo, fila, columna } = ubicacion;
-  const numero = gondola.indexOf(modulo) + 1;
-  const altura = modulo.filas[fila]?.altura ?? "manos";
-  const filaTexto =
-    idioma === "en"
-      ? { arriba: "top shelf", ojos: "eye-level shelf", manos: "middle shelf", abajo: "bottom shelf" }[altura]
-      : idioma === "pt"
-        ? { arriba: "prateleira de cima", ojos: "altura dos olhos", manos: "prateleira do meio", abajo: "prateleira de baixo" }[altura]
-        : `fila de ${NOMBRE_ALTURA[altura].toLowerCase()}`;
-  const lugarTexto =
-    idioma === "en" ? `spot ${columna + 1} from the left` : idioma === "pt" ? `${columna + 1}º lugar da esquerda` : `${columna + 1}.º lugar desde la izquierda`;
-  return (
-    <div className="absolute inset-0 z-30 overflow-y-auto bg-white px-5 pt-5 pb-6 flex flex-col gap-4" onClick={(e) => e.stopPropagation()}>
-      <div className="flex items-center gap-3 pr-12">
-        <span className="grid place-items-center w-11 h-11 rounded-full text-white text-[19px] font-extrabold shrink-0" style={{ background: "#e9592a" }}>
-          {numero}
-        </span>
-        <div className="min-w-0">
-          <p className="text-[12px] font-extrabold uppercase tracking-[.16em] text-[#98a08b]">{nombre}</p>
-          <p className="text-[18px] md:text-[20px] font-bold leading-snug text-[#2d2d2d]">
-            {idioma === "en" ? "Module" : "Módulo"} {numero} · “{modulo.titulo}” — {filaTexto}, {lugarTexto}
-          </p>
-        </div>
-      </div>
-      {idioma === "es" && (
-        <div className="flex flex-wrap gap-2">
-          <span className="rounded-full px-3 py-1 text-[13px] font-bold" style={{ background: "#fdeee6", color: "#8a3413" }}>
-            {textoPosicionModulo(numero, gondola.length)}
-          </span>
-          <span className="rounded-full px-3 py-1 text-[13px] font-bold" style={{ background: "#fdeee6", color: "#8a3413" }}>
-            Cartel “{modulo.titulo}”
-          </span>
-        </div>
-      )}
-      <Pared3D modulos={gondola} sel={modulo.id} aca={{ idModulo: modulo.id, fila, columna }} foco />
-      <MuebleFrente
-        modulo={modulo}
-        numero={numero}
-        aca={{ fila, columna }}
-        textoAca={idioma === "en" ? "Here it is!" : idioma === "pt" ? "Está aqui!" : "¡Acá está!"}
-      />
-      <button
-        type="button"
-        onClick={onVolver}
-        className="self-center rounded-full px-6 py-3 text-[14px] font-bold text-white"
-        style={{ background: SAGE_DARK }}
-      >
-        {idioma === "en" ? "Back to the product" : idioma === "pt" ? "Voltar ao produto" : "Volver al producto"}
-      </button>
-    </div>
-  );
-}
-
 function ProductoDetalleModal({
   producto,
   marca,
@@ -3122,13 +3171,13 @@ function ProductoDetalleModal({
             </span>
           )}
         </div>
-        <h3 className={`${bodoniModa.className} italic text-[26px] md:text-[32px] leading-tight mt-1`}>
+        <h3 className={`${titular.className} font-extrabold tracking-[-.02em] text-[26px] md:text-[32px] leading-tight mt-1`}>
           {traducir(idioma, producto.nombre, producto.nombre_en, producto.nombre_pt)}
         </h3>
         <div className="mt-2.5 flex flex-wrap items-end gap-x-4 gap-y-2">
           <div className="flex items-baseline gap-2.5">
             <span
-              className={`${fredoka.className} text-[24px] md:text-[28px] font-semibold`}
+              className={`${titular.className} text-[24px] md:text-[28px] font-semibold`}
               style={{ color: (producto.descuento_porcentaje ?? 0) > 0 ? C3 : "#2d2d2d" }}
             >
               {formatoPrecio(precios.lista)}
@@ -3153,7 +3202,7 @@ function ProductoDetalleModal({
               </span>
               <div className="flex items-baseline gap-2">
                 <span
-                  className={`${fredoka.className} text-[20px] md:text-[23px] font-semibold leading-tight`}
+                  className={`${titular.className} text-[20px] md:text-[23px] font-semibold leading-tight`}
                   style={{ color: "#3d6b28" }}
                 >
                   {formatoPrecio(precios.efectivo)}
@@ -3172,8 +3221,8 @@ function ProductoDetalleModal({
         <button
           type="button"
           onClick={() => setVerDonde(true)}
-          className="self-start inline-flex items-center gap-2.5 rounded-full px-4 py-2.5 text-[14px] font-bold text-white"
-          style={{ background: "#e9592a", boxShadow: "0 10px 20px -12px rgba(233,89,42,.9)" }}
+          className="self-stretch inline-flex items-center justify-center gap-2.5 whitespace-nowrap rounded-[18px] px-5 py-4 text-[17px] md:text-[19px] font-extrabold text-white transition-transform active:scale-[.98]"
+          style={{ background: "#e8743b", boxShadow: "0 16px 30px -16px rgba(232,116,59,.9)" }}
         >
           <span aria-hidden="true">📍</span>
           {idioma === "en" ? "Where do I find it?" : idioma === "pt" ? "Onde encontro?" : "¿Dónde lo encuentro?"}
@@ -3253,10 +3302,11 @@ function ProductoDetalleModal({
         </button>
 
         {verDonde && ubicacion && (
-          <DondeEsta
+          <ViajeGondola
             gondola={gondola}
             ubicacion={ubicacion}
             nombre={traducir(idioma, producto.nombre, producto.nombre_en, producto.nombre_pt)}
+            imagen={producto.imagen}
             idioma={idioma}
             onVolver={() => setVerDonde(false)}
           />
@@ -3358,7 +3408,7 @@ function ProductoDetalleModal({
                       />
                     </svg>
                     <div className="relative w-[102px] h-[102px] rounded-full bg-white flex flex-col items-center justify-center">
-                      <span className={`${fredoka.className} text-[26px] font-semibold`}>{ficha?.kcal_100g}</span>
+                      <span className={`${titular.className} text-[26px] font-semibold`}>{ficha?.kcal_100g}</span>
                       <span className="text-[9px] tracking-[.2em] text-[#8a9180] mt-0.5">KCAL</span>
                     </div>
                   </div>
@@ -3383,7 +3433,7 @@ function ProductoDetalleModal({
                           }}
                         >
                           <span className="w-1.5 h-1.5 rounded-full" style={{ background: info.fuerte }} />
-                          <span className={`${fredoka.className} text-[14px] font-semibold`}>{m.valor}g</span>
+                          <span className={`${titular.className} text-[14px] font-semibold`}>{m.valor}g</span>
                           <span className="text-[8.5px] text-[#8a9180] text-center leading-tight">
                             {info.label[idioma]}
                           </span>

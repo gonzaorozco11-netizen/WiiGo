@@ -193,7 +193,8 @@ export const GUIAS: Guia[] = [
     pasos: [
       "En <b>Precios</b>, abrí la pestaña <b>Góndola</b>.",
       "Elegí el módulo y el estante, y poné el producto en su lugar.",
-      "En la pantalla asesora, el cliente toca <b>¿Dónde lo encuentro?</b> y ve el módulo con el producto marcado.",
+      "Si en el local cambiás un mueble de lugar, tocalo y usá <b>← A la izquierda</b> o <b>A la derecha →</b>: se mueve con todos sus productos.",
+      "En la pantalla asesora, el cliente toca <b>¿Dónde lo encuentro?</b> y la cámara lo lleva hasta el mueble, con el producto saliendo del estante.",
     ],
   },
 
