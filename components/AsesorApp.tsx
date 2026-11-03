@@ -132,7 +132,24 @@ const TONOS_INICIO = [
   { fondo: "#f1c75b", texto: "#3b2f0e" },
   { fondo: "#a8c08a", texto: "#1f2b17" },
   { fondo: "#d9a37f", texto: "#3a2010" },
+  { fondo: "#3f6b6d", texto: "#eef5f2" },
 ];
+
+/** Fondo de las caras de las profesionales sin foto, en la tarjeta del inicio. */
+const CARAS_PROFESIONALES = [
+  "linear-gradient(150deg,#e8a77f,#c4683d)",
+  "linear-gradient(150deg,#c9d7b4,#7f9668)",
+  "linear-gradient(150deg,#a9c5c7,#4f7d80)",
+  "linear-gradient(150deg,#d9c39a,#9b7a45)",
+  "linear-gradient(150deg,#d8b4c4,#9a5f77)",
+];
+
+/** "a, b y c" / "a, b and c" / "a, b e c". */
+function listaConY(items: string[], idioma: Idioma) {
+  if (items.length <= 1) return items.join("");
+  const y = idioma === "en" ? " and " : idioma === "pt" ? " e " : " y ";
+  return `${items.slice(0, -1).join(", ")}${y}${items[items.length - 1]}`;
+}
 
 // Títulos y precios. El texto corrido va en Figtree (ver app/asesor/layout.tsx).
 // Antes eran Bodoni en cursiva y Fredoka; se cambió con el rediseño del
@@ -180,18 +197,13 @@ const HOME_I18N = {
     inicioTitulo2: "hoy?",
     inicioBajada: "Tocá lo que buscás y te mostramos qué te sirve y en qué mueble está.",
     inicioBajadaSinGondola: "Tocá lo que buscás y te mostramos qué te sirve.",
-    masObjetivos: "Más objetivos",
-    objetivosPalabra: "objetivos",
-    verTodo: "Ver todo",
-    verTodoDesc: "Por marca y por rubro",
+    verTodosProductos: "Ver todos los productos",
+    verTodoDesc: "por marca y por rubro",
     nuestrasMarcas: "Nuestras marcas",
     ofertasHoy: "Ofertas de hoy",
-    teAsesora: "Te asesoran en WiiGo",
-    verTodas: "Ver todas",
+    profesionalesWiigo: "Profesionales de WiiGo",
     conocerla: "Ver su ficha y reservar turno",
-    efectivoTitulo: "Pagando en efectivo, pagás menos",
-    efectivoTexto: "El precio en efectivo está en cada producto.",
-    efectivoChip: "efectivo",
+    conocelos: "Conocelos y reservá turno",
     objetivoTitulo: "¿Cuál es tu objetivo hoy?",
     resultadoTitulo: "Te recomendamos",
     objetivoSubtitulo: "Elegí uno y te recomendamos lo que mejor te queda",
@@ -233,18 +245,13 @@ const HOME_I18N = {
     inicioTitulo2: "today?",
     inicioBajada: "Tap what you're after and we'll show you what fits and which shelf it's on.",
     inicioBajadaSinGondola: "Tap what you're after and we'll show you what fits.",
-    masObjetivos: "More goals",
-    objetivosPalabra: "goals",
-    verTodo: "See everything",
-    verTodoDesc: "By brand and category",
+    verTodosProductos: "See all products",
+    verTodoDesc: "by brand and category",
     nuestrasMarcas: "Our brands",
     ofertasHoy: "Today's offers",
-    teAsesora: "Get advice at WiiGo",
-    verTodas: "See all",
+    profesionalesWiigo: "WiiGo professionals",
     conocerla: "See profile and book",
-    efectivoTitulo: "Pay cash, pay less",
-    efectivoTexto: "Every product shows its cash price.",
-    efectivoChip: "cash",
+    conocelos: "Meet them and book",
     objetivoTitulo: "What's your goal today?",
     resultadoTitulo: "We recommend",
     objetivoSubtitulo: "Pick one and we'll recommend what fits best",
@@ -286,18 +293,13 @@ const HOME_I18N = {
     inicioTitulo2: "hoje?",
     inicioBajada: "Toque no que procura e mostramos o que serve e em qual móvel está.",
     inicioBajadaSinGondola: "Toque no que procura e mostramos o que serve.",
-    masObjetivos: "Mais objetivos",
-    objetivosPalabra: "objetivos",
-    verTodo: "Ver tudo",
-    verTodoDesc: "Por marca e categoria",
+    verTodosProductos: "Ver todos os produtos",
+    verTodoDesc: "por marca e categoria",
     nuestrasMarcas: "Nossas marcas",
     ofertasHoy: "Ofertas de hoje",
-    teAsesora: "Atendimento na WiiGo",
-    verTodas: "Ver todas",
+    profesionalesWiigo: "Profissionais da WiiGo",
     conocerla: "Ver perfil e agendar",
-    efectivoTitulo: "Pagando em dinheiro, paga menos",
-    efectivoTexto: "Cada produto mostra o preço em dinheiro.",
-    efectivoChip: "dinheiro",
+    conocelos: "Conheça e agende",
     objetivoTitulo: "Qual é o seu objetivo hoje?",
     resultadoTitulo: "Recomendamos",
     objetivoSubtitulo: "Escolha um e recomendamos o que combina melhor com você",
@@ -408,6 +410,36 @@ function Doypack({ nombre }: { nombre: string }) {
   );
 }
 
+/**
+ * El ícono de un objetivo, elegido por las palabras de su nombre: así un
+ * objetivo nuevo trae su dibujo sin tener que cargarle una imagen. Si no
+ * coincide con nada, va la brújula. Si el objetivo tiene imagen, se usa la
+ * imagen y esto no se dibuja.
+ */
+const ICONOS_OBJETIVO: { claves: RegExp; trazo: React.ReactNode }[] = [
+  { claves: /energ|rendim|vital/, trazo: <path d="M13 2 3 14h8l-1 8 10-12h-8z" /> },
+  { claves: /muscul|prote|fuerza|masa|deport|entren/, trazo: <path d="M6 12h12M9 6v12M15 6v12M4 9v6M20 9v6" /> },
+  { claves: /desayun|merienda|cafe|mañana|manana/, trazo: <><path d="M4 9h12v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5z" /><path d="M16 10h2a2 2 0 0 1 0 4h-2M8 3v3M12 3v3" /></> },
+  { claves: /snack|colacion|picar|fruta/, trazo: <><path d="M12 7c-2-2-7-2-7 4s3 10 5 10 1-1 2-1 1 1 2 1 5-4 5-10-5-6-7-4z" /><path d="M12 7c0-2 1-4 3-4" /></> },
+  { claves: /caloria|peso|adelgaz|liviano|light|bajar/, trazo: <path d="M12 3v18M5 7h14M5 7l-3 7a4 4 0 0 0 6 0zM19 7l-3 7a4 4 0 0 0 6 0z" /> },
+  { claves: /tacc|celiac|gluten/, trazo: <><path d="M12 21V9M12 9c-3 0-4-2-4-4 2 0 4 1 4 4zM12 9c3 0 4-2 4-4-2 0-4 1-4 4zM12 14c-3 0-4-2-4-4 2 0 4 1 4 4zM12 14c3 0 4-2 4-4-2 0-4 1-4 4z" /><path d="M4 4l16 16" /></> },
+  { claves: /dormir|sueño|sueno|descans|relaj|estres/, trazo: <path d="M20 14.5A8 8 0 1 1 9.5 4 6.5 6.5 0 0 0 20 14.5z" /> },
+  { claves: /cocin|receta|harina|legumbre/, trazo: <path d="M4 10h16v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5zM2 10h20M9 6c0-1 1-2 3-2s3 1 3 2" /> },
+  { claves: /sano|natural|vegan|veget|salud|organ/, trazo: <><path d="M5 19c0-8 6-14 15-14 0 9-6 15-14 15" /><path d="M5 19 13 11" /></> },
+  { claves: /digest|intestin|fibra|panza/, trazo: <><circle cx="12" cy="12" r="4" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2" /></> },
+];
+
+function IconoObjetivo({ nombre, className }: { nombre: string; className?: string }) {
+  const texto = nombre.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const hallado = ICONOS_OBJETIVO.find((i) => i.claves.test(texto));
+  if (!hallado) return <IconoBrujula className={className} />;
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      {hallado.trazo}
+    </svg>
+  );
+}
+
 function IconoBrujula({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round">
@@ -457,19 +489,30 @@ function BanderaIdioma({ lng, className }: { lng: Idioma; className?: string }) 
 function Navbar({ onVolver, onInicio, idioma }: { onVolver: () => void; onInicio: () => void; idioma: Idioma }) {
   const volverTxt = idioma === "en" ? "Back" : idioma === "pt" ? "Voltar" : "Volver";
   const inicioTxt = idioma === "en" ? "Home" : idioma === "pt" ? "Início" : "Inicio";
+  // Del tamaño de un dedo y con contraste (2026-11-02): en la pantalla de 27"
+  // los de antes se perdían. Los dos a la izquierda; a la derecha van los
+  // idiomas (ver AsesorApp).
   return (
-    <div className="flex items-center justify-between px-5 pt-5 shrink-0">
+    <div className="flex items-center px-5 pt-5 pr-[250px] shrink-0">
       <button
         onClick={onVolver}
-        className="rounded-full border border-[#d8d8d8] bg-white px-3 py-2 text-[13px] font-bold text-[#686868]"
+        className="inline-flex items-center rounded-full h-[54px] px-5 text-[17px] font-extrabold text-white mr-2.5"
+        style={{ background: "#22301f", boxShadow: "0 10px 20px -12px rgba(0,0,0,.6)" }}
       >
-        ← {volverTxt}
+        <svg className="w-[22px] h-[22px] mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="M15 18l-6-6 6-6" />
+        </svg>
+        {volverTxt}
       </button>
       <button
         onClick={onInicio}
-        className="rounded-full border border-[#d8d8d8] bg-white px-3 py-2 text-[13px] font-bold text-[#686868]"
+        className="inline-flex items-center rounded-full h-[54px] px-5 text-[17px] font-extrabold bg-white border-2 border-[#e8dfcd]"
+        style={{ color: "#22301f" }}
       >
-        ⌂ {inicioTxt}
+        <svg className="w-[22px] h-[22px] mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" />
+        </svg>
+        {inicioTxt}
       </button>
     </div>
   );
@@ -885,7 +928,6 @@ export default function AsesorApp({
   const [modalidadTurno, setModalidadTurno] = useState<"presencial" | "online" | null>(null);
   const [productoAbierto, setProductoAbierto] = useState<string | null>(null);
   const [idioma, setIdioma] = useState<Idioma>("es");
-  const [selectorIdiomaAbierto, setSelectorIdiomaAbierto] = useState(false);
   // Filtro por marca dentro de los resultados. Es aparte de `marcaId`, que es
   // la marca que se está mirando en la pantalla de Marcas.
   const [marcaResultado, setMarcaResultado] = useState<string | null>(null);
@@ -1434,14 +1476,11 @@ export default function AsesorApp({
     return objetivos.filter((o) => conAlgo.has(o.id_objetivo));
   }, [objetivos, productos, objetivosPorProducto]);
 
-  // En la portada entran seis cuadros (3 x 2): hasta cinco objetivos y "Ver
-  // todo". Si hay más, van cuatro y el quinto lleva a la pantalla con todos.
-  const hayMasObjetivos = objetivosConProductos.length > 5;
-  const objetivosEnInicio = objetivosConProductos.slice(0, hayMasObjetivos ? 4 : 5);
-
-  // La nota de "en efectivo pagás menos" solo si de verdad hay algún producto
-  // con precio en efectivo más bajo.
-  const hayPrecioEfectivo = useMemo(() => productos.some((p) => ambosPrecios(p, null).ahorro !== null), [productos]);
+  // En la portada van seis objetivos (3 x 2), los primeros en el orden que
+  // elige Gonzalo. Si hay más, un link lleva a la pantalla con todos: así
+  // pueden ser 10 o 20 y la portada no cambia.
+  const objetivosEnInicio = objetivosConProductos.slice(0, 6);
+  const hayMasObjetivos = objetivosConProductos.length > 6;
 
   function porQue(p: ProductoPublico): { texto: string; tag: string } {
     const propios = filtrosPorProducto[p.id_producto] ?? [];
@@ -1482,32 +1521,33 @@ export default function AsesorApp({
         ["--barra-acento" as string]: tema.barraAcento,
       }}
     >
-      <div className={`fixed right-3.5 z-50 text-right ${pantalla === "home" ? "top-3.5" : "top-16"}`}>
-        <button
-          onClick={() => setSelectorIdiomaAbierto((v) => !v)}
-          className="bg-white/70 backdrop-blur rounded-full text-[9.5px] font-extrabold text-[#686868] px-2.5 py-1.5"
+      {/* Los idiomas, siempre a la vista y del tamaño de un dedo (2026-11-02):
+          antes era un «Languages» chiquito que en la pantalla de 27" nadie
+          veía. Volver e Inicio quedan a la izquierda (ver Navbar), así este
+          lado queda libre. En el Conóceme no va: tapa los controles de las
+          filminas. */}
+      {pantalla !== "conoceme" && (
+        <div
+          className={`fixed z-50 flex rounded-full border-2 border-[#e8dfcd] bg-white p-1 ${
+            pantalla === "home" ? "top-5 right-6 xl:right-10" : "top-5 right-5"
+          }`}
+          role="group"
+          aria-label="Idioma / Language"
         >
-          🌐 Languages
-        </button>
-        {selectorIdiomaAbierto && (
-          <div className="mt-1.5 bg-white/85 backdrop-blur rounded-xl p-1 flex flex-col gap-0.5">
-            {(["es", "en", "pt"] as Idioma[]).map((lng) => (
-              <button
-                key={lng}
-                onClick={() => {
-                  setIdioma(lng);
-                  setSelectorIdiomaAbierto(false);
-                }}
-                className="flex items-center justify-end gap-1.5 text-[9px] font-extrabold px-1.5 py-1 rounded-full"
-                style={idioma === lng ? { background: SAGE_DARK, color: "#fff" } : { color: "#686868" }}
-              >
-                <BanderaIdioma lng={lng} className="w-3.5 h-auto rounded-[2px] shrink-0" />
-                {lng === "es" ? "ES" : lng === "en" ? "EN" : "PT"}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+          {(["es", "en", "pt"] as Idioma[]).map((lng) => (
+            <button
+              key={lng}
+              onClick={() => setIdioma(lng)}
+              className="inline-flex items-center rounded-full h-[44px] px-3.5 text-[15px] font-extrabold"
+              style={idioma === lng ? { background: "#22301f", color: "#fff" } : { color: "#4d5545" }}
+              aria-pressed={idioma === lng}
+            >
+              <BanderaIdioma lng={lng} className="w-[22px] h-auto rounded-[3px] shrink-0 mr-2" />
+              {lng === "es" ? "ES" : lng === "en" ? "EN" : "PT"}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* La principal, rediseñada el 2026-11-02 (vista previa aprobada:
           https://claude.ai/artifact/KHCcZNFtaSzt6rsgriKqR1). En vez de cuatro
@@ -1560,76 +1600,78 @@ export default function AsesorApp({
                   </p>
                 </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
-                  {objetivosEnInicio.map((o, i) => {
-                    const tono = TONOS_INICIO[i % TONOS_INICIO.length];
-                    const cuantos = conteoPorObjetivo[o.id_objetivo] ?? 0;
-                    return (
-                      <button
-                        key={o.id_objetivo}
-                        onClick={() => elegirObjetivo(o.id_objetivo)}
-                        className="relative overflow-hidden rounded-[26px] p-4 md:p-5 text-left grid content-between gap-4 min-h-[140px] md:min-h-[170px] xl:min-h-[200px] transition-transform active:scale-[.97]"
-                        style={{ background: tono.fondo, color: tono.texto, boxShadow: "0 14px 30px -20px rgba(40,40,20,.55)" }}
-                      >
-                        <span
-                          className="absolute rounded-full pointer-events-none"
-                          style={{ width: 130, height: 130, right: -34, bottom: -40, background: "rgba(255,255,255,.16)" }}
-                        />
-                        <span
-                          className="relative w-12 h-12 xl:w-14 xl:h-14 rounded-2xl overflow-hidden grid place-items-center"
-                          style={{ background: "rgba(255,255,255,.22)" }}
+                {/* Seis objetivos grandes y nada más (Gonzalo, 2026-11-02: «me
+                    gusta que sea más minimalista»). Los demás, detrás del link. */}
+                <div>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
+                    {objetivosEnInicio.map((o, i) => {
+                      const tono = TONOS_INICIO[i % TONOS_INICIO.length];
+                      const cuantos = conteoPorObjetivo[o.id_objetivo] ?? 0;
+                      return (
+                        <button
+                          key={o.id_objetivo}
+                          onClick={() => elegirObjetivo(o.id_objetivo)}
+                          className="relative overflow-hidden rounded-[26px] p-4 md:p-5 text-left grid content-between gap-4 min-h-[140px] md:min-h-[165px] xl:min-h-[190px] transition-transform active:scale-[.97]"
+                          style={{ background: tono.fondo, color: tono.texto, boxShadow: "0 14px 30px -20px rgba(40,40,20,.55)" }}
                         >
-                          {o.imagen ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={o.imagen} alt="" className="w-full h-full object-cover" />
-                          ) : (
-                            <span className={`${titular.className} font-extrabold text-[22px]`}>{o.nombre.charAt(0).toUpperCase()}</span>
-                          )}
-                        </span>
-                        <span className="relative">
-                          <span className={`${titular.className} block font-extrabold text-[20px] md:text-[23px] xl:text-[27px] leading-[1.05] tracking-[-.02em]`}>
-                            {tr(o.nombre, o.nombre_en, o.nombre_pt)}
+                          <span
+                            className="absolute rounded-full pointer-events-none"
+                            style={{ width: 130, height: 130, right: -34, bottom: -40, background: "rgba(255,255,255,.16)" }}
+                          />
+                          <span
+                            className="relative w-12 h-12 xl:w-14 xl:h-14 rounded-2xl overflow-hidden grid place-items-center"
+                            style={{ background: "rgba(255,255,255,.22)" }}
+                          >
+                            {o.imagen ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={o.imagen} alt="" className="w-full h-full object-cover" />
+                            ) : (
+                              <IconoObjetivo nombre={o.nombre} className="w-7 h-7" />
+                            )}
                           </span>
-                          <span className="block mt-1 text-[13px] xl:text-[14.5px] font-semibold opacity-80">{contarProductos(cuantos, idioma)}</span>
-                        </span>
-                      </button>
-                    );
-                  })}
+                          <span className="relative">
+                            <span className={`${titular.className} block font-extrabold text-[20px] md:text-[23px] xl:text-[27px] leading-[1.05] tracking-[-.02em]`}>
+                              {tr(o.nombre, o.nombre_en, o.nombre_pt)}
+                            </span>
+                            <span className="block mt-1 text-[13px] xl:text-[14.5px] font-semibold opacity-80">{contarProductos(cuantos, idioma)}</span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
                   {hayMasObjetivos && (
-                    <button
-                      onClick={irAObjetivo}
-                      className="relative overflow-hidden rounded-[26px] p-4 md:p-5 text-left grid content-between gap-4 min-h-[140px] md:min-h-[170px] xl:min-h-[200px] transition-transform active:scale-[.97]"
-                      style={{ background: "#22301f", color: "#f5efe3", boxShadow: "0 14px 30px -20px rgba(40,40,20,.55)" }}
-                    >
-                      <span className="relative w-12 h-12 xl:w-14 xl:h-14 rounded-2xl grid place-items-center" style={{ background: "rgba(255,255,255,.14)" }}>
-                        <IconoBrujula className="w-7 h-7" />
-                      </span>
-                      <span className="relative">
-                        <span className={`${titular.className} block font-extrabold text-[20px] md:text-[23px] xl:text-[27px] leading-[1.05] tracking-[-.02em]`}>
-                          {t("masObjetivos")}
-                        </span>
-                        <span className="block mt-1 text-[13px] xl:text-[14.5px] font-semibold opacity-80">
-                          {objetivosConProductos.length} {t("objetivosPalabra")}
-                        </span>
-                      </span>
+                    <button onClick={irAObjetivo} className="mt-3 py-1.5 text-[15px] xl:text-[16px] font-extrabold" style={{ color: "#4f6a3b" }}>
+                      {idioma === "en"
+                        ? `See all ${objetivosConProductos.length} goals →`
+                        : idioma === "pt"
+                          ? `Ver os ${objetivosConProductos.length} objetivos →`
+                          : `Ver los ${objetivosConProductos.length} objetivos →`}
                     </button>
                   )}
-                  <button
-                    onClick={irAMarcas}
-                    className="relative overflow-hidden rounded-[26px] p-4 md:p-5 text-left grid content-between gap-4 min-h-[140px] md:min-h-[170px] xl:min-h-[200px] transition-transform active:scale-[.97] border-[1.5px] border-[#e8dfcd]"
-                    style={{ background: "#fffaf2", color: "#22301f", boxShadow: "0 14px 30px -24px rgba(40,40,20,.5)" }}
-                  >
-                    <span className="relative w-12 h-12 xl:w-14 xl:h-14 rounded-2xl grid place-items-center" style={{ background: "#e6ecdb", color: "#4d6a3a" }}>
-                      <IconoBolsa className="w-7 h-7" />
-                    </span>
-                    <span className="relative">
-                      <span className={`${titular.className} block font-extrabold text-[20px] md:text-[23px] xl:text-[27px] leading-[1.05] tracking-[-.02em]`}>
-                        {t("verTodo")}
-                      </span>
-                      <span className="block mt-1 text-[13px] xl:text-[14.5px] font-semibold text-[#857f6f]">{t("verTodoDesc")}</span>
-                    </span>
-                  </button>
                 </div>
+
+                <button
+                  onClick={irAMarcas}
+                  className="w-full rounded-[22px] px-5 py-4 text-left flex items-center transition-transform active:scale-[.98]"
+                  style={{ background: "#22301f", color: "#f5efe3", boxShadow: "0 16px 30px -20px rgba(0,0,0,.6)" }}
+                >
+                  <span className="w-12 h-12 rounded-[15px] grid place-items-center shrink-0 mr-4" style={{ background: "rgba(255,255,255,.12)" }}>
+                    <IconoBolsa className="w-7 h-7" />
+                  </span>
+                  <span className="flex-1 min-w-0">
+                    <span className={`${titular.className} block font-extrabold text-[20px] xl:text-[24px] leading-tight`}>{t("verTodosProductos")}</span>
+                    <span className="block text-[14px] font-semibold opacity-75">
+                      {contarProductos(productos.length, idioma)} · {t("verTodoDesc")}
+                    </span>
+                  </span>
+                  <span
+                    className="w-12 h-12 rounded-full grid place-items-center shrink-0 ml-4 text-[22px] font-extrabold text-white"
+                    style={{ background: "#e8743b" }}
+                    aria-hidden
+                  >
+                    →
+                  </span>
+                </button>
               </div>
 
               {/* ---- derecha: marcas, ofertas, la profesional y el efectivo ---- */}
@@ -1661,6 +1703,64 @@ export default function AsesorApp({
                   </div>
                 )}
 
+                {/* Todas las profesionales juntas en una sola tarjeta: las caras
+                    encimadas dicen «son varias» sin llenar la pantalla de
+                    nombres. Con una sola, abre su ficha directo. */}
+                {profesionales.length > 0 && (
+                  <div className="rounded-[24px] border border-[#e8dfcd] px-5 py-4" style={{ background: "#fffaf2" }}>
+                    <h2 className={`${titular.className} font-extrabold text-[20px] xl:text-[23px] tracking-[-.01em] text-[#1f261c] mb-3`}>
+                      {t("profesionalesWiigo")}
+                    </h2>
+                    <button
+                      onClick={() =>
+                        profesionales.length === 1 ? irAFichaProfesional(profesionales[0].id_profesional) : setPantalla("profesionales")
+                      }
+                      className="w-full flex items-center text-left"
+                    >
+                      <span className="flex shrink-0 pl-3 mr-4">
+                        {profesionales.slice(0, 5).map((p, i) => (
+                          <span
+                            key={p.id_profesional}
+                            className="w-[60px] h-[60px] xl:w-[68px] xl:h-[68px] -ml-3.5 rounded-full overflow-hidden grid place-items-center text-white"
+                            style={{ background: CARAS_PROFESIONALES[i % CARAS_PROFESIONALES.length], boxShadow: "0 0 0 3px #fffaf2" }}
+                          >
+                            {p.foto ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={p.foto} alt="" className="w-full h-full object-cover" />
+                            ) : (
+                              <span className={`${titular.className} font-extrabold text-[18px]`}>
+                                {p.nombre.charAt(0).toUpperCase()}
+                                {(p.apellido ?? "").charAt(0).toUpperCase()}
+                              </span>
+                            )}
+                          </span>
+                        ))}
+                      </span>
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-[17px] xl:text-[19px] font-bold text-[#1f261c] leading-tight">
+                          {idioma === "en"
+                            ? `${profesionales.length} professional${profesionales.length === 1 ? "" : "s"} to advise you`
+                            : idioma === "pt"
+                              ? `${profesionales.length} profissiona${profesionales.length === 1 ? "l" : "is"} para te orientar`
+                              : `${profesionales.length} profesional${profesionales.length === 1 ? "" : "es"} te ${profesionales.length === 1 ? "asesora" : "asesoran"}`}
+                        </span>
+                        {categoriasProf.length > 0 && (
+                          <span className="block text-[14px] text-[#857f6f] mt-0.5">
+                            {listaConY(
+                              categoriasProf.map((c) => (idioma === "es" ? enPlural(c) : c)),
+                              idioma
+                            )}
+                          </span>
+                        )}
+                        <span className="inline-block mt-2 rounded-full px-3 py-1 text-[12.5px] xl:text-[13.5px] font-extrabold" style={{ background: "#fde7d9", color: "#a34713" }}>
+                          {profesionales.length === 1 ? t("conocerla") : t("conocelos")} →
+                        </span>
+                      </span>
+                    </button>
+                  </div>
+                )}
+
+                {/* Solo cuando hay alguna oferta cargada. */}
                 {productosEnOferta.length > 0 && (
                   <button
                     onClick={irAOfertas}
@@ -1678,60 +1778,6 @@ export default function AsesorApp({
                       →
                     </span>
                   </button>
-                )}
-
-                {profesionales.length > 0 && (
-                  <div className="rounded-[24px] border border-[#e8dfcd] px-5 py-4" style={{ background: "#fffaf2" }}>
-                    <div className="flex items-baseline justify-between mb-3">
-                      <h2 className={`${titular.className} font-extrabold text-[20px] xl:text-[23px] tracking-[-.01em] text-[#1f261c]`}>
-                        {t("teAsesora")}
-                      </h2>
-                      {profesionales.length > 1 && (
-                        <button onClick={() => setPantalla("profesionales")} className="text-[13.5px] font-bold text-[#6d8058] ml-3 whitespace-nowrap">
-                          {t("verTodas")} ({profesionales.length}) →
-                        </button>
-                      )}
-                    </div>
-                    <button onClick={() => irAFichaProfesional(profesionales[0].id_profesional)} className="w-full flex items-center text-left">
-                      <span
-                        className="w-[72px] h-[72px] xl:w-[84px] xl:h-[84px] rounded-[22px] overflow-hidden grid place-items-center shrink-0 mr-4 text-white"
-                        style={{ background: "linear-gradient(150deg,#c9d7b4,#8ea377)" }}
-                      >
-                        {profesionales[0].foto ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={profesionales[0].foto} alt="" className="w-full h-full object-cover" />
-                        ) : (
-                          <span className={`${titular.className} font-extrabold text-[26px]`}>
-                            {profesionales[0].nombre.charAt(0).toUpperCase()}
-                            {(profesionales[0].apellido ?? "").charAt(0).toUpperCase()}
-                          </span>
-                        )}
-                      </span>
-                      <span className="flex-1 min-w-0">
-                        <span className="block text-[17px] xl:text-[19px] font-bold text-[#1f261c] leading-tight">
-                          {profesionales[0].nombre} {profesionales[0].apellido ?? ""}
-                        </span>
-                        <span className="block text-[14px] text-[#857f6f] mt-0.5">
-                          {profesionales[0].especialidad || profesionales[0].titulo || profesionales[0].categoria || ""}
-                        </span>
-                        <span className="inline-block mt-2 rounded-full px-3 py-1 text-[12.5px] font-extrabold" style={{ background: "#fde7d9", color: "#a34713" }}>
-                          {t("conocerla")} →
-                        </span>
-                      </span>
-                    </button>
-                  </div>
-                )}
-
-                {hayPrecioEfectivo && (
-                  <div className="rounded-[24px] border border-[#e8dfcd] px-5 py-4 flex items-center" style={{ background: "#fffaf2" }}>
-                    <span className="flex-1 min-w-0">
-                      <b className="block text-[16px] xl:text-[18px] text-[#1f261c]">{t("efectivoTitulo")}</b>
-                      <span className="block text-[14px] text-[#857f6f]">{t("efectivoTexto")}</span>
-                    </span>
-                    <span className="rounded-full px-3 py-1 text-[14px] font-extrabold ml-3" style={{ background: "#e6ecdb", color: "#3f5130" }}>
-                      {t("efectivoChip")}
-                    </span>
-                  </div>
                 )}
               </div>
             </div>
