@@ -437,6 +437,38 @@ function IconoObjetivo({ nombre, className }: { nombre: string; className?: stri
   );
 }
 
+/** La marca de la casa (WiiGo Dietética): la única que va en bolsita kraft. */
+function esMarcaWiigo(marca: MarcaPublica | undefined) {
+  return Boolean(marca && /wiigo/i.test(marca.nombre));
+}
+
+/**
+ * Lo que se muestra cuando el producto no tiene foto. Si es de WiiGo, la
+ * bolsita kraft con su nombre. Si es de otra marca, su logo apagado: una
+ * crema de Crislo dibujada como bolsita de WiiGo sería mentirle al cliente
+ * (Gonzalo, 2026-11-03).
+ */
+function SinFoto({ producto, logoMarca, bolsita, chica = false }: { producto: ProductoPublico; logoMarca: string | null; bolsita: boolean; chica?: boolean }) {
+  if (bolsita) {
+    return (
+      <span className={`${chica ? "w-[86%]" : "w-full"} flex items-center justify-center`}>
+        <Doypack nombre={producto.nombre} chica={chica} />
+      </span>
+    );
+  }
+  if (logoMarca) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={logoMarca} alt="" className={`${chica ? "w-[46%]" : "w-[42%]"} h-auto rounded-full opacity-60`} />
+    );
+  }
+  return (
+    <span style={{ color: SAGE_DARK }}>
+      <IconoBolsa className={chica ? "w-8 h-8" : "w-14 h-14"} />
+    </span>
+  );
+}
+
 function IconoBrujula({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round">
@@ -654,6 +686,8 @@ function TarjetaResultado({
   nombre,
   onClick,
   compacta = false,
+  bolsita = false,
+  logoMarca = null,
 }: {
   producto: ProductoPublico;
   marca: MarcaPublica | undefined;
@@ -661,6 +695,10 @@ function TarjetaResultado({
   nombre: string;
   onClick: () => void;
   compacta?: boolean;
+  /** Es de WiiGo: sin foto se dibuja la bolsita kraft. */
+  bolsita?: boolean;
+  /** Logo de la marca, para los productos de otras marcas que no tienen foto. */
+  logoMarca?: string | null;
 }) {
   return (
     <div
@@ -692,11 +730,7 @@ function TarjetaResultado({
           // eslint-disable-next-line @next/next/no-img-element
           <img src={producto.imagen} alt="" className="w-full h-full object-contain p-2" />
         ) : (
-          // Sin foto, la bolsita de WiiGo con su nombre: se ve como producto
-          // y no como un hueco.
-          <span className="w-[86%] flex items-center justify-center">
-            <Doypack nombre={producto.nombre} chica />
-          </span>
+          <SinFoto producto={producto} logoMarca={logoMarca} bolsita={bolsita} chica />
         )}
       </div>
       <div className="px-3 pt-2.5 pb-3 flex flex-col gap-1">
@@ -1961,6 +1995,8 @@ export default function AsesorApp({
                           etiqueta=""
                           nombre={tr(p.nombre, p.nombre_en, p.nombre_pt)}
                           onClick={() => setProductoAbierto(p.id_producto)}
+                          bolsita={esMarcaWiigo(marcaPorId[p.id_marca])}
+                          logoMarca={marcaPorId[p.id_marca]?.logo ?? null}
                         />
                       ))}
                     </div>
@@ -2186,6 +2222,8 @@ export default function AsesorApp({
                             key={p.id_producto}
                             producto={p}
                             marca={marcaResultado ? undefined : marcaPorId[p.id_marca]}
+                            bolsita={esMarcaWiigo(marcaPorId[p.id_marca])}
+                            logoMarca={marcaPorId[p.id_marca]?.logo ?? null}
                             etiqueta={porQue(p).texto}
                             nombre={tr(p.nombre, p.nombre_en, p.nombre_pt)}
                             onClick={() => setProductoAbierto(p.id_producto)}
@@ -3444,7 +3482,7 @@ function ProductoDetalleModal({
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={fotoActiva} alt="" className="w-full h-full object-contain" />
                 ) : (
-                  <Doypack nombre={producto.nombre} />
+                  <SinFoto producto={producto} logoMarca={marca?.logo ?? null} bolsita={esMarcaWiigo(marca)} />
                 )}
               </div>
             </div>
