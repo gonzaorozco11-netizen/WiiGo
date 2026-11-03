@@ -92,11 +92,16 @@ const ANILLO_LARGO = 2 * Math.PI * 59;
  */
 type Tema = { fondo: string; acento: string; barra: string; barraAcento: string };
 
+// Las pantallas de productos usan la paleta del rediseño (Gonzalo,
+// 2026-11-02: «me gusta la tipografía y colores… para todos los productos»):
+// fondo crema, menú verde bosque con lo elegido en crema y acentos naranja.
+const TEMA_PRODUCTOS: Tema = { fondo: "#f5efe3", acento: "#e8743b", barra: "#22301f", barraAcento: "#f5efe3" };
+
 const TEMAS: Record<string, Tema> = {
-  objetivo: { fondo: "#eef3e6", acento: "#4d7635", barra: "#1e2a18", barraAcento: "#cfe8a6" },
-  resultado: { fondo: "#eef3e6", acento: "#4d7635", barra: "#1e2a18", barraAcento: "#cfe8a6" },
-  marcas: { fondo: "#f8f1e7", acento: "#8d5726", barra: "#2b2419", barraAcento: "#e0a259" },
-  ofertas: { fondo: "#faeee8", acento: "#96492b", barra: "#2e1c14", barraAcento: "#e59a72" },
+  objetivo: TEMA_PRODUCTOS,
+  resultado: TEMA_PRODUCTOS,
+  marcas: TEMA_PRODUCTOS,
+  ofertas: TEMA_PRODUCTOS,
   profesionales: { fondo: "#e9f1f2", acento: "#2d585b", barra: "#16262b", barraAcento: "#8fc9cf" },
   fichaProfesional: { fondo: "#e9f1f2", acento: "#2d585b", barra: "#16262b", barraAcento: "#8fc9cf" },
   conoceme: { fondo: "#e9f1f2", acento: "#2d585b", barra: "#16262b", barraAcento: "#8fc9cf" },
@@ -110,22 +115,9 @@ const TEMA_POR_DEFECTO: Tema = {
   barraAcento: "#cfe8a6",
 };
 
-// Los objetivos los carga Gonzalo desde el sistema y pueden ser cualquier
-// cantidad, así que el color sale de esta rueda por posición y no de un nombre
-// fijo: si mañana agrega uno, se pinta solo.
-const TONOS_OBJETIVO = [
-  "linear-gradient(145deg, #4d7635, #375526)",
-  "linear-gradient(145deg, #c08a3e, #9a6a29)",
-  "linear-gradient(145deg, #3f7d80, #2c5c5f)",
-  "linear-gradient(145deg, #3d4a7a, #2a3357)",
-  "linear-gradient(145deg, #b0643f, #8a4a2c)",
-  "linear-gradient(145deg, #6e7f3a, #535f28)",
-  "linear-gradient(145deg, #5a4a78, #372c4d)",
-  "linear-gradient(145deg, #2f6b52, #1f4a38)",
-];
-
-// Los cuadros de objetivos de la portada. Como en TONOS_OBJETIVO, el color va
-// por posición: si Gonzalo agrega un objetivo, se pinta solo.
+// Los cuadros de objetivos (portada y pantalla de objetivos). Los objetivos los
+// carga Gonzalo y pueden ser cualquier cantidad, así que el color va por
+// posición y no por nombre: si mañana agrega uno, se pinta solo.
 const TONOS_INICIO = [
   { fondo: "#e8743b", texto: "#ffffff" },
   { fondo: "#2e3f29", texto: "#f5efe3" },
@@ -381,8 +373,11 @@ function IconoEtiqueta({ className }: { className?: string }) {
  * La bolsita de WiiGo dibujada, para el producto que todavía no tiene foto:
  * flotando en la ficha se ve como el producto y no como un ícono vacío.
  */
-function Doypack({ nombre }: { nombre: string }) {
-  const etiqueta = (nombre.trim().split(/\s+/)[0] ?? "").slice(0, 9).toUpperCase();
+function Doypack({ nombre, chica = false }: { nombre: string; chica?: boolean }) {
+  // La primera palabra; si es larga, cortada con punto ("ALMOHA."), para que
+  // entre en la etiqueta sin desbordarse.
+  const palabra = (nombre.trim().split(/\s+/)[0] ?? "").toUpperCase();
+  const etiqueta = palabra.length > 7 ? `${palabra.slice(0, 6)}.` : palabra;
   return (
     <span
       // El alto va en padding (que se mide contra el ancho del que la contiene)
@@ -401,7 +396,9 @@ function Doypack({ nombre }: { nombre: string }) {
       />
       <span className="absolute left-[16%] right-[16%] top-[24%] h-[36%] rounded-[44px]" style={{ background: colorDeProducto(nombre) }} />
       <span
-        className={`${titular.className} absolute left-[9%] right-[9%] bottom-[10%] h-[19%] rounded-[10px] grid place-items-center text-[#f5efe3] font-extrabold text-[clamp(11px,1.3vw,18px)] tracking-[.02em]`}
+        className={`${titular.className} absolute left-[9%] right-[9%] bottom-[10%] h-[19%] rounded-[10px] grid place-items-center overflow-hidden whitespace-nowrap text-[#f5efe3] font-extrabold tracking-[.02em] ${
+          chica ? "text-[11px]" : "text-[clamp(11px,1.3vw,18px)]"
+        }`}
         style={{ background: "#22301f" }}
       >
         {etiqueta}
@@ -679,7 +676,9 @@ function TarjetaResultado({
         // La foto es lo que vende: en una pantalla táctil de 27" 88px de alto
         // es una miniatura, no un producto. Crece con el ancho disponible.
         className={`relative flex items-center justify-center m-2 mb-0 rounded-[16px] ${compacta ? "h-[110px] lg:h-[140px]" : "h-[110px] lg:h-[150px] xl:h-[176px]"}`}
-        style={{ background: producto.imagen ? "#f7f2e8" : "linear-gradient(145deg, #f3ecdd, #e2d7c1)" }}
+        // Con foto, fondo blanco: las fotos vienen sobre blanco y sobre crema
+        // se veía el cuadrado de la foto.
+        style={{ background: producto.imagen ? "#ffffff" : "linear-gradient(145deg, #f3ecdd, #e2d7c1)" }}
       >
         {marca && (
           <span
@@ -693,8 +692,10 @@ function TarjetaResultado({
           // eslint-disable-next-line @next/next/no-img-element
           <img src={producto.imagen} alt="" className="w-full h-full object-contain p-2" />
         ) : (
-          <span style={{ color: SAGE_DARK }}>
-            <IconoBolsa className="w-7 h-7" />
+          // Sin foto, la bolsita de WiiGo con su nombre: se ve como producto
+          // y no como un hueco.
+          <span className="w-[86%] flex items-center justify-center">
+            <Doypack nombre={producto.nombre} chica />
           </span>
         )}
       </div>
@@ -702,8 +703,8 @@ function TarjetaResultado({
         <p className="text-[13.5px] lg:text-[15px] font-bold leading-tight line-clamp-2 text-[#1f261c]">{nombre}</p>
         {etiqueta && !compacta && (
           <span
-            className="self-start text-[9.5px] font-extrabold px-2 py-0.5 rounded-full"
-            style={{ background: "#cfe8a6", color: "#3d5c2a" }}
+            className="self-start text-[10px] font-extrabold px-2 py-0.5 rounded-full"
+            style={{ background: "#fde7d9", color: "#a34713" }}
           >
             {etiqueta}
           </span>
@@ -833,7 +834,7 @@ function OpcionRail({
   return (
     <button
       onClick={onClick}
-      className="flex items-center gap-2.5 py-2 px-2.5 text-left w-full rounded-lg transition-colors"
+      className="flex items-center gap-2.5 py-2.5 px-3 text-left w-full rounded-[14px] transition-colors"
       style={
         activo
           ? { background: "var(--barra-acento, #cfe8a6)", color: "var(--barra, #1e2a18)" }
@@ -851,15 +852,16 @@ function OpcionRail({
         />
       )}
       <span
-        className="text-[12.5px] md:text-[13.5px] leading-tight flex-1"
+        className="text-[13.5px] md:text-[15px] leading-tight flex-1"
         style={{ fontWeight: activo ? 800 : 600 }}
       >
         {nombre}
       </span>
       {cantidad !== undefined && (
+        // La cantidad en una pastilla; en lo elegido, naranja (como la vista previa).
         <span
-          className="text-[11px] tabular-nums font-semibold shrink-0"
-          style={{ opacity: activo ? 0.62 : 0.45 }}
+          className="text-[11.5px] tabular-nums font-extrabold shrink-0 rounded-full px-2 py-px"
+          style={activo ? { background: "#e8743b", color: "#fff" } : { background: "rgba(255,255,255,.1)", opacity: 0.8 }}
         >
           {cantidad}
         </span>
@@ -1085,12 +1087,16 @@ export default function AsesorApp({
     [productosConPreferencia, marcaId]
   );
 
+  // Solo los rubros que tienen algún producto de la marca (Gonzalo,
+  // 2026-11-02: más minimalista). Se cuenta sin las preferencias: si no, al
+  // tildar «Sin TACC» los rubros aparecerían y desaparecerían.
   const subcategoriasDeMarca = useMemo(() => {
     if (!marcaId) return [];
+    const conProductos = new Set(productos.filter((p) => p.id_marca === marcaId).map((p) => p.id_subcategoria));
     return subcategorias
-      .filter((s) => s.id_marca === marcaId)
+      .filter((s) => s.id_marca === marcaId && conProductos.has(s.id_subcategoria))
       .sort((a, b) => a.nombre.localeCompare(b.nombre));
-  }, [subcategorias, marcaId]);
+  }, [subcategorias, marcaId, productos]);
 
   // Sin la pestaña "Todo", un producto al que nadie le puso rubro no tendría
   // dónde aparecer. La pestaña "Otros" los junta para que no se pierdan —hoy
@@ -1800,37 +1806,38 @@ export default function AsesorApp({
             {objetivosConProductos.length === 0 ? (
               <p className="text-[#686868] text-sm text-center py-8">{t("objetivoVacio")}</p>
             ) : (
-              <div className="w-full max-w-5xl grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 md:gap-4">
-                {objetivosConProductos.map((o, i) => (
-                  <button
-                    key={o.id_objetivo}
-                    onClick={() => elegirObjetivo(o.id_objetivo)}
-                    className="relative overflow-hidden rounded-3xl p-4 md:p-5 text-left text-white flex flex-col justify-between gap-3 min-h-[124px] md:min-h-[168px] transition-transform active:scale-[.97]"
-                    style={{
-                      background: TONOS_OBJETIVO[i % TONOS_OBJETIVO.length],
-                      boxShadow: "0 16px 30px -20px rgba(20,28,14,.6)",
-                    }}
-                  >
-                    <span
-                      className="absolute rounded-full pointer-events-none"
-                      style={{ width: 96, height: 96, right: -26, bottom: -36, background: "rgba(255,255,255,.1)" }}
-                    />
-                    <span className="relative w-10 h-10 md:w-12 md:h-12 rounded-2xl overflow-hidden grid place-items-center shrink-0"
-                          style={{ background: "rgba(255,255,255,.18)" }}>
-                      {o.imagen ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={o.imagen} alt="" className="w-full h-full object-cover" />
-                      ) : (
-                        <span className="font-extrabold text-[17px] md:text-[20px]">
-                          {o.nombre.charAt(0).toUpperCase()}
+              // Los mismos cuadros que en la portada: mismos colores, íconos y letra.
+              <div className="w-full max-w-6xl grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
+                {objetivosConProductos.map((o, i) => {
+                  const tono = TONOS_INICIO[i % TONOS_INICIO.length];
+                  return (
+                    <button
+                      key={o.id_objetivo}
+                      onClick={() => elegirObjetivo(o.id_objetivo)}
+                      className="relative overflow-hidden rounded-[26px] p-4 md:p-5 text-left grid content-between gap-4 min-h-[140px] md:min-h-[170px] transition-transform active:scale-[.97]"
+                      style={{ background: tono.fondo, color: tono.texto, boxShadow: "0 14px 30px -20px rgba(40,40,20,.55)" }}
+                    >
+                      <span
+                        className="absolute rounded-full pointer-events-none"
+                        style={{ width: 130, height: 130, right: -34, bottom: -40, background: "rgba(255,255,255,.16)" }}
+                      />
+                      <span className="relative w-12 h-12 rounded-2xl overflow-hidden grid place-items-center" style={{ background: "rgba(255,255,255,.22)" }}>
+                        {o.imagen ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={o.imagen} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <IconoObjetivo nombre={o.nombre} className="w-7 h-7" />
+                        )}
+                      </span>
+                      <span className="relative">
+                        <span className={`${titular.className} block font-extrabold text-[20px] md:text-[23px] leading-[1.05] tracking-[-.02em]`}>
+                          {tr(o.nombre, o.nombre_en, o.nombre_pt)}
                         </span>
-                      )}
-                    </span>
-                    <span className="relative text-[14px] md:text-[17px] font-extrabold leading-tight">
-                      {tr(o.nombre, o.nombre_en, o.nombre_pt)}
-                    </span>
-                  </button>
-                ))}
+                        <span className="block mt-1 text-[13px] font-semibold opacity-80">{contarProductos(conteoPorObjetivo[o.id_objetivo] ?? 0, idioma)}</span>
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -1847,7 +1854,7 @@ export default function AsesorApp({
             <p className="text-[#686868] text-sm text-center py-16">{t("marcasVacio")}</p>
           ) : (
             <>
-              <div className="shrink-0 bg-white border-b border-[#e2e6da] px-4 md:px-7 pt-3 pb-3 flex gap-2 md:gap-4 overflow-x-auto">
+              <div className="shrink-0 bg-[#fffaf2] border-b border-[#e8dfcd] px-4 md:px-7 pt-3 pb-3 flex gap-2 md:gap-4 overflow-x-auto">
                 {marcasOrdenadas.map((m) => (
                   <DiscoMarca
                     key={m.id_marca}
@@ -2085,10 +2092,13 @@ export default function AsesorApp({
       {pantalla === "resultado" && (
         <div className="flex-1 flex flex-col min-h-0">
           <Navbar onVolver={volverDesdeResultado} onInicio={volverAInicio} idioma={idioma} />
-          <div className="flex-1 min-h-0 w-full mx-auto flex flex-col px-5 md:px-7 pt-5 pb-6 max-w-7xl">
-            <div className="flex-1 min-h-0 flex flex-col">
+          {/* Igual que el catálogo de marcas (Gonzalo, 2026-11-02: el menú
+              quedaba flotando en el medio): las marcas en la franja blanca de
+              arriba, el menú pegado al borde izquierdo de punta a punta y los
+              productos ocupando todo el resto. */}
+          <div className="flex-1 min-h-0 flex flex-col mt-3">
                 {marcasConResultados.length > 1 && (
-                  <div className="flex gap-2 md:gap-4 overflow-x-auto pb-3 mb-3 border-b border-[#e2e6da] shrink-0">
+                  <div className="shrink-0 bg-[#fffaf2] border-b border-[#e8dfcd] px-4 md:px-7 pt-3 pb-3 flex gap-2 md:gap-4 overflow-x-auto">
                     <DiscoMarca
                       nombre={t("todas")}
                       logo={null}
@@ -2109,9 +2119,9 @@ export default function AsesorApp({
                   </div>
                 )}
 
-                <div className="flex-1 min-h-0 flex flex-col md:flex-row gap-0 md:gap-7">
+                <div className="flex-1 min-h-0 flex flex-col md:flex-row">
                   <div
-                    className="md:w-[248px] shrink-0 rounded-2xl px-3 py-4 md:py-5 flex flex-row md:flex-col gap-5 md:gap-6 overflow-x-auto md:overflow-y-auto"
+                    className="shrink-0 md:w-[248px] px-3 py-4 md:py-5 flex flex-row md:flex-col gap-5 md:gap-6 overflow-x-auto md:overflow-y-auto"
                     style={{ background: "var(--barra, #1e2a18)" }}
                   >
                     {objetivosConProductos.length > 0 && (
@@ -2142,16 +2152,24 @@ export default function AsesorApp({
                     )}
                   </div>
 
-                  <div className="flex-1 min-w-0 overflow-y-auto pt-5 md:pt-0">
+                  <div className="flex-1 min-h-0 min-w-0 overflow-y-auto px-5 md:px-7 py-5 md:py-6">
                     <div className="flex items-end justify-between gap-4 mb-4">
-                      <h3 className={`${titular.className} font-extrabold tracking-[-.02em] text-[clamp(21px,2.6vw,34px)] leading-tight`}>
-                        {objetivoId
-                          ? (() => {
-                              const o = objetivos.find((x) => x.id_objetivo === objetivoId);
-                              return o ? tr(o.nombre, o.nombre_en, o.nombre_pt) : t("resultadoTitulo");
-                            })()
-                          : t("resultadoTitulo")}
-                      </h3>
+                      <div>
+                        <p
+                          className="text-[10px] md:text-[11px] font-extrabold uppercase tracking-[.22em]"
+                          style={{ color: "var(--acento, #4d7635)" }}
+                        >
+                          {t("railObjetivo")}
+                        </p>
+                        <h3 className={`${titular.className} font-extrabold tracking-[-.02em] text-[clamp(21px,2.6vw,34px)] leading-tight mt-0.5`}>
+                          {objetivoId
+                            ? (() => {
+                                const o = objetivos.find((x) => x.id_objetivo === objetivoId);
+                                return o ? tr(o.nombre, o.nombre_en, o.nombre_pt) : t("resultadoTitulo");
+                              })()
+                            : t("resultadoTitulo")}
+                        </h3>
+                      </div>
                       <span className="text-[12px] md:text-[13px] text-[#8a9180] font-semibold shrink-0">
                         {contarProductos(productosFiltrados.length, idioma, "disponibles")}
                       </span>
@@ -2160,10 +2178,9 @@ export default function AsesorApp({
                     {productosFiltrados.length === 0 ? (
                       <p className="text-[#686868] text-sm text-center py-12">{t("sinResultados")}</p>
                     ) : (
-                      // Cuatro y no cinco: descontando la barra lateral, con cinco
-                      // columnas cada tarjeta queda del ancho de un dedo y la foto no
-                      // se ve. Recién arriba de 1536px entra una quinta sin achicar.
-                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-3 md:gap-4">
+                      // Como en el catálogo de marcas: con el menú pegado al borde
+                      // entran seis por fila en la pantalla grande.
+                      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
                         {productosFiltrados.map((p) => (
                           <TarjetaResultado
                             key={p.id_producto}
@@ -2178,7 +2195,6 @@ export default function AsesorApp({
                     )}
                   </div>
                 </div>
-            </div>
           </div>
         </div>
       )}

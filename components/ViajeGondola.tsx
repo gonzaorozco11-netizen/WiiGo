@@ -104,7 +104,10 @@ export default function ViajeGondola({
     const izquierda = indice * (ANCHO + SEP);
     const centroMueble = izquierda + ANCHO / 2 - ancho / 2;
     const x = izquierda + 12 + (f ? f.paso * (columna + 0.5) : ANCHO / 2) - ancho / 2;
-    const y = ARRIBA + (f ? f.y + 6 + f.bolsaAlto / 2 : ALACENA + ZONA / 2) - ALTO_ESCENA / 2;
+    // No se centra más abajo que esto: con el producto en las filas de abajo,
+    // centrarlo subiría la cámara y el cartel del mueble quedaría afuera, y el
+    // cartel es lo primero que el cliente tiene que buscar en el local.
+    const y = ARRIBA + Math.min(f ? f.y + 6 + f.bolsaAlto / 2 : ALACENA + ZONA / 2, ALACENA + 190) - ALTO_ESCENA / 2;
     return {
       ancho,
       // Mirando la pared de costado, con el primer mueble cerca, como al entrar.
@@ -126,8 +129,9 @@ export default function ViajeGondola({
     setPaso(0);
     tiempos.current = [
       window.setTimeout(() => setSalto(false), 60),
-      window.setTimeout(() => setPaso(1), 1300),
-      window.setTimeout(() => setPaso(2), 2700),
+      // Rápido a pedido de Gonzalo (2026-11-03): unos 2,5 segundos en total.
+      window.setTimeout(() => setPaso(1), 950),
+      window.setTimeout(() => setPaso(2), 1950),
     ];
   }
 
@@ -163,8 +167,6 @@ export default function ViajeGondola({
           className={`vg-escena paso${paso}${salto ? " salto" : ""}`}
           style={{ width: camara.ancho, height: ALTO_ESCENA, marginLeft: -camara.ancho / 2, marginTop: -ALTO_ESCENA / 2, transform: transformacion }}
         >
-          <div className="vg-c vg-pared" />
-          <div className="vg-c vg-piso" />
           {gondola.map((m, i) => {
             const filas = filasPorModulo[i];
             const esFoco = i === indice;
