@@ -3420,11 +3420,12 @@ function ProductoDetalleModal({
                 desenfoque cuesta carísimo. */}
             <div
               className="relative w-full aspect-square max-h-[34vh] md:max-h-[46vh] flex items-center justify-center rounded-[26px] overflow-hidden"
+              // Quieto: el fondo aparece de una en su tamaño final (Gonzalo,
+              // 2026-11-03: no quiere que arranque chico y crezca). Lo único
+              // que se mueve es el producto flotando.
               style={{
                 background: "radial-gradient(circle at 50% 44%, #ffffff 0%, #ffffff 38%, #fbeee0 70%, #f3d9bd 100%)",
                 perspective: 900,
-                transform: abierto ? "scale(1)" : "scale(1.06)",
-                transition: "transform .9s cubic-bezier(.2,.8,.2,1)",
               }}
             >
               <span
