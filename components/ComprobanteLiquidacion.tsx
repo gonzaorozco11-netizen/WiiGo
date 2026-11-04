@@ -2,6 +2,7 @@
 
 import type { Liquidacion } from "@/lib/supabase";
 import type { LineaRendicion } from "@/app/(app)/liquidaciones/actions";
+import { ETIQUETA_RETENCION, ETIQUETA_RETENCION_CORTA } from "@/lib/margenMarca";
 
 type MarcaInfo = { nombre: string; cuit: string | null; contacto: string | null; email: string | null; telefono: string | null };
 type Resumen = {
@@ -10,6 +11,9 @@ type Resumen = {
   ivaComision: number;
   impCreditos: number;
   feeMp: number;
+  sircreb: number;
+  impDebitos: number;
+  programaProfesionales: number;
   netoARendir: number;
   netoEfectivo: number;
   netoTransferencia: number;
@@ -52,6 +56,14 @@ export default function ComprobanteLiquidacion({
   lineas: LineaRendicion[];
   resumen: Resumen;
 }) {
+  // Todo lo que se le resta tiene que estar a la vista: si el neto resta algo
+  // que el papel no muestra, la cuenta no le cierra a la marca. Las columnas
+  // que en este período dan cero no se muestran, para que entre en la hoja.
+  const conRetenciones = resumen.sircreb > 0;
+  const conImpDebitos = resumen.impDebitos > 0;
+  const conProfesionales = resumen.programaProfesionales > 0;
+  const resta = (v: number) => (v > 0 ? `-$${formatearMonto(v)}` : "—");
+
   return (
     <div className="max-w-3xl mx-auto">
       <style>{`
@@ -108,7 +120,10 @@ export default function ComprobanteLiquidacion({
               <th className="py-2 pr-2 text-right">Comisión</th>
               <th className="py-2 pr-2 text-right">IVA</th>
               <th className="py-2 pr-2 text-right">Imp. créd.</th>
-              <th className="py-2 pr-2 text-right">Fee MP</th>
+              <th className="py-2 pr-2 text-right">Costo de cobro</th>
+              {conRetenciones && <th className="py-2 pr-2 text-right">{ETIQUETA_RETENCION_CORTA}</th>}
+              {conImpDebitos && <th className="py-2 pr-2 text-right">Imp. déb.</th>}
+              {conProfesionales && <th className="py-2 pr-2 text-right">Prog. prof.</th>}
               <th className="py-2 text-right">Neto</th>
             </tr>
           </thead>
@@ -125,9 +140,12 @@ export default function ComprobanteLiquidacion({
                 </td>
                 <td className="py-1.5 pr-2 text-right tabular-nums">${formatearMonto(l.ventaBruta)}</td>
                 <td className="py-1.5 pr-2 text-right tabular-nums">-${formatearMonto(l.comisionWiigo)}</td>
-                <td className="py-1.5 pr-2 text-right tabular-nums">{l.ivaComision > 0 ? `-$${formatearMonto(l.ivaComision)}` : "—"}</td>
-                <td className="py-1.5 pr-2 text-right tabular-nums">{l.impCreditos > 0 ? `-$${formatearMonto(l.impCreditos)}` : "—"}</td>
-                <td className="py-1.5 pr-2 text-right tabular-nums">{l.feeMp > 0 ? `-$${formatearMonto(l.feeMp)}` : "—"}</td>
+                <td className="py-1.5 pr-2 text-right tabular-nums">{resta(l.ivaComision)}</td>
+                <td className="py-1.5 pr-2 text-right tabular-nums">{resta(l.impCreditos)}</td>
+                <td className="py-1.5 pr-2 text-right tabular-nums">{resta(l.feeMp)}</td>
+                {conRetenciones && <td className="py-1.5 pr-2 text-right tabular-nums">{resta(l.sircreb)}</td>}
+                {conImpDebitos && <td className="py-1.5 pr-2 text-right tabular-nums">{resta(l.impDebitos)}</td>}
+                {conProfesionales && <td className="py-1.5 pr-2 text-right tabular-nums">{resta(l.programaProfesionales)}</td>}
                 <td className="py-1.5 text-right tabular-nums font-semibold">${formatearMonto(l.netoARendir)}</td>
               </tr>
             ))}
@@ -147,9 +165,31 @@ export default function ComprobanteLiquidacion({
             <span className="text-neutral-500">Impuesto a los Créditos</span>
             <span>-${formatearMonto(resumen.impCreditos)}</span>
           </div>
-          <div className="flex justify-between mb-3">
-            <span className="text-neutral-500">Fee Mercado Pago</span>
+          <div className="flex justify-between mb-1">
+            <span className="text-neutral-500">Costo de cobro (con IVA)</span>
             <span>-${formatearMonto(resumen.feeMp)}</span>
+          </div>
+          {conRetenciones && (
+            <div className="flex justify-between mb-1">
+              <span className="text-neutral-500">{ETIQUETA_RETENCION}</span>
+              <span>-${formatearMonto(resumen.sircreb)}</span>
+            </div>
+          )}
+          {conImpDebitos && (
+            <div className="flex justify-between mb-1">
+              <span className="text-neutral-500">Impuesto a los Débitos</span>
+              <span>-${formatearMonto(resumen.impDebitos)}</span>
+            </div>
+          )}
+          {conProfesionales && (
+            <div className="flex justify-between mb-1">
+              <span className="text-neutral-500">Programa de profesionales</span>
+              <span>-${formatearMonto(resumen.programaProfesionales)}</span>
+            </div>
+          )}
+          <div className="flex justify-between mb-3 pt-1 border-t border-dashed border-neutral-300">
+            <span className="text-neutral-500">Neto a rendir</span>
+            <span className="font-semibold">${formatearMonto(resumen.netoARendir)}</span>
           </div>
           <div className="flex justify-between font-bold text-base border-t border-neutral-300 pt-2">
             <span>Efectivo entregado</span>
