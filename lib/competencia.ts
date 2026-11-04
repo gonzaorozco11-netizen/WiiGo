@@ -6,7 +6,7 @@
 // Mardegan (mix y especias) y Jumbo, la sucursal de Mendoza. Cada precio se
 // lleva al tamaño de WiiGo: si ellos venden 100 g y WiiGo 250 g, se multiplica.
 
-export type Comercio = "BELAVITA" | "MEGANUTS" | "REGIO" | "MARDEGAN" | "JUMBO" | "ALIFRUT";
+export type Comercio = "BELAVITA" | "MEGANUTS" | "REGIO" | "MARDEGAN" | "JUMBO" | "ALIFRUT" | "SABORYGRAN";
 
 export const COMERCIOS: { clave: Comercio; nombre: string; tipo: string; principal?: boolean }[] = [
   { clave: "BELAVITA", nombre: "Bela Vita", tipo: "dietética · fraccionado", principal: true },
@@ -16,6 +16,8 @@ export const COMERCIOS: { clave: Comercio; nombre: string; tipo: string; princip
   { clave: "JUMBO", nombre: "Jumbo Mendoza", tipo: "súper · sucursal Mendoza" },
   // Su lista al público, no la exclusiva de Gonzalo: lo que paga cualquiera que le compra (Gonzalo, 2026-10-29).
   { clave: "ALIFRUT", nombre: "Alifrut (público)", tipo: "mayorista · precio al público, por kilo" },
+  // Dietética mendocina (Gonzalo, 2026-11-04). En la Lista de precios va al lado de Alifrut, solo lo confirmado.
+  { clave: "SABORYGRAN", nombre: "Sabor y Gran", tipo: "dietética · paquetes de 100 g a 1 kg" },
 ];
 
 export type ItemCompetencia = {

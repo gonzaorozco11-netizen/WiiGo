@@ -147,6 +147,87 @@ async function leerAlifrutPublico(): Promise<Leido[]> {
   return salida;
 }
 
+/**
+ * Sabor y Gran (saborygran.com.ar, dietética de Mendoza): el catálogo entero
+ * viene en la página, en `var g_productos = [...]`. Cada tamaño ("Paquete 200
+ * grs.", "Paquete 1/2 kg.", "Pote x 900 grs.") es una "variedad" con su
+ * precio. Lo que se vende por bolsa o bulto ("Bolsa 10 kg. Por kg") y por
+ * cantidad de unidades no se compara: es precio mayorista.
+ */
+async function leerSaborYGran(): Promise<Leido[]> {
+  type V = { nombre: string; precio: string | number; precioanterior?: string | number };
+  type P = { id: string; nombre: string; precio: string | number; precioanterior?: string | number; ocultar?: string | number | boolean; se_puede_pedir?: boolean; variedades?: V[] };
+  const r = await fetch("https://saborygran.com.ar/", { headers: UA, cache: "no-store", signal: AbortSignal.timeout(25000) });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const html = await r.text();
+  const ini = html.indexOf("var g_productos = ");
+  if (ini < 0) throw new Error("cambió la página: no se encontró el catálogo");
+  // El arreglo termina donde cierran los corchetes (salteando lo que está entre comillas).
+  const desde = ini + "var g_productos = ".length;
+  let prof = 0;
+  let hasta = -1;
+  let enTexto = false;
+  let escape = false;
+  for (let k = desde; k < html.length; k++) {
+    const c = html[k];
+    if (enTexto) {
+      if (escape) escape = false;
+      else if (c === "\\") escape = true;
+      else if (c === '"') enTexto = false;
+      continue;
+    }
+    if (c === '"') enTexto = true;
+    else if (c === "[" || c === "{") prof++;
+    else if (c === "]" || c === "}") {
+      prof--;
+      if (prof === 0) {
+        hasta = k + 1;
+        break;
+      }
+    }
+  }
+  if (hasta < 0) throw new Error("cambió la página: el catálogo vino cortado");
+  const lista = JSON.parse(html.slice(desde, hasta)) as P[];
+
+  // "Paquete 1/2 kg." → 500 g; "Pote x 1.2 kg." → 1200 g. Lo mayorista, afuera.
+  const gramosDeVariedad = (n: string): number | null => {
+    if (/por\s*(kg|uni)|unidades|\buni\b|bolsas?\b.*\ba\b|\d+\s*a\s*\d+/i.test(n)) return null;
+    const t = n.replace(/1\s*\/\s*2\s*kg/i, "500 g").replace(/1\s*\/\s*4\s*kg/i, "250 g").replace(/(\d)\.(\d)/g, "$1,$2");
+    return gramosDelNombre(` ${t}`);
+  };
+  const legible = (g: number) => (g >= 1000 ? `${(g / 1000).toLocaleString("es-AR")} kg` : `${g} g`);
+  const num = (v: unknown) => Number(String(v ?? "").replace(",", ".")) || 0;
+  const salida: Leido[] = [];
+  for (const p of lista) {
+    if (p.ocultar && String(p.ocultar) !== "0") continue;
+    // Precio 0 en el producto = no lo tienen (a veces dejan un tamaño con un precio de relleno).
+    if (num(p.precio) <= 0) continue;
+    const disponible = p.se_puede_pedir !== false;
+    let variedades = (p.variedades ?? []).filter((v) => num(v.precio) > 0);
+    // Si viene en paquete, se compara contra el paquete: el pote trae el envase adentro del precio.
+    if (variedades.some((v) => /paquete/i.test(v.nombre) && gramosDeVariedad(v.nombre))) variedades = variedades.filter((v) => !/pote/i.test(v.nombre));
+    const filas = variedades.length
+      ? variedades.map((v) => ({ clave: `${p.id}:${v.nombre}`, gramos: gramosDeVariedad(v.nombre), precio: num(v.precio), antes: num(v.precioanterior), pote: /pote/i.test(v.nombre) }))
+      : [{ clave: String(p.id), gramos: gramosDelNombre(p.nombre), precio: num(p.precio), antes: num(p.precioanterior), pote: false }];
+    for (const f of filas) {
+      if (!f.gramos) continue;
+      salida.push({
+        clave: f.clave,
+        nombre: `${p.nombre} x ${legible(f.gramos)}${f.pote ? " (pote)" : ""}`,
+        gramos: f.gramos,
+        por_kilo: false,
+        precio: f.precio,
+        precio_antes: f.antes > f.precio ? f.antes : null,
+        nota: null,
+        // No tienen una página por producto: el link lleva a la tienda.
+        url: "https://saborygran.com.ar/",
+        disponible,
+      });
+    }
+  }
+  return salida;
+}
+
 /** Jumbo tiene miles de productos: se busca solo lo parecido a cada producto de WiiGo. */
 async function leerJumbo(busquedas: string[]): Promise<Leido[]> {
   type P = { productName: string; link?: string; items: { itemId: string; unitMultiplier: number; measurementUnit: string }[] };
@@ -270,6 +351,7 @@ export async function actualizarCompetencia(supabase: SupabaseClient): Promise<R
     MARDEGAN: leerMardegan,
     JUMBO: () => leerJumbo(busquedas),
     ALIFRUT: leerAlifrutPublico,
+    SABORYGRAN: leerSaborYGran,
   };
   const comercios = {} as ResultadoLectura["comercios"];
   await Promise.all(
@@ -289,7 +371,12 @@ export async function actualizarCompetencia(supabase: SupabaseClient): Promise<R
             });
             ({ error } = await supabase.from("competencia_items").upsert(sinNota, { onConflict: "comercio,clave" }));
           }
-          if (error) throw new Error(/check constraint/.test(error.message) ? `falta correr el SQL de ${clave === "ALIFRUT" ? "Alifrut público" : "Mega Nuts"}` : error.message);
+          if (error)
+            throw new Error(
+              /check constraint/.test(error.message)
+                ? `falta correr el SQL de ${clave === "ALIFRUT" ? "Alifrut público" : clave === "SABORYGRAN" ? "Sabor y Gran (sql/precios-competencia-saborygran.sql)" : "Mega Nuts"}`
+                : error.message
+            );
         }
         // Lo que ya no está en su página queda como no disponible.
         if (clave !== "JUMBO") await supabase.from("competencia_items").update({ disponible: false }).eq("comercio", clave).lt("visto_el", ahora);

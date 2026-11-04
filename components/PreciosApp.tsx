@@ -473,14 +473,15 @@ const COLOR_SIN_RUBRO: [string, string, string] = ["#9ca3af", "#f6f7f9", "#37415
 function ColumnasLista() {
   return (
     <colgroup>
-      <col style={{ width: "22%" }} />
+      <col style={{ width: "20%" }} />
+      <col style={{ width: "7%" }} />
       <col style={{ width: "8%" }} />
-      <col style={{ width: "10%" }} />
-      <col style={{ width: "10%" }} />
-      <col style={{ width: "10%" }} />
-      <col style={{ width: "13%" }} />
-      <col style={{ width: "14%" }} />
-      <col style={{ width: "13%" }} />
+      <col style={{ width: "9%" }} />
+      <col style={{ width: "9%" }} />
+      <col style={{ width: "12%" }} />
+      <col style={{ width: "12%" }} />
+      <col style={{ width: "12%" }} />
+      <col style={{ width: "11%" }} />
     </colgroup>
   );
 }
@@ -498,6 +499,39 @@ function alifrutDe(datos: DatosCompetencia | null, p: ProductoDelModulo): Alifru
   if (normal == null) return null;
   const desc = datos?.alifrutDescEfectivo ?? 5;
   return { normal, efectivo: normal * (1 - desc / 100), oferta: Boolean(v.item.precioAntes), agotado: !v.item.disponible, sinConfirmar: v.estado === "PROPUESTO", desc };
+}
+
+/**
+ * Lo que cobra Sabor y Gran (dietética de Mendoza) por tu mismo tamaño. Solo
+ * lo que Gonzalo ya confirmó en Competencia: un equivalente sin verificar
+ * puede ser otro producto (Gonzalo, 2026-11-04: «los que te voy verificando»).
+ */
+type OtroComercio = { normal: number; oferta: boolean; agotado: boolean } | null;
+function confirmadoDe(datos: DatosCompetencia | null, p: ProductoDelModulo, comercio: "SABORYGRAN"): OtroComercio {
+  const v = datos?.vinculos[p.id]?.find((x) => x.comercio === comercio);
+  if (!v?.item || v.estado !== "CONFIRMADO" || !p.gramos) return null;
+  const normal = precioATuTamano({ precio: v.item.precioAntes ?? v.item.precio, gramos: v.item.gramos }, p.gramos);
+  return normal == null ? null : { normal, oferta: Boolean(v.item.precioAntes), agotado: !v.item.disponible };
+}
+
+function PrecioOtro({ o, tuyo }: { o: OtroComercio; tuyo: number | null }) {
+  if (!o) return <span className="pr-tenue">—</span>;
+  const dif = tuyo && o.normal > 0 ? tuyo / o.normal - 1 : null;
+  return (
+    <span className="pr-ali">
+      <span className="n">{pesos(o.normal)}</span>
+      {dif != null && (
+        <span className={`pr-comp ${dif > 0 ? "caro" : "barato"}`} title={dif > 0 ? "Tu precio está arriba" : "Tu precio está abajo"}>
+          {dif > 0 ? "+" : "−"}
+          {Math.round(Math.abs(dif) * 100)}%
+        </span>
+      )}
+      <small>
+        precio único{o.oferta ? " · tiene oferta" : ""}
+        {o.agotado ? " · agotado" : ""}
+      </small>
+    </span>
+  );
 }
 
 function PrecioAlifrut({ a, tuyo, efectivo = false }: { a: Alifrut; tuyo: number | null; efectivo?: boolean }) {
@@ -639,6 +673,9 @@ function Lista(props: {
                 <th>
                   Alifrut<small>al público, a tu tamaño</small>
                 </th>
+                <th>
+                  Sabor y Gran<small>confirmados, a tu tamaño</small>
+                </th>
               </tr>
             </thead>
           </table>
@@ -725,6 +762,7 @@ function Lista(props: {
                           : "viene envasado";
                       const hoyEf = p.precioHoy ? p.efectivoHoy ?? p.precioHoy : null;
                       const ali = alifrutDe(props.competencia, p);
+                      const syg = confirmadoDe(props.competencia, p, "SABORYGRAN");
                       const clase = `fila${i % 2 === 1 ? " par" : ""}${abierto ? " abierta" : ""}`;
                       const abrir = () => props.setAbierto(abierto ? null : p.id);
                       const filasProd = [
@@ -787,6 +825,9 @@ function Lista(props: {
                           <td>
                             <PrecioAlifrut a={ali} tuyo={r.ok ? r.publico : null} />
                           </td>
+                          <td>
+                            <PrecioOtro o={syg} tuyo={r.ok ? r.publico : null} />
+                          </td>
                         </tr>,
                         <tr key={`${p.id}-ef`} className={`${clase} e`} onClick={abrir}>
                           <td className="izq">
@@ -823,12 +864,15 @@ function Lista(props: {
                           <td>
                             <PrecioAlifrut a={ali} tuyo={r.ok ? r.efectivo : null} efectivo />
                           </td>
+                          <td>
+                            <PrecioOtro o={syg} tuyo={r.ok ? r.efectivo : null} />
+                          </td>
                         </tr>,
                       ];
                       if (abierto)
                         filasProd.push(
                           <tr key={`${p.id}-det`} className="detalle">
-                            <td colSpan={8}>
+                            <td colSpan={9}>
                               <Detalle c={c} cfg={cfg} minimo={minimo} granel={props.granel} envases={props.envases} cambiarProducto={props.cambiarProducto} pasarUno={props.pasarUno} />
                             </td>
                           </tr>
