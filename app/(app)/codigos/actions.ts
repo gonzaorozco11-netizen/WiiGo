@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { limpiarCodigoBarras, esCodigoInterno } from "@/lib/codigos";
+import { mayorCodigoInterno } from "@/lib/codigosVariante";
 
 /**
  * Guarda el código que trae el envase de un producto.
@@ -64,12 +65,9 @@ export async function volverAEtiquetaWiigo(idVariante: string) {
 
   // El número sigue al mayor que haya, como en productos/actions.ts: así dos
   // productos nunca comparten etiqueta aunque se borren variantes en el medio.
+  // Solo el rango interno: los códigos de fábrica no cuentan (ver mayorCodigoInterno).
   const { data: existentes } = await supabase.from("variantes_producto").select("codigo_barras");
-  let mayor = 20000000000;
-  (existentes ?? []).forEach((row: { codigo_barras: string | null }) => {
-    const n = Number(row.codigo_barras);
-    if (Number.isFinite(n) && n > mayor) mayor = n;
-  });
+  const mayor = mayorCodigoInterno(existentes ?? []);
 
   const { error } = await supabase
     .from("variantes_producto")

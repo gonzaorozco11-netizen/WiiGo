@@ -57,14 +57,25 @@ export async function generarSkuVariante(supabase: SupabaseClient, idMarca: stri
 // globalmente, pero se escanea igual en el tótem y nunca choca con el código
 // real de un producto del mundo.
 export async function generarCodigoBarrasVariante(supabase: SupabaseClient) {
-  const BASE = 20000000000;
   const { data: existentes } = await supabase.from("variantes_producto").select("codigo_barras");
+  return String(mayorCodigoInterno(existentes ?? []) + 1);
+}
 
+/**
+ * El mayor código del rango interno (11 dígitos que empiezan con "20").
+ * Solo ese rango: si se mirara el mayor de todos, un código real de fábrica
+ * (Animalfit tiene EAN como 0617395130757) arrastraría la numeración y el
+ * próximo producto saldría con un número pegado al de una marca real
+ * (pasó el 2026-11-04 con las viandas de Alta).
+ */
+export function mayorCodigoInterno(filas: { codigo_barras: string | null }[]) {
+  const BASE = 20000000000;
   let mayor = BASE;
-  (existentes ?? []).forEach((row: { codigo_barras: string | null }) => {
-    const n = Number(row.codigo_barras);
-    if (Number.isFinite(n) && n > mayor) mayor = n;
-  });
-
-  return String(mayor + 1);
+  for (const row of filas) {
+    const c = (row.codigo_barras ?? "").trim();
+    if (!/^20\d{9}$/.test(c)) continue;
+    const n = Number(c);
+    if (n > mayor) mayor = n;
+  }
+  return mayor;
 }
