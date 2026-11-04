@@ -196,12 +196,17 @@ export async function obtenerOrdenMp(idOrden: string) {
 // directo del objeto payment_method que ya viene incluido en la orden, sin
 // necesidad de una llamada aparte.
 //
-// Ojo: distinguir "cuotas sin interés" de "crédito común" no viene
-// explícito y directo en el pago — se infiere de la cantidad de cuotas.
-// Puede no ser 100% preciso en promociones bancarias raras; conviene
-// revisar los primeros cobros reales para confirmar que la comisión
-// calculada tiene sentido.
+// CUOTAS_SIN_INTERES es, en la cuenta de Mercado Pago, «Cuotas sin tarjeta»
+// (Mercado Crédito: el cliente paga en cuotas con un préstamo de Mercado
+// Pago, sin tarjeta). Cuesta 1,38% al instante (Gonzalo, 2026-11-04). La
+// clave se dejó con el nombre viejo para no migrar las ventas guardadas.
+//
+// La tarjeta de crédito va siempre como CREDITO, en 1 o en varias cuotas:
+// desde 2026-11-04 Gonzalo la tiene desactivada en el QR (el crédito se
+// cobra con el posnet), y si se reactiva, cuesta lo del crédito y no lo de
+// Mercado Crédito.
 export function mapearFormaPagoMp(paymentMethod: {
+  id?: string;
   type?: string;
   installments?: number;
 }): "DINERO_CUENTA" | "DEBITO" | "CUOTAS_SIN_INTERES" | "PREPAGA" | "CREDITO" {
@@ -209,8 +214,6 @@ export function mapearFormaPagoMp(paymentMethod: {
   if (tipo === "account_money") return "DINERO_CUENTA";
   if (tipo === "debit_card") return "DEBITO";
   if (tipo === "prepaid_card") return "PREPAGA";
-  if (tipo === "credit_card") {
-    return (paymentMethod.installments ?? 1) > 1 ? "CUOTAS_SIN_INTERES" : "CREDITO";
-  }
+  if (paymentMethod.id === "consumer_credits" || tipo === "digital_currency" || tipo === "consumer_credits") return "CUOTAS_SIN_INTERES";
   return "CREDITO";
 }

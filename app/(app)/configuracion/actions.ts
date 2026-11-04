@@ -188,7 +188,7 @@ export async function guardarConfigMercadoPago(formData: FormData): Promise<{ er
   const tasas: Record<string, string> = {
     MP_COMISION_DINERO_CUENTA: "Dinero en cuenta de Mercado Pago",
     MP_COMISION_DEBITO: "Tarjeta de débito",
-    MP_COMISION_CUOTAS_SIN_INTERES: "Cuotas sin interés",
+    MP_COMISION_CUOTAS_SIN_INTERES: "Cuotas sin tarjeta (Mercado Crédito)",
     MP_COMISION_PREPAGA: "Tarjeta prepaga",
     MP_COMISION_CREDITO: "Tarjeta de crédito",
   };

@@ -27,7 +27,7 @@ function formatearFecha(fechaISO: string) {
 const ETIQUETA_FORMA_PAGO_MP: Record<string, string> = {
   DINERO_CUENTA: "Dinero en cuenta",
   DEBITO: "Débito",
-  CUOTAS_SIN_INTERES: "Cuotas s/interés",
+  CUOTAS_SIN_INTERES: "Cuotas sin tarjeta",
   PREPAGA: "Prepaga",
   CREDITO: "Crédito",
 };

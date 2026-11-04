@@ -629,7 +629,7 @@ export default function ConfiguracionApp({
           </div>
           <div>
             <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="mp_comision_cuotas_sin_interes">
-              Cuotas sin interés (%)
+              Cuotas sin tarjeta, Mercado Crédito (%)
             </label>
             <input
               id="mp_comision_cuotas_sin_interes"

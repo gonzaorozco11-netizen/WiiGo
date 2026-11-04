@@ -24,7 +24,7 @@ function formatearHora(fechaISO: string) {
 const FORMAS_PAGO_MP: { valor: string; etiqueta: string }[] = [
   { valor: "DINERO_CUENTA", etiqueta: "Dinero en cuenta MP" },
   { valor: "DEBITO", etiqueta: "Tarjeta de débito" },
-  { valor: "CUOTAS_SIN_INTERES", etiqueta: "Cuotas sin interés" },
+  { valor: "CUOTAS_SIN_INTERES", etiqueta: "Cuotas sin tarjeta (Mercado Crédito)" },
   { valor: "PREPAGA", etiqueta: "Tarjeta prepaga" },
   { valor: "CREDITO", etiqueta: "Tarjeta de crédito" },
 ];
