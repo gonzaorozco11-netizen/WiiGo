@@ -193,11 +193,25 @@ export async function guardarConfigMercadoPago(formData: FormData): Promise<{ er
     MP_COMISION_CREDITO: "Tarjeta de crédito",
   };
 
+  // El posnet (hoy Nave, de Galicia) va en el mismo formulario: son las
+  // comisiones de cobro que se le descuentan a la marca (lib/formasPago.ts).
+  const tasasPosnet: Record<string, string> = {
+    POSNET_COMISION_DEBITO: "Posnet — tarjeta de débito",
+    POSNET_COMISION_CREDITO: "Posnet — tarjeta de crédito",
+  };
+
   const supabase = getSupabaseServerClient();
 
   for (const [clave, descripcion] of Object.entries(tasas)) {
     const valor = Number(formData.get(clave.toLowerCase()) ?? 0);
     const error = await guardarParametro(supabase, clave, String(valor), `Comisión de Mercado Pago — ${descripcion} (base, sin IVA)`);
+    if (error) return { error };
+  }
+  for (const [clave, descripcion] of Object.entries(tasasPosnet)) {
+    if (formData.get(clave.toLowerCase()) === null) continue;
+    const valor = Number(formData.get(clave.toLowerCase()));
+    if (!Number.isFinite(valor) || valor < 0 || valor > 20) return { error: "Revisá la comisión del posnet: tiene que estar entre 0 y 20%." };
+    const error = await guardarParametro(supabase, clave, String(valor), `Comisión de cobro — ${descripcion} (base, sin IVA)`);
     if (error) return { error };
   }
 

@@ -3,13 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionMarca, sesionDelPortal, motivoSinSesionMarca } from "@/lib/marcaSesion";
-import { calcularRendicion } from "@/app/(app)/liquidaciones/actions";
+import { calcularRendicion, detalleLiquidacion } from "@/app/(app)/liquidaciones/actions";
 import { fechaHoraArgentina } from "@/lib/horarios";
 import { costosVigentes, guardarCosto, borrarCosto, SIN_SUBCATEGORIA, type CostoDeMarca } from "@/lib/costosMarca";
 import { PENDIENTE, PROPUESTA, type OrigenOrden } from "@/lib/estadosOrden";
 import { diasHasta } from "@/lib/eventos";
 import { sugerirReposicion, topeDeVariante } from "@/lib/reposicionSugerida";
 import { BUCKET_COMPROBANTES } from "@/lib/remitoRecepcion";
+import { etiquetaPago } from "@/lib/formasPago";
 import {
   condicionesDeMarca,
   tasasGeneralesParaSimular,
@@ -42,6 +43,7 @@ function rangoMesAnterior(fechaISO: string) {
 const MEDIO_LABEL: Record<string, string> = {
   EFECTIVO: "Efectivo",
   MERCADO_PAGO: "Mercado Pago",
+  POSNET: "Posnet",
   TRANSFERENCIA: "Transferencia",
 };
 
@@ -874,7 +876,8 @@ function mapearLineasParaPortal(lineas: Awaited<ReturnType<typeof calcularRendic
       }),
       producto: l.producto,
       cantidad: l.cantidad,
-      medioPago: MEDIO_LABEL[l.medioPago ?? ""] ?? l.medioPago ?? "—",
+      // "QR · Débito", "Posnet · Crédito": dónde y con qué, porque cada uno tiene su costo.
+      medioPago: etiquetaPago(l.medioPago, l.formaPagoMp),
       bruto: l.ventaBruta,
       comisionWiigo: l.comisionWiigo,
       ivaComision: l.ivaComision,
@@ -1469,6 +1472,7 @@ export async function goldPortal(): Promise<GoldPortal | null> {
 }
 
 export type LiquidacionPortal = {
+  idLiquidacion: string;
   periodo: string;
   neto: number;
   estado: string;
@@ -1482,17 +1486,115 @@ export async function liquidacionesPortal(): Promise<LiquidacionPortal[]> {
   const supabase = getSupabaseServerClient();
   const { data } = await supabase
     .from("liquidaciones")
-    .select("fecha_desde, fecha_hasta, neto_a_transferir, estado, fecha_pago")
+    .select("id_liquidacion, fecha_desde, fecha_hasta, neto_a_transferir, estado, fecha_pago")
     .eq("id_marca", sesion.idMarca)
     .order("fecha_hasta", { ascending: false })
     .limit(6);
 
   return (data ?? []).map((l) => ({
+    idLiquidacion: l.id_liquidacion as string,
     periodo: `${(l.fecha_desde as string) ?? ""} al ${(l.fecha_hasta as string) ?? ""}`,
     neto: (l.neto_a_transferir as number) ?? 0,
     estado: (l.estado as string) ?? "PENDIENTE",
     fechaPago: (l.fecha_pago as string) ?? null,
   }));
+}
+
+export type DetalleLiquidacionPortal = {
+  periodo: string;
+  /** EN_CURSO: el mes que todavía no se cerró. */
+  estado: "PAGADA" | "PENDIENTE" | "EN_CURSO";
+  fechaPago: string | null;
+  /** Lo que se le transfirió de verdad (puede incluir ajustes de la liquidación). Null si no se cerró. */
+  transferido: number | null;
+  lineas: LineaVentaMarca[];
+  resumen: {
+    bruto: number;
+    comisionWiigo: number;
+    ivaComision: number;
+    costoCobro: number;
+    impCreditos: number;
+    retenciones: number;
+    impDebitos: number;
+    programaProfesionales: number;
+    neto: number;
+  };
+  /** Cuánto le quedó con cada forma de pago ("Efectivo", "QR · Débito", "Posnet · Crédito"…). */
+  porMedio: { medio: string; bruto: number; neto: number; ventas: number }[];
+};
+
+/**
+ * El detalle de una liquidación, venta por venta, con todo lo que se le restó
+ * (Gonzalo, 2026-11-04: «que figure todo el detalle de su venta con lo que le
+ * resto»). Sin id: el mes en curso, provisorio. Solo de la marca de la sesión.
+ */
+export async function detalleLiquidacionPortal(idLiquidacion: string | null): Promise<DetalleLiquidacionPortal | { error: string }> {
+  const sesion = await sesionDelPortal();
+  if (!sesion) return { error: "Volvé a entrar al portal." };
+  const supabase = getSupabaseServerClient();
+
+  let lineas: Awaited<ReturnType<typeof calcularRendicion>>["lineas"];
+  let periodo: string;
+  let estado: DetalleLiquidacionPortal["estado"];
+  let fechaPago: string | null = null;
+  let transferido: number | null = null;
+  try {
+    if (idLiquidacion) {
+      const { data: liq } = await supabase
+        .from("liquidaciones")
+        .select("id_liquidacion, id_marca, fecha_desde, fecha_hasta, neto_a_transferir, estado, fecha_pago")
+        .eq("id_liquidacion", idLiquidacion)
+        .eq("id_marca", sesion.idMarca)
+        .maybeSingle();
+      if (!liq) return { error: "No encontramos esa liquidación." };
+      lineas = (await detalleLiquidacion(liq.id_liquidacion as string)).lineas;
+      periodo = `${(liq.fecha_desde as string) ?? ""} al ${(liq.fecha_hasta as string) ?? ""}`;
+      estado = liq.estado === "PAGADA" ? "PAGADA" : "PENDIENTE";
+      fechaPago = (liq.fecha_pago as string | null) ?? null;
+      transferido = Number(liq.neto_a_transferir ?? 0);
+    } else {
+      const hoy = fechaHoraArgentina().fecha;
+      lineas = (await calcularRendicion(sesion.idMarca, inicioDeMes(hoy), hoy)).lineas;
+      periodo = `${inicioDeMes(hoy)} al ${hoy}`;
+      estado = "EN_CURSO";
+    }
+  } catch {
+    return { error: "No se pudo cargar el detalle. Probá de nuevo en un rato." };
+  }
+
+  const r2 = (v: number) => Math.round(v * 100) / 100;
+  const suma = (k: keyof (typeof lineas)[number]) => r2(lineas.reduce((t, l) => t + (Number(l[k]) || 0), 0));
+  const grupos = new Map<string, { medio: string; bruto: number; neto: number; ventas: Set<number> }>();
+  for (const l of lineas) {
+    const medio = etiquetaPago(l.medioPago, l.formaPagoMp);
+    const g = grupos.get(medio) ?? { medio, bruto: 0, neto: 0, ventas: new Set<number>() };
+    g.bruto += l.ventaBruta;
+    g.neto += l.netoARendir;
+    g.ventas.add(l.numeroVenta);
+    grupos.set(medio, g);
+  }
+
+  return {
+    periodo,
+    estado,
+    fechaPago,
+    transferido,
+    lineas: mapearLineasParaPortal(lineas),
+    resumen: {
+      bruto: suma("ventaBruta"),
+      comisionWiigo: suma("comisionWiigo"),
+      ivaComision: suma("ivaComision"),
+      costoCobro: suma("feeMp"),
+      impCreditos: suma("impCreditos"),
+      retenciones: suma("sircreb"),
+      impDebitos: suma("impDebitos"),
+      programaProfesionales: suma("programaProfesionales"),
+      neto: suma("netoARendir"),
+    },
+    porMedio: [...grupos.values()]
+      .map((g) => ({ medio: g.medio, bruto: r2(g.bruto), neto: r2(g.neto), ventas: g.ventas.size }))
+      .sort((a, b) => (b.bruto > 0 ? b.neto / b.bruto : 0) - (a.bruto > 0 ? a.neto / a.bruto : 0)),
+  };
 }
 
 // ===================== Mis tareas =====================

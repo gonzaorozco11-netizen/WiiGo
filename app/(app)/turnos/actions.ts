@@ -121,14 +121,27 @@ export async function abrirTurno(idLocal: string, montoInicial: number, cambioEs
 async function resumenTurno(supabase: SupabaseClient, idTurno: string) {
   const { data: ventas, error } = await supabase
     .from("ventas")
-    .select("total, total_cobrado, medio_pago, estado")
+    .select("total, total_cobrado, medio_pago, estado, id_pago")
     .eq("id_turno", idTurno)
     .in("estado", ["PAGADA", "ANULADA"]);
   if (error) throw new Error(friendlyDbError(error));
 
+  // El posnet va aparte de Mercado Pago: se controla contra el cierre de lote
+  // del aparato, separado en débito y crédito (lo que marcó la cajera).
+  const idsPagoPosnet = (ventas ?? []).filter((v) => v.medio_pago === "POSNET" && v.id_pago).map((v) => v.id_pago as string);
+  const formaPorPago = new Map<string, string>();
+  if (idsPagoPosnet.length > 0) {
+    const { data: pagos } = await supabase.from("pagos").select("id_pago, forma_pago_cliente").in("id_pago", idsPagoPosnet);
+    for (const p of pagos ?? []) formaPorPago.set(p.id_pago as string, (p.forma_pago_cliente as string) ?? "");
+  }
+
   let totalEfectivo = 0;
   let totalRecibidoEfectivo = 0;
   let totalMercadoPago = 0;
+  let totalPosnetDebito = 0;
+  let totalPosnetCredito = 0;
+  let cantidadPosnetDebito = 0;
+  let cantidadPosnetCredito = 0;
   let cantidadVentas = 0;
   for (const v of ventas ?? []) {
     // El contador sí es de ventas: una anulada no se vendió.
@@ -136,6 +149,16 @@ async function resumenTurno(supabase: SupabaseClient, idTurno: string) {
     if (v.medio_pago === "EFECTIVO") {
       totalEfectivo += v.total ?? 0;
       totalRecibidoEfectivo += v.total_cobrado ?? v.total ?? 0;
+    } else if (v.medio_pago === "POSNET") {
+      // Una anulada se anula también en el aparato: no entra al cierre de lote.
+      if (v.estado !== "PAGADA") continue;
+      if (formaPorPago.get(v.id_pago as string) === "POSNET_CREDITO") {
+        totalPosnetCredito += v.total ?? 0;
+        cantidadPosnetCredito++;
+      } else {
+        totalPosnetDebito += v.total ?? 0;
+        cantidadPosnetDebito++;
+      }
     } else {
       totalMercadoPago += v.total ?? 0;
     }
@@ -192,6 +215,10 @@ async function resumenTurno(supabase: SupabaseClient, idTurno: string) {
   return {
     totalEfectivo,
     totalMercadoPago,
+    totalPosnetDebito,
+    totalPosnetCredito,
+    cantidadPosnetDebito,
+    cantidadPosnetCredito,
     totalVueltoEntregado: totalRecibidoEfectivo - totalEfectivo,
     totalGastosEfectivo,
     totalPagosProveedorEfectivo,

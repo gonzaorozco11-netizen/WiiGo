@@ -75,6 +75,7 @@ function fechaCorta(iso: string | null) {
 const MEDIO_PAGO_LABEL: Record<string, string> = {
   EFECTIVO: "Efectivo",
   MERCADO_PAGO: "Mercado Pago",
+  POSNET: "Tarjeta",
   TRANSFERENCIA: "Transferencia",
 };
 

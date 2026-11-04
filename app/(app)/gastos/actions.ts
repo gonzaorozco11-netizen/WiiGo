@@ -800,7 +800,7 @@ export async function totalCobradoPorBanco(desde: string, hasta: string) {
     .from("ventas")
     .select("total")
     .eq("estado", "PAGADA")
-    .eq("medio_pago", "MERCADO_PAGO")
+    .in("medio_pago", ["MERCADO_PAGO", "POSNET"])
     .gte("fecha", `${desde}T00:00:00`)
     .lte("fecha", `${hasta}T23:59:59`);
   return (data ?? []).reduce((acc, v) => acc + (v.total ?? 0), 0);

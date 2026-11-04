@@ -16,7 +16,9 @@ export const CLAVES_PRECIOS = {
   sircrebDescontable: "PRECIOS_SIRCREB_DESCONTABLE",
   comisionQr: "MP_COMISION_DINERO_CUENTA",
   comisionDebito: "MP_COMISION_DEBITO",
-  comisionCredito: "MP_COMISION_CREDITO",
+  // Desde 2026-11-04 el crédito se cobra con el posnet (Nave): esa es la tasa
+  // del crédito en Precios, la misma de Configuración → Comisiones de cobro.
+  comisionCredito: "POSNET_COMISION_CREDITO",
   descuenta: "PRECIOS_DESCUENTA",
   escenario: "PRECIOS_ESCENARIO",
   margenDefecto: "PRECIOS_MARGEN_DEFECTO",
@@ -36,7 +38,7 @@ export const DEFECTOS_PRECIOS: ConfigPrecios = {
   cheque: 0.6,
   sircreb: 5,
   sircrebDescontable: true,
-  comisiones: { efectivo: 0, qr: 0.8, debito: 0.88, credito: 6.15 },
+  comisiones: { efectivo: 0, qr: 0.8, debito: 0.88, credito: 1.8 },
   descuenta: DESCUENTA_DEFECTO,
   escenario: "credito",
   margenDefecto: 35,

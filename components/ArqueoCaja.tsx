@@ -117,6 +117,12 @@ export default function ArqueoCaja({
             <span>Mercado Pago (no entra a la caja)</span>
             <span>{pesos(resumen.totalMercadoPago)}</span>
           </div>
+          {resumen.totalPosnetDebito + resumen.totalPosnetCredito > 0 && (
+            <div className={`${fila} text-neutral-400`}>
+              <span>Posnet (no entra a la caja)</span>
+              <span>{pesos(resumen.totalPosnetDebito + resumen.totalPosnetCredito)}</span>
+            </div>
+          )}
           {resumen.totalGastosEfectivo > 0 && (
             <div className={fila}>
               <span>Gastos en efectivo</span>
@@ -141,6 +147,31 @@ export default function ArqueoCaja({
           </div>
         </div>
       </section>
+
+      {/* El posnet no está conectado al sistema: lo que marcó la cajera se
+          compara con el cierre de lote del aparato, débito y crédito aparte. */}
+      {resumen.cantidadPosnetDebito + resumen.cantidadPosnetCredito > 0 && (
+        <section className="border border-orange-200 rounded-xl p-4 bg-orange-50">
+          <p className="text-sm font-bold text-neutral-900 mb-2">💳 Posnet: controlalo con el cierre de lote</p>
+          <div className="space-y-1 text-[13px] tabular-nums">
+            <div className={fila}>
+              <span>
+                Débito <span className="text-neutral-500">({resumen.cantidadPosnetDebito})</span>
+              </span>
+              <b>{pesos(resumen.totalPosnetDebito)}</b>
+            </div>
+            <div className={fila}>
+              <span>
+                Crédito <span className="text-neutral-500">({resumen.cantidadPosnetCredito})</span>
+              </span>
+              <b>{pesos(resumen.totalPosnetCredito)}</b>
+            </div>
+          </div>
+          <p className="text-xs text-orange-900 mt-2">
+            Hacé el cierre de lote en el posnet de Nave: tiene que dar lo mismo. Si no da, avisá a administración.
+          </p>
+        </section>
+      )}
 
       <section className="border border-neutral-200 rounded-xl p-4 bg-white">
         <p className="text-sm font-bold text-neutral-900 mb-2">Contá por billete</p>

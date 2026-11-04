@@ -27,6 +27,7 @@ import {
   type LineaVentaMarca,
 } from "@/app/portal/actions";
 import { finalDelRenglon } from "@/lib/recepcionDiferencias";
+import PortalDetalleLiquidacion from "@/components/PortalDetalleLiquidacion";
 import { ETIQUETA_RETENCION, ETIQUETA_RETENCION_CORTA } from "@/lib/margenMarca";
 
 // Tablero del portal de marcas.
@@ -431,6 +432,8 @@ export default function PortalTablero({
   const [hastaVentas, setHastaVentas] = useState(hoyISO);
   const [busquedaVentas, setBusquedaVentas] = useState("");
   const [medioVentas, setMedioVentas] = useState("TODOS");
+  // La liquidación abierta en el detalle (id null = el mes en curso).
+  const [liqAbierta, setLiqAbierta] = useState<{ id: string | null } | null>(null);
   const [lineasVentas, setLineasVentas] = useState<LineaVentaMarca[]>(detalle.porVenta);
   const [totalLineasVentas, setTotalLineasVentas] = useState(detalle.totalLineas);
   const [cargandoVentas, setCargandoVentas] = useState(false);
@@ -480,7 +483,8 @@ export default function PortalTablero({
   const lineasVentasFiltradas = useMemo(() => {
     const texto = busquedaVentas.trim().toLowerCase();
     return lineasVentas.filter((l) => {
-      if (medioVentas !== "TODOS" && l.medioPago !== medioVentas) return false;
+      // La etiqueta es "QR · Débito", "Posnet · Crédito"…: se filtra por dónde pagó.
+      if (medioVentas !== "TODOS" && !(l.medioPago === medioVentas || l.medioPago.startsWith(`${medioVentas} ·`) || (medioVentas === "QR" && l.medioPago === "Mercado Pago"))) return false;
       if (texto && !l.producto.toLowerCase().includes(texto)) return false;
       return true;
     });
@@ -936,7 +940,8 @@ export default function PortalTablero({
             <select className="filtro-select" value={medioVentas} onChange={(e) => setMedioVentas(e.target.value)}>
               <option value="TODOS">Todos los pagos</option>
               <option value="Efectivo">Efectivo</option>
-              <option value="Mercado Pago">Mercado Pago</option>
+              <option value="QR">QR de Mercado Pago</option>
+              <option value="Posnet">Posnet</option>
               <option value="Transferencia">Transferencia</option>
             </select>
           </div>
@@ -1235,6 +1240,9 @@ export default function PortalTablero({
             <span>
               <span className="t">Mes en curso</span>
               <span className="d">Provisorio: cambia con cada venta hasta que se cierre</span>
+              <button type="button" className="ver-detalle" onClick={() => setLiqAbierta({ id: null })}>
+                Ver cómo va →
+              </button>
             </span>
             <span className="m mono" style={{ color: "var(--ocre)" }}>${pesos(resumen.mes.neto)}</span>
           </li>
@@ -1246,12 +1254,16 @@ export default function PortalTablero({
                 <span className="d">
                   {l.estado === "PAGADA" ? `Pagada el ${fechaCorta(l.fechaPago)}` : "Cerrada, pendiente de pago"}
                 </span>
+                <button type="button" className="ver-detalle" onClick={() => setLiqAbierta({ id: l.idLiquidacion })}>
+                  Ver detalle →
+                </button>
               </span>
               <span className="m mono">${pesos(l.neto)}</span>
             </li>
           ))}
         </ul>
       </section>
+      {liqAbierta && <PortalDetalleLiquidacion idLiquidacion={liqAbierta.id} onCerrar={() => setLiqAbierta(null)} />}
 
       {/* ===== CÓMO VENDER MÁS (Gold) ===== */}
       {conGold && gold && gold.ideas.length > 0 && (

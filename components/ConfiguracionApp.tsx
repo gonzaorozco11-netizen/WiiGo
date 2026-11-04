@@ -38,6 +38,8 @@ export default function ConfiguracionApp({
   mpComisionCuotasSinInteres,
   mpComisionPrepaga,
   mpComisionCredito,
+  posnetComisionDebito,
+  posnetComisionCredito,
   mpExternalPosId,
   gastosTopeSinAutorizacion,
   rentEfectivoIva,
@@ -80,6 +82,8 @@ export default function ConfiguracionApp({
   mpComisionCuotasSinInteres: number;
   mpComisionPrepaga: number;
   mpComisionCredito: number;
+  posnetComisionDebito: number;
+  posnetComisionCredito: number;
   mpExternalPosId: string | null;
   gastosTopeSinAutorizacion: number;
   rentEfectivoIva: boolean;
@@ -149,6 +153,8 @@ export default function ConfiguracionApp({
   const [mpCuotas, setMpCuotas] = useState(mpComisionCuotasSinInteres);
   const [mpPrepaga, setMpPrepaga] = useState(mpComisionPrepaga);
   const [mpCredito, setMpCredito] = useState(mpComisionCredito);
+  const [posnetDebito, setPosnetDebito] = useState(posnetComisionDebito);
+  const [posnetCredito, setPosnetCredito] = useState(posnetComisionCredito);
 
   const [isPendingQr, startTransitionQr] = useTransition();
   const [errorQr, setErrorQr] = useState<string | null>(null);
@@ -590,13 +596,13 @@ export default function ConfiguracionApp({
       </form>
 
       <form action={handleSubmitMp} className="bg-white border border-neutral-200 rounded-xl p-5 mt-5">
-        <h2 className="text-base font-semibold text-neutral-900 mb-1">💳 Comisión de Mercado Pago</h2>
+        <h2 className="text-base font-semibold text-neutral-900 mb-1">💳 Comisiones de cobro (Mercado Pago y posnet)</h2>
         <p className="text-sm text-neutral-500 mb-4">
-          No es una sola tasa — Mercado Pago cobra distinto según cómo pagó el cliente. Cargá el número base tal cual
-          lo publica Mercado Pago (ej. Débito 1,39%) — el sistema le suma el IVA arriba solo, no hace falta
-          calcularlo a mano. Al confirmar un cobro por Mercado Pago se va a elegir cuál de estas se usó, para que
-          Liquidaciones y Rentabilidad apliquen la correcta.
+          No es una sola tasa: se cobra distinto según dónde y con qué pagó el cliente. Cargá el número base tal cual
+          lo publica Mercado Pago o Nave (ej. Débito 0,88%): el sistema le suma el IVA solo. Cada venta guarda cómo
+          se pagó, así Liquidaciones y Rentabilidad le descuentan a la marca la comisión exacta de ese cobro.
         </p>
+        <p className="text-xs font-bold text-neutral-700 uppercase tracking-wide mb-2">📱 QR de Mercado Pago</p>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
           <div>
@@ -668,6 +674,43 @@ export default function ConfiguracionApp({
               onChange={(e) => setMpCredito(Number(e.target.value))}
               className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
             />
+            <p className="text-xs text-neutral-400 mt-1">Hoy está desactivada en el QR: el crédito se cobra con el posnet.</p>
+          </div>
+        </div>
+
+        <p className="text-xs font-bold text-neutral-700 uppercase tracking-wide mb-2">💳 Posnet (Nave)</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="posnet_comision_debito">
+              Tarjeta de débito (%)
+            </label>
+            <input
+              id="posnet_comision_debito"
+              name="posnet_comision_debito"
+              type="number"
+              step="0.01"
+              min="0"
+              value={posnetDebito}
+              onChange={(e) => setPosnetDebito(Number(e.target.value))}
+              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+            <p className="text-xs text-neutral-400 mt-1">Nave: 0,8% con acreditación a 1 día.</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="posnet_comision_credito">
+              Tarjeta de crédito (%)
+            </label>
+            <input
+              id="posnet_comision_credito"
+              name="posnet_comision_credito"
+              type="number"
+              step="0.01"
+              min="0"
+              value={posnetCredito}
+              onChange={(e) => setPosnetCredito(Number(e.target.value))}
+              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+            <p className="text-xs text-neutral-400 mt-1">Nave: 1,8% con acreditación a 10 días.</p>
           </div>
         </div>
 

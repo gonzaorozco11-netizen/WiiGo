@@ -16,7 +16,8 @@ export const MEDIOS_SIMULADOS: { clave: MedioSimulado; etiqueta: string }[] = [
   { clave: "EFECTIVO", etiqueta: "Efectivo" },
   { clave: "DINERO_CUENTA", etiqueta: "QR · dinero en cuenta" },
   { clave: "DEBITO", etiqueta: "Tarjeta de débito" },
-  { clave: "CREDITO", etiqueta: "Tarjeta de crédito" },
+  // Desde 2026-11-04 el crédito se cobra con el posnet (Nave), no por QR.
+  { clave: "CREDITO", etiqueta: "Tarjeta de crédito (posnet)" },
 ];
 
 export type CondicionesMarca = {
@@ -139,7 +140,7 @@ const CLAVE_MP: Record<MedioSimulado, string> = {
   EFECTIVO: "",
   DINERO_CUENTA: "MP_COMISION_DINERO_CUENTA",
   DEBITO: "MP_COMISION_DEBITO",
-  CREDITO: "MP_COMISION_CREDITO",
+  CREDITO: "POSNET_COMISION_CREDITO",
 };
 
 export async function tasasGeneralesParaSimular(supabase: SupabaseClient): Promise<TasasGenerales> {
@@ -153,7 +154,7 @@ export async function tasasGeneralesParaSimular(supabase: SupabaseClient): Promi
       "IVA_GENERAL_PORCENTAJE",
       "MP_COMISION_DINERO_CUENTA",
       "MP_COMISION_DEBITO",
-      "MP_COMISION_CREDITO",
+      "POSNET_COMISION_CREDITO",
     ]);
   const cfg = Object.fromEntries((data ?? []).map((r) => [r.parametro, Number(r.valor ?? 0)]));
   return {
@@ -164,7 +165,7 @@ export async function tasasGeneralesParaSimular(supabase: SupabaseClient): Promi
     mpPorMedio: {
       MP_COMISION_DINERO_CUENTA: cfg.MP_COMISION_DINERO_CUENTA ?? 0,
       MP_COMISION_DEBITO: cfg.MP_COMISION_DEBITO ?? 0,
-      MP_COMISION_CREDITO: cfg.MP_COMISION_CREDITO ?? 0,
+      POSNET_COMISION_CREDITO: cfg.POSNET_COMISION_CREDITO ?? 1.8,
     },
   };
 }

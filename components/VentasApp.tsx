@@ -12,6 +12,7 @@ import {
 } from "@/app/(app)/ventas/actions";
 import { emitirFacturaDeVenta } from "@/app/(app)/facturacion/actions";
 import DevolucionPanel from "@/components/DevolucionPanel";
+import { etiquetaMedio } from "@/lib/formasPago";
 
 type FiltroFecha = "HOY" | "SEMANA" | "MES" | "TODO" | "RANGO";
 type FiltroCanal = "TODOS" | "SELF_CHECKOUT" | "POS";
@@ -313,7 +314,11 @@ export default function VentasApp({
   // La plata vuelve por donde entró. Lo decide la venta, no quien anula — el
   // servidor lo vuelve a verificar igual (ver medioDevolucionDe).
   const medioQueCorresponde: MedioDevolucion =
-    ventaSeleccionada?.medio_pago === "MERCADO_PAGO" ? "MERCADO_PAGO" : "EFECTIVO_TURNO";
+    ventaSeleccionada?.medio_pago === "MERCADO_PAGO"
+      ? "MERCADO_PAGO"
+      : ventaSeleccionada?.medio_pago === "POSNET"
+        ? "POSNET"
+        : "EFECTIVO_TURNO";
 
   // Cuántos días pasaron desde la venta. Avisa, no bloquea: la política es
   // tuya y siempre hay un caso especial, pero nadie debería anular una venta
@@ -453,9 +458,7 @@ export default function VentasApp({
                       <td className="p-3 text-neutral-500">
                         {v.id_cliente ? clientePorId.get(v.id_cliente)?.nombre ?? "Cliente" : "Sin cliente"}
                       </td>
-                      <td className="p-3 text-neutral-500">
-                        {v.medio_pago === "MERCADO_PAGO" ? "Mercado Pago" : v.medio_pago === "EFECTIVO" ? "Efectivo" : "—"}
-                      </td>
+                      <td className="p-3 text-neutral-500">{v.medio_pago ? etiquetaMedio(v.medio_pago) : "—"}</td>
                       <td className="p-3 text-right tabular-nums">${formatearMonto(v.subtotal ?? 0)}</td>
                       <td className="p-3 text-right tabular-nums text-neutral-400">
                         {v.descuento ? `-$${formatearMonto(v.descuento)}` : "—"}
@@ -515,7 +518,7 @@ export default function VentasApp({
                   <div>
                     <p className="text-[11px] uppercase tracking-wide text-neutral-400">Pago</p>
                     <p className="font-medium text-neutral-900">
-                      {ventaSeleccionada.medio_pago === "MERCADO_PAGO" ? "Mercado Pago" : ventaSeleccionada.medio_pago === "EFECTIVO" ? "Efectivo" : "—"}
+                      {ventaSeleccionada.medio_pago ? etiquetaMedio(ventaSeleccionada.medio_pago) : "—"}
                     </p>
                   </div>
                   <div>
@@ -670,12 +673,16 @@ export default function VentasApp({
                           <p className="text-sm font-semibold text-neutral-900">
                             {medioQueCorresponde === "MERCADO_PAGO"
                               ? "Por Mercado Pago"
-                              : "En efectivo, de la caja"}
+                              : medioQueCorresponde === "POSNET"
+                                ? "Por el posnet"
+                                : "En efectivo, de la caja"}
                           </p>
                           <p className="text-[11px] text-neutral-500 mt-0.5">
                             {medioQueCorresponde === "MERCADO_PAGO"
                               ? "Se cobró por Mercado Pago, así que el reintegro va por ahí. Hacelo desde Mercado Pago: el sistema no lo hace solo."
-                              : "Se cobró en efectivo. Sale del turno abierto ahora y el arqueo lo descuenta solo."}
+                              : medioQueCorresponde === "POSNET"
+                                ? "Se cobró con tarjeta en el posnet de Nave. Anulala o devolvela desde el posnet con la tarjeta del cliente: el sistema no lo hace solo."
+                                : "Se cobró en efectivo. Sale del turno abierto ahora y el arqueo lo descuenta solo."}
                           </p>
 
                           {!mezclarMedio ? (
@@ -698,6 +705,7 @@ export default function VentasApp({
                               >
                                 <option value="EFECTIVO_TURNO">En efectivo, de la caja</option>
                                 <option value="MERCADO_PAGO">Reintegro por Mercado Pago</option>
+                                <option value="POSNET">Anulación en el posnet</option>
                                 <option value="PENDIENTE">Todavía no se le devolvió</option>
                                 <option value="NO_CORRESPONDE">No hay plata que devolver</option>
                               </select>

@@ -44,7 +44,8 @@ async function usuarioActual() {
  * No es un detalle administrativo: si no se registra, el arqueo de caja no
  * cierra. Ver la nota larga más abajo, en el bloque que lo guarda.
  */
-export type MedioDevolucion = "EFECTIVO_TURNO" | "MERCADO_PAGO" | "PENDIENTE" | "NO_CORRESPONDE";
+// POSNET: se anula o devuelve en el aparato con la tarjeta del cliente; no toca el cajón.
+export type MedioDevolucion = "EFECTIVO_TURNO" | "MERCADO_PAGO" | "POSNET" | "PENDIENTE" | "NO_CORRESPONDE";
 
 /**
  * La plata vuelve por donde entró.
@@ -62,7 +63,9 @@ export type MedioDevolucion = "EFECTIVO_TURNO" | "MERCADO_PAGO" | "PENDIENTE" | 
  * interna. La pantalla tiene su propia copia para mostrar el texto.
  */
 function medioDevolucionDe(medioPago: string | null): MedioDevolucion {
-  return medioPago === "MERCADO_PAGO" ? "MERCADO_PAGO" : "EFECTIVO_TURNO";
+  if (medioPago === "MERCADO_PAGO") return "MERCADO_PAGO";
+  if (medioPago === "POSNET") return "POSNET";
+  return "EFECTIVO_TURNO";
 }
 
 /**
@@ -156,7 +159,9 @@ export async function registrarDevolucion(
           error:
             venta.medio_pago === "MERCADO_PAGO"
               ? "Esta venta se cobró por Mercado Pago, así que el reintegro va por Mercado Pago. Devolverla en efectivo necesita la contraseña de un administrador."
-              : "Esta venta se cobró en efectivo, así que se devuelve en efectivo. Hacerlo de otra forma necesita la contraseña de un administrador.",
+              : venta.medio_pago === "POSNET"
+                ? "Esta venta se cobró con tarjeta en el posnet, así que se anula en el posnet. Devolverla de otra forma necesita la contraseña de un administrador."
+                : "Esta venta se cobró en efectivo, así que se devuelve en efectivo. Hacerlo de otra forma necesita la contraseña de un administrador.",
         };
       }
       autorizadaPor = autorizador.nombre;
@@ -274,6 +279,10 @@ export async function registrarDevolucion(
     // ===== Reintegro por Mercado Pago =====
     if (medio === "MERCADO_PAGO") {
       avisos.push(await reintegrarPorMp(supabase, venta.id_pago as string | null, calc.total, idDevolucion));
+    }
+    // El posnet no está conectado: el reintegro se hace en el aparato.
+    if (medio === "POSNET") {
+      avisos.push(`Falta un paso: anulá o devolvé $${Math.round(calc.total).toLocaleString("es-AR")} en el posnet de Nave, con la tarjeta del cliente.`);
     }
 
     // ===== Contracargo a la marca, si ya estaba liquidada =====

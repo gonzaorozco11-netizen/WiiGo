@@ -3,6 +3,7 @@
 import type { Liquidacion } from "@/lib/supabase";
 import type { LineaRendicion } from "@/app/(app)/liquidaciones/actions";
 import { ETIQUETA_RETENCION, ETIQUETA_RETENCION_CORTA } from "@/lib/margenMarca";
+import { etiquetaPago } from "@/lib/formasPago";
 
 type MarcaInfo = { nombre: string; cuit: string | null; contacto: string | null; email: string | null; telefono: string | null };
 type Resumen = {
@@ -28,22 +29,8 @@ function formatearFecha(fechaISO: string) {
   return fecha.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
-const ETIQUETA_FORMA_PAGO_MP: Record<string, string> = {
-  DINERO_CUENTA: "Dinero en cuenta",
-  DEBITO: "Débito",
-  CUOTAS_SIN_INTERES: "Cuotas sin tarjeta",
-  PREPAGA: "Prepaga",
-  CREDITO: "Crédito",
-};
-
-function formatearMedioPago(medioPago: string | null, formaPagoMp: string | null) {
-  if (medioPago === "EFECTIVO") return "Efectivo";
-  if (medioPago === "MERCADO_PAGO") {
-    const forma = formaPagoMp ? ETIQUETA_FORMA_PAGO_MP[formaPagoMp] : null;
-    return forma ? `Mercado Pago (${forma})` : "Mercado Pago";
-  }
-  return "—";
-}
+// "Efectivo", "QR · Débito", "Posnet · Crédito": lo mismo que ve la marca en su portal.
+const formatearMedioPago = (medioPago: string | null, formaPagoMp: string | null) => etiquetaPago(medioPago, formaPagoMp);
 
 export default function ComprobanteLiquidacion({
   liquidacion,

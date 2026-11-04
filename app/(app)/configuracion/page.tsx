@@ -5,6 +5,7 @@ import { obtenerEmisor } from "@/lib/arca/emisor-db";
 import { estadoCredenciales } from "@/lib/arca/credenciales";
 import { obtenerPolitica } from "@/lib/solicitudesMarca";
 import { leerDias } from "@/lib/recepcion";
+import { POSNET_POR_DEFECTO } from "@/lib/formasPago";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +44,8 @@ export default async function ConfiguracionPage() {
       "MP_COMISION_CUOTAS_SIN_INTERES",
       "MP_COMISION_PREPAGA",
       "MP_COMISION_CREDITO",
+      "POSNET_COMISION_DEBITO",
+      "POSNET_COMISION_CREDITO",
       "MP_EXTERNAL_POS_ID",
       "GASTOS_TOPE_SIN_AUTORIZACION",
       "RENT_EFECTIVO_IVA",
@@ -100,6 +103,8 @@ export default async function ConfiguracionPage() {
       mpComisionCuotasSinInteres={Number(valores.get("MP_COMISION_CUOTAS_SIN_INTERES") ?? 1.38)}
       mpComisionPrepaga={Number(valores.get("MP_COMISION_PREPAGA") ?? 3.85)}
       mpComisionCredito={Number(valores.get("MP_COMISION_CREDITO") ?? 6.15)}
+      posnetComisionDebito={Number(valores.get("POSNET_COMISION_DEBITO") ?? POSNET_POR_DEFECTO.debito)}
+      posnetComisionCredito={Number(valores.get("POSNET_COMISION_CREDITO") ?? POSNET_POR_DEFECTO.credito)}
       mpExternalPosId={valores.get("MP_EXTERNAL_POS_ID") ?? null}
       gastosTopeSinAutorizacion={Number(valores.get("GASTOS_TOPE_SIN_AUTORIZACION") ?? 10000)}
       rentEfectivoIva={(valores.get("RENT_EFECTIVO_IVA") ?? "false") === "true"}

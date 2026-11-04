@@ -22,6 +22,8 @@ import { calcularCanjePuntos, aplicarCanjePuntos, calcularPuntosGanados, type Li
 import { crearOrdenQrMp } from "@/lib/mercadopago";
 import { confirmarCobro } from "@/app/(app)/cobros-efectivo/actions";
 import { descontarStockDeVenta } from "@/lib/stockVenta";
+import { formaPagoPosnet, type MedioPagoVenta, type TarjetaPosnet } from "@/lib/formasPago";
+import { tasaComisionCobro } from "@/lib/comisionCobro";
 import QRCode from "qrcode";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -219,14 +221,21 @@ export async function venderPos(
   dni: string,
   codigoProfesional: string,
   montoRecibido: number,
-  medioPago: "EFECTIVO" | "MERCADO_PAGO" = "EFECTIVO",
+  medioPago: MedioPagoVenta = "EFECTIVO",
   canje?: { idProfesional: string; pin: string; marcas: string[] },
   usarPuntosWiigo?: boolean,
   // A nombre de quién va la factura. Lo elige la persona que cobra, que es la
   // única que puede preguntarle al cliente. Sin esto: consumidor final.
-  receptorFactura?: { tipo: "CONSUMIDOR_FINAL" | "DNI" | "CUIT"; numero: string }
+  receptorFactura?: { tipo: "CONSUMIDOR_FINAL" | "DNI" | "CUIT"; numero: string },
+  // Con el posnet (Nave): débito o crédito, lo elige la cajera; el cupón es
+  // optativo, para controlar contra el cierre de lote.
+  posnet?: { tarjeta: TarjetaPosnet; cupon?: string }
 ): Promise<{ error: string | null; venta?: ResultadoVenta; pedido?: ResultadoPedidoMp }> {
   if (items.length === 0) return { error: "El carrito está vacío" };
+  const esPosnet = medioPago === "POSNET";
+  if (esPosnet && posnet?.tarjeta !== "DEBITO" && posnet?.tarjeta !== "CREDITO") {
+    return { error: "Elegí si la tarjeta del posnet es de débito o de crédito." };
+  }
   // Un producto recién cargado puede no tener precio todavía: no se vende a $0.
   if (items.some((i) => !(i.precioUnitario > 0))) return { error: "Hay un producto sin precio. Tiene que tener precio aprobado antes de venderlo." };
 
@@ -446,7 +455,8 @@ export async function venderPos(
     }
   }
 
-  const montoFinal = montoRecibido;
+  // Con el posnet se cobra el total justo: no hay vuelto.
+  const montoFinal = esPosnet ? total : montoRecibido;
   if (montoFinal < total) return { error: "El monto recibido es menor al total de la venta" };
   const vuelto = montoFinal - total;
 
@@ -467,7 +477,7 @@ export async function venderPos(
       puntos_canjeados: puntosACanjear,
       total,
       estado: "PAGADA",
-      medio_pago: "EFECTIVO",
+      medio_pago: esPosnet ? "POSNET" : "EFECTIVO",
       total_cobrado: montoFinal,
       usuario,
       terminal: "POS",
@@ -480,7 +490,7 @@ export async function venderPos(
 
   // El efectivo no tiene comisión ni conciliación externa: neto = bruto, y
   // queda acreditado en el momento.
-  const pagoInsert: Record<string, unknown> = {
+  let pagoInsert: Record<string, unknown> = {
     id_venta: venta.id_venta,
     medio: "EFECTIVO",
     forma_pago_cliente: "EFECTIVO",
@@ -492,6 +502,31 @@ export async function venderPos(
     estado_conciliacion: "CONCILIADO",
     observaciones: `Venta mostrador · ${usuario ?? "personal"} · Pagó con $${montoFinal} · Vuelto $${vuelto}`,
   };
+  if (esPosnet && posnet) {
+    // El posnet cobra su comisión + IVA (la tasa cargada es sin IVA, como la
+    // muestra Nave). Queda "a conciliar": se controla con el cierre de lote.
+    const forma = formaPagoPosnet(posnet.tarjeta);
+    const { base: tasa, ivaGeneral } = await tasaComisionCobro(supabase, forma);
+    const comisionImporte = Math.round(total * (tasa / 100));
+    const ivaComisionImporte = Math.round(comisionImporte * (ivaGeneral / 100));
+    const cupon = (posnet.cupon ?? "").replace(/[^\dA-Za-z-]/g, "").slice(0, 30) || null;
+    pagoInsert = {
+      id_venta: venta.id_venta,
+      medio: "POSNET",
+      proveedor_pago: "NAVE",
+      forma_pago_cliente: forma,
+      importe_bruto: total,
+      comision_porcentaje: tasa,
+      comision_importe: comisionImporte,
+      iva_comision: ivaComisionImporte,
+      neto_acreditado: total - comisionImporte - ivaComisionImporte,
+      id_operacion_externa: cupon,
+      fecha_pago: new Date().toISOString(),
+      estado: "ACREDITADO",
+      estado_conciliacion: "PENDIENTE",
+      observaciones: `Venta mostrador · ${usuario ?? "personal"} · Posnet ${posnet.tarjeta === "CREDITO" ? "crédito" : "débito"}${cupon ? ` · cupón ${cupon}` : ""} · comisión ${tasa}% + IVA`,
+    };
+  }
 
   const { data: pago, error: errorPago } = await supabase.from("pagos").insert(pagoInsert).select("id_pago").single();
   if (errorPago) return { error: friendlyDbError(errorPago) };
@@ -580,7 +615,7 @@ export async function venderPos(
   // La venta del POS se cobra en el acto, así que se factura acá mismo. Si
   // ARCA falla no pasa nada: la venta queda cobrada y aparece en Ventas como
   // pendiente de facturar (ver lib/arca/config.ts).
-  await facturarAlAcreditarse(venta.id_venta as string, "EFECTIVO");
+  await facturarAlAcreditarse(venta.id_venta as string, esPosnet ? "POSNET" : "EFECTIVO");
 
   revalidatePath("/pos");
   revalidatePath("/stock");

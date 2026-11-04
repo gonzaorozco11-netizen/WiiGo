@@ -36,7 +36,7 @@ function formatearPedido(numero: number) {
   return `VTA-${String(numero).padStart(4, "0")}`;
 }
 
-type MedioPago = "EFECTIVO" | "MERCADO_PAGO";
+type MedioPago = "EFECTIVO" | "MERCADO_PAGO" | "POSNET";
 
 const POLL_MS = 3000;
 
@@ -140,6 +140,9 @@ export default function PosApp({
   const [tipoReceptor, setTipoReceptor] = useState<"CONSUMIDOR_FINAL" | "DNI" | "CUIT">("CONSUMIDOR_FINAL");
   const [docReceptor, setDocReceptor] = useState("");
   const [medioPago, setMedioPago] = useState<MedioPago>("EFECTIVO");
+  // Con el posnet: débito o crédito (cada uno tiene su comisión) y el cupón, optativo.
+  const [tarjetaPosnet, setTarjetaPosnet] = useState<"DEBITO" | "CREDITO" | null>(null);
+  const [cuponPosnet, setCuponPosnet] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resultado, setResultado] = useState<{
@@ -414,6 +417,8 @@ export default function PosApp({
     setCodigoProfesional("");
     setMontoRecibido("");
     setMedioPago("EFECTIVO");
+    setTarjetaPosnet(null);
+    setCuponPosnet("");
     setTipoReceptor("CONSUMIDOR_FINAL");
     setDocReceptor("");
     setResultado(null);
@@ -428,6 +433,7 @@ export default function PosApp({
   }
 
   const esMercadoPago = medioPago === "MERCADO_PAGO";
+  const esPosnet = medioPago === "POSNET";
 
   function toggleMarcaCanje(idMarca: string) {
     setMarcasCanje((prev) => {
@@ -457,7 +463,8 @@ export default function PosApp({
         ? { idProfesional: profesional.idProfesional, pin: pinCanje, marcas: [...marcasCanje] }
         : undefined,
       usarPuntosWiigo,
-      { tipo: tipoReceptor, numero: docReceptor }
+      { tipo: tipoReceptor, numero: docReceptor },
+      esPosnet && tarjetaPosnet ? { tarjeta: tarjetaPosnet, cupon: cuponPosnet } : undefined
     )
       .then((r) => {
         if (r.error) setError(r.error);
@@ -831,7 +838,7 @@ export default function PosApp({
       {/* Con dos precios, elegir el medio de pago cambia el total. El monto
           va en el botón para que se vea ANTES de tocarlo — si el cliente duda
           entre efectivo y tarjeta, el número lo decide en el mostrador. */}
-      <div className="grid grid-cols-2 gap-2 mb-4">
+      <div className="grid grid-cols-3 gap-2 mb-4">
         <button
           onClick={() => setMedioPago("EFECTIVO")}
           className={`flex flex-col items-center gap-0.5 py-3 rounded-xl border-2 ${
@@ -853,7 +860,24 @@ export default function PosApp({
           }`}
         >
           <span>📱</span>
-          <span className="font-bold text-sm">Mercado Pago</span>
+          <span className="font-bold text-sm">QR Mercado Pago</span>
+          {hayDiferenciaDePrecio && (
+            <span className="text-xs font-bold text-neutral-600 tabular-nums">
+              ${formatearMonto(totalLista)}
+            </span>
+          )}
+        </button>
+        {/* El posnet de Nave no está conectado al sistema: la cajera marca el
+            monto en el aparato y acá dice con qué tarjeta pagó. Cobra el
+            precio de lista, como el QR. */}
+        <button
+          onClick={() => setMedioPago("POSNET")}
+          className={`flex flex-col items-center gap-0.5 py-3 rounded-xl border-2 ${
+            esPosnet ? "border-accent bg-accent-tint" : "border-neutral-200 bg-white"
+          }`}
+        >
+          <span>💳</span>
+          <span className="font-bold text-sm">Tarjeta (posnet)</span>
           {hayDiferenciaDePrecio && (
             <span className="text-xs font-bold text-neutral-600 tabular-nums">
               ${formatearMonto(totalLista)}
@@ -861,6 +885,50 @@ export default function PosApp({
           )}
         </button>
       </div>
+
+      {esPosnet && (
+        <div className="border border-orange-200 bg-orange-50 rounded-xl p-4 mb-4">
+          <p className="text-sm font-semibold text-neutral-800 mb-2">¿Con qué tarjeta paga?</p>
+          <div className="grid grid-cols-2 gap-2 mb-3" role="group" aria-label="Tipo de tarjeta">
+            {(
+              [
+                ["DEBITO", "Débito"],
+                ["CREDITO", "Crédito"],
+              ] as const
+            ).map(([valor, texto]) => (
+              <button
+                key={valor}
+                onClick={() => setTarjetaPosnet(valor)}
+                aria-pressed={tarjetaPosnet === valor}
+                className={`py-2.5 rounded-lg border-2 font-bold text-sm bg-white ${
+                  tarjetaPosnet === valor ? "border-orange-600 text-orange-800" : "border-orange-100 text-neutral-700"
+                }`}
+              >
+                {texto}
+              </button>
+            ))}
+          </div>
+          <ol className="text-sm text-orange-950 space-y-1 mb-3 list-decimal list-inside">
+            <li>
+              Marcá <b className="tabular-nums">${formatearMonto(totalFinal)}</b> en el posnet de Nave.
+            </li>
+            <li>El cliente apoya o inserta la tarjeta.</li>
+            <li>
+              Cuando salga <b>aprobado</b>, tocá el botón de abajo.
+            </li>
+          </ol>
+          <label className="block text-xs text-neutral-600">
+            N.º de cupón del posnet (opcional, ayuda a controlar el cierre)
+            <input
+              value={cuponPosnet}
+              onChange={(e) => setCuponPosnet(e.target.value)}
+              inputMode="numeric"
+              placeholder="Ej. 000123"
+              className="w-full mt-1 border border-neutral-300 rounded-lg px-3 py-2 text-sm bg-white"
+            />
+          </label>
+        </div>
+      )}
 
       <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-4 mb-4">
         <div className="flex justify-between items-center text-xs text-neutral-400 mb-1">
@@ -901,6 +969,8 @@ export default function PosApp({
           <p className="text-xs text-neutral-400">
             Se va a generar un código QR para que el cliente pague desde su celular — la venta se confirma sola apenas paga.
           </p>
+        ) : esPosnet ? (
+          <p className="text-xs text-neutral-400">Se cobra el total justo en el posnet: no hay vuelto.</p>
         ) : (
           <>
             <div className="flex justify-between items-center text-sm mb-2">
@@ -999,7 +1069,8 @@ export default function PosApp({
           enviando ||
           itemsCarrito.length === 0 ||
           (marcasCanje.size > 0 && pinCanje.length < 4) ||
-          (!esMercadoPago && montoNum < totalFinal) ||
+          (!esMercadoPago && !esPosnet && montoNum < totalFinal) ||
+          (esPosnet && !tarjetaPosnet) ||
           // Documento incompleto: mejor frenar acá que emitir mal la factura.
           (tipoReceptor === "CUIT" && docReceptor.length !== 11) ||
           (tipoReceptor === "DNI" && docReceptor.length < 7)
@@ -1010,7 +1081,11 @@ export default function PosApp({
           ? "Generando..."
           : esMercadoPago
             ? `Generar QR · $${formatearMonto(totalFinal)}`
-            : `Cobrar · $${formatearMonto(totalFinal)}`}
+            : esPosnet
+              ? tarjetaPosnet
+                ? `Ya salió aprobado · Cobrar $${formatearMonto(totalFinal)}`
+                : "Elegí débito o crédito"
+              : `Cobrar · $${formatearMonto(totalFinal)}`}
       </button>
     </div>
   );

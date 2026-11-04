@@ -78,7 +78,8 @@ export async function debeFacturarseAutomatico(medioPago: string): Promise<boole
   const config = await obtenerConfigArca();
   if (!config.habilitado) return false;
   if (medioPago === "EFECTIVO") return config.autoEfectivo;
-  if (medioPago === "MERCADO_PAGO") return config.autoMercadoPago;
+  // El posnet es un cobro electrónico, como Mercado Pago: va con esa misma opción.
+  if (medioPago === "MERCADO_PAGO" || medioPago === "POSNET") return config.autoMercadoPago;
   return false;
 }
 

@@ -101,6 +101,8 @@ const MEDIO_PRECIOS: Record<string, Medio> = {
   PREPAGA: "debito",
   CREDITO: "credito",
   CUOTAS_SIN_INTERES: "credito",
+  POSNET_DEBITO: "debito",
+  POSNET_CREDITO: "credito",
 };
 
 function redondear2(v: number) {

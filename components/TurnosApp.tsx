@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useState } from "react";
 import type { Local, Turno } from "@/lib/supabase";
+import { etiquetaMedio } from "@/lib/formasPago";
 import {
   abrirTurno,
   historialTurnos,
@@ -637,7 +638,7 @@ function VentasTabla({ ventas, compacta = false }: { ventas: VentaTurno[]; compa
             </td>
             <td className={pad}>{v.productos || "—"}</td>
             <td className={`${pad} text-neutral-500`}>
-              {v.medioPago === "MERCADO_PAGO" ? "Mercado Pago" : v.medioPago === "EFECTIVO" ? "Efectivo" : "—"}
+              {etiquetaMedio(v.medioPago)}
             </td>
             <td className={`${pad} text-right tabular-nums`}>${formatearMonto(v.total)}</td>
             <td className={`${pad} text-right tabular-nums`}>

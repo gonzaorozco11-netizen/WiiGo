@@ -6,18 +6,14 @@ import { calcularRendicion } from "@/app/(app)/liquidaciones/actions";
 import { exigirGestionInterna } from "@/lib/marcaSesion";
 import { listarMermas } from "@/lib/mermas";
 import { devueltoPorDetalle, netearRenglon } from "@/lib/devueltoPorDetalle";
+import { CLAVE_COMISION_COBRO, POSNET_POR_DEFECTO, entraPorCuenta } from "@/lib/formasPago";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 // Coincide con `pagos.forma_pago_cliente` (ver cobros-efectivo/actions.ts)
 // y con Configuración → Comisión de Mercado Pago — no hay una sola
 // comisión de MP, varía según cómo pagó el cliente.
-const CLAVE_COMISION_MP: Record<string, string> = {
-  DINERO_CUENTA: "MP_COMISION_DINERO_CUENTA",
-  DEBITO: "MP_COMISION_DEBITO",
-  CUOTAS_SIN_INTERES: "MP_COMISION_CUOTAS_SIN_INTERES",
-  PREPAGA: "MP_COMISION_PREPAGA",
-  CREDITO: "MP_COMISION_CREDITO",
-};
+// Incluye las del posnet (ver lib/formasPago.ts).
+const CLAVE_COMISION_MP: Record<string, string> = CLAVE_COMISION_COBRO;
 
 // Qué se descuenta según la forma de pago es configurable — Efectivo y
 // Mercado Pago pueden tener reglas distintas (ej. no descontar IVA en
@@ -50,7 +46,10 @@ async function tasasRentabilidad(supabase: SupabaseClient) {
     iibb: Number(cfg.IIBB_PORCENTAJE ?? 0),
     impCreditos: Number(cfg.IMP_CREDITOS_PORCENTAJE ?? 0),
     mpComisionPorFormaPago: Object.fromEntries(
-      Object.entries(CLAVE_COMISION_MP).map(([forma, clave]) => [forma, Number(cfg[clave] ?? 0)])
+      Object.entries(CLAVE_COMISION_MP).map(([forma, clave]) => [
+        forma,
+        Number(cfg[clave] ?? (forma === "POSNET_DEBITO" ? POSNET_POR_DEFECTO.debito : forma === "POSNET_CREDITO" ? POSNET_POR_DEFECTO.credito : 0)),
+      ])
     ) as Record<string, number>,
     // Por defecto Efectivo no descuenta nada (no hay rastro bancario) y
     // Mercado Pago descuenta todo — mismo comportamiento que había antes
@@ -198,7 +197,7 @@ export async function calcularRentabilidad(idMarca: string, desde: string, hasta
     // Igual que en Liquidaciones: la tasa cargada es sin IVA, se le suma acá.
     const tasaMp = formaPagoMp ? tasas.mpComisionPorFormaPago[formaPagoMp] ?? 0 : 0;
     const tasaMpConIva = tasaMp * (1 + tasas.ivaGeneral / 100);
-    const feeMpLinea = venta.medio_pago === "MERCADO_PAGO" && reglas.comision ? ventaBruta * (tasaMpConIva / 100) : 0;
+    const feeMpLinea = entraPorCuenta(venta.medio_pago) && reglas.comision ? ventaBruta * (tasaMpConIva / 100) : 0;
     // El IVA, IIBB e Impuesto a los Créditos ahora se aplican o no según lo
     // que esté tildado en Configuración para cada forma de pago — antes
     // era fijo (IVA siempre, el resto solo si no era efectivo).
@@ -271,13 +270,13 @@ export async function panelAuditoria(desde: string, hasta: string) {
   const sircrebPorcentaje = cfg.SIRCREB_PORCENTAJE ?? 0;
   const impDebitosPorcentaje = cfg.IMP_DEBITOS_PORCENTAJE ?? 0;
 
-  // SIRCREB: retención sobre todo lo que ingresó por Mercado Pago en el
-  // período — la sufre WiiGo en su propia cuenta, sin importar la marca.
+  // SIRCREB: retención sobre todo lo que ingresó por Mercado Pago o el
+  // posnet en el período — la sufre WiiGo en su propia cuenta, sin importar la marca.
   const { data: ventasMp } = await supabase
     .from("ventas")
     .select("total")
     .eq("estado", "PAGADA")
-    .eq("medio_pago", "MERCADO_PAGO")
+    .in("medio_pago", ["MERCADO_PAGO", "POSNET"])
     .gte("fecha", `${desde}T00:00:00`)
     .lte("fecha", `${hasta}T23:59:59`);
   const totalMp = (ventasMp ?? []).reduce((acc, v) => acc + (v.total ?? 0), 0);

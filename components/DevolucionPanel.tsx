@@ -43,6 +43,7 @@ export default function DevolucionPanel({
   const [pendiente, startTransition] = useTransition();
 
   const porMercadoPago = medioPago === "MERCADO_PAGO";
+  const porPosnet = medioPago === "POSNET";
 
   useEffect(() => {
     let vigente = true;
@@ -197,12 +198,14 @@ export default function DevolucionPanel({
           <div className="border border-neutral-200 rounded-lg px-3 py-2.5 mb-3">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400">La plata vuelve</p>
             <p className="text-sm font-semibold text-neutral-900">
-              {porMercadoPago ? "Por Mercado Pago" : "En efectivo, de la caja"}
+              {porMercadoPago ? "Por Mercado Pago" : porPosnet ? "Por el posnet" : "En efectivo, de la caja"}
             </p>
             <p className="text-xs text-neutral-500 mt-0.5">
               {porMercadoPago
                 ? "El sistema le pide el reintegro a Mercado Pago al confirmar. Si pagó con tarjeta, puede aparecerle recién en el resumen siguiente."
-                : "Sale del turno abierto ahora y el arqueo lo descuenta solo."}
+                : porPosnet
+                  ? "Devolvelo desde el posnet de Nave con la tarjeta del cliente: el sistema no lo hace solo."
+                  : "Sale del turno abierto ahora y el arqueo lo descuenta solo."}
             </p>
           </div>
 

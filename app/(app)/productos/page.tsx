@@ -60,7 +60,7 @@ export default async function ProductosPage() {
         "IMP_DEBITOS_PORCENTAJE",
         "MP_COMISION_DINERO_CUENTA",
         "MP_COMISION_DEBITO",
-        "MP_COMISION_CREDITO",
+        "POSNET_COMISION_CREDITO",
       ]),
     listarProveedores(),
   ]);
@@ -148,7 +148,8 @@ export default async function ProductosPage() {
         mpPorMedio: {
           MP_COMISION_DINERO_CUENTA: num("MP_COMISION_DINERO_CUENTA"),
           MP_COMISION_DEBITO: num("MP_COMISION_DEBITO"),
-          MP_COMISION_CREDITO: num("MP_COMISION_CREDITO"),
+          // El crédito se cobra con el posnet (lib/margenMarca.ts).
+          POSNET_COMISION_CREDITO: num("POSNET_COMISION_CREDITO", 1.8),
         },
       }}
       stockPorVariante={stockPorVariante}

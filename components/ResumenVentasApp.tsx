@@ -23,6 +23,7 @@ const CANAL_LABEL: Record<string, string> = {
 function formatearMedioPago(medioPago: string | null) {
   if (medioPago === "EFECTIVO") return "Efectivo";
   if (medioPago === "MERCADO_PAGO") return "Mercado Pago";
+  if (medioPago === "POSNET") return "Posnet";
   return "—";
 }
 
@@ -42,7 +43,7 @@ export default function ResumenVentasApp() {
   const [lineas, setLineas] = useState<LineaResumenVentas[]>([]);
   const [posibleTruncado, setPosibleTruncado] = useState(false);
   const [busqueda, setBusqueda] = useState("");
-  const [filtroPago, setFiltroPago] = useState<"TODOS" | "EFECTIVO" | "MERCADO_PAGO">("TODOS");
+  const [filtroPago, setFiltroPago] = useState<"TODOS" | "EFECTIVO" | "MERCADO_PAGO" | "POSNET">("TODOS");
   const [idVentaSeleccionada, setIdVentaSeleccionada] = useState<string | null>(null);
 
   const lineasFiltradas = useMemo(() => {
@@ -150,12 +151,13 @@ export default function ResumenVentasApp() {
         />
         <select
           value={filtroPago}
-          onChange={(e) => setFiltroPago(e.target.value as "TODOS" | "EFECTIVO" | "MERCADO_PAGO")}
+          onChange={(e) => setFiltroPago(e.target.value as "TODOS" | "EFECTIVO" | "MERCADO_PAGO" | "POSNET")}
           className="border border-neutral-300 rounded-lg px-3 py-2 text-sm bg-white"
         >
           <option value="TODOS">Todos los pagos</option>
           <option value="EFECTIVO">Efectivo</option>
           <option value="MERCADO_PAGO">Mercado Pago</option>
+          <option value="POSNET">Posnet</option>
         </select>
       </div>
 

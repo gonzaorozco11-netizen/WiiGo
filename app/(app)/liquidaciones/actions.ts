@@ -9,6 +9,7 @@ import { registrarMovimientoRetencion, saldosRetencionPorMarca, historialRetenci
 import { obtenerSesionMarca, exigirLecturaDeMarca, exigirGestionInterna } from "@/lib/marcaSesion";
 import { registrarMovimientoComercial } from "@/lib/cuentaComercialMarca";
 import { devueltoPorDetalle, netearRenglon, type Devuelto } from "@/lib/devueltoPorDetalle";
+import { CLAVE_COMISION_COBRO, POSNET_POR_DEFECTO, entraPorCuenta } from "@/lib/formasPago";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 async function usuarioActual() {
@@ -27,16 +28,13 @@ function redondear2(valor: number) {
   return Math.round(valor * 100) / 100;
 }
 
-// Coincide con `pagos.forma_pago_cliente` (ver cobros-efectivo/actions.ts)
-// y con las tasas cargadas en Configuración → Comisión de Mercado Pago —
-// no hay una sola comisión de MP, varía según cómo pagó el cliente.
-const CLAVE_COMISION_MP: Record<string, string> = {
-  DINERO_CUENTA: "MP_COMISION_DINERO_CUENTA",
-  DEBITO: "MP_COMISION_DEBITO",
-  CUOTAS_SIN_INTERES: "MP_COMISION_CUOTAS_SIN_INTERES",
-  PREPAGA: "MP_COMISION_PREPAGA",
-  CREDITO: "MP_COMISION_CREDITO",
-};
+// Coincide con `pagos.forma_pago_cliente` y con las tasas cargadas en
+// Configuración — no hay una sola comisión de cobro: varía según dónde y con
+// qué pagó el cliente (QR de Mercado Pago o posnet). Ver lib/formasPago.ts.
+const CLAVE_COMISION_MP = CLAVE_COMISION_COBRO;
+// Si la tasa del posnet no se cargó todavía, la de Nave (no 0: sería no descontarle nada a la marca).
+const porDefectoCobro = (forma: string) =>
+  forma === "POSNET_DEBITO" ? POSNET_POR_DEFECTO.debito : forma === "POSNET_CREDITO" ? POSNET_POR_DEFECTO.credito : 0;
 
 async function tasasGenerales(supabase: SupabaseClient) {
   const { data } = await supabase
@@ -56,7 +54,7 @@ async function tasasGenerales(supabase: SupabaseClient) {
     ivaGeneral: cfg.IVA_GENERAL_PORCENTAJE ?? 21,
     sircreb: cfg.SIRCREB_PORCENTAJE ?? 0,
     mpComisionPorFormaPago: Object.fromEntries(
-      Object.entries(CLAVE_COMISION_MP).map(([forma, clave]) => [forma, cfg[clave] ?? 0])
+      Object.entries(CLAVE_COMISION_MP).map(([forma, clave]) => [forma, cfg[clave] ?? porDefectoCobro(forma)])
     ) as Record<string, number>,
   };
 }
@@ -250,8 +248,9 @@ export async function construirLineas(
     // base, sin IVA, así que el IVA se suma acá, no al cargar la tasa.
     const tasaMp = formaPagoMp ? tasas.mpComisionPorFormaPago[formaPagoMp] ?? 0 : 0;
     const tasaMpConIva = tasaMp * (1 + tasas.ivaGeneral / 100);
+    // Mercado Pago o posnet: el costo de cobro de esa forma de pago exacta.
     const feeMp =
-      !esEfectivo && marca.trasladar_comision_cobro && venta.medio_pago === "MERCADO_PAGO"
+      !esEfectivo && marca.trasladar_comision_cobro && entraPorCuenta(venta.medio_pago)
         ? redondear2(ventaBruta * (tasaMpConIva / 100))
         : 0;
     // SIRCREB solo se retiene preventivamente si la marca tiene tildado
@@ -261,8 +260,9 @@ export async function construirLineas(
     // de la marca) es no financiar con plata propia una retención que es de
     // un tercero: ver movimientos_retencion_marca, esto NUNCA es ganancia
     // de WiiGo, queda pendiente de compensar/devolver.
+    // Lo del posnet entra a la cuenta del banco: también le retienen.
     const sircrebLinea =
-      !esEfectivo && marca.trasladar_sircreb && venta.medio_pago === "MERCADO_PAGO"
+      !esEfectivo && marca.trasladar_sircreb && entraPorCuenta(venta.medio_pago)
         ? redondear2(ventaBruta * (tasas.sircreb / 100))
         : 0;
     // Impuesto a los Débitos: al revés de los demás, hoy WiiGo lo absorbe
@@ -453,6 +453,8 @@ export async function detalleLiquidacion(idLiquidacion: string) {
     .maybeSingle();
   if (errorLiq) throw new Error(friendlyDbError(errorLiq));
   if (!liquidacion) throw new Error("No se encontró la liquidación");
+  // Es un endpoint: una marca solo puede pedir las suyas (ahora la ve en su portal).
+  await exigirLecturaDeMarca(liquidacion.id_marca as string);
 
   const { data: ventas, error: errorVentas } = await supabase
     .from("ventas")

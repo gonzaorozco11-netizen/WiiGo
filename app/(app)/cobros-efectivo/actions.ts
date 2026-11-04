@@ -17,6 +17,7 @@ import { registrarCanje, esProfesionalActivo } from "@/lib/canjesProfesionales";
 import { calcularCanjePuntos, aplicarCanjePuntos, calcularPuntosGanados } from "@/lib/puntosWiigo";
 import { facturarAlAcreditarse } from "@/lib/arca/config";
 import { descontarStockDeVenta } from "@/lib/stockVenta";
+import { CLAVE_COMISION_COBRO } from "@/lib/formasPago";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 async function usuarioActual() {
@@ -29,13 +30,10 @@ async function usuarioActual() {
 // Coincide con las tasas que se cargan en Configuración → Comisión de
 // Mercado Pago (ver guardarConfigMercadoPago) — cada forma de pago del
 // cliente tiene su propia comisión, no hay una tasa única de MP.
-const FORMAS_PAGO_MP: Record<string, string> = {
-  DINERO_CUENTA: "MP_COMISION_DINERO_CUENTA",
-  DEBITO: "MP_COMISION_DEBITO",
-  CUOTAS_SIN_INTERES: "MP_COMISION_CUOTAS_SIN_INTERES",
-  PREPAGA: "MP_COMISION_PREPAGA",
-  CREDITO: "MP_COMISION_CREDITO",
-};
+// Las del posnet no van acá: este cobro es solo de Mercado Pago.
+const FORMAS_PAGO_MP: Record<string, string> = Object.fromEntries(
+  Object.entries(CLAVE_COMISION_COBRO).filter(([forma]) => !forma.startsWith("POSNET_"))
+);
 
 async function tasaComisionMp(supabase: SupabaseClient, formaPago: string) {
   const clave = FORMAS_PAGO_MP[formaPago];

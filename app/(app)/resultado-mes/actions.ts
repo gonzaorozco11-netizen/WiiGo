@@ -301,8 +301,9 @@ async function calcularTableroEnVivo(periodo: string): Promise<TableroSupuesto> 
   // Netas), neto de todo el SIRCREB retenido (propio + consignación) =====
   const iibbPorcentaje = configNumero("IIBB_PORCENTAJE", 0);
   const sircrebPorcentaje = configNumero("SIRCREB_PORCENTAJE", 0);
+  // Mercado Pago y posnet: lo que entra a una cuenta, donde retienen SIRCREB.
   const totalMp = (ventasPeriodoTotales ?? [])
-    .filter((v) => v.medio_pago === "MERCADO_PAGO")
+    .filter((v) => v.medio_pago === "MERCADO_PAGO" || v.medio_pago === "POSNET")
     .reduce((acc, v) => acc + ((v.total as number) ?? 0), 0);
 
   const ingresosBrutosIibb = redondear2(ventasNetas * (iibbPorcentaje / 100));

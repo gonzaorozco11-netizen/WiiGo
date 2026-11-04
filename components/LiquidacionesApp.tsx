@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { Marca, Liquidacion } from "@/lib/supabase";
+import { etiquetaPago } from "@/lib/formasPago";
 import {
   calcularRendicion,
   marcarComoLiquidada,
@@ -39,22 +40,8 @@ function formatearFecha(fechaISO: string) {
   return fecha.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
-const ETIQUETA_FORMA_PAGO_MP: Record<string, string> = {
-  DINERO_CUENTA: "Dinero en cuenta",
-  DEBITO: "Débito",
-  CUOTAS_SIN_INTERES: "Cuotas sin tarjeta",
-  PREPAGA: "Prepaga",
-  CREDITO: "Crédito",
-};
-
-function formatearMedioPago(medioPago: string | null, formaPagoMp: string | null) {
-  if (medioPago === "EFECTIVO") return "Efectivo";
-  if (medioPago === "MERCADO_PAGO") {
-    const forma = formaPagoMp ? ETIQUETA_FORMA_PAGO_MP[formaPagoMp] : null;
-    return forma ? `Mercado Pago (${forma})` : "Mercado Pago";
-  }
-  return "—";
-}
+// "Efectivo", "QR · Débito", "Posnet · Crédito" (lib/formasPago.ts).
+const formatearMedioPago = (medioPago: string | null, formaPagoMp: string | null) => etiquetaPago(medioPago, formaPagoMp);
 
 function inicioDeMes() {
   const d = new Date();
@@ -77,7 +64,7 @@ export default function LiquidacionesApp({ marcas }: { marcas: Marca[] }) {
   const [historial, setHistorial] = useState<Liquidacion[]>([]);
   const [verHistorial, setVerHistorial] = useState(false);
   const [busqueda, setBusqueda] = useState("");
-  const [filtroPago, setFiltroPago] = useState<"TODOS" | "EFECTIVO" | "MERCADO_PAGO">("TODOS");
+  const [filtroPago, setFiltroPago] = useState<"TODOS" | "EFECTIVO" | "MERCADO_PAGO" | "POSNET">("TODOS");
 
   const lineasFiltradas = useMemo(() => {
     if (!resultado) return [];
@@ -240,12 +227,13 @@ export default function LiquidacionesApp({ marcas }: { marcas: Marca[] }) {
                 />
                 <select
                   value={filtroPago}
-                  onChange={(e) => setFiltroPago(e.target.value as "TODOS" | "EFECTIVO" | "MERCADO_PAGO")}
+                  onChange={(e) => setFiltroPago(e.target.value as "TODOS" | "EFECTIVO" | "MERCADO_PAGO" | "POSNET")}
                   className="border border-neutral-300 rounded-lg px-3 py-1.5 text-sm bg-white"
                 >
                   <option value="TODOS">Todos los pagos</option>
                   <option value="EFECTIVO">Efectivo</option>
-                  <option value="MERCADO_PAGO">Mercado Pago</option>
+                  <option value="MERCADO_PAGO">QR Mercado Pago</option>
+                  <option value="POSNET">Posnet</option>
                 </select>
               </div>
               {lineasFiltradas.length === 0 ? (
