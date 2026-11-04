@@ -30,6 +30,7 @@ import {
   precioParaMargen,
   redondearPrecio,
   simularMargen,
+  elPeorMedio,
   type CondicionesMarca,
   type TasasGenerales,
 } from "@/lib/margenMarca";
@@ -590,9 +591,7 @@ function FormPrecios({
   // ambigüedad que había con el botón $ / % / ★.
   const [ganar, setGanar] = useState(() => {
     if (p.costo === null || !p.precio) return "";
-    const m = simularMargen({ precio: p.precio, costo: p.costo, marca: condiciones, tasas }).find(
-      (x) => x.medio === "CREDITO"
-    );
+    const m = elPeorMedio(simularMargen({ precio: p.precio, costo: p.costo, marca: condiciones, tasas }));
     return m?.porcentaje != null ? m.porcentaje.toFixed(1) : "";
   });
   /** El precio exacto antes de redondear, solo para mostrar de dónde salió. */
@@ -642,9 +641,7 @@ function FormPrecios({
     if (!desdeGanar && p.costo !== null) {
       const m =
         Number.isFinite(n) && n > 0
-          ? simularMargen({ precio: n, costo: p.costo, marca: condiciones, tasas }).find(
-              (x) => x.medio === "CREDITO"
-            )
+          ? elPeorMedio(simularMargen({ precio: n, costo: p.costo, marca: condiciones, tasas }))
           : null;
       setGanar(m?.porcentaje != null ? m.porcentaje.toFixed(1) : "");
     }
@@ -698,9 +695,7 @@ function FormPrecios({
   // Lo que le queda HOY, para la franja de arriba.
   const hoyTarjeta =
     p.precio && p.costo !== null
-      ? simularMargen({ precio: p.precio, costo: p.costo, marca: condiciones, tasas }).find(
-          (m) => m.medio === "CREDITO"
-        )
+      ? elPeorMedio(simularMargen({ precio: p.precio, costo: p.costo, marca: condiciones, tasas }))
       : null;
 
   // Lo que de verdad le queda con el precio puesto. Es el mismo cálculo que
@@ -710,9 +705,7 @@ function FormPrecios({
   // calcular pero lo que se le transfiere sí, y es lo único que el panel
   // puede decirle mientras tanto.
   const conTarjeta = gondolaValida
-    ? simularMargen({ precio: nGondola, costo: p.costo, marca: condiciones, tasas }).find(
-        (m) => m.medio === "CREDITO"
-      )
+    ? elPeorMedio(simularMargen({ precio: nGondola, costo: p.costo, marca: condiciones, tasas }))
     : null;
   const conEfectivo =
     usaEfectivo && nEfectivo > 0 && nEfectivo <= nGondola
@@ -2213,7 +2206,7 @@ function RepartoAlta({
     );
   }
 
-  const conCredito = simularMargen({ precio, costo, marca, tasas }).find((m) => m.medio === "CREDITO");
+  const conCredito = elPeorMedio(simularMargen({ precio, costo, marca, tasas }));
   const conEfectivo = simularMargen({ precio: efectivo, costo, marca, tasas }).find(
     (m) => m.medio === "EFECTIVO"
   );

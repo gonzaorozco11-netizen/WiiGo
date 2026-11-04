@@ -30,6 +30,7 @@ import {
   type TasasGenerales,
   type CondicionesMarca,
   type MargenSimulado,
+  elPeorMedio,
 } from "@/lib/margenMarca";
 
 type VarianteForm = {
@@ -732,7 +733,8 @@ function PrecioDeMarca({
   const [costo, setCosto] = useState(costoInicial?.costo ?? 0);
   const [precio, setPrecio] = useState(precioInicial ?? 0);
   const [descuento, setDescuento] = useState(descuentoInicial ?? 0);
-  const [medio, setMedio] = useState<string>("CREDITO");
+  // Arranca en la prepaga: es lo que menos le deja a la marca (ver elPeorMedio).
+  const [medio, setMedio] = useState<string>("PREPAGA");
   const [efectivo, setEfectivo] = useState(precioEfectivoInicial ?? 0);
   const [offEfectivo, setOffEfectivo] = useState(() =>
     precioInicial && precioEfectivoInicial && precioInicial > 0
@@ -779,11 +781,12 @@ function PrecioDeMarca({
   const enEfectivo = filasContado.find((f) => f.medio === "EFECTIVO");
 
   // Si está elegido "efectivo" y no hay precio de contado, las dos columnas
-  // serían idénticas: se muestra crédito del otro lado, que es la comparación
-  // que importa.
+  // serían idénticas: se muestra del otro lado lo que menos deja (la prepaga,
+  // hoy), que es la comparación que importa.
+  const peorMedio = elPeorMedio(filas);
   const filaIzq =
     (medio === "EFECTIVO" && precioContado === precio
-      ? filas.find((f) => f.medio === "CREDITO")
+      ? peorMedio
       : fila) ?? filas[0];
 
   // Escribir el margen que quiere la marca y que salga el precio. Es la inversa
@@ -861,6 +864,7 @@ function PrecioDeMarca({
     DINERO_CUENTA: "QR",
     DEBITO: "Débito",
     CREDITO: "Crédito",
+    PREPAGA: "Prepaga",
   };
 
   return (
@@ -1076,7 +1080,7 @@ function PrecioDeMarca({
                       <td className="py-1.5 text-right text-neutral-500">${pesos(f.precio)}</td>
                       <td
                         className={`py-1.5 text-right font-semibold ${
-                          f.medio === "EFECTIVO" ? "text-emerald-700" : f.medio === "CREDITO" ? "text-red-700" : "text-neutral-800"
+                          f.medio === "EFECTIVO" ? "text-emerald-700" : f.medio === peorMedio?.medio ? "text-red-700" : "text-neutral-800"
                         }`}
                       >
                         ${pesos(gananciaDe(f))}

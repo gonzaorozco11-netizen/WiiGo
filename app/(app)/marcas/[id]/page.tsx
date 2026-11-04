@@ -36,6 +36,7 @@ export default async function MarcaDetailPage({ params }: { params: Promise<{ id
       "IMP_DEBITOS_PORCENTAJE",
       "MP_COMISION_DINERO_CUENTA",
       "MP_COMISION_DEBITO",
+      "MP_COMISION_PREPAGA",
       "POSNET_COMISION_CREDITO",
     ]);
   const c = new Map((cfg ?? []).map((x) => [x.parametro as string, Number(x.valor ?? 0)]));
@@ -52,6 +53,7 @@ export default async function MarcaDetailPage({ params }: { params: Promise<{ id
           MP_COMISION_DEBITO: c.get("MP_COMISION_DEBITO") ?? 0,
           // El crédito se cobra con el posnet (lib/margenMarca.ts).
           POSNET_COMISION_CREDITO: c.get("POSNET_COMISION_CREDITO") ?? 1.8,
+          MP_COMISION_PREPAGA: c.get("MP_COMISION_PREPAGA") ?? 3.85,
         },
       }}
       marca={marcaRes.data as Marca}

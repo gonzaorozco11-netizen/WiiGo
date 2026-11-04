@@ -12,6 +12,7 @@ import {
 import { pedirBaja } from "@/app/portal/cambios/actions";
 import { SIN_SUBCATEGORIA } from "@/lib/costosMarca";
 import PanelReparto, { PanelSinCosto } from "@/components/PanelReparto";
+import { elPeorMedio } from "@/lib/margenMarca";
 
 // "Mis productos": la lista de lo que WiiGo le vende a la marca, con su stock
 // y con el costo que solo ella puede cargar.
@@ -404,9 +405,9 @@ function Fila({
         }
       : original;
 
-  // El peor caso: con crédito es cuando menos le queda, así que la columna
-  // nunca le promete de más.
-  const peor = p.porMedio.find((m) => m.medio === "CREDITO") ?? p.porMedio[0];
+  // El peor caso: la forma de pago con la que menos le queda (hoy la prepaga),
+  // así la columna nunca le promete de más.
+  const peor = elPeorMedio(p.porMedio) ?? p.porMedio[0];
   const queda = p.costo != null && peor ? peor.leQueda ?? 0 : null;
 
   function guardar() {
@@ -540,7 +541,7 @@ function Fila({
  * en components/PanelReparto.tsx y no acá.
  */
 function Reparto({ p }: { p: ProductoConMargen }) {
-  const credito = p.porMedio.find((m) => m.medio === "CREDITO");
+  const credito = elPeorMedio(p.porMedio);
   const efectivo = p.porMedio.find((m) => m.medio === "EFECTIVO");
   if (!credito || !efectivo) return null;
 

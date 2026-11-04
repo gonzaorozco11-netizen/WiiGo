@@ -378,7 +378,8 @@ export default function PanelReparto({
       <p className="panel-tit">{titulo}</p>
 
       <div className={efectivo ? "duo" : "duo solo"}>
-        <Columna m={credito} costo={costo} corto="Crédito" gana={!ganaEfectivo} />
+        {/* Es el medio que menos le deja (hoy la prepaga): se llama así para no prometer de más. */}
+        <Columna m={credito} costo={costo} corto="Tarjeta o QR (lo menos)" gana={!ganaEfectivo} />
         {efectivo && <Columna m={efectivo} costo={costo} corto="Efectivo" gana={ganaEfectivo} />}
       </div>
 

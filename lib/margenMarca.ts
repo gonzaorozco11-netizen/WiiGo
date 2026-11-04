@@ -10,7 +10,7 @@
 // con crédito te queda esto" antes de que pase.
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type MedioSimulado = "EFECTIVO" | "DINERO_CUENTA" | "DEBITO" | "CREDITO";
+export type MedioSimulado = "EFECTIVO" | "DINERO_CUENTA" | "DEBITO" | "CREDITO" | "PREPAGA";
 
 export const MEDIOS_SIMULADOS: { clave: MedioSimulado; etiqueta: string }[] = [
   { clave: "EFECTIVO", etiqueta: "Efectivo" },
@@ -18,7 +18,20 @@ export const MEDIOS_SIMULADOS: { clave: MedioSimulado; etiqueta: string }[] = [
   { clave: "DEBITO", etiqueta: "Tarjeta de débito" },
   // Desde 2026-11-04 el crédito se cobra con el posnet (Nave), no por QR.
   { clave: "CREDITO", etiqueta: "Tarjeta de crédito (posnet)" },
+  { clave: "PREPAGA", etiqueta: "QR · tarjeta prepaga" },
 ];
+
+/**
+ * La forma de pago con tarjeta o QR que MENOS le deja a la marca, con las
+ * tasas de hoy (hoy, la prepaga). Los precios sugeridos y "lo que te queda"
+ * se miran contra esta, así la marca no pierde pague como pague el cliente
+ * (Gonzalo, 2026-11-04). Se calcula, no se fija: si cambia una tasa, sigue sola.
+ */
+export function elPeorMedio<T extends { medio: MedioSimulado; leTransferimos: number }>(filas: T[]): T | undefined {
+  return filas
+    .filter((f) => f.medio !== "EFECTIVO")
+    .reduce<T | undefined>((peor, f) => (!peor || f.leTransferimos < peor.leTransferimos ? f : peor), undefined);
+}
 
 export type CondicionesMarca = {
   royalty: number;
@@ -115,12 +128,14 @@ export function precioParaMargen(params: {
   tasas: TasasGenerales;
   medio?: MedioSimulado;
 }): number | null {
-  const { margenDeseado, costo, marca, tasas, medio = "CREDITO" } = params;
+  // Sin medio: contra el que menos le deja, para que no pierda pague como pague.
+  const { margenDeseado, costo, marca, tasas, medio } = params;
   if (!Number.isFinite(costo) || costo <= 0) return null;
   if (!Number.isFinite(margenDeseado) || margenDeseado < 0 || margenDeseado >= 100) return null;
 
   const base = 10000;
-  const sim = simularMargen({ precio: base, costo: null, marca, tasas }).find((m) => m.medio === medio);
+  const filas = simularMargen({ precio: base, costo: null, marca, tasas });
+  const sim = medio ? filas.find((m) => m.medio === medio) : elPeorMedio(filas);
   if (!sim) return null;
 
   // Cuánto del precio le queda después de comisiones e impuestos.
@@ -141,6 +156,7 @@ const CLAVE_MP: Record<MedioSimulado, string> = {
   DINERO_CUENTA: "MP_COMISION_DINERO_CUENTA",
   DEBITO: "MP_COMISION_DEBITO",
   CREDITO: "POSNET_COMISION_CREDITO",
+  PREPAGA: "MP_COMISION_PREPAGA",
 };
 
 export async function tasasGeneralesParaSimular(supabase: SupabaseClient): Promise<TasasGenerales> {
@@ -154,6 +170,7 @@ export async function tasasGeneralesParaSimular(supabase: SupabaseClient): Promi
       "IVA_GENERAL_PORCENTAJE",
       "MP_COMISION_DINERO_CUENTA",
       "MP_COMISION_DEBITO",
+      "MP_COMISION_PREPAGA",
       "POSNET_COMISION_CREDITO",
     ]);
   const cfg = Object.fromEntries((data ?? []).map((r) => [r.parametro, Number(r.valor ?? 0)]));
@@ -165,6 +182,7 @@ export async function tasasGeneralesParaSimular(supabase: SupabaseClient): Promi
     mpPorMedio: {
       MP_COMISION_DINERO_CUENTA: cfg.MP_COMISION_DINERO_CUENTA ?? 0,
       MP_COMISION_DEBITO: cfg.MP_COMISION_DEBITO ?? 0,
+      MP_COMISION_PREPAGA: cfg.MP_COMISION_PREPAGA ?? 3.85,
       POSNET_COMISION_CREDITO: cfg.POSNET_COMISION_CREDITO ?? 1.8,
     },
   };

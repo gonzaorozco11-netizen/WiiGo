@@ -15,6 +15,7 @@ import {
   condicionesDeMarca,
   tasasGeneralesParaSimular,
   simularMargen,
+  elPeorMedio,
   type MargenSimulado,
 } from "@/lib/margenMarca";
 
@@ -2015,7 +2016,7 @@ export async function bienvenidaPortal(): Promise<BienvenidaPortal | null> {
       marca,
       tasas,
     });
-    const m = porMedio.find((x) => x.medio === "CREDITO") ?? porMedio[0];
+    const m = elPeorMedio(porMedio) ?? porMedio[0];
     if (m) {
       const pct = (v: number) => (precio > 0 ? (v / precio) * 100 : 0);
       const impuestos = m.impCreditos + m.impDebitos + m.sircreb;
