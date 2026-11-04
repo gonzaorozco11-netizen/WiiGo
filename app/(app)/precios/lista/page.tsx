@@ -1,4 +1,4 @@
-import { Figtree, Fraunces } from "next/font/google";
+import { figtree, fraunces } from "@/app/fuentes/lista";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import { ambosPrecios } from "@/lib/precios";
@@ -12,9 +12,7 @@ export const dynamic = "force-dynamic";
 // todo lo que se vende en el local con lo que cobra hoy la caja, oferta
 // incluida. Se guarda en PDF con "Imprimir → Guardar como PDF", como los
 // carteles y los códigos (Gonzalo, 2026-10-30: la forma 3, "lista con fotos chicas").
-
-const figtree = Figtree({ subsets: ["latin"], weight: ["400", "500", "600", "700", "800"], variable: "--f-lista", display: "swap" });
-const fraunces = Fraunces({ subsets: ["latin"], style: ["italic", "normal"], weight: ["500", "600"], variable: "--f-lista-titulo", display: "swap" });
+// Letras: Figtree y Fraunces, guardadas en app/fuentes.
 
 export default async function ListaPreciosPage() {
   const sesion = await obtenerSesionConPantallas();

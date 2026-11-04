@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { Outfit, Manrope, JetBrains_Mono } from "next/font/google";
+import { outfit, manrope, jetbrainsMono as mono } from "@/app/fuentes/espacio";
 import { logout } from "@/app/login/actions";
 import { sesionDelPortal, ETIQUETA_PLAN } from "@/lib/marcaSesion";
 import { dejarDeVerPortal } from "@/app/(app)/marcas/ver-portal-actions";
@@ -15,12 +15,9 @@ import "./portal.css";
 
 // Tipografías propias del portal. Outfit es geométrica y redondeada, de la
 // misma familia visual que el logo; Manrope para leer y la monoespaciada para
-// que los números aliñen en columna. Van por next/font para que se sirvan
-// desde el propio dominio: sin pedido a Google y sin el parpadeo de la fuente
+// que los números aliñen en columna. Guardadas en app/fuentes: se sirven
+// desde el propio dominio, sin pedido a Google y sin el parpadeo de la fuente
 // cambiando a mitad de carga.
-const outfit = Outfit({ subsets: ["latin"], weight: ["500", "600", "700"], variable: "--f-titulo" });
-const manrope = Manrope({ subsets: ["latin"], weight: ["400", "500", "600", "700"], variable: "--f-texto" });
-const mono = JetBrains_Mono({ subsets: ["latin"], weight: ["400", "500", "600"], variable: "--f-mono" });
 
 // Portal de marcas: árbol de rutas separado del sistema interno a propósito.
 //

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { ambosPrecios } from "@/lib/precios";
-import { Bricolage_Grotesque } from "next/font/google";
+import { bricolage } from "@/app/fuentes/asesor";
 import type {
   Local,
   MarcaPublica,
@@ -146,7 +146,8 @@ function listaConY(items: string[], idioma: Idioma) {
 // Títulos y precios. El texto corrido va en Figtree (ver app/asesor/layout.tsx).
 // Antes eran Bodoni en cursiva y Fredoka; se cambió con el rediseño del
 // 2026-11-02 porque de lejos, en la pantalla de 27", la Bodoni fina no se leía.
-const titular = Bricolage_Grotesque({ subsets: ["latin"], weight: ["500", "600", "700", "800"] });
+// Guardada en app/fuentes.
+const titular = bricolage;
 
 // Idioma de la pantalla — arranca en español, y se auto-detecta el del
 // dispositivo al cargar (ver el useEffect en AsesorApp). Por ahora solo

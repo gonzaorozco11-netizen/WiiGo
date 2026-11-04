@@ -1,17 +1,10 @@
 import type { Metadata, Viewport } from "next";
-import { Archivo } from "next/font/google";
+import { archivo } from "./fuentes/sistema";
 import "./globals.css";
 
-// Solo para títulos y números del sistema interno (ver .app-shell en
-// globals.css). `preload: false` a propósito: el totem y el asesor no la
-// usan, y en esa placa cada archivo que se baja de más se siente.
-const archivo = Archivo({
-  subsets: ["latin"],
-  weight: ["600", "700"],
-  variable: "--font-archivo",
-  display: "swap",
-  preload: false,
-});
+// Archivo: solo para títulos y números del sistema interno (ver .app-shell en
+// globals.css). Sin precarga a propósito: el totem y el asesor no la usan, y
+// en esa placa cada archivo que se baja de más se siente (app/fuentes).
 
 export const metadata: Metadata = {
   title: "WiiGo",

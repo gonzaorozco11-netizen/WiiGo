@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { Outfit, Manrope, JetBrains_Mono } from "next/font/google";
+import { outfit, manrope, jetbrainsMono as mono } from "@/app/fuentes/espacio";
 import { logout } from "@/app/login/actions";
 import { obtenerSesionProfesional } from "@/lib/profesionalSesion";
 import { dejarDeVerEspacio } from "@/app/(app)/profesionales/actions";
@@ -19,9 +19,6 @@ import "./espacio.css";
 // portal de marcas. El control es doble: proxy.ts no deja a una profesional
 // salir de /mi-espacio, y este layout no deja entrar a nadie que no sea una
 // profesional con usuario activo. Las mismas fuentes que el portal de marcas.
-const outfit = Outfit({ subsets: ["latin"], weight: ["500", "600", "700"], variable: "--f-titulo" });
-const manrope = Manrope({ subsets: ["latin"], weight: ["400", "500", "600", "700"], variable: "--f-texto" });
-const mono = JetBrains_Mono({ subsets: ["latin"], weight: ["400", "500", "600"], variable: "--f-mono" });
 
 export const dynamic = "force-dynamic";
 
