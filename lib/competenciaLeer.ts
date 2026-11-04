@@ -117,20 +117,27 @@ async function leerMardegan(): Promise<Leido[]> {
  * 1 kg; lo que no viene por kilo, por el tamaño del nombre o de la variante.
  */
 async function leerAlifrutPublico(): Promise<Leido[]> {
-  type V = { nombre: string; sku: string; precio: number; precioAnterior: number | null; cartelOferta?: string | null; sinStock?: boolean };
-  type P = { id: string; nombre: string; precio: number; precioAnterior: number | null; cartelOferta?: string | null; sinStock?: boolean; sku?: string; variantes: V[] };
-  const lista = await json<P[]>("https://www.alifrut-distribuidora.com.ar/api/buscador");
+  type V = { nombre: string; sku: string; precio: number; precioAnterior?: number | null; cartelOferta?: string | null; sinStock?: boolean };
+  type P = { id: string; nombre: string; precio?: number; precioAnterior?: number | null; cartelOferta?: string | null; sinStock?: boolean; reingreso?: boolean; sku?: string; variantes: V[] };
+  // Desde 2026-11-04 /api/buscador solo responde a una búsqueda (y de a 60):
+  // la lista entera está en /api/lista-precios, la misma del modal "Lista de precios".
+  // Ahí no viene el stock: "reingreso" es lo que está por volver a entrar.
+  const respuesta = await json<{ productos?: P[] } | P[]>("https://www.alifrut-distribuidora.com.ar/api/lista-precios");
+  const lista = (Array.isArray(respuesta) ? respuesta : respuesta.productos ?? []).map((p) => ({ ...p, sinStock: p.sinStock ?? p.reingreso === true }));
+  if (lista.length === 0) throw new Error("Alifrut no devolvió productos");
   const salida: Leido[] = [];
   for (const p of lista) {
     const url = link(`https://www.alifrut-distribuidora.com.ar/producto/${encodeURIComponent(p.id)}`);
     const kilo = p.variantes.find((v) => /^x?\s*1\s*kg$/i.test(v.nombre.trim()));
     const otra = kilo ? null : p.variantes.find((v) => gramosDelNombre(` ${v.nombre.replace(/^x/i, "")}`));
-    const v = kilo ?? otra;
+    // Sin tamaño en la variante ("1 unidad"): la primera, que es la de menor cantidad.
+    // En /api/lista-precios el producto no trae precio propio, solo sus variantes.
+    const v = kilo ?? otra ?? (p.precio ? undefined : p.variantes[0]);
     const precio = Number(v ? v.precio : p.precio);
     const antes = Number(v ? v.precioAnterior : p.precioAnterior) || null;
     // Sin tamaño (como el kiwi, que no lo dice) se guarda igual: el tamaño lo
     // pone después lo que Gonzalo cargó en Costos de compra (ver actualizarCompetencia).
-    const gramos = kilo ? 1000 : v ? gramosDelNombre(` ${v.nombre.replace(/^x/i, "")}`) : gramosDelNombre(p.nombre);
+    const gramos = kilo ? 1000 : (v ? gramosDelNombre(` ${v.nombre.replace(/^x/i, "")}`) : null) ?? gramosDelNombre(p.nombre);
     if (!(precio > 0)) continue;
     salida.push({
       clave: v?.sku ?? p.sku ?? p.id,
@@ -141,7 +148,7 @@ async function leerAlifrutPublico(): Promise<Leido[]> {
       precio_antes: antes && antes > precio ? antes : null,
       nota: antes && antes > precio ? (v?.cartelOferta ?? p.cartelOferta ?? null) : null,
       url,
-      disponible: !(v ? v.sinStock : p.sinStock),
+      disponible: !(v?.sinStock ?? p.sinStock),
     });
   }
   return salida;
@@ -480,7 +487,10 @@ export async function cargarCompetencia(supabase: SupabaseClient): Promise<Datos
   const cfg = (cfgs ?? []).find((c) => c.parametro === "COMPETENCIA_LEIDA_EL");
   const desc = Number((cfgs ?? []).find((c) => c.parametro === CLAVE_DESC_ALIFRUT)?.valor);
   const vinculos: Record<string, VinculoCompetencia[]> = {};
+  // Solo los comercios que siguen: lo viejo de Bela Vita y Regio queda en la base, pero no se muestra.
+  const activos = new Set<string>(COMERCIOS.map((c) => c.clave));
   for (const v of vinc ?? []) {
+    if (!activos.has(v.comercio as string)) continue;
     const fila = v.competencia_items as unknown as Record<string, unknown> | null;
     (vinculos[v.id_producto as string] ??= []).push({ comercio: v.comercio as Comercio, estado: v.estado as VinculoCompetencia["estado"], item: fila ? filaAItem(fila) : null });
   }

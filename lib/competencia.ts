@@ -8,16 +8,18 @@
 
 export type Comercio = "BELAVITA" | "MEGANUTS" | "REGIO" | "MARDEGAN" | "JUMBO" | "ALIFRUT" | "SABORYGRAN";
 
+// Bela Vita y Regio Mendoza se sacaron el 2026-11-04 (Gonzalo: «sacalos de
+// competencia»): ya no se leen ni se muestran. Siguen en el tipo Comercio
+// porque quedan filas viejas en la base; cargarCompetencia las ignora.
+// La comparación principal pasó a Sabor y Gran, la dietética que fracciona.
 export const COMERCIOS: { clave: Comercio; nombre: string; tipo: string; principal?: boolean }[] = [
-  { clave: "BELAVITA", nombre: "Bela Vita", tipo: "dietética · fraccionado", principal: true },
   { clave: "MEGANUTS", nombre: "Mega Nuts", tipo: "frutos secos · de 500 g a 5 kg" },
-  { clave: "REGIO", nombre: "Regio Mendoza", tipo: "por kilo, desde 1 kg" },
   { clave: "MARDEGAN", nombre: "Mardegan", tipo: "mix y especias" },
   { clave: "JUMBO", nombre: "Jumbo Mendoza", tipo: "súper · sucursal Mendoza" },
   // Su lista al público, no la exclusiva de Gonzalo: lo que paga cualquiera que le compra (Gonzalo, 2026-10-29).
   { clave: "ALIFRUT", nombre: "Alifrut (público)", tipo: "mayorista · precio al público, por kilo" },
   // Dietética mendocina (Gonzalo, 2026-11-04). En la Lista de precios va al lado de Alifrut, solo lo confirmado.
-  { clave: "SABORYGRAN", nombre: "Sabor y Gran", tipo: "dietética · paquetes de 100 g a 1 kg" },
+  { clave: "SABORYGRAN", nombre: "Sabor y Gran", tipo: "dietética · paquetes de 100 g a 1 kg", principal: true },
 ];
 
 export type ItemCompetencia = {
@@ -98,7 +100,16 @@ function palabras(nombre: string): string[] {
     .replace(/\b\d+([.,]\d+)?\s*(kg|kgs|gr|grs|g|gramos)\b/g, " ")
     .split(" ")
     .filter((w) => w && !VACIAS.has(w) && !/^\d+$/.test(w))
-    .map((w) => SINONIMOS[w] ?? w.replace(/(es|s)$/, (m) => (w.length > 4 ? "" : m)));
+    .map((w) => SINONIMOS[w] ?? raiz(w));
+}
+
+/**
+ * Singular y plural iguales: "tomates" y "tomate" → "tomat"; "frutales" y
+ * "frutal" → "frutal". Antes se sacaba solo "es"/"s", y "tomates" quedaba
+ * "tomat" contra "tomate": Sabor y Gran no aparecía para los tomates (2026-11-04).
+ */
+function raiz(w: string) {
+  return w.length > 4 ? w.replace(/(es|s|e)$/, "") : w;
 }
 
 function tieneFrase(texto: string, frase: string[]) {
