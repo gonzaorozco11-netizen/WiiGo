@@ -96,7 +96,10 @@ export default function UsuariosApp({
                     <td className="p-3">
                       <span className="text-xs bg-neutral-100 text-neutral-600 rounded-full px-2 py-0.5">
                         {etiquetaRolBase(u.rol)}
-                        {u.rol !== "admin" && (u.areas_acceso ?? []).length > 0 && (
+                        {u.rol === "marca" && (
+                          <> · {marcas.find((m) => m.id_marca === u.id_marca)?.nombre ?? (u.id_marca ? "…" : "sin marca")}</>
+                        )}
+                        {u.rol !== "admin" && u.rol !== "marca" && (u.areas_acceso ?? []).length > 0 && (
                           <> · {u.areas_acceso.map((id) => areaPorId.get(id)?.nombre ?? "").filter(Boolean).join(", ")}</>
                         )}
                         {u.rol !== "admin" && (u.areas_acceso ?? []).length === 0 && u.id_persona && " · según persona"}

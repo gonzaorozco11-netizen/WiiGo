@@ -19,7 +19,9 @@ export default async function OrganizacionPage() {
     esAdmin
       ? supabase
           .from("usuarios")
-          .select("id_usuario, nombre, email, rol, estado, fecha_alta, permisos, id_persona, areas_acceso")
+          // id_marca: sin él, al reabrir "Editar" de un usuario de marca el
+          // selector salía vacío aunque la marca estuviera guardada.
+          .select("id_usuario, nombre, email, rol, estado, fecha_alta, permisos, id_persona, areas_acceso, id_marca")
           .order("nombre", { ascending: true })
       : Promise.resolve({ data: null }),
   ]);

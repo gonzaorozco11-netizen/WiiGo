@@ -44,6 +44,8 @@ export type Usuario = {
   permisos: string[];
   id_persona: string | null;
   areas_acceso: string[];
+  /** Solo para el rol "marca": a qué marca pertenece (entra a su portal). */
+  id_marca?: string | null;
 };
 
 export type Area = {
