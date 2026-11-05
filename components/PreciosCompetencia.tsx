@@ -229,7 +229,8 @@ export default function PreciosCompetencia(
                       {columnas.map((c) => {
                         const x = f.v[c.clave];
                         return (
-                          <td key={c.clave}>
+                          // Lo que ya confirmaste (✓) queda en verde: así se ve qué falta revisar (Gonzalo, 2026-11-05).
+                          <td key={c.clave} className={x?.item && x.estado === "CONFIRMADO" ? "pr-comp-ok" : undefined}>
                             {x?.item ? (
                               <span className="pr-comp-celda">
                                 <span className="n">{pesos(conPrecio(x, f.p.gramos))}</span>
@@ -239,6 +240,7 @@ export default function PreciosCompetencia(
                                   {x.item.porKilo ? " · por kilo" : ""}
                                   {x.estado === "PROPUESTO" ? " · sin confirmar" : ""}
                                 </small>
+                                {x.estado === "CONFIRMADO" && <span className="pr-comp-visto">✓ confirmado</span>}
                               </span>
                             ) : (
                               <span className="pr-tenue">—</span>
