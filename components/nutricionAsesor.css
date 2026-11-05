@@ -1,0 +1,39 @@
+/* Información nutricional de la ficha en la pantalla asesora (components/NutricionAsesor.tsx).
+   Para la all-in-one: sin gap en flex (se usa margin), solo transform y opacity animados. */
+.na { display: flex; flex-direction: column; color: #22301f; }
+.na > * + * { margin-top: 14px; }
+.na-cab { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; }
+.na-eyebrow { margin: 0 8px 0 0; font-size: 10.5px; font-weight: 800; letter-spacing: .2em; text-transform: uppercase; color: #8a9180; }
+.na-toggle { display: inline-flex; background: #fff; border: 1px solid #e2e6da; border-radius: 999px; padding: 3px; }
+.na-toggle button { border: 0; background: transparent; color: #5b6656; font-size: 11.5px; font-weight: 800; padding: 6px 11px; border-radius: 999px; cursor: pointer; }
+.na-toggle button.on { background: #22301f; color: #fff; }
+
+.na-kcal { display: flex; justify-content: space-between; align-items: flex-end; }
+.na-kcal b { font-size: 58px; line-height: .9; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.na-kcal small { font-size: 11px; font-weight: 800; letter-spacing: .16em; color: #8a9180; margin-left: 6px; }
+.na-dia { flex: 1; max-width: 190px; margin-left: 12px; text-align: right; font-size: 12px; color: #5b6656; }
+.na-dia div { margin-top: 6px; height: 8px; border-radius: 99px; background: #e3e7dc; overflow: hidden; }
+.na-dia i { display: block; height: 100%; background: #e8743b; border-radius: 99px; transform-origin: left; transition: transform 1.2s cubic-bezier(.2, .8, .2, 1) .2s; }
+
+/* Las tarjetas: arrancan dadas vuelta y giran una por una */
+.na-cartas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-gap: 10px; perspective: 900px; }
+.na-carta { position: relative; height: 104px; border: 0; padding: 0; background: transparent; cursor: pointer; text-align: left; transform-style: preserve-3d; transform: rotateY(180deg); transition: transform .7s cubic-bezier(.3, 1.3, .5, 1), opacity .25s; }
+.na.listo .na-carta { transform: rotateY(0deg); }
+.na-carta.apagada { opacity: .45; }
+.na-carta > span { position: absolute; top: 0; right: 0; bottom: 0; left: 0; border-radius: 18px; -webkit-backface-visibility: hidden; backface-visibility: hidden; }
+.na-carta .frente { padding: 12px 14px; color: #fff; display: flex; flex-direction: column; justify-content: space-between; }
+.na-carta .frente small { font-size: 12px; font-weight: 800; opacity: .92; }
+.na-carta .frente b { font-size: 32px; line-height: 1; font-weight: 700; font-variant-numeric: tabular-nums; }
+.na-carta .frente span { font-size: 11px; opacity: .92; }
+.na-carta .dorso { background: #e9ecdf; transform: rotateY(180deg); }
+
+.na-explica { margin: 0; min-height: 36px; border-radius: 12px; background: #fff; padding: 9px 12px; font-size: 12.5px; line-height: 1.4; color: #3d3d3d; transition: background .25s; }
+
+.na-chips { display: flex; flex-wrap: wrap; margin-bottom: -6px; }
+.na-chips span { margin: 0 6px 6px 0; font-size: 12px; font-weight: 800; border-radius: 999px; padding: 5px 10px; background: #fdeee5; color: #22301f; opacity: 0; transform: translateY(8px); transition: opacity .3s, transform .4s cubic-bezier(.3, 1.5, .5, 1); }
+.na.listo .na-chips span { opacity: 1; transform: none; }
+.na-nota { margin: 6px 0 0; font-size: 10.5px; color: #8a9180; }
+
+@media (prefers-reduced-motion: reduce) {
+  .na-carta, .na-dia i, .na-chips span { transition: none; }
+}

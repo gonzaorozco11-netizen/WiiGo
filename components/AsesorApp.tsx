@@ -22,6 +22,7 @@ import type {
 } from "@/lib/supabase";
 import { colorDeProducto, ubicacionDe, type ModuloGondola, type UbicacionGondola } from "@/lib/gondola";
 import ViajeGondola from "@/components/ViajeGondola";
+import NutricionAsesor from "@/components/NutricionAsesor";
 import IconoRed, { colorDeRed } from "@/components/IconoRed";
 import type { ClaveRed } from "@/lib/redesProfesional";
 
@@ -74,9 +75,6 @@ const C4 = "#5f92a8"; // profesionales
 
 /** Pestaña que junta los productos de la marca a los que nadie les puso rubro. */
 const SIN_RUBRO = "__sin_rubro__";
-
-/** Vuelta completa del anillo de kcal (2πr con r = 59). */
-const ANILLO_LARGO = 2 * Math.PI * 59;
 
 /**
  * Cada puerta de la principal tiñe la pantalla a la que lleva.
@@ -3145,70 +3143,6 @@ export default function AsesorApp({
   );
 }
 
-// Colores por macro (tono fuerte para el punto/valor, tono claro para el
-// fondo de la explicación cuando se toca la burbuja) — separados del verde
-// de marca porque acá cumplen una función de dato, no de identidad.
-const MACROS_INFO: Record<
-  string,
-  { fuerte: string; claro: string; label: Record<Idioma, string>; explicacion: (v: number, idioma: Idioma) => string }
-> = {
-  Proteínas: {
-    fuerte: "#4f8c7c",
-    claro: "#e3f0ec",
-    label: { es: "Proteína", en: "Protein", pt: "Proteína" },
-    explicacion: (v, idioma) =>
-      idioma === "en"
-        ? `Provides ${v}g of protein per 100g.`
-        : idioma === "pt"
-          ? `Fornece ${v}g de proteína a cada 100g.`
-          : `Aporta ${v}g de proteínas cada 100g.`,
-  },
-  Carbohidratos: {
-    fuerte: "#c9822f",
-    claro: "#faf0de",
-    label: { es: "Carbos", en: "Carbs", pt: "Carboidratos" },
-    explicacion: (v, idioma) =>
-      idioma === "en"
-        ? `Contains ${v}g of carbohydrates per 100g.`
-        : idioma === "pt"
-          ? `Contém ${v}g de carboidratos a cada 100g.`
-          : `Contiene ${v}g de carbohidratos cada 100g.`,
-  },
-  Grasas: {
-    fuerte: "#b85a48",
-    claro: "#f6e6e2",
-    label: { es: "Grasas", en: "Fat", pt: "Gorduras" },
-    explicacion: (v, idioma) =>
-      idioma === "en"
-        ? `Has ${v}g of healthy fats per 100g.`
-        : idioma === "pt"
-          ? `Tem ${v}g de gorduras a cada 100g.`
-          : `Tiene ${v}g de grasas cada 100g.`,
-  },
-  Fibra: {
-    fuerte: "#7a63ad",
-    claro: "#eee9f7",
-    label: { es: "Fibra", en: "Fiber", pt: "Fibra" },
-    explicacion: (v, idioma) =>
-      idioma === "en"
-        ? `Adds ${v}g of fiber per 100g.`
-        : idioma === "pt"
-          ? `Soma ${v}g de fibra a cada 100g.`
-          : `Suma ${v}g de fibra cada 100g.`,
-  },
-  Sodio: {
-    fuerte: "#5f8bb0",
-    claro: "#e6eef4",
-    label: { es: "Sodio", en: "Sodium", pt: "Sódio" },
-    explicacion: (v, idioma) =>
-      idioma === "en"
-        ? `Contains ${v}g of sodium per 100g.`
-        : idioma === "pt"
-          ? `Contém ${v}g de sódio a cada 100g.`
-          : `Contiene ${v}g de sodio cada 100g.`,
-  },
-};
-
 function ProductoDetalleModal({
   producto,
   marca,
@@ -3234,7 +3168,6 @@ function ProductoDetalleModal({
   );
   const [fotoActiva, setFotoActiva] = useState<string | null>(fotos[0] ?? null);
   const [abierto, setAbierto] = useState(false);
-  const [macroActiva, setMacroActiva] = useState<string | null>(null);
   const [ingredientesAbierto, setIngredientesAbierto] = useState(false);
   const [micronutrientesAbierto, setMicronutrientesAbierto] = useState(false);
   const [saborActivo, setSaborActivo] = useState<string | null>(null);
@@ -3259,7 +3192,6 @@ function ProductoDetalleModal({
     { label: "Sodio", valor: ficha?.sodio ?? null },
   ].filter((m): m is { label: string; valor: number } => m.valor !== null);
 
-  const macroSeleccionada = macros.find((m) => m.label === macroActiva);
   const precios = ambosPrecios(producto, null);
 
   const hayKcal = ficha?.kcal_100g !== null && ficha?.kcal_100g !== undefined;
@@ -3548,91 +3480,13 @@ function ProductoDetalleModal({
               className="px-6 pt-5 pb-6 flex flex-col gap-4"
               style={{ opacity: abierto ? 1 : 0, transition: "opacity .5s ease .25s" }}
             >
+            {/* Kcal que suben y tarjetas que giran (opción C, Gonzalo 2026-11-05). */}
+            {ficha && (hayKcal || macros.length > 0) ? (
+              <NutricionAsesor ficha={ficha} idioma={idioma} claseTitular={titular.className} />
+            ) : (
               <p className="text-[10.5px] font-extrabold uppercase tracking-[.2em] text-[#8a9180]">
                 {tituloNutricional}
               </p>
-
-            {(hayKcal || macros.length > 0) && (
-              <div className="flex flex-col items-center gap-4">
-                {hayKcal && (
-                  <div className="relative w-[132px] h-[132px] shrink-0 grid place-items-center">
-                    {/* El anillo se llena animando el trazo de un círculo SVG.
-                        Antes se animaba un degradé circular, que hay que
-                        recalcular entero en cada cuadro; esto lo dibuja la placa
-                        de video y va fluido hasta en la all-in-one. */}
-                    <svg className="absolute inset-0 -rotate-90" viewBox="0 0 132 132" aria-hidden>
-                      <circle cx="66" cy="66" r="59" fill="none" stroke="#e3e7dc" strokeWidth="14" />
-                      <circle
-                        cx="66"
-                        cy="66"
-                        r="59"
-                        fill="none"
-                        stroke="#6fa050"
-                        strokeWidth="14"
-                        strokeLinecap="round"
-                        strokeDasharray={ANILLO_LARGO}
-                        style={
-                          {
-                            "--largo": `${ANILLO_LARGO}`,
-                            "--resto": `${ANILLO_LARGO * (1 - 0.72)}`,
-                            strokeDashoffset: ANILLO_LARGO,
-                            animation: "asesorAnillo 1.1s cubic-bezier(.2,.8,.2,1) .35s forwards",
-                          } as React.CSSProperties
-                        }
-                      />
-                    </svg>
-                    <div className="relative w-[102px] h-[102px] rounded-full bg-white flex flex-col items-center justify-center">
-                      <span className={`${titular.className} text-[26px] font-semibold`}>{ficha?.kcal_100g}</span>
-                      <span className="text-[9px] tracking-[.2em] text-[#8a9180] mt-0.5">KCAL</span>
-                    </div>
-                  </div>
-                )}
-
-                {macros.length > 0 && (
-                  <div className="flex gap-2 flex-wrap justify-center">
-                    {macros.map((m) => {
-                      const info = MACROS_INFO[m.label];
-                      const activa = macroActiva === m.label;
-                      return (
-                        <button
-                          key={m.label}
-                          onClick={() => setMacroActiva(activa ? null : m.label)}
-                          className="w-[70px] rounded-2xl bg-white border flex flex-col items-center gap-0.5 py-2.5"
-                          style={{
-                            transform: activa ? "scale(1.06)" : "scale(1)",
-                            boxShadow: activa ? "0 8px 18px -8px rgba(0,0,0,.25)" : "none",
-                            borderColor: activa ? "transparent" : "#e2e6da",
-                            opacity: macroActiva && !activa ? 0.45 : 1,
-                            transition: "all .2s ease",
-                          }}
-                        >
-                          <span className="w-1.5 h-1.5 rounded-full" style={{ background: info.fuerte }} />
-                          <span className={`${titular.className} text-[14px] font-semibold`}>{m.valor}g</span>
-                          <span className="text-[8.5px] text-[#8a9180] text-center leading-tight">
-                            {info.label[idioma]}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-
-                <div
-                  className="w-full rounded-2xl overflow-hidden"
-                  style={{
-                    maxHeight: macroSeleccionada ? 90 : 0,
-                    padding: macroSeleccionada ? "11px 15px" : "0 15px",
-                    background: macroSeleccionada ? MACROS_INFO[macroSeleccionada.label].claro : "transparent",
-                    transition: "max-height .35s ease, padding .35s ease",
-                  }}
-                >
-                  {macroSeleccionada && (
-                    <p className="text-[12px] leading-relaxed text-[#2d2d2d] m-0">
-                      {MACROS_INFO[macroSeleccionada.label].explicacion(macroSeleccionada.valor, idioma)}
-                    </p>
-                  )}
-                </div>
-              </div>
             )}
 
             {ficha?.porcion && (
