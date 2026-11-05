@@ -70,7 +70,16 @@ const VACIAS = new Set(["x", "de", "del", "la", "el", "los", "las", "y", "en", "
 // Palabras que cambian el producto: con una sí y la otra no, no es el mismo.
 const DECISIVAS = [["con", "sal"], ["sin", "sal"]];
 // Variedades que se excluyen: pasas negras no son rubias (Jumbo proponía "pasas rubias" para las negras).
-const EXCLUYENTES = [["negra", "rubia"]];
+// Coco en escamas no es coco rallado (Sabor y Gran, 2026-11-05).
+// Nuez de Brasil no es nuez Chandler; las almohaditas de un gusto no son las de otro.
+const EXCLUYENTES = [["negra", "rubia"], ["escama", "rallado"], ["brasil", "chandler"], ["salvado", "frutilla", "limon", "avellana", "choco", "dulce"], ["clasico", "tropical", "europeo", "energetico", "semilla"]];
+// Lo que cambia qué producto es: "harina de almendras" no son almendras, ni
+// "aceite de coco" es coco. Si una de las dos lo dice y la otra no, no es el mismo
+// (Sabor y Gran proponía harina de almendras para las almendras enteras, 2026-11-05).
+const FORMAS = ["harina", "aceite", "manteca", "pasta", "leche", "crema", "galletita", "galleta", "barra", "barrita", "bebida", "mermelada", "salsa", "garrapinada", "japon", "saborizado", "molida", "molido", "polvo", "caramelo", "moscada"];
+// La primera palabra sola no dice qué es: "mix clásico" no es "mix cervecero".
+// Para estos tiene que coincidir, además, al menos otra palabra (2026-11-05).
+const GENERICAS = new Set(["mix", "granola", "almohadita", "nuez"]);
 const SINONIMOS: Record<string, string> = {
   nueces: "nuez", almendras: "almendra", castanas: "caju", castana: "caju", cajus: "caju", avellanas: "avellana",
   datiles: "datil", pasas: "pasa", morochas: "negra", morocha: "negra", negras: "negra", rubias: "rubia",
@@ -132,7 +141,12 @@ export function parecido(nuestro: string, suyo: string): number {
     const suya = grupo.find((w) => b.has(w));
     if (nuestra && suya && nuestra !== suya) return 0;
   }
+  const forma = (lista: Iterable<string>) => new Set([...lista].filter((w) => FORMAS.some((f) => w.startsWith(f))).map((w) => FORMAS.find((f) => w.startsWith(f))));
+  const fa = forma(a);
+  const fb = forma(b);
+  if (fa.size !== fb.size || [...fa].some((f) => !fb.has(f))) return 0;
   const comunes = a.filter((w) => b.has(w)).length;
+  if (GENERICAS.has(a[0]) && a.length > 1 && comunes < 2) return 0;
   return comunes / new Set([...a, ...b]).size + 0.5 * (comunes / a.length);
 }
 

@@ -24,6 +24,7 @@ import PreciosCompetencia from "@/components/PreciosCompetencia";
 import PreciosGondola, { type GondolaLocal, type ProductoGondola } from "@/components/PreciosGondola";
 import type { DatosCompetencia } from "@/lib/competenciaLeer";
 import { precioATuTamano } from "@/lib/competencia";
+import { colorDeRubro } from "@/lib/coloresRubro";
 import {
   guardarConfigPrecios,
   guardarEnvase,
@@ -349,7 +350,7 @@ export default function PreciosApp(props: Props) {
           />
         )}
         {pestana === "competencia" && (
-          <PreciosCompetencia productos={productos} datos={props.competencia ?? null} avisar={avisar} margenPara={margenParaPrecio} llevarA={llevarAPrecio} minimo={minimo} />
+          <PreciosCompetencia productos={productos} rubros={rubros} datos={props.competencia ?? null} avisar={avisar} margenPara={margenParaPrecio} llevarA={llevarAPrecio} minimo={minimo} />
         )}
         {pestana === "gondola" && (
           <PreciosGondola
@@ -451,23 +452,6 @@ function Margen({ m, minimo }: { m: number; minimo: number }) {
     </span>
   );
 }
-
-/**
- * Un color por rubro (color, fondo suave, texto), según el orden de los
- * rubros: siempre el mismo para cada uno. Ninguno es el azul de tarjeta ni el
- * verde agua de efectivo.
- */
-const COLORES_RUBRO: [string, string, string][] = [
-  ["#b7791f", "#fdf6e7", "#7c4a03"], // tostado
-  ["#c2416b", "#fdf0f4", "#8a1f45"], // frambuesa
-  ["#5f8a2e", "#f3f8ec", "#3d5c1a"], // oliva
-  ["#d4622a", "#fdf1ea", "#94380c"], // naranja
-  ["#7a5bb5", "#f5f1fb", "#4f3489"], // lavanda
-  ["#2f7fa8", "#eef6fb", "#1b5272"], // celeste
-  ["#a2571f", "#f9f0e8", "#6b3510"], // canela
-  ["#4f6b7a", "#f0f4f6", "#30444f"], // pizarra
-];
-const COLOR_SIN_RUBRO: [string, string, string] = ["#9ca3af", "#f6f7f9", "#374151"];
 
 /** Las mismas columnas en el encabezado y en la tabla de cada rubro, para que queden alineadas. */
 function ColumnasLista() {
@@ -681,7 +665,7 @@ function Lista(props: {
           </table>
           {grupos.map((g) => {
             const idx = g.rubro ? props.rubros.findIndex((x) => x.id === g.rubro!.id) : -1;
-            const [rc, rt, ro] = idx >= 0 ? COLORES_RUBRO[idx % COLORES_RUBRO.length] : COLOR_SIN_RUBRO;
+            const [rc, rt, ro] = colorDeRubro(idx);
             return (
               <div key={`g-${g.titulo}`} className="pr-rubro" style={{ "--rc": rc, "--rt": rt, "--ro": ro } as CSSProperties}>
                 <div className="pr-rubro-cab">

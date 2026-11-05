@@ -310,6 +310,12 @@ a.pr-btn { color: inherit; text-decoration: none; display: inline-flex; align-it
 .pr-tabla.pr-tabla-comp { min-width: 900px; }
 .pr-tabla-comp th, .pr-tabla-comp td { text-align: left; }
 .pr-tabla-comp th:first-child, .pr-tabla-comp td:first-child { padding-left: 14px; }
+/* Cabecera de cada rubro dentro de la tabla, con el color del rubro de la Lista de precios. */
+.pr-tabla-comp tr.pr-comp-grupo td { background: var(--rt); border-top: 2px solid color-mix(in srgb, var(--rc) 45%, transparent); border-bottom: 1.5px solid color-mix(in srgb, var(--rc) 30%, transparent); padding-top: 10px; padding-bottom: 10px; }
+.pr-tabla-comp tr.pr-comp-grupo:hover td { background: var(--rt); }
+.pr-comp-grupo .nom { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; color: var(--ro); margin-right: 10px; }
+.pr-comp-grupo .cuantos { font-size: 12.5px; color: var(--tinta-3); margin-right: 12px; }
+.pr-comp-grupo .pr-dif { margin-right: 6px; font-size: 11.5px; padding: 2px 7px; }
 .pr-comp-celda { display: grid; font-size: 13px; }
 .pr-comp-celda small { color: var(--tinta-3); font-size: 11.5px; }
 .pr-dif { display: inline-block; font-size: 12px; font-weight: 700; border-radius: 6px; padding: 3px 8px; white-space: nowrap; }

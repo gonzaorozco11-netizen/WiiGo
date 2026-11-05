@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { COMERCIOS, diferencia, precioATuTamano, precioNormalATuTamano, type Comercio, type ItemCompetencia } from "@/lib/competencia";
 import type { DatosCompetencia, VinculoCompetencia } from "@/lib/competenciaLeer";
-import type { ProductoDelModulo } from "@/lib/datosPrecios";
+import type { ProductoDelModulo, RubroDelModulo } from "@/lib/datosPrecios";
+import { colorDeRubro } from "@/lib/coloresRubro";
 import { actualizarCompetenciaAhora, confirmarEquivalente, descartarEquivalente } from "@/app/(app)/precios/competencia-actions";
 
 // Pestaña "Competencia" de Precios: los precios de Mendoza, leídos solos cada
@@ -30,7 +31,7 @@ function chip(dif: number | null) {
 type Llevar = { margenPara: (id: string, precio: number) => number | null; llevarA: (id: string, precio: number) => void; minimo: number };
 
 export default function PreciosCompetencia(
-  props: { productos: ProductoDelModulo[]; datos: DatosCompetencia | null; avisar: (t: string, mal?: boolean) => void } & Llevar
+  props: { productos: ProductoDelModulo[]; rubros: RubroDelModulo[]; datos: DatosCompetencia | null; avisar: (t: string, mal?: boolean) => void } & Llevar
 ) {
   const router = useRouter();
   const [abierto, setAbierto] = useState<string | null>(null);
@@ -87,6 +88,24 @@ export default function PreciosCompetencia(
   const visibles = q
     ? filas.filter((f) => sinTildes(f.p.nombre).includes(q) || Object.values(f.v).some((x) => x?.item && sinTildes(x.item.nombre).includes(q)))
     : filas;
+  // Separado por rubro, como la Lista de precios y con los mismos colores
+  // (Gonzalo, 2026-11-05: «que se separe en subcategorías»). Rubros por nombre,
+  // lo que no tiene rubro al final; adentro, del más caro al más barato.
+  const rubroPorId = new Map(props.rubros.map((r, i) => [r.id, { r, i }]));
+  const idsRubro = [...new Set(visibles.map((f) => (f.p.idSubcategoria && rubroPorId.has(f.p.idSubcategoria) ? f.p.idSubcategoria : "")))].sort((a, b) => {
+    const na = rubroPorId.get(a)?.r.nombre;
+    const nb = rubroPorId.get(b)?.r.nombre;
+    if (!na || !nb) return na ? -1 : nb ? 1 : 0;
+    return na.localeCompare(nb, "es");
+  });
+  const grupos = idsRubro.map((id) => ({
+    id,
+    titulo: rubroPorId.get(id)?.r.nombre ?? "Sin rubro",
+    color: colorDeRubro(rubroPorId.get(id)?.i ?? -1),
+    filas: visibles
+      .filter((f) => (f.p.idSubcategoria && rubroPorId.has(f.p.idSubcategoria) ? f.p.idSubcategoria : "") === id)
+      .sort((a, b) => (b.dif ?? -9) - (a.dif ?? -9)),
+  }));
   const caros = filas.filter((f) => f.dif != null && f.dif > 0.08);
   const baratos = filas.filter((f) => f.dif != null && f.dif < -0.08);
   const parejos = filas.filter((f) => f.dif != null && Math.abs(f.dif) <= 0.08);
@@ -183,9 +202,25 @@ export default function PreciosCompetencia(
                   </td>
                 </tr>
               )}
-              {[...visibles]
-                .sort((a, b) => (b.dif ?? -9) - (a.dif ?? -9))
-                .flatMap((f) => {
+              {grupos.flatMap((g) => {
+                const [rc, rt, ro] = g.color;
+                const nCaros = g.filas.filter((f) => f.dif != null && f.dif > 0.08).length;
+                const nParejos = g.filas.filter((f) => f.dif != null && Math.abs(f.dif) <= 0.08).length;
+                const nBaratos = g.filas.filter((f) => f.dif != null && f.dif < -0.08).length;
+                const cab = (
+                  <tr key={`g-${g.id}`} className="pr-comp-grupo" style={{ "--rc": rc, "--rt": rt, "--ro": ro } as CSSProperties}>
+                    <td colSpan={3 + columnas.length}>
+                      <span className="nom">{g.titulo}</span>
+                      <span className="cuantos">
+                        {g.filas.length} {g.filas.length === 1 ? "producto" : "productos"}
+                      </span>
+                      {nCaros > 0 && <span className="pr-dif caro">{nCaros} más caro{nCaros === 1 ? "" : "s"}</span>}
+                      {nParejos > 0 && <span className="pr-dif parejo">{nParejos} parejo{nParejos === 1 ? "" : "s"}</span>}
+                      {nBaratos > 0 && <span className="pr-dif barato">{nBaratos} más barato{nBaratos === 1 ? "" : "s"}</span>}
+                    </td>
+                  </tr>
+                );
+                return [cab, ...g.filas.flatMap((f) => {
                   const abiertaEsta = abierto === f.p.id;
                   const fila = (
                     <tr key={f.p.id} className={`fila${abiertaEsta ? " abierta" : ""}`} onClick={() => setAbierto(abiertaEsta ? null : f.p.id)}>
@@ -226,7 +261,8 @@ export default function PreciosCompetencia(
                       </td>
                     </tr>
                   )];
-                })}
+                })];
+              })}
             </tbody>
           </table>
         </div>
