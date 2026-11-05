@@ -127,6 +127,7 @@ export const GUIAS: Guia[] = [
     rutas: ["/carteles", "/ficha-asistencia"],
     pasos: [
       "Entrá a <b>Carteles</b> e imprimí los pendientes.",
+      "Con la medida en <b>Según el lugar en la góndola</b>, cada cartel sale para su portaprecio: los de los ganchos de la pared (blisteros) de <b>65 × 40 mm</b> y los de las islas, la estantería y el resto de <b>60 × 35 mm</b>, en hojas separadas.",
       "Cada vez que ponés uno en la góndola, tocá <b>Lo puse</b> en ese producto.",
       "El precio nuevo empieza a cobrarse <b>recién ahí</b>: en la caja, el totem y la pantalla asesora.",
       "Si no llegaste a ponerlos todos, antes de fichar la salida el sistema te los pide. Si no pudiste, tocá <b>No pude ponerlos</b> y queda el aviso para el próximo turno.",

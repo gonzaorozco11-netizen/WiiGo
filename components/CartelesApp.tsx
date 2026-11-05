@@ -30,6 +30,8 @@ export type ItemCartel = {
   pesoG?: number | null;
   /** País de origen (de la ficha del asesor), chiquito arriba a la derecha. */
   origen?: string | null;
+  /** Dónde está en la góndola: GANCHO = blistero de la pared; ESTANTE = islas o estantería; null = sin lugar. */
+  lugar?: "GANCHO" | "ESTANTE" | null;
 };
 
 const SIN_MARCA = "Sin marca";
@@ -43,12 +45,13 @@ const SIN_MARCA = "Sin marca";
  * de escribir la medida a mano.
  */
 const MEDIDAS = [
-  // El porta precios que compró el local ("6 cm × 35 mm", paquete de 100).
-  // Va primero y es el que arranca elegido. Medido en Chrome: con 1 mm de
+  // El porta precios que compró el local ("6 cm × 35 mm", paquete de 100): islas,
+  // estantería y todo lo que no va en gancho. Medido en Chrome: con 1 mm de
   // aire por lado un precio de seis cifras y un nombre de dos renglones
   // entran sin cortarse.
   { id: "60x35", nombre: "60 × 35 mm", ancho: 60, alto: 35 },
-  { id: "65x40", nombre: "65 × 40 mm", ancho: 65, alto: 40 },
+  // El portaprecio de los blisteros (ganchos de la pared), 40 × 65 mm (Gonzalo, 2026-11-05).
+  { id: "65x40", nombre: "65 × 40 mm (blisteros)", ancho: 65, alto: 40 },
   { id: "65x34", nombre: "65 × 34 mm", ancho: 65, alto: 34 },
   { id: "60x40", nombre: "60 × 40 mm", ancho: 60, alto: 40 },
   { id: "50x30", nombre: "50 × 30 mm", ancho: 50, alto: 30 },
@@ -57,6 +60,14 @@ const MEDIDAS = [
   // margen para imprimir, así que entraría uno solo por fila.
   { id: "100x70", nombre: "100 × 70 mm (grande)", ancho: 100, alto: 70 },
 ] as const;
+
+/** "Según el lugar": cada cartel con la medida del portaprecio donde va. */
+const MEDIDA_GANCHO = { ancho: 65, alto: 40 };
+const MEDIDA_ESTANTE = { ancho: 60, alto: 35 };
+const SEGUN_LUGAR = "lugar";
+
+type Medida = { ancho: number; alto: number };
+type GrupoImpresion = { titulo: string; medida: Medida; items: ItemCartel[] };
 
 const pesos = (n: number) => "$" + Math.round(n).toLocaleString("es-AR");
 /** "29/10 14:20" en hora de Argentina. */
@@ -111,16 +122,28 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
   const [modo, setModo] = useState<"cambiaron" | "todos">(pendientes.length > 0 ? "cambiaron" : "todos");
   const visibles = modo === "cambiaron" ? pendientes : imprimibles;
 
-  const [medida, setMedida] = useState<{ ancho: number; alto: number }>({ ancho: MEDIDAS[0].ancho, alto: MEDIDAS[0].alto });
-  const [medidaId, setMedidaId] = useState<string>(MEDIDAS[0].id);
+  const [medida, setMedida] = useState<Medida>({ ancho: MEDIDAS[0].ancho, alto: MEDIDAS[0].alto });
+  // Arranca "según el lugar": los de gancho salen para el blistero y el resto de 60 × 35 (2026-11-05).
+  const [medidaId, setMedidaId] = useState<string>(SEGUN_LUGAR);
+  // 1 mm de aire por lado: el papel entra sin quedar justo en el portaprecio.
   const [aire, setAire] = useState(1);
   const [elegidos, setElegidos] = useState<Set<string>>(new Set(visibles.map((i) => i.idProducto)));
 
   const aImprimir = visibles.filter((i) => elegidos.has(i.idProducto));
-  const impreso = { ancho: Math.max(20, medida.ancho - aire * 2), alto: Math.max(14, medida.alto - aire * 2) };
-  const grilla = grillaA4(medida);
-  const porHoja = grilla.cols * grilla.filas;
-  const hojas = Math.ceil(aImprimir.length / porHoja) || 0;
+  const segunLugar = medidaId === SEGUN_LUGAR;
+  const grupos: GrupoImpresion[] = segunLugar
+    ? [
+        { titulo: "Ganchos de la pared (blisteros)", medida: MEDIDA_GANCHO, items: aImprimir.filter((i) => i.lugar === "GANCHO") },
+        { titulo: "Islas, estantería y el resto", medida: MEDIDA_ESTANTE, items: aImprimir.filter((i) => i.lugar !== "GANCHO") },
+      ].filter((g) => g.items.length > 0)
+    : [{ titulo: "", medida, items: aImprimir }];
+  const impresoDe = (m: Medida) => ({ ancho: Math.max(20, m.ancho - aire * 2), alto: Math.max(14, m.alto - aire * 2) });
+  const resumen = grupos.map((g) => {
+    const grilla = grillaA4(g.medida);
+    const porHoja = grilla.cols * grilla.filas;
+    return { ...g, grilla, porHoja, hojas: Math.ceil(g.items.length / porHoja) || 0, impreso: impresoDe(g.medida) };
+  });
+  const hojas = resumen.reduce((t, g) => t + g.hojas, 0);
 
   const porMarca = useMemo(() => {
     const m = new Map<string, ItemCartel[]>();
@@ -280,6 +303,11 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
                               {i.descuento}% OFF
                             </span>
                           )}
+                          {segunLugar && i.lugar === "GANCHO" && (
+                            <span className="shrink-0 text-[10px] font-bold text-amber-800 bg-amber-50 rounded px-1.5 py-0.5" title="Va en el portaprecio del blistero">
+                              gancho 65×40
+                            </span>
+                          )}
                           {i.idTarea && (
                             <span
                               className={`shrink-0 text-[10px] font-bold rounded px-1.5 py-0.5 ${
@@ -356,6 +384,7 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
                   }}
                   className="rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
                 >
+                  <option value={SEGUN_LUGAR}>Según el lugar en la góndola</option>
                   {MEDIDAS.map((m) => (
                     <option key={m.id} value={m.id}>
                       {m.nombre}
@@ -414,11 +443,20 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
                 />
               </div>
 
-              <span className="text-sm text-neutral-600 mr-auto">
-                <b className="text-neutral-900">{aImprimir.length}</b> carteles ·{" "}
-                <b className="text-neutral-900">{hojas}</b> {hojas === 1 ? "hoja" : "hojas"} de{" "}
-                {grilla.cols} × {grilla.filas} = {porHoja} · se imprimen a {impreso.ancho} ×{" "}
-                {impreso.alto} mm
+              <span className="text-sm text-neutral-600 mr-auto grid gap-0.5">
+                <span>
+                  <b className="text-neutral-900">{aImprimir.length}</b> carteles · <b className="text-neutral-900">{hojas}</b> {hojas === 1 ? "hoja" : "hojas"}
+                </span>
+                {resumen.map((g) => (
+                  <span key={g.titulo || "una"} className="text-xs">
+                    {g.titulo ? (
+                      <>
+                        <b className="text-neutral-800">{g.titulo}:</b> {g.items.length} de {g.medida.ancho} × {g.medida.alto} ·{" "}
+                      </>
+                    ) : null}
+                    {g.hojas} {g.hojas === 1 ? "hoja" : "hojas"} de {g.grilla.cols} × {g.grilla.filas} = {g.porHoja} · se imprimen a {g.impreso.ancho} × {g.impreso.alto} mm
+                  </span>
+                ))}
               </span>
 
               <button
@@ -448,9 +486,12 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
         )}
       </div>
 
-      {aImprimir.length > 0 && <EjemploCartel item={aImprimir[0]} medida={medida} impreso={impreso} />}
+      {resumen.map((g) => (
+        <EjemploCartel key={g.titulo || "una"} item={g.items[0]} medida={g.medida} impreso={g.impreso} titulo={g.titulo} />
+      ))}
 
-      <HojaDeCarteles items={aImprimir} medida={medida} impreso={impreso} grilla={grilla} />
+      {/* Una hoja (o varias) por medida: no se mezclan al recortar. */}
+      <HojaDeCarteles grupos={resumen} />
     </div>
   );
 }
@@ -464,15 +505,19 @@ function EjemploCartel({
   item,
   medida,
   impreso,
+  titulo,
 }: {
   item: ItemCartel;
-  medida: { ancho: number; alto: number };
-  impreso: { ancho: number; alto: number };
+  medida: Medida;
+  impreso: Medida;
+  titulo?: string;
 }) {
   const escala = Math.min(2.2, 140 / medida.ancho);
   return (
     <div className="mt-6 rounded-xl border border-neutral-200 bg-neutral-50 p-4 print:hidden">
-      <p className="text-xs font-bold uppercase tracking-wider text-neutral-400 mb-3">Así sale cada cartel (ampliado para verlo mejor)</p>
+      <p className="text-xs font-bold uppercase tracking-wider text-neutral-400 mb-3">
+        {titulo ? `${titulo} · ` : ""}Así sale cada cartel (ampliado para verlo mejor)
+      </p>
       <div className="mx-auto" style={{ width: `${medida.ancho * escala}mm`, height: `${medida.alto * escala}mm`, maxWidth: "100%" }}>
         <div
           className="bg-white shadow-sm"
@@ -499,20 +544,16 @@ function EjemploCartel({
 /* ------------------------------------------------------------------ */
 
 function HojaDeCarteles({
-  items,
-  medida,
-  impreso,
-  grilla,
+  grupos,
 }: {
-  items: ItemCartel[];
-  medida: { ancho: number; alto: number };
-  impreso: { ancho: number; alto: number };
-  grilla: ReturnType<typeof grillaA4>;
+  grupos: { medida: Medida; impreso: Medida; grilla: ReturnType<typeof grillaA4>; items: ItemCartel[] }[];
 }) {
-  const { cols, filas, margenX, margenY } = grilla;
-  const porHoja = cols * filas;
-  const hojas: ItemCartel[][] = [];
-  for (let i = 0; i < items.length; i += porHoja) hojas.push(items.slice(i, i + porHoja));
+  // Todas las hojas en un solo bloque (al imprimir va arriba de todo), cada una con la medida de su grupo.
+  const hojas: { items: ItemCartel[]; medida: Medida; impreso: Medida; grilla: ReturnType<typeof grillaA4> }[] = [];
+  for (const g of grupos) {
+    const porHoja = g.grilla.cols * g.grilla.filas;
+    for (let i = 0; i < g.items.length; i += porHoja) hojas.push({ ...g, items: g.items.slice(i, i + porHoja) });
+  }
 
   return (
     <div className="hoja-carteles">
@@ -542,15 +583,15 @@ function HojaDeCarteles({
           style={{
             width: "210mm",
             height: "297mm",
-            padding: `${margenY}mm ${margenX}mm`,
+            padding: `${hoja.grilla.margenY}mm ${hoja.grilla.margenX}mm`,
             display: "grid",
-            gridTemplateColumns: `repeat(${cols}, ${medida.ancho}mm)`,
-            gridAutoRows: `${medida.alto}mm`,
+            gridTemplateColumns: `repeat(${hoja.grilla.cols}, ${hoja.medida.ancho}mm)`,
+            gridAutoRows: `${hoja.medida.alto}mm`,
           }}
         >
-          {hoja.map((item) => (
+          {hoja.items.map((item) => (
             <div key={item.idProducto} style={{ display: "grid", placeItems: "center" }}>
-              <Cartel item={item} ancho={impreso.ancho} alto={impreso.alto} />
+              <Cartel item={item} ancho={hoja.impreso.ancho} alto={hoja.impreso.alto} />
             </div>
           ))}
         </div>

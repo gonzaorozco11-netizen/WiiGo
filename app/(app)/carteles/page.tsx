@@ -18,7 +18,7 @@ export default async function CartelesPage() {
   const traerTareas = (columnas: string) =>
     supabase.from("tareas_etiqueta").select(columnas).in("estado", ["PENDIENTE", "VENCIDA"]).limit(500);
 
-  const [productosConPeso, marcasRes, tareasCompletas, fichasRes] = await Promise.all([
+  const [productosConPeso, marcasRes, tareasCompletas, fichasRes, lugaresRes, modulosRes] = await Promise.all([
     traerProductos(`${BASE_PRODUCTO},peso_neto_g`),
     supabase.from("marcas").select("id_marca,nombre").eq("estado", "ACTIVA"),
     // Los carteles que quedaron con el precio viejo. La cuenta ya la lleva el
@@ -27,7 +27,20 @@ export default async function CartelesPage() {
     traerTareas("id_tarea,id_producto,precio_anterior,efectivo_anterior,precio_nuevo,efectivo_nuevo,aplicar_al_poner,tipo,vence_el,creada_el"),
     // El país de origen de la ficha del asesor: sale chiquito en el cartel.
     supabase.from("ficha_producto").select("id_producto,origen"),
+    // Dónde está cada producto en la góndola: en los ganchos de la pared el
+    // portaprecio del blistero es de 65 × 40; en el resto, de 60 × 35 (2026-11-05).
+    supabase.from("gondola_lugares").select("id_producto,id_modulo"),
+    supabase.from("gondola_modulos").select("id_modulo,tipo"),
   ]);
+  const tipoModulo = new Map(((modulosRes.data ?? []) as { id_modulo: string; tipo: string | null }[]).map((m) => [m.id_modulo, m.tipo ?? "MODULO"]));
+  const lugarDe = new Map<string, "GANCHO" | "ESTANTE">();
+  for (const l of (lugaresRes.data ?? []) as { id_producto: string; id_modulo: string }[]) {
+    const tipo = tipoModulo.get(l.id_modulo);
+    if (!tipo) continue;
+    // Si está en más de un local, con que esté en un gancho alcanza: ese cartel tiene que entrar en el blistero.
+    if (tipo === "MODULO") lugarDe.set(l.id_producto, "GANCHO");
+    else if (!lugarDe.has(l.id_producto)) lugarDe.set(l.id_producto, "ESTANTE");
+  }
   // Sin sql/rotulado.sql corrido, el cartel sale como antes, sin precio por kilo.
   const productosRes = productosConPeso.error ? await traerProductos(BASE_PRODUCTO) : productosConPeso;
   // Sin sql/carteles-precio-al-poner.sql (o sin el del efectivo de antes) se
@@ -147,6 +160,7 @@ export default async function CartelesPage() {
         antes: t?.antes ?? null,
         pesoG: p.peso_neto_g && p.peso_neto_g > 0 ? p.peso_neto_g : null,
         origen: origenes.get(p.id_producto) ?? null,
+        lugar: lugarDe.get(p.id_producto) ?? null,
       };
     })
     .filter((i) => i.lista > 0)
