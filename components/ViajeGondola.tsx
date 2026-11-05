@@ -169,8 +169,11 @@ const suave = (a: number, b: number, t: number) => {
   return x * x * (3 - 2 * x);
 };
 function recorrido(nombre: string, e: Camara, c: Camara, d: Camara) {
-  const p1 = { x: c.x, z: e.z - 220 };
-  const p2 = { x: c.x, z: c.z };
+  // Por el medio del pasillo, no pegado a la isla: pegada se la veía de canto y
+  // parecía que le faltaba el piso de abajo (Gonzalo, 2026-11-05).
+  const pasillo = d.x < ISLA.x ? (128 + ISLA.x - ISLA.ancho / 2) / 2 : (ISLA.x + ISLA.ancho / 2 + ANCHO - AF.fondo) / 2;
+  const p1 = { x: pasillo, z: e.z - 220 };
+  const p2 = { x: pasillo, z: c.z };
   const N = 28;
   let cuadros = "";
   for (let k = 0; k <= N; k++) {
@@ -333,16 +336,11 @@ export default function ViajeGondola({
   const oculto = (g: string) => (paso === 2 && destino.ocultar.includes(g) ? " oculto" : "");
 
   // ---- el producto elegido (sale apenas de su lugar) ----
+  // En el 3D va siempre su forma (bolsa, frasco, caja): la foto adentro de la escena
+  // quedaba chiquita y borrosa. La foto va grande y nítida en el «¡Acá está!» (2026-11-05).
   const elegido = (ancho: number, alto: number, formaProducto: string, color: string) => (
     <div ref={objetivo} className="vg-obj" style={{ width: ancho, height: alto }}>
-      {imagen ? (
-        <span className="vg-foto">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={imagen} alt="" />
-        </span>
-      ) : (
-        <span className={`vg-pr vg-${formaProducto}`} style={{ ["--c" as string]: color, left: 0, bottom: 0 }} />
-      )}
+      <span className={`vg-pr vg-${formaProducto}`} style={{ ["--c" as string]: color, left: 0, bottom: 0 }} />
     </div>
   );
 
@@ -469,8 +467,12 @@ export default function ViajeGondola({
     ];
   }
 
+  // El cartel va arriba del producto; con foto es más alto, y si no entra arriba (el
+  // producto está alto en la pantalla) va abajo.
+  const pinArriba = foco ? foco.y - foco.tam * 0.75 - 14 : 0;
+  const pinAbajo = Boolean(foco && imagen && pinArriba < 250);
   const varsFoco = foco
-    ? ({ ["--x" as string]: `${foco.x}px`, ["--y" as string]: `${foco.y}px`, ["--r" as string]: `${Math.max(130, foco.tam * 2.4)}px`, ["--d" as string]: `${Math.max(70, foco.tam * 1.5)}px`, ["--pin-y" as string]: `${foco.y - foco.tam * 0.75 - 14}px` } as React.CSSProperties)
+    ? ({ ["--x" as string]: `${foco.x}px`, ["--y" as string]: `${foco.y}px`, ["--r" as string]: `${Math.max(130, foco.tam * 2.4)}px`, ["--d" as string]: `${Math.max(70, foco.tam * 1.5)}px`, ["--pin-y" as string]: `${pinAbajo ? foco.y + foco.tam * 0.75 + 14 : pinArriba}px` } as React.CSSProperties)
     : undefined;
 
   return createPortal(
@@ -569,15 +571,11 @@ export default function ViajeGondola({
                         transform: `translateZ(${Z_BOLSA}px)`,
                       }}
                     >
-                      {imagen ? (
-                        elegido(filas[fila].bolsaAncho, filas[fila].bolsaAlto, "doy", colorDeProducto(nombre))
-                      ) : (
-                        <div ref={objetivo} className="vg-obj" style={{ width: filas[fila].bolsaAncho, height: filas[fila].bolsaAlto }}>
-                          <span className="vg-bolsa" style={{ left: 0, top: 0, width: "100%", height: "100%" }}>
-                            <i style={{ background: colorDeProducto(nombre) }} />
-                          </span>
-                        </div>
-                      )}
+                      <div ref={objetivo} className="vg-obj" style={{ width: filas[fila].bolsaAncho, height: filas[fila].bolsaAlto }}>
+                        <span className="vg-bolsa" style={{ left: 0, top: 0, width: "100%", height: "100%" }}>
+                          <i style={{ background: colorDeProducto(nombre) }} />
+                        </span>
+                      </div>
                     </div>
                   )}
                   <div className="vg-c vg-marco-lado i" />
@@ -645,7 +643,15 @@ export default function ViajeGondola({
       {/* El foco de luz, el anillo y el cartel: por encima de la escena */}
       <div className="vg-foco" aria-hidden="true" />
       <span className="vg-anillo2d" aria-hidden="true" />
-      <div className="vg-pin2d">{t.aca}</div>
+      <div className={`vg-pin2d${imagen ? " con-foto" : ""}${pinAbajo ? " abajo" : ""}`}>
+        {imagen && (
+          <span className="vg-pin-foto">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={imagen} alt="" />
+          </span>
+        )}
+        <span className="vg-pin-txt">{t.aca}</span>
+      </div>
 
       <div className="vg-indic">
         <span className="vg-n">{numero}</span>
