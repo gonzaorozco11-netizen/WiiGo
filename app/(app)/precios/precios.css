@@ -397,6 +397,28 @@ a.pr-btn { color: inherit; text-decoration: none; display: inline-flex; align-it
 .pr-gd-falta li b { font-size: 13px; display: block; }
 .pr-gd-falta li small { display: block; color: var(--tinta-3); font-size: 11.5px; }
 .pr-gd-motivo { display: inline-block; margin-top: 3px; font-size: 11px; font-weight: 700; color: #8a5c14; background: #fbf1dd; border-radius: 999px; padding: 1px 8px; }
+/* Abajo de la góndola: lo de Alifrut que todavía no se agregó, por rubros. */
+.pr-gda { display: grid; gap: 14px; }
+.pr-gda-cab { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 6px 16px; }
+.pr-gda-cab h2 { margin: 0 0 2px; }
+.pr-gda-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.pr-gda-chips button { font: inherit; font-size: 13px; border: 1px solid var(--linea-2); background: var(--hoja-2); color: var(--tinta-2); border-radius: 999px; padding: 5px 11px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
+.pr-gda-chips button span { font-family: var(--f-plex-mono), monospace; font-size: 11.5px; color: var(--tinta-3); }
+.pr-gda-chips button[aria-pressed="true"] { background: var(--ok); border-color: var(--ok); color: #fff; }
+.pr-gda-chips button[aria-pressed="true"] span { color: #d3efe3; }
+.pr-gda-chips button.mas { background: transparent; border-style: dashed; }
+.pr-gda-chips button:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
+.pr-gda-vacio { margin: 0; color: var(--tinta-3); padding: 14px; text-align: center; background: var(--hoja-2); border-radius: 10px; }
+.pr-gda-grupos { display: grid; gap: 10px; }
+.pr-gda-grupo { border: 1px solid var(--linea); border-radius: 10px; overflow: hidden; }
+.pr-gda-grupo h3 { margin: 0; font-size: 14px; padding: 8px 12px; background: var(--ok-t); color: var(--ok); }
+.pr-gda-grupo h3 small { color: var(--tinta-3); font-weight: 500; margin-left: 6px; }
+.pr-gda-fila { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 4px 14px; align-items: center; padding: 8px 12px; border-top: 1px solid var(--linea); font-size: 13.5px; }
+.pr-gda-fila b { font-weight: 600; }
+.pr-gda-fila small { display: block; color: var(--tinta-3); font-size: 11.5px; }
+.pr-gda-fila .n { font-family: var(--f-plex-mono), monospace; font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
+.pr-gda-fila .n small { display: inline; }
+@media (max-width: 560px) { .pr-gda-fila { grid-template-columns: minmax(0, 1fr) auto; } .pr-gda-fila .pr-btn { grid-column: 1 / -1; justify-self: start; } }
 .pr-comp-buscar { padding: 12px 14px 4px; }
 .pr-comp-buscar input { flex: 1 1 260px; max-width: 420px; }
 .pr-comp-llevar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 10px; font-size: 12.5px; color: var(--tinta-2); }

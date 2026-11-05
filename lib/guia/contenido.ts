@@ -221,6 +221,7 @@ export const GUIAS: Guia[] = [
       "En la pantalla asesora, el cliente toca <b>¿Dónde lo encuentro?</b> y la cámara lo lleva por los muebles hasta el gancho del producto, que se marca en naranja con «¡Acá está!».",
       "Si le diste lugar a un producto que <b>todavía no está en la góndola</b> (el proveedor no tiene stock, falta fraccionarlo), tocalo y elegí <b>Todavía no</b>. El lugar queda reservado, en el mueble se ve con «Falta», y la pantalla asesora no manda al cliente a buscarlo.",
       "Todo lo que falta poner está en la lista <b>Falta poner en la góndola</b>. Cuando lo ponés, tocá <b>Ya está puesto</b>.",
+      "Abajo de todo, en <b>Alifrut: lo que todavía no agregaste</b>, elegí uno o más rubros y ves lo que Alifrut tiene y vos todavía no vendés. Si antes tocás un lugar libre del mueble y después <b>Agregarlo</b>, el producto se crea y queda planificado en ese lugar («Falta fraccionar»).",
     ],
     nueva: "2026-11-05",
   },

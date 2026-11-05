@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { MuebleFrente, Pared3D } from "@/components/Gondola3D";
 import { MOTIVOS_FALTA, NOMBRE_ALTURA, nombreCortoZona, soloModulos, type ModuloGondola } from "@/lib/gondola";
 import { marcarPuestoLugar, moverModulo, ponerEnLugar } from "@/app/(app)/precios/gondola-actions";
+import GondolaAlifrut, { type DatosAlifrutGondola } from "@/components/GondolaAlifrut";
 
 // Precios → Góndola: el local entero (Gonzalo, 2026-11-03). Arriba se elige la
 // zona —los módulos de la pared izquierda, una de las dos islas del centro o la
@@ -34,13 +35,19 @@ function etiquetaZona(gondola: ModuloGondola[], m: ModuloGondola) {
 
 export default function PreciosGondola({
   locales,
-  productos,
+  productos: productosBase,
   avisar,
+  alifrut,
 }: {
   locales: GondolaLocal[] | null;
   productos: ProductoGondola[];
   avisar: (t: string, mal?: boolean) => void;
+  /** Lo de Alifrut que todavía no se agregó, abajo de la góndola; null sin la lista de Alifrut. */
+  alifrut?: DatosAlifrutGondola | null;
 }) {
+  // Los que se crean desde "Alifrut: lo que todavía no agregaste" se suman acá sin recargar.
+  const [nuevos, setNuevos] = useState<ProductoGondola[]>([]);
+  const productos = nuevos.length ? [...productosBase, ...nuevos.filter((n) => !productosBase.some((p) => p.id === n.id))] : productosBase;
   const [idLocal, setIdLocal] = useState(locales?.[0]?.idLocal ?? "");
   const [porLocal, setPorLocal] = useState<Record<string, ModuloGondola[]>>(() => Object.fromEntries((locales ?? []).map((l) => [l.idLocal, l.modulos])));
   const gondola = porLocal[idLocal] ?? [];
@@ -131,6 +138,39 @@ export default function PreciosGondola({
           m.id !== idMod ? m : { ...m, lugares: m.lugares.map((l) => (l.fila === fila && l.columna === columna ? { ...l, puesto, motivo: puesto ? null : motivo } : l)) }
         ),
       }));
+    });
+  }
+
+  // El lugar libre elegido: ahí queda planificado lo que se agregue de Alifrut.
+  const libreElegido = lugar && !actual ? { idMod: modulo.id, ...lugar } : null;
+  const destino = libreElegido ? `${nombreCortoZona(gondola, modulo)}, ${nombreFila(modulo, libreElegido.fila)}, lugar ${libreElegido.columna + 1}` : null;
+
+  /** Lo recién creado desde Alifrut: a la lista de productos y, si hay lugar libre elegido, planificado ahí. */
+  function ubicarNuevo(p: { id: string; nombre: string }) {
+    setNuevos((xs) => [...xs, { id: p.id, nombre: p.nombre, marca: "WiiGo Dietética" }]);
+    if (!libreElegido) return;
+    const d = libreElegido;
+    const motivo = "Falta fraccionar";
+    startTransition(async () => {
+      const r = await ponerEnLugar(d.idMod, d.fila, d.columna, p.id).catch(() => ({ error: "No se pudo ubicar. Probá de nuevo." }));
+      if (r.error) return avisar(`Se creó, pero no se pudo ubicar: ${r.error}`, true);
+      const r2 = await marcarPuestoLugar(d.idMod, d.fila, d.columna, false, motivo).catch(() => ({ error: "No se pudo marcar como planificado." }));
+      setPorLocal((todo) => ({
+        ...todo,
+        [idLocal]: (todo[idLocal] ?? []).map((m) =>
+          m.id !== d.idMod
+            ? m
+            : {
+                ...m,
+                lugares: [
+                  ...m.lugares.filter((l) => !(l.fila === d.fila && l.columna === d.columna)),
+                  { fila: d.fila, columna: d.columna, idProducto: p.id, nombre: p.nombre, puesto: Boolean(r2.error), motivo: r2.error ? null : motivo },
+                ],
+              }
+        ),
+      }));
+      if (r2.error) avisar(r2.error, true);
+      setLugar(null);
     });
   }
 
@@ -392,6 +432,8 @@ export default function PreciosGondola({
           )}
         </aside>
       </div>
+
+      {alifrut && <GondolaAlifrut datos={alifrut} destino={destino} ubicar={ubicarNuevo} />}
     </div>
   );
 }

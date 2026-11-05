@@ -357,6 +357,7 @@ export default function PreciosApp(props: Props) {
             locales={props.gondola ?? null}
             productos={props.productosGondola ?? productos.map((p) => ({ id: p.id, nombre: p.nombre, marca: null }))}
             avisar={avisar}
+            alifrut={props.alifrut ? { items: props.alifrut.items, estado: props.alifrut.estado, granel, productos, rubros, envases } : null}
           />
         )}
         {pestana === "alifrut" && props.alifrut && (

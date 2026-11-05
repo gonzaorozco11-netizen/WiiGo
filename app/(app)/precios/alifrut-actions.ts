@@ -159,9 +159,11 @@ export type Tamano = { gramos: number | null; idEnvase: string | null };
 export async function vincularItem(
   idItem: string,
   opciones: { tamanos: Tamano[]; idSubcategoria: string | null; idProductoExistente: string | null; nombre?: string | null }
-): Promise<{ error: string | null; creados?: number }> {
+): Promise<{ error: string | null; creados?: number; productos?: { id: string; nombre: string }[] }> {
   if (!(await sesionDePrecios())) return { error: "No tenés permiso para Precios." };
   const tamanos = (opciones.tamanos ?? []).slice(0, 8);
+  // Los productos que quedaron saliendo de este: la góndola ubica el primero (2026-11-05).
+  const hechos: { id: string; nombre: string }[] = [];
   if (!tamanos.length && !opciones.idProductoExistente) return { error: "Elegí un tamaño o un producto tuyo." };
   const supabase = getSupabaseServerClient();
   const idGranel = await granelDelItem(supabase, idItem);
@@ -172,9 +174,10 @@ export async function vincularItem(
   const ahora = new Date().toISOString();
 
   if (opciones.idProductoExistente) {
-    const { data: p } = await supabase.from("productos").select("id_producto, marcas(tipo_comercializacion)").eq("id_producto", opciones.idProductoExistente).maybeSingle();
+    const { data: p } = await supabase.from("productos").select("id_producto, nombre, marcas(tipo_comercializacion)").eq("id_producto", opciones.idProductoExistente).maybeSingle();
     if ((p?.marcas as unknown as { tipo_comercializacion: string } | null)?.tipo_comercializacion !== "PROPIA") return { error: "Ese producto no es de WiiGo Dietética." };
     await supabase.from("productos").update({ id_granel: idGranel }).eq("id_producto", opciones.idProductoExistente);
+    hechos.push({ id: p!.id_producto as string, nombre: p!.nombre as string });
   }
 
   let creados = 0;
@@ -212,12 +215,13 @@ export async function vincularItem(
       const codigo = await generarCodigoBarrasVariante(supabase);
       await supabase.from("variantes_producto").insert({ id_producto: prod.id_producto, nombre: "Único", sku, codigo_barras: codigo, stock_minimo: 3, stock_objetivo: 5 });
       creados++;
+      hechos.push({ id: prod.id_producto as string, nombre });
     }
   }
   await recalcularHijos(supabase, granel, ahora);
   revalidatePath("/precios");
   revalidatePath("/productos");
-  return { error: null, creados };
+  return { error: null, creados, productos: hechos };
 }
 
 /** Suelta un producto de WiiGo de su producto de Alifrut (queda con el último costo). */

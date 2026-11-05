@@ -492,7 +492,7 @@ export function CatalogoAlifrut(props: {
 
 // ---------- Vincular ----------
 
-function Vincular(props: {
+export function Vincular(props: {
   item: ItemCatalogo;
   rubros: RubroDelModulo[];
   envases: Envase[];
@@ -501,6 +501,10 @@ function Vincular(props: {
   usos: ProductoDelModulo[];
   granel: GranelDelModulo[];
   onCerrar: (recargar: boolean) => void;
+  /** Desde la góndola: dónde va a quedar planificado ("Mueble 1 · fila arriba · lugar 5"). */
+  destino?: string | null;
+  /** Desde la góndola: los productos que quedaron, para ubicar el primero. */
+  alTerminar?: (productos: { id: string; nombre: string }[]) => void;
 }) {
   const { item } = props;
   const porUnidad = item.unidad === "CAJA" || item.unidad === "UNIDAD";
@@ -531,20 +535,23 @@ function Vincular(props: {
       idSubcategoria: rubro || null,
       idProductoExistente: modo === "existente" ? existente || null : null,
       nombre: nombre.trim() || null,
-    }).catch(() => ({ error: "No se pudo guardar. Revisá la conexión.", creados: 0 }));
+    }).catch(() => ({ error: "No se pudo guardar. Revisá la conexión.", creados: 0, productos: [] as { id: string; nombre: string }[] }));
     setGuardando(false);
     if (r.error) return setError(r.error);
     setListo(
-      modo === "existente"
+      (modo === "existente"
         ? "Listo: tu producto ahora toma el costo de Alifrut. Revisalo en la Lista de precios."
-        : `Creé ${r.creados === 1 ? "1 producto" : `${r.creados} productos`} en Productos, «Sin precio». Revisalos en la Lista de precios y pasalos a la venta.`
+        : `Creé ${r.creados === 1 ? "1 producto" : `${r.creados} productos`} en Productos, «Sin precio». Revisalos en la Lista de precios y pasalos a la venta.`) +
+        (props.destino && r.productos?.length ? ` «${r.productos[0].nombre}» quedó planificado en ${props.destino}.` : "")
     );
+    props.alTerminar?.(r.productos ?? []);
   }
   const yaUsan = props.usos;
 
   return (
     <Modal titulo={`Vincular «${item.nombre}»${item.marca ? ` · ${item.marca}` : ""}`} bajada={porUnidad ? `Se vende de a una. Costo por unidad: ${pesos(granelDesdeItem({ costo_neto: item.costo, unidad: item.unidad, cantidad: item.cantidad }).costo / (item.unidad === "CAJA" ? item.cantidad : 1), 2)}.` : `Costo ${pesos(costoPorKg({ ...granelDesdeItem({ costo_neto: item.costo, unidad: item.unidad, cantidad: item.cantidad }), id: "" }), 2)} el kg, sin IVA.`} onCerrar={() => props.onCerrar(Boolean(listo))}>
       <div className="pr-m-cuerpo">
+        {props.destino && !listo && <p className="pr-nota">Va a quedar planificado en <b>{props.destino}</b> («Falta fraccionar»). Si creás varios tamaños, se ubica el primero.</p>}
         <b>¿Ya tenés este producto cargado en WiiGo?</b>
         <div className="pr-m-modo" role="radiogroup" aria-label="¿Ya tenés este producto cargado?">
           <label className={modo === "existente" ? "sel" : undefined}>
