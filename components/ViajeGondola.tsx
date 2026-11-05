@@ -382,8 +382,10 @@ export default function ViajeGondola({
         {[0.2, 0.8].map((f) => (
           <div key={f} className="vg-c vg-isla-poste" style={{ width: 16, height: -ISLA.estantes[0] - ISLA.alto, transform: `translate3d(${ISLA.x - 8}px,${ISLA.estantes[0]}px,${z0 - L * f}px)` }} />
         ))}
+        {/* Cada envoltorio lleva vg-p (preserve-3d): sin eso el navegador aplasta lo de
+            adentro contra un plano y los estantes desaparecían (2026-11-05). */}
         {ISLA.estantes.map((y) => (
-          <div key={y}>
+          <div key={y} className="vg-p">
             <div className="vg-c vg-isla-tapa" style={{ width: A + 40, height: L + 30, transform: `translate3d(${xl - 20}px,${y}px,${z0 + 15}px) rotateX(-90deg)` }} />
             <div className="vg-c vg-isla-canto" style={{ width: A + 40, height: 12, transform: `translate3d(${xl - 20}px,${y}px,${z0 + 15}px)` }} />
           </div>
@@ -414,7 +416,7 @@ export default function ViajeGondola({
         <div className="vg-c vg-fz-fondo" style={{ left: 10, top: FRZ.techo, width: adentro, height: FRZ.alto - FRZ.techo - 20, transform: "translateZ(-70px)" }} />
         <div className="vg-c vg-fz-luz" style={{ left: 14, top: FRZ.techo + 4, width: adentro - 8, height: 5, transform: "translateZ(-40px)" }} />
         {m.filas.map((_, f) => (
-          <div key={f}>
+          <div key={f} className="vg-p">
             <div className="vg-c vg-fz-estante" style={{ left: 10, top: estanteFrio(f) + FRZ.alto, width: adentro, height: 4, transform: "translateZ(-34px)" }} />
             <div className="vg-fila" style={{ left: 10, top: estanteFrio(f) + FRZ.alto - 62, width: adentro, transform: "translateZ(-32px)" }}>
               {estante(m, f, adentro, "frio")}
@@ -619,9 +621,9 @@ export default function ViajeGondola({
                 const m = estanteria.find((x) => x.numero === parte);
                 const x0 = xBahia(parte);
                 return (
-                  <div key={parte}>
+                  <div key={parte} className="vg-p">
                     {ys.map((y, f) => (
-                      <div key={f}>
+                      <div key={f} className="vg-p">
                         <div className="vg-c vg-af-estante" style={{ left: x0, top: y, width: bahiaAF, height: AF.fondo }} />
                         <div className="vg-c vg-af-canto" style={{ left: x0, top: y, width: bahiaAF, height: 10, transform: `translateZ(${AF.fondo}px)` }} />
                         <div className="vg-fila" style={{ left: x0, top: y - 62, width: bahiaAF, transform: `translateZ(${AF.fondo - 30}px)` }}>
