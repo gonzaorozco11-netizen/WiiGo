@@ -106,5 +106,36 @@ export async function ponerEnLugar(idModulo: string, fila: number, columna: numb
     if (e3) return { error: "No se pudo guardar. Probá de nuevo." };
   }
   revalidatePath("/precios");
+  revalidatePath("/asesor", "layout");
+  return { error: null };
+}
+
+/**
+ * Marca un lugar como puesto (el producto está en la góndola) o planificado
+ * (el lugar es suyo, pero todavía falta ponerlo), con el motivo opcional.
+ * La pantalla asesora solo guía al cliente hasta lo puesto (Gonzalo, 2026-11-05).
+ */
+export async function marcarPuestoLugar(
+  idModulo: string,
+  fila: number,
+  columna: number,
+  puesto: boolean,
+  motivo: string | null
+): Promise<{ error: string | null }> {
+  if (!(await sesionDePrecios())) return { error: "No tenés permiso para Precios." };
+  if (!Number.isInteger(fila) || !Number.isInteger(columna)) return { error: "Ese lugar no existe." };
+  const motivoLimpio = puesto ? null : (motivo ?? "").trim().slice(0, 60) || null;
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("gondola_lugares")
+    .update({ puesto, motivo_falta: motivoLimpio, actualizado_el: new Date().toISOString() })
+    .eq("id_modulo", idModulo)
+    .eq("fila", fila)
+    .eq("columna", columna)
+    .select("id_producto");
+  if (error) return { error: /puesto|motivo_falta/.test(error.message) ? "Falta correr sql/gondola-puesto.sql en Supabase." : "No se pudo guardar. Probá de nuevo." };
+  if (!data?.length) return { error: "En ese lugar no hay ningún producto." };
+  revalidatePath("/precios");
+  revalidatePath("/asesor", "layout");
   return { error: null };
 }

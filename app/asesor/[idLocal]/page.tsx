@@ -21,7 +21,7 @@ import { fetchContenidoAsesor } from "@/lib/contenidoAsesor";
 import { destacadasDelMes } from "@/lib/puntosProfesionales";
 import { REDES, leerRedes, textoDeRed } from "@/lib/redesProfesional";
 import AsesorApp, { type RedEnFicha } from "@/components/AsesorApp";
-import { cargarGondola } from "@/lib/gondola";
+import { cargarGondola, soloLoPuesto } from "@/lib/gondola";
 
 export const dynamic = "force-dynamic";
 
@@ -92,7 +92,10 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
     // Aparte también: sin sql/profesionales-redes.sql falla sola.
     supabase.from("profesionales").select("id_profesional, redes").eq("estado", "ACTIVO").eq("publicado", true).not("redes", "is", null),
     // Dónde está cada producto en la góndola (sql/gondola.sql). Sin el SQL, no hay botón.
-    cargarGondola(supabase, idLocal).catch(() => null),
+    // Solo lo puesto: lo planificado (lugar elegido, todavía no en la góndola) no se muestra al cliente.
+    cargarGondola(supabase, idLocal)
+      .then((g) => (g ? soloLoPuesto(g) : g))
+      .catch(() => null),
   ]);
 
   // Las fichas destacadas (las que más pacientes trajeron este mes y el podio de puntos) van

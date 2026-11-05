@@ -7,7 +7,14 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type AlturaFila = "arriba" | "ojos" | "manos" | "abajo";
 export type FilaGondola = { altura: AlturaFila; lugares: number; grande?: boolean };
-export type LugarGondola = { fila: number; columna: number; idProducto: string; nombre: string };
+/**
+ * `puesto` false = planificado: el lugar es suyo pero el producto todavía no
+ * está en la góndola (sql/gondola-puesto.sql). La pantalla asesora no lo usa.
+ */
+export type LugarGondola = { fila: number; columna: number; idProducto: string; nombre: string; puesto: boolean; motivo: string | null };
+
+/** Por qué falta poner un producto planificado (se elige en Precios → Góndola). */
+export const MOTIVOS_FALTA = ["Proveedor sin stock", "Falta fraccionar", "Lo estoy probando"] as const;
 /**
  * Qué mueble del local es (sql/gondola-local-entero.sql):
  * - MODULO: módulo de ganchos de la pared izquierda.
@@ -46,10 +53,15 @@ function leerFilas(v: unknown): FilaGondola[] {
 
 /** Los módulos de un local con lo que hay en cada lugar. null si falta correr sql/gondola.sql. */
 export async function cargarGondola(supabase: SupabaseClient, idLocal: string): Promise<ModuloGondola[] | null> {
-  const [conTipo, lugares] = await Promise.all([
+  const [conTipo, conPuesto] = await Promise.all([
     supabase.from("gondola_modulos").select("id_modulo, orden, titulo, subtitulo, filas, tipo, numero, lado").eq("id_local", idLocal).order("orden"),
-    supabase.from("gondola_lugares").select("id_modulo, fila, columna, id_producto, productos(nombre)").eq("id_local", idLocal),
+    supabase.from("gondola_lugares").select("id_modulo, fila, columna, id_producto, puesto, motivo_falta, productos(nombre)").eq("id_local", idLocal),
   ]);
+  // Sin sql/gondola-puesto.sql no existen puesto/motivo_falta: todo cuenta como puesto.
+  let lugares = conPuesto as { data: Record<string, unknown>[] | null; error: unknown };
+  if (conPuesto.error) {
+    lugares = (await supabase.from("gondola_lugares").select("id_modulo, fila, columna, id_producto, productos(nombre)").eq("id_local", idLocal)) as typeof lugares;
+  }
   // Sin sql/gondola-local-entero.sql no existen tipo/numero/lado: se piden sin
   // ellas y todo es módulo, como antes.
   let mods = conTipo as { data: Record<string, unknown>[] | null; error: unknown };
@@ -73,8 +85,19 @@ export async function cargarGondola(supabase: SupabaseClient, idLocal: string): 
         columna: Number(l.columna),
         idProducto: l.id_producto as string,
         nombre: (l.productos as unknown as { nombre: string } | null)?.nombre ?? "Producto",
+        puesto: l.puesto !== false,
+        motivo: (l.motivo_falta as string | null | undefined) ?? null,
       })),
   }));
+}
+
+/**
+ * La góndola como la ve el cliente: solo lo que está puesto. Lo planificado
+ * (lugar elegido, producto todavía no en la góndola) no se muestra ni se usa
+ * para guiarlo, así no lo manda a buscar algo que no está.
+ */
+export function soloLoPuesto(gondola: ModuloGondola[]): ModuloGondola[] {
+  return gondola.map((m) => ({ ...m, lugares: m.lugares.filter((l) => l.puesto) }));
 }
 
 export function ubicacionDe(modulos: ModuloGondola[], idProducto: string): UbicacionGondola | null {

@@ -2,8 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { MuebleFrente, Pared3D } from "@/components/Gondola3D";
-import { NOMBRE_ALTURA, nombreCortoZona, soloModulos, type ModuloGondola } from "@/lib/gondola";
-import { moverModulo, ponerEnLugar } from "@/app/(app)/precios/gondola-actions";
+import { MOTIVOS_FALTA, NOMBRE_ALTURA, nombreCortoZona, soloModulos, type ModuloGondola } from "@/lib/gondola";
+import { marcarPuestoLugar, moverModulo, ponerEnLugar } from "@/app/(app)/precios/gondola-actions";
 
 // Precios → Góndola: el local entero (Gonzalo, 2026-11-03). Arriba se elige la
 // zona —los módulos de la pared izquierda, una de las dos islas del centro o la
@@ -78,6 +78,8 @@ export default function PreciosGondola({
   const modulo = enZona.find((m) => m.id === idModulo) ?? enZona[0] ?? modulos[0];
   const numero = modulos.indexOf(modulo) + 1;
   const dondeEsta = new Map(gondola.flatMap((m) => m.lugares.map((l) => [l.idProducto, { m, l }] as const)));
+  // Lo planificado: ya tiene lugar, pero todavía falta ponerlo en la góndola.
+  const faltaPoner = gondola.flatMap((m) => m.lugares.filter((l) => !l.puesto).map((l) => ({ m, l })));
   const sinLugar = productos.filter((p) => !dondeEsta.has(p.id));
   const ubicados = productos.length - sinLugar.length;
   const actual = lugar ? modulo.lugares.find((l) => l.fila === lugar.fila && l.columna === lugar.columna) ?? null : null;
@@ -107,7 +109,7 @@ export default function PreciosGondola({
           let lugares = m.lugares.filter((l) => l.idProducto !== idProducto);
           if (m.id === modulo.id) {
             lugares = lugares.filter((l) => !(l.fila === destino.fila && l.columna === destino.columna));
-            if (p) lugares.push({ fila: destino.fila, columna: destino.columna, idProducto: p.id, nombre: p.nombre });
+            if (p) lugares.push({ fila: destino.fila, columna: destino.columna, idProducto: p.id, nombre: p.nombre, puesto: true, motivo: null });
           }
           return { ...m, lugares };
         }),
@@ -115,6 +117,20 @@ export default function PreciosGondola({
       avisar(p ? `${p.nombre}: ${etiquetaZona(gondola, modulo)}, ${nombreFila(modulo, destino.fila)}, lugar ${destino.columna + 1}.` : "Lugar liberado.");
       setLugar(null);
       setBuscar("");
+    });
+  }
+
+  /** Puesto en la góndola o planificado (falta poner), con el motivo opcional. */
+  function marcar(idMod: string, fila: number, columna: number, puesto: boolean, motivo: string | null) {
+    startTransition(async () => {
+      const r = await marcarPuestoLugar(idMod, fila, columna, puesto, motivo).catch(() => ({ error: "No se pudo guardar. Probá de nuevo." }));
+      if (r.error) return avisar(r.error, true);
+      setPorLocal((todo) => ({
+        ...todo,
+        [idLocal]: (todo[idLocal] ?? []).map((m) =>
+          m.id !== idMod ? m : { ...m, lugares: m.lugares.map((l) => (l.fila === fila && l.columna === columna ? { ...l, puesto, motivo: puesto ? null : motivo } : l)) }
+        ),
+      }));
     });
   }
 
@@ -151,6 +167,12 @@ export default function PreciosGondola({
               <b>
                 {ubicados} de {productos.length} ubicados
               </b>
+              {faltaPoner.length > 0 && (
+                <>
+                  {" "}
+                  · <b className="pr-gd-falta-n">{faltaPoner.length} falta poner</b>
+                </>
+              )}
               .
             </p>
           </div>
@@ -271,6 +293,29 @@ export default function PreciosGondola({
                   </>
                 )}
               </div>
+              {/* Lo que ya tiene lugar pero todavía no está en la góndola: la lista del que fracciona. */}
+              {faltaPoner.length > 0 && (
+                <div>
+                  <b>Falta poner en la góndola ({faltaPoner.length})</b>
+                  <ul className="pr-gd-falta">
+                    {faltaPoner.map(({ m, l }) => (
+                      <li key={`${m.id}-${l.fila}-${l.columna}`}>
+                        <span>
+                          <b>{l.nombre}</b>
+                          <small>
+                            {nombreCortoZona(gondola, m)} · {nombreFila(m, l.fila)} · lugar {l.columna + 1}
+                          </small>
+                          {l.motivo && <span className="pr-gd-motivo">{l.motivo}</span>}
+                        </span>
+                        <button type="button" className="pr-btn chico" disabled={guardando} onClick={() => marcar(m.id, l.fila, l.columna, true, null)}>
+                          Ya está puesto
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="baj">Tienen su lugar reservado. La pantalla asesora no manda al cliente a buscarlos hasta que estén puestos.</p>
+                </div>
+              )}
             </>
           ) : (
             <>
@@ -278,6 +323,40 @@ export default function PreciosGondola({
               <p className="baj">
                 <b>{etiquetaZona(gondola, modulo)}</b> · {nombreFila(modulo, lugar.fila)} · lugar <b>{lugar.columna + 1}</b> desde la izquierda
               </p>
+              {actual && (
+                <div className="pr-gd-estado-caja">
+                  <b>¿Está en la góndola?</b>
+                  <div className="pr-gd-estado" role="group" aria-label="Estado del lugar">
+                    <button type="button" className="si" aria-pressed={actual.puesto} disabled={guardando} onClick={() => !actual.puesto && marcar(modulo.id, lugar.fila, lugar.columna, true, null)}>
+                      Sí, está puesto
+                      <small>el cliente lo encuentra acá</small>
+                    </button>
+                    <button type="button" className="no" aria-pressed={!actual.puesto} disabled={guardando} onClick={() => actual.puesto && marcar(modulo.id, lugar.fila, lugar.columna, false, null)}>
+                      Todavía no
+                      <small>planificado · falta poner</small>
+                    </button>
+                  </div>
+                  {!actual.puesto && (
+                    <>
+                      <small className="pr-tenue">¿Por qué? (opcional)</small>
+                      <div className="pr-gd-motivos">
+                        {MOTIVOS_FALTA.map((mo) => (
+                          <button
+                            key={mo}
+                            type="button"
+                            aria-pressed={actual.motivo === mo}
+                            disabled={guardando}
+                            onClick={() => marcar(modulo.id, lugar.fila, lugar.columna, false, actual.motivo === mo ? null : mo)}
+                          >
+                            {mo}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="baj">Mientras esté planificado, la pantalla asesora no manda al cliente a buscarlo acá. El lugar queda reservado.</p>
+                    </>
+                  )}
+                </div>
+              )}
               <label htmlFor="gd-buscar" className="pr-gd-label">
                 {actual ? "Cambiarlo por:" : "¿Qué va acá?"}
               </label>

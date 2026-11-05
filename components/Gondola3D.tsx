@@ -127,9 +127,12 @@ export function MuebleFrente({
                   const l = lugarEn(modulo, fi, ci);
                   const esElegido = elegido?.fila === fi && elegido?.columna === ci;
                   const esAca = aca?.fila === fi && aca?.columna === ci;
-                  const clase = `gd-gancho${l ? "" : " vacio"}${esElegido ? " elegido" : ""}${esAca ? " aca" : aca ? " atenuado" : ""}`;
+                  // Planificado: el lugar es suyo, pero todavía no está en la góndola.
+                  const plan = Boolean(l && !l.puesto);
+                  const clase = `gd-gancho${l ? "" : " vacio"}${plan ? " plan" : ""}${esElegido ? " elegido" : ""}${esAca ? " aca" : aca ? " atenuado" : ""}`;
                   const adentro = (
                     <>
+                      {plan && <span className="gd-falta">Falta</span>}
                       <span className="gd-porta">{l ? l.nombre : "Libre"}</span>
                       <span className="gd-bolsa" style={{ "--relleno": l ? colorDeProducto(l.nombre) : "transparent" } as CSSProperties}>
                         {l ? <i className="gd-ventana" /> : <span>+</span>}
@@ -142,7 +145,7 @@ export function MuebleFrente({
                       type="button"
                       className={clase}
                       onClick={() => onLugar(fi, ci)}
-                      aria-label={`${l ? l.nombre : "Lugar libre"}, fila ${NOMBRE_ALTURA[f.altura].toLowerCase()}, lugar ${ci + 1}`}
+                      aria-label={`${l ? l.nombre : "Lugar libre"}${plan ? ", planificado, falta poner" : ""}, fila ${NOMBRE_ALTURA[f.altura].toLowerCase()}, lugar ${ci + 1}`}
                     >
                       {adentro}
                     </button>
