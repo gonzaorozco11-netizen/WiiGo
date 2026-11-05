@@ -476,7 +476,8 @@ export default function ViajeGondola({
   return createPortal(
     <div
       ref={raiz}
-      className={`vg${paso === 2 ? " listo" : ""}${foco ? " foco-on" : ""}`}
+      // Mientras la cámara se mueve, sin los detalles finos (ver viajeGondola.css: .vg.moviendo).
+      className={`vg${paso === 2 ? " listo" : " moviendo"}${foco ? " foco-on" : ""}`}
       style={varsFoco}
       role="dialog"
       aria-modal="true"
@@ -539,7 +540,7 @@ export default function ViajeGondola({
                     </div>
                   ))}
                   {[1, 0].map((capa) => (
-                    <div key={`b${capa}`} className="vg-c vg-capa" style={{ transform: `translateZ(${Z_BOLSA - capa * 9}px)` }}>
+                    <div key={`b${capa}`} className={`vg-c vg-capa${capa === 1 ? " atras" : ""}`} style={{ transform: `translateZ(${Z_BOLSA - capa * 9}px)` }}>
                       {filas.map((f, r) =>
                         Array.from({ length: f.lugares }, (_, c) => {
                           const lugar = m.lugares.find((l) => l.fila === r && l.columna === c);

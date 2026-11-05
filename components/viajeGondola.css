@@ -24,6 +24,10 @@
 .vg-grupo { position: absolute; left: 0; top: 0; }
 /* Lo que queda a la espalda de la cámara no se dibuja */
 .vg-grupo.oculto { visibility: hidden; }
+/* Mientras la cámara camina, menos detalle (Gonzalo, 2026-11-05: «súper fluido»): sin la
+   segunda fila de bolsas (la de atrás, que da profundidad), los ganchos, los portaprecios
+   y los halos de luz. Son cientos de piezas chicas que de lejos no se ven; aparecen al llegar. */
+.vg.moviendo .vg-capa.atras, .vg.moviendo .vg-ganchos, .vg.moviendo .vg-portas, .vg.moviendo .vg-halo { visibility: hidden; }
 
 /* El local: colores lisos */
 .vg-piso { background: #b9b6af; }
