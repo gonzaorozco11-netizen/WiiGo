@@ -154,6 +154,40 @@ function pose(c: Camara) {
   // la pared que queda atrás termina tapando todo.
   return `translateZ(${FOCO}px) rotateX(${c.pitch.toFixed(2)}deg) rotateY(${c.yaw}deg) translate3d(${(-c.x).toFixed(1)}px,${(-c.y).toFixed(1)}px,${(-c.z).toFixed(1)}px)`;
 }
+/**
+ * El recorrido entero en un solo movimiento (Gonzalo, 2026-11-05: «que se vea
+ * súper fluido»). Antes eran dos tramos con frenada en el medio. Ahora es una
+ * curva: se mete en el pasillo, camina y gira hacia el mueble sin frenar.
+ * Son muchos cuadros clave seguidos con avance lineal; la aceleración y la
+ * frenada están en la curva (arranca y llega suave), así no hay tirones.
+ */
+const DURACION = 2600;
+const PRECARGA = 450; // quieto en la entrada mientras la placa termina de dibujar el local
+const mezclar = (a: number, b: number, w: number) => a + (b - a) * w;
+const suave = (a: number, b: number, t: number) => {
+  const x = Math.min(1, Math.max(0, (t - a) / (b - a)));
+  return x * x * (3 - 2 * x);
+};
+function recorrido(nombre: string, e: Camara, c: Camara, d: Camara) {
+  const p1 = { x: c.x, z: e.z - 220 };
+  const p2 = { x: c.x, z: c.z };
+  const N = 28;
+  let cuadros = "";
+  for (let k = 0; k <= N; k++) {
+    const u = k / N;
+    const t = -(Math.cos(Math.PI * u) - 1) / 2;
+    const a = (1 - t) ** 3, b = 3 * (1 - t) ** 2 * t, cc = 3 * (1 - t) * t * t, dd = t ** 3;
+    const cam: Camara = {
+      x: a * e.x + b * p1.x + cc * p2.x + dd * d.x,
+      z: a * e.z + b * p1.z + cc * p2.z + dd * d.z,
+      y: mezclar(e.y, d.y, suave(0.35, 1, t)),
+      yaw: mezclar(e.yaw, d.yaw, suave(0.5, 0.97, t)),
+      pitch: mezclar(e.pitch, d.pitch, suave(0.55, 1, t)),
+    };
+    cuadros += `${(u * 100).toFixed(2)}%{transform:${pose(cam)}}`;
+  }
+  return `@keyframes ${nombre}{${cuadros}}`;
+}
 /** Inclinación para mirar un punto: negativa = mirar hacia abajo. Apunta un poco más abajo para que el producto quede arriba del cartel de los pasos. */
 function mirar(camY: number, objY: number, distancia: number) {
   return (-Math.atan2(objY + 70 - camY, distancia) * 180) / Math.PI;
@@ -182,7 +216,9 @@ export default function ViajeGondola({
   const freezers = useMemo(() => gondola.filter((m) => m.tipo === "FREEZER"), [gondola]);
   const filasModulos = useMemo(() => modulos.map(medirFilas), [modulos]);
   const [paso, setPaso] = useState<0 | 1 | 2>(0);
-  const [salto, setSalto] = useState(false);
+  // El recorrido va como animación CSS: `vuelta` cambia el nombre para poder repetirlo.
+  const [animando, setAnimando] = useState(false);
+  const [vuelta, setVuelta] = useState(0);
   const [foco, setFoco] = useState<{ x: number; y: number; tam: number } | null>(null);
   const [montado, setMontado] = useState(false);
   const tiempos = useRef<number[]>([]);
@@ -243,6 +279,14 @@ export default function ViajeGondola({
     setFoco({ x: r.left + r.width / 2 - v.left, y: r.top + r.height / 2 - v.top, tam: Math.max(r.width, r.height) });
   }
 
+  /** Llegó: queda en el mueble, el producto sale apenas y se prende el foco. */
+  function llegar() {
+    tiempos.current.forEach((id) => window.clearTimeout(id));
+    setAnimando(false);
+    setPaso(2);
+    tiempos.current = [window.setTimeout(enfocar, 700)];
+  }
+
   function viajar() {
     tiempos.current.forEach((id) => window.clearTimeout(id));
     setFoco(null);
@@ -252,15 +296,22 @@ export default function ViajeGondola({
       tiempos.current = [window.setTimeout(enfocar, 300)];
       return;
     }
-    // Al repetir, la cámara salta a la entrada sin rebobinar el recorrido.
-    setSalto(true);
+    // Quieto en la entrada un instante: la placa dibuja todo el local antes de moverse,
+    // así el arranque no se traba. Al repetir, vuelve a la entrada sin rebobinar.
+    setAnimando(false);
     setPaso(0);
     tiempos.current = [
-      window.setTimeout(() => setSalto(false), 60),
-      window.setTimeout(() => setPaso(1), 650),
-      window.setTimeout(() => setPaso(2), 1650),
+      window.setTimeout(() => {
+        window.requestAnimationFrame(() =>
+          window.requestAnimationFrame(() => {
+            setVuelta((v) => v + 1);
+            setAnimando(true);
+            setPaso(1);
+          })
+        );
+      }, PRECARGA),
       // Por si el aviso de fin del movimiento no llega (pestaña en segundo plano).
-      window.setTimeout(enfocar, 3300),
+      window.setTimeout(llegar, PRECARGA + DURACION + 900),
     ];
   }
 
@@ -277,7 +328,8 @@ export default function ViajeGondola({
   }, []);
 
   if (!montado) return null;
-  const camara = paso === 0 ? entrada : paso === 1 ? caminando : destino.cam;
+  const camara = paso === 2 ? destino.cam : entrada;
+  const nombreViaje = `vg-viaje-${vuelta}`;
   const oculto = (g: string) => (paso === 2 && destino.ocultar.includes(g) ? " oculto" : "");
 
   // ---- el producto elegido (sale apenas de su lugar) ----
@@ -441,11 +493,12 @@ export default function ViajeGondola({
       </div>
 
       <div className="vg-camara">
+        {animando && <style>{recorrido(nombreViaje, entrada, caminando, destino.cam)}</style>}
         <div
-          className={`vg-escena paso${paso}${salto ? " salto" : ""}`}
-          style={{ transform: pose(camara) }}
-          onTransitionEnd={(e) => {
-            if (e.target === e.currentTarget && e.propertyName === "transform" && paso === 2) tiempos.current.push(window.setTimeout(enfocar, 700));
+          className={`vg-escena paso${paso}`}
+          style={animando ? { transform: pose(entrada), animation: `${nombreViaje} ${DURACION}ms linear forwards` } : { transform: pose(camara) }}
+          onAnimationEnd={(e) => {
+            if (e.target === e.currentTarget) llegar();
           }}
         >
           {/* El local: colores lisos, que la placa dibuja sin costo */}

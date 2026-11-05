@@ -17,8 +17,8 @@
 .vg-arriba button { border: 0; background: #22301f; color: #fff; border-radius: 999px; height: 54px; padding: 0 24px; font-weight: 800; font-size: 17px; margin-left: 12px; box-shadow: 0 10px 20px -12px rgba(0, 0, 0, .6); }
 
 .vg-camara { position: absolute; top: 0; right: 0; bottom: 0; left: 0; perspective: 760px; perspective-origin: 50% 48%; }
-.vg-escena { position: absolute; left: 50%; top: 55%; width: 0; height: 0; transform-style: preserve-3d; transition: transform .95s cubic-bezier(.65, 0, .25, 1); }
-.vg-escena.salto, .vg-escena.salto .vg-obj { transition: none; }
+/* La cámara se mueve con una animación de un solo tramo (ViajeGondola: recorrido()), sin transición. */
+.vg-escena { position: absolute; left: 50%; top: 55%; width: 0; height: 0; transform-style: preserve-3d; }
 .vg-c, .vg-p, .vg-fila { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
 .vg-p, .vg-grupo, .vg-fila, .vg-pos, .vg-obj { transform-style: preserve-3d; }
 .vg-grupo { position: absolute; left: 0; top: 0; }
@@ -42,14 +42,16 @@
 }
 .vg-estante { left: 0; top: 70px; width: 300px; height: 100px; transform-origin: 50% 0; transform: rotateX(-90deg); background: linear-gradient(#fbe7c2, #e9cf9f); }
 .vg-alacena-bajo { left: -4px; top: 70px; width: 308px; height: 116px; transform-origin: 50% 0; transform: translateZ(12px) rotateX(-90deg); background: #e7e2d8; }
-.vg-led { left: 10px; top: 71px; width: 280px; height: 7px; border-radius: 4px; transform: translateZ(-4px); background: #fffdf2; box-shadow: 0 0 8px 3px rgba(255, 240, 190, 1), 0 6px 30px 12px rgba(255, 200, 110, .75); }
+/* Sin sombras difuminadas grandes en la escena (son lo más caro de dibujar al moverse):
+   el brillo de la luz lo dan el halo y el degradé del ranurado. */
+.vg-led { left: 10px; top: 71px; width: 280px; height: 7px; border-radius: 4px; transform: translateZ(-4px); background: #fffdf2; box-shadow: 0 0 0 2px rgba(255, 228, 160, .8); }
 .vg-halo { left: 0; top: 70px; width: 300px; height: 150px; transform: translateZ(-40px); pointer-events: none; background: radial-gradient(75% 70% at 50% 0%, rgba(255, 206, 120, .5), rgba(255, 214, 140, 0) 72%); }
 .vg-ganchos { left: 0; width: 300px; height: 74px; transform-origin: 50% 0; transform: translateZ(-100px) rotateX(90deg); }
 .vg-ganchos i { position: absolute; top: 0; width: 3px; height: 100%; background: #fafafa; box-shadow: 0 0 0 .5px #bdbdbd; }
 .vg-capa { left: 0; top: 0; width: 300px; height: 570px; }
 .vg-portas { transform: translateZ(-27px); }
 .vg-portas i { position: absolute; width: 28px; height: 15px; border-radius: 2px; background: rgba(255, 255, 255, .7); border: 1px solid #c9d0d4; }
-.vg-bolsa { position: absolute; display: block; border-radius: 5px 5px 7px 7px; background: linear-gradient(170deg, #cfa877, #b98f5d); box-shadow: 0 8px 10px -7px rgba(60, 40, 10, .6); }
+.vg-bolsa { position: absolute; display: block; border-radius: 5px 5px 7px 7px; background: linear-gradient(170deg, #cfa877, #b98f5d); border-bottom: 2px solid #9c7646; }
 .vg-bolsa::before { content: ""; position: absolute; left: 10%; right: 10%; top: 8%; height: 2px; background: rgba(90, 60, 25, .35); }
 .vg-bolsa i { position: absolute; left: 12%; right: 12%; top: 43%; height: 25%; border-radius: 2px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .35); }
 .vg-poste { top: 70px; width: 9px; height: 380px; background: linear-gradient(90deg, #a3c19b, #87a780); }
@@ -101,8 +103,8 @@
 /* ===== Freezer vertical (Inelro, 5 estantes): marco oscuro, vidrio y luz fría ===== */
 .vg-fz-lado { transform-origin: 0 50%; transform: rotateY(90deg); background: linear-gradient(90deg, #3a4247, #2a3034); }
 .vg-fz-fondo { background: linear-gradient(#e9f4fa, #cfe5f0); }
-.vg-fz-luz { background: #f4fbff; box-shadow: 0 0 10px 4px rgba(200, 235, 255, .9), 0 10px 40px 14px rgba(170, 220, 250, .5); border-radius: 3px; }
-.vg-fz-estante { background: #a9bfc8; box-shadow: 0 3px 4px -2px rgba(0, 0, 0, .25); }
+.vg-fz-luz { background: #f4fbff; box-shadow: 0 0 0 2px rgba(200, 235, 255, .8); border-radius: 3px; }
+.vg-fz-estante { background: #a9bfc8; border-bottom: 2px solid #8ea4ad; }
 .vg-fz-vidrio { background: linear-gradient(160deg, rgba(255, 255, 255, .35), rgba(255, 255, 255, .08) 40%, rgba(255, 255, 255, 0) 60%, rgba(255, 255, 255, .16)); border-radius: 3px; }
 .vg-fz-marco { box-sizing: border-box; border-style: solid; border-color: #2b3236; border-width: 60px 10px 20px 10px; border-radius: 6px; }
 .vg-fz-cartel { box-sizing: border-box; background: #e3edf2; border-radius: 4px; color: #22303a; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
@@ -114,7 +116,7 @@
 .vg-af-marco { border-radius: 70px; background: #7d8b7e; }
 .vg-af-hueco { border-radius: 46px; background: linear-gradient(#5c6a5e, #53604f); }
 .vg-af-col { background: linear-gradient(90deg, #d9c39e, #cdb48b 50%, #d9c39e); }
-.vg-af-led { background: #fffbe6; box-shadow: 0 0 10px 3px rgba(255, 238, 185, .95), 0 0 32px 10px rgba(255, 210, 130, .45); }
+.vg-af-led { background: #fffbe6; box-shadow: 0 0 0 2px rgba(255, 232, 170, .8); }
 .vg-af-estante { transform: translateZ(1px) rotateX(90deg); background: linear-gradient(#e7d5b4, #d3ba92); }
 .vg-af-canto { background: linear-gradient(#ddc7a1, #c7ac82); }
 .vg-af-cartel { color: #eef2ee; text-align: center; font-weight: 700; letter-spacing: .22em; line-height: 1; }
