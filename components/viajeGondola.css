@@ -123,9 +123,10 @@
 .vg-af-led { background: #fffbe6; box-shadow: 0 0 0 2px rgba(255, 232, 170, .8); }
 .vg-af-estante { transform: translateZ(1px) rotateX(90deg); background: linear-gradient(#e7d5b4, #d3ba92); }
 .vg-af-canto { background: linear-gradient(#ddc7a1, #c7ac82); }
-.vg-af-cartel { color: #eef2ee; text-align: center; font-weight: 700; letter-spacing: .22em; line-height: 1; }
-.vg-af-cartel b { display: block; font-size: 66px; font-weight: 600; letter-spacing: .16em; }
-.vg-af-cartel span { font-size: 24px; letter-spacing: .3em; }
+/* El cartel como el del local: ANIMALFIT grande y fino, SUPLEMENTOS ——  abajo, en el panel verde. */
+.vg-af-cartel { color: #eef2ee; text-align: center; letter-spacing: .22em; line-height: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.vg-af-cartel b { display: block; font-size: 72px; font-weight: 400; letter-spacing: .18em; }
+.vg-af-cartel span { display: block; margin-top: 10px; font-size: 26px; font-weight: 500; letter-spacing: .32em; }
 
 /* ===== El producto elegido: sale apenas de su lugar ===== */
 .vg-pos { position: absolute; }

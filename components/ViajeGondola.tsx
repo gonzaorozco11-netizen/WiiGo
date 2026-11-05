@@ -610,9 +610,11 @@ export default function ViajeGondola({
             <div className="vg-c vg-pared" style={{ width: ATRAS_EXTRA, height: 900, transform: `translate3d(${ANCHO}px,-900px,${FIN_MODULOS}px)` }} />
             <div className="vg-c vg-pared" style={{ width: FIN_MODULOS - FONDO, height: 900, transform: `translate3d(${ANCHO + ATRAS_EXTRA}px,-900px,${FONDO}px) rotateY(-90deg)` }} />
             <div className="vg-p" style={{ transform: `translate3d(${ANCHO}px,0,${AF.z0 - AF.largo}px) rotateY(-90deg)` }}>
-              <div className="vg-c vg-af-marco" style={{ left: -40, top: -AF.alto - 60, width: AF.largo + 80, height: AF.alto + 60, transform: "translateZ(1px)" }} />
+              {/* Como en el local: el panel verde sube por arriba de las dos partes y ahí va
+                  «ANIMALFIT / SUPLEMENTOS ——», centrado a lo largo de las dos (2026-11-05). */}
+              <div className="vg-c vg-af-marco" style={{ left: -40, top: -AF.alto - 175, width: AF.largo + 80, height: AF.alto + 175, transform: "translateZ(1px)" }} />
               <div className="vg-c vg-af-hueco" style={{ left: 0, top: -AF.alto - 30, width: AF.largo, height: AF.alto, transform: "translateZ(2px)" }} />
-              <div className="vg-c vg-af-cartel" style={{ left: 0, top: -AF.alto - 260, width: AF.largo, height: 160, transform: "translateZ(2px)" }}>
+              <div className="vg-c vg-af-cartel" style={{ left: 0, top: -AF.alto - 165, width: AF.largo, height: 125, transform: "translateZ(2px)" }}>
                 <b>{(estanteria[0]?.titulo ?? "Animalfit").replace(/^Estanter[ií]a\s*/i, "").toUpperCase()}</b>
                 <span>SUPLEMENTOS ——</span>
               </div>
