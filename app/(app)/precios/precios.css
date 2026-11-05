@@ -397,6 +397,13 @@ a.pr-btn { color: inherit; text-decoration: none; display: inline-flex; align-it
 .pr-gd-falta li b { font-size: 13px; display: block; }
 .pr-gd-falta li small { display: block; color: var(--tinta-3); font-size: 11.5px; }
 .pr-gd-motivo { display: inline-block; margin-top: 3px; font-size: 11px; font-weight: 700; color: #8a5c14; background: #fbf1dd; border-radius: 999px; padding: 1px 8px; }
+/* "¿Qué va acá?": filtro por marca; el número es cuántos de esa marca no tienen lugar. */
+.pr-gd-marcas { display: flex; flex-wrap: wrap; gap: 5px; }
+.pr-gd-marcas button { font: inherit; font-size: 12px; border: 1px solid var(--linea-2); background: var(--hoja-2); color: var(--tinta-2); border-radius: 999px; padding: 3px 9px; cursor: pointer; display: inline-flex; gap: 5px; align-items: center; }
+.pr-gd-marcas button span { font-family: var(--f-plex-mono), monospace; font-size: 11px; color: #a26a14; }
+.pr-gd-marcas button[aria-pressed="true"] { background: var(--ok); border-color: var(--ok); color: #fff; }
+.pr-gd-marcas button[aria-pressed="true"] span { color: #fde9c4; }
+.pr-gd-marcas button:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
 /* Abajo de la góndola: lo de Alifrut que todavía no se agregó, por rubros. */
 .pr-gda { display: grid; gap: 14px; }
 .pr-gda-cab { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 6px 16px; }

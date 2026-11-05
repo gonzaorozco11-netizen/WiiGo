@@ -56,6 +56,8 @@ export default function PreciosGondola({
   const [idModulo, setIdModulo] = useState<string | null>(modulos[0]?.id ?? null);
   const [lugar, setLugar] = useState<{ fila: number; columna: number } | null>(null);
   const [buscar, setBuscar] = useState("");
+  // Filtro por marca en "¿Qué va acá?" (Gonzalo, 2026-11-05). Queda elegido al pasar de un lugar a otro.
+  const [marcaFiltro, setMarcaFiltro] = useState("");
   const [guardando, startTransition] = useTransition();
 
   if (!locales) {
@@ -93,8 +95,13 @@ export default function PreciosGondola({
   const q = sinTildes(buscar.trim());
   // Primero los que no tienen lugar; los demás también, para moverlos.
   const opciones = [...sinLugar, ...productos.filter((p) => dondeEsta.has(p.id))].filter(
-    (p) => p.id !== actual?.idProducto && (!q || sinTildes(`${p.nombre} ${p.marca ?? ""}`).includes(q))
+    (p) => p.id !== actual?.idProducto && (!marcaFiltro || (p.marca ?? "") === marcaFiltro) && (!q || sinTildes(`${p.nombre} ${p.marca ?? ""}`).includes(q))
   );
+  // Las marcas, con cuántos productos sin lugar tiene cada una.
+  const marcas = [...new Set(productos.map((p) => p.marca ?? ""))]
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b, "es"))
+    .map((m) => ({ m, sin: sinLugar.filter((p) => p.marca === m).length }));
 
   function elegirZona(z: Zona) {
     setZona(z);
@@ -400,6 +407,19 @@ export default function PreciosGondola({
               <label htmlFor="gd-buscar" className="pr-gd-label">
                 {actual ? "Cambiarlo por:" : "¿Qué va acá?"}
               </label>
+              {marcas.length > 1 && (
+                <div className="pr-gd-marcas" role="group" aria-label="Filtrar por marca">
+                  <button type="button" aria-pressed={!marcaFiltro} onClick={() => setMarcaFiltro("")}>
+                    Todas
+                  </button>
+                  {marcas.map(({ m, sin }) => (
+                    <button key={m} type="button" aria-pressed={marcaFiltro === m} onClick={() => setMarcaFiltro(marcaFiltro === m ? "" : m)}>
+                      {m}
+                      {sin > 0 && <span title="sin lugar">{sin}</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
               <input id="gd-buscar" className="pr-gd-buscar" value={buscar} onChange={(e) => setBuscar(e.target.value)} placeholder="Buscar producto o marca" autoFocus />
               <ul className="pr-gd-opciones">
                 {opciones.slice(0, 60).map((p) => {
