@@ -453,7 +453,17 @@ export default function PreciosGondola({
         </aside>
       </div>
 
-      {alifrut && <GondolaAlifrut datos={alifrut} destino={destino} ubicar={ubicarNuevo} />}
+      {alifrut && (
+        <GondolaAlifrut
+          datos={alifrut}
+          destino={destino}
+          ubicar={ubicarNuevo}
+          lugarDe={(id) => {
+            const d = dondeEsta.get(id);
+            return d ? { texto: `${nombreCortoZona(gondola, d.m)}, ${nombreFila(d.m, d.l.fila)}, lugar ${d.l.columna + 1}`, puesto: d.l.puesto } : null;
+          }}
+        />
+      )}
     </div>
   );
 }

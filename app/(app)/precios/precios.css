@@ -420,6 +420,20 @@ a.pr-btn { color: inherit; text-decoration: none; display: inline-flex; align-it
 .pr-gda-grupo { border: 1px solid var(--linea); border-radius: 10px; overflow: hidden; }
 .pr-gda-grupo h3 { margin: 0; font-size: 14px; padding: 8px 12px; background: var(--ok-t); color: var(--ok); }
 .pr-gda-grupo h3 small { color: var(--tinta-3); font-weight: 500; margin-left: 6px; }
+/* Cada rubro en dos lados: lo que ya tenés (verde) y lo que te falta. */
+.pr-gda-lados { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); }
+.pr-gda-lado { min-width: 0; }
+.pr-gda-lado + .pr-gda-lado { border-left: 1px solid var(--linea); }
+.pr-gda-lado h4 { margin: 0; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; padding: 8px 12px; border-top: 1px solid var(--linea); }
+.pr-gda-lado.tengo h4 { color: var(--ok); background: color-mix(in srgb, var(--ok-t) 55%, var(--hoja)); }
+.pr-gda-lado.falta h4 { color: #a26a14; background: #fdf8ee; }
+.pr-gda-lado > p { margin: 0; padding: 10px 12px; font-size: 13px; border-top: 1px solid var(--linea); }
+.pr-gda-lado.tengo .pr-gda-fila { grid-template-columns: minmax(0, 1fr) auto; }
+.pr-gda-lugar { font-weight: 600; }
+.pr-gda-lugar.ok { color: var(--ok); }
+.pr-gda-lugar.falta { color: #a26a14; }
+.pr-gda-lugar.sin { color: var(--mal); }
+@media (max-width: 760px) { .pr-gda-lado + .pr-gda-lado { border-left: 0; } }
 .pr-gda-fila { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 4px 14px; align-items: center; padding: 8px 12px; border-top: 1px solid var(--linea); font-size: 13.5px; }
 .pr-gda-fila b { font-weight: 600; }
 .pr-gda-fila small { display: block; color: var(--tinta-3); font-size: 11.5px; }

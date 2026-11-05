@@ -33,6 +33,8 @@ export default function GondolaAlifrut(props: {
   destino: string | null;
   /** Ubica el producto nuevo en el lugar elegido, como planificado. */
   ubicar: (producto: { id: string; nombre: string }) => void;
+  /** Dónde está en la góndola un producto de WiiGo ("Mueble 2, fila manos, lugar 3"); null = sin lugar. */
+  lugarDe: (idProducto: string) => { texto: string; puesto: boolean } | null;
 }) {
   const { datos } = props;
   // Se acuerda de los rubros elegidos la próxima vez que entra (la pestaña se abre
@@ -47,8 +49,8 @@ export default function GondolaAlifrut(props: {
   });
   const [todos, setTodos] = useState(false);
   const [agregando, setAgregando] = useState<ItemCatalogo | null>(null);
-  // Los que se agregan acá desaparecen de la lista enseguida, sin esperar a recargar.
-  const [recien, setRecien] = useState<Set<string>>(new Set());
+  // Los que se agregan acá pasan a "Ya lo tenés" enseguida, sin esperar a recargar.
+  const [recien, setRecien] = useState<Map<string, { id: string; nombre: string }[]>>(new Map());
 
   function tocar(c: string) {
     setElegidos((s) => {
@@ -64,25 +66,39 @@ export default function GondolaAlifrut(props: {
     });
   }
 
-  const usados = useMemo(() => {
-    const conProducto = new Set(datos.productos.map((p) => p.idGranel).filter(Boolean));
-    return new Set(datos.granel.filter((g) => g.idItem && conProducto.has(g.id)).map((g) => g.idItem as string));
+  // Los productos de WiiGo que salen de cada producto de Alifrut.
+  const usosPorItem = useMemo(() => {
+    const m = new Map<string, { id: string; nombre: string }[]>();
+    for (const g of datos.granel) {
+      if (!g.idItem) continue;
+      const hijos = datos.productos.filter((p) => p.idGranel === g.id).map((p) => ({ id: p.id, nombre: p.nombre }));
+      if (hijos.length) m.set(g.idItem, [...(m.get(g.idItem) ?? []), ...hijos]);
+    }
+    return m;
   }, [datos.granel, datos.productos]);
+  const usosDe = (id: string) => recien.get(id) ?? usosPorItem.get(id) ?? [];
   const traida = datos.estado.traidaEl ? new Date(datos.estado.traidaEl).getTime() : 0;
   // Lo que ya no está en su última lista no se propone.
   const sigue = (i: ItemCatalogo) => !(traida > 0 && new Date(i.vistoEl).getTime() < traida - 60000);
-  const faltan = datos.items.filter((i) => sigue(i) && !usados.has(i.id) && !recien.has(i.id));
   const categoria = (i: ItemCatalogo) => i.categoria ?? "Sin categoría";
 
-  const porCategoria = new Map<string, ItemCatalogo[]>();
-  for (const i of faltan) porCategoria.set(categoria(i), [...(porCategoria.get(categoria(i)) ?? []), i]);
+  // Cada rubro con lo que ya tenés y lo que te falta (Gonzalo, 2026-11-05: «los seleccionados por un lado y los que no por otro»).
+  const porCategoria = new Map<string, { tengo: ItemCatalogo[]; falta: ItemCatalogo[] }>();
+  for (const i of datos.items) {
+    const tiene = usosDe(i.id).length > 0;
+    if (!tiene && !sigue(i)) continue;
+    const g = porCategoria.get(categoria(i)) ?? { tengo: [], falta: [] };
+    (tiene ? g.tengo : g.falta).push(i);
+    porCategoria.set(categoria(i), g);
+  }
   // Primero los rubros donde ya vendés algo de Alifrut (lo tuyo); después el resto, por nombre.
-  const yaVendes = new Set(datos.items.filter((i) => usados.has(i.id)).map(categoria));
-  const categorias = [...porCategoria.keys()].sort((a, b) => Number(yaVendes.has(b)) - Number(yaVendes.has(a)) || a.localeCompare(b, "es"));
+  const categorias = [...porCategoria.keys()].sort(
+    (a, b) => Number((porCategoria.get(b)?.tengo.length ?? 0) > 0) - Number((porCategoria.get(a)?.tengo.length ?? 0) > 0) || a.localeCompare(b, "es")
+  );
   const visibles = categorias.filter((c) => todos || !fueraDeGondola(c) || elegidos.has(c));
   const escondidos = categorias.length - visibles.length;
   const elegidas = categorias.filter((c) => elegidos.has(c));
-  const total = elegidas.reduce((t, c) => t + (porCategoria.get(c)?.length ?? 0), 0);
+  const total = elegidas.reduce((t, c) => t + (porCategoria.get(c)?.falta.length ?? 0), 0);
 
   if (!datos.items.length) return null;
 
@@ -90,9 +106,9 @@ export default function GondolaAlifrut(props: {
     <section className="pr-tarjeta pr-gda" aria-label="Productos de Alifrut sin agregar">
       <div className="pr-gda-cab">
         <div>
-          <h2>Alifrut: lo que todavía no agregaste</h2>
+          <h2>Alifrut: lo que ya tenés y lo que te falta</h2>
           <p className="baj">
-            Elegí uno o más rubros de Alifrut. Sale lo que él tiene y vos todavía no vendés.
+            Elegí uno o más rubros de Alifrut. De un lado lo que ya vendés (y dónde está en la góndola); del otro, lo que todavía no.
             {props.destino ? (
               <>
                 {" "}
@@ -105,7 +121,7 @@ export default function GondolaAlifrut(props: {
         </div>
         {elegidas.length > 0 && (
           <small className="pr-tenue">
-            {total} {total === 1 ? "producto" : "productos"} en {elegidas.length} {elegidas.length === 1 ? "rubro" : "rubros"}
+            Te faltan {total} en {elegidas.length} {elegidas.length === 1 ? "rubro" : "rubros"}
           </small>
         )}
       </div>
@@ -114,7 +130,9 @@ export default function GondolaAlifrut(props: {
         {visibles.map((c) => (
           <button key={c} type="button" aria-pressed={elegidos.has(c)} onClick={() => tocar(c)}>
             {c}
-            <span>{porCategoria.get(c)?.length ?? 0}</span>
+            <span title="ya tenés / hay en Alifrut">
+              {porCategoria.get(c)?.tengo.length ?? 0}/{(porCategoria.get(c)?.tengo.length ?? 0) + (porCategoria.get(c)?.falta.length ?? 0)}
+            </span>
           </button>
         ))}
         {escondidos > 0 && (
@@ -125,33 +143,69 @@ export default function GondolaAlifrut(props: {
       </div>
 
       {elegidas.length === 0 ? (
-        <p className="pr-gda-vacio">Elegí uno o más rubros para ver qué te falta de Alifrut.</p>
+        <p className="pr-gda-vacio">Elegí uno o más rubros para ver qué tenés y qué te falta de Alifrut.</p>
       ) : (
         <div className="pr-gda-grupos">
-          {elegidas.map((c) => (
-            <div key={c} className="pr-gda-grupo">
-              <h3>
-                {c} <small>{porCategoria.get(c)?.length ?? 0} sin agregar</small>
-              </h3>
-              {(porCategoria.get(c) ?? []).map((i) => {
-                const g = granelDesdeItem({ costo_neto: i.costo, unidad: i.unidad, cantidad: i.cantidad });
-                return (
-                  <div key={i.id} className="pr-gda-fila">
-                    <span>
-                      <b>{i.nombre}</b>
-                      {i.marca && <small>{i.marca}</small>}
-                    </span>
-                    <span className="n">
-                      {pesos(costoPorKg({ ...g, id: i.id }))} <small>{g.unidad === "CAJA" ? "c/u" : "/kg"}</small>
-                    </span>
-                    <button type="button" className="pr-btn chico" onClick={() => setAgregando(i)}>
-                      Agregarlo
-                    </button>
+          {elegidas.map((c) => {
+            const { tengo, falta } = porCategoria.get(c) ?? { tengo: [], falta: [] };
+            const costo = (i: ItemCatalogo) => {
+              const g = granelDesdeItem({ costo_neto: i.costo, unidad: i.unidad, cantidad: i.cantidad });
+              return (
+                <span className="n">
+                  {pesos(costoPorKg({ ...g, id: i.id }))} <small>{g.unidad === "CAJA" ? "c/u" : "/kg"}</small>
+                </span>
+              );
+            };
+            return (
+              <div key={c} className="pr-gda-grupo">
+                <h3>
+                  {c}{" "}
+                  <small>
+                    tenés {tengo.length} de {tengo.length + falta.length}
+                  </small>
+                </h3>
+                <div className="pr-gda-lados">
+                  <div className="pr-gda-lado tengo">
+                    <h4>Ya lo tenés ({tengo.length})</h4>
+                    {tengo.length === 0 && <p className="pr-tenue">Todavía nada de este rubro.</p>}
+                    {tengo.map((i) => (
+                      <div key={i.id} className="pr-gda-fila">
+                        <span>
+                          <b>{i.nombre}</b>
+                          {usosDe(i.id).map((p) => {
+                            const l = props.lugarDe(p.id);
+                            return (
+                              <small key={p.id}>
+                                {p.nombre} ·{" "}
+                                <span className={`pr-gda-lugar ${l ? (l.puesto ? "ok" : "falta") : "sin"}`}>{l ? (l.puesto ? l.texto : `${l.texto} · falta poner`) : "sin lugar en la góndola"}</span>
+                              </small>
+                            );
+                          })}
+                        </span>
+                        {costo(i)}
+                      </div>
+                    ))}
                   </div>
-                );
-              })}
-            </div>
-          ))}
+                  <div className="pr-gda-lado falta">
+                    <h4>Te falta ({falta.length})</h4>
+                    {falta.length === 0 && <p className="pr-tenue">Ya tenés todo lo de este rubro.</p>}
+                    {falta.map((i) => (
+                      <div key={i.id} className="pr-gda-fila">
+                        <span>
+                          <b>{i.nombre}</b>
+                          {i.marca && <small>{i.marca}</small>}
+                        </span>
+                        {costo(i)}
+                        <button type="button" className="pr-btn chico" onClick={() => setAgregando(i)}>
+                          Agregarlo
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -165,7 +219,7 @@ export default function GondolaAlifrut(props: {
           granel={datos.granel}
           destino={props.destino}
           alTerminar={(hechos) => {
-            setRecien((s) => new Set(s).add(agregando.id));
+            if (hechos.length) setRecien((s) => new Map(s).set(agregando.id, [...(usosPorItem.get(agregando.id) ?? []), ...hechos]));
             if (hechos[0]) props.ubicar(hechos[0]);
           }}
           onCerrar={() => setAgregando(null)}
