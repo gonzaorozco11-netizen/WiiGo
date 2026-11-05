@@ -3365,12 +3365,16 @@ function ProductoDetalleModal({
         <button
           type="button"
           onClick={() => setVerDonde(true)}
-          className="self-stretch inline-flex items-center justify-center gap-2.5 whitespace-nowrap rounded-[18px] px-5 py-4 text-[17px] md:text-[19px] font-extrabold text-white transition-transform active:scale-[.98]"
+          // En dos renglones y siempre adentro del botón: con «Estantería Animalfit» en el
+          // mismo renglón se salía del recuadro (Gonzalo, 2026-11-05).
+          className="self-stretch flex flex-col items-center justify-center min-w-0 overflow-hidden rounded-[18px] px-4 py-3.5 text-center text-[17px] md:text-[19px] font-extrabold leading-tight text-white transition-transform active:scale-[.98]"
           style={{ background: "#e8743b", boxShadow: "0 16px 30px -16px rgba(232,116,59,.9)" }}
         >
-          <span aria-hidden="true">📍</span>
-          {idioma === "en" ? "Where do I find it?" : idioma === "pt" ? "Onde encontro?" : "¿Dónde lo encuentro?"}
-          <span className="rounded-full bg-white/25 px-2 py-0.5 text-[12px]">
+          <span className="max-w-full">
+            <span aria-hidden="true">📍 </span>
+            {idioma === "en" ? "Where do I find it?" : idioma === "pt" ? "Onde encontro?" : "¿Dónde lo encuentro?"}
+          </span>
+          <span className="mt-1.5 max-w-full truncate rounded-full bg-white/25 px-3 py-0.5 text-[12.5px] font-bold">
             {ubicacion.modulo.tipo === "ISLA"
               ? `${idioma === "en" ? "Island" : idioma === "pt" ? "Ilha" : "Isla"} ${ubicacion.modulo.numero ?? ""}`
               : ubicacion.modulo.tipo === "ESTANTERIA"
