@@ -22,8 +22,11 @@ export const MOTIVOS_FALTA = ["Proveedor sin stock", "Falta fraccionar", "Lo est
  *   del fondo; lado IZQ = mirando a los módulos, DER = mirando a Animalfit).
  * - ESTANTERIA: una parte de la estantería de la pared derecha (numero 1 =
  *   adelante, 2 = fondo).
+ * - FREEZER: un freezer vertical de la pared izquierda, después del M5, en la
+ *   parte de atrás (numero 1 = el pegado al M5). Hoy hay uno, el de Alta; van a
+ *   ser tres (sql/gondola-freezer.sql, Gonzalo 2026-11-05).
  */
-export type TipoZona = "MODULO" | "ISLA" | "ESTANTERIA";
+export type TipoZona = "MODULO" | "ISLA" | "ESTANTERIA" | "FREEZER";
 
 export type ModuloGondola = {
   id: string;
@@ -74,7 +77,7 @@ export async function cargarGondola(supabase: SupabaseClient, idLocal: string): 
     orden: Number(m.orden),
     titulo: m.titulo as string,
     subtitulo: (m.subtitulo as string | null) ?? null,
-    tipo: m.tipo === "ISLA" || m.tipo === "ESTANTERIA" ? (m.tipo as TipoZona) : "MODULO",
+    tipo: m.tipo === "ISLA" || m.tipo === "ESTANTERIA" || m.tipo === "FREEZER" ? (m.tipo as TipoZona) : "MODULO",
     numero: m.numero == null ? null : Number(m.numero),
     lado: m.lado === "IZQ" || m.lado === "DER" ? (m.lado as "IZQ" | "DER") : null,
     filas: leerFilas(m.filas),
@@ -117,7 +120,13 @@ export function soloModulos(gondola: ModuloGondola[]) {
 export function nombreCortoZona(gondola: ModuloGondola[], m: ModuloGondola) {
   if (m.tipo === "ISLA") return `Isla ${m.numero ?? ""}`.trim();
   if (m.tipo === "ESTANTERIA") return m.titulo;
+  if (m.tipo === "FREEZER") return `Freezer ${m.numero ?? ""}`.trim();
   return `Mueble ${soloModulos(gondola).indexOf(m) + 1}`;
+}
+
+/** Los freezers de la parte de atrás, del pegado al M5 al del fondo. */
+export function soloFreezers(gondola: ModuloGondola[]) {
+  return gondola.filter((m) => m.tipo === "FREEZER").sort((a, b) => (a.numero ?? 0) - (b.numero ?? 0));
 }
 
 /** "El primero de la izquierda", "el 3.º desde la izquierda", "el último, a la derecha". */

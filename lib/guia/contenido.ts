@@ -215,7 +215,7 @@ export const GUIAS: Guia[] = [
     rutas: ["/precios"],
     pasos: [
       "En <b>Precios</b>, abrí la pestaña <b>Góndola</b>.",
-      "Arriba elegí la zona del local: los módulos de la pared izquierda, la <b>Isla 1</b> (la de la entrada), la <b>Isla 2</b> (la del fondo) o la <b>estantería de Animalfit</b>.",
+      "Arriba elegí la zona del local: los módulos de la pared izquierda, la <b>Isla 1</b> (la de la entrada), la <b>Isla 2</b> (la del fondo), la <b>estantería de Animalfit</b> o el <b>Freezer</b> de Alta (al fondo, después del M5; 5 estantes, el 1 es el de arriba).",
       "En las islas elegí el lado (mirando a los módulos o a Animalfit); en la estantería, la parte (adelante o fondo).",
       "Tocá un lugar y elegí el producto. Aparecen los de todas las marcas: buscalos por nombre o por marca.",
       "Si en el local cambiás un mueble de lugar, tocalo y usá <b>← A la izquierda</b> o <b>A la derecha →</b>: se mueve con todos sus productos.",

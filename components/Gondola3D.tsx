@@ -105,10 +105,13 @@ export function MuebleFrente({
   textoAca?: string;
   onLugar?: (fila: number, columna: number) => void;
 }) {
+  // El freezer de Alta: vidrio y estantes, con «Est. 1» (el de arriba) en vez de la altura de la fila.
+  const frio = modulo.tipo === "FREEZER";
+  const rotulo = (fi: number) => (frio ? `Est. ${fi + 1}` : NOMBRE_ALTURA[modulo.filas[fi]?.altura ?? "manos"]);
   return (
     <div className="gd">
       <div className="gd-escena">
-        <div className="gd-mueble" role={onLugar ? undefined : "img"} aria-label={`${etiqueta ?? `Módulo ${numero}`} de frente`}>
+        <div className={`gd-mueble${frio ? " freezer" : ""}`} role={onLugar ? undefined : "img"} aria-label={`${etiqueta ?? `Módulo ${numero}`} de frente`}>
           <div className="gd-franja">
             <div className="gd-cartel">
               {etiqueta ? modulo.subtitulo ?? modulo.titulo : modulo.titulo}
@@ -120,8 +123,8 @@ export function MuebleFrente({
           <div className="gd-pared">
             {modulo.filas.map((f, fi) => (
               <div key={fi} className={`gd-fila${f.grande ? " grande" : ""}`} style={{ gridTemplateColumns: `66px repeat(${f.lugares}, minmax(0, 1fr))` }}>
-                <div className={`gd-altura ${f.altura}`}>
-                  <span>{NOMBRE_ALTURA[f.altura]}</span>
+                <div className={`gd-altura ${frio ? "" : f.altura}`}>
+                  <span>{rotulo(fi)}</span>
                 </div>
                 {Array.from({ length: f.lugares }, (_, ci) => {
                   const l = lugarEn(modulo, fi, ci);
@@ -145,7 +148,7 @@ export function MuebleFrente({
                       type="button"
                       className={clase}
                       onClick={() => onLugar(fi, ci)}
-                      aria-label={`${l ? l.nombre : "Lugar libre"}${plan ? ", planificado, falta poner" : ""}, fila ${NOMBRE_ALTURA[f.altura].toLowerCase()}, lugar ${ci + 1}`}
+                      aria-label={`${l ? l.nombre : "Lugar libre"}${plan ? ", planificado, falta poner" : ""}, ${frio ? `estante ${fi + 1}` : `fila ${NOMBRE_ALTURA[f.altura].toLowerCase()}`}, lugar ${ci + 1}`}
                     >
                       {adentro}
                     </button>

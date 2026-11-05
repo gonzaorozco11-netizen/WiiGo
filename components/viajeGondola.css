@@ -94,6 +94,22 @@
 .vg-sobre { width: 46px; height: 62px; border-radius: 4px 4px 3px 3px; background: linear-gradient(180deg, rgba(255, 255, 255, .4), rgba(0, 0, 0, .05)), #f4f4f0; }
 .vg-sobre::after { content: ""; position: absolute; left: 5px; right: 5px; top: 22px; height: 18px; border-radius: 2px; background: var(--c); }
 
+/* Cajas de congelados (freezer de Alta) */
+.vg-caja { width: 34px; height: 48px; border-radius: 3px; background: linear-gradient(90deg, rgba(0, 0, 0, .1), rgba(255, 255, 255, .45) 30%, rgba(255, 255, 255, 0) 60%), #f7f8f8; }
+.vg-caja::after { content: ""; position: absolute; left: 3px; right: 3px; top: 8px; height: 18px; border-radius: 2px; background: var(--c); }
+
+/* ===== Freezer vertical (Inelro, 5 estantes): marco oscuro, vidrio y luz fría ===== */
+.vg-fz-lado { transform-origin: 0 50%; transform: rotateY(90deg); background: linear-gradient(90deg, #3a4247, #2a3034); }
+.vg-fz-fondo { background: linear-gradient(#e9f4fa, #cfe5f0); }
+.vg-fz-luz { background: #f4fbff; box-shadow: 0 0 10px 4px rgba(200, 235, 255, .9), 0 10px 40px 14px rgba(170, 220, 250, .5); border-radius: 3px; }
+.vg-fz-estante { background: #a9bfc8; box-shadow: 0 3px 4px -2px rgba(0, 0, 0, .25); }
+.vg-fz-vidrio { background: linear-gradient(160deg, rgba(255, 255, 255, .35), rgba(255, 255, 255, .08) 40%, rgba(255, 255, 255, 0) 60%, rgba(255, 255, 255, .16)); border-radius: 3px; }
+.vg-fz-marco { box-sizing: border-box; border-style: solid; border-color: #2b3236; border-width: 60px 10px 20px 10px; border-radius: 6px; }
+.vg-fz-cartel { box-sizing: border-box; background: #e3edf2; border-radius: 4px; color: #22303a; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+.vg-fz-cartel b { font-size: 15px; font-weight: 800; line-height: 1; }
+.vg-fz-cartel span { font-size: 10px; font-weight: 700; color: #5b7684; margin-top: 2px; }
+.vg-fz-cartel.foco { box-shadow: 0 0 0 4px #e8743b; }
+
 /* ===== Estantería de Animalfit ===== */
 .vg-af-marco { border-radius: 70px; background: #7d8b7e; }
 .vg-af-hueco { border-radius: 46px; background: linear-gradient(#5c6a5e, #53604f); }

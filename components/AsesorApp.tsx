@@ -1172,7 +1172,9 @@ export default function AsesorApp({
           ? `${idioma === "en" ? "Island" : idioma === "pt" ? "Ilha" : "Isla"} ${m.numero ?? ""}`
           : m.tipo === "ESTANTERIA"
             ? m.titulo
-            : `${idioma === "en" ? "Shelf" : idioma === "pt" ? "Móvel" : "Mueble"} ${modulos.indexOf(m) + 1} · «${m.titulo}»`;
+            : m.tipo === "FREEZER"
+              ? `Freezer ${m.numero ?? ""}`.trim()
+              : `${idioma === "en" ? "Shelf" : idioma === "pt" ? "Móvel" : "Mueble"} ${modulos.indexOf(m) + 1} · «${m.titulo}»`;
       mejor = { texto, cuantos };
     });
     return mejor as { texto: string; cuantos: number } | null;
@@ -3373,7 +3375,9 @@ function ProductoDetalleModal({
               ? `${idioma === "en" ? "Island" : idioma === "pt" ? "Ilha" : "Isla"} ${ubicacion.modulo.numero ?? ""}`
               : ubicacion.modulo.tipo === "ESTANTERIA"
                 ? ubicacion.modulo.titulo
-                : `${idioma === "en" ? "Shelf" : idioma === "pt" ? "Móvel" : "Mueble"} ${gondola.filter((m) => m.tipo === "MODULO").indexOf(ubicacion.modulo) + 1}`}
+                : ubicacion.modulo.tipo === "FREEZER"
+                  ? `Freezer ${ubicacion.modulo.numero ?? ""}`.trim()
+                  : `${idioma === "en" ? "Shelf" : idioma === "pt" ? "Móvel" : "Mueble"} ${gondola.filter((m) => m.tipo === "MODULO").indexOf(ubicacion.modulo) + 1}`}
           </span>
         </button>
       )}

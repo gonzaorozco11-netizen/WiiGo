@@ -37,8 +37,17 @@ const FONDO = -2850; // de la puerta a la pared del fondo
 const Y_OJO = -495; // los ojos, a 1,65 m
 const FOCO = 760; // la perspectiva de la cámara
 const MOD = { z0: -780, paso: 304, ancho: 300, alacena: 70, zona: 380, alto: 570 };
-const ISLA = { x: 780, ancho: 210, alto: 210, estantes: [-456, -336], largo: 750, z0s: [-900, -1800] };
-const AF = { z0: -900, largo: 1300, alto: 700, fondo: 90 };
+// Con el plano de Gonzalo (2026-11-05): los 5 módulos llegan hasta donde termina
+// Animalfit; de ahí al fondo, los freezers. Las dos islas son iguales, una detrás
+// de la otra en el medio, dentro del largo de los módulos.
+const FIN_MODULOS = MOD.z0 - 5 * MOD.paso; // -2300
+const ISLA = { x: 780, ancho: 210, alto: 210, estantes: [-456, -336], largo: 640, z0s: [-860, -1580] };
+const AF = { z0: FIN_MODULOS + 1300, largo: 1300, alto: 700, fondo: 90 };
+// La parte de atrás es más ancha: después de Animalfit la pared derecha se corre.
+const ATRAS_EXTRA = 270;
+// Freezers verticales (Inelro, 5 estantes) en la pared izquierda, después del M5.
+// numero 1 = el pegado al M5 (hoy el único, el de Alta). Hay lugar para tres.
+const FRZ = { z0: FIN_MODULOS - 6, ancho: 168, paso: 174, alto: 560, fondo: 190, techo: 60, estante: 96 };
 const Z_BOLSA = -62;
 
 const TXT = {
@@ -53,6 +62,8 @@ const TXT = {
     caminaIsla: (n: number, pos: string) => `Caminá hasta la isla ${n}, ${pos}`,
     delLado: (l: string) => `Del ${l}`,
     aLaDerecha: "a la derecha",
+    alFondo: "Al fondo a la izquierda, pasando los módulos",
+    estanteArriba: (n: number) => `Estante ${n} desde arriba`,
     mapa: { modulos: "módulos", islas: "islas", entrada: "entrada" },
   },
   en: {
@@ -66,6 +77,8 @@ const TXT = {
     caminaIsla: (n: number, pos: string) => `Walk to island ${n}, ${pos}`,
     delLado: (l: string) => `On the ${l}`,
     aLaDerecha: "on the right",
+    alFondo: "At the back on the left, past the wall shelves",
+    estanteArriba: (n: number) => `Shelf ${n} from the top`,
     mapa: { modulos: "shelves", islas: "islands", entrada: "entrance" },
   },
   pt: {
@@ -79,6 +92,8 @@ const TXT = {
     caminaIsla: (n: number, pos: string) => `Vá até a ilha ${n}, ${pos}`,
     delLado: (l: string) => `No ${l}`,
     aLaDerecha: "à direita",
+    alFondo: "No fundo à esquerda, depois dos móveis",
+    estanteArriba: (n: number) => `Prateleira ${n} de cima para baixo`,
     mapa: { modulos: "móveis", islas: "ilhas", entrada: "entrada" },
   },
 };
@@ -118,14 +133,20 @@ const bahiaAF = (AF.largo - 40) / 2;
 /** La parte 1 (adelante) es la más cerca de la puerta; en la escena es la de la derecha del frente. */
 const xBahia = (numero: number | null) => (numero === 2 ? 0 : bahiaAF + 40);
 
-/** La forma del producto en una isla o en la estantería: siempre la misma para el mismo nombre. */
-function forma(nombre: string, zona: "isla" | "af") {
+/** La forma del producto en una isla, la estantería o el freezer: siempre la misma para el mismo nombre. */
+function forma(nombre: string, zona: "isla" | "af" | "frio") {
+  if (zona === "frio") return "caja";
   let h = 0;
   for (const ch of nombre) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
   if (zona === "af") return h % 3 === 0 ? "sobre" : "pote";
   return (["frasco", "doy", "frasco", "pote"] as const)[h % 4];
 }
-const ANCHO_FORMA = { frasco: 34, doy: 38, pote: 46, sobre: 46 } as const;
+const ANCHO_FORMA = { frasco: 34, doy: 38, pote: 46, sobre: 46, caja: 34 } as const;
+
+/** La altura (y) de la base de cada estante del freezer; la fila 0 es la de arriba. */
+function estanteFrio(fila: number) {
+  return -FRZ.alto + FRZ.techo + (fila + 1) * FRZ.estante - 4;
+}
 
 type Camara = { x: number; y: number; z: number; yaw: number; pitch: number };
 function pose(c: Camara) {
@@ -158,6 +179,7 @@ export default function ViajeGondola({
   const modulos = useMemo(() => soloModulos(gondola), [gondola]);
   const islas = useMemo(() => gondola.filter((m) => m.tipo === "ISLA"), [gondola]);
   const estanteria = useMemo(() => gondola.filter((m) => m.tipo === "ESTANTERIA"), [gondola]);
+  const freezers = useMemo(() => gondola.filter((m) => m.tipo === "FREEZER"), [gondola]);
   const filasModulos = useMemo(() => modulos.map(medirFilas), [modulos]);
   const [paso, setPaso] = useState<0 | 1 | 2>(0);
   const [salto, setSalto] = useState(false);
@@ -189,6 +211,17 @@ export default function ViajeGondola({
       const cam: Camara = { x: 930, y: -480, z, yaw: 90, pitch: 0 };
       cam.pitch = mirar(cam.y, y, 540);
       return { cam, ocultar: ["izq", "islas"], mapa: [108, zona.numero === 2 ? 62 : 96] };
+    }
+    if (zona.tipo === "FREEZER") {
+      const k = Math.max(0, (zona.numero ?? 1) - 1);
+      const lugares = Math.max(1, zona.filas[fila]?.lugares ?? 4);
+      const ancho = (FRZ.ancho - 20) / lugares;
+      const z = FRZ.z0 - k * FRZ.paso - (10 + ancho * (columna + 0.5));
+      const y = estanteFrio(fila) - 24;
+      const yCam = Math.min(-470, y - 40);
+      const cam: Camara = { x: FRZ.fondo + 470, y: yCam, z, yaw: -90, pitch: 0 };
+      cam.pitch = mirar(cam.y, y, 470);
+      return { cam, ocultar: ["der", "islas"], mapa: [9, 26 - k * 8] };
     }
     const i = Math.max(0, modulos.indexOf(zona));
     const f = filasModulos[i]?.[fila];
@@ -262,7 +295,7 @@ export default function ViajeGondola({
   );
 
   // ---- los productos de un estante, en una sola capa ----
-  const estante = (m: ModuloGondola | undefined, f: number, largo: number, tipo: "isla" | "af") => {
+  const estante = (m: ModuloGondola | undefined, f: number, largo: number, tipo: "isla" | "af" | "frio") => {
     if (!m) return null;
     const lugares = Math.max(1, m.filas[f]?.lugares ?? 12);
     const ancho = largo / lugares;
@@ -276,7 +309,7 @@ export default function ViajeGondola({
         if (esEste) {
           return (
             <div key={l.columna} className="vg-pos" style={{ left: x, bottom: 0 }}>
-              {elegido(w, 60, fo, colorDeProducto(l.nombre))}
+              {elegido(w, fo === "caja" ? 48 : 60, fo, colorDeProducto(l.nombre))}
             </div>
           );
         }
@@ -319,6 +352,35 @@ export default function ViajeGondola({
     );
   };
 
+  // ---- un freezer vertical: marco oscuro, vidrio, 5 estantes con luz fría ----
+  const freezer = (m: ModuloGondola) => {
+    const k = Math.max(0, (m.numero ?? 1) - 1);
+    const z = FRZ.z0 - k * FRZ.paso;
+    const adentro = FRZ.ancho - 20;
+    const esFoco = m.id === zona.id;
+    return (
+      <div key={m.id} className="vg-p" style={{ transform: `translate3d(${FRZ.fondo}px,${-FRZ.alto}px,${z}px) rotateY(90deg)` }}>
+        <div className="vg-c vg-fz-lado" style={{ width: FRZ.fondo, height: FRZ.alto }} />
+        <div className="vg-c vg-fz-fondo" style={{ left: 10, top: FRZ.techo, width: adentro, height: FRZ.alto - FRZ.techo - 20, transform: "translateZ(-70px)" }} />
+        <div className="vg-c vg-fz-luz" style={{ left: 14, top: FRZ.techo + 4, width: adentro - 8, height: 5, transform: "translateZ(-40px)" }} />
+        {m.filas.map((_, f) => (
+          <div key={f}>
+            <div className="vg-c vg-fz-estante" style={{ left: 10, top: estanteFrio(f) + FRZ.alto, width: adentro, height: 4, transform: "translateZ(-34px)" }} />
+            <div className="vg-fila" style={{ left: 10, top: estanteFrio(f) + FRZ.alto - 62, width: adentro, transform: "translateZ(-32px)" }}>
+              {estante(m, f, adentro, "frio")}
+            </div>
+          </div>
+        ))}
+        <div className="vg-c vg-fz-vidrio" style={{ left: 10, top: FRZ.techo, width: adentro, height: FRZ.alto - FRZ.techo - 20, transform: "translateZ(1px)" }} />
+        <div className="vg-c vg-fz-marco" style={{ width: FRZ.ancho, height: FRZ.alto }} />
+        <div className={`vg-c vg-fz-cartel${esFoco ? " foco" : ""}`} style={{ left: 8, top: 10, width: FRZ.ancho - 16, height: FRZ.techo - 18, transform: "translateZ(2px)" }}>
+          <b>{m.titulo}</b>
+          {m.subtitulo && <span>{m.subtitulo}</span>}
+        </div>
+      </div>
+    );
+  };
+
   // ---- la estantería de Animalfit: dos partes, columna de roble con LED ----
   const filasAF = Math.max(estanteria[0]?.filas.length ?? 6, 1);
   const ys = Array.from({ length: filasAF }, (_, f) => estanteAF(f, filasAF));
@@ -338,6 +400,11 @@ export default function ViajeGondola({
     numero = "E";
     linea = `${zona.titulo} · ${(zona.subtitulo ?? "").toLowerCase()} · ${est.toLowerCase()}, ${t.lugar(columna + 1).toLowerCase()}`;
     pasos = [`1 · ${zona.titulo}, ${t.aLaDerecha}`, `2 · ${zona.subtitulo ?? ""}`, `3 · ${est}, ${t.lugar(columna + 1).toLowerCase()}`];
+  } else if (zona.tipo === "FREEZER") {
+    const est = t.estanteArriba(fila + 1);
+    numero = "F";
+    linea = `${zona.titulo}${zona.subtitulo ? ` · ${zona.subtitulo}` : ""} · ${est.toLowerCase()}, ${t.lugar(columna + 1).toLowerCase()}`;
+    pasos = [`1 · ${t.alFondo}`, `2 · ${zona.titulo}`, `3 · ${est}, ${t.lugar(columna + 1).toLowerCase()}`];
   } else {
     const n = modulos.indexOf(zona) + 1;
     const altura = zona.filas[fila]?.altura ?? "manos";
@@ -391,8 +458,12 @@ export default function ViajeGondola({
             ))}
           </div>
           <div className="vg-c vg-techo" style={{ width: ANCHO, height: -FONDO, transform: "translate3d(0,-900px,0) rotateX(-90deg)" }} />
-          <div className="vg-c vg-fondo" style={{ width: ANCHO, height: 900, transform: `translate3d(0,-900px,${FONDO}px)` }} />
-          <div className="vg-c vg-tele" style={{ width: 450, height: 255, transform: `translate3d(${ANCHO / 2 - 225}px,-700px,${FONDO + 2}px)` }} />
+          {/* La parte de atrás, más ancha: piso y techo de lo que se corre la pared */}
+          <div className="vg-c vg-piso" style={{ width: ATRAS_EXTRA, height: FIN_MODULOS - FONDO, transform: `translate3d(${ANCHO}px,0,${FIN_MODULOS}px) rotateX(-90deg)` }} />
+          <div className="vg-c vg-techo" style={{ width: ATRAS_EXTRA, height: FIN_MODULOS - FONDO, transform: `translate3d(${ANCHO}px,-900px,${FIN_MODULOS}px) rotateX(-90deg)` }} />
+          <div className="vg-c vg-fondo" style={{ width: ANCHO + ATRAS_EXTRA, height: 900, transform: `translate3d(0,-900px,${FONDO}px)` }} />
+          {/* La TV, en el medio de la pared del fondo: alineada con las islas */}
+          <div className="vg-c vg-tele" style={{ width: 450, height: 255, transform: `translate3d(${ISLA.x - 225}px,-700px,${FONDO + 2}px)` }} />
 
           {/* Pared izquierda: los módulos de ganchos */}
           <div className={`vg-grupo${oculto("izq")}`}>
@@ -468,6 +539,8 @@ export default function ViajeGondola({
                 </div>
               );
             })}
+            {/* Al fondo, después del M5: los freezers */}
+            {freezers.map(freezer)}
           </div>
 
           {/* Centro: las dos islas */}
@@ -478,7 +551,10 @@ export default function ViajeGondola({
 
           {/* Pared derecha: la estantería de Animalfit */}
           <div className={`vg-grupo${oculto("der")}`}>
-            <div className="vg-c vg-pared" style={{ width: -FONDO, height: 900, transform: `translate3d(${ANCHO}px,-900px,${FONDO}px) rotateY(-90deg)` }} />
+            {/* Hasta donde termina Animalfit; después la pared se corre a la derecha */}
+            <div className="vg-c vg-pared" style={{ width: -FIN_MODULOS, height: 900, transform: `translate3d(${ANCHO}px,-900px,${FIN_MODULOS}px) rotateY(-90deg)` }} />
+            <div className="vg-c vg-pared" style={{ width: ATRAS_EXTRA, height: 900, transform: `translate3d(${ANCHO}px,-900px,${FIN_MODULOS}px)` }} />
+            <div className="vg-c vg-pared" style={{ width: FIN_MODULOS - FONDO, height: 900, transform: `translate3d(${ANCHO + ATRAS_EXTRA}px,-900px,${FONDO}px) rotateY(-90deg)` }} />
             <div className="vg-p" style={{ transform: `translate3d(${ANCHO}px,0,${AF.z0 - AF.largo}px) rotateY(-90deg)` }}>
               <div className="vg-c vg-af-marco" style={{ left: -40, top: -AF.alto - 60, width: AF.largo + 80, height: AF.alto + 60, transform: "translateZ(1px)" }} />
               <div className="vg-c vg-af-hueco" style={{ left: 0, top: -AF.alto - 30, width: AF.largo, height: AF.alto, transform: "translateZ(2px)" }} />
@@ -538,6 +614,7 @@ export default function ViajeGondola({
         <svg viewBox="0 0 120 170">
           <rect x="1" y="1" width="118" height="168" rx="6" fill="#fff" stroke="#e8dfcd" />
           <rect x="3" y="34" width="10" height="100" rx="2" fill="#a3c19b" />
+          {freezers.length > 0 && <rect x="3" y={30 - freezers.length * 8} width="12" height={freezers.length * 8 - 1} rx="2" fill="#9fd0e6" />}
           <text x="9" y="26" fontSize="8" textAnchor="middle" fill="#857f6f">
             {t.mapa.modulos}
           </text>

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { MuebleFrente, Pared3D } from "@/components/Gondola3D";
-import { MOTIVOS_FALTA, NOMBRE_ALTURA, nombreCortoZona, soloModulos, type ModuloGondola } from "@/lib/gondola";
+import { MOTIVOS_FALTA, NOMBRE_ALTURA, nombreCortoZona, soloFreezers, soloModulos, type ModuloGondola } from "@/lib/gondola";
 import { marcarPuestoLugar, moverModulo, ponerEnLugar } from "@/app/(app)/precios/gondola-actions";
 import GondolaAlifrut, { type DatosAlifrutGondola } from "@/components/GondolaAlifrut";
 
@@ -16,7 +16,7 @@ export type GondolaLocal = { idLocal: string; nombre: string; modulos: ModuloGon
 /** Un producto que se puede ubicar: de cualquier marca. */
 export type ProductoGondola = { id: string; nombre: string; marca: string | null };
 
-type Zona = "MODULOS" | "ISLA1" | "ISLA2" | "ESTANTERIA";
+type Zona = "MODULOS" | "ISLA1" | "ISLA2" | "ESTANTERIA" | "FREEZER";
 
 const sinTildes = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
@@ -24,6 +24,7 @@ const sinTildes = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLo
 function nombreFila(m: ModuloGondola, fila: number) {
   if (m.tipo === "ISLA") return ["piso de arriba", "piso del medio", "piso de abajo"][fila] ?? `piso ${fila + 1}`;
   if (m.tipo === "ESTANTERIA") return `estante ${m.filas.length - fila} desde abajo`;
+  if (m.tipo === "FREEZER") return `estante ${fila + 1} desde arriba`;
   return `fila ${NOMBRE_ALTURA[m.filas[fila]?.altura ?? "manos"].toLowerCase()}`;
 }
 
@@ -80,7 +81,8 @@ export default function PreciosGondola({
   // Las zonas que existen en este local (las islas y la estantería las crea sql/gondola-local-entero.sql).
   const islas = (n: number) => gondola.filter((m) => m.tipo === "ISLA" && m.numero === n).sort((a, b) => (a.lado === "IZQ" ? -1 : 1) - (b.lado === "IZQ" ? -1 : 1));
   const estanteria = gondola.filter((m) => m.tipo === "ESTANTERIA").sort((a, b) => (a.numero ?? 0) - (b.numero ?? 0));
-  const deLaZona: Record<Zona, ModuloGondola[]> = { MODULOS: modulos, ISLA1: islas(1), ISLA2: islas(2), ESTANTERIA: estanteria };
+  const freezers = soloFreezers(gondola);
+  const deLaZona: Record<Zona, ModuloGondola[]> = { MODULOS: modulos, ISLA1: islas(1), ISLA2: islas(2), ESTANTERIA: estanteria, FREEZER: freezers };
   const hayLocalEntero = estanteria.length > 0 || islas(1).length > 0;
 
   const enZona = deLaZona[zona];
@@ -201,6 +203,9 @@ export default function PreciosGondola({
     ...(islas(1).length ? [{ z: "ISLA1" as Zona, nombre: "Isla 1", detalle: "La de la entrada · 3 pisos" }] : []),
     ...(islas(2).length ? [{ z: "ISLA2" as Zona, nombre: "Isla 2", detalle: "La del fondo · 3 pisos" }] : []),
     ...(estanteria.length ? [{ z: "ESTANTERIA" as Zona, nombre: "Estantería Animalfit", detalle: "Pared derecha · 6 estantes" }] : []),
+    ...(freezers.length
+      ? [{ z: "FREEZER" as Zona, nombre: freezers.length === 1 ? "Freezer" : "Freezers", detalle: `Al fondo, después del M5 · ${freezers.length === 1 ? (freezers[0].subtitulo ?? "1 freezer") : `${freezers.length} freezers`}` }]
+      : []),
   ];
 
   return (
@@ -281,7 +286,7 @@ export default function PreciosGondola({
                   setLugar(null);
                 }}
               >
-                {m.subtitulo ?? m.titulo}
+                {m.tipo === "FREEZER" ? m.titulo : m.subtitulo ?? m.titulo}
                 <small>{m.lugares.length} ubicados</small>
               </button>
             ))}

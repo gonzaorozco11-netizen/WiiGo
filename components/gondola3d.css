@@ -76,6 +76,18 @@ button.gd-gancho:focus-visible { outline: 2px solid var(--gd-verde); outline-off
 .gd-gancho.plan .gd-porta { color: #8a5c14; border-color: #e5c992; background: #fbf1dd; }
 .gd-falta { position: absolute; top: -6px; right: 2px; z-index: 2; background: #b9822a; color: #fff; font-size: 9px; font-weight: 700; letter-spacing: .02em; border-radius: 999px; padding: 1px 6px; }
 
+/* El freezer vertical de Alta (2026-11-05): marco gris oscuro, vidrio frío y estantes; los productos van en caja. */
+.gd-mueble.freezer { width: 520px; background: #2b3236; box-shadow: inset -6px 0 0 #1f2427, 0 18px 30px -22px rgba(0, 0, 0, .45); border-radius: 8px; }
+.gd-mueble.freezer .gd-franja { background: linear-gradient(180deg, #3a4348, #30383c); }
+.gd-mueble.freezer .gd-cartel { background: #e3edf2; color: #22303a; }
+.gd-mueble.freezer .gd-cartel small { color: #5b7684; }
+.gd-mueble.freezer .gd-pared { background-color: #cfe6f1; background-image: linear-gradient(160deg, rgba(255, 255, 255, .55), rgba(255, 255, 255, 0) 45%); border: 4px solid #8aa3ae; border-radius: 4px; }
+.gd-mueble.freezer .gd-fila { border-bottom: 3px solid #93aab4; padding-bottom: 6px; }
+.gd-mueble.freezer .gd-altura span { background: #4f6f7e; }
+.gd-mueble.freezer .gd-bolsa { width: 70px; height: 58px; border-radius: 3px; background: linear-gradient(180deg, #fdfdfb, #e9edf0); border: 1px solid #c6d2d8; }
+.gd-mueble.freezer .gd-ventana { top: 18%; height: 40%; border-radius: 2px; }
+.gd-mueble.freezer .gd-gancho.vacio .gd-bolsa { background: transparent; border: 2px dashed #86a6b4; }
+
 @media (prefers-reduced-motion: reduce) {
   .gd-f-fila i.aca, .gd-gancho.aca .gd-bolsa { animation: none; }
   .gd-pared3d, .gd-mod3d { transition: none; }
