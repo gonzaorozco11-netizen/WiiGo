@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState, useTransition } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, useSyncExternalStore, useTransition, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { esCodigoInterno, limpiarCodigoBarras, formatearCodigo } from "@/lib/codigos";
 import {
@@ -39,9 +39,13 @@ export type RotuloItem = {
   trazas: string | null;
 };
 
-/** Lo que vale para toda la tanda que se imprime: el pie y las fechas. */
-type DatosTanda = { pie: string; envasado: string; venceBolsa: string | null };
-const TandaContext = createContext<DatosTanda>({ pie: PIE_ETIQUETA_DEFECTO, envasado: hoyIso(), venceBolsa: null });
+/**
+ * Lo que vale para toda la tanda que se imprime: el pie y las fechas.
+ * conVencimiento: si va la fecha impresa o «Vto: ____» para escribirla a mano
+ * (Gonzalo, 2026-11-06: «como no tengo la fecha de venc. de momento, que no salga»).
+ */
+type DatosTanda = { pie: string; envasado: string; venceBolsa: string | null; conVencimiento: boolean };
+const TandaContext = createContext<DatosTanda>({ pie: PIE_ETIQUETA_DEFECTO, envasado: hoyIso(), venceBolsa: null, conVencimiento: false });
 
 function hoyIso() {
   const d = new Date();
@@ -112,6 +116,98 @@ const ROLLOS = [
 ] as const;
 
 type Rollo = (typeof ROLLOS)[number];
+
+// ---------- Que el nombre entre entero (Gonzalo, 2026-11-06: «tienen que entrar todo») ----------
+//
+// Antes el nombre tenía un renglón fijo y lo largo se cortaba con «…» (pasaba
+// con «Emulsión de Limpieza Glow Rose 120 ml» en la de 39 × 17). Ahora se mide
+// con la letra que de verdad usa el navegador y se elige el cuerpo más grande
+// con el que entra entero en el lugar que tiene: uno, dos o tres renglones.
+
+const LETRA_ETIQUETA = "'Arial Narrow', Arial, sans-serif";
+const INTERLINEA = 1.12;
+let lienzoMedidas: CanvasRenderingContext2D | null = null;
+
+/** Ancho en mm de un texto en mayúsculas, con letra de `cuerpo` mm. Sin navegador, una estimación. */
+function anchoTexto(texto: string, cuerpo: number) {
+  if (typeof document !== "undefined") {
+    lienzoMedidas ??= document.createElement("canvas").getContext("2d");
+    if (lienzoMedidas) {
+      lienzoMedidas.font = `700 100px ${LETRA_ETIQUETA}`;
+      return (lienzoMedidas.measureText(texto.toUpperCase()).width / 100) * cuerpo;
+    }
+  }
+  return texto.length * 0.62 * cuerpo;
+}
+
+/** Cuántos renglones ocupa, cortando entre palabras como el navegador. */
+function renglonesDe(texto: string, cuerpo: number, ancho: number) {
+  const palabras = texto.split(/\s+/).filter(Boolean);
+  const espacio = anchoTexto(" ", cuerpo);
+  let renglones = 1;
+  let usado = 0;
+  for (const p of palabras) {
+    const w = anchoTexto(p, cuerpo);
+    if (usado > 0 && usado + espacio + w > ancho) {
+      renglones++;
+      usado = w;
+    } else usado += (usado > 0 ? espacio : 0) + w;
+  }
+  return renglones;
+}
+
+/** El cuerpo más grande (mm) con el que el nombre entra entero en ancho × alto, en hasta 3 renglones. */
+function cuerpoQueEntra(texto: string, ancho: number, alto: number, maximo: number, minimo = 1.2) {
+  // 4 % de aire: la impresora y el redondeo de los píxeles nunca dan justo.
+  const util = ancho * 0.96;
+  for (let c = maximo; c > minimo; c = Math.round((c - 0.05) * 100) / 100) {
+    const r = renglonesDe(texto, c, util);
+    if (r <= 3 && r * c * INTERLINEA <= alto) return c;
+  }
+  return minimo;
+}
+
+const sinServidor = () => () => {};
+/** Falso en el servidor y en el primer dibujo; verdadero cuando ya se puede medir la letra. */
+function useSePuedeMedir() {
+  return useSyncExternalStore(sinServidor, () => true, () => false);
+}
+
+/** El nombre del producto, entero, con el cuerpo que le entre en ese lugar. */
+function NombreQueEntra({
+  texto,
+  ancho,
+  alto,
+  maximo,
+  centrado = false,
+  style,
+}: {
+  texto: string;
+  ancho: number;
+  alto: number;
+  maximo: number;
+  centrado?: boolean;
+  style?: CSSProperties;
+}) {
+  const medir = useSePuedeMedir();
+  const cuerpo = useMemo(() => cuerpoQueEntra(texto, ancho, alto, maximo), [texto, ancho, alto, maximo, medir]); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <div
+      style={{
+        fontSize: `${cuerpo}mm`,
+        lineHeight: INTERLINEA,
+        fontWeight: 700,
+        textTransform: "uppercase",
+        textAlign: centrado ? "center" : undefined,
+        maxWidth: "100%",
+        overflowWrap: "anywhere",
+        ...style,
+      }}
+    >
+      {texto}
+    </div>
+  );
+}
 
 /**
  * El nombre como va impreso en la etiqueta.
@@ -604,6 +700,8 @@ function ConfigurarImpresion({
   // Las fechas valen para toda la tanda: se fracciona e imprime de una vez.
   const [envasado, setEnvasado] = useState(hoyIso);
   const [venceBolsa, setVenceBolsa] = useState("");
+  // Por ahora sin fecha: Gonzalo la completa con lapicera hasta tener los vencimientos.
+  const [conVencimiento, setConVencimiento] = useState(false);
   const [plancha, setPlancha] = useState<Plancha>(PLANCHAS[0]);
   const [rollo, setRollo] = useState<Rollo>(ROLLOS[0]);
   const [desde, setDesde] = useState(1);
@@ -665,7 +763,7 @@ function ConfigurarImpresion({
   const sinDias = fraccionados.filter((i) => i.rotulo?.dias == null);
   const sinPeso = fraccionados.filter((i) => i.rotulo?.pesoG == null);
   const conAlergenos = fraccionados.filter((i) => i.rotulo?.alergenos || i.rotulo?.trazas);
-  const tanda: DatosTanda = { pie, envasado: envasado || hoyIso(), venceBolsa: venceBolsa || null };
+  const tanda: DatosTanda = { pie, envasado: envasado || hoyIso(), venceBolsa: venceBolsa || null, conVencimiento };
 
   return (
     <TandaContext.Provider value={tanda}>
@@ -684,26 +782,40 @@ function ConfigurarImpresion({
                 className="rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
               />
             </div>
-            <div>
-              <label className="block text-xs text-neutral-600 mb-1" htmlFor="vence-bolsa">
-                Vence la bolsa grande (opcional)
-              </label>
-              <input
-                id="vence-bolsa"
-                type="date"
-                value={venceBolsa}
-                onChange={(e) => setVenceBolsa(e.target.value)}
-                className="rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
-              />
-            </div>
+            <label className="flex items-center gap-2 text-sm text-neutral-700 rounded-lg border border-neutral-300 bg-white px-3 py-2 cursor-pointer">
+              <input id="con-vencimiento" type="checkbox" checked={conVencimiento} onChange={(e) => setConVencimiento(e.target.checked)} className="w-4 h-4 accent-[var(--color-accent,#2563eb)]" />
+              Imprimir la fecha de vencimiento
+            </label>
+            {conVencimiento && (
+              <div>
+                <label className="block text-xs text-neutral-600 mb-1" htmlFor="vence-bolsa">
+                  Vence la bolsa grande (opcional)
+                </label>
+                <input
+                  id="vence-bolsa"
+                  type="date"
+                  value={venceBolsa}
+                  onChange={(e) => setVenceBolsa(e.target.value)}
+                  className="rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
+                />
+              </div>
+            )}
             <p className="text-xs text-neutral-600 max-w-sm leading-relaxed">
-              El vencimiento sale solo: envasado + los días que dura cada producto, sin pasarse nunca del de la bolsa
-              grande. Si imprimís productos de bolsas distintas, cargá ese vencimiento imprimiendo de a uno.
+              {conVencimiento ? (
+                <>
+                  El vencimiento sale solo: envasado + los días que dura cada producto, sin pasarse nunca del de la bolsa grande. Si imprimís productos de
+                  bolsas distintas, cargá ese vencimiento imprimiendo de a uno.
+                </>
+              ) : (
+                <>
+                  Sin la fecha: sale <b>«Vto: ______»</b> con una línea para completarlo a mano con lapicera.
+                </>
+              )}
             </p>
           </div>
           {!entraRotulo(medida) && (
             <p className="text-sm text-amber-800">
-              En {medida.ancho} × {medida.alto} mm sale <b>WiiGo Dietética, el nombre, el peso neto, el vencimiento y el código</b>.
+              En {medida.ancho} × {medida.alto} mm sale <b>WiiGo Dietética, el nombre, el peso neto, el vencimiento{conVencimiento ? "" : " (para escribir a mano)"} y el código</b>.
               Los alérgenos no entran: para la bolsita completa elegí <b>70 × 35 mm</b>.
               {conAlergenos.length > 0 && (
                 <>
@@ -1183,12 +1295,18 @@ function TiraDeEtiquetas({ rollo, items }: { rollo: Rollo; items: ItemCodigo[] }
 function Etiqueta({ item, medida }: { item: ItemCodigo; medida: { ancho: number; alto: number } }) {
   if (item.rotulo && entraRotulo(medida)) return <EtiquetaRotulada item={item} rotulo={item.rotulo} />;
   if (item.rotulo && medida.alto >= 15) return <EtiquetaChicaPropia item={item} rotulo={item.rotulo} medida={medida} />;
-  const nombre = nombreParaEtiqueta(item);
-  // En las etiquetas chicas no entra el mismo cuerpo de letra. Y dentro de una
-  // misma medida, un nombre largo tiene que achicarse o se corta a la mitad.
+  // En las etiquetas chicas no entra el mismo cuerpo de letra.
   const escala = medida.ancho < 50 ? 0.72 : 1;
-  const cuerpo = (nombre.length > 40 ? 2.5 : nombre.length > 26 ? 2.85 : 3.2) * escala;
   const chica = medida.alto < 30;
+  // En la chica el sabor no tiene renglón propio: va pegado al nombre, así se sabe cuál es.
+  const nombre = nombreParaEtiqueta(item) + (chica && item.variante ? ` ${item.variante}` : "");
+  const altoCodigo = chica ? (medida.alto >= 16 ? 7 : 5.5) : 9;
+  const numeros = 2.6 * escala;
+  // El lugar que le queda al nombre: lo que sobra después del código y lo demás.
+  const anchoNombre = medida.ancho - (chica ? 3.2 : 6);
+  const altoNombre = chica
+    ? medida.alto - 2.8 - altoCodigo - numeros - 1.2
+    : medida.alto - 4.8 - altoCodigo - numeros - 2.7 - (item.variante ? 2.7 * escala * 1.2 : 0) - 1.4;
 
   return (
     <div
@@ -1206,20 +1324,7 @@ function Etiqueta({ item, medida }: { item: ItemCodigo; medida: { ancho: number;
       }}
     >
       <div>
-        <div
-          style={{
-            fontSize: `${cuerpo}mm`,
-            lineHeight: 1.15,
-            fontWeight: 700,
-            textTransform: "uppercase",
-            display: "-webkit-box",
-            WebkitLineClamp: chica ? 1 : 2,
-            WebkitBoxOrient: "vertical",
-            overflow: "hidden",
-          }}
-        >
-          {nombre}
-        </div>
+        <NombreQueEntra texto={nombre} ancho={anchoNombre} alto={altoNombre} maximo={3.2 * escala} />
         {item.variante && !chica && (
           <div style={{ fontSize: `${2.7 * escala}mm`, color: "#333", lineHeight: 1.2 }}>
             {item.variante}
@@ -1238,12 +1343,13 @@ function Etiqueta({ item, medida }: { item: ItemCodigo; medida: { ancho: number;
         <CodigoDeBarras
           valor={item.codigo ?? ""}
           ancho={`${medida.ancho * (medida.ancho < 50 ? 0.92 : 0.8)}mm`}
-          alto={`${chica ? (medida.alto >= 16 ? 7 : 5.5) : 9}mm`}
+          alto={`${altoCodigo}mm`}
         />
         <div
           style={{
             fontFamily: "ui-monospace, monospace",
-            fontSize: `${2.6 * escala}mm`,
+            fontSize: `${numeros}mm`,
+            lineHeight: 1,
             letterSpacing: ".3mm",
             fontWeight: 500,
           }}
@@ -1266,6 +1372,11 @@ function Etiqueta({ item, medida }: { item: ItemCodigo; medida: { ancho: number;
   );
 }
 
+/** «Vto: ______»: sin la fecha impresa, para completarla con lapicera (Gonzalo, 2026-11-06). */
+function LineaParaEscribir({ ancho }: { ancho: number }) {
+  return <span style={{ display: "inline-block", width: `${ancho}mm`, height: ".9em", borderBottom: ".15mm solid #000", verticalAlign: "baseline" }} />;
+}
+
 /**
  * La etiqueta chica de lo nuestro (la plancha del local, 39 × 17 mm, 80 por
  * hoja), como la aprobó Gonzalo el 2026-11-06
@@ -1275,13 +1386,19 @@ function Etiqueta({ item, medida }: { item: ItemCodigo; medida: { ancho: number;
  * Los alérgenos no entran con letra legible: para eso está la de 70 × 35.
  */
 function EtiquetaChicaPropia({ item, rotulo, medida }: { item: ItemCodigo; rotulo: RotuloItem; medida: { ancho: number; alto: number } }) {
-  const { envasado, venceBolsa } = useContext(TandaContext);
+  const { envasado, venceBolsa, conVencimiento } = useContext(TandaContext);
   const completo = nombreParaEtiqueta(item) + (item.variante ? ` ${item.variante}` : "");
   const nombre = rotulo.pesoG != null ? nombreBase(completo) : completo;
   const vence = calcularVencimiento(envasado, rotulo.dias ?? duracionSugerida(item.producto).dias, venceBolsa);
-  // De 22 mm de alto para arriba (50 × 25, 40 × 30) hay lugar para letra más grande y dos líneas de nombre.
+  // De 22 mm de alto para arriba (50 × 25, 40 × 30) hay lugar para letra más grande.
   const media = medida.alto >= 22;
-  const cuerpoNombre = media ? (nombre.length > 34 ? 2.4 : 2.9) : nombre.length > 32 ? 1.75 : nombre.length > 24 ? 2 : 2.35;
+  const altoCodigo = media ? 7 : 4.8;
+  const numeros = media ? 1.9 : 1.5;
+  const datos = media ? 2.05 : 1.75;
+  // Lo que le queda al nombre después de WIIGO DIETÉTICA, el peso y el código.
+  const altoNombre = media
+    ? medida.alto - 3.2 - 1.75 - 0.7 - 0.6 - datos * 1.15 - altoCodigo - 0.2 - numeros - 0.4
+    : medida.alto - 2.2 - 1.45 - 0.45 - 0.35 - datos * 1.15 - altoCodigo - 0.2 - numeros - 0.3;
 
   return (
     <div
@@ -1302,36 +1419,28 @@ function EtiquetaChicaPropia({ item, rotulo, medida }: { item: ItemCodigo; rotul
       <div style={{ fontSize: media ? "1.75mm" : "1.45mm", fontWeight: 700, letterSpacing: ".28mm", lineHeight: 1, textTransform: "uppercase" }}>
         WiiGo Dietética
       </div>
-      <div
-        style={{
-          marginTop: media ? ".7mm" : ".45mm",
-          fontSize: `${cuerpoNombre}mm`,
-          lineHeight: 1.1,
-          fontWeight: 700,
-          textTransform: "uppercase",
-          maxWidth: "100%",
-          display: "-webkit-box",
-          WebkitLineClamp: media ? 2 : 1,
-          WebkitBoxOrient: "vertical",
-          overflow: "hidden",
-        }}
-      >
-        {nombre}
-      </div>
-      <div style={{ marginTop: media ? ".6mm" : ".35mm", display: "flex", gap: "2.2mm", justifyContent: "center", fontSize: media ? "2.05mm" : "1.75mm", lineHeight: 1.15, whiteSpace: "nowrap" }}>
+      <NombreQueEntra
+        texto={nombre}
+        ancho={medida.ancho - (media ? 4.4 : 3.2)}
+        alto={altoNombre}
+        maximo={media ? 2.9 : 2.35}
+        centrado
+        style={{ marginTop: media ? ".7mm" : ".45mm" }}
+      />
+      <div style={{ marginTop: media ? ".6mm" : ".35mm", display: "flex", gap: "2.2mm", justifyContent: "center", alignItems: "baseline", fontSize: `${datos}mm`, lineHeight: 1.15, whiteSpace: "nowrap" }}>
         {rotulo.pesoG != null && (
           <span>
             Peso neto: <b>{pesoEtiqueta(rotulo.pesoG)}</b>
           </span>
         )}
         <span>
-          Vto: <b>{fechaCorta(vence)}</b>
+          Vto: {conVencimiento ? <b>{fechaCorta(vence)}</b> : <LineaParaEscribir ancho={media ? 13 : 10} />}
         </span>
       </div>
       <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", alignItems: "center", gap: ".2mm" }}>
-        {/* Igual de ancho que antes (0,27 mm por barra): baja solo de alto para que entre todo. */}
-        <CodigoDeBarras valor={item.codigo ?? ""} ancho={`${medida.ancho * (medida.ancho < 50 ? 0.92 : 0.8)}mm`} alto={media ? "7mm" : "5.2mm"} />
-        <div style={{ fontFamily: "ui-monospace, monospace", fontSize: media ? "1.9mm" : "1.65mm", letterSpacing: ".15mm", lineHeight: 1 }}>
+        {/* Igual de ancho que antes (0,27 mm por barra): baja solo de alto para que entre todo el nombre. */}
+        <CodigoDeBarras valor={item.codigo ?? ""} ancho={`${medida.ancho * (medida.ancho < 50 ? 0.92 : 0.8)}mm`} alto={`${altoCodigo}mm`} />
+        <div style={{ fontFamily: "ui-monospace, monospace", fontSize: `${numeros}mm`, letterSpacing: ".15mm", lineHeight: 1 }}>
           {formatearCodigo(item.codigo ?? "")}
         </div>
       </div>
@@ -1347,8 +1456,9 @@ function EtiquetaChicaPropia({ item, rotulo, medida }: { item: ItemCodigo; rotul
  * más grande sobra aire, en una más chica no se usa (ver entraRotulo).
  */
 function EtiquetaRotulada({ item, rotulo }: { item: ItemCodigo; rotulo: RotuloItem }) {
-  const { pie, envasado, venceBolsa } = useContext(TandaContext);
+  const { pie, envasado, venceBolsa, conVencimiento } = useContext(TandaContext);
   const nombre = nombreParaEtiqueta(item) + (item.variante ? ` ${item.variante}` : "");
+  const textoNombre = rotulo.pesoG != null ? nombreBase(nombre) : nombre;
   const dias = rotulo.dias ?? duracionSugerida(item.producto).dias;
   const vence = calcularVencimiento(envasado, dias, venceBolsa);
   const alergenos = [
@@ -1375,22 +1485,9 @@ function EtiquetaRotulada({ item, rotulo }: { item: ItemCodigo; rotulo: RotuloIt
       <div style={{ fontSize: "1.9mm", fontWeight: 700, letterSpacing: ".28mm", lineHeight: 1, textTransform: "uppercase", textAlign: "center" }}>
         WiiGo Dietética
       </div>
-      <div
-        style={{
-          fontSize: nombre.length > 30 ? "3mm" : "3.6mm",
-          lineHeight: 1.1,
-          fontWeight: 700,
-          textTransform: "uppercase",
-          textAlign: "center",
-          display: "-webkit-box",
-          WebkitLineClamp: 2,
-          WebkitBoxOrient: "vertical",
-          overflow: "hidden",
-        }}
-      >
-        {/* El peso va abajo como "Peso neto": acá el nombre sin el tamaño. */}
-        {rotulo.pesoG != null ? nombreBase(nombre) : nombre}
-      </div>
+      {/* El peso va abajo como "Peso neto": acá el nombre sin el tamaño. Entero, sin «…». */}
+      <NombreQueEntra texto={textoNombre} ancho={65.6} alto={alergenos.length > 0 ? 7.2 : 9.5} maximo={3.6} centrado />
+
 
       {/* Sin lote: la fecha de vencimiento sirve de identificación del lote. */}
       <div
@@ -1414,7 +1511,7 @@ function EtiquetaRotulada({ item, rotulo }: { item: ItemCodigo; rotulo: RotuloIt
           Envasado: <b>{fechaCorta(envasado)}</b>
         </span>
         <span>
-          Vto: <b>{fechaCorta(vence)}</b>
+          Vto: {conVencimiento ? <b>{fechaCorta(vence)}</b> : <LineaParaEscribir ancho={13} />}
         </span>
       </div>
 

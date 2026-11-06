@@ -401,6 +401,8 @@ a.pr-btn { color: inherit; text-decoration: none; display: inline-flex; align-it
 .pr-gd-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
 .pr-gd-chip { font-size: 12px; background: var(--ojo-t); color: var(--ojo); border-radius: 999px; padding: 2px 9px; font-weight: 600; }
 .pr-gd-bot { display: flex; gap: 8px; flex-wrap: wrap; }
+.pr-gd-sacar { display: grid; justify-items: start; gap: 1px; width: 100%; text-align: left; color: var(--mal); border-color: color-mix(in srgb, var(--mal) 40%, var(--linea-2)); background: var(--mal-t); }
+.pr-gd-sacar small { font-size: 11px; font-weight: 500; color: var(--tinta-3); }
 /* Las zonas del local y, en islas y estantería, el lado o la parte */
 .pr-gd-zonas { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; margin: 4px 0 12px; }
 .pr-gd-zonas button, .pr-gd-lados button { text-align: left; font: inherit; border: 1.5px solid var(--linea-2); background: var(--hoja); border-radius: 10px; padding: 9px 12px; cursor: pointer; color: var(--tinta); }

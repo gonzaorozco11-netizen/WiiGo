@@ -132,6 +132,26 @@ export async function elegirEquivalente(idProducto: string, comercio: string, id
   return { error: null };
 }
 
+/**
+ * «Desvincular» (Gonzalo, 2026-11-06: «que tenga la opción de ponerlo o
+ * sacarlo»): ese comercio queda sin equivalente y la lectura de los lunes no
+ * propone otro. Se vuelve a poner con «Buscar en …».
+ */
+export async function quitarEquivalente(idProducto: string, comercio: string): Promise<{ error: string | null }> {
+  if (!(await sesionDePrecios())) return { error: "No tenés permiso para Precios." };
+  if (!esComercio(comercio)) return { error: "Ese comercio no existe." };
+  const supabase = getSupabaseServerClient();
+  const { data: v, error } = await supabase.from("competencia_vinculos").select("id_item, rechazados").eq("id_producto", idProducto).eq("comercio", comercio).maybeSingle();
+  if (error) return { error: FALTA_SQL };
+  const rechazados = [...new Set([...((v?.rechazados as string[] | null) ?? []), ...(v?.id_item ? [v.id_item as string] : [])])];
+  const { error: e2 } = await supabase
+    .from("competencia_vinculos")
+    .upsert({ id_producto: idProducto, comercio, id_item: null, estado: "CONFIRMADO", rechazados, actualizado_el: new Date().toISOString() }, { onConflict: "id_producto,comercio" });
+  if (e2) return { error: "No se pudo guardar. Probá de nuevo." };
+  revalidatePath("/precios");
+  return { error: null };
+}
+
 /** "No es el mismo": se descarta y se propone el siguiente más parecido (si hay). */
 export async function descartarEquivalente(idProducto: string, comercio: string): Promise<{ error: string | null }> {
   if (!(await sesionDePrecios())) return { error: "No tenés permiso para Precios." };

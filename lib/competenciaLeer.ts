@@ -416,7 +416,9 @@ export async function actualizarCompetencia(supabase: SupabaseClient): Promise<R
   for (const p of productos) {
     for (const { clave } of COMERCIOS) {
       const v = vincPor.get(`${p.id}:${clave}`);
-      if (v?.estado === "CONFIRMADO" && v.id_item) continue;
+      // Lo que decidió Gonzalo no se toca: el equivalente que confirmó, o que
+      // ese comercio no lo tiene (CONFIRMADO sin producto, «Desvincular»).
+      if (v?.estado === "CONFIRMADO") continue;
       const rechazados = (v?.rechazados as string[] | null) ?? [];
       if (clave === "ALIFRUT" && p.idGranel && nombrePrivado.has(p.idGranel)) {
         const mismo = mismoDeAlifrut(nombrePrivado.get(p.idGranel)!.nombre, itemsAlifrut, rechazados);

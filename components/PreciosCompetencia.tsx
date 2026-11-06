@@ -12,6 +12,7 @@ import {
   descartarEquivalente,
   elegirEquivalente,
   opcionesEquivalente,
+  quitarEquivalente,
   type OpcionEquivalente,
 } from "@/app/(app)/precios/competencia-actions";
 
@@ -24,7 +25,8 @@ const fechaHora = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "nunca";
 const nombreDe = (c: Comercio) => COMERCIOS.find((x) => x.clave === c)?.nombre ?? c;
 
-type Fila = { p: ProductoDelModulo; v: Partial<Record<Comercio, VinculoCompetencia>>; dif: number | null; contra: Comercio | null };
+// sinIgual: los comercios que Gonzalo desvinculó a mano («no lo tienen igual»).
+type Fila = { p: ProductoDelModulo; v: Partial<Record<Comercio, VinculoCompetencia>>; dif: number | null; contra: Comercio | null; sinIgual: Comercio[] };
 
 function chip(dif: number | null) {
   if (dif == null) return <span className="pr-dif nada">Sin comparar</span>;
@@ -69,6 +71,14 @@ export default function PreciosCompetencia(
       router.refresh();
     });
   }
+  /** «Desvincular»: ese comercio queda sin equivalente y no se propone otro solo. */
+  function quitar(idProducto: string, comercio: Comercio) {
+    startTransition(async () => {
+      const r = await quitarEquivalente(idProducto, comercio).catch(() => ({ error: "No se pudo guardar." }));
+      props.avisar(r.error ?? `Listo: desvinculado de ${nombreDe(comercio)}.`, Boolean(r.error));
+      router.refresh();
+    });
+  }
 
   // Se compara contra el precio normal; la oferta va aparte, de referencia (puede ser algo por vencer).
   const conPrecio = (v: VinculoCompetencia | undefined, g: number | null) => (v?.item && g ? precioNormalATuTamano(v.item, g) : null);
@@ -86,7 +96,8 @@ export default function PreciosCompetencia(
     const contra: Comercio | null =
       principal && v[principal] && conPrecio(v[principal], p.gramos) ? principal : otros.sort((a, b) => (a.precio as number) - (b.precio as number))[0]?.c ?? null;
     const dif = contra && p.precioHoy ? diferencia(p.precioHoy, conPrecio(v[contra], p.gramos)) : null;
-    return { p, v, dif, contra };
+    const sinIgual = (datos.vinculos[p.id] ?? []).filter((x) => !x.item && x.estado === "CONFIRMADO").map((x) => x.comercio);
+    return { p, v, dif, contra, sinIgual };
   });
   const columnas = COMERCIOS.filter((c) => filas.some((f) => f.v[c.clave]));
   // Buscador: por tu producto o por el nombre que tiene en la competencia, sin importar tildes.
@@ -269,6 +280,7 @@ export default function PreciosCompetencia(
                         <Detalle
                           f={f}
                           responder={responder}
+                          quitar={quitar}
                           pendiente={pendiente}
                           margenPara={props.margenPara}
                           llevarA={props.llevarA}
@@ -434,9 +446,11 @@ function Detalle({
   minimo,
   avisar,
   alElegir,
+  quitar,
 }: {
   f: Fila;
   responder: (id: string, c: Comercio, si: boolean) => void;
+  quitar: (id: string, c: Comercio) => void;
   pendiente: boolean;
   avisar: (t: string, mal?: boolean) => void;
   alElegir: () => void;
@@ -503,12 +517,10 @@ function Detalle({
                   />
                 ) : (
                   <>
-                    {/* Para deshacer un «Sí» tocado por error (Gonzalo, 2026-11-06). */}
-                    {x.estado === "CONFIRMADO" && (
-                      <button type="button" className="pr-comp-otro no" disabled={pendiente} onClick={() => responder(f.p.id, c.clave, false)}>
-                        ✗ No es este
-                      </button>
-                    )}
+                    {/* Para deshacer un vínculo mal hecho (Gonzalo, 2026-11-06: «ponerlo o sacarlo»). */}
+                    <button type="button" className="pr-comp-otro no" disabled={pendiente} onClick={() => quitar(f.p.id, c.clave)}>
+                      ✕ Desvincular
+                    </button>
                     <button type="button" className="pr-comp-otro" onClick={() => setEligiendo(c.clave)}>
                       Elegir otro de {c.nombre}
                     </button>
@@ -525,7 +537,9 @@ function Detalle({
         })}
         {sinEquivalente.length > 0 && (
           <div className="pr-comp-buscar-en">
-            <span className="pr-tenue">No encontró igual en {sinEquivalente.map((c) => c.nombre).join(", ")}. Si vos sabés que lo tienen:</span>
+            <span className="pr-tenue">
+              Sin vincular en {sinEquivalente.map((c) => `${c.nombre}${f.sinIgual.includes(c.clave) ? " (lo desvinculaste)" : ""}`).join(", ")}. Si vos sabés que lo tienen:
+            </span>
             <div>
               {sinEquivalente.map((c) => (
                 <button key={c.clave} type="button" className={`pr-comp-otro${eligiendo === c.clave ? " on" : ""}`} onClick={() => setEligiendo(eligiendo === c.clave ? null : c.clave)}>

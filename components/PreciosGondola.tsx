@@ -375,6 +375,13 @@ export default function PreciosGondola({
               <p className="baj">
                 <b>{etiquetaZona(gondola, modulo)}</b> · {nombreFila(modulo, lugar.fila)} · lugar <b>{lugar.columna + 1}</b> desde la izquierda
               </p>
+              {/* Arriba y a la vista: abajo de la lista no se veía y parecía que solo se podía reemplazar (Gonzalo, 2026-11-06). */}
+              {actual && (
+                <button type="button" className="pr-btn pr-gd-sacar" disabled={guardando} onClick={() => poner(null)}>
+                  ✕ Sacarlo de este lugar
+                  <small>queda el lugar libre y el producto, sin lugar</small>
+                </button>
+              )}
               {actual && (
                 <div className="pr-gd-estado-caja">
                   <b>¿Está en la góndola?</b>
@@ -444,11 +451,6 @@ export default function PreciosGondola({
                 {opciones.length === 0 && <li className="pr-tenue">No hay productos con ese nombre.</li>}
               </ul>
               <div className="pr-gd-bot">
-                {actual && (
-                  <button type="button" className="pr-btn" disabled={guardando} onClick={() => poner(null)}>
-                    Sacarlo de este lugar
-                  </button>
-                )}
                 <button type="button" className="pr-btn" onClick={() => setLugar(null)}>
                   Listo
                 </button>
