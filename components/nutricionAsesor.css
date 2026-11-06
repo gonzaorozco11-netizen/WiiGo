@@ -2,7 +2,17 @@
    Para la all-in-one: sin gap en flex (se usa margin), solo transform y opacity animados. */
 .na { display: flex; flex-direction: column; color: #22301f; }
 .na > * + * { margin-top: 14px; }
-.na-cab { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; }
+/* Lugar a la derecha para la cruz de cerrar de la ficha: si no, tapaba «Tu porción». */
+.na-cab { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; padding-right: 46px; }
+
+/* Sin macros (creatinas, cápsulas): lo que trae cada porción, destacado */
+.na-activo { background: #646759; color: #fff; border-radius: 20px; padding: 14px 16px; }
+.na-activo small { display: block; font-size: 11px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; opacity: .85; margin-bottom: 6px; }
+.na-activo div { display: flex; justify-content: space-between; align-items: baseline; padding: 9px 0; border-top: 1px solid rgba(255, 255, 255, .2); animation: naEntra .5s cubic-bezier(.2, .85, .25, 1) both; }
+.na-activo div:first-of-type { border-top: 0; }
+.na-activo span { font-size: 15px; font-weight: 700; margin-right: 10px; min-width: 0; overflow-wrap: anywhere; }
+.na-activo b { flex: none; font-size: 30px; line-height: 1; font-weight: 700; white-space: nowrap; }
+@keyframes naEntra { from { opacity: 0; transform: translate3d(0, 12px, 0); } to { opacity: 1; transform: translate3d(0, 0, 0); } }
 .na-eyebrow { margin: 0 8px 0 0; font-size: 10.5px; font-weight: 800; letter-spacing: .2em; text-transform: uppercase; color: #8a9180; }
 .na-toggle { display: inline-flex; background: #fff; border: 1px solid #e2e6da; border-radius: 999px; padding: 3px; }
 .na-toggle button { border: 0; background: transparent; color: #5b6656; font-size: 11.5px; font-weight: 800; padding: 6px 11px; border-radius: 999px; cursor: pointer; }
@@ -36,4 +46,5 @@
 
 @media (prefers-reduced-motion: reduce) {
   .na-carta, .na-dia i, .na-chips span { transition: none; }
+  .na-activo div { animation: none; }
 }

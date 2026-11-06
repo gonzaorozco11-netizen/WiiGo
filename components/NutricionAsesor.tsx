@@ -15,9 +15,9 @@ import "./nutricionAsesor.css";
 type Idioma = "es" | "en" | "pt";
 
 const T = {
-  es: { titulo: "Información nutricional", cada: "Cada 100 g", porcion: "Tu porción", dia: (p: number) => `el ${p} % de la energía de un día`, vd: "del valor diario", nota: "Valores diarios sobre una dieta de 2.000 kcal.", tocar: "Tocá una tarjeta para saber más.", sodio: "Sodio", bajoSodio: "Bajo en sodio", altaFibra: "Alto en fibra", fibra: "Aporta fibra", proteina: "Alto en proteína", natural: "Natural" },
-  en: { titulo: "Nutrition facts", cada: "Per 100 g", porcion: "Your serving", dia: (p: number) => `${p} % of a day's energy`, vd: "of daily value", nota: "Daily values based on a 2,000 kcal diet.", tocar: "Tap a card to learn more.", sodio: "Sodium", bajoSodio: "Low in sodium", altaFibra: "High in fibre", fibra: "Source of fibre", proteina: "High in protein", natural: "Natural" },
-  pt: { titulo: "Informação nutricional", cada: "A cada 100 g", porcion: "Sua porção", dia: (p: number) => `${p} % da energia de um dia`, vd: "do valor diário", nota: "Valores diários com base em uma dieta de 2.000 kcal.", tocar: "Toque em um cartão para saber mais.", sodio: "Sódio", bajoSodio: "Baixo em sódio", altaFibra: "Rico em fibras", fibra: "Fonte de fibras", proteina: "Rico em proteína", natural: "Natural" },
+  es: { titulo: "Información nutricional", cada: "Cada 100 g", porcion: "Tu porción", dia: (p: number) => `el ${p} % de la energía de un día`, vd: "del valor diario", nota: "Valores diarios sobre una dieta de 2.000 kcal.", tocar: "Tocá una tarjeta para saber más.", sodio: "Sodio", bajoSodio: "Bajo en sodio", altaFibra: "Alto en fibra", fibra: "Aporta fibra", proteina: "Alto en proteína", natural: "Natural", cadaPorcion: "Cada porción", sinCalorias: "Sin calorías" },
+  en: { titulo: "Nutrition facts", cada: "Per 100 g", porcion: "Your serving", dia: (p: number) => `${p} % of a day's energy`, vd: "of daily value", nota: "Daily values based on a 2,000 kcal diet.", tocar: "Tap a card to learn more.", sodio: "Sodium", bajoSodio: "Low in sodium", altaFibra: "High in fibre", fibra: "Source of fibre", proteina: "High in protein", natural: "Natural", cadaPorcion: "Per serving", sinCalorias: "No calories" },
+  pt: { titulo: "Informação nutricional", cada: "A cada 100 g", porcion: "Sua porção", dia: (p: number) => `${p} % da energia de um dia`, vd: "do valor diário", nota: "Valores diários com base em uma dieta de 2.000 kcal.", tocar: "Toque em um cartão para saber mais.", sodio: "Sódio", bajoSodio: "Baixo em sódio", altaFibra: "Rico em fibras", fibra: "Fonte de fibras", proteina: "Rico em proteína", natural: "Natural", cadaPorcion: "Por porção", sinCalorias: "Sem calorias" },
 };
 
 // Valores diarios de referencia (Código Alimentario Argentino): g por día.
@@ -39,6 +39,26 @@ function gramosPorcion(texto: string | null | undefined) {
   const m = /(\d+(?:[.,]\d+)?)\s*g\b/i.exec(texto ?? "");
   const n = m ? Number(m[1].replace(",", ".")) : NaN;
   return Number.isFinite(n) && n > 0 && n < 1000 ? n : null;
+}
+
+/**
+ * «Por porción (5 g): creatina monohidrato 5 g, sodio 10 mg» → título «Por porción (5 g)»
+ * y cada activo con su cantidad aparte («creatina monohidrato» · «5 g»).
+ */
+function leerActivos(texto: string) {
+  const dos = texto.indexOf(":");
+  const titulo = dos > 0 && dos < 40 ? texto.slice(0, dos).trim() : null;
+  const resto = dos > 0 && dos < 40 ? texto.slice(dos + 1) : texto;
+  const items = resto
+    .split(/[,;]\s*(?![^(]*\))/)
+    .map((s) => s.trim().replace(/\.$/, ""))
+    .filter(Boolean)
+    .slice(0, 4)
+    .map((s) => {
+      const m = /^(.*?)[\s:]+(\d[\d.,]*\s*(?:mg|mcg|µg|g|ui|UI|%)[^\s]*)$/.exec(s);
+      return m ? { que: m[1].trim(), cuanto: m[2].trim() } : { que: s, cuanto: null };
+    });
+  return { titulo, items };
 }
 
 /** Un número que sube de 0 hasta `hasta` (como un contador). */
@@ -101,6 +121,39 @@ export default function NutricionAsesor({ ficha, idioma, claseTitular }: { ficha
   if (ficha.clasificacion === "NATURAL") destacados.push(`💚 ${t.natural}`);
 
   const sel = tarjetas.find((n) => n.clave === elegido);
+
+  // Sin macros (creatinas, cápsulas): en vez de cuatro tarjetas en 0 se destaca
+  // lo que trae cada porción, sacado de «Por porción (5 g): creatina 5 g, …»
+  // (Gonzalo, 2026-11-05: «distinguí el ingrediente que tenga»).
+  const sinMacros = (ficha.kcal_100g ?? 0) === 0 && tarjetas.every((n) => n.g === 0);
+  const textoActivos = idioma === "en" ? ficha.micronutrientes_en ?? ficha.micronutrientes : idioma === "pt" ? ficha.micronutrientes_pt ?? ficha.micronutrientes : ficha.micronutrientes;
+  const activos = sinMacros && textoActivos ? leerActivos(textoActivos) : null;
+  if (activos && activos.items.length > 0) {
+    return (
+      <div className="na listo">
+        <div className="na-cab">
+          <p className="na-eyebrow">{t.titulo}</p>
+        </div>
+        <div className="na-activo">
+          <small>{activos.titulo ?? t.cadaPorcion}</small>
+          {activos.items.map((x, i) => (
+            <div key={x.que + i} style={{ animationDelay: `${0.15 + i * 0.12}s` }}>
+              <span>{x.que}</span>
+              {x.cuanto && <b className={claseTitular}>{x.cuanto}</b>}
+            </div>
+          ))}
+        </div>
+        <div className="na-chips">
+          {ficha.kcal_100g === 0 && <span style={{ transitionDelay: ".5s" }}>⚡ {t.sinCalorias}</span>}
+          {destacados.map((d, i) => (
+            <span key={d} style={{ transitionDelay: `${0.6 + i * 0.12}s` }}>
+              {d}
+            </span>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`na${listo ? " listo" : ""}`}>

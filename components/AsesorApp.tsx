@@ -3131,6 +3131,11 @@ function ProductoDetalleModal({
   const [ingredientesAbierto, setIngredientesAbierto] = useState(false);
   const [micronutrientesAbierto, setMicronutrientesAbierto] = useState(false);
   const [saborActivo, setSaborActivo] = useState<string | null>(null);
+  const [descAbierta, setDescAbierta] = useState(false);
+  const nombreVisible = traducir(idioma, producto.nombre, producto.nombre_en, producto.nombre_pt);
+  const descripcionVisible = ficha?.descripcion_publica
+    ? traducir(idioma, ficha.descripcion_publica, ficha.descripcion_publica_en, ficha.descripcion_publica_pt)
+    : null;
 
   // Todo producto tiene al menos una variante; cuando no viene en sabores esa
   // única se llama "Único" y mostrarla como opción sería ruido.
@@ -3203,12 +3208,19 @@ function ProductoDetalleModal({
               className="shrink-0 text-[9px] font-extrabold uppercase tracking-wide px-2.5 py-1 rounded-full"
               style={{ background: SAGE_TINT, color: SAGE_DARK }}
             >
-              🌿 {ficha.clasificacion}
+              {ficha.clasificacion === "NATURAL" ? "🌿 " : ""}
+              {ficha.clasificacion}
             </span>
           )}
         </div>
-        <h3 className={`${titular.className} font-extrabold tracking-[-.02em] text-[26px] md:text-[32px] leading-tight mt-1`}>
-          {traducir(idioma, producto.nombre, producto.nombre_en, producto.nombre_pt)}
+        {/* Con nombres largos («CREATINA 300gr FRUTOS ROJOS MONOHIDRATADA…») la letra
+            se achica, así entra todo sin empujar la descripción fuera de la ficha (2026-11-05). */}
+        <h3
+          className={`${titular.className} font-extrabold tracking-[-.02em] leading-tight mt-1 ${
+            nombreVisible.length > 60 ? "text-[19px] md:text-[22px]" : nombreVisible.length > 36 ? "text-[22px] md:text-[26px]" : "text-[26px] md:text-[32px]"
+          }`}
+        >
+          {nombreVisible}
         </h3>
         <div className="mt-2.5 flex flex-wrap items-end gap-x-4 gap-y-2">
           <div className="flex items-baseline gap-2.5">
@@ -3306,10 +3318,25 @@ function ProductoDetalleModal({
         </div>
       )}
 
-      {ficha?.descripcion_publica && (
-        <p className="text-[14px] leading-relaxed text-[#686868]">
-          {traducir(idioma, ficha.descripcion_publica, ficha.descripcion_publica_en, ficha.descripcion_publica_pt)}
-        </p>
+      {/* Larga, se muestra en 3 renglones con «Ver más»: entera se cortaba abajo de la ficha. */}
+      {descripcionVisible && (
+        <div>
+          <p
+            className="text-[14px] leading-relaxed text-[#686868]"
+            style={
+              descripcionVisible.length > 170 && !descAbierta
+                ? { display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }
+                : undefined
+            }
+          >
+            {descripcionVisible}
+          </p>
+          {descripcionVisible.length > 170 && (
+            <button type="button" onClick={() => setDescAbierta((v) => !v)} className="mt-1 text-[12.5px] font-extrabold" style={{ color: SAGE_DARK }}>
+              {descAbierta ? (idioma === "en" ? "Show less" : idioma === "pt" ? "Ver menos" : "Ver menos") : idioma === "en" ? "Read more" : idioma === "pt" ? "Ver mais" : "Ver más"}
+            </button>
+          )}
+        </div>
       )}
     </div>
   );
@@ -3370,7 +3397,11 @@ function ProductoDetalleModal({
                 degradé y no un desenfoque: en la placa de la all-in-one el
                 desenfoque cuesta carísimo. */}
             <div
-              className="relative w-full aspect-square max-h-[34vh] md:max-h-[46vh] flex items-center justify-center rounded-[26px] overflow-hidden"
+              // Con la información nutricional a la derecha, abajo de la foto van nombre,
+              // precios, sabores y descripción: la foto más baja deja que entre todo sin cortarse (2026-11-05).
+              className={`relative w-full aspect-square max-h-[30vh] flex items-center justify-center rounded-[26px] overflow-hidden ${
+                hayNutricional ? (sabores.length > 0 ? "md:max-h-[30vh]" : "md:max-h-[36vh]") : "md:max-h-[46vh]"
+              }`}
               // Quieto: el fondo aparece de una en su tamaño final (Gonzalo,
               // 2026-11-03: no quiere que arranque chico y crezca). Lo único
               // que se mueve es el producto flotando.
