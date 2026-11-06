@@ -1,0 +1,58 @@
+/* Perfil de la profesional en la pantalla asesora (components/PerfilProfesional.tsx).
+   Para la all-in-one: solo transform y opacity, sin will-change ni sombras difuminadas
+   que se animen. Colores de la marca: salvia #646759, terracota #b97a52, crema #f7f9f2. */
+
+/* ---- Fotos tipo historias ---- */
+.pp-carrusel { position: relative; width: 100%; overflow: hidden; border-radius: 24px; background: linear-gradient(155deg, #8fa584 0%, #646759 100%); }
+.pp-inicial { position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 46px; color: rgba(255, 255, 255, .7); }
+.pp-foto { position: absolute; top: 0; right: 0; bottom: 0; left: 0; opacity: 0; transition: opacity 1s ease; }
+.pp-foto.on { opacity: 1; }
+.pp-foto img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; object-position: top; transform-origin: top center; }
+/* Zoom lento (Ken Burns): crece desde arriba para no comerle la cara. */
+.pp-foto.on img { animation: ppZoom 7s ease-out forwards; }
+@keyframes ppZoom { from { transform: scale(1) translate3d(0, 0, 0); } to { transform: scale(1.09) translate3d(-1.5%, -1%, 0); } }
+.pp-sombra { position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: linear-gradient(180deg, rgba(0, 0, 0, .18) 0%, rgba(0, 0, 0, 0) 22%, rgba(0, 0, 0, 0) 45%, rgba(20, 24, 16, .78) 100%); pointer-events: none; }
+.pp-barras { position: absolute; top: 12px; left: 12px; right: 12px; display: flex; z-index: 3; }
+.pp-barras i { flex: 1; height: 3.5px; margin: 0 2.5px; border-radius: 9px; background: rgba(255, 255, 255, .38); overflow: hidden; }
+.pp-barras i::after { content: ""; display: block; height: 100%; background: #fff; transform-origin: left; transform: scaleX(0); }
+.pp-barras i.hecha::after { transform: scaleX(1); }
+.pp-barras i.va::after { animation-name: ppLlena; animation-timing-function: linear; animation-fill-mode: forwards; animation-duration: inherit; }
+@keyframes ppLlena { to { transform: scaleX(1); } }
+.pp-toques { position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: flex; z-index: 2; }
+.pp-toques button { flex: 1; border: 0; background: transparent; cursor: pointer; }
+
+/* ---- Números del recorrido ---- */
+.pp-numeros { display: grid; grid-gap: 10px; margin-bottom: 18px; }
+.pp-numero { background: #fff; border-radius: 18px; padding: 12px 10px; text-align: center; animation: ppEntra .55s cubic-bezier(.2, .85, .25, 1) both; }
+.pp-numero b { display: block; font-size: 30px; line-height: 1; font-weight: 800; color: #646759; font-variant-numeric: tabular-nums; }
+.pp-numero span { display: block; margin-top: 4px; font-size: 11px; font-weight: 700; color: #8a9180; line-height: 1.2; }
+
+/* ---- Píldoras de formación y trayectoria ---- */
+.pp-pildoras { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-gap: 8px; }
+.pp-pildora { display: flex; align-items: center; background: #fff; border: 1px solid #e3e7da; border-radius: 18px; padding: 10px 12px; animation: ppEntra .5s cubic-bezier(.2, .85, .25, 1) both; transition: transform .25s cubic-bezier(.3, 1.4, .5, 1), border-color .25s; }
+.pp-pildora:active, .pp-pildora:hover { transform: translate3d(0, -4px, 0); border-color: #b6bca2; }
+.pp-pildora i { flex: none; width: 38px; height: 38px; margin-right: 10px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-style: normal; font-size: 19px; background: #f0f2ec; }
+.pp-pildora.trayectoria i { background: #f7ece1; }
+.pp-pildora span { min-width: 0; flex: 1; }
+.pp-pildora b { display: block; font-size: 13px; line-height: 1.25; font-weight: 700; color: #2d2d2d; }
+.pp-pildora small { display: block; margin-top: 2px; font-size: 11.5px; color: #7d8472; line-height: 1.25; }
+.pp-pildora em { flex: none; margin-left: 8px; font-style: normal; font-size: 10.5px; font-weight: 800; color: #b97a52; background: #f7ece1; border-radius: 999px; padding: 3px 8px; white-space: nowrap; }
+@keyframes ppEntra { from { opacity: 0; transform: translate3d(0, 16px, 0); } to { opacity: 1; transform: translate3d(0, 0, 0); } }
+
+/* ---- Reservar turno: un brillo lo cruza cada tanto ---- */
+.pp-reservar { position: relative; overflow: hidden; transition: transform .15s; }
+.pp-reservar::after { content: ""; position: absolute; top: 0; bottom: 0; left: -40%; width: 30%; background: linear-gradient(100deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, .32), rgba(255, 255, 255, 0)); transform: skewX(-18deg); animation: ppBrillo 3.8s ease-in-out 1.6s infinite; pointer-events: none; }
+.pp-reservar:active { transform: scale(.97); }
+@keyframes ppBrillo { 0% { left: -40%; } 45%, 100% { left: 130%; } }
+
+/* ---- Redes: el botón elegido toma el color de la red; el QR flota con un destello ---- */
+.pp-red { transition: background-color .3s, color .3s, box-shadow .3s, transform .15s; }
+.pp-red:active { transform: scale(.95); }
+.pp-qr { position: relative; overflow: hidden; border-radius: 14px; background: #fff; animation: ppFlota 5s ease-in-out infinite; }
+.pp-qr::after { content: ""; position: absolute; top: -20%; bottom: -20%; width: 35%; left: -60%; background: linear-gradient(100deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, .85), rgba(255, 255, 255, 0)); transform: skewX(-15deg); animation: ppBrillo 4.4s ease-in-out 2s infinite; pointer-events: none; }
+@keyframes ppFlota { 0%, 100% { transform: translate3d(0, 0, 0); } 50% { transform: translate3d(0, -5px, 0); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .pp-foto.on img, .pp-numero, .pp-pildora, .pp-reservar::after, .pp-qr, .pp-qr::after { animation: none; }
+  .pp-barras i.va::after { animation: none; transform: scaleX(1); }
+}

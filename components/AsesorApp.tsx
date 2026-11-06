@@ -23,6 +23,7 @@ import type {
 import { colorDeProducto, ubicacionDe, type ModuloGondola, type UbicacionGondola } from "@/lib/gondola";
 import ViajeGondola from "@/components/ViajeGondola";
 import NutricionAsesor from "@/components/NutricionAsesor";
+import { CarruselProfesional, NumerosProfesional, PildorasRecorrido } from "@/components/PerfilProfesional";
 import IconoRed, { colorDeRed } from "@/components/IconoRed";
 import type { ClaveRed } from "@/lib/redesProfesional";
 
@@ -640,40 +641,6 @@ function BloqueHistoria({
     >
       <p className="text-[10px] font-extrabold uppercase tracking-[.2em] text-[#969d88] mb-2.5">{titulo}</p>
       {children}
-    </div>
-  );
-}
-
-/**
- * Formación y trayectoria, en línea de tiempo.
- *
- * En lista suelta, "Licenciatura en Nutrición" y "Nutricionista del club" se
- * leen como dos ítems sueltos. En línea de tiempo se lee un recorrido, que es
- * lo que genera confianza: no son títulos, es una carrera.
- */
-function LineaDeTiempo({
-  items,
-}: {
-  items: { id: string; cuando: string; que: string; donde: string | null }[];
-}) {
-  return (
-    <div className="relative pl-5">
-      <span className="absolute left-[4px] top-1.5 bottom-1.5 w-[2px] rounded" style={{ background: "#dde3d3" }} />
-      {items.map((i) => (
-        <div key={i.id} className="relative mb-3.5 last:mb-0">
-          <span
-            className="absolute -left-5 top-1.5 w-2.5 h-2.5 rounded-full border-2"
-            style={{ background: SAGE_DARK, borderColor: "#f7f9f2" }}
-          />
-          {i.cuando && (
-            <p className="text-[10.5px] font-extrabold tracking-wide" style={{ color: SAGE_DARK }}>
-              {i.cuando}
-            </p>
-          )}
-          <p className="text-[13.5px] font-semibold leading-snug">{i.que}</p>
-          {i.donde && <p className="text-[12px] text-[#7d8472]">{i.donde}</p>}
-        </div>
-      ))}
     </div>
   );
 }
@@ -2418,40 +2385,30 @@ export default function AsesorApp({
                 queda una tira con la cara apretada arriba. El tope en vh es
                 para que en una pantalla corta no empuje el botón de turno
                 fuera de vista. */}
-            <div
-              className="relative w-full rounded-2xl overflow-hidden mb-4 shrink-0"
+            {/* Las fotos pasan como historias: la de perfil y hasta 3 de su
+                galería, con zoom lento y rayitas arriba (Gonzalo, 2026-11-05). */}
+            <CarruselProfesional
+              fotos={[...new Set([profesionalActual.foto, ...fotosDelProfesionalActual].filter((f): f is string => Boolean(f)))].slice(0, 4)}
+              inicial={profesionalActual.nombre.charAt(0).toUpperCase()}
               style={{
                 aspectRatio: tieneHistoria ? "4 / 5" : "16 / 10",
                 maxHeight: tieneHistoria ? "48vh" : "26vh",
-                background: `linear-gradient(155deg, #8fa584 0%, ${SAGE_DARK} 100%)`,
+                marginBottom: 16,
+                flexShrink: 0,
               }}
             >
-              {profesionalActual.foto && (
-                // El vaivén lento: la foto crece y se achica en 26 segundos.
-                // Es tan lento que no se la ve moverse, pero la pantalla deja
-                // de parecer un cartel. Crece DESDE ARRIBA — desde el centro le
-                // comería la cara, que es lo que estamos arreglando.
-                // Solo transform: es lo único que la placa de la all-in-one
-                // dibuja sin tocar el procesador, igual que la lluvia del tótem.
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={profesionalActual.foto}
-                  alt=""
-                  className="absolute inset-0 w-full h-full object-cover object-top opacity-95"
-                  style={{
-                    transformOrigin: "top center",
-                    willChange: "transform",
-                    animation: "asesorRespirar 26s ease-in-out infinite alternate",
-                  }}
-                />
-              )}
-              <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, rgba(0,0,0,0) 35%, rgba(0,0,0,.5) 100%)" }} />
-              {!profesionalActual.foto && (
-                <span className="absolute inset-0 flex items-center justify-center font-extrabold text-[42px] text-white/70">
-                  {profesionalActual.nombre.charAt(0).toUpperCase()}
+              {profesionalActual.matricula && (
+                <span
+                  className="absolute top-6 left-3.5 z-[3] flex items-center gap-1.5 rounded-full pl-1.5 pr-3 py-1 text-[10.5px] font-extrabold tracking-wide"
+                  style={{ background: "rgba(255,255,255,.95)", color: SAGE_DARK }}
+                >
+                  <span className="w-4 h-4 rounded-full grid place-items-center text-[9px] text-white" style={{ background: SAGE_DARK }}>
+                    ✓
+                  </span>
+                  {t("matricula")} {profesionalActual.matricula}
                 </span>
               )}
-              <div className="absolute inset-x-0 bottom-0 p-4">
+              <div className="absolute inset-x-0 bottom-0 p-4 z-[3] pointer-events-none">
                 <p className={`${titular.className} font-extrabold tracking-[-.02em] text-[26px] md:text-[30px] text-white leading-tight`}>
                   {profesionalActual.nombre} {profesionalActual.apellido ?? ""}
                 </p>
@@ -2461,7 +2418,7 @@ export default function AsesorApp({
                   </p>
                 )}
               </div>
-            </div>
+            </CarruselProfesional>
 
             {/* Sin `justify-center`: cuando la columna es más alta que el
                 contenido, centrar abría un hueco arriba y otro abajo y la ficha
@@ -2471,21 +2428,7 @@ export default function AsesorApp({
                 Los datos entran uno detrás de otro al abrirla, en medio
                 segundo. Se ve una sola vez. */}
             <div className="flex flex-col gap-3" style={{ animation: "asesorEntrar .5s cubic-bezier(.2,.8,.2,1) .10s both" }}>
-              {profesionalActual.matricula && (
-                <span
-                  className="self-start flex items-center gap-1.5 rounded-full pl-1.5 pr-3 py-1 text-[10px] font-extrabold tracking-wide"
-                  style={{ background: SAGE_TINT, color: SAGE_DARK, animation: "asesorEntrar .5s cubic-bezier(.2,.8,.2,1) .18s both" }}
-                >
-                  <span
-                    className="w-4 h-4 rounded-full grid place-items-center text-[9px] text-white"
-                    style={{ background: SAGE_DARK }}
-                  >
-                    ✓
-                  </span>
-                  {t("matricula")} {profesionalActual.matricula}
-                </span>
-              )}
-
+              {/* La matrícula va como sello sobre la foto. */}
               {profesionalActual.bio && (
                 <p
                   className="text-[13px] italic leading-relaxed pl-3 border-l-2"
@@ -2553,7 +2496,7 @@ export default function AsesorApp({
               {tieneReservaPresencial || tieneReservaOnline ? (
                 <button
                   onClick={irAReservarTurno}
-                  className="text-center text-[13px] font-extrabold text-white py-3 rounded-full"
+                  className="pp-reservar text-center text-[14px] font-extrabold text-white py-3.5 rounded-full"
                   style={{ background: SAGE_DARK }}
                 >
                   📅 Reservar turno
@@ -2642,6 +2585,13 @@ export default function AsesorApp({
               className="min-h-0 overflow-y-auto px-6 pt-5 pb-10 border-t md:border-t-0 md:border-l border-[#e8eade]"
               style={{ background: "#f7f9f2" }}
             >
+              <NumerosProfesional
+                formaciones={formacionOrdenada.length}
+                lugares={trayectoriaOrdenada.length}
+                desde={trayectoriaOrdenada.reduce<number | null>((min, x) => (x.anio_desde && (min == null || x.anio_desde < min) ? x.anio_desde : min), null)}
+                idioma={idioma}
+              />
+
               {profesionalActual.biografia_completa && (
                 <BloqueHistoria titulo={t("historiaTitulo")} contenedor={hojaHistoria}>
                   <p className="text-[13.5px] leading-relaxed text-[#4a4f43] whitespace-pre-line">
@@ -2669,7 +2619,8 @@ export default function AsesorApp({
 
               {formacionOrdenada.length > 0 && (
                 <BloqueHistoria titulo={t("formacionTitulo")} contenedor={hojaHistoria}>
-                  <LineaDeTiempo
+                  <PildorasRecorrido
+                    tipo="formacion"
                     items={formacionOrdenada.map((f) => ({
                       id: f.id_formacion,
                       cuando: f.anio ? String(f.anio) : "",
@@ -2682,7 +2633,8 @@ export default function AsesorApp({
 
               {trayectoriaOrdenada.length > 0 && (
                 <BloqueHistoria titulo={t("trayectoriaTitulo")} contenedor={hojaHistoria}>
-                  <LineaDeTiempo
+                  <PildorasRecorrido
+                    tipo="trayectoria"
                     items={trayectoriaOrdenada.map((x) => ({
                       id: x.id_trayectoria,
                       // "2018 — hoy" dice más que "2018": el cliente quiere
@@ -2705,11 +2657,16 @@ export default function AsesorApp({
                     <div className="flex-1 min-w-0 flex flex-col gap-2">
                       <div className="flex flex-wrap gap-1.5">
                         {redesDelProfesionalActual.map((r) => (
+                          // La elegida toma el color de su red, con un brillo alrededor (2026-11-05).
                           <button
                             key={r.clave}
                             onClick={() => setRedElegida(r.clave)}
-                            className="inline-flex items-center gap-1.5 text-[11px] font-bold pl-1 pr-2.5 py-1 rounded-full"
-                            style={r.clave === redActual.clave ? { background: SAGE_DARK, color: "#fff" } : { background: SAGE_TINT, color: SAGE_DARK }}
+                            className="pp-red inline-flex items-center gap-1.5 text-[12px] font-bold pl-1 pr-3 py-1 rounded-full"
+                            style={
+                              r.clave === redActual.clave
+                                ? { background: colorDeRed(r.clave as ClaveRed), color: "#fff", boxShadow: `0 0 0 4px ${colorDeRed(r.clave as ClaveRed)}2e, 0 10px 20px -10px ${colorDeRed(r.clave as ClaveRed)}` }
+                                : { background: SAGE_TINT, color: SAGE_DARK }
+                            }
                           >
                             <span className="grid place-items-center w-5 h-5 rounded-full text-white" style={{ background: colorDeRed(r.clave as ClaveRed) }}>
                               <IconoRed clave={r.clave as ClaveRed} className="w-3 h-3" />
@@ -2723,10 +2680,13 @@ export default function AsesorApp({
                       </p>
                       <p className="text-[11px] leading-snug text-[#7d8472]">{t("escaneaQr")}</p>
                     </div>
-                    <span
-                      className="block w-[104px] h-[104px] shrink-0 [&>svg]:w-full [&>svg]:h-full [&>svg]:block"
-                      dangerouslySetInnerHTML={{ __html: redActual.qr }}
-                    />
+                    {/* El QR flota despacio y lo cruza un destello. */}
+                    <span className="pp-qr block w-[112px] h-[112px] shrink-0">
+                      <span
+                        className="block w-full h-full [&>svg]:w-full [&>svg]:h-full [&>svg]:block"
+                        dangerouslySetInnerHTML={{ __html: redActual.qr }}
+                      />
+                    </span>
                   </div>
                 </BloqueHistoria>
               )}
