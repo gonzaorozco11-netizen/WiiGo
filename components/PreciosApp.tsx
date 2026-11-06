@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from "react";
 import { useRouter } from "next/navigation";
 import {
   calcularPrecio,
@@ -570,6 +570,56 @@ function PrecioAlifrut({ a, tuyo, efectivo = false }: { a: Alifrut; tuyo: number
   );
 }
 
+/**
+ * «Espera cartel»: el precio nuevo ya se pasó, pero la caja sigue cobrando el
+ * del cartel puesto hasta que lo cambien. Corto para que entre en la celda, y
+ * con «?» que lo explica al tocarlo (Gonzalo, 2026-11-06: «no entiendo qué
+ * significa»; en la tablet un title no se ve).
+ */
+function EsperaCartel({ caja, nuevo }: { caja: number | null; nuevo: number | null }) {
+  // Dónde se abre: flota sobre todo (la tarjeta del rubro recorta lo que sobresale).
+  const [donde, setDonde] = useState<{ top: number; left: number } | null>(null);
+  const abierto = donde !== null;
+  useEffect(() => {
+    if (!abierto) return;
+    const cerrar = () => setDonde(null);
+    window.addEventListener("scroll", cerrar, true);
+    window.addEventListener("resize", cerrar);
+    return () => {
+      window.removeEventListener("scroll", cerrar, true);
+      window.removeEventListener("resize", cerrar);
+    };
+  }, [abierto]);
+  function alternar(e: MouseEvent<HTMLButtonElement>) {
+    if (abierto) return setDonde(null);
+    const r = e.currentTarget.getBoundingClientRect();
+    const ancho = 270;
+    setDonde({ top: Math.min(r.bottom + 6, window.innerHeight - 190), left: Math.max(8, Math.min(r.right - ancho, window.innerWidth - ancho - 8)) });
+  }
+  return (
+    <span className="pr-espera-env" onClick={(e) => e.stopPropagation()}>
+      <span className="pr-espera">
+        ⏳ Espera cartel
+        <button type="button" className="pr-espera-q" aria-expanded={abierto} aria-label="¿Qué significa?" onClick={alternar}>
+          ?
+        </button>
+      </span>
+      {donde && (
+        <span className="pr-espera-pop" role="note" style={{ top: donde.top, left: donde.left }}>
+          <b>La caja sigue cobrando {pesos(caja)}</b>, el precio del cartel que está puesto en la góndola.
+          <br />
+          Cuando el operativo ponga el cartel nuevo y toque <b>«Lo puse»</b> en Mis Tareas, la caja empieza a cobrar <b>{pesos(nuevo)}</b>.
+          <br />
+          Así nunca se cobra distinto de lo que dice la góndola.
+          <button type="button" className="pr-espera-cerrar" onClick={() => setDonde(null)}>
+            Entendido
+          </button>
+        </span>
+      )}
+    </span>
+  );
+}
+
 /** Cuánto cambia contra lo que está hoy a la venta. */
 function Delta({ nuevo, hoy }: { nuevo: number | null; hoy: number }) {
   const dif = nuevo == null ? 0 : nuevo - hoy;
@@ -814,11 +864,7 @@ function Lista(props: {
                               <>
                                 <span className="pr-hoy">{pesos(p.precioHoy)}</span>
                                 <Delta nuevo={r.ok ? r.publico : null} hoy={p.precioHoy} />
-                                {p.cartel && (
-                                  <small className="pr-espera" title="La caja cobra el precio de antes hasta que el operativo ponga el cartel nuevo">
-                                    espera cartel · caja {pesos(p.cartel.cajaLista)}
-                                  </small>
-                                )}
+                                {p.cartel && <EsperaCartel caja={p.cartel.cajaLista} nuevo={p.precioHoy} />}
                               </>
                             ) : (
                               <span className="pr-sinprecio" title="No aparece a la venta hasta que lo pases">
