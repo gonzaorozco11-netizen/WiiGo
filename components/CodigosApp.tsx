@@ -8,8 +8,7 @@ import {
   calcularVencimiento,
   duracionSugerida,
   fechaCorta,
-  loteDe,
-  pesoTexto,
+  pesoEtiqueta,
 } from "@/lib/rotulado";
 import { nombreBase } from "@/lib/nombreProducto";
 import { guardarCodigoBarras, volverAEtiquetaWiigo } from "@/app/(app)/codigos/actions";
@@ -652,6 +651,7 @@ function ConfigurarImpresion({
   const fraccionados = items.filter((i) => i.rotulo && (cantidades[i.idVariante] ?? 0) > 0);
   const sinDias = fraccionados.filter((i) => i.rotulo?.dias == null);
   const sinPeso = fraccionados.filter((i) => i.rotulo?.pesoG == null);
+  const conAlergenos = fraccionados.filter((i) => i.rotulo?.alergenos || i.rotulo?.trazas);
   const tanda: DatosTanda = { pie, envasado: envasado || hoyIso(), venceBolsa: venceBolsa || null };
 
   return (
@@ -690,8 +690,14 @@ function ConfigurarImpresion({
           </div>
           {!entraRotulo(medida) && (
             <p className="text-sm text-amber-800">
-              <b>Esta etiqueta es chica para el rótulo.</b> En {medida.ancho} × {medida.alto} mm sale solo el nombre y el
-              código. Para que salgan peso, fechas y alérgenos elegí una de <b>70 × 35 mm</b> o más grande.
+              En {medida.ancho} × {medida.alto} mm sale <b>WiiGo Dietética, el nombre, el peso neto, el vencimiento y el código</b>.
+              Los alérgenos no entran: para la bolsita completa elegí <b>70 × 35 mm</b>.
+              {conAlergenos.length > 0 && (
+                <>
+                  {" "}
+                  <b>Llevan alérgenos y conviene la de 70 × 35:</b> {resumirLista(conAlergenos.map((i) => i.producto))}.
+                </>
+              )}
             </p>
           )}
           {sinDias.length > 0 && (
@@ -1109,6 +1115,7 @@ function TiraDeEtiquetas({ rollo, items }: { rollo: Rollo; items: ItemCodigo[] }
 
 function Etiqueta({ item, medida }: { item: ItemCodigo; medida: { ancho: number; alto: number } }) {
   if (item.rotulo && entraRotulo(medida)) return <EtiquetaRotulada item={item} rotulo={item.rotulo} />;
+  if (item.rotulo && medida.alto >= 15) return <EtiquetaChicaPropia item={item} rotulo={item.rotulo} medida={medida} />;
   const nombre = nombreParaEtiqueta(item);
   // En las etiquetas chicas no entra el mismo cuerpo de letra. Y dentro de una
   // misma medida, un nombre largo tiene que achicarse o se corta a la mitad.
@@ -1193,6 +1200,79 @@ function Etiqueta({ item, medida }: { item: ItemCodigo; medida: { ancho: number;
 }
 
 /**
+ * La etiqueta chica de lo nuestro (la plancha del local, 39 × 17 mm, 80 por
+ * hoja), como la aprobó Gonzalo el 2026-11-06
+ * (https://claude.ai/artifact/RJv3CR4YnwwHjbdfZKjN2E): arriba WIIGO DIETÉTICA,
+ * el nombre en el medio, «Peso neto: 250 gr · Vto: 06/05/27» y el código.
+ * Sin lote: la fecha de vencimiento sirve de identificación del lote.
+ * Los alérgenos no entran con letra legible: para eso está la de 70 × 35.
+ */
+function EtiquetaChicaPropia({ item, rotulo, medida }: { item: ItemCodigo; rotulo: RotuloItem; medida: { ancho: number; alto: number } }) {
+  const { envasado, venceBolsa } = useContext(TandaContext);
+  const completo = nombreParaEtiqueta(item) + (item.variante ? ` ${item.variante}` : "");
+  const nombre = rotulo.pesoG != null ? nombreBase(completo) : completo;
+  const vence = calcularVencimiento(envasado, rotulo.dias ?? duracionSugerida(item.producto).dias, venceBolsa);
+  // De 22 mm de alto para arriba (50 × 25, 40 × 30) hay lugar para letra más grande y dos líneas de nombre.
+  const media = medida.alto >= 22;
+  const cuerpoNombre = media ? (nombre.length > 34 ? 2.4 : 2.9) : nombre.length > 32 ? 1.75 : nombre.length > 24 ? 2 : 2.35;
+
+  return (
+    <div
+      className="etq-casillero"
+      style={{
+        width: "100%",
+        height: "100%",
+        padding: media ? "1.8mm 2.2mm 1.4mm" : "1.2mm 1.6mm 1mm",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        textAlign: "center",
+        overflow: "hidden",
+        color: "#000",
+        fontFamily: "'Arial Narrow', Arial, sans-serif",
+      }}
+    >
+      <div style={{ fontSize: media ? "1.75mm" : "1.45mm", fontWeight: 700, letterSpacing: ".28mm", lineHeight: 1, textTransform: "uppercase" }}>
+        WiiGo Dietética
+      </div>
+      <div
+        style={{
+          marginTop: media ? ".7mm" : ".45mm",
+          fontSize: `${cuerpoNombre}mm`,
+          lineHeight: 1.1,
+          fontWeight: 700,
+          textTransform: "uppercase",
+          maxWidth: "100%",
+          display: "-webkit-box",
+          WebkitLineClamp: media ? 2 : 1,
+          WebkitBoxOrient: "vertical",
+          overflow: "hidden",
+        }}
+      >
+        {nombre}
+      </div>
+      <div style={{ marginTop: media ? ".6mm" : ".35mm", display: "flex", gap: "2.2mm", justifyContent: "center", fontSize: media ? "2.05mm" : "1.75mm", lineHeight: 1.15, whiteSpace: "nowrap" }}>
+        {rotulo.pesoG != null && (
+          <span>
+            Peso neto: <b>{pesoEtiqueta(rotulo.pesoG)}</b>
+          </span>
+        )}
+        <span>
+          Vto: <b>{fechaCorta(vence)}</b>
+        </span>
+      </div>
+      <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", alignItems: "center", gap: ".2mm" }}>
+        {/* Igual de ancho que antes (0,27 mm por barra): baja solo de alto para que entre todo. */}
+        <CodigoDeBarras valor={item.codigo ?? ""} ancho={`${medida.ancho * (medida.ancho < 50 ? 0.92 : 0.8)}mm`} alto={media ? "7mm" : "5.2mm"} />
+        <div style={{ fontFamily: "ui-monospace, monospace", fontSize: media ? "1.9mm" : "1.65mm", letterSpacing: ".15mm", lineHeight: 1 }}>
+          {formatearCodigo(item.codigo ?? "")}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
  * La etiqueta de lo que fraccionamos nosotros: la bolsita lleva todo lo que no
  * cambia (qué es, cuánto pesa, cuándo vence, qué alérgenos tiene y quién la
  * armó). El precio no, a propósito: va en el cartel de góndola, así un aumento
@@ -1224,30 +1304,28 @@ function EtiquetaRotulada({ item, rotulo }: { item: ItemCodigo; rotulo: RotuloIt
         fontFamily: "'Arial Narrow', Arial, sans-serif",
       }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "2mm" }}>
-        <div
-          style={{
-            fontSize: nombre.length > 30 ? "2.8mm" : "3.4mm",
-            lineHeight: 1.1,
-            fontWeight: 700,
-            textTransform: "uppercase",
-            display: "-webkit-box",
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: "vertical",
-            overflow: "hidden",
-          }}
-        >
-          {/* El peso ya va a la derecha como "Peso neto": acá el nombre sin el tamaño. */}
-          {rotulo.pesoG != null ? nombreBase(nombre) : nombre}
-        </div>
-        {rotulo.pesoG != null && (
-          <div style={{ textAlign: "right", whiteSpace: "nowrap", flexShrink: 0 }}>
-            <div style={{ fontSize: "1.5mm", letterSpacing: ".05em", textTransform: "uppercase" }}>Peso neto</div>
-            <div style={{ fontSize: "3.4mm", fontWeight: 700, lineHeight: 1 }}>{pesoTexto(rotulo.pesoG)}</div>
-          </div>
-        )}
+      {/* Como la chica (Gonzalo, 2026-11-06): WIIGO DIETÉTICA arriba y el nombre en el medio. */}
+      <div style={{ fontSize: "1.9mm", fontWeight: 700, letterSpacing: ".28mm", lineHeight: 1, textTransform: "uppercase", textAlign: "center" }}>
+        WiiGo Dietética
+      </div>
+      <div
+        style={{
+          fontSize: nombre.length > 30 ? "3mm" : "3.6mm",
+          lineHeight: 1.1,
+          fontWeight: 700,
+          textTransform: "uppercase",
+          textAlign: "center",
+          display: "-webkit-box",
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: "vertical",
+          overflow: "hidden",
+        }}
+      >
+        {/* El peso va abajo como "Peso neto": acá el nombre sin el tamaño. */}
+        {rotulo.pesoG != null ? nombreBase(nombre) : nombre}
       </div>
 
+      {/* Sin lote: la fecha de vencimiento sirve de identificación del lote. */}
       <div
         style={{
           display: "flex",
@@ -1260,14 +1338,16 @@ function EtiquetaRotulada({ item, rotulo }: { item: ItemCodigo; rotulo: RotuloIt
           whiteSpace: "nowrap",
         }}
       >
+        {rotulo.pesoG != null && (
+          <span>
+            Peso neto: <b>{pesoEtiqueta(rotulo.pesoG)}</b>
+          </span>
+        )}
         <span>
-          Envasado <b>{fechaCorta(envasado)}</b>
+          Envasado: <b>{fechaCorta(envasado)}</b>
         </span>
         <span>
-          Vence <b>{fechaCorta(vence)}</b>
-        </span>
-        <span>
-          Lote <b>{loteDe(envasado)}</b>
+          Vto: <b>{fechaCorta(vence)}</b>
         </span>
       </div>
 

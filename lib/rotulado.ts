@@ -79,6 +79,12 @@ export function pesoTexto(gramos: number) {
   return `${gramos.toLocaleString("es-AR", { maximumFractionDigits: 1 })} g`;
 }
 
+/** En la etiqueta de la bolsita Gonzalo prefiere «gr» (2026-11-06): 250 → "250 gr"; 1500 → "1,5 kg". */
+export function pesoEtiqueta(gramos: number) {
+  if (gramos >= 1000) return pesoTexto(gramos);
+  return `${gramos.toLocaleString("es-AR", { maximumFractionDigits: 1 })} gr`;
+}
+
 /** Lo que sale el kilo, redondeado al peso. */
 export function precioPorKilo(precio: number, gramos: number) {
   return Math.round((precio * 1000) / gramos);
