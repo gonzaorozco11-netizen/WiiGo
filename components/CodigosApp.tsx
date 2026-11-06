@@ -946,6 +946,13 @@ function ConfigurarImpresion({
       </p>
 
       {aImprimir.length > 0 && <EjemploEtiqueta item={aImprimir[0]} medida={papel === "plancha" ? plancha : rollo} />}
+      {aImprimir.length > 0 && (
+        <TodasLasEtiquetas
+          items={items.filter((i) => (cantidades[i.idVariante] ?? 0) > 0)}
+          cantidades={cantidades}
+          medida={papel === "plancha" ? plancha : rollo}
+        />
+      )}
 
       {papel === "plancha" ? (
         <HojaDeEtiquetas plancha={plancha} desde={desde} items={aImprimir} ajuste={ajuste} />
@@ -985,6 +992,53 @@ function EjemploEtiqueta({ item, medida }: { item: ItemCodigo; medida: { ancho: 
       <p className="text-xs text-neutral-500 mt-3 text-center">
         {nombreParaEtiqueta(item)} · tamaño real {String(medida.ancho).replace(".", ",")} × {String(medida.alto).replace(".", ",")} mm
       </p>
+    </div>
+  );
+}
+
+/**
+ * Todas las que se van a imprimir, una por producto, al doble de tamaño y con
+ * cuántas salen (Gonzalo, 2026-11-06: «como los precios de góndola»). En la
+ * hoja achicada de abajo las de 39 × 17 no se llegan a leer. Solo en pantalla.
+ */
+function TodasLasEtiquetas({
+  items,
+  cantidades,
+  medida,
+}: {
+  items: ItemCodigo[];
+  cantidades: Record<string, number>;
+  medida: { ancho: number; alto: number };
+}) {
+  const escala = Math.min(2, 90 / medida.ancho);
+  const total = items.reduce((t, i) => t + (cantidades[i.idVariante] ?? 0), 0);
+  return (
+    <div className="mt-4 rounded-xl border border-neutral-200 bg-neutral-50 p-4 print:hidden">
+      <p className="text-xs font-bold uppercase tracking-wider text-neutral-400 mb-3">
+        Las que se van a imprimir · {items.length} {items.length === 1 ? "producto" : "productos"} · {total} {total === 1 ? "etiqueta" : "etiquetas"}
+      </p>
+      <div className="flex flex-wrap gap-4">
+        {items.map((i) => (
+          <div key={i.idVariante} className="flex flex-col items-center gap-1.5">
+            <div style={{ width: `${medida.ancho * escala}mm`, height: `${medida.alto * escala}mm` }}>
+              <div
+                className="bg-white shadow-sm"
+                style={{
+                  width: `${medida.ancho}mm`,
+                  height: `${medida.alto}mm`,
+                  transform: `scale(${escala})`,
+                  transformOrigin: "top left",
+                  outline: ".2mm dashed #d4d4d4",
+                  overflow: "hidden",
+                }}
+              >
+                <Etiqueta item={i} medida={medida} />
+              </div>
+            </div>
+            <span className="text-xs font-bold text-neutral-600 tabular-nums">× {cantidades[i.idVariante] ?? 0}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
