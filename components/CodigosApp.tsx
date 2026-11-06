@@ -233,6 +233,10 @@ export default function CodigosApp({
           setSoloFaltan={setSoloFaltan}
           onEscanear={setEscaneando}
           onAviso={setAviso}
+          onImprimir={() => {
+            setTab("imprimir");
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }}
         />
       ) : (
         <Imprimir items={conEtiqueta} entradas={entradas} pie={pieEtiqueta} />
@@ -262,6 +266,7 @@ function Revisar({
   setSoloFaltan,
   onEscanear,
   onAviso,
+  onImprimir,
 }: {
   items: ItemCodigo[];
   busqueda: string;
@@ -270,6 +275,7 @@ function Revisar({
   setSoloFaltan: (b: boolean) => void;
   onEscanear: (i: ItemCodigo) => void;
   onAviso: (a: { texto: string; tono: "ok" | "mal" } | null) => void;
+  onImprimir: () => void;
 }) {
   const porMarca = useMemo(() => agruparPorMarca(items), [items]);
 
@@ -309,6 +315,13 @@ function Revisar({
           ))}
         </div>
       )}
+      {/* Al terminar de revisar, el paso que sigue (Gonzalo buscaba acá la vista previa, 2026-11-06). */}
+      <div className="mt-4 flex items-center justify-between gap-3 flex-wrap rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3">
+        <span className="text-sm text-neutral-600">La vista previa de las etiquetas y la hoja para imprimir están en la otra pestaña.</span>
+        <button type="button" onClick={onImprimir} className="rounded-lg bg-accent text-white px-4 py-2 text-sm font-semibold hover:bg-accent-dark">
+          Ir a Imprimir códigos →
+        </button>
+      </div>
     </>
   );
 }
