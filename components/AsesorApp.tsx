@@ -23,7 +23,7 @@ import type {
 import { colorDeProducto, ubicacionDe, type ModuloGondola, type UbicacionGondola } from "@/lib/gondola";
 import ViajeGondola from "@/components/ViajeGondola";
 import NutricionAsesor from "@/components/NutricionAsesor";
-import { CarruselProfesional, NumerosProfesional, PildorasRecorrido } from "@/components/PerfilProfesional";
+import { CarruselProfesional, ModosAtencion, NumerosProfesional, OpinionesPacientes, PildorasRecorrido, type OpinionPaciente } from "@/components/PerfilProfesional";
 import IconoRed, { colorDeRed } from "@/components/IconoRed";
 import type { ClaveRed } from "@/lib/redesProfesional";
 
@@ -889,6 +889,7 @@ export default function AsesorApp({
   formacionPorProfesional,
   trayectoriaPorProfesional,
   redesPorProfesional,
+  opinionesPorProfesional = {},
   objetivos,
   filtros,
   fichaPorProducto,
@@ -896,6 +897,8 @@ export default function AsesorApp({
   filtrosPorProducto,
   gondola = [],
 }: {
+  /** Opiniones de pacientes ya aprobadas (sql/profesionales-opiniones.sql). */
+  opinionesPorProfesional?: Record<string, OpinionPaciente[]>;
   local: Local;
   marcas: MarcaPublica[];
   productos: ProductoPublico[];
@@ -1249,6 +1252,7 @@ export default function AsesorApp({
   const fotosDelProfesionalActual = profesionalId ? fotosPorProfesional[profesionalId] ?? [] : [];
   const [fotoAmpliada, setFotoAmpliada] = useState<string | null>(null);
   const redesDelProfesionalActual = profesionalId ? redesPorProfesional[profesionalId] ?? [] : [];
+  const opinionesDelProfesionalActual = profesionalId ? opinionesPorProfesional[profesionalId] ?? [] : [];
   // La red que se está mostrando. Si la elegida no la tiene esta profesional, va la primera.
   const [redElegida, setRedElegida] = useState<string | null>(null);
   const redActual = redesDelProfesionalActual.find((r) => r.clave === redElegida) ?? redesDelProfesionalActual[0] ?? null;
@@ -1257,7 +1261,8 @@ export default function AsesorApp({
     fotosDelProfesionalActual.length > 0 ||
     formacionDelProfesionalActual.length > 0 ||
     trayectoriaDelProfesionalActual.length > 0 ||
-    redesDelProfesionalActual.length > 0;
+    redesDelProfesionalActual.length > 0 ||
+    opinionesDelProfesionalActual.length > 0;
   const trayectoriaOrdenada = useMemo(
     () => [...trayectoriaDelProfesionalActual].sort((a, b) => (a.anio_desde ?? 0) - (b.anio_desde ?? 0)),
     [trayectoriaDelProfesionalActual]
@@ -2463,35 +2468,22 @@ export default function AsesorApp({
               className="flex flex-col gap-2 mt-auto pt-5"
               style={{ animation: "asesorEntrar .5s cubic-bezier(.2,.8,.2,1) .42s both" }}
             >
-              {/* Los precios al lado del botón, que es donde se deciden. Están
-                  cargados en el sistema desde siempre y no se veían en ningún
-                  lado. */}
-              {(profesionalActual.precio_presencial || profesionalActual.precio_online) && (
-                <div className="flex gap-2 mb-1">
-                  {profesionalActual.precio_presencial && (
-                    <span
-                      className="flex-1 text-center text-[10px] font-bold rounded-xl py-2 leading-tight"
-                      style={{ background: SAGE_TINT, color: SAGE_DARK }}
-                    >
-                      {t("presencial")}
-                      <span className={`${titular.className} block text-[15px]`}>
-                        {formatoPrecio(profesionalActual.precio_presencial)}
-                      </span>
-                    </span>
-                  )}
-                  {profesionalActual.precio_online && (
-                    <span
-                      className="flex-1 text-center text-[10px] font-bold rounded-xl py-2 leading-tight"
-                      style={{ background: SAGE_TINT, color: SAGE_DARK }}
-                    >
-                      {t("online")}
-                      <span className={`${titular.className} block text-[15px]`}>
-                        {formatoPrecio(profesionalActual.precio_online)}
-                      </span>
-                    </span>
-                  )}
-                </div>
-              )}
+              {/* Cómo atiende y cuánto sale, al lado del botón, que es donde se
+                  decide (2026-11-05). Sale cada forma que atiende: por lo que
+                  cargó en «Cómo atiende», por el link de turnos o por el precio. */}
+              <ModosAtencion
+                presencial={
+                  /presencial/i.test(profesionalActual.tipo_atencion ?? "") || tieneReservaPresencial || profesionalActual.precio_presencial != null
+                }
+                online={
+                  /virtual|online/i.test(profesionalActual.tipo_atencion ?? "") || tieneReservaOnline || profesionalActual.precio_online != null
+                }
+                precioPresencial={profesionalActual.precio_presencial ? formatoPrecio(profesionalActual.precio_presencial) : null}
+                precioOnline={profesionalActual.precio_online ? formatoPrecio(profesionalActual.precio_online) : null}
+                ciudad={profesionalActual.ciudad}
+                idioma={idioma}
+                claseTitular={titular.className}
+              />
 
               {tieneReservaPresencial || tieneReservaOnline ? (
                 <button
@@ -2646,6 +2638,16 @@ export default function AsesorApp({
                       donde: x.lugar,
                     }))}
                   />
+                </BloqueHistoria>
+              )}
+
+              {/* Lo que dicen sus pacientes: las cargó ella y las aprobó Gonzalo (2026-11-05). */}
+              {opinionesDelProfesionalActual.length > 0 && (
+                <BloqueHistoria
+                  titulo={idioma === "en" ? "What her patients say" : idioma === "pt" ? "O que dizem seus pacientes" : "Lo que dicen sus pacientes"}
+                  contenedor={hojaHistoria}
+                >
+                  <OpinionesPacientes opiniones={opinionesDelProfesionalActual} />
                 </BloqueHistoria>
               )}
 

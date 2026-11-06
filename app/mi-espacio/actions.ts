@@ -20,6 +20,7 @@ import {
   type ItemTrayectoria,
   type ItemVideo,
   type ItemFortaleza,
+  type ItemOpinion,
 } from "@/lib/cambiosProfesional";
 import { leerRedes, mismasRedes, normalizarRedes } from "@/lib/redesProfesional";
 import { ACCION_PRESENTACION, vioPresentacion } from "@/lib/primerosPasos";
@@ -249,7 +250,7 @@ const anio = (v: unknown) => {
   return Number.isInteger(n) && n >= 1950 && n <= 2100 ? n : null;
 };
 
-type ListaTipo = "FORMACION" | "TRAYECTORIA" | "VIDEOS" | "FORTALEZAS" | "OBJETIVOS";
+type ListaTipo = "FORMACION" | "TRAYECTORIA" | "VIDEOS" | "FORTALEZAS" | "OBJETIVOS" | "OPINIONES";
 
 /** Las listas (formación, recorrido, videos, en qué se destaca, en qué ayuda) se mandan enteras. */
 export async function enviarLista(tipo: ListaTipo, items: unknown[]): Promise<Resultado> {
@@ -323,6 +324,17 @@ export async function enviarLista(tipo: ListaTipo, items: unknown[]): Promise<Re
     valor = lista;
   } else if (tipo === "OBJETIVOS") {
     return enviarObjetivos((items as unknown[]).map(String), []);
+  } else if (tipo === "OPINIONES") {
+    // Opiniones de pacientes: cortas, con nombre de pila. Hasta 6.
+    const lista: ItemOpinion[] = [];
+    for (const i of items as Record<string, unknown>[]) {
+      const dijo = texto(i.texto, 280);
+      if (!dijo) continue;
+      if (dijo.length < 15) return { error: "Hay una opinión muy corta. Escribí lo que te dijo el paciente." };
+      lista.push({ nombre: texto(i.nombre, 30), detalle: texto(i.detalle, 50), texto: dijo });
+    }
+    if (lista.length > 6) return { error: "Dejá hasta 6 opiniones." };
+    valor = lista;
   } else {
     return { error: "No se puede cambiar eso desde acá." };
   }

@@ -119,6 +119,82 @@ export function PildorasRecorrido({ items, tipo }: { items: Recorrido[]; tipo: "
   );
 }
 
+export type OpinionPaciente = { id: string; nombre: string | null; detalle: string | null; texto: string };
+
+/** Las opiniones de sus pacientes, de a una, pasando solas cada 6 s. Se tocan para pasar. */
+export function OpinionesPacientes({ opiniones }: { opiniones: OpinionPaciente[] }) {
+  const [actual, setActual] = useState(0);
+  const varias = opiniones.length > 1;
+  useEffect(() => {
+    if (!varias) return;
+    const id = window.setTimeout(() => setActual((a) => (a + 1) % opiniones.length), 6000);
+    return () => window.clearTimeout(id);
+  }, [actual, varias, opiniones.length]);
+  const o = opiniones[Math.min(actual, opiniones.length - 1)];
+  if (!o) return null;
+  return (
+    <button type="button" className="pp-opiniones" onClick={() => varias && setActual((a) => (a + 1) % opiniones.length)}>
+      <span key={o.id} className="pp-opinion">
+        <span className="pp-opinion-texto">{o.texto}</span>
+        {(o.nombre || o.detalle) && <span className="pp-opinion-quien">{[o.nombre, o.detalle].filter(Boolean).join(" · ")}</span>}
+      </span>
+      {varias && (
+        <span className="pp-opinion-puntos" aria-hidden="true">
+          {opiniones.map((x, i) => (
+            <i key={x.id} className={i === actual ? "on" : undefined} />
+          ))}
+        </span>
+      )}
+    </button>
+  );
+}
+
+const TXT_MODOS = {
+  es: { presencial: "Presencial", online: "Online", enLocal: (c: string | null) => (c ? `En ${c}` : "En el consultorio"), video: "Por videollamada" },
+  en: { presencial: "In person", online: "Online", enLocal: (c: string | null) => (c ? `In ${c}` : "At the office"), video: "By video call" },
+  pt: { presencial: "Presencial", online: "Online", enLocal: (c: string | null) => (c ? `Em ${c}` : "No consultório"), video: "Por videochamada" },
+};
+
+/** Cómo atiende: presencial y/u online, cada una con su precio si lo cargó. */
+export function ModosAtencion({
+  presencial,
+  online,
+  precioPresencial,
+  precioOnline,
+  ciudad,
+  idioma,
+  claseTitular,
+}: {
+  presencial: boolean;
+  online: boolean;
+  precioPresencial: string | null;
+  precioOnline: string | null;
+  ciudad: string | null;
+  idioma: Idioma;
+  claseTitular: string;
+}) {
+  const t = TXT_MODOS[idioma] ?? TXT_MODOS.es;
+  const modos = [
+    presencial ? { icono: "🏠", nombre: t.presencial, sub: t.enLocal(ciudad), precio: precioPresencial } : null,
+    online ? { icono: "💻", nombre: t.online, sub: t.video, precio: precioOnline } : null,
+  ].filter((m): m is { icono: string; nombre: string; sub: string; precio: string | null } => m !== null);
+  if (modos.length === 0) return null;
+  return (
+    <div className="pp-modos" style={{ gridTemplateColumns: `repeat(${modos.length}, minmax(0, 1fr))` }}>
+      {modos.map((m) => (
+        <div key={m.nombre} className="pp-modo">
+          <i aria-hidden="true">{m.icono}</i>
+          <span>
+            <b>{m.nombre}</b>
+            <small>{m.sub}</small>
+          </span>
+          {m.precio && <em className={claseTitular}>{m.precio}</em>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 const TXT = {
   es: { formaciones: (n: number) => (n === 1 ? "formación" : "formaciones"), lugares: (n: number) => (n === 1 ? "lugar donde trabajó" : "lugares donde trabajó"), anios: (n: number) => (n === 1 ? "año de experiencia" : "años de experiencia") },
   en: { formaciones: (n: number) => (n === 1 ? "qualification" : "qualifications"), lugares: (n: number) => (n === 1 ? "place worked" : "places worked"), anios: (n: number) => (n === 1 ? "year of experience" : "years of experience") },

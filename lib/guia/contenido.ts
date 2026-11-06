@@ -975,6 +975,8 @@ export const GUIAS: Guia[] = [
       "Entrá a <b>Mi ficha</b>: a un lado editás y al otro ves cómo queda en la pantalla.",
       "Guardá los cambios.",
       "WiiGo los revisa antes de que salgan en la pantalla del local. Si algo hay que corregir, te llega la nota.",
+      "En <b>Atención y precios</b> cargás cuánto sale la consulta presencial y la online: en la pantalla sale cada una en su tarjeta con el precio.",
+      "En <b>Opiniones</b> cargás hasta 6 cosas que te dijeron tus pacientes, con su nombre (o iniciales) si te dieron permiso. Tienen que ser reales y no prometer resultados de salud.",
       "Tu teléfono, tu mail de contacto, tu contraseña y tu PIN los cambiás vos, sin revisión.",
     ],
   },

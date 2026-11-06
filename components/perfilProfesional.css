@@ -52,7 +52,27 @@
 .pp-qr::after { content: ""; position: absolute; top: -20%; bottom: -20%; width: 35%; left: -60%; background: linear-gradient(100deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, .85), rgba(255, 255, 255, 0)); transform: skewX(-15deg); animation: ppBrillo 4.4s ease-in-out 2s infinite; pointer-events: none; }
 @keyframes ppFlota { 0%, 100% { transform: translate3d(0, 0, 0); } 50% { transform: translate3d(0, -5px, 0); } }
 
+/* ---- Cómo atiende y cuánto sale ---- */
+.pp-modos { display: grid; grid-gap: 8px; }
+.pp-modo { display: flex; align-items: center; background: #fff; border: 1px solid #e3e7da; border-radius: 16px; padding: 9px 11px; min-width: 0; }
+.pp-modo i { flex: none; width: 36px; height: 36px; margin-right: 9px; border-radius: 11px; display: flex; align-items: center; justify-content: center; font-style: normal; font-size: 18px; background: #f0f2ec; }
+.pp-modo span { flex: 1; min-width: 0; }
+.pp-modo b { display: block; font-size: 13px; font-weight: 800; color: #2d2d2d; }
+.pp-modo small { display: block; font-size: 11px; color: #7d8472; line-height: 1.2; }
+.pp-modo em { flex: none; margin-left: 8px; font-style: normal; font-size: 16px; font-weight: 700; color: #2d2d2d; white-space: nowrap; }
+
+/* ---- Lo que dicen sus pacientes: una por vez ---- */
+.pp-opiniones { display: block; width: 100%; text-align: left; border: 0; cursor: pointer; background: #fff; border-radius: 18px; padding: 14px 16px 12px; font: inherit; color: inherit; }
+.pp-opinion { display: block; animation: ppEntra .5s cubic-bezier(.2, .85, .25, 1) both; }
+.pp-opinion-texto { display: block; font-size: 14px; line-height: 1.5; color: #4a4f43; }
+.pp-opinion-texto::before { content: "“"; font-size: 32px; line-height: 0; vertical-align: -11px; margin-right: 4px; color: #b97a52; font-weight: 800; }
+.pp-opinion-quien { display: block; margin-top: 7px; font-size: 12px; font-weight: 800; color: #646759; }
+.pp-opinion-puntos { display: flex; margin-top: 10px; }
+.pp-opinion-puntos i { width: 7px; height: 7px; margin-right: 5px; border-radius: 9px; background: #d9ddd0; transition: width .3s, background-color .3s; }
+.pp-opinion-puntos i.on { width: 20px; background: #b97a52; }
+
 @media (prefers-reduced-motion: reduce) {
+  .pp-opinion { animation: none; }
   .pp-foto.on img, .pp-numero, .pp-pildora, .pp-reservar::after, .pp-qr, .pp-qr::after { animation: none; }
   .pp-barras i.va::after { animation: none; transform: scaleX(1); }
 }

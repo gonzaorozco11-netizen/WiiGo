@@ -9,7 +9,7 @@ import { leerRedes } from "@/lib/redesProfesional";
 // bandeja de Aprobaciones para mostrarlo y aplicarlo. Por eso vive acá y no en
 // un archivo de server actions.
 
-export type TipoCambio = "DATOS" | "FOTO_PERFIL" | "FOTO" | "FORMACION" | "TRAYECTORIA" | "VIDEOS" | "FORTALEZAS" | "OBJETIVOS" | "REDES";
+export type TipoCambio = "DATOS" | "FOTO_PERFIL" | "FOTO" | "FORMACION" | "TRAYECTORIA" | "VIDEOS" | "FORTALEZAS" | "OBJETIVOS" | "REDES" | "OPINIONES";
 
 // Los únicos campos de su ficha que puede cambiar ella. Lo demás (publicada,
 // código, links de turnos, consultorio, observaciones) lo maneja WiiGo.
@@ -37,11 +37,14 @@ export const QUE_HIZO: Record<TipoCambio, string> = {
   FORTALEZAS: "Cambió en qué se destaca",
   OBJETIVOS: "Cambió en qué ayuda",
   REDES: "Cambió sus redes",
+  OPINIONES: "Cambió las opiniones de sus pacientes",
 };
 
 export type ItemFormacion = { titulo: string; institucion: string | null; anio: number | null };
 export type ItemTrayectoria = { titulo: string; lugar: string | null; anio_desde: number | null; anio_hasta: number | null };
 export type ItemVideo = { titulo: string | null; url: string };
+// Una opinión de un paciente (sql/profesionales-opiniones.sql): nombre de pila, qué hace y lo que dijo.
+export type ItemOpinion = { nombre: string | null; detalle: string | null; texto: string };
 // Una fortaleza de la lista (id) o una que escribió ella (nuevo): esa se suma
 // a la lista recién cuando Gonzalo la aprueba.
 export type ItemFortaleza = { id_fortaleza: string | null; nuevo?: string | null; principal: boolean };
@@ -166,6 +169,16 @@ export async function aplicarCambioProfesional(
     const { error } = await supabase
       .from("videos_profesional")
       .insert(items.map((v, i) => ({ id_profesional: idProfesional, titulo: v.titulo, url: v.url, orden: i })));
+    return error?.message ?? null;
+  }
+
+  if (tipo === "OPINIONES") {
+    const items = valor as ItemOpinion[];
+    await supabase.from("opiniones_profesional").delete().eq("id_profesional", idProfesional);
+    if (items.length === 0) return null;
+    const { error } = await supabase
+      .from("opiniones_profesional")
+      .insert(items.map((o, i) => ({ id_profesional: idProfesional, nombre: o.nombre, detalle: o.detalle, texto: o.texto, orden: i, publico: true })));
     return error?.message ?? null;
   }
 

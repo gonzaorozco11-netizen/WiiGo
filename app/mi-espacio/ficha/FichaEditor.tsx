@@ -23,6 +23,7 @@ import {
   type ItemTrayectoria,
   type ItemVideo,
   type ItemFortaleza,
+  type ItemOpinion,
   type ValorObjetivos,
 } from "@/lib/cambiosProfesional";
 import { REDES, leerRedes, linkDeRed, textoDeRed, type ClaveRed, type Redes } from "@/lib/redesProfesional";
@@ -45,6 +46,7 @@ export type DatosFicha = {
   redes: Redes;
   // Falso mientras no se corra sql/profesionales-redes.sql.
   redesDisponible: boolean;
+  opiniones: ItemOpinion[];
 };
 
 export type Pendiente = {
@@ -55,7 +57,7 @@ export type Pendiente = {
   nota: string | null;
 };
 
-type Seccion = "sobre" | "historia" | "turnos" | "fotos" | "formacion" | "recorrido" | "ayuda" | "redes" | "videos" | "contacto";
+type Seccion = "sobre" | "historia" | "turnos" | "fotos" | "formacion" | "recorrido" | "ayuda" | "opiniones" | "redes" | "videos" | "contacto";
 
 const SECCIONES: { clave: Seccion; label: string; tipos: TipoCambio[]; campos?: CampoDatos[] }[] = [
   { clave: "sobre", label: "Sobre mí", tipos: ["DATOS"], campos: ["titulo", "especialidad", "matricula", "ciudad", "bio"] },
@@ -65,6 +67,7 @@ const SECCIONES: { clave: Seccion; label: string; tipos: TipoCambio[]; campos?: 
   { clave: "formacion", label: "Formación", tipos: ["FORMACION"] },
   { clave: "recorrido", label: "Recorrido", tipos: ["TRAYECTORIA"] },
   { clave: "ayuda", label: "En qué ayudo", tipos: ["OBJETIVOS", "FORTALEZAS"] },
+  { clave: "opiniones", label: "Opiniones", tipos: ["OPINIONES"] },
   { clave: "redes", label: "Redes", tipos: ["REDES"] },
   { clave: "videos", label: "Videos", tipos: ["VIDEOS"] },
   { clave: "contacto", label: "Contacto", tipos: [] },
@@ -197,6 +200,14 @@ export default function FichaEditor({ datos, pendientes, seccionInicial }: { dat
           fortalezas={(pendienteDe("FORTALEZAS")?.valor as ItemFortaleza[]) ?? datos.fortalezas}
           pendienteObjetivos={pendienteDe("OBJETIVOS")}
           pendienteFortalezas={pendienteDe("FORTALEZAS")}
+          onListo={listo}
+        />
+      )}
+
+      {seccion === "opiniones" && (
+        <SeccionOpiniones
+          inicial={(pendienteDe("OPINIONES")?.valor as ItemOpinion[]) ?? datos.opiniones}
+          pendiente={pendienteDe("OPINIONES")}
           onListo={listo}
         />
       )}
@@ -504,6 +515,68 @@ function SeccionFotos({
           {galeriaEnvio.enviando ? "Subiendo..." : "Enviar a revisión"}
         </button>
       </div>
+    </section>
+  );
+}
+
+/**
+ * Opiniones de pacientes (Gonzalo, 2026-11-05): lo que le dijeron, con nombre de
+ * pila y qué hace. Salen en su ficha de la pantalla, pasando de a una, cuando
+ * WiiGo las aprueba.
+ */
+function SeccionOpiniones({ inicial, pendiente, onListo }: { inicial: ItemOpinion[]; pendiente: Pendiente | null; onListo: () => void }) {
+  const vacia = () => ({ nombre: "", detalle: "", texto: "" });
+  const [filas, setFilas] = useState<{ nombre: string; detalle: string; texto: string }[]>(() => {
+    const desde = inicial.map((o) => ({ nombre: o.nombre ?? "", detalle: o.detalle ?? "", texto: o.texto ?? "" }));
+    return desde.length > 0 ? desde : [vacia()];
+  });
+  const { enviando, error, enviar } = useEnvio();
+  const cambiar = (i: number, clave: "nombre" | "detalle" | "texto", valor: string) => setFilas(filas.map((f, j) => (j === i ? { ...f, [clave]: valor } : f)));
+
+  return (
+    <section className="tarjeta seccion-ficha">
+      <h2>Opiniones de pacientes</h2>
+      <p className="ayuda">
+        Lo que te dijeron tus pacientes, en una o dos frases. Usá solo el nombre de pila (o una inicial) y pedile permiso antes de ponerla. Salen en tu ficha de la pantalla
+        del local, pasando de a una. Hasta 6.
+      </p>
+      <EstadoRevision pendiente={pendiente} />
+      <div className="lista">
+        {filas.map((f, i) => (
+          <div key={i} className="fila-lista" style={{ gridTemplateColumns: "1fr 1.4fr 34px" }}>
+            <label className="campo">
+              <span>Nombre</span>
+              <input value={f.nombre} placeholder="Lucía" maxLength={30} onChange={(e) => cambiar(i, "nombre", e.target.value)} />
+            </label>
+            <label className="campo">
+              <span>Qué hace o qué buscaba</span>
+              <input value={f.detalle} placeholder="Corredora" maxLength={50} onChange={(e) => cambiar(i, "detalle", e.target.value)} />
+            </label>
+            <button type="button" className="quitar" aria-label="Quitar" onClick={() => setFilas(filas.length > 1 ? filas.filter((_, j) => j !== i) : [vacia()])}>
+              ×
+            </button>
+            <label className="campo" style={{ gridColumn: "1 / span 2" }}>
+              <span>Lo que dijo</span>
+              <textarea
+                value={f.texto}
+                rows={2}
+                maxLength={280}
+                placeholder="Por fin entendí qué comer antes y después de entrenar. Súper clara."
+                onChange={(e) => cambiar(i, "texto", e.target.value)}
+              />
+            </label>
+          </div>
+        ))}
+      </div>
+      {filas.length < 6 && (
+        <button type="button" className="agregar" onClick={() => setFilas([...filas, vacia()])}>
+          + Agregar otra
+        </button>
+      )}
+      {error && <p className="error">{error}</p>}
+      <button type="button" className="boton" disabled={enviando} onClick={() => enviar(() => enviarLista("OPINIONES", filas), onListo)}>
+        {enviando ? "Mandando..." : "Enviar a revisión"}
+      </button>
     </section>
   );
 }

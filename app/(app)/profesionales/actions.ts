@@ -19,6 +19,7 @@ import {
   type ItemFormacion,
   type ItemTrayectoria,
   type ItemVideo,
+  type ItemOpinion,
   type ItemFortaleza,
 } from "@/lib/cambiosProfesional";
 import { REDES, leerRedes, normalizarRedes, textoDeRed, type Redes } from "@/lib/redesProfesional";
@@ -1614,6 +1615,13 @@ export async function listarCambiosProfesionales(): Promise<CambioParaAprobar[]>
       }));
     } else if (tipo === "VIDEOS") {
       filas = (nuevo as ItemVideo[]).map((v) => ({ campo: "Video", antes: "", ahora: [v.titulo, v.url].filter(Boolean).join(" · ") }));
+    } else if (tipo === "OPINIONES") {
+      filas = (nuevo as ItemOpinion[]).map((o) => ({
+        campo: [o.nombre, o.detalle].filter(Boolean).join(" · ") || "Paciente",
+        antes: "",
+        ahora: `«${o.texto}»`,
+      }));
+      aviso = "Fijate que sean opiniones reales y que no prometan resultados de salud (por ejemplo «me curó»). Salen en su ficha de la pantalla del local.";
     } else if (tipo === "FORTALEZAS") {
       const items = nuevo as ItemFortaleza[];
       filas = items.map((f) => ({

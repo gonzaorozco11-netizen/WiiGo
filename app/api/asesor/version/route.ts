@@ -26,7 +26,7 @@ function resumir(texto: string) {
 export async function GET() {
   const supabase = getSupabaseServerClient();
 
-  const [ultimo, productos, marcas, subcategorias, profesionales, galeria, consultorios, miembros] = await Promise.all([
+  const [ultimo, productos, marcas, subcategorias, profesionales, galeria, consultorios, miembros, opiniones] = await Promise.all([
     supabase
       .from("productos")
       .select("fecha_actualizacion")
@@ -52,6 +52,8 @@ export async function GET() {
     // Si todavía no existe la tabla de consultorios, estas dos fallan y no suman nada.
     supabase.from("consultorios").select("id_consultorio,nombre,link_reserva,link_reserva_online,estado").order("id_consultorio"),
     supabase.from("profesionales").select("id_profesional,id_consultorio").not("id_consultorio", "is", null).order("id_profesional"),
+    // Al aprobar opiniones se borran y se vuelven a cargar: cambian los id.
+    supabase.from("opiniones_profesional").select("id_opinion,publico").order("id_opinion"),
   ]);
 
   const huella = [
@@ -65,6 +67,7 @@ export async function GET() {
         galeria.data ?? [],
         consultorios.error ? [] : consultorios.data,
         miembros.error ? [] : miembros.data,
+        opiniones.error ? [] : opiniones.data,
       ])
     ),
   ].join("|");

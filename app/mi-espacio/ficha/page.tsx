@@ -14,7 +14,7 @@ export default async function FichaEspacio({ searchParams }: { searchParams: Pro
   const id = sesion.idProfesional;
   const supabase = getSupabaseServerClient();
 
-  const [pRes, galRes, formRes, trayRes, vidRes, fortRes, objRes, catFortRes, catObjRes, pendRes, redesRes] = await Promise.all([
+  const [pRes, galRes, formRes, trayRes, vidRes, fortRes, objRes, catFortRes, catObjRes, pendRes, redesRes, opRes] = await Promise.all([
     supabase.from("profesionales").select(`foto, telefono, email, ${Object.keys(CAMPOS_DATOS).join(", ")}`).eq("id_profesional", id).maybeSingle(),
     supabase.from("galeria_profesional").select("id_foto, url, titulo, publico, orden").eq("id_profesional", id).order("orden"),
     // Solo lo que se ve en la pantalla: lo que WiiGo dejó como no público no se le muestra ni se le borra.
@@ -34,6 +34,8 @@ export default async function FichaEspacio({ searchParams }: { searchParams: Pro
     // Aparte: si todavía no se corrió sql/profesionales-redes.sql, esta falla
     // sola y el resto de la ficha anda igual.
     supabase.from("profesionales").select("redes").eq("id_profesional", id).maybeSingle(),
+    // Sin sql/profesionales-opiniones.sql falla sola: la sección arranca vacía.
+    supabase.from("opiniones_profesional").select("nombre, detalle, texto").eq("id_profesional", id).order("orden"),
   ]);
 
   const p = (pRes.data ?? {}) as unknown as Record<string, string | number | null>;
@@ -63,6 +65,7 @@ export default async function FichaEspacio({ searchParams }: { searchParams: Pro
     catalogoObjetivos: (catObjRes.data ?? []).map((o) => ({ id: o.id_objetivo as string, nombre: o.nombre as string })),
     redes: leerRedes(redesRes.data?.redes),
     redesDisponible: !redesRes.error,
+    opiniones: (opRes.data ?? []).map((o) => ({ nombre: (o.nombre as string | null) ?? null, detalle: (o.detalle as string | null) ?? null, texto: o.texto as string })),
   };
   const pendientes: Pendiente[] = (pendRes.data ?? []).map((c) => ({
     idCambio: c.id_cambio as string,

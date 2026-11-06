@@ -22,6 +22,7 @@ import { destacadasDelMes } from "@/lib/puntosProfesionales";
 import { REDES, leerRedes, textoDeRed } from "@/lib/redesProfesional";
 import AsesorApp, { type RedEnFicha } from "@/components/AsesorApp";
 import { cargarGondola, soloLoPuesto } from "@/lib/gondola";
+import type { OpinionPaciente } from "@/components/PerfilProfesional";
 
 export const dynamic = "force-dynamic";
 
@@ -58,6 +59,7 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
     destacadas,
     redesRes,
     gondola,
+    opinionesRes,
   ] = await Promise.all([
     // Columnas explícitas: con "*" viajaban al navegador el royalty, el fee de
     // ingreso, el plan y el contacto de cada marca. Esta pantalla es pública.
@@ -96,6 +98,8 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
     cargarGondola(supabase, idLocal)
       .then((g) => (g ? soloLoPuesto(g) : g))
       .catch(() => null),
+    // Opiniones de pacientes ya aprobadas (sql/profesionales-opiniones.sql). Sin el SQL falla sola.
+    supabase.from("opiniones_profesional").select("id_opinion, id_profesional, nombre, detalle, texto").eq("publico", true).order("orden"),
   ]);
 
   // Las fichas destacadas (las que más pacientes trajeron este mes y el podio de puntos) van
@@ -225,9 +229,17 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
     }
   }
 
+  const opinionesPorProfesional: Record<string, OpinionPaciente[]> = {};
+  if (!opinionesRes.error) {
+    for (const o of (opinionesRes.data ?? []) as { id_opinion: string; id_profesional: string; nombre: string | null; detalle: string | null; texto: string }[]) {
+      (opinionesPorProfesional[o.id_profesional] ??= []).push({ id: o.id_opinion, nombre: o.nombre, detalle: o.detalle, texto: o.texto });
+    }
+  }
+
   return (
     <AsesorApp
       local={local as Local}
+      opinionesPorProfesional={opinionesPorProfesional}
       marcas={marcasRes.marcas}
       productos={(productosRes.data ?? []) as ProductoPublico[]}
       variantesPorProducto={variantesPorProducto}
