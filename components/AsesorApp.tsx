@@ -1445,12 +1445,17 @@ export default function AsesorApp({
     });
   }, [productos, objetivoId, filtrosSeleccionados, objetivosPorProducto, filtrosPorProducto]);
 
+  // Las marcas en el mismo orden que la portada: WiiGo Dietética primero
+  // (Gonzalo, 2026-11-06). Dentro de cada marca queda el orden de siempre.
+  const lugarDeMarca = useMemo(() => new Map(marcasOrdenadas.map((m, i) => [m.id_marca, i])), [marcasOrdenadas]);
+
   const productosFiltrados = useMemo(
     () =>
-      marcaResultado
-        ? productosSinFiltroMarca.filter((p) => p.id_marca === marcaResultado)
-        : productosSinFiltroMarca,
-    [productosSinFiltroMarca, marcaResultado]
+      (marcaResultado ? productosSinFiltroMarca.filter((p) => p.id_marca === marcaResultado) : productosSinFiltroMarca)
+        .map((p, i) => ({ p, i }))
+        .sort((a, b) => (lugarDeMarca.get(a.p.id_marca) ?? 999) - (lugarDeMarca.get(b.p.id_marca) ?? 999) || a.i - b.i)
+        .map((x) => x.p),
+    [productosSinFiltroMarca, marcaResultado, lugarDeMarca]
   );
 
   const conteoPorMarca = useMemo(() => {
@@ -1460,8 +1465,8 @@ export default function AsesorApp({
   }, [productosSinFiltroMarca]);
 
   const marcasConResultados = useMemo(
-    () => marcas.filter((m) => (conteoPorMarca[m.id_marca] ?? 0) > 0),
-    [marcas, conteoPorMarca]
+    () => marcasOrdenadas.filter((m) => (conteoPorMarca[m.id_marca] ?? 0) > 0),
+    [marcasOrdenadas, conteoPorMarca]
   );
 
   // Cuántos productos deja cada objetivo con la marca y las preferencias que ya
