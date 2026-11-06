@@ -224,8 +224,24 @@ export default function ProductoFormModal({
             Si se desmontaran, sus campos saldrían del envío y el guardado los
             pisaría con vacío — editar un precio te borraría la ficha
             nutricional entera. Por eso se esconden con CSS y no con JSX. */}
-        <form action={handleSubmit} className="space-y-3">
-          <div className={paso === 1 ? "space-y-3" : "hidden"}>
+        {/* Si falta algo obligatorio en un paso que no se está viendo, el
+            navegador frena el guardado sin decir nada (no puede mostrar el
+            aviso en un campo escondido). Pasaba con «¿De qué proveedor es?»
+            al cambiar el peso (Gonzalo, 2026-11-06): ahora se va a ese paso y
+            se dice qué falta. */}
+        <form
+          action={handleSubmit}
+          className="space-y-3"
+          onInvalidCapture={(e) => {
+            const campo = e.target as HTMLInputElement | HTMLSelectElement;
+            const enPaso = Number(campo.closest("[data-paso]")?.getAttribute("data-paso"));
+            if (enPaso && enPaso !== paso) setPaso(enPaso);
+            const etiqueta = campo.id ? document.querySelector(`label[for="${campo.id}"]`)?.textContent?.replace(/\*/g, "").trim() : null;
+            setError(`Falta completar: ${etiqueta || "un campo obligatorio"}${enPaso ? ` (paso ${enPaso})` : ""}.`);
+            window.setTimeout(() => campo.focus(), 50);
+          }}
+        >
+          <div data-paso="1" className={paso === 1 ? "space-y-3" : "hidden"}>
           {marcaSeleccionada?.tipo_comercializacion === "PROPIA" ? (
             <div>
               {/* El tamaño lo agrega el sistema con el peso neto (lib/nombreProducto.ts). */}
@@ -312,7 +328,7 @@ export default function ProductoFormModal({
           </div>
 
           {/* ---------- 2 · Precio y stock ---------- */}
-          <div className={paso === 2 ? "space-y-3" : "hidden"}>
+          <div data-paso="2" className={paso === 2 ? "space-y-3" : "hidden"}>
           <VariantesSection
             variantes={variantes}
             setVariantes={setVariantes}
@@ -387,7 +403,7 @@ export default function ProductoFormModal({
 
           {/* Sigue el paso 1: la foto y el estado son parte de qué es el
               producto, aunque en el código vengan después del precio. */}
-          <div className={paso === 1 ? "space-y-3" : "hidden"}>
+          <div data-paso="1" className={paso === 1 ? "space-y-3" : "hidden"}>
           <div>
             <label className="block text-sm font-medium text-neutral-700 mb-1">Imagen</label>
             {isEditing ? (
@@ -431,7 +447,7 @@ export default function ProductoFormModal({
           </div>
 
           {/* ---------- 3 · Ficha del asesor ---------- */}
-          <div className={paso === 3 ? "space-y-3" : "hidden"}>
+          <div data-paso="3" className={paso === 3 ? "space-y-3" : "hidden"}>
           <FichaSection ficha={ficha} producto={producto} />
 
           <CheckboxSection

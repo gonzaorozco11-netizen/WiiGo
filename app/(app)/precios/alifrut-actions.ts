@@ -168,15 +168,22 @@ export async function vincularItem(
   const supabase = getSupabaseServerClient();
   const idGranel = await granelDelItem(supabase, idItem);
   if (!idGranel) return { error: FALTA_SQL };
-  const { data: gFila } = await supabase.from("costos_granel").select("id_granel, nombre, costo_neto, unidad, kg_bulto").eq("id_granel", idGranel).single();
+  const { data: gFila } = await supabase.from("costos_granel").select("id_granel, nombre, costo_neto, unidad, kg_bulto, id_proveedor").eq("id_granel", idGranel).single();
   if (!gFila) return { error: FALTA_SQL };
   const granel: Granel = { id: idGranel, nombre: gFila.nombre, costo: Number(gFila.costo_neto), unidad: gFila.unidad === "BULTO" || gFila.unidad === "CAJA" ? gFila.unidad : "KG", kgBulto: gFila.kg_bulto == null ? null : Number(gFila.kg_bulto) };
   const ahora = new Date().toISOString();
+  // El proveedor del costo (Alifrut). Sin él, lo que se vende no entra en lo
+  // que se le paga a fin de mes, y el formulario de Productos no deja guardar
+  // (el campo es obligatorio): pasaba con todo lo creado desde acá (2026-11-06).
+  const proveedor = (gFila.id_proveedor as string | null) ?? null;
 
   if (opciones.idProductoExistente) {
     const { data: p } = await supabase.from("productos").select("id_producto, nombre, marcas(tipo_comercializacion)").eq("id_producto", opciones.idProductoExistente).maybeSingle();
     if ((p?.marcas as unknown as { tipo_comercializacion: string } | null)?.tipo_comercializacion !== "PROPIA") return { error: "Ese producto no es de WiiGo Dietética." };
-    await supabase.from("productos").update({ id_granel: idGranel }).eq("id_producto", opciones.idProductoExistente);
+    await supabase
+      .from("productos")
+      .update({ id_granel: idGranel, ...(proveedor ? { id_proveedor_liquidacion: proveedor } : {}) })
+      .eq("id_producto", opciones.idProductoExistente);
     hechos.push({ id: p!.id_producto as string, nombre: p!.nombre as string });
   }
 
@@ -203,6 +210,7 @@ export async function vincularItem(
           nombre,
           peso_neto_g: gramos,
           id_granel: idGranel,
+          id_proveedor_liquidacion: proveedor,
           id_envase: env ? env.id_envase : null,
           costos_extra: env ? Number(env.costo) + etiqueta : 0,
           costo_informado: merc != null ? Math.round(merc * 100) / 100 : null,
@@ -238,7 +246,7 @@ export async function desvincularProducto(idProducto: string): Promise<{ error: 
  * "Actualizar": pasa el costo nuevo de Alifrut a lo que usa WiiGo, recalcula
  * todos los tamaños y los pasa a la venta (precio, historial y carteles).
  */
-export async function aplicarCambiosAlifrut(idsGranel: string[]): Promise<{ error: string | null; costos?: number; precios?: number }> {
+export async function aplicarCambiosAlifrut(idsGranel: string[]): Promise<{ error: string | null; costos?: number; precios?: number; esperan?: number }> {
   if (!(await sesionDePrecios())) return { error: "No tenés permiso para Precios." };
   if (!Array.isArray(idsGranel) || !idsGranel.length) return { error: "No elegiste ningún cambio." };
   const supabase = getSupabaseServerClient();
@@ -266,11 +274,14 @@ export async function aplicarCambiosAlifrut(idsGranel: string[]): Promise<{ erro
     productos.push(...(hijos ?? []).map((h) => h.id_producto as string));
   }
   let precios = 0;
+  // Los que ya tenían precio: la caja cobra el nuevo recién cuando ponen el cartel.
+  let esperan = 0;
   if (productos.length) {
     const r = await pasarALaVenta(productos);
     if (r.error) return { error: `Los costos se actualizaron, pero no se pudieron pasar los precios: ${r.error}`, costos };
     precios = r.cambiados ?? 0;
+    esperan = r.esperan ?? 0;
   }
   revalidatePath("/precios");
-  return { error: null, costos, precios };
+  return { error: null, costos, precios, esperan };
 }

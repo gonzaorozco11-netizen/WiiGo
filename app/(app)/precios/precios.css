@@ -290,6 +290,8 @@ a.pr-btn { color: inherit; text-decoration: none; display: inline-flex; align-it
 .pr-m-cambio .afecta { display: grid; gap: 3px; padding-left: 24px; }
 .pr-m-cambio .afecta div { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 13px; color: var(--tinta-2); }
 .pr-m-tamanos { display: flex; flex-wrap: wrap; gap: 8px; }
+.pr-m-otro { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; font-weight: 600; }
+.pr-m-otro .pr-m-input { width: 90px; }
 .pr-m-tamanos > div { border: 1px solid var(--linea-2); border-radius: 8px; padding: 7px 10px; display: grid; gap: 6px; }
 .pr-m-tamanos > div.sel { border-color: var(--acento); background: var(--acento-t); }
 .pr-m-tamanos label { display: inline-flex; gap: 7px; align-items: center; font-weight: 600; cursor: pointer; }

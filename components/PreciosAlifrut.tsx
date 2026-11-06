@@ -211,12 +211,25 @@ export function CambiosAlifrut({ pendientes, onCerrar }: { pendientes: Pendiente
 
   async function aplicar() {
     setPasando(true);
-    const r = await aplicarCambiosAlifrut([...elegidos]).catch(() => ({ error: "No se pudo actualizar. Revisá la conexión.", costos: 0, precios: 0 }));
+    const r = await aplicarCambiosAlifrut([...elegidos]).catch(() => ({ error: "No se pudo actualizar. Revisá la conexión.", costos: 0, precios: 0, esperan: 0 }));
     setPasando(false);
+    // Lo que ya estaba a la venta no cambia en la caja hasta que ponen el cartel
+    // nuevo (antes decía «precio nuevo en la caja» y no era así, 2026-11-06).
+    const n = r.precios ?? 0;
+    const esperan = r.esperan ?? 0;
+    const ya = n - esperan;
     setResultado(
       r.error
         ? { texto: r.error, mal: true }
-        : { texto: `Listo: ${r.costos === 1 ? "1 costo actualizado" : `${r.costos} costos actualizados`} y ${r.precios === 1 ? "1 precio nuevo" : `${r.precios} precios nuevos`} en la caja, el tótem y la pantalla asesora. Te quedaron las tareas de cambiar los carteles.` }
+        : {
+            texto:
+              `Listo: ${r.costos === 1 ? "1 costo actualizado" : `${r.costos} costos actualizados`}` +
+              (n === 0 ? "." : `, ${n === 1 ? "1 precio nuevo" : `${n} precios nuevos`}.`) +
+              (ya > 0 ? ` ${ya === 1 ? "1 ya se cobra" : `${ya} ya se cobran`} en la caja.` : "") +
+              (esperan > 0
+                ? ` ${esperan === 1 ? "El otro" : `Los otros ${esperan}`}: la caja sigue cobrando el precio de antes hasta que el operativo ponga el cartel nuevo y toque «Lo puse» en Mis Tareas.`
+                : ""),
+          }
     );
   }
 
@@ -511,8 +524,20 @@ export function Vincular(props: {
   const chica = props.envases.find((e) => /chica/i.test(e.nombre)) ?? props.envases[0];
   const grande = props.envases.find((e) => /grande/i.test(e.nombre)) ?? props.envases[props.envases.length - 1];
   // Los tamaños de bolsita que se arman en el local (120, 130 y 150 g sumados por Gonzalo, 2026-10-29).
-  const opciones = porUnidad ? [null] : [100, 120, 130, 150, 200, 250, 500, 1000];
+  // Y los que agregue a mano con «Otro tamaño» (Gonzalo, 2026-11-06: la harina de almendra va en 350 g).
+  const [extras, setExtras] = useState<number[]>([]);
+  const [otro, setOtro] = useState("");
+  const opciones = porUnidad ? [null] : [...new Set([100, 120, 130, 150, 200, 250, 500, 1000, ...extras])].sort((a, b) => a - b);
   const [tamanos, setTamanos] = useState<Map<number | null, string>>(() => new Map(porUnidad ? [[null, ""]] : []));
+  const envaseDe = (g: number | null) => (g == null ? "" : g >= 1000 ? "" : g <= 250 ? chica?.id ?? "" : grande?.id ?? "");
+  function agregarOtro() {
+    const g = Math.round(Number(otro.replace(",", ".")));
+    if (!Number.isFinite(g) || g < 10 || g > 5000) return setError("Poné el tamaño en gramos, entre 10 y 5000 (ej: 350).");
+    setError(null);
+    setExtras((xs) => (xs.includes(g) ? xs : [...xs, g]));
+    setTamanos((m) => new Map(m).set(g, m.get(g) ?? envaseDe(g)));
+    setOtro("");
+  }
   const rubroParecido = props.rubros.find((r) => item.categoria && normalizar(r.nombre).includes(normalizar(item.categoria).split(" ")[0]));
   const [rubro, setRubro] = useState(rubroParecido?.id ?? "");
   const [existente, setExistente] = useState("");
@@ -618,7 +643,7 @@ export function Vincular(props: {
         <div className="pr-m-tamanos">
           {opciones.map((g) => {
             const marcado = tamanos.has(g);
-            const defecto = g == null ? "" : g === 1000 ? "" : g <= 250 ? chica?.id ?? "" : grande?.id ?? "";
+            const defecto = envaseDe(g);
             return (
               <div key={String(g)} className={marcado ? "sel" : undefined}>
                 <label>
@@ -635,7 +660,7 @@ export function Vincular(props: {
                       })
                     }
                   />
-                  {g == null ? "Por unidad, como viene" : g >= 1000 ? "1 kg" : `${g} g`}
+                  {g == null ? "Por unidad, como viene" : g >= 1000 ? `${(g / 1000).toLocaleString("es-AR")} kg` : `${g} g`}
                 </label>
                 {marcado && (
                   <select value={tamanos.get(g) ?? ""} onChange={(e) => setTamanos((m) => new Map(m).set(g, e.target.value))} aria-label="Bolsita">
@@ -651,6 +676,29 @@ export function Vincular(props: {
             );
           })}
         </div>
+        {!porUnidad && (
+          <div className="pr-m-otro">
+            <label htmlFor="pr-tam-otro">Otro tamaño</label>
+            <input
+              id="pr-tam-otro"
+              className="pr-m-input"
+              inputMode="numeric"
+              value={otro}
+              onChange={(e) => setOtro(e.target.value.replace(/[^\d,.]/g, ""))}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  agregarOtro();
+                }
+              }}
+              placeholder="Ej: 350"
+            />
+            <span>g</span>
+            <button type="button" className="pr-btn chico" disabled={!otro.trim()} onClick={agregarOtro}>
+              + Agregar
+            </button>
+          </div>
+        )}
         {tamanos.size > 0 && nombre.trim() && (
           <div className="pr-m-asi">
             <span>Así va a figurar:</span>
