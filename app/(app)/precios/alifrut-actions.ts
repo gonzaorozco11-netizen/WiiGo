@@ -176,6 +176,8 @@ export async function vincularItem(
   // que se le paga a fin de mes, y el formulario de Productos no deja guardar
   // (el campo es obligatorio): pasaba con todo lo creado desde acá (2026-11-06).
   const proveedor = (gFila.id_proveedor as string | null) ?? null;
+  // No se crea nada sin proveedor (Gonzalo, 2026-11-06).
+  if (!proveedor) return { error: "Este costo no tiene proveedor cargado: ponéselo en Costos de compra y volvé a vincular." };
 
   if (opciones.idProductoExistente) {
     const { data: p } = await supabase.from("productos").select("id_producto, nombre, marcas(tipo_comercializacion)").eq("id_producto", opciones.idProductoExistente).maybeSingle();

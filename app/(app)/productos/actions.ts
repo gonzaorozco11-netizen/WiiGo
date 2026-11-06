@@ -541,8 +541,12 @@ export async function createProducto(formData: FormData): Promise<{ error: strin
     if (!text(formData, "nombre")) return { error: "El nombre es obligatorio" };
 
     const supabase = getSupabaseServerClient();
+    const propia = await esMarcaPropia(supabase, idMarca);
+    // Lo nuestro no se crea sin proveedor (Gonzalo, 2026-11-06): sin él, lo
+    // vendido no entra en lo que se le paga a fin de mes.
+    if (propia && !text(formData, "id_proveedor_liquidacion")) return { error: "Elegí de qué proveedor es (paso 2): sin eso no se puede crear." };
     const idSubcategoria = await resolveSubcategoria(supabase, formData, idMarca);
-    const data = productoFromForm(formData, idMarca, idSubcategoria, await esMarcaPropia(supabase, idMarca));
+    const data = productoFromForm(formData, idMarca, idSubcategoria, propia);
 
     const insertar =(payload: typeof data) =>
       supabase.from("productos").insert(payload).select("id_producto").single();
@@ -574,8 +578,12 @@ export async function updateProducto(id: string, formData: FormData): Promise<{ 
     if (!text(formData, "nombre")) return { error: "El nombre es obligatorio" };
 
     const supabase = getSupabaseServerClient();
+    const propia = await esMarcaPropia(supabase, idMarca);
+    // Tampoco se le puede sacar el proveedor a uno nuestro (si el formulario lo trae).
+    if (propia && formData.has("id_proveedor_liquidacion") && !text(formData, "id_proveedor_liquidacion"))
+      return { error: "Elegí de qué proveedor es (paso 2): un producto nuestro no puede quedar sin proveedor." };
     const idSubcategoria = await resolveSubcategoria(supabase, formData, idMarca);
-    const data = productoFromForm(formData, idMarca, idSubcategoria, await esMarcaPropia(supabase, idMarca));
+    const data = productoFromForm(formData, idMarca, idSubcategoria, propia);
 
     const actualizar =(payload: typeof data) =>
       supabase.from("productos").update(payload).eq("id_producto", id);
