@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { calcularPrecio, costoPorKg, type ConfigPrecios, type Envase, type Granel } from "@/lib/calculoPrecio";
 import type { GranelDelModulo, ProductoDelModulo, RubroDelModulo } from "@/lib/datosPrecios";
 import { granelDesdeItem, type EstadoAlifrut, type ItemCatalogo } from "@/lib/catalogoProveedor";
@@ -303,12 +303,42 @@ export function CatalogoAlifrut(props: {
   envases: Envase[];
   avisar: (t: string, mal?: boolean) => void;
   onTraer: () => void;
+  /** Lo que estaba mirando antes de vincular (vuelve por la dirección, ver precios/page.tsx). */
+  inicial?: { cat: string | null; buscar: string | null } | null;
 }) {
   const [items, setItems] = useState(props.items);
-  const [cat, setCat] = useState<string>("*");
-  const [buscar, setBuscar] = useState("");
+  const [cat, setCat] = useState<string>(props.inicial?.cat || "*");
+  const [buscar, setBuscar] = useState(props.inicial?.buscar ?? "");
   const [vinculando, setVinculando] = useState<ItemCatalogo | null>(null);
   const [ahora] = useState(() => Date.now());
+
+  // Al volver de vincular, al mismo lugar de la lista.
+  useEffect(() => {
+    try {
+      const y = Number(sessionStorage.getItem("precios.alifrut.scroll"));
+      sessionStorage.removeItem("precios.alifrut.scroll");
+      if (y > 0) window.requestAnimationFrame(() => window.scrollTo(0, y));
+    } catch {}
+  }, []);
+
+  /**
+   * Después de vincular o crear: se recarga para traer lo nuevo, pero en esta
+   * pestaña, con el mismo filtro y a la misma altura (Gonzalo, 2026-11-06: «que
+   * no se me vuelva a Lista de precios, ahí sigo agregando»).
+   */
+  function recargarAca() {
+    try {
+      sessionStorage.setItem("precios.alifrut.scroll", String(Math.round(window.scrollY)));
+    } catch {}
+    const u = new URL(window.location.href);
+    u.searchParams.delete("producto");
+    u.searchParams.set("pestana", "alifrut");
+    if (cat !== "*") u.searchParams.set("cat", cat);
+    else u.searchParams.delete("cat");
+    if (buscar.trim()) u.searchParams.set("q", buscar.trim());
+    else u.searchParams.delete("q");
+    window.location.replace(u.toString());
+  }
 
   const usosPorItem = useMemo(() => {
     const m = new Map<string, ProductoDelModulo[]>();
@@ -496,7 +526,7 @@ export function CatalogoAlifrut(props: {
           productos={props.productos.filter((p) => !usosPorItem.get(vinculando.id)?.some((u) => u.id === p.id))}
           usos={usosPorItem.get(vinculando.id) ?? []}
           granel={props.granel}
-          onCerrar={(recargar) => (recargar ? window.location.reload() : setVinculando(null))}
+          onCerrar={(recargar) => (recargar ? recargarAca() : setVinculando(null))}
         />
       )}
     </div>

@@ -6,6 +6,7 @@ import { calcularRendicion } from "@/app/(app)/liquidaciones/actions";
 import { exigirGestionInterna } from "@/lib/marcaSesion";
 import { listarMermas } from "@/lib/mermas";
 import { devueltoPorDetalle, netearRenglon } from "@/lib/devueltoPorDetalle";
+import { costoDelRenglon } from "@/lib/costoAlVender";
 import { CLAVE_COMISION_COBRO, POSNET_POR_DEFECTO, entraPorCuenta } from "@/lib/formasPago";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -150,7 +151,7 @@ export async function calcularRentabilidad(idMarca: string, desde: string, hasta
 
   const { data: detalle, error: errorDetalle } = await supabase
     .from("detalle_ventas")
-    .select("id_detalle, id_venta, id_variante, cantidad, subtotal")
+    .select("id_detalle, id_venta, id_variante, cantidad, subtotal, costo_unitario")
     .in("id_variante", idsVariante);
   if (errorDetalle) throw new Error(friendlyDbError(errorDetalle));
 
@@ -204,7 +205,8 @@ export async function calcularRentabilidad(idMarca: string, desde: string, hasta
     const facturacionNetaLinea = reglas.iva ? ventaBruta / (1 + tasas.ivaGeneral / 100) : ventaBruta;
     const ivaLinea = ventaBruta - facturacionNetaLinea;
     const costoImpositivoLinea = reglas.iibb ? facturacionNetaLinea * (tasas.iibb / 100) : 0;
-    const cmvLinea = (producto?.costo_informado ?? 0) * neto.cantidad;
+    // El costo que tenía cuando se vendió; lo vendido antes de guardarlo, el de hoy (lib/costoAlVender.ts).
+    const cmvLinea = costoDelRenglon(linea.costo_unitario, producto?.costo_informado) * neto.cantidad;
     const impuestoCreditosRedondeado = redondear2(impCreditosLinea);
     const comisionMpRedondeada = redondear2(feeMpLinea);
     const gastosFinancierosLinea = redondear2(impCreditosLinea + feeMpLinea);

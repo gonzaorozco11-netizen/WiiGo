@@ -18,8 +18,10 @@ export const maxDuration = 60;
 // máquina, del mismo ancho, para compararlos en columna (IBM Plex, en app/fuentes).
 
 // ?producto=<id>: viene del botón "Cambiar precio" de la ficha del producto.
-export default async function PreciosPage({ searchParams }: { searchParams: Promise<{ producto?: string }> }) {
-  const { producto } = await searchParams;
+// ?pestana=alifrut&cat=…&q=…: después de vincular en Productos Alifrut se recarga
+// y vuelve ahí mismo, para seguir agregando (Gonzalo, 2026-11-06).
+export default async function PreciosPage({ searchParams }: { searchParams: Promise<{ producto?: string; pestana?: string; cat?: string; q?: string }> }) {
+  const { producto, pestana, cat, q } = await searchParams;
   const sesion = await obtenerSesionConPantallas();
   if (!puedeVerPantalla(sesion, "precios")) return <PantallaBloqueada />;
 
@@ -71,6 +73,8 @@ export default async function PreciosPage({ searchParams }: { searchParams: Prom
         proveedores={datos.proveedores}
         puedeConfigurar={tienePermiso(conPermisos, PERMISOS.EDITAR_CONFIGURACION)}
         abrir={datos.productos.some((p) => p.id === producto) ? producto : null}
+        pestanaInicial={pestana === "alifrut" ? "alifrut" : null}
+        alifrutInicial={pestana === "alifrut" ? { cat: cat?.slice(0, 80) ?? null, buscar: q?.slice(0, 80) ?? null } : null}
         alifrut={alifrut}
         competencia={competencia}
         gondola={gondola}

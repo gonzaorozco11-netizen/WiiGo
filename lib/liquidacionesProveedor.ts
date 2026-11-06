@@ -221,11 +221,11 @@ export async function calcularLiquidacionProveedor(
   const { data: detalle } = idsVenta.length
     ? await supabase
         .from("detalle_ventas")
-        .select("id_detalle, id_variante, cantidad")
+        .select("id_detalle, id_variante, cantidad, costo_unitario")
         .in("id_venta", idsVenta)
         .in("id_variante", varianteIds)
         .is("id_liquidacion_proveedor", null)
-    : { data: [] as { id_detalle: string; id_variante: string; cantidad: number }[] };
+    : { data: [] as { id_detalle: string; id_variante: string; cantidad: number; costo_unitario: number | null }[] };
 
   if ((detalle ?? []).length === 0 && mermas.length === 0) return { lineas: [], total: 0 };
 
@@ -243,10 +243,18 @@ export async function calcularLiquidacionProveedor(
   }
 
   const cantidadPorVariante = new Map<string, number>();
+  // Si no aparece la compra de la que salió (lote), se paga el costo que tenía
+  // al venderse, no el de hoy (lib/costoAlVender.ts). Promedio de sus renglones.
+  const guardado = new Map<string, { costo: number; unidades: number }>();
   for (const d of detalle ?? []) {
     const cantidad = netearRenglon(d.cantidad, 0, devueltos.get(d.id_detalle as string)).cantidad;
     cantidadPorVariante.set(d.id_variante, (cantidadPorVariante.get(d.id_variante) ?? 0) + cantidad);
+    if (d.costo_unitario != null && cantidad > 0) {
+      const g = guardado.get(d.id_variante) ?? { costo: 0, unidades: 0 };
+      guardado.set(d.id_variante, { costo: g.costo + Number(d.costo_unitario) * cantidad, unidades: g.unidades + cantidad });
+    }
   }
+  for (const [idVariante, g] of guardado) if (g.unidades > 0) costoReservaPorVariante.set(idVariante, g.costo / g.unidades);
   // Las unidades de merma se suman a las vendidas: para el FIFO son lo mismo,
   // mercadería que salió del lote y hay que pagar.
   for (const m of mermas) {
@@ -351,7 +359,7 @@ export async function detalleLiquidacionProveedor(
   const { data: detalle } = ventaPorId.size
     ? await supabase
         .from("detalle_ventas")
-        .select("id_venta, id_variante, cantidad, precio_unitario, subtotal")
+        .select("id_venta, id_variante, cantidad, precio_unitario, subtotal, costo_unitario")
         .in("id_venta", [...ventaPorId.keys()])
         .in("id_variante", [...variantePorId.keys()])
         .is("id_liquidacion_proveedor", null)
@@ -374,6 +382,8 @@ export async function detalleLiquidacionProveedor(
     subtotalVenta: number;
     /** El medio de Precios (efectivo, qr, débito, crédito). En merma no se usa. */
     medioPrecios: Medio;
+    /** El costo que tenía al venderse (null si es viejo o es merma): se usa si no aparece el lote. */
+    costoAlVender: number | null;
   };
 
   const eventos: Evento[] = [
@@ -387,6 +397,7 @@ export async function detalleLiquidacionProveedor(
         medio: (venta?.medio_pago === "EFECTIVO" ? "EFECTIVO" : "ELECTRONICO") as MedioLiquidacion,
         subtotalVenta: (d.subtotal as number | null) ?? ((d.precio_unitario as number) ?? 0) * cantidad,
         medioPrecios: medioPrecios(venta as Record<string, unknown> | undefined),
+        costoAlVender: d.costo_unitario == null ? null : Number(d.costo_unitario),
       };
     }),
     ...mermas.map((m) => ({
@@ -396,6 +407,7 @@ export async function detalleLiquidacionProveedor(
       medio: "MERMA" as MedioLiquidacion,
       subtotalVenta: 0,
       medioPrecios: "efectivo" as Medio,
+      costoAlVender: null,
     })),
   ].sort((a, b) => a.fecha.localeCompare(b.fecha));
 
@@ -423,7 +435,8 @@ export async function detalleLiquidacionProveedor(
     const r = consumirEnMemoria(
       lotesPorVariante.get(idVariante) ?? [],
       cantidad,
-      (p.costo_informado as number | null) ?? 0
+      // Sin lote: el costo que tenía al venderse; si es viejo, el de hoy.
+      ev.costoAlVender ?? (p.costo_informado as number | null) ?? 0
     );
     if (r.estimado) estimado = true;
 

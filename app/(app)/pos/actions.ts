@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
+import { insertarRenglonesVenta } from "@/lib/costoAlVender";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 import { turnoAbiertoDeLocal } from "@/app/(app)/turnos/actions";
 import { facturarAlAcreditarse, montoQuePideDni } from "@/lib/arca/config";
@@ -408,7 +409,8 @@ export async function venderPos(
       precio_unitario: i.precioUnitario,
       subtotal: i.precioUnitario * i.cantidad,
     }));
-    const { error: errorDetalle } = await supabase.from("detalle_ventas").insert(filasDetalle);
+    // Con el costo del momento: las ventas hechas no cambian si después sube (lib/costoAlVender.ts).
+    const { error: errorDetalle } = await insertarRenglonesVenta(supabase, filasDetalle);
     if (errorDetalle) return { error: friendlyDbError(errorDetalle) };
 
     // Cubierto entero con puntos/canje: no tiene sentido generar un QR de
@@ -541,10 +543,8 @@ export async function venderPos(
     precio_unitario: i.precioUnitario,
     subtotal: i.precioUnitario * i.cantidad,
   }));
-  const { data: detalleInsertado, error: errorDetalle } = await supabase
-    .from("detalle_ventas")
-    .insert(filasDetalle)
-    .select("id_detalle, id_variante");
+  // Con el costo del momento: las ventas hechas no cambian si después sube (lib/costoAlVender.ts).
+  const { data: detalleInsertado, error: errorDetalle } = await insertarRenglonesVenta(supabase, filasDetalle);
   if (errorDetalle) return { error: friendlyDbError(errorDetalle) };
 
   let puntosExtra = 0;

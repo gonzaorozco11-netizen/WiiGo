@@ -61,6 +61,9 @@ type Props = {
   gondola?: GondolaLocal[] | null;
   /** Todos los productos activos de todas las marcas, para ubicarlos en la góndola. */
   productosGondola?: ProductoGondola[];
+  /** Al volver de vincular en Productos Alifrut: esa pestaña, con su categoría y búsqueda. */
+  pestanaInicial?: "alifrut" | null;
+  alifrutInicial?: { cat: string | null; buscar: string | null } | null;
 };
 
 type Pestana = "lista" | "competencia" | "gondola" | "alifrut" | "costos" | "config";
@@ -86,7 +89,7 @@ const aNumero = (s: string) => {
 
 export default function PreciosApp(props: Props) {
   const router = useRouter();
-  const [pestana, setPestana] = useState<Pestana>("lista");
+  const [pestana, setPestana] = useState<Pestana>(props.pestanaInicial && props.alifrut ? props.pestanaInicial : "lista");
   const [cfg, setCfg] = useState<ConfigPrecios>(props.config);
   const [productos, setProductos] = useState(props.productos);
   const [rubros, setRubros] = useState(props.rubros);
@@ -375,6 +378,7 @@ export default function PreciosApp(props: Props) {
             envases={envases}
             avisar={avisar}
             onTraer={() => setVentanaAlifrut("traer")}
+            inicial={props.alifrutInicial ?? null}
           />
         )}
         {ventanaAlifrut === "traer" && <TraerLista onCerrar={cerrarVentanaAlifrut} />}

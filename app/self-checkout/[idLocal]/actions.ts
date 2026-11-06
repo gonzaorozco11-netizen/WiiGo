@@ -2,6 +2,7 @@
 
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
+import { insertarRenglonesVenta } from "@/lib/costoAlVender";
 import { calcularBeneficioReferido, resolverCodigoProfesional, resolverReferidoVenta } from "@/lib/referidosProfesionales";
 import { buscarProfesionalPorDni, verificarPinProfesional, calcularDescuentoCanje, esProfesionalActivo } from "@/lib/canjesProfesionales";
 import { calcularCanjePuntos, type LineaPuntos } from "@/lib/puntosWiigo";
@@ -386,7 +387,8 @@ export async function confirmarPedido(
     precio_unitario: i.precioUnitario,
     subtotal: i.precioUnitario * i.cantidad,
   }));
-  const { error: errorDetalle } = await supabase.from("detalle_ventas").insert(filasDetalle);
+  // Con el costo del momento: las ventas hechas no cambian si después sube (lib/costoAlVender.ts).
+  const { error: errorDetalle } = await insertarRenglonesVenta(supabase, filasDetalle);
   if (errorDetalle) return { error: friendlyDbError(errorDetalle) };
 
     let qrImagen: string | undefined;

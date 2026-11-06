@@ -3,6 +3,7 @@
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { devueltoPorDetalle, netearRenglon } from "@/lib/devueltoPorDetalle";
+import { costoDelRenglon } from "@/lib/costoAlVender";
 
 // 2 decimales, no pesos enteros — si se redondea a entero en cada línea, la
 // suma de muchas líneas puede terminar desviada del total real.
@@ -93,7 +94,7 @@ export async function calcularResumenVentas(
 
   const { data: detalle, error: errorDetalle } = await supabase
     .from("detalle_ventas")
-    .select("id_detalle, id_venta, id_variante, cantidad, subtotal")
+    .select("id_detalle, id_venta, id_variante, cantidad, subtotal, costo_unitario")
     .in("id_venta", idsVenta);
   if (errorDetalle) throw new Error(friendlyDbError(errorDetalle));
   if (!detalle || detalle.length === 0)
@@ -159,7 +160,8 @@ export async function calcularResumenVentas(
     if (tipo === "CONSIGNACION") {
       margenLinea = redondear2(subtotalLinea * ((marca?.royalty_porcentaje ?? 0) / 100));
     } else {
-      costoLinea = redondear2((producto?.costo_informado ?? 0) * cantidadLinea);
+      // El costo que tenía cuando se vendió; lo vendido antes de guardarlo, el de hoy (lib/costoAlVender.ts).
+      costoLinea = redondear2(costoDelRenglon(d.costo_unitario, producto?.costo_informado) * cantidadLinea);
       margenLinea = redondear2(subtotalLinea - costoLinea);
     }
 
