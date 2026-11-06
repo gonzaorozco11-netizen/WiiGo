@@ -1,12 +1,19 @@
 "use client";
 
-import { useState, useTransition, type CSSProperties } from "react";
+import { useEffect, useRef, useState, useTransition, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { COMERCIOS, diferencia, precioATuTamano, precioNormalATuTamano, type Comercio, type ItemCompetencia } from "@/lib/competencia";
 import type { DatosCompetencia, VinculoCompetencia } from "@/lib/competenciaLeer";
 import type { ProductoDelModulo, RubroDelModulo } from "@/lib/datosPrecios";
 import { colorDeRubro } from "@/lib/coloresRubro";
-import { actualizarCompetenciaAhora, confirmarEquivalente, descartarEquivalente } from "@/app/(app)/precios/competencia-actions";
+import {
+  actualizarCompetenciaAhora,
+  confirmarEquivalente,
+  descartarEquivalente,
+  elegirEquivalente,
+  opcionesEquivalente,
+  type OpcionEquivalente,
+} from "@/app/(app)/precios/competencia-actions";
 
 // Pestaña "Competencia" de Precios: los precios de Mendoza, leídos solos cada
 // lunes, al lado de cada producto de WiiGo y llevados a su tamaño. Lo único
@@ -259,7 +266,16 @@ export default function PreciosCompetencia(
                   return [fila, (
                     <tr key={`${f.p.id}-d`} className="detalle">
                       <td colSpan={3 + columnas.length}>
-                        <Detalle f={f} responder={responder} pendiente={pendiente} margenPara={props.margenPara} llevarA={props.llevarA} minimo={props.minimo} />
+                        <Detalle
+                          f={f}
+                          responder={responder}
+                          pendiente={pendiente}
+                          margenPara={props.margenPara}
+                          llevarA={props.llevarA}
+                          minimo={props.minimo}
+                          avisar={props.avisar}
+                          alElegir={() => router.refresh()}
+                        />
                       </td>
                     </tr>
                   )];
@@ -269,6 +285,131 @@ export default function PreciosCompetencia(
           </table>
         </div>
       </section>
+    </div>
+  );
+}
+
+/**
+ * «Elegir otro» / «Buscar en …» (Gonzalo, 2026-11-06: «que me muestre las
+ * opciones o que yo pueda elegirla directamente»). Arranca con lo más parecido
+ * de ese comercio, sin las reglas estrictas; con el buscador se escribe lo que
+ * sea. «Es este» lo deja confirmado.
+ */
+function ElegirEquivalente({
+  idProducto,
+  comercio,
+  nombreComercio,
+  gramos,
+  onCerrar,
+  onElegido,
+  avisar,
+}: {
+  idProducto: string;
+  comercio: Comercio;
+  nombreComercio: string;
+  gramos: number | null;
+  onCerrar: () => void;
+  onElegido: () => void;
+  avisar: (t: string, mal?: boolean) => void;
+}) {
+  const [texto, setTexto] = useState("");
+  const [opciones, setOpciones] = useState<OpcionEquivalente[] | null>(null);
+  const [cargando, setCargando] = useState(true);
+  const [guardando, setGuardando] = useState<string | null>(null);
+  const espera = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pedido = useRef(0);
+
+  // Pide las opciones; si mientras tanto escribió otra cosa, la respuesta vieja se ignora.
+  function pedir(q: string) {
+    const n = ++pedido.current;
+    opcionesEquivalente(idProducto, comercio, q)
+      .then((r) => {
+        if (n !== pedido.current) return;
+        if (r.error) avisar(r.error, true);
+        setOpciones(r.opciones ?? []);
+      })
+      .catch(() => n === pedido.current && avisar("No se pudo buscar. Revisá la conexión.", true))
+      .finally(() => n === pedido.current && setCargando(false));
+  }
+  // Al abrir, lo más parecido, sin esperar a que escriba.
+  useEffect(() => {
+    pedir("");
+    return () => {
+      if (espera.current) clearTimeout(espera.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idProducto, comercio]);
+
+  function escribir(q: string) {
+    setTexto(q);
+    setCargando(true);
+    if (espera.current) clearTimeout(espera.current);
+    espera.current = setTimeout(() => pedir(q), 350);
+  }
+
+  function elegir(o: OpcionEquivalente) {
+    setGuardando(o.id);
+    elegirEquivalente(idProducto, comercio, o.id)
+      .then((r) => (r.error ? avisar(r.error, true) : onElegido()))
+      .catch(() => avisar("No se pudo guardar.", true))
+      .finally(() => setGuardando(null));
+  }
+
+  const tamano = (o: OpcionEquivalente) => (o.gramos >= 1000 ? (o.gramos === 1000 ? "1 kg" : `${(o.gramos / 1000).toLocaleString("es-AR")} kg`) : `${o.gramos} g`);
+  return (
+    <div className="pr-elegir" onClick={(e) => e.stopPropagation()}>
+      <div className="pr-elegir-cab">
+        <input
+          type="search"
+          value={texto}
+          onChange={(e) => escribir(e.target.value)}
+          placeholder={`Buscar en ${nombreComercio} (ej: nuez brasil)`}
+          aria-label={`Buscar en ${nombreComercio}`}
+          autoFocus
+        />
+        <button type="button" className="pr-btn chico" onClick={onCerrar}>
+          Cerrar
+        </button>
+      </div>
+      <p className="pr-tenue pr-elegir-ayuda">{texto.trim() ? `Lo que tiene esas palabras en ${nombreComercio}` : `Lo más parecido de ${nombreComercio}. Si no está, escribí cómo lo llaman ellos.`}</p>
+      {cargando && opciones === null ? (
+        <p className="pr-tenue">Buscando…</p>
+      ) : opciones && opciones.length === 0 ? (
+        <p className="pr-tenue">No encontré nada{texto.trim() ? ` con «${texto.trim()}»` : " parecido"}. Probá con otra palabra.</p>
+      ) : (
+        <ul className={`pr-elegir-lista${cargando ? " cargando" : ""}`}>
+          {(opciones ?? []).map((o) => (
+            <li key={o.id} className={o.elegido ? "elegido" : undefined}>
+              <span className="nom">
+                {o.url ? (
+                  <a href={o.url} target="_blank" rel="noopener noreferrer">
+                    {o.nombre} ↗
+                  </a>
+                ) : (
+                  o.nombre
+                )}
+                <small>
+                  {pesos(o.precioAntes ?? o.precio)} {o.porKilo ? "el kg" : `por ${tamano(o)}`}
+                  {o.precioAntes ? " · en oferta" : ""}
+                  {!o.disponible ? " · agotado" : ""}
+                  {o.descartado ? " · lo descartaste" : ""}
+                </small>
+              </span>
+              <span className="n">
+                {pesos(o.aTuTamano)}
+                <small>a tus {gramos ?? "?"} g</small>
+              </span>
+              {o.elegido ? (
+                <span className="pr-comp-visto">✓ el elegido</span>
+              ) : (
+                <button type="button" className="pr-btn prim chico" disabled={guardando !== null} onClick={() => elegir(o)}>
+                  {guardando === o.id ? "Guardando…" : "Es este"}
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
@@ -291,9 +432,20 @@ function Detalle({
   margenPara,
   llevarA,
   minimo,
-}: { f: Fila; responder: (id: string, c: Comercio, si: boolean) => void; pendiente: boolean } & Llevar) {
+  avisar,
+  alElegir,
+}: {
+  f: Fila;
+  responder: (id: string, c: Comercio, si: boolean) => void;
+  pendiente: boolean;
+  avisar: (t: string, mal?: boolean) => void;
+  alElegir: () => void;
+} & Llevar) {
   const g = f.p.gramos;
   const lista = COMERCIOS.filter((c) => f.v[c.clave]?.item);
+  // Los que figuran con «—»: se puede buscar a mano (Gonzalo, 2026-11-06).
+  const sinEquivalente = COMERCIOS.filter((c) => !f.v[c.clave]?.item);
+  const [eligiendo, setEligiendo] = useState<Comercio | null>(null);
   const todos = [{ q: "Vos", v: f.p.precioHoy ?? 0, yo: true }, ...lista.map((c) => ({ q: c.nombre, v: g ? precioNormalATuTamano(f.v[c.clave]!.item!, g) ?? 0 : 0, yo: false }))].filter((t) => t.v > 0);
   const max = Math.max(1, ...todos.map((t) => t.v));
   const ref = f.contra && g ? precioNormalATuTamano(f.v[f.contra]!.item!, g) : null;
@@ -335,6 +487,33 @@ function Detalle({
                     <button type="button" disabled={pendiente} onClick={() => responder(f.p.id, c.clave, false)}>✗ No</button>
                   </div>
                 )}
+                {eligiendo === c.clave ? (
+                  <ElegirEquivalente
+                    idProducto={f.p.id}
+                    comercio={c.clave}
+                    nombreComercio={c.nombre}
+                    gramos={g}
+                    onCerrar={() => setEligiendo(null)}
+                    onElegido={() => {
+                      setEligiendo(null);
+                      avisar(`Listo: quedó confirmado el de ${c.nombre}.`);
+                      alElegir();
+                    }}
+                    avisar={avisar}
+                  />
+                ) : (
+                  <>
+                    {/* Para deshacer un «Sí» tocado por error (Gonzalo, 2026-11-06). */}
+                    {x.estado === "CONFIRMADO" && (
+                      <button type="button" className="pr-comp-otro no" disabled={pendiente} onClick={() => responder(f.p.id, c.clave, false)}>
+                        ✗ No es este
+                      </button>
+                    )}
+                    <button type="button" className="pr-comp-otro" onClick={() => setEligiendo(c.clave)}>
+                      Elegir otro de {c.nombre}
+                    </button>
+                  </>
+                )}
               </div>
               <div className="pr-comp-tu n">
                 {pesos(g ? precioNormalATuTamano(it, g) : null)}
@@ -344,6 +523,35 @@ function Detalle({
             </div>
           );
         })}
+        {sinEquivalente.length > 0 && (
+          <div className="pr-comp-buscar-en">
+            <span className="pr-tenue">No encontró igual en {sinEquivalente.map((c) => c.nombre).join(", ")}. Si vos sabés que lo tienen:</span>
+            <div>
+              {sinEquivalente.map((c) => (
+                <button key={c.clave} type="button" className={`pr-comp-otro${eligiendo === c.clave ? " on" : ""}`} onClick={() => setEligiendo(eligiendo === c.clave ? null : c.clave)}>
+                  Buscar en {c.nombre}
+                </button>
+              ))}
+            </div>
+            {eligiendo && sinEquivalente.some((c) => c.clave === eligiendo) && (
+              <ElegirEquivalente
+                key={eligiendo}
+                idProducto={f.p.id}
+                comercio={eligiendo}
+                nombreComercio={nombreDe(eligiendo)}
+                gramos={g}
+                onCerrar={() => setEligiendo(null)}
+                onElegido={() => {
+                  const quien = nombreDe(eligiendo);
+                  setEligiendo(null);
+                  avisar(`Listo: quedó confirmado el de ${quien}.`);
+                  alElegir();
+                }}
+                avisar={avisar}
+              />
+            )}
+          </div>
+        )}
       </div>
       <div className="pr-caja">
         <h3>Cuánto salen {g ?? "?"} g en cada lado</h3>

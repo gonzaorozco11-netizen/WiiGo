@@ -172,6 +172,25 @@ export function mejorCandidato(
   return mejor?.it ?? null;
 }
 
+/**
+ * Para «Elegir otro» (Gonzalo, 2026-11-06): parecido sin las reglas estrictas
+ * de arriba, que a veces dejan afuera el producto bueno. Cuántas palabras del
+ * nombre de WiiGo tiene el suyo (0 a 1). Elige Gonzalo, no el sistema.
+ */
+export function parecidoSuelto(nuestro: string, suyo: string): number {
+  const a = palabras(nuestro);
+  const b = new Set(palabras(suyo));
+  if (a.length === 0) return 0;
+  return a.filter((w) => b.has(w)).length / a.length;
+}
+
+/** Si el nombre tiene todas las palabras que se escribieron en el buscador ("nuez brasil"). */
+export function contienePalabras(nombre: string, buscado: string): boolean {
+  const texto = normalizarTexto(nombre);
+  const pedidas = normalizarTexto(buscado).split(" ").filter(Boolean);
+  return pedidas.length > 0 && pedidas.every((w) => texto.includes(w.length > 4 ? raiz(w) : w));
+}
+
 /** Diferencia de WiiGo contra un precio (0.12 = 12 % más caro). */
 export function diferencia(nuestro: number, suyo: number | null) {
   return suyo && suyo > 0 ? nuestro / suyo - 1 : null;

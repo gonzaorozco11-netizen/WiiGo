@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import { esRolInterno } from "@/lib/rolesInternos";
-import { COMERCIOS, mejorCandidato, type Comercio } from "@/lib/competencia";
+import { COMERCIOS, contienePalabras, mejorCandidato, parecidoSuelto, precioATuTamano, type Comercio } from "@/lib/competencia";
 import { actualizarCompetencia, filaAItem, todasLasFilas } from "@/lib/competenciaLeer";
 import { nombreBase } from "@/lib/nombreProducto";
 
@@ -45,6 +45,89 @@ export async function confirmarEquivalente(idProducto: string, comercio: string)
     .eq("comercio", comercio)
     .not("id_item", "is", null);
   if (error) return { error: FALTA_SQL };
+  revalidatePath("/precios");
+  return { error: null };
+}
+
+export type OpcionEquivalente = {
+  id: string;
+  nombre: string;
+  gramos: number;
+  porKilo: boolean;
+  precio: number;
+  precioAntes: number | null;
+  aTuTamano: number | null;
+  url: string | null;
+  disponible: boolean;
+  descartado: boolean;
+  elegido: boolean;
+};
+
+/**
+ * «Elegir otro» / «Buscar en …» (Gonzalo, 2026-11-06): lo que vende ese
+ * comercio que se parece a tu producto, sin las reglas estrictas, o lo que
+ * tenga las palabras que escribió. También lo que ya descartó, marcado.
+ */
+export async function opcionesEquivalente(idProducto: string, comercio: string, buscado: string): Promise<{ error: string | null; opciones?: OpcionEquivalente[] }> {
+  if (!(await sesionDePrecios())) return { error: "No tenés permiso para Precios." };
+  if (!esComercio(comercio)) return { error: "Ese comercio no existe." };
+  const supabase = getSupabaseServerClient();
+  const [{ data: prod }, { data: v, error }, items] = await Promise.all([
+    supabase.from("productos").select("nombre, peso_neto_g").eq("id_producto", idProducto).maybeSingle(),
+    supabase.from("competencia_vinculos").select("id_item, rechazados").eq("id_producto", idProducto).eq("comercio", comercio).maybeSingle(),
+    todasLasFilas<Record<string, unknown>>((desde, hasta) =>
+      supabase.from("competencia_items").select("*").eq("comercio", comercio).not("gramos", "is", null).order("id_item").range(desde, hasta)
+    ),
+  ]);
+  if (error) return { error: FALTA_SQL };
+  if (!prod) return { error: "No encontré tu producto." };
+  const nuestro = nombreBase(prod.nombre as string);
+  const gramos = Number(prod.peso_neto_g) || null;
+  const rechazados = new Set(((v?.rechazados as string[] | null) ?? []).map(String));
+  const texto = buscado.trim();
+  const opciones = (items ?? [])
+    .map(filaAItem)
+    // Alifrut se lee sin stock: ahí se muestra todo. En los demás, lo agotado solo si se busca a mano.
+    .filter((it) => it.gramos && (it.disponible || comercio === "ALIFRUT" || texto))
+    .map((it) => ({ it, puntos: texto ? (contienePalabras(it.nombre, texto) ? 1 : 0) : parecidoSuelto(nuestro, it.nombre) }))
+    .filter((x) => x.puntos > (texto ? 0 : 0.3))
+    .sort((a, b) => {
+      const tam = (x: { it: { gramos: number | null } }) => (gramos && x.it.gramos ? Math.abs(Math.log(x.it.gramos / gramos)) : 0);
+      return b.puntos - a.puntos || tam(a) - tam(b);
+    })
+    .slice(0, 12)
+    .map(({ it }) => ({
+      id: it.id,
+      nombre: it.nombre,
+      gramos: it.gramos as number,
+      porKilo: it.porKilo,
+      precio: it.precio,
+      precioAntes: it.precioAntes,
+      aTuTamano: gramos ? precioATuTamano({ precio: it.precioAntes ?? it.precio, gramos: it.gramos }, gramos) : null,
+      url: it.url,
+      disponible: it.disponible,
+      descartado: rechazados.has(it.id),
+      elegido: v?.id_item === it.id,
+    }));
+  return { error: null, opciones };
+}
+
+/** «Es este»: lo elige Gonzalo y queda confirmado. La lectura de los lunes no lo cambia. */
+export async function elegirEquivalente(idProducto: string, comercio: string, idItem: string): Promise<{ error: string | null }> {
+  if (!(await sesionDePrecios())) return { error: "No tenés permiso para Precios." };
+  if (!esComercio(comercio)) return { error: "Ese comercio no existe." };
+  const supabase = getSupabaseServerClient();
+  const [{ data: item }, { data: v, error }] = await Promise.all([
+    supabase.from("competencia_items").select("id_item").eq("id_item", idItem).eq("comercio", comercio).maybeSingle(),
+    supabase.from("competencia_vinculos").select("rechazados").eq("id_producto", idProducto).eq("comercio", comercio).maybeSingle(),
+  ]);
+  if (error) return { error: FALTA_SQL };
+  if (!item) return { error: "Ese producto ya no está en la lista de ese comercio." };
+  const rechazados = ((v?.rechazados as string[] | null) ?? []).filter((x) => x !== idItem);
+  const { error: e2 } = await supabase
+    .from("competencia_vinculos")
+    .upsert({ id_producto: idProducto, comercio, id_item: idItem, estado: "CONFIRMADO", rechazados, actualizado_el: new Date().toISOString() }, { onConflict: "id_producto,comercio" });
+  if (e2) return { error: "No se pudo guardar. Probá de nuevo." };
   revalidatePath("/precios");
   return { error: null };
 }
