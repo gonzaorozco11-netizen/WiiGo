@@ -23,7 +23,7 @@ import { AvisoAlifrut, CambiosAlifrut, CatalogoAlifrut, TraerLista, calcularPend
 import PreciosCompetencia from "@/components/PreciosCompetencia";
 import PreciosGondola, { type GondolaLocal, type ProductoGondola } from "@/components/PreciosGondola";
 import type { DatosCompetencia } from "@/lib/competenciaLeer";
-import { precioATuTamano } from "@/lib/competencia";
+import { COMERCIOS, precioATuTamano } from "@/lib/competencia";
 import { colorDeRubro } from "@/lib/coloresRubro";
 import {
   guardarConfigPrecios,
@@ -228,6 +228,8 @@ export default function PreciosApp(props: Props) {
   // ---------- Exportar ----------
   async function exportar() {
     const XLSX = await import("xlsx");
+    // Una columna por comercio con lo confirmado, a tu tamaño (como en la Lista de precios).
+    const otros = COMERCIOS.filter((c) => c.clave !== "ALIFRUT");
     const filas = calculados.map(({ p, r }) => ({
       Producto: p.nombre,
       Rubro: p.idSubcategoria ? rubroPorId.get(p.idSubcategoria)?.nombre ?? "" : "",
@@ -239,6 +241,9 @@ export default function PreciosApp(props: Props) {
       [`Margen real ${nombreMedio(cfg.escenario)} %`]: r.ok ? Math.round(r.enEscenario.margen * 1000) / 10 : "",
       "Margen real efectivo %": r.ok ? Math.round(r.enEfectivo.margen * 1000) / 10 : "",
       "Precio competencia": p.competencia ?? "",
+      ...Object.fromEntries(
+        otros.map((c) => [`${c.nombre} (confirmado)`, Math.round(confirmadosDe(props.competencia ?? null, p).find((x) => x.comercio === c.clave)?.normal ?? 0) || ""])
+      ),
       Error: r.ok ? "" : r.error,
     }));
     const hoja = XLSX.utils.json_to_sheet(filas);
@@ -458,15 +463,16 @@ function Margen({ m, minimo }: { m: number; minimo: number }) {
 function ColumnasLista() {
   return (
     <colgroup>
-      <col style={{ width: "20%" }} />
+      <col style={{ width: "18%" }} />
       <col style={{ width: "7%" }} />
       <col style={{ width: "8%" }} />
       <col style={{ width: "9%" }} />
       <col style={{ width: "9%" }} />
-      <col style={{ width: "12%" }} />
-      <col style={{ width: "12%" }} />
-      <col style={{ width: "12%" }} />
       <col style={{ width: "11%" }} />
+      <col style={{ width: "11%" }} />
+      <col style={{ width: "11%" }} />
+      {/* Competencia confirmada: hasta 4 comercios, uno debajo del otro. */}
+      <col style={{ width: "16%" }} />
     </colgroup>
   );
 }
@@ -487,34 +493,53 @@ function alifrutDe(datos: DatosCompetencia | null, p: ProductoDelModulo): Alifru
 }
 
 /**
- * Lo que cobra Sabor y Gran (dietética de Mendoza) por tu mismo tamaño. Solo
- * lo que Gonzalo ya confirmó en Competencia: un equivalente sin verificar
- * puede ser otro producto (Gonzalo, 2026-11-04: «los que te voy verificando»).
+ * Lo que cobra cada comercio de la competencia por tu mismo tamaño. Solo lo
+ * que Gonzalo ya confirmó en Competencia: un equivalente sin verificar puede
+ * ser otro producto (Gonzalo, 2026-11-04: «los que te voy verificando»).
+ * Primero era solo Sabor y Gran; desde el 2026-11-06 van todos los
+ * confirmados (menos Alifrut, que tiene su columna), del más barato al más caro.
  */
-type OtroComercio = { normal: number; oferta: boolean; agotado: boolean } | null;
-function confirmadoDe(datos: DatosCompetencia | null, p: ProductoDelModulo, comercio: "SABORYGRAN"): OtroComercio {
-  const v = datos?.vinculos[p.id]?.find((x) => x.comercio === comercio);
-  if (!v?.item || v.estado !== "CONFIRMADO" || !p.gramos) return null;
-  const normal = precioATuTamano({ precio: v.item.precioAntes ?? v.item.precio, gramos: v.item.gramos }, p.gramos);
-  return normal == null ? null : { normal, oferta: Boolean(v.item.precioAntes), agotado: !v.item.disponible };
+type Confirmado = { comercio: string; nombre: string; normal: number; oferta: boolean; agotado: boolean };
+function confirmadosDe(datos: DatosCompetencia | null, p: ProductoDelModulo): Confirmado[] {
+  if (!p.gramos) return [];
+  const gramos = p.gramos;
+  return (datos?.vinculos[p.id] ?? [])
+    .flatMap((v) => {
+      if (v.comercio === "ALIFRUT" || v.estado !== "CONFIRMADO" || !v.item) return [];
+      // El precio normal: si está en oferta, el de antes (la oferta se avisa aparte).
+      const normal = precioATuTamano({ precio: v.item.precioAntes ?? v.item.precio, gramos: v.item.gramos }, gramos);
+      if (normal == null) return [];
+      // Corto para que entre en la columna: "Jumbo Mendoza" → "Jumbo".
+      const nombre = (COMERCIOS.find((c) => c.clave === v.comercio)?.nombre ?? v.comercio).replace(/ Mendoza$/, "");
+      return [{ comercio: v.comercio, nombre, normal, oferta: Boolean(v.item.precioAntes), agotado: !v.item.disponible }];
+    })
+    .sort((a, b) => a.normal - b.normal);
 }
 
-function PrecioOtro({ o, tuyo }: { o: OtroComercio; tuyo: number | null }) {
-  if (!o) return <span className="pr-tenue">—</span>;
-  const dif = tuyo && o.normal > 0 ? tuyo / o.normal - 1 : null;
+function PreciosConfirmados({ lista, tuyo }: { lista: Confirmado[]; tuyo: number | null }) {
+  if (lista.length === 0) return <span className="pr-tenue">—</span>;
   return (
-    <span className="pr-ali">
-      <span className="n">{pesos(o.normal)}</span>
-      {dif != null && (
-        <span className={`pr-comp ${dif > 0 ? "caro" : "barato"}`} title={dif > 0 ? "Tu precio está arriba" : "Tu precio está abajo"}>
-          {dif > 0 ? "+" : "−"}
-          {Math.round(Math.abs(dif) * 100)}%
-        </span>
-      )}
-      <small>
-        precio único{o.oferta ? " · tiene oferta" : ""}
-        {o.agotado ? " · agotado" : ""}
-      </small>
+    <span className="pr-conf">
+      {lista.map((o) => {
+        const dif = tuyo && o.normal > 0 ? tuyo / o.normal - 1 : null;
+        return (
+          <span key={o.comercio} className="pr-conf-fila" title={[o.oferta && "tiene oferta", o.agotado && "agotado"].filter(Boolean).join(" · ") || undefined}>
+            <span className="quien">
+              {o.nombre}
+              {(o.oferta || o.agotado) && <i>{o.agotado ? " · agotado" : " · oferta"}</i>}
+            </span>
+            <span className="n">{pesos(o.normal)}</span>
+            {dif != null ? (
+              <span className={`pr-comp ${dif > 0 ? "caro" : "barato"}`} title={dif > 0 ? "Tu precio con tarjeta está arriba" : "Tu precio con tarjeta está abajo"}>
+                {dif > 0 ? "+" : "−"}
+                {Math.round(Math.abs(dif) * 100)}%
+              </span>
+            ) : (
+              <span />
+            )}
+          </span>
+        );
+      })}
     </span>
   );
 }
@@ -659,7 +684,7 @@ function Lista(props: {
                   Alifrut<small>al público, a tu tamaño</small>
                 </th>
                 <th>
-                  Sabor y Gran<small>confirmados, a tu tamaño</small>
+                  Competencia confirmada<small>a tu tamaño · vs. tu precio tarjeta</small>
                 </th>
               </tr>
             </thead>
@@ -747,7 +772,7 @@ function Lista(props: {
                           : "viene envasado";
                       const hoyEf = p.precioHoy ? p.efectivoHoy ?? p.precioHoy : null;
                       const ali = alifrutDe(props.competencia, p);
-                      const syg = confirmadoDe(props.competencia, p, "SABORYGRAN");
+                      const confirmados = confirmadosDe(props.competencia, p);
                       const clase = `fila${i % 2 === 1 ? " par" : ""}${abierto ? " abierta" : ""}`;
                       const abrir = () => props.setAbierto(abierto ? null : p.id);
                       const filasProd = [
@@ -810,8 +835,8 @@ function Lista(props: {
                           <td>
                             <PrecioAlifrut a={ali} tuyo={r.ok ? r.publico : null} />
                           </td>
-                          <td>
-                            <PrecioOtro o={syg} tuyo={r.ok ? r.publico : null} />
+                          <td rowSpan={2} className="pr-conf-celda">
+                            <PreciosConfirmados lista={confirmados} tuyo={r.ok ? r.publico : null} />
                           </td>
                         </tr>,
                         <tr key={`${p.id}-ef`} className={`${clase} e`} onClick={abrir}>
@@ -848,9 +873,6 @@ function Lista(props: {
                           <td>{r.ok ? <Margen m={r.enEfectivo.margen} minimo={minimo} /> : "—"}</td>
                           <td>
                             <PrecioAlifrut a={ali} tuyo={r.ok ? r.efectivo : null} efectivo />
-                          </td>
-                          <td>
-                            <PrecioOtro o={syg} tuyo={r.ok ? r.efectivo : null} />
                           </td>
                         </tr>,
                       ];
