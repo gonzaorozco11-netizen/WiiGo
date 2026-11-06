@@ -72,7 +72,8 @@ export default function UsuariosApp({
         </button>
       </div>
 
-      <div className="bg-white border border-neutral-200 rounded-xl overflow-hidden">
+      {/* Si igual no entra (pantalla chica), se desliza de costado en vez de cortarse. */}
+      <div className="bg-white border border-neutral-200 rounded-xl overflow-x-auto">
         {usuarios.length === 0 ? (
           <p className="text-sm text-neutral-400 text-center py-10">Todavía no hay usuarios cargados.</p>
         ) : (
@@ -115,17 +116,22 @@ export default function UsuariosApp({
                       </span>
                     </td>
                     <td className="p-3 text-neutral-400">{formatearFecha(u.fecha_alta)}</td>
-                    <td className="p-3 text-right whitespace-nowrap">
-                      <button
-                        onClick={() => setExpandido(expandido === u.id_usuario ? null : u.id_usuario)}
-                        className="text-sm text-accent hover:underline mr-3"
-                      >
-                        Permisos
-                      </button>
-                      <button onClick={() => setEditando(u)} className="text-sm text-accent hover:underline mr-3">
-                        Editar
-                      </button>
-                      <FilaAcciones usuario={u} onCambiarPassword={() => setCambiandoPassword(u)} />
+                    {/* En dos renglones y adentro de la celda: en una sola línea se
+                        salían de la tarjeta y «Cambiar contraseña» y «Desactivar»
+                        no se veían (Gonzalo, 2026-11-06). */}
+                    <td className="p-3">
+                      <div className="flex flex-wrap justify-end gap-x-3 gap-y-1.5 min-w-[150px]">
+                        <button
+                          onClick={() => setExpandido(expandido === u.id_usuario ? null : u.id_usuario)}
+                          className="text-sm text-accent hover:underline whitespace-nowrap"
+                        >
+                          Permisos
+                        </button>
+                        <button onClick={() => setEditando(u)} className="text-sm text-accent hover:underline whitespace-nowrap">
+                          Editar
+                        </button>
+                        <FilaAcciones usuario={u} onCambiarPassword={() => setCambiandoPassword(u)} />
+                      </div>
                     </td>
                   </tr>
                   {expandido === u.id_usuario && (
@@ -168,10 +174,10 @@ function FilaAcciones({ usuario, onCambiarPassword }: { usuario: UsuarioSinHash;
 
   return (
     <>
-      <button onClick={onCambiarPassword} className="text-sm text-neutral-500 hover:text-neutral-900 mr-3">
-        Cambiar contraseña
+      <button onClick={onCambiarPassword} className="text-sm text-neutral-600 hover:text-neutral-900 underline-offset-2 hover:underline whitespace-nowrap">
+        🔑 Cambiar contraseña
       </button>
-      <button onClick={toggleEstado} disabled={isPending} className="text-sm text-red-500 hover:text-red-700 disabled:opacity-50">
+      <button onClick={toggleEstado} disabled={isPending} className="text-sm text-red-500 hover:text-red-700 disabled:opacity-50 whitespace-nowrap">
         {usuario.estado === "ACTIVO" ? "Desactivar" : "Activar"}
       </button>
     </>
@@ -616,6 +622,8 @@ function NuevoUsuarioModal({ marcas, onClose }: { marcas: Marca[]; onClose: () =
 
 function CambiarPasswordModal({ usuario, onClose }: { usuario: UsuarioSinHash; onClose: () => void }) {
   const [password, setPassword] = useState("");
+  const [ver, setVer] = useState(false);
+  const [lista, setLista] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -625,7 +633,7 @@ function CambiarPasswordModal({ usuario, onClose }: { usuario: UsuarioSinHash; o
       try {
         const res = await cambiarPasswordUsuario(usuario.id_usuario, password);
         if (res.error) setError(res.error);
-        else onClose();
+        else setLista(true);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Algo salió mal");
       }
@@ -641,20 +649,48 @@ function CambiarPasswordModal({ usuario, onClose }: { usuario: UsuarioSinHash; o
             ✕
           </button>
         </div>
-        <p className="text-sm text-neutral-500 mb-3">{usuario.nombre}</p>
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="Nueva contraseña"
-          minLength={6}
-          className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-accent"
-        />
+        <p className="text-sm text-neutral-500 mb-1">{usuario.nombre}</p>
+        {/* La actual no se puede mostrar: el sistema no la guarda, guarda una
+            versión cifrada que no se puede dar vuelta (así, si alguien entra a
+            la base, no se lleva las contraseñas). Se pone una nueva. */}
+        <p className="text-xs text-neutral-500 mb-3 leading-relaxed">
+          La contraseña actual no se puede ver: el sistema la guarda cifrada, ni siquiera WiiGo la conoce. Poné una nueva y pasásela a {usuario.nombre.split(" ")[0]}.
+        </p>
+        {lista ? (
+          <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2.5 text-sm text-emerald-800 mb-3">
+            Listo: la contraseña nueva de {usuario.nombre.split(" ")[0]} es <b className="font-mono select-all">{password}</b>. Ya puede entrar con esa.
+          </div>
+        ) : (
+          <div className="relative mb-3">
+            <input
+              type={ver ? "text" : "password"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Nueva contraseña (6 o más letras o números)"
+              minLength={6}
+              autoComplete="new-password"
+              className="w-full rounded-lg border border-neutral-300 pl-3 pr-16 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+            <button
+              type="button"
+              onClick={() => setVer((v) => !v)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-medium text-accent px-1.5 py-1"
+              aria-label={ver ? "Ocultar la contraseña" : "Mostrar la contraseña"}
+            >
+              {ver ? "Ocultar" : "👁 Ver"}
+            </button>
+          </div>
+        )}
         {error && (
           <p className="text-sm text-red-600 mb-3" role="alert">
             {error}
           </p>
         )}
+        {lista ? (
+          <button onClick={onClose} className="w-full rounded-lg bg-accent hover:bg-accent-dark text-white py-2 text-sm font-medium">
+            Cerrar
+          </button>
+        ) : (
         <div className="flex gap-2">
           <button
             onClick={onClose}
@@ -670,6 +706,7 @@ function CambiarPasswordModal({ usuario, onClose }: { usuario: UsuarioSinHash; o
             {isPending ? "Guardando..." : "Guardar"}
           </button>
         </div>
+        )}
       </div>
     </div>
   );
