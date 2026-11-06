@@ -27,6 +27,7 @@ import {
   type ValorObjetivos,
 } from "@/lib/cambiosProfesional";
 import { REDES, leerRedes, linkDeRed, textoDeRed, type ClaveRed, type Redes } from "@/lib/redesProfesional";
+import type { EstadoOpinion } from "@/lib/opinionesPacientes";
 import IconoRed, { colorDeRed } from "@/components/IconoRed";
 
 export type DatosFicha = {
@@ -47,6 +48,8 @@ export type DatosFicha = {
   // Falso mientras no se corra sql/profesionales-redes.sql.
   redesDisponible: boolean;
   opiniones: ItemOpinion[];
+  // Las que escribieron sus pacientes con su link: no las edita, las ve con su estado.
+  opinionesPacientes: { nombre: string | null; detalle: string | null; texto: string; estado: EstadoOpinion; fecha: string }[];
 };
 
 export type Pendiente = {
@@ -203,6 +206,8 @@ export default function FichaEditor({ datos, pendientes, seccionInicial }: { dat
           onListo={listo}
         />
       )}
+
+      {seccion === "opiniones" && <OpinionesDePacientes opiniones={datos.opinionesPacientes} />}
 
       {seccion === "opiniones" && (
         <SeccionOpiniones
@@ -519,6 +524,45 @@ function SeccionFotos({
   );
 }
 
+const ESTADO_OPINION: Record<EstadoOpinion, { texto: string; clase: string }> = {
+  PENDIENTE: { texto: "WiiGo la está revisando", clase: "espera" },
+  APROBADA: { texto: "Sale en la pantalla", clase: "ok" },
+  DESCARTADA: { texto: "WiiGo no la publicó", clase: "no" },
+};
+
+/**
+ * Lo que escribieron sus pacientes con el link de "Pedirle su opinión"
+ * (Gonzalo, 2026-11-06): ella se entera apenas llega, aunque la publique WiiGo.
+ */
+function OpinionesDePacientes({ opiniones }: { opiniones: DatosFicha["opinionesPacientes"] }) {
+  return (
+    <section className="tarjeta seccion-ficha">
+      <h2>Lo que escribieron tus pacientes</h2>
+      {opiniones.length === 0 ? (
+        <p className="ayuda">
+          Todavía ninguno. En <b>Mi saldo → Tus pacientes</b> tocá <b>Pedirle su opinión</b>: se te abre WhatsApp con un link solo para ese paciente. Lo que escriba te
+          aparece acá, y sale en la pantalla cuando WiiGo lo aprueba.
+        </p>
+      ) : (
+        <div className="opiniones-pacientes">
+          {opiniones.map((o, i) => (
+            <article key={i} className="opinion-paciente">
+              <p>«{o.texto}»</p>
+              <div>
+                <span className="quien">
+                  {[o.nombre ?? "Sin nombre", o.detalle].filter(Boolean).join(" · ")} ·{" "}
+                  {new Date(o.fecha).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" })}
+                </span>
+                <span className={`estado-opinion ${ESTADO_OPINION[o.estado]?.clase ?? "espera"}`}>{ESTADO_OPINION[o.estado]?.texto ?? o.estado}</span>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 /**
  * Opiniones de pacientes (Gonzalo, 2026-11-05): lo que le dijeron, con nombre de
  * pila y qué hace. Salen en su ficha de la pantalla, pasando de a una, cuando
@@ -535,9 +579,9 @@ function SeccionOpiniones({ inicial, pendiente, onListo }: { inicial: ItemOpinio
 
   return (
     <section className="tarjeta seccion-ficha">
-      <h2>Opiniones de pacientes</h2>
+      <h2>Opiniones que cargás vos</h2>
       <p className="ayuda">
-        Lo que te dijeron tus pacientes, en una o dos frases. Usá solo el nombre de pila (o una inicial) y pedile permiso antes de ponerla. Salen en tu ficha de la pantalla
+        Las que ya tenías (por WhatsApp o Instagram), en una o dos frases. Usá solo el nombre de pila (o una inicial) y pedile permiso antes de ponerla. Salen en tu ficha de la pantalla
         del local, pasando de a una. Hasta 6.
       </p>
       <EstadoRevision pendiente={pendiente} />

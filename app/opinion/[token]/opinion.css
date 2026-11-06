@@ -1,0 +1,77 @@
+/* Página pública donde el paciente deja su opinión (app/opinion/[token]).
+   Colores de la marca, como la ficha del asesor: salvia #646759, terracota #b97a52, crema #f7f9f2. */
+.op-pagina {
+  --salvia: #646759;
+  --salvia-claro: #8fa584;
+  --terracota: #b97a52;
+  --terracota-suave: #f7ece1;
+  --crema: #f7f9f2;
+  --linea: #e3e7da;
+  --tinta: #2d2d2d;
+  --gris: #737a68;
+  --rojo: #ab5348;
+  min-height: 100vh;
+  background: var(--crema);
+  color: var(--tinta);
+  font-family: var(--f-texto), system-ui, "Segoe UI", Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  padding: 28px 18px 40px;
+}
+.op-hoja { max-width: 440px; margin: 0 auto; }
+.op-marca { font-family: var(--f-titulo), system-ui, sans-serif; font-weight: 700; letter-spacing: .08em; color: var(--salvia); font-size: 14px; text-align: center; margin-bottom: 18px; }
+
+.op-quien { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 4px; margin-bottom: 22px; }
+.op-foto { width: 78px; height: 78px; border-radius: 50%; object-fit: cover; object-position: top; background: linear-gradient(155deg, var(--salvia-claro), var(--salvia)); color: #fff; display: grid; place-items: center; font: 700 30px var(--f-titulo), system-ui, sans-serif; border: 3px solid #fff; box-shadow: 0 0 0 2px var(--terracota); margin-bottom: 6px; }
+.op-quien h1, .op-cartel h1, .op-gracias h1 { font-family: var(--f-titulo), system-ui, sans-serif; font-weight: 600; font-size: 22px; line-height: 1.2; margin: 0; text-wrap: balance; }
+.op-quien p { margin: 0; color: var(--gris); font-size: 13.5px; }
+
+.op-campo { margin-bottom: 16px; }
+.op-campo > label, .op-rot { display: block; font-weight: 800; font-size: 13px; margin-bottom: 6px; }
+.op-campo > label em { font-style: normal; font-weight: 600; color: var(--gris); }
+.op-campo small { display: block; font-size: 12px; color: var(--gris); margin-top: 5px; }
+.op-pagina input:not([type]), .op-pagina textarea { width: 100%; font: 500 16px var(--f-texto), system-ui, sans-serif; color: var(--tinta); background: #fff; border: 1.5px solid var(--linea); border-radius: 14px; padding: 11px 13px; }
+.op-pagina input:focus, .op-pagina textarea:focus { outline: none; border-color: var(--salvia); }
+.op-pagina textarea { min-height: 112px; resize: vertical; line-height: 1.45; }
+.op-dni { display: flex; align-items: center; gap: 8px; }
+.op-dni span { font-weight: 600; color: var(--gris); letter-spacing: .12em; }
+.op-dni input { max-width: 92px; text-align: center; letter-spacing: .3em; font-weight: 800 !important; }
+.op-contador { display: flex; justify-content: space-between; font-size: 12px; color: var(--gris); margin-top: 5px; }
+.op-contador .falta { color: var(--terracota); font-weight: 700; }
+.op-ideas { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.op-ideas button { border: 1px solid var(--linea); background: #fff; border-radius: 999px; padding: 5px 11px; font: 600 12.5px var(--f-texto), system-ui, sans-serif; color: var(--salvia); cursor: pointer; }
+.op-aviso { display: flex; gap: 8px; background: var(--terracota-suave); border-radius: 12px; padding: 9px 11px; font-size: 12.5px; color: #7a4e31; margin: 0 0 16px; }
+
+.op-opciones { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.op-opciones label { display: block; cursor: pointer; position: relative; }
+.op-opciones input { position: absolute; opacity: 0; pointer-events: none; }
+.op-opciones span { display: block; text-align: center; border: 1.5px solid var(--linea); background: #fff; border-radius: 12px; padding: 8px 4px; font-size: 12.5px; font-weight: 700; color: var(--gris); }
+.op-opciones small { display: block; font-weight: 600; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.op-opciones input:checked + span { border-color: var(--salvia); color: var(--tinta); background: #f0f2ec; }
+.op-opciones input:focus-visible + span { outline: 2px solid var(--terracota); outline-offset: 2px; }
+
+.op-rot-vista { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--gris); margin-top: 4px; }
+.op-vista { background: #fff; border-radius: 18px; padding: 14px 16px 12px; border: 1px solid var(--linea); margin-bottom: 16px; }
+.op-vista-texto { display: block; font-size: 14px; line-height: 1.5; color: #4a4f43; overflow-wrap: anywhere; }
+.op-vista-texto::before { content: "\201C"; font-size: 32px; line-height: 0; vertical-align: -11px; margin-right: 4px; color: var(--terracota); font-weight: 800; }
+.op-vista-texto.vacia { color: #aab09f; font-style: italic; }
+.op-vista-quien { display: block; margin-top: 7px; font-size: 12px; font-weight: 800; color: var(--salvia); }
+
+.op-check { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; margin-bottom: 16px; cursor: pointer; }
+.op-check input { width: 20px; height: 20px; accent-color: var(--salvia); flex: none; margin: 1px 0 0; }
+.op-error { color: var(--rojo); font-weight: 700; font-size: 13.5px; margin: 0 0 10px; }
+.op-boton { width: 100%; border: 0; border-radius: 16px; padding: 15px; font: 800 15.5px var(--f-texto), system-ui, sans-serif; color: #fff; background: var(--salvia); cursor: pointer; transition: opacity .2s, transform .15s; }
+.op-boton:disabled { opacity: .4; cursor: not-allowed; }
+.op-boton:not(:disabled):active { transform: scale(.98); }
+.op-boton:focus-visible, .op-ideas button:focus-visible { outline: 2px solid var(--terracota); outline-offset: 3px; }
+.op-motivo { text-align: center; font-size: 12px; color: var(--gris); margin: 8px 0 0; }
+.op-pie { text-align: center; font-size: 11.5px; color: var(--gris); margin: 18px 0 0; }
+
+.op-cartel, .op-gracias { text-align: center; padding-top: 40px; }
+.op-cartel p, .op-gracias p { color: var(--gris); margin: 10px 0 22px; }
+.op-tilde { width: 84px; height: 84px; margin: 0 auto 22px; border-radius: 50%; background: var(--salvia); display: grid; place-items: center; color: #fff; font-size: 40px; animation: opAparece .5s cubic-bezier(.2, .9, .3, 1.3) both; }
+@keyframes opAparece { from { transform: scale(.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.op-cupon { background: #fff; border: 1.5px dashed var(--terracota); border-radius: 18px; padding: 16px; text-align: left; }
+.op-cupon b { font-family: var(--f-titulo), system-ui, sans-serif; font-size: 16px; display: block; margin-bottom: 3px; }
+.op-cupon span { font-size: 13px; color: var(--gris); }
+@media (prefers-reduced-motion: reduce) { .op-tilde { animation: none; } }

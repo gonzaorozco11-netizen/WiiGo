@@ -3,6 +3,7 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionProfesional } from "@/lib/profesionalSesion";
 import { CAMPOS_DATOS, type TipoCambio } from "@/lib/cambiosProfesional";
 import { leerRedes } from "@/lib/redesProfesional";
+import type { EstadoOpinion } from "@/lib/opinionesPacientes";
 import FichaEditor, { type DatosFicha, type Pendiente } from "./FichaEditor";
 
 export const dynamic = "force-dynamic";
@@ -35,8 +36,10 @@ export default async function FichaEspacio({ searchParams }: { searchParams: Pro
     // sola y el resto de la ficha anda igual.
     supabase.from("profesionales").select("redes").eq("id_profesional", id).maybeSingle(),
     // Sin sql/profesionales-opiniones.sql falla sola: la sección arranca vacía.
-    supabase.from("opiniones_profesional").select("nombre, detalle, texto").eq("id_profesional", id).order("orden"),
+    supabase.from("opiniones_profesional").select("nombre, detalle, texto, origen, estado, creada_el").eq("id_profesional", id).order("orden"),
   ]);
+  // Las que cargó ella se editan; las que escribieron sus pacientes solo se ven, con su estado.
+  const opiniones = (opRes.data ?? []) as { nombre: string | null; detalle: string | null; texto: string; origen: string; estado: string; creada_el: string }[];
 
   const p = (pRes.data ?? {}) as unknown as Record<string, string | number | null>;
   const datos: DatosFicha = {
@@ -65,7 +68,11 @@ export default async function FichaEspacio({ searchParams }: { searchParams: Pro
     catalogoObjetivos: (catObjRes.data ?? []).map((o) => ({ id: o.id_objetivo as string, nombre: o.nombre as string })),
     redes: leerRedes(redesRes.data?.redes),
     redesDisponible: !redesRes.error,
-    opiniones: (opRes.data ?? []).map((o) => ({ nombre: (o.nombre as string | null) ?? null, detalle: (o.detalle as string | null) ?? null, texto: o.texto as string })),
+    opiniones: opiniones.filter((o) => o.origen !== "PACIENTE").map((o) => ({ nombre: o.nombre ?? null, detalle: o.detalle ?? null, texto: o.texto })),
+    opinionesPacientes: opiniones
+      .filter((o) => o.origen === "PACIENTE")
+      .sort((a, b) => b.creada_el.localeCompare(a.creada_el))
+      .map((o) => ({ nombre: o.nombre ?? null, detalle: o.detalle ?? null, texto: o.texto, estado: o.estado as EstadoOpinion, fecha: o.creada_el })),
   };
   const pendientes: Pendiente[] = (pendRes.data ?? []).map((c) => ({
     idCambio: c.id_cambio as string,

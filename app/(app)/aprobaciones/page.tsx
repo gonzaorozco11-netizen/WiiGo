@@ -5,7 +5,8 @@ import PantallaBloqueada from "@/components/PantallaBloqueada";
 import AprobacionesApp from "@/components/AprobacionesApp";
 import AprobacionesProfesionales from "@/components/AprobacionesProfesionales";
 import AprobacionesRedesProfesionales from "@/components/AprobacionesRedesProfesionales";
-import { listarCambiosProfesionales, listarPublicacionesParaVerificar } from "@/app/(app)/profesionales/actions";
+import AprobacionesOpinionesPacientes from "@/components/AprobacionesOpinionesPacientes";
+import { listarCambiosProfesionales, listarOpinionesPacientes, listarPublicacionesParaVerificar } from "@/app/(app)/profesionales/actions";
 import "./aprobaciones.css";
 
 export const dynamic = "force-dynamic";
@@ -15,16 +16,18 @@ export default async function AprobacionesPage() {
   // Ni marcas ni profesionales entran acá: esta es la pantalla de WiiGo.
   if (!sesion || !esRolInterno(sesion.rol)) return <PantallaBloqueada />;
 
-  const [solicitudes, etiquetas, cambiosProfesionales, publicaciones] = await Promise.all([
+  const [solicitudes, etiquetas, cambiosProfesionales, publicaciones, opinionesPacientes] = await Promise.all([
     listarPendientes(),
     listarTareasEtiqueta(),
     listarCambiosProfesionales().catch(() => []),
     listarPublicacionesParaVerificar().catch(() => []),
+    listarOpinionesPacientes().catch(() => []),
   ]);
 
   return (
     <>
       <AprobacionesProfesionales cambios={cambiosProfesionales} esAdmin={sesion.rol === "admin"} />
+      <AprobacionesOpinionesPacientes opiniones={opinionesPacientes} esAdmin={sesion.rol === "admin"} />
       <AprobacionesRedesProfesionales publicaciones={publicaciones} esAdmin={sesion.rol === "admin"} />
       <AprobacionesApp solicitudes={solicitudes} etiquetas={etiquetas} esAdmin={sesion.rol === "admin"} />
     </>

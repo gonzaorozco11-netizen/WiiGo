@@ -67,6 +67,8 @@
 .pp-opinion-texto { display: block; font-size: 14px; line-height: 1.5; color: #4a4f43; }
 .pp-opinion-texto::before { content: "“"; font-size: 32px; line-height: 0; vertical-align: -11px; margin-right: 4px; color: #b97a52; font-weight: 800; }
 .pp-opinion-quien { display: block; margin-top: 7px; font-size: 12px; font-weight: 800; color: #646759; }
+.pp-opinion-sello { display: inline-block; margin-left: 8px; font-style: normal; font-size: 10.5px; font-weight: 800; color: #3f7d4e; background: #e5f1e7; border-radius: 999px; padding: 2px 8px; vertical-align: 1px; }
+.pp-opinion-quien .pp-opinion-sello:first-child { margin-left: 0; }
 .pp-opinion-puntos { display: flex; margin-top: 10px; }
 .pp-opinion-puntos i { width: 7px; height: 7px; margin-right: 5px; border-radius: 9px; background: #d9ddd0; transition: width .3s, background-color .3s; }
 .pp-opinion-puntos i.on { width: 20px; background: #b97a52; }

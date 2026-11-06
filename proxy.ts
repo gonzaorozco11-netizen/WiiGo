@@ -14,6 +14,8 @@ export const config = {
   // /self-checkout y /asesor quedan públicos (los usan los clientes en el
   // local, sin login). /comprobante también: es lo que abre el cliente en su
   // celular al escanear el QR del totem, y obviamente no está logueado.
+  // /opinion/<token> igual: la abre el paciente desde el WhatsApp de su
+  // profesional para dejar su opinión (app/opinion; todo depende del token).
   // /api queda pública también — ahí viven los webhooks (ej. Mercado Pago),
   // que llegan sin la cookie de sesión porque no los llama una persona
   // logueada, los llama el servidor de Mercado Pago.
@@ -28,7 +30,7 @@ export const config = {
   // Que sean públicos no filtra nada: son un logo y unos íconos. Los datos
   // no salen por archivos estáticos.
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|self-checkout|asesor|comprobante|login|api|.*\\..*).*)",
+    "/((?!_next/static|_next/image|favicon.ico|self-checkout|asesor|comprobante|opinion/|login|api|.*\\..*).*)",
   ],
 };
 

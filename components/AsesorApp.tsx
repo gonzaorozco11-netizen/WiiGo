@@ -2647,7 +2647,7 @@ export default function AsesorApp({
                   titulo={idioma === "en" ? "What her patients say" : idioma === "pt" ? "O que dizem seus pacientes" : "Lo que dicen sus pacientes"}
                   contenedor={hojaHistoria}
                 >
-                  <OpinionesPacientes opiniones={opinionesDelProfesionalActual} />
+                  <OpinionesPacientes opiniones={opinionesDelProfesionalActual} idioma={idioma} />
                 </BloqueHistoria>
               )}
 

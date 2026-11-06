@@ -99,7 +99,7 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
       .then((g) => (g ? soloLoPuesto(g) : g))
       .catch(() => null),
     // Opiniones de pacientes ya aprobadas (sql/profesionales-opiniones.sql). Sin el SQL falla sola.
-    supabase.from("opiniones_profesional").select("id_opinion, id_profesional, nombre, detalle, texto").eq("publico", true).order("orden"),
+    supabase.from("opiniones_profesional").select("id_opinion, id_profesional, nombre, detalle, texto, origen").eq("publico", true).order("orden"),
   ]);
 
   // Las fichas destacadas (las que más pacientes trajeron este mes y el podio de puntos) van
@@ -231,8 +231,12 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
 
   const opinionesPorProfesional: Record<string, OpinionPaciente[]> = {};
   if (!opinionesRes.error) {
-    for (const o of (opinionesRes.data ?? []) as { id_opinion: string; id_profesional: string; nombre: string | null; detalle: string | null; texto: string }[]) {
-      (opinionesPorProfesional[o.id_profesional] ??= []).push({ id: o.id_opinion, nombre: o.nombre, detalle: o.detalle, texto: o.texto });
+    for (const o of (opinionesRes.data ?? []) as { id_opinion: string; id_profesional: string; nombre: string | null; detalle: string | null; texto: string; origen: string }[]) {
+      // Las que escribió el propio paciente con su link van primero y con el sello.
+      const lista = (opinionesPorProfesional[o.id_profesional] ??= []);
+      const op = { id: o.id_opinion, nombre: o.nombre, detalle: o.detalle, texto: o.texto, verificada: o.origen === "PACIENTE" };
+      if (op.verificada) lista.unshift(op);
+      else lista.push(op);
     }
   }
 

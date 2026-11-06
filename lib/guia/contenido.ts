@@ -965,6 +965,22 @@ export const GUIAS: Guia[] = [
     rel: ["como-funciona"],
   },
   {
+    id: "pedir-opinion",
+    audiencias: [...P],
+    tema: "Pacientes",
+    titulo: "Pedirle su opinión a un paciente",
+    donde: "Mi saldo → Tus pacientes",
+    rutas: ["/mi-espacio/saldo", "/mi-espacio/ficha"],
+    pasos: [
+      "En <b>Mi saldo → Tus pacientes</b>, tocá <b>Pedirle su opinión</b> al lado del paciente.",
+      "Tocá <b>Mandar por WhatsApp</b>: se te abre tu WhatsApp con el mensaje y un link solo para ese paciente. Si no tiene el teléfono cargado, elegís el contacto o copiás el link.",
+      "El paciente pone los últimos 3 números de su DNI, escribe su opinión y elige cómo aparecer (nombre, iniciales o sin nombre).",
+      "Lo que escribe te aparece en <b>Mi ficha → Opiniones</b>. Sale en la pantalla del local cuando WiiGo lo aprueba, con el sello «Paciente verificado».",
+      "El link sirve una sola vez y vence a los 30 días.",
+    ],
+    rel: ["mi-ficha"],
+  },
+  {
     id: "mi-ficha",
     audiencias: [...P],
     tema: "Tu ficha",

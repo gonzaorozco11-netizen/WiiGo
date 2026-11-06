@@ -6,6 +6,7 @@ import { saldosPorMarca } from "@/lib/canjesProfesionales";
 import { mesesVinculo } from "@/lib/pacientesProfesional";
 import { PEDIDOS_ABIERTOS_PROFESIONALES } from "@/lib/pedidosProfesional";
 import SumarPaciente from "./SumarPaciente";
+import PedirOpinion from "./PedirOpinion";
 
 export const dynamic = "force-dynamic";
 
@@ -43,7 +44,7 @@ export default async function SaldoEspacio() {
     supabase.from("marcas").select("id_marca, nombre").eq("estado", "ACTIVA"),
     supabase
       .from("pacientes_profesional")
-      .select("id_vinculo, hasta, bienvenida_usada, clientes(nombre, apellido)")
+      .select("id_vinculo, id_cliente, hasta, bienvenida_usada, clientes(nombre, apellido)")
       .eq("id_profesional", id)
       .is("cerrado_at", null)
       .gt("hasta", new Date().toISOString())
@@ -51,6 +52,16 @@ export default async function SaldoEspacio() {
       .limit(100),
     mesesVinculo(supabase),
   ]);
+  // Si opinó o cuándo se la pidió (sql/profesionales-opiniones-pacientes.sql). Sin el SQL, no se muestra la columna.
+  const [opinaronRes, pedidosOpRes] = await Promise.all([
+    supabase.from("opiniones_profesional").select("id_cliente").eq("id_profesional", id).eq("origen", "PACIENTE"),
+    supabase.from("pedidos_opinion").select("id_cliente, creado_el").eq("id_profesional", id).order("creado_el", { ascending: false }),
+  ]);
+  const conOpiniones = !opinaronRes.error && !pedidosOpRes.error;
+  const opinaron = new Set((opinaronRes.data ?? []).map((o) => o.id_cliente as string));
+  const pedidaEl = new Map<string, string>();
+  for (const p of pedidosOpRes.data ?? []) if (!pedidaEl.has(p.id_cliente as string)) pedidaEl.set(p.id_cliente as string, p.creado_el as string);
+
   const pacientes = (pacRes.data ?? []).map((p) => {
     const c = p.clientes as unknown as { nombre: string; apellido: string | null } | null;
     return {
@@ -58,6 +69,8 @@ export default async function SaldoEspacio() {
       nombre: c ? `${c.nombre}${c.apellido ? ` ${c.apellido}` : ""}` : "Paciente",
       hasta: p.hasta as string,
       bienvenida: !p.bienvenida_usada,
+      opino: opinaron.has(p.id_cliente as string),
+      pedidaEl: pedidaEl.get(p.id_cliente as string) ?? null,
     };
   });
 
@@ -154,6 +167,7 @@ export default async function SaldoEspacio() {
                       <tr>
                         <th>Paciente</th>
                         <th className="num">Suma hasta</th>
+                        {conOpiniones && <th className="num">Su opinión</th>}
                       </tr>
                     </thead>
                     <tbody>
@@ -164,6 +178,17 @@ export default async function SaldoEspacio() {
                             {p.bienvenida && <span className="bienvenida">tiene su descuento de bienvenida</span>}
                           </td>
                           <td className="num">{fecha(p.hasta)}</td>
+                          {conOpiniones && (
+                            <td className="num">
+                              {p.opino ? (
+                                <Link href="/mi-espacio/ficha?seccion=opiniones" className="estado-opinion ok">
+                                  ✓ Ya opinó
+                                </Link>
+                              ) : (
+                                <PedirOpinion idVinculo={p.id} pedidoEl={p.pedidaEl} />
+                              )}
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>

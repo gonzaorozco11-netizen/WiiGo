@@ -119,10 +119,13 @@ export function PildorasRecorrido({ items, tipo }: { items: Recorrido[]; tipo: "
   );
 }
 
-export type OpinionPaciente = { id: string; nombre: string | null; detalle: string | null; texto: string };
+// verificada: la escribió el propio paciente con el link de su profesional (app/opinion).
+export type OpinionPaciente = { id: string; nombre: string | null; detalle: string | null; texto: string; verificada?: boolean };
+
+const TXT_VERIFICADA = { es: "Paciente verificado", en: "Verified patient", pt: "Paciente verificado" };
 
 /** Las opiniones de sus pacientes, de a una, pasando solas cada 6 s. Se tocan para pasar. */
-export function OpinionesPacientes({ opiniones }: { opiniones: OpinionPaciente[] }) {
+export function OpinionesPacientes({ opiniones, idioma = "es" }: { opiniones: OpinionPaciente[]; idioma?: Idioma }) {
   const [actual, setActual] = useState(0);
   const varias = opiniones.length > 1;
   useEffect(() => {
@@ -136,7 +139,12 @@ export function OpinionesPacientes({ opiniones }: { opiniones: OpinionPaciente[]
     <button type="button" className="pp-opiniones" onClick={() => varias && setActual((a) => (a + 1) % opiniones.length)}>
       <span key={o.id} className="pp-opinion">
         <span className="pp-opinion-texto">{o.texto}</span>
-        {(o.nombre || o.detalle) && <span className="pp-opinion-quien">{[o.nombre, o.detalle].filter(Boolean).join(" · ")}</span>}
+        {(o.nombre || o.detalle || o.verificada) && (
+          <span className="pp-opinion-quien">
+            {[o.nombre, o.detalle].filter(Boolean).join(" · ")}
+            {o.verificada && <em className="pp-opinion-sello">✓ {TXT_VERIFICADA[idioma] ?? TXT_VERIFICADA.es}</em>}
+          </span>
+        )}
       </span>
       {varias && (
         <span className="pp-opinion-puntos" aria-hidden="true">

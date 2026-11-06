@@ -1673,6 +1673,61 @@ export async function listarCambiosProfesionales(): Promise<CambioParaAprobar[]>
   });
 }
 
+// ===================== OPINIONES QUE ESCRIBIERON LOS PACIENTES =====================
+//
+// Las escribe el paciente con el link que le mandó su profesional
+// (app/opinion, lib/opinionesPacientes.ts). Ella la ve apenas llega; en la
+// pantalla sale recién cuando Gonzalo la aprueba.
+
+export type OpinionParaAprobar = {
+  idOpinion: string;
+  fecha: string;
+  texto: string;
+  firma: string;
+  profesional: { id: string; nombre: string; foto: string | null };
+};
+
+export async function listarOpinionesPacientes(): Promise<OpinionParaAprobar[]> {
+  await requireInterno();
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("opiniones_profesional")
+    .select("id_opinion, id_profesional, nombre, detalle, texto, creada_el, profesionales(nombre, apellido, foto)")
+    .eq("origen", "PACIENTE")
+    .eq("estado", "PENDIENTE")
+    .order("creada_el");
+  if (error || !data) return [];
+  return data.map((o) => {
+    const p = o.profesionales as unknown as { nombre: string; apellido: string | null; foto: string | null } | null;
+    return {
+      idOpinion: o.id_opinion as string,
+      fecha: o.creada_el as string,
+      texto: o.texto as string,
+      firma: [(o.nombre as string | null) ?? "Sin nombre", o.detalle as string | null].filter(Boolean).join(" · "),
+      profesional: { id: o.id_profesional as string, nombre: p ? [p.nombre, p.apellido].filter(Boolean).join(" ") : "Profesional", foto: p?.foto ?? null },
+    };
+  });
+}
+
+/** Aprobar la pone en la pantalla; "No va" la deja guardada sin publicar (ella ve que no salió). */
+export async function resolverOpinionPaciente(idOpinion: string, aprobar: boolean): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("opiniones_profesional")
+    .update(aprobar ? { estado: "APROBADA", publico: true } : { estado: "DESCARTADA", publico: false })
+    .eq("id_opinion", idOpinion)
+    .eq("origen", "PACIENTE")
+    .eq("estado", "PENDIENTE")
+    .select("id_profesional");
+  if (error) return { error: friendlyDbError(error) };
+  if (!data || data.length === 0) return { error: "Esa opinión ya estaba resuelta." };
+  await registrarActividad(supabase, data[0].id_profesional as string, aprobar ? "WiiGo publicó una opinión de un paciente" : "WiiGo no publicó una opinión de un paciente");
+  revalidatePath("/aprobaciones");
+  return { error: null };
+}
+
 // ===================== REDES =====================
 
 /** Sus redes, para la ficha interna. `disponible` es falso si falta sql/profesionales-redes.sql. */

@@ -354,7 +354,7 @@ export async function contarPendientes(): Promise<{ solicitudes: number; etiquet
   const supabase = getSupabaseServerClient();
   const ahora = new Date().toISOString();
 
-  const [sol, etq, venc, prof, redes] = await Promise.all([
+  const [sol, etq, venc, prof, redes, opiniones] = await Promise.all([
     supabase.from("solicitudes_marca").select("id_solicitud", { count: "exact", head: true }).eq("estado", "PENDIENTE"),
     supabase.from("tareas_etiqueta").select("id_tarea", { count: "exact", head: true }).in("estado", ["PENDIENTE", "VENCIDA"]),
     supabase
@@ -367,10 +367,12 @@ export async function contarPendientes(): Promise<{ solicitudes: number; etiquet
     supabase.from("cambios_profesional").select("id_cambio", { count: "exact", head: true }).eq("estado", "PENDIENTE"),
     // Historias y reels que avisaron y esperan que los verifiques (sql/profesionales-objetivos-redes.sql).
     supabase.from("publicaciones_profesional").select("id_publicacion", { count: "exact", head: true }).eq("estado", "PENDIENTE"),
+    // Opiniones que escribieron los pacientes con su link (sql/profesionales-opiniones-pacientes.sql).
+    supabase.from("opiniones_profesional").select("id_opinion", { count: "exact", head: true }).eq("origen", "PACIENTE").eq("estado", "PENDIENTE"),
   ]);
 
   return {
-    solicitudes: (sol.count ?? 0) + (prof.error ? 0 : prof.count ?? 0) + (redes.error ? 0 : redes.count ?? 0),
+    solicitudes: (sol.count ?? 0) + (prof.error ? 0 : prof.count ?? 0) + (redes.error ? 0 : redes.count ?? 0) + (opiniones.error ? 0 : opiniones.count ?? 0),
     etiquetas: etq.count ?? 0,
     etiquetasVencidas: venc.count ?? 0,
   };

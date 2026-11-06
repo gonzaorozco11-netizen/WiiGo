@@ -25,6 +25,8 @@ import {
 import { leerRedes, mismasRedes, normalizarRedes } from "@/lib/redesProfesional";
 import { ACCION_PRESENTACION, vioPresentacion } from "@/lib/primerosPasos";
 import { PEDIDOS_ABIERTOS_PROFESIONALES } from "@/lib/pedidosProfesional";
+import { DIAS_LINK_OPINION, INTENTOS_DNI } from "@/lib/opinionesPacientes";
+import { randomBytes } from "node:crypto";
 
 // Acciones del espacio de cada profesional.
 //
@@ -565,6 +567,64 @@ export async function sumarPaciente(datos: {
   await registrarActividad(supabase, sesion.idProfesional, `Sumó como paciente a ${nombre} ${apellido.charAt(0)}.`);
   revalidatePath("/mi-espacio", "layout");
   return { error: null, hasta: r.hasta };
+}
+
+/**
+ * "Pedirle su opinión": arma el link personal del paciente (o devuelve el que
+ * ya tenía sin usar) para que ella se lo mande por su WhatsApp.
+ * Devuelve el camino (/opinion/…); el link entero lo arma la pantalla con su dirección.
+ */
+export async function pedirOpinionPaciente(
+  idVinculo: string
+): Promise<{ error: string | null; camino?: string; telefono?: string | null; nombre?: string; profesional?: string }> {
+  const sesion = await sesionQuePuedeCambiar();
+  if (!sesion) return { error: await porQueNoPuede() };
+  const supabase = getSupabaseServerClient();
+  const { data: v } = await supabase
+    .from("pacientes_profesional")
+    .select("id_cliente, hasta, cerrado_at, clientes(nombre, apellido, telefono)")
+    .eq("id_vinculo", idVinculo)
+    .eq("id_profesional", sesion.idProfesional)
+    .maybeSingle();
+  if (!v || v.cerrado_at) return { error: "Ese paciente ya no figura como tuyo." };
+  const c = v.clientes as unknown as { nombre: string; apellido: string | null; telefono: string | null } | null;
+  const idCliente = v.id_cliente as string;
+
+  const { data: yaOpino, error: errorTabla } = await supabase
+    .from("opiniones_profesional")
+    .select("id_opinion")
+    .eq("id_profesional", sesion.idProfesional)
+    .eq("id_cliente", idCliente)
+    .eq("origen", "PACIENTE")
+    .limit(1);
+  if (errorTabla) return { error: FALTA_SQL };
+  if ((yaOpino ?? []).length > 0) return { error: "Ya te dejó su opinión: la ves en Mi ficha → Opiniones." };
+
+  const ahora = new Date();
+  const { data: abierto } = await supabase
+    .from("pedidos_opinion")
+    .select("token")
+    .eq("id_profesional", sesion.idProfesional)
+    .eq("id_cliente", idCliente)
+    .is("usado_el", null)
+    .gt("vence_el", ahora.toISOString())
+    .lt("intentos", INTENTOS_DNI)
+    .order("creado_el", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  let token = abierto?.token as string | undefined;
+  if (!token) {
+    // 22 letras al azar: imposible de adivinar y corto para un WhatsApp.
+    token = randomBytes(16).toString("base64url");
+    const vence = new Date(ahora.getTime() + DIAS_LINK_OPINION * 86400000).toISOString();
+    const { error } = await supabase
+      .from("pedidos_opinion")
+      .insert({ token, id_profesional: sesion.idProfesional, id_cliente: idCliente, vence_el: vence });
+    if (error) return { error: "No se pudo armar el link. Probá de nuevo." };
+  }
+  await registrarActividad(supabase, sesion.idProfesional, `Le pidió su opinión a ${c?.nombre ?? "un paciente"} ${(c?.apellido ?? "").charAt(0)}.`.replace(/ \.$/, ""));
+  revalidatePath("/mi-espacio/saldo");
+  return { error: null, camino: `/opinion/${token}`, telefono: c?.telefono ?? null, nombre: c?.nombre ?? "", profesional: sesion.nombre };
 }
 
 /** Su teléfono y su mail de contacto: son suyos y no salen en la pantalla, así que se guardan directo. */

@@ -174,7 +174,8 @@ export async function aplicarCambioProfesional(
 
   if (tipo === "OPINIONES") {
     const items = valor as ItemOpinion[];
-    await supabase.from("opiniones_profesional").delete().eq("id_profesional", idProfesional);
+    // Solo las que cargó ella: las que escribieron sus pacientes no se tocan.
+    await supabase.from("opiniones_profesional").delete().eq("id_profesional", idProfesional).eq("origen", "PROFESIONAL");
     if (items.length === 0) return null;
     const { error } = await supabase
       .from("opiniones_profesional")
