@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState, useSyncExternalStore, useTransition, type CSSProperties } from "react";
+import { createContext, Fragment, useContext, useEffect, useMemo, useState, useSyncExternalStore, useTransition, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { esCodigoInterno, limpiarCodigoBarras, formatearCodigo } from "@/lib/codigos";
 import {
@@ -730,10 +730,27 @@ function ConfigurarImpresion({
       setAjuste(
         guardado && typeof guardado.x === "number" && typeof guardado.y === "number" ? guardado : { x: 0, y: 0 }
       );
+      const d = Number(localStorage.getItem(`codigos.desde.${plancha.id}`));
+      setDesde(Number.isInteger(d) && d >= 1 && d <= plancha.cols * plancha.filas ? d : 1);
     } catch {
       setAjuste({ x: 0, y: 0 });
+      setDesde(1);
     }
-  }, [plancha.id]);
+  }, [plancha.id, plancha.cols, plancha.filas]);
+
+  // Dónde empieza la hoja empezada que quedó en la bandeja. Se guarda en esta
+  // compu para esa plancha, así la próxima tanda sigue donde quedó la otra.
+  function cambiarDesde(n: number) {
+    const limpio = Math.min(Math.max(1, Math.round(n) || 1), plancha.cols * plancha.filas);
+    setDesde(limpio);
+    try {
+      localStorage.setItem(`codigos.desde.${plancha.id}`, String(limpio));
+    } catch {}
+  }
+
+  // Después de imprimir se pregunta si salió bien antes de dar las etiquetas
+  // por usadas: si la impresión se canceló o salió corrida, la hoja sigue igual.
+  const [pendiente, setPendiente] = useState<number | null>(null);
 
   function cambiarAjuste(eje: "x" | "y", valor: number) {
     const limpio = Math.round(Math.min(Math.max(valor, -10), 10) * 2) / 2;
@@ -929,7 +946,7 @@ function ConfigurarImpresion({
             value={papel}
             onChange={(e) => {
               setPapel(e.target.value as "plancha" | "rollo");
-              setDesde(1);
+              setPendiente(null);
             }}
             className="rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
           >
@@ -951,7 +968,7 @@ function ConfigurarImpresion({
                   const p = PLANCHAS.find((x) => x.id === e.target.value);
                   if (p) {
                     setPlancha(p);
-                    setDesde(1);
+                    setPendiente(null);
                   }
                 }}
                 className="rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
@@ -964,20 +981,7 @@ function ConfigurarImpresion({
               </select>
             </div>
 
-            <div>
-              <label className="block text-xs text-neutral-500 mb-1" htmlFor="desde">
-                Empezar en el casillero
-              </label>
-              <input
-                id="desde"
-                type="number"
-                min={1}
-                max={porHoja}
-                value={desde}
-                onChange={(e) => setDesde(Math.min(Math.max(1, Number(e.target.value) || 1), porHoja))}
-                className="w-24 rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
-              />
-            </div>
+            <ElegirInicio plancha={plancha} desde={desde} cantidad={aImprimir.length} onElegir={cambiarDesde} />
 
             <div>
               <label className="block text-xs text-neutral-500 mb-1" htmlFor="ajuste-y">
@@ -1047,13 +1051,50 @@ function ConfigurarImpresion({
 
         <button
           type="button"
-          onClick={() => window.print()}
+          onClick={() => {
+            window.print();
+            if (papel === "plancha") setPendiente(((desde - 1 + aImprimir.length) % porHoja) + 1);
+          }}
           disabled={aImprimir.length === 0}
           className="rounded-lg bg-accent text-white px-4 py-2.5 text-sm font-semibold hover:bg-accent-dark disabled:opacity-40"
         >
           🖨️ Imprimir
         </button>
       </div>
+
+      {papel === "plancha" && pendiente != null && (
+        <div className="print:hidden mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 flex flex-wrap items-center gap-3">
+          <p className="text-sm text-emerald-900 mr-auto">
+            ¿Salió bien?{" "}
+            {pendiente === 1 ? (
+              <>La hoja quedó llena: la próxima vez arranca en una hoja nueva.</>
+            ) : (
+              <>
+                La próxima vez que pongas esta hoja, arranca en el{" "}
+                <b>renglón {Math.floor((pendiente - 1) / plancha.cols) + 1}</b>
+                {(pendiente - 1) % plancha.cols > 0 && <>, etiqueta {((pendiente - 1) % plancha.cols) + 1}</>}.
+              </>
+            )}
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              cambiarDesde(pendiente);
+              setPendiente(null);
+            }}
+            className="rounded-lg bg-emerald-700 text-white px-3 py-2 text-sm font-semibold hover:bg-emerald-800"
+          >
+            Sí, salió bien
+          </button>
+          <button
+            type="button"
+            onClick={() => setPendiente(null)}
+            className="rounded-lg border border-emerald-300 bg-white text-emerald-900 px-3 py-2 text-sm hover:bg-emerald-100"
+          >
+            No, la repito
+          </button>
+        </div>
+      )}
 
       <p className="print:hidden text-xs text-neutral-500 mt-3 leading-relaxed max-w-2xl">
         {papel === "plancha" ? (
@@ -1168,6 +1209,96 @@ function TodasLasEtiquetas({
             <span className="text-xs font-bold text-neutral-600 tabular-nums">× {cantidades[i.idVariante] ?? 0}</span>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * La hoja en chiquito para decir dónde arranca: se toca la primera etiqueta
+ * libre de una hoja ya empezada (o el número del renglón). Gris = ya usada,
+ * color de la marca = lo que sale en esta tanda.
+ */
+function ElegirInicio({
+  plancha,
+  desde,
+  cantidad,
+  onElegir,
+}: {
+  plancha: Plancha;
+  desde: number;
+  cantidad: number;
+  onElegir: (n: number) => void;
+}) {
+  const porHoja = plancha.cols * plancha.filas;
+  const renglon = Math.floor((desde - 1) / plancha.cols) + 1;
+  const etiqueta = ((desde - 1) % plancha.cols) + 1;
+  return (
+    <div>
+      <span className="block text-xs text-neutral-500 mb-1">Dónde arranca en la hoja</span>
+      <div className="flex gap-3 items-start">
+        <div
+          className="grid gap-[2px] rounded border border-neutral-300 bg-white p-1"
+          style={{ gridTemplateColumns: `14px repeat(${plancha.cols}, 22px)` }}
+        >
+          {Array.from({ length: plancha.filas }, (_, f) => (
+            <Fragment key={f}>
+              <button
+                type="button"
+                onClick={() => onElegir(f * plancha.cols + 1)}
+                title={`Empezar en el renglón ${f + 1}`}
+                className="text-[8px] leading-[10px] text-neutral-400 hover:text-neutral-900 tabular-nums text-right"
+              >
+                {f + 1}
+              </button>
+              {Array.from({ length: plancha.cols }, (_, c) => {
+                const n = f * plancha.cols + c + 1;
+                const usada = n < desde;
+                const sale = !usada && n < desde + cantidad;
+                return (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => onElegir(n)}
+                    title={`Renglón ${f + 1}, etiqueta ${c + 1}`}
+                    className={`h-[10px] rounded-[2px] border ${
+                      usada
+                        ? "bg-neutral-300 border-neutral-300"
+                        : sale
+                          ? "bg-accent border-accent"
+                          : "bg-white border-neutral-300 hover:border-neutral-500"
+                    }`}
+                  />
+                );
+              })}
+            </Fragment>
+          ))}
+        </div>
+        <div className="text-xs text-neutral-600 space-y-2 max-w-[11rem]">
+          <p>
+            {desde === 1 ? (
+              <>Hoja nueva, desde arriba.</>
+            ) : (
+              <>
+                Arranca en el <b className="text-neutral-900">renglón {renglon}</b>
+                {etiqueta > 1 && <>, etiqueta {etiqueta}</>}. Lo gris ya está usado.
+              </>
+            )}
+          </p>
+          <p className="text-neutral-500">Tocá la primera etiqueta libre de la hoja que vas a poner.</p>
+          {desde > 1 && (
+            <button
+              type="button"
+              onClick={() => onElegir(1)}
+              className="rounded-lg border border-neutral-300 bg-white px-2.5 py-1.5 text-xs font-medium hover:bg-neutral-100"
+            >
+              Hoja nueva
+            </button>
+          )}
+          {desde - 1 + cantidad > porHoja && (
+            <p className="text-amber-700">Lo que no entra sigue en otra hoja, desde arriba.</p>
+          )}
+        </div>
       </div>
     </div>
   );
