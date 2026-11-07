@@ -577,6 +577,18 @@
   font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px;
   background: var(--ocre-tenue); color: var(--ocre);
 }
+/* Lo que no se aprobó y falta corregir: rojo en la fila, con el motivo abajo. */
+.cam-cont.rojo { background: var(--rojo-tenue); color: var(--rojo); }
+.cam-prod.rechazado { border-left: 3px solid var(--rojo); }
+.cam-rechazo-chip {
+  font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px;
+  background: var(--rojo-tenue); color: var(--rojo);
+}
+.cam-rechazo {
+  font-size: 13px; color: var(--rojo); background: var(--rojo-tenue);
+  border-radius: 9px; padding: 8px 12px; margin: 0 12px 10px;
+}
+.cam-grupo.corregir h3 { color: var(--rojo); }
 
 .cam-panel { border-top: 1px solid var(--borde); padding: 14px 16px; background: var(--superficie-2); }
 .cam-opciones { display: flex; gap: 7px; flex-wrap: wrap; }

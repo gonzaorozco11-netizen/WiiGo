@@ -20,6 +20,7 @@ import {
 } from "@/lib/solicitudesMarca";
 import { PLANES, ETIQUETA_PLAN, planIncluye, type PlanMarca } from "@/lib/planesMarca";
 import { costosVigentes } from "@/lib/costosMarca";
+import { rechazadasSinCorregir } from "@/lib/rechazadasMarca";
 
 // Portal de marcas — el lado que pide.
 //
@@ -267,6 +268,9 @@ export type SolicitudPropia = {
   vigenciaDesde: string | null;
   /** Marcado por la política: se lo lleva el dueño, no administración. */
   escalada: boolean;
+  idProducto: string | null;
+  /** No se aprobó y todavía no la volvió a mandar: va arriba y marca el producto. */
+  porCorregir: boolean;
 };
 
 /** Todo lo que mandó esta marca, lo último arriba. */
@@ -274,14 +278,31 @@ export async function misSolicitudes(): Promise<SolicitudPropia[]> {
   const sesion = await sesionParaLeer();
   const supabase = getSupabaseServerClient();
 
-  const { data } = await supabase
+  const [{ data: recientes }, rechazadas] = await Promise.all([
+    supabase
+      .from("solicitudes_marca")
+      .select("*")
+      .eq("id_marca", sesion.idMarca)
+      .order("solicitada_el", { ascending: false })
+      .limit(60),
+    rechazadasSinCorregir(supabase, sesion.idMarca),
+  ]);
+  // Las que esperan y las rechazadas por corregir van siempre, aunque sean
+  // más viejas que las últimas 60: son las únicas sobre las que la marca
+  // tiene que hacer algo. Con 90 precios mandados de una, la rechazada
+  // quedaba afuera y el aviso la mandaba a buscar algo que no estaba.
+  const porCorregir = new Set(rechazadas.map((r) => r.idSolicitud));
+  const yaEstan = new Set((recientes ?? []).map((s) => s.id_solicitud as string));
+  const { data: faltan } = await supabase
     .from("solicitudes_marca")
     .select("*")
     .eq("id_marca", sesion.idMarca)
-    .order("solicitada_el", { ascending: false })
-    .limit(60);
+    .or(`estado.eq.PENDIENTE,id_solicitud.in.(${[...porCorregir].join(",") || "00000000-0000-0000-0000-000000000000"})`);
+  const data = [...(recientes ?? []), ...(faltan ?? []).filter((s) => !yaEstan.has(s.id_solicitud as string))].sort((a, b) =>
+    String(b.solicitada_el).localeCompare(String(a.solicitada_el))
+  );
 
-  if (!data || data.length === 0) return [];
+  if (data.length === 0) return [];
 
   const ids = [...new Set(data.map((s) => s.id_producto as string).filter(Boolean))];
   const { data: productos } = ids.length
@@ -305,6 +326,8 @@ export async function misSolicitudes(): Promise<SolicitudPropia[]> {
       solicitadaEl: s.solicitada_el as string,
       vigenciaDesde: (s.vigencia_desde as string | null) ?? null,
       escalada: alertas.escalaADuenio === true,
+      idProducto: (s.id_producto as string | null) ?? null,
+      porCorregir: porCorregir.has(s.id_solicitud as string),
     };
   });
 }

@@ -113,14 +113,38 @@ export default function PortalCambios({
   // Ojo: el link ya existía y no abría nada — nadie leía el parámetro, así
   // que caía en esta pantalla y la marca tenía que encontrar el botón sola.
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get("nuevo") === "1") {
+    const ver = new URLSearchParams(window.location.search);
+    if (ver.get("nuevo") === "1") {
       setNuevoAbierto(true);
       // Se saca de la URL para que recargar no lo vuelva a abrir.
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+    // Desde el aviso «Una solicitud que no se aprobó»: directo a Mis
+    // solicitudes, con las no aprobadas arriba de todo.
+    if (ver.get("ver") === "rechazadas") {
+      setTab("MIOS");
       window.history.replaceState(null, "", window.location.pathname);
     }
   }, []);
 
   const pendientes = solicitudes.filter((s) => s.estado === "PENDIENTE").length;
+  const porCorregir = useMemo(() => solicitudes.filter((s) => s.porCorregir), [solicitudes]);
+  // Lo que no se aprobó, por producto: la fila lo muestra en rojo con el motivo.
+  const rechazoDe = useMemo(() => {
+    const m = new Map<string, SolicitudPropia>();
+    for (const s of porCorregir) if (s.idProducto && !m.has(s.idProducto)) m.set(s.idProducto, s);
+    return m;
+  }, [porCorregir]);
+
+  /** Del aviso de una no aprobada al producto, abierto y solo en la lista. */
+  function corregir(s: SolicitudPropia) {
+    const p = productos.find((x) => x.idProducto === s.idProducto);
+    if (!p) return;
+    setTab("PEDIR");
+    setBusqueda(p.nombre);
+    setAbierto(p.idProducto);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
 
   const visibles = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
@@ -189,6 +213,11 @@ export default function PortalCambios({
         <button className={`cam-tab${tab === "MIOS" ? " activa" : ""}`} onClick={() => setTab("MIOS")}>
           Mis solicitudes
           {pendientes > 0 && <span className="cam-cont fuerte">{pendientes}</span>}
+          {porCorregir.length > 0 && (
+            <span className="cam-cont rojo" title="No aprobadas, para corregir">
+              {porCorregir.length} ✕
+            </span>
+          )}
         </button>
       </div>
 
@@ -255,6 +284,7 @@ export default function PortalCambios({
                   condiciones={condiciones}
                   tasas={tasas}
                   redondeo={redondeo}
+                  rechazo={rechazoDe.get(p.idProducto) ?? null}
                   abierto={abierto === p.idProducto}
                   onAbrir={() => setAbierto(abierto === p.idProducto ? null : p.idProducto)}
                   onListo={() => { setAbierto(null); router.refresh(); }}
@@ -267,7 +297,7 @@ export default function PortalCambios({
           )}
         </>
       ) : (
-        <MisSolicitudes solicitudes={solicitudes} onListo={() => router.refresh()} />
+        <MisSolicitudes solicitudes={solicitudes} onListo={() => router.refresh()} onCorregir={corregir} />
       )}
     </main>
   );
@@ -293,9 +323,12 @@ const ORDEN_GRUPOS: GrupoBandeja[] = ["PRECIOS", "DESCUENTOS", "PRODUCTOS", "CON
 function MisSolicitudes({
   solicitudes,
   onListo,
+  onCorregir,
 }: {
   solicitudes: SolicitudPropia[];
   onListo: () => void;
+  /** Lleva al producto, abierto, para volver a mandar lo que no se aprobó. */
+  onCorregir: (s: SolicitudPropia) => void;
 }) {
   const [filtro, setFiltro] = useState<GrupoBandeja | "TODAS">("TODAS");
 
@@ -308,8 +341,11 @@ function MisSolicitudes({
   const visibles =
     filtro === "TODAS" ? solicitudes : solicitudes.filter((s) => GRUPO_DE_TIPO[s.tipo] === filtro);
 
+  // Arriba de todo lo que no se aprobó y falta corregir: es lo único que
+  // frena algo y la marca tiene que hacer.
+  const aCorregir = visibles.filter((s) => s.porCorregir);
   const enEspera = visibles.filter((s) => s.estado === "PENDIENTE");
-  const resueltas = visibles.filter((s) => s.estado !== "PENDIENTE");
+  const resueltas = visibles.filter((s) => s.estado !== "PENDIENTE" && !s.porCorregir);
 
   if (solicitudes.length === 0) {
     return <p className="vacio">Todavía no mandaste ningún cambio.</p>;
@@ -332,6 +368,20 @@ function MisSolicitudes({
             </button>
           ))}
         </div>
+      )}
+
+      {aCorregir.length > 0 && (
+        <section className="cam-grupo corregir" key="corregir">
+          <h3>
+            <i aria-hidden="true">✕</i> No se aprobaron · corregilas
+            <span className="cuantas">{aCorregir.length}</span>
+          </h3>
+          <ul className="cam-hist">
+            {aCorregir.map((s) => (
+              <FilaSolicitud key={s.idSolicitud} s={s} onListo={onListo} onCorregir={onCorregir} />
+            ))}
+          </ul>
+        </section>
       )}
 
       {enEspera.length > 0 && (
@@ -373,6 +423,7 @@ function FilaProducto({
   condiciones,
   tasas,
   redondeo,
+  rechazo,
   abierto,
   onAbrir,
   onListo,
@@ -382,6 +433,8 @@ function FilaProducto({
   condiciones: CondicionesMarca;
   tasas: TasasGenerales;
   redondeo: number;
+  /** Lo último que mandó para este producto y no se aprobó, si no lo corrigió. */
+  rechazo: SolicitudPropia | null;
   abierto: boolean;
   onAbrir: () => void;
   onListo: () => void;
@@ -393,7 +446,7 @@ function FilaProducto({
   }
 
   return (
-    <li className={`cam-prod${abierto ? " abierto" : ""}`}>
+    <li className={`cam-prod${abierto ? " abierto" : ""}${rechazo ? " rechazado" : ""}`}>
       <button className="cam-prod-cab" onClick={onAbrir}>
         <span className="cam-prod-nom">
           {p.nombre}
@@ -405,8 +458,17 @@ function FilaProducto({
           <span className="mono">{pesos(p.precio)}</span>
           <span className="cam-stock">{p.stock} en góndola</span>
           {p.esperando.length > 0 && <span className="cam-espera">{p.esperando.length} esperando</span>}
+          {rechazo && <span className="cam-rechazo-chip">✕ No aprobado</span>}
         </span>
       </button>
+
+      {rechazo && (
+        <p className="cam-rechazo">
+          <b>WiiGo no aprobó: {rechazo.tipoEtiqueta.toLowerCase()}</b>
+          {typeof rechazo.datos.precio === "number" && <> ({pesos(rechazo.datos.precio as number)})</>}
+          {rechazo.motivo ? <> — {rechazo.motivo}</> : null}. Abrilo y mandalo de nuevo corregido.
+        </p>
+      )}
 
       {abierto && (
         <div className="cam-panel">
@@ -2217,7 +2279,15 @@ function RepartoAlta({
 
 // ---------- Historial ----------
 
-function FilaSolicitud({ s, onListo }: { s: SolicitudPropia; onListo: () => void }) {
+function FilaSolicitud({
+  s,
+  onListo,
+  onCorregir,
+}: {
+  s: SolicitudPropia;
+  onListo: () => void;
+  onCorregir?: (s: SolicitudPropia) => void;
+}) {
   const [pendiente, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const estado = ESTADO_TEXTO[s.estado] ?? { rotulo: s.estado, clase: "gris" };
@@ -2255,6 +2325,11 @@ function FilaSolicitud({ s, onListo }: { s: SolicitudPropia; onListo: () => void
 
       <div className="cam-sol-pie">
         <span className="cam-cuando">Mandado el {fechaHora(s.solicitadaEl)}</span>
+        {s.porCorregir && s.idProducto && onCorregir && (
+          <button className="cam-btn" onClick={() => onCorregir(s)}>
+            Corregir y volver a mandar
+          </button>
+        )}
         {s.estado === "PENDIENTE" && (
           <button
             className="cam-btn plano"

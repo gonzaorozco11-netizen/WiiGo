@@ -6,6 +6,7 @@ import { obtenerSesionMarca, sesionDelPortal, motivoSinSesionMarca } from "@/lib
 import { calcularRendicion, detalleLiquidacion } from "@/app/(app)/liquidaciones/actions";
 import { fechaHoraArgentina } from "@/lib/horarios";
 import { costosVigentes, guardarCosto, borrarCosto, SIN_SUBCATEGORIA, type CostoDeMarca } from "@/lib/costosMarca";
+import { rechazadasSinCorregir } from "@/lib/rechazadasMarca";
 import { PENDIENTE, PROPUESTA, type OrigenOrden } from "@/lib/estadosOrden";
 import { diasHasta } from "@/lib/eventos";
 import { sugerirReposicion, topeDeVariante } from "@/lib/reposicionSugerida";
@@ -1710,11 +1711,8 @@ export async function misTareas(): Promise<TareasPortal | null> {
           .select("id_producto, kcal_100g, proteinas, carbohidratos, grasas, porcion, ingredientes")
           .in("id_producto", ids)
       : Promise.resolve({ data: [] as Record<string, unknown>[] }),
-    supabase
-      .from("solicitudes_marca")
-      .select("id_solicitud")
-      .eq("id_marca", sesion.idMarca)
-      .eq("estado", "RECHAZADA"),
+    // Solo las que todavía no volvió a mandar: una corregida ya no es tarea.
+    rechazadasSinCorregir(supabase, sesion.idMarca).then((data) => ({ data })),
     supabase
       .from("liquidaciones")
       .select("fecha_hasta, estado")
@@ -1809,7 +1807,8 @@ export async function misTareas(): Promise<TareasPortal | null> {
       titulo: noAprobadas === 1 ? "Una solicitud que no se aprobó" : "Solicitudes que no se aprobaron",
       porque: "Tienen el motivo escrito. Corregilas y volvé a mandarlas sin cargar todo de nuevo.",
       accion: "Ver el motivo",
-      href: "/portal/cambios",
+      // Directo a la lista de las no aprobadas, no a todos los productos.
+      href: "/portal/cambios?ver=rechazadas",
     });
   }
   if (incompletos > 0) {
