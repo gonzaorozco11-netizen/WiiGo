@@ -5,6 +5,7 @@ import PantallaBloqueada from "@/components/PantallaBloqueada";
 import CodigosApp, { type ItemCodigo } from "@/components/CodigosApp";
 import { PIE_ETIQUETA_DEFECTO } from "@/lib/rotulado";
 import { cargarMarcasFabrica } from "@/lib/marcaFabrica";
+import { cargarMarcasSinCodigo } from "@/lib/marcasSinCodigo";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +21,7 @@ export default async function CodigosPage() {
   const traerProductos = (columnas: string) =>
     supabase.from("productos").select(columnas).eq("estado", "ACTIVO");
 
-  const [variantesRes, productosConRotulo, marcasRes, pieRes, marcasFabrica] = await Promise.all([
+  const [variantesRes, productosConRotulo, marcasRes, pieRes, marcasFabrica, marcasSinCodigo] = await Promise.all([
     supabase
       .from("variantes_producto")
       .select("id_variante,id_producto,nombre,sku,codigo_barras")
@@ -30,6 +31,7 @@ export default async function CodigosPage() {
     supabase.from("configuracion").select("valor").eq("parametro", "ETIQUETA_PIE").maybeSingle(),
     // «(Entre Nuts)» al lado del nombre en la lista (no en la etiqueta impresa): lib/marcaFabrica.ts.
     cargarMarcasFabrica(supabase).catch(() => new Map<string, string>()),
+    cargarMarcasSinCodigo(supabase).catch(() => new Set<string>()),
   ]);
   // Sin sql/rotulado.sql corrido, las etiquetas salen como antes.
   const productosRes = productosConRotulo.error ? await traerProductos(BASE_PRODUCTO) : productosConRotulo;
@@ -92,10 +94,13 @@ export default async function CodigosPage() {
           // tótem; se agrupan aparte para que no ensucien la cuenta.
           marca: marcas.get(p.id_marca) ?? null,
           propia,
-          // Solo lo que embolsamos nosotros (marca propia con envase WiiGo) no
-          // trae código: todo lo demás viene cerrado de fábrica con el suyo
+          // Lo que embolsamos nosotros (marca propia con envase WiiGo) y las
+          // marcas que mandan sus envases sin código (Alta, Fruppi) llevan
+          // sticker. Todo lo demás viene cerrado de fábrica con el suyo
           // (aceites, mieles, Animalfit...) y se escanea, no se imprime.
-          envasado: !(propia && p.id_envase),
+          idMarca: p.id_marca,
+          marcaSinCodigo: marcasSinCodigo.has(p.id_marca),
+          envasado: !(propia && p.id_envase) && !marcasSinCodigo.has(p.id_marca),
           // Solo lo que fraccionamos nosotros lleva rótulo: lo de las marcas
           // en consignación ya trae el suyo impreso de fábrica.
           // Lo cerrado de marca propia (un aceite que compramos hecho) tampoco:

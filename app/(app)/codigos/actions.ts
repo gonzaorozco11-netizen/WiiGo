@@ -5,6 +5,8 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { limpiarCodigoBarras, esCodigoInterno } from "@/lib/codigos";
 import { mayorCodigoInterno } from "@/lib/codigosVariante";
+import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
+import { CLAVE_SIN_CODIGO, cargarMarcasSinCodigo } from "@/lib/marcasSinCodigo";
 
 /**
  * Guarda el código que trae el envase de un producto.
@@ -50,6 +52,31 @@ export async function guardarCodigoBarras(idVariante: string, codigo: string) {
 
   revalidatePath("/codigos");
   revalidatePath("/productos");
+  return { ok: true as const };
+}
+
+/** Una marca pasa a imprimir el código WiiGo (sus envases no traen) o vuelve a escanearse. */
+export async function marcarMarcaSinCodigo(idMarca: string, sinCodigo: boolean) {
+  const sesion = await obtenerSesionConPantallas();
+  if (!puedeVerPantalla(sesion, "codigos")) return { error: "No tenés permiso para cambiar esto." };
+
+  const supabase = getSupabaseServerClient();
+  const marcas = await cargarMarcasSinCodigo(supabase);
+  if (sinCodigo) marcas.add(idMarca);
+  else marcas.delete(idMarca);
+
+  const { error } = await supabase.from("configuracion").upsert(
+    {
+      parametro: CLAVE_SIN_CODIGO,
+      valor: JSON.stringify([...marcas]),
+      descripcion: "Marcas cuyos envases no traen código de barras: se les imprime el de WiiGo (pantalla Códigos de barras).",
+      fecha_actualizacion: new Date().toISOString(),
+    },
+    { onConflict: "parametro" }
+  );
+  if (error) return { error: friendlyDbError(error) };
+
+  revalidatePath("/codigos");
   return { ok: true as const };
 }
 

@@ -11,7 +11,7 @@ import {
   pesoEtiqueta,
 } from "@/lib/rotulado";
 import { nombreBase } from "@/lib/nombreProducto";
-import { guardarCodigoBarras, volverAEtiquetaWiigo } from "@/app/(app)/codigos/actions";
+import { guardarCodigoBarras, marcarMarcaSinCodigo, volverAEtiquetaWiigo } from "@/app/(app)/codigos/actions";
 import type { EntradaPendiente } from "@/lib/entradas";
 import EscanerCodigo from "@/components/EscanerCodigo";
 import CodigoDeBarras from "@/components/CodigoDeBarras";
@@ -36,6 +36,9 @@ export type ItemCodigo = {
    * vez de imprimirle sticker. false = lo embolsamos nosotros y lleva el nuestro.
    */
   envasado?: boolean;
+  idMarca?: string;
+  /** La marca está marcada como «sus envases no traen código» (Alta, Fruppi). */
+  marcaSinCodigo?: boolean;
 };
 
 export type RotuloItem = {
@@ -274,7 +277,7 @@ export default function CodigosApp({
         <div>
           <h1 className="text-2xl font-semibold text-neutral-900">Códigos de barras</h1>
           <p className="text-sm text-neutral-500 mt-1">
-            {items.length} productos · {aPegar} los embolsamos nosotros y llevan sticker ·{" "}
+            {items.length} productos · {aPegar} llevan sticker WiiGo ·{" "}
             {conEnvase} con el código del envase cargado
             {faltaEscanear > 0 && <> · <b className="text-amber-700">{faltaEscanear} envasados falta escanear</b></>}
           </p>
@@ -410,10 +413,22 @@ function Revisar({
         <div className="border border-neutral-200 rounded-xl overflow-hidden bg-white">
           {porMarca.map(([marca, deLaMarca]) => (
             <div key={marca}>
-              <p className="text-[11px] uppercase tracking-wider font-bold text-neutral-400 bg-neutral-50 px-4 py-2 border-b border-neutral-200">
-                {marca} ·{" "}
-                {deLaMarca.filter((i) => i.envasado && (!i.codigo || esCodigoInterno(i.codigo))).length} falta escanear
-              </p>
+              <div className="flex items-center justify-between gap-2 bg-neutral-50 px-4 py-2 border-b border-neutral-200">
+                <span className="text-[11px] uppercase tracking-wider font-bold text-neutral-400">
+                  {marca} ·{" "}
+                  {deLaMarca[0]?.marcaSinCodigo
+                    ? "sus envases no traen código: llevan sticker"
+                    : `${deLaMarca.filter((i) => i.envasado && (!i.codigo || esCodigoInterno(i.codigo))).length} falta escanear`}
+                </span>
+                {!deLaMarca[0]?.propia && deLaMarca[0]?.idMarca && (
+                  <MarcaSinCodigo
+                    idMarca={deLaMarca[0].idMarca}
+                    sinCodigo={Boolean(deLaMarca[0].marcaSinCodigo)}
+                    marca={marca}
+                    onAviso={onAviso}
+                  />
+                )}
+              </div>
               {deLaMarca.map((i) => (
                 <FilaProducto key={i.idVariante} item={i} onEscanear={onEscanear} onAviso={onAviso} />
               ))}
@@ -429,6 +444,49 @@ function Revisar({
         </button>
       </div>
     </>
+  );
+}
+
+/**
+ * Para las marcas que mandan los envases sin código (Alta, Fruppi): pasan a
+ * imprimir el nuestro. Se puede volver atrás si la marca empieza a traerlo.
+ */
+function MarcaSinCodigo({
+  idMarca,
+  sinCodigo,
+  marca,
+  onAviso,
+}: {
+  idMarca: string;
+  sinCodigo: boolean;
+  marca: string;
+  onAviso: (a: { texto: string; tono: "ok" | "mal" } | null) => void;
+}) {
+  const router = useRouter();
+  const [pendiente, startTransition] = useTransition();
+  return (
+    <button
+      type="button"
+      disabled={pendiente}
+      onClick={() =>
+        startTransition(async () => {
+          const res = await marcarMarcaSinCodigo(idMarca, !sinCodigo);
+          if (res.error) onAviso({ texto: res.error, tono: "mal" });
+          else {
+            onAviso({
+              texto: sinCodigo
+                ? `${marca}: sus envases traen código, se escanean.`
+                : `${marca}: sus envases no traen código, pasan a Imprimir códigos.`,
+              tono: "ok",
+            });
+            router.refresh();
+          }
+        })
+      }
+      className="shrink-0 text-xs text-accent disabled:opacity-40"
+    >
+      {sinCodigo ? "Sí traen código" : "No traen código"}
+    </button>
   );
 }
 
