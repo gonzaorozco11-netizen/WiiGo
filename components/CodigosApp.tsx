@@ -77,6 +77,66 @@ function entraRotulo(medida: { ancho: number; alto: number }) {
 }
 
 const SIN_MARCA = "Marcas que no están activas";
+const SIN_SUBCATEGORIA = "Sin subcategoría";
+
+/** Los productos de una marca por subcategoría, en orden, y lo que no tiene al final. */
+function subgruposDe(items: ItemCodigo[]): [string, ItemCodigo[]][] {
+  const m = new Map<string, ItemCodigo[]>();
+  for (const i of items) {
+    const k = i.subcategoria?.trim() || SIN_SUBCATEGORIA;
+    if (!m.has(k)) m.set(k, []);
+    m.get(k)!.push(i);
+  }
+  return [...m.entries()].sort(([a], [b]) => (a === SIN_SUBCATEGORIA ? 1 : b === SIN_SUBCATEGORIA ? -1 : a.localeCompare(b, "es")));
+}
+
+// Cuándo se imprimió cada código por última vez, en este aparato (id_variante
+// → fecha). Se anota al confirmar «Sí, salió bien». Es solo una ayuda para no
+// repetir: si el navegador no deja guardar, no se muestra y listo.
+const CLAVE_IMPRESOS = "codigos.impresos";
+const SIN_IMPRESOS: Record<string, string> = {};
+let impresosTexto: string | null = null;
+let impresosCache: Record<string, string> = SIN_IMPRESOS;
+function leerImpresos(): Record<string, string> {
+  let t: string | null = null;
+  try {
+    t = localStorage.getItem(CLAVE_IMPRESOS);
+  } catch {}
+  if (t !== impresosTexto) {
+    impresosTexto = t;
+    try {
+      impresosCache = t ? (JSON.parse(t) as Record<string, string>) : SIN_IMPRESOS;
+    } catch {
+      impresosCache = SIN_IMPRESOS;
+    }
+  }
+  return impresosCache;
+}
+function suscribirImpresos(avisar: () => void) {
+  window.addEventListener("storage", avisar);
+  window.addEventListener(CLAVE_IMPRESOS, avisar);
+  return () => {
+    window.removeEventListener("storage", avisar);
+    window.removeEventListener(CLAVE_IMPRESOS, avisar);
+  };
+}
+function anotarImpresos(ids: string[]) {
+  const ahora = new Date().toISOString();
+  const nuevo = { ...leerImpresos() };
+  for (const id of ids) nuevo[id] = ahora;
+  try {
+    localStorage.setItem(CLAVE_IMPRESOS, JSON.stringify(nuevo));
+  } catch {}
+  window.dispatchEvent(new Event(CLAVE_IMPRESOS));
+}
+/** «hoy», «ayer» o «el 5/11». */
+function cuandoImpreso(iso: string) {
+  const dia = (d: Date) => d.toLocaleDateString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" });
+  const d = new Date(iso);
+  if (dia(d) === dia(new Date())) return "hoy";
+  if (dia(d) === dia(new Date(Date.now() - 86400000))) return "ayer";
+  return `el ${d.toLocaleDateString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", day: "numeric", month: "numeric" })}`;
+}
 
 /**
  * Las planchas de etiquetas que se consiguen acá.
@@ -808,8 +868,11 @@ function Imprimir({
   }
 
   const visibles = modo === "recibido" ? recibidos : items;
+  // En «Todo lo que falta» arranca todo destildado: se elige qué imprimir
+  // (por marca, subcategoría o buscando). Antes venía todo en 1 y era fácil
+  // mandar a imprimir 90 stickers sin querer.
   const unidades = (i: ItemCodigo) =>
-    modo === "recibido" ? porVariante.get(i.idVariante)?.cantidad ?? 1 : 1;
+    modo === "recibido" ? porVariante.get(i.idVariante)?.cantidad ?? 1 : 0;
 
   return (
     <>
@@ -954,6 +1017,13 @@ function ConfigurarImpresion({
   );
   const marcados = items.filter((i) => (cantidades[i.idVariante] ?? 0) > 0).length;
   const porMarca = useMemo(() => agruparPorMarca(mostrados), [mostrados]);
+  const filtrando = busqueda.trim() !== "" || subcategoria !== "";
+  // Las subcategorías de cada marca arrancan cerradas: con 90 productos de
+  // WiiGo, abrir solo la que vas a imprimir (Gonzalo, 2026-11-07).
+  const [subAbiertas, setSubAbiertas] = useState<Set<string>>(() => new Set());
+  // Cuándo se imprimió por última vez cada uno, en esta tablet: para no
+  // imprimir dos veces lo mismo sin darse cuenta.
+  const impresos = useSyncExternalStore(suscribirImpresos, leerImpresos, () => SIN_IMPRESOS);
 
   function poner(id: string, n: number) {
     setCantidades((prev) => ({ ...prev, [id]: Math.min(Math.max(0, n), 99) }));
@@ -1083,7 +1153,7 @@ function ConfigurarImpresion({
                       const next = { ...prev };
                       // Si ya hay alguno marcado, el botón apaga la marca entera.
                       const apagar = totalMarca > 0;
-                      deLaMarca.forEach((i) => (next[i.idVariante] = apagar ? 0 : unidadesIniciales(i)));
+                      deLaMarca.forEach((i) => (next[i.idVariante] = apagar ? 0 : Math.max(1, unidadesIniciales(i))));
                       return next;
                     })
                   }
@@ -1092,10 +1162,53 @@ function ConfigurarImpresion({
                   {totalMarca > 0 ? "Ninguno" : "Todos"}
                 </button>
               </div>
-              {deLaMarca.map((i) => (
+              {subgruposDe(deLaMarca).map(([sub, delSub]) => {
+                const clave = `${marca}|${sub}`;
+                const marcadosSub = delSub.filter((i) => (cantidades[i.idVariante] ?? 0) > 0).length;
+                // Buscando, todo abierto: si no, lo encontrado quedaría escondido.
+                const abierto = filtrando || subAbiertas.has(clave);
+                return (
+                  <div key={clave}>
+                    <div className="flex items-center gap-2 px-4 py-2 border-b border-neutral-100 bg-white">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setSubAbiertas((prev) => {
+                            const s = new Set(prev);
+                            if (s.has(clave)) s.delete(clave);
+                            else s.add(clave);
+                            return s;
+                          })
+                        }
+                        className="flex-1 min-w-0 text-left text-sm font-semibold text-neutral-800"
+                        aria-expanded={abierto}
+                      >
+                        <span className="text-neutral-400 mr-1.5">{abierto ? "▾" : "▸"}</span>
+                        {sub}
+                        <span className="ml-2 text-xs font-normal text-neutral-500">
+                          {delSub.length} {delSub.length === 1 ? "producto" : "productos"}
+                          {marcadosSub > 0 && <b className="text-accent"> · {marcadosSub} marcados</b>}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setCantidades((prev) => {
+                            const next = { ...prev };
+                            const apagar = marcadosSub > 0;
+                            delSub.forEach((i) => (next[i.idVariante] = apagar ? 0 : Math.max(1, unidadesIniciales(i))));
+                            return next;
+                          })
+                        }
+                        className="shrink-0 text-xs text-accent"
+                      >
+                        {marcadosSub > 0 ? "Ninguno" : "Todos"}
+                      </button>
+                    </div>
+              {abierto && delSub.map((i) => (
                 <div
                   key={i.idVariante}
-                  className="flex items-center gap-3 px-4 py-2 border-b border-neutral-100 last:border-b-0"
+                  className="flex items-center gap-3 pl-8 pr-4 py-2 border-b border-neutral-100 last:border-b-0"
                 >
                   <span className="min-w-0 flex-1">
                     <span className="block text-sm truncate">
@@ -1108,6 +1221,7 @@ function ConfigurarImpresion({
                       <span className="font-mono">
                         {i.codigo ? formatearCodigo(i.codigo) : "se genera al guardar"}
                       </span>
+                      {impresos[i.idVariante] && <span className="ml-1.5 text-emerald-700">· impreso {cuandoImpreso(impresos[i.idVariante])}</span>}
                     </span>
                   </span>
                   <div className="flex items-center gap-1 shrink-0">
@@ -1137,6 +1251,9 @@ function ConfigurarImpresion({
                   </div>
                 </div>
               ))}
+                  </div>
+                );
+              })}
             </div>
           );
         })}
@@ -1287,6 +1404,7 @@ function ConfigurarImpresion({
             onClick={() => {
               cambiarDesde(pendiente);
               setPendiente(null);
+              anotarImpresos(aImprimir.map((i) => i.idVariante));
             }}
             className="rounded-lg bg-emerald-700 text-white px-3 py-2 text-sm font-semibold hover:bg-emerald-800"
           >
