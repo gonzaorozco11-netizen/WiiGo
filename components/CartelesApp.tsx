@@ -32,6 +32,8 @@ export type ItemCartel = {
   origen?: string | null;
   /** Dónde está en la góndola: GANCHO = blistero de la pared; ESTANTE = islas o estantería; null = sin lugar. */
   lugar?: "GANCHO" | "ESTANTE" | null;
+  /** La marca de fábrica de lo que viene envasado («Entre Nuts»), entre paréntesis después del peso (lib/marcaFabrica.ts). */
+  marcaFabrica?: string | null;
 };
 
 const SIN_MARCA = "Sin marca";
@@ -620,7 +622,10 @@ function Cartel({ item, ancho, alto }: { item: ItemCartel; ancho: number; alto: 
   // uno de 40 mm y en uno de 30 sin recortar el nombre a la mitad, y aprovechar
   // el lugar cuando el cartel es grande en vez de dejar medio blanco.
   const k = Math.max(0.55, Math.min(1.8, alto / 40));
-  const nombreLargo = item.nombre.length > 34;
+  // Con la marca de fábrica el renglón crece: se cuenta para achicar la letra a tiempo.
+  const largoNombre = item.nombre.length + (item.marcaFabrica ? item.marcaFabrica.length + 3 : 0);
+  const nombreLargo = largoNombre > 34;
+  const muyLargo = largoNombre > 48;
   const mm = (n: number) => `${(n * k).toFixed(2)}mm`;
 
   return (
@@ -685,7 +690,7 @@ function Cartel({ item, ancho, alto }: { item: ItemCartel; ancho: number; alto: 
         </div>
         <div
           style={{
-            fontSize: mm(nombreLargo ? 2.5 : 2.9),
+            fontSize: mm(muyLargo ? 2.15 : nombreLargo ? 2.5 : 2.9),
             lineHeight: 1.1,
             fontWeight: 700,
             textTransform: "uppercase",
@@ -699,6 +704,8 @@ function Cartel({ item, ancho, alto }: { item: ItemCartel; ancho: number; alto: 
               en negro va el nombre solo, y el tamaño una sola vez, en gris clarito. */}
           {item.pesoG != null ? nombreBase(item.nombre) : item.nombre}
           {item.pesoG != null && <span style={{ color: "#a3a8ad", textTransform: "none", whiteSpace: "nowrap" }}> {pesoTexto(item.pesoG)}</span>}
+          {/* La marca de fábrica, después del nombre y el peso (Gonzalo, 2026-11-06). */}
+          {item.marcaFabrica && <span style={{ textTransform: "none", fontWeight: 600, whiteSpace: "nowrap" }}> ({item.marcaFabrica})</span>}
         </div>
       </div>
 

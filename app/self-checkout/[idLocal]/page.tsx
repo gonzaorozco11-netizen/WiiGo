@@ -14,6 +14,7 @@ import { obtenerClimaActual } from "@/lib/clima";
 import { montoQuePideDni } from "@/lib/arca/config";
 import SelfCheckoutApp from "@/components/SelfCheckoutApp";
 import { versionActual } from "@/lib/version";
+import { cargarMarcasFabrica, nombresConMarca } from "@/lib/marcaFabrica";
 
 export const dynamic = "force-dynamic";
 
@@ -36,12 +37,14 @@ export default async function SelfCheckoutPage({ params }: { params: Promise<{ i
   // de ingreso y el contacto de cada marca — las condiciones comerciales de los
   // contratos. Todo eso se quedaba en el HTML, al alcance de un cliente o de la
   // competencia.
-  const [productosRes, variantesRes, marcasRes, stockRes] = await Promise.all([
+  const [productosRes, variantesRes, marcasRes, stockRes, marcasFabrica] = await Promise.all([
     // Sin precio todavía (lo pone la marca y lo aprueba WiiGo) no se muestra.
     supabase.from("productos").select(COLUMNAS_PRODUCTO_PUBLICO).eq("estado", "ACTIVO").gt("precio_venta", 0),
     supabase.from("variantes_producto").select(COLUMNAS_VARIANTE_TOTEM).eq("estado", "ACTIVO"),
     traerMarcasPublicas(supabase),
     supabase.from("stock").select("id_variante,cantidad").eq("id_local", idLocal),
+    // «(Entre Nuts)» después del nombre de lo que viene envasado de fábrica (lib/marcaFabrica.ts).
+    cargarMarcasFabrica(supabase).catch(() => new Map<string, string>()),
   ]);
 
   // Si esta consulta falla y no se avisa, la pantalla queda con stock vacío
@@ -72,7 +75,7 @@ export default async function SelfCheckoutPage({ params }: { params: Promise<{ i
       montoPideDni={montoPideDni}
       version={versionActual()}
       local={local as Local}
-      productos={(productosRes.data ?? []) as unknown as ProductoPublico[]}
+      productos={nombresConMarca((productosRes.data ?? []) as unknown as ProductoPublico[], marcasFabrica)}
       variantes={(variantesRes.data ?? []) as unknown as VarianteTotem[]}
       marcas={marcasRes.marcas}
       stock={(stockRes.data ?? []) as unknown as Pick<Stock, "id_variante" | "cantidad">[]}

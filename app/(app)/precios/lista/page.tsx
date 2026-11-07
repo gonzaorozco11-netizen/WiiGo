@@ -3,6 +3,7 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import { ambosPrecios } from "@/lib/precios";
 import { todasLasFilas } from "@/lib/competenciaLeer";
+import { cargarMarcasFabrica, conMarca } from "@/lib/marcaFabrica";
 import PantallaBloqueada from "@/components/PantallaBloqueada";
 import ListaPreciosPdf, { type ProductoLista } from "@/components/ListaPreciosPdf";
 
@@ -19,7 +20,7 @@ export default async function ListaPreciosPage() {
   if (!puedeVerPantalla(sesion, "precios")) return <PantallaBloqueada />;
 
   const supabase = getSupabaseServerClient();
-  const [{ data: marcas }, { data: subs }, productos] = await Promise.all([
+  const [{ data: marcas }, { data: subs }, productos, marcasFabrica] = await Promise.all([
     supabase.from("marcas").select("id_marca, nombre, tipo_comercializacion").eq("estado", "ACTIVA"),
     supabase.from("subcategorias").select("id_subcategoria, nombre"),
     todasLasFilas<Record<string, unknown>>((desde, hasta) =>
@@ -31,6 +32,8 @@ export default async function ListaPreciosPage() {
         .order("nombre")
         .range(desde, hasta)
     ),
+    // «(Entre Nuts)» después del nombre de lo que viene envasado de fábrica (lib/marcaFabrica.ts).
+    cargarMarcasFabrica(supabase).catch(() => new Map<string, string>()),
   ]);
   const marcaPor = new Map((marcas ?? []).map((m) => [m.id_marca as string, m]));
   const rubroPor = new Map((subs ?? []).map((s) => [s.id_subcategoria as string, s.nombre as string]));
@@ -46,7 +49,7 @@ export default async function ListaPreciosPage() {
     return [
       {
         id: p.id_producto as string,
-        nombre: p.nombre as string,
+        nombre: conMarca(p.nombre as string, marcasFabrica.get(p.id_producto as string)),
         idMarca: m.id_marca as string,
         marca: m.nombre as string,
         propia: m.tipo_comercializacion === "PROPIA",

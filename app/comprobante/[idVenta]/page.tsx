@@ -6,6 +6,7 @@ import { debeFacturarseAutomatico } from "@/lib/arca/config";
 import { TIPO_COMPROBANTE, TIPO_DOC, urlQrArca } from "@/lib/arca/wsfe";
 import { WIIGO_ISOTIPO_DATA_URI } from "@/lib/wiigo-logo-data";
 import RecargarComprobante from "@/components/RecargarComprobante";
+import { cargarMarcasFabrica, conMarca } from "@/lib/marcaFabrica";
 
 // Página pública: es lo que se abre en el celular del cliente al escanear el
 // QR del totem o del POS. No lleva login (ver proxy.ts) — el UUID de la venta
@@ -91,7 +92,7 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
 
   const esFactura = Boolean(venta.cae);
 
-  const [emisor, { data: detalle }, { data: local }, { data: productos }, { data: variantes }] = await Promise.all([
+  const [emisor, { data: detalle }, { data: local }, { data: productos }, { data: variantes }, marcasFabrica] = await Promise.all([
     // Los datos fiscales solo se usan en la cara de factura, pero se traen
     // igual: es una consulta a la tabla de configuración, no vale la pena
     // ramificar por eso.
@@ -100,9 +101,11 @@ export default async function ComprobantePage({ params }: { params: Promise<{ id
     supabase.from("locales").select("nombre").eq("id_local", venta.id_local).maybeSingle(),
     supabase.from("productos").select("id_producto, nombre"),
     supabase.from("variantes_producto").select("id_variante, id_producto, nombre"),
+    // «(Entre Nuts)» después del nombre de lo que viene envasado de fábrica (lib/marcaFabrica.ts).
+    cargarMarcasFabrica(supabase).catch(() => new Map<string, string>()),
   ]);
 
-  const productoPorId = new Map((productos ?? []).map((p) => [p.id_producto as string, p.nombre as string]));
+  const productoPorId = new Map((productos ?? []).map((p) => [p.id_producto as string, conMarca(p.nombre as string, marcasFabrica.get(p.id_producto as string))]));
   const variantePorId = new Map((variantes ?? []).map((v) => [v.id_variante as string, v]));
 
   function nombreDe(idVariante: string) {

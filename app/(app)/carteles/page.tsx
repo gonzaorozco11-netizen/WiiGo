@@ -3,6 +3,7 @@ import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import { ambosPrecios } from "@/lib/precios";
 import PantallaBloqueada from "@/components/PantallaBloqueada";
 import CartelesApp, { type ItemCartel } from "@/components/CartelesApp";
+import { cargarMarcasFabrica } from "@/lib/marcaFabrica";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +19,7 @@ export default async function CartelesPage() {
   const traerTareas = (columnas: string) =>
     supabase.from("tareas_etiqueta").select(columnas).in("estado", ["PENDIENTE", "VENCIDA"]).limit(500);
 
-  const [productosConPeso, marcasRes, tareasCompletas, fichasRes, lugaresRes, modulosRes] = await Promise.all([
+  const [productosConPeso, marcasRes, tareasCompletas, fichasRes, lugaresRes, modulosRes, marcasFabrica] = await Promise.all([
     traerProductos(`${BASE_PRODUCTO},peso_neto_g`),
     supabase.from("marcas").select("id_marca,nombre").eq("estado", "ACTIVA"),
     // Los carteles que quedaron con el precio viejo. La cuenta ya la lleva el
@@ -31,6 +32,8 @@ export default async function CartelesPage() {
     // portaprecio del blistero es de 65 × 40; en el resto, de 60 × 35 (2026-11-05).
     supabase.from("gondola_lugares").select("id_producto,id_modulo"),
     supabase.from("gondola_modulos").select("id_modulo,tipo"),
+    // «(Entre Nuts)» después del nombre y el peso de lo que viene envasado de fábrica (lib/marcaFabrica.ts).
+    cargarMarcasFabrica(supabase).catch(() => new Map<string, string>()),
   ]);
   const tipoModulo = new Map(((modulosRes.data ?? []) as { id_modulo: string; tipo: string | null }[]).map((m) => [m.id_modulo, m.tipo ?? "MODULO"]));
   const lugarDe = new Map<string, "GANCHO" | "ESTANTE">();
@@ -146,6 +149,7 @@ export default async function CartelesPage() {
         idProducto: p.id_producto,
         nombre: p.nombre,
         marca: marcas.get(p.id_marca) ?? null,
+        marcaFabrica: marcasFabrica.get(p.id_producto) ?? null,
         lista,
         efectivo,
         // Sin precio de efectivo cargado el cartel mentiría a medias, así que

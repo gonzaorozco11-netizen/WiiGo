@@ -23,6 +23,7 @@ import { REDES, leerRedes, textoDeRed } from "@/lib/redesProfesional";
 import AsesorApp, { type RedEnFicha } from "@/components/AsesorApp";
 import { cargarGondola, soloLoPuesto } from "@/lib/gondola";
 import type { OpinionPaciente } from "@/components/PerfilProfesional";
+import { cargarMarcasFabrica, nombresConMarca } from "@/lib/marcaFabrica";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +61,7 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
     redesRes,
     gondola,
     opinionesRes,
+    marcasFabrica,
   ] = await Promise.all([
     // Columnas explícitas: con "*" viajaban al navegador el royalty, el fee de
     // ingreso, el plan y el contacto de cada marca. Esta pantalla es pública.
@@ -100,6 +102,8 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
       .catch(() => null),
     // Opiniones de pacientes ya aprobadas (sql/profesionales-opiniones.sql). Sin el SQL falla sola.
     supabase.from("opiniones_profesional").select("id_opinion, id_profesional, nombre, detalle, texto, origen").eq("publico", true).order("orden"),
+    // «(Entre Nuts)» después del nombre de lo que viene envasado de fábrica (lib/marcaFabrica.ts).
+    cargarMarcasFabrica(supabase).catch(() => new Map<string, string>()),
   ]);
 
   // Las fichas destacadas (las que más pacientes trajeron este mes y el podio de puntos) van
@@ -245,7 +249,7 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
       local={local as Local}
       opinionesPorProfesional={opinionesPorProfesional}
       marcas={marcasRes.marcas}
-      productos={(productosRes.data ?? []) as ProductoPublico[]}
+      productos={nombresConMarca((productosRes.data ?? []) as ProductoPublico[], marcasFabrica)}
       variantesPorProducto={variantesPorProducto}
       subcategorias={(subcategoriasRes.data ?? []) as Subcategoria[]}
       profesionales={profesionales}

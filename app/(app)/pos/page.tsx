@@ -10,6 +10,7 @@ import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import PantallaBloqueada from "@/components/PantallaBloqueada";
 import PosApp, { type PedidoParaCobrar } from "@/components/PosApp";
 import { preciosVigentes } from "@/lib/pedidosProfesional";
+import { cargarMarcasFabrica, nombresConMarca } from "@/lib/marcaFabrica";
 
 export const dynamic = "force-dynamic";
 
@@ -52,7 +53,7 @@ export default async function PosPage({ searchParams }: { searchParams: Promise<
   const supabase = getSupabaseServerClient();
   const pedido = idPedido ? await pedidoParaCobrar(supabase, idPedido).catch(() => null) : null;
 
-  const [localesRes, productosRes, variantesRes, marcasRes, stockRes, configRes] = await Promise.all([
+  const [localesRes, productosRes, variantesRes, marcasRes, stockRes, configRes, marcasFabrica] = await Promise.all([
     supabase.from("locales").select("*").eq("estado", "ACTIVO").order("nombre", { ascending: true }),
     // Sin precio todavía (lo pone la marca y lo aprueba WiiGo) no se vende.
     supabase.from("productos").select("*").eq("estado", "ACTIVO").gt("precio_venta", 0),
@@ -60,6 +61,8 @@ export default async function PosPage({ searchParams }: { searchParams: Promise<
     supabase.from("marcas").select("*").eq("estado", "ACTIVA"),
     supabase.from("stock").select("*"),
     supabase.from("configuracion").select("valor").eq("parametro", "IVA_GENERAL_PORCENTAJE").maybeSingle(),
+    // «(Entre Nuts)» después del nombre, igual que lo ve el cliente (lib/marcaFabrica.ts).
+    cargarMarcasFabrica(supabase).catch(() => new Map<string, string>()),
   ]);
 
   const ivaGeneralPorcentaje = Number(configRes.data?.valor ?? 21);
@@ -87,7 +90,7 @@ export default async function PosPage({ searchParams }: { searchParams: Promise<
   return (
     <PosApp
       locales={(localesRes.data ?? []) as Local[]}
-      productos={(productosRes.data ?? []) as Producto[]}
+      productos={nombresConMarca((productosRes.data ?? []) as Producto[], marcasFabrica)}
       variantes={(variantesRes.data ?? []) as VarianteProducto[]}
       marcas={(marcasRes.data ?? []) as Marca[]}
       stock={(stockRes.data ?? []) as Stock[]}
