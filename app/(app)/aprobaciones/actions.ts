@@ -577,7 +577,9 @@ export async function aplicarCambiosProgramados(): Promise<{ aplicadas: number; 
             id_subcategoria: idSubcategoria,
             precio_venta: Number(datos.precio) || null,
             precio_efectivo: Number(datos.precioEfectivo) || null,
-            iva_porcentaje: datos.iva != null ? Number(datos.iva) : null,
+            // Sin IVA informado se deja el de la base (la columna no acepta vacío):
+            // mandando null, el alta fallaba y el producto nunca entraba (2026-11-07).
+            ...(datos.iva != null && Number.isFinite(Number(datos.iva)) ? { iva_porcentaje: Number(datos.iva) } : {}),
             costo_informado: Number(datos.costo) || null,
             descripcion: (datos.descripcion as string | null) ?? null,
             imagen: (datos.imagen as string | null) ?? null,
