@@ -582,6 +582,21 @@ export function Vincular(props: {
   const [error, setError] = useState<string | null>(null);
   const [listo, setListo] = useState<string | null>(null);
 
+  /**
+   * La marca que va a ver el cliente después del nombre, con las mismas reglas
+   * que lib/marcaFabrica.ts: solo si viene envasado (sin bolsita), nunca
+   * «Alifrut», nada en Cereales y no si el nombre ya la dice.
+   */
+  function marcaVisible(g: number | null): string | null {
+    const m = item.marca?.trim();
+    if (!m || /^alifrut$/i.test(m)) return null;
+    if (tamanos.get(g)) return null;
+    const nombreRubro = props.rubros.find((r) => r.id === rubro)?.nombre ?? "";
+    if (/^cereales$/i.test(nombreRubro.trim())) return null;
+    if (normalizar(nombre).replace(/\s+/g, "").includes(normalizar(m).replace(/\s+/g, ""))) return null;
+    return m;
+  }
+
   async function guardar() {
     setGuardando(true);
     setError(null);
@@ -734,9 +749,20 @@ export function Vincular(props: {
             <span>Así va a figurar:</span>
             {[...tamanos.keys()]
               .sort((a, b) => (a ?? 0) - (b ?? 0))
-              .map((g) => (
-                <b key={String(g)}>{nombreConTamano(nombre, g)}</b>
-              ))}
+              .map((g) => {
+                const m = marcaVisible(g);
+                return (
+                  <b key={String(g)}>
+                    {nombreConTamano(nombre, g)}
+                    {m && <span className="pr-m-marca"> ({m})</span>}
+                  </b>
+                );
+              })}
+            {[...tamanos.keys()].some((g) => marcaVisible(g)) && (
+              <small className="pr-tenue" style={{ flexBasis: "100%" }}>
+                La marca entre paréntesis la agrega el sistema solo, en lo que ve el cliente: no hace falta escribirla.
+              </small>
+            )}
           </div>
         )}
         {tamanos.size > 0 && (
