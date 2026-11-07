@@ -583,6 +583,22 @@ export const GUIAS: Guia[] = [
     ],
     tip: "En la hoja A4: márgenes «ninguno», sin «ajustar al papel», y hacé una prueba en hoja común. En el rollo: márgenes «ninguno» y escala 100 %.",
   },
+  {
+    id: "gondola-equipo",
+    audiencias: [...I],
+    pantalla: "gondola",
+    tema: "Stock",
+    titulo: "Ver cuánto hay y dónde va cada producto",
+    donde: "Stock → Góndola",
+    rutas: ["/gondola"],
+    pasos: [
+      "Entrá a <b>Góndola</b> desde el celular o la tablet. Arriba elegís el mueble (Mueble 1 a 5, las islas, Animalfit, el freezer).",
+      "Cada producto tiene un número con cuánto hay: <b>verde</b> hay, <b>amarillo</b> queda poco (llegó al mínimo), <b>rojo</b> no hay. Gris con «!» es un lugar reservado que todavía falta poner.",
+      "Para encontrar un producto, tocá <b>Escanear</b> y apuntá al código de barras (funciona en Android y en iPhone), o escribí el nombre. Te dice cuánto hay y en qué mueble, estante y lugar va, y te lo marca.",
+      "En <b>Reponer</b> está la lista de lo que falta o queda poco, mueble por mueble.",
+    ],
+    tip: "Acá solo se mira: si un producto está mal ubicado, avisale a Gonzalo (se acomoda en Precios → Góndola).",
+  },
 
   // ===================== EQUIPO: ADMINISTRACIÓN =====================
   {

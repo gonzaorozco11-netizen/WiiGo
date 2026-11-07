@@ -6,13 +6,14 @@ import { useEffect, useRef, useState } from "react";
  * Lee el código de barras de un envase con la cámara.
  *
  * Usa el lector que Chrome en Android ya trae de fábrica (`BarcodeDetector`):
- * cero librerías, cero peso extra de descarga y anda fluido en la tablet de la
- * operativa, que es una Samsung Tab A11. Si el navegador no lo trae —Safari en
- * iPad, por ejemplo— lo dice con todas las letras y ofrece cargarlo a mano, en
- * vez de quedarse mirando una cámara que nunca va a reconocer nada.
+ * cero peso extra de descarga y anda fluido en la tablet de la operativa, que
+ * es una Samsung Tab A11. Safari (iPhone, iPad) no lo trae: ahí se baja, solo
+ * en ese momento, un lector hecho en JavaScript (@zxing/browser), para que los
+ * chicos escaneen desde cualquier celular (Gonzalo, 2026-11-07). Si igual no
+ * lee, siempre se puede escribir el número a mano.
  *
- * Es para cargar el código UNA VEZ por producto, no para la venta: el totem
- * tiene su propio lector físico. Por eso no hace falta que sea instantáneo.
+ * Se usa para cargar el código de un producto y en Góndola, para encontrarlo:
+ * el totem tiene su propio lector físico para la venta.
  */
 
 type Detectado = { rawValue: string };
@@ -27,26 +28,36 @@ const FORMATOS = ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39"];
 export default function EscanerCodigo({
   onLeido,
   onCerrar,
+  titulo = "Escanear el código del envase",
 }: {
   onLeido: (codigo: string) => void;
   onCerrar: () => void;
+  titulo?: string;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [estado, setEstado] = useState<"abriendo" | "leyendo" | "sin-soporte" | "sin-permiso">("abriendo");
   const [manual, setManual] = useState("");
+  const [aMano, setAMano] = useState(false);
 
   useEffect(() => {
     let stream: MediaStream | null = null;
     let cancelado = false;
     let cuadro = 0;
+    let pararZxing: (() => void) | null = null;
+
+    const leido = (valor: string) => {
+      if (cancelado) return;
+      cancelado = true;
+      // Un pitido corto para confirmar sin tener que mirar la pantalla.
+      navigator.vibrate?.(80);
+      onLeido(valor);
+    };
 
     async function arrancar() {
-      const Detector = (window as unknown as { BarcodeDetector?: ConstructorDetector }).BarcodeDetector;
-      if (!Detector) {
+      if (!navigator.mediaDevices?.getUserMedia) {
         setEstado("sin-soporte");
         return;
       }
-
       try {
         // `environment` es la cámara de atrás: la de adelante apuntaría a la
         // cara de quien está escaneando.
@@ -63,6 +74,34 @@ export default function EscanerCodigo({
       await videoRef.current.play().catch(() => {});
       setEstado("leyendo");
 
+      const Detector = (window as unknown as { BarcodeDetector?: ConstructorDetector }).BarcodeDetector;
+      if (!Detector) {
+        // iPhone / iPad: el lector en JavaScript, bajado recién ahora.
+        try {
+          const [{ BrowserMultiFormatReader }, { BarcodeFormat, DecodeHintType }] = await Promise.all([import("@zxing/browser"), import("@zxing/library")]);
+          if (cancelado || !videoRef.current || !stream) return;
+          const pistas = new Map();
+          pistas.set(DecodeHintType.POSSIBLE_FORMATS, [
+            BarcodeFormat.EAN_13,
+            BarcodeFormat.EAN_8,
+            BarcodeFormat.UPC_A,
+            BarcodeFormat.UPC_E,
+            BarcodeFormat.CODE_128,
+            BarcodeFormat.CODE_39,
+          ]);
+          const lector = new BrowserMultiFormatReader(pistas, { delayBetweenScanAttempts: 150 });
+          const controles = await lector.decodeFromStream(stream, videoRef.current, (resultado) => {
+            const valor = resultado?.getText()?.trim();
+            if (valor) leido(valor);
+          });
+          pararZxing = () => controles.stop();
+          if (cancelado) pararZxing();
+        } catch {
+          setEstado("sin-soporte");
+        }
+        return;
+      }
+
       const detector = new Detector({ formats: FORMATOS });
 
       // Se mira un cuadro cada tanto y no todos: en la placa de una tablet,
@@ -78,12 +117,7 @@ export default function EscanerCodigo({
         try {
           const encontrados = await detector.detect(video);
           const valor = encontrados[0]?.rawValue?.trim();
-          if (valor) {
-            cancelado = true;
-            // Un pitido corto para confirmar sin tener que mirar la pantalla.
-            navigator.vibrate?.(80);
-            onLeido(valor);
-          }
+          if (valor) leido(valor);
         } catch {
           // Un cuadro borroso tira error: se ignora y se prueba el siguiente.
         }
@@ -95,6 +129,7 @@ export default function EscanerCodigo({
     return () => {
       cancelado = true;
       cancelAnimationFrame(cuadro);
+      pararZxing?.();
       stream?.getTracks().forEach((t) => t.stop());
     };
   }, [onLeido]);
@@ -110,18 +145,20 @@ export default function EscanerCodigo({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-4 py-3 flex items-center justify-between border-b border-neutral-200">
-          <p className="text-sm font-semibold">Escanear el código del envase</p>
+          <p className="text-sm font-semibold">{titulo}</p>
           <button type="button" onClick={onCerrar} className="text-neutral-400 text-lg px-1">
             ✕
           </button>
         </div>
 
-        {estado === "sin-soporte" || estado === "sin-permiso" ? (
+        {estado === "sin-soporte" || estado === "sin-permiso" || aMano ? (
           <div className="p-5 space-y-3">
             <p className="text-sm text-neutral-600">
-              {estado === "sin-soporte"
-                ? "Este navegador no puede leer códigos con la cámara. Desde Chrome en Android funciona; si no, escribí los números que están debajo de las rayitas."
-                : "No se pudo abrir la cámara. Revisá que le hayas dado permiso, o escribí los números que están debajo de las rayitas."}
+              {aMano
+                ? "Escribí los números que están debajo de las rayitas."
+                : estado === "sin-soporte"
+                  ? "Este navegador no puede leer códigos con la cámara. Escribí los números que están debajo de las rayitas."
+                  : "No se pudo abrir la cámara. Revisá que le hayas dado permiso, o escribí los números que están debajo de las rayitas."}
             </p>
             <input
               autoFocus
@@ -160,7 +197,10 @@ export default function EscanerCodigo({
             <p className="px-4 py-3 text-xs text-neutral-500 text-center">
               {estado === "abriendo"
                 ? "Abriendo la cámara…"
-                : "Apuntá al código de barras del envase. Se carga solo."}
+                : "Apuntá al código de barras del envase. Se carga solo."}{" "}
+              <button type="button" onClick={() => setAMano(true)} className="underline text-neutral-700">
+                ¿No lo lee? Escribilo
+              </button>
             </p>
           </>
         )}

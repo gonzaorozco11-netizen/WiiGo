@@ -86,7 +86,8 @@ function Contador({ hasta, dec = 0 }: { hasta: number; dec?: number }) {
 export default function NutricionAsesor({ ficha, idioma, claseTitular }: { ficha: FichaProducto; idioma: Idioma; claseTitular: string }) {
   const t = T[idioma] ?? T.es;
   const gPorcion = gramosPorcion(ficha.porcion);
-  const [porcion, setPorcion] = useState(false);
+  // Arranca en la porción si el producto la tiene: va primero (Gonzalo, 2026-11-07).
+  const [porcion, setPorcion] = useState(Boolean(gPorcion));
   const [listo, setListo] = useState(false);
   const [elegido, setElegido] = useState<string | null>(null);
   // Cambia en cada 100 g ↔ porción: las tarjetas y el contador arrancan de nuevo.
@@ -161,11 +162,12 @@ export default function NutricionAsesor({ ficha, idioma, claseTitular }: { ficha
         <p className="na-eyebrow">{t.titulo}</p>
         {gPorcion && (kcal != null || tarjetas.length > 0) && (
           <div className="na-toggle" role="group" aria-label={t.titulo}>
-            <button type="button" className={!porcion ? "on" : undefined} onClick={() => cambiar(false)}>
-              {t.cada}
-            </button>
+            {/* Primero la porción y después cada 100 g, en todos los productos (Gonzalo, 2026-11-07). */}
             <button type="button" className={porcion ? "on" : undefined} onClick={() => cambiar(true)}>
               {t.porcion} · {fmt(gPorcion)} g
+            </button>
+            <button type="button" className={!porcion ? "on" : undefined} onClick={() => cambiar(false)}>
+              {t.cada}
             </button>
           </div>
         )}

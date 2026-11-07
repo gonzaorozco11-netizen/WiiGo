@@ -11,19 +11,32 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 // - Nunca «Alifrut»: es el proveedor, no una marca para el cliente.
 // - Los cereales, nada.
 // - Sin marca cargada, nada. Y si el nombre ya la dice, no se repite.
+// - Los que Gonzalo dijo que no lleven nada aunque Alifrut les ponga marca
+//   (la Avena Instantánea x400gr no es Ying Yang, 2026-11-07): la lista de
+//   ids en configuracion → SIN_MARCA_FABRICA.
 
 const plano = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, "");
 
 /** id_producto → la marca que se muestra. Solo están los que la llevan. */
 export async function cargarMarcasFabrica(supabase: SupabaseClient): Promise<Map<string, string>> {
   const mapa = new Map<string, string>();
-  const { data, error } = await supabase
-    .from("productos")
-    .select("id_producto, nombre, id_envase, marcas(tipo_comercializacion), subcategorias(nombre), costos_granel(catalogo_proveedor(marca))")
-    .eq("estado", "ACTIVO")
-    .range(0, 4999);
+  const [{ data, error }, { data: sin }] = await Promise.all([
+    supabase
+      .from("productos")
+      .select("id_producto, nombre, id_envase, marcas(tipo_comercializacion), subcategorias(nombre), costos_granel(catalogo_proveedor(marca))")
+      .eq("estado", "ACTIVO")
+      .range(0, 4999),
+    supabase.from("configuracion").select("valor").eq("parametro", "SIN_MARCA_FABRICA").maybeSingle(),
+  ]);
   if (error || !data) return mapa;
+  let excluidos = new Set<string>();
+  try {
+    excluidos = new Set((JSON.parse((sin?.valor as string | undefined) ?? "[]") as string[]).map(String));
+  } catch {
+    // Un valor mal escrito no rompe las pantallas: sin excepciones.
+  }
   for (const p of data) {
+    if (excluidos.has(p.id_producto as string)) continue;
     const tipo = (p.marcas as unknown as { tipo_comercializacion: string } | null)?.tipo_comercializacion;
     if (tipo !== "PROPIA" || p.id_envase) continue;
     const rubro = (p.subcategorias as unknown as { nombre: string } | null)?.nombre ?? "";
