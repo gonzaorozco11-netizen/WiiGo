@@ -66,6 +66,42 @@ export async function registrarConteo(idItem: string, cantidad: number): Promise
     .eq("id_variante", idVariante)
     .eq("estado", "ABIERTA");
 
+  // Primer conteo de algo que nunca tuvo stock cargado (hoy casi todo lo de
+  // WiiGo está en 0): es la carga inicial, no una diferencia. Si no, el primer
+  // mes le llenaría a Gonzalo la pantalla de diferencias que no son tales.
+  if (esperado === 0 && n > 0) {
+    const [{ count: antes }, { count: movs }] = await Promise.all([
+      supabase
+        .from("conteos_stock_items")
+        .select("id_item, conteos_stock!inner(id_local)", { count: "exact", head: true })
+        .eq("conteos_stock.id_local", conteo.id_local)
+        .eq("id_variante", idVariante)
+        .not("contado_en", "is", null),
+      supabase.from("movimientos_stock").select("id_movimiento", { count: "exact", head: true }).eq("id_local", conteo.id_local).eq("id_variante", idVariante),
+    ]);
+    if ((antes ?? 0) === 0 && (movs ?? 0) === 0) {
+      const { error } = await supabase
+        .from("conteos_stock_items")
+        .update({ contado: n, esperado, contado_en: ahora, resultado: "OK" })
+        .eq("id_item", idItem);
+      if (error) return { error: friendlyDbError(error) };
+      await supabase
+        .from("stock")
+        .upsert({ id_variante: idVariante, id_local: conteo.id_local, cantidad: n, fecha_actualizacion: ahora }, { onConflict: "id_variante,id_local" });
+      await supabase.from("movimientos_stock").insert({
+        id_variante: idVariante,
+        id_local: conteo.id_local,
+        tipo: "AJUSTE",
+        cantidad: n,
+        motivo: `Primer conteo (el stock estaba sin cargar): ${quien} contó ${n}`,
+        usuario: quien,
+      });
+      revalidatePath("/conteo");
+      revalidatePath("/stock");
+      return { resultado: "OK" };
+    }
+  }
+
   if (n === esperado) {
     const { error } = await supabase
       .from("conteos_stock_items")
