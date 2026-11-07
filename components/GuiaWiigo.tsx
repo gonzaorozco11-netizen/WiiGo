@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { usePathname } from "next/navigation";
 import { datosDeGuia, preguntarEnGuia, responderPreguntaGuia, descartarPreguntaGuia } from "@/app/guia/actions";
 import type { Audiencia, DatosGuia, GuiaLista } from "@/lib/guia/tipos";
@@ -31,6 +31,22 @@ const fechaCorta = (iso: string) => new Date(iso.length === 10 ? `${iso}T12:00:0
 
 const ETIQUETA_AUDIENCIA: Record<Audiencia, string> = { interno: "Equipo", marca: "Marca", profesional: "Profesional" };
 
+// Si el botón quedó guardado con la cruz en este aparato. Se lee después de
+// cargar la página (el servidor no tiene localStorage) para no romper la
+// hidratación; si el navegador no deja leer, el botón aparece como siempre.
+const CLAVE_GUARDADA = "guia.guardada";
+function suscribirGuardada(avisar: () => void) {
+  window.addEventListener("storage", avisar);
+  return () => window.removeEventListener("storage", avisar);
+}
+function leerGuardada() {
+  try {
+    return localStorage.getItem(CLAVE_GUARDADA) === "1";
+  } catch {
+    return false;
+  }
+}
+
 export default function GuiaWiigo({ audiencia, preguntasSinResponder = 0 }: { audiencia: Audiencia; preguntasSinResponder?: number }) {
   const pathname = usePathname() ?? "/";
   const [abierta, setAbierta] = useState(false);
@@ -40,6 +56,19 @@ export default function GuiaWiigo({ audiencia, preguntasSinResponder = 0 }: { au
   const [tab, setTab] = useState<"guias" | "glosario" | "novedades">("guias");
   const [busqueda, setBusqueda] = useState("");
   const [abiertaId, setAbiertaId] = useState<string | null>(null);
+  // La cruz lo guarda en una pestañita del borde: en el celular tapaba botones
+  // (Gonzalo, 2026-11-07). Se recuerda en ese aparato; si el navegador no deja
+  // guardar, vuelve a aparecer la próxima vez y listo.
+  const recordado = useSyncExternalStore(suscribirGuardada, leerGuardada, () => false);
+  const [elegido, setElegido] = useState<boolean | null>(null);
+  const guardado = elegido ?? recordado;
+  function guardar(si: boolean) {
+    setElegido(si);
+    try {
+      if (si) localStorage.setItem(CLAVE_GUARDADA, "1");
+      else localStorage.removeItem(CLAVE_GUARDADA);
+    } catch {}
+  }
 
   const cargar = useCallback(() => {
     setCargando(true);
@@ -82,19 +111,33 @@ export default function GuiaWiigo({ audiencia, preguntasSinResponder = 0 }: { au
 
   return (
     <div className="guia-raiz print:hidden">
-      <button
-        type="button"
-        className="guia-fab"
-        onClick={() => setAbierta((v) => !v)}
-        aria-expanded={abierta}
-        aria-controls="guia-panel"
-      >
-        <span className="guia-q" aria-hidden="true">
+      {guardado && !abierta ? (
+        // Guardado con la cruz: queda una pestañita en el borde para traerlo.
+        <button type="button" className="guia-pestana" onClick={() => guardar(false)} aria-label="Mostrar «¿Alguna duda?»">
           ?
-        </span>
-        ¿Alguna duda?
-        {pendientes > 0 && <span className="guia-punto">{pendientes}</span>}
-      </button>
+        </button>
+      ) : (
+        <>
+          <button
+            type="button"
+            className="guia-fab"
+            onClick={() => setAbierta((v) => !v)}
+            aria-expanded={abierta}
+            aria-controls="guia-panel"
+          >
+            <span className="guia-q" aria-hidden="true">
+              ?
+            </span>
+            ¿Alguna duda?
+            {pendientes > 0 && <span className="guia-punto">{pendientes}</span>}
+          </button>
+          {!abierta && (
+            <button type="button" className="guia-cerrar" onClick={() => guardar(true)} aria-label="Guardar el botón de ayuda">
+              ✕
+            </button>
+          )}
+        </>
+      )}
 
       {abierta && <div className="guia-velo" onClick={() => setAbierta(false)} aria-hidden="true" />}
       <aside id="guia-panel" className={`guia-panel${abierta ? " abierta" : ""}`} aria-label="Guía WiiGo" aria-hidden={!abierta}>

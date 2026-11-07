@@ -478,7 +478,9 @@ export default function AppNav({
 
       {/* Cajón de la tablet y el celular. */}
       {cajon && (
-        <div className="lg:hidden fixed inset-0 z-40 print:hidden">
+        // `menu-cajon`: con el menú abierto se esconde el botón de la guía,
+        // que en el celular quedaba arriba de «Salir» (guia.css).
+        <div className="menu-cajon lg:hidden fixed inset-0 z-40 print:hidden">
           <button type="button" className="absolute inset-0 bg-black/35" aria-label="Cerrar menú" onClick={() => setCajon(false)} />
           <aside className="absolute top-0 bottom-0 left-0 w-[82%] max-w-[300px] bg-white shadow-2xl">{menu}</aside>
         </div>

@@ -39,6 +39,31 @@
   .guia-fab { right: 12px; bottom: 12px; padding: 9px; font-size: 0; gap: 0; }
   .guia-q { width: 26px; height: 26px; font-size: 15px; }
 }
+/* Con el menú lateral abierto (equipo o portal) el botón se va: en el
+   celular tapaba «Salir», que está abajo de todo del menú (Gonzalo, 2026-11-07). */
+body:has(.menu-cajon) .guia-fab,
+body:has(.portal-nav.abierto) .guia-fab,
+body:has(.menu-cajon) .guia-cerrar,
+body:has(.portal-nav.abierto) .guia-cerrar,
+body:has(.menu-cajon) .guia-pestana,
+body:has(.portal-nav.abierto) .guia-pestana { display: none; }
+
+/* La cruz para guardarlo, y la pestañita del borde para traerlo de vuelta. */
+.guia-cerrar {
+  position: fixed; right: 8px; bottom: 54px; z-index: 70;
+  width: 24px; height: 24px; border-radius: 50%; border: 0;
+  background: #fff; color: #475569; font-size: 12px; font-weight: 800; line-height: 1;
+  box-shadow: 0 4px 12px -4px rgba(15, 23, 42, .45);
+  display: grid; place-items: center;
+}
+@media (min-width: 641px) { .guia-cerrar { right: 12px; bottom: 62px; } }
+.guia-pestana {
+  position: fixed; right: 0; bottom: 90px; z-index: 70;
+  width: 20px; height: 44px; border: 0; border-radius: 10px 0 0 10px;
+  background: var(--g-acento); color: #fff; font-size: 12px; font-weight: 800;
+  opacity: .8; box-shadow: 0 6px 18px -8px rgba(15, 23, 42, .5);
+}
+.guia-pestana:hover, .guia-pestana:focus-visible { opacity: 1; }
 
 /* El panel */
 .guia-velo { position: fixed; inset: 0; z-index: 71; background: rgba(15, 23, 42, .18); }
