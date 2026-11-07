@@ -11,6 +11,7 @@ import { fechaHoraArgentina } from "@/lib/horarios";
 import { insertarTareasEtiqueta, type FilaTareaEtiqueta } from "@/lib/tareasEtiqueta";
 import { generarSkuVariante, generarCodigoBarrasVariante } from "@/lib/codigosVariante";
 import { PLANES, type PlanMarca } from "@/lib/planesMarca";
+import { guardarCosto } from "@/lib/costosMarca";
 import {
   obtenerPolitica,
   proximaVigencia,
@@ -580,7 +581,8 @@ export async function aplicarCambiosProgramados(): Promise<{ aplicadas: number; 
             // Sin IVA informado se deja el de la base (la columna no acepta vacío):
             // mandando null, el alta fallaba y el producto nunca entraba (2026-11-07).
             ...(datos.iva != null && Number.isFinite(Number(datos.iva)) ? { iva_porcentaje: Number(datos.iva) } : {}),
-            costo_informado: Number(datos.costo) || null,
+            // El costo de la marca NO va en costo_informado (ese es de WiiGo, para
+            // la marca propia): va a costos_marca, abajo, y solo si lo informó.
             descripcion: (datos.descripcion as string | null) ?? null,
             imagen: (datos.imagen as string | null) ?? null,
             estado: "ACTIVO",
@@ -589,6 +591,19 @@ export async function aplicarCambiosProgramados(): Promise<{ aplicadas: number; 
           .select("id_producto")
           .single();
         if (errorAlta) throw new Error(errorAlta.message);
+
+        // Su costo, si lo puso (es opcional desde 2026-11-07). El $1 que se
+        // cargaba para poder mandar sin informarlo no cuenta como costo.
+        const costoMarca = Number(datos.costo);
+        if (Number.isFinite(costoMarca) && costoMarca > 1) {
+          await guardarCosto(supabase, {
+            idMarca: s.id_marca as string,
+            idProducto: creado.id_producto as string,
+            costo: costoMarca,
+            vigenteDesde: fechaHoraArgentina(new Date()).fecha,
+            idUsuario: (s.solicitada_por as string | null) ?? null,
+          });
+        }
 
         // La ficha del asesor, si la mandó. Es lo que el cliente lee en el
         // tótem: un producto con ficha se vende más que uno sin ficha, y el

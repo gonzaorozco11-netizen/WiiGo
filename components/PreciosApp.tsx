@@ -536,8 +536,28 @@ function confirmadosDe(datos: DatosCompetencia | null, p: ProductoDelModulo): Co
     .sort((a, b) => a.normal - b.normal);
 }
 
-function PreciosConfirmados({ lista, tuyo }: { lista: Confirmado[]; tuyo: number | null }) {
-  if (lista.length === 0) return <span className="pr-tenue">—</span>;
+/**
+ * Los comercios que tienen un equivalente propuesto que todavía no confirmaste
+ * (sin Alifrut, que va en su columna). Gonzalo veía las celdas verdes de
+ * Alifrut en Competencia y pensaba que estaba todo confirmado (2026-11-07):
+ * así sabe por qué la columna está vacía y qué le falta.
+ */
+function sinConfirmarDe(datos: DatosCompetencia | null, p: ProductoDelModulo): string[] {
+  return (datos?.vinculos[p.id] ?? [])
+    .filter((v) => v.comercio !== "ALIFRUT" && v.estado === "PROPUESTO" && v.item)
+    .map((v) => (COMERCIOS.find((c) => c.clave === v.comercio)?.nombre ?? v.comercio).replace(/ Mendoza$/, ""));
+}
+
+function PreciosConfirmados({ lista, tuyo, sinConfirmar = [] }: { lista: Confirmado[]; tuyo: number | null; sinConfirmar?: string[] }) {
+  if (lista.length === 0) {
+    return sinConfirmar.length > 0 ? (
+      <span className="pr-conf-falta" title="Confirmalos en la pestaña Competencia (✓ Sí) y aparecen acá">
+        Sin confirmar: {sinConfirmar.join(", ")}
+      </span>
+    ) : (
+      <span className="pr-tenue">—</span>
+    );
+  }
   return (
     <span className="pr-conf">
       {lista.map((o) => {
@@ -910,7 +930,7 @@ function Lista(props: {
                             <PrecioAlifrut a={ali} tuyo={r.ok ? r.publico : null} />
                           </td>
                           <td rowSpan={2} className="pr-conf-celda">
-                            <PreciosConfirmados lista={confirmados} tuyo={r.ok ? r.publico : null} />
+                            <PreciosConfirmados lista={confirmados} tuyo={r.ok ? r.publico : null} sinConfirmar={sinConfirmarDe(props.competencia, p)} />
                           </td>
                         </tr>,
                         <tr key={`${p.id}-ef`} className={`${clase} e`} onClick={abrir}>

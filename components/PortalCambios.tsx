@@ -1567,7 +1567,8 @@ function FormProductoNuevo({
   const nPrecio = Number(precio);
   const nCosto = Number(costo);
   const nEfectivo = Number(precioEfectivo);
-  const valido = nombre.trim() !== "" && nPrecio > 0 && nCosto > 0;
+  // El costo es opcional: es de la marca y solo le sirve para ver su ganancia.
+  const valido = nombre.trim() !== "" && nPrecio > 0;
   const efectivoMalo = nEfectivo > 0 && nPrecio > 0 && nEfectivo >= nPrecio;
 
   // Lo que falta, por paso. Se marca en rojo recién cuando el que carga pasó
@@ -1576,7 +1577,7 @@ function FormProductoNuevo({
   const [intento, setIntento] = useState(false);
   const faltaEnPaso = {
     1: nombre.trim() === "",
-    2: !(nCosto > 0) || !(nPrecio > 0) || efectivoMalo,
+    2: !(nPrecio > 0) || efectivoMalo,
     3: false,
   } as Record<number, boolean>;
   const marcar = (n: number) => intento && faltaEnPaso[n];
@@ -1690,7 +1691,6 @@ function FormProductoNuevo({
           ⚠ Falta completar{" "}
           {[
             nombre.trim() === "" && "el nombre (paso 1)",
-            !(nCosto > 0) && "tu costo (paso 2)",
             !(nPrecio > 0) && "el precio de góndola (paso 2)",
           ]
             .filter(Boolean)
@@ -1708,7 +1708,7 @@ function FormProductoNuevo({
             nombreEn,
             nombrePt,
             precio: nPrecio,
-            costo: nCosto,
+            costo: nCosto > 0 ? nCosto : null,
             descripcion,
             idSubcategoria: idSubcategoria || null,
             subcategoriaNueva: subNueva,
@@ -1744,7 +1744,7 @@ function FormProductoNuevo({
         pie={
           <p className="cam-nota">
             Al aprobarse queda esperando mercadería: recién se puede vender cuando entre el stock. El costo
-            es tuyo y no lo ve nadie del lado del cliente — sirve para que veas tu ganancia real.
+            es opcional y es tuyo: no lo ve nadie del lado del cliente — sirve para que veas tu ganancia real.
           </p>
         }
       >
@@ -1870,29 +1870,24 @@ function FormProductoNuevo({
           <>
             <Bloque
               icono="💲"
-              titulo="Precio y tu costo"
+              titulo="Precio"
               desc="Mientras lo escribís, abajo ves cuánto te queda de cada venta."
             >
             {/* El costo primero: es lo que la marca sabe sin pensar, y es
                 contra lo que mira si el precio le cierra. */}
             <label className="cam-campo ancho">
-              <span>Tu costo *</span>
+              <span>Tu costo (opcional)</span>
               <input
-                className={malo(!(nCosto > 0))}
                 type="number"
                 step="0.01"
                 value={costo}
                 onChange={(e) => setCosto(e.target.value)}
-                placeholder="0,00"
+                placeholder="Vacío = no lo informo"
                 autoFocus
               />
-              {malo(!(nCosto > 0)) ? (
-                <small className="cam-falta">⚠ Sin tu costo no podemos mostrarte cuánto ganás</small>
-              ) : (
-                <small className="cam-ay">
-                  Lo que te sale a vos una unidad, sin IVA. Solo lo vemos WiiGo y vos.
-                </small>
-              )}
+              <small className="cam-ay">
+                Lo que te sale a vos una unidad, sin IVA. Si lo ponés, abajo ves cuánto ganás. Solo lo vemos WiiGo y vos.
+              </small>
             </label>
 
             <div className="cam-campos">

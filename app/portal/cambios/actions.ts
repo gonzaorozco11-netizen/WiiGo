@@ -717,7 +717,8 @@ export type VariantePedida = {
 export async function pedirProductoNuevo(datos: {
   nombre: string;
   precio: number;
-  costo: number;
+  /** Opcional: es suyo y solo le sirve para ver su ganancia. */
+  costo: number | null;
   descripcion?: string;
   nombreEn?: string;
   nombrePt?: string;
@@ -803,7 +804,7 @@ export async function pedirProductoNuevo(datos: {
     datos: {
       nombre: datos.nombre.trim(),
       precio: datos.precio,
-      costo: datos.costo,
+      costo: datos.costo != null && datos.costo > 0 ? datos.costo : null,
       descripcion: descripcion || null,
       nombreEn: (datos.nombreEn ?? "").trim() || null,
       nombrePt: (datos.nombrePt ?? "").trim() || null,

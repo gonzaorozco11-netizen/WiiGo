@@ -231,13 +231,12 @@ export function validarProductoNuevo(datos: {
   if (!Number.isFinite(datos.precio) || datos.precio <= 0) {
     return { frena: "El precio tiene que ser mayor a cero.", alertas: {} };
   }
-  if (datos.costo === null || !Number.isFinite(datos.costo) || datos.costo <= 0) {
-    return { frena: "Cargá el costo del producto: es lo que te permite ver tu ganancia.", alertas: {} };
-  }
-
+  // El costo es opcional (Gonzalo, 2026-11-07: Animalfit no lo quiere poner y
+  // cargaba $1 para poder mandar). Es suyo, solo le sirve para ver su ganancia,
+  // y las liquidaciones no lo usan.
   const v = sinAlertas();
   // No frena: es su negocio, no el nuestro. Pero puede ser un error de tipeo.
-  if (datos.costo >= datos.precio) {
+  if (datos.costo != null && Number.isFinite(datos.costo) && datos.costo > 0 && datos.costo >= datos.precio) {
     v.alertas.avisoParaLaMarca = "Con ese precio y ese costo, perdés plata en cada venta. Revisalo.";
   }
   return v;
