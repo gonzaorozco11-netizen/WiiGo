@@ -237,15 +237,24 @@ function nombreParaEtiqueta(item: ItemCodigo) {
   return sinMarca.length >= 12 ? sinMarca : item.producto;
 }
 
+/**
+ * El equipo del local escanea y carga el código que falta; cambiar o sacar uno
+ * ya cargado, y decir qué marca trae código, lo hace solo el Dueño (Gonzalo,
+ * 2026-11-07). Las acciones lo vuelven a controlar del lado del servidor.
+ */
+const EsAdminContext = createContext(false);
+
 export default function CodigosApp({
   items,
   entradas = [],
   pieEtiqueta = PIE_ETIQUETA_DEFECTO,
+  esAdmin = false,
 }: {
   items: ItemCodigo[];
   entradas?: EntradaPendiente[];
   /** Nombre y dirección del local, al pie de la etiqueta de lo fraccionado. */
   pieEtiqueta?: string;
+  esAdmin?: boolean;
 }) {
   // Si acaba de entrar mercadería que hay que etiquetar, la pantalla arranca
   // en Imprimir: es a lo que vino la operativa. Si no, arranca en Revisar, que
@@ -275,6 +284,7 @@ export default function CodigosApp({
   }, [items, busqueda, soloFaltan]);
 
   return (
+    <EsAdminContext.Provider value={esAdmin}>
     <div className="max-w-5xl mx-auto">
       <div className="flex items-start justify-between gap-4 flex-wrap mb-4">
         <div>
@@ -362,6 +372,7 @@ export default function CodigosApp({
         />
       )}
     </div>
+    </EsAdminContext.Provider>
   );
 }
 
@@ -389,6 +400,7 @@ function Revisar({
   onImprimir: () => void;
 }) {
   const porMarca = useMemo(() => agruparPorMarca(items), [items]);
+  const esAdmin = useContext(EsAdminContext);
 
   return (
     <>
@@ -423,7 +435,7 @@ function Revisar({
                     ? "sus envases no traen código: llevan sticker"
                     : `${deLaMarca.filter((i) => i.envasado && (!i.codigo || esCodigoInterno(i.codigo))).length} falta escanear`}
                 </span>
-                {!deLaMarca[0]?.propia && deLaMarca[0]?.idMarca && (
+                {esAdmin && !deLaMarca[0]?.propia && deLaMarca[0]?.idMarca && (
                   <MarcaSinCodigo
                     idMarca={deLaMarca[0].idMarca}
                     sinCodigo={Boolean(deLaMarca[0].marcaSinCodigo)}
@@ -505,6 +517,7 @@ function FilaProducto({
   const router = useRouter();
   const [pendiente, startTransition] = useTransition();
   const propio = Boolean(item.codigo) && !esCodigoInterno(item.codigo);
+  const esAdmin = useContext(EsAdminContext);
 
   function quitar() {
     startTransition(async () => {
@@ -551,15 +564,18 @@ function FilaProducto({
         </span>
       )}
 
-      <button
-        type="button"
-        onClick={() => onEscanear(item)}
-        className="shrink-0 rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium hover:bg-neutral-50"
-      >
-        {propio ? "Cambiar" : "Escanear"}
-      </button>
+      {/* Uno ya cargado no lo toca el equipo: solo el Dueño lo cambia o lo saca. */}
+      {(!propio || esAdmin) && (
+        <button
+          type="button"
+          onClick={() => onEscanear(item)}
+          className="shrink-0 rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium hover:bg-neutral-50"
+        >
+          {propio ? "Cambiar" : "Escanear"}
+        </button>
+      )}
 
-      {propio && (
+      {propio && esAdmin && (
         <button
           type="button"
           onClick={quitar}

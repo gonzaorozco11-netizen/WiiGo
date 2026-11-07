@@ -123,5 +123,5 @@ export default async function CodigosPage() {
 
   const pie = (pieRes.data?.valor as string | undefined)?.trim() || PIE_ETIQUETA_DEFECTO;
 
-  return <CodigosApp items={items} entradas={entradas} pieEtiqueta={pie} />;
+  return <CodigosApp items={items} entradas={entradas} pieEtiqueta={pie} esAdmin={sesion?.rol === "admin"} />;
 }

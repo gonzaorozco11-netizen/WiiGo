@@ -30,7 +30,16 @@ const ICONO: Record<string, string> = {
   "/aprender/revisar": "🧠",
 };
 
-export default function MisTareasApp({ tablero, asignadas = [] }: { tablero: Tablero; asignadas?: TareaVista[] }) {
+export default function MisTareasApp({
+  tablero,
+  asignadas = [],
+  verAprobaciones = false,
+}: {
+  tablero: Tablero;
+  asignadas?: TareaVista[];
+  /** Solo quien tiene la pantalla Aprobaciones: al operativo del local no le compete. */
+  verAprobaciones?: boolean;
+}) {
   // Tres baldes por urgencia. Salen del color que ya trae cada tarea, así que
   // agregar una tarea nueva en tablero.ts la ubica sola.
   const ahora = tablero.urgentes.filter((t) => t.color === "rojo");
@@ -73,9 +82,11 @@ export default function MisTareasApp({ tablero, asignadas = [] }: { tablero: Tab
           siempre, aunque no haya nada esperando — si no, cuando la bandeja
           queda vacía no habría forma de entrar a mirar el historial. */}
       <div className="mt-7 border-t border-neutral-200 pt-4 flex flex-wrap gap-x-5 gap-y-2">
-        <Link href="/aprobaciones" className="text-sm font-semibold text-accent hover:underline">
-          Ver todas las aprobaciones →
-        </Link>
+        {verAprobaciones && (
+          <Link href="/aprobaciones" className="text-sm font-semibold text-accent hover:underline">
+            Ver todas las aprobaciones →
+          </Link>
+        )}
         <Link href="/" className="text-sm text-neutral-500 hover:text-neutral-900">
           Ir al Inicio
         </Link>

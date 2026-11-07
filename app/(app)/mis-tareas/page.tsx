@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { armarTablero } from "@/lib/tablero";
-import { obtenerSesionConPantallas } from "@/lib/roles";
+import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { tareasDeUsuario } from "@/lib/tareasEquipo";
 import MisTareasApp from "@/components/MisTareasApp";
@@ -22,5 +22,5 @@ export default async function MisTareasPage() {
   if (!tablero || !sesion) redirect("/login");
   const asignadas = await tareasDeUsuario(getSupabaseServerClient(), sesion.idUsuario).catch(() => []);
 
-  return <MisTareasApp tablero={tablero} asignadas={asignadas} />;
+  return <MisTareasApp tablero={tablero} asignadas={asignadas} verAprobaciones={puedeVerPantalla(sesion, "aprobaciones")} />;
 }

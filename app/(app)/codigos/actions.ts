@@ -16,8 +16,19 @@ import { CLAVE_SIN_CODIGO, cargarMarcasSinCodigo } from "@/lib/marcasSinCodigo";
  * cliente escanea uno en el tótem y se le carga el otro.
  */
 export async function guardarCodigoBarras(idVariante: string, codigo: string) {
+  const sesion = await obtenerSesionConPantallas();
+  if (!puedeVerPantalla(sesion, "codigos")) return { error: "No tenés permiso para cargar códigos." };
   const supabase = getSupabaseServerClient();
   const limpio = limpiarCodigoBarras(codigo);
+
+  // El equipo del local carga el código que falta, pero uno ya cargado lo
+  // cambia solo el Dueño (Gonzalo, 2026-11-07): un código pisado por error
+  // hace que la caja cobre otro producto.
+  if (sesion?.rol !== "admin") {
+    const { data: actual } = await supabase.from("variantes_producto").select("codigo_barras").eq("id_variante", idVariante).maybeSingle();
+    const ya = (actual?.codigo_barras as string | null)?.trim();
+    if (ya && !esCodigoInterno(ya)) return { error: "Ese producto ya tiene su código cargado. Si está mal, avisale a Gonzalo." };
+  }
 
   if (!limpio) return { error: "El código vino vacío." };
   if (limpio.length < 6) return { error: "Ese código es muy corto para ser el de un envase." };
@@ -58,7 +69,7 @@ export async function guardarCodigoBarras(idVariante: string, codigo: string) {
 /** Una marca pasa a imprimir el código WiiGo (sus envases no traen) o vuelve a escanearse. */
 export async function marcarMarcaSinCodigo(idMarca: string, sinCodigo: boolean) {
   const sesion = await obtenerSesionConPantallas();
-  if (!puedeVerPantalla(sesion, "codigos")) return { error: "No tenés permiso para cambiar esto." };
+  if (sesion?.rol !== "admin") return { error: "Esto lo cambia solo Gonzalo." };
 
   const supabase = getSupabaseServerClient();
   const marcas = await cargarMarcasSinCodigo(supabase);
@@ -88,6 +99,8 @@ export async function marcarMarcaSinCodigo(idMarca: string, sinCodigo: boolean) 
  * códigos que el lector de la tienda no toma, por ejemplo).
  */
 export async function volverAEtiquetaWiigo(idVariante: string) {
+  const sesion = await obtenerSesionConPantallas();
+  if (sesion?.rol !== "admin") return { error: "Un código ya cargado lo saca solo Gonzalo." };
   const supabase = getSupabaseServerClient();
 
   // El número sigue al mayor que haya, como en productos/actions.ts: así dos

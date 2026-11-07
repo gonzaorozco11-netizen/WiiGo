@@ -139,8 +139,16 @@ export async function armarTablero(): Promise<Tablero | null> {
     // La mercadería a devolver se entrega en Compras → Recepción desde que
     // se retiró "Abastecimiento (marcas)": el permiso que la habilita pasó a
     // ser el de esa pantalla.
+    // Solo lo que NO volvió a la góndola (fallado, vencido, abierto): lo que
+    // el cliente devolvió sano vuelve al stock y no hay nada que devolverle a
+    // la marca. Mismo criterio que la lista de reposicion/actions.ts; antes
+    // contaba todo y el local veía «mercadería para devolver» sin haber nada.
     puede("compras-recepcion")
-      ? supabase.from("detalle_devoluciones").select("id_detalle_dev", { count: "exact", head: true }).is("devuelto_a_marca_el", null)
+      ? supabase
+          .from("detalle_devoluciones")
+          .select("id_detalle_dev, devoluciones!inner(destino)", { count: "exact", head: true })
+          .eq("devoluciones.destino", "NO_VUELVE")
+          .is("devuelto_a_marca_el", null)
       : CERO,
     // Abiertas = sin llegar + llegadas a medias. Un pedido a medias todavía
     // tiene mercadería en la calle, así que sigue contando como pendiente.
