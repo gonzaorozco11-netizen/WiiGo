@@ -16,7 +16,7 @@ export default async function CodigosPage() {
 
   const entradas = await entradasQueNecesitanCodigo();
 
-  const BASE_PRODUCTO = "id_producto,nombre,imagen,id_marca";
+  const BASE_PRODUCTO = "id_producto,nombre,imagen,id_marca,id_envase";
   const traerProductos = (columnas: string) =>
     supabase.from("productos").select(columnas).eq("estado", "ACTIVO");
 
@@ -49,6 +49,7 @@ export default async function CodigosPage() {
     nombre: string;
     imagen: string | null;
     id_marca: string;
+    id_envase: string | null;
     peso_neto_g?: number | null;
     dias_vida_util?: number | null;
     alergenos?: string | null;
@@ -76,6 +77,7 @@ export default async function CodigosPage() {
     .flatMap((v) => {
       const p = productos.get(v.id_producto);
       if (!p) return [];
+      const propia = marcasPorId.get(p.id_marca)?.tipo_comercializacion === "PROPIA";
       return [
         {
           idVariante: v.id_variante,
@@ -89,11 +91,17 @@ export default async function CodigosPage() {
           // Las marcas que no están ACTIVA no salen ni en el asesor ni en el
           // tótem; se agrupan aparte para que no ensucien la cuenta.
           marca: marcas.get(p.id_marca) ?? null,
-          propia: marcasPorId.get(p.id_marca)?.tipo_comercializacion === "PROPIA",
+          propia,
+          // Solo lo que embolsamos nosotros (marca propia con envase WiiGo) no
+          // trae código: todo lo demás viene cerrado de fábrica con el suyo
+          // (aceites, mieles, Animalfit...) y se escanea, no se imprime.
+          envasado: !(propia && p.id_envase),
           // Solo lo que fraccionamos nosotros lleva rótulo: lo de las marcas
           // en consignación ya trae el suyo impreso de fábrica.
+          // Lo cerrado de marca propia (un aceite que compramos hecho) tampoco:
+          // el rótulo ya lo trae la botella.
           rotulo:
-            rotuloSql && marcasPorId.get(p.id_marca)?.tipo_comercializacion === "PROPIA"
+            rotuloSql && propia && p.id_envase
               ? {
                   pesoG: p.peso_neto_g ?? null,
                   dias: p.dias_vida_util ?? null,

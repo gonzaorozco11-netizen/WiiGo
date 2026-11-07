@@ -31,6 +31,11 @@ export type ItemCodigo = {
   rotulo?: RotuloItem | null;
   /** La marca de fábrica, para mostrar en la lista al lado del nombre (no va en la etiqueta). */
   marcaFabrica?: string | null;
+  /**
+   * Viene cerrado de fábrica y trae su código impreso: se escanea una vez en
+   * vez de imprimirle sticker. false = lo embolsamos nosotros y lleva el nuestro.
+   */
+  envasado?: boolean;
 };
 
 export type RotuloItem = {
@@ -247,11 +252,15 @@ export default function CodigosApp({
 
   const conEtiqueta = useMemo(() => items.filter((i) => !i.codigo || esCodigoInterno(i.codigo)), [items]);
   const conEnvase = items.length - conEtiqueta.length;
+  // Lo embolsado por nosotros siempre se imprime; lo envasado de fábrica sin
+  // su código cargado todavía es lo que falta escanear.
+  const aPegar = conEtiqueta.filter((i) => !i.envasado).length;
+  const faltaEscanear = conEtiqueta.length - aPegar;
 
   const filtrados = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
     return items.filter((i) => {
-      if (soloFaltan && i.codigo && !esCodigoInterno(i.codigo)) return false;
+      if (soloFaltan && (!i.envasado || (i.codigo && !esCodigoInterno(i.codigo)))) return false;
       if (!q) return true;
       return [i.producto, i.variante, i.sku, i.codigo, i.marca]
         .filter(Boolean)
@@ -265,8 +274,9 @@ export default function CodigosApp({
         <div>
           <h1 className="text-2xl font-semibold text-neutral-900">Códigos de barras</h1>
           <p className="text-sm text-neutral-500 mt-1">
-            {items.length} productos · {conEnvase} se escanean del envase · {conEtiqueta.length} hay
-            que imprimirlos y pegarlos
+            {items.length} productos · {aPegar} los embolsamos nosotros y llevan sticker ·{" "}
+            {conEnvase} con el código del envase cargado
+            {faltaEscanear > 0 && <> · <b className="text-amber-700">{faltaEscanear} envasados falta escanear</b></>}
           </p>
         </div>
         <button
@@ -278,26 +288,13 @@ export default function CodigosApp({
         </button>
       </div>
 
-      {conEnvase === 0 && conEtiqueta.length > 20 && (
-        <div className="mb-4 flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
-          <span className="text-xl leading-none">⚠️</span>
-          <div className="text-sm text-neutral-700 leading-relaxed">
-            <strong className="block text-amber-700 mb-1">Antes de imprimir, revisá los envases</strong>
-            Todavía no hay ningún producto con el código de su envase cargado, así que el sistema les
-            quiere imprimir un código a todos. La mayoría de lo que viene envasado de fábrica ya trae
-            el suyo: si imprimís ahora, vas a estar pegando stickers encima de códigos que ya
-            funcionaban.
-          </div>
-        </div>
-      )}
-
       <div className="inline-flex gap-1 bg-neutral-100 rounded-xl p-1 mb-4">
         {(
           [
             ["revisar", "Revisar envases"],
             // No dice "etiquetas": en Aprobaciones esa palabra ya es el cartel
             // de precio de la góndola, que es otra cosa y lleva plata impresa.
-            ["imprimir", `Imprimir códigos · ${conEtiqueta.length}`],
+            ["imprimir", `Imprimir códigos · ${aPegar}`],
           ] as const
         ).map(([id, texto]) => (
           <button
@@ -338,7 +335,16 @@ export default function CodigosApp({
           }}
         />
       ) : (
-        <Imprimir items={conEtiqueta} entradas={entradas} pie={pieEtiqueta} />
+        <Imprimir
+          items={conEtiqueta}
+          entradas={entradas}
+          pie={pieEtiqueta}
+          onIrAEscanear={() => {
+            setTab("revisar");
+            setSoloFaltan(true);
+            setEscaneando("libre");
+          }}
+        />
       )}
 
       {escaneando && (
@@ -405,7 +411,8 @@ function Revisar({
           {porMarca.map(([marca, deLaMarca]) => (
             <div key={marca}>
               <p className="text-[11px] uppercase tracking-wider font-bold text-neutral-400 bg-neutral-50 px-4 py-2 border-b border-neutral-200">
-                {marca} · {deLaMarca.filter((i) => !i.codigo || esCodigoInterno(i.codigo)).length} sin código
+                {marca} ·{" "}
+                {deLaMarca.filter((i) => i.envasado && (!i.codigo || esCodigoInterno(i.codigo))).length} falta escanear
               </p>
               {deLaMarca.map((i) => (
                 <FilaProducto key={i.idVariante} item={i} onEscanear={onEscanear} onAviso={onAviso} />
@@ -473,9 +480,13 @@ function FilaProducto({
         <span className="shrink-0 text-xs font-mono font-medium bg-emerald-50 text-emerald-700 rounded-full px-2.5 py-1">
           {item.codigo}
         </span>
+      ) : !item.envasado ? (
+        <span className="shrink-0 text-xs font-medium bg-neutral-100 text-neutral-600 rounded-full px-2.5 py-1">
+          Lleva sticker WiiGo
+        </span>
       ) : (
         <span className="shrink-0 text-xs font-medium bg-amber-50 text-amber-700 rounded-full px-2.5 py-1">
-          Sin código
+          Falta escanear
         </span>
       )}
 
@@ -524,6 +535,13 @@ function EscanerDeLista({
   const router = useRouter();
   const [leido, setLeido] = useState<string | null>(null);
   const [busqueda, setBusqueda] = useState("");
+  // Sin producto elegido es la tanda: con la caja de envases al lado se hacen
+  // uno atrás del otro, así que la cámara vuelve a abrirse sola después de
+  // cada uno. Lo que pasó con el anterior se lee arriba de la cámara.
+  const [ultimo, setUltimo] = useState<string | null>(null);
+  const [hechos, setHechos] = useState<Set<string>>(() => new Set());
+  // Para volver a abrir la cámara cuando lo leído ya estaba cargado.
+  const [vuelta, setVuelta] = useState(0);
   const [, startTransition] = useTransition();
 
   function asignar(destino: ItemCodigo, codigo: string) {
@@ -531,18 +549,27 @@ function EscanerDeLista({
       const res = await guardarCodigoBarras(destino.idVariante, codigo);
       if (res.error) {
         onAviso({ texto: res.error, tono: "mal" });
+        setUltimo(`✕ ${res.error}`);
       } else {
         onAviso({ texto: `${destino.producto}: código ${limpiarCodigoBarras(codigo)} guardado.`, tono: "ok" });
+        setUltimo(`✓ ${destino.producto} guardado. Escaneá el siguiente`);
+        setHechos((prev) => new Set(prev).add(destino.idVariante));
         router.refresh();
       }
-      onCerrar();
+      if (item) onCerrar();
+      else {
+        setLeido(null);
+        setBusqueda("");
+      }
     });
   }
 
   if (!leido) {
     return (
       <EscanerCodigo
+        key={vuelta}
         onCerrar={onCerrar}
+        titulo={item ? undefined : (ultimo ?? "Escaneá el envase y después elegí qué producto es")}
         onLeido={(valor) => {
           const codigo = limpiarCodigoBarras(valor);
           if (item) return asignar(item, codigo);
@@ -550,7 +577,9 @@ function EscanerDeLista({
           const yaEs = items.find((i) => i.codigo === codigo);
           if (yaEs) {
             onAviso({ texto: `Ese código ya es de ${yaEs.producto}.`, tono: "ok" });
-            onCerrar();
+            // Se cierra y se vuelve a abrir para que la cámara lea el siguiente.
+            setUltimo(`Ese ya estaba: ${yaEs.producto}. Escaneá el siguiente`);
+            setVuelta((n) => n + 1);
             return;
           }
           setLeido(codigo);
@@ -561,8 +590,10 @@ function EscanerDeLista({
 
   // Se leyó un código que no está en el sistema: hay que decir de quién es.
   const q = busqueda.trim().toLowerCase();
+  // Los envasados que faltan; los recién guardados salen aunque la lista
+  // todavía no se haya refrescado.
   const candidatos = items
-    .filter((i) => !i.codigo || esCodigoInterno(i.codigo))
+    .filter((i) => i.envasado && !hechos.has(i.idVariante) && (!i.codigo || esCodigoInterno(i.codigo)))
     .filter((i) => !q || [i.producto, i.variante, i.sku].filter(Boolean).some((t) => String(t).toLowerCase().includes(q)))
     .slice(0, 40);
 
@@ -613,9 +644,22 @@ function EscanerDeLista({
             ))
           )}
         </div>
-        <button type="button" onClick={onCerrar} className="px-4 py-3 text-sm text-neutral-500 border-t border-neutral-200">
-          Cancelar
-        </button>
+        <div className="flex border-t border-neutral-200">
+          <button
+            type="button"
+            onClick={() => {
+              setUltimo("Salteado. Escaneá el siguiente");
+              setLeido(null);
+              setBusqueda("");
+            }}
+            className="flex-1 px-4 py-3 text-sm text-neutral-700 border-r border-neutral-200"
+          >
+            Saltear y seguir escaneando
+          </button>
+          <button type="button" onClick={onCerrar} className="flex-1 px-4 py-3 text-sm text-neutral-500">
+            Terminar
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -625,7 +669,23 @@ function EscanerDeLista({
 /*  Pestaña 2: imprimir la hoja                                        */
 /* ------------------------------------------------------------------ */
 
-function Imprimir({ items, entradas, pie }: { items: ItemCodigo[]; entradas: EntradaPendiente[]; pie: string }) {
+function Imprimir({
+  items: todos,
+  entradas,
+  pie,
+  onIrAEscanear,
+}: {
+  items: ItemCodigo[];
+  entradas: EntradaPendiente[];
+  pie: string;
+  onIrAEscanear: () => void;
+}) {
+  // Lo envasado de fábrica no se imprime aunque todavía no tenga el código
+  // cargado: se escanea. Queda a mano «imprimirlos igual» para el envase que
+  // de verdad no trae código, o uno que el lector no toma.
+  const [conEnvasados, setConEnvasados] = useState(false);
+  const envasados = useMemo(() => todos.filter((i) => i.envasado), [todos]);
+  const items = useMemo(() => (conEnvasados ? todos : todos.filter((i) => !i.envasado)), [todos, conEnvasados]);
   const porVariante = useMemo(() => new Map(entradas.map((e) => [e.idVariante, e])), [entradas]);
   const recibidos = useMemo(
     () => items.filter((i) => porVariante.has(i.idVariante)),
@@ -633,7 +693,36 @@ function Imprimir({ items, entradas, pie }: { items: ItemCodigo[]; entradas: Ent
   );
   const [modo, setModo] = useState<"recibido" | "todo">(recibidos.length > 0 ? "recibido" : "todo");
 
+  const avisoEnvasados = envasados.length > 0 && (
+    <div className="print:hidden mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 flex flex-wrap items-center gap-3">
+      <div className="text-sm text-neutral-700 leading-relaxed mr-auto max-w-2xl">
+        <strong className="block text-amber-800 mb-0.5">
+          {envasados.length} productos vienen envasados de fábrica
+          {conEnvasados ? " y están en la lista" : " y no están en la lista"}
+        </strong>
+        Aceites, mieles, Animalfit y todo lo que llega cerrado ya trae su código impreso: no hace falta
+        pegarle sticker. Escanealos <b>una sola vez</b> para que la caja los reconozca. Imprimí solo el de
+        algún envase que no traiga código.
+      </div>
+      <button
+        type="button"
+        onClick={onIrAEscanear}
+        className="rounded-lg bg-accent text-white px-4 py-2 text-sm font-semibold hover:bg-accent-dark"
+      >
+        📷 Escanear envases
+      </button>
+      <button
+        type="button"
+        onClick={() => setConEnvasados(!conEnvasados)}
+        className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm text-amber-900 hover:bg-amber-100"
+      >
+        {conEnvasados ? "Sacarlos de la lista" : "Mostrarlos igual"}
+      </button>
+    </div>
+  );
+
   if (items.length === 0) {
+    if (avisoEnvasados) return avisoEnvasados;
     return (
       <p className="text-sm text-neutral-500 py-16 text-center">
         No hay nada para imprimir: todos los productos tienen el código de su propio envase cargado.
@@ -651,6 +740,7 @@ function Imprimir({ items, entradas, pie }: { items: ItemCodigo[]; entradas: Ent
           ConfigurarImpresion, no — por eso no se puede envolver todo junto:
           `print:hidden` es display:none y se lleva puesto lo que tenga adentro. */}
       <div className="print:hidden">
+        {avisoEnvasados}
         {recibidos.length > 0 && (
           <div className="inline-flex gap-1 bg-neutral-100 rounded-xl p-1 mb-3">
             {(
@@ -686,7 +776,7 @@ function Imprimir({ items, entradas, pie }: { items: ItemCodigo[]; entradas: Ent
 
       {/* El `key` remonta la lista al cambiar de modo: las cantidades se
           recalculan solas en vez de arrastrar las del modo anterior. */}
-      <ConfigurarImpresion key={modo} items={visibles} unidadesIniciales={unidades} pie={pie} />
+      <ConfigurarImpresion key={`${modo}-${conEnvasados}`} items={visibles} unidadesIniciales={unidades} pie={pie} />
     </>
   );
 }

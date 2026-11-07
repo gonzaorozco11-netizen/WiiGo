@@ -575,13 +575,14 @@ export const GUIAS: Guia[] = [
     donde: "Códigos de barras → Imprimir códigos",
     rutas: ["/codigos"],
     pasos: [
-      "Entrá a <b>Códigos de barras</b>. Antes de imprimir, revisá en <b>Revisar envases</b> que cada producto tenga bien su código (podés escanear el envase).",
-      "Pasá a <b>Imprimir códigos</b> y elegí cuántas etiquetas de cada producto (− y +, o Todos por marca).",
+      "Entrá a <b>Códigos de barras</b>. Lo que viene cerrado de fábrica (aceites, mieles, Animalfit…) <b>no se imprime</b>: tocá <b>📷 Escanear un envase</b>, escaneá la botella o el paquete y elegí qué producto es. La cámara se vuelve a abrir sola para el siguiente. Se hace una sola vez por producto.",
+      "Pasá a <b>Imprimir códigos</b>: ahí queda solo lo que embolsamos nosotros. Elegí cuántas etiquetas de cada producto (− y +, o Todos por marca).",
       "En <b>Cómo imprimís</b> elegí «Hoja A4 de etiquetas» o «Impresora térmica (rollo)».",
+      "Si la hoja ya está empezada, en <b>Dónde arranca en la hoja</b> tocá la primera etiqueta libre, o elegí el renglón y la etiqueta.",
       "En el granel, cargá la <b>Fecha de envasado</b>.",
-      "Tocá <b>🖨️ Imprimir</b>.",
+      "Tocá <b>🖨️ Imprimir</b>. Si salió bien, tocá «Sí, salió bien» y la próxima vez la hoja arranca sola donde quedó.",
     ],
-    tip: "En la hoja A4: márgenes «ninguno», sin «ajustar al papel», y hacé una prueba en hoja común. En el rollo: márgenes «ninguno» y escala 100 %.",
+    tip: "En la hoja A4: tamaño ISO A4, blanco y negro, márgenes «ninguno», sin «ajustar al papel», y hacé una prueba en hoja común. En el rollo: márgenes «ninguno» y escala 100 %. Si un envase de fábrica no trae código, en Imprimir tocá «Mostrarlos igual» y imprimile el nuestro.",
   },
   {
     id: "gondola-equipo",
