@@ -88,6 +88,9 @@ const GROUPS: NavGroup[] = [
       { href: "/stock/consulta", label: "Precio y stock" },
       // La góndola desde el celular: cuánto hay, dónde va, y escanear.
       { href: "/gondola", label: "Góndola" },
+      // El conteo del turno (equipo) y sus diferencias (quien controla).
+      { href: "/conteo", label: "Contar stock" },
+      { href: "/stock/conteos", label: "Conteos y diferencias" },
       // Cuánto tiene que haber, no cuánto hay. Al lado de Stock porque se
       // miran juntas.
       { href: "/stock/objetivos", label: "Mínimos y objetivos" },

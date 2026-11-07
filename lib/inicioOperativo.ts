@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fechaHoraArgentina, minutosDeHora } from "@/lib/horarios";
+import { POR_TURNO, adentroEnLocal, personaDeUsuario } from "@/lib/conteoStock";
 
 // El Inicio del operativo en la tablet del local (pedido de Gonzalo,
 // 2026-10-22): arriba un botón grande con lo que toca hacer AHORA, y abajo
@@ -36,6 +37,40 @@ export type InicioOperativo = {
 };
 
 const pesos = (n: number) => `$${Math.round(n).toLocaleString("es-AR")}`;
+
+/**
+ * Cuántos productos le faltan contar de su tanda abierta. Si todavía no tiene
+ * tanda hoy y está adentro, le van a tocar los del turno: se cuenta la parte
+ * que le corresponde (se arma recién al entrar a la pantalla).
+ */
+export async function faltanContar(supabase: SupabaseClient, idUsuario: string): Promise<number> {
+  try {
+    const persona = await personaDeUsuario(supabase, idUsuario);
+    if (!persona?.id_local) return 0;
+    const { data: suyos, error } = await supabase
+      .from("conteos_stock")
+      .select("id_conteo, estado, fecha")
+      .eq("id_persona", persona.id_persona)
+      .order("creado_en", { ascending: false })
+      .limit(5);
+    if (error) return 0;
+    const abierto = (suyos ?? []).find((c) => c.estado === "ABIERTO");
+    if (abierto) {
+      const { count } = await supabase
+        .from("conteos_stock_items")
+        .select("id_item", { count: "exact", head: true })
+        .eq("id_conteo", abierto.id_conteo as string)
+        .is("contado_en", null);
+      return count ?? 0;
+    }
+    if ((suyos ?? []).some((c) => c.fecha === fechaHoraArgentina().fecha)) return 0;
+    const adentro = await adentroEnLocal(supabase, persona.id_local);
+    if (!adentro.some((p) => p.id_persona === persona.id_persona)) return 0;
+    return Math.ceil(POR_TURNO / Math.max(1, adentro.length));
+  } catch {
+    return 0;
+  }
+}
 
 export async function armarInicioOperativo(
   supabase: SupabaseClient,
@@ -158,6 +193,20 @@ export async function armarInicioOperativo(
       badgeTono: "ambar",
       deshabilitado: false,
     });
+  // El conteo de stock del turno, con cuántos le faltan contar.
+  if (puede("conteo")) {
+    const faltan = await faltanContar(supabase, sesion.idUsuario);
+    agregar({
+      clave: "conteo",
+      titulo: "Contar stock",
+      detalle: faltan ? `Te tocan ${faltan} productos este turno` : "El control de stock de tu turno",
+      href: "/conteo",
+      icono: "📋",
+      badge: faltan || null,
+      badgeTono: "ambar",
+      deshabilitado: false,
+    });
+  }
   // La consulta de solo lectura (stock-consulta); si no la tiene pero tiene
   // Stock (que además permite ajustar), va a Stock.
   if (puede("stock-consulta") || puede("stock"))

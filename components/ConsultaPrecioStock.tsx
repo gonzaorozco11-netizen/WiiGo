@@ -17,6 +17,12 @@ export type FilaConsulta = {
   oferta: number | null;
   /** Unidades por local (id_local → cantidad). */
   stock: Record<string, number>;
+  /**
+   * Alguien lo tiene que contar hoy y todavía no lo contó: sin el número (si lo
+   * ven, lo copian), solo Hay / Quedan pocos / No hay. Alcanza para contestarle
+   * a un cliente. Apenas se cuenta, vuelve el número.
+   */
+  enConteo?: boolean;
 };
 
 const pesos = (n: number) => `$${Math.round(n).toLocaleString("es-AR")}`;
@@ -92,7 +98,18 @@ export default function ConsultaPrecioStock({ filas, locales }: { filas: FilaCon
                   {f.efectivo < f.lista && <p className="text-xs font-semibold text-emerald-700">{pesos(f.efectivo)} en efectivo</p>}
                 </div>
                 <div className="sm:text-right sm:min-w-[120px]">
-                  {total <= 0 ? (
+                  {f.enConteo ? (
+                    <>
+                      <span
+                        className={`inline-block text-xs font-bold rounded-full px-2.5 py-1 ${
+                          total <= 0 ? "bg-red-50 text-red-700" : total <= 2 ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"
+                        }`}
+                      >
+                        {total <= 0 ? "No hay" : total <= 2 ? "Quedan pocos" : "Hay"}
+                      </span>
+                      <p className="text-[11px] text-neutral-400 mt-0.5">Se cuenta hoy</p>
+                    </>
+                  ) : total <= 0 ? (
                     <span className="inline-block text-xs font-bold rounded-full px-2.5 py-1 bg-red-50 text-red-700">Sin stock</span>
                   ) : (
                     <span className={`inline-block text-xs font-bold rounded-full px-2.5 py-1 ${total <= 2 ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"}`}>

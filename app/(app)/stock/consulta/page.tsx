@@ -3,6 +3,7 @@ import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import { ambosPrecios } from "@/lib/precios";
 import PantallaBloqueada from "@/components/PantallaBloqueada";
 import ConsultaPrecioStock, { type FilaConsulta } from "@/components/ConsultaPrecioStock";
+import { variantesEnConteo } from "@/lib/conteoStock";
 
 // Precio y stock, SOLO CONSULTA: para el equipo del local (pedido de
 // Gonzalo, 2026-10-22). Buscar un producto y ver cuánto sale (lista y
@@ -31,7 +32,7 @@ export default async function ConsultaStockPage() {
   type Prod = { id_producto: string; id_marca: string; nombre: string; precio_venta: number | null; precio_efectivo: number | null; descuento_porcentaje: number | null };
   type Var = { id_variante: string; id_producto: string; nombre: string; codigo_barras: string | null; sku: string | null; precio_venta: number | null; precio_efectivo: number | null };
   type St = { id_variante: string; id_local: string; cantidad: number };
-  const [productos, variantes, stock, { data: marcas }, { data: locales }] = await Promise.all([
+  const [productos, variantes, stock, { data: marcas }, { data: locales }, enConteo] = await Promise.all([
     todas<Prod>((a, b) =>
       supabase.from("productos").select("id_producto, id_marca, nombre, precio_venta, precio_efectivo, descuento_porcentaje").eq("estado", "ACTIVO").order("id_producto").range(a, b)
     ),
@@ -41,6 +42,8 @@ export default async function ConsultaStockPage() {
     todas<St>((a, b) => supabase.from("stock").select("id_variante, id_local, cantidad").order("id_stock").range(a, b)),
     supabase.from("marcas").select("id_marca, nombre"),
     supabase.from("locales").select("id_local, nombre").eq("estado", "ACTIVO").order("nombre"),
+    // Lo que alguien tiene que contar hoy: sin número hasta que lo cuente.
+    variantesEnConteo(supabase).catch(() => new Set<string>()),
   ]);
 
   const productoPor = new Map(productos.map((p) => [p.id_producto, p]));
@@ -67,6 +70,7 @@ export default async function ConsultaStockPage() {
       efectivo: precios.efectivo,
       oferta: p.descuento_porcentaje && p.descuento_porcentaje > 0 ? p.descuento_porcentaje : null,
       stock: stockPor.get(v.id_variante) ?? {},
+      enConteo: enConteo.has(v.id_variante),
     });
   }
   filas.sort((a, b) => a.producto.localeCompare(b.producto, "es") || (a.variante ?? "").localeCompare(b.variante ?? "", "es"));

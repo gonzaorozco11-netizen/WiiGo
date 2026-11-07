@@ -2,7 +2,7 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import { fechaHoraArgentina } from "@/lib/horarios";
 import { ESTADOS_ABIERTOS } from "@/lib/estadosOrden";
-import { armarInicioOperativo, type InicioOperativo } from "@/lib/inicioOperativo";
+import { armarInicioOperativo, faltanContar, type InicioOperativo } from "@/lib/inicioOperativo";
 import { armarInicioDueno, type InicioDueno } from "@/lib/inicioDueno";
 import { avisosCajaYLlamados } from "@/lib/avisosCaja";
 
@@ -400,6 +400,32 @@ export async function armarTablero(): Promise<Tablero | null> {
       valor: String(n(sinStock)),
       href: "/stock",
     });
+  }
+
+  // ---------- Conteo de stock del turno ----------
+  if (puede("conteo")) {
+    const faltan = await faltanContar(supabase, sesion.idUsuario);
+    if (faltan > 0) {
+      urgentes.push({
+        color: "ambar",
+        titulo: `Contá ${plural(faltan, "producto", "productos")} del stock`,
+        detalle: "El control de tu turno: contalos cuando no haya clientes y firmá",
+        valor: String(faltan),
+        href: "/conteo",
+      });
+    }
+  }
+  if (puede("stock-conteos")) {
+    const { count } = await supabase.from("diferencias_stock").select("id_diferencia", { count: "exact", head: true }).neq("estado", "RESUELTA");
+    if ((count ?? 0) > 0) {
+      urgentes.push({
+        color: "ambar",
+        titulo: `${plural(count ?? 0, "diferencia de stock", "diferencias de stock")} por resolver`,
+        detalle: "Lo que contó el equipo no coincidía con el sistema: decí qué pasó",
+        valor: String(count),
+        href: "/stock/conteos",
+      });
+    }
   }
 
   // ---------- Números ----------

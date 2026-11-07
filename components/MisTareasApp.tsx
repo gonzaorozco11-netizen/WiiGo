@@ -25,6 +25,8 @@ const ICONO: Record<string, string> = {
   "/compras/recepcion": "📥",
   "/compras/costeo": "🧮",
   "/stock": "📦",
+  "/conteo": "📋",
+  "/stock/conteos": "🔍",
   "/turnos": "💵",
   "/rrhh/legajos": "📝",
   "/aprender/revisar": "🧠",

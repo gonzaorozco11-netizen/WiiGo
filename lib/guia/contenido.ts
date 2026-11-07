@@ -600,6 +600,39 @@ export const GUIAS: Guia[] = [
     ],
     tip: "Acá solo se mira: si un producto está mal ubicado, avisale a Gonzalo (se acomoda en Precios → Góndola).",
   },
+  {
+    id: "conteo-stock",
+    audiencias: [...I],
+    pantalla: "conteo",
+    tema: "Stock",
+    titulo: "Contar el stock de tu turno",
+    donde: "Inicio → Contar stock",
+    rutas: ["/conteo"],
+    pasos: [
+      "Cada turno te tocan unos productos para contar (10 entre los que estén; si son dos, 5 cada uno). Aparecen en el Inicio y en Mis tareas.",
+      "Entrá a <b>Contar stock</b>. Contá lo que hay en la góndola <b>y en el depósito</b>, escribí el número y tocá <b>Listo</b>. Para encontrar uno, podés escanearlo.",
+      "Si no coincide te pide contar otra vez. Si sigue sin coincidir queda anotado con lo que contaste: no pasa nada, lo revisa Gonzalo.",
+      "Podés hacerlos de a uno: si entra un cliente, atendelo y después seguís. Lo que contaste queda guardado.",
+      "Cuando terminás todos, <b>firmás</b> con el dedo.",
+    ],
+    tip: "El número del sistema no se muestra a propósito. En Precio y stock, los que tenés que contar dicen Hay / Quedan pocos / No hay en vez del número, hasta que los cuentes.",
+  },
+  {
+    id: "conteos-diferencias",
+    audiencias: [...I],
+    pantalla: "stock-conteos",
+    tema: "Stock",
+    titulo: "Revisar las diferencias de los conteos",
+    donde: "Stock → Conteos y diferencias",
+    rutas: ["/stock/conteos"],
+    pasos: [
+      "Cuando un conteo no coincide (dos veces), el stock ya queda en lo que contaron y la diferencia aparece acá, con quién y cuándo.",
+      "El producto vuelve a salir en el próximo conteo, mejor para otra persona. Si da lo mismo, dice <b>Se confirmó</b>.",
+      "Elegí qué pasó: <b>Contaron mal</b>, <b>Faltante</b> (rotura, robo o vencido) o <b>La recepción se cargó mal</b>. Podés dejar una nota.",
+      "Abajo están los conteos de las últimas dos semanas con la firma de cada uno.",
+    ],
+    tip: "Si fue un error de conteo, corregí el número en Stock como cualquier ajuste.",
+  },
 
   // ===================== EQUIPO: ADMINISTRACIÓN =====================
   {

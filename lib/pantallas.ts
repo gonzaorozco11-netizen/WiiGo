@@ -43,6 +43,11 @@ export const PANTALLAS_DISPONIBLES: PantallaDisponible[] = [
   // La góndola desde el celular: cuánto hay de cada producto y dónde va, y
   // escanear para encontrarlo. Solo mirar: acomodar es en Precios → Góndola.
   { clave: "gondola", label: "Góndola (cuánto hay y dónde va)", grupo: "Stock" },
+  // El conteo del turno: cada operativo cuenta sus productos sin ver el
+  // número y firma. Es del equipo del local (Operaciones).
+  { clave: "conteo", label: "Contar stock en el turno", grupo: "Stock" },
+  // Las diferencias de esos conteos y quién contó qué: para quien controla.
+  { clave: "stock-conteos", label: "Conteos y diferencias de stock", grupo: "Stock" },
   // Define cuánto se repone de cada producto, así que toca la relación con la
   // marca: por eso es asignable pero no se da sola con "Stock".
   { clave: "stock-objetivos", label: "Mínimos y objetivos", grupo: "Stock" },
