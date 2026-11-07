@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { marcarCartelesPuestos } from "@/app/(app)/carteles/actions";
 import { pesoTexto, precioPorKilo } from "@/lib/rotulado";
 import { nombreBase } from "@/lib/nombreProducto";
+import FiltroSeleccion, { coincide, subcategoriasDe } from "@/components/FiltroSeleccion";
 
 export type ItemCartel = {
   idProducto: string;
@@ -34,6 +35,8 @@ export type ItemCartel = {
   lugar?: "GANCHO" | "ESTANTE" | null;
   /** La marca de fábrica de lo que viene envasado («Entre Nuts»), entre paréntesis después del peso (lib/marcaFabrica.ts). */
   marcaFabrica?: string | null;
+  /** Para elegir qué imprimir por subcategoría («Frutos secos»). */
+  subcategoria?: string | null;
 };
 
 const SIN_MARCA = "Sin marca";
@@ -130,6 +133,19 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
   // 1 mm de aire por lado: el papel entra sin quedar justo en el portaprecio.
   const [aire, setAire] = useState(1);
   const [elegidos, setElegidos] = useState<Set<string>>(new Set(visibles.map((i) => i.idProducto)));
+  // Buscar y filtrar solo achica lo que se ve: lo marcado se imprime igual.
+  const [busqueda, setBusqueda] = useState("");
+  const [subcategoria, setSubcategoria] = useState("");
+  const subcategorias = useMemo(() => subcategoriasDe(visibles), [visibles]);
+  const mostrados = useMemo(
+    () =>
+      visibles.filter(
+        (i) =>
+          (!subcategoria || i.subcategoria === subcategoria) &&
+          coincide([i.nombre, i.marca, i.marcaFabrica, i.subcategoria], busqueda)
+      ),
+    [visibles, subcategoria, busqueda]
+  );
 
   const aImprimir = visibles.filter((i) => elegidos.has(i.idProducto));
   const segunLugar = medidaId === SEGUN_LUGAR;
@@ -149,7 +165,7 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
 
   const porMarca = useMemo(() => {
     const m = new Map<string, ItemCartel[]>();
-    for (const i of visibles) {
+    for (const i of mostrados) {
       const k = i.marca ?? SIN_MARCA;
       if (!m.has(k)) m.set(k, []);
       m.get(k)!.push(i);
@@ -157,7 +173,7 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
     // Con los que cambiaron, primero la marca que tiene el pedido más viejo.
     if (modo === "cambiaron") return [...m.entries()].sort((a, b) => (a[1][0].pedidoEl ?? "").localeCompare(b[1][0].pedidoEl ?? ""));
     return [...m.entries()].sort((a, b) => b[1].length - a[1].length);
-  }, [visibles, modo]);
+  }, [mostrados, modo]);
 
   function cambiarModo(nuevo: "cambiaron" | "todos") {
     setModo(nuevo);
@@ -265,7 +281,28 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
           </p>
         ) : (
           <>
-            <div className="border border-neutral-200 rounded-xl overflow-hidden bg-white mb-4">
+            <FiltroSeleccion
+              busqueda={busqueda}
+              setBusqueda={setBusqueda}
+              subcategorias={subcategorias}
+              subcategoria={subcategoria}
+              setSubcategoria={setSubcategoria}
+              visibles={mostrados.length}
+              marcados={aImprimir.length}
+              unidad="carteles"
+              onMarcarVisibles={() =>
+                setElegidos((prev) => {
+                  const s = new Set(prev);
+                  mostrados.forEach((i) => s.add(i.idProducto));
+                  return s;
+                })
+              }
+              onDestildarTodo={() => setElegidos(new Set())}
+            />
+            {mostrados.length === 0 && (
+              <p className="text-sm text-neutral-500 py-8 text-center">Ningún producto coincide con la búsqueda.</p>
+            )}
+            <div className="border border-neutral-200 rounded-xl overflow-hidden bg-white mb-4 empty:hidden">
               {porMarca.map(([marca, deLaMarca]) => {
                 const todos = deLaMarca.every((i) => elegidos.has(i.idProducto));
                 return (

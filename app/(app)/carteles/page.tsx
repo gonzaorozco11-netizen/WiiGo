@@ -13,7 +13,7 @@ export default async function CartelesPage() {
 
   const supabase = getSupabaseServerClient();
 
-  const BASE_PRODUCTO = "id_producto,nombre,id_marca,precio_venta,precio_efectivo,descuento_porcentaje";
+  const BASE_PRODUCTO = "id_producto,nombre,id_marca,precio_venta,precio_efectivo,descuento_porcentaje,subcategorias(nombre)";
   const traerProductos = (columnas: string) =>
     supabase.from("productos").select(columnas).eq("estado", "ACTIVO");
   const traerTareas = (columnas: string) =>
@@ -70,7 +70,9 @@ export default async function CartelesPage() {
     precio_efectivo: number | null;
     descuento_porcentaje: number | null;
     peso_neto_g?: number | null;
+    subcategorias?: { nombre: string | null } | { nombre: string | null }[] | null;
   };
+  const subDe = (p: FilaProducto) => (Array.isArray(p.subcategorias) ? p.subcategorias[0] : p.subcategorias)?.nombre ?? null;
 
   const origenes = new Map(
     ((fichasRes.data ?? []) as { id_producto: string; origen: string | null }[])
@@ -150,6 +152,7 @@ export default async function CartelesPage() {
         nombre: p.nombre,
         marca: marcas.get(p.id_marca) ?? null,
         marcaFabrica: marcasFabrica.get(p.id_producto) ?? null,
+        subcategoria: subDe(p),
         lista,
         efectivo,
         // Sin precio de efectivo cargado el cartel mentiría a medias, así que

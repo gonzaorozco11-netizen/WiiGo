@@ -17,7 +17,7 @@ export default async function CodigosPage() {
 
   const entradas = await entradasQueNecesitanCodigo();
 
-  const BASE_PRODUCTO = "id_producto,nombre,imagen,id_marca,id_envase";
+  const BASE_PRODUCTO = "id_producto,nombre,imagen,id_marca,id_envase,subcategorias(nombre)";
   const traerProductos = (columnas: string) =>
     supabase.from("productos").select(columnas).eq("estado", "ACTIVO");
 
@@ -52,6 +52,7 @@ export default async function CodigosPage() {
     imagen: string | null;
     id_marca: string;
     id_envase: string | null;
+    subcategorias?: { nombre: string | null } | { nombre: string | null }[] | null;
     peso_neto_g?: number | null;
     dias_vida_util?: number | null;
     alergenos?: string | null;
@@ -99,6 +100,7 @@ export default async function CodigosPage() {
           // sticker. Todo lo demás viene cerrado de fábrica con el suyo
           // (aceites, mieles, Animalfit...) y se escanea, no se imprime.
           idMarca: p.id_marca,
+          subcategoria: (Array.isArray(p.subcategorias) ? p.subcategorias[0] : p.subcategorias)?.nombre ?? null,
           marcaSinCodigo: marcasSinCodigo.has(p.id_marca),
           envasado: !(propia && p.id_envase) && !marcasSinCodigo.has(p.id_marca),
           // Solo lo que fraccionamos nosotros lleva rótulo: lo de las marcas

@@ -11,6 +11,7 @@ import {
   pesoEtiqueta,
 } from "@/lib/rotulado";
 import { nombreBase } from "@/lib/nombreProducto";
+import FiltroSeleccion, { coincide, subcategoriasDe } from "@/components/FiltroSeleccion";
 import { guardarCodigoBarras, marcarMarcaSinCodigo, volverAEtiquetaWiigo } from "@/app/(app)/codigos/actions";
 import type { EntradaPendiente } from "@/lib/entradas";
 import EscanerCodigo from "@/components/EscanerCodigo";
@@ -39,6 +40,8 @@ export type ItemCodigo = {
   idMarca?: string;
   /** La marca está marcada como «sus envases no traen código» (Alta, Fruppi). */
   marcaSinCodigo?: boolean;
+  /** Para elegir qué imprimir por subcategoría («Frutos secos»). */
+  subcategoria?: string | null;
 };
 
 export type RotuloItem = {
@@ -920,7 +923,21 @@ function ConfigurarImpresion({
   );
   // Los casilleros que se saltean al empezar más abajo cuentan como usados.
   const hojas = Math.ceil((aImprimir.length + desde - 1) / porHoja) || 0;
-  const porMarca = useMemo(() => agruparPorMarca(items), [items]);
+  // Buscar y filtrar solo achica lo que se ve: lo marcado se imprime igual.
+  const [busqueda, setBusqueda] = useState("");
+  const [subcategoria, setSubcategoria] = useState("");
+  const subcategorias = useMemo(() => subcategoriasDe(items), [items]);
+  const mostrados = useMemo(
+    () =>
+      items.filter(
+        (i) =>
+          (!subcategoria || i.subcategoria === subcategoria) &&
+          coincide([i.producto, i.variante, i.marcaFabrica, i.sku, i.codigo, i.subcategoria], busqueda)
+      ),
+    [items, subcategoria, busqueda]
+  );
+  const marcados = items.filter((i) => (cantidades[i.idVariante] ?? 0) > 0).length;
+  const porMarca = useMemo(() => agruparPorMarca(mostrados), [mostrados]);
 
   function poner(id: string, n: number) {
     setCantidades((prev) => ({ ...prev, [id]: Math.min(Math.max(0, n), 99) }));
@@ -1009,7 +1026,32 @@ function ConfigurarImpresion({
         </div>
       )}
 
-      <div className="print:hidden border border-neutral-200 rounded-xl overflow-hidden bg-white mb-4">
+      <FiltroSeleccion
+        busqueda={busqueda}
+        setBusqueda={setBusqueda}
+        subcategorias={subcategorias}
+        subcategoria={subcategoria}
+        setSubcategoria={setSubcategoria}
+        visibles={mostrados.length}
+        marcados={marcados}
+        unidad="productos"
+        onMarcarVisibles={() =>
+          setCantidades((prev) => {
+            const next = { ...prev };
+            // Lo que ya tenía cantidad la conserva; lo demás arranca con la de siempre.
+            mostrados.forEach((i) => {
+              if (!(next[i.idVariante] > 0)) next[i.idVariante] = Math.max(1, unidadesIniciales(i));
+            });
+            return next;
+          })
+        }
+        onDestildarTodo={() => setCantidades(Object.fromEntries(items.map((i) => [i.idVariante, 0])))}
+      />
+      {mostrados.length === 0 && (
+        <p className="print:hidden text-sm text-neutral-500 py-8 text-center">Ningún producto coincide con la búsqueda.</p>
+      )}
+
+      <div className="print:hidden border border-neutral-200 rounded-xl overflow-hidden bg-white mb-4 empty:hidden">
         {porMarca.map(([marca, deLaMarca]) => {
           const totalMarca = deLaMarca.reduce((a, i) => a + (cantidades[i.idVariante] ?? 0), 0);
           return (
