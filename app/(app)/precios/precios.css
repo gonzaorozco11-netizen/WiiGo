@@ -371,6 +371,10 @@ a.pr-btn { color: inherit; text-decoration: none; display: inline-flex; align-it
 .pr-comp-otro:hover, .pr-comp-otro.on { border-style: solid; border-color: var(--acento); background: var(--acento-t); }
 .pr-comp-otro.no { color: var(--mal); }
 .pr-comp-otro.no:hover { border-color: var(--mal); background: var(--mal-t); }
+/* «No lo trabaja» / «deshacer» dentro de la celda: chico, y apagado hasta pasar por la fila. */
+.pr-comp-celda .pr-comp-otro { justify-self: start; margin: 3px 0 0; padding: 1px 8px; font-size: 11px; }
+.pr-tabla-comp tr.fila .pr-comp-celda .pr-comp-otro.no { opacity: .35; }
+.pr-tabla-comp tr.fila:hover .pr-comp-celda .pr-comp-otro.no, .pr-comp-celda .pr-comp-otro.no:focus-visible { opacity: 1; }
 .pr-comp-buscar-en { border-top: 1px solid var(--linea); padding-top: 9px; margin-top: 2px; font-size: 12.5px; }
 .pr-elegir { margin-top: 8px; border: 1px solid var(--linea-2); border-radius: 10px; background: var(--hoja); padding: 10px; display: grid; gap: 6px; }
 .pr-elegir-cab { display: flex; gap: 8px; }

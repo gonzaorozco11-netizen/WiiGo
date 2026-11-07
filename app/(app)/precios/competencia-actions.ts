@@ -73,7 +73,7 @@ export async function opcionesEquivalente(idProducto: string, comercio: string, 
   if (!esComercio(comercio)) return { error: "Ese comercio no existe." };
   const supabase = getSupabaseServerClient();
   const [{ data: prod }, { data: v, error }, items] = await Promise.all([
-    supabase.from("productos").select("nombre, peso_neto_g").eq("id_producto", idProducto).maybeSingle(),
+    supabase.from("productos").select("nombre, peso_neto_g, id_envase").eq("id_producto", idProducto).maybeSingle(),
     supabase.from("competencia_vinculos").select("id_item, rechazados").eq("id_producto", idProducto).eq("comercio", comercio).maybeSingle(),
     todasLasFilas<Record<string, unknown>>((desde, hasta) =>
       supabase.from("competencia_items").select("*").eq("comercio", comercio).not("gramos", "is", null).order("id_item").range(desde, hasta)
@@ -84,6 +84,8 @@ export async function opcionesEquivalente(idProducto: string, comercio: string, 
   const nuestro = nombreBase(prod.nombre as string);
   // Su peso neto o el tamaño del nombre (x200cc).
   const gramos = Number(prod.peso_neto_g) || gramosDelNombre(prod.nombre as string);
+  // Sin bolsita = viene cerrado: solo tiene precio contra el mismo tamaño.
+  const cerrado = !prod.id_envase;
   const rechazados = new Set(((v?.rechazados as string[] | null) ?? []).map(String));
   const texto = buscado.trim();
   const opciones = (items ?? [])
@@ -104,7 +106,7 @@ export async function opcionesEquivalente(idProducto: string, comercio: string, 
       porKilo: it.porKilo,
       precio: it.precio,
       precioAntes: it.precioAntes,
-      aTuTamano: gramos ? precioATuTamano({ precio: it.precioAntes ?? it.precio, gramos: it.gramos }, gramos) : null,
+      aTuTamano: gramos ? precioATuTamano({ precio: it.precioAntes ?? it.precio, gramos: it.gramos }, gramos, cerrado) : null,
       url: it.url,
       disponible: it.disponible,
       descartado: rechazados.has(it.id),
@@ -134,9 +136,10 @@ export async function elegirEquivalente(idProducto: string, comercio: string, id
 }
 
 /**
- * «Desvincular» (Gonzalo, 2026-11-06: «que tenga la opción de ponerlo o
- * sacarlo»): ese comercio queda sin equivalente y la lectura de los lunes no
- * propone otro. Se vuelve a poner con «Buscar en …».
+ * «Desvincular» / «No lo trabaja» (Gonzalo, 2026-11-06: «que tenga la opción
+ * de ponerlo o sacarlo»; 2026-11-07: «si la competencia directamente no lo
+ * trabaja»): ese comercio queda sin equivalente y la lectura de los lunes no
+ * propone otro. Se saca con «deshacer» o eligiendo uno con «Buscar en …».
  */
 export async function quitarEquivalente(idProducto: string, comercio: string): Promise<{ error: string | null }> {
   if (!(await sesionDePrecios())) return { error: "No tenés permiso para Precios." };
@@ -153,23 +156,40 @@ export async function quitarEquivalente(idProducto: string, comercio: string): P
   return { error: null };
 }
 
+/**
+ * Deshacer «No lo trabaja» (Gonzalo, 2026-11-07: «cualquier cosa después lo
+ * pueda sacar»): vuelve a proponer el más parecido de ese comercio, como si
+ * nunca lo hubiera marcado.
+ */
+export async function deshacerNoLoTrabaja(idProducto: string, comercio: string): Promise<{ error: string | null }> {
+  return proponerDeNuevo(idProducto, comercio, false);
+}
+
 /** "No es el mismo": se descarta y se propone el siguiente más parecido (si hay). */
 export async function descartarEquivalente(idProducto: string, comercio: string): Promise<{ error: string | null }> {
+  return proponerDeNuevo(idProducto, comercio, true);
+}
+
+async function proponerDeNuevo(idProducto: string, comercio: string, descartarElActual: boolean): Promise<{ error: string | null }> {
   if (!(await sesionDePrecios())) return { error: "No tenés permiso para Precios." };
   if (!esComercio(comercio)) return { error: "Ese comercio no existe." };
   const supabase = getSupabaseServerClient();
   const { data: v, error } = await supabase.from("competencia_vinculos").select("id_item, rechazados").eq("id_producto", idProducto).eq("comercio", comercio).maybeSingle();
   if (error) return { error: FALTA_SQL };
-  const rechazados = [...new Set([...((v?.rechazados as string[] | null) ?? []), ...(v?.id_item ? [v.id_item as string] : [])])];
+  const rechazados = [...new Set([...((v?.rechazados as string[] | null) ?? []), ...(descartarElActual && v?.id_item ? [v.id_item as string] : [])])];
   const [{ data: prod }, items] = await Promise.all([
-    supabase.from("productos").select("nombre, peso_neto_g").eq("id_producto", idProducto).maybeSingle(),
+    supabase.from("productos").select("nombre, peso_neto_g, id_envase").eq("id_producto", idProducto).maybeSingle(),
     // De a 1.000: un comercio grande (Bela Vita, Mega Nuts) pasa ese tope.
     todasLasFilas<Record<string, unknown>>((desde, hasta) =>
       supabase.from("competencia_items").select("*").eq("comercio", comercio).eq("disponible", true).not("gramos", "is", null).order("id_item").range(desde, hasta)
     ),
   ]);
   const siguiente = prod
-    ? mejorCandidato({ nombre: nombreBase(prod.nombre as string), gramos: Number(prod.peso_neto_g) || gramosDelNombre(prod.nombre as string) }, (items ?? []).map(filaAItem), rechazados)
+    ? mejorCandidato(
+        { nombre: nombreBase(prod.nombre as string), gramos: Number(prod.peso_neto_g) || gramosDelNombre(prod.nombre as string), cerrado: !prod.id_envase },
+        (items ?? []).map(filaAItem),
+        rechazados
+      )
     : null;
   await supabase
     .from("competencia_vinculos")

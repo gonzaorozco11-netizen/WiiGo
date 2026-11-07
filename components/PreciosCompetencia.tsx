@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
-import { COMERCIOS, diferencia, precioATuTamano, precioNormalATuTamano, tamanoComparable, type Comercio, type ItemCompetencia } from "@/lib/competencia";
+import { COMERCIOS, diferencia, mismoTamano, precioATuTamano, precioNormalATuTamano, tamanoComparable, type Comercio, type ItemCompetencia } from "@/lib/competencia";
 import type { DatosCompetencia, VinculoCompetencia } from "@/lib/competenciaLeer";
 import type { ProductoDelModulo, RubroDelModulo } from "@/lib/datosPrecios";
 import { colorDeRubro } from "@/lib/coloresRubro";
@@ -10,6 +10,7 @@ import {
   actualizarCompetenciaAhora,
   confirmarEquivalente,
   descartarEquivalente,
+  deshacerNoLoTrabaja,
   elegirEquivalente,
   opcionesEquivalente,
   quitarEquivalente,
@@ -24,6 +25,13 @@ const pesos = (n: number | null | undefined) => (n == null || !Number.isFinite(n
 const fechaHora = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "nunca";
 const nombreDe = (c: Comercio) => COMERCIOS.find((x) => x.clave === c)?.nombre ?? c;
+/**
+ * Sin bolsita de WiiGo = viene cerrado (miel, aceite de coco, botellas): se
+ * compara solo con el mismo tamaño, no dividiendo uno más grande (Gonzalo, 2026-11-07).
+ */
+const esCerrado = (p: { idEnvase: string | null }) => !p.idEnvase;
+const otroTamano = (it: ItemCompetencia, p: { idEnvase: string | null; gramos: number | null }) => esCerrado(p) && !mismoTamano(it.gramos, p.gramos);
+const legible = (g: number | null) => (g == null ? "?" : g >= 1000 ? `${(g / 1000).toLocaleString("es-AR")} kg` : `${g} g`);
 
 // sinIgual: los comercios que Gonzalo desvinculó a mano («no lo tienen igual»).
 type Fila = { p: ProductoDelModulo; v: Partial<Record<Comercio, VinculoCompetencia>>; dif: number | null; contra: Comercio | null; sinIgual: Comercio[] };
@@ -78,17 +86,26 @@ export default function PreciosCompetencia(
       router.refresh();
     });
   }
-  /** «Desvincular»: ese comercio queda sin equivalente y no se propone otro solo. */
+  /** «Desvincular» / «No lo trabaja»: ese comercio queda sin equivalente y no se propone otro solo. */
   function quitar(idProducto: string, comercio: Comercio) {
     startTransition(async () => {
       const r = await quitarEquivalente(idProducto, comercio).catch(() => ({ error: "No se pudo guardar." }));
-      props.avisar(r.error ?? `Listo: desvinculado de ${nombreDe(comercio)}.`, Boolean(r.error));
+      props.avisar(r.error ?? `Listo: ${nombreDe(comercio)} no lo trabaja.`, Boolean(r.error));
+      router.refresh();
+    });
+  }
+  /** Sacar el «No lo trabaja»: el sistema vuelve a proponer el más parecido. */
+  function deshacer(idProducto: string, comercio: Comercio) {
+    startTransition(async () => {
+      const r = await deshacerNoLoTrabaja(idProducto, comercio).catch(() => ({ error: "No se pudo guardar." }));
+      props.avisar(r.error ?? `Listo: ${nombreDe(comercio)} vuelve a compararse.`, Boolean(r.error));
       router.refresh();
     });
   }
 
   // Se compara contra el precio normal; la oferta va aparte, de referencia (puede ser algo por vencer).
-  const conPrecio = (v: VinculoCompetencia | undefined, g: number | null) => (v?.item && g ? precioNormalATuTamano(v.item, g) : null);
+  const conPrecio = (v: VinculoCompetencia | undefined, p: { gramos: number | null; idEnvase: string | null }) =>
+    v?.item && p.gramos ? precioNormalATuTamano(v.item, p.gramos, esCerrado(p)) : null;
   const filas: Fila[] = props.productos.map((p0) => {
     // Para comparar: su peso neto o, si no lo tiene, el tamaño del nombre (x200cc). Solo acá, no se guarda.
     const p = { ...p0, gramos: tamanoComparable(p0) };
@@ -99,12 +116,12 @@ export default function PreciosCompetencia(
     // Alifrut no entra: es el proveedor, su precio al público va solo de referencia.
     const otros = (Object.keys(v) as Comercio[])
       .filter((c) => c !== "ALIFRUT")
-      .map((c) => ({ c, precio: conPrecio(v[c], p.gramos) }))
+      .map((c) => ({ c, precio: conPrecio(v[c], p) }))
       .filter((x) => x.precio);
     const principal = COMERCIOS.find((c) => c.principal)?.clave;
     const contra: Comercio | null =
-      principal && v[principal] && conPrecio(v[principal], p.gramos) ? principal : otros.sort((a, b) => (a.precio as number) - (b.precio as number))[0]?.c ?? null;
-    const dif = contra && p.precioHoy ? diferencia(p.precioHoy, conPrecio(v[contra], p.gramos)) : null;
+      principal && v[principal] && conPrecio(v[principal], p) ? principal : otros.sort((a, b) => (a.precio as number) - (b.precio as number))[0]?.c ?? null;
+    const dif = contra && p.precioHoy ? diferencia(p.precioHoy, conPrecio(v[contra], p)) : null;
     const sinIgual = (datos.vinculos[p.id] ?? []).filter((x) => !x.item && x.estado === "CONFIRMADO").map((x) => x.comercio);
     return { p, v, dif, contra, sinIgual };
   });
@@ -177,7 +194,7 @@ export default function PreciosCompetencia(
                 {de
                   .map((c) => {
                     const it = f.v[c]!.item!;
-                    const a = f.p.gramos ? precioATuTamano(it, f.p.gramos) : null;
+                    const a = f.p.gramos ? precioATuTamano(it, f.p.gramos, esCerrado(f.p)) : null;
                     return `${nombreDe(c)} a ${pesos(a)} a tus ${f.p.gramos ?? "?"} g${it.nota ? ` (${it.nota})` : ""}`;
                   })
                   .join(" · ")}
@@ -266,8 +283,12 @@ export default function PreciosCompetencia(
                           <td key={c.clave} className={x?.item && x.estado === "CONFIRMADO" ? "pr-comp-ok" : undefined}>
                             {x?.item ? (
                               <span className="pr-comp-celda">
-                                <span className="n">{pesos(conPrecio(x, f.p.gramos))}</span>
-                                <Oferta it={x.item} g={f.p.gramos} />
+                                {otroTamano(x.item, f.p) ? (
+                                  <span className="pr-tenue" title="Lo tuyo viene cerrado: se compara solo con el mismo tamaño">otro tamaño</span>
+                                ) : (
+                                  <span className="n">{pesos(conPrecio(x, f.p))}</span>
+                                )}
+                                <Oferta it={x.item} g={f.p.gramos} cerrado={esCerrado(f.p)} />
                                 <small>
                                   {x.item.nombre}
                                   {x.item.porKilo ? " · por kilo" : ""}
@@ -275,8 +296,21 @@ export default function PreciosCompetencia(
                                 </small>
                                 {x.estado === "CONFIRMADO" && <span className="pr-comp-visto">✓ confirmado</span>}
                               </span>
+                            ) : f.sinIgual.includes(c.clave) ? (
+                              // «No lo trabaja» (Gonzalo, 2026-11-07), y se puede sacar.
+                              <span className="pr-comp-celda" onClick={(e) => e.stopPropagation()}>
+                                <span className="pr-tenue">No lo trabaja</span>
+                                <button type="button" className="pr-comp-otro" disabled={pendiente} onClick={() => deshacer(f.p.id, c.clave)}>
+                                  deshacer
+                                </button>
+                              </span>
                             ) : (
-                              <span className="pr-tenue">—</span>
+                              <span className="pr-comp-celda" onClick={(e) => e.stopPropagation()}>
+                                <span className="pr-tenue">—</span>
+                                <button type="button" className="pr-comp-otro no" disabled={pendiente} onClick={() => quitar(f.p.id, c.clave)}>
+                                  No lo trabaja
+                                </button>
+                              </span>
                             )}
                           </td>
                         );
@@ -327,6 +361,7 @@ function ElegirEquivalente({
   comercio,
   nombreComercio,
   gramos,
+  cerrado,
   onCerrar,
   onElegido,
   avisar,
@@ -335,6 +370,7 @@ function ElegirEquivalente({
   comercio: Comercio;
   nombreComercio: string;
   gramos: number | null;
+  cerrado: boolean;
   onCerrar: () => void;
   onElegido: () => void;
   avisar: (t: string, mal?: boolean) => void;
@@ -423,8 +459,8 @@ function ElegirEquivalente({
                 </small>
               </span>
               <span className="n">
-                {pesos(o.aTuTamano)}
-                <small>a tus {gramos ?? "?"} g</small>
+                {o.aTuTamano == null && cerrado ? <span className="pr-tenue">otro tamaño</span> : pesos(o.aTuTamano)}
+                <small>{cerrado ? `tuyo: ${legible(gramos)} cerrado` : `a tus ${gramos ?? "?"} g`}</small>
               </span>
               {o.elegido ? (
                 <span className="pr-comp-visto">✓ el elegido</span>
@@ -442,11 +478,13 @@ function ElegirEquivalente({
 }
 
 /** "oferta $2.160 · VENCE 4 NOV": el precio de oferta llevado a tu tamaño, si hay. */
-function Oferta({ it, g }: { it: ItemCompetencia; g: number | null }) {
+function Oferta({ it, g, cerrado }: { it: ItemCompetencia; g: number | null; cerrado: boolean }) {
   if (!it.precioAntes || !g) return null;
+  const a = precioATuTamano(it, g, cerrado);
+  if (a == null) return null;
   return (
     <span className="pr-comp-oferta">
-      oferta {pesos(precioATuTamano(it, g))}
+      oferta {pesos(a)}
       {it.nota ? ` · ${it.nota}` : ""}
     </span>
   );
@@ -471,13 +509,14 @@ function Detalle({
   alElegir: () => void;
 } & Llevar) {
   const g = f.p.gramos;
+  const cerrado = esCerrado(f.p);
   const lista = COMERCIOS.filter((c) => f.v[c.clave]?.item);
   // Los que figuran con «—»: se puede buscar a mano (Gonzalo, 2026-11-06).
   const sinEquivalente = COMERCIOS.filter((c) => !f.v[c.clave]?.item);
   const [eligiendo, setEligiendo] = useState<Comercio | null>(null);
-  const todos = [{ q: "Vos", v: f.p.precioHoy ?? 0, yo: true }, ...lista.map((c) => ({ q: c.nombre, v: g ? precioNormalATuTamano(f.v[c.clave]!.item!, g) ?? 0 : 0, yo: false }))].filter((t) => t.v > 0);
+  const todos = [{ q: "Vos", v: f.p.precioHoy ?? 0, yo: true }, ...lista.map((c) => ({ q: c.nombre, v: g ? precioNormalATuTamano(f.v[c.clave]!.item!, g, cerrado) ?? 0 : 0, yo: false }))].filter((t) => t.v > 0);
   const max = Math.max(1, ...todos.map((t) => t.v));
-  const ref = f.contra && g ? precioNormalATuTamano(f.v[f.contra]!.item!, g) : null;
+  const ref = f.contra && g ? precioNormalATuTamano(f.v[f.contra]!.item!, g, cerrado) : null;
   const tope = ref ? Math.floor((ref * 0.98) / 100) * 100 : null;
   return (
     <div className="pr-det pr-det-comp">
@@ -522,6 +561,7 @@ function Detalle({
                     comercio={c.clave}
                     nombreComercio={c.nombre}
                     gramos={g}
+                    cerrado={cerrado}
                     onCerrar={() => setEligiendo(null)}
                     onElegido={() => {
                       setEligiendo(null);
@@ -534,7 +574,7 @@ function Detalle({
                   <>
                     {/* Para deshacer un vínculo mal hecho (Gonzalo, 2026-11-06: «ponerlo o sacarlo»). */}
                     <button type="button" className="pr-comp-otro no" disabled={pendiente} onClick={() => quitar(f.p.id, c.clave)}>
-                      ✕ Desvincular
+                      ✕ No lo trabaja
                     </button>
                     <button type="button" className="pr-comp-otro" onClick={() => setEligiendo(c.clave)}>
                       Elegir otro de {c.nombre}
@@ -542,18 +582,27 @@ function Detalle({
                   </>
                 )}
               </div>
-              <div className="pr-comp-tu n">
-                {pesos(g ? precioNormalATuTamano(it, g) : null)}
-                <small>a tus {g ?? "?"} g</small>
-                {it.precioAntes && g && <small className="pr-comp-oferta">oferta {pesos(precioATuTamano(it, g))}</small>}
-              </div>
+              {otroTamano(it, f.p) ? (
+                <div className="pr-comp-tu">
+                  <span className="pr-tenue">Otro tamaño</span>
+                  <small>
+                    Lo tuyo viene cerrado de {legible(g)}: se compara solo con el mismo tamaño. Si tienen el de {legible(g)}, elegilo con «Elegir otro».
+                  </small>
+                </div>
+              ) : (
+                <div className="pr-comp-tu n">
+                  {pesos(g ? precioNormalATuTamano(it, g, cerrado) : null)}
+                  <small>{cerrado ? `mismo tamaño (${legible(g)})` : `a tus ${g ?? "?"} g`}</small>
+                  {it.precioAntes && g && <small className="pr-comp-oferta">oferta {pesos(precioATuTamano(it, g, cerrado))}</small>}
+                </div>
+              )}
             </div>
           );
         })}
         {sinEquivalente.length > 0 && (
           <div className="pr-comp-buscar-en">
             <span className="pr-tenue">
-              Sin vincular en {sinEquivalente.map((c) => `${c.nombre}${f.sinIgual.includes(c.clave) ? " (lo desvinculaste)" : ""}`).join(", ")}. Si vos sabés que lo tienen:
+              Sin vincular en {sinEquivalente.map((c) => `${c.nombre}${f.sinIgual.includes(c.clave) ? " (no lo trabaja)" : ""}`).join(", ")}. Si vos sabés que lo tienen:
             </span>
             <div>
               {sinEquivalente.map((c) => (
@@ -569,6 +618,7 @@ function Detalle({
                 comercio={eligiendo}
                 nombreComercio={nombreDe(eligiendo)}
                 gramos={g}
+                cerrado={cerrado}
                 onCerrar={() => setEligiendo(null)}
                 onElegido={() => {
                   const quien = nombreDe(eligiendo);
@@ -610,11 +660,12 @@ function Detalle({
             .filter((c) => f.v[c.clave]?.item?.precioAntes)
             .map((c) => {
               const it = f.v[c.clave]!.item!;
-              const enOferta = precioATuTamano(it, g);
+              const enOferta = precioATuTamano(it, g, cerrado);
+              if (enOferta == null) return null;
               const vs = f.p.precioHoy && enOferta ? diferencia(f.p.precioHoy, enOferta) : null;
               return (
                 <p key={`of-${c.clave}`} className="pr-nota ojo">
-                  🏷️ <b>{c.nombre} lo tiene en oferta</b> a {pesos(enOferta)} a tus {g} g (normal {pesos(precioNormalATuTamano(it, g))}){it.nota ? `, ${it.nota}` : ""}.
+                  🏷️ <b>{c.nombre} lo tiene en oferta</b> a {pesos(enOferta)} a tus {g} g (normal {pesos(precioNormalATuTamano(it, g, cerrado))}){it.nota ? `, ${it.nota}` : ""}.
                   {vs != null && ` Contra la oferta estás ${Math.round(Math.abs(vs) * 100)}% ${vs > 0 ? "arriba" : "abajo"}.`}
                 </p>
               );

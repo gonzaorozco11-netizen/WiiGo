@@ -342,7 +342,7 @@ export async function actualizarCompetencia(supabase: SupabaseClient): Promise<R
   const { data: marcas } = await supabase.from("marcas").select("id_marca").eq("tipo_comercializacion", "PROPIA");
   const { data: prods } = await supabase
     .from("productos")
-    .select("id_producto, nombre, peso_neto_g, id_granel")
+    .select("id_producto, nombre, peso_neto_g, id_granel, id_envase")
     .in("id_marca", (marcas ?? []).map((m) => m.id_marca))
     .eq("estado", "ACTIVO");
   const productos = (prods ?? []).map((p) => ({
@@ -351,6 +351,8 @@ export async function actualizarCompetencia(supabase: SupabaseClient): Promise<R
     // Sin peso neto cargado, el tamaño del nombre (x200cc): si no, los líquidos no se comparaban.
     gramos: Number(p.peso_neto_g) || gramosDelNombre(p.nombre as string),
     idGranel: (p.id_granel as string | null) ?? null,
+    // Sin bolsita de WiiGo = viene cerrado (miel, aceites): solo se compara con el mismo tamaño.
+    cerrado: !p.id_envase,
   }));
   const busquedas = [...new Set(productos.map((p) => nombreBase(p.nombre).toLowerCase()))];
 
@@ -470,7 +472,7 @@ export async function actualizarCompetencia(supabase: SupabaseClient): Promise<R
         }
       }
       // Por parecido solo entra lo que tiene tamaño: sin él no se puede comparar.
-      const cand = mejorCandidato({ nombre: nombreBase(p.nombre), gramos: p.gramos }, vigentes.filter((i) => i.comercio === clave && i.gramos), rechazados);
+      const cand = mejorCandidato({ nombre: nombreBase(p.nombre), gramos: p.gramos, cerrado: p.cerrado }, vigentes.filter((i) => i.comercio === clave && i.gramos), rechazados);
       if ((cand?.id ?? null) === (v?.id_item ?? null) && v) continue;
       filas.push({ id_producto: p.id, comercio: clave, id_item: cand?.id ?? null, estado: "PROPUESTO", rechazados, actualizado_el: ahora });
     }

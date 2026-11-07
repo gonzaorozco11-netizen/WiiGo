@@ -505,7 +505,8 @@ function alifrutDe(datos: DatosCompetencia | null, p: ProductoDelModulo): Alifru
   // Su peso neto o el tamaño del nombre (x200cc): sin eso los líquidos quedaban sin precio.
   const tam = tamanoComparable(p);
   if (!v?.item || !tam) return null;
-  const normal = precioATuTamano(v.item, tam);
+  // Lo que viene cerrado (sin bolsita) solo contra el mismo tamaño (Gonzalo, 2026-11-07).
+  const normal = precioATuTamano(v.item, tam, !p.idEnvase);
   if (normal == null) return null;
   const desc = datos?.alifrutDescEfectivo ?? 5;
   return { normal, efectivo: normal * (1 - desc / 100), oferta: Boolean(v.item.precioAntes), agotado: !v.item.disponible, sinConfirmar: v.estado === "PROPUESTO", desc };
@@ -526,7 +527,7 @@ function confirmadosDe(datos: DatosCompetencia | null, p: ProductoDelModulo): Co
     .flatMap((v) => {
       if (v.comercio === "ALIFRUT" || v.estado !== "CONFIRMADO" || !v.item) return [];
       // El precio normal: si está en oferta, el de antes (la oferta se avisa aparte).
-      const normal = precioATuTamano({ precio: v.item.precioAntes ?? v.item.precio, gramos: v.item.gramos }, gramos);
+      const normal = precioATuTamano({ precio: v.item.precioAntes ?? v.item.precio, gramos: v.item.gramos }, gramos, !p.idEnvase);
       if (normal == null) return [];
       // Corto para que entre en la columna: "Jumbo Mendoza" → "Jumbo".
       const nombre = (COMERCIOS.find((c) => c.clave === v.comercio)?.nombre ?? v.comercio).replace(/ Mendoza$/, "");

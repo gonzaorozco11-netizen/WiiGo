@@ -46,8 +46,18 @@ export type ItemCompetencia = {
  * oferta puede ser mercadería por vencer (Gonzalo, 2026-10-29), así que se
  * muestra aparte, como referencia.
  */
-export function precioNormalATuTamano(item: Pick<ItemCompetencia, "precio" | "precioAntes" | "gramos">, gramos: number): number | null {
-  return precioATuTamano({ precio: item.precioAntes ?? item.precio, gramos: item.gramos }, gramos);
+export function precioNormalATuTamano(item: Pick<ItemCompetencia, "precio" | "precioAntes" | "gramos">, gramos: number, cerrado = false): number | null {
+  return precioATuTamano({ precio: item.precioAntes ?? item.precio, gramos: item.gramos }, gramos, cerrado);
+}
+
+/**
+ * Lo que viene cerrado (miel, aceite de coco, botellas: los productos sin
+ * bolsita de WiiGo) se compara solo contra el mismo tamaño. Un aceite de 360 cc
+ * no se compara con uno de 500 cc dividido (Gonzalo, 2026-11-07). Hasta 5% de
+ * diferencia cuenta como igual (370 g contra 380 g).
+ */
+export function mismoTamano(a: number | null, b: number | null): boolean {
+  return Boolean(a && b && Math.abs(Math.log(a / b)) <= 0.05);
 }
 
 /**
@@ -69,8 +79,12 @@ export function tamanoComparable(p: { gramos: number | null; nombre: string }): 
   return p.gramos ?? gramosDelNombre(p.nombre);
 }
 
-/** Lo que salen `gramos` de WiiGo con el precio del otro. */
-export function precioATuTamano(item: Pick<ItemCompetencia, "precio" | "gramos">, gramos: number): number | null {
+/**
+ * Lo que salen `gramos` de WiiGo con el precio del otro. Si lo tuyo viene
+ * cerrado (`cerrado`), solo hay precio cuando el suyo es del mismo tamaño.
+ */
+export function precioATuTamano(item: Pick<ItemCompetencia, "precio" | "gramos">, gramos: number, cerrado = false): number | null {
+  if (cerrado) return mismoTamano(item.gramos, gramos) ? item.precio : null;
   return item.gramos && item.gramos > 0 ? (item.precio / item.gramos) * gramos : null;
 }
 
@@ -163,16 +177,18 @@ export function parecido(nuestro: string, suyo: string): number {
 /**
  * El mejor candidato de un comercio para un producto de WiiGo: el más parecido
  * y, a igual parecido, el del tamaño más cercano (en una dietética, 250 g
- * contra 250 g). Los que Gonzalo ya rechazó no se vuelven a proponer.
+ * contra 250 g). Los que Gonzalo ya rechazó no se vuelven a proponer. Para
+ * lo que viene cerrado, solo el mismo tamaño.
  */
 export function mejorCandidato(
-  nuestro: { nombre: string; gramos: number | null },
+  nuestro: { nombre: string; gramos: number | null; cerrado?: boolean },
   items: ItemCompetencia[],
   rechazados: string[] = []
 ): ItemCompetencia | null {
   let mejor: { it: ItemCompetencia; puntos: number } | null = null;
   for (const it of items) {
     if (rechazados.includes(it.id) || !it.gramos) continue;
+    if (nuestro.cerrado && !mismoTamano(it.gramos, nuestro.gramos)) continue;
     const p = parecido(nuestro.nombre, it.nombre);
     if (p < 0.45) continue;
     const tamano = nuestro.gramos ? Math.abs(Math.log(it.gramos / nuestro.gramos)) : 0;
