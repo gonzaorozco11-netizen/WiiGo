@@ -23,7 +23,7 @@ import { AvisoAlifrut, CambiosAlifrut, CatalogoAlifrut, TraerLista, calcularPend
 import PreciosCompetencia from "@/components/PreciosCompetencia";
 import PreciosGondola, { type GondolaLocal, type ProductoGondola } from "@/components/PreciosGondola";
 import type { DatosCompetencia } from "@/lib/competenciaLeer";
-import { COMERCIOS, precioATuTamano } from "@/lib/competencia";
+import { COMERCIOS, precioATuTamano, tamanoComparable } from "@/lib/competencia";
 import { colorDeRubro } from "@/lib/coloresRubro";
 import {
   guardarConfigPrecios,
@@ -502,8 +502,10 @@ function ColumnasLista() {
 type Alifrut = { normal: number; efectivo: number; oferta: boolean; agotado: boolean; sinConfirmar: boolean; desc: number } | null;
 function alifrutDe(datos: DatosCompetencia | null, p: ProductoDelModulo): Alifrut {
   const v = datos?.vinculos[p.id]?.find((x) => x.comercio === "ALIFRUT");
-  if (!v?.item || !p.gramos) return null;
-  const normal = precioATuTamano(v.item, p.gramos);
+  // Su peso neto o el tamaño del nombre (x200cc): sin eso los líquidos quedaban sin precio.
+  const tam = tamanoComparable(p);
+  if (!v?.item || !tam) return null;
+  const normal = precioATuTamano(v.item, tam);
   if (normal == null) return null;
   const desc = datos?.alifrutDescEfectivo ?? 5;
   return { normal, efectivo: normal * (1 - desc / 100), oferta: Boolean(v.item.precioAntes), agotado: !v.item.disponible, sinConfirmar: v.estado === "PROPUESTO", desc };
@@ -518,8 +520,8 @@ function alifrutDe(datos: DatosCompetencia | null, p: ProductoDelModulo): Alifru
  */
 type Confirmado = { comercio: string; nombre: string; normal: number; oferta: boolean; agotado: boolean };
 function confirmadosDe(datos: DatosCompetencia | null, p: ProductoDelModulo): Confirmado[] {
-  if (!p.gramos) return [];
-  const gramos = p.gramos;
+  const gramos = tamanoComparable(p);
+  if (!gramos) return [];
   return (datos?.vinculos[p.id] ?? [])
     .flatMap((v) => {
       if (v.comercio === "ALIFRUT" || v.estado !== "CONFIRMADO" || !v.item) return [];

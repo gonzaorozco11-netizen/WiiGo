@@ -50,13 +50,23 @@ export function precioNormalATuTamano(item: Pick<ItemCompetencia, "precio" | "pr
   return precioATuTamano({ precio: item.precioAntes ?? item.precio, gramos: item.gramos }, gramos);
 }
 
-/** Gramos que dice un nombre: "X100GRS", "x 250 g", "1 Kg", "x 1,5 kg". */
+/**
+ * El tamaño que dice un nombre: "X100GRS", "x 250 g", "1 Kg", "x 1,5 kg".
+ * También líquidos, para comparar aceites, leches y jarabes: "x200cc", "x30ml",
+ * "x1lt", "1,5 L" (1 cc = 1, 1 litro = 1000). Antes solo se entendían gramos y
+ * el aceite de coco x200cc no tenía precio a tu tamaño (Gonzalo, 2026-11-07).
+ */
 export function gramosDelNombre(nombre: string): number | null {
-  const m = /(?:^|[\sx×(])\s*([\d]+(?:[.,]\d+)?)\s*(kg|kgs|kilo|kilos|gr|grs|g|gramos)\b/i.exec(nombre);
+  const m = /(?:^|[\sx×(])\s*([\d]+(?:[.,]\d+)?)\s*(kg|kgs|kilo|kilos|gr|grs|g|gramos|cc|cm3|ml|lts|lt|litros|litro|l)(?![a-zñ])/i.exec(nombre);
   if (!m) return null;
   const n = Number(m[1].replace(",", "."));
   if (!Number.isFinite(n) || n <= 0) return null;
-  return /^k/i.test(m[2]) ? Math.round(n * 1000) : Math.round(n);
+  return /^(k|l)/i.test(m[2]) ? Math.round(n * 1000) : Math.round(n);
+}
+
+/** El tamaño de un producto de WiiGo para comparar: su peso neto o, si no lo tiene cargado, el que dice el nombre (x200cc). */
+export function tamanoComparable(p: { gramos: number | null; nombre: string }): number | null {
+  return p.gramos ?? gramosDelNombre(p.nombre);
 }
 
 /** Lo que salen `gramos` de WiiGo con el precio del otro. */

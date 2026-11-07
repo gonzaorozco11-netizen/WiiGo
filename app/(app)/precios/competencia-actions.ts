@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import { esRolInterno } from "@/lib/rolesInternos";
-import { COMERCIOS, contienePalabras, mejorCandidato, parecidoSuelto, precioATuTamano, type Comercio } from "@/lib/competencia";
+import { COMERCIOS, contienePalabras, gramosDelNombre, mejorCandidato, parecidoSuelto, precioATuTamano, type Comercio } from "@/lib/competencia";
 import { actualizarCompetencia, filaAItem, todasLasFilas } from "@/lib/competenciaLeer";
 import { nombreBase } from "@/lib/nombreProducto";
 
@@ -82,7 +82,8 @@ export async function opcionesEquivalente(idProducto: string, comercio: string, 
   if (error) return { error: FALTA_SQL };
   if (!prod) return { error: "No encontré tu producto." };
   const nuestro = nombreBase(prod.nombre as string);
-  const gramos = Number(prod.peso_neto_g) || null;
+  // Su peso neto o el tamaño del nombre (x200cc).
+  const gramos = Number(prod.peso_neto_g) || gramosDelNombre(prod.nombre as string);
   const rechazados = new Set(((v?.rechazados as string[] | null) ?? []).map(String));
   const texto = buscado.trim();
   const opciones = (items ?? [])
@@ -167,7 +168,9 @@ export async function descartarEquivalente(idProducto: string, comercio: string)
       supabase.from("competencia_items").select("*").eq("comercio", comercio).eq("disponible", true).not("gramos", "is", null).order("id_item").range(desde, hasta)
     ),
   ]);
-  const siguiente = prod ? mejorCandidato({ nombre: nombreBase(prod.nombre as string), gramos: Number(prod.peso_neto_g) || null }, (items ?? []).map(filaAItem), rechazados) : null;
+  const siguiente = prod
+    ? mejorCandidato({ nombre: nombreBase(prod.nombre as string), gramos: Number(prod.peso_neto_g) || gramosDelNombre(prod.nombre as string) }, (items ?? []).map(filaAItem), rechazados)
+    : null;
   await supabase
     .from("competencia_vinculos")
     .upsert({ id_producto: idProducto, comercio, id_item: siguiente?.id ?? null, estado: "PROPUESTO", rechazados, actualizado_el: new Date().toISOString() }, { onConflict: "id_producto,comercio" });

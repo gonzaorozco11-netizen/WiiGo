@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { COMERCIOS, gramosDelNombre, mejorCandidato, type Comercio, type ItemCompetencia } from "@/lib/competencia";
+import { COMERCIOS, gramosDelNombre, mejorCandidato, normalizarTexto, type Comercio, type ItemCompetencia } from "@/lib/competencia";
 import { nombreBase } from "@/lib/nombreProducto";
 
 // Lee los precios de la competencia de Mendoza de sus páginas públicas y
@@ -121,9 +121,11 @@ async function leerAlifrutPublico(): Promise<Leido[]> {
   type P = { id: string; nombre: string; precio?: number; precioAnterior?: number | null; cartelOferta?: string | null; sinStock?: boolean; reingreso?: boolean; sku?: string; variantes: V[] };
   // Desde 2026-11-04 /api/buscador solo responde a una búsqueda (y de a 60):
   // la lista entera está en /api/lista-precios, la misma del modal "Lista de precios".
-  // Ahí no viene el stock: "reingreso" es lo que está por volver a entrar.
+  // Ahí no viene el stock. «reingreso» es lo que VOLVIÓ a entrar, no lo que
+  // falta: se leía al revés y salían «agotado» productos que había (Gonzalo
+  // lo verificó, 2026-11-07). Solo se toma como agotado si lo dice sinStock.
   const respuesta = await json<{ productos?: P[] } | P[]>("https://www.alifrut-distribuidora.com.ar/api/lista-precios");
-  const lista = (Array.isArray(respuesta) ? respuesta : respuesta.productos ?? []).map((p) => ({ ...p, sinStock: p.sinStock ?? p.reingreso === true }));
+  const lista = (Array.isArray(respuesta) ? respuesta : respuesta.productos ?? []).map((p) => ({ ...p, sinStock: p.sinStock === true }));
   if (lista.length === 0) throw new Error("Alifrut no devolvió productos");
   const salida: Leido[] = [];
   for (const p of lista) {
@@ -346,7 +348,8 @@ export async function actualizarCompetencia(supabase: SupabaseClient): Promise<R
   const productos = (prods ?? []).map((p) => ({
     id: p.id_producto as string,
     nombre: p.nombre as string,
-    gramos: Number(p.peso_neto_g) || null,
+    // Sin peso neto cargado, el tamaño del nombre (x200cc): si no, los líquidos no se comparaban.
+    gramos: Number(p.peso_neto_g) || gramosDelNombre(p.nombre as string),
     idGranel: (p.id_granel as string | null) ?? null,
   }));
   const busquedas = [...new Set(productos.map((p) => nombreBase(p.nombre).toLowerCase()))];
@@ -405,13 +408,52 @@ export async function actualizarCompetencia(supabase: SupabaseClient): Promise<R
   const vinc = await todasLasFilas<Record<string, unknown>>((desde, hasta) =>
     supabase.from("competencia_vinculos").select("id_producto, comercio, estado, rechazados, id_item").order("id_producto").order("comercio").range(desde, hasta)
   );
+  // Si un comercio cambia cómo identifica sus productos en la página, lo leído
+  // entra como productos nuevos y los confirmados quedan apuntando a los viejos,
+  // que ya no se actualizan: salían «agotado» y con el precio viejo (Alifrut pasó
+  // de nombre a código, 2026-11-07). Se pasan al de hoy que se llama igual.
+  const vistoHoy = (i: ItemCompetencia) => new Date(i.vistoEl).getTime() >= new Date(ahora).getTime() - 1000;
+  const leidosOk = new Set((Object.keys(comercios) as Comercio[]).filter((c) => !comercios[c]?.error));
+  const frescoPorNombre = new Map<string, ItemCompetencia>();
+  for (const i of items) {
+    if (!leidosOk.has(i.comercio) || !vistoHoy(i)) continue;
+    const k = `${i.comercio}|${normalizarTexto(i.nombre)}`;
+    // Si hay dos con el mismo nombre, el que hay.
+    const ya = frescoPorNombre.get(k);
+    if (!ya || (!ya.disponible && i.disponible)) frescoPorNombre.set(k, i);
+  }
+  const itemPorId = new Map(items.map((i) => [i.id, i]));
+  const viejos = (vinc ?? []).filter((v) => {
+    if (v.estado !== "CONFIRMADO" || !v.id_item || !leidosOk.has(v.comercio as Comercio)) return false;
+    const it = itemPorId.get(v.id_item as string);
+    return !it || !vistoHoy(it);
+  });
+  if (viejos.length) {
+    const nombreViejo = new Map<string, string>();
+    const ids = [...new Set(viejos.map((v) => v.id_item as string))];
+    for (let i = 0; i < ids.length; i += 200) {
+      const { data } = await supabase.from("competencia_items").select("id_item, nombre").in("id_item", ids.slice(i, i + 200));
+      for (const x of data ?? []) nombreViejo.set(x.id_item as string, x.nombre as string);
+    }
+    const mover: Record<string, unknown>[] = [];
+    for (const v of viejos) {
+      const nombre = nombreViejo.get(v.id_item as string);
+      const nuevo = nombre ? frescoPorNombre.get(`${v.comercio}|${normalizarTexto(nombre)}`) : undefined;
+      if (!nuevo || nuevo.id === v.id_item) continue;
+      mover.push({ id_producto: v.id_producto, comercio: v.comercio, id_item: nuevo.id, estado: "CONFIRMADO", rechazados: (v.rechazados as string[] | null) ?? [], actualizado_el: ahora });
+      v.id_item = nuevo.id;
+    }
+    if (mover.length) await supabase.from("competencia_vinculos").upsert(mover, { onConflict: "id_producto,comercio" });
+  }
   const vincPor = new Map((vinc ?? []).map((v) => [`${v.id_producto}:${v.comercio}`, v]));
   // Alifrut: el producto ya está vinculado a su lista exclusiva (de qué
   // producto de Alifrut sale). Ese mismo producto en la lista al público es el
   // equivalente, en el tamaño que sea, y queda confirmado solo: no hace falta
   // adivinar por el nombre (Gonzalo, 2026-10-29).
   const nombrePrivado = await nombresListaPrivada(supabase);
-  const itemsAlifrut = items.filter((i) => i.comercio === "ALIFRUT");
+  // Para proponer, solo lo de esta lectura (lo viejo con otro identificador quedaría repetido).
+  const vigentes = items.filter((i) => !leidosOk.has(i.comercio) || vistoHoy(i));
+  const itemsAlifrut = vigentes.filter((i) => i.comercio === "ALIFRUT");
   const filas: Record<string, unknown>[] = [];
   for (const p of productos) {
     for (const { clave } of COMERCIOS) {
@@ -428,7 +470,7 @@ export async function actualizarCompetencia(supabase: SupabaseClient): Promise<R
         }
       }
       // Por parecido solo entra lo que tiene tamaño: sin él no se puede comparar.
-      const cand = mejorCandidato({ nombre: nombreBase(p.nombre), gramos: p.gramos }, items.filter((i) => i.comercio === clave && i.gramos), rechazados);
+      const cand = mejorCandidato({ nombre: nombreBase(p.nombre), gramos: p.gramos }, vigentes.filter((i) => i.comercio === clave && i.gramos), rechazados);
       if ((cand?.id ?? null) === (v?.id_item ?? null) && v) continue;
       filas.push({ id_producto: p.id, comercio: clave, id_item: cand?.id ?? null, estado: "PROPUESTO", rechazados, actualizado_el: ahora });
     }
@@ -441,14 +483,17 @@ export async function actualizarCompetencia(supabase: SupabaseClient): Promise<R
   const sinTamano = new Set(itemsAlifrut.filter((i) => !i.gramos).map((i) => i.id));
   if (sinTamano.size) {
     const vAli = await todasLasFilas<Record<string, unknown>>((desde, hasta) =>
-      supabase.from("competencia_vinculos").select("id_producto, id_item").eq("comercio", "ALIFRUT").not("id_item", "is", null).order("id_producto").range(desde, hasta)
+      supabase.from("competencia_vinculos").select("id_producto, id_item, estado").eq("comercio", "ALIFRUT").not("id_item", "is", null).order("id_producto").range(desde, hasta)
     );
     const granelDe = new Map(productos.map((p) => [p.id, p.idGranel]));
+    const tamanoDe = new Map(productos.map((p) => [p.id, p.gramos]));
     const hechos = new Set<string>();
     for (const v of vAli ?? []) {
       const idItem = v.id_item as string;
       const idGranel = granelDe.get(v.id_producto as string);
-      const gramos = idGranel ? nombrePrivado.get(idGranel)?.gramos : null;
+      // Si la lista privada tampoco lo dice («Leche De Coco», sin «x1lt») y Gonzalo
+      // confirmó que es el mismo producto, tiene su mismo tamaño (2026-11-07).
+      const gramos = (idGranel ? nombrePrivado.get(idGranel)?.gramos : null) ?? (v.estado === "CONFIRMADO" ? tamanoDe.get(v.id_producto as string) : null);
       if (!sinTamano.has(idItem) || !gramos || hechos.has(idItem)) continue;
       hechos.add(idItem);
       await supabase.from("competencia_items").update({ gramos, por_kilo: gramos === 1000 }).eq("id_item", idItem);

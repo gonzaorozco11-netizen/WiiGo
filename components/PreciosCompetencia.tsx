@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
-import { COMERCIOS, diferencia, precioATuTamano, precioNormalATuTamano, type Comercio, type ItemCompetencia } from "@/lib/competencia";
+import { COMERCIOS, diferencia, precioATuTamano, precioNormalATuTamano, tamanoComparable, type Comercio, type ItemCompetencia } from "@/lib/competencia";
 import type { DatosCompetencia, VinculoCompetencia } from "@/lib/competenciaLeer";
 import type { ProductoDelModulo, RubroDelModulo } from "@/lib/datosPrecios";
 import { colorDeRubro } from "@/lib/coloresRubro";
@@ -89,7 +89,9 @@ export default function PreciosCompetencia(
 
   // Se compara contra el precio normal; la oferta va aparte, de referencia (puede ser algo por vencer).
   const conPrecio = (v: VinculoCompetencia | undefined, g: number | null) => (v?.item && g ? precioNormalATuTamano(v.item, g) : null);
-  const filas: Fila[] = props.productos.map((p) => {
+  const filas: Fila[] = props.productos.map((p0) => {
+    // Para comparar: su peso neto o, si no lo tiene, el tamaño del nombre (x200cc). Solo acá, no se guarda.
+    const p = { ...p0, gramos: tamanoComparable(p0) };
     const v: Fila["v"] = {};
     for (const x of datos.vinculos[p.id] ?? []) if (x.item) v[x.comercio] = x;
     // Contra la dietética principal (Sabor y Gran, desde que se sacó Bela Vita el
