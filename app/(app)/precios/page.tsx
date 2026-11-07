@@ -6,6 +6,7 @@ import { cargarDatosPrecios } from "@/lib/datosPrecios";
 import { cargarCatalogoAlifrut } from "@/lib/catalogoProveedor";
 import { cargarCompetencia } from "@/lib/competenciaLeer";
 import { cargarGondola } from "@/lib/gondola";
+import { cargarMarcasFabrica, conMarca } from "@/lib/marcaFabrica";
 import PantallaBloqueada from "@/components/PantallaBloqueada";
 import PreciosApp from "@/components/PreciosApp";
 import "./precios.css";
@@ -26,17 +27,25 @@ export default async function PreciosPage({ searchParams }: { searchParams: Prom
   if (!puedeVerPantalla(sesion, "precios")) return <PantallaBloqueada />;
 
   const supabase = getSupabaseServerClient();
-  const [datos, conPermisos, alifrut, competencia, localesRes] = await Promise.all([
+  const [datos, conPermisos, alifrut, competencia, localesRes, marcasFabrica] = await Promise.all([
     cargarDatosPrecios(supabase),
     obtenerSesionConPermisos(),
     cargarCatalogoAlifrut(supabase),
     cargarCompetencia(supabase),
     supabase.from("locales").select("id_local, nombre").eq("estado", "ACTIVO").order("nombre"),
+    // «(Entre Nuts)» al lado del nombre, como lo ve el cliente (Gonzalo: «así no me pierdo»). Solo para mostrar.
+    cargarMarcasFabrica(supabase).catch(() => new Map<string, string>()),
   ]);
   // La góndola de cada local (sql/gondola.sql). null = falta el SQL.
   const locales = (localesRes.data ?? []) as { id_local: string; nombre: string }[];
   const gondolas = await Promise.all(locales.map(async (l) => ({ idLocal: l.id_local, nombre: l.nombre, modulos: await cargarGondola(supabase, l.id_local) })));
-  const gondola = gondolas.some((g) => g.modulos === null) ? null : gondolas.map((g) => ({ ...g, modulos: g.modulos ?? [] }));
+  // Los nombres de los lugares, con la marca de fábrica (solo para mostrar: se guarda por id).
+  const gondola = gondolas.some((g) => g.modulos === null)
+    ? null
+    : gondolas.map((g) => ({
+        ...g,
+        modulos: (g.modulos ?? []).map((m) => ({ ...m, lugares: m.lugares.map((l) => ({ ...l, nombre: conMarca(l.nombre, marcasFabrica.get(l.idProducto)) })) })),
+      }));
   // En la góndola van los productos de todas las marcas (las islas tienen
   // Crislo y la estantería es de Animalfit), no solo los de WiiGo.
   const { data: todosProductos } = await supabase
@@ -46,7 +55,7 @@ export default async function PreciosPage({ searchParams }: { searchParams: Prom
     .order("nombre");
   const productosGondola = (todosProductos ?? []).map((p) => ({
     id: p.id_producto as string,
-    nombre: p.nombre as string,
+    nombre: conMarca(p.nombre as string, marcasFabrica.get(p.id_producto as string)),
     marca: (p.marcas as unknown as { nombre: string } | null)?.nombre ?? null,
   }));
 
@@ -79,6 +88,7 @@ export default async function PreciosPage({ searchParams }: { searchParams: Prom
         competencia={competencia}
         gondola={gondola}
         productosGondola={productosGondola}
+        marcasFabrica={Object.fromEntries(marcasFabrica)}
       />
     </div>
   );

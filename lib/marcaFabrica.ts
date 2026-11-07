@@ -36,6 +36,15 @@ export async function cargarMarcasFabrica(supabase: SupabaseClient): Promise<Map
   return mapa;
 }
 
+/**
+ * Lo mismo, como objeto para pasarle a una pantalla (un Map no viaja al
+ * navegador). Para las pantallas internas: Gonzalo también la quiere ver,
+ * «así no me pierdo» (2026-11-07). Solo para mostrar: nunca va al guardar.
+ */
+export async function marcasFabricaParaPantalla(supabase: SupabaseClient): Promise<Record<string, string>> {
+  return Object.fromEntries(await cargarMarcasFabrica(supabase).catch(() => new Map<string, string>()));
+}
+
 /** «Nombre (Marca)», o el nombre tal cual si no lleva. */
 export function conMarca(nombre: string, marca: string | null | undefined): string {
   return marca ? `${nombre} (${marca})` : nombre;

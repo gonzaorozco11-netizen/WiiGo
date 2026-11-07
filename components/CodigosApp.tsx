@@ -29,6 +29,8 @@ export type ItemCodigo = {
   propia?: boolean;
   /** Solo en lo que fraccionamos nosotros (marca propia): va el rótulo completo. */
   rotulo?: RotuloItem | null;
+  /** La marca de fábrica, para mostrar en la lista al lado del nombre (no va en la etiqueta). */
+  marcaFabrica?: string | null;
 };
 
 export type RotuloItem = {
@@ -460,6 +462,7 @@ function FilaProducto({
       <span className="min-w-0 flex-1">
         <span className="block text-sm font-medium text-neutral-900 truncate">
           {item.producto}
+          {item.marcaFabrica && <span className="font-normal text-neutral-500"> ({item.marcaFabrica})</span>}
           {item.variante && <span className="text-neutral-500"> — {item.variante}</span>}
         </span>
         <span className="block text-xs text-neutral-400">{item.sku ?? "sin SKU"}</span>
@@ -873,6 +876,7 @@ function ConfigurarImpresion({
                   <span className="min-w-0 flex-1">
                     <span className="block text-sm truncate">
                       {i.producto}
+                      {i.marcaFabrica && <span className="text-neutral-500"> ({i.marcaFabrica})</span>}
                       {i.variante && <span className="text-neutral-500"> — {i.variante}</span>}
                     </span>
                     <span className="block text-xs text-neutral-400">

@@ -40,6 +40,7 @@ export default function ProductosApp({
   filtrosPorProducto,
   variantesPorProducto,
   proveedoresLiquidacion = [],
+  marcasFabrica = {},
 }: {
   initialProductos: Producto[];
   marcas: Marca[];
@@ -63,6 +64,8 @@ export default function ProductosApp({
   filtrosPorProducto: Record<string, string[]>;
   variantesPorProducto: Record<string, VarianteProducto[]>;
   proveedoresLiquidacion?: ProveedorConSaldo[];
+  /** id_producto → marca de fábrica, solo para mostrar al lado del nombre (lib/marcaFabrica.ts). */
+  marcasFabrica?: Record<string, string>;
 }) {
   const [search, setSearch] = useState("");
   const [idMarcaFiltro, setIdMarcaFiltro] = useState<string | null>(null);
@@ -78,11 +81,11 @@ export default function ProductosApp({
       if (idMarcaFiltro && p.id_marca !== idMarcaFiltro) return false;
       if (!q) return true;
       const variantes = variantesPorProducto[p.id_producto] ?? [];
-      return [p.nombre, ...variantes.map((v) => v.sku), ...variantes.map((v) => v.codigo_barras)]
+      return [p.nombre, marcasFabrica[p.id_producto], ...variantes.map((v) => v.sku), ...variantes.map((v) => v.codigo_barras)]
         .filter(Boolean)
         .some((f) => f!.toLowerCase().includes(q));
     });
-  }, [initialProductos, search, idMarcaFiltro, variantesPorProducto]);
+  }, [initialProductos, search, idMarcaFiltro, variantesPorProducto, marcasFabrica]);
 
   // Un producto puede tener varias variantes (sabores, tamaños) y cada una
   // vive en varios locales — acá se suma todo para dar un vistazo rápido
@@ -240,7 +243,11 @@ export default function ProductosApp({
                     <tr key={p.id_producto} className="border-b border-neutral-100 last:border-0 align-top">
                       <td className="p-3">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <p className="font-medium text-neutral-900">{p.nombre}</p>
+                          <p className="font-medium text-neutral-900">
+                            {p.nombre}
+                            {/* Como lo ve el cliente (Gonzalo: «así no me pierdo»). */}
+                            {marcasFabrica[p.id_producto] && <span className="font-normal text-neutral-500"> ({marcasFabrica[p.id_producto]})</span>}
+                          </p>
                           <span className="text-xs bg-neutral-100 text-neutral-600 rounded-full px-2 py-0.5">
                             {marcaPorId.get(p.id_marca)?.nombre ?? "—"}
                           </span>

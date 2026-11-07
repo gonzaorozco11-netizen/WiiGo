@@ -6,6 +6,7 @@ import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import PantallaBloqueada from "@/components/PantallaBloqueada";
 import ProductosApp from "@/components/ProductosApp";
 import { listarProveedores } from "@/app/(app)/proveedores/actions";
+import { marcasFabricaParaPantalla } from "@/lib/marcaFabrica";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +36,7 @@ export default async function ProductosPage() {
     ventasRecientesRes,
     configRes,
     proveedores,
+    marcasFabrica,
   ] = await Promise.all([
     supabase.from("productos").select("*").order("nombre", { ascending: true }),
     supabase.from("marcas").select("*").eq("estado", "ACTIVA").order("nombre", { ascending: true }),
@@ -64,6 +66,8 @@ export default async function ProductosPage() {
         "POSNET_COMISION_CREDITO",
       ]),
     listarProveedores(),
+    // «(Entre Nuts)» al lado del nombre en la lista, como lo ve el cliente (lib/marcaFabrica.ts).
+    marcasFabricaParaPantalla(supabase),
   ]);
   // TODOS los proveedores activos, no solo los de liquidación mensual.
   //
@@ -164,6 +168,7 @@ export default async function ProductosPage() {
       filtrosPorProducto={contenidoAsesor.filtrosPorProducto}
       variantesPorProducto={variantesPorProducto}
       proveedoresLiquidacion={proveedoresLiquidacion}
+      marcasFabrica={marcasFabrica}
     />
   );
 }

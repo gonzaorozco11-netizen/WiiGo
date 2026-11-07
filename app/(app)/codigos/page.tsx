@@ -4,6 +4,7 @@ import { entradasQueNecesitanCodigo } from "@/lib/entradas";
 import PantallaBloqueada from "@/components/PantallaBloqueada";
 import CodigosApp, { type ItemCodigo } from "@/components/CodigosApp";
 import { PIE_ETIQUETA_DEFECTO } from "@/lib/rotulado";
+import { cargarMarcasFabrica } from "@/lib/marcaFabrica";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +20,7 @@ export default async function CodigosPage() {
   const traerProductos = (columnas: string) =>
     supabase.from("productos").select(columnas).eq("estado", "ACTIVO");
 
-  const [variantesRes, productosConRotulo, marcasRes, pieRes] = await Promise.all([
+  const [variantesRes, productosConRotulo, marcasRes, pieRes, marcasFabrica] = await Promise.all([
     supabase
       .from("variantes_producto")
       .select("id_variante,id_producto,nombre,sku,codigo_barras")
@@ -27,6 +28,8 @@ export default async function CodigosPage() {
     traerProductos(`${BASE_PRODUCTO},peso_neto_g,dias_vida_util,alergenos,trazas`),
     supabase.from("marcas").select("id_marca,nombre,tipo_comercializacion").eq("estado", "ACTIVA"),
     supabase.from("configuracion").select("valor").eq("parametro", "ETIQUETA_PIE").maybeSingle(),
+    // «(Entre Nuts)» al lado del nombre en la lista (no en la etiqueta impresa): lib/marcaFabrica.ts.
+    cargarMarcasFabrica(supabase).catch(() => new Map<string, string>()),
   ]);
   // Sin sql/rotulado.sql corrido, las etiquetas salen como antes.
   const productosRes = productosConRotulo.error ? await traerProductos(BASE_PRODUCTO) : productosConRotulo;
@@ -77,6 +80,7 @@ export default async function CodigosPage() {
         {
           idVariante: v.id_variante,
           producto: p.nombre,
+          marcaFabrica: marcasFabrica.get(p.id_producto) ?? null,
           // "Único" es plomería interna, no un sabor: no se muestra.
           variante: v.nombre === "Único" ? null : v.nombre,
           sku: v.sku,

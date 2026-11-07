@@ -40,7 +40,14 @@ function chip(dif: number | null) {
 type Llevar = { margenPara: (id: string, precio: number) => number | null; llevarA: (id: string, precio: number) => void; minimo: number };
 
 export default function PreciosCompetencia(
-  props: { productos: ProductoDelModulo[]; rubros: RubroDelModulo[]; datos: DatosCompetencia | null; avisar: (t: string, mal?: boolean) => void } & Llevar
+  props: {
+    productos: ProductoDelModulo[];
+    rubros: RubroDelModulo[];
+    datos: DatosCompetencia | null;
+    avisar: (t: string, mal?: boolean) => void;
+    /** id_producto → marca de fábrica, para mostrar al lado del nombre (lib/marcaFabrica.ts). */
+    marcasFabrica?: Record<string, string>;
+  } & Llevar
 ) {
   const router = useRouter();
   const [abierto, setAbierto] = useState<string | null>(null);
@@ -242,7 +249,13 @@ export default function PreciosCompetencia(
                   const abiertaEsta = abierto === f.p.id;
                   const fila = (
                     <tr key={f.p.id} className={`fila${abiertaEsta ? " abierta" : ""}`} onClick={() => setAbierto(abiertaEsta ? null : f.p.id)}>
-                      <td className="pr-prod"><b>{f.p.nombre}</b><small>{Object.keys(f.v).length} comercios de Mendoza</small></td>
+                      <td className="pr-prod">
+                        <b>
+                          {f.p.nombre}
+                          {props.marcasFabrica?.[f.p.id] && <span style={{ fontWeight: 500, color: "var(--tinta-3)" }}> ({props.marcasFabrica[f.p.id]})</span>}
+                        </b>
+                        <small>{Object.keys(f.v).length} comercios de Mendoza</small>
+                      </td>
                       <td className="n" style={{ fontSize: 15 }}>{f.p.precioHoy ? pesos(f.p.precioHoy) : <span className="pr-sinprecio">Sin precio</span>}</td>
                       {columnas.map((c) => {
                         const x = f.v[c.clave];

@@ -61,6 +61,8 @@ type Props = {
   gondola?: GondolaLocal[] | null;
   /** Todos los productos activos de todas las marcas, para ubicarlos en la góndola. */
   productosGondola?: ProductoGondola[];
+  /** id_producto → marca de fábrica, solo para mostrar al lado del nombre (lib/marcaFabrica.ts). */
+  marcasFabrica?: Record<string, string>;
   /** Al volver de vincular en Productos Alifrut: esa pestaña, con su categoría y búsqueda. */
   pestanaInicial?: "alifrut" | null;
   alifrutInicial?: { cat: string | null; buscar: string | null } | null;
@@ -355,10 +357,20 @@ export default function PreciosApp(props: Props) {
             aplicarATodoElRubro={aplicarATodoElRubro}
             vuelta={vuelta}
             competencia={props.competencia ?? null}
+            marcasFabrica={props.marcasFabrica ?? {}}
           />
         )}
         {pestana === "competencia" && (
-          <PreciosCompetencia productos={productos} rubros={rubros} datos={props.competencia ?? null} avisar={avisar} margenPara={margenParaPrecio} llevarA={llevarAPrecio} minimo={minimo} />
+          <PreciosCompetencia
+            productos={productos}
+            rubros={rubros}
+            datos={props.competencia ?? null}
+            avisar={avisar}
+            margenPara={margenParaPrecio}
+            llevarA={llevarAPrecio}
+            minimo={minimo}
+            marcasFabrica={props.marcasFabrica ?? {}}
+          />
         )}
         {pestana === "gondola" && (
           <PreciosGondola
@@ -403,6 +415,7 @@ export default function PreciosApp(props: Props) {
 
       {pasando && (
         <PasarALaVenta
+          marcasFabrica={props.marcasFabrica}
           // Desde el botón del producto abierto: solo ese. Desde arriba: todos los que hay que actualizar.
           items={(soloUno ? calculados.filter((c) => c.p.id === soloUno && c.r.ok) : paraActualizar).map(({ p, r }) => ({ p, r: r as Extract<ResultadoPrecio, { ok: true }> }))}
           onCerrar={() => {
@@ -648,6 +661,7 @@ function Lista(props: {
   vuelta: number;
   pasarUno: (id: string) => void;
   competencia: DatosCompetencia | null;
+  marcasFabrica?: Record<string, string>;
 }) {
   const { cfg, minimo } = props;
   // Al terminar de escribir el % de un rubro: si hay productos con el suyo
@@ -660,7 +674,10 @@ function Lista(props: {
     setPregunta(cuantos > 0 ? { id: r.id, campo, valor, cuantos } : null);
   }
   const q = props.buscar.trim().toLowerCase();
-  let filas = props.calculados.filter(({ p }) => (!q || p.nombre.toLowerCase().includes(q)) && (!props.filtroRubro || p.idSubcategoria === props.filtroRubro));
+  // También por la marca («entre nuts»).
+  let filas = props.calculados.filter(
+    ({ p }) => (!q || `${p.nombre} ${props.marcasFabrica?.[p.id] ?? ""}`.toLowerCase().includes(q)) && (!props.filtroRubro || p.idSubcategoria === props.filtroRubro)
+  );
   const margenDe = (c: Calculado) => (c.r.ok ? c.r.enEscenario.margen : -9);
   if (props.orden === "margen") filas = [...filas].sort((a, b) => margenDe(a) - margenDe(b));
   if (props.orden === "actualizar")
@@ -832,10 +849,14 @@ function Lista(props: {
                       const filasProd = [
                         <tr key={p.id} className={`${clase} t`} onClick={abrir}>
                           <td className="pr-prod" rowSpan={2}>
-                            <b>{p.nombre}</b>
+                            <b>
+                              {p.nombre}
+                              {/* Como la ve el cliente (lib/marcaFabrica.ts): «en todos lados» (Gonzalo, 2026-11-07). */}
+                              {props.marcasFabrica?.[p.id] && <span style={{ fontWeight: 500, color: "var(--tinta-3)" }}> ({props.marcasFabrica[p.id]})</span>}
+                            </b>
                             <small>{sub}</small>
-                            {/* La marca que le compra a Alifrut: solo para él, el cliente no la ve. */}
-                            {g2?.marcaOrigen && <span className="pr-marca-origen">{g2.marcaOrigen}</span>}
+                            {/* La marca del producto de Alifrut cuando el cliente no la ve (a granel, con bolsita): solo para él. */}
+                            {g2?.marcaOrigen && !props.marcasFabrica?.[p.id] && <span className="pr-marca-origen">{g2.marcaOrigen}</span>}
                           </td>
                           <td className="n pr-tenue pr-cost" rowSpan={2}>
                             {r.costo ? pesos(r.costo.total) : "—"}
@@ -1750,11 +1771,13 @@ function PasarALaVenta({
   onCerrar,
   onListo,
   onError,
+  marcasFabrica,
 }: {
   items: { p: ProductoDelModulo; r: Extract<ResultadoPrecio, { ok: true }> }[];
   onCerrar: () => void;
   onListo: (n: number, ids: string[], esperan: number) => void;
   onError: (e: string) => void;
+  marcasFabrica?: Record<string, string>;
 }) {
   const [elegidos, setElegidos] = useState<Set<string>>(() => new Set(items.map((i) => i.p.id)));
   const [enviando, setEnviando] = useState(false);
@@ -1796,7 +1819,10 @@ function PasarALaVenta({
                       aria-label={`Pasar ${p.nombre}`}
                     />
                   </td>
-                  <td>{p.nombre}</td>
+                  <td>
+                    {p.nombre}
+                    {marcasFabrica?.[p.id] && <span className="pr-tenue"> ({marcasFabrica[p.id]})</span>}
+                  </td>
                   <td className="n">
                     {pesos(p.precioHoy)} → <b>{pesos(r.publico)}</b>
                   </td>
