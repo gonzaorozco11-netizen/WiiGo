@@ -1285,7 +1285,37 @@ function ElegirInicio({
               </>
             )}
           </p>
-          <p className="text-neutral-500">Tocá la primera etiqueta libre de la hoja que vas a poner.</p>
+          <p className="text-neutral-500">Tocá la primera etiqueta libre, o elegila acá:</p>
+          <div className="flex gap-2">
+            <label className="flex flex-col gap-0.5">
+              <span className="text-[11px] text-neutral-500">Renglón</span>
+              <select
+                value={renglon}
+                onChange={(e) => onElegir((Number(e.target.value) - 1) * plancha.cols + etiqueta)}
+                className="rounded-lg border border-neutral-300 bg-white px-2 py-1.5 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
+              >
+                {Array.from({ length: plancha.filas }, (_, f) => (
+                  <option key={f} value={f + 1}>
+                    {f + 1}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-0.5">
+              <span className="text-[11px] text-neutral-500">Etiqueta</span>
+              <select
+                value={etiqueta}
+                onChange={(e) => onElegir((renglon - 1) * plancha.cols + Number(e.target.value))}
+                className="rounded-lg border border-neutral-300 bg-white px-2 py-1.5 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
+              >
+                {Array.from({ length: plancha.cols }, (_, c) => (
+                  <option key={c} value={c + 1}>
+                    {c + 1}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
           {desde > 1 && (
             <button
               type="button"
