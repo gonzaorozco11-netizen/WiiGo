@@ -1869,9 +1869,9 @@ function LineaParaEscribir({ ancho }: { ancho: number }) {
 
 /**
  * La etiqueta chica de lo nuestro (la plancha del local, 39 × 17 mm, 80 por
- * hoja), como la aprobó Gonzalo el 2026-11-06
- * (https://claude.ai/artifact/RJv3CR4YnwwHjbdfZKjN2E): arriba WIIGO DIETÉTICA,
- * el nombre en el medio, «Peso neto: 250 gr · Vto: 06/05/27» y el código.
+ * hoja): el nombre grande arriba, «Peso neto: 250 gr · Vto: ____» con aire
+ * debajo, y el código. Desde el 2026-11-07 sin «WIIGO DIETÉTICA» arriba: la
+ * letra salía muy chica y la bolsa ya es de WiiGo.
  * Sin lote: la fecha de vencimiento sirve de identificación del lote.
  * Los alérgenos no entran con letra legible: para eso está la de 70 × 35.
  */
@@ -1884,11 +1884,15 @@ function EtiquetaChicaPropia({ item, rotulo, medida }: { item: ItemCodigo; rotul
   const media = medida.alto >= 22;
   const altoCodigo = media ? 7 : 4.8;
   const numeros = media ? 1.9 : 1.5;
-  const datos = media ? 2.05 : 1.75;
-  // Lo que le queda al nombre después de WIIGO DIETÉTICA, el peso y el código.
+  // Sin «WIIGO DIETÉTICA» arriba (Gonzalo, 2026-11-07: «sale muy chiquito…
+  // sacale el WiiGo Dietética»): ese renglón va a letra más grande y a dejar
+  // aire entre el nombre y «Peso neto · Vto».
+  const datos = media ? 2.5 : 2.15;
+  const aire = media ? 1.1 : 0.9;
+  // Lo que le queda al nombre después del aire, el peso y el código.
   const altoNombre = media
-    ? medida.alto - 3.2 - 1.75 - 0.7 - 0.6 - datos * 1.15 - altoCodigo - 0.2 - numeros - 0.4
-    : medida.alto - 2.2 - 1.45 - 0.45 - 0.35 - datos * 1.15 - altoCodigo - 0.2 - numeros - 0.3;
+    ? medida.alto - 3.2 - aire - datos * 1.15 - 0.6 - altoCodigo - 0.2 - numeros
+    : medida.alto - 2.2 - aire - datos * 1.15 - 0.4 - altoCodigo - 0.2 - numeros;
 
   return (
     <div
@@ -1906,25 +1910,15 @@ function EtiquetaChicaPropia({ item, rotulo, medida }: { item: ItemCodigo; rotul
         fontFamily: "'Arial Narrow', Arial, sans-serif",
       }}
     >
-      <div style={{ fontSize: media ? "1.75mm" : "1.45mm", fontWeight: 700, letterSpacing: ".28mm", lineHeight: 1, textTransform: "uppercase" }}>
-        WiiGo Dietética
-      </div>
-      <NombreQueEntra
-        texto={nombre}
-        ancho={medida.ancho - (media ? 4.4 : 3.2)}
-        alto={altoNombre}
-        maximo={media ? 2.9 : 2.35}
-        centrado
-        style={{ marginTop: media ? ".7mm" : ".45mm" }}
-      />
-      <div style={{ marginTop: media ? ".6mm" : ".35mm", display: "flex", gap: "2.2mm", justifyContent: "center", alignItems: "baseline", fontSize: `${datos}mm`, lineHeight: 1.15, whiteSpace: "nowrap" }}>
+      <NombreQueEntra texto={nombre} ancho={medida.ancho - (media ? 4.4 : 3.2)} alto={altoNombre} maximo={media ? 3.8 : 3.3} centrado />
+      <div style={{ marginTop: `${aire}mm`, display: "flex", gap: "2mm", justifyContent: "center", alignItems: "baseline", fontSize: `${datos}mm`, lineHeight: 1.15, whiteSpace: "nowrap" }}>
         {rotulo.pesoG != null && (
           <span>
             Peso neto: <b>{pesoEtiqueta(rotulo.pesoG)}</b>
           </span>
         )}
         <span>
-          Vto: {conVencimiento ? <b>{fechaCorta(vence)}</b> : <LineaParaEscribir ancho={media ? 13 : 10} />}
+          Vto: {conVencimiento ? <b>{fechaCorta(vence)}</b> : <LineaParaEscribir ancho={media ? 13 : 9} />}
         </span>
       </div>
       <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", alignItems: "center", gap: ".2mm" }}>
