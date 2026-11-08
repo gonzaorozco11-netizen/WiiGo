@@ -663,6 +663,10 @@ function Cartel({ item, ancho, alto }: { item: ItemCartel; ancho: number; alto: 
   const nombreLargo = largoNombre > 34;
   const muyLargo = largoNombre > 48;
   const mm = (n: number) => `${(n * k).toFixed(2)}mm`;
+  // Los precios lo más grande que entra (Gonzalo, 2026-11-07: «un poco más
+  // grande así se ve bien claro todo»). Achican un poco con la franja de
+  // oferta arriba, o con seis cifras ($100.000), para no salirse del cartel.
+  const achicar = (item.enOferta ? 0.93 : 1) * (pesos(item.lista).length >= 8 ? 0.9 : 1);
 
   return (
     <div
@@ -675,7 +679,7 @@ function Cartel({ item, ancho, alto }: { item: ItemCartel; ancho: number; alto: 
         overflow: "hidden",
         display: "flex",
         flexDirection: "column",
-        padding: `${item.enOferta ? 5.6 * k : 2.4 * k}mm ${3 * k}mm ${2.2 * k}mm`,
+        padding: `${item.enOferta ? 5.2 * k : 1.8 * k}mm ${2.5 * k}mm ${1.6 * k}mm`,
         fontFamily: "Archivo, 'Arial Narrow', Arial, sans-serif",
         fontVariantNumeric: "tabular-nums",
         outline: "0.2mm dashed #dcdcdc",
@@ -708,7 +712,7 @@ function Cartel({ item, ancho, alto }: { item: ItemCartel; ancho: number; alto: 
       <div>
         <div
           style={{
-            fontSize: mm(2.1),
+            fontSize: mm(2.3),
             letterSpacing: ".11em",
             textTransform: "uppercase",
             fontWeight: 700,
@@ -728,7 +732,7 @@ function Cartel({ item, ancho, alto }: { item: ItemCartel; ancho: number; alto: 
           style={{
             // Más grande (Gonzalo, 2026-11-07: «lo mismo que el nombre»);
             // los largos achican para seguir entrando en dos renglones.
-            fontSize: mm(muyLargo ? 2.6 : nombreLargo ? 3.1 : 3.6),
+            fontSize: mm(muyLargo ? 2.9 : nombreLargo ? 3.5 : 4.0),
             lineHeight: 1.1,
             fontWeight: 700,
             textTransform: "uppercase",
@@ -747,14 +751,15 @@ function Cartel({ item, ancho, alto }: { item: ItemCartel; ancho: number; alto: 
         </div>
       </div>
 
-      <div style={{ marginTop: "auto" }}>
+      {/* Un poco de aire fijo: con nombre de dos renglones el precio quedaba pegado. */}
+      <div style={{ marginTop: "auto", paddingTop: mm(0.8) }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: mm(1.6) }}>
-          <span style={{ fontSize: mm(9.4), lineHeight: 0.92, fontWeight: 800, letterSpacing: "-.035em" }}>
+          <span style={{ fontSize: mm(10.5 * achicar), lineHeight: 0.92, fontWeight: 800, letterSpacing: "-.035em" }}>
             {pesos(item.lista)}
           </span>
           <span
             style={{
-              fontSize: mm(2.1),
+              fontSize: mm(2.4),
               fontWeight: 700,
               letterSpacing: ".07em",
               textTransform: "uppercase",
@@ -774,10 +779,10 @@ function Cartel({ item, ancho, alto }: { item: ItemCartel; ancho: number; alto: 
             grandes»). Sin «ahorrás»: con los dos precios a la vista se ve solo. */}
         <div
           style={{
-            marginTop: mm(1.3),
+            marginTop: mm(1),
             background: "#effaf2",
             borderLeft: `${0.8 * k}mm solid #15803d`,
-            padding: `${0.8 * k}mm ${2 * k}mm`,
+            padding: `${0.6 * k}mm ${2 * k}mm`,
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
@@ -786,7 +791,7 @@ function Cartel({ item, ancho, alto }: { item: ItemCartel; ancho: number; alto: 
         >
           <span
             style={{
-              fontSize: mm(2.9),
+              fontSize: mm(3.2),
               fontWeight: 800,
               letterSpacing: ".03em",
               textTransform: "uppercase",
@@ -796,7 +801,7 @@ function Cartel({ item, ancho, alto }: { item: ItemCartel; ancho: number; alto: 
           >
             En efectivo
           </span>
-          <span style={{ fontSize: mm(6.6), lineHeight: 1, fontWeight: 800, color: "#0f5f2e", letterSpacing: "-.03em" }}>
+          <span style={{ fontSize: mm(7.4 * achicar), lineHeight: 1, fontWeight: 800, color: "#0f5f2e", letterSpacing: "-.03em" }}>
             {pesos(item.efectivo)}
           </span>
         </div>
@@ -805,7 +810,7 @@ function Cartel({ item, ancho, alto }: { item: ItemCartel; ancho: number; alto: 
             que se vende por peso, y deja comparar. Solo el de lista: el de
             efectivo abajo era otro número chico que nadie leía. */}
         {item.pesoG != null && (
-          <div style={{ marginTop: mm(0.9), fontSize: mm(2.1), color: "#3c4248", whiteSpace: "nowrap" }}>
+          <div style={{ marginTop: mm(0.8), fontSize: mm(2.5), color: "#3c4248", whiteSpace: "nowrap" }}>
             Precio por kilo: <b>{pesos(precioPorKilo(item.lista, item.pesoG))}</b>
           </div>
         )}
