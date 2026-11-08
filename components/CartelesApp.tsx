@@ -646,15 +646,14 @@ function HojaDeCarteles({
  * grande fuera el de efectivo, quien paga con tarjeta pagaría más de lo que
  * leyó en la góndola y tendría razón en quejarse. Al revés, quien paga en
  * efectivo paga menos de lo que esperaba — y nadie se enojó nunca por eso. El
- * ahorro no se pierde: va en la tira verde, como premio en vez de como precio
- * base.
+ * de efectivo va en la tira verde, también grande (2026-11-07), como premio en
+ * vez de como precio base.
  *
  * El precio de tarjeta NO va tachado en el cartel normal: tachar significa
  * "antes costaba esto", y acá son dos precios según cómo pagás. En el de oferta
  * sí se puede tachar, porque ahí el precio anterior existió de verdad.
  */
 function Cartel({ item, ancho, alto }: { item: ItemCartel; ancho: number; alto: number }) {
-  const ahorro = item.lista - item.efectivo;
   // Todo se mide contra el alto del cartel: el mismo diseño tiene que entrar en
   // uno de 40 mm y en uno de 30 sin recortar el nombre a la mitad, y aprovechar
   // el lugar cuando el cartel es grande en vez de dejar medio blanco.
@@ -727,7 +726,9 @@ function Cartel({ item, ancho, alto }: { item: ItemCartel; ancho: number; alto: 
         </div>
         <div
           style={{
-            fontSize: mm(muyLargo ? 2.15 : nombreLargo ? 2.5 : 2.9),
+            // Más grande (Gonzalo, 2026-11-07: «lo mismo que el nombre»);
+            // los largos achican para seguir entrando en dos renglones.
+            fontSize: mm(muyLargo ? 2.6 : nombreLargo ? 3.1 : 3.6),
             lineHeight: 1.1,
             fontWeight: 700,
             textTransform: "uppercase",
@@ -761,65 +762,50 @@ function Cartel({ item, ancho, alto }: { item: ItemCartel; ancho: number; alto: 
               lineHeight: 1.15,
             }}
           >
-            Tarjeta,
-            <br />
-            débito o QR
+            {/* «Tarjeta, débito» repetía: el débito también es tarjeta (Gonzalo, 2026-11-07). */}
+            Con tarjeta
+            <br />o QR
           </span>
         </div>
 
+        {/* El de efectivo también grande, que se lea desde lejos (Gonzalo,
+            2026-11-07: «se ven muy chiquitos… que ambos números se vean
+            grandes»). Sin «ahorrás»: con los dos precios a la vista se ve solo. */}
         <div
           style={{
             marginTop: mm(1.3),
             background: "#effaf2",
             borderLeft: `${0.8 * k}mm solid #15803d`,
-            padding: `${1 * k}mm ${2 * k}mm`,
+            padding: `${0.8 * k}mm ${2 * k}mm`,
             display: "flex",
-            alignItems: "baseline",
+            alignItems: "center",
             justifyContent: "space-between",
             gap: mm(1.5),
           }}
         >
           <span
             style={{
-              fontSize: mm(2.1),
+              fontSize: mm(2.9),
               fontWeight: 800,
-              letterSpacing: ".06em",
+              letterSpacing: ".03em",
               textTransform: "uppercase",
               color: "#15803d",
+              whiteSpace: "nowrap",
             }}
           >
             En efectivo
           </span>
-          <span style={{ fontSize: mm(3.6), fontWeight: 800, color: "#0f5f2e", letterSpacing: "-.02em" }}>
+          <span style={{ fontSize: mm(6.6), lineHeight: 1, fontWeight: 800, color: "#0f5f2e", letterSpacing: "-.03em" }}>
             {pesos(item.efectivo)}
           </span>
-          {ahorro > 0 && (
-            <span style={{ fontSize: mm(2), color: "#3f7a56", fontWeight: 600 }}>
-              ahorrás {pesos(ahorro)}
-            </span>
-          )}
         </div>
 
-        {/* El precio por unidad de medida: lo pide la norma de exhibición de
-            precios para lo que se vende por peso, y deja comparar. */}
+        {/* El precio por kilo: lo pide la norma de exhibición de precios para lo
+            que se vende por peso, y deja comparar. Solo el de lista: el de
+            efectivo abajo era otro número chico que nadie leía. */}
         {item.pesoG != null && (
-          <div
-            style={{
-              marginTop: mm(0.8),
-              fontSize: mm(1.8),
-              color: "#3c4248",
-              display: "flex",
-              justifyContent: "space-between",
-              gap: mm(1.5),
-              whiteSpace: "nowrap",
-            }}
-          >
-            <span>
-              Por kilo: <b>{pesos(precioPorKilo(item.lista, item.pesoG))}</b>
-            </span>
-            <span>
-              efectivo <b>{pesos(precioPorKilo(item.efectivo, item.pesoG))}</b>
-            </span>
+          <div style={{ marginTop: mm(0.9), fontSize: mm(2.1), color: "#3c4248", whiteSpace: "nowrap" }}>
+            Precio por kilo: <b>{pesos(precioPorKilo(item.lista, item.pesoG))}</b>
           </div>
         )}
       </div>
