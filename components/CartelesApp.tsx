@@ -763,8 +763,9 @@ function Cartel({ item, ancho, alto }: { item: ItemCartel; ancho: number; alto: 
             }}
           >
             {/* «Tarjeta, débito» repetía: el débito también es tarjeta (Gonzalo, 2026-11-07). */}
-            Con tarjeta
-            <br />o QR
+            Crédito,
+            <br />
+            débito o QR
           </span>
         </div>
 
