@@ -17,6 +17,29 @@ type MedioPago = "EFECTIVO" | "MERCADO_PAGO";
 
 type ResultadoPedido = { idVenta: string; numero: number; total: number; descuento: number; qrImagen?: string };
 
+/**
+ * A qué variante corresponde un código que el tótem no reconoció.
+ *
+ * El tótem trae los códigos al abrirse y se recarga recién a las 4 de la
+ * mañana: un envase escaneado hoy en Códigos de barras no lo encontraba hasta
+ * el día siguiente (Gonzalo, 2026-11-09). Cuando no lo conoce, pregunta acá
+ * antes de decirle al cliente «No encontramos ese producto».
+ */
+export async function buscarVariantePorCodigo(codigo: string): Promise<string | null> {
+  const sinCeros = String(codigo ?? "").replace(/\D/g, "").replace(/^0+/, "");
+  if (sinCeros.length < 6) return null;
+  const supabase = getSupabaseServerClient();
+  const { data } = await supabase
+    .from("variantes_producto")
+    .select("id_variante, codigo_barras")
+    .eq("estado", "ACTIVO")
+    .like("codigo_barras", `%${sinCeros}`)
+    .limit(10);
+  // El mismo criterio que el tótem: iguales sin contar los ceros de adelante (UPC vs EAN-13).
+  const igual = (data ?? []).find((v) => String(v.codigo_barras ?? "").replace(/\D/g, "").replace(/^0+/, "") === sinCeros);
+  return igual ? (igual.id_variante as string) : null;
+}
+
 // El totem queda prendido todo el día sin recargarse — sin esto, el stock
 // que trajo el servidor al abrirse la pestaña se iría desactualizando con
 // cada entrega, ajuste o venta que pase mientras tanto en cualquier otro

@@ -26,6 +26,7 @@ import {
   infoCanjePuntosAction,
   obtenerStockLocal,
   obtenerPreciosLocal,
+  buscarVariantePorCodigo,
 } from "@/app/self-checkout/[idLocal]/actions";
 
 const STOCK_POLL_MS = 8000;
@@ -1729,6 +1730,8 @@ export default function SelfCheckoutApp({
   }, [catalogoOrdenado, stockPorVariante]);
 
   const itemPorVariante = useMemo(() => new Map(items.map((i) => [i.variante.id_variante, i])), [items]);
+  // Códigos cargados después de abrir el tótem (sin ceros de adelante → variante).
+  const codigosNuevos = useRef(new Map<string, string>());
 
   const resultadosBusqueda = useMemo(() => {
     const q = busquedaTexto.trim().toLowerCase();
@@ -1906,7 +1909,10 @@ export default function SelfCheckoutApp({
   function procesarCodigo(leido: string): boolean {
     const codigo = leido.trim();
     if (!codigo) return false;
-    const coincidencia = items.find((i) => mismoCodigo(i.variante.codigo_barras, codigo));
+    const conocido = codigosNuevos.current.get(codigo.replace(/\D/g, "").replace(/^0+/, ""));
+    const coincidencia = conocido
+      ? itemPorVariante.get(conocido)
+      : items.find((i) => mismoCodigo(i.variante.codigo_barras, codigo));
     // Escanear desde la pantalla de inicio arranca la compra directamente
     // (también si el código no existe, para que el cliente vea el aviso).
     if (paso === "reposo") setPaso("escaneo");
@@ -1915,9 +1921,21 @@ export default function SelfCheckoutApp({
       // cliente ve el cartel verde y cree que entró.
       if (toastTimeout.current) clearTimeout(toastTimeout.current);
       setToast(null);
-      setAvisoCodigo("No encontramos ese producto. Pedile ayuda al personal.");
-      if (avisoTimeout.current) clearTimeout(avisoTimeout.current);
-      avisoTimeout.current = setTimeout(() => setAvisoCodigo(null), 4000);
+      const avisar = () => {
+        setAvisoCodigo("No encontramos ese producto. Pedile ayuda al personal.");
+        if (avisoTimeout.current) clearTimeout(avisoTimeout.current);
+        avisoTimeout.current = setTimeout(() => setAvisoCodigo(null), 4000);
+      };
+      // Puede ser un código cargado después de que se abrió el tótem: se
+      // pregunta antes de decir que no existe, y queda recordado.
+      buscarVariantePorCodigo(codigo)
+        .then((idVariante) => {
+          if (idVariante && itemPorVariante.has(idVariante)) {
+            codigosNuevos.current.set(codigo.replace(/\D/g, "").replace(/^0+/, ""), idVariante);
+            agregarAlCarrito(idVariante, true);
+          } else avisar();
+        })
+        .catch(avisar);
       return false;
     }
     agregarAlCarrito(coincidencia.variante.id_variante, true);
