@@ -55,6 +55,13 @@ export async function guardarCodigoBarras(idVariante: string, codigo: string) {
     return { error: `Ese código ya lo tiene ${quien || "otro producto"}. Fijate si no escaneaste el envase equivocado.` };
   }
 
+  // Se guarda el código WiiGo que tenía, para devolvérselo si el de fábrica
+  // estaba mal: las etiquetas que ya se imprimieron con ese número siguen
+  // andando (Gonzalo, 2026-11-09, Almendra Guara escaneada por error).
+  const { data: antes } = await supabase.from("variantes_producto").select("codigo_barras").eq("id_variante", idVariante).maybeSingle();
+  const anterior = (antes?.codigo_barras as string | null)?.trim();
+  if (anterior && esCodigoInterno(anterior)) await recordarCodigoInterno(supabase, idVariante, anterior);
+
   const { error } = await supabase
     .from("variantes_producto")
     .update({ codigo_barras: limpio })
@@ -64,6 +71,32 @@ export async function guardarCodigoBarras(idVariante: string, codigo: string) {
   revalidatePath("/codigos");
   revalidatePath("/productos");
   return { ok: true as const };
+}
+
+/** configuracion → id_variante: el código WiiGo que tenía antes de cargarle uno de fábrica. */
+const CLAVE_ANTERIORES = "CODIGOS_INTERNOS_ANTERIORES";
+
+async function leerAnteriores(supabase: ReturnType<typeof getSupabaseServerClient>): Promise<Record<string, string>> {
+  const { data } = await supabase.from("configuracion").select("valor").eq("parametro", CLAVE_ANTERIORES).maybeSingle();
+  try {
+    return JSON.parse((data?.valor as string | undefined) ?? "{}") as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
+
+async function recordarCodigoInterno(supabase: ReturnType<typeof getSupabaseServerClient>, idVariante: string, codigo: string) {
+  const mapa = await leerAnteriores(supabase);
+  mapa[idVariante] = codigo;
+  await supabase.from("configuracion").upsert(
+    {
+      parametro: CLAVE_ANTERIORES,
+      valor: JSON.stringify(mapa),
+      descripcion: "El código WiiGo que tenía cada producto antes de cargarle el de fábrica: si se saca, vuelve ese (pantalla Códigos de barras).",
+      fecha_actualizacion: new Date().toISOString(),
+    },
+    { onConflict: "parametro" }
+  );
 }
 
 /** Una marca pasa a imprimir el código WiiGo (sus envases no traen) o vuelve a escanearse. */
@@ -103,19 +136,26 @@ export async function volverAEtiquetaWiigo(idVariante: string) {
   if (sesion?.rol !== "admin") return { error: "Un código ya cargado lo saca solo Gonzalo." };
   const supabase = getSupabaseServerClient();
 
-  // El número sigue al mayor que haya, como en productos/actions.ts: así dos
-  // productos nunca comparten etiqueta aunque se borren variantes en el medio.
-  // Solo el rango interno: los códigos de fábrica no cuentan (ver mayorCodigoInterno).
   const { data: existentes } = await supabase.from("variantes_producto").select("codigo_barras");
-  const mayor = mayorCodigoInterno(existentes ?? []);
 
-  const { error } = await supabase
-    .from("variantes_producto")
-    .update({ codigo_barras: String(mayor + 1) })
-    .eq("id_variante", idVariante);
+  // Primero el código WiiGo que tenía antes, si nadie más lo usa: así las
+  // etiquetas ya impresas de ese producto siguen andando.
+  const anteriores = await leerAnteriores(supabase);
+  const anterior = anteriores[idVariante];
+  const ocupado = (existentes ?? []).some((e) => (e.codigo_barras as string | null)?.trim() === anterior);
+  // Si no, el número sigue al mayor que haya, como en productos/actions.ts:
+  // así dos productos nunca comparten etiqueta. Solo el rango interno: los de
+  // fábrica no cuentan (ver mayorCodigoInterno).
+  const nuevo = anterior && esCodigoInterno(anterior) && !ocupado ? anterior : String(mayorCodigoInterno(existentes ?? []) + 1);
+
+  const { error } = await supabase.from("variantes_producto").update({ codigo_barras: nuevo }).eq("id_variante", idVariante);
   if (error) return { error: friendlyDbError(error) };
+  if (anterior) {
+    delete anteriores[idVariante];
+    await supabase.from("configuracion").update({ valor: JSON.stringify(anteriores), fecha_actualizacion: new Date().toISOString() }).eq("parametro", CLAVE_ANTERIORES);
+  }
 
   revalidatePath("/codigos");
   revalidatePath("/productos");
-  return { ok: true as const, codigo: String(mayor + 1) };
+  return { ok: true as const, codigo: nuevo };
 }

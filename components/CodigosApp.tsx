@@ -335,7 +335,11 @@ export default function CodigosApp({
   const filtrados = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
     return items.filter((i) => {
-      if (soloFaltan && (!i.envasado || (i.codigo && !esCodigoInterno(i.codigo)))) return false;
+      // «Solo los que faltan»: los envasados sin su código. También lo que se
+      // embolsa acá y quedó con uno de fábrica, que casi siempre es un error
+      // (pasó con la Almendra Guara, 2026-11-09) y si no, no había cómo verlo.
+      const sospechoso = !i.envasado && Boolean(i.codigo) && !esCodigoInterno(i.codigo);
+      if (soloFaltan && !sospechoso && (!i.envasado || (i.codigo && !esCodigoInterno(i.codigo)))) return false;
       if (!q) return true;
       return [i.producto, i.variante, i.sku, i.codigo, i.marca]
         .filter(Boolean)
@@ -608,6 +612,11 @@ function FilaProducto({
           {item.variante && <span className="text-neutral-500"> — {item.variante}</span>}
         </span>
         <span className="block text-xs text-neutral-400">{item.sku ?? "sin SKU"}</span>
+        {propio && !item.envasado && (
+          <span className="block text-xs font-medium text-amber-700 mt-0.5">
+            Esto se embolsa acá y lleva sticker WiiGo: ¿el código de fábrica está bien?{esAdmin ? " Si no, tocá ✕." : ""}
+          </span>
+        )}
       </span>
 
       {propio ? (
