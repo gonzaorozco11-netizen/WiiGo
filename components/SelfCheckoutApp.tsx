@@ -27,7 +27,11 @@ import {
   obtenerStockLocal,
   obtenerPreciosLocal,
   buscarVariantePorCodigo,
+  obtenerCieloLocal,
 } from "@/app/self-checkout/[idLocal]/actions";
+
+// El cielo (clima, día o noche) cambia despacio: cada 10 minutos alcanza.
+const CIELO_POLL_MS = 10 * 60 * 1000;
 
 const STOCK_POLL_MS = 8000;
 // Más espaciado que el stock: los precios cambian de vez en cuando, el stock
@@ -1364,8 +1368,8 @@ export default function SelfCheckoutApp({
   variantes,
   marcas,
   stock,
-  clima,
-  esDeNoche,
+  clima: climaInicial,
+  esDeNoche: esDeNocheInicial,
   montoPideDni,
   version,
 }: {
@@ -1384,6 +1388,21 @@ export default function SelfCheckoutApp({
   montoPideDni: number;
 }) {
   const [paso, setPaso] = useState<Paso>("reposo");
+
+  // El cielo del reposo se vuelve a pedir cada 10 minutos: el tótem se abre a
+  // la mañana y antes quedaba de día toda la noche (Gonzalo, 2026-11-09).
+  const [cielo, setCielo] = useState({ clima: climaInicial, esDeNoche: esDeNocheInicial });
+  const { clima, esDeNoche } = cielo;
+  useEffect(() => {
+    const id = setInterval(() => {
+      obtenerCieloLocal(local.id_local)
+        .then((nuevo) => {
+          if (nuevo) setCielo((prev) => (prev.clima === nuevo.clima && prev.esDeNoche === nuevo.esDeNoche ? prev : nuevo));
+        })
+        .catch(() => {});
+    }, CIELO_POLL_MS);
+    return () => clearInterval(id);
+  }, [local.id_local]);
 
   // En el totem las imágenes no llegan a cargar (ver el comentario grande de
   // CSS_TOTEM). Si fallan, se esconden y quedan el degradé de cielo y el

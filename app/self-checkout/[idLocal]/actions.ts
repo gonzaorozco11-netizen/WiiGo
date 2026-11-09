@@ -11,11 +11,25 @@ import { precioDe } from "@/lib/precios";
 import { turnoAbiertoDeLocal } from "@/app/(app)/turnos/actions";
 import { montoQuePideDni } from "@/lib/arca/config";
 import QRCode from "qrcode";
+import { obtenerClimaActual, type EstadoCielo } from "@/lib/clima";
 
 type ItemCarrito = { idVariante: string; idMarca: string | null; cantidad: number; precioUnitario: number };
 type MedioPago = "EFECTIVO" | "MERCADO_PAGO";
 
 type ResultadoPedido = { idVenta: string; numero: number; total: number; descuento: number; qrImagen?: string };
+
+/**
+ * El cielo de ahora (clima y si es de noche), para el reposo del tótem.
+ *
+ * Antes se calculaba una sola vez al abrir la página, y el tótem se abre a la
+ * mañana: a la noche seguía mostrando el cielo de día (Gonzalo, 2026-11-09).
+ */
+export async function obtenerCieloLocal(idLocal: string): Promise<EstadoCielo | null> {
+  const supabase = getSupabaseServerClient();
+  const { data: local } = await supabase.from("locales").select("latitud, longitud").eq("id_local", idLocal).maybeSingle();
+  if (!local) return null;
+  return obtenerClimaActual((local.latitud as number | null) ?? null, (local.longitud as number | null) ?? null);
+}
 
 /**
  * A qué variante corresponde un código que el tótem no reconoció.

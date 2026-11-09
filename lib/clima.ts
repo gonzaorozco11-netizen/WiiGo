@@ -33,19 +33,42 @@ function esDeNochePorHora() {
   return minutosDelDia < 7 * 60 || minutosDelDia >= 20 * 60;
 }
 
+// La noche del tótem arranca un rato antes de que se ponga el sol y termina un
+// rato después de que sale: con el sol bajo ya se ve oscuro afuera, y un cielo
+// de día a las 20:12 con la calle a oscuras queda raro (Gonzalo, 2026-11-09).
+const ANTES_DEL_ATARDECER_MIN = 30;
+const DESPUES_DEL_AMANECER_MIN = 20;
+
+/**
+ * ¿Es de noche según el amanecer y el atardecer de hoy? Open-Meteo los da en
+ * hora local del lugar (sin zona), con el desfase aparte. null si no vinieron.
+ */
+function nochePorSol(data: { utc_offset_seconds?: number; daily?: { sunrise?: string[]; sunset?: string[] } }): boolean | null {
+  const sale = data?.daily?.sunrise?.[0];
+  const pone = data?.daily?.sunset?.[0];
+  const desfase = data?.utc_offset_seconds;
+  if (!sale || !pone || typeof desfase !== "number") return null;
+  const aUtc = (local: string) => Date.parse(`${local}:00Z`) - desfase * 1000;
+  const amanecer = aUtc(sale);
+  const atardecer = aUtc(pone);
+  if (!Number.isFinite(amanecer) || !Number.isFinite(atardecer)) return null;
+  const ahora = Date.now();
+  return ahora < amanecer + DESPUES_DEL_AMANECER_MIN * 60000 || ahora >= atardecer - ANTES_DEL_ATARDECER_MIN * 60000;
+}
+
 export async function obtenerClimaActual(latitud: number | null, longitud: number | null): Promise<EstadoCielo> {
   const lat = latitud ?? LAT_MENDOZA;
   const lon = longitud ?? LON_MENDOZA;
   try {
     const res = await fetch(
-      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=weather_code,is_day`,
+      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=weather_code,is_day&daily=sunrise,sunset&timezone=auto&forecast_days=1`,
       { cache: "no-store" }
     );
     if (!res.ok) return { clima: "soleado", esDeNoche: esDeNochePorHora() };
     const data = await res.json();
     const code = data?.current?.weather_code;
     const isDay = data?.current?.is_day;
-    const esDeNoche = typeof isDay === "number" ? isDay === 0 : esDeNochePorHora();
+    const esDeNoche = nochePorSol(data) ?? (typeof isDay === "number" ? isDay === 0 : esDeNochePorHora());
     if (typeof code !== "number") return { clima: "soleado", esDeNoche };
     return { clima: categorizarClima(code), esDeNoche };
   } catch {
