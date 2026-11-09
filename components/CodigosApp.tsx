@@ -1899,9 +1899,12 @@ function EtiquetaChicaPropia({ item, rotulo, medida }: { item: ItemCodigo; rotul
   const datos = media ? 2.5 : 2.15;
   const aire = media ? 1.1 : 0.9;
   // Lo que le queda al nombre después del aire, el peso y el código.
+  // Separación entre las barras y los números de abajo: pegados se leían mal
+  // (Gonzalo, 2026-11-09).
+  const separacionNumeros = media ? 0.8 : 0.6;
   const altoNombre = media
-    ? medida.alto - 3.2 - aire - datos * 1.15 - 0.6 - altoCodigo - 0.2 - numeros
-    : medida.alto - 2.2 - aire - datos * 1.15 - 0.4 - altoCodigo - 0.2 - numeros;
+    ? medida.alto - 3.2 - aire - datos * 1.15 - 0.6 - altoCodigo - separacionNumeros - numeros
+    : medida.alto - 2.2 - aire - datos * 1.15 - 0.4 - altoCodigo - separacionNumeros - numeros;
 
   return (
     <div
@@ -1930,7 +1933,7 @@ function EtiquetaChicaPropia({ item, rotulo, medida }: { item: ItemCodigo; rotul
           Vto: {conVencimiento ? <b>{fechaCorta(vence)}</b> : <LineaParaEscribir ancho={media ? 13 : 9} />}
         </span>
       </div>
-      <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", alignItems: "center", gap: ".2mm" }}>
+      <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", alignItems: "center", gap: `${separacionNumeros}mm` }}>
         {/* Igual de ancho que antes (0,27 mm por barra): baja solo de alto para que entre todo el nombre. */}
         <CodigoDeBarras valor={item.codigo ?? ""} ancho={`${medida.ancho * (medida.ancho < 50 ? 0.92 : 0.8)}mm`} alto={`${altoCodigo}mm`} />
         <div style={{ fontFamily: "ui-monospace, monospace", fontSize: `${numeros}mm`, letterSpacing: ".15mm", lineHeight: 1 }}>
