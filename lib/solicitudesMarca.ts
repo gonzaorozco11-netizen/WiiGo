@@ -162,7 +162,8 @@ export async function obtenerPolitica(supabase: SupabaseClient): Promise<Politic
     maxProductosPorMarca: num("DESCUENTO_MAX_PRODUCTOS_MARCA", 5),
     diasEntrePromos: num("DESCUENTO_DIAS_ENTRE_PROMOS", 30),
     variacionPrecioAlerta: num("PRECIO_VARIACION_ALERTA", 30),
-    horaAplicacion: m.get("ETIQUETA_HORA_APLICACION") || "23:00",
+    // Una o varias horas («13:00, 21:00»): el final de cada turno.
+    horaAplicacion: m.get("ETIQUETA_HORA_APLICACION") || "13:00, 21:00",
   };
 }
 
@@ -335,24 +336,34 @@ export function validarBaja(stockActual: number): Validacion {
   return sinAlertas();
 }
 
+/** «13:00, 21:00» → ["13:00", "21:00"], ordenadas. Las que no son una hora válida se ignoran. */
+export function horasAplicacion(texto: string): string[] {
+  const horas = texto
+    .split(/[,;\s]+/)
+    .map((h) => h.trim())
+    .filter((h) => /^([01]\d|2[0-3]):[0-5]\d$/.test(h));
+  return [...new Set(horas)].sort();
+}
+
 /**
- * Cuándo entra en vigencia un cambio de precio aprobado.
+ * Cuándo entra en vigencia un cambio de precio aprobado: a la próxima de las
+ * horas de Configuración. Son el final de los turnos (Gonzalo, 2026-11-10:
+ * 13:00 el de la mañana y 21:00 el de la tarde): el que se va no puede fichar
+ * la salida sin poner los carteles nuevos, y el que entra ya los encuentra.
  *
- * Con el local cerrado, nunca a mitad del día de venta: las etiquetas se
- * cambian al cierre y el sistema entra después. Así no existe el momento en
- * que el cartel diga una cosa y el POS cobre otra.
- *
- * Si ya pasó la hora de hoy, va a la de mañana.
+ * Si ya pasaron todas las de hoy, va a la primera de mañana.
  */
 export function proximaVigencia(politica: PoliticaDescuentos): Date {
-  const [hh, mm] = politica.horaAplicacion.split(":").map(Number);
+  const horas = horasAplicacion(politica.horaAplicacion);
   const ahora = fechaHoraArgentina();
-  const hoy = new Date(`${ahora.fecha}T00:00:00-03:00`);
-  hoy.setHours(hoy.getHours() + (Number.isFinite(hh) ? hh : 23));
-  hoy.setMinutes(hoy.getMinutes() + (Number.isFinite(mm) ? mm : 0));
-
-  if (hoy.getTime() <= Date.now()) hoy.setDate(hoy.getDate() + 1);
-  return hoy;
+  const enHora = (fecha: string, hhmm: string) => new Date(`${fecha}T${hhmm}:00-03:00`);
+  for (const h of horas.length ? horas : ["23:00"]) {
+    const d = enHora(ahora.fecha, h);
+    if (d.getTime() > Date.now()) return d;
+  }
+  const manana = enHora(ahora.fecha, horas[0] ?? "23:00");
+  manana.setDate(manana.getDate() + 1);
+  return manana;
 }
 
 /** ¿Esta solicitud la puede resolver administración, o escala al dueño? */

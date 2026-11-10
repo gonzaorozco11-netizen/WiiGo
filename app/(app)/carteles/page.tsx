@@ -4,6 +4,7 @@ import { ambosPrecios } from "@/lib/precios";
 import PantallaBloqueada from "@/components/PantallaBloqueada";
 import CartelesApp, { type ItemCartel } from "@/components/CartelesApp";
 import { cargarMarcasFabrica } from "@/lib/marcaFabrica";
+import { ponerPreciosAlDia } from "@/lib/preciosAlDia";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,8 @@ export default async function CartelesPage() {
   if (!puedeVerPantalla(sesion, "carteles")) return <PantallaBloqueada />;
 
   const supabase = getSupabaseServerClient();
+  // Si ya pasó el cambio de turno, los precios aprobados entran antes de armar los carteles.
+  await ponerPreciosAlDia();
 
   const BASE_PRODUCTO = "id_producto,nombre,id_marca,precio_venta,precio_efectivo,descuento_porcentaje,subcategorias(nombre)";
   const traerProductos = (columnas: string) =>

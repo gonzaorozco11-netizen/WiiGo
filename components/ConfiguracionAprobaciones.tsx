@@ -113,23 +113,22 @@ export default function ConfiguracionAprobaciones({
 
       <div className="mb-4">
         <label className={etiqueta} htmlFor="etiqueta_hora_aplicacion">
-          Hora en que entran los precios nuevos
+          Horas en que entran los precios nuevos
         </label>
         <input
           id="etiqueta_hora_aplicacion"
           name="etiqueta_hora_aplicacion"
-          type="time"
-          min="20:00"
-          max="23:30"
+          type="text"
+          inputMode="numeric"
+          placeholder="13:00, 21:00"
           value={hora}
           onChange={(e) => setHora(e.target.value)}
           className={campo}
         />
         <p className={ayuda}>
-          Con el local cerrado. Un precio aprobado hoy entra a las {hora || "23:00"} de esta noche; si ya pasó esa
-          hora, mañana. Así el cartel de góndola se cambia al cierre y nunca hay una venta en el medio con el cartel
-          diciendo una cosa y la caja cobrando otra. Entre las 20:00 y las 23:30: el proceso automático corre a las
-          23:30 y fuera de esa ventana el cambio quedaría para el día siguiente en pleno horario de venta.
+          El final de cada turno, separadas por coma (por ejemplo <b>13:00, 21:00</b>). Un precio aprobado entra a la
+          próxima de estas horas: el que termina el turno no puede fichar la salida sin poner los carteles nuevos, y el
+          que entra ya los encuentra puestos.
         </p>
       </div>
 

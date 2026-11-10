@@ -11,6 +11,7 @@ import PantallaBloqueada from "@/components/PantallaBloqueada";
 import PosApp, { type PedidoParaCobrar } from "@/components/PosApp";
 import { preciosVigentes } from "@/lib/pedidosProfesional";
 import { cargarMarcasFabrica, nombresConMarca } from "@/lib/marcaFabrica";
+import { ponerPreciosAlDia } from "@/lib/preciosAlDia";
 
 export const dynamic = "force-dynamic";
 
@@ -51,6 +52,8 @@ export default async function PosPage({ searchParams }: { searchParams: Promise<
   const { pedido: idPedido } = await searchParams;
 
   const supabase = getSupabaseServerClient();
+  // Pasado el cambio de turno, la caja arranca con los precios nuevos ya aprobados.
+  await ponerPreciosAlDia();
   const pedido = idPedido ? await pedidoParaCobrar(supabase, idPedido).catch(() => null) : null;
 
   const [localesRes, productosRes, variantesRes, marcasRes, stockRes, configRes, marcasFabrica] = await Promise.all([

@@ -1,15 +1,10 @@
 // Aplica los cambios de precio aprobados que ya llegaron a su hora.
 //
-// Corre una vez por día a las 23:30 de Argentina (ver vercel.json: la
-// programación de Vercel es en UTC, y Argentina es UTC-3, así que va a las
-// 02:30 UTC). Es el paso que hace que un precio aprobado a las 10 de la
-// mañana recién cambie de noche, con el local cerrado — las etiquetas se
-// cambian al cierre y el sistema entra después, así nunca hay una venta con
-// el cartel diciendo una cosa y la caja cobrando otra.
-//
-// El horario del cron es lo que limita ETIQUETA_HORA_APLICACION: no se puede
-// programar un cambio para una hora que este proceso no llega a cubrir (ver
-// la validación en configuracion/actions.ts).
+// Los precios entran al final de cada turno (ETIQUETA_HORA_APLICACION, hoy
+// 13:00 y 21:00). Este proceso corre a las 23:30 de Argentina (02:30 UTC) y
+// sus copias aplicar-cambios-13 y aplicar-cambios-21 después de cada turno.
+// Son el respaldo: lo normal es que entren antes, cuando alguien ficha la
+// salida o abre la caja o Carteles pasada la hora (lib/preciosAlDia.ts).
 import { aplicarCambiosProgramados } from "@/app/(app)/aprobaciones/actions";
 
 function responder(body: Record<string, unknown>, status = 200) {

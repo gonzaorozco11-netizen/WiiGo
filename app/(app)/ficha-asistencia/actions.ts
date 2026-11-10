@@ -8,6 +8,7 @@ import { EMISOR } from "@/lib/emisor";
 import { textoLlamado, textoApercibimiento, APERCIBIMIENTO_DESDE_DEFECTO, type Antecedente } from "@/lib/sanciones";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cartelesPendientesDelLocal, postergarCarteles, type CartelesPendientes } from "@/lib/tareasEtiqueta";
+import { ponerPreciosAlDia } from "@/lib/preciosAlDia";
 
 async function personaActual() {
   const cookieStore = await cookies();
@@ -196,6 +197,9 @@ export async function obtenerEstadoFicha(): Promise<EstadoFicha> {
  */
 async function cartelesAlIrse(supabase: SupabaseClient, persona: Persona): Promise<CartelesPendientes | null> {
   if (!persona.id_horario || !persona.id_local) return null;
+  // Al terminar el turno entran los precios nuevos de las marcas (13:00 y
+  // 21:00): primero se ponen al día, así el que se va cambia esos carteles.
+  await ponerPreciosAlDia(true);
   return cartelesPendientesDelLocal(supabase, persona.id_local as string);
 }
 

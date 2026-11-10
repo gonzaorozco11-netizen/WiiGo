@@ -886,7 +886,7 @@ export const GUIAS: Guia[] = [
       "Entrá a <b>Cambios y altas</b>, pestaña <b>Mis productos</b>, y buscá el producto.",
       "Elegí qué cambiar: <b>Precios</b>, Foto, Info nutricional, Proponer promo, Descripción, Nombre o Dar de baja.",
       "Para el precio, poné el nuevo precio de góndola y el de efectivo y tocá <b>Mandar los dos precios</b>. El de efectivo no puede ser mayor que el de góndola.",
-      "WiiGo lo revisa. Nada cambia en la góndola hasta que esté aprobado: los precios entran a la noche, con el local cerrado.",
+      "WiiGo lo revisa. Nada cambia en la góndola hasta que esté aprobado: los precios entran en el próximo cambio de turno (13:00 o 21:00), cuando el equipo del local cambia los carteles.",
     ],
     tip: "Si una opción tiene ⏳, ya hay un pedido de ese tipo esperando respuesta.",
     rel: ["mis-solicitudes"],

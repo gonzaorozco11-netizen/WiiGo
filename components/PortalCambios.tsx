@@ -810,8 +810,8 @@ function FormPrecios({
       }}
       pie={
         <p className="cam-nota">
-          Si los aprueban, los dos entran juntos a las {politica.horaAplicacion} con el local cerrado —
-          nunca a mitad del día, para que el cartel de góndola y la caja digan siempre lo mismo.
+          Si los aprueban, los dos entran juntos en el próximo cambio de turno ({politica.horaAplicacion}),
+          cuando el equipo del local cambia los carteles: así el cartel de góndola y la caja dicen lo mismo.
         </p>
       }
     >

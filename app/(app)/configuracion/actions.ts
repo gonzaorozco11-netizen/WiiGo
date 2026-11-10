@@ -10,6 +10,7 @@ import {
   PARAMETRO_HORA_DESDE,
   PARAMETRO_HORA_HASTA,
 } from "@/lib/recepcion";
+import { horasAplicacion } from "@/lib/solicitudesMarca";
 
 async function requireEditarConfiguracion(): Promise<string | null> {
   const sesion = await obtenerSesionConPermisos();
@@ -376,24 +377,17 @@ export async function guardarConfigAprobaciones(formData: FormData): Promise<{ e
   const permisoError = await requireEditarConfiguracion();
   if (permisoError) return { error: permisoError };
 
-  const hora = String(formData.get("etiqueta_hora_aplicacion") ?? "").trim();
-  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(hora)) {
-    return { error: "La hora tiene que ser válida, en formato 23:00." };
+  // Una o varias horas, el final de cada turno («13:00, 21:00»). Ya no hace
+  // falta que sea de noche: los cambios entran apenas alguien usa el sistema
+  // pasada la hora (app/(app)/layout.tsx) y, de respaldo, con los procesos
+  // automáticos de vercel.json.
+  const texto = String(formData.get("etiqueta_hora_aplicacion") ?? "").trim();
+  const horasValidas = horasAplicacion(texto);
+  const escritas = texto.split(/[,;\s]+/).filter(Boolean);
+  if (!horasValidas.length || horasValidas.length !== new Set(escritas).size) {
+    return { error: "Escribí las horas en formato 13:00, separadas por coma. Por ejemplo: 13:00, 21:00." };
   }
-  // El proceso que aplica los cambios corre a las 23:30 (ver
-  // app/api/cron/aplicar-cambios y vercel.json). Programar un cambio para una
-  // hora que ese proceso no llega a cubrir haría que el precio entrara al día
-  // siguiente, con el local abierto y la etiqueta ya cambiada — justo lo que
-  // todo este circuito viene a evitar. Por eso se bloquea acá y no se avisa:
-  // un aviso se puede ignorar.
-  const minutos = Number(hora.slice(0, 2)) * 60 + Number(hora.slice(3));
-  if (minutos < 20 * 60 || minutos > 23 * 60 + 30) {
-    return {
-      error:
-        "La hora tiene que estar entre las 20:00 y las 23:30. El proceso que aplica los cambios corre a las 23:30, " +
-        "con el local cerrado: fuera de esa ventana el precio entraría al día siguiente en pleno horario de venta.",
-    };
-  }
+  const hora = horasValidas.join(", ");
 
   const variacion = Number(formData.get("precio_variacion_alerta") ?? 0);
   const maxSinConsulta = Number(formData.get("descuento_max_sin_consulta") ?? 0);
@@ -427,7 +421,7 @@ export async function guardarConfigAprobaciones(formData: FormData): Promise<{ e
     [
       "ETIQUETA_HORA_APLICACION",
       hora,
-      "Cambios de precio: hora (con el local cerrado) en que se aplican los cambios programados",
+      "Cambios de precio: horas (el final de cada turno, separadas por coma) en que se aplican los cambios programados",
     ],
     ["PRECIO_VARIACION_ALERTA", String(variacion), "Precios: a partir de qué % de variación se marca la solicitud en rojo"],
     [
