@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import PantallaBloqueada from "@/components/PantallaBloqueada";
@@ -16,6 +17,23 @@ export default async function ConteoPage() {
   const supabase = getSupabaseServerClient();
   const persona = await personaDeUsuario(supabase, sesion.idUsuario);
   if (!persona?.id_local) {
+    // El dueño no cuenta por turno: ve lo que contó el equipo (Gonzalo, 2026-11-10).
+    if (sesion.rol === "admin") {
+      return (
+        <div className="max-w-md mx-auto text-center py-12">
+          <p className="text-2xl mb-2" aria-hidden="true">
+            📋
+          </p>
+          <p className="text-neutral-700">
+            Contar stock es para el equipo del local: a cada uno le tocan 10 productos por turno. Lo que contaron y las diferencias las ves en
+            Conteos y diferencias.
+          </p>
+          <Link href="/stock/conteos" className="inline-block mt-4 rounded-xl bg-accent text-white px-4 py-2.5 text-sm font-semibold">
+            Ir a Conteos y diferencias →
+          </Link>
+        </div>
+      );
+    }
     return <Aviso texto="Tu usuario no está vinculado a una persona con local en Organización. Pedile a Gonzalo que lo vincule." />;
   }
 
