@@ -41,7 +41,10 @@ export async function marcarCartelesPuestos(idsTarea: string[]) {
       { count: "exact" }
     )
     .in("id_tarea", idsTarea)
-    .in("estado", ["PENDIENTE", "VENCIDA"]);
+    .in("estado", ["PENDIENTE", "VENCIDA"])
+    // Los precios de marca que todavía no entraron quedan abiertos: el cartel
+    // nuevo se pone recién a su hora.
+    .or(`aplicar_al_poner.eq.true,vence_el.lte.${new Date().toISOString()}`);
 
   if (error) return { error: friendlyDbError(error) };
 

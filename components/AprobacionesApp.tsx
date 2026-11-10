@@ -386,13 +386,18 @@ function FilaEtiqueta({ e, onHecha }: { e: TareaEtiquetaPendiente; onHecha: () =
           {pesos(e.precioAnterior)} → <b>{pesos(e.precioNuevo)}</b>
         </span>
         <span className="etq-vence">
-          {e.vencida ? "Venció el" : "Cambiar antes del"} {fechaHora(e.venceEl)}
+          {e.vencida
+            ? `Venció el ${fechaHora(e.venceEl)}`
+            : e.entraMasTarde
+              ? `El precio nuevo entra el ${fechaHora(e.venceEl)}: cambiá el cartel recién a esa hora`
+              : `Cambiar antes del ${fechaHora(e.venceEl)}`}
         </span>
         {error && <span className="sol-error">{error}</span>}
       </div>
       <button
         className="sol-btn aprobar"
-        disabled={pendiente}
+        disabled={pendiente || e.entraMasTarde}
+        title={e.entraMasTarde ? "Todavía no: el cartel saldría con el precio viejo" : undefined}
         onClick={() =>
           startTransition(async () => {
             const r = await marcarEtiquetaHecha(e.idTarea);

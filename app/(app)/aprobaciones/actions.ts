@@ -293,6 +293,8 @@ export type TareaEtiquetaPendiente = {
   tipo: string;
   venceEl: string;
   vencida: boolean;
+  /** Precio de una marca que todavía no entró: hasta esa hora el cartel nuevo no se puede poner. */
+  entraMasTarde: boolean;
 };
 
 /** Las etiquetas que el local tiene que cambiar. */
@@ -302,7 +304,7 @@ export async function listarTareasEtiqueta(idLocal?: string): Promise<TareaEtiqu
 
   let consulta = supabase
     .from("tareas_etiqueta")
-    .select("id_tarea, id_producto, precio_anterior, precio_nuevo, tipo, vence_el, estado")
+    .select("id_tarea, id_producto, precio_anterior, precio_nuevo, tipo, vence_el, estado, aplicar_al_poner")
     .in("estado", ["PENDIENTE", "VENCIDA"])
     .order("vence_el", { ascending: true })
     .limit(100);
@@ -325,6 +327,7 @@ export async function listarTareasEtiqueta(idLocal?: string): Promise<TareaEtiqu
     venceEl: t.vence_el as string,
     // Vencida = el precio ya cambió y la etiqueta no. Acá sí hay riesgo real.
     vencida: new Date(t.vence_el as string).getTime() < ahora,
+    entraMasTarde: !t.aplicar_al_poner && new Date(t.vence_el as string).getTime() > ahora,
   }));
 }
 
@@ -335,13 +338,20 @@ export async function marcarEtiquetaHecha(idTarea: string): Promise<{ error: str
   if (!sesion) return { error: "Sesión no válida" };
 
   const supabase = getSupabaseServerClient();
-  const { error } = await supabase
+  const ahora = new Date().toISOString();
+  // El precio nuevo de una marca que todavía no entró no se puede dar por
+  // puesto: el cartel saldría con el viejo y a la hora del cambio nadie se
+  // enteraría (pasó con Fruppi el 2026-11-10).
+  const { data: hecha, error } = await supabase
     .from("tareas_etiqueta")
-    .update({ estado: "HECHA", hecha_por: sesion.idUsuario, hecha_el: new Date().toISOString() })
+    .update({ estado: "HECHA", hecha_por: sesion.idUsuario, hecha_el: ahora })
     .eq("id_tarea", idTarea)
-    .in("estado", ["PENDIENTE", "VENCIDA"]);
+    .in("estado", ["PENDIENTE", "VENCIDA"])
+    .or(`aplicar_al_poner.eq.true,vence_el.lte.${ahora}`)
+    .select("id_tarea");
 
   if (error) return { error: friendlyDbError(error) };
+  if (!hecha?.length) return { error: "Este precio todavía no entró: cambiá el cartel cuando entre." };
 
   // Igual que «Lo puse» en Carteles: si era un precio de WiiGo que esperaba el
   // cartel, entra ahora en la caja (antes, desde acá quedaba sin aplicar).
