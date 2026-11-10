@@ -171,6 +171,16 @@ const PLANCHAS = [
 type Plancha = (typeof PLANCHAS)[number];
 
 /**
+ * Lo que se descuadra cada renglón con la HP Smart Tank del local, medido en
+ * las hojas que imprimió Gonzalo el 2026-11-09: cada renglón bajaba unos 0,2 mm
+ * y se corría unos 0,15 mm a la derecha. Viene puesto solo («arreglalo vos así
+ * no me equivoco»); si se ajusta a mano en la pantalla, manda lo guardado.
+ */
+const POR_RENGLON_INICIAL: Record<string, { fx: number; fy: number }> = {
+  "39x17-80": { fx: -0.15, fy: -0.2 },
+};
+
+/**
  * Los rollos de una impresora térmica de etiquetas.
  *
  * Es otra forma de imprimir, no otra medida: acá cada etiqueta es una página
@@ -973,15 +983,18 @@ function ConfigurarImpresion({
     try {
       localStorage.setItem("codigos.plancha", plancha.id);
       const guardado = JSON.parse(localStorage.getItem(`codigos.ajuste.${plancha.id}`) ?? "null");
+      // Lo de cada renglón: lo guardado en esta tablet; si nunca se tocó, lo medido para esa plancha.
+      const inicial = POR_RENGLON_INICIAL[plancha.id] ?? { fx: 0, fy: 0 };
+      const porRenglon = (v: unknown, def: number) => (typeof v === "number" && Number.isFinite(v) ? v : def);
       setAjuste(
         guardado && typeof guardado.x === "number" && typeof guardado.y === "number"
-          ? { x: guardado.x, y: guardado.y, fy: Number(guardado.fy) || 0, fx: Number(guardado.fx) || 0 }
-          : SIN_AJUSTE
+          ? { x: guardado.x, y: guardado.y, fy: porRenglon(guardado.fy, inicial.fy), fx: porRenglon(guardado.fx, inicial.fx) }
+          : { ...SIN_AJUSTE, ...inicial }
       );
       const d = Number(localStorage.getItem(`codigos.desde.${plancha.id}`));
       setDesde(Number.isInteger(d) && d >= 1 && d <= plancha.cols * plancha.filas ? d : 1);
     } catch {
-      setAjuste(SIN_AJUSTE);
+      setAjuste({ ...SIN_AJUSTE, ...(POR_RENGLON_INICIAL[plancha.id] ?? {}) });
       setDesde(1);
     }
   }, [plancha.id, plancha.cols, plancha.filas]);
