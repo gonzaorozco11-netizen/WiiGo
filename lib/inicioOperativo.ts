@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fechaHoraArgentina, minutosDeHora } from "@/lib/horarios";
 import { POR_TURNO, adentroEnLocal, personaDeUsuario } from "@/lib/conteoStock";
+import { localDeSesion } from "@/lib/fraccionado";
 
 // El Inicio del operativo en la tablet del local (pedido de Gonzalo,
 // 2026-10-22): arriba un botón grande con lo que toca hacer AHORA, y abajo
@@ -194,8 +195,11 @@ export async function armarInicioOperativo(
       deshabilitado: false,
     });
   // El inventario general, mientras Gonzalo lo tenga abierto: arriba de todo.
-  if ((puede("conteo") || puede("inventario")) && persona?.id_local) {
-    const { data: inv, error: eInv } = await supabase.from("inventarios").select("id_inventario").eq("id_local", persona.id_local).eq("estado", "ABIERTO").limit(1);
+  // Sin ficha de empleado todavía (le pasó a Tomás), el local sale igual que
+  // en inventario/page.tsx: si hay un solo local, es ese.
+  const localInventario = puede("conteo") || puede("inventario") ? persona?.id_local ?? (await localDeSesion(supabase, sesion.idUsuario)) : null;
+  if (localInventario) {
+    const { data: inv, error: eInv } = await supabase.from("inventarios").select("id_inventario").eq("id_local", localInventario).eq("estado", "ABIERTO").limit(1);
     if (!eInv && inv?.length) {
       agregar({
         clave: "inventario",

@@ -20,7 +20,9 @@ import { logout } from "@/app/login/actions";
 // lo llevan se filtran por el sistema de "pantallas" de siempre. Hace falta
 // distinguirlo por ítem —y no por grupo— porque Tesorería mezcla las dos
 // cosas: Caja Administración va por permiso y Gastos e Ingresos por pantalla.
-type NavItem = { href: string; label: string; permiso?: "cajaAdmin" | "nomina" };
+// `tambien`: otra pantalla que también lo habilita (el Inventario lo usa el
+// equipo con el permiso del conteo del turno, igual que inventario/page.tsx).
+type NavItem = { href: string; label: string; permiso?: "cajaAdmin" | "nomina"; tambien?: string };
 type NavGroup = { label: string; icono: keyof typeof ICONOS; items: NavItem[] };
 
 // Trazos de los íconos (24 × 24, línea). Uno por categoría, para encontrarla
@@ -92,7 +94,7 @@ const GROUPS: NavGroup[] = [
       { href: "/conteo", label: "Contar stock" },
       // El granel de Alifrut pasa a bolsitas.
       { href: "/fraccionar", label: "Fraccionar" },
-      { href: "/inventario", label: "Inventario" },
+      { href: "/inventario", label: "Inventario", tambien: "conteo" },
       { href: "/stock/conteos", label: "Conteos y diferencias" },
       // Cuánto tiene que haber, no cuánto hay. Al lado de Stock porque se
       // miran juntas.
@@ -284,7 +286,7 @@ export default function AppNav({
   const puedeVerItem = (item: NavItem) => {
     if (item.permiso === "cajaAdmin") return puedeVerCajaAdmin;
     if (item.permiso === "nomina") return puedeGestionarNomina;
-    return puedeVer(item.href);
+    return puedeVer(item.href) || (!!item.tambien && pantallas!.includes(item.tambien));
   };
   const grupos = GROUPS.map((g) => ({ ...g, items: g.items.filter(puedeVerItem) })).filter((g) => g.items.length > 0);
   const contador = pendientesAprobacion + etiquetasVencidas;
