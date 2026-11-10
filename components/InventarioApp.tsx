@@ -146,16 +146,20 @@ function Contando({
   const misEnZona = conteos.filter((c) => c.zona === zona && c.quien === miNombre).sort((a, b) => b.cuando.localeCompare(a.cuando));
   const yaFirme = firmas.some((f) => f.nombre === miNombre);
 
+  // El granel (la bolsa grande, en kilos) solo está en el depósito: en la
+  // góndola aparecen nada más las bolsitas, para no confundirlas (Gonzalo).
+  const delLugar = useMemo(() => (zona === "Depósito" ? catalogo : catalogo.filter((p) => !p.enGramos)), [zona, catalogo]);
+
   const resultados = useMemo(() => {
     const palabras = plano(busqueda).split(/\s+/).filter(Boolean);
     if (!palabras.length) return [];
-    return catalogo.filter((p) => palabras.every((w) => plano(`${p.nombre} ${p.marca} ${p.codigo ?? ""}`).includes(w))).slice(0, 25);
-  }, [busqueda, catalogo]);
+    return delLugar.filter((p) => palabras.every((w) => plano(`${p.nombre} ${p.marca} ${p.codigo ?? ""}`).includes(w))).slice(0, 25);
+  }, [busqueda, delLugar]);
 
   function leido(valor: string) {
     setEscaneando(false);
     const d = soloDigitos(valor);
-    const p = catalogo.find((x) => x.codigo && soloDigitos(x.codigo) === d);
+    const p = delLugar.find((x) => x.codigo && soloDigitos(x.codigo) === d);
     if (p) {
       setSel(p);
       setAviso(null);
@@ -241,7 +245,10 @@ function Contando({
                   <li key={p.idVariante}>
                     <button type="button" onClick={() => setSel(p)} className="w-full text-left px-4 py-2.5 flex items-center gap-3 hover:bg-neutral-50">
                       <span className="min-w-0 flex-1">
-                        <span className="block text-sm font-medium text-neutral-900">{p.nombre}</span>
+                        <span className="block text-sm font-medium text-neutral-900">
+                          {p.nombre}
+                          {p.enGramos && <span className="ml-1.5 align-middle rounded bg-amber-100 text-amber-800 px-1.5 py-0.5 text-[11px] font-bold">A GRANEL · en kilos</span>}
+                        </span>
                         <span className="block text-xs text-neutral-500">
                           {p.marca}
                           {otros.length > 0 && ` · ya contado en ${otros.map((o) => `${o.zona}: ${p.enGramos ? textoGramos(o.cantidad) : o.cantidad}`).join(", ")}`}
