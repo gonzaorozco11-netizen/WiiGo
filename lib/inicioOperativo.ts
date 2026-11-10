@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { fechaHoraArgentina, minutosDeHora } from "@/lib/horarios";
 import { POR_TURNO, adentroEnLocal, personaDeUsuario } from "@/lib/conteoStock";
 import { localDeSesion } from "@/lib/fraccionado";
+import { contarCartelesUrgentes } from "@/lib/tareasEtiqueta";
 
 // El Inicio del operativo en la tablet del local (pedido de Gonzalo,
 // 2026-10-22): arriba un botón grande con lo que toca hacer AHORA, y abajo
@@ -183,17 +184,20 @@ export async function armarInicioOperativo(
   // cambiar (precios nuevos) son de los carteles.
   if (puede("codigos"))
     agregar({ clave: "codigos", titulo: "Códigos de barras", detalle: "Imprimir las etiquetas con el código de cada producto", href: "/codigos", icono: "🏷️", badge: null, deshabilitado: false });
-  if (puede("carteles"))
+  if (puede("carteles")) {
+    // En rojo si alguno quedó con el precio viejo y la caja ya cobra el nuevo.
+    const urgentes = await contarCartelesUrgentes(supabase);
     agregar({
       clave: "carteles",
       titulo: "Carteles de precios",
-      detalle: "Imprimir y actualizar los precios de góndola",
+      detalle: urgentes ? `🔴 ${urgentes === 1 ? "1 tiene" : `${urgentes} tienen`} el precio viejo: cambialos ahora` : "Imprimir y actualizar los precios de góndola",
       href: "/carteles",
       icono: "💲",
-      badge: cartelesPorCambiar || null,
-      badgeTono: "ambar",
+      badge: urgentes || cartelesPorCambiar || null,
+      badgeTono: urgentes ? "rojo" : "ambar",
       deshabilitado: false,
     });
+  }
   // El inventario general, mientras Gonzalo lo tenga abierto: arriba de todo.
   // Sin ficha de empleado todavía (le pasó a Tomás), el local sale igual que
   // en inventario/page.tsx: si hay un solo local, es ese.

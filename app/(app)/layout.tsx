@@ -10,6 +10,8 @@ import { verificarAvisoSalida } from "@/app/(app)/ficha-asistencia/actions";
 import { contarPendientes } from "@/app/(app)/aprobaciones/actions";
 import AppNav, { MigaDePan } from "@/components/AppNav";
 import AvisoSalidaBanner from "@/components/AvisoSalidaBanner";
+import AvisoCartelesBanner from "@/components/AvisoCartelesBanner";
+import { contarCartelesUrgentes } from "@/lib/tareasEtiqueta";
 import GuiaWiigo from "@/components/GuiaWiigo";
 import { getSupabaseServerClient } from "@/lib/supabase";
 
@@ -47,6 +49,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const pedidosNuevos = vePedidos ? await contarPedidosNuevosSinSesion().catch(() => 0) : 0;
   // Las preguntas de la Guía que esperan respuesta: las responde el Dueño, el
   // número sale en su botón "¿Alguna duda?". Sin sql/guia-preguntas.sql da 0.
+  // Carteles con el precio viejo mientras la caja ya cobra el nuevo: aviso rojo arriba de todo.
+  const seAvisanCarteles = Boolean(session) && puedeVerPantalla(sesionConPantallas, "carteles");
+  const cartelesUrgentes = seAvisanCarteles ? await contarCartelesUrgentes(getSupabaseServerClient()) : 0;
   const preguntasGuia =
     session?.rol === "admin"
       ? ((await getSupabaseServerClient().from("preguntas_guia").select("id_pregunta", { count: "exact", head: true }).eq("estado", "PENDIENTE")).count ?? 0)
@@ -72,6 +77,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       />
       <div className="flex-1 min-w-0">
         {vePedidos && <AvisoPedidos inicial={pedidosNuevos} />}
+        {seAvisanCarteles && <AvisoCartelesBanner inicial={cartelesUrgentes} />}
         {avisoSalida.debeRecordar && (
           <div className="print:hidden">
             <AvisoSalidaBanner horaSalida={avisoSalida.horaSalida} />

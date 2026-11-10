@@ -4,7 +4,21 @@ import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
-import { aplicarPreciosDeCarteles } from "@/lib/tareasEtiqueta";
+import { aplicarPreciosDeCarteles, contarCartelesUrgentes } from "@/lib/tareasEtiqueta";
+import { ponerPreciosAlDia } from "@/lib/preciosAlDia";
+
+/**
+ * Lo consulta el aviso rojo de arriba cada dos minutos: primero pone al día
+ * los precios que ya llegaron a su hora (13:00, 21:00) y después cuenta los
+ * carteles que quedaron con el precio viejo. Así el aviso sale a la hora
+ * aunque nadie recargue la pantalla.
+ */
+export async function cartelesUrgentesAhora(): Promise<number> {
+  const sesion = await obtenerSesionConPantallas();
+  if (!puedeVerPantalla(sesion, "carteles")) return 0;
+  await ponerPreciosAlDia();
+  return contarCartelesUrgentes(getSupabaseServerClient());
+}
 
 /**
  * Da por cambiados los carteles que se acaban de imprimir.

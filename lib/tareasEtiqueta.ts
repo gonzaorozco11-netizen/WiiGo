@@ -144,6 +144,27 @@ export async function cartelesPendientesDelLocal(supabase: SupabaseClient, idLoc
   return { cantidad: items.length, items };
 }
 
+/**
+ * Los carteles urgentes: el precio de una marca ya entró en la caja y en la
+ * góndola sigue el cartel con el viejo. Salen en rojo en todas las pantallas
+ * del equipo hasta que se ponen (Gonzalo, 2026-11-10: «sino pasa desapercibido»).
+ * Los productos que nunca tuvieron cartel no cuentan acá: no hay un precio
+ * viejo a la vista.
+ */
+export async function contarCartelesUrgentes(supabase: SupabaseClient): Promise<number> {
+  const { data, error } = await supabase
+    .from("tareas_etiqueta")
+    .select("id_producto")
+    .eq("tipo", "CAMBIO_PRECIO")
+    .in("estado", ["PENDIENTE", "VENCIDA"])
+    .or("aplicar_al_poner.is.null,aplicar_al_poner.eq.false")
+    .not("precio_anterior", "is", null)
+    .lte("vence_el", new Date().toISOString())
+    .limit(1000);
+  if (error) return 0;
+  return new Set((data ?? []).map((t) => t.id_producto as string)).size;
+}
+
 /** El operativo se va sin poder ponerlos: queda el motivo y le aparece a administración. */
 export async function postergarCarteles(supabase: SupabaseClient, idLocal: string, motivo: string, quien: string) {
   await supabase

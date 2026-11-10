@@ -130,6 +130,7 @@ export const GUIAS: Guia[] = [
       "Con la medida en <b>Según el lugar en la góndola</b>, cada cartel sale para su portaprecio: los de los ganchos de la pared (blisteros) de <b>65 × 40 mm</b> y los de las islas, la estantería y el resto de <b>60 × 35 mm</b>, en hojas separadas.",
       "Cada vez que ponés uno en la góndola, tocá <b>Lo puse</b> en ese producto. Si imprimiste toda la góndola de una vez, cuando estén todos puestos tocá <b>Ya puse todos los que imprimí</b>.",
       "El precio nuevo empieza a cobrarse <b>recién ahí</b>: en la caja, el totem y la pantalla asesora.",
+      "Si arriba de la pantalla aparece una <b>franja roja</b>, una marca cambió el precio y la caja ya cobra el nuevo: tocá <b>Ir a Carteles</b> y cambialos en ese momento. La franja no se cierra hasta que los pongas.",
       "Si un producto dice <b>precio nuevo desde … · imprimilo después</b>, es de una marca que cambia el precio esa noche: imprimilo al día siguiente, porque antes sale con el viejo.",
       "Si no llegaste a ponerlos todos, antes de fichar la salida el sistema te los pide. Si no pudiste, tocá <b>No pude ponerlos</b> y queda el aviso para el próximo turno.",
     ],
