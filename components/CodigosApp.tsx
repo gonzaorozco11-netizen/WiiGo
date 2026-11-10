@@ -987,7 +987,11 @@ function ConfigurarImpresion({
       const porRenglon = (v: unknown, def: number) => (typeof v === "number" && Number.isFinite(v) ? v : def);
       setAjuste(
         guardado && typeof guardado.x === "number" && typeof guardado.y === "number"
-          ? { x: guardado.x, y: guardado.y, fy: porRenglon(guardado.fy, inicial.fy), fx: porRenglon(guardado.fx, inicial.fx) }
+          ? // Lo por renglón que quedó guardado antes del 2026-11-10 (sin «v: 2») no se usa:
+            // Gonzalo pidió volver a como estaba, sin corrección por renglón.
+            guardado.v === 2
+            ? { x: guardado.x, y: guardado.y, fy: porRenglon(guardado.fy, inicial.fy), fx: porRenglon(guardado.fx, inicial.fx) }
+            : { x: guardado.x, y: guardado.y, fy: inicial.fy, fx: inicial.fx }
           : { ...SIN_AJUSTE, ...inicial }
       );
       const d = Number(localStorage.getItem(`codigos.desde.${plancha.id}`));
@@ -1021,7 +1025,7 @@ function ConfigurarImpresion({
     const nuevo = { ...ajuste, [eje]: Number.isFinite(limpio) ? limpio : 0 };
     setAjuste(nuevo);
     try {
-      localStorage.setItem(`codigos.ajuste.${plancha.id}`, JSON.stringify(nuevo));
+      localStorage.setItem(`codigos.ajuste.${plancha.id}`, JSON.stringify({ ...nuevo, v: 2 }));
     } catch {}
   }
   const [cantidades, setCantidades] = useState<Record<string, number>>(() =>
