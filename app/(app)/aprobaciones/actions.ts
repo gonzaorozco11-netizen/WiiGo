@@ -8,7 +8,7 @@ import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos
 import { exigirGestionInterna } from "@/lib/marcaSesion";
 import { esRolInterno } from "@/lib/rolesInternos";
 import { fechaHoraArgentina } from "@/lib/horarios";
-import { insertarTareasEtiqueta, type FilaTareaEtiqueta } from "@/lib/tareasEtiqueta";
+import { aplicarPreciosDeCarteles, insertarTareasEtiqueta, type FilaTareaEtiqueta } from "@/lib/tareasEtiqueta";
 import { generarSkuVariante, generarCodigoBarrasVariante } from "@/lib/codigosVariante";
 import { PLANES, type PlanMarca } from "@/lib/planesMarca";
 import { guardarCosto } from "@/lib/costosMarca";
@@ -343,7 +343,12 @@ export async function marcarEtiquetaHecha(idTarea: string): Promise<{ error: str
 
   if (error) return { error: friendlyDbError(error) };
 
+  // Igual que «Lo puse» en Carteles: si era un precio de WiiGo que esperaba el
+  // cartel, entra ahora en la caja (antes, desde acá quedaba sin aplicar).
+  await aplicarPreciosDeCarteles(supabase, [idTarea], sesion.idUsuario);
+
   revalidatePath("/aprobaciones");
+  revalidatePath("/carteles");
   return { error: null };
 }
 
