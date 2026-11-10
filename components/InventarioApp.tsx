@@ -144,7 +144,8 @@ function Contando({
   const porId = useMemo(() => new Map(catalogo.map((p) => [p.idVariante, p])), [catalogo]);
   const conteosDe = (id: string) => conteos.filter((c) => c.idVariante === id);
   const misEnZona = conteos.filter((c) => c.zona === zona && c.quien === miNombre).sort((a, b) => b.cuando.localeCompare(a.cuando));
-  const yaFirme = firmas.some((f) => f.nombre === miNombre);
+  const porFirmar = sinFirmar(conteos, firmas, miNombre);
+  const firmeAlgo = firmas.some((f) => f.nombre === miNombre);
 
   // El granel (la bolsa grande, en kilos) solo está en el depósito: en la
   // góndola aparecen nada más las bolsitas, para no confundirlas (Gonzalo).
@@ -287,8 +288,10 @@ function Contando({
         )}
       </section>
 
-      {!yaFirme ? <TerminarMiParte cuantos={new Set(conteos.filter((c) => c.quien === miNombre).map((c) => c.idVariante)).size} /> : (
-        <p className="mt-6 text-sm rounded-lg bg-emerald-50 text-emerald-800 px-3 py-2">✓ Ya firmaste tu parte. Si contás algo más, queda sumado igual.</p>
+      {porFirmar.length > 0 || !firmeAlgo ? (
+        <TerminarMiParte cuantos={new Set(porFirmar.map((c) => c.idVariante)).size} zonas={[...new Set(porFirmar.map((c) => c.zona))]} otraTanda={firmeAlgo} />
+      ) : (
+        <p className="mt-6 text-sm rounded-lg bg-emerald-50 text-emerald-800 px-3 py-2">✓ Firmaste todo lo que contaste. Si contás otro módulo, al terminar te pide firmar de nuevo.</p>
       )}
 
       {esAdmin && ubicaciones && <PanelUbicaciones u={ubicaciones} />}
@@ -672,7 +675,15 @@ function ElegirProducto({
   );
 }
 
-function TerminarMiParte({ cuantos }: { cuantos: number }) {
+/** Lo que contó alguien después de su última firma: lo que le falta firmar. */
+function sinFirmar(conteos: ConteoInventario[], firmas: FirmaInventario[], nombre: string | null) {
+  const ultima = firmas
+    .filter((f) => f.nombre === nombre)
+    .reduce<number | null>((max, f) => Math.max(max ?? 0, new Date(f.cuando).getTime()), null);
+  return conteos.filter((c) => c.quien === nombre && (ultima == null || new Date(c.cuando).getTime() > ultima));
+}
+
+function TerminarMiParte({ cuantos, zonas, otraTanda }: { cuantos: number; zonas: string[]; otraTanda: boolean }) {
   const router = useRouter();
   const [abierto, setAbierto] = useState(false);
   const [firma, setFirma] = useState<string | null>(null);
@@ -681,14 +692,15 @@ function TerminarMiParte({ cuantos }: { cuantos: number }) {
   if (!abierto) {
     return (
       <button type="button" onClick={() => setAbierto(true)} disabled={cuantos === 0} className="mt-6 w-full rounded-xl border border-neutral-300 bg-white px-4 py-3 font-semibold disabled:opacity-40">
-        Terminé mi parte · firmar
+        {otraTanda ? `Terminé ${zonas.join(", ")} · firmar` : "Terminé mi parte · firmar"}
       </button>
     );
   }
   return (
     <div className="mt-6 rounded-2xl border border-neutral-200 bg-white p-4 space-y-3">
       <p className="text-sm text-neutral-700">
-        Contaste <b>{cuantos} productos</b>. Con tu firma confirmás que había lo que anotaste.
+        {otraTanda ? "Desde tu última firma contaste" : "Contaste"} <b>{cuantos} productos</b>
+        {zonas.length > 0 && <> en {zonas.join(", ")}</>}. Con tu firma confirmás que había lo que anotaste.
       </p>
       <PadFirma onCambio={setFirma} />
       {error && <p className="text-sm text-red-600">{error}</p>}
@@ -721,7 +733,8 @@ function PanelAdmin({ catalogo, conteos, firmas }: { catalogo: ProductoInventari
   const faltan = vendibles.filter((p) => !contados.has(p.idVariante));
   const pct = vendibles.length ? Math.round(((vendibles.length - faltan.length) / vendibles.length) * 100) : 0;
   const quienes = [...new Set(conteos.map((c) => c.quien).filter(Boolean))] as string[];
-  const faltanFirmar = quienes.filter((q) => !firmas.some((f) => f.nombre === q));
+  const faltanFirmar = quienes.filter((q) => sinFirmar(conteos, firmas, q).length > 0);
+  const porId = new Map(catalogo.map((p) => [p.idVariante, p]));
 
   return (
     <section className="mt-10 rounded-2xl border border-neutral-200 bg-white overflow-hidden">
@@ -737,6 +750,9 @@ function PanelAdmin({ catalogo, conteos, firmas }: { catalogo: ProductoInventari
           <span className="text-xs text-neutral-500">productos contados</span>
         </p>
       </div>
+      <p className="mx-4 mt-3 text-xs rounded-lg bg-sky-50 text-sky-900 px-3 py-2">
+        Lo contado todavía <b>no cambió el stock</b>: se carga todo junto cuando tocás «Cerrar inventario y cargar el stock», abajo de todo.
+      </p>
       <div className="px-4 pt-3">
         <div className="h-2.5 rounded-full bg-neutral-100 overflow-hidden">
           <div className="h-full bg-emerald-500" style={{ width: `${pct}%` }} />
@@ -768,6 +784,52 @@ function PanelAdmin({ catalogo, conteos, firmas }: { catalogo: ProductoInventari
                 <span className="block text-neutral-500">{f.zonas}</span>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {quienes.length > 0 && (
+        <div className="px-4 pb-3">
+          <p className="text-xs font-bold uppercase tracking-wider text-neutral-500 mb-2">Qué contó cada uno</p>
+          <div className="space-y-2">
+            {quienes.map((q) => {
+              const deQ = conteos.filter((c) => c.quien === q);
+              const pendientes = new Set(sinFirmar(conteos, firmas, q).map((c) => c.zona + c.idVariante));
+              const zonas = ZONAS_INVENTARIO.filter((z) => deQ.some((c) => c.zona === z));
+              return (
+                <details key={q} className="rounded-xl border border-neutral-200">
+                  <summary className="cursor-pointer px-3 py-2 text-sm">
+                    <b>{q}</b> · {deQ.length} productos
+                    {pendientes.size > 0 ? <span className="ml-1 text-amber-700">· {pendientes.size} sin firmar</span> : <span className="ml-1 text-emerald-700">· todo firmado</span>}
+                  </summary>
+                  <div className="px-3 pb-3 space-y-3">
+                    {zonas.map((z) => (
+                      <div key={z}>
+                        <p className="text-xs font-semibold text-neutral-600 mt-1 mb-1">{z}</p>
+                        <ul className="text-sm divide-y divide-neutral-100">
+                          {deQ
+                            .filter((c) => c.zona === z)
+                            .sort((a, b) => a.cuando.localeCompare(b.cuando))
+                            .map((c) => {
+                              const p = porId.get(c.idVariante);
+                              return (
+                                <li key={c.idVariante} className="py-1 flex justify-between gap-2">
+                                  <span className="min-w-0 truncate">
+                                    <span className="text-neutral-400 tabular-nums mr-1.5">{hora(c.cuando)}</span>
+                                    {p?.nombre ?? "Producto"}
+                                    {pendientes.has(c.zona + c.idVariante) && <span className="ml-1 text-[11px] text-amber-700">(sin firmar)</span>}
+                                  </span>
+                                  <b className="tabular-nums shrink-0">{p?.enGramos ? textoGramos(c.cantidad) : c.cantidad}</b>
+                                </li>
+                              );
+                            })}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              );
+            })}
           </div>
         </div>
       )}

@@ -175,8 +175,19 @@ export async function firmarInventario(firma: string | null): Promise<{ error?: 
   if ("error" in c) return { error: c.error };
   const inv = await inventarioAbierto(c.supabase, c.idLocal);
   if (!inv || inv === "SIN_SQL") return { error: "No hay un inventario abierto." };
-  const { data: mios } = await c.supabase.from("inventario_conteos").select("id_variante, zona").eq("id_inventario", inv.id).eq("contado_por", c.sesion.nombre);
-  if (!mios?.length) return { error: "Todavía no contaste nada." };
+  // Se firma por tanda: lo contado desde la última firma (antes se firmaba una
+  // sola vez y lo que contaban después en otro módulo quedaba sin firmar).
+  const { data: firmasMias } = await c.supabase
+    .from("inventario_firmas")
+    .select("firmado_en")
+    .eq("id_inventario", inv.id)
+    .eq("nombre", c.sesion.nombre)
+    .order("firmado_en", { ascending: false })
+    .limit(1);
+  let consulta = c.supabase.from("inventario_conteos").select("id_variante, zona").eq("id_inventario", inv.id).eq("contado_por", c.sesion.nombre);
+  if (firmasMias?.[0]) consulta = consulta.gt("contado_en", firmasMias[0].firmado_en as string);
+  const { data: mios } = await consulta;
+  if (!mios?.length) return { error: firmasMias?.[0] ? "Ya firmaste todo lo que contaste." : "Todavía no contaste nada." };
   const zonas = [...new Set(mios.map((m) => m.zona as string))].join(", ");
   const { error } = await c.supabase.from("inventario_firmas").insert({
     id_inventario: inv.id,
