@@ -77,6 +77,10 @@ function entraRotulo(medida: { ancho: number; alto: number }) {
 }
 
 const SIN_MARCA = "Marcas que no están activas";
+
+/** El ajuste de la hoja: x/y mueven todo; fx/fy es lo que se corre cada renglón (se acumula). */
+type AjusteHoja = { x: number; y: number; fx: number; fy: number };
+const SIN_AJUSTE: AjusteHoja = { x: 0, y: 0, fx: 0, fy: 0 };
 const SIN_SUBCATEGORIA = "Sin subcategoría";
 
 /** Los productos de una marca por subcategoría, en orden, y lo que no tiene al final. */
@@ -951,7 +955,10 @@ function ConfigurarImpresion({
   // Ajuste fino: casi todas las impresoras corren la hoja uno o dos
   // milímetros al tomarla. Se mide una vez con la prueba en papel común y
   // queda guardado en esta compu, para esa plancha.
-  const [ajuste, setAjuste] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  // fy y fx: lo que se va corriendo CADA renglón (la hoja de stickers patina o
+  // entra apenas torcida y abajo se nota: Gonzalo, 2026-11-10). Se suman por
+  // renglón: con fy = −0,2 el renglón 10 sube 2 mm.
+  const [ajuste, setAjuste] = useState<AjusteHoja>(SIN_AJUSTE);
 
   // Recordar la última plancha elegida y su ajuste. Solo comodidad: si el
   // navegador no deja guardar, arranca con la primera y sin ajuste.
@@ -967,12 +974,14 @@ function ConfigurarImpresion({
       localStorage.setItem("codigos.plancha", plancha.id);
       const guardado = JSON.parse(localStorage.getItem(`codigos.ajuste.${plancha.id}`) ?? "null");
       setAjuste(
-        guardado && typeof guardado.x === "number" && typeof guardado.y === "number" ? guardado : { x: 0, y: 0 }
+        guardado && typeof guardado.x === "number" && typeof guardado.y === "number"
+          ? { x: guardado.x, y: guardado.y, fy: Number(guardado.fy) || 0, fx: Number(guardado.fx) || 0 }
+          : SIN_AJUSTE
       );
       const d = Number(localStorage.getItem(`codigos.desde.${plancha.id}`));
       setDesde(Number.isInteger(d) && d >= 1 && d <= plancha.cols * plancha.filas ? d : 1);
     } catch {
-      setAjuste({ x: 0, y: 0 });
+      setAjuste(SIN_AJUSTE);
       setDesde(1);
     }
   }, [plancha.id, plancha.cols, plancha.filas]);
@@ -991,8 +1000,12 @@ function ConfigurarImpresion({
   // por usadas: si la impresión se canceló o salió corrida, la hoja sigue igual.
   const [pendiente, setPendiente] = useState<number | null>(null);
 
-  function cambiarAjuste(eje: "x" | "y", valor: number) {
-    const limpio = Math.round(Math.min(Math.max(valor, -10), 10) * 2) / 2;
+  function cambiarAjuste(eje: keyof AjusteHoja, valor: number) {
+    // Los de toda la hoja van de a medio milímetro; los de cada renglón, de a 0,05.
+    const porRenglon = eje === "fx" || eje === "fy";
+    const tope = porRenglon ? 1 : 10;
+    const paso = porRenglon ? 20 : 2;
+    const limpio = Math.round(Math.min(Math.max(valor, -tope), tope) * paso) / paso;
     const nuevo = { ...ajuste, [eje]: Number.isFinite(limpio) ? limpio : 0 };
     setAjuste(nuevo);
     try {
@@ -1347,6 +1360,40 @@ function ConfigurarImpresion({
                 className="w-20 rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
               />
             </div>
+            {/* Lo que se va corriendo cada renglón: arriba sale bien y abajo se
+                descuadra (la hoja patina o entra apenas torcida). */}
+            <div>
+              <label className="block text-xs text-neutral-500 mb-1" htmlFor="ajuste-fy">
+                ↕ Por renglón (mm)
+              </label>
+              <input
+                id="ajuste-fy"
+                type="number"
+                step={0.05}
+                min={-1}
+                max={1}
+                value={ajuste.fy}
+                onChange={(e) => cambiarAjuste("fy", Number(e.target.value))}
+                title="Si cada renglón baja un poco más que el anterior, poné un número negativo (por ejemplo −0,2)"
+                className="w-20 rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-neutral-500 mb-1" htmlFor="ajuste-fx">
+                ↔ Por renglón (mm)
+              </label>
+              <input
+                id="ajuste-fx"
+                type="number"
+                step={0.05}
+                min={-1}
+                max={1}
+                value={ajuste.fx}
+                onChange={(e) => cambiarAjuste("fx", Number(e.target.value))}
+                title="Si cada renglón se va un poco más a la derecha, poné un número negativo (por ejemplo −0,15)"
+                className="w-20 rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
+              />
+            </div>
           </>
         ) : (
           <div>
@@ -1437,7 +1484,9 @@ function ConfigurarImpresion({
             corridas y se arruina la plancha entera. Hacé una prueba en papel común y ponela sobre la
             plancha a contraluz antes de gastar la primera. Si los códigos caen corridos, medí cuánto
             con una regla y ponelo en <b>Bajar</b> o <b>Correr a la derecha</b> (en negativo para el
-            otro lado). Queda guardado en esta compu para las próximas veces.
+            otro lado). Si arriba sale bien y abajo se va descuadrando, usá los de <b>Por renglón</b>:
+            medí cuánto se corrió el último renglón y dividilo por cuántos renglones hay (por ejemplo, 2 mm
+            para abajo en el renglón 10 → −0,2). Queda guardado en esta compu para las próximas veces.
           </>
         ) : (
           <>
@@ -1683,8 +1732,8 @@ function HojaDeEtiquetas({
   plancha: Plancha;
   desde: number;
   items: ItemCodigo[];
-  /** Milímetros que se corre toda la grilla para compensar la impresora. */
-  ajuste: { x: number; y: number };
+  /** Milímetros que se corre toda la grilla, y lo que se corre cada renglón, para compensar la impresora. */
+  ajuste: AjusteHoja;
 }) {
   const porHoja = plancha.cols * plancha.filas;
   // Los casilleros que se saltean van vacíos adelante; el resto se corta en
@@ -1740,13 +1789,19 @@ function HojaDeEtiquetas({
             rowGap: `${plancha.sepY}mm`,
           }}
         >
-          {hoja.map((item, i) =>
-            item ? (
-              <Etiqueta key={i} item={item} medida={plancha} />
+          {hoja.map((item, i) => {
+            // Cada renglón se corre lo que se va acumulando (ajuste fy/fx).
+            const renglon = Math.floor(i / plancha.cols);
+            const corrimiento =
+              ajuste.fx || ajuste.fy ? { transform: `translate(${(renglon * ajuste.fx).toFixed(2)}mm, ${(renglon * ajuste.fy).toFixed(2)}mm)` } : undefined;
+            return item ? (
+              <div key={i} style={{ width: "100%", height: "100%", ...corrimiento }}>
+                <Etiqueta item={item} medida={plancha} />
+              </div>
             ) : (
-              <div key={i} className="etq-casillero" />
-            )
-          )}
+              <div key={i} className="etq-casillero" style={corrimiento} />
+            );
+          })}
         </div>
       ))}
     </div>
