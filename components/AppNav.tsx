@@ -92,6 +92,7 @@ const GROUPS: NavGroup[] = [
       { href: "/conteo", label: "Contar stock" },
       // El granel de Alifrut pasa a bolsitas.
       { href: "/fraccionar", label: "Fraccionar" },
+      { href: "/inventario", label: "Inventario" },
       { href: "/stock/conteos", label: "Conteos y diferencias" },
       // Cuánto tiene que haber, no cuánto hay. Al lado de Stock porque se
       // miran juntas.

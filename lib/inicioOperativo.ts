@@ -193,6 +193,22 @@ export async function armarInicioOperativo(
       badgeTono: "ambar",
       deshabilitado: false,
     });
+  // El inventario general, mientras Gonzalo lo tenga abierto: arriba de todo.
+  if ((puede("conteo") || puede("inventario")) && persona?.id_local) {
+    const { data: inv, error: eInv } = await supabase.from("inventarios").select("id_inventario").eq("id_local", persona.id_local).eq("estado", "ABIERTO").limit(1);
+    if (!eInv && inv?.length) {
+      agregar({
+        clave: "inventario",
+        titulo: "Inventario del local",
+        detalle: "Está abierto: elegí tu módulo y contá",
+        href: "/inventario",
+        icono: "🧮",
+        badge: 1,
+        badgeTono: "ambar",
+        deshabilitado: false,
+      });
+    }
+  }
   // El conteo de stock del turno, con cuántos le faltan contar.
   if (puede("conteo")) {
     const faltan = await faltanContar(supabase, sesion.idUsuario);

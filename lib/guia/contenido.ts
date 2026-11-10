@@ -618,6 +618,23 @@ export const GUIAS: Guia[] = [
     tip: "El número del sistema no se muestra a propósito. En Precio y stock, los que tenés que contar dicen Hay / Quedan pocos / No hay en vez del número, hasta que los cuentes.",
   },
   {
+    id: "inventario",
+    audiencias: [...I],
+    pantalla: "conteo",
+    tema: "Stock",
+    titulo: "Hacer el inventario del local",
+    donde: "Inicio → Inventario del local",
+    rutas: ["/inventario"],
+    pasos: [
+      "Gonzalo lo abre en <b>Stock → Inventario</b>. Mientras está abierto, en el Inicio aparece <b>Inventario del local</b>.",
+      "Arriba elegí <b>dónde estás contando</b>: Módulo 1 a 5, Freezer, Animalfit, Isla 1, Isla 2 o Depósito.",
+      "Escaneá o buscá cada producto, poné cuántos hay en ese lugar y tocá <b>Guardar</b>. Si está en dos lugares, se suma solo.",
+      "Si el escáner no conoce el código, elegí qué producto es: el código queda guardado para la próxima.",
+      "Cuando terminás tus lugares, tocá <b>Terminé mi parte</b> y firmá. Gonzalo cierra el inventario y se carga el stock.",
+    ],
+    tip: "Se puede contar con el local abierto: lo que se vende después de contarlo se descuenta solo al cerrar.",
+  },
+  {
     id: "fraccionar",
     audiencias: [...I],
     pantalla: "fraccionar",
