@@ -734,6 +734,7 @@ function PanelAdmin({ catalogo, conteos, firmas }: { catalogo: ProductoInventari
   const pct = vendibles.length ? Math.round(((vendibles.length - faltan.length) / vendibles.length) * 100) : 0;
   const quienes = [...new Set(conteos.map((c) => c.quien).filter(Boolean))] as string[];
   const faltanFirmar = quienes.filter((q) => sinFirmar(conteos, firmas, q).length > 0);
+  const zonasSinContar = ZONAS_INVENTARIO.filter((z) => z !== "Depósito" && !conteos.some((c) => c.zona === z));
   const porId = new Map(catalogo.map((p) => [p.idVariante, p]));
 
   return (
@@ -855,6 +856,14 @@ function PanelAdmin({ catalogo, conteos, firmas }: { catalogo: ProductoInventari
               <input type="checkbox" checked={enCero} onChange={(e) => setEnCero(e.target.checked)} className="mt-1" />
               <span>Lo que no contó nadie, ponerlo en 0 (si no, queda con el stock que tenía)</span>
             </label>
+            {/* El 2026-11-10 se cerró con esto tildado antes de contar Animalfit y
+                las islas, y 147 productos con stock quedaron en 0. */}
+            {enCero && zonasSinContar.length > 0 && (
+              <p className="text-sm rounded-lg bg-red-50 text-red-800 px-3 py-2">
+                ⚠️ En <b>{zonasSinContar.join(", ")}</b> no contó nadie: todo lo que está ahí va a quedar en 0. Tildalo solo si recorrieron
+                todo el local.
+              </p>
+            )}
             {faltanFirmar.length > 0 && <p className="text-xs text-amber-800">Falta que firmen: {faltanFirmar.join(", ")}.</p>}
             {!confirmar ? (
               <button type="button" onClick={() => setConfirmar(true)} className="w-full rounded-xl bg-neutral-900 text-white px-4 py-3 font-semibold">
