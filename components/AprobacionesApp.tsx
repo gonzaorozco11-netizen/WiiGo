@@ -272,16 +272,19 @@ export default function AprobacionesApp({
   solicitudes,
   etiquetas,
   esAdmin,
+  inicio,
 }: {
   solicitudes: SolicitudBandeja[];
   etiquetas: TareaEtiquetaPendiente[];
   esAdmin: boolean;
+  /** Desde Mis Tareas se llega a la pestaña de esa tarea (?ver=marcas o ?ver=etiquetas). */
+  inicio?: "SOLICITUDES" | "ETIQUETAS";
 }) {
   const router = useRouter();
   const [tab, setTab] = useState<"SOLICITUDES" | "ETIQUETAS">(
     // Si hay etiquetas vencidas, esa pestaña se abre primero: es lo único
     // con riesgo real (el cartel dice un precio y el sistema cobra otro).
-    etiquetas.some((e) => e.vencida) ? "ETIQUETAS" : "SOLICITUDES"
+    inicio ?? (etiquetas.some((e) => e.vencida) ? "ETIQUETAS" : "SOLICITUDES")
   );
   const vencidas = etiquetas.filter((e) => e.vencida).length;
 

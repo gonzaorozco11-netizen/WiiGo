@@ -253,7 +253,9 @@ export async function armarTablero(): Promise<Tablero | null> {
       titulo: `${plural(n(etiquetasVencidas), "etiqueta vencida", "etiquetas vencidas")}`,
       detalle: "El precio nuevo ya está activo y el cartel de góndola dice el viejo",
       valor: String(n(etiquetasVencidas)),
-      href: "/aprobaciones",
+      // A Carteles, que abre justo en los que cambiaron de precio (con el
+      // precio de antes y el nuevo), y no a la bandeja entera.
+      href: "/carteles",
     });
   }
 
@@ -262,9 +264,9 @@ export async function armarTablero(): Promise<Tablero | null> {
     urgentes.push({
       color: "ambar",
       titulo: `Cambiar ${plural(etiquetasPorHacer, "etiqueta", "etiquetas")}`,
-      detalle: "Antes de que entre el precio nuevo esta noche",
+      detalle: "Precios nuevos que entran en el próximo cambio de turno",
       valor: String(etiquetasPorHacer),
-      href: "/aprobaciones",
+      href: "/carteles",
     });
   }
 
@@ -274,7 +276,7 @@ export async function armarTablero(): Promise<Tablero | null> {
       titulo: `${plural(n(escaladas), "solicitud se salió", "solicitudes se salieron")} de la política`,
       detalle: "Administración no las puede aprobar: las tenés que ver vos",
       valor: String(n(escaladas)),
-      href: "/aprobaciones",
+      href: "/aprobaciones?ver=marcas",
     });
   }
 
@@ -285,17 +287,17 @@ export async function armarTablero(): Promise<Tablero | null> {
       titulo: `${plural(solicitudesComunes, "solicitud de marca esperando", "solicitudes de marcas esperando")}`,
       detalle: "Cambios de precio, promos y contenido que mandaron las marcas",
       valor: String(solicitudesComunes),
-      href: "/aprobaciones",
+      href: "/aprobaciones?ver=marcas",
     });
   }
 
   if (n(precioEstaNoche) > 0) {
     seguimiento.push({
       color: "azul",
-      titulo: `${plural(n(precioEstaNoche), "cambio de precio entra", "cambios de precio entran")} esta noche`,
-      detalle: "Se aplican solos con el local cerrado",
+      titulo: `${plural(n(precioEstaNoche), "cambio de precio programado", "cambios de precio programados")}`,
+      detalle: "Entran solos en el próximo cambio de turno; en Carteles se ven como «imprimilo después»",
       valor: String(n(precioEstaNoche)),
-      href: "/aprobaciones",
+      href: "/carteles",
     });
   }
 
@@ -398,7 +400,7 @@ export async function armarTablero(): Promise<Tablero | null> {
       titulo: `${plural(n(sinStock), "producto en cero", "productos en cero")}`,
       detalle: "El tótem no los va a ofrecer hasta que entre mercadería",
       valor: String(n(sinStock)),
-      href: "/stock",
+      href: "/stock?ver=cero",
     });
   }
 

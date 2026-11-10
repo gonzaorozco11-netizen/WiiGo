@@ -66,7 +66,10 @@ export default function StockApp({
   coberturaSinDatos,
   diasMinimos,
   puedeVerCostos,
+  soloEnCeroInicial = false,
 }: {
+  /** Desde Mis Tareas («productos en cero»): arranca mostrando solo esos. */
+  soloEnCeroInicial?: boolean;
   locales: Local[];
   variantes: VarianteProducto[];
   productos: Producto[];
@@ -86,6 +89,7 @@ export default function StockApp({
   const [idMarcaFiltro, setIdMarcaFiltro] = useState("");
   const [idSubcategoriaFiltro, setIdSubcategoriaFiltro] = useState("");
   const [orden, setOrden] = useState<Orden>("nombre");
+  const [soloEnCero, setSoloEnCero] = useState(soloEnCeroInicial);
   const [ajuste, setAjuste] = useState<Fila | null>(null);
   const [merma, setMerma] = useState<Fila | null>(null);
   const [transferenciaOpen, setTransferenciaOpen] = useState(false);
@@ -121,6 +125,7 @@ export default function StockApp({
     const resultado = filas.filter((f) => {
       if (idMarcaFiltro && f.marca?.id_marca !== idMarcaFiltro) return false;
       if (idSubcategoriaFiltro && f.producto.id_subcategoria !== idSubcategoriaFiltro) return false;
+      if (soloEnCero && (cantidadPorClave.get(`${f.variante.id_variante}_${idLocal}`) ?? 0) > 0) return false;
       if (!q) return true;
       return [f.producto.nombre, f.variante.nombre, f.marca?.nombre, f.variante.sku]
         .filter(Boolean)
@@ -132,7 +137,7 @@ export default function StockApp({
     }
     const cant = (f: Fila) => cantidadPorClave.get(`${f.variante.id_variante}_${idLocal}`) ?? 0;
     return resultado.sort((a, b) => (orden === "mayor" ? cant(b) - cant(a) : cant(a) - cant(b)));
-  }, [filas, search, idMarcaFiltro, idSubcategoriaFiltro, orden, cantidadPorClave, idLocal]);
+  }, [filas, search, idMarcaFiltro, idSubcategoriaFiltro, orden, cantidadPorClave, idLocal, soloEnCero]);
 
   const nombrePorVariante = useMemo(() => {
     const map = new Map<string, string>();
@@ -198,6 +203,10 @@ export default function StockApp({
       </div>
 
       <div className="flex flex-wrap gap-3 mb-4">
+        <label className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 px-3 py-2 text-sm cursor-pointer">
+          <input type="checkbox" checked={soloEnCero} onChange={(e) => setSoloEnCero(e.target.checked)} className="accent-accent" />
+          Solo los que están en 0
+        </label>
         <select
           value={idMarcaFiltro}
           onChange={(e) => {

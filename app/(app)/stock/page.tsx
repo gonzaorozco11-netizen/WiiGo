@@ -15,7 +15,9 @@ import { calcularCobertura, DIAS_MINIMOS, type Cobertura } from "@/lib/cobertura
 
 export const dynamic = "force-dynamic";
 
-export default async function StockPage() {
+// ?ver=cero viene de Mis Tareas («productos en cero»): arranca mostrando solo esos.
+export default async function StockPage({ searchParams }: { searchParams: Promise<{ ver?: string }> }) {
+  const { ver } = await searchParams;
   const sesion = await obtenerSesionConPantallas();
   if (!puedeVerPantalla(sesion, "stock")) return <PantallaBloqueada />;
 
@@ -68,6 +70,7 @@ export default async function StockPage() {
 
   return (
     <StockApp
+      soloEnCeroInicial={ver === "cero"}
       cobertura={Object.fromEntries(cobertura.porVarianteLocal) as Record<string, Cobertura>}
       diasDeHistorial={cobertura.diasDeHistorial}
       coberturaSinDatos={cobertura.sinDatos}

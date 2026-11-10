@@ -25,6 +25,7 @@ const ICONO: Record<string, string> = {
   "/compras/recepcion": "📥",
   "/compras/costeo": "🧮",
   "/stock": "📦",
+  "/carteles": "💲",
   "/conteo": "📋",
   "/stock/conteos": "🔍",
   "/turnos": "💵",
@@ -215,7 +216,7 @@ function Tarea({ t }: { t: ItemTablero }) {
       className={`flex items-center gap-3 border border-l-[3px] rounded-xl px-4 py-3 ${estilo} hover:brightness-[0.985]`}
     >
       <span className="text-lg shrink-0" aria-hidden="true">
-        {ICONO[t.href] ?? "•"}
+        {ICONO[t.href.split("?")[0]] ?? "•"}
       </span>
       <span className="flex-1 min-w-0">
         <span className={`block text-sm font-semibold ${texto}`}>{t.titulo}</span>
