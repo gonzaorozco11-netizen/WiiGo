@@ -171,14 +171,13 @@ const PLANCHAS = [
 type Plancha = (typeof PLANCHAS)[number];
 
 /**
- * Lo que se descuadra cada renglón con la HP Smart Tank del local, medido en
- * las hojas que imprimió Gonzalo el 2026-11-09: cada renglón bajaba unos 0,2 mm
- * y se corría unos 0,15 mm a la derecha. Viene puesto solo («arreglalo vos así
- * no me equivoco»); si se ajusta a mano en la pantalla, manda lo guardado.
+ * Corrección por renglón que viene puesta para cada plancha. Vacío a propósito:
+ * con la HP Smart Tank del local cada hoja de stickers patina distinto (una se
+ * fue bajando, la siguiente, con −0,2 puesto, se fue subiendo: 2026-11-10), así
+ * que un número fijo no lo arregla y empeora otras hojas. Si se ajusta a mano
+ * en la pantalla, queda guardado en esa tablet.
  */
-const POR_RENGLON_INICIAL: Record<string, { fx: number; fy: number }> = {
-  "39x17-80": { fx: -0.15, fy: -0.2 },
-};
+const POR_RENGLON_INICIAL: Record<string, { fx: number; fy: number }> = {};
 
 /**
  * Los rollos de una impresora térmica de etiquetas.
