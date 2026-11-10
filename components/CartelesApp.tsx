@@ -37,6 +37,8 @@ export type ItemCartel = {
   marcaFabrica?: string | null;
   /** Para elegir qué imprimir por subcategoría («Frutos secos»). */
   subcategoria?: string | null;
+  /** El precio nuevo de la marca entra a esta hora (aprobado para las 23:00): antes, el cartel saldría con el viejo. */
+  entraEl?: string | null;
 };
 
 const SIN_MARCA = "Sin marca";
@@ -121,6 +123,10 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
     [imprimibles]
   );
   const vencidos = pendientes.filter((i) => i.vencida);
+  // Los de una marca cuyo precio nuevo entra más tarde: se ven, pero no se
+  // marcan para imprimir ni se dan por puestos hasta que el precio entre.
+  const listos = pendientes.filter((i) => !i.entraEl);
+  const deEntrada = (lista: ItemCartel[]) => new Set(lista.filter((i) => !i.entraEl).map((i) => i.idProducto));
   // "Ahora", tomado una vez al abrir la pantalla.
   const [ahora] = useState(() => Date.now());
 
@@ -132,7 +138,7 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
   const [medidaId, setMedidaId] = useState<string>(SEGUN_LUGAR);
   // 1 mm de aire por lado: el papel entra sin quedar justo en el portaprecio.
   const [aire, setAire] = useState(1);
-  const [elegidos, setElegidos] = useState<Set<string>>(new Set(visibles.map((i) => i.idProducto)));
+  const [elegidos, setElegidos] = useState<Set<string>>(() => deEntrada(visibles));
   // Buscar y filtrar solo achica lo que se ve: lo marcado se imprime igual.
   const [busqueda, setBusqueda] = useState("");
   const [subcategoria, setSubcategoria] = useState("");
@@ -178,7 +184,8 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
   function cambiarModo(nuevo: "cambiaron" | "todos") {
     setModo(nuevo);
     const lista = nuevo === "cambiaron" ? pendientes : imprimibles;
-    setElegidos(new Set(lista.map((i) => i.idProducto)));
+    setElegidos(deEntrada(lista));
+    setConfirmarTodos(false);
   }
 
   function alternar(id: string) {
@@ -205,6 +212,31 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
         setAviso(`Listo: ${i.nombre} puesto.` + ((res.aplicados ?? 0) > 0 ? " La caja ya cobra el precio nuevo." : ""));
         router.refresh();
       }
+    });
+  }
+
+  // Cuando se imprime toda la góndola de una (la apertura, o un recambio
+  // general), los cambios de precio de lo impreso se cierran todos juntos al
+  // ponerlos, en vez de tocar «Lo puse» en cada uno (Gonzalo, 2026-11-10).
+  const cerrables = aImprimir.filter((i) => i.idTarea && !i.entraEl);
+  const [confirmarTodos, setConfirmarTodos] = useState(false);
+  function marcarTodosPuestos() {
+    const ids = cerrables.flatMap((i) => [i.idTarea as string, ...(i.otrasTareas ?? [])]);
+    setConfirmarTodos(false);
+    startTransition(async () => {
+      let aplicados = 0;
+      // De a tandas: cientos de tareas en un solo pedido no entran.
+      for (let k = 0; k < ids.length; k += 80) {
+        const res = await marcarCartelesPuestos(ids.slice(k, k + 80));
+        if (res.error) {
+          setAviso(res.error);
+          router.refresh();
+          return;
+        }
+        aplicados += res.aplicados ?? 0;
+      }
+      setAviso(`Listo: ${cerrables.length} carteles puestos.` + (aplicados > 0 ? ` La caja ya cobra el precio nuevo de ${aplicados} productos de WiiGo.` : ""));
+      router.refresh();
     });
   }
 
@@ -249,7 +281,7 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
           <div className="inline-flex gap-1 bg-neutral-100 rounded-xl p-1 mb-4">
             {(
               [
-                ["cambiaron", `Cambiaron de precio · ${pendientes.length}`],
+                ["cambiaron", `Cambiaron de precio · ${listos.length}${pendientes.length > listos.length ? ` (+${pendientes.length - listos.length} más tarde)` : ""}`],
                 ["todos", `Toda la góndola · ${imprimibles.length}`],
               ] as const
             ).map(([id, texto]) => (
@@ -347,7 +379,14 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
                               gancho 65×40
                             </span>
                           )}
-                          {i.idTarea && (
+                          {i.entraEl ? (
+                            <span
+                              className="shrink-0 text-[10px] font-bold rounded px-1.5 py-0.5 text-amber-800 bg-amber-100"
+                              title="El precio nuevo todavía no entró: si lo imprimís ahora sale con el viejo"
+                            >
+                              precio nuevo desde {fechaPedido(i.entraEl)} · imprimilo después
+                            </span>
+                          ) : i.idTarea && (
                             <span
                               className={`shrink-0 text-[10px] font-bold rounded px-1.5 py-0.5 ${
                                 i.vencida ? "text-red-700 bg-red-50" : "text-neutral-500 bg-neutral-100"
@@ -386,7 +425,7 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
                                 e.stopPropagation();
                                 marcarUno(i);
                               }}
-                              disabled={enviando}
+                              disabled={enviando || !!i.entraEl}
                               className="ml-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white text-xs font-bold px-3 py-2 whitespace-nowrap"
                               title="Tocalo cuando el cartel nuevo ya está en la góndola"
                             >
@@ -513,6 +552,35 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
               navegador achica la página los carteles salen más chicos y bailan en el porta precios. Se
               recortan por la línea punteada.
             </p>
+
+            {cerrables.length > 1 && (
+              <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 space-y-2">
+                <p className="text-sm text-neutral-700">
+                  Si imprimiste todo de una vez: cuando los <b>{cerrables.length} carteles</b> con precio cambiado ya estén en la góndola, dalos por puestos juntos
+                  y dejan de figurar como pendientes.
+                </p>
+                {!confirmarTodos ? (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmarTodos(true)}
+                    disabled={enviando}
+                    className="rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white text-sm font-bold px-4 py-2.5"
+                  >
+                    {enviando ? "Guardando…" : `Ya puse todos los que imprimí · ${cerrables.length}`}
+                  </button>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" onClick={() => setConfirmarTodos(false)} className="rounded-lg border border-neutral-300 bg-white px-4 py-2.5 text-sm">
+                      Todavía no
+                    </button>
+                    <button type="button" onClick={marcarTodosPuestos} className="rounded-lg bg-emerald-700 text-white text-sm font-bold px-4 py-2.5">
+                      Sí, están todos en la góndola
+                    </button>
+                  </div>
+                )}
+                <p className="text-xs text-neutral-500">Los de WiiGo empiezan a cobrarse con el precio nuevo en la caja apenas los das por puestos.</p>
+              </div>
+            )}
 
             {modo === "cambiaron" && aImprimir.some((i) => i.idTarea) && (
               <p className="mt-4 rounded-xl border border-neutral-200 bg-white p-4 text-sm text-neutral-600">

@@ -117,14 +117,18 @@ export type CartelesPendientes = { cantidad: number; items: CartelPendiente[] };
 export async function cartelesPendientesDelLocal(supabase: SupabaseClient, idLocal: string): Promise<CartelesPendientes | null> {
   const { data, error } = await supabase
     .from("tareas_etiqueta")
-    .select("id_tarea, id_producto, precio_nuevo, creada_el, productos(nombre)")
+    .select("id_tarea, id_producto, precio_nuevo, creada_el, vence_el, aplicar_al_poner, productos(nombre)")
     .eq("tipo", "CAMBIO_PRECIO")
     .in("estado", ["PENDIENTE", "VENCIDA"])
     .or(`id_local.eq.${idLocal},id_local.is.null`)
     .order("creada_el");
   if (error || !data?.length) return null;
   const porProducto = new Map<string, CartelPendiente>();
+  const ahora = Date.now();
   for (const t of data) {
+    // El precio nuevo de una marca que todavía no entró (se aprobó para las
+    // 23:00): el cartel saldría con el viejo, así que no frena a nadie hoy.
+    if (!t.aplicar_al_poner && new Date(t.vence_el as string).getTime() > ahora) continue;
     const id = t.id_producto as string;
     const previo = porProducto.get(id);
     porProducto.set(id, {
@@ -136,6 +140,7 @@ export async function cartelesPendientesDelLocal(supabase: SupabaseClient, idLoc
     });
   }
   const items = [...porProducto.values()].sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+  if (!items.length) return null;
   return { cantidad: items.length, items };
 }
 

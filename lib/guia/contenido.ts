@@ -128,8 +128,9 @@ export const GUIAS: Guia[] = [
     pasos: [
       "Entrá a <b>Carteles</b> e imprimí los pendientes. Para imprimir solo algunos: <b>Destildar todo</b> y después buscá el producto, elegí la subcategoría o tildá la marca entera. Lo que marcás queda marcado aunque cambies la búsqueda.",
       "Con la medida en <b>Según el lugar en la góndola</b>, cada cartel sale para su portaprecio: los de los ganchos de la pared (blisteros) de <b>65 × 40 mm</b> y los de las islas, la estantería y el resto de <b>60 × 35 mm</b>, en hojas separadas.",
-      "Cada vez que ponés uno en la góndola, tocá <b>Lo puse</b> en ese producto.",
+      "Cada vez que ponés uno en la góndola, tocá <b>Lo puse</b> en ese producto. Si imprimiste toda la góndola de una vez, cuando estén todos puestos tocá <b>Ya puse todos los que imprimí</b>.",
       "El precio nuevo empieza a cobrarse <b>recién ahí</b>: en la caja, el totem y la pantalla asesora.",
+      "Si un producto dice <b>precio nuevo desde … · imprimilo después</b>, es de una marca que cambia el precio esa noche: imprimilo al día siguiente, porque antes sale con el viejo.",
       "Si no llegaste a ponerlos todos, antes de fichar la salida el sistema te los pide. Si no pudiste, tocá <b>No pude ponerlos</b> y queda el aviso para el próximo turno.",
     ],
     tip: "Así el cliente nunca paga distinto de lo que dice la góndola.",

@@ -95,6 +95,8 @@ export default async function CartelesPage() {
     todas: string[];
     /** El precio que espera este cartel para entrar en la caja (marca propia). */
     espera: { lista: number; efectivo: number } | null;
+    /** Precio de una marca aprobado para más tarde (las 23:00): hasta esa hora el cartel saldría con el viejo. */
+    entraEl: string | null;
   };
   const num = (v: unknown) => (v == null || !Number.isFinite(Number(v)) ? null : Number(v));
   const tareas = new Map<string, Abierta>();
@@ -116,7 +118,9 @@ export default async function CartelesPage() {
     // vez: se queda con la más urgente. La fecha y los precios "de antes" son
     // los del pedido más viejo: es lo que dice el cartel que sigue puesto.
     const vencida = new Date(t.vence_el).getTime() < ahora;
+    const entra = !t.aplicar_al_poner && !vencida ? t.vence_el : null;
     const previa = tareas.get(t.id_producto);
+    const entraEl = [previa?.entraEl, entra].filter(Boolean).sort().pop() ?? null;
     const masVieja = !previa?.pedidoEl || (t.creada_el != null && t.creada_el < previa.pedidoEl);
     const datosViejos = masVieja
       ? { pedidoEl: t.creada_el ?? previa?.pedidoEl ?? null, antes: { lista: num(t.precio_anterior), efectivo: num(t.efectivo_anterior) } }
@@ -125,9 +129,9 @@ export default async function CartelesPage() {
     // el producto volvería a aparecer como pendiente.
     const todas = [...(previa?.todas ?? []), t.id_tarea];
     if (!previa || (vencida && !previa.vencida)) {
-      tareas.set(t.id_producto, { idTarea: t.id_tarea, vencida, tipo: t.tipo, ...datosViejos, todas, espera: espera ?? previa?.espera ?? null });
+      tareas.set(t.id_producto, { idTarea: t.id_tarea, vencida, tipo: t.tipo, ...datosViejos, todas, espera: espera ?? previa?.espera ?? null, entraEl });
     } else {
-      Object.assign(previa, datosViejos, { todas, espera: espera ?? previa.espera });
+      Object.assign(previa, datosViejos, { todas, espera: espera ?? previa.espera, entraEl });
     }
   }
 
@@ -165,6 +169,7 @@ export default async function CartelesPage() {
         vencida: t?.vencida ?? false,
         pedidoEl: t?.pedidoEl ?? null,
         antes: t?.antes ?? null,
+        entraEl: t?.entraEl ?? null,
         pesoG: p.peso_neto_g && p.peso_neto_g > 0 ? p.peso_neto_g : null,
         origen: origenes.get(p.id_producto) ?? null,
         lugar: lugarDe.get(p.id_producto) ?? null,
