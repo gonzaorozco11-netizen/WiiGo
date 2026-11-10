@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { ConteoInventario, FirmaInventario, ProductoInventario, UbicacionPendiente } from "@/lib/inventario";
-import { ZONAS_INVENTARIO, moduloDeZona, textoLugar } from "@/lib/inventario";
+import { ZONAS_INVENTARIO, modulosDeZona, textoLugar } from "@/lib/inventario";
 import type { ModuloGondola } from "@/lib/gondola";
 import {
   cerrarInventario,
@@ -192,10 +192,10 @@ function Contando({
 
       {aviso && <p className="mb-3 text-sm rounded-lg bg-emerald-50 text-emerald-800 px-3 py-2">{aviso}</p>}
 
-      {ubicando && moduloDeZona(gondola, zona) ? (
+      {ubicando && modulosDeZona(gondola, zona).length > 0 ? (
         <Ubicar
           p={ubicando}
-          modulo={moduloDeZona(gondola, zona)!}
+          modulos={modulosDeZona(gondola, zona)}
           gondola={gondola}
           onListo={(texto) => {
             setUbicando(null);
@@ -210,7 +210,7 @@ function Contando({
           otros={conteosDe(sel.idVariante)}
           onListo={(texto) => {
             // Si el lugar tiene su mueble en la Góndola (no el granel), se confirma dónde está.
-            if (!sel.enGramos && moduloDeZona(gondola, zona)) setUbicando(sel);
+            if (!sel.enGramos && modulosDeZona(gondola, zona).length > 0) setUbicando(sel);
             setSel(null);
             setBusqueda("");
             setAviso(texto);
@@ -389,7 +389,7 @@ function Contar({
  * el lugar del producto marcado. Si está en otro lado o no tenía lugar, se
  * toca dónde está.
  */
-function Ubicar({ p, modulo, gondola, onListo }: { p: ProductoInventario; modulo: ModuloGondola; gondola: ModuloGondola[]; onListo: (texto: string | null) => void }) {
+function Ubicar({ p, modulos, gondola, onListo }: { p: ProductoInventario; modulos: ModuloGondola[]; gondola: ModuloGondola[]; onListo: (texto: string | null) => void }) {
   // Dónde lo tiene el plano (en este mueble o en otro).
   const plano = (() => {
     for (const m of gondola) {
@@ -398,6 +398,9 @@ function Ubicar({ p, modulo, gondola, onListo }: { p: ProductoInventario; modulo
     }
     return null;
   })();
+  // Si el lugar tiene dos lados (las islas, Animalfit), arranca en el lado donde lo tiene el plano.
+  const [lado, setLado] = useState(() => Math.max(0, modulos.findIndex((m) => m.id === plano?.m.id)));
+  const modulo = modulos[lado] ?? modulos[0];
   const enEste = plano && plano.m.id === modulo.id ? plano : null;
   const [eligiendo, setEligiendo] = useState(!plano);
   const [elegido, setElegido] = useState<{ fila: number; columna: number } | null>(null);
@@ -434,6 +437,24 @@ function Ubicar({ p, modulo, gondola, onListo }: { p: ProductoInventario; modulo
           {textoPlano ? ` · según el plano va en ${textoPlano}` : " · todavía no tiene lugar en la góndola"}
         </p>
       </div>
+
+      {modulos.length > 1 && (
+        <div className="flex flex-wrap gap-2">
+          {modulos.map((m, i) => (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => {
+                setLado(i);
+                setElegido(null);
+              }}
+              className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${i === lado ? "border-accent bg-accent text-white" : "border-neutral-300 bg-white"}`}
+            >
+              {m.subtitulo ?? m.titulo}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="flex justify-center py-1" style={{ perspective: "900px" }}>
         <div

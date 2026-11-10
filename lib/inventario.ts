@@ -7,20 +7,26 @@ import { NOMBRE_ALTURA, nombreCortoZona, soloModulos, type ModuloGondola } from 
 
 export const ZONAS_INVENTARIO = ["Módulo 1", "Módulo 2", "Módulo 3", "Módulo 4", "Módulo 5", "Freezer", "Animalfit", "Isla 1", "Isla 2", "Depósito"] as const;
 
-/** El mueble de la Góndola que corresponde a cada lugar del inventario (el Depósito no tiene). */
-export function moduloDeZona(gondola: ModuloGondola[], zona: string): ModuloGondola | null {
+/**
+ * Los muebles de la Góndola de cada lugar del inventario: uno por módulo, los
+ * dos lados de cada isla, adelante y fondo de Animalfit. El Depósito no tiene.
+ */
+export function modulosDeZona(gondola: ModuloGondola[], zona: string): ModuloGondola[] {
   const n = Number(zona.match(/\d+$/)?.[0]);
-  if (zona.startsWith("Módulo")) return soloModulos(gondola)[n - 1] ?? null;
-  if (zona.startsWith("Isla")) return gondola.find((m) => m.tipo === "ISLA" && m.numero === n) ?? null;
-  if (zona === "Freezer") return gondola.find((m) => m.tipo === "FREEZER") ?? null;
-  if (zona === "Animalfit") return gondola.find((m) => /animal\s*fit/i.test(`${m.titulo} ${m.subtitulo ?? ""}`)) ?? null;
-  return null;
+  if (zona.startsWith("Módulo")) return soloModulos(gondola)[n - 1] ? [soloModulos(gondola)[n - 1]] : [];
+  if (zona.startsWith("Isla")) return gondola.filter((m) => m.tipo === "ISLA" && m.numero === n);
+  if (zona === "Freezer") return gondola.filter((m) => m.tipo === "FREEZER");
+  if (zona === "Animalfit") return gondola.filter((m) => /animal\s*fit/i.test(`${m.titulo} ${m.subtitulo ?? ""}`));
+  return [];
 }
 
 /** «Módulo 1 · Ojos · lugar 3», para mostrar y para el registro. */
 export function textoLugar(gondola: ModuloGondola[], m: ModuloGondola, fila: number, columna: number) {
   const altura = m.filas[fila]?.altura;
-  return `${nombreCortoZona(gondola, m).replace(/^Mueble/, "Módulo")}${altura ? ` · ${NOMBRE_ALTURA[altura]}` : ""} · lugar ${columna + 1}`;
+  // Las islas y Animalfit tienen dos lados con el mismo nombre: se aclara cuál.
+  const dosLados = m.tipo !== "MODULO" && gondola.some((o) => o.id !== m.id && o.tipo === m.tipo && o.numero === m.numero && nombreCortoZona(gondola, o) === nombreCortoZona(gondola, m));
+  const nombre = nombreCortoZona(gondola, m).replace(/^Mueble/, "Módulo") + (dosLados && m.subtitulo ? ` (${m.subtitulo})` : "");
+  return `${nombre}${altura ? ` · ${NOMBRE_ALTURA[altura]}` : ""} · lugar ${columna + 1}`;
 }
 
 export type UbicacionPendiente = { id: string; producto: string; desde: string; hacia: string; quien: string | null };
