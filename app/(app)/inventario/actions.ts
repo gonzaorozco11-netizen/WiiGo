@@ -57,6 +57,117 @@ export async function guardarConteoInventario(idVariante: string, zona: string, 
   return { ok: true };
 }
 
+// ===================== Dónde está cada producto =====================
+
+/** Pone el producto en ese lugar (sale de donde estaba; lo que había ahí queda sin lugar). */
+async function aplicarLugar(supabase: ReturnType<typeof getSupabaseServerClient>, idLocal: string, idModulo: string, fila: number, columna: number, idProducto: string) {
+  await supabase.from("gondola_lugares").delete().eq("id_local", idLocal).eq("id_producto", idProducto);
+  await supabase.from("gondola_lugares").delete().eq("id_modulo", idModulo).eq("fila", fila).eq("columna", columna);
+  return supabase
+    .from("gondola_lugares")
+    .insert({ id_modulo: idModulo, id_local: idLocal, fila, columna, id_producto: idProducto, puesto: true, actualizado_el: new Date().toISOString() });
+}
+
+async function lugarDeProducto(supabase: ReturnType<typeof getSupabaseServerClient>, idLocal: string, idProducto: string) {
+  const { data } = await supabase.from("gondola_lugares").select("id_modulo, fila, columna").eq("id_local", idLocal).eq("id_producto", idProducto).maybeSingle();
+  return data as { id_modulo: string; fila: number; columna: number } | null;
+}
+
+/** «✓ Sí, está acá»: el plano coincide. Si figuraba «falta poner», pasa a puesto. */
+export async function confirmarUbicacion(idProducto: string, texto: string): Promise<{ error?: string; ok?: true }> {
+  const c = await contexto();
+  if ("error" in c) return { error: c.error };
+  const lugar = await lugarDeProducto(c.supabase, c.idLocal, idProducto);
+  if (!lugar) return { error: "Ese producto no tiene lugar en la góndola." };
+  await c.supabase.from("gondola_lugares").update({ puesto: true, motivo_falta: null }).eq("id_modulo", lugar.id_modulo).eq("fila", lugar.fila).eq("columna", lugar.columna);
+  const inv = await inventarioAbierto(c.supabase, c.idLocal);
+  const { error } = await c.supabase.from("inventario_ubicaciones").insert({
+    id_inventario: inv && inv !== "SIN_SQL" ? inv.id : null,
+    id_local: c.idLocal,
+    id_producto: idProducto,
+    accion: "CONFIRMADO",
+    hacia: texto,
+    quien: c.sesion.nombre,
+  });
+  if (error) return { error: "Falta correr sql/inventario-ubicaciones.sql en Supabase." };
+  revalidatePath("/inventario");
+  return { ok: true };
+}
+
+/**
+ * Dónde está de verdad. Si no tenía lugar, queda ubicado ahí. Si tenía otro,
+ * el plano no se toca: le queda a Gonzalo para decidir (dejarlo o moverlo).
+ */
+export async function ubicarProducto(
+  idProducto: string,
+  idModulo: string,
+  fila: number,
+  columna: number,
+  hacia: string,
+  desde: string | null
+): Promise<{ error?: string; ok?: true; pendiente?: boolean }> {
+  if (!Number.isInteger(fila) || !Number.isInteger(columna) || fila < 0 || columna < 0) return { error: "Ese lugar no existe." };
+  const c = await contexto();
+  if ("error" in c) return { error: c.error };
+  const { supabase, idLocal } = c;
+  const { data: modulo } = await supabase.from("gondola_modulos").select("id_local, filas").eq("id_modulo", idModulo).maybeSingle();
+  const filas = Array.isArray(modulo?.filas) ? (modulo!.filas as { lugares?: number }[]) : [];
+  if (!modulo || modulo.id_local !== idLocal || fila >= filas.length || columna >= Math.round(Number(filas[fila]?.lugares) || 6)) return { error: "Ese lugar no existe en el mueble." };
+  const { data: ocupa } = await supabase.from("gondola_lugares").select("id_producto, productos(nombre)").eq("id_modulo", idModulo).eq("fila", fila).eq("columna", columna).maybeSingle();
+  if (ocupa && ocupa.id_producto !== idProducto) {
+    const nombre = (ocupa.productos as unknown as { nombre: string } | null)?.nombre ?? "otro producto";
+    return { error: `Ese lugar es de ${nombre}. Si de verdad está ahí, avisale a Gonzalo.` };
+  }
+
+  const actual = await lugarDeProducto(supabase, idLocal, idProducto);
+  const inv = await inventarioAbierto(supabase, idLocal);
+  const base = { id_inventario: inv && inv !== "SIN_SQL" ? inv.id : null, id_local: idLocal, id_producto: idProducto, hacia, id_modulo: idModulo, fila, columna, quien: c.sesion.nombre };
+
+  if (!actual) {
+    const r = await aplicarLugar(supabase, idLocal, idModulo, fila, columna, idProducto);
+    if (r.error) return { error: "No se pudo guardar el lugar. Probá de nuevo." };
+    await supabase.from("inventario_ubicaciones").insert({ ...base, accion: "NUEVO" });
+    revalidatePath("/inventario");
+    revalidatePath("/gondola");
+    return { ok: true };
+  }
+  if (actual.id_modulo === idModulo && actual.fila === fila && actual.columna === columna) return confirmarUbicacion(idProducto, hacia);
+
+  const { error } = await supabase.from("inventario_ubicaciones").insert({ ...base, accion: "MOVIDO", desde, estado: "PENDIENTE" });
+  if (error) return { error: "Falta correr sql/inventario-ubicaciones.sql en Supabase." };
+  revalidatePath("/inventario");
+  return { ok: true, pendiente: true };
+}
+
+/** Gonzalo decide un «está en otro lugar»: dejarlo ahí (se actualiza el plano) o que lo muevan a su lugar. */
+export async function resolverUbicacion(idUbicacion: string, dejarloAhi: boolean): Promise<{ error?: string; ok?: true }> {
+  const c = await contexto();
+  if ("error" in c) return { error: c.error };
+  if (c.sesion.rol !== "admin") return { error: "Esto lo decide Gonzalo." };
+  const { supabase, idLocal } = c;
+  const { data: u } = await supabase.from("inventario_ubicaciones").select("*").eq("id_ubicacion", idUbicacion).maybeSingle();
+  if (!u || u.estado !== "PENDIENTE") return { error: "Ya estaba resuelto." };
+  if (dejarloAhi) {
+    const r = await aplicarLugar(supabase, idLocal, u.id_modulo as string, Number(u.fila), Number(u.columna), u.id_producto as string);
+    if (r.error) return { error: "No se pudo actualizar el plano." };
+  } else {
+    // Queda en su lugar del plano, marcado «falta poner» con la indicación: así lo ve el equipo en Góndola.
+    const lugar = await lugarDeProducto(supabase, idLocal, u.id_producto as string);
+    if (lugar) {
+      await supabase
+        .from("gondola_lugares")
+        .update({ puesto: false, motivo_falta: `Moverlo acá: está en ${u.hacia}` })
+        .eq("id_modulo", lugar.id_modulo)
+        .eq("fila", lugar.fila)
+        .eq("columna", lugar.columna);
+    }
+  }
+  await supabase.from("inventario_ubicaciones").update({ estado: dejarloAhi ? "APLICADA" : "DESCARTADA" }).eq("id_ubicacion", idUbicacion);
+  revalidatePath("/inventario");
+  revalidatePath("/gondola");
+  return { ok: true };
+}
+
 /** «Terminé mi parte»: firma lo que contó (los lugares y cuántos productos). */
 export async function firmarInventario(firma: string | null): Promise<{ error?: string; ok?: true }> {
   if (!firmaValida(firma)) return { error: "Firmá con el dedo en el recuadro." };

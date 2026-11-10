@@ -2,9 +2,20 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import type { ConteoInventario, FirmaInventario, ProductoInventario } from "@/lib/inventario";
-import { ZONAS_INVENTARIO } from "@/lib/inventario";
-import { cerrarInventario, empezarInventario, firmarInventario, guardarConteoInventario } from "@/app/(app)/inventario/actions";
+import type { ConteoInventario, FirmaInventario, ProductoInventario, UbicacionPendiente } from "@/lib/inventario";
+import { ZONAS_INVENTARIO, moduloDeZona, textoLugar } from "@/lib/inventario";
+import type { ModuloGondola } from "@/lib/gondola";
+import {
+  cerrarInventario,
+  confirmarUbicacion,
+  empezarInventario,
+  firmarInventario,
+  guardarConteoInventario,
+  resolverUbicacion,
+  ubicarProducto,
+} from "@/app/(app)/inventario/actions";
+
+type ResumenUbicaciones = { confirmados: number; nuevos: number; movidos: number; pendientes: UbicacionPendiente[] };
 import { guardarCodigoBarras } from "@/app/(app)/codigos/actions";
 import EscanerCodigo from "@/components/EscanerCodigo";
 import PadFirma from "@/components/PadFirma";
@@ -27,6 +38,8 @@ export default function InventarioApp({
   conteos,
   firmas,
   desde,
+  gondola = [],
+  ubicaciones = null,
 }: {
   abierto: boolean;
   esAdmin: boolean;
@@ -35,6 +48,8 @@ export default function InventarioApp({
   conteos: ConteoInventario[];
   firmas: FirmaInventario[];
   desde?: string;
+  gondola?: ModuloGondola[];
+  ubicaciones?: ResumenUbicaciones | null;
 }) {
   const router = useRouter();
   const [pendiente, startTransition] = useTransition();
@@ -70,7 +85,18 @@ export default function InventarioApp({
     );
   }
 
-  return <Contando esAdmin={esAdmin} miNombre={miNombre} catalogo={catalogo} conteos={conteos} firmas={firmas} desde={desde ?? ""} />;
+  return (
+    <Contando
+      esAdmin={esAdmin}
+      miNombre={miNombre}
+      catalogo={catalogo}
+      conteos={conteos}
+      firmas={firmas}
+      desde={desde ?? ""}
+      gondola={gondola}
+      ubicaciones={ubicaciones}
+    />
+  );
 }
 
 function Contando({
@@ -80,6 +106,8 @@ function Contando({
   conteos,
   firmas,
   desde,
+  gondola,
+  ubicaciones,
 }: {
   esAdmin: boolean;
   miNombre: string | null;
@@ -87,7 +115,11 @@ function Contando({
   conteos: ConteoInventario[];
   firmas: FirmaInventario[];
   desde: string;
+  gondola: ModuloGondola[];
+  ubicaciones: ResumenUbicaciones | null;
 }) {
+  // Después de contar en un mueble, se confirma dónde está el producto en él.
+  const [ubicando, setUbicando] = useState<ProductoInventario | null>(null);
   const router = useRouter();
   const [zona, setZona] = useState<string>(ZONAS_INVENTARIO[0]);
   useEffect(() => {
@@ -160,12 +192,25 @@ function Contando({
 
       {aviso && <p className="mb-3 text-sm rounded-lg bg-emerald-50 text-emerald-800 px-3 py-2">{aviso}</p>}
 
-      {sel ? (
+      {ubicando && moduloDeZona(gondola, zona) ? (
+        <Ubicar
+          p={ubicando}
+          modulo={moduloDeZona(gondola, zona)!}
+          gondola={gondola}
+          onListo={(texto) => {
+            setUbicando(null);
+            if (texto) setAviso(texto);
+            router.refresh();
+          }}
+        />
+      ) : sel ? (
         <Contar
           p={sel}
           zona={zona}
           otros={conteosDe(sel.idVariante)}
           onListo={(texto) => {
+            // Si el lugar tiene su mueble en la Góndola (no el granel), se confirma dónde está.
+            if (!sel.enGramos && moduloDeZona(gondola, zona)) setUbicando(sel);
             setSel(null);
             setBusqueda("");
             setAviso(texto);
@@ -239,6 +284,7 @@ function Contando({
         <p className="mt-6 text-sm rounded-lg bg-emerald-50 text-emerald-800 px-3 py-2">✓ Ya firmaste tu parte. Si contás algo más, queda sumado igual.</p>
       )}
 
+      {esAdmin && ubicaciones && <PanelUbicaciones u={ubicaciones} />}
       {esAdmin && <PanelAdmin catalogo={catalogo} conteos={conteos} firmas={firmas} />}
 
       {escaneando && <EscanerCodigo titulo="Escaneá el producto que vas a contar" onLeido={leido} onCerrar={() => setEscaneando(false)} />}
@@ -335,6 +381,195 @@ function Contar({
         </button>
       </div>
     </div>
+  );
+}
+
+/**
+ * ¿Está acá? El mueble del lugar donde se cuenta, en 3D como en Góndola, con
+ * el lugar del producto marcado. Si está en otro lado o no tenía lugar, se
+ * toca dónde está.
+ */
+function Ubicar({ p, modulo, gondola, onListo }: { p: ProductoInventario; modulo: ModuloGondola; gondola: ModuloGondola[]; onListo: (texto: string | null) => void }) {
+  // Dónde lo tiene el plano (en este mueble o en otro).
+  const plano = (() => {
+    for (const m of gondola) {
+      const l = m.lugares.find((x) => x.idProducto === p.idProducto);
+      if (l) return { m, fila: l.fila, columna: l.columna };
+    }
+    return null;
+  })();
+  const enEste = plano && plano.m.id === modulo.id ? plano : null;
+  const [eligiendo, setEligiendo] = useState(!plano);
+  const [elegido, setElegido] = useState<{ fila: number; columna: number } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [guardando, startTransition] = useTransition();
+  const textoPlano = plano ? textoLugar(gondola, plano.m, plano.fila, plano.columna) : null;
+
+  function confirmar() {
+    if (!textoPlano) return;
+    setError(null);
+    startTransition(async () => {
+      const r = await confirmarUbicacion(p.idProducto, textoPlano);
+      if (r.error) setError(r.error);
+      else onListo(`✓ ${p.nombre}: confirmado en ${textoPlano}.`);
+    });
+  }
+  function guardarLugar() {
+    if (!elegido) return;
+    setError(null);
+    const hacia = textoLugar(gondola, modulo, elegido.fila, elegido.columna);
+    startTransition(async () => {
+      const r = await ubicarProducto(p.idProducto, modulo.id, elegido.fila, elegido.columna, hacia, textoPlano);
+      if (r.error) setError(r.error);
+      else onListo(r.pendiente ? `${p.nombre}: anotado que está en ${hacia}. Gonzalo decide si queda ahí.` : `✓ ${p.nombre}: ubicado en ${hacia}.`);
+    });
+  }
+
+  return (
+    <div className="rounded-2xl border-2 border-accent bg-white p-4 space-y-3 mb-4">
+      <div>
+        <p className="font-semibold text-neutral-900">{eligiendo ? (plano ? "¿Dónde está de verdad?" : "¿Dónde lo pusiste?") : "¿Está acá?"}</p>
+        <p className="text-xs text-neutral-500">
+          {p.nombre}
+          {textoPlano ? ` · según el plano va en ${textoPlano}` : " · todavía no tiene lugar en la góndola"}
+        </p>
+      </div>
+
+      <div className="flex justify-center py-1" style={{ perspective: "900px" }}>
+        <div
+          className="rounded-lg p-2.5 pb-3 w-full max-w-sm"
+          style={{ background: "#c9a57a", transform: "rotateX(8deg) rotateY(-10deg)", boxShadow: "10px 14px 0 -4px #a8835a, 0 16px 28px rgba(0,0,0,.18)" }}
+        >
+          <p className="text-center text-[11px] font-extrabold uppercase tracking-wider text-[#3b2b19] mb-1.5">
+            {textoLugar(gondola, modulo, 0, 0).split(" · ")[0]} · {modulo.titulo}
+          </p>
+          {modulo.filas.map((f, fi) => (
+            <div key={fi} className="mb-1.5 border-b-[5px] border-[#a8835a] bg-[#f3ece0] px-1.5 pt-1.5 pb-1 grid gap-1" style={{ gridTemplateColumns: `repeat(${f.lugares}, minmax(0, 1fr))` }}>
+              {Array.from({ length: f.lugares }, (_, c) => {
+                const l = modulo.lugares.find((x) => x.fila === fi && x.columna === c);
+                const esEste = enEste && enEste.fila === fi && enEste.columna === c;
+                const esElegido = elegido && elegido.fila === fi && elegido.columna === c;
+                const libre = !l || l.idProducto === p.idProducto;
+                return (
+                  <button
+                    key={c}
+                    type="button"
+                    disabled={!eligiendo || !libre}
+                    onClick={() => setElegido({ fila: fi, columna: c })}
+                    className={`h-9 rounded text-[9px] leading-tight px-0.5 grid place-items-center text-center ${
+                      esElegido
+                        ? "bg-emerald-600 text-white font-bold"
+                        : esEste && !eligiendo
+                          ? "bg-accent text-white font-bold ring-4 ring-accent/30 motion-safe:animate-pulse"
+                          : l && !libre
+                            ? "bg-[#e8dcc6] text-neutral-600"
+                            : eligiendo
+                              ? "bg-white/70 border border-dashed border-emerald-500"
+                              : "bg-white/50 border border-dashed border-black/15"
+                    }`}
+                  >
+                    {esElegido || (esEste && !eligiendo) ? "ACÁ" : l && !libre ? l.nombre.split(" ").slice(0, 2).join(" ") : ""}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {eligiendo ? (
+        <p className="text-xs text-neutral-600 bg-emerald-50 rounded-lg px-3 py-2">
+          Tocá en el mueble el lugar donde está. Si está en otro mueble, elegilo arriba y volvé a contarlo ahí.
+        </p>
+      ) : !enEste ? (
+        <p className="text-xs text-amber-800 bg-amber-50 rounded-lg px-3 py-2">Según el plano no va en este mueble. Si está acá, tocá «Está en otro lugar» y marcá dónde.</p>
+      ) : null}
+
+      {error && (
+        <p className="text-sm text-red-600" role="alert">
+          {error}
+        </p>
+      )}
+      <div className="grid grid-cols-2 gap-2">
+        {eligiendo ? (
+          <>
+            <button type="button" onClick={() => (plano ? setEligiendo(false) : onListo(null))} className="rounded-xl border border-neutral-300 px-3 py-3 text-sm">
+              {plano ? "Volver" : "Ahora no"}
+            </button>
+            <button type="button" onClick={guardarLugar} disabled={!elegido || guardando} className="rounded-xl bg-neutral-900 text-white px-3 py-3 text-sm font-semibold disabled:opacity-40">
+              {guardando ? "Guardando…" : elegido ? "Guardar este lugar" : "Tocá un lugar"}
+            </button>
+          </>
+        ) : (
+          <>
+            <button type="button" onClick={() => setEligiendo(true)} className="rounded-xl border border-neutral-300 px-3 py-3 text-sm">
+              Está en otro lugar
+            </button>
+            <button type="button" onClick={confirmar} disabled={guardando || !enEste} className="rounded-xl bg-emerald-600 text-white px-3 py-3 text-sm font-semibold disabled:opacity-40">
+              {guardando ? "Guardando…" : "✓ Sí, está acá"}
+            </button>
+          </>
+        )}
+      </div>
+      <button type="button" onClick={() => onListo(null)} className="w-full text-xs text-neutral-500">
+        Saltear la ubicación
+      </button>
+    </div>
+  );
+}
+
+/** Para Gonzalo: lo que confirmaron y lo que no coincide con su plano. */
+function PanelUbicaciones({ u }: { u: ResumenUbicaciones }) {
+  const router = useRouter();
+  const [guardando, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  function resolver(id: string, dejar: boolean) {
+    setError(null);
+    startTransition(async () => {
+      const r = await resolverUbicacion(id, dejar);
+      if (r.error) setError(r.error);
+      else router.refresh();
+    });
+  }
+  return (
+    <section className="mt-10 rounded-2xl border border-neutral-200 bg-white overflow-hidden">
+      <div className="px-4 py-3 border-b border-neutral-200">
+        <h2 className="font-semibold text-neutral-900">Dónde está cada producto</h2>
+        <p className="text-xs text-neutral-500">Lo que confirmaron mientras contaban, y lo que no coincide con tu plano de Góndola.</p>
+      </div>
+      <div className="p-4 flex flex-wrap gap-2 text-sm">
+        <span className="rounded-xl bg-emerald-50 text-emerald-800 px-3 py-2">
+          <b className="tabular-nums">{u.confirmados}</b> confirmados
+        </span>
+        <span className="rounded-xl bg-sky-50 text-sky-800 px-3 py-2">
+          <b className="tabular-nums">{u.nuevos}</b> ubicados por primera vez
+        </span>
+        <span className="rounded-xl bg-amber-50 text-amber-800 px-3 py-2">
+          <b className="tabular-nums">{u.movidos}</b> en otro lugar
+        </span>
+      </div>
+      {u.pendientes.length > 0 && (
+        <div className="px-4 pb-4 space-y-2">
+          {u.pendientes.map((x) => (
+            <div key={x.id} className="rounded-xl border border-l-4 border-amber-200 border-l-amber-500 p-3 text-sm">
+              <p>
+                <b>{x.producto}</b> · {x.quien ?? "Alguien"} lo encontró en <b>{x.hacia}</b>; en tu plano va en <b>{x.desde}</b>.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button type="button" disabled={guardando} onClick={() => resolver(x.id, true)} className="rounded-lg bg-neutral-900 text-white px-3 py-1.5 text-xs font-semibold disabled:opacity-40">
+                  Dejarlo donde está
+                </button>
+                <button type="button" disabled={guardando} onClick={() => resolver(x.id, false)} className="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-semibold disabled:opacity-40">
+                  Que lo muevan a mi lugar
+                </button>
+              </div>
+            </div>
+          ))}
+          {error && <p className="text-sm text-red-600">{error}</p>}
+          <p className="text-xs text-neutral-500">«Que lo muevan» lo deja marcado «falta poner» en su lugar, con la indicación, y el equipo lo ve en Góndola.</p>
+        </div>
+      )}
+    </section>
   );
 }
 

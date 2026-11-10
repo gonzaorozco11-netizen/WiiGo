@@ -3,7 +3,8 @@ import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import PantallaBloqueada from "@/components/PantallaBloqueada";
 import InventarioApp from "@/components/InventarioApp";
 import { localDeSesion } from "@/lib/fraccionado";
-import { catalogoInventario, conteosDe, inventarioAbierto } from "@/lib/inventario";
+import { catalogoInventario, conteosDe, inventarioAbierto, ubicacionesDe } from "@/lib/inventario";
+import { cargarGondola } from "@/lib/gondola";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +30,24 @@ export default async function InventarioPage() {
   const esAdmin = sesion.rol === "admin";
   if (!inv) return <InventarioApp abierto={false} esAdmin={esAdmin} miNombre={sesion.nombre} catalogo={[]} conteos={[]} firmas={[]} />;
 
-  const [catalogo, { conteos, firmas }] = await Promise.all([catalogoInventario(supabase), conteosDe(supabase, inv.id)]);
-  return <InventarioApp abierto esAdmin={esAdmin} miNombre={sesion.nombre} catalogo={catalogo} conteos={conteos} firmas={firmas} desde={inv.desde} />;
+  const [catalogo, { conteos, firmas }, gondola, ubicaciones] = await Promise.all([
+    catalogoInventario(supabase),
+    conteosDe(supabase, inv.id),
+    // El mueble en 3D de cada lugar, para confirmar dónde está cada producto.
+    cargarGondola(supabase, idLocal).catch(() => null),
+    esAdmin ? ubicacionesDe(supabase, idLocal, inv.id) : Promise.resolve(null),
+  ]);
+  return (
+    <InventarioApp
+      abierto
+      esAdmin={esAdmin}
+      miNombre={sesion.nombre}
+      catalogo={catalogo}
+      conteos={conteos}
+      firmas={firmas}
+      desde={inv.desde}
+      gondola={gondola ?? []}
+      ubicaciones={ubicaciones}
+    />
+  );
 }

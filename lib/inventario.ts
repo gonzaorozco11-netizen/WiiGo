@@ -1,13 +1,33 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cargarMarcasFabrica, conMarca } from "@/lib/marcaFabrica";
+import { NOMBRE_ALTURA, nombreCortoZona, soloModulos, type ModuloGondola } from "@/lib/gondola";
 
 // Inventario general del local (sql/inventario.sql): una tanda para cargar el
 // stock de todo el local, contando por módulo (Gonzalo, 2026-11-10).
 
 export const ZONAS_INVENTARIO = ["Módulo 1", "Módulo 2", "Módulo 3", "Módulo 4", "Módulo 5", "Freezer", "Animalfit", "Isla 1", "Isla 2", "Depósito"] as const;
 
+/** El mueble de la Góndola que corresponde a cada lugar del inventario (el Depósito no tiene). */
+export function moduloDeZona(gondola: ModuloGondola[], zona: string): ModuloGondola | null {
+  const n = Number(zona.match(/\d+$/)?.[0]);
+  if (zona.startsWith("Módulo")) return soloModulos(gondola)[n - 1] ?? null;
+  if (zona.startsWith("Isla")) return gondola.find((m) => m.tipo === "ISLA" && m.numero === n) ?? null;
+  if (zona === "Freezer") return gondola.find((m) => m.tipo === "FREEZER") ?? null;
+  if (zona === "Animalfit") return gondola.find((m) => /animal\s*fit/i.test(`${m.titulo} ${m.subtitulo ?? ""}`)) ?? null;
+  return null;
+}
+
+/** «Módulo 1 · Ojos · lugar 3», para mostrar y para el registro. */
+export function textoLugar(gondola: ModuloGondola[], m: ModuloGondola, fila: number, columna: number) {
+  const altura = m.filas[fila]?.altura;
+  return `${nombreCortoZona(gondola, m).replace(/^Mueble/, "Módulo")}${altura ? ` · ${NOMBRE_ALTURA[altura]}` : ""} · lugar ${columna + 1}`;
+}
+
+export type UbicacionPendiente = { id: string; producto: string; desde: string; hacia: string; quien: string | null };
+
 export type ProductoInventario = {
   idVariante: string;
+  idProducto: string;
   nombre: string;
   marca: string;
   codigo: string | null;
@@ -46,6 +66,7 @@ export async function catalogoInventario(supabase: SupabaseClient): Promise<Prod
     const base = conMarca(p.nombre as string, marcasFabrica.get(p.id_producto as string));
     salida.push({
       idVariante: v.id_variante as string,
+      idProducto: p.id_producto as string,
       nombre: v.nombre && v.nombre !== "Único" ? `${base} — ${v.nombre}` : base,
       marca: marcaPor.get(p.id_marca as string) ?? "",
       codigo: (v.codigo_barras as string | null) ?? null,
@@ -53,6 +74,31 @@ export async function catalogoInventario(supabase: SupabaseClient): Promise<Prod
     });
   }
   return salida.sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+}
+
+/** Lo que dijeron los chicos sobre dónde está cada cosa: los números y lo que espera a Gonzalo. */
+export async function ubicacionesDe(supabase: SupabaseClient, idLocal: string, idInventario: string) {
+  const { data, error } = await supabase
+    .from("inventario_ubicaciones")
+    .select("id_ubicacion, accion, estado, desde, hacia, quien, productos(nombre)")
+    .eq("id_local", idLocal)
+    .or(`id_inventario.eq.${idInventario},estado.eq.PENDIENTE`);
+  if (error) return { confirmados: 0, nuevos: 0, movidos: 0, pendientes: [] as UbicacionPendiente[] };
+  const filas = data ?? [];
+  return {
+    confirmados: filas.filter((f) => f.accion === "CONFIRMADO").length,
+    nuevos: filas.filter((f) => f.accion === "NUEVO").length,
+    movidos: filas.filter((f) => f.accion === "MOVIDO").length,
+    pendientes: filas
+      .filter((f) => f.estado === "PENDIENTE")
+      .map((f) => ({
+        id: f.id_ubicacion as string,
+        producto: (f.productos as unknown as { nombre: string } | null)?.nombre ?? "Producto",
+        desde: (f.desde as string | null) ?? "—",
+        hacia: (f.hacia as string | null) ?? "—",
+        quien: (f.quien as string | null) ?? null,
+      })),
+  };
 }
 
 export async function conteosDe(supabase: SupabaseClient, idInventario: string): Promise<{ conteos: ConteoInventario[]; firmas: FirmaInventario[] }> {
