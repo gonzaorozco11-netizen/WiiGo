@@ -618,6 +618,22 @@ export const GUIAS: Guia[] = [
     tip: "El número del sistema no se muestra a propósito. En Precio y stock, los que tenés que contar dicen Hay / Quedan pocos / No hay en vez del número, hasta que los cuentes.",
   },
   {
+    id: "fraccionar",
+    audiencias: [...I],
+    pantalla: "fraccionar",
+    tema: "Stock",
+    titulo: "Fraccionar el granel en bolsitas",
+    donde: "Stock → Fraccionar",
+    rutas: ["/fraccionar"],
+    pasos: [
+      "Lo que llega a granel de Alifrut se recibe en <b>Compras → Recepción</b>, en kilos. Esos kilos quedan en el depósito.",
+      "Entrá a <b>Fraccionar</b> y tocá el producto. Si tiene más de un tamaño (100 g, 250 g), elegí cuál armaste.",
+      "Poné cuántas bolsitas armaste y tocá <b>Listo</b>. Se suman a la góndola y quedan listas en <b>Imprimir códigos</b> («Lo que entró»).",
+      "Cuando se termina la bolsa grande, tocá <b>Se terminó el granel</b> y poné cuántos gramos quedaron (0 si nada). Lo que falta se anota como merma.",
+    ],
+    tip: "Se puede embolsar de a poco: de 2 kg podés armar 4 hoy y 4 otro día. La merma se le paga a Alifrut en la liquidación.",
+  },
+  {
     id: "conteos-diferencias",
     audiencias: [...I],
     pantalla: "stock-conteos",

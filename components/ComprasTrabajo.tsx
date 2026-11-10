@@ -255,16 +255,22 @@ export default function ComprasTrabajo({
     return map;
   }, [datos.stock]);
 
+  // Las variantes de granel se piden y se reciben en kilos; en la base van en
+  // gramos (lib/granel.ts). Donde se ve el número crudo, el nombre lo aclara.
+  const enGramos = useMemo(
+    () => new Set(filas.filter((f) => (f.producto.estado as string) === "GRANEL").map((f) => f.variante.id_variante)),
+    [filas]
+  );
   const nombrePorVariante = useMemo(() => {
     const map = new Map<string, string>();
     filas.forEach((f) => {
       map.set(
         f.variante.id_variante,
-        `${f.producto.nombre}${f.variante.nombre !== "Único" ? ` — ${f.variante.nombre}` : ""}`
+        `${f.producto.nombre}${f.variante.nombre !== "Único" ? ` — ${f.variante.nombre}` : ""}${enGramos.has(f.variante.id_variante) ? " (en gramos)" : ""}`
       );
     });
     return map;
-  }, [filas]);
+  }, [filas, enGramos]);
 
   const costoActualPorVariante = useMemo(() => {
     const map = new Map<string, number | null>();
@@ -720,6 +726,7 @@ export default function ComprasTrabajo({
           proveedor={proveedorPorId.get(recibirProveedor.id_proveedor)}
           local={localPorId.get(recibirProveedor.id_local)}
           nombrePorVariante={nombrePorVariante}
+          enGramos={enGramos}
           onClose={() => setRecibirProveedor(null)}
         />
       )}

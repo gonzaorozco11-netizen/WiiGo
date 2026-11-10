@@ -11,6 +11,7 @@ import {
   type DetalleOrdenCompra,
 } from "@/lib/supabase";
 import { listarProveedores, type ProveedorConSaldo } from "@/app/(app)/proveedores/actions";
+import { asegurarGraneles } from "@/lib/granel";
 
 // Todo lo que las tres pantallas de Compras necesitan para abrir sus
 // formularios sin mandar a nadie a otra sección.
@@ -170,6 +171,8 @@ export async function datosCompras(): Promise<DatosCompras> {
   const desde = new Date();
   desde.setMonth(desde.getMonth() - MESES_HISTORIAL);
   const desdeISO = desde.toISOString();
+  // Que cada producto que se embolsa tenga su granel para pedirlo en kilos (lib/granel.ts).
+  await asegurarGraneles(supabase).catch(() => 0);
 
   const [
     proveedores,
@@ -194,7 +197,8 @@ export async function datosCompras(): Promise<DatosCompras> {
     listarProveedores(),
     supabase.from("marcas").select("*").eq("estado", "ACTIVA").order("nombre", { ascending: true }),
     supabase.from("locales").select("*").eq("estado", "ACTIVO").order("nombre", { ascending: true }),
-    supabase.from("productos").select("*").eq("estado", "ACTIVO"),
+    // Con los graneles: se piden y se reciben acá, en kilos (lib/granel.ts).
+    supabase.from("productos").select("*").in("estado", ["ACTIVO", "GRANEL"]),
     supabase.from("variantes_producto").select("*").eq("estado", "ACTIVO"),
     supabase.from("stock").select("*"),
     // Solo las de los últimos meses: el histórico completo no se usa en
@@ -337,7 +341,9 @@ export async function datosCompras(): Promise<DatosCompras> {
     // Las dos tablas juntas: el historial de Recepción muestra entregas de
     // proveedor y de marca, y las dos se tienen que poder abrir.
     lineasEntrega: [
-      ...(lineasEntregaProvRes.data ?? []).map((l) => ({
+      // Sin los lotes de bolsitas que nacen al fraccionar (0 pedidas, 0
+      // recibidas): no llegaron en el camión, salieron del granel.
+      ...(lineasEntregaProvRes.data ?? []).filter((l) => Number(l.cantidad_solicitada ?? 0) > 0 || Number(l.cantidad_recibida ?? 0) > 0).map((l) => ({
         idRecepcion: l.id_recepcion as string,
         idVariante: l.id_variante as string,
         cantidadSolicitada: (l.cantidad_solicitada as number) ?? 0,

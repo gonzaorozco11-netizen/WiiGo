@@ -90,6 +90,8 @@ const GROUPS: NavGroup[] = [
       { href: "/gondola", label: "Góndola" },
       // El conteo del turno (equipo) y sus diferencias (quien controla).
       { href: "/conteo", label: "Contar stock" },
+      // El granel de Alifrut pasa a bolsitas.
+      { href: "/fraccionar", label: "Fraccionar" },
       { href: "/stock/conteos", label: "Conteos y diferencias" },
       // Cuánto tiene que haber, no cuánto hay. Al lado de Stock porque se
       // miran juntas.

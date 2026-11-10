@@ -46,6 +46,9 @@ export const PANTALLAS_DISPONIBLES: PantallaDisponible[] = [
   // El conteo del turno: cada operativo cuenta sus productos sin ver el
   // número y firma. Es del equipo del local (Operaciones).
   { clave: "conteo", label: "Contar stock en el turno", grupo: "Stock" },
+  // Pasar el granel de Alifrut (en kilos, en el depósito) a bolsitas: suma a la
+  // góndola y deja los stickers para imprimir. Del equipo del local.
+  { clave: "fraccionar", label: "Fraccionar (granel → bolsitas)", grupo: "Stock" },
   // Las diferencias de esos conteos y quién contó qué: para quien controla.
   { clave: "stock-conteos", label: "Conteos y diferencias de stock", grupo: "Stock" },
   // Define cuánto se repone de cada producto, así que toca la relación con la

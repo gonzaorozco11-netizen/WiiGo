@@ -31,6 +31,7 @@ function fechaCorta(iso: string) {
 const TIPO_LABEL: Record<string, string> = {
   VENTA: "Venta",
   COMPRA_PROVEEDOR: "Recepción de proveedor",
+  FRACCIONADO: "Fraccionado (granel → bolsitas)",
   RECEPCION: "Recepción de marca",
   DEVOLUCION: "Devolución de cliente",
   DEVOLUCION_NO_VENDIBLE: "Devolución fallada",

@@ -5,6 +5,7 @@ import type { Local, Producto, VarianteProducto } from "@/lib/supabase";
 import type { ProveedorConSaldo } from "@/app/(app)/proveedores/actions";
 import { crearOrdenCompra } from "@/app/(app)/proveedores/actions";
 import { editarOrden } from "@/app/(app)/compras/actions";
+import { kgAGramos, textoGramos } from "@/lib/gramos";
 
 type FilaVariante = { variante: VarianteProducto; producto: Producto };
 type Linea = { idVariante: string; cantidad: number; sugerida: boolean };
@@ -114,12 +115,16 @@ export default function NuevaOrdenCompraModal({
     [sinProveedorAsignado, lineas]
   );
 
-  const totalUnidades = lineas.reduce((acc, l) => acc + (Number(l.cantidad) || 0), 0);
+  // El granel se pide en kilos y se guarda en gramos (lib/granel.ts).
+  const esGranel = (idVariante: string) => (filas.find((f) => f.variante.id_variante === idVariante)?.producto.estado as string) === "GRANEL";
+  const [textoKg, setTextoKg] = useState<Record<string, string>>({});
+  const totalUnidades = lineas.filter((l) => !esGranel(l.idVariante)).reduce((acc, l) => acc + (Number(l.cantidad) || 0), 0);
+  const totalGramos = lineas.filter((l) => esGranel(l.idVariante)).reduce((acc, l) => acc + (Number(l.cantidad) || 0), 0);
 
   function agregarProducto() {
     const idVariante = agregarSeleccion || disponiblesParaAgregar[0]?.variante.id_variante;
     if (!idVariante) return;
-    setLineas((prev) => [...prev, { idVariante, cantidad: 1, sugerida: false }]);
+    setLineas((prev) => [...prev, { idVariante, cantidad: esGranel(idVariante) ? 1000 : 1, sugerida: false }]);
     setAgregarSeleccion("");
   }
 
@@ -259,13 +264,30 @@ export default function NuevaOrdenCompraModal({
                           )}
                         </td>
                         <td className="p-2">
-                          <input
-                            type="number"
-                            min={1}
-                            value={linea.cantidad}
-                            onChange={(e) => actualizarCantidad(linea.idVariante, Number(e.target.value))}
-                            className="w-20 rounded-lg border border-neutral-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-                          />
+                          {esGranel(linea.idVariante) ? (
+                            <span className="inline-flex items-center gap-1">
+                              <input
+                                inputMode="decimal"
+                                value={textoKg[linea.idVariante] ?? String(linea.cantidad / 1000).replace(".", ",")}
+                                onChange={(e) => {
+                                  const v = e.target.value.replace(/[^\d,.]/g, "");
+                                  setTextoKg((prev) => ({ ...prev, [linea.idVariante]: v }));
+                                  actualizarCantidad(linea.idVariante, kgAGramos(v) ?? 0);
+                                }}
+                                aria-label="Kilos"
+                                className="w-16 rounded-lg border border-neutral-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                              />
+                              <span className="text-xs text-neutral-500">kg</span>
+                            </span>
+                          ) : (
+                            <input
+                              type="number"
+                              min={1}
+                              value={linea.cantidad}
+                              onChange={(e) => actualizarCantidad(linea.idVariante, Number(e.target.value))}
+                              className="w-20 rounded-lg border border-neutral-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                            />
+                          )}
                         </td>
                         <td className="p-2 text-right">
                           <button type="button" onClick={() => quitarLinea(linea.idVariante)} className="text-xs text-red-500">
@@ -281,7 +303,9 @@ export default function NuevaOrdenCompraModal({
                     <tr className="bg-neutral-50 border-t border-neutral-200">
                       <td className="p-3 text-xs font-semibold text-neutral-500 uppercase">Total</td>
                       <td colSpan={2} className="p-3 text-sm font-semibold text-neutral-900">
-                        {totalUnidades} unidades
+                        {totalUnidades > 0 && `${totalUnidades} unidades`}
+                        {totalUnidades > 0 && totalGramos > 0 && " · "}
+                        {totalGramos > 0 && `${textoGramos(totalGramos)} a granel`}
                       </td>
                     </tr>
                   </tfoot>

@@ -7,6 +7,7 @@ import { recepcionarOrdenCompra } from "@/app/(app)/proveedores/actions";
 import { ESTADO_ESTILO_COMPRA } from "@/components/ProveedoresApp";
 import { estaAbierta, etiquetaEstado, RECIBIDA_PARCIAL } from "@/lib/estadosOrden";
 import { CampoRemito } from "@/components/RemitoRecepcion";
+import { kgAGramos, textoGramos } from "@/lib/gramos";
 
 // Recibir mercadería, una entrega por vez.
 //
@@ -23,6 +24,7 @@ export default function RecepcionCompraModal({
   proveedor,
   local,
   nombrePorVariante,
+  enGramos = new Set<string>(),
   onClose,
 }: {
   orden: OrdenCompraProveedor;
@@ -30,8 +32,13 @@ export default function RecepcionCompraModal({
   proveedor: ProveedorConSaldo | undefined;
   local: Local | undefined;
   nombrePorVariante: Map<string, string>;
+  /** Las variantes de granel: se cuentan en kilos y se guardan en gramos (lib/granel.ts). */
+  enGramos?: Set<string>;
   onClose: () => void;
 }) {
+  // Lo que se escribió en kilos, tal cual, para no pisarle la coma a quien escribe.
+  const [textoKg, setTextoKg] = useState<Record<string, string>>({});
+  const cant = (idVariante: string, n: number) => (enGramos.has(idVariante) ? textoGramos(n) : String(n));
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [observaciones, setObservaciones] = useState("");
@@ -63,14 +70,15 @@ export default function RecepcionCompraModal({
     (d) => faltaDe(d) > 0 && (recibidos[d.id_detalle] ?? "") === ""
   ).length;
 
-  const totalSolicitado = detalle.reduce((acc, d) => acc + (d.cantidad_solicitada ?? 0), 0);
-  const totalYaRecibido = detalle.reduce((acc, d) => acc + (d.cantidad_recibida ?? 0), 0);
-  const totalAhora = detalle.reduce((acc, d) => acc + cantidadDe(d.id_detalle), 0);
-  const totalPendiente = detalle.reduce(
-    (acc, d) => acc + Math.max(0, (d.cantidad_solicitada ?? 0) - (d.cantidad_recibida ?? 0) - cantidadDe(d.id_detalle)),
-    0
-  );
-  const quedaAbierto = totalPendiente > 0;
+  // Los totales cuentan unidades: el granel (en gramos) no se suma con ellas.
+  const enUnidades = detalle.filter((d) => !enGramos.has(d.id_variante));
+  const totalSolicitado = enUnidades.reduce((acc, d) => acc + (d.cantidad_solicitada ?? 0), 0);
+  const totalYaRecibido = enUnidades.reduce((acc, d) => acc + (d.cantidad_recibida ?? 0), 0);
+  const totalAhora = enUnidades.reduce((acc, d) => acc + cantidadDe(d.id_detalle), 0);
+  const pendienteDe = (d: DetalleOrdenCompra) => Math.max(0, (d.cantidad_solicitada ?? 0) - (d.cantidad_recibida ?? 0) - cantidadDe(d.id_detalle));
+  const totalPendiente = enUnidades.reduce((acc, d) => acc + pendienteDe(d), 0);
+  const quedaAbierto = detalle.some((d) => pendienteDe(d) > 0);
+  const algoAhora = detalle.some((d) => cantidadDe(d.id_detalle) > 0);
   const codigo = orden.id_orden.slice(0, 8).toUpperCase();
 
   function handleConfirmar() {
@@ -168,14 +176,36 @@ export default function RecepcionCompraModal({
                       className={`border-b border-neutral-100 last:border-0 ${yaCerrado && abierta ? "opacity-50" : ""}`}
                     >
                       <td className="p-3 text-neutral-900">{nombrePorVariante.get(d.id_variante) ?? "—"}</td>
-                      <td className="p-3 text-right text-neutral-500 tabular-nums">{pedido}</td>
+                      <td className="p-3 text-right text-neutral-500 tabular-nums">{cant(d.id_variante, pedido)}</td>
                       {esSegundaVuelta && (
-                        <td className="p-3 text-right text-neutral-500 tabular-nums">{previo}</td>
+                        <td className="p-3 text-right text-neutral-500 tabular-nums">{cant(d.id_variante, previo)}</td>
                       )}
                       {abierta && (
                         <td className="p-2 text-right bg-accent-tint">
                           {yaCerrado ? (
                             <span className="text-neutral-400 px-3">—</span>
+                          ) : enGramos.has(d.id_variante) ? (
+                            // El granel se cuenta en kilos (se pesa la bolsa) y se guarda en gramos.
+                            <span className="inline-flex items-center gap-1">
+                              <input
+                                inputMode="decimal"
+                                value={textoKg[d.id_detalle] ?? ""}
+                                placeholder={((pedido - previo) / 1000).toLocaleString("es-AR")}
+                                aria-label={`Cuántos kilos llegaron de ${nombrePorVariante.get(d.id_variante) ?? "este producto"}`}
+                                onChange={(e) => {
+                                  const v = e.target.value.replace(/[^\d,.]/g, "");
+                                  setTextoKg((prev) => ({ ...prev, [d.id_detalle]: v }));
+                                  const g = kgAGramos(v);
+                                  setRecibidos((prev) => ({ ...prev, [d.id_detalle]: v === "" || g == null ? "" : String(g) }));
+                                }}
+                                className={`w-20 rounded-lg px-2 py-1.5 text-sm text-right font-semibold tabular-nums focus:outline-none focus:ring-2 focus:ring-accent ${
+                                  crudo === ""
+                                    ? "border border-dashed border-accent/60 bg-white placeholder:text-neutral-300 placeholder:font-normal"
+                                    : "border border-accent bg-white"
+                                }`}
+                              />
+                              <span className="text-xs text-accent font-semibold">kg</span>
+                            </span>
                           ) : (
                             // Vacío al abrir; el placeholder muestra cuántas
                             // esperaba el pedido, sin meterse en el campo.
@@ -204,13 +234,13 @@ export default function RecepcionCompraModal({
                       )}
                       <td className="p-3 text-right tabular-nums">
                         {!abierta ? (
-                          <span className="text-neutral-900">{previo}</span>
+                          <span className="text-neutral-900">{cant(d.id_variante, previo)}</span>
                         ) : yaCerrado ? (
                           <span className="text-neutral-400 text-xs">cerrado</span>
                         ) : pendiente === 0 ? (
                           <span className="text-emerald-600 font-semibold text-xs">✓ completo</span>
                         ) : (
-                          <span className="text-amber-700 font-semibold">{pendiente}</span>
+                          <span className="text-amber-700 font-semibold">{cant(d.id_variante, pendiente)}</span>
                         )}
                       </td>
                     </tr>
@@ -265,11 +295,8 @@ export default function RecepcionCompraModal({
                 <div className="flex gap-2.5 bg-amber-50 border border-amber-200 rounded-lg px-3.5 py-3">
                   <span aria-hidden="true">⏳</span>
                   <p className="text-sm text-amber-900">
-                    <b>
-                      Faltan {totalPendiente} {totalPendiente === 1 ? "unidad" : "unidades"}.
-                    </b>{" "}
-                    Las {totalAhora} que recibís entran al stock ahora y se pueden vender. El pedido queda abierto
-                    esperando el resto.
+                    <b>Falta parte del pedido.</b> Lo que recibís entra al stock ahora y se puede vender. El pedido queda
+                    abierto esperando el resto.
                   </p>
                 </div>
               ) : (
@@ -298,7 +325,7 @@ export default function RecepcionCompraModal({
                 <button
                   type="button"
                   onClick={handleConfirmar}
-                  disabled={isPending || sinContar > 0 || totalAhora === 0}
+                  disabled={isPending || sinContar > 0 || !algoAhora}
                   className="flex-1 rounded-lg bg-accent hover:bg-accent-dark text-white py-2 text-sm font-medium disabled:opacity-50"
                 >
                   {isPending

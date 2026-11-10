@@ -17,6 +17,7 @@ import {
   detalleLiquidacionProveedor,
 } from "@/lib/liquidacionesProveedor";
 import { consumirFifo } from "@/lib/fifoProveedor";
+import { costoDelDiaPorGramo } from "@/lib/granel";
 import { estaAbierta, estadoSegunRecibido } from "@/lib/estadosOrden";
 import { guardarRemito } from "@/lib/remitoRecepcion";
 import { turnoAbiertoDeLocal } from "@/app/(app)/turnos/actions";
@@ -424,6 +425,26 @@ export async function recepcionarOrdenCompra(
       return { error: "No se puede recibir una cantidad negativa." };
     }
 
+    // Con quien se liquida por lo vendido (Alifrut) no hay factura por entrega:
+    // cada lote se queda con el costo del día en que llegó, que es lo que
+    // cobra Alifrut (Gonzalo, 2026-11-10). Antes quedaban sin costo y la
+    // liquidación se estimaba con el costo de HOY. El granel va por gramo.
+    const costoDelDia = new Map<string, number>();
+    const { data: prov } = await supabase.from("proveedores").select("modo_facturacion").eq("id_proveedor", orden.id_proveedor as string).maybeSingle();
+    if (prov?.modo_facturacion === "LIQUIDACION_VENTA") {
+      const ids = items.filter((i) => i.cantidadRecibida > 0).map((i) => i.idVariante);
+      const porGramo = await costoDelDiaPorGramo(supabase, ids);
+      for (const [id, c] of porGramo) costoDelDia.set(id, c);
+      const resto = ids.filter((id) => !costoDelDia.has(id));
+      if (resto.length) {
+        const { data: vars } = await supabase.from("variantes_producto").select("id_variante, productos(costo_informado)").in("id_variante", resto);
+        for (const v of vars ?? []) {
+          const c = Number((v.productos as unknown as { costo_informado: number | null } | null)?.costo_informado ?? 0);
+          if (c > 0) costoDelDia.set(v.id_variante as string, c);
+        }
+      }
+    }
+
     const usuario = await usuarioActual();
     // Para esta entrega puntual: ¿lo que llegó ahora coincide con lo que
     // faltaba? Es lo que decide si el remito de HOY tuvo diferencias.
@@ -472,6 +493,7 @@ export async function recepcionarOrdenCompra(
         // (lib/fifoProveedor.ts) la va descontando a medida que se vende o
         // se devuelve, siempre del lote más viejo primero.
         cantidad_disponible_fifo: item.cantidadRecibida,
+        ...(costoDelDia.has(item.idVariante) ? { costo_unitario: costoDelDia.get(item.idVariante) } : {}),
       });
       if (errorDetalleRecepcion) return { error: friendlyDbError(errorDetalleRecepcion) };
 

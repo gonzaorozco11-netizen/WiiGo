@@ -120,6 +120,14 @@ function acumular(t: TotalesDetalle, l: LineaDetalle) {
   t.margen = redondear2(t.margen + l.margen);
 }
 
+/**
+ * Lo del granel (lib/granel.ts) se cuenta en gramos: en la liquidación es la
+ * merma de fraccionado, y el renglón tiene que decir que el número son gramos.
+ */
+function conUnidadDeGranel(nombre: string) {
+  return /·\s*a granel$/i.test(nombre) ? `${nombre} — merma de fraccionado, en gramos` : nombre;
+}
+
 /** Una merma pendiente de pagarle al proveedor. */
 export type MermaPendiente = {
   idMerma: string;
@@ -237,7 +245,7 @@ export async function calcularLiquidacionProveedor(
   const costoReservaPorVariante = new Map<string, number>();
   for (const v of variantes ?? []) {
     const producto = productoPorId.get(v.id_producto as string);
-    const nombreBase = producto?.nombre ?? "Producto";
+    const nombreBase = conUnidadDeGranel(producto?.nombre ?? "Producto");
     nombrePorVariante.set(v.id_variante as string, v.nombre !== "Único" ? `${nombreBase} — ${v.nombre}` : nombreBase);
     costoReservaPorVariante.set(v.id_variante as string, (producto?.costo_informado as number | null) ?? 0);
   }
@@ -443,7 +451,7 @@ export async function detalleLiquidacionProveedor(
     const clave = `${medio}|${idVariante}`;
     let linea = acumulado.get(clave);
     if (!linea) {
-      const nombreBase = (p.nombre as string) ?? "Producto";
+      const nombreBase = conUnidadDeGranel((p.nombre as string) ?? "Producto");
       linea = {
         idVariante,
         nombreProducto: v.nombre !== "Único" ? `${nombreBase} — ${v.nombre}` : nombreBase,

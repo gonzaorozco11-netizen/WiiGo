@@ -4,6 +4,7 @@ import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import PantallaBloqueada from "@/components/PantallaBloqueada";
 import { EMISOR } from "@/lib/emisor";
 import BotonImprimirRecibo from "@/components/BotonImprimirRecibo";
+import { textoGramos } from "@/lib/gramos";
 
 // El pedido, en papel, para mandarle al proveedor.
 //
@@ -77,10 +78,12 @@ export default async function PedidoImprimiblePage({
 
   const idsProducto = [...new Set((variantes ?? []).map((v) => v.id_producto as string))];
   const { data: productos } = idsProducto.length
-    ? await supabase.from("productos").select("id_producto, nombre").in("id_producto", idsProducto)
+    ? await supabase.from("productos").select("id_producto, nombre, estado").in("id_producto", idsProducto)
     : { data: [] as Record<string, unknown>[] };
 
   const nombreProducto = new Map((productos ?? []).map((p) => [p.id_producto as string, p.nombre as string]));
+  // El granel se pide en kilos (en la base va en gramos, lib/granel.ts).
+  const granel = new Set((productos ?? []).filter((p) => p.estado === "GRANEL").map((p) => p.id_producto as string));
   const variantePorId = new Map((variantes ?? []).map((v) => [v.id_variante as string, v]));
 
   const lineas = (detalle ?? [])
@@ -94,12 +97,14 @@ export default async function PedidoImprimiblePage({
         // contra su propio sistema. El SKU es nuestro y a él no le dice nada.
         codigo: (v?.codigo_barras as string | null) || (v?.sku as string | null) || "—",
         cantidad: (d.cantidad_solicitada as number) ?? 0,
+        enGramos: v ? granel.has(v.id_producto as string) : false,
       };
     })
     .filter((l) => l.cantidad > 0)
     .sort((a, b) => a.nombre.localeCompare(b.nombre));
 
-  const totalUnidades = lineas.reduce((acc, l) => acc + l.cantidad, 0);
+  const totalUnidades = lineas.filter((l) => !l.enGramos).reduce((acc, l) => acc + l.cantidad, 0);
+  const totalGramos = lineas.filter((l) => l.enGramos).reduce((acc, l) => acc + l.cantidad, 0);
   const numero = idOrden.slice(0, 7).toUpperCase();
   const fecha = (orden.fecha_alta as string | null) ?? (orden.fecha as string | null);
   const cuit = esProveedor ? ((contraparte as { cuit?: string | null })?.cuit ?? null) : null;
@@ -235,15 +240,18 @@ export default async function PedidoImprimiblePage({
           <tbody>
             {lineas.map((l, i) => (
               <tr key={i}>
-                <td>{l.nombre}</td>
-                <td className="cod">{l.codigo}</td>
-                <td className="num">{l.cantidad}</td>
+                {/* Para el proveedor el granel no lleva «a granel» ni nuestro código: es su producto por kilo. */}
+                <td>{l.enGramos ? l.nombre.replace(/\s*·\s*a granel$/i, "") : l.nombre}</td>
+                <td className="cod">{l.enGramos ? "a granel" : l.codigo}</td>
+                <td className="num">{l.enGramos ? textoGramos(l.cantidad) : l.cantidad}</td>
               </tr>
             ))}
             <tr className="tot">
               <td colSpan={2}>Total</td>
               <td className="num">
-                {totalUnidades} {totalUnidades === 1 ? "unidad" : "unidades"}
+                {totalUnidades > 0 && `${totalUnidades} ${totalUnidades === 1 ? "unidad" : "unidades"}`}
+                {totalUnidades > 0 && totalGramos > 0 && " + "}
+                {totalGramos > 0 && textoGramos(totalGramos)}
               </td>
             </tr>
           </tbody>

@@ -30,7 +30,10 @@ export async function entradasQueNecesitanCodigo(dias = 7): Promise<EntradaPendi
   const { data: movimientos } = await supabase
     .from("movimientos_stock")
     .select("id_variante,cantidad,fecha")
-    .eq("tipo", "RECEPCION")
+    // También lo que se embolsó en el local (Fraccionar): son bolsitas que
+    // necesitan su sticker igual que lo que llega embolsado.
+    .in("tipo", ["RECEPCION", "FRACCIONADO"])
+    .gt("cantidad", 0)
     .gte("fecha", desde.toISOString());
 
   const filas = (movimientos ?? []) as { id_variante: string; cantidad: number; fecha: string }[];
