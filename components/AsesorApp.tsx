@@ -1364,6 +1364,7 @@ export default function AsesorApp({
   function irAObjetivo() {
     setObjetivoId(null);
     setFiltrosSeleccionados(new Set());
+    setMarcaResultado(null);
     setPantalla("objetivo");
   }
 
@@ -1484,7 +1485,12 @@ export default function AsesorApp({
 
   function volverDesdeResultado() {
     // A los resultados solo se llega eligiendo un objetivo, así que atrás
-    // siempre es la pantalla de objetivos.
+    // siempre es la pantalla de objetivos. Sin la marca ni las preferencias
+    // elegidas: si no, la cuenta de cada objetivo seguía filtrada y salían
+    // «0 productos» (Gonzalo, 2026-11-11, en la Joog).
+    setObjetivoId(null);
+    setFiltrosSeleccionados(new Set());
+    setMarcaResultado(null);
     setPantalla("objetivo");
   }
 
@@ -1983,12 +1989,14 @@ export default function AsesorApp({
       {pantalla === "objetivo" && (
         <div className="flex-1 flex flex-col">
           <Navbar onVolver={volverAInicio} onInicio={volverAInicio} idioma={idioma} />
-          <div className="flex-1 min-h-0 overflow-y-auto flex flex-col items-center justify-center px-6 pt-4 pb-10 gap-6 md:gap-8">
+          {/* En pantallas bajas (la Joog: 1280 × 720) se compacta para que
+              entren tres filas sin deslizar (Gonzalo, 2026-11-11). */}
+          <div className="flex-1 min-h-0 overflow-y-auto flex flex-col items-center justify-center px-6 pt-4 pb-10 gap-6 md:gap-8 [@media(max-height:820px)]:pt-1 [@media(max-height:820px)]:pb-4 [@media(max-height:820px)]:gap-4">
             <div className="text-center">
-              <h2 className={`${titular.className} font-extrabold tracking-[-.02em] text-[clamp(26px,3.4vw,44px)] leading-tight`}>
+              <h2 className={`${titular.className} font-extrabold tracking-[-.02em] text-[clamp(26px,3.4vw,44px)] [@media(max-height:820px)]:text-[32px] leading-tight`}>
                 {t("objetivoTitulo")}
               </h2>
-              <p className="text-[13px] md:text-[15px] text-[#8a8a8a] mt-1.5">{t("objetivoSubtitulo")}</p>
+              <p className="text-[13px] md:text-[15px] text-[#8a8a8a] mt-1.5 [@media(max-height:820px)]:mt-0.5">{t("objetivoSubtitulo")}</p>
             </div>
             {objetivosConProductos.length === 0 ? (
               <p className="text-[#686868] text-sm text-center py-8">{t("objetivoVacio")}</p>
@@ -2001,14 +2009,14 @@ export default function AsesorApp({
                     <button
                       key={o.id_objetivo}
                       onClick={() => elegirObjetivo(o.id_objetivo)}
-                      className="relative overflow-hidden rounded-[26px] p-4 md:p-5 text-left grid content-between gap-4 min-h-[140px] md:min-h-[170px] transition-transform active:scale-[.97]"
+                      className="relative overflow-hidden rounded-[26px] p-4 md:p-5 [@media(max-height:820px)]:p-4 text-left grid content-between gap-4 [@media(max-height:820px)]:gap-2 min-h-[140px] md:min-h-[170px] [@media(max-height:820px)]:min-h-[122px] transition-transform active:scale-[.97]"
                       style={{ background: tono.fondo, color: tono.texto, boxShadow: "0 14px 30px -20px rgba(40,40,20,.55)" }}
                     >
                       <span
                         className="absolute rounded-full pointer-events-none"
                         style={{ width: 130, height: 130, right: -34, bottom: -40, background: "rgba(255,255,255,.16)" }}
                       />
-                      <span className="relative w-12 h-12 rounded-2xl overflow-hidden grid place-items-center" style={{ background: "rgba(255,255,255,.22)" }}>
+                      <span className="relative w-12 h-12 [@media(max-height:820px)]:w-10 [@media(max-height:820px)]:h-10 rounded-2xl overflow-hidden grid place-items-center" style={{ background: "rgba(255,255,255,.22)" }}>
                         {o.imagen ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={o.imagen} alt="" className="w-full h-full object-cover" />
