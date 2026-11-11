@@ -7,6 +7,7 @@ import { cargarCatalogoAlifrut } from "@/lib/catalogoProveedor";
 import { cargarCompetencia } from "@/lib/competenciaLeer";
 import { cargarGondola } from "@/lib/gondola";
 import { cargarMarcasFabrica, conMarca } from "@/lib/marcaFabrica";
+import { cargarPreciosPrestados } from "@/lib/preciosPrestados";
 import PantallaBloqueada from "@/components/PantallaBloqueada";
 import PreciosApp from "@/components/PreciosApp";
 import "./precios.css";
@@ -27,7 +28,7 @@ export default async function PreciosPage({ searchParams }: { searchParams: Prom
   if (!puedeVerPantalla(sesion, "precios")) return <PantallaBloqueada />;
 
   const supabase = getSupabaseServerClient();
-  const [datos, conPermisos, alifrut, competencia, localesRes, marcasFabrica] = await Promise.all([
+  const [datos, conPermisos, alifrut, competencia, localesRes, marcasFabrica, prestados] = await Promise.all([
     cargarDatosPrecios(supabase),
     obtenerSesionConPermisos(),
     cargarCatalogoAlifrut(supabase),
@@ -35,6 +36,8 @@ export default async function PreciosPage({ searchParams }: { searchParams: Prom
     supabase.from("locales").select("id_local, nombre").eq("estado", "ACTIVO").order("nombre"),
     // «(Entre Nuts)» al lado del nombre, como lo ve el cliente (Gonzalo: «así no me pierdo»). Solo para mostrar.
     cargarMarcasFabrica(supabase).catch(() => new Map<string, string>()),
+    // Productos con el costo de otro, porque el proveedor no los tiene en su lista: llevan una etiqueta.
+    cargarPreciosPrestados(supabase).catch(() => ({})),
   ]);
   // La góndola de cada local (sql/gondola.sql). null = falta el SQL.
   const locales = (localesRes.data ?? []) as { id_local: string; nombre: string }[];
@@ -89,6 +92,7 @@ export default async function PreciosPage({ searchParams }: { searchParams: Prom
         gondola={gondola}
         productosGondola={productosGondola}
         marcasFabrica={Object.fromEntries(marcasFabrica)}
+        prestados={prestados}
       />
     </div>
   );

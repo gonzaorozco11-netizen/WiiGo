@@ -63,6 +63,8 @@ type Props = {
   productosGondola?: ProductoGondola[];
   /** id_producto → marca de fábrica, solo para mostrar al lado del nombre (lib/marcaFabrica.ts). */
   marcasFabrica?: Record<string, string>;
+  /** id_producto → de quién toma el costo (lib/preciosPrestados.ts). */
+  prestados?: Record<string, { de: string }>;
   /** Al volver de vincular en Productos Alifrut: esa pestaña, con su categoría y búsqueda. */
   pestanaInicial?: "alifrut" | null;
   alifrutInicial?: { cat: string | null; buscar: string | null } | null;
@@ -358,6 +360,7 @@ export default function PreciosApp(props: Props) {
             vuelta={vuelta}
             competencia={props.competencia ?? null}
             marcasFabrica={props.marcasFabrica ?? {}}
+            prestados={props.prestados ?? {}}
           />
         )}
         {pestana === "competencia" && (
@@ -685,6 +688,8 @@ function Lista(props: {
   pasarUno: (id: string) => void;
   competencia: DatosCompetencia | null;
   marcasFabrica?: Record<string, string>;
+  /** id_producto → de quién toma el costo, cuando el proveedor no lo tiene en su lista (lib/preciosPrestados.ts). */
+  prestados?: Record<string, { de: string }>;
 }) {
   const { cfg, minimo } = props;
   // Al terminar de escribir el % de un rubro: si hay productos con el suyo
@@ -880,6 +885,15 @@ function Lista(props: {
                             <small>{sub}</small>
                             {/* La marca del producto de Alifrut cuando el cliente no la ve (a granel, con bolsita): solo para él. */}
                             {g2?.marcaOrigen && !props.marcasFabrica?.[p.id] && <span className="pr-marca-origen">{g2.marcaOrigen}</span>}
+                            {/* Arreglo provisorio a la vista para no olvidarlo (Gonzalo, 2026-11-11). */}
+                            {props.prestados?.[p.id] && (
+                              <span
+                                title="El proveedor no lo tiene en su lista: toma el costo de este otro. Cuando lo sume, vinculalo al suyo."
+                                style={{ display: "block", width: "fit-content", marginTop: 3, padding: "1px 7px", borderRadius: 999, fontSize: 11, fontWeight: 600, background: "#fff4d6", color: "#8a5a00", border: "1px solid #f0d58a" }}
+                              >
+                                Costo prestado de {props.prestados[p.id].de}
+                              </span>
+                            )}
                           </td>
                           <td className="n pr-tenue pr-cost" rowSpan={2}>
                             {r.costo ? pesos(r.costo.total) : "—"}

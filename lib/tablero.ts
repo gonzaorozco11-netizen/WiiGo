@@ -5,6 +5,7 @@ import { ESTADOS_ABIERTOS } from "@/lib/estadosOrden";
 import { armarInicioOperativo, faltanContar, type InicioOperativo } from "@/lib/inicioOperativo";
 import { armarInicioDueno, type InicioDueno } from "@/lib/inicioDueno";
 import { avisosCajaYLlamados } from "@/lib/avisosCaja";
+import { cargarPreciosPrestados } from "@/lib/preciosPrestados";
 
 // Tablero de inicio.
 //
@@ -299,6 +300,23 @@ export async function armarTablero(): Promise<Tablero | null> {
       valor: String(n(precioEstaNoche)),
       href: "/carteles",
     });
+  }
+
+  // Productos con el costo de otro de la lista del proveedor (lib/preciosPrestados.ts):
+  // quedan a la vista hasta que el proveedor los sume y se vinculen al suyo.
+  if (esAdmin) {
+    const conId = Object.entries(await cargarPreciosPrestados(supabase).catch(() => ({})));
+    const prestados = conId.map(([, p]) => p);
+    if (prestados.length > 0) {
+      seguimiento.push({
+        color: "ambar",
+        titulo: plural(prestados.length, "producto con costo prestado", "productos con costo prestado"),
+        detalle: `${prestados.map((p) => `${p.producto} usa el de ${p.de}`).join(" · ")}. Cuando el proveedor lo sume a su lista, vinculalo al suyo`,
+        valor: String(prestados.length),
+        // Con uno solo, abre directo ese producto en Precios.
+        href: conId.length === 1 ? `/precios?producto=${conId[0][0]}` : "/precios",
+      });
+    }
   }
 
   // ---------- Facturas de liquidación que no llegaron ----------
