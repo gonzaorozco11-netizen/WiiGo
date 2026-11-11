@@ -62,6 +62,7 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
     gondola,
     opinionesRes,
     marcasFabrica,
+    stockRes,
   ] = await Promise.all([
     // Columnas explícitas: con "*" viajaban al navegador el royalty, el fee de
     // ingreso, el plan y el contacto de cada marca. Esta pantalla es pública.
@@ -104,6 +105,8 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
     supabase.from("opiniones_profesional").select("id_opinion, id_profesional, nombre, detalle, texto, origen").eq("publico", true).order("orden"),
     // «(Entre Nuts)» después del nombre de lo que viene envasado de fábrica (lib/marcaFabrica.ts).
     cargarMarcasFabrica(supabase).catch(() => new Map<string, string>()),
+    // Lo que hay en este local: un producto en 0 dice «Sin stock» (Gonzalo, 2026-11-11).
+    supabase.from("stock").select("id_variante, cantidad").eq("id_local", idLocal).range(0, 9999),
   ]);
 
   // Las fichas destacadas (las que más pacientes trajeron este mes y el podio de puntos) van
@@ -210,6 +213,19 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
     lista.sort((a, b) => (a.orden ?? 9999) - (b.orden ?? 9999) || a.nombre.localeCompare(b.nombre, "es"))
   );
 
+  // Sin stock en este local: la suma de sus sabores en 0 (o sin fila de stock).
+  // Si la consulta falla no se marca nada: mejor sin el aviso que con uno falso.
+  let sinStock: string[] = [];
+  if (!stockRes.error) {
+    const productoDeVariante = new Map(((variantesRes.data ?? []) as VarianteProductoPublica[]).map((v) => [v.id_variante, v.id_producto]));
+    const hay = new Map<string, number>();
+    for (const s of (stockRes.data ?? []) as { id_variante: string; cantidad: number }[]) {
+      const idP = productoDeVariante.get(s.id_variante);
+      if (idP) hay.set(idP, (hay.get(idP) ?? 0) + Math.max(0, Number(s.cantidad) || 0));
+    }
+    sinStock = [...idsVisibles].filter((id) => !((hay.get(id) ?? 0) > 0));
+  }
+
   const trayectoriaPorProfesional: Record<string, TrayectoriaProfesional[]> = {};
   (trayectoriaRes.data ?? []).forEach((t: TrayectoriaProfesional) => {
     (trayectoriaPorProfesional[t.id_profesional] ??= []).push(t);
@@ -267,6 +283,7 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
       objetivosPorProducto={contenido.objetivosPorProducto}
       filtrosPorProducto={contenido.filtrosPorProducto}
       gondola={gondola ?? []}
+      sinStock={sinStock}
     />
   );
 }

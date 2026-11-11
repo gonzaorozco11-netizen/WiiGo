@@ -655,6 +655,7 @@ function TarjetaResultado({
   compacta = false,
   bolsita = false,
   logoMarca = null,
+  sinStock = null,
 }: {
   producto: ProductoPublico;
   marca: MarcaPublica | undefined;
@@ -666,6 +667,8 @@ function TarjetaResultado({
   bolsita?: boolean;
   /** Logo de la marca, para los productos de otras marcas que no tienen foto. */
   logoMarca?: string | null;
+  /** En 0 en el local: el texto «Sin stock» en el idioma de la pantalla. */
+  sinStock?: string | null;
 }) {
   return (
     <div
@@ -694,11 +697,22 @@ function TarjetaResultado({
             {marca.nombre}
           </span>
         )}
-        {producto.imagen ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={producto.imagen} alt="" className="w-full h-full object-contain p-2" />
-        ) : (
-          <SinFoto producto={producto} logoMarca={logoMarca} bolsita={bolsita} chica />
+        <div className="w-full h-full flex items-center justify-center" style={sinStock ? { opacity: 0.45 } : undefined}>
+          {producto.imagen ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={producto.imagen} alt="" className="w-full h-full object-contain p-2" />
+          ) : (
+            <SinFoto producto={producto} logoMarca={logoMarca} bolsita={bolsita} chica />
+          )}
+        </div>
+        {/* Agotado en el local: bien visible arriba de la foto (Gonzalo, 2026-11-11). */}
+        {sinStock && (
+          <span
+            className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full px-3 py-1.5 text-[13px] lg:text-[14px] font-extrabold uppercase tracking-wide text-white"
+            style={{ background: "#22301f" }}
+          >
+            {sinStock}
+          </span>
         )}
       </div>
       <div className="px-3 pt-2.5 pb-3 [@media(max-height:820px)]:pt-2 [@media(max-height:820px)]:pb-2.5 flex flex-col gap-1">
@@ -899,7 +913,10 @@ export default function AsesorApp({
   objetivosPorProducto,
   filtrosPorProducto,
   gondola = [],
+  sinStock = [],
 }: {
+  /** Los productos que en este local están en 0: la tarjeta dice «Sin stock». */
+  sinStock?: string[];
   /** Opiniones de pacientes ya aprobadas (sql/profesionales-opiniones.sql). */
   opinionesPorProfesional?: Record<string, OpinionPaciente[]>;
   local: Local;
@@ -936,6 +953,8 @@ export default function AsesorApp({
   const [modalidadTurno, setModalidadTurno] = useState<"presencial" | "online" | null>(null);
   const [productoAbierto, setProductoAbierto] = useState<string | null>(null);
   const [idioma, setIdioma] = useState<Idioma>("es");
+  const agotados = useMemo(() => new Set(sinStock), [sinStock]);
+  const textoSinStock = idioma === "en" ? "Out of stock" : idioma === "pt" ? "Sem estoque" : "Sin stock";
   // La Raspberry del monitor Joog: sin recorrido animado, sombras ni
   // animaciones continuas (lib/placaLiviana.ts). La clase va en <html> para
   // que alcance también a lo que se dibuja fuera de este árbol (el recorrido).
@@ -2128,6 +2147,7 @@ export default function AsesorApp({
                           onClick={() => setProductoAbierto(p.id_producto)}
                           bolsita={esMarcaWiigo(marcaPorId[p.id_marca])}
                           logoMarca={marcaPorId[p.id_marca]?.logo ?? null}
+                          sinStock={agotados.has(p.id_producto) ? textoSinStock : null}
                         />
                       ))}
                     </div>
@@ -2358,6 +2378,7 @@ export default function AsesorApp({
                             etiqueta={porQue(p).texto}
                             nombre={tr(p.nombre, p.nombre_en, p.nombre_pt)}
                             onClick={() => setProductoAbierto(p.id_producto)}
+                            sinStock={agotados.has(p.id_producto) ? textoSinStock : null}
                           />
                         ))}
                       </div>
@@ -3246,6 +3267,7 @@ export default function AsesorApp({
               onClose={() => setProductoAbierto(null)}
               gondola={gondola}
               ubicacion={ubicacionDe(gondola, p.id_producto)}
+              sinStock={agotados.has(p.id_producto) ? textoSinStock : null}
             />
           );
         })()}
@@ -3264,6 +3286,7 @@ function ProductoDetalleModal({
   onClose,
   gondola,
   ubicacion,
+  sinStock = null,
 }: {
   producto: ProductoPublico;
   marca: MarcaPublica | undefined;
@@ -3273,6 +3296,8 @@ function ProductoDetalleModal({
   onClose: () => void;
   gondola: ModuloGondola[];
   ubicacion: UbicacionGondola | null;
+  /** En 0 en el local: en vez de «¿Dónde lo encuentro?» dice que no hay. */
+  sinStock?: string | null;
 }) {
   const [verDonde, setVerDonde] = useState(false);
   const fotos = [producto.imagen, ficha?.foto_extra_1, ficha?.foto_extra_2, ficha?.foto_extra_3].filter(
@@ -3416,8 +3441,15 @@ function ProductoDetalleModal({
         </div>
       </div>
 
+      {/* Agotado: no tiene sentido mandarlo a buscarlo a la góndola. */}
+      {sinStock && (
+        <div className="self-stretch rounded-[18px] px-4 py-3.5 text-center text-[17px] md:text-[19px] font-extrabold text-white" style={{ background: "#22301f" }}>
+          {sinStock} {idioma === "en" ? "for now" : idioma === "pt" ? "por enquanto" : "por ahora"}
+        </div>
+      )}
+
       {/* Dónde está en el local: abre la góndola en 3D con el lugar marcado. */}
-      {ubicacion && (
+      {ubicacion && !sinStock && (
         <button
           type="button"
           onClick={() => setVerDonde(true)}
