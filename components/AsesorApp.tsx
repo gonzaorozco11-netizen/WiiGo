@@ -697,7 +697,7 @@ function TarjetaResultado({
             {marca.nombre}
           </span>
         )}
-        <div className="w-full h-full flex items-center justify-center" style={sinStock ? { opacity: 0.45 } : undefined}>
+        <div className="w-full h-full flex items-center justify-center" style={sinStock ? { opacity: 0.6 } : undefined}>
           {producto.imagen ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={producto.imagen} alt="" className="w-full h-full object-contain p-2" />
@@ -705,11 +705,12 @@ function TarjetaResultado({
             <SinFoto producto={producto} logoMarca={logoMarca} bolsita={bolsita} chica />
           )}
         </div>
-        {/* Agotado en el local: bien visible arriba de la foto (Gonzalo, 2026-11-11). */}
+        {/* Agotado en el local: una pastillita roja, fina, en la esquina de la
+            foto (Gonzalo, 2026-11-11: «sutil y más fino, en rojo»). */}
         {sinStock && (
           <span
-            className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full px-3 py-1.5 text-[13px] lg:text-[14px] font-extrabold uppercase tracking-wide text-white"
-            style={{ background: "#22301f" }}
+            className="absolute top-2 right-2 whitespace-nowrap rounded-full px-2 py-[2px] text-[10.5px] lg:text-[11px] font-bold uppercase tracking-[.08em] text-white"
+            style={{ background: "#d64532" }}
           >
             {sinStock}
           </span>
@@ -725,7 +726,8 @@ function TarjetaResultado({
             {etiqueta}
           </span>
         )}
-        <PrecioTarjeta producto={producto} />
+        {/* Sin stock, sin precio (Gonzalo, 2026-11-11). */}
+        {!sinStock && <PrecioTarjeta producto={producto} />}
       </div>
     </div>
   );
@@ -3399,6 +3401,8 @@ function ProductoDetalleModal({
         >
           {nombreVisible}
         </h3>
+        {/* Sin stock, sin precio (Gonzalo, 2026-11-11). */}
+        {!sinStock && (
         <div className="mt-2.5 flex flex-wrap items-end gap-x-4 gap-y-2">
           <div className="flex items-baseline gap-2.5">
             <span
@@ -3439,11 +3443,15 @@ function ProductoDetalleModal({
             </div>
           )}
         </div>
+        )}
       </div>
 
       {/* Agotado: no tiene sentido mandarlo a buscarlo a la góndola. */}
       {sinStock && (
-        <div className="self-stretch rounded-[18px] px-4 py-3.5 text-center text-[17px] md:text-[19px] font-extrabold text-white" style={{ background: "#22301f" }}>
+        <div
+          className="self-stretch rounded-[14px] px-4 py-2 text-center text-[15px] md:text-[16px] font-bold border"
+          style={{ background: "#fdeeeb", borderColor: "#f3c2b8", color: "#b8372a" }}
+        >
           {sinStock} {idioma === "en" ? "for now" : idioma === "pt" ? "por enquanto" : "por ahora"}
         </div>
       )}
