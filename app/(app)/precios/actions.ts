@@ -9,6 +9,7 @@ import { calcularPrecio, mercaderiaDe, MEDIOS, type Granel, type Medio, type Des
 import { CLAVES_PRECIOS } from "@/lib/configPrecios";
 import { nombreConTamano } from "@/lib/nombreProducto";
 import { insertarTareasEtiqueta } from "@/lib/tareasEtiqueta";
+import { obtenerPolitica, proximaVigencia } from "@/lib/solicitudesMarca";
 import { cargarDatosPrecios } from "@/lib/datosPrecios";
 import { calcularTablero } from "@/app/(app)/resultado-mes/actions";
 
@@ -401,7 +402,10 @@ export async function pasarALaVenta(ids: string[]): Promise<Resultado & { cambia
   const envases = new Map(datos.envases.map((e) => [e.id, e]));
   const { data: locales } = await supabase.from("locales").select("id_local").eq("estado", "ACTIVO");
   const ahora = new Date();
-  const vence = new Date(ahora.getTime() + 24 * 3600 * 1000).toISOString();
+  // El precio nuevo entra en lo que pase primero: el operativo pone el cartel y
+  // toca «Lo puse», o el próximo cierre de turno (13:00 o 21:00), como lo de
+  // las marcas (Gonzalo, 2026-11-11). Lo aplica aplicarPreciosPropiosDelTurno.
+  const vence = proximaVigencia(await obtenerPolitica(supabase)).toISOString();
   let cambiados = 0;
   let esperan = 0;
 
@@ -459,7 +463,9 @@ export async function pasarALaVenta(ids: string[]): Promise<Resultado & { cambia
         precio_nuevo: r.publico,
         efectivo_nuevo: r.efectivo,
         aplicar_al_poner: !entraYa,
-        vence_el: vence,
+        // Lo nuevo ya está a la venta: el cartel se puede poner ya (si no, en
+        // Carteles figuraba «imprimilo después» hasta el día siguiente).
+        vence_el: entraYa ? ahora.toISOString() : vence,
       }))
     );
   }

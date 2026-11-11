@@ -44,6 +44,13 @@ export async function insertarTareasEtiqueta(supabase: SupabaseClient, filas: Fi
     const cambio: Record<string, unknown> = { precio_nuevo: f.precio_nuevo };
     if ("efectivo_nuevo" in f) cambio.efectivo_nuevo = f.efectivo_nuevo;
     if ("aplicar_al_poner" in f) cambio.aplicar_al_poner = f.aplicar_al_poner;
+    // WiiGo: el precio nuevo entra en el próximo cierre de turno, no en el del
+    // pedido anterior. (En las marcas no se toca: si el precio anterior ya entró,
+    // el cartel viejo sigue a la vista y tiene que seguir en rojo.)
+    if (f.aplicar_al_poner === true && "vence_el" in f) {
+      cambio.vence_el = f.vence_el;
+      cambio.estado = "PENDIENTE";
+    }
     await supabase.from("tareas_etiqueta").update(cambio).eq("id_tarea", id);
   }
   if (nuevas.length === 0) return;
@@ -163,6 +170,61 @@ export async function contarCartelesUrgentes(supabase: SupabaseClient): Promise<
     .limit(1000);
   if (error) return 0;
   return new Set((data ?? []).map((t) => t.id_producto as string)).size;
+}
+
+/**
+ * Al cierre del turno (13:00 y 21:00), el precio nuevo de WiiGo que todavía
+ * espera el cartel entra solo, igual que el de las marcas (Gonzalo,
+ * 2026-11-11). Si el operativo puso el cartel antes y tocó «Lo puse», ya había
+ * entrado en ese momento. Desde acá la tarea queda como la de una marca:
+ * precio en la caja, cartel por cambiar (franja roja y no se ficha la salida
+ * sin ponerlo).
+ */
+export async function aplicarPreciosPropiosDelTurno(supabase: SupabaseClient): Promise<number> {
+  const ahora = new Date().toISOString();
+  const { data: tareas, error } = await supabase
+    .from("tareas_etiqueta")
+    .select("id_tarea, id_producto, precio_nuevo, efectivo_nuevo, creada_el")
+    .eq("tipo", "CAMBIO_PRECIO")
+    .eq("aplicar_al_poner", true)
+    .in("estado", ["PENDIENTE", "VENCIDA"])
+    .lte("vence_el", ahora)
+    .limit(1000);
+  if (error || !tareas?.length) return 0;
+
+  const porProducto = new Map<string, (typeof tareas)[number]>();
+  for (const t of tareas) {
+    const previa = porProducto.get(t.id_producto as string);
+    if (!previa || String(t.creada_el) > String(previa.creada_el)) porProducto.set(t.id_producto as string, t);
+  }
+  const ids = [...porProducto.keys()];
+  const { data: productos } = await supabase.from("productos").select("id_producto, precio_venta").in("id_producto", ids);
+  const hoy = new Map((productos ?? []).map((p) => [p.id_producto as string, p.precio_venta == null ? null : Number(p.precio_venta)]));
+
+  let aplicados = 0;
+  for (const [id, t] of porProducto) {
+    const lista = Number(t.precio_nuevo);
+    if (!(lista > 0)) continue;
+    const efectivo = t.efectivo_nuevo == null ? lista : Number(t.efectivo_nuevo);
+    const { error: e } = await supabase.from("productos").update({ precio_venta: lista, precio_efectivo: efectivo, fecha_actualizacion: ahora }).eq("id_producto", id);
+    if (e) continue;
+    aplicados++;
+    if (hoy.get(id) !== lista) {
+      await supabase.from("historial_precios").insert({
+        id_producto: id,
+        precio_anterior: hoy.get(id) ?? null,
+        precio_nuevo: lista,
+        cambiado_por: null,
+        motivo: "Módulo Precios · cierre de turno",
+      });
+    }
+  }
+  // Ya no espera el cartel: el precio está en la caja y el cartel queda por cambiar.
+  await supabase
+    .from("tareas_etiqueta")
+    .update({ aplicar_al_poner: false })
+    .in("id_tarea", tareas.map((t) => t.id_tarea as string));
+  return aplicados;
 }
 
 /** El operativo se va sin poder ponerlos: queda el motivo y le aparece a administración. */

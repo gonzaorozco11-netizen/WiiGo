@@ -8,7 +8,7 @@ import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos
 import { exigirGestionInterna } from "@/lib/marcaSesion";
 import { esRolInterno } from "@/lib/rolesInternos";
 import { fechaHoraArgentina } from "@/lib/horarios";
-import { aplicarPreciosDeCarteles, insertarTareasEtiqueta, type FilaTareaEtiqueta } from "@/lib/tareasEtiqueta";
+import { aplicarPreciosDeCarteles, aplicarPreciosPropiosDelTurno, insertarTareasEtiqueta, type FilaTareaEtiqueta } from "@/lib/tareasEtiqueta";
 import { generarSkuVariante, generarCodigoBarrasVariante } from "@/lib/codigosVariante";
 import { PLANES, type PlanMarca } from "@/lib/planesMarca";
 import { guardarCosto } from "@/lib/costosMarca";
@@ -694,6 +694,19 @@ export async function aplicarCambiosProgramados(): Promise<{ aplicadas: number; 
     } catch (err) {
       errores.push(`${s.id_solicitud}: ${err instanceof Error ? err.message : String(err)}`);
     }
+  }
+
+  // WiiGo: lo que pasó a la venta y nadie le puso el cartel entra ahora, al
+  // cierre del turno, como lo de las marcas (lib/tareasEtiqueta.ts).
+  try {
+    const propios = await aplicarPreciosPropiosDelTurno(supabase);
+    if (propios > 0) {
+      aplicadas += propios;
+      revalidatePath("/precios");
+      revalidatePath("/carteles");
+    }
+  } catch (err) {
+    errores.push(`precios WiiGo: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   // Las etiquetas que pasaron su hora sin hacerse quedan VENCIDAS: ahí el
