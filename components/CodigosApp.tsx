@@ -12,7 +12,7 @@ import {
 } from "@/lib/rotulado";
 import { nombreBase } from "@/lib/nombreProducto";
 import FiltroSeleccion, { coincide, subcategoriasDe } from "@/components/FiltroSeleccion";
-import { anotarCodigosImpresos, guardarCodigoBarras, marcarMarcaSinCodigo, volverAEtiquetaWiigo } from "@/app/(app)/codigos/actions";
+import { anotarCodigosImpresos, guardarCodigoBarras, marcarMarcaSinCodigo, marcarProductoSinCodigo, volverAEtiquetaWiigo } from "@/app/(app)/codigos/actions";
 import type { EntradaPendiente } from "@/lib/entradas";
 import EscanerCodigo from "@/components/EscanerCodigo";
 import CodigoDeBarras from "@/components/CodigoDeBarras";
@@ -40,6 +40,9 @@ export type ItemCodigo = {
   idMarca?: string;
   /** La marca está marcada como «sus envases no traen código» (Alta, Fruppi). */
   marcaSinCodigo?: boolean;
+  idProducto?: string;
+  /** Este producto suelto viene cerrado pero sin código (granolas de 1 kg): lleva sticker. */
+  productoSinCodigo?: boolean;
   /** Para elegir qué imprimir por subcategoría («Frutos secos»). */
   subcategoria?: string | null;
 };
@@ -673,6 +676,34 @@ function FilaProducto({
           className="shrink-0 text-xs text-neutral-400 hover:text-red-500 disabled:opacity-40"
         >
           ✕
+        </button>
+      )}
+
+      {/* Viene cerrado pero el envase no trae código (las granolas de 1 kg):
+          pasa a Imprimir códigos. Si la marca entera es así, mejor el botón
+          de la marca. */}
+      {!propio && esAdmin && item.idProducto && !item.marcaSinCodigo && (item.envasado || item.productoSinCodigo) && (
+        <button
+          type="button"
+          disabled={pendiente}
+          onClick={() =>
+            startTransition(async () => {
+              const res = await marcarProductoSinCodigo(item.idProducto as string, !item.productoSinCodigo);
+              if (res.error) onAviso({ texto: res.error, tono: "mal" });
+              else {
+                onAviso({
+                  texto: item.productoSinCodigo
+                    ? `${item.producto}: trae código, vuelve a «Falta escanear».`
+                    : `${item.producto}: no trae código, pasa a Imprimir códigos.`,
+                  tono: "ok",
+                });
+                router.refresh();
+              }
+            })
+          }
+          className="shrink-0 text-xs text-accent disabled:opacity-40"
+        >
+          {item.productoSinCodigo ? "Sí trae código" : "No trae código"}
         </button>
       )}
     </div>

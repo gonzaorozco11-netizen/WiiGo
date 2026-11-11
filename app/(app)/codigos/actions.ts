@@ -6,7 +6,7 @@ import { friendlyDbError } from "@/lib/errors";
 import { limpiarCodigoBarras, esCodigoInterno } from "@/lib/codigos";
 import { mayorCodigoInterno } from "@/lib/codigosVariante";
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
-import { CLAVE_SIN_CODIGO, cargarMarcasSinCodigo } from "@/lib/marcasSinCodigo";
+import { CLAVE_SIN_CODIGO, CLAVE_PRODUCTOS_SIN_CODIGO, cargarMarcasSinCodigo, cargarProductosSinCodigo } from "@/lib/marcasSinCodigo";
 import { PARAMETRO_CODIGOS_IMPRESOS, cargarCodigosImpresos } from "@/lib/codigosImpresos";
 
 /**
@@ -148,6 +148,31 @@ export async function marcarMarcaSinCodigo(idMarca: string, sinCodigo: boolean) 
       parametro: CLAVE_SIN_CODIGO,
       valor: JSON.stringify([...marcas]),
       descripcion: "Marcas cuyos envases no traen código de barras: se les imprime el de WiiGo (pantalla Códigos de barras).",
+      fecha_actualizacion: new Date().toISOString(),
+    },
+    { onConflict: "parametro" }
+  );
+  if (error) return { error: friendlyDbError(error) };
+
+  revalidatePath("/codigos");
+  return { ok: true as const };
+}
+
+/** Un producto suelto que viene cerrado pero sin código: pasa a Imprimir códigos (o vuelve a escanearse). */
+export async function marcarProductoSinCodigo(idProducto: string, sinCodigo: boolean) {
+  const sesion = await obtenerSesionConPantallas();
+  if (sesion?.rol !== "admin") return { error: "Esto lo cambia solo Gonzalo." };
+
+  const supabase = getSupabaseServerClient();
+  const productos = await cargarProductosSinCodigo(supabase);
+  if (sinCodigo) productos.add(idProducto);
+  else productos.delete(idProducto);
+
+  const { error } = await supabase.from("configuracion").upsert(
+    {
+      parametro: CLAVE_PRODUCTOS_SIN_CODIGO,
+      valor: JSON.stringify([...productos]),
+      descripcion: "Productos que vienen cerrados pero sin código de barras: se les imprime el de WiiGo (pantalla Códigos de barras).",
       fecha_actualizacion: new Date().toISOString(),
     },
     { onConflict: "parametro" }

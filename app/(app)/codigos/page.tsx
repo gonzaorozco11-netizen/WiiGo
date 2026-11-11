@@ -5,7 +5,7 @@ import PantallaBloqueada from "@/components/PantallaBloqueada";
 import CodigosApp, { type ItemCodigo } from "@/components/CodigosApp";
 import { PIE_ETIQUETA_DEFECTO } from "@/lib/rotulado";
 import { cargarMarcasFabrica } from "@/lib/marcaFabrica";
-import { cargarMarcasSinCodigo } from "@/lib/marcasSinCodigo";
+import { cargarMarcasSinCodigo, cargarProductosSinCodigo } from "@/lib/marcasSinCodigo";
 import { cargarCodigosImpresos } from "@/lib/codigosImpresos";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +22,7 @@ export default async function CodigosPage() {
   const traerProductos = (columnas: string) =>
     supabase.from("productos").select(columnas).eq("estado", "ACTIVO");
 
-  const [variantesRes, productosConRotulo, marcasRes, pieRes, marcasFabrica, marcasSinCodigo, impresos] = await Promise.all([
+  const [variantesRes, productosConRotulo, marcasRes, pieRes, marcasFabrica, marcasSinCodigo, impresos, productosSinCodigo] = await Promise.all([
     supabase
       .from("variantes_producto")
       .select("id_variante,id_producto,nombre,sku,codigo_barras")
@@ -35,6 +35,8 @@ export default async function CodigosPage() {
     cargarMarcasSinCodigo(supabase).catch(() => new Set<string>()),
     // Lo que ya tiene su sticker: no vuelve a figurar en «Sin sticker todavía».
     cargarCodigosImpresos(supabase).catch(() => ({}) as Record<string, string>),
+    // Productos sueltos que vienen cerrados sin código (granolas de 1 kg).
+    cargarProductosSinCodigo(supabase).catch(() => new Set<string>()),
   ]);
   // Sin sql/rotulado.sql corrido, las etiquetas salen como antes.
   const productosRes = productosConRotulo.error ? await traerProductos(BASE_PRODUCTO) : productosConRotulo;
@@ -105,7 +107,9 @@ export default async function CodigosPage() {
           idMarca: p.id_marca,
           subcategoria: (Array.isArray(p.subcategorias) ? p.subcategorias[0] : p.subcategorias)?.nombre ?? null,
           marcaSinCodigo: marcasSinCodigo.has(p.id_marca),
-          envasado: !(propia && p.id_envase) && !marcasSinCodigo.has(p.id_marca),
+          idProducto: p.id_producto,
+          productoSinCodigo: productosSinCodigo.has(p.id_producto),
+          envasado: !(propia && p.id_envase) && !marcasSinCodigo.has(p.id_marca) && !productosSinCodigo.has(p.id_producto),
           // Solo lo que fraccionamos nosotros lleva rótulo: lo de las marcas
           // en consignación ya trae el suyo impreso de fábrica.
           // Lo cerrado de marca propia (un aceite que compramos hecho) tampoco:
