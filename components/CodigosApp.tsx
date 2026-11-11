@@ -1843,18 +1843,35 @@ function TiraDeEtiquetas({ rollo, items }: { rollo: Rollo; items: ItemCodigo[] }
 function Etiqueta({ item, medida }: { item: ItemCodigo; medida: { ancho: number; alto: number } }) {
   if (item.rotulo && entraRotulo(medida)) return <EtiquetaRotulada item={item} rotulo={item.rotulo} />;
   if (item.rotulo && medida.alto >= 15) return <EtiquetaChicaPropia item={item} rotulo={item.rotulo} medida={medida} />;
+  return <EtiquetaSimple item={item} medida={medida} />;
+}
+
+/** Nombre, código y (en la grande) de quién es: lo de las marcas y lo cerrado que lleva sticker. */
+function EtiquetaSimple({ item, medida }: { item: ItemCodigo; medida: { ancho: number; alto: number } }) {
   // En las etiquetas chicas no entra el mismo cuerpo de letra.
   const escala = medida.ancho < 50 ? 0.72 : 1;
   const chica = medida.alto < 30;
   // En la chica el sabor no tiene renglón propio: va pegado al nombre, así se sabe cuál es.
   const nombre = nombreParaEtiqueta(item) + (chica && item.variante ? ` ${item.variante}` : "");
-  const altoCodigo = chica ? (medida.alto >= 16 ? 7 : 5.5) : 9;
   const numeros = 2.6 * escala;
+  const maximo = 3.2 * escala;
   // El lugar que le queda al nombre: lo que sobra después del código y lo demás.
   const anchoNombre = medida.ancho - (chica ? 3.2 : 6);
-  const altoNombre = chica
-    ? medida.alto - 2.8 - altoCodigo - numeros - 1.2
-    : medida.alto - 4.8 - altoCodigo - numeros - 2.7 - (item.variante ? 2.7 * escala * 1.2 : 0) - 1.4;
+  const altoNombreCon = (altoCodigo: number) =>
+    chica
+      ? medida.alto - 2.8 - altoCodigo - numeros - 1.2
+      : medida.alto - 4.8 - altoCodigo - numeros - 2.7 - (item.variante ? 2.7 * escala * 1.2 : 0) - 1.4;
+  // Un nombre largo («Granola Casera Tradicional Sin Coco 1 kg») pasa a dos
+  // renglones en vez de achicarse: el código baja un poco de alto (el ancho,
+  // que es lo que lee el lector, no cambia). Gonzalo, 2026-11-11.
+  const altoCodigoNormal = chica ? (medida.alto >= 16 ? 7 : 5.5) : 9;
+  const altoCodigoBajo = chica ? 5.5 : 7.5;
+  const medir = useSePuedeMedir();
+  const altoCodigo = useMemo(() => {
+    const entra = cuerpoQueEntra(nombre, anchoNombre, altoNombreCon(altoCodigoNormal), maximo);
+    return entra >= maximo * 0.88 ? altoCodigoNormal : altoCodigoBajo;
+  }, [nombre, anchoNombre, altoCodigoNormal, altoCodigoBajo, maximo, medir]); // eslint-disable-line react-hooks/exhaustive-deps
+  const altoNombre = altoNombreCon(altoCodigo);
 
   return (
     <div
@@ -1871,8 +1888,9 @@ function Etiqueta({ item, medida }: { item: ItemCodigo; medida: { ancho: number;
         fontFamily: "'Arial Narrow', Arial, sans-serif",
       }}
     >
-      <div>
-        <NombreQueEntra texto={nombre} ancho={anchoNombre} alto={altoNombre} maximo={3.2 * escala} />
+      {/* Siempre al medio (Gonzalo, 2026-11-11). */}
+      <div style={{ textAlign: "center" }}>
+        <NombreQueEntra texto={nombre} ancho={anchoNombre} alto={altoNombre} maximo={maximo} centrado />
         {item.variante && !chica && (
           <div style={{ fontSize: `${2.7 * escala}mm`, color: "#333", lineHeight: 1.2 }}>
             {item.variante}
