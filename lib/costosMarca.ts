@@ -17,6 +17,23 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  */
 export const SIN_SUBCATEGORIA = "Sin subcategoría";
 
+/**
+ * Las marcas que eligieron no informar su costo (Animalfit, 2026-11-11): a
+ * esas no se les pide en Mis tareas, en los primeros pasos ni en la
+ * bienvenida. Es una lista de id_marca en configuracion.MARCAS_SIN_COSTO.
+ */
+export const CLAVE_MARCAS_SIN_COSTO = "MARCAS_SIN_COSTO";
+
+export async function marcaNoInformaCosto(supabase: SupabaseClient, idMarca: string): Promise<boolean> {
+  const { data } = await supabase.from("configuracion").select("valor").eq("parametro", CLAVE_MARCAS_SIN_COSTO).maybeSingle();
+  try {
+    const ids = data?.valor ? (JSON.parse(data.valor as string) as unknown) : [];
+    return Array.isArray(ids) && ids.includes(idMarca);
+  } catch {
+    return false;
+  }
+}
+
 export type CostoDeMarca = {
   idCosto: string;
   idProducto: string;

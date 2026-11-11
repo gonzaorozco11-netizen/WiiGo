@@ -29,7 +29,7 @@ export default function PortalTareas({ datos }: { datos: TareasPortal }) {
           <div className="pasos-cab">
             <div>
               <p className="rotulo">Primeros pasos</p>
-              <p className="sub">Cuando termines los cuatro, este bloque desaparece.</p>
+              <p className="sub">Cuando los termines todos, este bloque desaparece.</p>
             </div>
             <div className="pasos-prog">
               <span className="barra">
@@ -47,7 +47,11 @@ export default function PortalTareas({ datos }: { datos: TareasPortal }) {
                 <span className="marca" aria-hidden="true">
                   {p.hecho ? "✓" : ""}
                 </span>
-                <span className="texto">{p.texto}</span>
+                <span className="texto">
+                  {p.texto}
+                  {/* Cuánto le queda: «Faltan 17 de 86», no parece que no hizo nada. */}
+                  {!p.hecho && p.falta && <small style={{ display: "block", opacity: 0.7 }}>{p.falta}</small>}
+                </span>
                 {!p.hecho && (
                   <Link className="tarea-btn" href={p.href}>
                     Hacerlo

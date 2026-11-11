@@ -35,6 +35,7 @@ import {
   type TasasGenerales,
 } from "@/lib/margenMarca";
 import { revisarFoto, LADO_MINIMO, type Regla } from "@/lib/fotoProducto";
+import { fichaCargada, noLlevaFichaNutricional } from "@/lib/fichaNutricional";
 import PanelReparto, { PanelSinCosto } from "@/components/PanelReparto";
 
 // Pedir cambios, desde el lado de la marca.
@@ -74,6 +75,17 @@ const ESTADO_TEXTO: Record<string, { rotulo: string; clase: string; icono: strin
   CANCELADA: { rotulo: "Lo cancelaste", clase: "gris", icono: "⊘" },
 };
 
+// Los filtros de «lo que te falta», en el orden en que se muestran.
+const FALTAS = ["incompletas", "sin-foto", "sin-descripcion", "sin-ficha", "sin-precio"] as const;
+type Falta = (typeof FALTAS)[number];
+const TEXTO_FALTA: Record<Falta, string> = {
+  incompletas: "Les falta algo",
+  "sin-foto": "Sin foto",
+  "sin-descripcion": "Sin descripción",
+  "sin-ficha": "Sin información nutricional",
+  "sin-precio": "Sin precio",
+};
+
 type Formulario =
   | "PRECIO" | "EFECTIVO" | "FOTO" | "FICHA" | "NOMBRE" | "DESCRIPCION" | "DESCUENTO" | "BAJA" | null;
 
@@ -105,6 +117,8 @@ export default function PortalCambios({
   // Ninguna abierta al entrar: con 72 productos, todas abiertas es el mismo
   // muro que había antes sin agrupar.
   const [gondolaAbierta, setGondolaAbierta] = useState<Set<string>>(new Set());
+  // «Lo que te falta»: sin foto, sin descripción, sin ficha o sin precio.
+  const [falta, setFalta] = useState<Falta | null>(null);
 
   // El alta se abre llegando con ?nuevo=1 desde "Añadir nuevo producto", que
   // vive en Mis productos. Se lee acá y no con useSearchParams para no
@@ -125,7 +139,29 @@ export default function PortalCambios({
       setTab("MIOS");
       window.history.replaceState(null, "", window.location.pathname);
     }
+    // Desde Mis tareas («Fichas incompletas», cada primer paso): solo los que
+    // les falta eso, no la lista entera (Gonzalo, 2026-11-11).
+    const v = ver.get("ver");
+    if (v && (FALTAS as readonly string[]).includes(v)) {
+      setFalta(v as Falta);
+      window.history.replaceState(null, "", window.location.pathname);
+    }
   }, []);
+
+  const faltaDe = useMemo(() => {
+    const m = new Map<string, Set<Falta>>();
+    for (const p of productos) {
+      const s = new Set<Falta>();
+      if (!(p.precio && p.precio > 0) && !p.esperando.includes("PRECIO")) s.add("sin-precio");
+      if (!p.imagen) s.add("sin-foto");
+      if (!(p.descripcion ?? "").trim()) s.add("sin-descripcion");
+      if (!fichaCargada(p.ficha) && !noLlevaFichaNutricional(p.nombre, p.subcategoria)) s.add("sin-ficha");
+      if (s.has("sin-foto") || s.has("sin-descripcion") || s.has("sin-ficha")) s.add("incompletas");
+      m.set(p.idProducto, s);
+    }
+    return m;
+  }, [productos]);
+  const cuantosFaltan = (f: Falta) => productos.filter((p) => faltaDe.get(p.idProducto)?.has(f)).length;
 
   const pendientes = solicitudes.filter((s) => s.estado === "PENDIENTE").length;
   const porCorregir = useMemo(() => solicitudes.filter((s) => s.porCorregir), [solicitudes]);
@@ -148,14 +184,15 @@ export default function PortalCambios({
 
   const visibles = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
-    if (!q) return productos;
+    const base = falta ? productos.filter((p) => faltaDe.get(p.idProducto)?.has(falta)) : productos;
+    if (!q) return base;
     // También por subcategoría: ahora que se ve en la fila, buscar "proteínas"
     // y que no traiga nada sería desconcertante.
-    return productos.filter(
+    return base.filter(
       (p) =>
         p.nombre.toLowerCase().includes(q) || (p.subcategoria ?? "").toLowerCase().includes(q)
     );
-  }, [productos, busqueda]);
+  }, [productos, busqueda, falta, faltaDe]);
 
   /**
    * Los productos por góndola, en el orden en que vienen y con los que no
@@ -180,10 +217,11 @@ export default function PortalCambios({
     });
   }, [visibles, busqueda]);
 
-  // Con una sola góndola no hay nada que elegir: va abierta.
+  // Con una sola góndola no hay nada que elegir: va abierta. Filtrando por lo
+  // que falta, todas abiertas: son pocos y es justo lo que vino a ver.
   function gondolaVisible(nombre: string) {
     if (nombre === "") return true;
-    if (grupos.length === 1) return true;
+    if (grupos.length === 1 || falta) return true;
     return gondolaAbierta.has(nombre);
   }
 
@@ -240,11 +278,31 @@ export default function PortalCambios({
             placeholder="Buscar un producto tuyo"
           />
 
+          {/* Qué le falta a cada producto: se llega acá desde Mis tareas. */}
+          {cuantosFaltan("incompletas") + cuantosFaltan("sin-precio") > 0 && (
+            <div className="cam-filtros" style={{ marginBottom: 12 }}>
+              <button aria-pressed={falta === null} onClick={() => setFalta(null)}>
+                Todos · {productos.length}
+              </button>
+              {FALTAS.map((f) => {
+                const n = cuantosFaltan(f);
+                if (n === 0 && falta !== f) return null;
+                return (
+                  <button key={f} aria-pressed={falta === f} onClick={() => setFalta(f)}>
+                    {TEXTO_FALTA[f]} · {n}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           {visibles.length === 0 ? (
             <p className="vacio">
               {productos.length === 0
                 ? "Todavía no tenés productos cargados. Empezá con “Añadir nuevo producto”, en Mis productos."
-                : "Ningún producto coincide con esa búsqueda."}
+                : falta
+                  ? "¡Listo! No te falta nada de esto."
+                  : "Ningún producto coincide con esa búsqueda."}
             </p>
           ) : (
             /* Agrupado por góndola, igual que Reponer y Mis productos. Son

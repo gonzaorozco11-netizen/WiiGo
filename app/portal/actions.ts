@@ -5,7 +5,8 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionMarca, sesionDelPortal, motivoSinSesionMarca } from "@/lib/marcaSesion";
 import { calcularRendicion, detalleLiquidacion } from "@/app/(app)/liquidaciones/actions";
 import { fechaHoraArgentina } from "@/lib/horarios";
-import { costosVigentes, guardarCosto, borrarCosto, SIN_SUBCATEGORIA, type CostoDeMarca } from "@/lib/costosMarca";
+import { costosVigentes, guardarCosto, borrarCosto, marcaNoInformaCosto, SIN_SUBCATEGORIA, type CostoDeMarca } from "@/lib/costosMarca";
+import { noLlevaFichaNutricional } from "@/lib/fichaNutricional";
 import { rechazadasSinCorregir } from "@/lib/rechazadasMarca";
 import { PENDIENTE, PROPUESTA, type OrigenOrden } from "@/lib/estadosOrden";
 import { diasHasta } from "@/lib/eventos";
@@ -1679,6 +1680,8 @@ export type PrimerPaso = {
   texto: string;
   hecho: boolean;
   href: string;
+  /** «Faltan 17 de 86»: lo que le queda, para que no parezca que no hizo nada. */
+  falta?: string;
 };
 
 export type TareasPortal = {
@@ -1711,13 +1714,13 @@ export async function misTareas(): Promise<TareasPortal | null> {
   const supabase = getSupabaseServerClient();
   const { data: productos } = await supabase
     .from("productos")
-    .select("id_producto, nombre, descripcion, imagen, precio_venta")
+    .select("id_producto, nombre, descripcion, imagen, precio_venta, subcategorias(nombre)")
     .eq("id_marca", sesion.idMarca)
     .eq("estado", "ACTIVO");
 
   const ids = (productos ?? []).map((p) => p.id_producto as string);
 
-  const [costos, { data: fichas }, { data: rechazadas }, { data: liquidaciones }, { data: preciosPedidos }] = await Promise.all([
+  const [costos, { data: fichas }, { data: rechazadas }, { data: liquidaciones }, { data: preciosPedidos }, sinCostoPedido] = await Promise.all([
     costosVigentes(supabase, sesion.idMarca),
     ids.length
       ? supabase
@@ -1736,6 +1739,7 @@ export async function misTareas(): Promise<TareasPortal | null> {
       .limit(1),
     // Los precios que ya mandó y esperan aprobación: ese producto ya no le falta a ella.
     supabase.from("solicitudes_marca").select("id_producto").eq("id_marca", sesion.idMarca).eq("estado", "PENDIENTE"),
+    marcaNoInformaCosto(supabase, sesion.idMarca).catch(() => false),
   ]);
 
   // Una ficha existe pero vacía cuenta como que falta: la fila se crea sola al
@@ -1771,15 +1775,20 @@ export async function misTareas(): Promise<TareasPortal | null> {
 
   const lista = productos ?? [];
   const total = lista.length;
-  const sinCosto = lista.filter((p) => !costos.get(p.id_producto as string)).length;
+  // Si la marca eligió no informar el costo, no se le pide.
+  const sinCosto = sinCostoPedido ? 0 : lista.filter((p) => !costos.get(p.id_producto as string)).length;
   const sinFoto = lista.filter((p) => !p.imagen).length;
   const sinDescripcion = lista.filter((p) => !((p.descripcion as string | null) ?? "").trim()).length;
-  const sinFicha = lista.filter((p) => !conFicha.has(p.id_producto as string)).length;
+  const subDe = (p: (typeof lista)[number]) => {
+    const s = p.subcategorias as unknown as { nombre: string | null } | { nombre: string | null }[] | null;
+    return (Array.isArray(s) ? s[0] : s)?.nombre ?? null;
+  };
+  const faltaFicha = (p: (typeof lista)[number]) =>
+    !conFicha.has(p.id_producto as string) && !noLlevaFichaNutricional(p.nombre as string, subDe(p));
+  const conFichaPedida = lista.filter((p) => !noLlevaFichaNutricional(p.nombre as string, subDe(p))).length;
+  const sinFicha = lista.filter(faltaFicha).length;
   const incompletos = lista.filter(
-    (p) =>
-      !p.imagen ||
-      !((p.descripcion as string | null) ?? "").trim() ||
-      !conFicha.has(p.id_producto as string)
+    (p) => !p.imagen || !((p.descripcion as string | null) ?? "").trim() || faltaFicha(p)
   ).length;
   const agotados = lista.filter((p) => (stockPorProducto.get(p.id_producto as string) ?? 0) === 0).length;
   const noAprobadas = (rechazadas ?? []).length;
@@ -1797,7 +1806,7 @@ export async function misTareas(): Promise<TareasPortal | null> {
       titulo: sinPrecio === 1 ? "Un producto sin precio" : "Productos sin precio",
       porque: "Sin precio no se venden: no aparecen en el local y la caja no los puede cobrar. Mandanos el precio y lo aprobamos.",
       accion: "Poner precios",
-      href: "/portal/cambios",
+      href: "/portal/cambios?ver=sin-precio",
     });
   }
   if (sinCosto > 0) {
@@ -1838,7 +1847,8 @@ export async function misTareas(): Promise<TareasPortal | null> {
       titulo: "Fichas incompletas",
       porque: `${falta.join(", ")}. Se venden igual, pero sin foto ni descripción se muestran últimos en el tótem y no aparecen en el Asesor.`,
       accion: "Completarlas",
-      href: "/portal/cambios",
+      // Directo a los que les falta algo, no a todos los productos.
+      href: "/portal/cambios?ver=incompletas",
     });
   }
   if (agotados > 0) {
@@ -1877,7 +1887,7 @@ export async function misTareas(): Promise<TareasPortal | null> {
 
   const alDia: string[] = [];
   if (total > 0 && sinPrecio === 0) alDia.push("Todos tus productos tienen precio");
-  if (total > 0 && sinCosto === 0) alDia.push("Todos tus productos tienen el costo cargado");
+  if (total > 0 && sinCosto === 0 && !sinCostoPedido) alDia.push("Todos tus productos tienen el costo cargado");
   if (total > 0 && incompletos === 0) alDia.push("Todas tus fichas están completas");
   if (total > 0 && agotados === 0) alDia.push("No tenés ningún producto agotado");
   if (noAprobadas === 0) alDia.push("No tenés solicitudes rechazadas por corregir");
@@ -1887,36 +1897,48 @@ export async function misTareas(): Promise<TareasPortal | null> {
   // Los cuatro pasos salen de datos reales, no de un "ya lo viste" guardado en
   // algún lado: lo que importa no es que hayan mirado la pantalla, es que el
   // producto esté cargado.
+  // Lo que le falta de cada paso, contado: «Faltan 17 de 86».
+  const falta = (n: number, de: number) => (n > 0 && n < de ? `Faltan ${n} de ${de}` : undefined);
   const pasos: PrimerPaso[] = [
     {
       id: "precio",
       texto: "Poné precio a todos tus productos",
       hecho: total > 0 && sinPrecio === 0,
-      href: "/portal/cambios",
+      href: "/portal/cambios?ver=sin-precio",
+      falta: falta(sinPrecio, total),
     },
-    {
-      id: "costo",
-      texto: "Cargá el costo de tus productos",
-      hecho: total > 0 && sinCosto === 0,
-      href: "/portal/productos",
-    },
+    // El costo, solo a las marcas que lo informan.
+    ...(sinCostoPedido
+      ? []
+      : [
+          {
+            id: "costo",
+            texto: "Cargá el costo de tus productos",
+            hecho: total > 0 && sinCosto === 0,
+            href: "/portal/productos",
+            falta: falta(sinCosto, total),
+          },
+        ]),
     {
       id: "foto",
       texto: "Subí una foto a cada producto",
       hecho: total > 0 && sinFoto === 0,
-      href: "/portal/cambios",
+      href: "/portal/cambios?ver=sin-foto",
+      falta: falta(sinFoto, total),
     },
     {
       id: "descripcion",
       texto: "Escribí la descripción de cada producto",
       hecho: total > 0 && sinDescripcion === 0,
-      href: "/portal/cambios",
+      href: "/portal/cambios?ver=sin-descripcion",
+      falta: falta(sinDescripcion, total),
     },
     {
       id: "ficha",
       texto: "Completá la información nutricional",
       hecho: total > 0 && sinFicha === 0,
-      href: "/portal/cambios",
+      href: "/portal/cambios?ver=sin-ficha",
+      falta: falta(sinFicha, conFichaPedida),
     },
   ];
 
@@ -2083,7 +2105,10 @@ export async function bienvenidaPortal(): Promise<BienvenidaPortal | null> {
     productos: lista.length,
     ejemplo,
     sinPrecio: lista.filter((p) => !(((p.precio_venta as number | null) ?? 0) > 0)).length,
-    sinCosto: lista.filter((p) => !costos.get(p.id_producto as string)).length,
+    // A la marca que eligió no informar el costo no se le pide.
+    sinCosto: (await marcaNoInformaCosto(supabase, sesion.idMarca).catch(() => false))
+      ? 0
+      : lista.filter((p) => !costos.get(p.id_producto as string)).length,
     sinFoto: lista.filter((p) => !p.imagen).length,
     sinFicha: lista.filter((p) => !conFicha.has(p.id_producto as string)).length,
   };
