@@ -50,6 +50,49 @@ export function datosDelAparato() {
   };
 }
 
+/**
+ * El monitor Joog corta un pedazo del borde derecho de la imagen (overscan) y
+ * por HDMI no deja cambiarlo (Gonzalo, 2026-11-11). La pantalla se achica
+ * para no usar ese borde: ?derecha=40 (y abajo, izquierda, arriba), en
+ * píxeles. Se guarda en el aparato, así no hace falta dejarlo en la dirección.
+ * ?derecha=0 lo vuelve a sacar. ?calibrar=1 muestra una regla en los bordes.
+ */
+export function aplicarMargenDePantalla() {
+  const lados = ["arriba", "derecha", "abajo", "izquierda"] as const;
+  let margen: Record<string, number> = {};
+  try {
+    margen = JSON.parse(localStorage.getItem("asesor.margen") || "{}") as Record<string, number>;
+  } catch {}
+  const q = new URLSearchParams(window.location.search);
+  let cambio = false;
+  for (const l of lados) {
+    const v = q.get(l);
+    if (v !== null && Number.isFinite(Number(v))) {
+      margen[l] = Math.max(0, Math.min(300, Math.round(Number(v))));
+      cambio = true;
+    }
+  }
+  if (cambio) {
+    try {
+      localStorage.setItem("asesor.margen", JSON.stringify(margen));
+    } catch {}
+  }
+  const px = (l: string) => margen[l] ?? 0;
+  const b = document.body.style;
+  if (lados.some((l) => px(l) > 0)) {
+    // `contain` hace que lo fijo (las ventanas, el recorrido) también quede
+    // adentro del recuadro, no solo lo que se desliza.
+    b.position = "fixed";
+    b.top = `${px("arriba")}px`;
+    b.left = `${px("izquierda")}px`;
+    b.width = `calc(100vw - ${px("izquierda") + px("derecha")}px)`;
+    b.height = `calc(100vh - ${px("arriba") + px("abajo")}px)`;
+    b.overflow = "hidden";
+    b.setProperty("contain", "layout paint");
+  }
+  return { margen, calibrar: q.get("calibrar") === "1" };
+}
+
 const sinSuscribir = () => () => {};
 
 export function usePlacaLiviana(): boolean {

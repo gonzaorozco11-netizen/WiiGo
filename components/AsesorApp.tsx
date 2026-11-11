@@ -22,7 +22,7 @@ import type {
 } from "@/lib/supabase";
 import { colorDeProducto, ubicacionDe, type ModuloGondola, type UbicacionGondola } from "@/lib/gondola";
 import ViajeGondola from "@/components/ViajeGondola";
-import { datosDelAparato, usePlacaLiviana } from "@/lib/placaLiviana";
+import { aplicarMargenDePantalla, datosDelAparato, usePlacaLiviana } from "@/lib/placaLiviana";
 import NutricionAsesor from "@/components/NutricionAsesor";
 import { CarruselProfesional, ModosAtencion, NumerosProfesional, OpinionesPacientes, PildorasRecorrido, type OpinionPaciente } from "@/components/PerfilProfesional";
 import IconoRed, { colorDeRed } from "@/components/IconoRed";
@@ -941,6 +941,11 @@ export default function AsesorApp({
   useEffect(() => {
     document.documentElement.classList.toggle("asesor-liviano", liviano);
   }, [liviano]);
+  // El borde que corta el monitor Joog (?derecha=40, ?calibrar=1): lib/placaLiviana.ts.
+  const [calibrar, setCalibrar] = useState(false);
+  useEffect(() => {
+    setCalibrar(aplicarMargenDePantalla().calibrar);
+  }, []);
   // ?diagnostico=1: qué aparato es, cuánto mide y si la página se pasa de ancho.
   const [diagnostico, setDiagnostico] = useState<ReturnType<typeof datosDelAparato> | null>(null);
   useEffect(() => {
@@ -1610,6 +1615,27 @@ export default function AsesorApp({
           queda libre. En el Conóceme no va: tapa los controles de las filminas.
           En el inicio va adentro de lo que se desliza (ver más abajo). */}
       {pantalla !== "conoceme" && pantalla !== "home" && !productoAbierto && selectorIdioma("fixed top-5 right-5")}
+
+      {/* Regla en los bordes: el último número que se ve entero es lo que el
+          monitor no corta; el que no se ve, lo que hay que dejar libre. */}
+      {calibrar && (
+        <div className="fixed inset-0 z-[998] pointer-events-none">
+          {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 120, 140].map((n) => (
+            <div key={`d${n}`} className="absolute top-0 bottom-0" style={{ right: n, width: 2, background: n % 20 === 0 ? "#d00" : "#06c" }}>
+              <span className="absolute font-bold text-[15px]" style={{ top: 60 + (n % 20 === 0 ? 0 : 24), right: 4, color: n % 20 === 0 ? "#d00" : "#06c" }}>
+                {n}
+              </span>
+            </div>
+          ))}
+          {[0, 10, 20, 30, 40, 50, 60, 80, 100].map((n) => (
+            <div key={`a${n}`} className="absolute left-0 right-0" style={{ bottom: n, height: 2, background: n % 20 === 0 ? "#d00" : "#06c" }}>
+              <span className="absolute font-bold text-[15px]" style={{ bottom: 4, left: 300 + (n % 20 === 0 ? 0 : 40), color: n % 20 === 0 ? "#d00" : "#06c" }}>
+                {n}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {diagnostico && (
         <div className="fixed left-3 bottom-3 z-[999] max-w-[560px] rounded-xl bg-black/85 text-white text-[13px] leading-snug p-3 font-mono break-words">
