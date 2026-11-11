@@ -7,6 +7,40 @@ import { limpiarCodigoBarras, esCodigoInterno } from "@/lib/codigos";
 import { mayorCodigoInterno } from "@/lib/codigosVariante";
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import { CLAVE_SIN_CODIGO, cargarMarcasSinCodigo } from "@/lib/marcasSinCodigo";
+import { PARAMETRO_CODIGOS_IMPRESOS, cargarCodigosImpresos } from "@/lib/codigosImpresos";
+
+/**
+ * Anota que estos productos ya tienen su sticker (al confirmar «Sí, salió bien»,
+ * al marcar «Ya tienen sticker», o lo que traía guardado la tablet). Así dejan
+ * de figurar en «Sin sticker todavía» en cualquier aparato. Se queda con la
+ * fecha más nueva de cada uno.
+ */
+export async function anotarCodigosImpresos(fechas: Record<string, string>) {
+  const sesion = await obtenerSesionConPantallas();
+  if (!puedeVerPantalla(sesion, "codigos")) return { error: "No tenés permiso para esta pantalla." };
+  const supabase = getSupabaseServerClient();
+  const actual = await cargarCodigosImpresos(supabase);
+  let cambios = 0;
+  for (const [id, fecha] of Object.entries(fechas)) {
+    if (!/^[0-9a-f-]{36}$/i.test(id) || Number.isNaN(Date.parse(fecha))) continue;
+    if (!actual[id] || actual[id] < fecha) {
+      actual[id] = fecha;
+      cambios++;
+    }
+  }
+  if (cambios === 0) return { ok: true as const };
+  const { error } = await supabase.from("configuracion").upsert(
+    {
+      parametro: PARAMETRO_CODIGOS_IMPRESOS,
+      valor: JSON.stringify(actual),
+      descripcion: "Códigos de barras: qué productos ya tienen su sticker impreso (id_variante → fecha)",
+      fecha_actualizacion: new Date().toISOString(),
+    },
+    { onConflict: "parametro" }
+  );
+  if (error) return { error: friendlyDbError(error) };
+  return { ok: true as const };
+}
 
 /**
  * Guarda el código que trae el envase de un producto.

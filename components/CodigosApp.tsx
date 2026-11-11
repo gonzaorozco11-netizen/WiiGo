@@ -12,7 +12,7 @@ import {
 } from "@/lib/rotulado";
 import { nombreBase } from "@/lib/nombreProducto";
 import FiltroSeleccion, { coincide, subcategoriasDe } from "@/components/FiltroSeleccion";
-import { guardarCodigoBarras, marcarMarcaSinCodigo, volverAEtiquetaWiigo } from "@/app/(app)/codigos/actions";
+import { anotarCodigosImpresos, guardarCodigoBarras, marcarMarcaSinCodigo, volverAEtiquetaWiigo } from "@/app/(app)/codigos/actions";
 import type { EntradaPendiente } from "@/lib/entradas";
 import EscanerCodigo from "@/components/EscanerCodigo";
 import CodigoDeBarras from "@/components/CodigoDeBarras";
@@ -94,9 +94,10 @@ function subgruposDe(items: ItemCodigo[]): [string, ItemCodigo[]][] {
   return [...m.entries()].sort(([a], [b]) => (a === SIN_SUBCATEGORIA ? 1 : b === SIN_SUBCATEGORIA ? -1 : a.localeCompare(b, "es")));
 }
 
-// Cuándo se imprimió cada código por última vez, en este aparato (id_variante
-// → fecha). Se anota al confirmar «Sí, salió bien». Es solo una ayuda para no
-// repetir: si el navegador no deja guardar, no se muestra y listo.
+// Cuándo se imprimió cada código por última vez (id_variante → fecha). Se anota
+// al confirmar «Sí, salió bien» o con «Ya tienen sticker». Se guarda en este
+// aparato (para que se vea al toque) y en la base (anotarCodigosImpresos), así
+// lo ya etiquetado sale de «Sin sticker todavía» en cualquier aparato.
 const CLAVE_IMPRESOS = "codigos.impresos";
 const SIN_IMPRESOS: Record<string, string> = {};
 let impresosTexto: string | null = null;
@@ -132,6 +133,7 @@ function anotarImpresos(ids: string[]) {
     localStorage.setItem(CLAVE_IMPRESOS, JSON.stringify(nuevo));
   } catch {}
   window.dispatchEvent(new Event(CLAVE_IMPRESOS));
+  anotarCodigosImpresos(Object.fromEntries(ids.map((id) => [id, ahora]))).catch(() => {});
 }
 /** «hoy», «ayer» o «el 5/11». */
 function cuandoImpreso(iso: string) {
@@ -322,12 +324,15 @@ export default function CodigosApp({
   entradas = [],
   pieEtiqueta = PIE_ETIQUETA_DEFECTO,
   esAdmin = false,
+  impresos = {},
 }: {
   items: ItemCodigo[];
   entradas?: EntradaPendiente[];
   /** Nombre y dirección del local, al pie de la etiqueta de lo fraccionado. */
   pieEtiqueta?: string;
   esAdmin?: boolean;
+  /** Lo que ya tiene sticker impreso, guardado en la base (lib/codigosImpresos.ts). */
+  impresos?: Record<string, string>;
 }) {
   // Si acaba de entrar mercadería que hay que etiquetar, la pantalla arranca
   // en Imprimir: es a lo que vino la operativa. Si no, arranca en Revisar, que
@@ -387,7 +392,8 @@ export default function CodigosApp({
             ["revisar", "Revisar envases"],
             // No dice "etiquetas": en Aprobaciones esa palabra ya es el cartel
             // de precio de la góndola, que es otra cosa y lleva plata impresa.
-            ["imprimir", `Imprimir códigos · ${aPegar}`],
+            // El número es lo que todavía no tiene sticker, no todo lo que lo lleva.
+            ["imprimir", `Imprimir códigos · ${conEtiqueta.filter((i) => !i.envasado && !impresos[i.idVariante]).length}`],
           ] as const
         ).map(([id, texto]) => (
           <button
@@ -431,6 +437,7 @@ export default function CodigosApp({
         <Imprimir
           items={conEtiqueta}
           entradas={entradas}
+          impresosServidor={impresos}
           pie={pieEtiqueta}
           onIrAEscanear={() => {
             setTab("revisar");
@@ -831,14 +838,30 @@ function EscanerDeLista({
 function Imprimir({
   items: todos,
   entradas,
+  impresosServidor,
   pie,
   onIrAEscanear,
 }: {
   items: ItemCodigo[];
   entradas: EntradaPendiente[];
+  impresosServidor: Record<string, string>;
   pie: string;
   onIrAEscanear: () => void;
 }) {
+  // Lo ya etiquetado: lo de la base más lo de esta tablet (que es al toque).
+  const impresosLocal = useSyncExternalStore(suscribirImpresos, leerImpresos, () => SIN_IMPRESOS);
+  const impresos = useMemo(() => {
+    const m = { ...impresosServidor };
+    for (const [id, f] of Object.entries(impresosLocal)) if (!m[id] || m[id] < f) m[id] = f;
+    return m;
+  }, [impresosServidor, impresosLocal]);
+  // Lo que esta tablet imprimió antes de que se guardara en la base, se sube
+  // una vez (así lo que ya se etiquetó no vuelve a figurar en ningún aparato).
+  useEffect(() => {
+    const local = leerImpresos();
+    const faltan = Object.fromEntries(Object.entries(local).filter(([id, f]) => !impresosServidor[id] || impresosServidor[id] < f));
+    if (Object.keys(faltan).length) anotarCodigosImpresos(faltan).catch(() => {});
+  }, [impresosServidor]);
   // Lo envasado de fábrica no se imprime aunque todavía no tenga el código
   // cargado: se escanea. Queda a mano «imprimirlos igual» para el envase que
   // de verdad no trae código, o uno que el lector no toma.
@@ -850,7 +873,12 @@ function Imprimir({
     () => items.filter((i) => porVariante.has(i.idVariante)),
     [items, porVariante]
   );
-  const [modo, setModo] = useState<"recibido" | "todo">(recibidos.length > 0 ? "recibido" : "todo");
+  // «Sin sticker todavía»: lo que nunca se imprimió. Lo que ya tiene sticker va
+  // aparte, por si hay que reimprimir alguno (Gonzalo, 2026-11-11: «el arroz ya
+  // lo tengo listo»). Lo que entró nuevo sale siempre en «Lo que entró».
+  const sinSticker = useMemo(() => items.filter((i) => !impresos[i.idVariante]), [items, impresos]);
+  const conSticker = useMemo(() => items.filter((i) => impresos[i.idVariante]), [items, impresos]);
+  const [modo, setModo] = useState<"recibido" | "todo" | "hechos">(recibidos.length > 0 ? "recibido" : "todo");
 
   const avisoEnvasados = envasados.length > 0 && (
     <div className="print:hidden mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 flex flex-wrap items-center gap-3">
@@ -889,7 +917,7 @@ function Imprimir({
     );
   }
 
-  const visibles = modo === "recibido" ? recibidos : items;
+  const visibles = modo === "recibido" ? recibidos : modo === "hechos" ? conSticker : sinSticker;
   // En «Todo lo que falta» arranca todo destildado: se elige qué imprimir
   // (por marca, subcategoría o buscando). Antes venía todo en 1 y era fácil
   // mandar a imprimir 90 stickers sin querer.
@@ -903,12 +931,13 @@ function Imprimir({
           `print:hidden` es display:none y se lleva puesto lo que tenga adentro. */}
       <div className="print:hidden">
         {avisoEnvasados}
-        {recibidos.length > 0 && (
-          <div className="inline-flex gap-1 bg-neutral-100 rounded-xl p-1 mb-3">
+        {(recibidos.length > 0 || conSticker.length > 0) && (
+          <div className="inline-flex flex-wrap gap-1 bg-neutral-100 rounded-xl p-1 mb-3">
             {(
               [
-                ["recibido", `Lo que entró · ${recibidos.length}`],
-                ["todo", `Todo lo que falta · ${items.length}`],
+                ...(recibidos.length > 0 ? ([["recibido", `Lo que entró · ${recibidos.length}`]] as const) : []),
+                ["todo", `Sin sticker todavía · ${sinSticker.length}`],
+                ...(conSticker.length > 0 ? ([["hechos", `Ya tienen sticker · ${conSticker.length}`]] as const) : []),
               ] as const
             ).map(([id, texto]) => (
               <button
@@ -930,7 +959,9 @@ function Imprimir({
         <p className="text-xs text-neutral-500 mb-3 leading-relaxed max-w-2xl">
           {modo === "recibido"
             ? "Lo que entró por recepción en los últimos 7 días y todavía no tiene código del envase. La cantidad ya viene puesta: es la que se recibió."
-            : "Todos los productos que necesitan que les imprimas el código."}{" "}
+            : modo === "hechos"
+              ? "Los que ya tienen su sticker: entrá acá solo para reimprimir alguno."
+              : "Los productos a los que nunca se les imprimió el código. Si alguno ya lo tiene pegado, marcalo y tocá «Ya tienen sticker»."}{" "}
           Los stickers llevan el nombre y el código de barras, <b>no el precio</b> — el precio se
           imprime aparte, en el cartelito de góndola.
         </p>
@@ -938,7 +969,13 @@ function Imprimir({
 
       {/* El `key` remonta la lista al cambiar de modo: las cantidades se
           recalculan solas en vez de arrastrar las del modo anterior. */}
-      <ConfigurarImpresion key={`${modo}-${conEnvasados}`} items={visibles} unidadesIniciales={unidades} pie={pie} />
+      <ConfigurarImpresion
+        key={`${modo}-${conEnvasados}`}
+        items={visibles}
+        unidadesIniciales={unidades}
+        pie={pie}
+        onYaTienen={modo === "todo" ? (ids) => anotarImpresos(ids) : undefined}
+      />
     </>
   );
 }
@@ -947,10 +984,13 @@ function ConfigurarImpresion({
   items,
   unidadesIniciales,
   pie,
+  onYaTienen,
 }: {
   items: ItemCodigo[];
   unidadesIniciales: (i: ItemCodigo) => number;
   pie: string;
+  /** «Ya tienen sticker»: los marcados salen de la lista sin imprimir. */
+  onYaTienen?: (ids: string[]) => void;
 }) {
   const [papel, setPapel] = useState<"plancha" | "rollo">("plancha");
   // Las fechas valen para toda la tanda: se fracciona e imprime de una vez.
@@ -1171,6 +1211,22 @@ function ConfigurarImpresion({
         }
         onDestildarTodo={() => setCantidades(Object.fromEntries(items.map((i) => [i.idVariante, 0])))}
       />
+      {onYaTienen && marcados > 0 && (
+        <div className="print:hidden -mt-1 mb-3 flex flex-wrap items-center gap-2 text-sm">
+          <button
+            type="button"
+            onClick={() => {
+              const ids = items.filter((i) => (cantidades[i.idVariante] ?? 0) > 0).map((i) => i.idVariante);
+              onYaTienen(ids);
+              setCantidades((prev) => ({ ...prev, ...Object.fromEntries(ids.map((id) => [id, 0])) }));
+            }}
+            className="rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-800 px-3 py-1.5 font-semibold hover:bg-emerald-100"
+          >
+            ✓ Ya tienen sticker ({marcados})
+          </button>
+          <span className="text-xs text-neutral-500">Si los marcados ya lo tienen pegado: salen de la lista sin imprimir.</span>
+        </div>
+      )}
       {mostrados.length === 0 && (
         <p className="print:hidden text-sm text-neutral-500 py-8 text-center">Ningún producto coincide con la búsqueda.</p>
       )}
