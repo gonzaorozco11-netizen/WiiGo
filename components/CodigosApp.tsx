@@ -900,9 +900,15 @@ function Imprimir({
   const envasados = useMemo(() => todos.filter((i) => i.envasado), [todos]);
   const items = useMemo(() => (conEnvasados ? todos : todos.filter((i) => !i.envasado)), [todos, conEnvasados]);
   const porVariante = useMemo(() => new Map(entradas.map((e) => [e.idVariante, e])), [entradas]);
+  // Lo que entró y todavía no se le imprimió el sticker después de entrar:
+  // impreso ese día o después, ya no figura (Gonzalo, 2026-11-11).
   const recibidos = useMemo(
-    () => items.filter((i) => porVariante.has(i.idVariante)),
-    [items, porVariante]
+    () =>
+      items.filter((i) => {
+        const e = porVariante.get(i.idVariante);
+        return e && !(impresos[i.idVariante] && impresos[i.idVariante] >= e.ultima);
+      }),
+    [items, porVariante, impresos]
   );
   // «Sin sticker todavía»: lo que nunca se imprimió. Lo que ya tiene sticker va
   // aparte, por si hay que reimprimir alguno (Gonzalo, 2026-11-11: «el arroz ya

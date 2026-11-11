@@ -3,6 +3,7 @@ import { fechaHoraArgentina, minutosDeHora } from "@/lib/horarios";
 import { POR_TURNO, adentroEnLocal, personaDeUsuario } from "@/lib/conteoStock";
 import { localDeSesion } from "@/lib/fraccionado";
 import { contarCartelesUrgentes } from "@/lib/tareasEtiqueta";
+import { stickersPorPegar } from "@/lib/entradas";
 
 // El Inicio del operativo en la tablet del local (pedido de Gonzalo,
 // 2026-10-22): arriba un botón grande con lo que toca hacer AHORA, y abajo
@@ -182,8 +183,23 @@ export async function armarInicioOperativo(
   // Dos accesos, uno por pantalla (pedido de Gonzalo): las etiquetas de
   // código de barras y los carteles de precio de góndola. Las etiquetas por
   // cambiar (precios nuevos) son de los carteles.
-  if (puede("codigos"))
-    agregar({ clave: "codigos", titulo: "Códigos de barras", detalle: "Imprimir las etiquetas con el código de cada producto", href: "/codigos", icono: "🏷️", badge: null, deshabilitado: false });
+  if (puede("codigos")) {
+    // Lo que entró y lleva sticker (granolas, lo embolsado, Alta, Fruppi,
+    // Crislo): en rojo hasta que se imprime, para que no vaya a la góndola sin código.
+    const stickers = await stickersPorPegar().catch(() => ({ productos: 0, unidades: 0 }));
+    agregar({
+      clave: "codigos",
+      titulo: "Códigos de barras",
+      detalle: stickers.productos
+        ? `🔴 Entraron ${stickers.productos === 1 ? "1 producto" : `${stickers.productos} productos`} que llevan sticker: imprimilos antes de ponerlos en la góndola`
+        : "Imprimir las etiquetas con el código de cada producto",
+      href: "/codigos",
+      icono: "🏷️",
+      badge: stickers.unidades || null,
+      badgeTono: "rojo",
+      deshabilitado: false,
+    });
+  }
   if (puede("carteles")) {
     // En rojo si alguno quedó con el precio viejo y la caja ya cobra el nuevo.
     const urgentes = await contarCartelesUrgentes(supabase);

@@ -1,5 +1,37 @@
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { esCodigoInterno } from "@/lib/codigos";
+import { cargarMarcasSinCodigo, cargarProductosSinCodigo } from "@/lib/marcasSinCodigo";
+import { cargarCodigosImpresos } from "@/lib/codigosImpresos";
+
+/**
+ * Cuántos productos entraron (recepción o fraccionado) y llevan sticker de
+ * WiiGo que todavía no se imprimió: lo embolsado acá, las marcas sin código
+ * (Alta, Fruppi, Crislo) y los productos sueltos sin código (granolas). Es el
+ * número rojo de «Códigos de barras» en el inicio del equipo, para que no se
+ * olviden de etiquetar lo que entró (Gonzalo, 2026-11-11).
+ */
+export async function stickersPorPegar(): Promise<{ productos: number; unidades: number }> {
+  const supabase = getSupabaseServerClient();
+  const entradas = await entradasQueNecesitanCodigo();
+  if (!entradas.length) return { productos: 0, unidades: 0 };
+  const [{ data: vars }, { data: marcasPropias }, marcasSin, productosSin, impresos] = await Promise.all([
+    supabase.from("variantes_producto").select("id_variante, productos(id_producto, id_marca, id_envase)").in("id_variante", entradas.map((e) => e.idVariante)),
+    supabase.from("marcas").select("id_marca").eq("tipo_comercializacion", "PROPIA"),
+    cargarMarcasSinCodigo(supabase).catch(() => new Set<string>()),
+    cargarProductosSinCodigo(supabase).catch(() => new Set<string>()),
+    cargarCodigosImpresos(supabase).catch(() => ({}) as Record<string, string>),
+  ]);
+  const propias = new Set((marcasPropias ?? []).map((m) => m.id_marca as string));
+  const llevaSticker = new Map(
+    (vars ?? []).map((v) => {
+      const p = v.productos as unknown as { id_producto: string; id_marca: string; id_envase: string | null } | null;
+      const lleva = Boolean(p) && ((propias.has(p!.id_marca) && Boolean(p!.id_envase)) || marcasSin.has(p!.id_marca) || productosSin.has(p!.id_producto));
+      return [v.id_variante as string, lleva];
+    })
+  );
+  const faltan = entradas.filter((e) => llevaSticker.get(e.idVariante) && !(impresos[e.idVariante] && impresos[e.idVariante] >= e.ultima));
+  return { productos: faltan.length, unidades: faltan.reduce((t, e) => t + e.cantidad, 0) };
+}
 
 /**
  * Lo que entró por recepción y todavía necesita que le impriman el código.
