@@ -57,11 +57,21 @@ export function datosDelAparato() {
  * píxeles. Se guarda en el aparato, así no hace falta dejarlo en la dirección.
  * ?derecha=0 lo vuelve a sacar. ?calibrar=1 muestra una regla en los bordes.
  */
+export type MargenPantalla = Partial<Record<"arriba" | "derecha" | "abajo" | "izquierda", number>>;
+
+/** Guarda el margen en el aparato y lo aplica al toque (el panel de 5 toques en el logo). */
+export function guardarMargenDePantalla(margen: MargenPantalla) {
+  try {
+    localStorage.setItem("asesor.margen", JSON.stringify(margen));
+  } catch {}
+  return aplicarMargenDePantalla();
+}
+
 export function aplicarMargenDePantalla() {
   const lados = ["arriba", "derecha", "abajo", "izquierda"] as const;
-  let margen: Record<string, number> = {};
+  let margen: MargenPantalla = {};
   try {
-    margen = JSON.parse(localStorage.getItem("asesor.margen") || "{}") as Record<string, number>;
+    margen = JSON.parse(localStorage.getItem("asesor.margen") || "{}") as MargenPantalla;
   } catch {}
   const q = new URLSearchParams(window.location.search);
   let cambio = false;
@@ -77,9 +87,11 @@ export function aplicarMargenDePantalla() {
       localStorage.setItem("asesor.margen", JSON.stringify(margen));
     } catch {}
   }
-  const px = (l: string) => margen[l] ?? 0;
+  const px = (l: (typeof lados)[number]) => margen[l] ?? 0;
   const b = document.body.style;
-  if (lados.some((l) => px(l) > 0)) {
+  if (!lados.some((l) => px(l) > 0)) {
+    for (const p of ["position", "top", "left", "width", "height", "overflow", "contain"]) b.removeProperty(p);
+  } else {
     // `contain` hace que lo fijo (las ventanas, el recorrido) también quede
     // adentro del recuadro, no solo lo que se desliza.
     b.position = "fixed";

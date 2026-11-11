@@ -22,7 +22,7 @@ import type {
 } from "@/lib/supabase";
 import { colorDeProducto, ubicacionDe, type ModuloGondola, type UbicacionGondola } from "@/lib/gondola";
 import ViajeGondola from "@/components/ViajeGondola";
-import { aplicarMargenDePantalla, datosDelAparato, usePlacaLiviana } from "@/lib/placaLiviana";
+import { aplicarMargenDePantalla, datosDelAparato, guardarMargenDePantalla, usePlacaLiviana, type MargenPantalla } from "@/lib/placaLiviana";
 import NutricionAsesor from "@/components/NutricionAsesor";
 import { CarruselProfesional, ModosAtencion, NumerosProfesional, OpinionesPacientes, PildorasRecorrido, type OpinionPaciente } from "@/components/PerfilProfesional";
 import IconoRed, { colorDeRed } from "@/components/IconoRed";
@@ -941,11 +941,30 @@ export default function AsesorApp({
   useEffect(() => {
     document.documentElement.classList.toggle("asesor-liviano", liviano);
   }, [liviano]);
-  // El borde que corta el monitor Joog (?derecha=40, ?calibrar=1): lib/placaLiviana.ts.
+  // El borde que corta el monitor Joog (lib/placaLiviana.ts). Se ajusta con 5
+  // toques seguidos en el logo de WiiGo del inicio: aparece la regla y los
+  // botones + y −, sin salir del modo kiosco ni tocar la dirección.
   const [calibrar, setCalibrar] = useState(false);
+  const [margen, setMargen] = useState<MargenPantalla>({});
+  const toquesLogo = useRef<number[]>([]);
   useEffect(() => {
-    setCalibrar(aplicarMargenDePantalla().calibrar);
+    const r = aplicarMargenDePantalla();
+    setCalibrar(r.calibrar);
+    setMargen(r.margen);
   }, []);
+  function tocarLogo() {
+    const ahora = Date.now();
+    toquesLogo.current = [...toquesLogo.current.filter((t) => ahora - t < 3000), ahora];
+    if (toquesLogo.current.length >= 5) {
+      toquesLogo.current = [];
+      setCalibrar(true);
+    }
+  }
+  function moverBorde(lado: "derecha" | "abajo", cuanto: number) {
+    const nuevo = { ...margen, [lado]: Math.max(0, Math.min(300, (margen[lado] ?? 0) + cuanto)) };
+    setMargen(nuevo);
+    guardarMargenDePantalla(nuevo);
+  }
   // ?diagnostico=1: qué aparato es, cuánto mide y si la página se pasa de ancho.
   const [diagnostico, setDiagnostico] = useState<ReturnType<typeof datosDelAparato> | null>(null);
   useEffect(() => {
@@ -1636,6 +1655,31 @@ export default function AsesorApp({
           ))}
         </div>
       )}
+      {calibrar && (
+        <div className="fixed left-1/2 top-1/2 z-[999] w-[440px] -ml-[220px] -mt-[150px] rounded-2xl bg-white border-2 border-[#22301f] p-5 text-[#1f261c]">
+          <p className="font-extrabold text-[20px] mb-1">Ajustar los bordes</p>
+          <p className="text-[14px] text-[#4d5545] mb-4">
+            Tocá + hasta que la línea roja del 0 se vea entera en el borde. Queda guardado en esta pantalla.
+          </p>
+          {(["derecha", "abajo"] as const).map((lado) => (
+            <div key={lado} className="flex items-center justify-between mb-3">
+              <span className="text-[16px] font-bold">{lado === "derecha" ? "Borde derecho" : "Borde de abajo"}</span>
+              <span className="flex items-center">
+                <button onClick={() => moverBorde(lado, -5)} className="w-12 h-12 rounded-full border-2 border-[#e8dfcd] text-[22px] font-bold">
+                  −
+                </button>
+                <b className="w-16 text-center text-[18px] tabular-nums">{margen[lado] ?? 0}</b>
+                <button onClick={() => moverBorde(lado, 5)} className="w-12 h-12 rounded-full border-2 border-[#e8dfcd] text-[22px] font-bold">
+                  +
+                </button>
+              </span>
+            </div>
+          ))}
+          <button onClick={() => setCalibrar(false)} className="mt-2 w-full h-12 rounded-full text-white font-bold" style={{ background: "#22301f" }}>
+            Listo
+          </button>
+        </div>
+      )}
 
       {diagnostico && (
         <div className="fixed left-3 bottom-3 z-[999] max-w-[560px] rounded-xl bg-black/85 text-white text-[13px] leading-snug p-3 font-mono break-words">
@@ -1679,7 +1723,8 @@ export default function AsesorApp({
             <div className="w-full max-w-[1600px] mx-auto grid lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] gap-7 xl:gap-10 items-start">
               {/* ---- izquierda: la pregunta y los objetivos ---- */}
               <div className="grid gap-5 md:gap-6">
-                <div className="w-[180px] md:w-[230px] xl:w-[270px]">
+                {/* 5 toques seguidos en el logo: ajustar los bordes de la pantalla. */}
+                <div className="w-[180px] md:w-[230px] xl:w-[270px]" onClick={tocarLogo}>
                   <Image
                     src="/wiigo-logo-negro.png"
                     alt="WiiGo — Estaciones de bienestar"
