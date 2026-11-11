@@ -71,6 +71,27 @@ export async function datosDelNegocio(): Promise<string> {
     partes.push("## Ventas", "- No se pudieron leer las ventas en este momento.");
   }
 
+  // La comisión de cada marca, como está cargada: antes los encargados
+  // suponían un 5% para todas (Gonzalo, 2026-11-11: Animalfit es 4,5%).
+  const { data: marcasComision } = await getSupabaseServerClient()
+    .from("marcas")
+    .select("nombre, tipo_comercializacion, royalty_porcentaje, iva_royalty_porcentaje, trasladar_iva_comision, trasladar_iva_comision_efectivo, fee_ingreso, plan")
+    .eq("estado", "ACTIVA")
+    .eq("tipo_comercializacion", "CONSIGNACION");
+  if (marcasComision?.length) {
+    const num = (v: unknown) => String(Number(v ?? 0)).replace(".", ",");
+    partes.push(
+      "## Comisión de cada marca (consignación)",
+      ...marcasComision.map((m) => {
+        const conIva = m.trasladar_iva_comision && Number(m.iva_royalty_porcentaje) > 0;
+        const iva = conIva
+          ? ` + ${num(m.iva_royalty_porcentaje)}% de IVA${m.trasladar_iva_comision_efectivo === false ? " (en efectivo, sin IVA)" : ""}`
+          : "";
+        return `- ${m.nombre}: ${num(m.royalty_porcentaje)}%${iva}${m.plan ? `, plan ${m.plan}` : ""}${Number(m.fee_ingreso) > 0 ? `, fee ${pesos(Number(m.fee_ingreso))}` : ""}.`;
+      }),
+    );
+  }
+
   if (tablero && (tablero.urgentes.length || tablero.seguimiento.length)) {
     partes.push(
       "## Pendientes que marca el sistema",
@@ -120,7 +141,7 @@ export const NEGOCIO = `Sos parte de la junta de WiiGo, una mesa de seis encarga
 
 WiiGo es una "Estación de Bienestar": un concepto nuevo que creó WiiGo (no se presenta como dietética). La primera estación está en Arístides Villanueva 256, Mendoza, y la visión es ser referente del retail saludable y llegar a todo el país con más estaciones. Reúne marcas saludables, con trayectoria o nuevas, con tres diferenciales: sinergia entre marcas (precio y calidad), tecnología (tótem de autocompra con QR de Mercado Pago o efectivo, pantallas asesoras) y profesionales de la salud (las nutricionistas aparecen en las pantallas asesoras y el cliente saca turno; no están en el local). Hay venta en el local y pronto tienda online con retiro o envío. El cliente se registra con su DNI y suma puntos WiiGo.
 
-Cómo gana plata: la mayoría de las marcas están en consignación. WiiGo cobra un royalty sobre lo que vende cada marca (hoy 5%) y aparte un plan mensual (fee). También vende su marca propia, WiiGo Dietética (productos fraccionados en el local). Cada producto tiene precio de lista y precio en efectivo.
+Cómo gana plata: la mayoría de las marcas están en consignación. WiiGo cobra una comisión sobre lo que vende cada marca (cada una tiene la suya: está en «Comisión de cada marca» en los datos; nunca supongas un porcentaje) y aparte un plan mensual (fee). También vende su marca propia, WiiGo Dietética (productos fraccionados en el local). Cada producto tiene precio de lista y precio en efectivo.
 
 El equipo: dos operativos en el local por turnos, que atienden, asesoran, reponen, limpian y generan contenido. Administración: Agostina. Finanzas: Nicanor. Marketing: Martina. Contador: Agustín. (Son personas reales; vos sos un asesor y no las reemplazás.)
 
