@@ -22,7 +22,7 @@ export default async function CodigosPage() {
   const traerProductos = (columnas: string) =>
     supabase.from("productos").select(columnas).eq("estado", "ACTIVO");
 
-  const [variantesRes, productosConRotulo, marcasRes, pieRes, marcasFabrica, marcasSinCodigo, impresos, productosSinCodigo] = await Promise.all([
+  const [variantesRes, productosConRotulo, marcasRes, pieRes, marcasFabrica, marcasSinCodigo, impresos, productosSinCodigo, stockRes] = await Promise.all([
     supabase
       .from("variantes_producto")
       .select("id_variante,id_producto,nombre,sku,codigo_barras")
@@ -37,7 +37,13 @@ export default async function CodigosPage() {
     cargarCodigosImpresos(supabase).catch(() => ({}) as Record<string, string>),
     // Productos sueltos que vienen cerrados sin código (granolas de 1 kg).
     cargarProductosSinCodigo(supabase).catch(() => new Set<string>()),
+    // Lo que hay de cada uno: al marcarlo para imprimir, la cantidad arranca en el stock.
+    supabase.from("stock").select("id_variante, cantidad").range(0, 9999),
   ]);
+  const stockDe = new Map<string, number>();
+  for (const s of (stockRes.data ?? []) as { id_variante: string; cantidad: number }[]) {
+    stockDe.set(s.id_variante, (stockDe.get(s.id_variante) ?? 0) + (Number(s.cantidad) || 0));
+  }
   // Sin sql/rotulado.sql corrido, las etiquetas salen como antes.
   const productosRes = productosConRotulo.error ? await traerProductos(BASE_PRODUCTO) : productosConRotulo;
 
@@ -109,6 +115,7 @@ export default async function CodigosPage() {
           marcaSinCodigo: marcasSinCodigo.has(p.id_marca),
           idProducto: p.id_producto,
           productoSinCodigo: productosSinCodigo.has(p.id_producto),
+          stock: stockDe.has(v.id_variante) ? stockDe.get(v.id_variante) : undefined,
           envasado: !(propia && p.id_envase) && !marcasSinCodigo.has(p.id_marca) && !productosSinCodigo.has(p.id_producto),
           // Solo lo que fraccionamos nosotros lleva rótulo: lo de las marcas
           // en consignación ya trae el suyo impreso de fábrica.

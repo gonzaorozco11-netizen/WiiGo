@@ -43,6 +43,8 @@ export type ItemCodigo = {
   idProducto?: string;
   /** Este producto suelto viene cerrado pero sin código (granolas de 1 kg): lleva sticker. */
   productoSinCodigo?: boolean;
+  /** Unidades en stock: al marcarlo para imprimir, la cantidad arranca en esto (Gonzalo, 2026-11-11). */
+  stock?: number;
   /** Para elegir qué imprimir por subcategoría («Frutos secos»). */
   subcategoria?: string | null;
 };
@@ -960,6 +962,10 @@ function Imprimir({
   // mandar a imprimir 90 stickers sin querer.
   const unidades = (i: ItemCodigo) =>
     modo === "recibido" ? porVariante.get(i.idVariante)?.cantidad ?? 1 : 0;
+  // Al marcar uno (o una marca o un rubro entero): lo que entró, o lo que hay
+  // en stock, así ya trae la cantidad justa (Gonzalo, 2026-11-11).
+  const alMarcar = (i: ItemCodigo) =>
+    modo === "recibido" ? porVariante.get(i.idVariante)?.cantidad ?? 1 : Math.max(1, Math.round(i.stock ?? 0));
 
   return (
     <>
@@ -1010,6 +1016,7 @@ function Imprimir({
         key={`${modo}-${conEnvasados}`}
         items={visibles}
         unidadesIniciales={unidades}
+        alMarcar={alMarcar}
         pie={pie}
         onYaTienen={modo === "todo" ? (ids) => anotarImpresos(ids) : undefined}
       />
@@ -1020,11 +1027,14 @@ function Imprimir({
 function ConfigurarImpresion({
   items,
   unidadesIniciales,
+  alMarcar = (i) => Math.max(1, unidadesIniciales(i)),
   pie,
   onYaTienen,
 }: {
   items: ItemCodigo[];
   unidadesIniciales: (i: ItemCodigo) => number;
+  /** Cuántos al marcarlo: lo que entró o lo que hay en stock. */
+  alMarcar?: (i: ItemCodigo) => number;
   pie: string;
   /** «Ya tienen sticker»: los marcados salen de la lista sin imprimir. */
   onYaTienen?: (ids: string[]) => void;
@@ -1241,7 +1251,7 @@ function ConfigurarImpresion({
             const next = { ...prev };
             // Lo que ya tenía cantidad la conserva; lo demás arranca con la de siempre.
             mostrados.forEach((i) => {
-              if (!(next[i.idVariante] > 0)) next[i.idVariante] = Math.max(1, unidadesIniciales(i));
+              if (!(next[i.idVariante] > 0)) next[i.idVariante] = alMarcar(i);
             });
             return next;
           })
@@ -1284,7 +1294,7 @@ function ConfigurarImpresion({
                       const next = { ...prev };
                       // Si ya hay alguno marcado, el botón apaga la marca entera.
                       const apagar = totalMarca > 0;
-                      deLaMarca.forEach((i) => (next[i.idVariante] = apagar ? 0 : Math.max(1, unidadesIniciales(i))));
+                      deLaMarca.forEach((i) => (next[i.idVariante] = apagar ? 0 : alMarcar(i)));
                       return next;
                     })
                   }
@@ -1327,7 +1337,7 @@ function ConfigurarImpresion({
                           setCantidades((prev) => {
                             const next = { ...prev };
                             const apagar = marcadosSub > 0;
-                            delSub.forEach((i) => (next[i.idVariante] = apagar ? 0 : Math.max(1, unidadesIniciales(i))));
+                            delSub.forEach((i) => (next[i.idVariante] = apagar ? 0 : alMarcar(i)));
                             return next;
                           })
                         }
@@ -1353,6 +1363,7 @@ function ConfigurarImpresion({
                         {i.codigo ? formatearCodigo(i.codigo) : "se genera al guardar"}
                       </span>
                       {impresos[i.idVariante] && <span className="ml-1.5 text-emerald-700">· impreso {cuandoImpreso(impresos[i.idVariante])}</span>}
+                      {i.stock != null && <span className="ml-1.5">· {Math.max(0, Math.round(i.stock))} en stock</span>}
                     </span>
                   </span>
                   <div className="flex items-center gap-1 shrink-0">
@@ -1374,7 +1385,8 @@ function ConfigurarImpresion({
                     />
                     <button
                       type="button"
-                      onClick={() => poner(i.idVariante, (cantidades[i.idVariante] ?? 0) + 1)}
+                      // De 0, el primer toque ya pone lo que hay en stock; después, de a uno.
+                      onClick={() => poner(i.idVariante, (cantidades[i.idVariante] ?? 0) > 0 ? (cantidades[i.idVariante] ?? 0) + 1 : alMarcar(i))}
                       className="w-7 h-7 rounded-lg border border-neutral-300 text-neutral-600 hover:bg-neutral-50"
                     >
                       +
