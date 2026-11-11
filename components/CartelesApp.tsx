@@ -730,9 +730,11 @@ function Cartel({ item, ancho, alto }: { item: ItemCartel; ancho: number; alto: 
   const largoNombre = item.nombre.length + (item.marcaFabrica ? item.marcaFabrica.length + 3 : 0);
   const nombreLargo = largoNombre > 34;
   const muyLargo = largoNombre > 48;
-  // En Animalfit el renglón de arriba decía «ANIMALFIT» en todos: la marca que
-  // le importa al cliente ya va en el nombre («… - STAR NUTRITION») (Gonzalo, 2026-11-11).
-  const conMarca = !/animal\s*fit/i.test(item.marca ?? "");
+  // La marca chiquita de arriba va solo en los de los ganchos (blisteros). En
+  // las islas y Animalfit no (Gonzalo, 2026-11-11): en Animalfit decía
+  // «ANIMALFIT» en todos y la de fábrica ya va en el nombre; en las islas ese
+  // lugar es mejor para el nombre y los precios.
+  const conMarca = item.lugar === "GANCHO" && !/animal\s*fit/i.test(item.marca ?? "");
   const renglonArriba = conMarca || Boolean(item.origen);
   // En los grandes (ganchos, 65 × 40) todo se mide contra el alto, como siempre.
   // En los bajos (islas y Animalfit, 60 × 30) eso los dejaba chiquitos: se
