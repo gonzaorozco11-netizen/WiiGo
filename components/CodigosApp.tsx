@@ -164,7 +164,11 @@ const PLANCHAS = [
   // eso, cada sticker mide (210 − 2 × 2 − 4 × 1) / 5 = 40,4 mm de ancho y
   // (297 − 2 × 5 − 15 × 1) / 16 = 17 mm de alto: el alto cierra justo con lo
   // del paquete. Antes se suponían pegados y con 7,5 / 12,5 mm de borde.
-  { id: "39x17-80", nombre: "39 × 17 mm — 80 por hoja", ancho: 40.4, alto: 17, cols: 5, filas: 16, margenX: 2, margenY: 5, sepX: 1, sepY: 1 },
+  // 2026-11-11: impresa, la primera columna salía al medio y la quinta corrida
+  // a la derecha (unos 3 mm: cada columna se corría un poco más). Gonzalo:
+  // «que la separación entre código y código sea un poco menor». El paso entre
+  // columnas baja de 41,4 a 40,6 mm; el alto quedaba bien y no se toca.
+  { id: "39x17-80", nombre: "39 × 17 mm — 80 por hoja", ancho: 39.6, alto: 17, cols: 5, filas: 16, margenX: 2, margenY: 5, sepX: 1, sepY: 1 },
   { id: "70x35", nombre: "70 × 35 mm — 24 por hoja", ancho: 70, alto: 35, cols: 3, filas: 8, margenX: 0, margenY: 8.5, sepX: 0, sepY: 0 },
   { id: "63x34", nombre: "63,5 × 33,9 mm — 24 por hoja (Avery L7159)", ancho: 63.5, alto: 33.9, cols: 3, filas: 8, margenX: 7.2, margenY: 13.1, sepX: 2.5, sepY: 0 },
   { id: "105x37", nombre: "105 × 37 mm — 16 por hoja", ancho: 105, alto: 37, cols: 2, filas: 8, margenX: 0, margenY: 0.5, sepX: 0, sepY: 0 },
