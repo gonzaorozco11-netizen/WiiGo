@@ -354,6 +354,13 @@ export default function CodigosApp({
   // su código cargado todavía es lo que falta escanear.
   const aPegar = conEtiqueta.filter((i) => !i.envasado).length;
   const faltaEscanear = conEtiqueta.length - aPegar;
+  // Para imprimir: lo de arriba más lo que tiene un código de fábrica que la
+  // caja o el tótem no leen («No trae código»): el sticker lleva ese mismo
+  // número, nítido (Gonzalo, 2026-11-11, la Sal Marina Fina y Gruesa).
+  const paraImprimir = useMemo(
+    () => items.filter((i) => !i.codigo || esCodigoInterno(i.codigo) || i.productoSinCodigo || i.marcaSinCodigo),
+    [items]
+  );
 
   const filtrados = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
@@ -398,7 +405,7 @@ export default function CodigosApp({
             // No dice "etiquetas": en Aprobaciones esa palabra ya es el cartel
             // de precio de la góndola, que es otra cosa y lleva plata impresa.
             // El número es lo que todavía no tiene sticker, no todo lo que lo lleva.
-            ["imprimir", `Imprimir códigos · ${conEtiqueta.filter((i) => !i.envasado && !impresos[i.idVariante]).length}`],
+            ["imprimir", `Imprimir códigos · ${paraImprimir.filter((i) => !i.envasado && !impresos[i.idVariante]).length}`],
           ] as const
         ).map(([id, texto]) => (
           <button
@@ -440,7 +447,7 @@ export default function CodigosApp({
         />
       ) : (
         <Imprimir
-          items={conEtiqueta}
+          items={paraImprimir}
           entradas={entradas}
           impresosServidor={impresos}
           pie={pieEtiqueta}
