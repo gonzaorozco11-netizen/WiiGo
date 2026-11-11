@@ -9,6 +9,14 @@ import FiltroSeleccion, { coincide, subcategoriasDe } from "@/components/FiltroS
 
 export type ItemCartel = {
   idProducto: string;
+  /**
+   * Un cartel por sabor: con varios sabores cada uno es su propio cartel
+   * (Gonzalo, 2026-11-11: la gelatina de Durazno y la de Frutilla van en
+   * lugares distintos). Es el id del producto, o producto:variante.
+   */
+  clave: string;
+  /** El sabor o la presentación, cuando el producto tiene más de uno. */
+  sabor?: string | null;
   nombre: string;
   marca: string | null;
   /** Lo que se cobra con tarjeta, débito o QR (con la oferta ya aplicada). */
@@ -129,7 +137,7 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
   // Los de una marca cuyo precio nuevo entra más tarde: se ven, pero no se
   // marcan para imprimir ni se dan por puestos hasta que el precio entre.
   const listos = pendientes.filter((i) => !i.entraEl);
-  const deEntrada = (lista: ItemCartel[]) => new Set(lista.filter((i) => !i.entraEl).map((i) => i.idProducto));
+  const deEntrada = (lista: ItemCartel[]) => new Set(lista.filter((i) => !i.entraEl).map((i) => i.clave));
   // "Ahora", tomado una vez al abrir la pantalla.
   const [ahora] = useState(() => Date.now());
 
@@ -159,12 +167,12 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
       visibles.filter(
         (i) =>
           (!subcategoria || i.subcategoria === subcategoria) &&
-          coincide([i.nombre, i.marca, i.marcaFabrica, i.subcategoria], busqueda)
+          coincide([i.nombre, i.marca, i.marcaFabrica, i.subcategoria, i.sabor], busqueda)
       ),
     [visibles, subcategoria, busqueda]
   );
 
-  const aImprimir = visibles.filter((i) => elegidos.has(i.idProducto));
+  const aImprimir = visibles.filter((i) => elegidos.has(i.clave));
   const segunLugar = medidaId === SEGUN_LUGAR;
   const grupos: GrupoImpresion[] = segunLugar
     ? [
@@ -214,7 +222,7 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
   const [marcando, setMarcando] = useState<string | null>(null);
   function marcarUno(i: ItemCartel) {
     if (!i.idTarea) return;
-    setMarcando(i.idProducto);
+    setMarcando(i.clave);
     startTransition(async () => {
       const res = await marcarCartelesPuestos([i.idTarea as string, ...(i.otrasTareas ?? [])]);
       setMarcando(null);
@@ -232,7 +240,8 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
   const cerrables = aImprimir.filter((i) => i.idTarea && !i.entraEl);
   const [confirmarTodos, setConfirmarTodos] = useState(false);
   function marcarTodosPuestos() {
-    const ids = cerrables.flatMap((i) => [i.idTarea as string, ...(i.otrasTareas ?? [])]);
+    // Con un cartel por sabor, las tareas del producto se repiten: una vez cada una.
+    const ids = [...new Set(cerrables.flatMap((i) => [i.idTarea as string, ...(i.otrasTareas ?? [])]))];
     setConfirmarTodos(false);
     startTransition(async () => {
       let aplicados = 0;
@@ -327,7 +336,7 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
             disabled={enviando}
             onClick={() =>
               startTransition(async () => {
-                const r = await anotarCartelesImpresos(aImprimir.map((i) => i.idProducto));
+                const r = await anotarCartelesImpresos([...new Set(aImprimir.map((i) => i.idProducto))]);
                 if (r.error) setAviso(r.error);
                 else {
                   setAviso(`Listo: ${aImprimir.length === 1 ? "1 producto sale" : `${aImprimir.length} productos salen`} de «Entraron nuevos».`);
@@ -363,7 +372,7 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
               onMarcarVisibles={() =>
                 setElegidos((prev) => {
                   const s = new Set(prev);
-                  mostrados.forEach((i) => s.add(i.idProducto));
+                  mostrados.forEach((i) => s.add(i.clave));
                   return s;
                 })
               }
@@ -374,7 +383,7 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
             )}
             <div className="border border-neutral-200 rounded-xl overflow-hidden bg-white mb-4 empty:hidden">
               {porMarca.map(([marca, deLaMarca]) => {
-                const todos = deLaMarca.every((i) => elegidos.has(i.idProducto));
+                const todos = deLaMarca.every((i) => elegidos.has(i.clave));
                 return (
                   <div key={marca}>
                     <div className="flex items-center gap-2 bg-neutral-50 px-4 py-2 border-b border-neutral-200">
@@ -384,7 +393,7 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
                         onChange={() =>
                           setElegidos((prev) => {
                             const s = new Set(prev);
-                            deLaMarca.forEach((i) => (todos ? s.delete(i.idProducto) : s.add(i.idProducto)));
+                            deLaMarca.forEach((i) => (todos ? s.delete(i.clave) : s.add(i.clave)));
                             return s;
                           })
                         }
@@ -396,17 +405,23 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
                     </div>
                     {deLaMarca.map((i) => (
                       <label
-                        key={i.idProducto}
+                        key={i.clave}
                         className="flex items-center gap-3 px-4 py-2 border-b border-neutral-100 last:border-b-0 cursor-pointer hover:bg-neutral-50"
                       >
                         <input
                           type="checkbox"
-                          checked={elegidos.has(i.idProducto)}
-                          onChange={() => alternar(i.idProducto)}
+                          checked={elegidos.has(i.clave)}
+                          onChange={() => alternar(i.clave)}
                           className="w-4 h-4 accent-accent"
                         />
                         <span className="min-w-0 flex-1 flex items-center gap-2">
-                          <span className="text-sm truncate">{i.nombre}</span>
+                          {/* Con la marca de fábrica y el sabor: con varios aceites o
+                              varias gelatinas, si no, no se sabe cuál es cuál. */}
+                          <span className="text-sm truncate">
+                            {i.nombre}
+                            {i.marcaFabrica && <span className="text-neutral-500"> ({i.marcaFabrica})</span>}
+                            {i.sabor && <b className="font-semibold text-accent"> — {i.sabor}</b>}
+                          </span>
                           {i.enOferta && (
                             <span className="shrink-0 text-[10px] font-bold text-red-700 bg-red-50 rounded px-1.5 py-0.5">
                               {i.descuento}% OFF
@@ -467,7 +482,7 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
                               className="ml-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white text-xs font-bold px-3 py-2 whitespace-nowrap"
                               title="Tocalo cuando el cartel nuevo ya está en la góndola"
                             >
-                              {marcando === i.idProducto ? "Guardando…" : "Lo puse"}
+                              {marcando === i.clave ? "Guardando…" : "Lo puse"}
                             </button>
                           </span>
                         ) : (
@@ -580,7 +595,7 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
                 onClick={() => {
                   window.print();
                   // Lo impreso queda anotado: lo nuevo sale de «Entraron nuevos».
-                  const ids = aImprimir.map((i) => i.idProducto);
+                  const ids = [...new Set(aImprimir.map((i) => i.idProducto))];
                   startTransition(async () => {
                     await anotarCartelesImpresos(ids);
                     router.refresh();
@@ -743,7 +758,7 @@ function HojaDeCarteles({
           }}
         >
           {hoja.items.map((item) => (
-            <div key={item.idProducto} style={{ display: "grid", placeItems: "center" }}>
+            <div key={item.clave} style={{ display: "grid", placeItems: "center" }}>
               <Cartel item={item} ancho={hoja.impreso.ancho} alto={hoja.impreso.alto} />
             </div>
           ))}
@@ -791,6 +806,7 @@ function Cartel({ item, ancho, alto }: { item: ItemCartel; ancho: number; alto: 
     (item.enOferta ? 3.4 : 0) +
     (renglonArriba ? 3.0 : 0) +
     (largoNombre > 20 ? 8.8 : 4.4) +
+    (item.sabor ? 3.6 : 0) +
     0.8 + 9.7 + // precio de lista
     9.6 + // tira de efectivo
     (item.pesoG != null ? 3.8 : 0);
@@ -883,6 +899,12 @@ function Cartel({ item, ancho, alto }: { item: ItemCartel; ancho: number; alto: 
           {/* La marca de fábrica, después del nombre y el peso (Gonzalo, 2026-11-06). */}
           {item.marcaFabrica && <span style={{ textTransform: "none", fontWeight: 600, whiteSpace: "nowrap" }}> ({item.marcaFabrica})</span>}
         </div>
+        {/* El sabor en su propio renglón, en verde: es lo que distingue un cartel del de al lado. */}
+        {item.sabor && (
+          <div style={{ fontSize: mm(3.2), lineHeight: 1.1, fontWeight: 800, color: "#15803d", textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {item.sabor}
+          </div>
+        )}
       </div>
 
       {/* Un poco de aire fijo: con nombre de dos renglones el precio quedaba pegado. */}

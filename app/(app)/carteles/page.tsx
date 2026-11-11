@@ -24,7 +24,7 @@ export default async function CartelesPage() {
   const traerTareas = (columnas: string) =>
     supabase.from("tareas_etiqueta").select(columnas).in("estado", ["PENDIENTE", "VENCIDA"]).limit(500);
 
-  const [productosConPeso, marcasRes, tareasCompletas, fichasRes, lugaresRes, modulosRes, marcasFabrica, entraron, cartelesImpresos] = await Promise.all([
+  const [productosConPeso, marcasRes, tareasCompletas, fichasRes, lugaresRes, modulosRes, marcasFabrica, entraron, cartelesImpresos, variantesRes] = await Promise.all([
     traerProductos(`${BASE_PRODUCTO},peso_neto_g`),
     supabase.from("marcas").select("id_marca,nombre").eq("estado", "ACTIVA"),
     // Los carteles que quedaron con el precio viejo. La cuenta ya la lleva el
@@ -42,7 +42,16 @@ export default async function CartelesPage() {
     // Lo que entró en la semana y todavía no tiene su cartel: «Entraron nuevos».
     productosQueEntraron().catch(() => new Map<string, string>()),
     cargarImpresos(supabase, PARAMETRO_CARTELES_IMPRESOS).catch(() => ({}) as Record<string, string>),
+    // Los sabores: con más de uno, un cartel por sabor (Gonzalo, 2026-11-11).
+    supabase.from("variantes_producto").select("id_variante,id_producto,nombre,precio_venta,precio_efectivo,orden").eq("estado", "ACTIVO").range(0, 9999),
   ]);
+  type FilaVariante = { id_variante: string; id_producto: string; nombre: string; precio_venta: number | null; precio_efectivo: number | null; orden: number | null };
+  const saboresDe = new Map<string, FilaVariante[]>();
+  for (const v of (variantesRes.data ?? []) as FilaVariante[]) {
+    if (!v.nombre || v.nombre === "Único") continue;
+    saboresDe.set(v.id_producto, [...(saboresDe.get(v.id_producto) ?? []), v]);
+  }
+  for (const lista of saboresDe.values()) lista.sort((a, b) => (a.orden ?? 9999) - (b.orden ?? 9999) || a.nombre.localeCompare(b.nombre, "es"));
   const tipoModulo = new Map(((modulosRes.data ?? []) as { id_modulo: string; tipo: string | null }[]).map((m) => [m.id_modulo, m.tipo ?? "MODULO"]));
   const lugarDe = new Map<string, "GANCHO" | "ESTANTE">();
   for (const l of (lugaresRes.data ?? []) as { id_producto: string; id_modulo: string }[]) {
@@ -144,23 +153,30 @@ export default async function CartelesPage() {
   }
 
   const items: ItemCartel[] = ((productosRes.data ?? []) as unknown as FilaProducto[])
-    .map((p) => {
+    .flatMap((p) => {
+      // Con dos o más sabores, un cartel por sabor; si no, uno por producto.
+      const sabores = saboresDe.get(p.id_producto) ?? [];
+      const variantes: (FilaVariante | null)[] = sabores.length >= 2 ? sabores : [null];
+      return variantes.map((v) => {
       // La cuenta de los dos precios —oferta incluida— vive en lib/precios.ts y
       // la comparten el POS, el tótem y el asesor. Un cartel que diga otra cosa
       // que la caja es peor que no tener cartel.
       // Si el precio espera este cartel para entrar en la caja, el cartel sale
-      // con ese: la caja lo cobra apenas lo marcan como puesto.
+      // con ese: la caja lo cobra apenas lo marcan como puesto. Un sabor con
+      // precio propio usa el suyo.
       const t = tareas.get(p.id_producto);
       const { lista, efectivo } = ambosPrecios(
         {
-          precio_venta: t?.espera?.lista ?? p.precio_venta,
-          precio_efectivo: t?.espera?.efectivo ?? p.precio_efectivo,
+          precio_venta: t?.espera?.lista ?? v?.precio_venta ?? p.precio_venta,
+          precio_efectivo: t?.espera?.efectivo ?? v?.precio_efectivo ?? p.precio_efectivo,
           descuento_porcentaje: p.descuento_porcentaje,
         },
         null
       );
       return {
         idProducto: p.id_producto,
+        clave: v ? `${p.id_producto}:${v.id_variante}` : p.id_producto,
+        sabor: v?.nombre ?? null,
         nombre: p.nombre,
         marca: marcas.get(p.id_marca) ?? null,
         marcaFabrica: marcasFabrica.get(p.id_producto) ?? null,
@@ -169,7 +185,7 @@ export default async function CartelesPage() {
         efectivo,
         // Sin precio de efectivo cargado el cartel mentiría a medias, así que
         // esos no se pueden imprimir hasta que la marca lo cargue.
-        tienePrecioEfectivo: (t?.espera?.efectivo ?? p.precio_efectivo) != null,
+        tienePrecioEfectivo: (t?.espera?.efectivo ?? v?.precio_efectivo ?? p.precio_efectivo) != null,
         enOferta: (p.descuento_porcentaje ?? 0) > 0,
         descuento: p.descuento_porcentaje ?? 0,
         idTarea: t?.idTarea ?? null,
@@ -188,9 +204,10 @@ export default async function CartelesPage() {
         origen: origenes.get(p.id_producto) ?? null,
         lugar: lugarDe.get(p.id_producto) ?? null,
       };
+      });
     })
     .filter((i) => i.lista > 0)
-    .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+    .sort((a, b) => a.nombre.localeCompare(b.nombre, "es") || (a.sabor ?? "").localeCompare(b.sabor ?? "", "es"));
 
   return <CartelesApp items={items} />;
 }
