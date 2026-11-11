@@ -1117,15 +1117,29 @@ export async function analisisPortal(): Promise<AnalisisPortal | null> {
     .sort((a, b) => b.monto - a.monto)
     .slice(0, 6);
 
+  // ===== Desde cuándo pudo venderse cada uno =====
+  // «Sin vender» se cuenta desde que abrió el local (la primera venta) o desde
+  // que entró ese producto, lo que sea más tarde. Antes, sin ninguna venta, se
+  // decía «más de 90 días» al día siguiente de abrir (Animalfit, 2026-11-11).
+  const { data: primeraVenta } = await supabase.from("ventas").select("fecha").eq("estado", "PAGADA").order("fecha", { ascending: true }).limit(1);
+  const apertura = ((primeraVenta?.[0]?.fecha as string | undefined) ?? `${hoyISO}T12:00:00Z`).slice(0, 10);
+  const { data: entradas } = idsVariante.length
+    ? await supabase.from("movimientos_stock").select("id_variante, fecha").in("id_variante", idsVariante).gt("cantidad", 0).order("fecha", { ascending: true }).range(0, 4999)
+    : { data: [] };
+  const entroEl = new Map<string, string>();
+  for (const m of entradas ?? []) if (!entroEl.has(m.id_variante as string)) entroEl.set(m.id_variante as string, (m.fecha as string).slice(0, 10));
+  const diasDesde = (dia: string) => Math.max(0, Math.round((hoy.getTime() - new Date(`${dia}T12:00:00Z`).getTime()) / DIA_MS));
+
   // ===== Alertas =====
   const alertas: AlertaStock[] = [];
   for (const [id, info] of infoVariante) {
     const enStock = stockPorVariante.get(id) ?? 0;
     const porSemana = (unidades28.get(id) ?? 0) / 4;
     const ultima = ultimaVenta.get(id) ?? null;
-    const diasSinVender = ultima
-      ? Math.round((hoy.getTime() - new Date(`${ultima}T12:00:00Z`).getTime()) / DIA_MS)
-      : null;
+    const entro = entroEl.get(id);
+    const disponibleDesde = entro && entro > apertura ? entro : apertura;
+    // Sin ventas: los días que lleva en góndola con el local abierto.
+    const diasSinVender = diasDesde(ultima ?? disponibleDesde);
 
     if (enStock <= 0) continue; // sin stock no hay nada que avisar acá
 
@@ -1145,8 +1159,8 @@ export async function analisisPortal(): Promise<AnalisisPortal | null> {
       continue;
     }
 
-    // Sin ventas en 4 semanas y con mercadería en góndola: está frenado.
-    if (diasSinVender === null || diasSinVender >= 30) {
+    // Sin ventas en 4 semanas, con el local abierto, y con mercadería en góndola: está frenado.
+    if (diasSinVender >= 30) {
       alertas.push({
         producto: info.nombre,
         stock: enStock,
@@ -1190,7 +1204,7 @@ export async function analisisPortal(): Promise<AnalisisPortal | null> {
     acciones.push({
       titulo: `Decidí qué hacer con ${frenado.producto}`,
       detalle:
-        `${frenado.diasSinVender ? `${frenado.diasSinVender} días` : "Más de 90 días"} sin vender, con ` +
+        `${frenado.diasSinVender} días sin vender, con ` +
         `${frenado.stock} unidades ocupando góndola` +
         (frenado.inmovilizado > 0 ? `: son $${Math.round(frenado.inmovilizado).toLocaleString("es-AR")} inmovilizados.` : "."),
       nivel: "MEDIA",
