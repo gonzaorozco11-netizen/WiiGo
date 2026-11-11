@@ -1729,12 +1729,15 @@ export default function AsesorApp({
             />
           )}
           {selectorIdioma("absolute top-5 right-6 xl:right-10")}
-          <div className="relative min-h-full grid content-center px-6 md:px-10 xl:px-14 pt-20 pb-8">
+          {/* En pantallas bajas (la Joog: 1280 × 720) todo se compacta un poco
+              con `[@media(max-height:820px)]` para que el inicio entre entero
+              sin deslizar (Gonzalo, 2026-11-11). */}
+          <div className="relative min-h-full grid content-center px-6 md:px-10 xl:px-14 pt-6 pb-8 [@media(max-height:820px)]:pb-5">
             <div className="w-full max-w-[1600px] mx-auto grid lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] gap-7 xl:gap-10 items-start">
               {/* ---- izquierda: la pregunta y los objetivos ---- */}
-              <div className="grid gap-5 md:gap-6">
+              <div className="grid gap-5 md:gap-6 [@media(max-height:820px)]:gap-4">
                 {/* 5 toques seguidos en el logo: ajustar los bordes de la pantalla. */}
-                <div className="w-[180px] md:w-[230px] xl:w-[270px]" onClick={tocarLogo}>
+                <div className="w-[180px] md:w-[230px] xl:w-[270px] [@media(max-height:820px)]:w-[210px]" onClick={tocarLogo}>
                   <Image
                     src="/wiigo-logo-negro.png"
                     alt="WiiGo — Estaciones de bienestar"
@@ -1747,13 +1750,13 @@ export default function AsesorApp({
                 </div>
                 <div>
                   <h1
-                    className={`${titular.className} font-extrabold text-[clamp(40px,5.2vw,84px)] leading-[.95] tracking-[-.035em] text-[#1f261c]`}
+                    className={`${titular.className} font-extrabold text-[clamp(40px,min(5.2vw,8vh),84px)] leading-[.95] tracking-[-.035em] text-[#1f261c]`}
                   >
                     {t("inicioTitulo1")}
                     <br />
                     <span style={{ color: "#e8743b" }}>{t("inicioTituloAcento")}</span> {t("inicioTitulo2")}
                   </h1>
-                  <p className="mt-3 text-[17px] md:text-[20px] xl:text-[22px] text-[#4d5545] max-w-[40ch] leading-snug">
+                  <p className="mt-3 text-[17px] md:text-[20px] xl:text-[22px] [@media(max-height:820px)]:mt-2 [@media(max-height:820px)]:text-[18px] text-[#4d5545] max-w-[40ch] leading-snug">
                     {gondola.length > 0 ? t("inicioBajada") : t("inicioBajadaSinGondola")}
                   </p>
                 </div>
@@ -1769,7 +1772,7 @@ export default function AsesorApp({
                         <button
                           key={o.id_objetivo}
                           onClick={() => elegirObjetivo(o.id_objetivo)}
-                          className="relative overflow-hidden rounded-[26px] p-4 md:p-5 text-left grid content-between gap-4 min-h-[140px] md:min-h-[165px] xl:min-h-[190px] transition-transform active:scale-[.97]"
+                          className="relative overflow-hidden rounded-[26px] p-4 md:p-5 [@media(max-height:820px)]:p-4 text-left grid content-between gap-4 [@media(max-height:820px)]:gap-2 min-h-[140px] md:min-h-[165px] xl:min-h-[190px] [@media(max-height:820px)]:min-h-0 transition-transform active:scale-[.97]"
                           style={{ background: tono.fondo, color: tono.texto, boxShadow: "0 14px 30px -20px rgba(40,40,20,.55)" }}
                         >
                           <span
@@ -1777,7 +1780,7 @@ export default function AsesorApp({
                             style={{ width: 130, height: 130, right: -34, bottom: -40, background: "rgba(255,255,255,.16)" }}
                           />
                           <span
-                            className="relative w-12 h-12 xl:w-14 xl:h-14 rounded-2xl overflow-hidden grid place-items-center"
+                            className="relative w-12 h-12 xl:w-14 xl:h-14 [@media(max-height:820px)]:w-11 [@media(max-height:820px)]:h-11 rounded-2xl overflow-hidden grid place-items-center"
                             style={{ background: "rgba(255,255,255,.22)" }}
                           >
                             {o.imagen ? (
@@ -1807,29 +1810,6 @@ export default function AsesorApp({
                     </button>
                   )}
                 </div>
-
-                <button
-                  onClick={irAMarcas}
-                  className="w-full rounded-[22px] px-5 py-4 text-left flex items-center transition-transform active:scale-[.98]"
-                  style={{ background: "#22301f", color: "#f5efe3", boxShadow: "0 16px 30px -20px rgba(0,0,0,.6)" }}
-                >
-                  <span className="w-12 h-12 rounded-[15px] grid place-items-center shrink-0 mr-4" style={{ background: "rgba(255,255,255,.12)" }}>
-                    <IconoBolsa className="w-7 h-7" />
-                  </span>
-                  <span className="flex-1 min-w-0">
-                    <span className={`${titular.className} block font-extrabold text-[20px] xl:text-[24px] leading-tight`}>{t("verTodosProductos")}</span>
-                    <span className="block text-[14px] font-semibold opacity-75">
-                      {contarProductos(productos.length, idioma)} · {t("verTodoDesc")}
-                    </span>
-                  </span>
-                  <span
-                    className="w-12 h-12 rounded-full grid place-items-center shrink-0 ml-4 text-[22px] font-extrabold text-white"
-                    style={{ background: "#e8743b" }}
-                    aria-hidden
-                  >
-                    →
-                  </span>
-                </button>
               </div>
 
               {/* ---- derecha: marcas, ofertas, la profesional y el efectivo ---- */}
@@ -1922,6 +1902,32 @@ export default function AsesorApp({
                     </button>
                   </div>
                 )}
+
+                {/* Ver todos, a la derecha y no abajo de los objetivos: así el
+                    inicio entra entero en la pantalla de 1280 × 720 sin deslizar
+                    (Gonzalo, 2026-11-11). */}
+                <button
+                  onClick={irAMarcas}
+                  className="w-full rounded-[22px] px-5 py-4 text-left flex items-center transition-transform active:scale-[.98]"
+                  style={{ background: "#22301f", color: "#f5efe3", boxShadow: "0 16px 30px -20px rgba(0,0,0,.6)" }}
+                >
+                  <span className="w-12 h-12 rounded-[15px] grid place-items-center shrink-0 mr-4" style={{ background: "rgba(255,255,255,.12)" }}>
+                    <IconoBolsa className="w-7 h-7" />
+                  </span>
+                  <span className="flex-1 min-w-0">
+                    <span className={`${titular.className} block font-extrabold text-[20px] xl:text-[24px] leading-tight`}>{t("verTodosProductos")}</span>
+                    <span className="block text-[14px] font-semibold opacity-75">
+                      {contarProductos(productos.length, idioma)} · {t("verTodoDesc")}
+                    </span>
+                  </span>
+                  <span
+                    className="w-12 h-12 rounded-full grid place-items-center shrink-0 ml-4 text-[22px] font-extrabold text-white"
+                    style={{ background: "#e8743b" }}
+                    aria-hidden
+                  >
+                    →
+                  </span>
+                </button>
 
                 {/* Solo cuando hay alguna oferta cargada. */}
                 {productosEnOferta.length > 0 && (
