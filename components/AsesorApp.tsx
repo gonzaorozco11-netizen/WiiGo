@@ -958,6 +958,8 @@ export default function AsesorApp({
     if (toquesLogo.current.length >= 5) {
       toquesLogo.current = [];
       setCalibrar(true);
+      // Con los datos del aparato a la vista (medida real, ancho de la página).
+      setDiagnostico(datosDelAparato());
     }
   }
   function moverBorde(lado: "derecha" | "abajo", cuanto: number) {
@@ -1675,7 +1677,14 @@ export default function AsesorApp({
               </span>
             </div>
           ))}
-          <button onClick={() => setCalibrar(false)} className="mt-2 w-full h-12 rounded-full text-white font-bold" style={{ background: "#22301f" }}>
+          <button
+            onClick={() => {
+              setCalibrar(false);
+              setDiagnostico(null);
+            }}
+            className="mt-2 w-full h-12 rounded-full text-white font-bold"
+            style={{ background: "#22301f" }}
+          >
             Listo
           </button>
         </div>
@@ -1688,6 +1697,7 @@ export default function AsesorApp({
           <div>Ancho de la página: {diagnostico.anchoPagina}px</div>
           <div>Placa de video: {diagnostico.placaVideo}</div>
           <div>Modo liviano: {diagnostico.liviano ? "sí" : "no"}</div>
+          <div>Se pasa del borde: {diagnostico.seSalen}</div>
           <div>Navegador: {diagnostico.navegador}</div>
         </div>
       )}

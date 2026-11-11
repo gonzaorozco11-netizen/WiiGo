@@ -40,13 +40,23 @@ export function esPlacaLiviana(): boolean {
 
 /** Datos del aparato para el panel de diagnóstico (?diagnostico=1). */
 export function datosDelAparato() {
+  // Lo que se pasa del borde derecho: los más grandes primero, para encontrar
+  // qué empuja la página (pasaba en el Joog con la tarjeta de las marcas).
+  const ancho = document.documentElement.clientWidth;
+  const seSalen = [...document.querySelectorAll<HTMLElement>("body *")]
+    .map((el) => ({ el, r: el.getBoundingClientRect() }))
+    .filter(({ r }) => r.width > 0 && r.right > ancho + 1)
+    .sort((a, b) => b.r.width - a.r.width)
+    .slice(0, 4)
+    .map(({ el, r }) => `${el.tagName.toLowerCase()}.${String(el.className).slice(0, 50)} → ${Math.round(r.right)}px`);
   return {
     navegador: navigator.userAgent,
     placaVideo: placaDeVideo() || "—",
-    pantalla: `${window.innerWidth} × ${window.innerHeight} (zoom ${window.devicePixelRatio})`,
+    pantalla: `${window.innerWidth} × ${window.innerHeight} (zoom ${window.devicePixelRatio}) · visible ${Math.round(window.visualViewport?.width ?? 0)} · documento ${ancho}`,
     pantallaFisica: `${screen.width} × ${screen.height}`,
     anchoPagina: document.documentElement.scrollWidth,
     liviano: esPlacaLiviana(),
+    seSalen: seSalen.length ? seSalen.join(" | ") : "nada",
   };
 }
 
