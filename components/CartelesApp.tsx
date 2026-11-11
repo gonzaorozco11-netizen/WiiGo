@@ -726,11 +726,28 @@ function Cartel({ item, ancho, alto }: { item: ItemCartel; ancho: number; alto: 
   // Todo se mide contra el alto del cartel: el mismo diseño tiene que entrar en
   // uno de 40 mm y en uno de 30 sin recortar el nombre a la mitad, y aprovechar
   // el lugar cuando el cartel es grande en vez de dejar medio blanco.
-  const k = Math.max(0.55, Math.min(1.8, alto / 40));
   // Con la marca de fábrica el renglón crece: se cuenta para achicar la letra a tiempo.
   const largoNombre = item.nombre.length + (item.marcaFabrica ? item.marcaFabrica.length + 3 : 0);
   const nombreLargo = largoNombre > 34;
   const muyLargo = largoNombre > 48;
+  // En Animalfit el renglón de arriba decía «ANIMALFIT» en todos: la marca que
+  // le importa al cliente ya va en el nombre («… - STAR NUTRITION») (Gonzalo, 2026-11-11).
+  const conMarca = !/animal\s*fit/i.test(item.marca ?? "");
+  const renglonArriba = conMarca || Boolean(item.origen);
+  // En los grandes (ganchos, 65 × 40) todo se mide contra el alto, como siempre.
+  // En los bajos (islas y Animalfit, 60 × 30) eso los dejaba chiquitos: se
+  // agranda hasta llenar el alto con lo que de verdad lleva ese cartel
+  // (Gonzalo, 2026-11-11: «se ven muy chiquitos»). Los números son lo que ocupa
+  // cada renglón con k = 1, en mm.
+  const necesario =
+    1.8 + 1.6 + // aire arriba y abajo
+    (item.enOferta ? 3.4 : 0) +
+    (renglonArriba ? 3.0 : 0) +
+    (largoNombre > 20 ? 8.8 : 4.4) +
+    0.8 + 9.7 + // precio de lista
+    9.6 + // tira de efectivo
+    (item.pesoG != null ? 3.8 : 0);
+  const k = alto < 34 ? Math.max(0.55, Math.min(1.1, (alto - 0.5) / necesario)) : Math.max(0.55, Math.min(1.8, alto / 40));
   const mm = (n: number) => `${(n * k).toFixed(2)}mm`;
   // Los precios lo más grande que entra (Gonzalo, 2026-11-07: «un poco más
   // grande así se ve bien claro todo»). Achican un poco con la franja de
@@ -779,7 +796,7 @@ function Cartel({ item, ancho, alto }: { item: ItemCartel; ancho: number; alto: 
       )}
 
       <div>
-        <div
+        {renglonArriba && <div
           style={{
             fontSize: mm(2.3),
             letterSpacing: ".11em",
@@ -795,8 +812,9 @@ function Cartel({ item, ancho, alto }: { item: ItemCartel; ancho: number; alto: 
           {/* Texto y no banderita: Windows no dibuja los emojis de banderas y
               en la impresión saldrían dos letras sueltas. */}
           {item.origen && <span style={{ order: 2, color: "#6b7178", whiteSpace: "nowrap" }}>{item.origen}</span>}
-          {item.marca ??" "}
-        </div>
+          {/* Sin la marca (Animalfit) queda el lugar vacío para que el origen siga a la derecha. */}
+          {conMarca && item.marca ? item.marca :" "}
+        </div>}
         <div
           style={{
             // Más grande (Gonzalo, 2026-11-07: «lo mismo que el nombre»);
