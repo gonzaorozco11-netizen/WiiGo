@@ -12,6 +12,7 @@ import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import PantallaBloqueada from "@/components/PantallaBloqueada";
 import StockApp from "@/components/StockApp";
 import { calcularCobertura, DIAS_MINIMOS, type Cobertura } from "@/lib/cobertura";
+import { cargarMarcasFabrica, nombresConMarca } from "@/lib/marcaFabrica";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +24,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
 
   const supabase = getSupabaseServerClient();
 
-  const [localesRes, variantesRes, productosRes, marcasRes, subcategoriasRes, stockRes, movimientosRes] =
+  const [localesRes, variantesRes, productosRes, marcasRes, subcategoriasRes, stockRes, movimientosRes, marcasFabrica] =
     await Promise.all([
       supabase.from("locales").select("*").eq("estado", "ACTIVO").order("nombre", { ascending: true }),
       supabase.from("variantes_producto").select("*").eq("estado", "ACTIVO"),
@@ -32,6 +33,9 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
       supabase.from("subcategorias").select("*"),
       supabase.from("stock").select("*"),
       supabase.from("movimientos_stock").select("*").order("fecha", { ascending: false }).limit(50),
+      // «(Doña Juana)» al lado del nombre: con dos aceitunas iguales de marcas
+      // distintas no se sabía cuál era cuál (Gonzalo, 2026-11-11). Solo para mostrar.
+      cargarMarcasFabrica(supabase).catch(() => new Map<string, string>()),
     ]);
 
   const error =
@@ -77,7 +81,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
       diasMinimos={DIAS_MINIMOS}
       locales={(localesRes.data ?? []) as Local[]}
       variantes={(variantesRes.data ?? []) as VarianteProducto[]}
-      productos={(productosRes.data ?? []) as Producto[]}
+      productos={nombresConMarca((productosRes.data ?? []) as Producto[], marcasFabrica)}
       marcas={(marcasRes.data ?? []) as Marca[]}
       subcategorias={(subcategoriasRes.data ?? []) as Subcategoria[]}
       stock={(stockRes.data ?? []) as Stock[]}
