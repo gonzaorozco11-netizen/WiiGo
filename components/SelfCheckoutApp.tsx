@@ -1456,6 +1456,7 @@ export default function SelfCheckoutApp({
   // rearmar la página, y es lo único que la necesita.
   const [hayCatalogoNuevo, setHayCatalogoNuevo] = useState(false);
   const idsCargados = useMemo(() => new Set(variantes.map((v) => v.id_variante)), [variantes]);
+  const productosCargados = useMemo(() => new Set(productos.map((p) => p.id_producto)), [productos]);
 
   useEffect(() => {
     let cancelado = false;
@@ -1468,9 +1469,13 @@ export default function SelfCheckoutApp({
         // productos activos ya no es la que se cargó al abrir, hay catálogo
         // nuevo. Comparar tamaños no alcanza — un alta y una baja a la vez
         // dejarían el mismo total.
+        // También un producto que ya existía y recién ahora tiene precio: al
+        // abrir el tótem no vino (sin precio no se muestra) y si no, recién
+        // aparecía con la recarga de las 4 (las aceitunas Doña Juana, 2026-11-11).
         const distinto =
           p.variantes.length !== idsCargados.size ||
-          p.variantes.some((v) => !idsCargados.has(v.idVariante));
+          p.variantes.some((v) => !idsCargados.has(v.idVariante)) ||
+          p.productos.some((x) => (x.precio ?? 0) > 0 && !productosCargados.has(x.idProducto));
         if (distinto) setHayCatalogoNuevo(true);
 
         setPreciosEnVivo((prev) => {
@@ -1505,7 +1510,7 @@ export default function SelfCheckoutApp({
       cancelado = true;
       clearInterval(id);
     };
-  }, [idsCargados]);
+  }, [idsCargados, productosCargados]);
 
   // La recarga completa ya no va por reloj.
   //
