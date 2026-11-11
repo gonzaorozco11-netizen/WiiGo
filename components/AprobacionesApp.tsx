@@ -44,6 +44,63 @@ function fechaHora(iso: string | null) {
   });
 }
 
+/**
+ * Un producto nuevo de una marca: todo lo que mandó, para aprobarlo sin abrir
+ * nada más (Gonzalo, 2026-11-11: «me debería decir el producto, con la foto y
+ * todo», antes salía solo «Producto nuevo · Animalfit»).
+ */
+function DetalleProductoNuevo({ datos }: { datos: Record<string, unknown> }) {
+  const texto = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+  const fotos = [texto(datos.imagen), ...(Array.isArray(datos.fotosExtra) ? datos.fotosExtra.map(texto) : [])].filter(Boolean) as string[];
+  const variantes = Array.isArray(datos.variantes)
+    ? (datos.variantes as unknown[])
+        .map((v) => (typeof v === "string" ? v : texto((v as { nombre?: unknown })?.nombre)))
+        .filter(Boolean)
+    : [];
+  const ficha = (datos.ficha && typeof datos.ficha === "object" ? datos.ficha : {}) as Record<string, unknown>;
+  const datosFicha = (
+    [
+      ["porcion", "Porción"],
+      ["kcal_100g", "kcal c/100 g"],
+      ["proteinas", "Proteínas (g)"],
+      ["ingredientes", "Ingredientes"],
+      ["micronutrientes", "Micronutrientes"],
+    ] as const
+  ).filter(([k]) => ficha[k] !== null && ficha[k] !== undefined && String(ficha[k]).trim() !== "");
+  const num = (v: unknown) => (typeof v === "number" ? v : null);
+
+  return (
+    <div className="mt-2 flex flex-wrap gap-4">
+      {fotos.length > 0 ? (
+        <div className="flex gap-2 shrink-0">
+          {fotos.slice(0, 3).map((f) => (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img key={f} src={f} alt="" className="w-28 h-28 rounded-xl object-contain bg-white border border-neutral-200" />
+          ))}
+        </div>
+      ) : (
+        <span className="w-28 h-28 rounded-xl grid place-items-center text-xs text-neutral-400 border border-dashed border-neutral-300">sin foto</span>
+      )}
+      <div className="min-w-0 flex-1 space-y-1.5">
+        <p className="text-lg font-bold text-neutral-900 leading-tight">{texto(datos.nombre) ?? "Sin nombre"}</p>
+        <p className="text-sm text-neutral-700 tabular-nums">
+          {num(datos.precio) != null && <>Tarjeta <b>{pesos(num(datos.precio))}</b></>}
+          {num(datos.precioEfectivo) != null && <> · Efectivo <b>{pesos(num(datos.precioEfectivo))}</b></>}
+          {num(datos.costo) != null && <> · Costo {pesos(num(datos.costo))}</>}
+        </p>
+        {variantes.length > 0 && <p className="text-sm text-neutral-700">Sabores / variantes: {variantes.join(" · ")}</p>}
+        {texto(datos.descripcion) && <p className="text-sm text-neutral-600 leading-relaxed max-w-2xl">{texto(datos.descripcion)}</p>}
+        {datosFicha.length > 0 && (
+          <p className="text-xs text-neutral-500 leading-relaxed max-w-2xl whitespace-pre-line">
+            {datosFicha.map(([k, label]) => `${label}: ${String(ficha[k]).replace(/\n/g, ", ")}`).join(" · ")}
+          </p>
+        )}
+        <p className="text-xs text-neutral-400">{texto(datos.codigoBarras) ? `Código ${texto(datos.codigoBarras)}` : "Sin código de barras cargado"}</p>
+      </div>
+    </div>
+  );
+}
+
 function TarjetaSolicitud({
   s,
   esAdmin,
@@ -194,6 +251,8 @@ function TarjetaSolicitud({
             })}
         </div>
       )}
+
+      {s.tipo === "PRODUCTO_NUEVO" && <DetalleProductoNuevo datos={s.datos} />}
 
       {(s.tipo === "DESCRIPCION" || s.tipo === "NOMBRE") && (
         <div className="sol-texto">

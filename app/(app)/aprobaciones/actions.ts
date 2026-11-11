@@ -326,7 +326,9 @@ export async function listarTareasEtiqueta(idLocal?: string): Promise<TareaEtiqu
     tipo: t.tipo as string,
     venceEl: t.vence_el as string,
     // Vencida = el precio ya cambió y la etiqueta no. Acá sí hay riesgo real.
-    vencida: new Date(t.vence_el as string).getTime() < ahora,
+    // No cuenta lo nuevo (no hay cartel viejo a la vista) ni lo de WiiGo que
+    // todavía espera el cartel (la caja sigue con el precio viejo).
+    vencida: new Date(t.vence_el as string).getTime() < ahora && t.precio_anterior != null && !t.aplicar_al_poner,
     entraMasTarde: !t.aplicar_al_poner && new Date(t.vence_el as string).getTime() > ahora,
   }));
 }
