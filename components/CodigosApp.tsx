@@ -750,7 +750,9 @@ function Imprimir({
           unidadesIniciales={unidades}
           alMarcar={alMarcar}
           pie={pie}
-          onYaTienen={modo === "todos" ? (ids) => anotarImpresos(ids) : undefined}
+          // También en «Para imprimir ahora»: lo que ya se imprimió y no se
+          // confirmó sale de la lista (Gonzalo, 2026-11-11, los 3 de Fruppi).
+          onYaTienen={(ids) => anotarImpresos(ids)}
           abrirTodo={modo === "ahora"}
           extraFila={modo === "todos" ? (i) => <TipoDeCodigo item={i} onEscanear={onEscanear} onAviso={onAviso} /> : undefined}
           cabeceraMarca={
