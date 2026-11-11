@@ -558,6 +558,8 @@ export type ProductoConMargen = {
   subcategoria: string;
   /** Unidades en góndola, sumando todas las variantes del producto. */
   stock: number;
+  /** Con varios sabores, cuánto hay de cada uno (Gelatina: Durazno 5 · Frutilla 5). */
+  porSabor: { nombre: string; stock: number }[];
   /** Debajo de esto, WiiGo repone. Es el que avisa que queda poco. */
   stockMinimo: number;
   /** La cuenta de una venta, medio por medio. Vacío si el producto no tiene precio. */
@@ -574,6 +576,8 @@ export type MisCostosPortal = {
    * queda a la marca, pero no se guarda.
    */
   soloLectura: boolean;
+  /** false si la marca eligió no informar su costo (MARCAS_SIN_COSTO): no se le reclama. */
+  pideCosto: boolean;
 };
 
 export async function misCostosPortal(): Promise<MisCostosPortal | null> {
@@ -606,16 +610,18 @@ export async function misCostosPortal(): Promise<MisCostosPortal | null> {
   const { data: variantes } = idsProducto.length
     ? await supabase
         .from("variantes_producto")
-        .select("id_variante, id_producto, stock_minimo")
+        .select("id_variante, id_producto, stock_minimo, nombre, estado")
         .in("id_producto", idsProducto)
     : { data: [] };
 
   const productoDeVariante = new Map<string, string>();
   const minimoPorProducto = new Map<string, number>();
+  const saboresDe = new Map<string, { id: string; nombre: string }[]>();
   for (const v of variantes ?? []) {
     const idP = v.id_producto as string;
     productoDeVariante.set(v.id_variante as string, idP);
     minimoPorProducto.set(idP, Math.max(minimoPorProducto.get(idP) ?? 0, (v.stock_minimo as number) ?? 0));
+    if (v.estado === "ACTIVO") saboresDe.set(idP, [...(saboresDe.get(idP) ?? []), { id: v.id_variante as string, nombre: (v.nombre as string) ?? "" }]);
   }
 
   const idsVariante = [...productoDeVariante.keys()];
@@ -624,10 +630,13 @@ export async function misCostosPortal(): Promise<MisCostosPortal | null> {
     : { data: [] };
 
   const stockPorProducto = new Map<string, number>();
+  const stockPorVariante = new Map<string, number>();
   for (const s of stock ?? []) {
     const idP = productoDeVariante.get(s.id_variante as string);
     if (idP) stockPorProducto.set(idP, (stockPorProducto.get(idP) ?? 0) + ((s.cantidad as number) ?? 0));
+    stockPorVariante.set(s.id_variante as string, (stockPorVariante.get(s.id_variante as string) ?? 0) + ((s.cantidad as number) ?? 0));
   }
+  const pideCosto = !(await marcaNoInformaCosto(supabase, sesion.idMarca).catch(() => false));
 
   const lista: ProductoConMargen[] = (productos ?? []).map((p) => {
     const id = p.id_producto as string;
@@ -643,6 +652,11 @@ export async function misCostosPortal(): Promise<MisCostosPortal | null> {
       nombreQuienCargo: c?.nombreQuienCargo ?? null,
       subcategoria: nombreSub.get(p.id_subcategoria as string) ?? SIN_SUBCATEGORIA,
       stock: stockPorProducto.get(id) ?? 0,
+      // «Único» no es un sabor: solo se detalla cuando hay más de uno.
+      porSabor:
+        (saboresDe.get(id) ?? []).length > 1
+          ? (saboresDe.get(id) ?? []).map((v) => ({ nombre: v.nombre, stock: stockPorVariante.get(v.id) ?? 0 }))
+          : [],
       stockMinimo: minimoPorProducto.get(id) ?? 0,
       porMedio: precio > 0 ? simularMargen({ precio, costo: c?.costo ?? null, marca, tasas }) : [],
     };
@@ -650,9 +664,10 @@ export async function misCostosPortal(): Promise<MisCostosPortal | null> {
 
   return {
     productos: lista,
-    sinCosto: lista.filter((p) => p.costo == null).length,
+    sinCosto: pideCosto ? lista.filter((p) => p.costo == null).length : 0,
     sinStock: lista.filter((p) => p.stock < p.stockMinimo || p.stock === 0).length,
     soloLectura: sesion.soloLectura,
+    pideCosto,
   };
 }
 

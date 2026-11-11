@@ -192,9 +192,11 @@ export default function PortalMisProductos({ datos }: { datos: MisCostosPortal }
                 />
               </div>
               <div className="pestanas" role="group" aria-label="Filtrar">
-                <Pestana activa={filtro} valor="falta" onClick={setFiltro} n={datos.sinCosto}>
-                  Falta el costo
-                </Pestana>
+                {datos.pideCosto && (
+                  <Pestana activa={filtro} valor="falta" onClick={setFiltro} n={datos.sinCosto}>
+                    Falta el costo
+                  </Pestana>
+                )}
                 <Pestana activa={filtro} valor="sinstock" onClick={setFiltro} n={datos.sinStock}>
                   Sin stock
                 </Pestana>
@@ -310,7 +312,7 @@ export default function PortalMisProductos({ datos }: { datos: MisCostosPortal }
                 )}{" "}
                 Tocá el nombre de un producto para ver la cuenta completa.
               </span>
-              <span>{datos.sinCosto > 0 ? `Te faltan ${datos.sinCosto}` : "¡Están todos!"}</span>
+              {datos.pideCosto && <span>{datos.sinCosto > 0 ? `Te faltan ${datos.sinCosto}` : "¡Están todos!"}</span>}
             </div>
 
             {datos.sinCosto > 0 && (
@@ -356,14 +358,26 @@ function Pestana({
     Es el dato por el que una marca entra al portal: lo que no está en la
     góndola no se vende. */
 function Stock({ p }: { p: ProductoConMargen }) {
+  // Con varios sabores, cuánto hay de cada uno: «10 u.» solo no le dice a la
+  // marca qué sabor mandar (Gonzalo, 2026-11-11, Gelatina de Granger).
+  const sabores =
+    p.porSabor.length > 0 ? (
+      <small style={{ display: "block", whiteSpace: "normal" }}>{p.porSabor.map((s) => `${s.nombre} ${s.stock}`).join(" · ")}</small>
+    ) : null;
   if (p.stock === 0) return <span className="stock-agotado">sin stock</span>;
   if (p.stock < p.stockMinimo)
     return (
       <span className="stock bajo">
         {p.stock} u.<small>queda poco</small>
+        {sabores}
       </span>
     );
-  return <span className="stock">{p.stock} u.</span>;
+  return (
+    <span className="stock">
+      {p.stock} u.
+      {sabores}
+    </span>
+  );
 }
 
 function Fila({
