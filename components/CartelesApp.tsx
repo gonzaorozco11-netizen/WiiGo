@@ -52,10 +52,11 @@ const SIN_MARCA = "Sin marca";
  * de escribir la medida a mano.
  */
 const MEDIDAS = [
-  // El porta precios que compró el local ("6 cm × 35 mm", paquete de 100): islas,
-  // estantería y todo lo que no va en gancho. Medido en Chrome: con 1 mm de
-  // aire por lado un precio de seis cifras y un nombre de dos renglones
-  // entran sin cortarse.
+  // El portaprecios de las islas y de Animalfit: la ventanita mide 6 cm por un
+  // poco menos de 3 (Gonzalo, 2026-11-11: los de 60 × 35 quedaban grandes).
+  // Con 1 mm de aire por lado sale de 58 × 28.
+  { id: "60x30", nombre: "60 × 30 mm (islas y Animalfit)", ancho: 60, alto: 30 },
+  // El que decía el paquete ("6 cm × 35 mm"), antes de medirlo en el local.
   { id: "60x35", nombre: "60 × 35 mm", ancho: 60, alto: 35 },
   // El portaprecio de los blisteros (ganchos de la pared), 40 × 65 mm (Gonzalo, 2026-11-05).
   { id: "65x40", nombre: "65 × 40 mm (blisteros)", ancho: 65, alto: 40 },
@@ -70,7 +71,7 @@ const MEDIDAS = [
 
 /** "Según el lugar": cada cartel con la medida del portaprecio donde va. */
 const MEDIDA_GANCHO = { ancho: 65, alto: 40 };
-const MEDIDA_ESTANTE = { ancho: 60, alto: 35 };
+const MEDIDA_ESTANTE = { ancho: 60, alto: 30 };
 const SEGUN_LUGAR = "lugar";
 
 type Medida = { ancho: number; alto: number };
@@ -134,7 +135,7 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
   const visibles = modo === "cambiaron" ? pendientes : imprimibles;
 
   const [medida, setMedida] = useState<Medida>({ ancho: MEDIDAS[0].ancho, alto: MEDIDAS[0].alto });
-  // Arranca "según el lugar": los de gancho salen para el blistero y el resto de 60 × 35 (2026-11-05).
+  // Arranca "según el lugar": los de gancho salen para el blistero y el resto de 60 × 30 (2026-11-11).
   const [medidaId, setMedidaId] = useState<string>(SEGUN_LUGAR);
   // 1 mm de aire por lado: el papel entra sin quedar justo en el portaprecio.
   const [aire, setAire] = useState(1);

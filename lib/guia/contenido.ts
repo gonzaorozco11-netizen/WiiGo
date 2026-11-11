@@ -127,7 +127,7 @@ export const GUIAS: Guia[] = [
     rutas: ["/carteles", "/ficha-asistencia"],
     pasos: [
       "Entrá a <b>Carteles</b> e imprimí los pendientes. Para imprimir solo algunos: <b>Destildar todo</b> y después buscá el producto, elegí la subcategoría o tildá la marca entera. Lo que marcás queda marcado aunque cambies la búsqueda.",
-      "Con la medida en <b>Según el lugar en la góndola</b>, cada cartel sale para su portaprecio: los de los ganchos de la pared (blisteros) de <b>65 × 40 mm</b> y los de las islas, la estantería y el resto de <b>60 × 35 mm</b>, en hojas separadas.",
+      "Con la medida en <b>Según el lugar en la góndola</b>, cada cartel sale para su portaprecio: los de los ganchos de la pared (blisteros) de <b>65 × 40 mm</b> y los de las islas, Animalfit y el resto de <b>60 × 30 mm</b>, en hojas separadas.",
       "Cada vez que ponés uno en la góndola, tocá <b>Lo puse</b> en ese producto. Si imprimiste toda la góndola de una vez, cuando estén todos puestos tocá <b>Ya puse todos los que imprimí</b>.",
       "El precio nuevo empieza a cobrarse <b>recién ahí</b>: en la caja, el totem y la pantalla asesora.",
       "Si arriba de la pantalla aparece una <b>franja roja</b>, una marca cambió el precio y la caja ya cobra el nuevo: tocá <b>Ir a Carteles</b> y cambialos en ese momento. La franja no se cierra hasta que los pongas.",

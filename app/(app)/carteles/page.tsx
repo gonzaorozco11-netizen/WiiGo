@@ -32,7 +32,7 @@ export default async function CartelesPage() {
     // El país de origen de la ficha del asesor: sale chiquito en el cartel.
     supabase.from("ficha_producto").select("id_producto,origen"),
     // Dónde está cada producto en la góndola: en los ganchos de la pared el
-    // portaprecio del blistero es de 65 × 40; en el resto, de 60 × 35 (2026-11-05).
+    // portaprecio del blistero es de 65 × 40; en el resto, de 60 × 30 (2026-11-11).
     supabase.from("gondola_lugares").select("id_producto,id_modulo"),
     supabase.from("gondola_modulos").select("id_modulo,tipo"),
     // «(Entre Nuts)» después del nombre y el peso de lo que viene envasado de fábrica (lib/marcaFabrica.ts).
