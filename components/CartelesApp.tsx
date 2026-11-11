@@ -6,6 +6,7 @@ import { anotarCartelesImpresos, marcarCartelesPuestos } from "@/app/(app)/carte
 import { pesoTexto, precioPorKilo } from "@/lib/rotulado";
 import { nombreBase } from "@/lib/nombreProducto";
 import FiltroSeleccion, { coincide, subcategoriasDe } from "@/components/FiltroSeleccion";
+import PestanasEtiquetas from "@/components/PestanasEtiquetas";
 
 export type ItemCartel = {
   idProducto: string;
@@ -147,17 +148,23 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
     () => imprimibles.filter((i) => i.nuevoEl).sort((a, b) => (b.nuevoEl ?? "").localeCompare(a.nuevoEl ?? "")),
     [imprimibles]
   );
-  const [modo, setModo] = useState<"cambiaron" | "nuevos" | "todos">(
-    pendientes.length > 0 ? "cambiaron" : nuevos.length > 0 ? "nuevos" : "todos"
-  );
-  const visibles = modo === "cambiaron" ? pendientes : modo === "nuevos" ? nuevos : imprimibles;
+  // Dos partes, igual que Códigos (Gonzalo, 2026-11-11: «que sea fácil»):
+  // «Para cambiar ahora» (los que cambiaron de precio, primero el más viejo,
+  // y después lo nuevo sin cartel) y «Todos los productos», para reimprimir.
+  const nuevosSinCambio = useMemo(() => {
+    const conCambio = new Set(pendientes.map((i) => i.clave));
+    return nuevos.filter((i) => !conCambio.has(i.clave));
+  }, [pendientes, nuevos]);
+  const paraAhora = useMemo(() => [...pendientes, ...nuevosSinCambio], [pendientes, nuevosSinCambio]);
+  const [modo, setModo] = useState<"ahora" | "todos">(paraAhora.length > 0 ? "ahora" : "todos");
+  const visibles = modo === "ahora" ? paraAhora : imprimibles;
 
   const [medida, setMedida] = useState<Medida>({ ancho: MEDIDAS[0].ancho, alto: MEDIDAS[0].alto });
   // Arranca "según el lugar": los de gancho salen para el blistero y el resto de 60 × 30 (2026-11-11).
   const [medidaId, setMedidaId] = useState<string>(SEGUN_LUGAR);
   // 1 mm de aire por lado: el papel entra sin quedar justo en el portaprecio.
   const [aire, setAire] = useState(1);
-  const [elegidos, setElegidos] = useState<Set<string>>(() => deEntrada(visibles));
+  const [elegidos, setElegidos] = useState<Set<string>>(() => (modo === "ahora" ? deEntrada(visibles) : new Set()));
   // Buscar y filtrar solo achica lo que se ve: lo marcado se imprime igual.
   const [busqueda, setBusqueda] = useState("");
   const [subcategoria, setSubcategoria] = useState("");
@@ -196,14 +203,14 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
       m.get(k)!.push(i);
     }
     // Con los que cambiaron, primero la marca que tiene el pedido más viejo.
-    if (modo === "cambiaron") return [...m.entries()].sort((a, b) => (a[1][0].pedidoEl ?? "").localeCompare(b[1][0].pedidoEl ?? ""));
+    if (modo === "ahora") return [...m.entries()].sort((a, b) => (a[1][0].pedidoEl ?? "~").localeCompare(b[1][0].pedidoEl ?? "~"));
     return [...m.entries()].sort((a, b) => b[1].length - a[1].length);
   }, [mostrados, modo]);
 
-  function cambiarModo(nuevo: "cambiaron" | "nuevos" | "todos") {
+  function cambiarModo(nuevo: "ahora" | "todos") {
     setModo(nuevo);
-    const lista = nuevo === "cambiaron" ? pendientes : nuevo === "nuevos" ? nuevos : imprimibles;
-    setElegidos(deEntrada(lista));
+    // En «Todos» arranca destildado: se elige qué reimprimir.
+    setElegidos(nuevo === "ahora" ? deEntrada(paraAhora) : new Set());
     setConfirmarTodos(false);
   }
 
@@ -263,6 +270,7 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
   return (
     <div className="max-w-5xl mx-auto">
       <div className="print:hidden">
+        <PestanasEtiquetas actual="carteles" />
         <h1 className="text-2xl font-semibold text-neutral-900">Carteles de góndola</h1>
         <p className="text-sm text-neutral-500 mt-1 mb-4">
           {imprimibles.length} productos con los dos precios cargados
@@ -297,15 +305,15 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
           </div>
         )}
 
-        {(pendientes.length > 0 || nuevos.length > 0) && (
+        {(
           <div className="inline-flex flex-wrap gap-1 bg-neutral-100 rounded-xl p-1 mb-4">
             {(
               [
-                ...(pendientes.length > 0
-                  ? ([["cambiaron", `Cambiaron de precio · ${listos.length}${pendientes.length > listos.length ? ` (+${pendientes.length - listos.length} más tarde)` : ""}`]] as const)
-                  : []),
-                ...(nuevos.length > 0 ? ([["nuevos", `Entraron nuevos · ${nuevos.length}`]] as const) : []),
-                ["todos", `Toda la góndola · ${imprimibles.length}`],
+                [
+                  "ahora",
+                  `Para cambiar ahora · ${listos.length + nuevosSinCambio.length}${pendientes.length > listos.length ? ` (+${pendientes.length - listos.length} más tarde)` : ""}`,
+                ],
+                ["todos", `Todos los productos · ${imprimibles.length}`],
               ] as const
             ).map(([id, texto]) => (
               <button
@@ -323,40 +331,43 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
         )}
 
         <p className="text-xs text-neutral-500 mb-3 leading-relaxed max-w-2xl">
-          {modo === "cambiaron"
-            ? "Los carteles que quedaron con el precio viejo puesto. Son los urgentes: mientras el cartel diga una cosa y la caja otra, hay que respetar el cartel."
-            : modo === "nuevos"
-              ? "Lo que entró esta semana (por Recepción o Fraccionar) y todavía no tiene su cartel. Al imprimirlo sale de esta lista. Si alguno ya lo tiene puesto, marcalo y tocá «Ya tienen cartel»."
-              : "Todos los productos que pueden llevar cartel: acá reimprimís el que quieras, cuando quieras. Los que no tienen precio en efectivo no aparecen."}
+          {modo === "ahora" ? (
+            <>
+              Primero los que <b>cambiaron de precio</b> en el último cierre de turno (13:00 o 21:00), del más viejo al más nuevo: mientras el cartel
+              diga una cosa y la caja otra, hay que respetar el cartel. Después, lo <b>nuevo</b> que entró por Recepción o Fraccionar y todavía no
+              tiene cartel.
+            </>
+          ) : (
+            "Todos los productos que pueden llevar cartel: acá reimprimís el que quieras, cuando quieras. Los que no tienen precio en efectivo no aparecen."
+          )}
         </p>
 
-        {modo === "nuevos" && aImprimir.length > 0 && (
+        {modo === "ahora" && aImprimir.some((i) => !i.idTarea) && (
           <button
             type="button"
             disabled={enviando}
-            onClick={() =>
+            onClick={() => {
+              const soloNuevos = aImprimir.filter((i) => !i.idTarea);
               startTransition(async () => {
-                const r = await anotarCartelesImpresos([...new Set(aImprimir.map((i) => i.idProducto))]);
+                const r = await anotarCartelesImpresos([...new Set(soloNuevos.map((i) => i.idProducto))]);
                 if (r.error) setAviso(r.error);
                 else {
-                  setAviso(`Listo: ${aImprimir.length === 1 ? "1 producto sale" : `${aImprimir.length} productos salen`} de «Entraron nuevos».`);
+                  setAviso(`Listo: ${soloNuevos.length === 1 ? "1 producto nuevo sale" : `${soloNuevos.length} productos nuevos salen`} de la lista.`);
                   router.refresh();
                 }
-              })
-            }
+              });
+            }}
             className="mb-3 rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-800 px-3 py-1.5 text-sm font-semibold hover:bg-emerald-100 disabled:opacity-40"
           >
-            ✓ Ya tienen cartel ({aImprimir.length})
+            ✓ Los nuevos marcados ya tienen cartel ({aImprimir.filter((i) => !i.idTarea).length})
           </button>
         )}
 
         {visibles.length === 0 ? (
           <p className="text-sm text-neutral-500 py-16 text-center">
-            {modo === "cambiaron"
-              ? "Ningún cartel quedó con el precio viejo. Está todo al día."
-              : modo === "nuevos"
-                ? "Todo lo que entró ya tiene su cartel."
-                : "Todavía no hay productos con los dos precios cargados."}
+            {modo === "ahora"
+              ? "No hay carteles para cambiar: los precios están al día y todo lo que entró tiene su cartel."
+              : "Todavía no hay productos con los dos precios cargados."}
           </p>
         ) : (
           <>
@@ -451,7 +462,10 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
                             </span>
                           )}
                         </span>
-                        {modo === "cambiaron" && i.idTarea ? (
+                        {modo === "ahora" && !i.idTarea && i.nuevoEl && (
+                          <span className="shrink-0 text-[10px] font-bold rounded px-1.5 py-0.5 text-sky-800 bg-sky-50">Nuevo · sin cartel</span>
+                        )}
+                        {modo === "ahora" && i.idTarea ? (
                           // Qué se saca y qué se pone: los dos precios del cartel viejo y los dos del nuevo.
                           <span className="shrink-0 flex items-center gap-2 tabular-nums text-xs">
                             <span className="grid text-right w-28">
@@ -643,7 +657,7 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
               </div>
             )}
 
-            {modo === "cambiaron" && aImprimir.some((i) => i.idTarea) && (
+            {modo === "ahora" && aImprimir.some((i) => i.idTarea) && (
               <p className="mt-4 rounded-xl border border-neutral-200 bg-white p-4 text-sm text-neutral-600">
                 Después de imprimir, poné cada cartel en la góndola y tocá <b className="text-neutral-900">Lo puse</b> en ese producto.{" "}
                 <b className="text-neutral-900">No lo toques al imprimir</b>: recién cuando el cartel está puesto, porque en ese momento la caja empieza a

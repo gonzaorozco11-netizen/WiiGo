@@ -1,7 +1,8 @@
 "use client";
 
-import { createContext, Fragment, useContext, useEffect, useMemo, useState, useSyncExternalStore, useTransition, type CSSProperties } from "react";
+import { createContext, Fragment, useContext, useEffect, useMemo, useState, useSyncExternalStore, useTransition, type CSSProperties, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import PestanasEtiquetas from "@/components/PestanasEtiquetas";
 import { esCodigoInterno, limpiarCodigoBarras, formatearCodigo } from "@/lib/codigos";
 import {
   PIE_ETIQUETA_DEFECTO,
@@ -339,54 +340,21 @@ export default function CodigosApp({
   /** Lo que ya tiene sticker impreso, guardado en la base (lib/codigosImpresos.ts). */
   impresos?: Record<string, string>;
 }) {
-  // Si acaba de entrar mercadería que hay que etiquetar, la pantalla arranca
-  // en Imprimir: es a lo que vino la operativa. Si no, arranca en Revisar, que
-  // es lo primero que hay que hacer con un catálogo nuevo.
-  const [tab, setTab] = useState<"revisar" | "imprimir">(entradas.length > 0 ? "imprimir" : "revisar");
-  const [busqueda, setBusqueda] = useState("");
-  const [soloFaltan, setSoloFaltan] = useState(false);
   const [escaneando, setEscaneando] = useState<ItemCodigo | "libre" | null>(null);
   const [aviso, setAviso] = useState<{ texto: string; tono: "ok" | "mal" } | null>(null);
-
-  const conEtiqueta = useMemo(() => items.filter((i) => !i.codigo || esCodigoInterno(i.codigo)), [items]);
-  const conEnvase = items.length - conEtiqueta.length;
-  // Lo embolsado por nosotros siempre se imprime; lo envasado de fábrica sin
-  // su código cargado todavía es lo que falta escanear.
-  const aPegar = conEtiqueta.filter((i) => !i.envasado).length;
-  const faltaEscanear = conEtiqueta.length - aPegar;
-  // Para imprimir: lo de arriba más lo que tiene un código de fábrica que la
-  // caja o el tótem no leen («No trae código»): el sticker lleva ese mismo
-  // número, nítido (Gonzalo, 2026-11-11, la Sal Marina Fina y Gruesa).
-  const paraImprimir = useMemo(
-    () => items.filter((i) => !i.codigo || esCodigoInterno(i.codigo) || i.productoSinCodigo || i.marcaSinCodigo),
-    [items]
-  );
-
-  const filtrados = useMemo(() => {
-    const q = busqueda.trim().toLowerCase();
-    return items.filter((i) => {
-      // «Solo los que faltan»: los envasados sin su código. También lo que se
-      // embolsa acá y quedó con uno de fábrica, que casi siempre es un error
-      // (pasó con la Almendra Guara, 2026-11-09) y si no, no había cómo verlo.
-      const sospechoso = !i.envasado && Boolean(i.codigo) && !esCodigoInterno(i.codigo);
-      if (soloFaltan && !sospechoso && (!i.envasado || (i.codigo && !esCodigoInterno(i.codigo)))) return false;
-      if (!q) return true;
-      return [i.producto, i.variante, i.sku, i.codigo, i.marca]
-        .filter(Boolean)
-        .some((t) => String(t).toLowerCase().includes(q));
-    });
-  }, [items, busqueda, soloFaltan]);
+  const llevanSticker = items.filter((i) => !i.envasado).length;
+  const faltaEscanear = items.filter((i) => i.envasado && (!i.codigo || esCodigoInterno(i.codigo))).length;
 
   return (
     <EsAdminContext.Provider value={esAdmin}>
     <div className="max-w-5xl mx-auto">
+      <PestanasEtiquetas actual="codigos" />
       <div className="flex items-start justify-between gap-4 flex-wrap mb-4">
         <div>
           <h1 className="text-2xl font-semibold text-neutral-900">Códigos de barras</h1>
           <p className="text-sm text-neutral-500 mt-1">
-            {items.length} productos · {aPegar} llevan sticker WiiGo ·{" "}
-            {conEnvase} con el código del envase cargado
-            {faltaEscanear > 0 && <> · <b className="text-amber-700">{faltaEscanear} envasados falta escanear</b></>}
+            {items.length} productos · {llevanSticker} llevan sticker WiiGo · {items.length - llevanSticker} traen código de fábrica
+            {faltaEscanear > 0 && <> · <b className="text-amber-700">a {faltaEscanear} falta escanearles el envase</b></>}
           </p>
         </div>
         <button
@@ -396,29 +364,6 @@ export default function CodigosApp({
         >
           📷 Escanear un envase
         </button>
-      </div>
-
-      <div className="inline-flex gap-1 bg-neutral-100 rounded-xl p-1 mb-4">
-        {(
-          [
-            ["revisar", "Revisar envases"],
-            // No dice "etiquetas": en Aprobaciones esa palabra ya es el cartel
-            // de precio de la góndola, que es otra cosa y lleva plata impresa.
-            // El número es lo que todavía no tiene sticker, no todo lo que lo lleva.
-            ["imprimir", `Imprimir códigos · ${paraImprimir.filter((i) => !i.envasado && !impresos[i.idVariante]).length}`],
-          ] as const
-        ).map(([id, texto]) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => setTab(id)}
-            className={`px-4 py-2 text-sm rounded-lg ${
-              tab === id ? "bg-white shadow-sm font-semibold" : "text-neutral-600 hover:text-neutral-900"
-            }`}
-          >
-            {texto}
-          </button>
-        ))}
       </div>
 
       {aviso && (
@@ -431,33 +376,14 @@ export default function CodigosApp({
         </p>
       )}
 
-      {tab === "revisar" ? (
-        <Revisar
-          items={filtrados}
-          busqueda={busqueda}
-          setBusqueda={setBusqueda}
-          soloFaltan={soloFaltan}
-          setSoloFaltan={setSoloFaltan}
-          onEscanear={setEscaneando}
-          onAviso={setAviso}
-          onImprimir={() => {
-            setTab("imprimir");
-            window.scrollTo({ top: 0, behavior: "smooth" });
-          }}
-        />
-      ) : (
-        <Imprimir
-          items={paraImprimir}
-          entradas={entradas}
-          impresosServidor={impresos}
-          pie={pieEtiqueta}
-          onIrAEscanear={() => {
-            setTab("revisar");
-            setSoloFaltan(true);
-            setEscaneando("libre");
-          }}
-        />
-      )}
+      <Imprimir
+        items={items}
+        entradas={entradas}
+        impresosServidor={impresos}
+        pie={pieEtiqueta}
+        onEscanear={setEscaneando}
+        onAviso={setAviso}
+      />
 
       {escaneando && (
         <EscanerDeLista
@@ -469,92 +395,6 @@ export default function CodigosApp({
       )}
     </div>
     </EsAdminContext.Provider>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Pestaña 1: revisar y cargar códigos                                */
-/* ------------------------------------------------------------------ */
-
-function Revisar({
-  items,
-  busqueda,
-  setBusqueda,
-  soloFaltan,
-  setSoloFaltan,
-  onEscanear,
-  onAviso,
-  onImprimir,
-}: {
-  items: ItemCodigo[];
-  busqueda: string;
-  setBusqueda: (s: string) => void;
-  soloFaltan: boolean;
-  setSoloFaltan: (b: boolean) => void;
-  onEscanear: (i: ItemCodigo) => void;
-  onAviso: (a: { texto: string; tono: "ok" | "mal" } | null) => void;
-  onImprimir: () => void;
-}) {
-  const porMarca = useMemo(() => agruparPorMarca(items), [items]);
-  const esAdmin = useContext(EsAdminContext);
-
-  return (
-    <>
-      <div className="flex gap-2 mb-3">
-        <input
-          value={busqueda}
-          onChange={(e) => setBusqueda(e.target.value)}
-          placeholder="Buscar por nombre, SKU o código…"
-          className="flex-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent"
-        />
-        <button
-          type="button"
-          onClick={() => setSoloFaltan(!soloFaltan)}
-          className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium border ${
-            soloFaltan ? "bg-neutral-900 text-white border-neutral-900" : "bg-white border-neutral-300"
-          }`}
-        >
-          Solo los que faltan
-        </button>
-      </div>
-
-      {items.length === 0 ? (
-        <p className="text-sm text-neutral-500 py-12 text-center">No hay productos que coincidan.</p>
-      ) : (
-        <div className="border border-neutral-200 rounded-xl overflow-hidden bg-white">
-          {porMarca.map(([marca, deLaMarca]) => (
-            <div key={marca}>
-              <div className="flex items-center justify-between gap-2 bg-neutral-50 px-4 py-2 border-b border-neutral-200">
-                <span className="text-[11px] uppercase tracking-wider font-bold text-neutral-400">
-                  {marca} ·{" "}
-                  {deLaMarca[0]?.marcaSinCodigo
-                    ? "sus envases no traen código: llevan sticker"
-                    : `${deLaMarca.filter((i) => i.envasado && (!i.codigo || esCodigoInterno(i.codigo))).length} falta escanear`}
-                </span>
-                {esAdmin && !deLaMarca[0]?.propia && deLaMarca[0]?.idMarca && (
-                  <MarcaSinCodigo
-                    idMarca={deLaMarca[0].idMarca}
-                    sinCodigo={Boolean(deLaMarca[0].marcaSinCodigo)}
-                    marca={marca}
-                    onAviso={onAviso}
-                  />
-                )}
-              </div>
-              {deLaMarca.map((i) => (
-                <FilaProducto key={i.idVariante} item={i} onEscanear={onEscanear} onAviso={onAviso} />
-              ))}
-            </div>
-          ))}
-        </div>
-      )}
-      {/* Al terminar de revisar, el paso que sigue (Gonzalo buscaba acá la vista previa, 2026-11-06). */}
-      <div className="mt-4 flex items-center justify-between gap-3 flex-wrap rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3">
-        <span className="text-sm text-neutral-600">La vista previa de las etiquetas y la hoja para imprimir están en la otra pestaña.</span>
-        <button type="button" onClick={onImprimir} className="rounded-lg bg-accent text-white px-4 py-2 text-sm font-semibold hover:bg-accent-dark">
-          Ir a Imprimir códigos →
-        </button>
-      </div>
-    </>
   );
 }
 
@@ -598,124 +438,6 @@ function MarcaSinCodigo({
     >
       {sinCodigo ? "Sí traen código" : "No traen código"}
     </button>
-  );
-}
-
-function FilaProducto({
-  item,
-  onEscanear,
-  onAviso,
-}: {
-  item: ItemCodigo;
-  onEscanear: (i: ItemCodigo) => void;
-  onAviso: (a: { texto: string; tono: "ok" | "mal" } | null) => void;
-}) {
-  const router = useRouter();
-  const [pendiente, startTransition] = useTransition();
-  const propio = Boolean(item.codigo) && !esCodigoInterno(item.codigo);
-  const esAdmin = useContext(EsAdminContext);
-
-  function quitar() {
-    startTransition(async () => {
-      const res = await volverAEtiquetaWiigo(item.idVariante);
-      if (res.error) onAviso({ texto: res.error, tono: "mal" });
-      else {
-        onAviso({ texto: `${item.producto} vuelve a llevar código WiiGo para imprimir.`, tono: "ok" });
-        router.refresh();
-      }
-    });
-  }
-
-  return (
-    <div className="flex items-center gap-3 px-4 py-2.5 border-b border-neutral-100 last:border-b-0">
-      <span className="w-9 h-9 rounded-lg bg-neutral-100 overflow-hidden shrink-0 grid place-items-center text-neutral-300">
-        {item.imagen ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={item.imagen} alt="" className="w-full h-full object-contain" loading="lazy" />
-        ) : (
-          "—"
-        )}
-      </span>
-
-      <span className="min-w-0 flex-1">
-        <span className="block text-sm font-medium text-neutral-900 truncate">
-          {item.producto}
-          {item.marcaFabrica && <span className="font-normal text-neutral-500"> ({item.marcaFabrica})</span>}
-          {item.variante && <span className="text-neutral-500"> — {item.variante}</span>}
-        </span>
-        <span className="block text-xs text-neutral-400">{item.sku ?? "sin SKU"}</span>
-        {propio && !item.envasado && (
-          <span className="block text-xs font-medium text-amber-700 mt-0.5">
-            Esto se embolsa acá y lleva sticker WiiGo: ¿el código de fábrica está bien?{esAdmin ? " Si no, tocá ✕." : ""}
-          </span>
-        )}
-      </span>
-
-      {propio ? (
-        <span className="shrink-0 text-xs font-mono font-medium bg-emerald-50 text-emerald-700 rounded-full px-2.5 py-1">
-          {item.codigo}
-        </span>
-      ) : !item.envasado ? (
-        <span className="shrink-0 text-xs font-medium bg-neutral-100 text-neutral-600 rounded-full px-2.5 py-1">
-          Lleva sticker WiiGo
-        </span>
-      ) : (
-        <span className="shrink-0 text-xs font-medium bg-amber-50 text-amber-700 rounded-full px-2.5 py-1">
-          Falta escanear
-        </span>
-      )}
-
-      {/* Uno ya cargado no lo toca el equipo: solo el Dueño lo cambia o lo saca. */}
-      {(!propio || esAdmin) && (
-        <button
-          type="button"
-          onClick={() => onEscanear(item)}
-          className="shrink-0 rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium hover:bg-neutral-50"
-        >
-          {propio ? "Cambiar" : "Escanear"}
-        </button>
-      )}
-
-      {propio && esAdmin && (
-        <button
-          type="button"
-          onClick={quitar}
-          disabled={pendiente}
-          title="Sacarle el código del envase y volver al código WiiGo para imprimir"
-          className="shrink-0 text-xs text-neutral-400 hover:text-red-500 disabled:opacity-40"
-        >
-          ✕
-        </button>
-      )}
-
-      {/* Viene cerrado pero el envase no trae código (las granolas de 1 kg):
-          pasa a Imprimir códigos. Si la marca entera es así, mejor el botón
-          de la marca. */}
-      {!propio && esAdmin && item.idProducto && !item.marcaSinCodigo && (item.envasado || item.productoSinCodigo) && (
-        <button
-          type="button"
-          disabled={pendiente}
-          onClick={() =>
-            startTransition(async () => {
-              const res = await marcarProductoSinCodigo(item.idProducto as string, !item.productoSinCodigo);
-              if (res.error) onAviso({ texto: res.error, tono: "mal" });
-              else {
-                onAviso({
-                  texto: item.productoSinCodigo
-                    ? `${item.producto}: trae código, vuelve a «Falta escanear».`
-                    : `${item.producto}: no trae código, pasa a Imprimir códigos.`,
-                  tono: "ok",
-                });
-                router.refresh();
-              }
-            })
-          }
-          className="shrink-0 text-xs text-accent disabled:opacity-40"
-        >
-          {item.productoSinCodigo ? "Sí trae código" : "No trae código"}
-        </button>
-      )}
-    </div>
   );
 }
 
@@ -875,19 +597,28 @@ function EscanerDeLista({
 /*  Pestaña 2: imprimir la hoja                                        */
 /* ------------------------------------------------------------------ */
 
+// Una sola pantalla con dos partes (Gonzalo, 2026-11-11: «se está complicando,
+// que sea fácil»): «Para imprimir ahora», lo que entró por Recepción o se
+// fraccionó, con su cantidad; y «Todos los productos», de todas las marcas,
+// donde cada uno dice si trae código de fábrica o lleva sticker WiiGo.
+type QueMostrar = "todos" | "sticker" | "fabrica" | "falta";
+
 function Imprimir({
-  items: todos,
+  items,
   entradas,
   impresosServidor,
   pie,
-  onIrAEscanear,
+  onEscanear,
+  onAviso,
 }: {
   items: ItemCodigo[];
   entradas: EntradaPendiente[];
   impresosServidor: Record<string, string>;
   pie: string;
-  onIrAEscanear: () => void;
+  onEscanear: (i: ItemCodigo) => void;
+  onAviso: (a: { texto: string; tono: "ok" | "mal" } | null) => void;
 }) {
+  const esAdmin = useContext(EsAdminContext);
   // Lo ya etiquetado: lo de la base más lo de esta tablet (que es al toque).
   const impresosLocal = useSyncExternalStore(suscribirImpresos, leerImpresos, () => SIN_IMPRESOS);
   const impresos = useMemo(() => {
@@ -902,77 +633,39 @@ function Imprimir({
     const faltan = Object.fromEntries(Object.entries(local).filter(([id, f]) => !impresosServidor[id] || impresosServidor[id] < f));
     if (Object.keys(faltan).length) anotarCodigosImpresos(faltan).catch(() => {});
   }, [impresosServidor]);
-  // Lo envasado de fábrica no se imprime aunque todavía no tenga el código
-  // cargado: se escanea. Queda a mano «imprimirlos igual» para el envase que
-  // de verdad no trae código, o uno que el lector no toma.
-  const [conEnvasados, setConEnvasados] = useState(false);
-  const envasados = useMemo(() => todos.filter((i) => i.envasado), [todos]);
-  const items = useMemo(() => (conEnvasados ? todos : todos.filter((i) => !i.envasado)), [todos, conEnvasados]);
   const porVariante = useMemo(() => new Map(entradas.map((e) => [e.idVariante, e])), [entradas]);
-  // Lo que entró y todavía no se le imprimió el sticker después de entrar:
-  // impreso ese día o después, ya no figura (Gonzalo, 2026-11-11).
-  const recibidos = useMemo(
+  // Para imprimir ahora: lo que lleva sticker, entró (Recepción o Fraccionar)
+  // y todavía no se le imprimió después de entrar.
+  const ahora = useMemo(
     () =>
       items.filter((i) => {
+        if (i.envasado) return false;
         const e = porVariante.get(i.idVariante);
         return e && !(impresos[i.idVariante] && impresos[i.idVariante] >= e.ultima);
       }),
     [items, porVariante, impresos]
   );
-  // «Sin sticker todavía»: lo que nunca se imprimió. Lo que ya tiene sticker va
-  // aparte, por si hay que reimprimir alguno (Gonzalo, 2026-11-11: «el arroz ya
-  // lo tengo listo»). Lo que entró nuevo sale siempre en «Lo que entró».
-  const sinSticker = useMemo(() => items.filter((i) => !impresos[i.idVariante]), [items, impresos]);
-  const conSticker = useMemo(() => items.filter((i) => impresos[i.idVariante]), [items, impresos]);
-  const [modo, setModo] = useState<"recibido" | "todo" | "hechos">(recibidos.length > 0 ? "recibido" : "todo");
-
-  const avisoEnvasados = envasados.length > 0 && (
-    <div className="print:hidden mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 flex flex-wrap items-center gap-3">
-      <div className="text-sm text-neutral-700 leading-relaxed mr-auto max-w-2xl">
-        <strong className="block text-amber-800 mb-0.5">
-          {envasados.length} productos vienen envasados de fábrica
-          {conEnvasados ? " y están en la lista" : " y no están en la lista"}
-        </strong>
-        Aceites, mieles, Animalfit y todo lo que llega cerrado ya trae su código impreso: no hace falta
-        pegarle sticker. Escanealos <b>una sola vez</b> para que la caja los reconozca. Imprimí solo el de
-        algún envase que no traiga código.
-      </div>
-      <button
-        type="button"
-        onClick={onIrAEscanear}
-        className="rounded-lg bg-accent text-white px-4 py-2 text-sm font-semibold hover:bg-accent-dark"
-      >
-        📷 Escanear envases
-      </button>
-      <button
-        type="button"
-        onClick={() => setConEnvasados(!conEnvasados)}
-        className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm text-amber-900 hover:bg-amber-100"
-      >
-        {conEnvasados ? "Sacarlos de la lista" : "Mostrarlos igual"}
-      </button>
-    </div>
+  const [modo, setModo] = useState<"ahora" | "todos">(ahora.length > 0 ? "ahora" : "todos");
+  const [queMostrar, setQueMostrar] = useState<QueMostrar>("todos");
+  const faltaEscanear = (i: ItemCodigo) => Boolean(i.envasado) && (!i.codigo || esCodigoInterno(i.codigo));
+  const cuenta = {
+    sticker: items.filter((i) => !i.envasado).length,
+    fabrica: items.filter((i) => i.envasado).length,
+    falta: items.filter(faltaEscanear).length,
+  };
+  const todos = useMemo(
+    () =>
+      items.filter((i) =>
+        queMostrar === "sticker" ? !i.envasado : queMostrar === "fabrica" ? i.envasado : queMostrar === "falta" ? faltaEscanear(i) : true
+      ),
+    [items, queMostrar]
   );
-
-  if (items.length === 0) {
-    if (avisoEnvasados) return avisoEnvasados;
-    return (
-      <p className="text-sm text-neutral-500 py-16 text-center">
-        No hay nada para imprimir: todos los productos tienen el código de su propio envase cargado.
-      </p>
-    );
-  }
-
-  const visibles = modo === "recibido" ? recibidos : modo === "hechos" ? conSticker : sinSticker;
-  // En «Todo lo que falta» arranca todo destildado: se elige qué imprimir
-  // (por marca, subcategoría o buscando). Antes venía todo en 1 y era fácil
-  // mandar a imprimir 90 stickers sin querer.
-  const unidades = (i: ItemCodigo) =>
-    modo === "recibido" ? porVariante.get(i.idVariante)?.cantidad ?? 1 : 0;
-  // Al marcar uno (o una marca o un rubro entero): lo que entró, o lo que hay
-  // en stock, así ya trae la cantidad justa (Gonzalo, 2026-11-11).
+  const visibles = modo === "ahora" ? ahora : todos;
+  // En «Todos» arranca todo destildado: se elige qué imprimir. Al marcar uno
+  // trae lo que hay en stock (Gonzalo, 2026-11-11).
+  const unidades = (i: ItemCodigo) => (modo === "ahora" ? porVariante.get(i.idVariante)?.cantidad ?? 1 : 0);
   const alMarcar = (i: ItemCodigo) =>
-    modo === "recibido" ? porVariante.get(i.idVariante)?.cantidad ?? 1 : Math.max(1, Math.round(i.stock ?? 0));
+    modo === "ahora" ? porVariante.get(i.idVariante)?.cantidad ?? 1 : Math.max(1, Math.round(i.stock ?? 0));
 
   return (
     <>
@@ -980,22 +673,59 @@ function Imprimir({
           ConfigurarImpresion, no — por eso no se puede envolver todo junto:
           `print:hidden` es display:none y se lleva puesto lo que tenga adentro. */}
       <div className="print:hidden">
-        {avisoEnvasados}
-        {(recibidos.length > 0 || conSticker.length > 0) && (
-          <div className="inline-flex flex-wrap gap-1 bg-neutral-100 rounded-xl p-1 mb-3">
+        <div className="inline-flex flex-wrap gap-1 bg-neutral-100 rounded-xl p-1 mb-3">
+          {(
+            [
+              ["ahora", `Para imprimir ahora · ${ahora.length}`],
+              ["todos", `Todos los productos · ${items.length}`],
+            ] as const
+          ).map(([id, texto]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setModo(id)}
+              className={`px-4 py-2 text-sm rounded-lg ${modo === id ? "bg-white shadow-sm font-semibold" : "text-neutral-600 hover:text-neutral-900"}`}
+            >
+              {texto}
+            </button>
+          ))}
+        </div>
+
+        <p className="text-xs text-neutral-500 mb-3 leading-relaxed max-w-2xl">
+          {modo === "ahora" ? (
+            <>
+              Lo que entró por <b>Recepción</b> o se <b>fraccionó</b> en los últimos 7 días y lleva sticker WiiGo. La cantidad es la que
+              entró. Al imprimir, sale de acá.
+            </>
+          ) : (
+            <>
+              Todos los productos de todas las marcas. En cada uno se elige una vez si <b>trae código de fábrica</b> (se escanea el envase)
+              o lleva <b>sticker WiiGo</b>. Para reimprimir, marcalo y listo.
+            </>
+          )}{" "}
+          Los stickers llevan el nombre y el código de barras, <b>no el precio</b>: el precio va en el cartel de góndola.
+        </p>
+
+        {modo === "todos" && (
+          <div className="flex flex-wrap gap-1.5 mb-3">
             {(
               [
-                ...(recibidos.length > 0 ? ([["recibido", `Lo que entró · ${recibidos.length}`]] as const) : []),
-                ["todo", `Sin sticker todavía · ${sinSticker.length}`],
-                ...(conSticker.length > 0 ? ([["hechos", `Ya tienen sticker · ${conSticker.length}`]] as const) : []),
+                ["todos", `Todos · ${items.length}`],
+                ["sticker", `Llevan sticker · ${cuenta.sticker}`],
+                ["fabrica", `Traen código de fábrica · ${cuenta.fabrica}`],
+                ["falta", `Falta escanear el envase · ${cuenta.falta}`],
               ] as const
             ).map(([id, texto]) => (
               <button
                 key={id}
                 type="button"
-                onClick={() => setModo(id)}
-                className={`px-3.5 py-1.5 text-xs rounded-lg ${
-                  modo === id ? "bg-white shadow-sm font-semibold" : "text-neutral-600"
+                onClick={() => setQueMostrar(id)}
+                className={`rounded-full border px-3 py-1 text-xs font-medium ${
+                  queMostrar === id
+                    ? "bg-neutral-900 text-white border-neutral-900"
+                    : id === "falta" && cuenta.falta > 0
+                      ? "bg-amber-50 border-amber-200 text-amber-800"
+                      : "bg-white border-neutral-300 text-neutral-700"
                 }`}
               >
                 {texto}
@@ -1004,39 +734,159 @@ function Imprimir({
           </div>
         )}
 
-        {/* La duda aparece sola la primera vez, así que se contesta sin que haya
-            que preguntar: el cartel de precio de la góndola es otra cosa. */}
-        <p className="text-xs text-neutral-500 mb-3 leading-relaxed max-w-2xl">
-          {modo === "recibido"
-            ? "Lo que entró por recepción en los últimos 7 días y todavía no tiene código del envase. La cantidad ya viene puesta: es la que se recibió."
-            : modo === "hechos"
-              ? "Los que ya tienen su sticker: entrá acá solo para reimprimir alguno."
-              : "Los productos a los que nunca se les imprimió el código. Si alguno ya lo tiene pegado, marcalo y tocá «Ya tienen sticker»."}{" "}
-          Los stickers llevan el nombre y el código de barras, <b>no el precio</b> — el precio se
-          imprime aparte, en el cartelito de góndola.
-        </p>
+        {modo === "ahora" && ahora.length === 0 && (
+          <p className="text-sm text-neutral-500 py-10 text-center border border-dashed border-neutral-300 rounded-xl mb-4">
+            No hay nada nuevo para imprimir. Cuando se reciba mercadería o se fraccione, aparece acá con su cantidad.
+          </p>
+        )}
       </div>
 
       {/* El `key` remonta la lista al cambiar de modo: las cantidades se
           recalculan solas en vez de arrastrar las del modo anterior. */}
-      <ConfigurarImpresion
-        key={`${modo}-${conEnvasados}`}
-        items={visibles}
-        unidadesIniciales={unidades}
-        alMarcar={alMarcar}
-        pie={pie}
-        onYaTienen={modo === "todo" ? (ids) => anotarImpresos(ids) : undefined}
-      />
+      {visibles.length > 0 && (
+        <ConfigurarImpresion
+          key={`${modo}-${queMostrar}`}
+          items={visibles}
+          unidadesIniciales={unidades}
+          alMarcar={alMarcar}
+          pie={pie}
+          onYaTienen={modo === "todos" ? (ids) => anotarImpresos(ids) : undefined}
+          extraFila={modo === "todos" ? (i) => <TipoDeCodigo item={i} onEscanear={onEscanear} onAviso={onAviso} /> : undefined}
+          cabeceraMarca={
+            modo === "todos" && esAdmin
+              ? (marca, deLaMarca) =>
+                  !deLaMarca[0]?.propia && deLaMarca[0]?.idMarca ? (
+                    <MarcaSinCodigo idMarca={deLaMarca[0].idMarca} sinCodigo={Boolean(deLaMarca[0].marcaSinCodigo)} marca={marca} onAviso={onAviso} />
+                  ) : null
+              : undefined
+          }
+        />
+      )}
     </>
+  );
+}
+
+/**
+ * En cada renglón de «Todos»: si trae código de fábrica o lleva sticker WiiGo,
+ * a la vista. Lo cambia solo el Dueño (el servidor lo vuelve a controlar). Lo
+ * que se fracciona acá y las marcas sin código lo llevan siempre.
+ */
+function TipoDeCodigo({
+  item,
+  onEscanear,
+  onAviso,
+}: {
+  item: ItemCodigo;
+  onEscanear: (i: ItemCodigo) => void;
+  onAviso: (a: { texto: string; tono: "ok" | "mal" } | null) => void;
+}) {
+  const router = useRouter();
+  const esAdmin = useContext(EsAdminContext);
+  const [pendiente, startTransition] = useTransition();
+  const codigoFabrica = Boolean(item.codigo) && !esCodigoInterno(item.codigo);
+  // Sin envasado, sin «No trae código» y sin marca sin código, solo queda lo que embolsamos nosotros.
+  const fijo = item.marcaSinCodigo ? "Sticker WiiGo (toda la marca)" : !item.envasado && !item.productoSinCodigo ? "Se fracciona acá: sticker" : null;
+
+  function cambiar(sticker: boolean) {
+    if (!item.idProducto || sticker === Boolean(item.productoSinCodigo)) return;
+    startTransition(async () => {
+      const res = await marcarProductoSinCodigo(item.idProducto as string, sticker);
+      if (res.error) onAviso({ texto: res.error, tono: "mal" });
+      else {
+        onAviso({
+          texto: sticker ? `${item.producto}: lleva sticker WiiGo, ya figura para imprimir.` : `${item.producto}: trae código de fábrica, se escanea el envase.`,
+          tono: "ok",
+        });
+        router.refresh();
+      }
+    });
+  }
+
+  function quitar() {
+    startTransition(async () => {
+      const res = await volverAEtiquetaWiigo(item.idVariante);
+      if (res.error) onAviso({ texto: res.error, tono: "mal" });
+      else {
+        onAviso({ texto: `${item.producto} vuelve a llevar código WiiGo para imprimir.`, tono: "ok" });
+        router.refresh();
+      }
+    });
+  }
+
+  return (
+    <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+      {fijo ? (
+        <span className="text-[11px] font-semibold rounded-full bg-neutral-100 text-neutral-600 px-2.5 py-1">{fijo}</span>
+      ) : esAdmin && item.idProducto ? (
+        <span className="inline-flex rounded-full border border-neutral-300 overflow-hidden text-[11px] font-semibold" role="group" aria-label="Código">
+          {(
+            [
+              [false, "Trae de fábrica"],
+              [true, "Sticker WiiGo"],
+            ] as const
+          ).map(([sticker, texto]) => {
+            const activo = sticker === Boolean(item.productoSinCodigo);
+            return (
+              <button
+                key={texto}
+                type="button"
+                disabled={pendiente}
+                aria-pressed={activo}
+                onClick={() => cambiar(sticker)}
+                className={`px-2.5 py-1 disabled:opacity-50 ${activo ? "bg-neutral-900 text-white" : "bg-white text-neutral-600 hover:bg-neutral-50"}`}
+              >
+                {texto}
+              </button>
+            );
+          })}
+        </span>
+      ) : (
+        <span className="text-[11px] font-semibold rounded-full bg-neutral-100 text-neutral-600 px-2.5 py-1">
+          {item.envasado ? "Trae de fábrica" : "Sticker WiiGo"}
+        </span>
+      )}
+      {/* Lo que trae su código: escanearlo una vez, o «Listo» si ya está. */}
+      {item.envasado &&
+        (codigoFabrica ? (
+          <span className="text-[11px] font-semibold rounded-full bg-emerald-50 text-emerald-700 px-2.5 py-1">Listo</span>
+        ) : (
+          <button
+            type="button"
+            onClick={() => onEscanear(item)}
+            className="rounded-lg border border-amber-300 bg-amber-50 text-amber-800 px-2.5 py-1 text-xs font-semibold hover:bg-amber-100"
+          >
+            📷 Escanear
+          </button>
+        ))}
+      {item.envasado && codigoFabrica && esAdmin && (
+        <button type="button" onClick={() => onEscanear(item)} className="text-xs text-accent">
+          Cambiar
+        </button>
+      )}
+      {/* Se embolsa acá pero quedó con un código de fábrica: casi siempre es un error (Almendra Guara, 2026-11-09). */}
+      {!item.envasado && codigoFabrica && !item.productoSinCodigo && !item.marcaSinCodigo && esAdmin && (
+        <button
+          type="button"
+          onClick={quitar}
+          disabled={pendiente}
+          title="Tiene un código de fábrica pero se embolsa acá: volver al código WiiGo"
+          className="text-[11px] font-semibold text-amber-700 disabled:opacity-40"
+        >
+          ¿Código de fábrica? ✕
+        </button>
+      )}
+    </div>
   );
 }
 
 function ConfigurarImpresion({
   items,
   unidadesIniciales,
-  alMarcar = (i) => Math.max(1, unidadesIniciales(i)),
+  alMarcar: alMarcarBase = (i) => Math.max(1, unidadesIniciales(i)),
   pie,
   onYaTienen,
+  extraFila,
+  cabeceraMarca,
 }: {
   items: ItemCodigo[];
   unidadesIniciales: (i: ItemCodigo) => number;
@@ -1045,7 +895,13 @@ function ConfigurarImpresion({
   pie: string;
   /** «Ya tienen sticker»: los marcados salen de la lista sin imprimir. */
   onYaTienen?: (ids: string[]) => void;
+  /** Lo que va en cada renglón antes de la cantidad: si trae código o lleva sticker, escanear. */
+  extraFila?: (i: ItemCodigo) => ReactNode;
+  cabeceraMarca?: (marca: string, deLaMarca: ItemCodigo[]) => ReactNode;
 }) {
+  // Lo que trae su código de fábrica no se imprime: en «Todos» se ve para
+  // decir si trae o no, pero no se puede marcar.
+  const alMarcar = (i: ItemCodigo) => (i.envasado ? 0 : alMarcarBase(i));
   const [papel, setPapel] = useState<"plancha" | "rollo">("plancha");
   // Las fechas valen para toda la tanda: se fracciona e imprime de una vez.
   const [envasado, setEnvasado] = useState(hoyIso);
@@ -1291,9 +1147,10 @@ function ConfigurarImpresion({
           return (
             <div key={marca}>
               <div className="flex items-center justify-between gap-2 bg-neutral-50 px-4 py-2 border-b border-neutral-200">
-                <span className="text-[11px] uppercase tracking-wider font-bold text-neutral-400">
+                <span className="text-[11px] uppercase tracking-wider font-bold text-neutral-400 mr-auto">
                   {marca} · {deLaMarca.length} productos
                 </span>
+                {cabeceraMarca?.(marca, deLaMarca)}
                 <button
                   type="button"
                   onClick={() =>
@@ -1373,6 +1230,8 @@ function ConfigurarImpresion({
                       {i.stock != null && <span className="ml-1.5">· {Math.max(0, Math.round(i.stock))} en stock</span>}
                     </span>
                   </span>
+                  {extraFila?.(i)}
+                  {!i.envasado && (
                   <div className="flex items-center gap-1 shrink-0">
                     <button
                       type="button"
@@ -1399,6 +1258,7 @@ function ConfigurarImpresion({
                       +
                     </button>
                   </div>
+                  )}
                 </div>
               ))}
                   </div>
