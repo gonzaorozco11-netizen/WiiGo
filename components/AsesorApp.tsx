@@ -523,10 +523,10 @@ function Navbar({ onVolver, onInicio, idioma }: { onVolver: () => void; onInicio
   // los de antes se perdían. Los dos a la izquierda; a la derecha van los
   // idiomas (ver AsesorApp).
   return (
-    <div className="flex items-center px-5 pt-5 pr-[250px] shrink-0">
+    <div className="flex items-center px-5 pt-5 [@media(max-height:820px)]:pt-3 pr-[250px] shrink-0">
       <button
         onClick={onVolver}
-        className="inline-flex items-center rounded-full h-[54px] px-5 text-[17px] font-extrabold text-white mr-2.5"
+        className="inline-flex items-center rounded-full h-[54px] [@media(max-height:820px)]:h-[48px] px-5 text-[17px] font-extrabold text-white mr-2.5"
         style={{ background: "#22301f", boxShadow: "0 10px 20px -12px rgba(0,0,0,.6)" }}
       >
         <svg className="w-[22px] h-[22px] mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -536,7 +536,7 @@ function Navbar({ onVolver, onInicio, idioma }: { onVolver: () => void; onInicio
       </button>
       <button
         onClick={onInicio}
-        className="inline-flex items-center rounded-full h-[54px] px-5 text-[17px] font-extrabold bg-white border-2 border-[#e8dfcd]"
+        className="inline-flex items-center rounded-full h-[54px] [@media(max-height:820px)]:h-[48px] px-5 text-[17px] font-extrabold bg-white border-2 border-[#e8dfcd]"
         style={{ color: "#22301f" }}
       >
         <svg className="w-[22px] h-[22px] mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -680,7 +680,8 @@ function TarjetaResultado({
       <div
         // La foto es lo que vende: en una pantalla táctil de 27" 88px de alto
         // es una miniatura, no un producto. Crece con el ancho disponible.
-        className={`relative flex items-center justify-center m-2 mb-0 rounded-[16px] ${compacta ? "h-[110px] lg:h-[140px]" : "h-[110px] lg:h-[150px] xl:h-[176px]"}`}
+        // En pantallas bajas (la Joog, 720 de alto) la foto más baja: entran dos filas y se asoma la tercera.
+        className={`relative flex items-center justify-center m-2 mb-0 rounded-[16px] ${compacta ? "h-[110px] lg:h-[140px]" : "h-[110px] lg:h-[150px] xl:h-[176px] [@media(max-height:820px)]:h-[100px]"}`}
         // Con foto, fondo blanco: las fotos vienen sobre blanco y sobre crema
         // se veía el cuadrado de la foto.
         style={{ background: producto.imagen ? "#ffffff" : "linear-gradient(145deg, #f3ecdd, #e2d7c1)" }}
@@ -700,8 +701,8 @@ function TarjetaResultado({
           <SinFoto producto={producto} logoMarca={logoMarca} bolsita={bolsita} chica />
         )}
       </div>
-      <div className="px-3 pt-2.5 pb-3 flex flex-col gap-1">
-        <p className="text-[13.5px] lg:text-[15px] font-bold leading-tight line-clamp-2 text-[#1f261c]">{nombre}</p>
+      <div className="px-3 pt-2.5 pb-3 [@media(max-height:820px)]:pt-2 [@media(max-height:820px)]:pb-2.5 flex flex-col gap-1">
+        <p className="text-[13.5px] lg:text-[15px] [@media(max-height:820px)]:text-[14px] font-bold leading-tight line-clamp-2 text-[#1f261c]">{nombre}</p>
         {etiqueta && !compacta && (
           <span
             className="self-start text-[10px] font-extrabold px-2 py-0.5 rounded-full"
@@ -731,11 +732,12 @@ function DiscoMarca({
   onClick: () => void;
 }) {
   return (
-    <button onClick={onClick} className="flex flex-col items-center gap-1.5 shrink-0 w-[86px] md:w-[116px]">
+    <button onClick={onClick} className="flex flex-col items-center gap-1.5 [@media(max-height:820px)]:gap-1 shrink-0 w-[86px] md:w-[116px] [@media(max-height:820px)]:w-[96px]">
       <span
         // El aro gris tenue en las no elegidas evita que un logo con fondo
-        // blanco se funda con la barra y parezca que falta.
-        className="rounded-full overflow-hidden grid place-items-center w-16 h-16 md:w-[92px] md:h-[92px] border-[3px] transition-all"
+        // blanco se funda con la barra y parezca que falta. En pantallas bajas
+        // más chico, para que entren más filas de productos (Joog, 2026-11-11).
+        className="rounded-full overflow-hidden grid place-items-center w-16 h-16 md:w-[92px] md:h-[92px] [@media(max-height:820px)]:w-[60px] [@media(max-height:820px)]:h-[60px] border-[3px] transition-all"
         style={{
           borderColor: activo ? "var(--acento, #4d7635)" : "rgba(0,0,0,.08)",
           background: "#fff",
@@ -835,7 +837,7 @@ function OpcionRail({
   return (
     <button
       onClick={onClick}
-      className="flex items-center gap-2.5 py-2.5 px-3 text-left w-full rounded-[14px] transition-colors"
+      className="flex items-center gap-2.5 py-2.5 [@media(max-height:820px)]:py-[7px] px-3 text-left w-full rounded-[14px] transition-colors"
       style={
         activo
           ? { background: "var(--barra-acento, #cfe8a6)", color: "var(--barra, #1e2a18)" }
@@ -853,7 +855,7 @@ function OpcionRail({
         />
       )}
       <span
-        className="text-[13.5px] md:text-[15px] leading-tight flex-1"
+        className="text-[13.5px] md:text-[15px] [@media(max-height:820px)]:text-[14px] leading-tight flex-1"
         style={{ fontWeight: activo ? 800 : 600 }}
       >
         {nombre}
@@ -1621,7 +1623,9 @@ export default function AsesorApp({
     >
       {/* Que nada se pase del ancho del monitor: si la página es más ancha, el
           navegador la deja correr de costado y se cortan los bordes (pasaba en
-          el Joog). En modo liviano, sin sombras ni animaciones continuas. */}
+          el Joog). En modo liviano, sin sombras ni transiciones. El producto
+          flotando en la ficha sí queda: es una sola foto que se mueve y
+          Gonzalo lo extrañó (2026-11-11). */}
       <style>{`
         html, body { overflow-x: hidden; max-width: 100%; }
         .asesor-liviano *, .asesor-liviano *::before, .asesor-liviano *::after {
@@ -1629,7 +1633,6 @@ export default function AsesorApp({
           backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
           transition: none !important;
         }
-        .asesor-liviano [style*="Flotar"] { animation: none !important; will-change: auto !important; }
       `}</style>
 
       {/* Volver e Inicio quedan a la izquierda (ver Navbar), así este lado
@@ -2017,7 +2020,7 @@ export default function AsesorApp({
             <p className="text-[#686868] text-sm text-center py-16">{t("marcasVacio")}</p>
           ) : (
             <>
-              <div className="shrink-0 bg-[#fffaf2] border-b border-[#e8dfcd] px-4 md:px-7 pt-3 pb-3 flex gap-2 md:gap-4 overflow-x-auto">
+              <div className="shrink-0 bg-[#fffaf2] border-b border-[#e8dfcd] px-4 md:px-7 pt-3 pb-3 [@media(max-height:820px)]:pt-2 [@media(max-height:820px)]:pb-2 flex gap-2 md:gap-4 overflow-x-auto">
                 {marcasOrdenadas.map((m) => (
                   <DiscoMarca
                     key={m.id_marca}
@@ -2078,8 +2081,8 @@ export default function AsesorApp({
                   )}
                 </div>
 
-                <div className="flex-1 min-h-0 min-w-0 overflow-y-auto px-5 md:px-7 py-5 md:py-6">
-                  <div className="flex items-end justify-between gap-4 mb-4">
+                <div className="flex-1 min-h-0 min-w-0 overflow-y-auto px-5 md:px-7 py-5 md:py-6 [@media(max-height:820px)]:py-3">
+                  <div className="flex items-end justify-between gap-4 mb-4 [@media(max-height:820px)]:mb-2.5">
                     <div>
                       <p
                         className="text-[10px] md:text-[11px] font-extrabold uppercase tracking-[.22em]"
@@ -2262,7 +2265,7 @@ export default function AsesorApp({
               productos ocupando todo el resto. */}
           <div className="flex-1 min-h-0 flex flex-col mt-3">
                 {marcasConResultados.length > 1 && (
-                  <div className="shrink-0 bg-[#fffaf2] border-b border-[#e8dfcd] px-4 md:px-7 pt-3 pb-3 flex gap-2 md:gap-4 overflow-x-auto">
+                  <div className="shrink-0 bg-[#fffaf2] border-b border-[#e8dfcd] px-4 md:px-7 pt-3 pb-3 [@media(max-height:820px)]:pt-2 [@media(max-height:820px)]:pb-2 flex gap-2 md:gap-4 overflow-x-auto">
                     <DiscoMarca
                       nombre={t("todas")}
                       logo={null}
@@ -3536,7 +3539,9 @@ function ProductoDetalleModal({
 
         {/* ---------- hoja izquierda: la foto ---------- */}
         <div className="bg-white overflow-y-auto flex flex-col min-h-0">
-          <div className="relative bg-white px-5 pt-5">
+          {/* pb-5: sin aire abajo, el recuadro crema de la foto quedaba pegado
+              al borde de la ficha y parecía salirse del marco (Joog, 2026-11-11). */}
+          <div className="relative bg-white px-5 pt-5 pb-5">
             {/* Techo al alto de la foto: si crece libre empuja el precio fuera
                 de la ficha y hay que buscarlo deslizando. */}
             {/* El producto flota (vista previa aprobada el 2026-11-02): se

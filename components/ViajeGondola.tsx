@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { colorDeProducto, soloModulos, textoPosicionModulo, type ModuloGondola, type UbicacionGondola } from "@/lib/gondola";
+import { colorDeProducto, soloModulos, type ModuloGondola, type UbicacionGondola } from "@/lib/gondola";
 import "./viajeGondola.css";
 import { esPlacaLiviana } from "@/lib/placaLiviana";
 
@@ -66,6 +66,7 @@ const TXT = {
     alFondo: "Al fondo a la izquierda, pasando los módulos",
     estanteArriba: (n: number) => `Estante ${n} desde arriba`,
     mapa: { modulos: "módulos", islas: "islas", entrada: "entrada" },
+    donde: { modulos: "En la pared de la izquierda", islas: "En el medio del local", estanteria: "En la pared de la derecha" },
   },
   en: {
     llevamos: "Let's find", volver: "Back to the product", otraVez: "Show again", aca: "Here it is!", mueble: "Shelf", cartel: "Look for the sign", isla: "Island", elLocal: "The store",
@@ -81,6 +82,7 @@ const TXT = {
     alFondo: "At the back on the left, past the wall shelves",
     estanteArriba: (n: number) => `Shelf ${n} from the top`,
     mapa: { modulos: "shelves", islas: "islands", entrada: "entrance" },
+    donde: { modulos: "On the left wall", islas: "In the middle of the store", estanteria: "On the right wall" },
   },
   pt: {
     llevamos: "Vamos até", volver: "Voltar ao produto", otraVez: "Ver de novo", aca: "Está aqui!", mueble: "Móvel", cartel: "Procure a placa", isla: "Ilha", elLocal: "A loja",
@@ -96,6 +98,7 @@ const TXT = {
     alFondo: "No fundo à esquerda, depois dos móveis",
     estanteArriba: (n: number) => `Prateleira ${n} de cima para baixo`,
     mapa: { modulos: "móveis", islas: "ilhas", entrada: "entrada" },
+    donde: { modulos: "Na parede da esquerda", islas: "No meio da loja", estanteria: "Na parede da direita" },
   },
 };
 
@@ -269,7 +272,9 @@ export default function ViajeGondola({
     const y = -MOD.alto + (f ? f.y + 6 + f.bolsaAlto / 2 : 250);
     // Con el producto en las filas de abajo, la cámara no baja tanto: el cartel del mueble tiene que verse.
     const yCam = Math.min(-470, y - 40);
-    const cam: Camara = { x: 650, y: yCam, z, yaw: -90, pitch: mirar(yCam, Math.min(y, -MOD.alto + 300), 550) };
+    // Apunta 60 más arriba: así el cartel del mueble («Para cocinar · Harinas y
+    // legumbres») entra entero debajo de la barra de arriba (Gonzalo, 2026-11-11).
+    const cam: Camara = { x: 650, y: yCam, z, yaw: -90, pitch: mirar(yCam, Math.min(y, -MOD.alto + 300) - 60, 550) };
     return { cam, ocultar: ["der", "islas"], mapa: [8, 134 - ((i + 0.5) * 100) / Math.max(1, modulos.length)] };
   }, [zona, fila, columna, modulos, filasModulos]);
 
@@ -442,35 +447,31 @@ export default function ViajeGondola({
   const ys = Array.from({ length: filasAF }, (_, f) => estanteAF(f, filasAF));
 
   // ---- textos de abajo ----
+  // Corto, para leer de un vistazo: qué mueble y, abajo, dónde está y a qué
+  // altura (Gonzalo, 2026-11-11: «la gente no lo va a leer»). Antes iban tres
+  // pasos más la línea larga.
   let numero = "";
   let linea = "";
-  let pasos: string[] = [];
+  let sub = "";
   if (zona.tipo === "ISLA") {
     const n = zona.numero ?? 1;
-    const lado = t.lado[zona.lado === "DER" ? "DER" : "IZQ"];
     numero = `I${n}`;
-    linea = `${t.isla} ${n} · ${lado} · ${(t.pisos[fila] ?? "").toLowerCase()}, ${t.lugar(columna + 1).toLowerCase()}`;
-    pasos = [`1 · ${t.caminaIsla(n, t.posIsla(n))}`, `2 · ${t.delLado(lado)}`, `3 · ${t.pisos[fila] ?? ""}, ${t.lugar(columna + 1).toLowerCase()}`];
+    linea = `${t.isla} ${n} · ${t.lado[zona.lado === "DER" ? "DER" : "IZQ"]}`;
+    sub = `${t.donde.islas} · ${t.pisos[fila] ?? ""}`;
   } else if (zona.tipo === "ESTANTERIA") {
-    const est = t.estante(zona.filas.length - fila);
     numero = "E";
-    linea = `${zona.titulo} · ${(zona.subtitulo ?? "").toLowerCase()} · ${est.toLowerCase()}, ${t.lugar(columna + 1).toLowerCase()}`;
-    pasos = [`1 · ${zona.titulo}, ${t.aLaDerecha}`, `2 · ${zona.subtitulo ?? ""}`, `3 · ${est}, ${t.lugar(columna + 1).toLowerCase()}`];
+    linea = zona.titulo;
+    sub = `${t.donde.estanteria} · ${t.estante(zona.filas.length - fila)}`;
   } else if (zona.tipo === "FREEZER") {
-    const est = t.estanteArriba(fila + 1);
     numero = "F";
-    linea = `${zona.titulo}${zona.subtitulo ? ` · ${zona.subtitulo}` : ""} · ${est.toLowerCase()}, ${t.lugar(columna + 1).toLowerCase()}`;
-    pasos = [`1 · ${t.alFondo}`, `2 · ${zona.titulo}`, `3 · ${est}, ${t.lugar(columna + 1).toLowerCase()}`];
+    linea = `${zona.titulo}${zona.subtitulo ? ` · ${zona.subtitulo}` : ""}`;
+    sub = `${t.alFondo} · ${t.estanteArriba(fila + 1)}`;
   } else {
     const n = modulos.indexOf(zona) + 1;
     const altura = zona.filas[fila]?.altura ?? "manos";
     numero = String(n);
-    linea = `${t.mueble} ${n} «${zona.titulo}» · ${t.fila[altura].toLowerCase()}, ${t.lugar(columna + 1).toLowerCase()}`;
-    pasos = [
-      `1 · ${t.cartel} «${zona.titulo}»${idioma === "es" ? ` (${textoPosicionModulo(n, modulos.length).toLowerCase()})` : ""}`,
-      `2 · ${t.fila[altura]}`,
-      `3 · ${t.lugar(columna + 1)}`,
-    ];
+    linea = `${t.mueble} ${n} · «${zona.titulo}»`;
+    sub = `${t.donde.modulos} · ${t.fila[altura]}`;
   }
 
   // El cartel va arriba del producto; con foto es más alto, y si no entra arriba (el
@@ -665,11 +666,7 @@ export default function ViajeGondola({
         <span className="vg-n">{numero}</span>
         <div className="vg-texto">
           <b>{linea}</b>
-          <div className="vg-pasos">
-            {pasos.map((p) => (
-              <span key={p}>{p}</span>
-            ))}
-          </div>
+          <span className="vg-sub">{sub}</span>
         </div>
         <button type="button" onClick={viajar}>
           {t.otraVez}

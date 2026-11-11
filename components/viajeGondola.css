@@ -177,9 +177,9 @@
 .vg.listo .vg-indic { opacity: 1; transform: none; }
 .vg-n { flex: none; width: 56px; height: 56px; border-radius: 16px; background: #e8743b; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 24px; margin-right: 14px; }
 .vg-texto { flex: 1; min-width: 0; }
-.vg-texto b { font-size: 20px; font-weight: 800; display: block; line-height: 1.15; }
-.vg-pasos { display: flex; flex-wrap: wrap; margin-top: 4px; }
-.vg-pasos span { font-size: 13.5px; font-weight: 700; background: #f5efe3; border: 1px solid #e8dfcd; border-radius: 999px; padding: 4px 10px; margin: 4px 6px 0 0; }
+.vg-texto b { font-size: 22px; font-weight: 800; display: block; line-height: 1.15; }
+/* Una sola línea corta debajo: dónde está y a qué altura. */
+.vg-sub { display: block; margin-top: 4px; font-size: 16px; font-weight: 700; color: #4d5545; }
 .vg-indic button { flex: none; border: 0; background: #22301f; color: #fff; border-radius: 14px; padding: 14px 18px; font-weight: 800; font-size: 16px; margin-left: 14px; }
 
 /* El mapita del local */
