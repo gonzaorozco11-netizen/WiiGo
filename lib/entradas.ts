@@ -1,7 +1,47 @@
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { esCodigoInterno } from "@/lib/codigos";
 import { cargarMarcasSinCodigo, cargarProductosSinCodigo } from "@/lib/marcasSinCodigo";
-import { cargarCodigosImpresos } from "@/lib/codigosImpresos";
+import { PARAMETRO_CARTELES_IMPRESOS, cargarCodigosImpresos, cargarImpresos } from "@/lib/codigosImpresos";
+
+/**
+ * Los productos que entraron en los últimos días (recepción o fraccionado),
+ * con la fecha de la última entrada: para los carteles de góndola de lo nuevo
+ * (Gonzalo, 2026-11-11). Uno por producto, no por sabor: el cartel es uno.
+ */
+export async function productosQueEntraron(dias = 7): Promise<Map<string, string>> {
+  const supabase = getSupabaseServerClient();
+  const desde = new Date();
+  desde.setDate(desde.getDate() - dias);
+  const { data: movs } = await supabase
+    .from("movimientos_stock")
+    .select("id_variante, fecha")
+    .in("tipo", ["RECEPCION", "FRACCIONADO"])
+    .gt("cantidad", 0)
+    .gte("fecha", desde.toISOString())
+    .range(0, 4999);
+  const filas = (movs ?? []) as { id_variante: string; fecha: string }[];
+  if (!filas.length) return new Map();
+  const { data: vars } = await supabase.from("variantes_producto").select("id_variante, id_producto").in("id_variante", [...new Set(filas.map((m) => m.id_variante))]);
+  const productoDe = new Map((vars ?? []).map((v) => [v.id_variante as string, v.id_producto as string]));
+  const ultima = new Map<string, string>();
+  for (const m of filas) {
+    const id = productoDe.get(m.id_variante);
+    if (id && (!ultima.has(id) || m.fecha > ultima.get(id)!)) ultima.set(id, m.fecha);
+  }
+  return ultima;
+}
+
+/** Cuántos productos entraron en la semana y todavía no tienen su cartel de góndola impreso. */
+export async function cartelesNuevosPendientes(): Promise<number> {
+  const supabase = getSupabaseServerClient();
+  const [entraron, impresos] = await Promise.all([
+    productosQueEntraron(),
+    cargarImpresos(supabase, PARAMETRO_CARTELES_IMPRESOS).catch(() => ({}) as Record<string, string>),
+  ]);
+  let n = 0;
+  for (const [id, entro] of entraron) if (!(impresos[id] && impresos[id] >= entro)) n++;
+  return n;
+}
 
 /**
  * Cuántos productos entraron (recepción o fraccionado) y llevan sticker de

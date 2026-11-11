@@ -6,6 +6,34 @@ import { friendlyDbError } from "@/lib/errors";
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import { aplicarPreciosDeCarteles, contarCartelesUrgentes } from "@/lib/tareasEtiqueta";
 import { ponerPreciosAlDia } from "@/lib/preciosAlDia";
+import { PARAMETRO_CARTELES_IMPRESOS, cargarImpresos } from "@/lib/codigosImpresos";
+
+/**
+ * Anota que estos productos ya tienen su cartel de góndola impreso (al tocar
+ * Imprimir, o con «Ya tienen cartel»): así lo que entró nuevo deja de figurar
+ * en «Entraron nuevos» (Gonzalo, 2026-11-11). Se queda con la fecha más nueva.
+ */
+export async function anotarCartelesImpresos(idsProducto: string[]) {
+  const sesion = await obtenerSesionConPantallas();
+  if (!puedeVerPantalla(sesion, "carteles")) return { error: "No tenés permiso para esta pantalla." };
+  if (!idsProducto.length) return { ok: true as const };
+  const supabase = getSupabaseServerClient();
+  const actual = await cargarImpresos(supabase, PARAMETRO_CARTELES_IMPRESOS);
+  const ahora = new Date().toISOString();
+  for (const id of idsProducto) if (/^[0-9a-f-]{36}$/i.test(id)) actual[id] = ahora;
+  const { error } = await supabase.from("configuracion").upsert(
+    {
+      parametro: PARAMETRO_CARTELES_IMPRESOS,
+      valor: JSON.stringify(actual),
+      descripcion: "Carteles de góndola: qué productos ya tienen su cartel impreso (id_producto → fecha)",
+      fecha_actualizacion: ahora,
+    },
+    { onConflict: "parametro" }
+  );
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath("/carteles");
+  return { ok: true as const };
+}
 
 /**
  * Lo consulta el aviso rojo de arriba cada dos minutos: primero pone al día

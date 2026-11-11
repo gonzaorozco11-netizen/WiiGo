@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { marcarCartelesPuestos } from "@/app/(app)/carteles/actions";
+import { anotarCartelesImpresos, marcarCartelesPuestos } from "@/app/(app)/carteles/actions";
 import { pesoTexto, precioPorKilo } from "@/lib/rotulado";
 import { nombreBase } from "@/lib/nombreProducto";
 import FiltroSeleccion, { coincide, subcategoriasDe } from "@/components/FiltroSeleccion";
@@ -39,6 +39,8 @@ export type ItemCartel = {
   subcategoria?: string | null;
   /** El precio nuevo de la marca entra a esta hora (aprobado para las 23:00): antes, el cartel saldría con el viejo. */
   entraEl?: string | null;
+  /** Entró mercadería en la semana y todavía no se le imprimió el cartel: «Entraron nuevos». */
+  nuevoEl?: string | null;
 };
 
 const SIN_MARCA = "Sin marca";
@@ -131,8 +133,16 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
   // "Ahora", tomado una vez al abrir la pantalla.
   const [ahora] = useState(() => Date.now());
 
-  const [modo, setModo] = useState<"cambiaron" | "todos">(pendientes.length > 0 ? "cambiaron" : "todos");
-  const visibles = modo === "cambiaron" ? pendientes : imprimibles;
+  // Lo que entró en la semana (recepción o fraccionado) y no tiene cartel
+  // todavía: igual que «Lo que entró» en Códigos (Gonzalo, 2026-11-11).
+  const nuevos = useMemo(
+    () => imprimibles.filter((i) => i.nuevoEl).sort((a, b) => (b.nuevoEl ?? "").localeCompare(a.nuevoEl ?? "")),
+    [imprimibles]
+  );
+  const [modo, setModo] = useState<"cambiaron" | "nuevos" | "todos">(
+    pendientes.length > 0 ? "cambiaron" : nuevos.length > 0 ? "nuevos" : "todos"
+  );
+  const visibles = modo === "cambiaron" ? pendientes : modo === "nuevos" ? nuevos : imprimibles;
 
   const [medida, setMedida] = useState<Medida>({ ancho: MEDIDAS[0].ancho, alto: MEDIDAS[0].alto });
   // Arranca "según el lugar": los de gancho salen para el blistero y el resto de 60 × 30 (2026-11-11).
@@ -182,9 +192,9 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
     return [...m.entries()].sort((a, b) => b[1].length - a[1].length);
   }, [mostrados, modo]);
 
-  function cambiarModo(nuevo: "cambiaron" | "todos") {
+  function cambiarModo(nuevo: "cambiaron" | "nuevos" | "todos") {
     setModo(nuevo);
-    const lista = nuevo === "cambiaron" ? pendientes : imprimibles;
+    const lista = nuevo === "cambiaron" ? pendientes : nuevo === "nuevos" ? nuevos : imprimibles;
     setElegidos(deEntrada(lista));
     setConfirmarTodos(false);
   }
@@ -278,11 +288,14 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
           </div>
         )}
 
-        {pendientes.length > 0 && (
-          <div className="inline-flex gap-1 bg-neutral-100 rounded-xl p-1 mb-4">
+        {(pendientes.length > 0 || nuevos.length > 0) && (
+          <div className="inline-flex flex-wrap gap-1 bg-neutral-100 rounded-xl p-1 mb-4">
             {(
               [
-                ["cambiaron", `Cambiaron de precio · ${listos.length}${pendientes.length > listos.length ? ` (+${pendientes.length - listos.length} más tarde)` : ""}`],
+                ...(pendientes.length > 0
+                  ? ([["cambiaron", `Cambiaron de precio · ${listos.length}${pendientes.length > listos.length ? ` (+${pendientes.length - listos.length} más tarde)` : ""}`]] as const)
+                  : []),
+                ...(nuevos.length > 0 ? ([["nuevos", `Entraron nuevos · ${nuevos.length}`]] as const) : []),
                 ["todos", `Toda la góndola · ${imprimibles.length}`],
               ] as const
             ).map(([id, texto]) => (
@@ -303,14 +316,38 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
         <p className="text-xs text-neutral-500 mb-3 leading-relaxed max-w-2xl">
           {modo === "cambiaron"
             ? "Los carteles que quedaron con el precio viejo puesto. Son los urgentes: mientras el cartel diga una cosa y la caja otra, hay que respetar el cartel."
-            : "Todos los productos que pueden llevar cartel. Los que no tienen precio en efectivo no aparecen."}
+            : modo === "nuevos"
+              ? "Lo que entró esta semana (por Recepción o Fraccionar) y todavía no tiene su cartel. Al imprimirlo sale de esta lista. Si alguno ya lo tiene puesto, marcalo y tocá «Ya tienen cartel»."
+              : "Todos los productos que pueden llevar cartel: acá reimprimís el que quieras, cuando quieras. Los que no tienen precio en efectivo no aparecen."}
         </p>
+
+        {modo === "nuevos" && aImprimir.length > 0 && (
+          <button
+            type="button"
+            disabled={enviando}
+            onClick={() =>
+              startTransition(async () => {
+                const r = await anotarCartelesImpresos(aImprimir.map((i) => i.idProducto));
+                if (r.error) setAviso(r.error);
+                else {
+                  setAviso(`Listo: ${aImprimir.length === 1 ? "1 producto sale" : `${aImprimir.length} productos salen`} de «Entraron nuevos».`);
+                  router.refresh();
+                }
+              })
+            }
+            className="mb-3 rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-800 px-3 py-1.5 text-sm font-semibold hover:bg-emerald-100 disabled:opacity-40"
+          >
+            ✓ Ya tienen cartel ({aImprimir.length})
+          </button>
+        )}
 
         {visibles.length === 0 ? (
           <p className="text-sm text-neutral-500 py-16 text-center">
             {modo === "cambiaron"
               ? "Ningún cartel quedó con el precio viejo. Está todo al día."
-              : "Todavía no hay productos con los dos precios cargados."}
+              : modo === "nuevos"
+                ? "Todo lo que entró ya tiene su cartel."
+                : "Todavía no hay productos con los dos precios cargados."}
           </p>
         ) : (
           <>
@@ -540,7 +577,15 @@ export default function CartelesApp({ items }: { items: ItemCartel[] }) {
 
               <button
                 type="button"
-                onClick={() => window.print()}
+                onClick={() => {
+                  window.print();
+                  // Lo impreso queda anotado: lo nuevo sale de «Entraron nuevos».
+                  const ids = aImprimir.map((i) => i.idProducto);
+                  startTransition(async () => {
+                    await anotarCartelesImpresos(ids);
+                    router.refresh();
+                  });
+                }}
                 disabled={aImprimir.length === 0}
                 className="rounded-lg bg-accent text-white px-4 py-2.5 text-sm font-semibold hover:bg-accent-dark disabled:opacity-40"
               >

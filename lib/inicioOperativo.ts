@@ -3,7 +3,7 @@ import { fechaHoraArgentina, minutosDeHora } from "@/lib/horarios";
 import { POR_TURNO, adentroEnLocal, personaDeUsuario } from "@/lib/conteoStock";
 import { localDeSesion } from "@/lib/fraccionado";
 import { contarCartelesUrgentes } from "@/lib/tareasEtiqueta";
-import { stickersPorPegar } from "@/lib/entradas";
+import { cartelesNuevosPendientes, stickersPorPegar } from "@/lib/entradas";
 
 // El Inicio del operativo en la tablet del local (pedido de Gonzalo,
 // 2026-10-22): arriba un botón grande con lo que toca hacer AHORA, y abajo
@@ -203,13 +203,19 @@ export async function armarInicioOperativo(
   if (puede("carteles")) {
     // En rojo si alguno quedó con el precio viejo y la caja ya cobra el nuevo.
     const urgentes = await contarCartelesUrgentes(supabase);
+    // Lo que entró nuevo sin su cartel (Gonzalo, 2026-11-11), como los stickers.
+    const nuevos = urgentes ? 0 : await cartelesNuevosPendientes().catch(() => 0);
     agregar({
       clave: "carteles",
       titulo: "Carteles de precios",
-      detalle: urgentes ? `🔴 ${urgentes === 1 ? "1 tiene" : `${urgentes} tienen`} el precio viejo: cambialos ahora` : "Imprimir y actualizar los precios de góndola",
+      detalle: urgentes
+        ? `🔴 ${urgentes === 1 ? "1 tiene" : `${urgentes} tienen`} el precio viejo: cambialos ahora`
+        : nuevos
+          ? `Entraron ${nuevos === 1 ? "1 producto" : `${nuevos} productos`} sin cartel: imprimilos`
+          : "Imprimir y actualizar los precios de góndola",
       href: "/carteles",
       icono: "💲",
-      badge: urgentes || cartelesPorCambiar || null,
+      badge: urgentes || cartelesPorCambiar || nuevos || null,
       badgeTono: urgentes ? "rojo" : "ambar",
       deshabilitado: false,
     });

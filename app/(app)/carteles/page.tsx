@@ -5,6 +5,8 @@ import PantallaBloqueada from "@/components/PantallaBloqueada";
 import CartelesApp, { type ItemCartel } from "@/components/CartelesApp";
 import { cargarMarcasFabrica } from "@/lib/marcaFabrica";
 import { ponerPreciosAlDia } from "@/lib/preciosAlDia";
+import { productosQueEntraron } from "@/lib/entradas";
+import { PARAMETRO_CARTELES_IMPRESOS, cargarImpresos } from "@/lib/codigosImpresos";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +24,7 @@ export default async function CartelesPage() {
   const traerTareas = (columnas: string) =>
     supabase.from("tareas_etiqueta").select(columnas).in("estado", ["PENDIENTE", "VENCIDA"]).limit(500);
 
-  const [productosConPeso, marcasRes, tareasCompletas, fichasRes, lugaresRes, modulosRes, marcasFabrica] = await Promise.all([
+  const [productosConPeso, marcasRes, tareasCompletas, fichasRes, lugaresRes, modulosRes, marcasFabrica, entraron, cartelesImpresos] = await Promise.all([
     traerProductos(`${BASE_PRODUCTO},peso_neto_g`),
     supabase.from("marcas").select("id_marca,nombre").eq("estado", "ACTIVA"),
     // Los carteles que quedaron con el precio viejo. La cuenta ya la lleva el
@@ -37,6 +39,9 @@ export default async function CartelesPage() {
     supabase.from("gondola_modulos").select("id_modulo,tipo"),
     // «(Entre Nuts)» después del nombre y el peso de lo que viene envasado de fábrica (lib/marcaFabrica.ts).
     cargarMarcasFabrica(supabase).catch(() => new Map<string, string>()),
+    // Lo que entró en la semana y todavía no tiene su cartel: «Entraron nuevos».
+    productosQueEntraron().catch(() => new Map<string, string>()),
+    cargarImpresos(supabase, PARAMETRO_CARTELES_IMPRESOS).catch(() => ({}) as Record<string, string>),
   ]);
   const tipoModulo = new Map(((modulosRes.data ?? []) as { id_modulo: string; tipo: string | null }[]).map((m) => [m.id_modulo, m.tipo ?? "MODULO"]));
   const lugarDe = new Map<string, "GANCHO" | "ESTANTE">();
@@ -173,6 +178,12 @@ export default async function CartelesPage() {
         pedidoEl: t?.pedidoEl ?? null,
         antes: t?.antes ?? null,
         entraEl: t?.entraEl ?? null,
+        // Entró en la semana y no se le imprimió el cartel después de entrar.
+        nuevoEl: (() => {
+          const entro = entraron.get(p.id_producto);
+          const impreso = cartelesImpresos[p.id_producto];
+          return entro && !(impreso && impreso >= entro) ? entro : null;
+        })(),
         pesoG: p.peso_neto_g && p.peso_neto_g > 0 ? p.peso_neto_g : null,
         origen: origenes.get(p.id_producto) ?? null,
         lugar: lugarDe.get(p.id_producto) ?? null,
