@@ -681,12 +681,47 @@ export async function deleteProducto(id: string): Promise<{ error: string | null
     const supabase = getSupabaseServerClient();
     const { data: producto } = await supabase
       .from("productos")
-      .select("id_marca")
+      .select("id_marca, id_granel")
       .eq("id_producto", id)
       .maybeSingle();
 
+    // Un producto que nunca se usó (sin ventas, sin movimientos, stock en 0) se
+    // borra junto con lo que se crea al darlo de alta: el cartel pendiente, el
+    // historial de precio, su lugar en la góndola y su costo de Alifrut, así el
+    // ítem de la lista queda libre para vincularlo bien. Antes el borrado chocaba
+    // con eso y no andaba (Gonzalo, 2026-11-11, dos premezclas vinculadas por error).
+    // Si ya tuvo ventas o stock, no se borra: se pasa a Inactivo.
+    const { data: variantes } = await supabase.from("variantes_producto").select("id_variante").eq("id_producto", id);
+    const ids = (variantes ?? []).map((v) => v.id_variante as string);
+    if (ids.length > 0) {
+      const [ventas, movimientos, stock] = await Promise.all([
+        supabase.from("detalle_ventas").select("id_variante", { count: "exact", head: true }).in("id_variante", ids),
+        supabase.from("movimientos_stock").select("id_variante", { count: "exact", head: true }).in("id_variante", ids),
+        supabase.from("stock").select("cantidad").in("id_variante", ids),
+      ]);
+      const conStock = (stock.data ?? []).some((s) => Number(s.cantidad) !== 0);
+      if (ventas.error || movimientos.error || (ventas.count ?? 0) > 0 || (movimientos.count ?? 0) > 0 || conStock) {
+        return { error: "Este producto ya tuvo ventas o stock: borrarlo perdería esa historia. Editalo y pasalo a Inactivo." };
+      }
+      await supabase.from("stock").delete().in("id_variante", ids);
+    }
+    await Promise.all([
+      supabase.from("tareas_etiqueta").delete().eq("id_producto", id),
+      supabase.from("historial_precios").delete().eq("id_producto", id),
+      supabase.from("gondola_lugares").delete().eq("id_producto", id),
+    ]);
+    if (ids.length > 0) {
+      const { error: errorVariantes } = await supabase.from("variantes_producto").delete().eq("id_producto", id);
+      if (errorVariantes) return { error: friendlyDbError(errorVariantes) };
+    }
+
     const { error } = await supabase.from("productos").delete().eq("id_producto", id);
     if (error) return { error: friendlyDbError(error) };
+    // Su costo, si ningún otro producto lo usa: así deja de figurar como vinculado en Productos Alifrut.
+    if (producto?.id_granel) {
+      const { count } = await supabase.from("productos").select("id_producto", { count: "exact", head: true }).eq("id_granel", producto.id_granel);
+      if (!count) await supabase.from("costos_granel").delete().eq("id_granel", producto.id_granel);
+    }
     revalidatePath("/productos");
     if (producto?.id_marca) revalidatePath(`/marcas/${producto.id_marca}`);
     return { error: null };
