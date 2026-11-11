@@ -1833,16 +1833,21 @@ export default function AsesorApp({
               </div>
 
               {/* ---- derecha: marcas, ofertas, la profesional y el efectivo ---- */}
-              <div className="grid gap-4 lg:pt-[72px] xl:pt-[84px]">
+              {/* `minmax(0,1fr)`: sin esto la columna crecía con lo de adentro y
+                  en la Raspberry (1280 de ancho) se salía de la pantalla. */}
+              <div className="grid grid-cols-[minmax(0,1fr)] min-w-0 gap-4 lg:pt-[72px] xl:pt-[84px]">
                 {marcasOrdenadas.length > 0 && (
                   <div className="rounded-[24px] border border-[#e8dfcd] px-5 py-4" style={{ background: "#fffaf2" }}>
                     <div className="flex items-baseline justify-between mb-3">
                       <h2 className={`${titular.className} font-extrabold text-[20px] xl:text-[23px] tracking-[-.01em] text-[#1f261c]`}>{t("nuestrasMarcas")}</h2>
                       <span className="text-[13px] font-semibold text-[#857f6f] ml-3">{contarProductos(productos.length, idioma)}</span>
                     </div>
-                    <div className="flex overflow-x-auto -mx-1 pb-1">
+                    {/* Los logos se reparten el ancho que hay y, si no entran,
+                        bajan a otro renglón: en una fila fija de 96 px cada uno
+                        empujaban la pantalla de costado (Joog, 2026-11-11). */}
+                    <div className="grid grid-cols-[repeat(auto-fill,minmax(80px,1fr))] gap-y-3 pb-1">
                       {marcasOrdenadas.map((m) => (
-                        <button key={m.id_marca} onClick={() => irAMarca(m.id_marca)} className="shrink-0 grid justify-items-center w-[84px] xl:w-[96px] mx-1">
+                        <button key={m.id_marca} onClick={() => irAMarca(m.id_marca)} className="grid justify-items-center min-w-0 px-0.5">
                           <span
                             className="w-[66px] h-[66px] xl:w-[76px] xl:h-[76px] rounded-full overflow-hidden grid place-items-center bg-white"
                             style={{ boxShadow: "0 0 0 3px #fffaf2, 0 0 0 4.5px #e8dfcd" }}
