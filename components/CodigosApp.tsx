@@ -751,6 +751,7 @@ function Imprimir({
           alMarcar={alMarcar}
           pie={pie}
           onYaTienen={modo === "todos" ? (ids) => anotarImpresos(ids) : undefined}
+          abrirTodo={modo === "ahora"}
           extraFila={modo === "todos" ? (i) => <TipoDeCodigo item={i} onEscanear={onEscanear} onAviso={onAviso} /> : undefined}
           cabeceraMarca={
             modo === "todos" && esAdmin
@@ -887,6 +888,7 @@ function ConfigurarImpresion({
   onYaTienen,
   extraFila,
   cabeceraMarca,
+  abrirTodo = false,
 }: {
   items: ItemCodigo[];
   unidadesIniciales: (i: ItemCodigo) => number;
@@ -898,6 +900,7 @@ function ConfigurarImpresion({
   /** Lo que va en cada renglón antes de la cantidad: si trae código o lleva sticker, escanear. */
   extraFila?: (i: ItemCodigo) => ReactNode;
   cabeceraMarca?: (marca: string, deLaMarca: ItemCodigo[]) => ReactNode;
+  abrirTodo?: boolean;
 }) {
   // Lo que trae su código de fábrica no se imprime: en «Todos» se ve para
   // decir si trae o no, pero no se puede marcar.
@@ -1171,7 +1174,8 @@ function ConfigurarImpresion({
                 const clave = `${marca}|${sub}`;
                 const marcadosSub = delSub.filter((i) => (cantidades[i.idVariante] ?? 0) > 0).length;
                 // Buscando, todo abierto: si no, lo encontrado quedaría escondido.
-                const abierto = filtrando || subAbiertas.has(clave);
+                // En «Para imprimir ahora» (son pocos) todo abierto: se ve qué se va a imprimir.
+                const abierto = filtrando || abrirTodo || subAbiertas.has(clave);
                 return (
                   <div key={clave}>
                     <div className="flex items-center gap-2 px-4 py-2 border-b border-neutral-100 bg-white">
