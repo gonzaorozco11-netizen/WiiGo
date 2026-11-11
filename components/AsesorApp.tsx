@@ -22,6 +22,7 @@ import type {
 } from "@/lib/supabase";
 import { colorDeProducto, ubicacionDe, type ModuloGondola, type UbicacionGondola } from "@/lib/gondola";
 import ViajeGondola from "@/components/ViajeGondola";
+import { datosDelAparato, usePlacaLiviana } from "@/lib/placaLiviana";
 import NutricionAsesor from "@/components/NutricionAsesor";
 import { CarruselProfesional, ModosAtencion, NumerosProfesional, OpinionesPacientes, PildorasRecorrido, type OpinionPaciente } from "@/components/PerfilProfesional";
 import IconoRed, { colorDeRed } from "@/components/IconoRed";
@@ -933,6 +934,25 @@ export default function AsesorApp({
   const [modalidadTurno, setModalidadTurno] = useState<"presencial" | "online" | null>(null);
   const [productoAbierto, setProductoAbierto] = useState<string | null>(null);
   const [idioma, setIdioma] = useState<Idioma>("es");
+  // La Raspberry del monitor Joog: sin recorrido animado, sombras ni
+  // animaciones continuas (lib/placaLiviana.ts). La clase va en <html> para
+  // que alcance también a lo que se dibuja fuera de este árbol (el recorrido).
+  const liviano = usePlacaLiviana();
+  useEffect(() => {
+    document.documentElement.classList.toggle("asesor-liviano", liviano);
+  }, [liviano]);
+  // ?diagnostico=1: qué aparato es, cuánto mide y si la página se pasa de ancho.
+  const [diagnostico, setDiagnostico] = useState<ReturnType<typeof datosDelAparato> | null>(null);
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("diagnostico") !== "1") return;
+    const leer = () => setDiagnostico(datosDelAparato());
+    const id = window.setTimeout(leer, 1500);
+    window.addEventListener("resize", leer);
+    return () => {
+      window.clearTimeout(id);
+      window.removeEventListener("resize", leer);
+    };
+  }, []);
   // Filtro por marca dentro de los resultados. Es aparte de `marcaId`, que es
   // la marca que se está mirando en la pantalla de Marcas.
   const [marcaResultado, setMarcaResultado] = useState<string | null>(null);
@@ -1532,13 +1552,38 @@ export default function AsesorApp({
 
   const tema = TEMAS[pantalla] ?? TEMA_POR_DEFECTO;
 
+  // Los idiomas, siempre a la vista y del tamaño de un dedo (2026-11-02). En
+  // el inicio van adentro de lo que se desliza (fijos, al bajar se encimaban
+  // con las marcas) y con la ficha de un producto abierta no van (tapaban la
+  // ✕): Gonzalo, 2026-11-11, en el monitor Joog.
+  const selectorIdioma = (posicion: string) => (
+    <div
+      className={`${posicion} z-50 flex rounded-full border-2 border-[#e8dfcd] bg-white p-1`}
+      role="group"
+      aria-label="Idioma / Language"
+    >
+      {(["es", "en", "pt"] as Idioma[]).map((lng) => (
+        <button
+          key={lng}
+          onClick={() => setIdioma(lng)}
+          className="inline-flex items-center rounded-full h-[44px] px-3.5 text-[15px] font-extrabold"
+          style={idioma === lng ? { background: "#22301f", color: "#fff" } : { color: "#4d5545" }}
+          aria-pressed={idioma === lng}
+        >
+          <BanderaIdioma lng={lng} className="w-[22px] h-auto rounded-[3px] shrink-0 mr-2" />
+          {lng === "es" ? "ES" : lng === "en" ? "EN" : "PT"}
+        </button>
+      ))}
+    </div>
+  );
+
   return (
     // Alto fijo de pantalla y sin scroll propio: si la página entera pudiera
     // deslizarse, el "Volver" y los logos de las marcas se irían para arriba al
     // bajar por los productos. Cada pantalla se encarga de deslizar su propio
     // contenido y deja el marco quieto.
     <div
-      className="h-screen overflow-hidden text-[#2d2d2d] flex flex-col"
+      className="h-screen w-full max-w-[100vw] overflow-hidden text-[#2d2d2d] flex flex-col"
       // El acento viaja como variable CSS para que cada pieza de adentro lo
       // tome sola, sin tener que pasárselo de mano en mano.
       style={{
@@ -1548,31 +1593,32 @@ export default function AsesorApp({
         ["--barra-acento" as string]: tema.barraAcento,
       }}
     >
-      {/* Los idiomas, siempre a la vista y del tamaño de un dedo (2026-11-02):
-          antes era un «Languages» chiquito que en la pantalla de 27" nadie
-          veía. Volver e Inicio quedan a la izquierda (ver Navbar), así este
-          lado queda libre. En el Conóceme no va: tapa los controles de las
-          filminas. */}
-      {pantalla !== "conoceme" && (
-        <div
-          className={`fixed z-50 flex rounded-full border-2 border-[#e8dfcd] bg-white p-1 ${
-            pantalla === "home" ? "top-5 right-6 xl:right-10" : "top-5 right-5"
-          }`}
-          role="group"
-          aria-label="Idioma / Language"
-        >
-          {(["es", "en", "pt"] as Idioma[]).map((lng) => (
-            <button
-              key={lng}
-              onClick={() => setIdioma(lng)}
-              className="inline-flex items-center rounded-full h-[44px] px-3.5 text-[15px] font-extrabold"
-              style={idioma === lng ? { background: "#22301f", color: "#fff" } : { color: "#4d5545" }}
-              aria-pressed={idioma === lng}
-            >
-              <BanderaIdioma lng={lng} className="w-[22px] h-auto rounded-[3px] shrink-0 mr-2" />
-              {lng === "es" ? "ES" : lng === "en" ? "EN" : "PT"}
-            </button>
-          ))}
+      {/* Que nada se pase del ancho del monitor: si la página es más ancha, el
+          navegador la deja correr de costado y se cortan los bordes (pasaba en
+          el Joog). En modo liviano, sin sombras ni animaciones continuas. */}
+      <style>{`
+        html, body { overflow-x: hidden; max-width: 100%; }
+        .asesor-liviano *, .asesor-liviano *::before, .asesor-liviano *::after {
+          box-shadow: none !important; text-shadow: none !important;
+          backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
+          transition: none !important;
+        }
+        .asesor-liviano [style*="Flotar"] { animation: none !important; will-change: auto !important; }
+      `}</style>
+
+      {/* Volver e Inicio quedan a la izquierda (ver Navbar), así este lado
+          queda libre. En el Conóceme no va: tapa los controles de las filminas.
+          En el inicio va adentro de lo que se desliza (ver más abajo). */}
+      {pantalla !== "conoceme" && pantalla !== "home" && !productoAbierto && selectorIdioma("fixed top-5 right-5")}
+
+      {diagnostico && (
+        <div className="fixed left-3 bottom-3 z-[999] max-w-[560px] rounded-xl bg-black/85 text-white text-[13px] leading-snug p-3 font-mono break-words">
+          <b>Diagnóstico de la pantalla</b>
+          <div>Pantalla: {diagnostico.pantalla} · física {diagnostico.pantallaFisica}</div>
+          <div>Ancho de la página: {diagnostico.anchoPagina}px</div>
+          <div>Placa de video: {diagnostico.placaVideo}</div>
+          <div>Modo liviano: {diagnostico.liviano ? "sí" : "no"}</div>
+          <div>Navegador: {diagnostico.navegador}</div>
         </div>
       )}
 
@@ -1594,12 +1640,16 @@ export default function AsesorApp({
               "radial-gradient(900px 500px at 88% -10%, #f9dcc6 0%, rgba(249,220,198,0) 60%), radial-gradient(800px 600px at -10% 110%, #dde7cc 0%, rgba(221,231,204,0) 60%), #f5efe3",
           }}
         >
-          <div
-            className="absolute inset-0 pointer-events-none"
-            style={{ backgroundImage: "url(/grano.png)", backgroundRepeat: "repeat" }}
-            aria-hidden
-          />
-          <div className="relative min-h-full grid content-center px-6 md:px-10 xl:px-14 pt-6 pb-8">
+          {/* El grano encima de todo se redibuja al deslizar: en la Raspberry, no. */}
+          {!liviano && (
+            <div
+              className="absolute inset-0 pointer-events-none"
+              style={{ backgroundImage: "url(/grano.png)", backgroundRepeat: "repeat" }}
+              aria-hidden
+            />
+          )}
+          {selectorIdioma("absolute top-5 right-6 xl:right-10")}
+          <div className="relative min-h-full grid content-center px-6 md:px-10 xl:px-14 pt-20 pb-8">
             <div className="w-full max-w-[1600px] mx-auto grid lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] gap-7 xl:gap-10 items-start">
               {/* ---- izquierda: la pregunta y los objetivos ---- */}
               <div className="grid gap-5 md:gap-6">

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { colorDeProducto, soloModulos, textoPosicionModulo, type ModuloGondola, type UbicacionGondola } from "@/lib/gondola";
 import "./viajeGondola.css";
+import { esPlacaLiviana } from "@/lib/placaLiviana";
 
 // "¿Dónde lo encuentro?": un viaje por el local entero (Gonzalo, 2026-11-03;
 // vista previa aprobada: https://claude.ai/artifact/52HZ42KLTw5JtPSWfyVU3V).
@@ -293,7 +294,10 @@ export default function ViajeGondola({
   function viajar() {
     tiempos.current.forEach((id) => window.clearTimeout(id));
     setFoco(null);
-    const quieto = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    // En la Raspberry de la pantalla asesora (lib/placaLiviana.ts) no se anima el
+    // recorrido: se traba. Va directo al mueble con el producto marcado.
+    const quieto =
+      typeof window !== "undefined" && (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches || esPlacaLiviana());
     if (quieto) {
       setPaso(2);
       tiempos.current = [window.setTimeout(enfocar, 300)];
