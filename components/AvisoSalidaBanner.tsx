@@ -7,9 +7,10 @@ import { usePathname } from "next/navigation";
 // El aviso del fin del turno, en cualquier pantalla (no solo Ficha Asistencia).
 //
 // La salida cuenta hasta que se va: si ficha 21:15, son hasta las 21:15
-// (Gonzalo, 2026-11-12). Por eso el aviso llega ANTES, para que cierre la caja
-// a tiempo y no haga horas de más:
-//   - 15 minutos antes, en ámbar: «andá cerrando la caja»;
+// (Gonzalo, 2026-11-12). Por eso el aviso llega ANTES, para que no haga horas
+// de más:
+//   - 15 minutos antes, en ámbar: «andá ordenando el local para el cierre».
+//     No dice «cerrá la caja»: hasta la hora se sigue vendiendo;
 //   - pasada la hora, en rojo, con los minutos de más que lleva.
 // Se actualiza solo cada 30 segundos: antes aparecía recién al cambiar de
 // pantalla, y quien se quedaba en la caja no lo veía. No tiene botón de
@@ -52,11 +53,12 @@ export default function AvisoSalidaBanner({ horaSalida }: { horaSalida: string |
           {pasado ? (
             <>
               ⏰ Tu turno terminó a las {horaSalida}
-              {-faltan > 0 && <> — llevás <b>{-faltan} min de más</b></>}. Cerrá la caja y fichá la salida.
+              {-faltan > 0 && <> — llevás <b>{-faltan} min de más</b></>}. Cuando termines de atender, cerrá la caja y fichá la salida.
             </>
           ) : (
             <>
-              ⏰ Tu turno termina a las {horaSalida} (en {faltan} min). Andá cerrando la caja para irte a horario.
+              {/* Sin «cerrá la caja»: hasta la hora se sigue vendiendo (Gonzalo, 2026-11-12). */}
+              ⏰ Tu turno termina a las {horaSalida} (en {faltan} min). Andá ordenando el local para el cierre.
             </>
           )}
         </p>
