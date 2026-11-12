@@ -1933,6 +1933,10 @@ export default function SelfCheckoutApp({
   function procesarCodigo(leido: string): boolean {
     const codigo = leido.trim();
     if (!codigo) return false;
+    if (esLinkDeQr(codigo)) {
+      avisarQrDelEnvase();
+      return false;
+    }
     const conocido = codigosNuevos.current.get(codigo.replace(/\D/g, "").replace(/^0+/, ""));
     const coincidencia = conocido
       ? itemPorVariante.get(conocido)
@@ -1966,6 +1970,22 @@ export default function SelfCheckoutApp({
     return true;
   }
 
+  // Algunos envases (la Creapure de Gold, 2026-11-12) traen además un QR con
+  // un link. Si el lector lee el QR en vez de las rayitas, «escribe» el link
+  // en el buscador y al cliente le parece que el tótem se fue a otra página.
+  // Nunca se navega a ese link: se borra y se le explica qué escanear.
+  function esLinkDeQr(texto: string) {
+    return /^(https?:\/\/|www\.)/i.test(texto) || texto.indexOf("://") !== -1;
+  }
+  function avisarQrDelEnvase() {
+    if (paso === "reposo") setPaso("escaneo");
+    if (toastTimeout.current) clearTimeout(toastTimeout.current);
+    setToast(null);
+    setAvisoCodigo("Ese es el QR del envase. Escaneá el código de barras: el de las rayitas.");
+    if (avisoTimeout.current) clearTimeout(avisoTimeout.current);
+    avisoTimeout.current = setTimeout(() => setAvisoCodigo(null), 5000);
+  }
+
   // Compara dos códigos tolerando la diferencia UPC/EAN.
   //
   // Un envase importado de EEUU trae 12 dígitos (UPC-A) y el mismo producto
@@ -1992,6 +2012,13 @@ export default function SelfCheckoutApp({
     if (e.key !== "Enter") return;
     const valor = e.currentTarget.value.trim();
     if (!valor) return;
+    // El lector leyó el QR del envase (un link) en vez del código de barras.
+    if (esLinkDeQr(valor)) {
+      e.preventDefault();
+      setBusquedaTexto("");
+      avisarQrDelEnvase();
+      return;
+    }
     // Solo números y largo de código: es una lectura del lector (o alguien
     // tipeando un código). Si no es eso, es una búsqueda por nombre y se deja.
     const pareceCodigo = /^\d{6,14}$/.test(valor);
