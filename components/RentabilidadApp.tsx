@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import type { Marca } from "@/lib/supabase";
 import { etiquetaPago } from "@/lib/formasPago";
 import { calcularRentabilidad, panelAuditoria, type LineaRentabilidad } from "@/app/(app)/rentabilidad/actions";
@@ -46,6 +46,109 @@ function hoyISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
+/** Una venta entera: la suma de sus renglones (pedido de Gonzalo, 2026-11-12). */
+type VentaAgrupada = {
+  idVenta: string;
+  numeroVenta: number;
+  fecha: string;
+  medioPago: string | null;
+  formaPagoMp: string | null;
+  totalVenta: number;
+  ventaBruta: number;
+  facturacionNeta: number;
+  iva: number;
+  cmv: number;
+  impuestoCreditos: number;
+  comisionMp: number;
+  costoImpositivo: number;
+  contribucionNeta: number;
+  lineas: LineaRentabilidad[];
+};
+
+function agruparPorVenta(lineas: LineaRentabilidad[]): VentaAgrupada[] {
+  const porVenta = new Map<string, VentaAgrupada>();
+  for (const l of lineas) {
+    const v =
+      porVenta.get(l.idVenta) ??
+      ({
+        idVenta: l.idVenta,
+        numeroVenta: l.numeroVenta,
+        fecha: l.fecha,
+        medioPago: l.medioPago,
+        formaPagoMp: l.formaPagoMp,
+        totalVenta: l.totalVenta,
+        ventaBruta: 0,
+        facturacionNeta: 0,
+        iva: 0,
+        cmv: 0,
+        impuestoCreditos: 0,
+        comisionMp: 0,
+        costoImpositivo: 0,
+        contribucionNeta: 0,
+        lineas: [],
+      } satisfies VentaAgrupada);
+    v.ventaBruta += l.ventaBruta;
+    v.facturacionNeta += l.facturacionNeta;
+    v.iva += l.iva;
+    v.cmv += l.cmv;
+    v.impuestoCreditos += l.impuestoCreditos;
+    v.comisionMp += l.comisionMp;
+    v.costoImpositivo += l.costoImpositivo;
+    v.contribucionNeta += l.contribucionNeta;
+    v.lineas.push(l);
+    porVenta.set(l.idVenta, v);
+  }
+  // Las líneas ya vienen de la más nueva a la más vieja: el Map respeta ese orden.
+  return [...porVenta.values()];
+}
+
+type Plata = Pick<VentaAgrupada, "ventaBruta" | "iva" | "facturacionNeta" | "cmv" | "impuestoCreditos" | "comisionMp" | "costoImpositivo" | "contribucionNeta">;
+
+/** Las columnas de plata, iguales para una venta y para un producto. */
+function CeldasPlata({ f, fuerte }: { f: Plata; fuerte?: boolean }) {
+  const pct = f.facturacionNeta > 0 ? (f.contribucionNeta / f.facturacionNeta) * 100 : 0;
+  const resta = (v: number) => (v > 0 ? `-$${formatearMonto(v)}` : "—");
+  return (
+    <>
+      <td className={`p-3 text-right tabular-nums ${fuerte ? "font-semibold text-neutral-900" : ""}`}>${formatearMonto(f.ventaBruta)}</td>
+      <td className="p-3 text-right tabular-nums text-red-600">{resta(f.iva)}</td>
+      <td className="p-3 text-right tabular-nums">${formatearMonto(f.facturacionNeta)}</td>
+      <td className="p-3 text-right tabular-nums text-red-600">-${formatearMonto(f.cmv)}</td>
+      <td className="p-3 text-right tabular-nums text-red-600">{resta(f.impuestoCreditos)}</td>
+      <td className="p-3 text-right tabular-nums text-red-600">{resta(f.comisionMp)}</td>
+      <td className="p-3 text-right tabular-nums text-red-600">{resta(f.costoImpositivo)}</td>
+      <td className={`p-3 text-right tabular-nums font-semibold ${f.contribucionNeta < 0 ? "text-red-600" : "text-neutral-900"}`}>
+        ${formatearMonto(f.contribucionNeta)}
+      </td>
+      <td className={`p-3 text-right tabular-nums ${pct < 0 ? "text-red-600" : "text-neutral-500"}`}>{pct.toFixed(1)}%</td>
+    </>
+  );
+}
+
+// En el orden de la cuenta: cobrado − IVA = facturación neta, y de ahí se
+// restan los costos hasta llegar a la contribución.
+const ENCABEZADOS_PLATA = ["Cobrado", "IVA", "Facturación neta", "CMV", "Imp. Créditos", "Comisión MP", "IIBB", "Contribución", "%"];
+
+function EncabezadosPlata() {
+  return (
+    <>
+      {ENCABEZADOS_PLATA.map((t) => (
+        <th key={t} className="p-3 text-right whitespace-nowrap">
+          {t}
+        </th>
+      ))}
+    </>
+  );
+}
+
+function LinkVenta({ idVenta, numero }: { idVenta: string; numero: number }) {
+  return (
+    <a href={`/ventas?venta=${idVenta}`} className="text-accent hover:underline font-medium" title="Abrir la venta en Ventas">
+      #{String(numero).padStart(4, "0")}
+    </a>
+  );
+}
+
 export default function RentabilidadApp({ marcas }: { marcas: Marca[] }) {
   const [idMarca, setIdMarca] = useState(marcas[0]?.id_marca ?? "");
   const [desde, setDesde] = useState(inicioDeMes());
@@ -53,6 +156,18 @@ export default function RentabilidadApp({ marcas }: { marcas: Marca[] }) {
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resultado, setResultado] = useState<{ marca: string; lineas: LineaRentabilidad[]; resumen: Resumen } | null>(null);
+  // Por venta: cada venta entera con todo su desglose, y sus productos al
+  // abrirla (Gonzalo, 2026-11-12). Por producto: un renglón por producto.
+  const [vista, setVista] = useState<"venta" | "producto">("venta");
+  const [abiertas, setAbiertas] = useState<Set<string>>(new Set());
+  const ventasAgrupadas = useMemo(() => (resultado ? agruparPorVenta(resultado.lineas) : []), [resultado]);
+  const alternarVenta = (id: string) =>
+    setAbiertas((previas) => {
+      const nuevas = new Set(previas);
+      if (nuevas.has(id)) nuevas.delete(id);
+      else nuevas.add(id);
+      return nuevas;
+    });
 
   const [auditoria, setAuditoria] = useState<Auditoria | null>(null);
   const [cargandoAuditoria, setCargandoAuditoria] = useState(false);
@@ -150,75 +265,115 @@ export default function RentabilidadApp({ marcas }: { marcas: Marca[] }) {
                 </p>
               ) : (
                 <>
+                  <div className="flex flex-wrap items-center gap-3 px-4 pt-4">
+                    <div className="inline-flex rounded-lg bg-neutral-100 p-1 text-sm" role="tablist" aria-label="Cómo ver las ventas">
+                      {(
+                        [
+                          ["venta", `Por venta (${ventasAgrupadas.length})`],
+                          ["producto", `Por producto (${resultado.lineas.length})`],
+                        ] as const
+                      ).map(([clave, texto]) => (
+                        <button
+                          key={clave}
+                          type="button"
+                          role="tab"
+                          aria-selected={vista === clave}
+                          onClick={() => setVista(clave)}
+                          className={`rounded-md px-3 py-1.5 font-medium ${vista === clave ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-500"}`}
+                        >
+                          {texto}
+                        </button>
+                      ))}
+                    </div>
+                    {vista === "venta" && (
+                      <p className="text-xs text-neutral-500">Tocá una venta para ver sus productos. El número la abre en Ventas.</p>
+                    )}
+                  </div>
+
                   <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-neutral-200 text-left text-xs text-neutral-500">
-                          <th className="p-3">Fecha / Venta</th>
-                          <th className="p-3">Producto</th>
-                          <th className="p-3">Cant.</th>
-                          <th className="p-3">Pago</th>
-                          <th className="p-3 text-right">Facturación neta</th>
-                          <th className="p-3 text-right">IVA</th>
-                          <th className="p-3 text-right">CMV</th>
-                          <th className="p-3 text-right">Imp. Créditos</th>
-                          <th className="p-3 text-right">Comisión MP</th>
-                          <th className="p-3 text-right">IIBB</th>
-                          <th className="p-3 text-right">Contribución marginal</th>
-                          <th className="p-3 text-right">%</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {resultado.lineas.map((l) => (
-                          <tr key={l.idDetalle} className="border-b border-neutral-100 last:border-0">
-                            <td className="p-3 whitespace-nowrap text-neutral-500">
-                              {formatearFecha(l.fecha)} ·{" "}
-                              {/* Cada renglón es un producto: el número abre la venta entera. */}
-                              <a
-                                href={`/ventas?venta=${l.idVenta}`}
-                                className="text-accent hover:underline font-medium"
-                                title="Ver la venta entera"
-                              >
-                                #{String(l.numeroVenta).padStart(4, "0")}
-                              </a>
-                            </td>
-                            <td className="p-3">{l.producto}</td>
-                            <td className="p-3">{l.cantidad}</td>
-                            <td className="p-3 text-neutral-500 whitespace-nowrap">
-                              {formatearMedioPago(l.medioPago, l.formaPagoMp)}
-                            </td>
-                            <td className="p-3 text-right tabular-nums">${formatearMonto(l.facturacionNeta)}</td>
-                            <td className="p-3 text-right tabular-nums text-red-600">
-                              {l.iva > 0 ? `-$${formatearMonto(l.iva)}` : "—"}
-                            </td>
-                            <td className="p-3 text-right tabular-nums text-red-600">-${formatearMonto(l.cmv)}</td>
-                            <td className="p-3 text-right tabular-nums text-red-600">
-                              {l.impuestoCreditos > 0 ? `-$${formatearMonto(l.impuestoCreditos)}` : "—"}
-                            </td>
-                            <td className="p-3 text-right tabular-nums text-red-600">
-                              {l.comisionMp > 0 ? `-$${formatearMonto(l.comisionMp)}` : "—"}
-                            </td>
-                            <td className="p-3 text-right tabular-nums text-red-600">
-                              {l.costoImpositivo > 0 ? `-$${formatearMonto(l.costoImpositivo)}` : "—"}
-                            </td>
-                            <td
-                              className={`p-3 text-right tabular-nums font-semibold ${
-                                l.contribucionNeta < 0 ? "text-red-600" : "text-neutral-900"
-                              }`}
-                            >
-                              ${formatearMonto(l.contribucionNeta)}
-                            </td>
-                            <td
-                              className={`p-3 text-right tabular-nums ${
-                                l.contribucionPorcentaje < 0 ? "text-red-600" : "text-neutral-500"
-                              }`}
-                            >
-                              {l.contribucionPorcentaje.toFixed(1)}%
-                            </td>
+                    {vista === "venta" ? (
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-neutral-200 text-left text-xs text-neutral-500">
+                            <th className="p-3">Fecha / Venta</th>
+                            <th className="p-3">Productos</th>
+                            <th className="p-3">Pago</th>
+                            <EncabezadosPlata />
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {ventasAgrupadas.map((v) => {
+                            const abierta = abiertas.has(v.idVenta);
+                            const unidades = v.lineas.reduce((a, l) => a + l.cantidad, 0);
+                            // Si la venta tuvo productos de otras marcas, acá solo entra lo de esta.
+                            const otrasMarcas = v.totalVenta - v.ventaBruta > 1;
+                            return (
+                              <Fragment key={v.idVenta}>
+                                <tr
+                                  className={`border-b border-neutral-100 cursor-pointer hover:bg-neutral-50 ${abierta ? "bg-neutral-50" : ""}`}
+                                  onClick={() => alternarVenta(v.idVenta)}
+                                >
+                                  <td className="p-3 whitespace-nowrap text-neutral-500">
+                                    {formatearFecha(v.fecha)} · <LinkVenta idVenta={v.idVenta} numero={v.numeroVenta} />
+                                  </td>
+                                  <td className="p-3 whitespace-nowrap">
+                                    <button
+                                      type="button"
+                                      aria-expanded={abierta}
+                                      className="text-neutral-700 font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded"
+                                    >
+                                      {abierta ? "▾" : "▸"} {unidades} {unidades === 1 ? "producto" : "productos"}
+                                    </button>
+                                    {otrasMarcas && (
+                                      <span className="block text-[11px] text-amber-700">
+                                        La venta fue de ${formatearMonto(v.totalVenta)}: acá solo lo de {resultado.marca}
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="p-3 text-neutral-500 whitespace-nowrap">{formatearMedioPago(v.medioPago, v.formaPagoMp)}</td>
+                                  <CeldasPlata f={v} fuerte />
+                                </tr>
+                                {abierta &&
+                                  v.lineas.map((l) => (
+                                    <tr key={l.idDetalle} className="border-b border-neutral-100 bg-neutral-50/60 text-neutral-600">
+                                      <td className="p-3" />
+                                      <td className="p-3 pl-7" colSpan={2}>
+                                        {l.cantidad} × {l.producto}
+                                      </td>
+                                      <CeldasPlata f={l} />
+                                    </tr>
+                                  ))}
+                              </Fragment>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-neutral-200 text-left text-xs text-neutral-500">
+                            <th className="p-3">Fecha / Venta</th>
+                            <th className="p-3">Producto</th>
+                            <th className="p-3">Cant.</th>
+                            <th className="p-3">Pago</th>
+                            <EncabezadosPlata />
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {resultado.lineas.map((l) => (
+                            <tr key={l.idDetalle} className="border-b border-neutral-100 last:border-0">
+                              <td className="p-3 whitespace-nowrap text-neutral-500">
+                                {formatearFecha(l.fecha)} · <LinkVenta idVenta={l.idVenta} numero={l.numeroVenta} />
+                              </td>
+                              <td className="p-3">{l.producto}</td>
+                              <td className="p-3">{l.cantidad}</td>
+                              <td className="p-3 text-neutral-500 whitespace-nowrap">{formatearMedioPago(l.medioPago, l.formaPagoMp)}</td>
+                              <CeldasPlata f={l} />
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
                   </div>
 
                   <div className="border-t border-neutral-200 bg-neutral-50 p-5">

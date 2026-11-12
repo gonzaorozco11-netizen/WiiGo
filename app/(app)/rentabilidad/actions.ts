@@ -79,6 +79,8 @@ export type LineaRentabilidad = {
   /** Para abrir la venta entera en Ventas: el renglón es solo un producto de ella. */
   idVenta: string;
   numeroVenta: number;
+  /** Lo que se cobró en la venta entera, con productos de otras marcas si los hubo. */
+  totalVenta: number;
   producto: string;
   cantidad: number;
   medioPago: string | null;
@@ -160,7 +162,7 @@ export async function calcularRentabilidad(idMarca: string, desde: string, hasta
   const idsVenta = [...new Set((detalle ?? []).map((d) => d.id_venta))];
   const { data: ventas, error: errorVentas } = await supabase
     .from("ventas")
-    .select("id_venta, numero, fecha, medio_pago, estado, id_pago")
+    .select("id_venta, numero, fecha, medio_pago, estado, id_pago, total")
     .in("id_venta", idsVenta.length > 0 ? idsVenta : ["00000000-0000-0000-0000-000000000000"])
     .eq("estado", "PAGADA")
     .gte("fecha", `${desde}T00:00:00`)
@@ -220,6 +222,7 @@ export async function calcularRentabilidad(idMarca: string, desde: string, hasta
       fecha: venta.fecha,
       idVenta: venta.id_venta,
       numeroVenta: venta.numero,
+      totalVenta: Number(venta.total ?? 0),
       producto: nombreProducto,
       cantidad: neto.cantidad,
       medioPago: venta.medio_pago,
