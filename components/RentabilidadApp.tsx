@@ -172,7 +172,15 @@ export default function RentabilidadApp({ marcas }: { marcas: Marca[] }) {
                         {resultado.lineas.map((l) => (
                           <tr key={l.idDetalle} className="border-b border-neutral-100 last:border-0">
                             <td className="p-3 whitespace-nowrap text-neutral-500">
-                              {formatearFecha(l.fecha)} · #{String(l.numeroVenta).padStart(4, "0")}
+                              {formatearFecha(l.fecha)} ·{" "}
+                              {/* Cada renglón es un producto: el número abre la venta entera. */}
+                              <a
+                                href={`/ventas?venta=${l.idVenta}`}
+                                className="text-accent hover:underline font-medium"
+                                title="Ver la venta entera"
+                              >
+                                #{String(l.numeroVenta).padStart(4, "0")}
+                              </a>
                             </td>
                             <td className="p-3">{l.producto}</td>
                             <td className="p-3">{l.cantidad}</td>

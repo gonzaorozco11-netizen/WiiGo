@@ -76,6 +76,8 @@ async function tasasRentabilidad(supabase: SupabaseClient) {
 export type LineaRentabilidad = {
   idDetalle: string;
   fecha: string;
+  /** Para abrir la venta entera en Ventas: el renglón es solo un producto de ella. */
+  idVenta: string;
   numeroVenta: number;
   producto: string;
   cantidad: number;
@@ -216,6 +218,7 @@ export async function calcularRentabilidad(idMarca: string, desde: string, hasta
     lineas.push({
       idDetalle: linea.id_detalle,
       fecha: venta.fecha,
+      idVenta: venta.id_venta,
       numeroVenta: venta.numero,
       producto: nombreProducto,
       cantidad: neto.cantidad,

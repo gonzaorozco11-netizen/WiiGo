@@ -101,6 +101,8 @@ const MEDIO_PRECIOS: Record<string, Medio> = {
   PREPAGA: "debito",
   CREDITO: "credito",
   CUOTAS_SIN_INTERES: "credito",
+  // Transferencia al QR desde MODO o un banco: entra a la cuenta como el QR.
+  TRANSFERENCIA: "qr",
   POSNET_DEBITO: "debito",
   POSNET_CREDITO: "credito",
 };

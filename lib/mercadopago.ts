@@ -205,15 +205,23 @@ export async function obtenerOrdenMp(idOrden: string) {
 // desde 2026-11-04 Gonzalo la tiene desactivada en el QR (el crédito se
 // cobra con el posnet), y si se reactiva, cuesta lo del crédito y no lo de
 // Mercado Crédito.
+//
+// Antes, cualquier cosa que no fuera de las de arriba caía en CREDITO. Así
+// quedó la venta #15 (2026-11-12), que la clienta pagó con MODO desde su
+// cuenta: Mercado Pago no cobró comisión y el sistema le restaba la del
+// crédito (6,15 % + IVA). Ahora crédito es solo la tarjeta de crédito, y lo
+// demás que no es tarjeta (transferencia desde MODO o un banco) va como
+// TRANSFERENCIA. Si no viene el tipo, se sigue suponiendo lo más caro.
 export function mapearFormaPagoMp(paymentMethod: {
   id?: string;
   type?: string;
   installments?: number;
-}): "DINERO_CUENTA" | "DEBITO" | "CUOTAS_SIN_INTERES" | "PREPAGA" | "CREDITO" {
+}): "DINERO_CUENTA" | "DEBITO" | "CUOTAS_SIN_INTERES" | "PREPAGA" | "CREDITO" | "TRANSFERENCIA" {
   const tipo = paymentMethod.type;
   if (tipo === "account_money") return "DINERO_CUENTA";
   if (tipo === "debit_card") return "DEBITO";
   if (tipo === "prepaid_card") return "PREPAGA";
   if (paymentMethod.id === "consumer_credits" || tipo === "digital_currency" || tipo === "consumer_credits") return "CUOTAS_SIN_INTERES";
-  return "CREDITO";
+  if (tipo === "credit_card" || !tipo) return "CREDITO";
+  return "TRANSFERENCIA";
 }

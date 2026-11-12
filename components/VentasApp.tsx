@@ -143,9 +143,12 @@ export default function VentasApp({
   clientes,
   puedeFacturar,
   diasDevolucion,
+  ventaInicial = null,
 }: {
   locales: Local[];
   ventasIniciales: Venta[];
+  /** La venta que se abre al entrar (link desde Rentabilidad). */
+  ventaInicial?: string | null;
   // Tipos angostos a propósito: esta pantalla solo muestra nombres, y la
   // consulta trae solo eso. Si mañana alguien necesita otro campo, TypeScript
   // lo va a frenar acá y va a tener que agregarlo también a la consulta — en
@@ -168,7 +171,7 @@ export default function VentasApp({
   const [filtroFecha, setFiltroFecha] = useState<FiltroFecha>("SEMANA");
   const [rangoDesde, setRangoDesde] = useState(hoyISO());
   const [rangoHasta, setRangoHasta] = useState(hoyISO());
-  const [idVentaSeleccionada, setIdVentaSeleccionada] = useState<string | null>(null);
+  const [idVentaSeleccionada, setIdVentaSeleccionada] = useState<string | null>(ventaInicial);
   const [detalleSeleccionado, setDetalleSeleccionado] = useState<DetalleVenta[]>([]);
   const [cargandoDetalle, setCargandoDetalle] = useState(false);
   const [anulando, setAnulando] = useState(false);

@@ -25,9 +25,12 @@ function hace7diasISO() {
   return fecha.toISOString().slice(0, 10);
 }
 
-export default async function VentasPage() {
+export default async function VentasPage({ searchParams }: { searchParams: Promise<{ venta?: string }> }) {
   const sesion = await obtenerSesionConPantallas();
   if (!puedeVerPantalla(sesion, "ventas")) return <PantallaBloqueada />;
+  // ?venta= viene de otra pantalla (Rentabilidad): abre esa venta entera.
+  const { venta: ventaPedida } = await searchParams;
+  const idVentaPedida = ventaPedida && /^[0-9a-f-]{36}$/i.test(ventaPedida) ? ventaPedida : null;
 
   // La columna y el botón de factura solo existen para quien puede emitir.
   const sesionPermisos = await obtenerSesionConPermisos();
@@ -66,10 +69,19 @@ export default async function VentasPage() {
     );
   }
 
+  // Si la venta pedida es de antes de esta semana no viene en la lista: se
+  // trae aparte y se suma arriba, para poder abrirla.
+  const ventasIniciales = (ventasRes.data ?? []) as Venta[];
+  if (idVentaPedida && !ventasIniciales.some((v) => v.id_venta === idVentaPedida)) {
+    const { data: vieja } = await supabase.from("ventas").select("*").eq("id_venta", idVentaPedida).maybeSingle();
+    if (vieja) ventasIniciales.unshift(vieja as Venta);
+  }
+
   return (
     <VentasApp
       locales={(localesRes.data ?? []) as Local[]}
-      ventasIniciales={(ventasRes.data ?? []) as Venta[]}
+      ventasIniciales={ventasIniciales}
+      ventaInicial={idVentaPedida}
       productos={(productosRes.data ?? []) as Pick<Producto, "id_producto" | "nombre">[]}
       variantes={(variantesRes.data ?? []) as Pick<VarianteProducto, "id_variante" | "id_producto" | "nombre">[]}
       marcas={(marcasRes.data ?? []) as Pick<Marca, "id_marca" | "nombre">[]}

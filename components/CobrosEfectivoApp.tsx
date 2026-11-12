@@ -27,6 +27,7 @@ const FORMAS_PAGO_MP: { valor: string; etiqueta: string }[] = [
   { valor: "CUOTAS_SIN_INTERES", etiqueta: "Cuotas sin tarjeta (Mercado Crédito)" },
   { valor: "PREPAGA", etiqueta: "Tarjeta prepaga" },
   { valor: "CREDITO", etiqueta: "Tarjeta de crédito" },
+  { valor: "TRANSFERENCIA", etiqueta: "Transferencia (MODO o banco)" },
 ];
 
 function mismoDia(a: Date, b: Date) {

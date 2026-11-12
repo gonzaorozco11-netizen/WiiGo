@@ -100,9 +100,21 @@ export async function POST(req: Request) {
     const supabase = getSupabaseServerClient();
     const { data: venta } = await supabase
       .from("ventas")
-      .select("id_local")
+      .select("id_local, id_pago")
       .eq("id_venta", idVenta)
       .maybeSingle();
+
+    // Lo que informó Mercado Pago tal cual, al lado de cómo se interpretó: si
+    // un medio nuevo (MODO, una billetera) cae en la categoría equivocada, se
+    // ve en el pago sin tener que adivinar (venta #15, 2026-11-12).
+    if (venta?.id_pago) {
+      const { data: pago } = await supabase.from("pagos").select("observaciones").eq("id_pago", venta.id_pago).maybeSingle();
+      const crudo = `${paymentMethod?.type ?? "sin tipo"}/${paymentMethod?.id ?? "sin id"}`;
+      await supabase
+        .from("pagos")
+        .update({ observaciones: `${pago?.observaciones ?? ""} · Mercado Pago informó: ${crudo}` })
+        .eq("id_pago", venta.id_pago);
+    }
     if (venta) await avisarVenta(idVenta, venta.id_local as string);
 
     return new Response(null, { status: 200 });

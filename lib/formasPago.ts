@@ -26,6 +26,10 @@ export const CLAVE_COMISION_COBRO: Record<string, string> = {
   CUOTAS_SIN_INTERES: "MP_COMISION_CUOTAS_SIN_INTERES",
   PREPAGA: "MP_COMISION_PREPAGA",
   CREDITO: "MP_COMISION_CREDITO",
+  // Pago por transferencia al QR desde MODO o la app de un banco. Mercado Pago
+  // no le cobra comisión (venta #15 del 2026-11-12: solo el impuesto al
+  // cheque), así que sin la clave cargada vale 0.
+  TRANSFERENCIA: "MP_COMISION_TRANSFERENCIA",
   POSNET_DEBITO: "POSNET_COMISION_DEBITO",
   POSNET_CREDITO: "POSNET_COMISION_CREDITO",
 };
@@ -51,6 +55,7 @@ const FORMA_CORTA: Record<string, string> = {
   CUOTAS_SIN_INTERES: "Cuotas sin tarjeta",
   PREPAGA: "Prepaga",
   CREDITO: "Crédito",
+  TRANSFERENCIA: "Transferencia (MODO o banco)",
   POSNET_DEBITO: "Débito",
   POSNET_CREDITO: "Crédito",
 };
