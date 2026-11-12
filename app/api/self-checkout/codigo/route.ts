@@ -22,5 +22,31 @@ export async function GET(request: NextRequest) {
     const igual = (data ?? []).find((v) => esMismoCodigo(v.codigo_barras as string | null, codigo));
     if (igual) return Response.json({ idVariante: igual.id_variante }, { headers: { "Cache-Control": "no-store" } });
   }
+  await anotarNoEncontrado(supabase, codigo).catch(() => {});
   return Response.json({ idVariante: null }, { headers: { "Cache-Control": "no-store" } });
+}
+
+// Los últimos códigos que el lector del tótem leyó y no encontró, tal cual
+// llegaron (Gonzalo, 2026-11-12: «hay productos que no lee»). Así se ve si el
+// lector manda otro número que el del envase o si directamente no lee: sin
+// tabla nueva, en configuracion, los últimos 30.
+const PARAMETRO_NO_ENCONTRADOS = "TOTEM_CODIGOS_NO_ENCONTRADOS";
+async function anotarNoEncontrado(supabase: ReturnType<typeof getSupabaseServerClient>, codigo: string) {
+  const { data } = await supabase.from("configuracion").select("valor").eq("parametro", PARAMETRO_NO_ENCONTRADOS).maybeSingle();
+  let lista: { codigo: string; fecha: string }[] = [];
+  try {
+    lista = JSON.parse((data?.valor as string | undefined) ?? "[]");
+  } catch {
+    lista = [];
+  }
+  lista = [{ codigo: codigo.slice(0, 60), fecha: new Date().toISOString() }, ...lista].slice(0, 30);
+  await supabase.from("configuracion").upsert(
+    {
+      parametro: PARAMETRO_NO_ENCONTRADOS,
+      valor: JSON.stringify(lista),
+      descripcion: "Últimos códigos que leyó el lector del tótem y no encontró (para revisar envases).",
+      fecha_actualizacion: new Date().toISOString(),
+    },
+    { onConflict: "parametro" }
+  );
 }
