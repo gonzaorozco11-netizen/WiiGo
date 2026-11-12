@@ -78,7 +78,7 @@ export default function TableroInicio({ tablero }: { tablero: Tablero }) {
       </Link>
 
       {tablero.dueno ? (
-        <InicioDueno datos={tablero.dueno} turno={kpis.find((k) => k.etiqueta === "Turno de caja")} />
+        <InicioDueno datos={tablero.dueno} turno={kpis.find((k) => k.etiqueta === "Turno de caja")} equipo={tablero.equipo} />
       ) : tablero.errorDueno ? (
         <p className="text-sm text-red-600 bg-white border border-red-200 rounded-xl p-4">
           No se pudieron calcular las ventas del inicio: {tablero.errorDueno}

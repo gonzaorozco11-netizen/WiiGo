@@ -8,6 +8,7 @@ import { avisosCajaYLlamados } from "@/lib/avisosCaja";
 import { cargarPreciosPrestados } from "@/lib/preciosPrestados";
 import { cuantosParaPedir, pedidosEsperando, proveedorDelPedido } from "@/lib/pedidoProveedor";
 import { localDeSesion } from "@/lib/fraccionado";
+import { equipoDeHoy, type EquipoHoy } from "@/lib/equipoHoy";
 
 // Tablero de inicio.
 //
@@ -47,6 +48,8 @@ export type Tablero = {
   /** El negocio de un vistazo. Solo para el Dueño; null para el resto. */
   dueno: InicioDueno | null;
   errorDueno: string | null;
+  /** Quién está trabajando ahora y quién trabajó hoy. Solo para el Dueño. */
+  equipo: EquipoHoy | null;
   /** El inicio del local (botón grande + accesos rápidos). Para el equipo, no para el Dueño. */
   operativo: InicioOperativo | null;
   nombre: string;
@@ -553,9 +556,10 @@ export async function armarTablero(): Promise<Tablero | null> {
   // igual con sus pendientes: un error de cálculo no puede dejarlo sin inicio.
   let dueno: InicioDueno | null = null;
   let errorDueno: string | null = null;
+  let equipo: EquipoHoy | null = null;
   if (esAdmin) {
     try {
-      dueno = await armarInicioDueno(supabase);
+      [dueno, equipo] = await Promise.all([armarInicioDueno(supabase), equipoDeHoy(supabase).catch(() => null)]);
     } catch (e) {
       errorDueno = e instanceof Error ? e.message : "No se pudieron calcular las ventas.";
     }
@@ -578,6 +582,7 @@ export async function armarTablero(): Promise<Tablero | null> {
   return {
     dueno,
     errorDueno,
+    equipo,
     operativo,
     nombre: sesion.nombre,
     fecha: new Date(`${hoyISO}T12:00:00-03:00`).toLocaleDateString("es-AR", {

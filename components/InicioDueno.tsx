@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { InicioDueno as Datos } from "@/lib/inicioDueno";
 import type { KpiTablero } from "@/lib/tablero";
+import type { EquipoHoy } from "@/lib/equipoHoy";
 
 // El negocio de un vistazo en el inicio del Dueño. Misma lectura que el
 // portal de cada marca, pero del local entero: el mes con su proyección, los
@@ -34,13 +35,77 @@ function pasoEje(max: number) {
 const tarjeta = "bg-white border border-neutral-200 rounded-xl";
 const eyebrow = "text-[10.5px] font-bold uppercase tracking-wider text-neutral-400";
 
-export default function InicioDueno({ datos, turno }: { datos: Datos; turno: KpiTablero | undefined }) {
+const horasTexto = (h: number) => {
+  const totalMin = Math.round(h * 60);
+  const hh = Math.floor(totalMin / 60);
+  const mm = totalMin % 60;
+  return hh ? `${hh} h${mm ? ` ${mm} min` : ""}` : `${mm} min`;
+};
+
+/**
+ * Quién está trabajando ahora en el local (Gonzalo, 2026-11-12). Arriba de
+ * todo porque es lo primero que se pregunta al abrir: ¿hay alguien?, ¿abrió la
+ * caja? Sin una caja abierta, los pagos con QR del tótem no se confirman.
+ */
+function EnElLocal({ equipo }: { equipo: EquipoHoy }) {
+  const adentro = equipo.personas.filter((p) => p.adentro);
+  const salieron = equipo.personas.filter((p) => !p.adentro);
+  const sinCaja = adentro.length > 0 && equipo.cajasAbiertas === 0;
+  return (
+    <section className={`${tarjeta} p-5`}>
+      <div className="flex items-baseline justify-between gap-2 mb-3">
+        <p className={eyebrow}>En el local ahora</p>
+        <Link href="/rrhh/asistencia" className="text-xs font-semibold text-accent hover:underline">
+          Asistencia →
+        </Link>
+      </div>
+      {adentro.length === 0 ? (
+        <p className="text-sm text-neutral-500">No hay nadie fichado en este momento.</p>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {adentro.map((p) => (
+            <li key={p.nombre} className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" aria-hidden="true" />
+              <span className="font-semibold text-neutral-900">{p.nombre}</span>
+              <span className="text-sm text-neutral-500">
+                {p.turno} · entró {p.entro}
+                {p.tarde && <span className="text-red-600"> ({p.minutosTarde} min tarde)</span>} · lleva {horasTexto(p.horasTramo)}
+                {p.horas - p.horasTramo >= 0.05 && <> · hoy suma {horasTexto(p.horas)}</>}
+              </span>
+              <span
+                className={`text-[11px] font-bold rounded-full px-2 py-0.5 ${
+                  p.cajaAbierta ? "bg-emerald-50 text-emerald-700" : "bg-neutral-100 text-neutral-500"
+                }`}
+              >
+                {p.cajaAbierta ? "Caja abierta" : "Sin caja"}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {sinCaja && (
+        <p className="mt-3 rounded-lg bg-red-50 text-red-700 text-sm px-3 py-2">
+          Hay gente trabajando y <b>ninguna caja abierta</b>: no se puede cobrar y los pagos con QR del tótem no se confirman.
+        </p>
+      )}
+      {salieron.length > 0 && (
+        <p className="mt-3 text-xs text-neutral-500">
+          Hoy ya trabajaron: {salieron.map((p) => `${p.nombre.split(" ")[0]} (${p.entro} a ${p.salio}, ${horasTexto(p.horas)})`).join(" · ")}
+        </p>
+      )}
+    </section>
+  );
+}
+
+export default function InicioDueno({ datos, turno, equipo }: { datos: Datos; turno: KpiTablero | undefined; equipo: EquipoHoy | null }) {
   const colorDe = new Map(datos.marcas.map((m, i) => [m.idMarca, COLORES[i % COLORES.length]]));
   const variacionMes =
     datos.vendidoMesAnteriorTramo > 0 ? Math.round((datos.vendidoMes / datos.vendidoMesAnteriorTramo - 1) * 100) : null;
 
   return (
     <div className="space-y-4">
+      {equipo && <EnElLocal equipo={equipo} />}
+
       {/* ---------- El mes ---------- */}
       <section className={`${tarjeta} p-5 grid gap-5 md:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] items-end`}>
         <div>
