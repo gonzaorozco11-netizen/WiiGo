@@ -6,7 +6,7 @@ import { friendlyDbError } from "@/lib/errors";
 import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos";
 import { fechaHoraArgentina, minutosDeHora } from "@/lib/horarios";
 import { calcularPresentismoMes, obtenerNovedadesMes } from "@/app/(app)/rrhh/actions";
-import { armarTramos, horasDeTramos, quedoSinSalida, type MarcaDia, type Tramo } from "@/lib/tramos";
+import { armarTramos, horasDeTramos, minutoQueCuenta, quedoSinSalida, type MarcaDia, type Tramo } from "@/lib/tramos";
 import { EMISOR } from "@/lib/emisor";
 
 // Asistencia: la grilla del mes, persona por día.
@@ -26,7 +26,9 @@ async function requireAcceso() {
   return null;
 }
 
-export type EstadoCelda = "ok" | "tarde" | "falta" | "sin_salida" | "en_curso" | "lic" | "feriado" | "no_trabaja" | "flex" | "vacio" | "futuro";
+// antes_ingreso: un día anterior a su fecha de ingreso. No es falta: todavía
+// no trabajaba en WiiGo (Gonzalo, 2026-11-12, con los dos que entraron el 12).
+export type EstadoCelda = "ok" | "tarde" | "falta" | "sin_salida" | "en_curso" | "lic" | "feriado" | "no_trabaja" | "flex" | "vacio" | "futuro" | "antes_ingreso";
 
 export type CeldaAsistencia = {
   estado: EstadoCelda;
@@ -63,7 +65,8 @@ export type AsistenciaMes = {
   sinSalida: { idPersona: string; nombre: string; fecha: string; horaEntrada: string; horaSalidaEsperada: string | null }[];
   hoyNoFicho: string[];
   sinDefinir: string[];
-  ahora: { turno: string | null; trabajando: { nombre: string; desde: string }[] } | null;
+  /** `cuenta`: si llegó antes de su turno, la hora desde la que corren las horas. */
+  ahora: { turno: string | null; trabajando: { nombre: string; desde: string; cuenta: string | null }[] } | null;
   horarios: { idHorario: string; nombre: string; texto: string }[];
   faltaSql: boolean;
 };
@@ -129,7 +132,18 @@ export async function armarAsistenciaMes(periodoPedido?: string): Promise<Asiste
   // Fichajes por persona y día (hora argentina), armados en tramos: cada
   // entrada con su salida. Con dos turnos el mismo día se suman los dos
   // tramos, no se cuenta de la primera entrada a la última salida.
-  type Dia = { entrada?: string; salida?: string; tardes: number; horas: number | null; abierto: string | null; tramos: string[] };
+  type Dia = {
+    entrada?: string;
+    salida?: string;
+    tardes: number;
+    horas: number | null;
+    abierto: string | null;
+    /** Llegó antes de su turno: la hora desde la que corren las horas del tramo abierto. */
+    abiertoCuenta: string | null;
+    /** Hoy, con el turno abierto: las horas que lleva hasta ahora. */
+    enCurso: number;
+    tramos: string[];
+  };
   const marcasPor = new Map<string, Map<number, MarcaDia<{ tarde: boolean }>[]>>();
   for (const f of fichajesRes.data ?? []) {
     const arg = fechaHoraArgentina(f.fecha_hora as string);
@@ -154,12 +168,19 @@ export async function armarAsistenciaMes(periodoPedido?: string): Promise<Asiste
       const tramos = armarTramos(marcas);
       const conEntrada = tramos.filter((t) => t.entrada);
       const ultimo = tramos[tramos.length - 1];
+      const abierta = quedoSinSalida(tramos) ? ultimo.entrada! : null;
+      // Hoy, el turno abierto suma lo que lleva hasta ahora: Tomás hizo la
+      // mañana y volvió a la tarde, y sin esto se veían solo las horas de la
+      // mañana (Gonzalo, 2026-11-12). Corre desde que arrancó su turno si llegó antes.
+      const desdeMin = abierta ? minutoQueCuenta(abierta) : 0;
       dias.set(d, {
         entrada: conEntrada[0]?.entrada?.hora,
         salida: [...tramos].reverse().find((t) => t.salida)?.salida?.hora,
         tardes: conEntrada.filter((t) => t.entrada?.dato.tarde).length,
         horas: horasDeTramos(tramos),
-        abierto: quedoSinSalida(tramos) ? ultimo.entrada!.hora : null,
+        abierto: abierta ? abierta.hora : null,
+        abiertoCuenta: abierta && desdeMin > minutosDeHora(abierta.hora) ? hhmm(abierta.cuentaDesde) : null,
+        enCurso: abierta && d === hoyDia ? Math.max(0, ahora.minutosDelDia - desdeMin) / 60 : 0,
         tramos: tramos.filter((t) => t.entrada).map((t) => `${t.entrada!.hora} a ${t.salida?.hora ?? "—"}`),
       });
     }
@@ -179,11 +200,14 @@ export async function armarAsistenciaMes(periodoPedido?: string): Promise<Asiste
   const sinSalida: AsistenciaMes["sinSalida"] = [];
   const hoyNoFicho: string[] = [];
   const sinDefinir: string[] = [];
-  const trabajandoAhora: { nombre: string; desde: string }[] = [];
+  const trabajandoAhora: { nombre: string; desde: string; cuenta: string | null }[] = [];
 
-  const filas: FilaAsistencia[] = personas.map((p) => {
+  // Quien entró después de este mes no tiene nada que mostrar en él.
+  const enElMes = personas.filter((p) => !p.fecha_ingreso || (p.fecha_ingreso as string) <= hasta);
+  const filas: FilaAsistencia[] = enElMes.map((p) => {
     const idPersona = p.id_persona as string;
     const nombre = [p.nombre, p.apellido].filter(Boolean).join(" ");
+    const ingreso = (p.fecha_ingreso as string | null) ?? null;
     const u = usuarioPorPersona.get(idPersona);
     const cobra: FilaAsistencia["cobra"] = (u?.valor_hora as number) > 0 ? "POR_HORA" : (u?.sueldo_base as number) > 0 ? "FIJO" : "SIN";
     const h = p.id_horario ? horarioPorId.get(p.id_horario as string) : undefined;
@@ -220,13 +244,15 @@ export async function armarAsistenciaMes(periodoPedido?: string): Promise<Asiste
             sinSalida.push({ idPersona, nombre, fecha: fechaDe(d), horaEntrada: fichaje.abierto, horaSalidaEsperada: h ? hhmm(h.hora_salida as string) : null });
             return { estado: "sin_salida", horas: horasDia, entrada: fichaje.entrada, salida: null, tramos };
           }
-          if (esHoy) trabajandoAhora.push({ nombre, desde: fichaje.abierto });
-          return { estado: "en_curso", horas: horasDia, entrada: fichaje.entrada, salida: null, tramos };
+          horas += fichaje.enCurso;
+          if (esHoy) trabajandoAhora.push({ nombre, desde: fichaje.abierto, cuenta: fichaje.abiertoCuenta });
+          return { estado: "en_curso", horas: Math.round(((horasDia ?? 0) + fichaje.enCurso) * 10) / 10, entrada: fichaje.entrada, salida: null, tramos };
         }
         const horasRedondeadas = horasDia === null ? null : Math.round(horasDia * 10) / 10;
         if (horario.tipo !== "FIJO") return { estado: "flex", horas: horasRedondeadas, entrada: fichaje.entrada, salida: fichaje.salida ?? null, tramos };
         return { estado: fichaje.tardes > 0 ? "tarde" : "ok", horas: horasRedondeadas, entrada: fichaje.entrada, salida: fichaje.salida ?? null, tramos };
       }
+      if (ingreso && fechaDe(d) < ingreso) return { estado: "antes_ingreso", horas: null, entrada: null, salida: null };
       if (horario.tipo !== "FIJO" || !h) return { estado: "vacio", horas: null, entrada: null, salida: null };
       const trabaja = ((h.dias_semana as number[] | null) ?? []).includes(dow);
       if (!trabaja) return { estado: "no_trabaja", horas: null, entrada: null, salida: null };
@@ -346,7 +372,7 @@ export type DiaPlanilla = {
   /** Cada turno del día: entrada y salida con su firma. Casi siempre uno; dos si hizo doble turno. */
   tramos: { entrada: MarcaPlanilla | null; salida: MarcaPlanilla | null }[];
   horas: number | null;
-  tipo: "trabajo" | "tarde" | "falta" | "lic" | "feriado" | "no_trabaja" | "sin_salida" | "en_curso" | "futuro";
+  tipo: "trabajo" | "tarde" | "falta" | "lic" | "feriado" | "no_trabaja" | "sin_salida" | "en_curso" | "futuro" | "antes_ingreso";
   obs: string;
 };
 
@@ -530,8 +556,11 @@ export async function armarPlanillasAsistencia(periodoPedido: string, idPersona?
   }
   const soloMarca = (m: DatoMarca): MarcaPlanilla => ({ hora: m.hora, firma: m.firma, manual: m.manual });
 
-  const planillas: PlanillaPersona[] = personas.map((p) => {
+  // Quien entró después de este mes no tiene planilla en él.
+  const enElMes = personas.filter((p) => !p.fecha_ingreso || (p.fecha_ingreso as string) <= hasta);
+  const planillas: PlanillaPersona[] = enElMes.map((p) => {
     const id = p.id_persona as string;
+    const ingreso = (p.fecha_ingreso as string | null) ?? null;
     const h = horarioPorId.get(p.id_horario as string);
     const diasHorario = ((h?.dias_semana as number[] | null) ?? []) as number[];
     const licencias = (licenciasRes.data ?? []).filter((l) => l.id_persona === id);
@@ -596,6 +625,7 @@ export async function armarPlanillasAsistencia(periodoPedido: string, idPersona?
         return fila;
       }
 
+      if (ingreso && fecha < ingreso) return { ...fila, tipo: "antes_ingreso", obs: "Antes de su ingreso" };
       if (!trabaja) return { ...fila, tipo: "no_trabaja", obs: "No trabaja" };
       if (feriado) return { ...fila, tipo: "feriado", obs: `Feriado: ${feriado}` };
       if (esHoy) return { ...fila, tipo: "en_curso", obs: "Hoy" };

@@ -118,7 +118,7 @@ export async function calcularPresentismoMes(periodo: string): Promise<Presentis
 
   const { data: personas } = await supabase
     .from("personas")
-    .select("id_persona, nombre, apellido, id_horario")
+    .select("id_persona, nombre, apellido, id_horario, fecha_ingreso")
     .eq("estado", "ACTIVO")
     .not("id_horario", "is", null);
 
@@ -165,12 +165,14 @@ export async function calcularPresentismoMes(periodo: string): Promise<Presentis
     const salidasAnticipadas = fichajesPersona.filter((f) => f.tipo === "SALIDA" && f.estado === "ANTICIPADA" && !f.justificado).length;
 
     const diasEsperados: string[] = [];
+    // Antes de su fecha de ingreso no trabajaba: esos días no son faltas.
+    const ingreso = (p.fecha_ingreso as string | null) ?? "";
     const cursor = new Date(desde);
     while (cursor <= hasta) {
       const isoDow = cursor.getDay() === 0 ? 7 : cursor.getDay();
       const fechaCursor = cursor.toISOString().slice(0, 10);
       // Hoy tampoco cuenta todavía: puede estar por fichar (mismo criterio que la grilla de Asistencia).
-      if (diasSemana.includes(isoDow) && !diasLicenciaPersona.has(fechaCursor) && !feriados.has(fechaCursor) && fechaCursor < hoyArgentina) {
+      if (diasSemana.includes(isoDow) && !diasLicenciaPersona.has(fechaCursor) && !feriados.has(fechaCursor) && fechaCursor < hoyArgentina && fechaCursor >= ingreso) {
         diasEsperados.push(fechaCursor);
       }
       cursor.setDate(cursor.getDate() + 1);

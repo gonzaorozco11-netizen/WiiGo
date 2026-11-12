@@ -31,6 +31,7 @@ const ESTILO: Record<CeldaAsistencia["estado"], string> = {
   flex: "bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-200",
   vacio: "ring-1 ring-inset ring-neutral-200",
   futuro: "ring-1 ring-inset ring-dashed ring-neutral-200 opacity-60",
+  antes_ingreso: "bg-neutral-50 text-neutral-300",
 };
 const TONO = {
   bien: "bg-emerald-50 text-emerald-700",
@@ -43,8 +44,10 @@ function textoCelda(c: CeldaAsistencia) {
   if (c.estado === "falta") return "F";
   if (c.estado === "lic") return "V";
   if (c.estado === "sin_salida") return "?";
-  if (c.estado === "en_curso") return "•";
+  // En curso: lo que lleva hoy, con lo que sigue corriendo (• si todavía no arrancó su turno).
+  if (c.estado === "en_curso") return c.horas ? (c.horas % 1 === 0 ? String(c.horas) : c.horas.toFixed(1)) : "•";
   if (c.estado === "feriado") return "Fe";
+  if (c.estado === "antes_ingreso") return "–";
   if (c.horas !== null) return c.horas % 1 === 0 ? String(c.horas) : c.horas.toFixed(1);
   return "";
 }
@@ -169,7 +172,9 @@ export default function AsistenciaMes({
         <div className="rounded-xl px-4 py-3 text-[13px] bg-white border border-neutral-200">
           <p className="font-semibold text-neutral-900">Ahora{d.ahora?.turno ? ` · ${d.ahora.turno}` : ""}</p>
           {d.ahora && d.ahora.trabajando.length > 0 ? (
-            <p className="text-neutral-600">{d.ahora.trabajando.map((t) => `${t.nombre} desde las ${t.desde}`).join(" · ")}</p>
+            <p className="text-neutral-600">
+              {d.ahora.trabajando.map((t) => `${t.nombre} desde las ${t.desde}${t.cuenta ? ` (le cuenta desde las ${t.cuenta})` : ""}`).join(" · ")}
+            </p>
           ) : (
             <p className="text-neutral-500">{d.ahora ? "No hay nadie fichado en este momento." : "—"}</p>
           )}
@@ -265,9 +270,11 @@ export default function AsistenciaMes({
             ["tarde", "Tarde"],
             ["falta", "Faltó"],
             ["sin_salida", "Sin salida, corregir"],
+            ["en_curso", "Trabajando ahora"],
             ["lic", "Licencia o vacaciones"],
             ["no_trabaja", "No trabaja ese día"],
             ["flex", "Horario libre: horas que fichó"],
+            ["antes_ingreso", "Todavía no trabajaba"],
           ].map(([k, t]) => (
             <span key={k} className="flex items-center gap-1.5">
               <i className={`inline-block w-4 h-3.5 rounded ${ESTILO[k as CeldaAsistencia["estado"]]}`} />
@@ -310,13 +317,16 @@ function DetalleDia({
     sin_salida: dosTurnos
       ? `${dosTurnos}. No fichó la salida del último: ese turno cuenta 0 horas hasta que la cargues.`
       : `Entró a las ${c.entrada} y no fichó la salida. Ese día cuenta 0 horas hasta que la cargues.`,
-    en_curso: dosTurnos ? `${dosTurnos}. Sigue trabajando.` : `Entró a las ${c.entrada} y todavía está trabajando.`,
+    en_curso: dosTurnos
+      ? `${dosTurnos}. Sigue trabajando: lleva ${c.horas ?? 0} h en el día.`
+      : `Entró a las ${c.entrada} y todavía está trabajando: lleva ${c.horas ?? 0} h.`,
     lic: "Estaba de vacaciones o de licencia.",
     feriado: `Feriado: ${d.feriados[sel.dia] ?? ""}.`,
     no_trabaja: "Ese día no está en su horario.",
     flex: dosTurnos ? `Horario libre. ${dosTurnos}. En total ${c.horas} h.` : `Horario libre: entró a las ${c.entrada} y salió a las ${c.salida} (${c.horas} h).`,
     vacio: sel.fila.horario.tipo === "LIBRE" ? "Horario libre: ese día no fichó, y no cuenta como falta." : "Sin fichajes ese día.",
     futuro: "Todavía no llegó ese día.",
+    antes_ingreso: "Todavía no trabajaba en WiiGo: es anterior a su fecha de ingreso. No cuenta como falta.",
   };
 
   function cargarSalida() {
