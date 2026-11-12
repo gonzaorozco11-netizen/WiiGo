@@ -1,6 +1,7 @@
-// Qué versión del sistema está publicada. La usa el totem para darse cuenta
-// solo de que hubo un deploy nuevo y recargarse cuando nadie lo está usando
-// (ver app/api/version/route.ts y SelfCheckoutApp).
+// Qué versión del sistema está publicada. La usan el totem y la tablet del
+// equipo para darse cuenta solas de que hubo un deploy nuevo y recargarse
+// cuando nadie las está usando (ver app/api/version/route.ts, SelfCheckoutApp
+// y components/ActualizarSolo.tsx).
 //
 // Vercel define estas variables en cada deploy, también mientras la página
 // está corriendo. Si no hay ninguna (en la compu, con `npm run dev`) sale

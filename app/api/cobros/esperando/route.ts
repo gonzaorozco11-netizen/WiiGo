@@ -8,9 +8,7 @@ import { NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import { esRolInterno } from "@/lib/rolesInternos";
-import { cobrosEsperando, estaTrabajando } from "@/lib/cobrosEsperando";
-
-const NADA = { n: 0, numero: null, desde: null };
+import { cobrosEsperando, estaTrabajando, NADIE_ESPERANDO as NADA } from "@/lib/cobrosEsperando";
 
 export async function GET() {
   const sesion = await obtenerSesionConPantallas();

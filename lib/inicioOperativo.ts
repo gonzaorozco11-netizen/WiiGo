@@ -4,7 +4,7 @@ import { POR_TURNO, adentroEnLocal, personaDeUsuario } from "@/lib/conteoStock";
 import { localDeSesion } from "@/lib/fraccionado";
 import { contarCartelesUrgentes } from "@/lib/tareasEtiqueta";
 import { cartelesNuevosPendientes, stickersPorPegar } from "@/lib/entradas";
-import { cobrosEsperando } from "@/lib/cobrosEsperando";
+import { cobrosEsperando, NADIE_ESPERANDO } from "@/lib/cobrosEsperando";
 
 // El Inicio del operativo en la tablet del local (pedido de Gonzalo,
 // 2026-10-22): arriba un botón grande con lo que toca hacer AHORA, y abajo
@@ -99,7 +99,7 @@ export async function armarInicioOperativo(
       : Promise.resolve({ data: [] as { id_venta: string }[] }),
     // Los mismos que lista Cobros en efectivo (del tótem, en efectivo, de hoy).
     // Antes contaba cualquier venta sin cobrar, también un QR a medio pagar.
-    puede("cobros-efectivo") ? cobrosEsperando(supabase) : Promise.resolve({ n: 0, numero: null, desde: null }),
+    puede("cobros-efectivo") ? cobrosEsperando(supabase) : Promise.resolve(NADIE_ESPERANDO),
     // Carteles con el precio viejo puesto: los que hay que cambiar en la góndola.
     // Solo de productos activos, como los muestra la pantalla de Carteles.
     puede("carteles")

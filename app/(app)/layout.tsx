@@ -6,6 +6,8 @@ import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import { contarPedidosNuevosSinSesion } from "@/lib/pedidosNuevos";
 import AvisoPedidos from "@/components/AvisoPedidos";
 import AvisoCobros from "@/components/AvisoCobros";
+import ActualizarSolo from "@/components/ActualizarSolo";
+import { versionActual } from "@/lib/version";
 import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos";
 import { verificarAvisoSalida } from "@/app/(app)/ficha-asistencia/actions";
 import { contarPendientes } from "@/app/(app)/aprobaciones/actions";
@@ -80,6 +82,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         nombre={sesionConPantallas?.nombre ?? session?.nombre ?? null}
       />
       <div className="flex-1 min-w-0">
+        {/* Con un deploy nuevo, la tablet se recarga sola en un momento tranquilo. */}
+        <ActualizarSolo version={versionActual()} />
         {veCobros && <AvisoCobros />}
         {vePedidos && <AvisoPedidos inicial={pedidosNuevos} />}
         {seAvisanCarteles && <AvisoCartelesBanner inicial={cartelesUrgentes} />}

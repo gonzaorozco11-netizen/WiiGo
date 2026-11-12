@@ -9,25 +9,32 @@ import { fechaHoraArgentina } from "@/lib/horarios";
 // Solo los de hoy: uno de ayer que quedó sin cobrar es un cliente que se fue
 // (se cancela desde Cobros), no alguien esperando.
 
+export type CobroEsperando = { numero: number; total: number; desde: string };
+
 export type CobrosEsperando = {
   n: number;
   /** El que espera hace más tiempo. */
   numero: number | null;
   desde: string | null;
+  /** Cada pedido esperando, del más viejo al más nuevo (el cartel grande muestra el último que llegó). */
+  pedidos: CobroEsperando[];
 };
+
+export const NADIE_ESPERANDO: CobrosEsperando = { n: 0, numero: null, desde: null, pedidos: [] };
 
 export async function cobrosEsperando(supabase: SupabaseClient): Promise<CobrosEsperando> {
   const { data, count, error } = await supabase
     .from("ventas")
-    .select("numero, fecha", { count: "exact" })
+    .select("numero, fecha, total", { count: "exact" })
     .eq("canal", "SELF_CHECKOUT")
     .eq("medio_pago", "EFECTIVO")
     .eq("estado", "PENDIENTE_PAGO")
     .gte("fecha", `${fechaHoraArgentina().fecha}T00:00:00-03:00`)
     .order("fecha", { ascending: true })
-    .limit(1);
-  if (error || !count) return { n: 0, numero: null, desde: null };
-  return { n: count, numero: (data?.[0]?.numero as number | undefined) ?? null, desde: (data?.[0]?.fecha as string | undefined) ?? null };
+    .limit(20);
+  if (error || !count) return NADIE_ESPERANDO;
+  const pedidos = (data ?? []).map((v) => ({ numero: Number(v.numero), total: Number(v.total ?? 0), desde: v.fecha as string }));
+  return { n: count, numero: pedidos[0]?.numero ?? null, desde: pedidos[0]?.desde ?? null, pedidos };
 }
 
 /**
