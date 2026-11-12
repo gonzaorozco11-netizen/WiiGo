@@ -124,9 +124,12 @@ export type CartelesPendientes = { cantidad: number; items: CartelPendiente[] };
 export async function cartelesPendientesDelLocal(supabase: SupabaseClient, idLocal: string): Promise<CartelesPendientes | null> {
   const { data, error } = await supabase
     .from("tareas_etiqueta")
-    .select("id_tarea, id_producto, precio_nuevo, creada_el, vence_el, aplicar_al_poner, productos(nombre)")
+    .select("id_tarea, id_producto, precio_nuevo, creada_el, vence_el, aplicar_al_poner, productos!inner(nombre, estado)")
     .eq("tipo", "CAMBIO_PRECIO")
     .in("estado", ["PENDIENTE", "VENCIDA"])
+    // Un producto inactivo no está en la góndola ni en Carteles: su cartel no
+    // puede frenar la salida de nadie (las 4 Mermeladas con Azúcar, 2026-11-12).
+    .eq("productos.estado", "ACTIVO")
     .or(`id_local.eq.${idLocal},id_local.is.null`)
     .order("creada_el");
   if (error || !data?.length) return null;
@@ -161,9 +164,10 @@ export async function cartelesPendientesDelLocal(supabase: SupabaseClient, idLoc
 export async function contarCartelesUrgentes(supabase: SupabaseClient): Promise<number> {
   const { data, error } = await supabase
     .from("tareas_etiqueta")
-    .select("id_producto")
+    .select("id_producto, productos!inner(estado)")
     .eq("tipo", "CAMBIO_PRECIO")
     .in("estado", ["PENDIENTE", "VENCIDA"])
+    .eq("productos.estado", "ACTIVO")
     .or("aplicar_al_poner.is.null,aplicar_al_poner.eq.false")
     .not("precio_anterior", "is", null)
     .lte("vence_el", new Date().toISOString())

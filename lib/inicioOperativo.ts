@@ -98,8 +98,13 @@ export async function armarInicioOperativo(
       ? supabase.from("ventas").select("id_venta", { count: "exact", head: true }).eq("estado", "PENDIENTE_PAGO")
       : Promise.resolve({ count: 0 }),
     // Carteles con el precio viejo puesto: los que hay que cambiar en la góndola.
+    // Solo de productos activos, como los muestra la pantalla de Carteles.
     puede("carteles")
-      ? supabase.from("tareas_etiqueta").select("id_tarea", { count: "exact", head: true }).in("estado", ["PENDIENTE", "VENCIDA"])
+      ? supabase
+          .from("tareas_etiqueta")
+          .select("id_tarea, productos!inner(estado)", { count: "exact", head: true })
+          .in("estado", ["PENDIENTE", "VENCIDA"])
+          .eq("productos.estado", "ACTIVO")
       : Promise.resolve({ count: 0 }),
   ]);
   const cartelesPorCambiar = Math.max(("count" in cartelesRes ? cartelesRes.count ?? 0 : 0), pendientes.etiquetas);

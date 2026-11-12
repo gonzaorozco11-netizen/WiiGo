@@ -374,11 +374,19 @@ export async function contarPendientes(): Promise<{ solicitudes: number; etiquet
 
   const [sol, etq, venc, prof, redes, opiniones] = await Promise.all([
     supabase.from("solicitudes_marca").select("id_solicitud", { count: "exact", head: true }).eq("estado", "PENDIENTE"),
-    supabase.from("tareas_etiqueta").select("id_tarea", { count: "exact", head: true }).in("estado", ["PENDIENTE", "VENCIDA"]),
+    // Solo de productos activos: el cartel de uno inactivo no está en la góndola
+    // ni en Carteles, y contarlo dejaba un número que nadie podía bajar
+    // (las 4 Mermeladas con Azúcar, 2026-11-12).
     supabase
       .from("tareas_etiqueta")
-      .select("id_tarea", { count: "exact", head: true })
+      .select("id_tarea, productos!inner(estado)", { count: "exact", head: true })
       .in("estado", ["PENDIENTE", "VENCIDA"])
+      .eq("productos.estado", "ACTIVO"),
+    supabase
+      .from("tareas_etiqueta")
+      .select("id_tarea, productos!inner(estado)", { count: "exact", head: true })
+      .in("estado", ["PENDIENTE", "VENCIDA"])
+      .eq("productos.estado", "ACTIVO")
       .lt("vence_el", ahora),
     // Lo que mandaron las profesionales desde su espacio. Sin el SQL corrido
     // la tabla no existe y el conteo da error: cuenta como cero.
