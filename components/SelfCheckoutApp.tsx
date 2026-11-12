@@ -26,9 +26,9 @@ import {
   infoCanjePuntosAction,
   obtenerStockLocal,
   obtenerPreciosLocal,
-  buscarVariantePorCodigo,
   obtenerCieloLocal,
 } from "@/app/self-checkout/[idLocal]/actions";
+import { esMismoCodigo } from "@/lib/codigoBarras";
 
 // El cielo (clima, día o noche) cambia despacio: cada 10 minutos alcanza.
 const CIELO_POLL_MS = 10 * 60 * 1000;
@@ -1958,9 +1958,13 @@ export default function SelfCheckoutApp({
         avisoTimeout.current = setTimeout(() => setAvisoCodigo(null), 6000);
       };
       // Puede ser un código cargado después de que se abrió el tótem: se
-      // pregunta antes de decir que no existe, y queda recordado.
-      buscarVariantePorCodigo(codigo)
-        .then((idVariante) => {
+      // pregunta antes de decir que no existe, y queda recordado. Por una URL
+      // fija y no por un Server Action: después de un deploy, el Server Action
+      // de la página vieja ya no existe y un código recién corregido no entraba
+      // (app/api/self-checkout/codigo).
+      fetch(`/api/self-checkout/codigo?codigo=${encodeURIComponent(codigo)}`, { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : { idVariante: null }))
+        .then(({ idVariante }: { idVariante: string | null }) => {
           if (idVariante && itemPorVariante.has(idVariante)) {
             codigosNuevos.current.set(codigo.replace(/\D/g, "").replace(/^0+/, ""), idVariante);
             agregarAlCarrito(idVariante, true);
@@ -1993,16 +1997,12 @@ export default function SelfCheckoutApp({
   //
   // Un envase importado de EEUU trae 12 dígitos (UPC-A) y el mismo producto
   // figura en muchos catálogos con 13 (el EAN, que es el UPC con un 0 adelante).
-  // Según el lector, uno lee una cosa y otro la otra. Rellenando con ceros a la
+  // Según el lector, uno lee una cosa y otro la otra. Sin los ceros de la
   // izquierda los dos quedan iguales y el cliente no se queda con un producto
-  // que "no lo toma".
+  // que "no lo toma". Y si el lector no manda el último número (el
+  // verificador), también lo toma (lib/codigoBarras.ts).
   function mismoCodigo(guardado: string | null, leido: string) {
-    if (!guardado) return false;
-    const a = guardado.replace(/\D/g, "");
-    const b = leido.replace(/\D/g, "");
-    if (!a || !b) return false;
-    const largo = Math.max(a.length, b.length, 13);
-    return a.padStart(largo, "0") === b.padStart(largo, "0");
+    return esMismoCodigo(guardado, leido);
   }
 
   // El lector de código de barras conecta como teclado: "escribe" el
