@@ -120,6 +120,8 @@ const TONO_PRINCIPAL = {
   verde: "bg-emerald-600 hover:bg-emerald-700",
   azul: "bg-accent hover:bg-accent-dark",
   naranja: "bg-amber-600 hover:bg-amber-700",
+  // Un cliente esperando para pagar.
+  rojo: "bg-red-600 hover:bg-red-700",
 } as const;
 
 function InicioLocal({ tablero }: { tablero: Tablero }) {
@@ -165,8 +167,10 @@ function InicioLocal({ tablero }: { tablero: Tablero }) {
               <>
                 {a.badge !== null && (
                   <span
-                    className={`absolute top-2.5 right-2.5 text-[11px] font-extrabold rounded-full px-2 py-0.5 ${
-                      a.badgeTono === "rojo" ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700"
+                    className={`absolute top-2.5 right-2.5 font-extrabold rounded-full ${
+                      a.alerta
+                        ? "min-w-7 h-7 px-2 grid place-items-center text-sm bg-red-600 text-white animate-pulse motion-reduce:animate-none"
+                        : `text-[11px] px-2 py-0.5 ${a.badgeTono === "rojo" ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700"}`
                     }`}
                   >
                     {a.badge}
@@ -179,7 +183,8 @@ function InicioLocal({ tablero }: { tablero: Tablero }) {
                 <span className="block text-xs text-neutral-500 leading-snug">{a.deshabilitado ? "Primero abrí la caja" : a.detalle}</span>
               </>
             );
-            const clase = "relative bg-white border border-neutral-200 rounded-xl p-3.5 min-h-[104px] block";
+            // Un cliente esperando: el acceso entero en rojo, que se vea desde lejos.
+            const clase = `relative rounded-xl p-3.5 min-h-[104px] block ${a.alerta ? "bg-red-50 border-2 border-red-500" : "bg-white border border-neutral-200"}`;
             return a.deshabilitado ? (
               <div key={a.clave} className={`${clase} opacity-45 cursor-not-allowed`} aria-disabled="true">
                 {contenido}

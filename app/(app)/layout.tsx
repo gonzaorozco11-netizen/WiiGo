@@ -5,6 +5,7 @@ import { esRolInterno, INICIO_ROL_EXTERNO } from "@/lib/rolesInternos";
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import { contarPedidosNuevosSinSesion } from "@/lib/pedidosNuevos";
 import AvisoPedidos from "@/components/AvisoPedidos";
+import AvisoCobros from "@/components/AvisoCobros";
 import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos";
 import { verificarAvisoSalida } from "@/app/(app)/ficha-asistencia/actions";
 import { contarPendientes } from "@/app/(app)/aprobaciones/actions";
@@ -47,6 +48,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // del menú. Después lo mantiene al día AvisoPedidos, sin recargar.
   const vePedidos = puedeVerPantalla(sesionConPantallas, "pedidos");
   const pedidosNuevos = vePedidos ? await contarPedidosNuevosSinSesion().catch(() => 0) : 0;
+  // Un cliente del tótem esperando para pagar en efectivo: franja roja y
+  // timbre a quien está trabajando (lo decide la ruta que consulta el aviso).
+  const veCobros = Boolean(session) && puedeVerPantalla(sesionConPantallas, "cobros-efectivo");
   // Las preguntas de la Guía que esperan respuesta: las responde el Dueño, el
   // número sale en su botón "¿Alguna duda?". Sin sql/guia-preguntas.sql da 0.
   // Carteles con el precio viejo mientras la caja ya cobra el nuevo: aviso rojo arriba de todo.
@@ -76,6 +80,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         nombre={sesionConPantallas?.nombre ?? session?.nombre ?? null}
       />
       <div className="flex-1 min-w-0">
+        {veCobros && <AvisoCobros />}
         {vePedidos && <AvisoPedidos inicial={pedidosNuevos} />}
         {seAvisanCarteles && <AvisoCartelesBanner inicial={cartelesUrgentes} />}
         {/* Con la entrada abierta en un turno, el aviso decide solo cuándo

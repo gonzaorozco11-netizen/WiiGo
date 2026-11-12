@@ -446,6 +446,7 @@ export const GUIAS: Guia[] = [
     donde: "Cobros en efectivo (o «Cobrar pedidos» en el inicio)",
     rutas: ["/cobros-efectivo"],
     pasos: [
+      "Cuando un cliente elige pagar en efectivo en el tótem, te aparece arriba una <b>franja roja</b> con un timbre, en cualquier pantalla. Tocá <b>Cobrar ahora</b>. (Solo si fichaste la entrada o tenés la caja abierta.)",
       "Entrá a <b>Cobros en efectivo</b> y elegí el local arriba a la derecha. La lista <b>Pendientes</b> se actualiza sola.",
       "Tocá el pedido y fijate los productos y el <b>A cobrar</b>.",
       "Si paga en efectivo, cargá <b>Pagó con</b> y te dice el vuelto. Si paga con Mercado Pago, elegí cómo pagó.",

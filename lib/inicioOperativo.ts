@@ -4,6 +4,7 @@ import { POR_TURNO, adentroEnLocal, personaDeUsuario } from "@/lib/conteoStock";
 import { localDeSesion } from "@/lib/fraccionado";
 import { contarCartelesUrgentes } from "@/lib/tareasEtiqueta";
 import { cartelesNuevosPendientes, stickersPorPegar } from "@/lib/entradas";
+import { cobrosEsperando } from "@/lib/cobrosEsperando";
 
 // El Inicio del operativo en la tablet del local (pedido de Gonzalo,
 // 2026-10-22): arriba un botón grande con lo que toca hacer AHORA, y abajo
@@ -29,10 +30,12 @@ export type AccesoRapido = {
   badgeTono: "rojo" | "ambar";
   /** Sin caja abierta no se puede cobrar. */
   deshabilitado: boolean;
+  /** Hay alguien esperando: el acceso entero va en rojo (un cliente para cobrar). */
+  alerta?: boolean;
 };
 
 export type InicioOperativo = {
-  principal: { titulo: string; detalle: string; href: string; icono: string; tono: "verde" | "azul" | "naranja" };
+  principal: { titulo: string; detalle: string; href: string; icono: string; tono: "verde" | "azul" | "naranja" | "rojo" };
   estado: { texto: string; tono: "ok" | "ojo" }[];
   accesos: AccesoRapido[];
   ventasHoy: number;
@@ -94,9 +97,9 @@ export async function armarInicioOperativo(
     puede("pos") || puede("ventas")
       ? supabase.from("ventas").select("id_venta").eq("estado", "PAGADA").gte("fecha", inicioDeHoy)
       : Promise.resolve({ data: [] as { id_venta: string }[] }),
-    puede("cobros-efectivo")
-      ? supabase.from("ventas").select("id_venta", { count: "exact", head: true }).eq("estado", "PENDIENTE_PAGO")
-      : Promise.resolve({ count: 0 }),
+    // Los mismos que lista Cobros en efectivo (del tótem, en efectivo, de hoy).
+    // Antes contaba cualquier venta sin cobrar, también un QR a medio pagar.
+    puede("cobros-efectivo") ? cobrosEsperando(supabase) : Promise.resolve({ n: 0, numero: null, desde: null }),
     // Carteles con el precio viejo puesto: los que hay que cambiar en la góndola.
     // Solo de productos activos, como los muestra la pantalla de Carteles.
     puede("carteles")
@@ -146,8 +149,18 @@ export async function armarInicioOperativo(
 
   // ---------- El botón grande ----------
   const puedeFichar = puede("ficha-asistencia") && idPersona !== null;
+  const esperando = pedidosRes.n;
   let principal: InicioOperativo["principal"];
-  if (puedeFichar && !adentro) {
+  if (esperando > 0 && cajaAbierta && (adentro || !puedeFichar)) {
+    // Un cliente esperando en la caja va antes que todo (Gonzalo, 2026-11-12).
+    principal = {
+      titulo: esperando === 1 ? "Cobrar: hay un cliente esperando" : `Cobrar: hay ${esperando} clientes esperando`,
+      detalle: "Armó su pedido en el tótem y paga en efectivo",
+      href: "/cobros-efectivo",
+      icono: "🔔",
+      tono: "rojo",
+    };
+  } else if (puedeFichar && !adentro) {
     principal = {
       titulo: "Fichar entrada",
       detalle: ultimo?.tipo === "SALIDA" ? "Si volvés por otro turno, fichá de nuevo" : horaEntrada && trabajaHoy ? `Tu turno empieza a las ${horaEntrada}` : "Marcá tu entrada al llegar",
@@ -178,11 +191,22 @@ export async function armarInicioOperativo(
   if (puede("turnos")) estado.push(cajaAbierta ? { texto: cajaMia ? "💵 Tu caja abierta" : `💵 Caja abierta por ${caja!.usuario_apertura ?? "otra persona"}`, tono: "ok" } : { texto: "💵 Caja cerrada", tono: "ojo" });
 
   // ---------- Los accesos ----------
-  const pedidos = "count" in pedidosRes ? pedidosRes.count ?? 0 : 0;
   const accesos: AccesoRapido[] = [];
   const agregar = (a: Omit<AccesoRapido, "badgeTono"> & { badgeTono?: AccesoRapido["badgeTono"] }) => accesos.push({ badgeTono: "rojo", ...a });
   if (puede("cobros-efectivo"))
-    agregar({ clave: "cobrar", titulo: "Cobrar pedidos", detalle: "Los que armaron en el tótem y pagan en caja", href: "/cobros-efectivo", icono: "📲", badge: pedidos || null, deshabilitado: !cajaAbierta });
+    agregar({
+      clave: "cobrar",
+      titulo: "Cobrar pedidos",
+      detalle: esperando
+        ? `🔴 ${esperando === 1 ? "Un cliente está esperando" : `${esperando} clientes están esperando`} para pagar`
+        : "Los que armaron en el tótem y pagan en caja",
+      href: "/cobros-efectivo",
+      icono: "📲",
+      badge: esperando || null,
+      // Con la caja cerrada igual se ve el número: alguien tiene que abrirla.
+      alerta: esperando > 0,
+      deshabilitado: !cajaAbierta,
+    });
   // Sumar a alguien a WiiGo Club en 20 segundos: con su DNI ya suma puntos (Gonzalo, 2026-11-12).
   if (puede("club-sumar") || puede("pos") || puede("clientes"))
     agregar({ clave: "club", titulo: "Sumar cliente al Club", detalle: "Con su DNI suma puntos desde la primera compra", href: "/club/sumar", icono: "⭐", badge: null, deshabilitado: false });
