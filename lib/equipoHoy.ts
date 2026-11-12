@@ -6,6 +6,7 @@ import { fechaHoraArgentina } from "@/lib/horarios";
 // fichajes de hoy y de las cajas abiertas.
 
 export type PersonaHoy = {
+  idPersona: string;
   nombre: string;
   /** Su último fichaje de hoy es una entrada. */
   adentro: boolean;
@@ -91,6 +92,7 @@ export async function equipoDeHoy(supabase: SupabaseClient): Promise<EquipoHoy> 
     ms += tramo;
     const p = ultimaEntrada.personas;
     personas.push({
+      idPersona,
       nombre: [p?.nombre, p?.apellido].filter(Boolean).join(" ") || "Sin nombre",
       adentro,
       turno: ultimaEntrada.id_horario ? (nombreHorario.get(ultimaEntrada.id_horario) ?? "Turno") : "Hora puntual",

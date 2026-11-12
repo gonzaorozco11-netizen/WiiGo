@@ -53,10 +53,13 @@ export default function PantallazoRrhh({
   d,
   periodo,
   setPeriodo,
+  embebido = false,
 }: {
   d: DashboardRrhh;
   periodo: string;
   setPeriodo: (p: string) => void;
+  /** Adentro del tablero simple (TableroRrhh): sin el mes, sin «hoy» ni lo trabado, que ya están arriba. */
+  embebido?: boolean;
 }) {
   const [anio, mes] = periodo.split("-").map(Number);
   const nombreMes = MESES[mes - 1];
@@ -85,7 +88,7 @@ export default function PantallazoRrhh({
   return (
     <div className="space-y-4">
       {/* Mes */}
-      <div className="flex items-center justify-end gap-1">
+      <div className={`flex items-center justify-end gap-1 ${embebido ? "hidden" : ""}`}>
         <button
           type="button"
           onClick={() => setPeriodo(moverMes(periodo, -1))}
@@ -346,7 +349,7 @@ export default function PantallazoRrhh({
       )}
 
       {/* Hoy y aguinaldo */}
-      <section className="grid md:grid-cols-2 gap-4">
+      <section className={`grid md:grid-cols-2 gap-4 ${embebido ? "hidden" : ""}`}>
         {d.hoy && (
           <div className={`${tarjeta} p-5`}>
             <h2 className="font-semibold text-neutral-900">Hoy en el local</h2>
@@ -394,7 +397,7 @@ export default function PantallazoRrhh({
       </section>
 
       {/* Lo trabado */}
-      <section>
+      <section className={embebido ? "hidden" : ""}>
         <p className={`${eyebrow} mb-2`}>Lo que está trabado</p>
         {avisosActivos.length === 0 ? (
           <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3">

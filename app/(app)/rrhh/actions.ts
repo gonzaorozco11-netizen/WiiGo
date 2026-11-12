@@ -8,6 +8,7 @@ import { fechaHoraArgentina, minutosDeHora } from "@/lib/horarios";
 import { puedeCerrarseAguinaldo } from "@/lib/aguinaldo";
 import { devueltoParcialPorVenta, devueltoPorDetalle, netearRenglon } from "@/lib/devueltoPorDetalle";
 import { armarTramos, horasDeTramos, quedoSinSalida, type MarcaDia } from "@/lib/tramos";
+import { equipoDeHoy, type EquipoHoy } from "@/lib/equipoHoy";
 
 async function requireAcceso() {
   const sesion = await obtenerSesionConPermisos();
@@ -612,6 +613,31 @@ export type DashboardRrhh = {
     sinFichar: string[];
   } | null;
   avisos: { clave: string; titulo: string; detalle: string; n: number; href: string }[];
+  /** Lo que ya se gastó en el mes: los sueldos hasta ahora y los honorarios ya pagados. */
+  llevasGastado: { total: number; sueldos: number; honorarios: number };
+  /** Lo que van a costar al cierre, separado (el total es costoTotal). */
+  alCierre: { sueldos: number; honorarios: number };
+  /** El mes de cada empleado, para el tablero simple (Gonzalo, 2026-11-12). */
+  mesDeCadaUno: {
+    idPersona: string;
+    nombre: string;
+    detalle: string;
+    porHora: boolean;
+    horas: number | null;
+    horasEnCurso: number;
+    lleva: number;
+    presentismoMonto: number;
+    presentismo: { texto: string; tono: "bien" | "ojo" | "mal" | "gris" };
+    tardanzas: number | null;
+    faltas: number | null;
+    adelantos: number;
+    alCierre: number;
+    proyectado: boolean;
+    conPlanilla: boolean;
+    sueldo: { texto: string; tono: "bien" | "ojo" | "mal" | "gris" };
+  }[];
+  /** Quién está trabajando ahora (solo el mes en curso). */
+  ahora: EquipoHoy | null;
 };
 
 // El costo laboral sano para un negocio que vive de comisiones: hasta el 35%
@@ -636,7 +662,7 @@ export async function armarDashboardRrhh(periodoPedido?: string): Promise<Dashbo
   const desdeMes = `${periodo}-01T00:00:00-03:00`;
   const hastaMes = `${periodo}-${String(diasDelMes).padStart(2, "0")}T23:59:59-03:00`;
 
-  const [novedades, gente, pendientes, licenciasRes, fichajesRes, personasRes, horariosRes, categoriasRes] = await Promise.all([
+  const [novedades, gente, pendientes, licenciasRes, fichajesRes, personasRes, horariosRes, categoriasRes, presentismoMes, feriadosRes, equipo, paramsPresentismo] = await Promise.all([
     obtenerNovedadesMes(periodo),
     listarPersonalRrhh(),
     listarFichajesPendientesSalida(),
@@ -651,9 +677,14 @@ export async function armarDashboardRrhh(periodoPedido?: string): Promise<Dashbo
       .gte("fecha_hora", `${hoy}T00:00:00-03:00`)
       .lte("fecha_hora", `${hoy}T23:59:59-03:00`)
       .order("fecha_hora", { ascending: true }),
-    supabase.from("personas").select("id_persona, nombre, apellido, tipo, id_horario").eq("estado", "ACTIVO"),
+    supabase.from("personas").select("id_persona, nombre, apellido, tipo, id_horario, fecha_ingreso").eq("estado", "ACTIVO"),
     supabase.from("horarios_trabajo").select("id_horario, nombre, hora_entrada, hora_salida, dias_semana").eq("estado", "ACTIVO"),
     supabase.from("categorias_gasto").select("id_categoria, nombre").eq("estado", "ACTIVA"),
+    calcularPresentismoMes(periodo),
+    supabase.from("feriados").select("fecha").gte("fecha", `${periodo}-01`).lte("fecha", `${periodo}-${String(diasDelMes).padStart(2, "0")}`),
+    // Quién está trabajando ahora y cuánto lleva el turno abierto (lib/equipoHoy.ts).
+    esMesActual ? equipoDeHoy(supabase) : Promise.resolve(null),
+    obtenerParametrosPresentismo(),
   ]);
 
   const nombrePorPersona = new Map(gente.map((p) => [p.idPersona, p.nombre]));
@@ -697,39 +728,99 @@ export async function armarDashboardRrhh(periodoPedido?: string): Promise<Dashbo
     .filter((p) => empleados.has(p.idPersona) && !ultimoDelDia.has(p.idPersona) && !idsLicencia.has(p.idPersona))
     .map((p) => p.nombre);
 
+  // ---------- Lo que le falta a cada uno del mes, según su horario ----------
+  // «Lo que vas a gastar en base al cálculo» (Gonzalo, 2026-11-12): a lo que
+  // ya hizo se le suman los días que le tocan de mañana a fin de mes (según su
+  // horario, desde su ingreso, sin feriados) por las horas de su turno. Antes
+  // se estiraba el ritmo de los días pasados a los 30 del mes, y con alguien
+  // que entró el 12 eso daba cualquier número.
+  const horarioPorId = new Map((horariosRes.data ?? []).map((h) => [h.id_horario as string, h]));
+  const personaPorId = new Map(personas.map((p) => [p.id_persona as string, p]));
+  const feriadosMes = new Set((feriadosRes.data ?? []).map((f) => f.fecha as string));
+  // El turno que sigue abierto ahora: lo que lleva ya cuenta (como en Asistencia).
+  const enCursoPorPersona = new Map((equipo?.personas ?? []).filter((p) => p.adentro).map((p) => [p.idPersona, p.horasTramo]));
+  const fechaDelMes = (d: number) => `${periodo}-${String(d).padStart(2, "0")}`;
+  /** Horas que le tocan de mañana a fin de mes; null si no tiene horario fijo. */
+  const horasQueFaltan = (idPersona: string): number | null => {
+    const p = personaPorId.get(idPersona);
+    const h = p?.id_horario ? horarioPorId.get(p.id_horario as string) : undefined;
+    if (!h) return null;
+    const horasTurno = Math.max(0, minutosDeHora(h.hora_salida as string) - minutosDeHora(h.hora_entrada as string)) / 60;
+    const dias = (h.dias_semana as number[] | null) ?? [];
+    const ingreso = (p?.fecha_ingreso as string | null) ?? "";
+    let n = 0;
+    for (let d = diaDeHoy + 1; d <= diasDelMes; d++) {
+      const dow = new Date(Date.UTC(anio, mes - 1, d)).getUTCDay() || 7;
+      if (dias.includes(dow) && !feriadosMes.has(fechaDelMes(d)) && fechaDelMes(d) >= ingreso) n += 1;
+    }
+    return n * horasTurno;
+  };
+  const pctPresentismo = paramsPresentismo.PRESENTISMO_PORCENTAJE_INCENTIVO / 100;
+  const presentismoPorPersona = new Map(presentismoMes.map((p) => [p.idPersona, p]));
+
   // ---------- Empleados: lo que cuesta cada uno este mes ----------
   // Cerrado: lo que dice el cierre (sueldo + presentismo + extras + premios,
-  // más las contribuciones patronales si está en blanco). Sin cerrar: el pago
-  // base y el presentismo que viene ganando; si cobra por hora y el mes está
-  // en curso, sus horas hasta hoy se proyectan a fin de mes con el mismo ritmo.
+  // más las contribuciones patronales si está en blanco). Sin cerrar: lo que
+  // lleva (horas fichadas, con el turno abierto de ahora, y el presentismo
+  // que viene ganando) y, si cobra por hora y el mes está en curso, lo que va
+  // a costar al cierre con las horas que le faltan según su horario.
   type FilaEmpleado = {
     idPersona: string; nombre: string; porHora: boolean; horas: number | null; valorHora: number | null; costo: number; sinCargas: number;
     proyectado: boolean; hastaHoy: { monto: number; horas: number | null } | null; estado: EstadoSueldo;
+    /** Lo que lleva hasta ahora (para «llevás gastado»). */
+    lleva: number;
+    horasHastaAhora: number | null;
+    horasEnCurso: number;
+    presentismoMonto: number;
+    adelantos: number;
   };
   const filasEmpleado: FilaEmpleado[] = novedades.map((f) => {
     const c = f.cierre;
+    const porHora = f.modalidad === "POR_HORA";
     if (c) {
       const sinCargas = (c.sueldo_base ?? 0) + (c.incentivo_presentismo ?? 0) + (c.horas_extra_monto ?? 0) + (c.premios_monto ?? 0);
       const cargas = c.es_formal ? (c.contribuciones_patronales ?? 0) : 0;
       return {
-        idPersona: f.idPersona, nombre: f.nombre, porHora: f.modalidad === "POR_HORA", horas: f.horasTrabajadasMes, valorHora: f.valorHora,
+        idPersona: f.idPersona, nombre: f.nombre, porHora, horas: f.horasTrabajadasMes, valorHora: f.valorHora,
         costo: redondear2(sinCargas + cargas), sinCargas: redondear2(sinCargas), proyectado: false, hastaHoy: null,
         estado: c.es_estimado ? "ESTIMADO" : c.estado === "PAGADO" ? "PAGADO" : "CERRADO",
+        lleva: redondear2(sinCargas + cargas), horasHastaAhora: f.horasTrabajadasMes, horasEnCurso: 0,
+        presentismoMonto: c.incentivo_presentismo ?? 0, adelantos: c.adelantos ?? f.adelantos,
       };
     }
-    // Solo se proyecta si hay algo que proyectar: con 0 horas no hay ritmo.
-    const proyectar = f.modalidad === "POR_HORA" && esMesActual && diaDeHoy > 0 && diaDeHoy < diasDelMes && f.montoBase > 0;
-    const factor = proyectar ? diasDelMes / diaDeHoy : 1;
-    const base = f.montoBase * factor;
-    const incentivo = f.incentivoPresentismoPreview * factor;
+    const factorPresentismo = !f.cobraPresentismo ? 0 : f.presentismoResultado === "COMPLETO" ? 1 : f.presentismoResultado === "PARCIAL" ? 0.5 : 0;
+    const valorHora = f.valorHora ?? 0;
+    const enCurso = porHora ? enCursoPorPersona.get(f.idPersona) ?? 0 : 0;
+    const baseHastaAhora = f.montoBase + enCurso * valorHora;
+    const horasHastaAhora = f.horasTrabajadasMes === null ? null : f.horasTrabajadasMes + enCurso;
+    const lleva = baseHastaAhora * (1 + pctPresentismo * factorPresentismo);
+
+    // Lo que falta del mes (solo los por hora, y solo en el mes en curso).
+    let horasFaltan = 0;
+    if (porHora && esMesActual && diaDeHoy < diasDelMes) {
+      const segunHorario = horasQueFaltan(f.idPersona);
+      if (segunHorario !== null) horasFaltan = segunHorario;
+      else if (horasHastaAhora && horasHastaAhora > 0) {
+        // Sin horario fijo: se estira el ritmo que trae desde que entró.
+        const ingreso = (personaPorId.get(f.idPersona)?.fecha_ingreso as string | null) ?? "";
+        const inicio = ingreso.startsWith(periodo) ? Number(ingreso.slice(8, 10)) : 1;
+        const transcurridos = Math.max(1, diaDeHoy - inicio + 1);
+        horasFaltan = (horasHastaAhora / transcurridos) * (diasDelMes - diaDeHoy);
+      }
+    }
+    const proyectar = horasFaltan > 0;
+    const baseAlCierre = baseHastaAhora + horasFaltan * valorHora;
+    const alCierre = baseAlCierre * (1 + pctPresentismo * factorPresentismo);
     return {
-      idPersona: f.idPersona, nombre: f.nombre, porHora: f.modalidad === "POR_HORA",
-      horas: f.horasTrabajadasMes === null ? null : Math.round(f.horasTrabajadasMes * factor),
-      valorHora: f.valorHora, costo: redondear2(base + incentivo), sinCargas: redondear2(base + incentivo), proyectado: proyectar,
-      hastaHoy: proyectar
-        ? { monto: Math.round(f.montoBase + f.incentivoPresentismoPreview), horas: f.horasTrabajadasMes === null ? null : Math.round(f.horasTrabajadasMes) }
-        : null,
+      idPersona: f.idPersona, nombre: f.nombre, porHora,
+      horas: horasHastaAhora === null ? null : Math.round((horasHastaAhora + horasFaltan) * 10) / 10,
+      valorHora: f.valorHora, costo: redondear2(alCierre), sinCargas: redondear2(alCierre), proyectado: proyectar,
+      hastaHoy: proyectar ? { monto: Math.round(lleva), horas: horasHastaAhora === null ? null : Math.round(horasHastaAhora * 10) / 10 } : null,
       estado: "SIN_CERRAR",
+      lleva: redondear2(lleva), horasHastaAhora: horasHastaAhora === null ? null : Math.round(horasHastaAhora * 10) / 10,
+      horasEnCurso: Math.round(enCurso * 10) / 10,
+      presentismoMonto: redondear2(baseHastaAhora * pctPresentismo * factorPresentismo),
+      adelantos: f.adelantos,
     };
   });
   const costoPorPersona = new Map(filasEmpleado.map((f) => [f.idPersona, f]));
@@ -739,8 +830,6 @@ export async function armarDashboardRrhh(periodoPedido?: string): Promise<Dashbo
     ESTIMADO: { texto: "Estimado", tono: "ojo" },
     SIN_CERRAR: { texto: "Sin cerrar", tono: "mal" },
   };
-  const horarioPorId = new Map((horariosRes.data ?? []).map((h) => [h.id_horario as string, h]));
-  const personaPorId = new Map(personas.map((p) => [p.id_persona as string, p]));
   const hhmm = (t: string | null) => (t ?? "").slice(0, 5).replace(/^0/, "");
   const filaGente = (f: FilaEmpleado) => {
     const horario = horarioPorId.get((personaPorId.get(f.idPersona)?.id_horario as string) ?? "");
@@ -809,6 +898,42 @@ export async function armarDashboardRrhh(periodoPedido?: string): Promise<Dashbo
     const monto = Math.round(r.monto_estimado ?? 0);
     genteTerc.push({ nombre: r.descripcion ?? "Honorarios", detalle: "Honorarios", monto, proyectado: monto > 0, hastaHoy: null, estado: { texto: "Falta pagar", tono: "ojo" } });
   }
+
+  // ---------- Lo que ya se gastó y el mes de cada uno ----------
+  const sueldosLleva = filasEmpleado.reduce((a, f) => a + f.lleva, 0);
+  const honorariosPagados = genteTerc.filter((g) => g.estado.texto === "Pagado").reduce((a, g) => a + g.monto, 0);
+  const mesDeCadaUno: DashboardRrhh["mesDeCadaUno"] = filasEmpleado.map((f) => {
+    const nov = novedades.find((n) => n.idPersona === f.idPersona);
+    const pres = presentismoPorPersona.get(f.idPersona);
+    const p = personaPorId.get(f.idPersona);
+    const horario = p?.id_horario ? horarioPorId.get(p.id_horario as string) : undefined;
+    const valor = f.valorHora ? `$${Math.round(f.valorHora).toLocaleString("es-AR")} la hora` : "sueldo fijo";
+    const presentismo: DashboardRrhh["mesDeCadaUno"][number]["presentismo"] = !nov?.cobraPresentismo
+      ? { texto: "No cobra", tono: "gris" }
+      : nov.presentismoResultado === "COMPLETO"
+        ? { texto: "Completo", tono: "bien" }
+        : nov.presentismoResultado === "PARCIAL"
+          ? { texto: "Parcial", tono: "ojo" }
+          : { texto: "Perdido", tono: "mal" };
+    return {
+      idPersona: f.idPersona,
+      nombre: f.nombre,
+      detalle: [horario?.nombre as string | undefined, valor].filter(Boolean).join(" · "),
+      porHora: f.porHora,
+      horas: f.horasHastaAhora,
+      horasEnCurso: f.horasEnCurso,
+      lleva: Math.round(f.lleva),
+      presentismoMonto: Math.round(f.presentismoMonto),
+      presentismo,
+      tardanzas: pres ? pres.tardanzas : null,
+      faltas: pres ? pres.faltas : null,
+      adelantos: Math.round(f.adelantos),
+      alCierre: Math.round(f.costo),
+      proyectado: f.proyectado,
+      conPlanilla: Boolean(horario),
+      sueldo: textoEstado[f.estado],
+    };
+  });
 
   const suma = (xs: { monto: number }[]) => xs.reduce((a, x) => a + x.monto, 0);
   const grupos: DashboardRrhh["grupos"] = [
@@ -1012,6 +1137,17 @@ export async function armarDashboardRrhh(periodoPedido?: string): Promise<Dashbo
         }
       : null,
     avisos,
+    llevasGastado: {
+      total: Math.round(sueldosLleva + honorariosPagados),
+      sueldos: Math.round(sueldosLleva),
+      honorarios: Math.round(honorariosPagados),
+    },
+    alCierre: {
+      sueldos: Math.round(filasEmpleado.reduce((a, f) => a + f.costo, 0)),
+      honorarios: Math.round(grupos.find((g) => g.clave === "TERCERIZADOS")?.total ?? 0),
+    },
+    mesDeCadaUno,
+    ahora: equipo,
   };
 }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import PantallazoRrhh from "@/components/PantallazoRrhh";
+import TableroRrhh from "@/components/TableroRrhh";
 import FichaPersona from "@/components/FichaPersona";
 import { actualizarSueldoBase, actualizarValorHora, actualizarCobraPresentismo } from "@/app/(app)/usuarios/actions";
 import { puedeCerrarseAguinaldo, etiquetaSemestre, semestreActual } from "@/lib/aguinaldo";
@@ -83,7 +83,7 @@ const SUBS: Record<VistaRrhh, { clave: Sub; etiqueta: string }[]> = {
 const TITULO: Record<VistaRrhh, { h1: string; bajada: string }> = {
   DASHBOARD: {
     h1: "RR.HH.",
-    bajada: "Lo que cuesta el equipo, qué parte de lo que gana WiiGo se lleva, lo que rinde cada turno y qué está trabado.",
+    bajada: "Quién está, cuánto lleva cada uno, lo que cuesta el equipo y qué tenés que hacer.",
   },
   LEGAJOS: {
     h1: "Legajos",
@@ -255,7 +255,8 @@ function TabDashboard({ periodo, setPeriodo }: { periodo: string; setPeriodo: (p
   }, [periodo]);
 
   if (cargando || !d) return <p className="text-sm text-neutral-400 text-center py-10">Cargando...</p>;
-  return <PantallazoRrhh d={d} periodo={periodo} setPeriodo={setPeriodo} />;
+  // El tablero simple; el pantallazo de antes va adentro, cerrado.
+  return <TableroRrhh d={d} periodo={periodo} setPeriodo={setPeriodo} />;
 }
 
 // ===================== NÓMINA =====================
