@@ -45,8 +45,22 @@ export default function EscanerCodigo({
     let cuadro = 0;
     let pararZxing: (() => void) | null = null;
 
+    // La cámara a veces «lee» un pedazo de un código largo como si fuera un
+    // código corto de 8 números, con dígito verificador válido y todo: así
+    // quedó la creatina Body Advance con 11464716 en vez de 714604471660
+    // (Gonzalo, 2026-11-12), y el lector del tótem no la encontraba. Por eso
+    // un código se acepta recién cuando sale igual varias veces seguidas: dos,
+    // o tres si es de 8 números (los cortos son los que se inventa).
+    let previo = "";
+    let veces = 0;
     const leido = (valor: string) => {
       if (cancelado) return;
+      if (valor === previo) veces += 1;
+      else {
+        previo = valor;
+        veces = 1;
+      }
+      if (veces < (/^\d{8}$/.test(valor) ? 3 : 2)) return;
       cancelado = true;
       // Un pitido corto para confirmar sin tener que mirar la pantalla.
       navigator.vibrate?.(80);
