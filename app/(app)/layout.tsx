@@ -78,7 +78,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <div className="flex-1 min-w-0">
         {vePedidos && <AvisoPedidos inicial={pedidosNuevos} />}
         {seAvisanCarteles && <AvisoCartelesBanner inicial={cartelesUrgentes} />}
-        {avisoSalida.debeRecordar && (
+        {/* Con la entrada abierta en un turno, el aviso decide solo cuándo
+            aparecer (15 min antes del fin) y se actualiza sin recargar. */}
+        {avisoSalida.horaSalida && (
           <div className="print:hidden">
             <AvisoSalidaBanner horaSalida={avisoSalida.horaSalida} />
           </div>

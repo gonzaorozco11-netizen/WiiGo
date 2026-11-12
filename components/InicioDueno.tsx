@@ -67,6 +67,7 @@ function TurnoCaja({ turno, equipo }: { turno: KpiTablero; equipo: EquipoHoy | n
               <b className="text-neutral-900">{p.nombre.split(" ")[0]}</b> · entró {p.entro}
               {p.tarde && <span className="text-red-600"> ({p.minutosTarde} min tarde)</span>}
               {p.arrancaA ? <> · cuenta desde {p.arrancaA}</> : <> · lleva {horasTexto(p.horasTramo)}</>}
+              {p.minutosDeMas > 0 && <span className="text-amber-700 font-semibold"> · {horasTexto(p.minutosDeMas / 60)} de más</span>}
               {!p.cajaAbierta && <span className="text-neutral-400"> · sin caja</span>}
             </li>
           ))}

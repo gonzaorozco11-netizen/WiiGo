@@ -26,6 +26,8 @@ export type PersonaHoy = {
   horasTramo: number;
   /** Llegó antes y todavía no arrancó su turno: las horas empiezan a correr a esta hora. */
   arrancaA: string | null;
+  /** Sigue adentro pasada la hora de fin de su turno: los minutos de más (la salida cuenta hasta que se va). */
+  minutosDeMas: number;
 };
 
 export type EquipoHoy = { personas: PersonaHoy[]; cajasAbiertas: number };
@@ -40,7 +42,7 @@ export async function equipoDeHoy(supabase: SupabaseClient): Promise<EquipoHoy> 
       .gte("fecha_hora", desde)
       .order("fecha_hora", { ascending: true }),
     supabase.from("turnos").select("id_usuario_apertura").eq("estado", "ABIERTO"),
-    supabase.from("horarios_trabajo").select("id_horario, nombre, hora_entrada"),
+    supabase.from("horarios_trabajo").select("id_horario, nombre, hora_entrada, hora_salida"),
   ]);
   const idsUsuarioCaja = (cajas ?? []).map((c) => c.id_usuario_apertura as string | null).filter((x): x is string => Boolean(x));
   const { data: usuarios } = idsUsuarioCaja.length
@@ -49,6 +51,8 @@ export async function equipoDeHoy(supabase: SupabaseClient): Promise<EquipoHoy> 
   const conCaja = new Set((usuarios ?? []).map((u) => u.id_persona as string | null).filter(Boolean));
   const nombreHorario = new Map((horarios ?? []).map((h) => [h.id_horario as string, h.nombre as string]));
   const inicioHorario = new Map((horarios ?? []).map((h) => [h.id_horario as string, h.hora_entrada as string]));
+  const finHorario = new Map((horarios ?? []).map((h) => [h.id_horario as string, h.hora_salida as string]));
+  const minutosAhora = fechaHoraArgentina().minutosDelDia;
   // Llegar antes del turno no suma (lib/tramos.ts): la entrada cuenta desde que arranca su turno.
   const desdeQueCuenta = (f: { fecha_hora: string; id_horario: string | null }) => {
     const real = new Date(f.fecha_hora).getTime();
@@ -98,6 +102,12 @@ export async function equipoDeHoy(supabase: SupabaseClient): Promise<EquipoHoy> 
       horas: Math.round((ms / 3_600_000) * 100) / 100,
       horasTramo: Math.round((tramo / 3_600_000) * 100) / 100,
       arrancaA: adentro && abierta != null && abierta > ahora ? hora(new Date(abierta).toISOString()) : null,
+      minutosDeMas: (() => {
+        const fin = adentro && ultimaEntrada.id_horario ? finHorario.get(ultimaEntrada.id_horario) : null;
+        if (!fin) return 0;
+        const [h, m] = fin.split(":").map(Number);
+        return Math.max(0, minutosAhora - (h * 60 + m));
+      })(),
     });
   }
   // Primero los que están adentro, y dentro de cada grupo por hora de entrada.
