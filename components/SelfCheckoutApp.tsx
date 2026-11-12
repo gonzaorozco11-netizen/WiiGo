@@ -2099,6 +2099,21 @@ export default function SelfCheckoutApp({
     searchInputRef.current?.focus();
   }, [paso]);
 
+  // El QR del envase leído por el lector sin Enter al final: el link queda
+  // escrito en el buscador (pasó con la Creapure de Gold, 2026-11-12: quedó
+  // «http://www.goldnutrition.com.ar»). Si sigue ahí un instante después, se
+  // borra y se avisa qué escanear.
+  const avisarQrRef = useRef(avisarQrDelEnvase);
+  avisarQrRef.current = avisarQrDelEnvase;
+  useEffect(() => {
+    if (!esLinkDeQr(busquedaTexto.trim())) return;
+    const t = setTimeout(() => {
+      setBusquedaTexto("");
+      avisarQrRef.current();
+    }, 400);
+    return () => clearTimeout(t);
+  }, [busquedaTexto]);
+
   // Sin tope por stock: lo que está en el carrito el cliente lo tiene en la
   // mano, y cada unidad que suma la paga. Si el sistema decía menos, la venta
   // queda "a revisar" al cobrarse (misma regla que el mostrador).
