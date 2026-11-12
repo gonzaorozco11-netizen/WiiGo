@@ -65,9 +65,12 @@ export async function armarPedidoProveedor(
     return { error: friendlyDbError(e2) };
   }
 
-  // Aviso a Gonzalo por mail, con el link para cargarlo. Si no sale, el
-  // pedido igual le aparece en Mis Tareas.
-  await avisarPedidoArmado(orden.id_orden as string, quien, validas.length).catch(() => undefined);
+  // Si lo armó alguien del equipo, aviso a Gonzalo por mail con el link para
+  // cargarlo (si no sale, igual le aparece en Mis Tareas). Si lo armó quien
+  // maneja Compras, sigue directo a cargarlo: no hace falta avisarle.
+  if (!puedeVerPantalla(sesion, "compras")) {
+    await avisarPedidoArmado(orden.id_orden as string, quien, validas.length).catch(() => undefined);
+  }
 
   revalidatePath("/compras");
   revalidatePath("/compras/pedir");

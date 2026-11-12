@@ -22,6 +22,8 @@ function textoCantidad(l: LineaParaCargar, cantidad: number) {
     const cajas = cantidad / l.paso;
     return `${cajas} ${cajas === 1 ? "caja" : "cajas"} (${cantidad} u.)`;
   }
+  // Envasado que el proveedor vende por kilo: los kilos, que es como lo pide su web.
+  if (l.kgPorUnidad) return `${cantidad} u. · ${(cantidad * l.kgPorUnidad).toLocaleString("es-AR", { maximumFractionDigits: 2 })} kg`;
   return `${cantidad} u.`;
 }
 

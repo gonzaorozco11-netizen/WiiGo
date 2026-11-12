@@ -6,7 +6,8 @@ import { armarInicioOperativo, faltanContar, type InicioOperativo } from "@/lib/
 import { armarInicioDueno, type InicioDueno } from "@/lib/inicioDueno";
 import { avisosCajaYLlamados } from "@/lib/avisosCaja";
 import { cargarPreciosPrestados } from "@/lib/preciosPrestados";
-import { pedidosEsperando } from "@/lib/pedidoProveedor";
+import { cuantosParaPedir, pedidosEsperando, proveedorDelPedido } from "@/lib/pedidoProveedor";
+import { localDeSesion } from "@/lib/fraccionado";
 
 // Tablero de inicio.
 //
@@ -391,8 +392,24 @@ export async function armarTablero(): Promise<Tablero | null> {
     });
   }
 
-  // ---------- Pedido a Alifrut que armó el equipo ----------
-  // Espera que quien maneja Compras lo cargue en la web del proveedor.
+  // ---------- Pedido a Alifrut ----------
+  // Lo que se va juntando para el próximo pedido: Gonzalo pide cuando quiere
+  // (2026-11-12), así que no es urgente, es un número que crece.
+  if (puede("compras")) {
+    const proveedor = await proveedorDelPedido(supabase).catch(() => null);
+    const idLocal = proveedor ? await localDeSesion(supabase, sesion.idUsuario).catch(() => null) : null;
+    const paraPedir = proveedor && idLocal ? await cuantosParaPedir(supabase, proveedor.id, idLocal).catch(() => 0) : 0;
+    if (proveedor && paraPedir > 0) {
+      seguimiento.push({
+        color: "azul",
+        titulo: `${plural(paraPedir, "producto", "productos")} para pedir a ${proveedor.nombre}`,
+        detalle: "Llegaron a su mínimo. Cuando quieras, armá el pedido y cargalo en su web",
+        valor: String(paraPedir),
+        href: "/compras/pedir",
+      });
+    }
+  }
+  // Un pedido que armó alguien del equipo espera que lo cargues en el proveedor.
   if (puede("compras")) {
     const esperando = await pedidosEsperando(supabase).catch(() => []);
     if (esperando.length > 0) {

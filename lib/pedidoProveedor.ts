@@ -23,6 +23,32 @@ export const PARAMETRO_NO_TENIA = "ALIFRUT_NO_TENIA";
 /** Con esto empiezan las observaciones de los pedidos que arma el equipo: así se distinguen de los de Compras. */
 export const MARCA_ARMADO_EN_LOCAL = "Armado en el local";
 
+/**
+ * El proveedor del pedido: el que liquida por lo vendido (Alifrut), que es el
+ * que tiene el granel y la mercadería de la marca propia.
+ */
+export async function proveedorDelPedido(supabase: SupabaseClient): Promise<{ id: string; nombre: string } | null> {
+  const { data } = await supabase
+    .from("proveedores")
+    .select("id_proveedor, nombre")
+    .eq("estado", "ACTIVO")
+    .eq("modo_facturacion", "LIQUIDACION_VENTA")
+    .order("nombre")
+    .limit(1);
+  const p = data?.[0];
+  return p ? { id: p.id_proveedor as string, nombre: p.nombre as string } : null;
+}
+
+/**
+ * Cuántos productos hay para pedir hoy: lo que se va juntando para el
+ * próximo pedido (Gonzalo pide cuando quiere, 2026-11-12). La misma cuenta
+ * que la pantalla, así el número coincide con lo que después ve ahí.
+ */
+export async function cuantosParaPedir(supabase: SupabaseClient, idProveedor: string, idLocal: string): Promise<number> {
+  const s = await sugerirPedidoProveedor(supabase, idProveedor, idLocal, { asegurarGranel: false });
+  return s.granel.filter((g) => g.pedirG > 0).length + s.envasados.length;
+}
+
 export type PedidoEsperando = { idOrden: string; idProveedor: string; quien: string; fecha: string; productos: number };
 
 /** Los pedidos que armó el equipo y todavía nadie cargó en el proveedor. */
@@ -55,6 +81,8 @@ export type LineaParaCargar = {
   /** Kilos por bolsa (granel en bolsa) o unidades por caja: el paso para subir o bajar. */
   paso: number;
   unidadVenta: "KG" | "BULTO" | "CAJA" | "UNIDAD";
+  /** Lo envasado que el proveedor vende por kilo (una granola de 1 kg): cuántos kilos es cada unidad. */
+  kgPorUnidad: number | null;
 };
 
 /** El pedido como lo ve Gonzalo para cargarlo en la web del proveedor: con sus nombres y por rubro. */
@@ -70,12 +98,12 @@ export async function pedidoParaCargar(
   if (!orden) return null;
   const { data: det } = await supabase
     .from("detalle_orden_compra")
-    .select("id_detalle, id_variante, cantidad_solicitada, variantes_producto(nombre, productos(nombre, estado, id_granel))")
+    .select("id_detalle, id_variante, cantidad_solicitada, variantes_producto(nombre, productos(nombre, estado, id_granel, peso_neto_g))")
     .eq("id_orden", idOrden);
   type D = {
     id_detalle: string;
     cantidad_solicitada: number;
-    variantes_producto: { nombre: string | null; productos: { nombre: string; estado: string; id_granel: string | null } | null } | null;
+    variantes_producto: { nombre: string | null; productos: { nombre: string; estado: string; id_granel: string | null; peso_neto_g: number | null } | null } | null;
   };
   const filas = (det ?? []) as unknown as D[];
   const idsGranel = [...new Set(filas.map((f) => f.variantes_producto?.productos?.id_granel).filter((x): x is string => Boolean(x)))];
@@ -107,6 +135,7 @@ export async function pedidoParaCargar(
       cantidad: Number(f.cantidad_solicitada ?? 0),
       paso: esGranel ? (unidadVenta === "BULTO" ? porBulto * 1000 : 1000) : unidadVenta === "CAJA" ? Math.round(porBulto) : 1,
       unidadVenta,
+      kgPorUnidad: !esGranel && (unidad === "KG" || unidad === "BULTO") && Number(p?.peso_neto_g ?? 0) > 0 ? Number(p?.peso_neto_g) / 1000 : null,
     };
   });
   lineas.sort((a, b) => a.rubro.localeCompare(b.rubro, "es") || a.nombreProveedor.localeCompare(b.nombreProveedor, "es"));
@@ -189,9 +218,15 @@ type Prod = { id_producto: string; nombre: string; estado: string; id_granel: st
  * Lo que habría que pedirle hoy a un proveedor para un local.
  * Nunca tira: si algo no se puede leer, esa parte sale vacía.
  */
-export async function sugerirPedidoProveedor(supabase: SupabaseClient, idProveedor: string, idLocal: string): Promise<PedidoSugerido> {
+export async function sugerirPedidoProveedor(
+  supabase: SupabaseClient,
+  idProveedor: string,
+  idLocal: string,
+  opciones: { asegurarGranel?: boolean } = {}
+): Promise<PedidoSugerido> {
   // Cualquier producto que se empezó a embolsar tiene su granel (lib/granel.ts).
-  await asegurarGraneles(supabase).catch(() => 0);
+  // El contador de Mis Tareas no lo hace: es solo mirar.
+  if (opciones.asegurarGranel !== false) await asegurarGraneles(supabase).catch(() => 0);
 
   const { data: prodsData } = await supabase
     .from("productos")
