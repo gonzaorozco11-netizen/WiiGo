@@ -50,6 +50,24 @@ export default function ConteoStockApp({ conteo }: { conteo: ConteoVista | null 
     );
   }
 
+  // La tanda se está armando en otro pedido (tocaron dos veces el botón): sin
+  // esto se vería «0 de 0» con el recuadro de firma, y se firmaría vacía.
+  if (conteo.items.length === 0) {
+    return (
+      <div className="max-w-md mx-auto text-center py-14">
+        <h1 className="text-lg font-semibold text-neutral-900">Estamos armando tu conteo</h1>
+        <p className="text-sm text-neutral-500 mt-1">Tarda unos segundos.</p>
+        <button
+          type="button"
+          onClick={() => router.refresh()}
+          className="mt-4 rounded-xl bg-accent text-white px-4 py-2.5 text-sm font-semibold"
+        >
+          Ver mis productos
+        </button>
+      </div>
+    );
+  }
+
   const listos = conteo.items.filter((i) => i.contadoEn).length;
   const total = conteo.items.length;
   const todo = listos === total;

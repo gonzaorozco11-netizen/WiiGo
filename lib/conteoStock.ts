@@ -212,6 +212,69 @@ async function elegirProductos(
   return elegidas;
 }
 
+type Tanda = { id_conteo: string; estado: string; fecha: string; creado_en: string };
+
+/** Una tanda sin productos más vieja que esto quedó a medio armar (se cortó el pedido): se descarta. */
+const RESERVA_VENCIDA_MS = 60_000;
+
+/**
+ * De las tandas abiertas de la persona, con cuál sigue. Una por día: si se
+ * armaron dos (pasó el 2026-11-12, ver asegurarConteo), las que están vacías
+ * se borran y queda la que tiene algo contado o, si no, la más vieja.
+ */
+async function tandaAbierta(supabase: SupabaseClient, suyos: Tanda[], hoy: string): Promise<string | null> {
+  const firmoHoy = suyos.some((c) => c.fecha === hoy && c.estado === "FIRMADO");
+  const abiertas = suyos.filter((c) => c.estado === "ABIERTO");
+  if (abiertas.length === 0) return null;
+
+  const { data: items } = await supabase
+    .from("conteos_stock_items")
+    .select("id_conteo, contado_en")
+    .in("id_conteo", abiertas.map((c) => c.id_conteo));
+  const productos = new Map<string, number>();
+  const contados = new Map<string, number>();
+  for (const i of items ?? []) {
+    const id = i.id_conteo as string;
+    productos.set(id, (productos.get(id) ?? 0) + 1);
+    if (i.contado_en) contados.set(id, (contados.get(id) ?? 0) + 1);
+  }
+
+  const ahora = Date.now();
+  const sobran: string[] = [];
+  const candidatas = abiertas.filter((c) => {
+    if ((contados.get(c.id_conteo) ?? 0) > 0) return true;
+    // Repetida de una que ya firmó hoy, o reserva que nunca llegó a tener productos.
+    const vacia = (productos.get(c.id_conteo) ?? 0) === 0;
+    if ((firmoHoy && c.fecha === hoy) || (vacia && ahora - new Date(c.creado_en).getTime() > RESERVA_VENCIDA_MS)) {
+      sobran.push(c.id_conteo);
+      return false;
+    }
+    return true;
+  });
+  const elegida = candidatas.sort(
+    (a, b) =>
+      (contados.get(b.id_conteo) ?? 0) - (contados.get(a.id_conteo) ?? 0) ||
+      a.creado_en.localeCompare(b.creado_en) ||
+      a.id_conteo.localeCompare(b.id_conteo)
+  )[0];
+  // Las otras sin nada contado son repetidas: si quedaran, sus productos
+  // seguirían ocultos en Precio y stock y no se los daría a nadie más.
+  for (const c of candidatas) if (c !== elegida && (contados.get(c.id_conteo) ?? 0) === 0) sobran.push(c.id_conteo);
+  if (sobran.length > 0) await supabase.from("conteos_stock").delete().in("id_conteo", sobran).eq("estado", "ABIERTO");
+  if (!elegida) return null;
+  if ((productos.get(elegida.id_conteo) ?? 0) === 0) await esperarProductos(supabase, elegida.id_conteo);
+  return elegida.id_conteo;
+}
+
+/** La tanda la está armando otro pedido: se espera a que tenga sus productos (unos segundos). */
+async function esperarProductos(supabase: SupabaseClient, idConteo: string) {
+  for (let i = 0; i < 24; i++) {
+    const { count } = await supabase.from("conteos_stock_items").select("id_item", { count: "exact", head: true }).eq("id_conteo", idConteo);
+    if ((count ?? 0) > 0) return;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+}
+
 /**
  * La tanda que le toca a la persona: la que dejó sin terminar, o una nueva si
  * hoy todavía no tuvo. Se reparte con los que están adentro en ese momento.
@@ -224,33 +287,61 @@ export async function asegurarConteo(supabase: SupabaseClient, idUsuario: string
 
   const { data: suyos, error } = await supabase
     .from("conteos_stock")
-    .select("id_conteo, estado, fecha")
+    .select("id_conteo, estado, fecha, creado_en")
     .eq("id_persona", persona.id_persona)
     .order("creado_en", { ascending: false })
-    .limit(5);
+    .limit(10);
   if (error) return null; // sin sql/conteos-stock.sql
-  const abierto = (suyos ?? []).find((c) => c.estado === "ABIERTO");
-  if (abierto) return { idConteo: abierto.id_conteo as string };
+  const abierta = await tandaAbierta(supabase, (suyos ?? []) as Tanda[], hoy);
+  if (abierta) return { idConteo: abierta };
   // Ya firmó la de hoy: no hay otra hasta mañana.
-  if ((suyos ?? []).some((c) => c.fecha === hoy)) return null;
+  if ((suyos ?? []).some((c) => c.fecha === hoy && c.estado === "FIRMADO")) return null;
 
   const adentro = await adentroEnLocal(supabase, persona.id_local);
   if (!adentro.some((p) => p.id_persona === persona.id_persona)) return { error: "Fichá la entrada para que te toque el conteo del turno." };
   const cuantos = Math.max(1, Math.ceil(POR_TURNO / Math.max(1, adentro.length)));
 
-  const elegidos = await elegirProductos(supabase, persona.id_local, persona, cuantos);
-  if (elegidos.length === 0) return null;
-
+  // Primero se reserva la tanda y recién después se eligen los productos, que
+  // tarda unos segundos. El 2026-11-12 Tomás tocó varias veces «Contar stock»
+  // mientras cargaba: cada toque armó su tanda (tres con los mismos productos)
+  // y, al firmar una, le aparecía la siguiente igual. Ahora, si llegan dos
+  // pedidos juntos, los dos ven la reserva del otro y sigue solo la más vieja.
   const { data: nuevo, error: e2 } = await supabase
     .from("conteos_stock")
     .insert({ id_local: persona.id_local, id_persona: persona.id_persona, id_usuario: idUsuario, nombre: nombreDe(persona), fecha: hoy })
     .select("id_conteo")
     .single();
   if (e2 || !nuevo) return { error: "No se pudo armar el conteo. Probá de nuevo." };
-  await supabase.from("conteos_stock_items").insert(
-    elegidos.map((e, i) => ({ id_conteo: nuevo.id_conteo, id_variante: e.idVariante, motivo: e.motivo, detalle_motivo: e.detalle, orden: i }))
-  );
-  return { idConteo: nuevo.id_conteo as string };
+  const idNuevo = nuevo.id_conteo as string;
+
+  const { data: deHoy } = await supabase
+    .from("conteos_stock")
+    .select("id_conteo, creado_en")
+    .eq("id_persona", persona.id_persona)
+    .eq("fecha", hoy)
+    .eq("estado", "ABIERTO")
+    .order("creado_en", { ascending: true })
+    .order("id_conteo", { ascending: true })
+    .limit(1);
+  const primera = (deHoy?.[0]?.id_conteo as string | undefined) ?? idNuevo;
+  if (primera !== idNuevo) {
+    await supabase.from("conteos_stock").delete().eq("id_conteo", idNuevo);
+    await esperarProductos(supabase, primera);
+    return { idConteo: primera };
+  }
+
+  const elegidos = await elegirProductos(supabase, persona.id_local, persona, cuantos);
+  const { error: e3 } =
+    elegidos.length > 0
+      ? await supabase.from("conteos_stock_items").insert(
+          elegidos.map((e, i) => ({ id_conteo: idNuevo, id_variante: e.idVariante, motivo: e.motivo, detalle_motivo: e.detalle, orden: i }))
+        )
+      : { error: null };
+  if (elegidos.length === 0 || e3) {
+    await supabase.from("conteos_stock").delete().eq("id_conteo", idNuevo);
+    return e3 ? { error: "No se pudo armar el conteo. Probá de nuevo." } : null;
+  }
+  return { idConteo: idNuevo };
 }
 
 /** El nombre de cada variante como se ve en la góndola. */

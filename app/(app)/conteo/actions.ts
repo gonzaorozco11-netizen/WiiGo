@@ -181,12 +181,13 @@ export async function firmarConteo(idConteo: string, firma: string | null): Prom
   if (!conteo || !persona || conteo.id_persona !== persona.id_persona) return { error: "Ese conteo no es tuyo." };
   if (conteo.estado !== "ABIERTO") return { error: "Ya estaba firmado." };
 
-  const { count } = await supabase
-    .from("conteos_stock_items")
-    .select("id_item", { count: "exact", head: true })
-    .eq("id_conteo", idConteo)
-    .is("contado_en", null);
+  const [{ count }, { count: productos }] = await Promise.all([
+    supabase.from("conteos_stock_items").select("id_item", { count: "exact", head: true }).eq("id_conteo", idConteo).is("contado_en", null),
+    supabase.from("conteos_stock_items").select("id_item", { count: "exact", head: true }).eq("id_conteo", idConteo),
+  ]);
   if ((count ?? 0) > 0) return { error: `Te faltan ${count} ${count === 1 ? "producto" : "productos"} por contar.` };
+  // Una tanda sin productos no se firma: todavía se está armando.
+  if ((productos ?? 0) === 0) return { error: "Tu conteo todavía no tiene productos. Tocá «Ver mis productos»." };
 
   const { error } = await supabase
     .from("conteos_stock")
