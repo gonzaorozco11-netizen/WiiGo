@@ -107,7 +107,7 @@ export async function armarAsistenciaMes(periodoPedido?: string): Promise<Asiste
     supabase.from("horarios_trabajo").select("id_horario, nombre, hora_entrada, hora_salida, dias_semana, tolerancia_minutos").eq("estado", "ACTIVO"),
     supabase
       .from("fichajes")
-      .select("id_persona, tipo, fecha_hora, estado, justificado")
+      .select("id_persona, tipo, fecha_hora, estado, justificado, id_horario")
       .gte("fecha_hora", `${desde}T00:00:00-03:00`)
       .lte("fecha_hora", `${hasta}T23:59:59-03:00`)
       .order("fecha_hora", { ascending: true }),
@@ -137,7 +137,13 @@ export async function armarAsistenciaMes(periodoPedido?: string): Promise<Asiste
     const d = Number(arg.fecha.slice(8, 10));
     const porDia = marcasPor.get(f.id_persona as string) ?? new Map<number, MarcaDia<{ tarde: boolean }>[]>();
     const marcas = porDia.get(d) ?? [];
-    marcas.push({ tipo: f.tipo as string, hora: arg.hora, dato: { tarde: f.tipo === "ENTRADA" && f.estado === "TARDE" && !f.justificado } });
+    marcas.push({
+      tipo: f.tipo as string,
+      hora: arg.hora,
+      dato: { tarde: f.tipo === "ENTRADA" && f.estado === "TARDE" && !f.justificado },
+      // Llegar antes del turno no suma horas (lib/tramos.ts).
+      cuentaDesde: f.tipo === "ENTRADA" && f.id_horario ? ((horarioPorId.get(f.id_horario as string)?.hora_entrada as string | undefined) ?? null) : null,
+    });
     porDia.set(d, marcas);
     marcasPor.set(f.id_persona as string, porDia);
   }
@@ -441,10 +447,10 @@ export async function armarPlanillasAsistencia(periodoPedido: string, idPersona?
 
   // Los fichajes del mes con la firma. Si falta sql/fichajes-firma.sql, se
   // traen sin firma y la planilla avisa.
-  type Fichaje = { id_persona: string; tipo: string; fecha_hora: string; estado: string | null; minutos_diferencia: number | null; justificado: boolean | null; usuario: string | null; firma?: string | null };
+  type Fichaje = { id_persona: string; tipo: string; fecha_hora: string; estado: string | null; minutos_diferencia: number | null; justificado: boolean | null; usuario: string | null; id_horario: string | null; firma?: string | null };
   async function traerFichajes(conFirma: boolean) {
     const filas: Fichaje[] = [];
-    const columnas = `id_persona, tipo, fecha_hora, estado, minutos_diferencia, justificado, usuario${conFirma ? ", firma" : ""}`;
+    const columnas = `id_persona, tipo, fecha_hora, estado, minutos_diferencia, justificado, usuario, id_horario${conFirma ? ", firma" : ""}`;
     for (let desdeFila = 0; ; desdeFila += 1000) {
       const { data, error } = await supabase
         .from("fichajes")
@@ -501,6 +507,8 @@ export async function armarPlanillasAsistencia(periodoPedido: string, idPersona?
     marcas.push({
       tipo: f.tipo,
       hora: arg.hora,
+      // La planilla muestra la hora real con su firma; las horas, desde el turno si llegó antes.
+      cuentaDesde: f.tipo === "ENTRADA" && f.id_horario ? ((horarioPorId.get(f.id_horario)?.hora_entrada as string | undefined) ?? null) : null,
       dato: {
         hora: arg.hora,
         firma: f.firma ?? null,

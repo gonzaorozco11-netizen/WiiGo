@@ -43,57 +43,37 @@ const horasTexto = (h: number) => {
 };
 
 /**
- * Quién está trabajando ahora en el local (Gonzalo, 2026-11-12). Arriba de
- * todo porque es lo primero que se pregunta al abrir: ¿hay alguien?, ¿abrió la
- * caja? Sin una caja abierta, los pagos con QR del tótem no se confirman.
+ * El cuadrito «Turno de caja», con quién está trabajando (Gonzalo, 2026-11-12:
+ * «ponelo directamente en el cuadradito del turno de caja»). Si hay alguien
+ * fichado y ninguna caja abierta, en rojo: no se puede cobrar y los pagos con
+ * QR del tótem no se confirman.
  */
-function EnElLocal({ equipo }: { equipo: EquipoHoy }) {
-  const adentro = equipo.personas.filter((p) => p.adentro);
-  const salieron = equipo.personas.filter((p) => !p.adentro);
-  const sinCaja = adentro.length > 0 && equipo.cajasAbiertas === 0;
+function TurnoCaja({ turno, equipo }: { turno: KpiTablero; equipo: EquipoHoy | null }) {
+  const adentro = (equipo?.personas ?? []).filter((p) => p.adentro);
+  const sinCaja = adentro.length > 0 && (equipo?.cajasAbiertas ?? 0) === 0;
   return (
-    <section className={`${tarjeta} p-5`}>
-      <div className="flex items-baseline justify-between gap-2 mb-3">
-        <p className={eyebrow}>En el local ahora</p>
-        <Link href="/rrhh/asistencia" className="text-xs font-semibold text-accent hover:underline">
-          Asistencia →
-        </Link>
-      </div>
+    <Link href="/rrhh/asistencia" className={`${tarjeta} p-3.5 block hover:border-neutral-300 ${sinCaja ? "border-red-200 bg-red-50/40" : ""}`}>
+      <p className={eyebrow}>{turno.etiqueta}</p>
+      <p className={`text-xl font-bold mt-0.5 tabular-nums ${turno.tono === "rojo" ? "text-red-600" : turno.tono === "verde" ? "text-emerald-700" : "text-neutral-900"}`}>
+        {turno.valor}
+      </p>
       {adentro.length === 0 ? (
-        <p className="text-sm text-neutral-500">No hay nadie fichado en este momento.</p>
+        <p className="text-[11.5px] text-neutral-400">No hay nadie fichado ahora</p>
       ) : (
-        <ul className="flex flex-col gap-2">
+        <ul className="mt-1 flex flex-col gap-0.5">
           {adentro.map((p) => (
-            <li key={p.nombre} className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" aria-hidden="true" />
-              <span className="font-semibold text-neutral-900">{p.nombre}</span>
-              <span className="text-sm text-neutral-500">
-                {p.turno} · entró {p.entro}
-                {p.tarde && <span className="text-red-600"> ({p.minutosTarde} min tarde)</span>} · lleva {horasTexto(p.horasTramo)}
-                {p.horas - p.horasTramo >= 0.05 && <> · hoy suma {horasTexto(p.horas)}</>}
-              </span>
-              <span
-                className={`text-[11px] font-bold rounded-full px-2 py-0.5 ${
-                  p.cajaAbierta ? "bg-emerald-50 text-emerald-700" : "bg-neutral-100 text-neutral-500"
-                }`}
-              >
-                {p.cajaAbierta ? "Caja abierta" : "Sin caja"}
-              </span>
+            <li key={p.nombre} className="text-[11.5px] text-neutral-600 leading-snug">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1 align-middle" aria-hidden="true" />
+              <b className="text-neutral-900">{p.nombre.split(" ")[0]}</b> · entró {p.entro}
+              {p.tarde && <span className="text-red-600"> ({p.minutosTarde} min tarde)</span>}
+              {p.arrancaA ? <> · cuenta desde {p.arrancaA}</> : <> · lleva {horasTexto(p.horasTramo)}</>}
+              {!p.cajaAbierta && <span className="text-neutral-400"> · sin caja</span>}
             </li>
           ))}
         </ul>
       )}
-      {sinCaja && (
-        <p className="mt-3 rounded-lg bg-red-50 text-red-700 text-sm px-3 py-2">
-          Hay gente trabajando y <b>ninguna caja abierta</b>: no se puede cobrar y los pagos con QR del tótem no se confirman.
-        </p>
-      )}
-      {salieron.length > 0 && (
-        <p className="mt-3 text-xs text-neutral-500">
-          Hoy ya trabajaron: {salieron.map((p) => `${p.nombre.split(" ")[0]} (${p.entro} a ${p.salio}, ${horasTexto(p.horas)})`).join(" · ")}
-        </p>
-      )}
-    </section>
+      {sinCaja && <p className="mt-1 text-[11.5px] font-semibold text-red-700">Nadie abrió la caja: no se puede cobrar ni confirmar el QR.</p>}
+    </Link>
   );
 }
 
@@ -104,7 +84,6 @@ export default function InicioDueno({ datos, turno, equipo }: { datos: Datos; tu
 
   return (
     <div className="space-y-4">
-      {equipo && <EnElLocal equipo={equipo} />}
 
       {/* ---------- El mes ---------- */}
       <section className={`${tarjeta} p-5 grid gap-5 md:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] items-end`}>
@@ -168,7 +147,7 @@ export default function InicioDueno({ datos, turno, equipo }: { datos: Datos; tu
           )}
         </div>
         {turno ? (
-          <Kpi etiqueta={turno.etiqueta} valor={turno.valor} pie={turno.pie} tono={turno.tono} />
+          <TurnoCaja turno={turno} equipo={equipo} />
         ) : (
           <Kpi etiqueta="Tickets" valor={String(datos.ticketsMes)} pie={`en ${datos.mesNombre}`} />
         )}

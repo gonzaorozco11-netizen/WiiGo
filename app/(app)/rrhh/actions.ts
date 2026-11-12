@@ -221,24 +221,33 @@ export async function listarPlanillaHoraria(idPersona: string, periodo: string):
   const ultimoDia = new Date(anio, mes, 0).getDate();
   const hastaStr = `${periodo}-${String(ultimoDia).padStart(2, "0")}`;
 
-  const { data: fichajes } = await supabase
-    .from("fichajes")
-    .select("tipo, fecha_hora, estado")
-    .eq("id_persona", idPersona)
-    .gte("fecha_hora", `${desdeStr}T00:00:00Z`)
-    .lte("fecha_hora", `${hastaStr}T23:59:59Z`)
-    .order("fecha_hora", { ascending: true });
+  const [{ data: fichajes }, { data: horarios }] = await Promise.all([
+    supabase
+      .from("fichajes")
+      .select("tipo, fecha_hora, estado, id_horario")
+      .eq("id_persona", idPersona)
+      .gte("fecha_hora", `${desdeStr}T00:00:00Z`)
+      .lte("fecha_hora", `${hastaStr}T23:59:59Z`)
+      .order("fecha_hora", { ascending: true }),
+    supabase.from("horarios_trabajo").select("id_horario, hora_entrada"),
+  ]);
+  const inicioDe = new Map((horarios ?? []).map((h) => [h.id_horario as string, h.hora_entrada as string]));
 
   // Las marcas de cada día, en orden. Las horas se suman por tramo (cada
   // entrada con su salida): con dos turnos el mismo día no se cuentan las
-  // horas del medio. Ver lib/tramos.ts.
+  // horas del medio. Llegar antes del turno no suma. Ver lib/tramos.ts.
   const porDia = new Map<string, MarcaDia<string>[]>();
   for (const f of fichajes ?? []) {
     const enArgentina = fechaHoraArgentina(f.fecha_hora as string);
     const fecha = enArgentina.fecha;
     if (fecha < desdeStr || fecha > hastaStr) continue;
     const marcas = porDia.get(fecha) ?? [];
-    marcas.push({ tipo: f.tipo as string, hora: enArgentina.hora, dato: (f.estado as string) ?? "" });
+    marcas.push({
+      tipo: f.tipo as string,
+      hora: enArgentina.hora,
+      dato: (f.estado as string) ?? "",
+      cuentaDesde: f.tipo === "ENTRADA" && f.id_horario ? inicioDe.get(f.id_horario as string) ?? null : null,
+    });
     porDia.set(fecha, marcas);
   }
 

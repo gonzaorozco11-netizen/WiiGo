@@ -22,8 +22,10 @@ export type PersonaHoy = {
   cajaAbierta: boolean;
   /** Horas trabajadas hoy, sumando cada tramo (el abierto, hasta ahora). */
   horas: number;
-  /** Lo que lleva desde la última entrada, si está adentro. */
+  /** Lo que lleva desde la última entrada (o desde que arrancó su turno, si llegó antes), si está adentro. */
   horasTramo: number;
+  /** Llegó antes y todavía no arrancó su turno: las horas empiezan a correr a esta hora. */
+  arrancaA: string | null;
 };
 
 export type EquipoHoy = { personas: PersonaHoy[]; cajasAbiertas: number };
@@ -38,7 +40,7 @@ export async function equipoDeHoy(supabase: SupabaseClient): Promise<EquipoHoy> 
       .gte("fecha_hora", desde)
       .order("fecha_hora", { ascending: true }),
     supabase.from("turnos").select("id_usuario_apertura").eq("estado", "ABIERTO"),
-    supabase.from("horarios_trabajo").select("id_horario, nombre"),
+    supabase.from("horarios_trabajo").select("id_horario, nombre, hora_entrada"),
   ]);
   const idsUsuarioCaja = (cajas ?? []).map((c) => c.id_usuario_apertura as string | null).filter((x): x is string => Boolean(x));
   const { data: usuarios } = idsUsuarioCaja.length
@@ -46,6 +48,16 @@ export async function equipoDeHoy(supabase: SupabaseClient): Promise<EquipoHoy> 
     : { data: [] as { id_persona: string | null }[] };
   const conCaja = new Set((usuarios ?? []).map((u) => u.id_persona as string | null).filter(Boolean));
   const nombreHorario = new Map((horarios ?? []).map((h) => [h.id_horario as string, h.nombre as string]));
+  const inicioHorario = new Map((horarios ?? []).map((h) => [h.id_horario as string, h.hora_entrada as string]));
+  // Llegar antes del turno no suma (lib/tramos.ts): la entrada cuenta desde que arranca su turno.
+  const desdeQueCuenta = (f: { fecha_hora: string; id_horario: string | null }) => {
+    const real = new Date(f.fecha_hora).getTime();
+    const inicio = f.id_horario ? inicioHorario.get(f.id_horario) : null;
+    if (!inicio) return real;
+    const [h, m] = inicio.split(":").map(Number);
+    const enTurno = new Date(`${fechaHoraArgentina(f.fecha_hora).fecha}T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00-03:00`).getTime();
+    return Math.max(real, enTurno);
+  };
   const hora = (iso: string) => fechaHoraArgentina(iso).hora;
 
   type F = { id_persona: string; tipo: string; fecha_hora: string; estado: string | null; minutos_diferencia: number | null; id_horario: string | null; personas: { nombre: string | null; apellido: string | null } | null };
@@ -65,13 +77,13 @@ export async function equipoDeHoy(supabase: SupabaseClient): Promise<EquipoHoy> 
     let abierta: number | null = null;
     for (const f of lista) {
       const t = new Date(f.fecha_hora).getTime();
-      if (f.tipo === "ENTRADA") abierta = t;
+      if (f.tipo === "ENTRADA") abierta = desdeQueCuenta(f);
       else if (f.tipo === "SALIDA" && abierta != null) {
-        ms += t - abierta;
+        ms += Math.max(0, t - abierta);
         abierta = null;
       }
     }
-    const tramo = abierta != null ? ahora - abierta : 0;
+    const tramo = abierta != null ? Math.max(0, ahora - abierta) : 0;
     ms += tramo;
     const p = ultimaEntrada.personas;
     personas.push({
@@ -85,6 +97,7 @@ export async function equipoDeHoy(supabase: SupabaseClient): Promise<EquipoHoy> 
       cajaAbierta: conCaja.has(idPersona),
       horas: Math.round((ms / 3_600_000) * 100) / 100,
       horasTramo: Math.round((tramo / 3_600_000) * 100) / 100,
+      arrancaA: adentro && abierta != null && abierta > ahora ? hora(new Date(abierta).toISOString()) : null,
     });
   }
   // Primero los que están adentro, y dentro de cada grupo por hora de entrada.
