@@ -13,7 +13,12 @@ export type Clima = "soleado" | "nublado" | "lluvia" | "tormenta";
 // Si es de día o de noche lo decide Open-Meteo con el amanecer/atardecer
 // reales de esa latitud (campo is_day), no una hora fija — así el cielo del
 // totem acompaña al de afuera todo el año sin tocar nada.
-export type EstadoCielo = { clima: Clima; esDeNoche: boolean };
+//
+// `amanecer` y `atardecer` (instantes en ms) viajan al tótem para que cada uno
+// decida la noche con su propio reloj, minuto a minuto: los dos tótems pasan
+// a la noche al mismo tiempo, en vez de esperar cada uno su próxima consulta
+// (Gonzalo, 2026-11-12: uno quedaba de día y el otro de noche).
+export type EstadoCielo = { clima: Clima; esDeNoche: boolean; amanecer?: number | null; atardecer?: number | null };
 
 const LAT_MENDOZA = -32.8908;
 const LON_MENDOZA = -68.8272;
@@ -39,11 +44,16 @@ function esDeNochePorHora() {
 const ANTES_DEL_ATARDECER_MIN = 30;
 const DESPUES_DEL_AMANECER_MIN = 20;
 
+/** ¿Es de noche a esta hora, con el amanecer y el atardecer de hoy? (también la usa el tótem) */
+export function esDeNocheSegunSol(amanecer: number, atardecer: number, ahora: number): boolean {
+  return ahora < amanecer + DESPUES_DEL_AMANECER_MIN * 60000 || ahora >= atardecer - ANTES_DEL_ATARDECER_MIN * 60000;
+}
+
 /**
- * ¿Es de noche según el amanecer y el atardecer de hoy? Open-Meteo los da en
- * hora local del lugar (sin zona), con el desfase aparte. null si no vinieron.
+ * El amanecer y el atardecer de hoy, en ms. Open-Meteo los da en hora local
+ * del lugar (sin zona), con el desfase aparte. null si no vinieron.
  */
-function nochePorSol(data: { utc_offset_seconds?: number; daily?: { sunrise?: string[]; sunset?: string[] } }): boolean | null {
+function solDeHoy(data: { utc_offset_seconds?: number; daily?: { sunrise?: string[]; sunset?: string[] } }): { amanecer: number; atardecer: number } | null {
   const sale = data?.daily?.sunrise?.[0];
   const pone = data?.daily?.sunset?.[0];
   const desfase = data?.utc_offset_seconds;
@@ -52,8 +62,7 @@ function nochePorSol(data: { utc_offset_seconds?: number; daily?: { sunrise?: st
   const amanecer = aUtc(sale);
   const atardecer = aUtc(pone);
   if (!Number.isFinite(amanecer) || !Number.isFinite(atardecer)) return null;
-  const ahora = Date.now();
-  return ahora < amanecer + DESPUES_DEL_AMANECER_MIN * 60000 || ahora >= atardecer - ANTES_DEL_ATARDECER_MIN * 60000;
+  return { amanecer, atardecer };
 }
 
 export async function obtenerClimaActual(latitud: number | null, longitud: number | null): Promise<EstadoCielo> {
@@ -68,9 +77,11 @@ export async function obtenerClimaActual(latitud: number | null, longitud: numbe
     const data = await res.json();
     const code = data?.current?.weather_code;
     const isDay = data?.current?.is_day;
-    const esDeNoche = nochePorSol(data) ?? (typeof isDay === "number" ? isDay === 0 : esDeNochePorHora());
-    if (typeof code !== "number") return { clima: "soleado", esDeNoche };
-    return { clima: categorizarClima(code), esDeNoche };
+    const sol = solDeHoy(data);
+    const esDeNoche = sol ? esDeNocheSegunSol(sol.amanecer, sol.atardecer, Date.now()) : typeof isDay === "number" ? isDay === 0 : esDeNochePorHora();
+    const conSol = { amanecer: sol?.amanecer ?? null, atardecer: sol?.atardecer ?? null };
+    if (typeof code !== "number") return { clima: "soleado", esDeNoche, ...conSol };
+    return { clima: categorizarClima(code), esDeNoche, ...conSol };
   } catch {
     return { clima: "soleado", esDeNoche: esDeNochePorHora() };
   }

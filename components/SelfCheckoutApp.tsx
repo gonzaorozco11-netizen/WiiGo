@@ -26,9 +26,9 @@ import {
   infoCanjePuntosAction,
   obtenerStockLocal,
   obtenerPreciosLocal,
-  obtenerCieloLocal,
 } from "@/app/self-checkout/[idLocal]/actions";
 import { esMismoCodigo } from "@/lib/codigoBarras";
+import { esDeNocheSegunSol } from "@/lib/clima";
 
 // El cielo (clima, día o noche) cambia despacio: cada 10 minutos alcanza.
 const CIELO_POLL_MS = 10 * 60 * 1000;
@@ -1391,17 +1391,64 @@ export default function SelfCheckoutApp({
 
   // El cielo del reposo se vuelve a pedir cada 10 minutos: el tótem se abre a
   // la mañana y antes quedaba de día toda la noche (Gonzalo, 2026-11-09).
-  const [cielo, setCielo] = useState({ clima: climaInicial, esDeNoche: esDeNocheInicial });
+  //
+  // Y los dos tótems tienen que cambiar juntos (Gonzalo, 2026-11-12: uno quedó
+  // de día y el otro de noche):
+  //   - el clima se pide a la misma hora en los dos: al cumplirse cada 10
+  //     minutos del reloj (19:50, 20:00…), no 10 minutos después de prenderse;
+  //   - si es de noche lo decide cada tótem con su reloj, cada 30 segundos, con
+  //     el amanecer y el atardecer de hoy: pasan a la noche en el mismo minuto;
+  //   - por una URL fija (app/api/self-checkout/cielo) y no por un Server
+  //     Action, que después de un deploy deja de existir y el cielo se clavaba.
+  const [cielo, setCielo] = useState<{ clima: Clima; esDeNoche: boolean; amanecer: number | null; atardecer: number | null }>({
+    clima: climaInicial,
+    esDeNoche: esDeNocheInicial,
+    amanecer: null,
+    atardecer: null,
+  });
   const { clima, esDeNoche } = cielo;
   useEffect(() => {
-    const id = setInterval(() => {
-      obtenerCieloLocal(local.id_local)
-        .then((nuevo) => {
-          if (nuevo) setCielo((prev) => (prev.clima === nuevo.clima && prev.esDeNoche === nuevo.esDeNoche ? prev : nuevo));
+    let vivo = true;
+    let proxima: ReturnType<typeof setTimeout> | null = null;
+    const pedir = () => {
+      fetch(`/api/self-checkout/cielo?local=${encodeURIComponent(local.id_local)}`, { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((nuevo: { clima: Clima; esDeNoche: boolean; amanecer?: number | null; atardecer?: number | null } | null) => {
+          if (!vivo || !nuevo) return;
+          const amanecer = nuevo.amanecer ?? null;
+          const atardecer = nuevo.atardecer ?? null;
+          const noche = amanecer !== null && atardecer !== null ? esDeNocheSegunSol(amanecer, atardecer, Date.now()) : nuevo.esDeNoche;
+          setCielo((prev) =>
+            prev.clima === nuevo.clima && prev.esDeNoche === noche && prev.amanecer === amanecer && prev.atardecer === atardecer
+              ? prev
+              : { clima: nuevo.clima, esDeNoche: noche, amanecer, atardecer }
+          );
         })
         .catch(() => {});
-    }, CIELO_POLL_MS);
-    return () => clearInterval(id);
+    };
+    const programar = () => {
+      // 5 segundos después de cada múltiplo de 10 minutos del reloj.
+      const falta = CIELO_POLL_MS - (Date.now() % CIELO_POLL_MS) + 5000;
+      proxima = setTimeout(() => {
+        pedir();
+        programar();
+      }, falta);
+    };
+    const primera = setTimeout(pedir, 0);
+    programar();
+    const reloj = setInterval(() => {
+      setCielo((prev) => {
+        if (prev.amanecer === null || prev.atardecer === null) return prev;
+        const noche = esDeNocheSegunSol(prev.amanecer, prev.atardecer, Date.now());
+        return noche === prev.esDeNoche ? prev : { ...prev, esDeNoche: noche };
+      });
+    }, 30_000);
+    return () => {
+      vivo = false;
+      clearTimeout(primera);
+      if (proxima) clearTimeout(proxima);
+      clearInterval(reloj);
+    };
   }, [local.id_local]);
 
   // En el totem las imágenes no llegan a cargar (ver el comentario grande de
