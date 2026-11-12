@@ -670,7 +670,8 @@ export default function PosApp({
               className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-neutral-50"
             >
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-neutral-900 truncate">{i.producto.nombre}</p>
+                {/* El nombre entero, en dos renglones si hace falta: cortado no se veía la marca ni el tamaño (Gonzalo, 2026-11-12). */}
+                <p className="text-sm font-semibold text-neutral-900 break-words">{i.producto.nombre}</p>
                 {i.variante.nombre !== "Único" && <p className="text-xs text-neutral-400">{i.variante.nombre}</p>}
               </div>
               {i.cantidadDisponible <= 0 && (
@@ -694,7 +695,7 @@ export default function PosApp({
               className="flex items-center gap-2.5 bg-white border border-neutral-200 rounded-xl px-3 py-2.5"
             >
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-neutral-900 truncate">{i.producto.nombre}</p>
+                <p className="text-sm font-semibold text-neutral-900 break-words">{i.producto.nombre}</p>
                 <p className="text-xs text-neutral-400">
                   {i.variante.nombre !== "Único" && `${i.variante.nombre} · `}${formatearMonto(i.precio)} c/u
                 </p>
