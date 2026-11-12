@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import TableroRrhh from "@/components/TableroRrhh";
+import PagosEquipo from "@/components/PagosEquipo";
+import PadFirma from "@/components/PadFirma";
 import FichaPersona from "@/components/FichaPersona";
 import { actualizarSueldoBase, actualizarValorHora, actualizarCobraPresentismo } from "@/app/(app)/usuarios/actions";
 import { puedeCerrarseAguinaldo, etiquetaSemestre, semestreActual } from "@/lib/aguinaldo";
@@ -63,7 +65,7 @@ type PersonaMin = { id_persona: string; nombre: string; apellido: string | null 
  */
 export type VistaRrhh = "DASHBOARD" | "LEGAJOS" | "ASISTENCIA" | "SUELDOS";
 
-type Sub = "dashboard" | "legajos" | "asistencia" | "reglas" | "nomina" | "adelantos" | "aguinaldo";
+type Sub = "dashboard" | "legajos" | "asistencia" | "reglas" | "pagos" | "nomina" | "adelantos" | "aguinaldo";
 
 /** Qué sub-secciones tiene cada pantalla, y con qué nombre. */
 const SUBS: Record<VistaRrhh, { clave: Sub; etiqueta: string }[]> = {
@@ -74,7 +76,9 @@ const SUBS: Record<VistaRrhh, { clave: Sub; etiqueta: string }[]> = {
     { clave: "reglas", etiqueta: "Reglas" },
   ],
   SUELDOS: [
-    { clave: "nomina", etiqueta: "El mes" },
+    // Todos los pagos a la gente en una lista (Gonzalo, 2026-11-12); «Sueldos del mes» es el cierre de los empleados.
+    { clave: "pagos", etiqueta: "Pagos del equipo" },
+    { clave: "nomina", etiqueta: "Sueldos del mes" },
     { clave: "adelantos", etiqueta: "Adelantos" },
     { clave: "aguinaldo", etiqueta: "Aguinaldo" },
   ],
@@ -95,7 +99,7 @@ const TITULO: Record<VistaRrhh, { h1: string; bajada: string }> = {
   },
   SUELDOS: {
     h1: "Sueldos",
-    bajada: "El cierre del mes, persona por persona: revisar horas, descontar adelantos, cerrar y pagar.",
+    bajada: "Lo que le pagás a cada uno, empleados y tercerizados: cuánto, cómo, si ya está pagado y su recibo.",
   },
 };
 
@@ -208,6 +212,7 @@ export default function RrhhApp({
             <ReglasPresentismo />
           </div>
         )}
+        {sub === "pagos" && <PagosEquipo periodo={periodo} setPeriodo={setPeriodo} onIrASueldos={() => setSub("nomina")} onAbrirFicha={setFichaAbierta} />}
         {sub === "nomina" && <TabNomina usuarios={usuarios} periodo={periodo} setPeriodo={setPeriodo} onAbrirFicha={setFichaAbierta} />}
         {sub === "adelantos" && <TabAdelantos usuarios={usuarios} periodo={periodo} setPeriodo={setPeriodo} />}
         {sub === "aguinaldo" && <TabAguinaldo />}
@@ -1348,11 +1353,23 @@ function ModalPagarNomina({ fila, onClose, onPagado }: { fila: NovedadNomina; on
   const cierre = fila.cierre!;
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // El recibo (Gonzalo, 2026-11-12): le llega a su usuario para firmar, lo
+  // firma acá con el dedo, o se sube el papel firmado como antes.
+  const [recibo, setRecibo] = useState<"SU_USUARIO" | "ACA" | "PAPEL">("SU_USUARIO");
+  const [firma, setFirma] = useState<string | null>(null);
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     const formData = new FormData(e.currentTarget);
+    if (recibo === "ACA") {
+      if (!firma) {
+        setError("Que firme en el recuadro, o elegí que le llegue a su usuario.");
+        return;
+      }
+      formData.set("firma", firma);
+    }
+    if (recibo === "SU_USUARIO") formData.set("firma_despues", "1");
     setGuardando(true);
     pagarNomina(cierre.id_cierre, formData)
       .then((res) => {
@@ -1388,24 +1405,56 @@ function ModalPagarNomina({ fila, onClose, onPagado }: { fila: NovedadNomina; on
           </div>
         </div>
 
-        {/* El flujo pensado: se descarga el recibo ya armado con los datos
-            del cierre, se imprime, lo firma el trabajador, y esa copia
-            firmada es la que se sube acá. */}
-        <div className="bg-accent-tint border border-accent/30 rounded-lg p-3 mb-3">
-          <p className="text-xs font-semibold text-neutral-800 mb-1">1. Descargá el recibo y hacelo firmar</p>
-          <a
-            href={`/rrhh/recibo/${cierre.id_cierre}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-block bg-white border border-accent text-accent-dark font-semibold px-3 py-1.5 rounded-lg text-sm"
-          >
-            📄 Descargar recibo
-          </a>
+        <div className="mb-3">
+          <label className="block text-xs font-medium text-neutral-600 mb-1.5">El recibo firmado</label>
+          <div className="space-y-1.5">
+            {(
+              [
+                ["SU_USUARIO", "Le llega a su usuario", "Lo firma desde su celular, en Mis recibos"],
+                ["ACA", "Firma acá, ahora", "Con el dedo, en esta pantalla"],
+                ["PAPEL", "En papel", "Imprimís el recibo, lo firma y lo subís"],
+              ] as const
+            ).map(([valor, titulo, detalle]) => (
+              <label
+                key={valor}
+                className={`flex items-center gap-2.5 border rounded-lg px-3 py-2 text-sm cursor-pointer ${recibo === valor ? "border-accent bg-accent-tint" : "border-neutral-300"}`}
+              >
+                <input type="radio" name="tipo_recibo" checked={recibo === valor} onChange={() => setRecibo(valor)} />
+                <span>
+                  <span className="block font-medium text-neutral-800">{titulo}</span>
+                  <span className="block text-xs text-neutral-500">{detalle}</span>
+                </span>
+              </label>
+            ))}
+          </div>
         </div>
 
+        {recibo === "ACA" && (
+          <div className="mb-3">
+            <p className="text-xs text-neutral-600 mb-1.5">
+              {fila.nombre} firma que recibió ${formatearMonto(cierre.neto_a_pagar)} por su sueldo de {cierre.periodo}:
+            </p>
+            <PadFirma onCambio={setFirma} />
+          </div>
+        )}
+        {recibo === "PAPEL" && (
+          <div className="bg-accent-tint border border-accent/30 rounded-lg p-3 mb-3">
+            <a
+              href={`/rrhh/recibo/${cierre.id_cierre}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block bg-white border border-accent text-accent-dark font-semibold px-3 py-1.5 rounded-lg text-sm"
+            >
+              📄 Descargar recibo
+            </a>
+          </div>
+        )}
+
         <div className="mb-4">
-          <label className="block text-xs font-medium text-neutral-600 mb-1">2. Subí el recibo firmado *</label>
-          <input type="file" name="comprobante" required accept="image/*,.pdf" className="w-full text-sm" />
+          <label className="block text-xs font-medium text-neutral-600 mb-1">
+            {recibo === "PAPEL" ? "Subí el recibo firmado *" : "Comprobante de la transferencia (opcional)"}
+          </label>
+          <input type="file" name="comprobante" required={recibo === "PAPEL"} accept="image/*,.pdf" className="w-full text-sm" />
         </div>
 
         <div className="flex justify-end">

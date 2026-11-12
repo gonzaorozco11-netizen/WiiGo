@@ -859,30 +859,40 @@ export async function armarDashboardRrhh(periodoPedido?: string): Promise<Dashbo
   const idsHonorarios = (categoriasRes.data ?? [])
     .filter((c) => quitarTildes(c.nombre as string).startsWith("honorario"))
     .map((c) => c.id_categoria as string);
-  const [gastosHon, recurrentesHon] = idsHonorarios.length
+  // Desde Pagos del equipo (sql/pagos-equipo.sql) cada pago sabe de quién es y
+  // qué mes paga, y cada persona tiene su gasto fijo: se usa eso primero, y el
+  // nombre en la descripción para lo de antes.
+  type GastoHon = { id_gasto?: string; descripcion: string | null; monto: number; neto: number | null; id_persona?: string | null; periodo?: string | null };
+  type RecurrenteHon = { id_recurrente?: string; descripcion: string | null; monto_estimado: number | null };
+  const [gastosHon, recurrentesHon, gastosDelPeriodo, configsPago] = idsHonorarios.length
     ? await Promise.all([
-        supabase
-          .from("gastos")
-          .select("descripcion, monto, neto")
-          .in("id_categoria", idsHonorarios)
-          .eq("anulado", false)
-          .gte("fecha", desdeMes)
-          .lte("fecha", hastaMes),
-        supabase.from("gastos_recurrentes").select("descripcion, monto_estimado").in("id_categoria", idsHonorarios).eq("activo", true),
+        supabase.from("gastos").select("*").in("id_categoria", idsHonorarios).eq("anulado", false).gte("fecha", desdeMes).lte("fecha", hastaMes),
+        supabase.from("gastos_recurrentes").select("*").in("id_categoria", idsHonorarios).eq("activo", true),
+        supabase.from("gastos").select("*").in("id_categoria", idsHonorarios).eq("anulado", false).eq("periodo", periodo),
+        supabase.from("pagos_equipo").select("id_persona, empezo, id_recurrente"),
       ])
-    : [{ data: [] as { descripcion: string | null; monto: number; neto: number | null }[] }, { data: [] as { descripcion: string | null; monto_estimado: number | null }[] }];
-  const gastosLibres = [...(gastosHon.data ?? [])];
-  const recurrentesLibres = [...(recurrentesHon.data ?? [])];
-  const tomar = <T extends { descripcion: string | null }>(lista: T[], claves: string[]) => {
-    const i = lista.findIndex((g) => claves.some((k) => k && quitarTildes(g.descripcion ?? "").includes(k)));
+    : [{ data: [] }, { data: [] }, { data: [] }, { data: [] }];
+  const deOtroMes = (g: GastoHon) => Boolean(g.periodo) && g.periodo !== periodo;
+  const gastosLibres: GastoHon[] = [
+    ...((gastosHon.data ?? []) as GastoHon[]).filter((g) => !deOtroMes(g)),
+    // Pagado en otro mes, pero es de este (por ejemplo, octubre pagado el 2 de noviembre).
+    ...((gastosDelPeriodo.data ?? []) as GastoHon[]).filter((g) => !((gastosHon.data ?? []) as GastoHon[]).some((x) => x.id_gasto === g.id_gasto)),
+  ];
+  const recurrentesLibres: RecurrenteHon[] = [...((recurrentesHon.data ?? []) as RecurrenteHon[])];
+  const configPagoPor = new Map(((configsPago.data ?? []) as { id_persona: string; empezo: boolean | null; id_recurrente: string | null }[]).map((c) => [c.id_persona, c]));
+  const tomar = <T extends { descripcion: string | null }>(lista: T[], claves: string[], porId?: (x: T) => boolean) => {
+    let i = porId ? lista.findIndex(porId) : -1;
+    if (i < 0) i = lista.findIndex((g) => claves.some((k) => k && quitarTildes(g.descripcion ?? "").includes(k)));
     return i >= 0 ? lista.splice(i, 1)[0] : null;
   };
-  const externos = personas.filter((p) => p.tipo === "EXTERNO");
+  // Los que todavía no empezaron (Pagos del equipo) no cuestan nada este mes.
+  const externos = personas.filter((p) => p.tipo === "EXTERNO" && configPagoPor.get(p.id_persona as string)?.empezo !== false);
   const genteTerc: DashboardRrhh["grupos"][number]["gente"] = externos.map((p) => {
     const nombreCompleto = [p.nombre, p.apellido].filter(Boolean).join(" ");
     const claves = [quitarTildes(nombreCompleto), quitarTildes((p.apellido as string) ?? "")].filter((k) => k.length >= 3);
-    const gasto = tomar(gastosLibres, claves);
-    const recurrente = tomar(recurrentesLibres, claves);
+    const idRec = configPagoPor.get(p.id_persona as string)?.id_recurrente ?? null;
+    const gasto = tomar(gastosLibres, claves, (g) => g.id_persona === p.id_persona);
+    const recurrente = tomar(recurrentesLibres, claves, idRec ? (r) => r.id_recurrente === idRec : undefined);
     if (gasto) {
       return { nombre: nombreCompleto, detalle: gasto.descripcion ?? "Honorarios", monto: Math.round(gasto.neto ?? gasto.monto), proyectado: false, hastaHoy: null, estado: { texto: "Pagado", tono: "bien" as const } };
     }
@@ -1085,7 +1095,7 @@ export async function armarDashboardRrhh(periodoPedido?: string): Promise<Dashbo
   const avisos = [
     { clave: "fichajes", titulo: "Fichajes sin salida", detalle: "Esos días cuentan 0 horas", n: pendientes.length, href: `/rrhh/asistencia?mes=${periodo}` },
     { clave: "sueldos", titulo: "Sueldos sin cerrar", detalle: "Falta calcular el sueldo del mes", n: sinCerrar, href: `/rrhh/sueldos?mes=${periodo}` },
-    { clave: "honorarios", titulo: "Honorarios sin pagar", detalle: "De servicios tercerizados", n: honorariosSinPagar, href: "/gastos-ingresos" },
+    { clave: "honorarios", titulo: "Honorarios sin pagar", detalle: "De servicios tercerizados: se pagan en Pagos del equipo", n: honorariosSinPagar, href: `/rrhh/sueldos?mes=${periodo}` },
     {
       clave: "cobrar",
       titulo: "No pueden cobrar",
@@ -1524,6 +1534,9 @@ export type CierreNomina = {
   cuenta_pago: string | null;
   comprobante_path: string | null;
   usuario_pago: string | null;
+  /** El recibo firmado con el dedo (sql/pagos-equipo.sql); sin firmar, null. */
+  firma?: string | null;
+  firmado_en?: string | null;
 };
 
 export type NovedadNomina = {
@@ -1628,20 +1641,41 @@ async function calcularPagoPorHoraMes(idPersona: string, periodo: string, valorH
 // necesario para cerrar su nómina del mes: monto base, resultado de
 // presentismo (ya calculado), adelantos del período, y si ya tiene un
 // cierre (y en qué estado).
-export async function obtenerNovedadesMes(periodo: string): Promise<NovedadNomina[]> {
+//
+// Quien todavía no empezó no entra (Gonzalo, 2026-11-12, con Agostina): o lo
+// marcó así en Pagos del equipo (pagos_equipo.empezo = false), o su fecha de
+// ingreso es posterior a este mes. Pagos del equipo los pide igual, para
+// mostrarlos aparte (incluirSinEmpezar).
+export async function obtenerNovedadesMes(periodo: string, opciones?: { incluirSinEmpezar?: boolean }): Promise<NovedadNomina[]> {
   const permisoError = await requireAcceso();
   if (permisoError) throw new Error(permisoError);
 
   const supabase = getSupabaseServerClient();
   const params = await obtenerParametrosPresentismo();
 
-  const { data: usuariosConSueldo } = await supabase
+  const { data: todosConSueldo } = await supabase
     .from("usuarios")
     .select("id_usuario, nombre, sueldo_base, valor_hora, id_persona")
     .eq("estado", "ACTIVO")
     .not("id_persona", "is", null)
     .or("sueldo_base.gt.0,valor_hora.gt.0");
-  if (!usuariosConSueldo || usuariosConSueldo.length === 0) return [];
+  if (!todosConSueldo || todosConSueldo.length === 0) return [];
+  let usuariosConSueldo = todosConSueldo;
+  if (!opciones?.incluirSinEmpezar) {
+    const ids = todosConSueldo.map((u) => u.id_persona as string);
+    const [{ data: ingresos }, { data: configs }] = await Promise.all([
+      supabase.from("personas").select("id_persona, fecha_ingreso").in("id_persona", ids),
+      // Sin sql/pagos-equipo.sql esto da error y no filtra nada.
+      supabase.from("pagos_equipo").select("id_persona, empezo").in("id_persona", ids),
+    ]);
+    const finPeriodo = rangoDelPeriodoStr(periodo).hasta;
+    const noEmpezo = new Set([
+      ...(ingresos ?? []).filter((p) => p.fecha_ingreso && (p.fecha_ingreso as string) > finPeriodo).map((p) => p.id_persona as string),
+      ...(configs ?? []).filter((c) => c.empezo === false).map((c) => c.id_persona as string),
+    ]);
+    usuariosConSueldo = todosConSueldo.filter((u) => !noEmpezo.has(u.id_persona as string));
+    if (usuariosConSueldo.length === 0) return [];
+  }
 
   const presentismoFilas = await calcularPresentismoMes(periodo);
   const presentismoPorPersona = new Map(presentismoFilas.map((f) => [f.idPersona, f.resultado]));
@@ -1947,10 +1981,14 @@ export async function eliminarCierreNomina(idCierre: string): Promise<{ error: s
   return { error: null };
 }
 
-// Al pagar: se exige comprobante siempre. Si sale de Caja Administración,
-// además descuenta el efectivo real; si es Transferencia, solo queda
-// registrado como pagado (no hay cuentas bancarias con saldo propio en el
-// sistema todavía).
+// Al pagar: si sale de Caja Administración, además descuenta el efectivo
+// real; si es Transferencia, solo queda registrado como pagado (no hay
+// cuentas bancarias con saldo propio en el sistema todavía).
+//
+// El recibo (Gonzalo, 2026-11-12): o lo firma ahí mismo con el dedo (`firma`),
+// o le llega a su usuario para firmarlo (Mis recibos). Por eso el
+// comprobante dejó de ser obligatorio: con la firma digital alcanza, y la
+// captura de la transferencia es opcional. Sin ninguna de las dos se pide algo.
 export async function pagarNomina(idCierre: string, formData: FormData): Promise<{ error: string | null }> {
   const permisoError = await requireAcceso();
   if (permisoError) return { error: permisoError };
@@ -1958,7 +1996,11 @@ export async function pagarNomina(idCierre: string, formData: FormData): Promise
   const cuentaPago = String(formData.get("cuenta_pago") ?? "");
   if (!["CAJA_ADMIN", "TRANSFERENCIA"].includes(cuentaPago)) return { error: "Elegí de dónde sale la plata" };
   const archivo = formData.get("comprobante") as File | null;
-  if (!archivo || archivo.size === 0) return { error: "El comprobante es obligatorio para registrar el pago." };
+  const hayArchivo = Boolean(archivo && archivo.size > 0);
+  const firmaTexto = String(formData.get("firma") ?? "");
+  const firma = firmaTexto && firmaTexto.length < 200_000 && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(firmaTexto) ? firmaTexto : null;
+  const firmaDespues = formData.get("firma_despues") === "1";
+  if (!hayArchivo && !firma && !firmaDespues) return { error: "Subí el comprobante, o que firme el recibo." };
 
   try {
     const supabase = getSupabaseServerClient();
@@ -1968,12 +2010,15 @@ export async function pagarNomina(idCierre: string, formData: FormData): Promise
     if (!cierre) return { error: "No se encontró el cierre" };
     if (cierre.estado === "PAGADO") return { error: "Este sueldo ya está pagado." };
 
-    const extension = archivo.name.split(".").pop() ?? "pdf";
-    const path = `${idCierre}.${extension}`;
-    const { error: errorUpload } = await supabase.storage
-      .from("recibos-sueldo")
-      .upload(path, archivo, { upsert: true, contentType: archivo.type || undefined });
-    if (errorUpload) return { error: errorUpload.message };
+    let path: string | null = null;
+    if (archivo && hayArchivo) {
+      const extension = archivo.name.split(".").pop() ?? "pdf";
+      path = `${idCierre}.${extension}`;
+      const { error: errorUpload } = await supabase.storage
+        .from("recibos-sueldo")
+        .upload(path, archivo, { upsert: true, contentType: archivo.type || undefined });
+      if (errorUpload) return { error: errorUpload.message };
+    }
 
     if (cuentaPago === "CAJA_ADMIN") {
       await supabase.from("movimientos_caja_admin").insert({
@@ -1996,6 +2041,11 @@ export async function pagarNomina(idCierre: string, formData: FormData): Promise
       })
       .eq("id_cierre", idCierre);
     if (error) return { error: friendlyDbError(error) };
+    // La firma va aparte: sin sql/pagos-equipo.sql la columna no está, y el pago tiene que quedar igual.
+    if (firma) {
+      const { error: errorFirma } = await supabase.from("nomina_cierres").update({ firma, firmado_en: new Date().toISOString() }).eq("id_cierre", idCierre);
+      if (errorFirma) return { error: "El pago quedó registrado, pero la firma no se guardó: falta correr sql/pagos-equipo.sql en Supabase." };
+    }
 
     revalidatePath("/rrhh");
     revalidatePath("/tesoreria");

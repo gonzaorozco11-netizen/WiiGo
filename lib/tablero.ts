@@ -9,6 +9,7 @@ import { cargarPreciosPrestados } from "@/lib/preciosPrestados";
 import { cuantosParaPedir, pedidosEsperando, proveedorDelPedido } from "@/lib/pedidoProveedor";
 import { localDeSesion } from "@/lib/fraccionado";
 import { equipoDeHoy, type EquipoHoy } from "@/lib/equipoHoy";
+import { recibosSinFirmar } from "@/lib/misRecibos";
 
 // Tablero de inicio.
 //
@@ -508,6 +509,19 @@ export async function armarTablero(): Promise<Tablero | null> {
         detalle: "El control de tu turno: contalos cuando no haya clientes y firmá",
         valor: String(faltan),
         href: "/conteo",
+      });
+    }
+  }
+  // El recibo de sueldo de cada uno, para firmar desde su usuario (Mis recibos).
+  {
+    const sinFirmar = await recibosSinFirmar(supabase, sesion.idUsuario).catch(() => ({ n: 0, ultimo: null as string | null }));
+    if (sinFirmar.n > 0) {
+      seguimiento.push({
+        color: "azul",
+        titulo: sinFirmar.n === 1 && sinFirmar.ultimo ? `Firmá tu recibo de ${sinFirmar.ultimo.toLowerCase()}` : `Firmá tus ${sinFirmar.n} recibos de sueldo`,
+        detalle: "Ya te pagaron: firmalo con el dedo y queda en tu legajo",
+        valor: String(sinFirmar.n),
+        href: "/mis-recibos",
       });
     }
   }

@@ -231,6 +231,7 @@ function itemActivo(pathname: string): { grupo: string | null; item: NavItem } |
   const candidatos: { grupo: string | null; item: NavItem }[] = [
     ...GROUPS.flatMap((g) => g.items.map((item) => ({ grupo: g.label, item }))),
     { grupo: null, item: { href: "/mis-tareas", label: "Mis Tareas" } },
+    { grupo: null, item: { href: "/mis-recibos", label: "Mis recibos" } },
     { grupo: null, item: { href: "/junta", label: "Junta" } },
     { grupo: null, item: { href: "/configuracion", label: "Configuración" } },
     { grupo: null, item: { href: "/auditoria", label: "Auditoría" } },
@@ -343,6 +344,13 @@ export default function AppNav({
             </span>
           )}
         </Link>
+        {/* Los recibos de sueldo de cada uno, para verlos y firmarlos. El Dueño no cobra sueldo. */}
+        {!esAdmin && (
+          <Link href="/mis-recibos" className={`mt-0.5 ${claseLink(pathname === "/mis-recibos")}`}>
+            <Icono nombre="rrhh" className={pathname === "/mis-recibos" ? "text-accent" : "text-neutral-500"} />
+            Mis recibos
+          </Link>
+        )}
         {/* Suelto y arriba, como Mis Tareas: un pedido nuevo es algo que hay
             que hacer ya, y adentro de un grupo cerrado el número no se ve. */}
         {puedeVer("/pedidos") && (

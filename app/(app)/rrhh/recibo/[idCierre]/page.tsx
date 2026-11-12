@@ -1,5 +1,7 @@
 import { notFound } from "next/navigation";
+import { cookies } from "next/headers";
 import { getSupabaseServerClient } from "@/lib/supabase";
+import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos";
 import PantallaBloqueada from "@/components/PantallaBloqueada";
 import { EMISOR } from "@/lib/emisor";
@@ -40,13 +42,20 @@ function formatearFecha(iso: string | null) {
 
 export default async function ReciboPage({ params }: { params: Promise<{ idCierre: string }> }) {
   const sesion = await obtenerSesionConPermisos();
-  if (!tienePermiso(sesion, PERMISOS.GESTIONAR_NOMINA)) return <PantallaBloqueada />;
-
   const { idCierre } = await params;
   const supabase = getSupabaseServerClient();
 
   const { data: cierre } = await supabase.from("nomina_cierres").select("*").eq("id_cierre", idCierre).maybeSingle();
+  // Lo ve quien maneja sueldos, y cada empleado el suyo (desde Mis recibos).
+  if (!tienePermiso(sesion, PERMISOS.GESTIONAR_NOMINA)) {
+    const token = (await cookies()).get(SESSION_COOKIE)?.value;
+    const propia = await readSessionToken(token, process.env.AUTH_SECRET ?? "");
+    const { data: usuario } = propia ? await supabase.from("usuarios").select("id_persona").eq("id_usuario", propia.sub).maybeSingle() : { data: null };
+    if (!cierre || !usuario?.id_persona || usuario.id_persona !== cierre.id_persona) return <PantallaBloqueada />;
+  }
   if (!cierre) notFound();
+  const firma = (cierre.firma as string | null | undefined) ?? null;
+  const firmadoEn = (cierre.firmado_en as string | null | undefined) ?? null;
 
   const { data: persona } = await supabase
     .from("personas")
@@ -146,7 +155,9 @@ export default async function ReciboPage({ params }: { params: Promise<{ idCierr
       <div className="recibo-barra">
         <BotonImprimirRecibo />
         <p style={{ fontSize: 13, color: "#555", margin: 0 }}>
-          Imprimilo, que lo firme el trabajador, y subí la copia firmada al registrar el pago.
+          {firma
+            ? "Firmado digitalmente por el trabajador."
+            : "Lo firma desde su usuario (Mis recibos), o imprimilo y que lo firme en papel."}
         </p>
       </div>
 
@@ -229,8 +240,18 @@ export default async function ReciboPage({ params }: { params: Promise<{ idCierr
             período.
           </p>
 
+          {/* Firmado con el dedo (Mis recibos, o al pagar): la firma va sobre la línea. */}
+          {firma && (
+            <div className="recibo-firmas" style={{ marginTop: 18, marginBottom: -30 }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={firma} alt="Firma del trabajador" style={{ height: 56, width: "auto", margin: "0 auto", display: "block", mixBlendMode: "multiply" }} />
+              <p style={{ textAlign: "center", fontSize: 12, alignSelf: "end", margin: 0 }}>
+                {nombreCompleto} · {formatearFecha(firmadoEn)}
+              </p>
+            </div>
+          )}
           <div className="recibo-firmas">
-            <div className="recibo-firma">Firma del trabajador</div>
+            <div className="recibo-firma">Firma del trabajador{firma ? " (digital)" : ""}</div>
             <div className="recibo-firma">Aclaración y fecha</div>
           </div>
         </div>
