@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import { esRolInterno } from "@/lib/rolesInternos";
+import { minMaxAlColgar } from "@/lib/minimosGancho";
 
 // Precios → Góndola: en qué lugar de qué módulo va cada producto. La pantalla
 // asesora lo lee para decirle al cliente dónde está (Gonzalo, 2026-10-29).
@@ -104,6 +105,8 @@ export async function ponerEnLugar(idModulo: string, fila: number, columna: numb
       .from("gondola_lugares")
       .insert({ id_modulo: idModulo, id_local: idLocal, fila, columna, id_producto: idProducto, actualizado_el: new Date().toISOString() });
     if (e3) return { error: "No se pudo guardar. Probá de nuevo." };
+    // Colgado en un gancho: mínimo 5 y máximo 8 (lib/minimosGancho.ts).
+    await minMaxAlColgar(supabase, idModulo, idProducto);
   }
   revalidatePath("/precios");
   revalidatePath("/asesor", "layout");

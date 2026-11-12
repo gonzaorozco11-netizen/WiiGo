@@ -188,6 +188,9 @@ export async function armarInicioOperativo(
     agregar({ clave: "club", titulo: "Sumar cliente al Club", detalle: "Con su DNI suma puntos desde la primera compra", href: "/club/sumar", icono: "⭐", badge: null, deshabilitado: false });
   if (puede("compras-recepcion"))
     agregar({ clave: "recibir", titulo: "Recibir mercadería", detalle: "Cuando llega un pedido de una marca", href: "/compras/recepcion", icono: "📥", badge: pendientes.recibir || null, badgeTono: "ambar", deshabilitado: false });
+  // El pedido a Alifrut con lo que llegó al mínimo (Gonzalo, 2026-11-12).
+  if (puede("compras-pedir"))
+    agregar({ clave: "pedir", titulo: "Pedido a Alifrut", detalle: "Lo que llegó al mínimo: armalo y mandáselo a Gonzalo", href: "/compras/pedir", icono: "🛒", badge: null, deshabilitado: false });
   // Dos accesos, uno por pantalla (pedido de Gonzalo): las etiquetas de
   // código de barras y los carteles de precio de góndola. Las etiquetas por
   // cambiar (precios nuevos) son de los carteles.

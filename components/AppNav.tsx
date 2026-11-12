@@ -56,6 +56,8 @@ const GROUPS: NavGroup[] = [
     label: "Compras",
     icono: "compras",
     items: [
+      // El pedido a Alifrut que arma el equipo; quien maneja Compras lo ve igual.
+      { href: "/compras/pedir", label: "Pedido a Alifrut", tambien: "compras" },
       { href: "/compras", label: "Órdenes de compra" },
       { href: "/compras/recepcion", label: "Recepción" },
       { href: "/compras/costeo", label: "Costeo de recibidos" },

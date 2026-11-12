@@ -2,6 +2,7 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import PantallaBloqueada from "@/components/PantallaBloqueada";
 import FraccionarApp from "@/components/FraccionarApp";
+import CargarGranelDeposito from "@/components/CargarGranelDeposito";
 import { asegurarGraneles } from "@/lib/granel";
 import { datosFraccionar, localDeSesion } from "@/lib/fraccionado";
 
@@ -27,5 +28,11 @@ export default async function FraccionarPage() {
       </div>
     );
   }
-  return <FraccionarApp {...datos} esAdmin={sesion.rol === "admin"} />;
+  return (
+    <>
+      {/* Una sola vez: el granel que ya estaba guardado antes de entrar por el sistema. */}
+      <CargarGranelDeposito idLocal={idLocal} graneles={datos.graneles.map((g) => ({ idVariante: g.idVariante, nombre: g.nombre, gramos: g.gramos }))} />
+      <FraccionarApp {...datos} esAdmin={sesion.rol === "admin"} />
+    </>
+  );
 }

@@ -6,6 +6,7 @@ import { armarInicioOperativo, faltanContar, type InicioOperativo } from "@/lib/
 import { armarInicioDueno, type InicioDueno } from "@/lib/inicioDueno";
 import { avisosCajaYLlamados } from "@/lib/avisosCaja";
 import { cargarPreciosPrestados } from "@/lib/preciosPrestados";
+import { pedidosEsperando } from "@/lib/pedidoProveedor";
 
 // Tablero de inicio.
 //
@@ -388,6 +389,21 @@ export async function armarTablero(): Promise<Tablero | null> {
       valor: String(nc),
       href: "/ventas",
     });
+  }
+
+  // ---------- Pedido a Alifrut que armó el equipo ----------
+  // Espera que quien maneja Compras lo cargue en la web del proveedor.
+  if (puede("compras")) {
+    const esperando = await pedidosEsperando(supabase).catch(() => []);
+    if (esperando.length > 0) {
+      urgentes.push({
+        color: "ambar",
+        titulo: `${plural(esperando.length, "pedido para cargar", "pedidos para cargar")} en Alifrut`,
+        detalle: `Lo armó ${[...new Set(esperando.map((p) => p.quien))].join(" y ")} con lo que llegó al mínimo. Cargalo y marcá lo que no tengan`,
+        valor: String(esperando.reduce((a, p) => a + p.productos, 0)),
+        href: esperando.length === 1 ? `/compras/pedir/${esperando[0].idOrden}` : "/compras/pedir",
+      });
+    }
   }
 
   // ---------- Abastecimiento ----------

@@ -7,6 +7,7 @@ import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import { localDeSesion } from "@/lib/fraccionado";
 import { inventarioAbierto, ZONAS_INVENTARIO } from "@/lib/inventario";
 import { fechaHoraArgentina } from "@/lib/horarios";
+import { minMaxAlColgar } from "@/lib/minimosGancho";
 
 // Inventario general del local (lib/inventario.ts). Devuelven { error } como
 // dato: Next 16 esconde el mensaje de un throw en producción.
@@ -63,9 +64,12 @@ export async function guardarConteoInventario(idVariante: string, zona: string, 
 async function aplicarLugar(supabase: ReturnType<typeof getSupabaseServerClient>, idLocal: string, idModulo: string, fila: number, columna: number, idProducto: string) {
   await supabase.from("gondola_lugares").delete().eq("id_local", idLocal).eq("id_producto", idProducto);
   await supabase.from("gondola_lugares").delete().eq("id_modulo", idModulo).eq("fila", fila).eq("columna", columna);
-  return supabase
+  const r = await supabase
     .from("gondola_lugares")
     .insert({ id_modulo: idModulo, id_local: idLocal, fila, columna, id_producto: idProducto, puesto: true, actualizado_el: new Date().toISOString() });
+  // Colgado en un gancho: mínimo 5 y máximo 8 (lib/minimosGancho.ts).
+  if (!r.error) await minMaxAlColgar(supabase, idModulo, idProducto);
+  return r;
 }
 
 async function lugarDeProducto(supabase: ReturnType<typeof getSupabaseServerClient>, idLocal: string, idProducto: string) {

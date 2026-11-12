@@ -30,6 +30,9 @@ export const PANTALLAS_DISPONIBLES: PantallaDisponible[] = [
   // distinta (administración pide, el local recibe, administración costea).
   // Separarlas permite darle a cada una solo su pantalla — y que la operativa
   // del local no vea costos, que con las marcas es información sensible.
+  // El pedido a Alifrut que arma el equipo del local con lo que llegó al
+  // mínimo. Cargarlo en la web del proveedor es de quien tiene «compras».
+  { clave: "compras-pedir", label: "Armar pedido a Alifrut", grupo: "Compras" },
   { clave: "compras", label: "Órdenes de compra", grupo: "Compras" },
   { clave: "compras-recepcion", label: "Recepción de mercadería", grupo: "Compras" },
   { clave: "compras-costeo", label: "Costeo de recibidos", grupo: "Compras" },
