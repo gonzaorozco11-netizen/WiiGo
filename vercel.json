@@ -32,6 +32,14 @@
     {
       "path": "/api/cron/competencia",
       "schedule": "0 11 * * 1"
+    },
+    {
+      "path": "/api/cron/resumen-turno-13",
+      "schedule": "15 16 * * *"
+    },
+    {
+      "path": "/api/cron/resumen-turno-21",
+      "schedule": "15 0 * * *"
     }
   ]
 }

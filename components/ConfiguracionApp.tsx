@@ -10,8 +10,11 @@ import {
   guardarConfigGastos,
   guardarConfigDevoluciones,
   guardarConfigRecepcion,
+  guardarConfigResumenMail,
+  probarResumenMail,
   conectarMercadoPagoQR,
 } from "@/app/(app)/configuracion/actions";
+import type { UltimoResumen } from "@/lib/resumenTurno";
 import { DIAS_SEMANA, huecoMasLargo, nombrarDias } from "@/lib/recepcion";
 import ConfiguracionArca from "@/components/ConfiguracionArca";
 import ConfiguracionAprobaciones from "@/components/ConfiguracionAprobaciones";
@@ -63,6 +66,8 @@ export default function ConfiguracionApp({
   recepcionDias,
   recepcionHoraDesde,
   recepcionHoraHasta,
+  resumenMails,
+  resumenUltimo,
 }: {
   puntosActivo: boolean;
   puntosCadaMonto: number;
@@ -107,6 +112,8 @@ export default function ConfiguracionApp({
   recepcionDias: number[];
   recepcionHoraDesde: string;
   recepcionHoraHasta: string;
+  resumenMails: string[];
+  resumenUltimo: UltimoResumen | null;
 }) {
   const [isPending, startTransition] = useTransition();
   const [guardado, setGuardado] = useState(false);
@@ -183,6 +190,11 @@ export default function ConfiguracionApp({
   const [errorDevoluciones, setErrorDevoluciones] = useState<string | null>(null);
   const [diasDevolucion, setDiasDevolucion] = useState(devolucionDiasAviso);
 
+  const [isPendingResumen, startTransitionResumen] = useTransition();
+  const [avisoResumen, setAvisoResumen] = useState<string | null>(null);
+  const [errorResumen, setErrorResumen] = useState<string | null>(null);
+  const [mailsResumen, setMailsResumen] = useState(resumenMails.join(", "));
+
   const puntosCalculados = useMemo(() => {
     if (!cadaMonto || cadaMonto <= 0) return { marcas: 0, propios: 0 };
     return {
@@ -258,6 +270,26 @@ export default function ConfiguracionApp({
       const res = await guardarConfigDevoluciones(formData);
       if (res.error) setErrorDevoluciones(res.error);
       else setGuardadoDevoluciones(true);
+    });
+  }
+
+  function handleSubmitResumen(formData: FormData) {
+    setAvisoResumen(null);
+    setErrorResumen(null);
+    startTransitionResumen(async () => {
+      const res = await guardarConfigResumenMail(formData);
+      if (res.error) setErrorResumen(res.error);
+      else setAvisoResumen(mailsResumen.trim() ? "Mails guardados." : "Listo: el resumen queda apagado.");
+    });
+  }
+
+  function handleProbarResumen() {
+    setAvisoResumen(null);
+    setErrorResumen(null);
+    startTransitionResumen(async () => {
+      const res = await probarResumenMail();
+      if (res.error) setErrorResumen(res.error);
+      else setAvisoResumen(`${res.mensaje ?? "Prueba mandada."} Fijate en tu casilla (y en spam, la primera vez).`);
     });
   }
 
@@ -943,6 +975,71 @@ export default function ConfiguracionApp({
         >
           {isPendingGastos ? "Guardando..." : "Guardar tope"}
         </button>
+      </form>
+
+      <form action={handleSubmitResumen} className="bg-white border border-neutral-200 rounded-xl p-5 mt-5">
+        <h2 className="text-base font-semibold text-neutral-900 mb-1">📬 Resumen de ventas por mail</h2>
+        <p className="text-sm text-neutral-500 mb-4">
+          Al cierre de cada turno (entre las 13 y las 14, y entre las 21 y las 22) llega un mail con lo
+          vendido: el total, cómo pagaron y lo más vendido. El de la noche trae además el total del día.
+          Vacío = no se manda.
+        </p>
+
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="resumen_turno_mails">
+            Mandarlo a
+          </label>
+          <input
+            id="resumen_turno_mails"
+            name="resumen_turno_mails"
+            type="text"
+            inputMode="email"
+            autoComplete="off"
+            placeholder="tu@mail.com"
+            value={mailsResumen}
+            onChange={(e) => setMailsResumen(e.target.value)}
+            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+          />
+          <p className="text-xs text-neutral-500 mt-1">Hasta 3, separados con coma.</p>
+        </div>
+
+        {resumenUltimo && (
+          <p className={`text-xs mb-4 ${resumenUltimo.ok ? "text-neutral-500" : "text-red-600"}`}>
+            Último: {new Date(resumenUltimo.fecha).toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" })}{" "}
+            · {resumenUltimo.turno === "manana" ? "turno mañana" : "turno tarde"} ·{" "}
+            {resumenUltimo.ok
+              ? `salió bien (${resumenUltimo.ventas} ${resumenUltimo.ventas === 1 ? "venta" : "ventas"})`
+              : `no salió: ${resumenUltimo.error ?? "sin detalle"}`}
+          </p>
+        )}
+
+        {errorResumen && (
+          <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-4">{errorResumen}</p>
+        )}
+        {avisoResumen && (
+          <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 mb-4">
+            {avisoResumen}
+          </p>
+        )}
+
+        <div className="flex gap-2">
+          <button
+            type="submit"
+            disabled={isPendingResumen}
+            className="flex-1 rounded-lg bg-accent hover:bg-accent-dark text-white py-2 text-sm font-medium disabled:opacity-50"
+          >
+            {isPendingResumen ? "Un momento..." : "Guardar"}
+          </button>
+          {/* La prueba usa los mails ya guardados: si cambiaste algo, primero Guardar. */}
+          <button
+            type="button"
+            onClick={handleProbarResumen}
+            disabled={isPendingResumen || resumenMails.length === 0}
+            className="flex-1 rounded-lg border border-neutral-300 hover:border-neutral-400 text-neutral-700 py-2 text-sm font-medium disabled:opacity-50"
+          >
+            Mandarme uno de prueba
+          </button>
+        </div>
       </form>
 
       <form action={handleSubmitDevoluciones} className="bg-white border border-neutral-200 rounded-xl p-5 mt-5">

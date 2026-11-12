@@ -6,6 +6,7 @@ import { estadoCredenciales } from "@/lib/arca/credenciales";
 import { obtenerPolitica } from "@/lib/solicitudesMarca";
 import { leerDias } from "@/lib/recepcion";
 import { POSNET_POR_DEFECTO } from "@/lib/formasPago";
+import { leerMailsResumen, leerUltimoResumen, PARAMETRO_MAILS_RESUMEN, PARAMETRO_ULTIMO_RESUMEN } from "@/lib/resumenTurno";
 
 export const dynamic = "force-dynamic";
 
@@ -65,6 +66,8 @@ export default async function ConfiguracionPage() {
       "RECEPCION_DIAS",
       "RECEPCION_HORA_DESDE",
       "RECEPCION_HORA_HASTA",
+      PARAMETRO_MAILS_RESUMEN,
+      PARAMETRO_ULTIMO_RESUMEN,
     ]);
 
   const valores = new Map((data ?? []).map((c) => [c.parametro, c.valor]));
@@ -127,6 +130,8 @@ export default async function ConfiguracionPage() {
       recepcionDias={leerDias(valores.get("RECEPCION_DIAS"))}
       recepcionHoraDesde={valores.get("RECEPCION_HORA_DESDE") ?? "09:00"}
       recepcionHoraHasta={valores.get("RECEPCION_HORA_HASTA") ?? "12:00"}
+      resumenMails={leerMailsResumen(valores.get(PARAMETRO_MAILS_RESUMEN))}
+      resumenUltimo={leerUltimoResumen(valores.get(PARAMETRO_ULTIMO_RESUMEN))}
       royaltiesMarcas={(marcasActivas.data ?? []).map((m) => ({
         nombre: m.nombre as string,
         royalty: (m.royalty_porcentaje as number | null) ?? 0,

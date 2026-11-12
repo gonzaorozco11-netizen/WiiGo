@@ -351,6 +351,23 @@ export const GUIAS: Guia[] = [
     tip: "Hoy: {ptsPropios} puntos cada {cadaMonto} en productos WiiGo, {ptsMarcas} en marcas, 1 punto = {valorPunto}, y se canjean solo en productos WiiGo hasta el {topeCanje} de la compra.",
   },
   {
+    id: "resumen-mail",
+    audiencias: [...I],
+    soloAdmin: true,
+    tema: "Ventas",
+    titulo: "Recibir por mail lo que se vendió en cada turno",
+    donde: "Configuración → Resumen de ventas por mail",
+    rutas: ["/configuracion"],
+    nueva: "2026-11-12",
+    pasos: [
+      "Entrá a <b>Configuración</b>, sección <b>Resumen de ventas por mail</b>.",
+      "Escribí el mail (hasta 3, separados con coma) y tocá <b>Guardar</b>.",
+      "Tocá <b>Mandarme uno de prueba</b> para ver cómo llega, con lo vendido hoy.",
+      "Desde ahí llega solo al cierre de cada turno (entre las 13 y las 14, y entre las 21 y las 22): el total del turno, cómo pagaron y lo más vendido. El de la noche trae además el total del día.",
+    ],
+    tip: "Si borrás los mails y guardás, deja de llegar. Abajo del campo dice cuándo salió el último y si salió bien.",
+  },
+  {
     id: "guia-preguntas",
     audiencias: [...I],
     soloAdmin: true,

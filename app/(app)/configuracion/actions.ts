@@ -11,6 +11,8 @@ import {
   PARAMETRO_HORA_HASTA,
 } from "@/lib/recepcion";
 import { horasAplicacion } from "@/lib/solicitudesMarca";
+import { leerMailsResumen, mandarResumenDeTurno, MAX_MAILS_RESUMEN, PARAMETRO_MAILS_RESUMEN } from "@/lib/resumenTurno";
+import { fechaHoraArgentina } from "@/lib/horarios";
 
 async function requireEditarConfiguracion(): Promise<string | null> {
   const sesion = await obtenerSesionConPermisos();
@@ -518,6 +520,43 @@ export async function guardarConfigRecepcion(formData: FormData): Promise<{ erro
   revalidatePath("/configuracion");
   revalidatePath("/portal/productos");
   return { error: null };
+}
+
+/**
+ * A qué mails llega el resumen de ventas de cada turno (13 y 21).
+ * Vacío = no se manda.
+ */
+export async function guardarConfigResumenMail(formData: FormData): Promise<{ error: string | null }> {
+  const permisoError = await requireEditarConfiguracion();
+  if (permisoError) return { error: permisoError };
+
+  const texto = String(formData.get("resumen_turno_mails") ?? "").trim();
+  const mails = leerMailsResumen(texto);
+  const escritos = texto.split(/[,;\s]+/).filter(Boolean);
+  if (mails.length !== escritos.length) return { error: "Revisá los mails: alguno no está bien escrito. Separalos con coma." };
+  if (mails.length > MAX_MAILS_RESUMEN) return { error: `Hasta ${MAX_MAILS_RESUMEN} mails.` };
+
+  const supabase = getSupabaseServerClient();
+  const error = await guardarParametro(
+    supabase,
+    PARAMETRO_MAILS_RESUMEN,
+    mails.join(", "),
+    "Resumen de ventas por mail: a quién le llega el cierre de cada turno (13 y 21). Vacío = no se manda"
+  );
+  if (error) return { error };
+
+  revalidatePath("/configuracion");
+  return { error: null };
+}
+
+/** Manda ya mismo el resumen de lo vendido hoy, para ver cómo llega. */
+export async function probarResumenMail(): Promise<{ error: string | null; mensaje?: string }> {
+  const permisoError = await requireEditarConfiguracion();
+  if (permisoError) return { error: permisoError };
+
+  const turno = fechaHoraArgentina().minutosDelDia < 15 * 60 ? "manana" : "tarde";
+  const r = await mandarResumenDeTurno(turno, { prueba: true });
+  return r.ok ? { error: null, mensaje: r.motivo } : { error: r.motivo };
 }
 
 // Datos fiscales del emisor. Están en la base y no en el código porque una
