@@ -1949,10 +1949,13 @@ export default function SelfCheckoutApp({
       // cliente ve el cartel verde y cree que entró.
       if (toastTimeout.current) clearTimeout(toastTimeout.current);
       setToast(null);
+      // Con el número que leyó el lector: así el personal ve si el código del
+      // envase no es el que está cargado (Gonzalo, 2026-11-12, con una creatina
+      // que «no la lee» y tenía otro código en el sistema).
       const avisar = () => {
-        setAvisoCodigo("No encontramos ese producto. Pedile ayuda al personal.");
+        setAvisoCodigo(`No encontramos ese producto (código ${codigo}). Pedile ayuda al personal.`);
         if (avisoTimeout.current) clearTimeout(avisoTimeout.current);
-        avisoTimeout.current = setTimeout(() => setAvisoCodigo(null), 4000);
+        avisoTimeout.current = setTimeout(() => setAvisoCodigo(null), 6000);
       };
       // Puede ser un código cargado después de que se abrió el tótem: se
       // pregunta antes de decir que no existe, y queda recordado.
