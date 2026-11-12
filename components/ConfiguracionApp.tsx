@@ -44,6 +44,7 @@ export default function ConfiguracionApp({
   posnetComisionDebito,
   posnetComisionCredito,
   mpExternalPosId,
+  mpAliasTransferencia,
   gastosTopeSinAutorizacion,
   rentEfectivoIva,
   rentEfectivoIibb,
@@ -92,6 +93,8 @@ export default function ConfiguracionApp({
   posnetComisionDebito: number;
   posnetComisionCredito: number;
   mpExternalPosId: string | null;
+  /** El alias que la caja le pasa al cliente para cobrar por transferencia. */
+  mpAliasTransferencia: string;
   gastosTopeSinAutorizacion: number;
   rentEfectivoIva: boolean;
   rentEfectivoIibb: boolean;
@@ -748,6 +751,25 @@ export default function ConfiguracionApp({
             />
             <p className="text-xs text-neutral-400 mt-1">Nave: 1,8% con acreditación a 10 días.</p>
           </div>
+        </div>
+
+        <p className="text-xs font-bold text-neutral-700 uppercase tracking-wide mb-2">🏦 Transferencia</p>
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="mp_alias_transferencia">
+            Alias de Mercado Pago para cobrar por transferencia
+          </label>
+          <input
+            id="mp_alias_transferencia"
+            name="mp_alias_transferencia"
+            type="text"
+            defaultValue={mpAliasTransferencia}
+            placeholder="Ej. wiigo.estaciones"
+            maxLength={60}
+            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+          />
+          <p className="text-xs text-neutral-400 mt-1">
+            Aparece en Vender al elegir «Transferencia», para pasárselo al cliente. Se guarda como pago de Mercado Pago sin comisión.
+          </p>
         </div>
 
         {errorMp && (

@@ -55,6 +55,7 @@ export default async function ConfiguracionPage() {
       "POSNET_COMISION_DEBITO",
       "POSNET_COMISION_CREDITO",
       "MP_EXTERNAL_POS_ID",
+      "MP_ALIAS_TRANSFERENCIA",
       "GASTOS_TOPE_SIN_AUTORIZACION",
       "RENT_EFECTIVO_IVA",
       "RENT_EFECTIVO_IIBB",
@@ -118,6 +119,7 @@ export default async function ConfiguracionPage() {
       posnetComisionDebito={Number(valores.get("POSNET_COMISION_DEBITO") ?? POSNET_POR_DEFECTO.debito)}
       posnetComisionCredito={Number(valores.get("POSNET_COMISION_CREDITO") ?? POSNET_POR_DEFECTO.credito)}
       mpExternalPosId={valores.get("MP_EXTERNAL_POS_ID") ?? null}
+      mpAliasTransferencia={valores.get("MP_ALIAS_TRANSFERENCIA") ?? ""}
       gastosTopeSinAutorizacion={Number(valores.get("GASTOS_TOPE_SIN_AUTORIZACION") ?? 10000)}
       rentEfectivoIva={(valores.get("RENT_EFECTIVO_IVA") ?? "false") === "true"}
       rentEfectivoIibb={(valores.get("RENT_EFECTIVO_IIBB") ?? "false") === "true"}

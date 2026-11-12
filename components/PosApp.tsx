@@ -37,7 +37,8 @@ function formatearPedido(numero: number) {
   return `VTA-${String(numero).padStart(4, "0")}`;
 }
 
-type MedioPago = "EFECTIVO" | "MERCADO_PAGO" | "POSNET";
+// TRANSFERENCIA: al alias de Mercado Pago, la confirma la cajera cuando ve la plata.
+type MedioPago = "EFECTIVO" | "MERCADO_PAGO" | "POSNET" | "TRANSFERENCIA";
 
 const POLL_MS = 3000;
 
@@ -114,6 +115,7 @@ export default function PosApp({
   stock,
   ivaGeneralPorcentaje,
   pedido = null,
+  aliasTransferencia = null,
 }: {
   locales: Local[];
   productos: Producto[];
@@ -122,6 +124,8 @@ export default function PosApp({
   stock: Stock[];
   ivaGeneralPorcentaje: number;
   pedido?: PedidoParaCobrar | null;
+  /** El alias de Mercado Pago para que el cliente transfiera (Configuración). */
+  aliasTransferencia?: string | null;
 }) {
   const router = useRouter();
   const [pedidoActivo, setPedidoActivo] = useState<PedidoParaCobrar | null>(pedido);
@@ -144,6 +148,8 @@ export default function PosApp({
   // Con el posnet: débito o crédito (cada uno tiene su comisión) y el cupón, optativo.
   const [tarjetaPosnet, setTarjetaPosnet] = useState<"DEBITO" | "CREDITO" | null>(null);
   const [cuponPosnet, setCuponPosnet] = useState("");
+  // Con transferencia: la cajera tilda que ya vio la plata en Mercado Pago.
+  const [vioLaPlata, setVioLaPlata] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resultado, setResultado] = useState<{
@@ -422,6 +428,7 @@ export default function PosApp({
     setMedioPago("EFECTIVO");
     setTarjetaPosnet(null);
     setCuponPosnet("");
+    setVioLaPlata(false);
     setTipoReceptor("CONSUMIDOR_FINAL");
     setDocReceptor("");
     setResultado(null);
@@ -437,6 +444,7 @@ export default function PosApp({
 
   const esMercadoPago = medioPago === "MERCADO_PAGO";
   const esPosnet = medioPago === "POSNET";
+  const esTransferencia = medioPago === "TRANSFERENCIA";
 
   function toggleMarcaCanje(idMarca: string) {
     setMarcasCanje((prev) => {
@@ -863,7 +871,7 @@ export default function PosApp({
       {/* Con dos precios, elegir el medio de pago cambia el total. El monto
           va en el botón para que se vea ANTES de tocarlo — si el cliente duda
           entre efectivo y tarjeta, el número lo decide en el mostrador. */}
-      <div className="grid grid-cols-3 gap-2 mb-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
         <button
           onClick={() => setMedioPago("EFECTIVO")}
           className={`flex flex-col items-center gap-0.5 py-3 rounded-xl border-2 ${
@@ -909,7 +917,49 @@ export default function PosApp({
             </span>
           )}
         </button>
+        {/* Transferencia al alias de Mercado Pago (Gonzalo, 2026-11-12): para
+            el que paga desde su banco o a distancia. Sin comisión, como MODO.
+            Precio de lista, como el QR: la plata entra a la cuenta. */}
+        <button
+          onClick={() => setMedioPago("TRANSFERENCIA")}
+          className={`flex flex-col items-center gap-0.5 py-3 rounded-xl border-2 ${
+            esTransferencia ? "border-accent bg-accent-tint" : "border-neutral-200 bg-white"
+          }`}
+        >
+          <span>🏦</span>
+          <span className="font-bold text-sm">Transferencia</span>
+          {hayDiferenciaDePrecio && (
+            <span className="text-xs font-bold text-neutral-600 tabular-nums">
+              ${formatearMonto(totalLista)}
+            </span>
+          )}
+        </button>
       </div>
+
+      {esTransferencia && (
+        <div className="border border-sky-200 bg-sky-50 rounded-xl p-4 mb-4">
+          {aliasTransferencia ? (
+            <p className="text-sm text-neutral-700 mb-2">
+              Pasale el alias: <b className="text-lg text-neutral-900 select-all break-all">{aliasTransferencia}</b>
+            </p>
+          ) : (
+            <p className="text-sm text-amber-800 mb-2">Todavía no está cargado el alias: se carga en Configuración → Comisión de Mercado Pago.</p>
+          )}
+          <ol className="text-sm text-sky-950 space-y-1 mb-3 list-decimal list-inside">
+            <li>
+              El cliente transfiere <b className="tabular-nums">${formatearMonto(totalFinal)}</b> a ese alias.
+            </li>
+            <li>
+              Fijate en la app de Mercado Pago que <b>la plata haya entrado</b>. El comprobante que te muestra el cliente no alcanza.
+            </li>
+            <li>Tildá abajo y tocá el botón.</li>
+          </ol>
+          <label className="flex items-center gap-2.5 rounded-lg bg-white border border-sky-200 px-3 py-2.5 cursor-pointer">
+            <input type="checkbox" checked={vioLaPlata} onChange={(e) => setVioLaPlata(e.target.checked)} className="w-5 h-5 accent-accent" />
+            <span className="text-sm font-semibold text-neutral-800">Ya vi la plata en Mercado Pago</span>
+          </label>
+        </div>
+      )}
 
       {esPosnet && (
         <div className="border border-orange-200 bg-orange-50 rounded-xl p-4 mb-4">
@@ -996,6 +1046,8 @@ export default function PosApp({
           </p>
         ) : esPosnet ? (
           <p className="text-xs text-neutral-400">Se cobra el total justo en el posnet: no hay vuelto.</p>
+        ) : esTransferencia ? (
+          <p className="text-xs text-neutral-400">Se transfiere el total justo: no hay vuelto, y no entra plata a la caja.</p>
         ) : (
           <>
             <div className="flex justify-between items-center text-sm mb-2">
@@ -1094,8 +1146,9 @@ export default function PosApp({
           enviando ||
           itemsCarrito.length === 0 ||
           (marcasCanje.size > 0 && pinCanje.length < 4) ||
-          (!esMercadoPago && !esPosnet && montoNum < totalFinal) ||
+          (!esMercadoPago && !esPosnet && !esTransferencia && montoNum < totalFinal) ||
           (esPosnet && !tarjetaPosnet) ||
+          (esTransferencia && !vioLaPlata) ||
           // Documento incompleto: mejor frenar acá que emitir mal la factura.
           (tipoReceptor === "CUIT" && docReceptor.length !== 11) ||
           (tipoReceptor === "DNI" && docReceptor.length < 7)
@@ -1110,7 +1163,11 @@ export default function PosApp({
               ? tarjetaPosnet
                 ? `Ya salió aprobado · Cobrar $${formatearMonto(totalFinal)}`
                 : "Elegí débito o crédito"
-              : `Cobrar · $${formatearMonto(totalFinal)}`}
+              : esTransferencia
+                ? vioLaPlata
+                  ? `La plata entró · Cobrar $${formatearMonto(totalFinal)}`
+                  : "Primero fijate que entró la plata"
+                : `Cobrar · $${formatearMonto(totalFinal)}`}
       </button>
     </div>
   );

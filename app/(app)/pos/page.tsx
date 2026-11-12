@@ -63,12 +63,15 @@ export default async function PosPage({ searchParams }: { searchParams: Promise<
     supabase.from("variantes_producto").select("*").eq("estado", "ACTIVO"),
     supabase.from("marcas").select("*").eq("estado", "ACTIVA"),
     supabase.from("stock").select("*"),
-    supabase.from("configuracion").select("valor").eq("parametro", "IVA_GENERAL_PORCENTAJE").maybeSingle(),
+    supabase.from("configuracion").select("parametro, valor").in("parametro", ["IVA_GENERAL_PORCENTAJE", "MP_ALIAS_TRANSFERENCIA"]),
     // «(Entre Nuts)» después del nombre, igual que lo ve el cliente (lib/marcaFabrica.ts).
     cargarMarcasFabrica(supabase).catch(() => new Map<string, string>()),
   ]);
 
-  const ivaGeneralPorcentaje = Number(configRes.data?.valor ?? 21);
+  const config = new Map((configRes.data ?? []).map((c) => [c.parametro as string, c.valor as string | null]));
+  const ivaGeneralPorcentaje = Number(config.get("IVA_GENERAL_PORCENTAJE") ?? 21);
+  // El alias de Mercado Pago para cobrar por transferencia (Configuración).
+  const aliasTransferencia = config.get("MP_ALIAS_TRANSFERENCIA")?.trim() || null;
 
   const error = localesRes.error || productosRes.error || variantesRes.error || marcasRes.error || stockRes.error;
   if (error) {
@@ -99,6 +102,7 @@ export default async function PosPage({ searchParams }: { searchParams: Promise<
       stock={(stockRes.data ?? []) as Stock[]}
       ivaGeneralPorcentaje={ivaGeneralPorcentaje}
       pedido={pedido}
+      aliasTransferencia={aliasTransferencia}
       key={pedido?.idPedido ?? "venta"}
     />
   );

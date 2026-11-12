@@ -225,7 +225,15 @@ export async function guardarConfigMercadoPago(formData: FormData): Promise<{ er
     if (error) return { error };
   }
 
+  // El alias que la caja le pasa al cliente que paga por transferencia.
+  const alias = formData.get("mp_alias_transferencia");
+  if (alias !== null) {
+    const error = await guardarParametro(supabase, "MP_ALIAS_TRANSFERENCIA", String(alias).trim().slice(0, 60), "Alias de Mercado Pago para cobrar por transferencia en la caja");
+    if (error) return { error };
+  }
+
   revalidatePath("/configuracion");
+  revalidatePath("/pos");
   return { error: null };
 }
 

@@ -21,7 +21,7 @@ import { vinculoActivo, permisoCompras, cambiarPermisoCompras } from "@/lib/paci
 import { buscarProfesionalPorDni, verificarPinProfesional, calcularDescuentoCanje, registrarCanje, esProfesionalActivo } from "@/lib/canjesProfesionales";
 import { calcularCanjePuntos, aplicarCanjePuntos, calcularPuntosGanados, type LineaPuntos } from "@/lib/puntosWiigo";
 import { crearOrdenQrMp } from "@/lib/mercadopago";
-import { confirmarCobro } from "@/app/(app)/cobros-efectivo/actions";
+import { confirmarCobro, cancelarPedido } from "@/app/(app)/cobros-efectivo/actions";
 import { descontarStockDeVenta } from "@/lib/stockVenta";
 import { formaPagoPosnet, type MedioPagoVenta, type TarjetaPosnet } from "@/lib/formasPago";
 import { tasaComisionCobro } from "@/lib/comisionCobro";
@@ -222,7 +222,9 @@ export async function venderPos(
   dni: string,
   codigoProfesional: string,
   montoRecibido: number,
-  medioPago: MedioPagoVenta = "EFECTIVO",
+  // TRANSFERENCIA no es un medio de la venta: se guarda como Mercado Pago con
+  // forma de pago «Transferencia», igual que un pago con MODO.
+  medioPago: MedioPagoVenta | "TRANSFERENCIA" = "EFECTIVO",
   canje?: { idProfesional: string; pin: string; marcas: string[] },
   usarPuntosWiigo?: boolean,
   // A nombre de quién va la factura. Lo elige la persona que cobra, que es la
@@ -358,7 +360,7 @@ export async function venderPos(
 
   const datosFactura = { factura_doc_tipo: tipoDocFacturacion, factura_doc_nro: documentoFacturacion };
 
-  if (medioPago === "MERCADO_PAGO") {
+  if (medioPago === "MERCADO_PAGO" || medioPago === "TRANSFERENCIA") {
     // Con Mercado Pago la plata se mueve apenas el cliente escanea el QR —
     // si no hay turno abierto en ese momento, la confirmación automática
     // del webhook se rechaza (confirmarCobro la exige) y la venta queda
@@ -426,6 +428,35 @@ export async function venderPos(
           total: 0,
           vuelto: 0,
           puntosGenerados: 0,
+        },
+      };
+    }
+
+    // Transferencia al alias de Mercado Pago (Gonzalo, 2026-11-12): la cajera
+    // ya vio la plata en la cuenta, así que se confirma acá mismo, sin QR,
+    // con el mismo confirmarCobro que usa el webhook: forma «Transferencia»,
+    // sin comisión. La plata no está en el cajón, así que no toca el
+    // efectivo del arqueo.
+    if (medioPago === "TRANSFERENCIA") {
+      const cobro = await confirmarCobro(venta.id_venta, total, "TRANSFERENCIA", usuario ?? undefined);
+      if (cobro.error) {
+        // Que no quede una venta pendiente fantasma: se cancela y se avisa.
+        await cancelarPedido(venta.id_venta, "No se pudo confirmar la transferencia desde Vender (POS)").catch(() => null);
+        return { error: cobro.error };
+      }
+      const { data: hecha } = await supabase.from("ventas").select("*").eq("id_venta", venta.id_venta).maybeSingle();
+      revalidatePath("/pos");
+      revalidatePath("/stock");
+      revalidatePath("/ventas");
+      return {
+        error: null,
+        venta: {
+          idVenta: venta.id_venta as string,
+          numero: venta.numero as number,
+          total,
+          vuelto: 0,
+          puntosGenerados: Number(hecha?.puntos_generados ?? 0),
+          aviso: hecha?.a_revisar ? `Ojo: ${hecha.a_revisar}` : undefined,
         },
       };
     }
