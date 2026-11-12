@@ -107,6 +107,22 @@ function PermisoCompras({ dni, profesional, acepta, onCambio }: { dni: string; p
   );
 }
 
+/** La fotito del producto, como en el tótem: así se ve qué es antes de agregarlo (Gonzalo, 2026-11-12). */
+function FotoProducto({ src, nombre }: { src: string | null | undefined; nombre: string }) {
+  return (
+    <span className="w-11 h-11 shrink-0 rounded-lg border border-neutral-200 bg-white grid place-items-center overflow-hidden">
+      {src ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={src} alt="" loading="lazy" className="w-full h-full object-contain" />
+      ) : (
+        <span className="text-sm font-bold text-neutral-300" aria-hidden="true">
+          {nombre.charAt(0)}
+        </span>
+      )}
+    </span>
+  );
+}
+
 export default function PosApp({
   locales,
   productos,
@@ -669,6 +685,7 @@ export default function PosApp({
               }}
               className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-neutral-50"
             >
+              <FotoProducto src={i.producto.imagen} nombre={i.producto.nombre} />
               <div className="min-w-0 flex-1">
                 {/* El nombre entero, en dos renglones si hace falta: cortado no se veía la marca ni el tamaño (Gonzalo, 2026-11-12). */}
                 <p className="text-sm font-semibold text-neutral-900 break-words">{i.producto.nombre}</p>
@@ -694,6 +711,7 @@ export default function PosApp({
               key={i.variante.id_variante}
               className="flex items-center gap-2.5 bg-white border border-neutral-200 rounded-xl px-3 py-2.5"
             >
+              <FotoProducto src={i.producto.imagen} nombre={i.producto.nombre} />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-neutral-900 break-words">{i.producto.nombre}</p>
                 <p className="text-xs text-neutral-400">
