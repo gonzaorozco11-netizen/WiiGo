@@ -73,6 +73,9 @@ export async function armarTablero(): Promise<Tablero | null> {
   const supabase = getSupabaseServerClient();
   const puede = (clave: string) => puedeVerPantalla(sesion, clave);
   const esAdmin = sesion.rol === "admin";
+  // Los carteles los cambia el equipo del local, que tiene Carteles y no
+  // Aprobaciones. Mismo criterio que el contador del menú (contarPendientes).
+  const veCarteles = puede("aprobaciones") || puede("carteles");
 
   const ahora = fechaHoraArgentina();
   const hoyISO = ahora.fecha;
@@ -114,14 +117,21 @@ export async function armarTablero(): Promise<Tablero | null> {
           .eq("estado", "PENDIENTE")
           .filter("alertas->>escalaADuenio", "eq", "true")
       : CERO,
-    puede("aprobaciones")
-      ? supabase.from("tareas_etiqueta").select("id_tarea", { count: "exact", head: true }).in("estado", ["PENDIENTE", "VENCIDA"])
-      : CERO,
-    puede("aprobaciones")
+    // Solo de productos activos, como el contador del menú: el cartel de uno
+    // dado de baja no está en la góndola.
+    veCarteles
       ? supabase
           .from("tareas_etiqueta")
-          .select("id_tarea", { count: "exact", head: true })
+          .select("id_tarea, productos!inner(estado)", { count: "exact", head: true })
           .in("estado", ["PENDIENTE", "VENCIDA"])
+          .eq("productos.estado", "ACTIVO")
+      : CERO,
+    veCarteles
+      ? supabase
+          .from("tareas_etiqueta")
+          .select("id_tarea, productos!inner(estado)", { count: "exact", head: true })
+          .in("estado", ["PENDIENTE", "VENCIDA"])
+          .eq("productos.estado", "ACTIVO")
           .lt("vence_el", ahoraISO)
       : CERO,
     puede("aprobaciones")
@@ -290,6 +300,36 @@ export async function armarTablero(): Promise<Tablero | null> {
       valor: String(solicitudesComunes),
       href: "/aprobaciones?ver=marcas",
     });
+  }
+
+  // Lo que mandaron las profesionales desde su espacio (datos, historias y
+  // reels, opiniones de pacientes). El contador del menú ya los sumaba y acá no
+  // aparecían: decía «2 pendientes» y Mis Tareas, nada (2026-11-12).
+  if (puede("aprobaciones")) {
+    const cuenta = async (q: PromiseLike<{ count: number | null; error: unknown }>) => {
+      const r = await q;
+      return r.error ? 0 : (r.count ?? 0);
+    };
+    const [cambios, publicaciones, opiniones] = await Promise.all([
+      cuenta(supabase.from("cambios_profesional").select("id_cambio", { count: "exact", head: true }).eq("estado", "PENDIENTE")),
+      cuenta(supabase.from("publicaciones_profesional").select("id_publicacion", { count: "exact", head: true }).eq("estado", "PENDIENTE")),
+      cuenta(supabase.from("opiniones_profesional").select("id_opinion", { count: "exact", head: true }).eq("origen", "PACIENTE").eq("estado", "PENDIENTE")),
+    ]);
+    const deProfesionales = cambios + publicaciones + opiniones;
+    if (deProfesionales > 0) {
+      const partes = [
+        cambios > 0 ? plural(cambios, "cambio de datos", "cambios de datos") : "",
+        publicaciones > 0 ? plural(publicaciones, "historia o reel", "historias o reels") : "",
+        opiniones > 0 ? plural(opiniones, "opinión de paciente", "opiniones de pacientes") : "",
+      ].filter(Boolean);
+      urgentes.push({
+        color: "ambar",
+        titulo: `${plural(deProfesionales, "cosa de profesionales esperando", "cosas de profesionales esperando")}`,
+        detalle: `${partes.join(" · ")}: lo mandaron desde su espacio y espera tu respuesta`,
+        valor: String(deProfesionales),
+        href: "/aprobaciones?ver=profesionales",
+      });
+    }
   }
 
   if (n(precioEstaNoche) > 0) {

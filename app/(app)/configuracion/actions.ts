@@ -11,7 +11,14 @@ import {
   PARAMETRO_HORA_HASTA,
 } from "@/lib/recepcion";
 import { horasAplicacion } from "@/lib/solicitudesMarca";
-import { leerMailsResumen, mandarResumenDeTurno, MAX_MAILS_RESUMEN, PARAMETRO_MAILS_RESUMEN } from "@/lib/resumenTurno";
+import {
+  leerMailsResumen,
+  mandarResumenDeTurno,
+  MAX_MAILS_RESUMEN,
+  PARAMETRO_CADA_VENTA,
+  PARAMETRO_MAILS_RESUMEN,
+  PARAMETRO_RESUMEN_ACTIVO,
+} from "@/lib/resumenTurno";
 import { fechaHoraArgentina } from "@/lib/horarios";
 
 async function requireEditarConfiguracion(): Promise<string | null> {
@@ -523,8 +530,8 @@ export async function guardarConfigRecepcion(formData: FormData): Promise<{ erro
 }
 
 /**
- * A qué mails llega el resumen de ventas de cada turno (13 y 21).
- * Vacío = no se manda.
+ * Los mails de ventas al dueño: a qué direcciones, y cuáles van (uno por cada
+ * venta y el resumen de cada turno). Sin mails, no se manda ninguno.
  */
 export async function guardarConfigResumenMail(formData: FormData): Promise<{ error: string | null }> {
   const permisoError = await requireEditarConfiguracion();
@@ -537,13 +544,14 @@ export async function guardarConfigResumenMail(formData: FormData): Promise<{ er
   if (mails.length > MAX_MAILS_RESUMEN) return { error: `Hasta ${MAX_MAILS_RESUMEN} mails.` };
 
   const supabase = getSupabaseServerClient();
-  const error = await guardarParametro(
-    supabase,
-    PARAMETRO_MAILS_RESUMEN,
-    mails.join(", "),
-    "Resumen de ventas por mail: a quién le llega el cierre de cada turno (13 y 21). Vacío = no se manda"
-  );
-  if (error) return { error };
+  for (const [parametro, valor, descripcion] of [
+    [PARAMETRO_MAILS_RESUMEN, mails.join(", "), "Ventas por mail: a quién le llegan (el de cada venta y el resumen de cada turno). Vacío = no se manda ninguno"],
+    [PARAMETRO_CADA_VENTA, String(formData.get("aviso_cada_venta") === "on"), "Ventas por mail: un mail por cada venta, apenas se cobra"],
+    [PARAMETRO_RESUMEN_ACTIVO, String(formData.get("resumen_turno_activo") === "on"), "Ventas por mail: el resumen al cierre de cada turno (13 y 21)"],
+  ] as const) {
+    const error = await guardarParametro(supabase, parametro, valor, descripcion);
+    if (error) return { error };
+  }
 
   revalidatePath("/configuracion");
   return { error: null };

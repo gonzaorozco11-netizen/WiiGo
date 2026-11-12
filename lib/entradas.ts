@@ -51,9 +51,21 @@ export async function cartelesNuevosPendientes(): Promise<number> {
  * olviden de etiquetar lo que entró (Gonzalo, 2026-11-11).
  */
 export async function stickersPorPegar(): Promise<{ productos: number; unidades: number }> {
+  const faltan = await entradasSinSticker();
+  return { productos: faltan.length, unidades: faltan.reduce((t, e) => t + e.cantidad, 0) };
+}
+
+/**
+ * Lo que entró y todavía no tiene su sticker impreso, ya filtrado: solo lo que
+ * lleva sticker de WiiGo y no se anotó como impreso después de entrar. Es la
+ * misma cuenta que «Sin sticker todavía» en Códigos. El cartel de Recepción
+ * usaba la lista sin filtrar y seguía pidiendo los 11 de Fruppi que ya se
+ * habían impreso (2026-11-12).
+ */
+export async function entradasSinSticker(): Promise<EntradaPendiente[]> {
   const supabase = getSupabaseServerClient();
   const entradas = await entradasQueNecesitanCodigo();
-  if (!entradas.length) return { productos: 0, unidades: 0 };
+  if (!entradas.length) return [];
   const [{ data: vars }, { data: marcasPropias }, marcasSin, productosSin, impresos] = await Promise.all([
     supabase.from("variantes_producto").select("id_variante, productos(id_producto, id_marca, id_envase)").in("id_variante", entradas.map((e) => e.idVariante)),
     supabase.from("marcas").select("id_marca").eq("tipo_comercializacion", "PROPIA"),
@@ -69,8 +81,7 @@ export async function stickersPorPegar(): Promise<{ productos: number; unidades:
       return [v.id_variante as string, lleva];
     })
   );
-  const faltan = entradas.filter((e) => llevaSticker.get(e.idVariante) && !(impresos[e.idVariante] && impresos[e.idVariante] >= e.ultima));
-  return { productos: faltan.length, unidades: faltan.reduce((t, e) => t + e.cantidad, 0) };
+  return entradas.filter((e) => llevaSticker.get(e.idVariante) && !(impresos[e.idVariante] && impresos[e.idVariante] >= e.ultima));
 }
 
 /**

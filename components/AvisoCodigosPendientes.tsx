@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { entradasQueNecesitanCodigo } from "@/lib/entradas";
+import { entradasSinSticker } from "@/lib/entradas";
 
 /**
  * El recordatorio de imprimir los códigos de lo que acaba de entrar.
@@ -12,10 +12,11 @@ import { entradasQueNecesitanCodigo } from "@/lib/entradas";
  * justo donde se equivoca.
  *
  * Si no hay nada pendiente no se muestra nada: un cartel que está siempre deja
- * de leerse.
+ * de leerse. Por eso cuenta solo lo que de verdad falta: lo ya impreso en
+ * Códigos no vuelve a aparecer acá.
  */
 export default async function AvisoCodigosPendientes() {
-  const entradas = await entradasQueNecesitanCodigo();
+  const entradas = await entradasSinSticker();
   if (entradas.length === 0) return null;
 
   const unidades = entradas.reduce((acc, e) => acc + e.cantidad, 0);

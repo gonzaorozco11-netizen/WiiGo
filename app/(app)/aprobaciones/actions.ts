@@ -7,6 +7,7 @@ import { friendlyDbError } from "@/lib/errors";
 import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos";
 import { exigirGestionInterna } from "@/lib/marcaSesion";
 import { esRolInterno } from "@/lib/rolesInternos";
+import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import { fechaHoraArgentina } from "@/lib/horarios";
 import { aplicarPreciosDeCarteles, aplicarPreciosPropiosDelTurno, insertarTareasEtiqueta, type FilaTareaEtiqueta } from "@/lib/tareasEtiqueta";
 import { generarSkuVariante, generarCodigoBarrasVariante } from "@/lib/codigosVariante";
@@ -364,16 +365,27 @@ export async function marcarEtiquetaHecha(idTarea: string): Promise<{ error: str
   return { error: null };
 }
 
-/** Cuántas cosas hay esperando — para el contador del menú. */
+/**
+ * Cuántas cosas hay esperando — para el contador del menú.
+ *
+ * Solo lo que la persona puede ver y resolver, con las mismas pantallas que
+ * arman Mis Tareas (lib/tablero.ts). Antes contaba todo: a Florencia y a Tomás
+ * les decía «2 pendientes» por dos cambios de profesionales que solo aprueba
+ * el Dueño, y al abrir Mis Tareas no tenían nada (2026-11-12).
+ */
 export async function contarPendientes(): Promise<{ solicitudes: number; etiquetas: number; etiquetasVencidas: number }> {
-  const sesion = await obtenerSesionConPermisos();
+  const sesion = await obtenerSesionConPantallas();
   if (!sesion || !esRolInterno(sesion.rol)) return { solicitudes: 0, etiquetas: 0, etiquetasVencidas: 0 };
+  const veAprobaciones = puedeVerPantalla(sesion, "aprobaciones");
+  const veCarteles = veAprobaciones || puedeVerPantalla(sesion, "carteles");
+  if (!veCarteles) return { solicitudes: 0, etiquetas: 0, etiquetasVencidas: 0 };
 
   const supabase = getSupabaseServerClient();
   const ahora = new Date().toISOString();
+  const cero = Promise.resolve({ count: 0, error: null });
 
   const [sol, etq, venc, prof, redes, opiniones] = await Promise.all([
-    supabase.from("solicitudes_marca").select("id_solicitud", { count: "exact", head: true }).eq("estado", "PENDIENTE"),
+    veAprobaciones ? supabase.from("solicitudes_marca").select("id_solicitud", { count: "exact", head: true }).eq("estado", "PENDIENTE") : cero,
     // Solo de productos activos: el cartel de uno inactivo no está en la góndola
     // ni en Carteles, y contarlo dejaba un número que nadie podía bajar
     // (las 4 Mermeladas con Azúcar, 2026-11-12).
@@ -390,11 +402,13 @@ export async function contarPendientes(): Promise<{ solicitudes: number; etiquet
       .lt("vence_el", ahora),
     // Lo que mandaron las profesionales desde su espacio. Sin el SQL corrido
     // la tabla no existe y el conteo da error: cuenta como cero.
-    supabase.from("cambios_profesional").select("id_cambio", { count: "exact", head: true }).eq("estado", "PENDIENTE"),
+    veAprobaciones ? supabase.from("cambios_profesional").select("id_cambio", { count: "exact", head: true }).eq("estado", "PENDIENTE") : cero,
     // Historias y reels que avisaron y esperan que los verifiques (sql/profesionales-objetivos-redes.sql).
-    supabase.from("publicaciones_profesional").select("id_publicacion", { count: "exact", head: true }).eq("estado", "PENDIENTE"),
+    veAprobaciones ? supabase.from("publicaciones_profesional").select("id_publicacion", { count: "exact", head: true }).eq("estado", "PENDIENTE") : cero,
     // Opiniones que escribieron los pacientes con su link (sql/profesionales-opiniones-pacientes.sql).
-    supabase.from("opiniones_profesional").select("id_opinion", { count: "exact", head: true }).eq("origen", "PACIENTE").eq("estado", "PENDIENTE"),
+    veAprobaciones
+      ? supabase.from("opiniones_profesional").select("id_opinion", { count: "exact", head: true }).eq("origen", "PACIENTE").eq("estado", "PENDIENTE")
+      : cero,
   ]);
 
   return {

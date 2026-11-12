@@ -4,6 +4,7 @@ import { baseUrlPublica } from "@/lib/urlPublica";
 import { fechaHoraArgentina } from "@/lib/horarios";
 import { TOPE_DIARIO, avisoPrendido, type TipoAviso } from "@/lib/avisosMarca";
 import { avisarProfesionalPorVenta } from "@/lib/avisosProfesional";
+import { avisarVentaAlDueno } from "@/lib/resumenTurno";
 
 // Mandar los avisos.
 //
@@ -158,7 +159,8 @@ async function mandar(
  * Van a la par: el de una no espera al de la otra.
  */
 export async function avisarVenta(idVenta: string, idLocal: string): Promise<void> {
-  await Promise.all([avisarMarcasPorVenta(idVenta, idLocal), avisarProfesionalPorVenta(idVenta)]);
+  // Y al dueño, si lo tiene prendido en Configuración → Ventas por mail.
+  await Promise.all([avisarMarcasPorVenta(idVenta, idLocal), avisarProfesionalPorVenta(idVenta), avisarVentaAlDueno(idVenta)]);
 }
 
 async function avisarMarcasPorVenta(idVenta: string, idLocal: string): Promise<void> {

@@ -68,6 +68,8 @@ export default function ConfiguracionApp({
   recepcionHoraHasta,
   resumenMails,
   resumenUltimo,
+  avisoCadaVenta,
+  resumenTurnoActivo,
 }: {
   puntosActivo: boolean;
   puntosCadaMonto: number;
@@ -114,6 +116,8 @@ export default function ConfiguracionApp({
   recepcionHoraHasta: string;
   resumenMails: string[];
   resumenUltimo: UltimoResumen | null;
+  avisoCadaVenta: boolean;
+  resumenTurnoActivo: boolean;
 }) {
   const [isPending, startTransition] = useTransition();
   const [guardado, setGuardado] = useState(false);
@@ -978,16 +982,30 @@ export default function ConfiguracionApp({
       </form>
 
       <form action={handleSubmitResumen} className="bg-white border border-neutral-200 rounded-xl p-5 mt-5">
-        <h2 className="text-base font-semibold text-neutral-900 mb-1">📬 Resumen de ventas por mail</h2>
+        <h2 className="text-base font-semibold text-neutral-900 mb-1">📬 Ventas por mail</h2>
         <p className="text-sm text-neutral-500 mb-4">
-          Al cierre de cada turno (entre las 13 y las 14, y entre las 21 y las 22) llega un mail con lo
-          vendido: el total, cómo pagaron y lo más vendido. El de la noche trae además el total del día.
-          Vacío = no se manda.
+          Para enterarte de lo que se vende sin entrar al sistema. Sin mail cargado no llega ninguno.
         </p>
+
+        <div className="space-y-2 mb-4">
+          <label className="flex items-start gap-2.5 cursor-pointer">
+            <input type="checkbox" name="aviso_cada_venta" defaultChecked={avisoCadaVenta} className="mt-0.5 w-4 h-4 accent-accent" />
+            <span className="text-sm text-neutral-700">
+              <b className="font-medium">Un mail por cada venta</b>, apenas se confirma el pago: cuánto, qué se llevó y cómo pagó.
+            </span>
+          </label>
+          <label className="flex items-start gap-2.5 cursor-pointer">
+            <input type="checkbox" name="resumen_turno_activo" defaultChecked={resumenTurnoActivo} className="mt-0.5 w-4 h-4 accent-accent" />
+            <span className="text-sm text-neutral-700">
+              <b className="font-medium">Un resumen al cierre de cada turno</b> (entre las 13 y las 14, y entre las 21 y las 22): el
+              total, cómo pagaron y lo más vendido. El de la noche trae el total del día.
+            </span>
+          </label>
+        </div>
 
         <div className="mb-4">
           <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="resumen_turno_mails">
-            Mandarlo a
+            Mandarlos a
           </label>
           <input
             id="resumen_turno_mails"
@@ -1005,7 +1023,7 @@ export default function ConfiguracionApp({
 
         {resumenUltimo && (
           <p className={`text-xs mb-4 ${resumenUltimo.ok ? "text-neutral-500" : "text-red-600"}`}>
-            Último: {new Date(resumenUltimo.fecha).toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" })}{" "}
+            Último resumen: {new Date(resumenUltimo.fecha).toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" })}{" "}
             · {resumenUltimo.turno === "manana" ? "turno mañana" : "turno tarde"} ·{" "}
             {resumenUltimo.ok
               ? `salió bien (${resumenUltimo.ventas} ${resumenUltimo.ventas === 1 ? "venta" : "ventas"})`
@@ -1037,7 +1055,7 @@ export default function ConfiguracionApp({
             disabled={isPendingResumen || resumenMails.length === 0}
             className="flex-1 rounded-lg border border-neutral-300 hover:border-neutral-400 text-neutral-700 py-2 text-sm font-medium disabled:opacity-50"
           >
-            Mandarme uno de prueba
+            Mandarme un resumen de prueba
           </button>
         </div>
       </form>

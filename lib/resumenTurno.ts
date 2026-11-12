@@ -2,13 +2,15 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { enviarMail, plantilla } from "@/lib/mail";
 import { baseUrlPublica } from "@/lib/urlPublica";
 import { fechaHoraArgentina } from "@/lib/horarios";
-import { etiquetaMedio } from "@/lib/formasPago";
+import { etiquetaMedio, etiquetaPago } from "@/lib/formasPago";
 
-// El resumen de ventas que le llega al dueño al cierre de cada turno (13 y 21).
+// Los mails de ventas que le llegan al dueño (Gonzalo, 2026-11-12): enterarse
+// de las ventas sin entrar al sistema. Son dos, y se prenden por separado en
+// Configuración → Ventas por mail:
 //
-// Pedido de Gonzalo (2026-11-12): enterarse de las ventas sin entrar al
-// sistema. Se eligió un mail por turno y no uno por venta: con treinta ventas
-// por día, un mail por venta llena la casilla y se deja de leer.
+//   - Uno por cada venta, apenas se confirma el pago (avisarVentaAlDueno). Lo
+//     pidió así: «en el momento que se confirmó el pago».
+//   - Un resumen al cierre de cada turno, 13 y 21 (mandarResumenDeTurno).
 //
 // Lo que cubre cada mail: desde donde terminó el anterior hasta ahora
 // (RESUMEN_TURNO_HASTA), así no se pierde la venta de las 21:30 ni se cuenta
@@ -18,6 +20,10 @@ import { etiquetaMedio } from "@/lib/formasPago";
 
 export const PARAMETRO_MAILS_RESUMEN = "RESUMEN_TURNO_MAILS";
 export const PARAMETRO_ULTIMO_RESUMEN = "RESUMEN_TURNO_ULTIMO";
+/** "false" apaga el mail de cada venta; sin fila, prendido. */
+export const PARAMETRO_CADA_VENTA = "AVISO_VENTA_DUENO";
+/** "false" apaga el resumen de cada turno; sin fila, prendido. */
+export const PARAMETRO_RESUMEN_ACTIVO = "RESUMEN_TURNO_ACTIVO";
 const PARAMETRO_HASTA = "RESUMEN_TURNO_HASTA";
 export const MAX_MAILS_RESUMEN = 3;
 
@@ -112,10 +118,11 @@ export async function mandarResumenDeTurno(
     const { data: config } = await supabase
       .from("configuracion")
       .select("parametro, valor")
-      .in("parametro", [PARAMETRO_MAILS_RESUMEN, PARAMETRO_HASTA]);
+      .in("parametro", [PARAMETRO_MAILS_RESUMEN, PARAMETRO_HASTA, PARAMETRO_RESUMEN_ACTIVO]);
     const valores = new Map((config ?? []).map((c) => [c.parametro as string, c.valor as string]));
     const mails = leerMailsResumen(valores.get(PARAMETRO_MAILS_RESUMEN));
     if (mails.length === 0 && !opciones.soloArmar) return { ok: false, motivo: "No hay ningún mail cargado." };
+    if (valores.get(PARAMETRO_RESUMEN_ACTIVO) === "false" && !sinMarca) return { ok: true, motivo: "El resumen por turno está apagado." };
 
     const hoy = fechaHoraArgentina(ahora);
     const inicioDelDia = new Date(`${hoy.fecha}T00:00:00-03:00`);
@@ -266,7 +273,7 @@ export async function mandarResumenDeTurno(
           : undefined,
       cuerpo,
       boton: { texto: "Ver el resumen de ventas", url: `${base}/resumen-ventas` },
-      pie: `Te llega porque tu mail está en Configuración → Resumen de ventas por mail. WiiGo, Mendoza`,
+      pie: `Te llega porque está prendido «Un resumen al cierre de cada turno» en Configuración → Ventas por mail. WiiGo, Mendoza`,
     });
     const texto =
       `${asunto}.` +
@@ -302,6 +309,77 @@ export async function mandarResumenDeTurno(
         );
     }
     return { ok: false, motivo };
+  }
+}
+
+/**
+ * El mail de una venta, apenas se confirma el pago.
+ *
+ * Lo llama avisarVenta (lib/avisosEnviar.ts), que ya corre en su propio pedido
+ * para cada venta cobrada: la caja y Cobros en efectivo lo disparan desde la
+ * pantalla, y lo que se paga por QR (tótem o caja) lo dispara el webhook de
+ * Mercado Pago. Nunca tira: la venta ya pasó, el mail es lo accesorio.
+ */
+export async function avisarVentaAlDueno(idVenta: string): Promise<void> {
+  try {
+    const supabase = getSupabaseServerClient();
+    const hoy = fechaHoraArgentina();
+    const inicioDelDia = new Date(`${hoy.fecha}T00:00:00-03:00`).toISOString();
+
+    const [{ data: config }, { data: venta }, { data: renglones }, { data: delDia }] = await Promise.all([
+      supabase.from("configuracion").select("parametro, valor").in("parametro", [PARAMETRO_MAILS_RESUMEN, PARAMETRO_CADA_VENTA]),
+      supabase.from("ventas").select("id_venta, fecha, total, medio_pago, canal, estado, numero, id_pago").eq("id_venta", idVenta).maybeSingle(),
+      supabase.from("detalle_ventas").select("cantidad, subtotal, variantes_producto(nombre, productos(nombre))").eq("id_venta", idVenta),
+      supabase.from("ventas").select("total").eq("estado", "PAGADA").gte("fecha", inicioDelDia),
+    ]);
+    const valores = new Map((config ?? []).map((c) => [c.parametro as string, c.valor as string]));
+    const mails = leerMailsResumen(valores.get(PARAMETRO_MAILS_RESUMEN));
+    if (mails.length === 0 || valores.get(PARAMETRO_CADA_VENTA) === "false") return;
+    if (!venta || venta.estado !== "PAGADA") return;
+
+    // Con qué pagó (débito, crédito…): solo si pasó por una cuenta.
+    let forma: string | null = null;
+    if (venta.id_pago) {
+      const { data: pago } = await supabase.from("pagos").select("forma_pago_cliente").eq("id_pago", venta.id_pago as string).maybeSingle();
+      forma = (pago?.forma_pago_cliente as string | null) ?? null;
+    }
+
+    type Renglon = { cantidad: number | null; subtotal: number | null; variantes_producto: { nombre?: string | null; productos?: { nombre?: string | null } | null } | null };
+    const lineas = ((renglones ?? []) as unknown as Renglon[]).map((r) => {
+      const prod = r.variantes_producto?.productos?.nombre ?? "Producto";
+      const vari = r.variantes_producto?.nombre ?? "";
+      return { nombre: vari && vari !== "Único" ? `${prod} — ${vari}` : prod, cantidad: Number(r.cantidad ?? 0), monto: Number(r.subtotal ?? 0) };
+    });
+    const unidades = lineas.reduce((a, l) => a + l.cantidad, 0);
+    const total = Number(venta.total ?? 0);
+    const donde = canalDe(venta.canal as string | null);
+    const pago = etiquetaPago(venta.medio_pago as string | null, forma);
+    const hora = fechaHoraArgentina(venta.fecha as string).hora;
+    const ventasHoy = (delDia ?? []).length;
+    const totalHoy = (delDia ?? []).reduce((a, v) => a + Number(v.total ?? 0), 0);
+
+    const asunto = `🛒 Venta de ${pesos(total)} · ${donde} · ${pago}`;
+    const base = baseUrlPublica();
+    const html = plantilla({
+      base,
+      tono: "verde",
+      titulo: "Nueva venta",
+      bajada: `${hora} · ${donde} · ${pago}${venta.numero ? ` · N.º ${venta.numero}` : ""}`,
+      destacado: pesos(total),
+      detalle: [`<strong style="color:#2a2f26">${unidades} ${unidades === 1 ? "producto" : "productos"}</strong>`],
+      franja: { titulo: `Hoy van ${ventasHoy} ${ventasHoy === 1 ? "venta" : "ventas"}`, texto: `Suman <strong>${pesos(totalHoy)}</strong>.` },
+      cuerpo: tabla(
+        "Qué se llevó",
+        lineas.map((l) => ({ izquierda: l.nombre, derecha: `${l.cantidad} × ${pesos(l.cantidad ? l.monto / l.cantidad : 0)}` }))
+      ),
+      boton: { texto: "Ver las ventas", url: `${base}/ventas` },
+      pie: `Te llega porque está prendido «Un mail por cada venta» en Configuración → Ventas por mail. WiiGo, Mendoza`,
+    });
+    const texto = `Nueva venta de ${pesos(total)} a las ${hora} (${donde}, ${pago}): ${lineas.map((l) => `${l.cantidad} × ${l.nombre}`).join(", ")}. Hoy van ${ventasHoy} ventas, ${pesos(totalHoy)}.`;
+    const r = await enviarMail({ para: mails, asunto, html, texto });
+    if (!r.ok) console.error("No salió el mail de la venta al dueño:", r.error);
+  } catch (e) {
+    console.error("No se pudo armar el mail de la venta al dueño:", e);
   }
 }
 
