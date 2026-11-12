@@ -106,6 +106,8 @@ const GROUPS: NavGroup[] = [
     icono: "operaciones",
     items: [
       { href: "/pos", label: "POS" },
+      // El alta rápida de WiiGo Club: quien vende la tiene sin tildarla aparte.
+      { href: "/club/sumar", label: "Sumar cliente al Club", tambien: "pos" },
       { href: "/ficha-asistencia", label: "Ficha Asistencia" },
       { href: "/ventas", label: "Ventas" },
       { href: "/cobros-efectivo", label: "Cobros en efectivo" },

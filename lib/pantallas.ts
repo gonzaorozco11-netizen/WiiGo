@@ -65,6 +65,9 @@ export const PANTALLAS_DISPONIBLES: PantallaDisponible[] = [
   // La clave puede seguir guardada en áreas viejas de la base: ahí queda
   // inerte, no rompe nada y desaparece la próxima vez que se edite el área.
   { clave: "pos", label: "POS", grupo: "Operaciones" },
+  // El alta rápida de WiiGo Club (DNI, nombre y apellido). Quien tiene POS o
+  // Clientes ya entra sin tildarla; esta es para darla sola.
+  { clave: "club-sumar", label: "Sumar cliente al Club", grupo: "Operaciones" },
   // Los pedidos que arman las profesionales para sus pacientes: se arman,
   // se avisa al paciente y se cobran. Va suelto arriba en el menú, con el
   // número en rojo, como Mis Tareas.

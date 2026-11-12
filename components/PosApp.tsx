@@ -17,6 +17,7 @@ import {
 import { cancelarPedido } from "@/app/(app)/cobros-efectivo/actions";
 import { dispararAvisosDeVenta } from "@/lib/dispararAvisos";
 import { marcarPedidoEntregado } from "@/app/(app)/pedidos/actions";
+import SumarClienteClub from "@/components/SumarClienteClub";
 
 type Item = {
   variante: VarianteProducto;
@@ -156,6 +157,7 @@ export default function PosApp({
   const [cancelandoMp, setCancelandoMp] = useState(false);
   const [clienteEncontrado, setClienteEncontrado] = useState<Awaited<ReturnType<typeof buscarClientePorDni>>>(null);
   const [buscandoCliente, setBuscandoCliente] = useState(false);
+  const [sumandoCliente, setSumandoCliente] = useState(false);
   const [profesional, setProfesional] = useState<{
     idProfesional: string;
     nombre: string;
@@ -184,6 +186,7 @@ export default function PosApp({
     const dniLimpio = dni.trim();
     if (dniLimpio.length < 6) {
       setClienteEncontrado(null);
+      setSumandoCliente(false);
       setProfesional(null);
       setMarcasCanje(new Set());
       return;
@@ -753,11 +756,33 @@ export default function PosApp({
             }
           />
         )}
-        {!buscandoCliente && !clienteEncontrado && dni.trim().length >= 6 && (
-          <p className="text-xs text-neutral-500 font-semibold mt-1.5">
-            Cliente no encontrado — esta compra no suma puntos. Para que sume, cargalo primero en Clientes.
-          </p>
-        )}
+        {/* No está en el Club: se lo suma acá mismo y esta compra ya suma
+            puntos (Gonzalo, 2026-11-12). Antes había que ir a Clientes y volver. */}
+        {!buscandoCliente && !clienteEncontrado && dni.trim().length >= 6 &&
+          (sumandoCliente ? (
+            <SumarClienteClub
+              dniInicial={dni}
+              compacto
+              onCancelar={() => setSumandoCliente(false)}
+              onListo={(c) => {
+                setSumandoCliente(false);
+                // La caja busca por el DNI tal cual: queda escrito sin puntos, como se guardó.
+                if (c.dni !== dni.trim()) setDni(c.dni);
+                else buscarClientePorDni(c.dni).then(setClienteEncontrado);
+              }}
+            />
+          ) : (
+            <div className="mt-1.5 flex items-center justify-between gap-2">
+              <p className="text-xs text-neutral-500 font-semibold">No está en WiiGo Club: esta compra no suma puntos.</p>
+              <button
+                type="button"
+                onClick={() => setSumandoCliente(true)}
+                className="shrink-0 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 rounded-lg"
+              >
+                + Sumarlo ahora
+              </button>
+            </div>
+          ))}
       </div>
 
       {profesional && marcasEnCarrito.length > 0 && (

@@ -183,6 +183,9 @@ export async function armarInicioOperativo(
   const agregar = (a: Omit<AccesoRapido, "badgeTono"> & { badgeTono?: AccesoRapido["badgeTono"] }) => accesos.push({ badgeTono: "rojo", ...a });
   if (puede("cobros-efectivo"))
     agregar({ clave: "cobrar", titulo: "Cobrar pedidos", detalle: "Los que armaron en el tótem y pagan en caja", href: "/cobros-efectivo", icono: "📲", badge: pedidos || null, deshabilitado: !cajaAbierta });
+  // Sumar a alguien a WiiGo Club en 20 segundos: con su DNI ya suma puntos (Gonzalo, 2026-11-12).
+  if (puede("club-sumar") || puede("pos") || puede("clientes"))
+    agregar({ clave: "club", titulo: "Sumar cliente al Club", detalle: "Con su DNI suma puntos desde la primera compra", href: "/club/sumar", icono: "⭐", badge: null, deshabilitado: false });
   if (puede("compras-recepcion"))
     agregar({ clave: "recibir", titulo: "Recibir mercadería", detalle: "Cuando llega un pedido de una marca", href: "/compras/recepcion", icono: "📥", badge: pendientes.recibir || null, badgeTono: "ambar", deshabilitado: false });
   // Dos accesos, uno por pantalla (pedido de Gonzalo): las etiquetas de
