@@ -2602,12 +2602,14 @@ export default function AsesorApp({
             <CarruselProfesional
               fotos={[...new Set([profesionalActual.foto, ...fotosDelProfesionalActual].filter((f): f is string => Boolean(f)))].slice(0, 4)}
               inicial={profesionalActual.nombre.charAt(0).toUpperCase()}
-              style={{
-                aspectRatio: tieneHistoria ? "4 / 5" : "16 / 10",
-                maxHeight: tieneHistoria ? "48vh" : "26vh",
-                marginBottom: 16,
-                flexShrink: 0,
-              }}
+              // Con historia, la foto toma solo el alto que sobra en la columna (entre 220 px y
+              // medio monitor): con un 4/5 fijo de 48vh, en la Joog la bio, las fortalezas y
+              // «Reservar turno» quedaban cortados abajo (Gonzalo, 2026-11-13).
+              style={
+                tieneHistoria
+                  ? { flex: "1 1 0%", minHeight: 220, maxHeight: "52vh", marginBottom: 16 }
+                  : { aspectRatio: "16 / 10", maxHeight: "26vh", marginBottom: 16, flexShrink: 0 }
+              }
             >
               {profesionalActual.matricula && (
                 <span

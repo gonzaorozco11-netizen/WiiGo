@@ -108,11 +108,13 @@ export function PildorasRecorrido({ items, tipo }: { items: Recorrido[]; tipo: "
       {items.map((x, i) => (
         <div key={x.id} className={`pp-pildora ${tipo}`} style={{ animationDelay: `${0.08 + i * 0.07}s` }}>
           <i aria-hidden="true">{iconoDe(`${x.que} ${x.donde ?? ""}`, tipo)}</i>
+          {/* El año va abajo del texto y no al costado: en dos columnas el sello le comía
+              el ancho y «Ex nutricionista» salía palabra por palabra (2026-11-13). */}
           <span>
             <b>{x.que}</b>
             {x.donde && <small>{x.donde}</small>}
+            {x.cuando && <em>{x.cuando}</em>}
           </span>
-          {x.cuando && <em>{x.cuando}</em>}
         </div>
       ))}
     </div>
