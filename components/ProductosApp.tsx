@@ -69,6 +69,11 @@ export default function ProductosApp({
 }) {
   const [search, setSearch] = useState("");
   const [idMarcaFiltro, setIdMarcaFiltro] = useState<string | null>(null);
+  // El granel (los kilos del depósito para fraccionar, estado GRANEL) va aparte: mezclado,
+  // cada producto embolsado salía dos veces (Gonzalo, 2026-11-13). Nunca lo ve el cliente:
+  // tótem, asesor y caja solo traen productos ACTIVO.
+  const [verGranel, setVerGranel] = useState(false);
+  const cantidadGranel = useMemo(() => initialProductos.filter((p) => (p.estado as string) === "GRANEL").length, [initialProductos]);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Producto | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -78,6 +83,7 @@ export default function ProductosApp({
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return initialProductos.filter((p) => {
+      if (((p.estado as string) === "GRANEL") !== verGranel) return false;
       if (idMarcaFiltro && p.id_marca !== idMarcaFiltro) return false;
       if (!q) return true;
       const variantes = variantesPorProducto[p.id_producto] ?? [];
@@ -85,7 +91,7 @@ export default function ProductosApp({
         .filter(Boolean)
         .some((f) => f!.toLowerCase().includes(q));
     });
-  }, [initialProductos, search, idMarcaFiltro, variantesPorProducto, marcasFabrica]);
+  }, [initialProductos, search, idMarcaFiltro, variantesPorProducto, marcasFabrica, verGranel]);
 
   // Un producto puede tener varias variantes (sabores, tamaños) y cada una
   // vive en varios locales — acá se suma todo para dar un vistazo rápido
@@ -189,6 +195,20 @@ export default function ProductosApp({
         >
           Importar fotos
         </Link>
+        {cantidadGranel > 0 && (
+          <button
+            type="button"
+            onClick={() => setVerGranel((v) => !v)}
+            aria-pressed={verGranel}
+            className={`rounded-lg border px-4 py-2 text-sm font-medium whitespace-nowrap ${
+              verGranel
+                ? "border-accent bg-accent-tint text-accent-dark"
+                : "border-neutral-300 text-neutral-700 hover:bg-neutral-50"
+            }`}
+          >
+            {verGranel ? "← Volver a productos" : `Ver granel (${cantidadGranel})`}
+          </button>
+        )}
         <button
           onClick={openNew}
           className="rounded-lg bg-accent hover:bg-accent-dark text-white px-4 py-2 text-sm font-medium whitespace-nowrap"
@@ -197,11 +217,20 @@ export default function ProductosApp({
         </button>
       </div>
 
+      {verGranel && (
+        <p className="text-sm text-neutral-600 mb-3">
+          <span className="font-medium text-neutral-900">Granel:</span> los kilos que hay en el depósito para
+          fraccionar. No se venden ni los ve el cliente. El stock está en <span className="font-medium">gramos</span>.
+        </p>
+      )}
+
       {filtered.length === 0 ? (
         <p className="text-sm text-neutral-500 py-12 text-center">
           {initialProductos.length === 0
             ? "Todavía no cargaste ningún producto."
-            : "No hay productos que coincidan con la búsqueda."}
+            : verGranel
+              ? "No hay granel que coincida con la búsqueda."
+              : "No hay productos que coincidan con la búsqueda."}
         </p>
       ) : (
         <div className="bg-white border border-neutral-200 rounded-xl overflow-hidden">
