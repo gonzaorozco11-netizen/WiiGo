@@ -2478,9 +2478,13 @@ export default function AsesorApp({
                     {/* Retrato y no apaisado: las fotos de las profesionales
                         son de medio cuerpo, y en una caja apaisada la caja les
                         corta la cabeza. Anclada arriba, la cara entra siempre. */}
+                    {/* Con techo al alto de la pantalla: con dos profesionales la foto en 3/4
+                        medía más de lo que entra en la Joog y el pie de la tarjeta quedaba
+                        cortado abajo (Gonzalo, 2026-11-13). Lo de arriba de la grilla
+                        (barra, título, rubros y aire) ocupa unos 300 px y el pie unos 100. */}
                     <span
                       className="relative aspect-[3/4] w-full flex items-center justify-center font-extrabold text-[34px] text-white overflow-hidden"
-                      style={{ background: "var(--acento, #4d7635)" }}
+                      style={{ background: "var(--acento, #4d7635)", maxHeight: "max(240px, calc(100vh - 430px))" }}
                     >
                       {prof.foto ? (
                         // eslint-disable-next-line @next/next/no-img-element
