@@ -2547,6 +2547,12 @@ export default function SelfCheckoutApp({
                 onKeyDown={handleBuscadorKeyDown}
                 placeholder="Buscá un producto por nombre..."
                 className="sc-buscador-input"
+                // Sin autocorrector: el teclado de la tablet cambiaba «gold» por «golf» y no
+                // encontraba Gold Nutrition (Gonzalo, 2026-11-13). Las marcas no están en su diccionario.
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
               />
             </div>
             <p className="sc-buscador-ayuda">📷 También podés escanear el código de barras en cualquier momento</p>
@@ -2727,6 +2733,11 @@ export default function SelfCheckoutApp({
                   onChange={(e) => setCodigoProfesional(e.target.value)}
                   placeholder="Código de la profesional"
                   className="sc-input sc-input-sm"
+                  // Un código no es una palabra: el autocorrector lo cambiaría.
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="characters"
+                  spellCheck={false}
                 />
                 {buscandoCodigo && <p className="sc-hint sc-hint-neutral">Buscando...</p>}
                 {!buscandoCodigo && codigoInfo?.nombre && <p className="sc-hint sc-hint-ok">✓ {codigoInfo.nombre}</p>}

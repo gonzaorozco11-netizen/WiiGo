@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { ambosPrecios } from "@/lib/precios";
@@ -449,6 +449,28 @@ function esMarcaWiigo(marca: MarcaPublica | undefined) {
  * crema de Crislo dibujada como bolsita de WiiGo sería mentirle al cliente
  * (Gonzalo, 2026-11-03).
  */
+/**
+ * Fondo de una hoja de la ficha que avisa que hay más para leer: una sombrita arriba o
+ * abajo aparece sola mientras quede contenido escondido y se tapa al llegar al borde
+ * (sombras de desplazamiento, solo CSS, sin medir nada). En pantallas táctiles no hay
+ * barra de desplazamiento, así que sin esto nadie sabe que puede deslizar.
+ */
+function sombraDeslizar(color: string): CSSProperties {
+  const transparente = `${color}00`;
+  return {
+    background: [
+      `linear-gradient(${color} 30%, ${transparente}) center top`,
+      `linear-gradient(${transparente}, ${color} 70%) center bottom`,
+      "radial-gradient(farthest-side at 50% 0, rgba(40,48,30,.16), rgba(40,48,30,0)) center top",
+      "radial-gradient(farthest-side at 50% 100%, rgba(40,48,30,.16), rgba(40,48,30,0)) center bottom",
+      color,
+    ].join(", "),
+    backgroundRepeat: "no-repeat",
+    backgroundSize: "100% 44px, 100% 44px, 100% 16px, 100% 16px, auto",
+    backgroundAttachment: "local, local, scroll, scroll, scroll",
+  };
+}
+
 function SinFoto({ producto, logoMarca, bolsita, chica = false }: { producto: ProductoPublico; logoMarca: string | null; bolsita: boolean; chica?: boolean }) {
   if (bolsita) {
     return (
@@ -3318,7 +3340,6 @@ function ProductoDetalleModal({
   const [ingredientesAbierto, setIngredientesAbierto] = useState(false);
   const [micronutrientesAbierto, setMicronutrientesAbierto] = useState(false);
   const [saborActivo, setSaborActivo] = useState<string | null>(null);
-  const [descAbierta, setDescAbierta] = useState(false);
   const nombreVisible = traducir(idioma, producto.nombre, producto.nombre_en, producto.nombre_pt);
   const descripcionVisible = ficha?.descripcion_publica
     ? traducir(idioma, ficha.descripcion_publica, ficha.descripcion_publica_en, ficha.descripcion_publica_pt)
@@ -3518,25 +3539,9 @@ function ProductoDetalleModal({
         </div>
       )}
 
-      {/* Larga, se muestra en 3 renglones con «Ver más»: entera se cortaba abajo de la ficha. */}
+      {/* Entera: si no entra, la hoja se desliza hacia abajo (Gonzalo, 2026-11-13). */}
       {descripcionVisible && (
-        <div>
-          <p
-            className="text-[14px] leading-relaxed text-[#686868]"
-            style={
-              descripcionVisible.length > 170 && !descAbierta
-                ? { display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }
-                : undefined
-            }
-          >
-            {descripcionVisible}
-          </p>
-          {descripcionVisible.length > 170 && (
-            <button type="button" onClick={() => setDescAbierta((v) => !v)} className="mt-1 text-[12.5px] font-extrabold" style={{ color: SAGE_DARK }}>
-              {descAbierta ? (idioma === "en" ? "Show less" : idioma === "pt" ? "Ver menos" : "Ver menos") : idioma === "en" ? "Read more" : idioma === "pt" ? "Ver mais" : "Ver más"}
-            </button>
-          )}
-        </div>
+        <p className="text-[14px] leading-relaxed text-[#686868]">{descripcionVisible}</p>
       )}
     </div>
   );
@@ -3551,8 +3556,12 @@ function ProductoDetalleModal({
           derecha. Siempre en dos hojas, aunque el producto no tenga información
           nutricional: apilado en una sola columna el precio y los sabores
           quedaban abajo de todo y se cortaban. En celular sí se apilan. */}
+      {/* Flex y no grid: en una grilla la fila crece con el contenido aunque la ficha tenga
+          alto máximo, y lo que no entraba quedaba tapado sin poder deslizar. En fila, cada
+          hoja toma el alto de la ficha y se desliza sola (Gonzalo, 2026-11-13). En celular
+          se desliza la ficha entera. */}
       <div
-        className={`relative w-full rounded-t-3xl sm:rounded-3xl overflow-hidden max-h-[94vh] sm:max-h-[88vh] grid md:grid-cols-2 ${
+        className={`relative w-full rounded-t-3xl sm:rounded-3xl overflow-y-auto md:overflow-hidden max-h-[94vh] sm:max-h-[88vh] flex flex-col md:flex-row ${
           hayNutricional ? "sm:max-w-5xl" : "sm:max-w-3xl"
         }`}
         style={{
@@ -3586,7 +3595,7 @@ function ProductoDetalleModal({
         )}
 
         {/* ---------- hoja izquierda: la foto ---------- */}
-        <div className="bg-white overflow-y-auto flex flex-col min-h-0">
+        <div className="flex flex-col shrink-0 md:w-1/2 md:overflow-y-auto overscroll-contain" style={sombraDeslizar("#ffffff")}>
           {/* pb-5: sin aire abajo, el recuadro crema de la foto quedaba pegado
               al borde de la ficha y parecía salirse del marco (Joog, 2026-11-11). */}
           <div className="relative bg-white px-5 pt-5 pb-5">
@@ -3663,8 +3672,8 @@ function ProductoDetalleModal({
 
         {/* ---------- hoja derecha: todo lo que se lee ---------- */}
         <div
-          className="overflow-y-auto min-h-0 flex flex-col border-t md:border-t-0 md:border-l border-[#e8eade]"
-          style={{ background: hayNutricional ? "#f7f9f2" : "#fff" }}
+          className="flex flex-col shrink-0 md:w-1/2 md:overflow-y-auto overscroll-contain border-t md:border-t-0 md:border-l border-[#e8eade]"
+          style={sombraDeslizar(hayNutricional ? "#f7f9f2" : "#ffffff")}
         >
           {!hayNutricional && bloqueIdentidad}
 
@@ -3711,9 +3720,10 @@ function ProductoDetalleModal({
                     ⌄
                   </span>
                 </button>
+                {/* Techo alto: con 200 px las listas largas se cortaban (2026-11-13). */}
                 <div
                   className="overflow-hidden"
-                  style={{ maxHeight: ingredientesAbierto ? 200 : 0, transition: "max-height .35s ease" }}
+                  style={{ maxHeight: ingredientesAbierto ? 1600 : 0, transition: "max-height .35s ease" }}
                 >
                   <p className="text-[13px] leading-relaxed text-[#3d3d3d] pb-3.5">
                     {traducir(idioma, ficha.ingredientes, ficha.ingredientes_en, ficha.ingredientes_pt)}
@@ -3743,7 +3753,7 @@ function ProductoDetalleModal({
                 </button>
                 <div
                   className="overflow-hidden"
-                  style={{ maxHeight: micronutrientesAbierto ? 200 : 0, transition: "max-height .35s ease" }}
+                  style={{ maxHeight: micronutrientesAbierto ? 1600 : 0, transition: "max-height .35s ease" }}
                 >
                   <p className="text-[13px] leading-relaxed text-[#3d3d3d] pb-3.5">
                     {traducir(idioma, ficha.micronutrientes, ficha.micronutrientes_en, ficha.micronutrientes_pt)}
