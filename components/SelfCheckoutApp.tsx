@@ -67,11 +67,21 @@ const COLLATOR = new Intl.Collator("es", { sensitivity: "base" });
 // El totem queda solo en el local: si alguien arma el carrito y se va sin
 // pagar, la pantalla se quedaría con SU carrito y el próximo cliente
 // encontraría productos ajenos. Se vuelve solo al inicio.
-const INACTIVIDAD_COMPRA_MS = 120000; // 2 min armando el pedido
+//
+// Gonzalo (2026-11-12): «si alguien la abre se queda en armar el carrito; que
+// vuelva a la pantalla inicial luego de 30 segundos si no se usa». Con el
+// carrito vacío, 30 segundos. Con productos cargados, 1 minuto (antes 2): el
+// cliente puede haber ido a la góndola a buscar otro y no tiene que perder lo
+// que ya cargó.
+const INACTIVIDAD_VACIO_MS = 30000;
+const INACTIVIDAD_COMPRA_MS = 60000;
 // La pantalla de "listo" tiene que durar lo suficiente para que el cliente
 // lea el total, espere el ticket y lo retire de la impresora.
 const INACTIVIDAD_FINAL_MS = 100000;
-const AVISO_ANTES_MS = 20000; // se pregunta "¿seguís ahí?" antes de reiniciar
+// Se pregunta "¿seguís ahí?" antes de reiniciar: 10 segundos antes con el
+// carrito vacío, 20 con productos.
+const AVISO_ANTES_VACIO_MS = 10000;
+const AVISO_ANTES_MS = 20000;
 
 function formatearMonto(valor: number) {
   return valor.toLocaleString("es-AR", { maximumFractionDigits: 0 });
@@ -2318,6 +2328,7 @@ export default function SelfCheckoutApp({
     setAvisoInactividad((previo) => (previo === null ? previo : null));
   }
 
+  const carritoVacio = Object.keys(carrito).length === 0;
   useEffect(() => {
     const armandoPedido =
       paso === "escaneo" || paso === "identificar" || paso === "dni-factura" || paso === "pagar";
@@ -2328,19 +2339,22 @@ export default function SelfCheckoutApp({
     }
     ultimaActividad.current = Date.now();
     setAvisoInactividad(null);
-    const limite = armandoPedido ? INACTIVIDAD_COMPRA_MS : INACTIVIDAD_FINAL_MS;
+    // Abrió la pantalla y no cargó nada: vuelve rápido al inicio.
+    const vacio = armandoPedido && carritoVacio;
+    const limite = !armandoPedido ? INACTIVIDAD_FINAL_MS : vacio ? INACTIVIDAD_VACIO_MS : INACTIVIDAD_COMPRA_MS;
+    const avisoAntes = vacio ? AVISO_ANTES_VACIO_MS : AVISO_ANTES_MS;
     const id = setInterval(() => {
       const inactivo = Date.now() - ultimaActividad.current;
       if (inactivo >= limite) {
         volverAEmpezar();
         return;
       }
-      if (armandoPedido && inactivo >= limite - AVISO_ANTES_MS) {
+      if (armandoPedido && inactivo >= limite - avisoAntes) {
         setAvisoInactividad(Math.ceil((limite - inactivo) / 1000));
       }
     }, 1000);
     return () => clearInterval(id);
-  }, [paso]);
+  }, [paso, carritoVacio]);
 
   // Versión nueva publicada: el totem se recarga solo, pero únicamente
   // cuando nadie lo está usando. Antes quedaba con la versión vieja hasta la
