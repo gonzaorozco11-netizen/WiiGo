@@ -72,6 +72,32 @@
     // chispas de energía cuando se llena
     '<path class="chispa" d="M88 30l-5-5" stroke="#f1c75b" stroke-width="3" stroke-linecap="round"/><path class="chispa b" d="M105 24v-7" stroke="#f1c75b" stroke-width="3" stroke-linecap="round"/><path class="chispa c" d="M122 30l5-5" stroke="#f1c75b" stroke-width="3" stroke-linecap="round"/>' +
     '</svg>';
+  // Banner 2: el pedido en 4 pasos, con la barra que corre hasta los 15 minutos.
+  var PASOS_15 = [
+    ['Pedís', '<rect x="7" y="2" width="10" height="20" rx="2.5"/><path d="M11 18h2"/>'],
+    ['Pagás', '<rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20M6 15h4"/>'],
+    ['Lo armamos', '<path d="M5 8h14l-1.2 11.2a2 2 0 0 1-2 1.8H8.2a2 2 0 0 1-2-1.8L5 8z"/><path d="M9 11V7a3 3 0 0 1 6 0v4"/>'],
+    ['Retirás', '<path d="M5 12.5l4.5 4.5L19 7.5"/>']
+  ];
+  // Cada paso con el minuto en que pasa: el cronómetro corre hasta ese minuto cuando se prende.
+  var MIN_15 = [0, 30, 60, 660, 870]; // segundos: arranque, pedís, pagás, lo armamos, retirás (14:30)
+  var BANNER_15 = '<div class="b-crono" aria-hidden="true"><b id="b-tiempo">00:00</b><small>minutos</small></div>' +
+    '<div class="b-pasos" aria-hidden="true"><div class="b-linea"><i></i></div>' + PASOS_15.map(function (p, i) {
+      return '<span class="b-paso"><span class="b-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' + p[1] + '</svg></span><small>' + p[0] + '</small><em>' + Math.floor(MIN_15[i + 1] / 60) + '′</em></span>';
+    }).join('') + '</div>';
+  // Banner 3: la tarjeta del Club, inclinada, con un brillo que pasa y puntos que saltan.
+  var TARJETA_CLUB = '<div class="b-tarjeta" aria-hidden="true"><div class="tc"><span class="tc-logo">WiiGo</span><span class="tc-estrella">★</span><b>Club</b><small>Socio · puntos</small><i class="tc-brillo"></i></div>' +
+    '<span class="burbuja" style="--i:0;--x:-6px">+20</span><span class="burbuja" style="--i:1;--x:44px">+5</span><span class="burbuja" style="--i:2;--x:70px">+20</span>' +
+    '<span class="chispa-c" style="--i:0;left:4px;top:8px">✦</span><span class="chispa-c" style="--i:1;right:2px;top:2px">✦</span><span class="chispa-c" style="--i:2;right:16px;bottom:6px">✦</span></div>';
+  function banners() {
+    // Compactos y sin botones: se toca el banner entero.
+    var b = [
+      '<div class="banner carga" data-a="ver-todo" role="button" tabindex="0"><div><h1 class="hola">La estación de servicio de <em>tu cuerpo</em>.</h1><p class="hola-sub">Cargá energía: pedí online y retiralo listo en 15 minutos.</p></div>' + ILUS_CARGA + '</div>',
+      '<div class="banner b-15" data-a="ver-todo" role="button" tabindex="0"><div><h2 class="hola">Pedí y retirá en <em>15 minutos</em>.</h2>' + BANNER_15 + '</div></div>',
+      '<div class="banner b-club" data-a="cuenta" role="button" tabindex="0"><div><h2 class="hola">Unite a <em>WiiGo Club</em>.</h2><p class="hola-sub">Sumá puntos en cada compra, online o en la estación.</p><span class="b-chip">' + (S.usuario ? '★ Tenés ' + S.usuario.puntos.toLocaleString('es-AR') + ' puntos' : 'Gratis · con tu DNI') + '</span></div>' + TARJETA_CLUB + '</div>'
+    ];
+    return '<section class="banners" aria-roledescription="carrusel" aria-label="Novedades de WiiGo"><div class="b-pista" id="b-pista">' + b.join('') + '</div><div class="b-puntos">' + b.map(function (_, i) { return '<button data-a="banner" data-i="' + i + '" aria-label="Banner ' + (i + 1) + '"' + (i === 0 ? ' aria-current="true"' : '') + '></button>'; }).join('') + '</div></section>';
+  }
   var TONOS = [['#e8743b', '#2a1406'], ['#2e3f29', '#f5efe3'], ['#f1c75b', '#3b2f0e'], ['#a8c08a', '#1f2b17'], ['#d9a37f', '#3a2010'], ['#3f6b6d', '#eef5f2']];
   var HOY = Date.now();
   var PROD = D.productos.map(function (p) {
@@ -178,7 +204,7 @@
     var recientes = PROD.filter(function (p) { return p.s > 0; }).sort(function (a, b) { return a.dias - b.dias || (b.img ? 1 : 0) - (a.img ? 1 : 0); }).slice(0, 10);
     var porMarca = {}; PROD.forEach(function (p) { if (p.img && p.s > 0 && recientes.indexOf(p) < 0) (porMarca[p.m] = porMarca[p.m] || []).push(p); });
     var dest = [], vuelta = 0; while (dest.length < 8 && vuelta < 12) { MARCAS.forEach(function (m) { var l = porMarca[m.n]; if (l && l[vuelta] && dest.length < 8) dest.push(l[vuelta]); }); vuelta++; }
-    return '<section class="carga"><div><h1 class="hola">La estación de servicio de <em>tu cuerpo</em>.</h1><p class="hola-sub">Cargá energía: pedí online y retiralo listo en 15 minutos.</p></div>' + ILUS_CARGA + '</section>' +
+    return banners() +
       '<h2 class="seccion">Recién ingresados</h2><div class="carrusel">' + recientes.map(tarjeta).join('') + '</div>' +
       '<h2 class="seccion">Destacados</h2>' + grilla(dest) +
       '<h2 class="seccion">Todos los productos</h2>' + conMas(ordenar(PROD)) + pie();
@@ -309,7 +335,46 @@
     if (foco) { var i = document.getElementById(foco); if (i) { i.focus(); try { i.setSelectionRange(pos, pos); } catch (e) {} } }
     window.scrollTo(0, arriba ? 0 : y);
     montarGlobo();
+    montarBanners();
   }
+
+  /* Los banners de arriba: se deslizan con el dedo y pasan solos cada 6 s (si nadie los tocó recién). */
+  function montarBanners() {
+    var p = document.getElementById('b-pista'); if (!p) return;
+    p.scrollLeft = (S.banner || 0) * p.clientWidth;
+    p.onscroll = function () { var i = Math.round(p.scrollLeft / Math.max(1, p.clientWidth)); if (i !== (S.banner || 0)) { S.banner = i; marcarPuntos(); } };
+    p.onpointerdown = p.ontouchstart = function () { S.bannerQuieto = Date.now(); };
+    marcarPuntos(); pasos15();
+  }
+  function marcarPuntos() { document.querySelectorAll('.b-puntos button').forEach(function (b, i) { if (i === (S.banner || 0)) b.setAttribute('aria-current', 'true'); else b.removeAttribute('aria-current'); }); }
+  setInterval(function () {
+    var p = document.getElementById('b-pista');
+    if (!p || window.matchMedia('(prefers-reduced-motion: reduce)').matches || S.ficha || S.pedido || S.cuenta || S.menu) return;
+    if (Date.now() - (S.bannerQuieto || 0) < 9000) return;
+    var r = p.getBoundingClientRect(); if (r.bottom < 0 || r.top > window.innerHeight) return;
+    S.banner = ((S.banner || 0) + 1) % p.children.length;
+    p.scrollTo({ left: S.banner * p.clientWidth, behavior: 'smooth' });
+  }, 6000);
+  // El banner de los 15 minutos: cada 1,3 s se prende el paso siguiente, la barra avanza y el cronómetro
+  // corre hasta el minuto de ese paso. Al final: 14:30, «¡Listo!», y vuelve a empezar.
+  var paso15 = 0, segs15 = 0;
+  function mmss(s) { return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(Math.floor(s % 60)).padStart(2, '0'); }
+  function pasos15() {
+    var ps = document.querySelectorAll('.b-paso'); if (!ps.length) return;
+    var n = Math.min(paso15, 4);
+    ps.forEach(function (el, i) { el.classList.toggle('hecho', i < n); });
+    var barra = document.querySelector('.b-linea i'); if (barra) barra.style.width = (n <= 1 ? 0 : (n - 1) / 3 * 100) + '%';
+    var t = document.getElementById('b-tiempo'); if (!t) return;
+    var crono = t.parentNode; crono.classList.toggle('listo', n === 4);
+    var desde = segs15, hasta = MIN_15[n], ini = performance.now();
+    if (n === 0 || window.matchMedia('(prefers-reduced-motion: reduce)').matches) { segs15 = hasta; t.textContent = mmss(hasta); return; }
+    (function correr(ahora) {
+      var k = Math.min(1, (ahora - ini) / 900); segs15 = desde + (hasta - desde) * (1 - Math.pow(1 - k, 3));
+      var el = document.getElementById('b-tiempo'); if (el) el.textContent = mmss(segs15);
+      if (k < 1) requestAnimationFrame(correr);
+    })(ini);
+  }
+  setInterval(function () { paso15 = (paso15 + 1) % 7; pasos15(); }, 1300);
 
   /* El planeta (three.js, el mismo de la tienda). Se crea una vez y se vuelve a enganchar en cada pintada. */
   var G = null, menosMov = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -452,6 +517,7 @@
       S.cuenta = false; S.pedido = agregados > 0; pintar(false);
       aviso(!agregados ? 'Nada de esa compra tiene stock ahora' : faltan ? 'Agregamos lo que hay en stock (' + faltan + ' sin stock)' : 'Agregamos todo a tu pedido');
     },
+    banner: function (d) { var p = document.getElementById('b-pista'); S.banner = Number(d.i); S.bannerQuieto = Date.now(); if (p) p.scrollTo({ left: S.banner * p.clientWidth, behavior: 'smooth' }); marcarPuntos(); },
     'c-cumple': function () { var v = document.getElementById('c-cumple2').value; if (!v) return aviso('Elegí la fecha'); pasoCuenta({ accion: 'actualizar', cumple: v }, function (r) { S.usuario = r.usuario; aviso('Guardado'); }); },
     'c-promos': function () {
       var quiere = !S.usuario.promos;

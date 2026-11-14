@@ -34,6 +34,70 @@ body{background:radial-gradient(70% 40% at 100% 0,#f6dcc6 0,rgba(246,220,198,0) 
 .hola{font:800 27px/1.02 var(--display);letter-spacing:-.03em;margin:6px 2px 4px;text-wrap:balance}
 .hola em{font-style:normal;color:var(--energia)}
 .hola-sub{margin:0 2px;color:var(--gris);font-size:14px}
+/* Los 3 banners de arriba, uno al lado del otro: se deslizan con el dedo */
+.b-pista{display:grid;grid-auto-flow:column;grid-auto-columns:100%;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;border-radius:26px;box-shadow:0 14px 30px rgba(34,48,31,.22)}
+.b-pista::-webkit-scrollbar{display:none}
+.banner{scroll-snap-align:start;scroll-snap-stop:always;display:grid;grid-template-columns:minmax(0,1fr) 128px;gap:6px;align-items:center;padding:16px 10px 12px 18px;min-height:172px;overflow:hidden;position:relative;cursor:pointer}
+/* 3: Unite a WiiGo Club (dorado, con la tarjeta) */
+.b-club{background:radial-gradient(70% 90% at 85% 35%,#ffe7a3 0,rgba(255,231,163,0) 70%),linear-gradient(135deg,#f6cf5f,#eab33c);color:#3b2f0e;grid-template-columns:minmax(0,1fr) 132px}
+.b-club .hola{color:#2a2207}.b-club .hola em{font-style:normal;color:#22301f;background:linear-gradient(transparent 62%,rgba(232,116,59,.55) 62%);padding:0 2px}
+.b-club .hola-sub{color:#5a4510}
+.b-chip{display:inline-block;margin-top:8px;background:#22301f;color:#f1c75b;border-radius:999px;padding:5px 11px;font-size:12px;font-weight:800}
+.b-tarjeta{position:relative;width:132px;height:120px}
+.tc{position:absolute;left:8px;top:26px;width:116px;height:74px;border-radius:12px;background:linear-gradient(135deg,#22301f,#3a4d35);border:2px solid #f1c75b;box-shadow:0 10px 22px rgba(59,47,14,.35);transform:rotate(-9deg);overflow:hidden;animation:flotar 4s ease-in-out infinite;color:#f5efe3;padding:8px 10px}
+@keyframes flotar{0%,100%{transform:rotate(-9deg) translateY(0)}50%{transform:rotate(-6deg) translateY(-5px)}}
+.tc-logo{font:800 11px var(--display);letter-spacing:-.01em}
+.tc-estrella{position:absolute;right:9px;top:6px;color:#f1c75b;font-size:20px;line-height:1;animation:girar 4s ease-in-out infinite}
+@keyframes girar{0%,70%,100%{transform:rotate(0) scale(1)}80%{transform:rotate(72deg) scale(1.25)}}
+.tc b{position:absolute;left:10px;bottom:16px;font:800 22px/1 var(--display);color:#f1c75b}
+.tc small{position:absolute;left:10px;bottom:5px;font-size:8.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#b6bca2}
+.tc-brillo{position:absolute;top:-20px;bottom:-20px;width:34px;left:-60px;background:linear-gradient(90deg,rgba(255,255,255,0),rgba(255,255,255,.45),rgba(255,255,255,0));transform:skewX(-20deg);animation:brillo 3.2s ease-in-out infinite}
+@keyframes brillo{0%,55%{left:-60px}85%,100%{left:150px}}
+.burbuja{position:absolute;left:calc(14px + var(--x));bottom:2px;background:#e8743b;color:#fff8ef;font-weight:800;font-size:11.5px;border-radius:999px;padding:2px 8px;opacity:0;animation:subir 3s ease-out infinite;animation-delay:calc(var(--i) * 1s)}
+@keyframes subir{0%{opacity:0;transform:translateY(8px) scale(.8)}15%{opacity:1;transform:translateY(0) scale(1)}70%{opacity:1}100%{opacity:0;transform:translateY(-34px) scale(.9)}}
+.chispa-c{position:absolute;color:#fff8ef;font-size:14px;animation:titilar 1.8s ease-in-out infinite;animation-delay:calc(var(--i) * .6s)}
+@keyframes titilar{0%,100%{opacity:.2;transform:scale(.7)}50%{opacity:1;transform:scale(1.15)}}
+.banner .hola{font-size:25px;margin:0 0 6px}
+.b-pista .carga{border-radius:0;box-shadow:none}
+.b-puntos{display:flex;justify-content:center;gap:6px;margin-top:10px}
+.b-puntos button{width:8px;height:8px;border-radius:999px;border:0;padding:0;background:#d6cdb9;transition:width .25s,background .25s}
+.b-puntos button[aria-current="true"]{width:22px;background:var(--bosque)}
+/* 2: pedí y retirá en 15 minutos (naranja) */
+.b-15{background:radial-gradient(90% 120% at 100% 0,#f19a64 0,rgba(241,154,100,0) 70%),var(--energia);color:#2a1406;grid-template-columns:1fr;padding-right:16px}
+.b-15 .hola{color:#2a1406;padding-right:96px;margin-bottom:2px}.b-15 .hola em{font-style:normal;color:#fff8ef}
+/* El cronómetro: corre de 00:00 hasta el minuto de cada paso */
+.b-crono{position:absolute;top:0;right:0;background:#2a1406;color:#fff8ef;border-radius:16px;padding:8px 10px 6px;text-align:center;min-width:86px;transition:background .3s}
+.b-crono b{display:block;font:700 22px/1 ui-monospace,"SF Mono",Menlo,Consolas,monospace;letter-spacing:.02em;font-variant-numeric:tabular-nums}
+.b-crono small{display:block;font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#f6b48c;margin-top:3px}
+.b-crono.listo{background:#22301f}
+.b-crono.listo small{color:#a8c08a}
+.b-crono.listo small::before{content:"¡Listo! ";color:#fff8ef}
+.b-15>div{position:relative}
+.b-pasos{position:relative;display:grid;grid-template-columns:repeat(4,1fr);margin-top:14px}
+.b-linea{position:absolute;top:19px;left:12.5%;right:12.5%;height:4px;border-radius:4px;background:rgba(42,20,6,.2)}
+.b-linea i{display:block;height:100%;width:0;border-radius:4px;background:#2a1406;transition:width .6s ease}
+.b-paso{display:flex;flex-direction:column;align-items:center;gap:3px;position:relative}
+.b-ic{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;background:#fff8ef;color:#c4581f;box-shadow:0 4px 10px rgba(42,20,6,.18);transition:background .3s,color .3s,transform .3s}
+.b-paso.hecho .b-ic{background:#2a1406;color:#fff8ef;transform:scale(1.1)}
+.b-paso small{font-size:11.5px;font-weight:800;color:#2a1406}
+.b-paso em{font-style:normal;font-size:10.5px;font-weight:800;color:#7a3a14;opacity:.75}
+.b-boton{margin-top:14px;border:0;border-radius:12px;background:#2a1406;color:#fff8ef;font-weight:800;font-size:14px;padding:10px 14px;display:inline-flex;align-items:center;gap:6px}
+.b-boton.claro{background:#f1c75b;color:#3b2f0e}
+.b-boton.naranja{background:var(--energia);color:#2a1406}
+.banner .b-boton svg{width:16px;height:16px;flex-shrink:0}
+.b-ceja{margin:0 0 6px;font-size:10.5px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#a8d4cf}
+/* 3: el futuro del retail saludable (verde azulado) */
+.b-futuro{background:radial-gradient(90% 120% at 100% 100%,#548a8c 0,rgba(84,138,140,0) 70%),#3f6b6d;color:#eef5f2}
+.b-futuro .hola{color:#f5efe3}.b-futuro .hola em{font-style:normal;color:#f1c75b}.b-futuro .hola-sub{color:#d3e3e0}
+.b-red{width:128px;height:auto}
+.b-hilo{stroke:rgba(245,239,227,.55);stroke-width:2;fill:none;stroke-dasharray:3 6;animation:hilo 1.1s linear infinite}
+.b-nodo{animation:latir 2.4s ease-in-out infinite;animation-delay:calc(var(--i) * .48s);transform-box:fill-box;transform-origin:center}
+.b-futuro .b-red{width:136px}
+.b-futuro{grid-template-columns:minmax(0,1fr) 136px}
+@keyframes latir{0%,100%{transform:scale(1)}40%{transform:scale(1.35)}}
+.b-onda{fill:none;stroke:#f5efe3;stroke-width:2;transform-box:fill-box;transform-origin:center;animation:onda 2.4s ease-out infinite}
+@keyframes onda{from{transform:scale(1);opacity:.7}to{transform:scale(1.8);opacity:0}}
+@keyframes hilo{to{stroke-dashoffset:-18}}
 /* Arriba de todo: una persona cargando energía en una estación WiiGo */
 .carga{display:grid;grid-template-columns:minmax(0,1fr) 128px;gap:6px;align-items:center;background:radial-gradient(90% 120% at 100% 100%,#3a4d35 0,rgba(58,77,53,0) 70%),var(--bosque);color:#f5efe3;border-radius:26px;padding:16px 10px 10px 18px;box-shadow:0 14px 30px rgba(34,48,31,.22);overflow:hidden}
 .carga .hola{font-size:25px;margin:0 0 6px;color:#f5efe3}
@@ -243,10 +307,16 @@ main{padding:14px}
   body{overflow-x:hidden}
   .grilla{grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px}
   .carrusel{grid-auto-columns:220px;gap:14px}
-  .carga{grid-template-columns:minmax(0,1fr) 210px;padding:26px 24px 16px 34px}
-  .carga .hola{font-size:42px}
-  .carga .hola-sub{font-size:16px}
-  .carga svg{width:210px}
+  .carga{grid-template-columns:minmax(0,1fr) 170px;padding:22px 30px 14px 34px}
+  .banner{min-height:200px;padding-left:34px;padding-right:30px}
+  .banner .hola{font-size:36px}
+  .carga .hola-sub,.b-club .hola-sub{font-size:16px}
+  .carga svg{width:170px}
+  .b-15>div{max-width:680px}
+  .b-15 .hola{padding-right:0}
+  .b-15 .b-crono{right:-250px;top:50%;transform:translateY(-50%) scale(1.45);transform-origin:center right}
+  .b-club{grid-template-columns:minmax(0,1fr) 170px}
+  .b-tarjeta{transform:scale(1.15);transform-origin:center}
   .barra,.hoja{max-width:560px}
   .cajon{left:max(0px,calc(50% - 590px))}
   .mundo .globo{max-width:620px;margin:0 auto}
@@ -259,6 +329,6 @@ main{padding:14px}
 <div class="app" id="app"><p style="padding:60px 16px;text-align:center;color:#626a5e">Cargando los productos…</p></div>
 <!-- El catálogo real, armado en el servidor con lo público de cada producto (lib/tiendaCatalogo.ts). -->
 <script src="/api/tienda/catalogo"></script>
-<script src="app.js?v=2"></script>
+<script src="app.js?v=3"></script>
 </body>
 </html>
