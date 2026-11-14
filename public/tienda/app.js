@@ -117,12 +117,14 @@
   // Los valores de la ficha son cada 100 g: se pasan a la porción.
   function nutriPorcion(p) {
     var g = gramosPorcion(p), f = g ? g / 100 : 1, x = function (v) { return v == null ? null : Number(v) * f; };
-    return { g: g, txt: g ? 'por porción (' + coma(g) + ' g)' : 'cada 100 g', k: x(p.k), pr: x(p.pr), ca: x(p.ca), gr: x(p.gr), fi: x(p.fi) };
+    // Porción sin gramos («1 vianda»): los números de la ficha ya son por esa porción (Gonzalo, 14/11, viandas de Alta).
+    var unidad = !g && p.po && p.po.trim() ? p.po.trim().replace(/^1\s+/, '') : null;
+    return { g: g, unidad: unidad, txt: g ? 'por porción (' + coma(g) + ' g)' : unidad ? 'por ' + unidad : 'cada 100 g', k: x(p.k), pr: x(p.pr), ca: x(p.ca), gr: x(p.gr), fi: x(p.fi) };
   }
   function nutriChica(p) {
     if (!tieneNutri(p)) return '';
     var n = nutriPorcion(p), m = function (l, v) { return v == null ? '' : '<span>' + l + ' ' + coma(v) + '</span>'; };
-    return '<div class="t-nutri" title="' + n.txt + '">' + (n.k != null ? '<span class="kcal">' + Math.round(n.k) + ' kcal</span>' : '') + m('P', n.pr) + m('C', n.ca) + m('G', n.gr) + '<span class="por">' + (n.g ? 'porción ' + coma(n.g) + ' g' : 'c/100 g') + '</span></div>';
+    return '<div class="t-nutri" title="' + n.txt + '">' + (n.k != null ? '<span class="kcal">' + Math.round(n.k) + ' kcal</span>' : '') + m('P', n.pr) + m('C', n.ca) + m('G', n.gr) + '<span class="por">' + (n.g ? 'porción ' + coma(n.g) + ' g' : n.unidad ? 'por ' + esc(n.unidad) : 'c/100 g') + '</span></div>';
   }
   var MARCAS = D.marcas, MARCA = {}; MARCAS.forEach(function (m) { MARCA[m.n] = m; });
   // Nuevos: los 20 que entraron último (con stock), no todo lo del mes.
@@ -264,7 +266,7 @@
       '<div class="f-foto">' + foto(p, 828) + '</div><h2 class="f-nombre">' + esc(p.t) + '</h2><span class="f-de">' + esc(p.mf || p.m) + ' · ' + esc(p.sc) + '</span>' +
       (p.s > 0 ? '<div class="f-precio"><b>' + plata(p.p) + '</b><span>' + plata(p.e || p.p) + ' efectivo</span></div>' : '<div class="f-precio"><span style="color:var(--gris)">Sin stock por ahora. Preguntá en la estación cuándo entra.</span></div>') + sabores(p) + '<div style="margin-top:10px" data-acc="' + p.id + '">' + boton(p) + '</div>' +
       // Nutrición en números, sin explicación. Después, el texto chico.
-      (nutri ? '<div class="f-nutri" title="' + nutriPorcion(p).txt + '">' + (function (n) { return [['kcal', 'Kcal', n.k, ''], ['', 'Prot.', n.pr, ' g'], ['', 'Carbos', n.ca, ' g'], ['', 'Grasas', n.gr, ' g'], ['', 'Fibra', n.fi, ' g']]; })(nutriPorcion(p)).map(function (x) { return '<div class="' + x[0] + '"><small>' + x[1] + '</small><b>' + (x[2] == null ? '—' : (x[0] ? Math.round(x[2]) : coma(x[2])) + x[3]) + '</b></div>'; }).join('') + '</div><p class="f-chico" style="margin-top:6px">' + (gramosPorcion(p) ? 'Por porción: ' + esc(p.po) : 'Cada 100 g' + (p.po ? ' · porción: ' + esc(p.po) : '')) + '</p>' : '') +
+      (nutri ? '<div class="f-nutri" title="' + nutriPorcion(p).txt + '">' + (function (n) { return [['kcal', 'Kcal', n.k, ''], ['', 'Prot.', n.pr, ' g'], ['', 'Carbos', n.ca, ' g'], ['', 'Grasas', n.gr, ' g'], ['', 'Fibra', n.fi, ' g']]; })(nutriPorcion(p)).map(function (x) { return '<div class="' + x[0] + '"><small>' + x[1] + '</small><b>' + (x[2] == null ? '—' : (x[0] ? Math.round(x[2]) : coma(x[2])) + x[3]) + '</b></div>'; }).join('') + '</div><p class="f-chico" style="margin-top:6px">' + (gramosPorcion(p) || nutriPorcion(p).unidad ? 'Por porción: ' + esc(p.po) : 'Cada 100 g') + '</p>' : '') +
       (p.fl && p.fl.length ? '<p class="f-chico" style="color:#3f5536;font-weight:800">' + esc(p.fl.map(function (x) { return titulo(x.replace(/\s+/g, ' ')); }).join(' · ')) + '</p>' : '') +
       (p.de ? '<p class="f-desc' + (S.descAbierta ? ' abierta' : '') + '" data-a="desc">' + esc(p.de) + '</p>' : '') +
       (p.o ? '<p class="f-chico"><b>Origen:</b> ' + esc(p.o) + '</p>' : '') +
