@@ -176,6 +176,7 @@ main{padding:14px}
 .linea-ped{display:grid;grid-template-columns:56px minmax(0,1fr) 120px;gap:10px;align-items:center;background:var(--carta);border:1px solid var(--linea);border-radius:16px;padding:8px;margin-bottom:8px}
 .linea-ped .mini{width:56px;height:56px;display:grid;place-items:center}
 .linea-ped .mini img{width:100%;height:100%;object-fit:contain}
+.linea-ped .kraft{width:100%;font-size:8px;padding:4px;border-radius:10px}
 .linea-ped b{font-size:13.5px;line-height:1.25;display:block}
 .linea-ped small{color:var(--gris);font-size:12px}
 .linea-ped .paso{grid-template-columns:36px 1fr 36px;min-height:38px}
@@ -194,6 +195,42 @@ main{padding:14px}
 .pie{background:var(--carta);margin:28px -14px -14px;padding:22px 18px 30px;border-top:1px solid var(--linea);display:grid;gap:8px;font-size:14px;color:var(--gris)}
 .pie img{height:30px;width:auto;justify-self:start}
 .pie b{color:var(--tinta)}
+/* Cuenta WiiGo Club (parte 2) */
+.form{display:grid;gap:12px}
+.campo{display:grid;gap:5px;font-size:13px;font-weight:800;color:var(--gris)}
+.campo input{height:50px;border:1.5px solid var(--linea);border-radius:14px;background:var(--carta);padding:0 14px;font:600 16px var(--texto);color:var(--tinta);width:100%}
+.campo input:focus{border-color:var(--bosque);outline:none}
+.campo input[readonly]{background:var(--fondo);color:var(--gris)}
+.dos{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tilde{display:flex;gap:10px;align-items:flex-start;font-size:14px;color:var(--tinta);font-weight:600;line-height:1.35}
+.tilde input{width:22px;height:22px;accent-color:var(--bosque);margin:0;flex-shrink:0}
+.tilde small{display:block;color:var(--gris);font-weight:500;font-size:12.5px}
+.codigo{font:800 30px var(--display)!important;letter-spacing:.35em;text-align:center}
+.cta{border:0;border-radius:16px;min-height:54px;background:var(--bosque);color:#f5f1e8;font-weight:800;font-size:16px;width:100%}
+.cta.naranja{background:var(--energia);color:#2a1406}
+.texto-cuenta{color:var(--gris);font-size:14.5px;margin:0 0 14px}
+.prueba{background:#fff6dc;border:1px dashed #e2c46e;border-radius:12px;padding:9px 12px;font-size:12.5px;color:#6b5414;margin-top:14px}
+.club{background:radial-gradient(90% 120% at 100% 100%,#3a4d35 0,rgba(58,77,53,0) 70%),var(--bosque);color:#f5efe3;border-radius:22px;padding:18px;display:grid;gap:4px}
+.club small{color:#c9cfbd;font-size:13px}
+.club b{font:800 40px/1 var(--display);letter-spacing:-.02em;color:#f1c75b}
+.club span{font-size:13px;color:#c9cfbd}
+.sub-cuenta{margin:20px 2px 8px;font:800 18px var(--display)}
+.compra{background:var(--carta);border:1px solid var(--linea);border-radius:16px;margin-bottom:8px;overflow:hidden}
+.compra-cab{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:10px;align-items:center;width:100%;border:0;background:none;padding:12px 12px 12px 14px;text-align:left}
+.compra-cab b{display:block;font:800 19px var(--display)}
+.compra-cab small{display:block;color:var(--gris);font-size:12.5px}
+.compra-cab svg{color:var(--gris);transition:transform .2s}
+.compra-cab[aria-expanded="true"] svg{transform:rotate(180deg)}
+.compra .pts{text-align:right;font-weight:800;font-size:15px;color:#a8461a}
+.compra .pts span{display:block;font-size:11.5px}
+.compra-items{border-top:1px solid var(--linea);padding:8px 12px 12px;background:#fffdf8}
+.compra-item{display:grid;grid-template-columns:40px minmax(0,1fr) auto;gap:10px;align-items:center;padding:6px 0;font-size:13.5px}
+.compra-item .mini{width:40px;height:40px;display:grid;place-items:center}
+.compra-item .mini img{width:100%;height:100%;object-fit:contain}
+.compra-item .kraft{width:100%;font-size:6px;padding:2px;border-radius:8px}
+.dato{display:flex;justify-content:space-between;gap:10px;padding:12px 2px;border-bottom:1px solid var(--linea);font-size:14.5px}
+.dato span{color:var(--gris)}
+.pts-cab{border:0;border-radius:999px;background:#f1c75b;color:#3b2f0e;font-weight:800;font-size:13px;height:44px;padding:0 12px;display:flex;align-items:center;gap:5px;flex-shrink:0}
 .aviso{position:fixed;left:50%;bottom:92px;transform:translateX(-50%);background:var(--tinta);color:#fff;padding:10px 16px;border-radius:14px;font-weight:700;font-size:14px;z-index:60;max-width:90vw;text-align:center}
 .oculto{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 /* En la compu: el mismo recorrido, más ancho. Va al final para ganarle a las reglas del celu. */

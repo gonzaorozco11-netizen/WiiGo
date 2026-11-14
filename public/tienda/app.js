@@ -97,7 +97,15 @@
   function ordenar(l) { return l.slice().sort(function (a, b) { return (b.s > 0) - (a.s > 0) || (b.img ? 1 : 0) - (a.img ? 1 : 0) || a.t.localeCompare(b.t, 'es'); }); }
 
   /* estado */
-  var S = { vista: 'inicio', f: null, q: '', limite: 20, menu: false, menuMarca: null, menuQ: '', ficha: null, pedido: false };
+  var S = { vista: 'inicio', f: null, q: '', limite: 20, menu: false, menuMarca: null, menuQ: '', ficha: null, pedido: false, cuenta: false, paso: 'dni', datos: {}, usuario: null, enviando: false, compraAbierta: null };
+  // Puntos WiiGo Club: 20 cada $1.000 en productos WiiGo, 5 en las demás marcas (lib/puntosWiigo.ts).
+  function puntosDe(p, importe) { return Math.floor((p.m === 'WiiGo' ? 20 : 5) * importe / 1000); }
+  // La cuenta habla con /api/tienda/cuenta (app/api/tienda/cuenta/route.ts). La sesión es una cookie que la página no ve.
+  function api(cuerpo) {
+    return fetch('/api/tienda/cuenta', cuerpo ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo), credentials: 'same-origin' } : { credentials: 'same-origin' })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok && !j.error) j.error = 'Algo falló. Probá de nuevo en un momento.'; return j; }); })
+      .catch(function () { return { error: 'Sin conexión. Revisá internet y probá de nuevo.' }; });
+  }
   var carrito = [], sabor = {};
   function stockDe(p, v) { if (v) { var x = (p.v || []).filter(function (y) { return y.n === v; })[0]; return x ? x.s : 0; } return p.s; }
   function saborDe(p) { if (!p.v || !p.v.length) return null; if (sabor[p.id] === undefined) sabor[p.id] = ((p.v.filter(function (v) { return v.s > 0; })[0]) || {}).n || null; return sabor[p.id]; }
@@ -109,7 +117,7 @@
     if (n > 0 && l.q === antes) aviso('No hay más stock de este producto');
     carrito = carrito.filter(function (x) { return x.q > 0; });
   }
-  function totales() { var t = { u: 0, g: 0, e: 0 }; carrito.forEach(function (l) { var p = POR_ID[l.id]; t.u += l.q; t.g += p.p * l.q; t.e += (p.e || p.p) * l.q; }); return t; }
+  function totales() { var t = { u: 0, g: 0, e: 0, p: 0 }; carrito.forEach(function (l) { var p = POR_ID[l.id]; t.u += l.q; t.g += p.p * l.q; t.e += (p.e || p.p) * l.q; t.p += puntosDe(p, p.p * l.q); }); return t; }
   function aviso(t) { var d = document.createElement('div'); d.className = 'aviso'; d.setAttribute('role', 'status'); d.textContent = t; document.body.appendChild(d); setTimeout(function () { d.remove(); }, 1800); }
 
   /* la tarjeta, de a dos, como Alifrut */
@@ -222,12 +230,67 @@
       (p.o ? '<p class="f-chico"><b>Origen:</b> ' + esc(p.o) + '</p>' : '') +
       (p.in ? '<p class="f-chico"><b>Ingredientes:</b> ' + esc(p.in) + (p.al ? ' · <b>Alérgenos:</b> ' + esc(p.al) : '') + '</p>' : '') + '</div></section>';
   }
+  /* ---------- Cuenta WiiGo Club: DNI → (datos) → código al mail → Mi WiiGo ---------- */
+  function cuenta() {
+    if (!S.cuenta) return '';
+    var d = S.datos, cuerpo = '', espera = S.enviando ? ' disabled' : '';
+    var t2 = function (t) { return '<h2 class="f-nombre" style="margin-top:0">' + t + '</h2>'; };
+    if (S.usuario) cuerpo = miWiigo();
+    else if (S.paso === 'dni') cuerpo = t2('Entrá a WiiGo Club') +
+      '<p class="texto-cuenta">Una sola cuenta para comprar online y sumar puntos en cualquier estación. Sin contraseña: te mandamos un código a tu mail.</p>' +
+      '<div class="form"><label class="campo">Tu DNI<input id="c-dni" inputmode="numeric" autocomplete="off" placeholder="Sin puntos" value="' + esc(d.dni || '') + '"></label><button class="cta" data-a="c-dni"' + espera + '>' + (S.enviando ? 'Un momento…' : 'Seguir') + '</button></div>';
+    // Con un DNI del Club sin mail no se muestra nada de esa persona hasta que confirme su apellido.
+    else if (S.paso === 'datos') cuerpo = t2(d.encontrado ? 'Este DNI ya es del Club' : 'Creá tu cuenta') +
+      '<p class="texto-cuenta">' + (d.encontrado ? 'Confirmá tu apellido y sumá tu mail para entrar desde el celu.' : 'Es la misma cuenta del WiiGo Club: tus puntos se suman online y en la estación.') + '</p><div class="form">' +
+      (d.encontrado ? '<label class="campo">Tu apellido<input id="c-apellido-conf" autocomplete="family-name"><small style="font-weight:500">Para cuidar tu cuenta: el mismo que diste en la estación.</small></label>'
+        : '<div class="dos"><label class="campo">Nombre<input id="c-nombre" autocomplete="given-name"></label><label class="campo">Apellido<input id="c-apellido" autocomplete="family-name"></label></div>') +
+      '<label class="campo">DNI<input value="' + esc(d.dni) + '" readonly></label><label class="campo">Mail<input id="c-mail" type="email" autocomplete="email" placeholder="tu@mail.com"></label>' +
+      '<label class="campo">Cumpleaños<input id="c-cumple" type="date"></label>' +
+      '<label class="tilde"><input id="c-promos" type="checkbox"><span>Quiero recibir novedades y promos por mail<small>Es opcional. Te das de baja cuando quieras.</small></span></label>' +
+      '<button class="cta" data-a="c-datos"' + espera + '>' + (S.enviando ? 'Mandando…' : 'Mandame el código') + '</button><button class="ver-mas" style="margin-top:0" data-a="c-volver">Usar otro DNI</button></div>';
+    else cuerpo = t2('Revisá tu mail') + '<p class="texto-cuenta">Te mandamos un código de 6 números a <b>' + esc(d.mail || 'tu mail') + '</b>. Vence en 15 minutos. Si no lo ves, mirá en «Spam» o «Promociones».</p>' +
+      '<div class="form"><label class="campo">Código<input id="c-codigo" class="codigo" inputmode="numeric" maxlength="6" autocomplete="one-time-code"></label><button class="cta naranja" data-a="c-codigo"' + espera + '>' + (S.enviando ? 'Entrando…' : 'Entrar') + '</button>' +
+      '<button class="ver-mas" style="margin-top:0" data-a="c-volver">Usar otro DNI</button></div>' +
+      (d.encontrado === undefined ? '<p class="f-chico">¿Ese no es tu mail? Pedí que lo corrijan en la estación.</p>' : '');
+    return '<div class="fondo" data-a="cerrar-cuenta"></div><section class="hoja" role="dialog" aria-modal="true" aria-label="Mi WiiGo"><div class="hoja-cab"><span></span><button class="redondo" data-a="cerrar-cuenta" aria-label="Cerrar">' + ic('cruz', 20) + '</button></div><div class="hoja-cuerpo">' + cuerpo + '</div></section>';
+  }
+  function fechaCorta(iso) { return new Date(iso).toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'America/Argentina/Buenos_Aires' }); }
+  function miWiigo() {
+    var u = S.usuario;
+    var compras = u.compras.length ? u.compras.map(function (c, i) {
+      var abierta = S.compraAbierta === i, n = c.items.reduce(function (a, it) { return a + it.q; }, 0);
+      return '<div class="compra"><button class="compra-cab" data-a="c-compra" data-i="' + i + '" aria-expanded="' + abierta + '"><span><b>' + plata(c.total) + '</b><small>' + esc(fechaCorta(c.fecha)) + ' · ' + esc(c.donde) + '</small><small>' + n + (n === 1 ? ' producto' : ' productos') + (c.pago ? ' · ' + esc(c.pago) : '') + '</small></span><span class="pts">+' + c.puntos + '<span>puntos</span></span>' + ic('abajo', 18) + '</button>' +
+        (abierta ? '<div class="compra-items">' + c.items.map(function (it) { return '<div class="compra-item"><span class="mini">' + (it.img ? imagen(it.img, 96) : '') + '</span><span>' + (it.q > 1 ? it.q + ' × ' : '') + esc(titulo(it.n)) + (it.v ? ' — ' + esc(it.v) : '') + '</span><b>' + plata(it.imp) + '</b></div>'; }).join('') +
+          '<button class="ver-mas" style="margin-top:6px" data-a="c-repetir" data-i="' + i + '">Volver a pedir todo</button></div>' : '') + '</div>';
+    }).join('') : '<p class="texto-cuenta">Todavía no hay compras. Las que hagas acá o en la estación (dando tu DNI) aparecen solas.</p>';
+    var cumple = u.cumple ? '<div class="dato"><span>Cumpleaños</span><b>' + esc(new Date(u.cumple + 'T12:00:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'long' })) + '</b></div>'
+      : '<div class="dato" style="align-items:center"><span>Cumpleaños</span><span style="display:flex;gap:6px"><input id="c-cumple2" type="date" aria-label="Tu cumpleaños" style="height:40px;border:1.5px solid var(--linea);border-radius:10px;padding:0 8px;font:600 14px var(--texto);background:var(--carta)"><button class="acceso" data-a="c-cumple">Guardar</button></span></div>';
+    return '<div class="club"><small>Hola, ' + esc(u.nombre) + ' · WiiGo Club</small><b>' + u.puntos.toLocaleString('es-AR') + ' puntos</b><span>Sumás 20 puntos cada $1.000 en productos WiiGo y 5 en las demás marcas, online o en la estación.</span></div>' +
+      '<h3 class="sub-cuenta">Mis compras</h3>' + compras +
+      '<h3 class="sub-cuenta">Mis datos</h3><div class="dato"><span>Nombre</span><b>' + esc((u.nombre + ' ' + u.apellido).trim()) + '</b></div><div class="dato"><span>DNI</span><b>' + esc(u.dni) + '</b></div><div class="dato"><span>Mail</span><b>' + esc(u.email) + '</b></div>' + cumple +
+      '<label class="tilde" style="margin:14px 2px"><input type="checkbox" data-a="c-promos"' + (u.promos ? ' checked' : '') + '><span>Recibir novedades y promos por mail</span></label>' +
+      '<button class="ver-mas" data-a="c-salir">Salir de mi cuenta</button>';
+  }
+  // Manda un paso de la cuenta y repinta con lo que conteste el servidor.
+  // Mientras espera, solo se apaga el botón (sin redibujar, así no se borra lo que escribió).
+  function pasoCuenta(cuerpo, siOk) {
+    if (S.enviando) return;
+    S.enviando = true;
+    var b = document.querySelector('.hoja .cta'), texto = b ? b.textContent : '';
+    if (b) { b.disabled = true; b.textContent = 'Un momento…'; }
+    api(cuerpo).then(function (r) {
+      S.enviando = false;
+      if (r.error) { if (b) { b.disabled = false; b.textContent = texto; } aviso(r.error); return; }
+      siOk(r); pintar(false);
+    });
+  }
   function pedido() {
     if (!S.pedido) return '';
     var t = totales();
     return '<div class="fondo" data-a="cerrar-pedido"></div><section class="hoja" role="dialog" aria-modal="true" aria-label="Mi pedido"><div class="hoja-cab"><h2>Mi pedido</h2><button class="redondo" data-a="cerrar-pedido" aria-label="Cerrar">' + ic('cruz', 20) + '</button></div><div class="hoja-cuerpo">' +
       (carrito.length ? carrito.map(function (l) { var p = POR_ID[l.id]; return '<div class="linea-ped"><span class="mini">' + foto(p) + '</span><span><b>' + esc(p.t) + (l.v ? ' — ' + esc(l.v) : '') + '</b><small>' + plata(p.p * l.q) + ' · efectivo ' + plata((p.e || p.p) * l.q) + '</small></span><div class="paso"><button data-a="p-restar" data-id="' + l.id + '" data-v="' + esc(l.v || '') + '" aria-label="Uno menos">−</button><span>' + l.q + '</span><button data-a="p-sumar" data-id="' + l.id + '" data-v="' + esc(l.v || '') + '" aria-label="Uno más">+</button></div></div>'; }).join('') : '<div class="vacio">Todavía no agregaste nada.</div>') + '</div>' +
-      (carrito.length ? '<div class="hoja-pie"><div class="total"><span>Total</span><b>' + plata(t.g) + '</b></div><div class="total ef"><span>Pagando en efectivo al retirar</span><b>' + plata(t.e) + '</b></div><span class="nota">Lo retirás en Arístides Villanueva 256, listo en menos de 15 minutos.</span><span class="nota" style="background:var(--salvia-t);border-color:#d7dcc8"><b>Muy pronto vas a poder pagar online</b> con Mercado Pago o en efectivo al retirar. Mientras tanto, mostrá este pedido en la estación y te lo armamos.</span></div>' : '') + '</section>';
+      (carrito.length ? '<div class="hoja-pie"><div class="total"><span>Total</span><b>' + plata(t.g) + '</b></div><div class="total ef"><span>Pagando en efectivo al retirar</span><b>' + plata(t.e) + '</b></div>' +
+      '<div class="total" style="font-size:14px"><span>' + (S.usuario ? 'Sumás en WiiGo Club' : '<button data-a="cuenta" style="border:0;background:none;padding:0;color:#a8461a;font-weight:800;text-decoration:underline">Entrá con tu DNI</button> y sumás') + '</span><b style="font-size:16px;color:#a8461a">+' + t.p + ' puntos</b></div><span class="nota">Lo retirás en Arístides Villanueva 256, listo en menos de 15 minutos.</span><span class="nota" style="background:var(--salvia-t);border-color:#d7dcc8"><b>Muy pronto vas a poder pagar online</b> con Mercado Pago o en efectivo al retirar. Mientras tanto, mostrá este pedido en la estación y te lo armamos.</span></div>' : '') + '</section>';
   }
 
   /* pintar */
@@ -235,14 +298,14 @@
     var t = totales(), f = S.f || {};
     var acc = function (a, ico, txt, on, n) { return '<button class="acceso" data-a="' + a + '" aria-pressed="' + !!on + '">' + ic(ico, 16) + txt + (n ? '<span class="n">' + n + '</span>' : '') + '</button>'; };
     var cab = '<header class="cab"><div class="cab-fila"><button class="redondo" data-a="abrir-menu" aria-label="Marcas y rubros">' + ic('menu') + '</button><button data-a="inicio" style="border:0;background:none;padding:0" aria-label="Inicio"><img class="logo" src="/wiigo-logo-negro.png" alt="WiiGo Estaciones de Bienestar"></button><span class="espacio"></span>' +
-      '<button class="redondo" data-a="cuenta" aria-label="Mi cuenta">' + ic('persona') + '</button><button class="redondo" data-a="abrir-pedido" aria-label="Mi pedido">' + ic('bolsa') + '<span class="n">' + t.u + '</span></button></div>' +
+      (S.usuario ? '<button class="pts-cab" data-a="cuenta" aria-label="Mi WiiGo: ' + S.usuario.puntos + ' puntos">★ ' + S.usuario.puntos.toLocaleString('es-AR') + '</button>' : '<button class="redondo" data-a="cuenta" aria-label="Mi cuenta">' + ic('persona') + '</button>') + '<button class="redondo" data-a="abrir-pedido" aria-label="Mi pedido">' + ic('bolsa') + '<span class="n">' + t.u + '</span></button></div>' +
       '<label class="buscar">' + ic('lupa', 20) + '<span class="oculto">Buscar producto</span><input id="q" type="search" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="Buscar producto" value="' + esc(S.q) + '">' + (S.q ? '<button class="limpiar" data-a="limpiar" aria-label="Borrar búsqueda">' + ic('cruz', 18) + '</button>' : '') + '</label>' +
       '<div class="accesos">' + acc('nuevos', 'chispa', 'Nuevos', f.nuevos, NUEVOS.length) + acc('abrir-menu', 'marcas', 'Marcas', false) + acc('mundo', 'globo', 'Del mundo', f.mundo) + acc('objetivos', 'objetivo', 'Objetivos', f.objetivos) + acc('pros', 'salud', 'Profesionales', S.vista === 'pros') + '</div></header>';
     var cuerpo = S.vista === 'pros' ? profesionales() : (S.vista === 'lista' || S.q.length >= 2) ? lista() : inicio();
     var barra = t.u && !S.pedido && !S.ficha ? '<div class="barra"><button data-a="abrir-pedido"><span>' + ic('bolsa', 20) + t.u + (t.u === 1 ? ' producto' : ' productos') + ' · ' + plata(t.g) + '</span><span>Ver mi pedido ' + ic('flecha', 18) + '</span></button></div>' : '';
     var foco = document.activeElement && (document.activeElement.id === 'q' || document.activeElement.id === 'mq') ? document.activeElement.id : null;
     var pos = foco ? document.activeElement.selectionStart : 0, y = window.scrollY;
-    app.innerHTML = cab + '<main>' + cuerpo + '</main>' + barra + cajon() + ficha() + pedido();
+    app.innerHTML = cab + '<main>' + cuerpo + '</main>' + (S.cuenta ? '' : barra) + cajon() + ficha() + pedido() + cuenta();
     if (foco) { var i = document.getElementById(foco); if (i) { i.focus(); try { i.setSelectionRange(pos, pos); } catch (e) {} } }
     window.scrollTo(0, arriba ? 0 : y);
     montarGlobo();
@@ -356,7 +419,48 @@
     obj: function (d) { var f = S.f; f.obj = d.o; f.titulo = d.o; S.limite = 20; pintar(false); },
     'obj-directo': function (d) { ver({ objetivos: true, obj: d.o, titulo: d.o }); },
     pros: function () { S.vista = 'pros'; S.f = null; S.q = ''; pintar(true); },
-    cuenta: function () { aviso('Muy pronto: tu cuenta WiiGo Club con tus compras y puntos'); },
+    cuenta: function () { S.cuenta = true; S.pedido = false; S.ficha = null; S.menu = false; if (!S.usuario && S.paso !== 'codigo') { S.paso = 'dni'; } pintar(false); var i = document.getElementById('c-dni'); if (i) i.focus(); },
+    'cerrar-cuenta': function () { S.cuenta = false; pintar(false); },
+    'c-volver': function () { S.paso = 'dni'; S.datos = {}; pintar(false); },
+    'c-dni': function () {
+      var dni = (document.getElementById('c-dni').value || '').replace(/\D/g, '');
+      if (dni.length < 7) return aviso('Escribí tu DNI, sin puntos');
+      S.datos = { dni: dni };
+      pasoCuenta({ accion: 'dni', dni: dni }, function (r) { if (r.paso === 'codigo') { S.datos.mail = r.mail; S.paso = 'codigo'; } else { S.datos.encontrado = !!r.encontrado; S.paso = 'datos'; } });
+    },
+    'c-datos': function () {
+      var v = function (id) { var e = document.getElementById(id); return e ? e.value.trim() : ''; }, d = S.datos;
+      if (!d.encontrado && (!v('c-nombre') || !v('c-apellido'))) return aviso('Completá tu nombre y apellido');
+      if (d.encontrado && !v('c-apellido-conf')) return aviso('Escribí tu apellido');
+      if (!/^\S+@\S+\.\S+$/.test(v('c-mail'))) return aviso('Revisá el mail');
+      pasoCuenta({ accion: 'datos', dni: d.dni, nombre: v('c-nombre'), apellido: v('c-apellido'), apellidoConf: v('c-apellido-conf'), email: v('c-mail'), cumple: v('c-cumple'), promos: document.getElementById('c-promos').checked },
+        function (r) { S.datos.mail = r.mail; S.paso = 'codigo'; });
+    },
+    'c-codigo': function () {
+      var codigo = (document.getElementById('c-codigo').value || '').replace(/\D/g, '');
+      if (codigo.length !== 6) return aviso('El código tiene 6 números');
+      pasoCuenta({ accion: 'codigo', dni: S.datos.dni, codigo: codigo }, function (r) { S.usuario = r.usuario; S.paso = 'dni'; S.datos = {}; setTimeout(function () { aviso('¡Listo, ' + r.usuario.nombre + '! Ya estás en WiiGo Club'); }, 50); });
+    },
+    'c-compra': function (d) { var i = Number(d.i); S.compraAbierta = S.compraAbierta === i ? null : i; pintar(false); },
+    'c-repetir': function (d) {
+      var c = S.usuario.compras[Number(d.i)], agregados = 0, faltan = 0;
+      c.items.forEach(function (it) {
+        var p = it.id && POR_ID[it.id]; if (!p) { faltan++; return; }
+        var v = it.v && (p.v || []).some(function (x) { return x.n === it.v; }) ? it.v : saborDe(p), antes = enCarrito(p.id, v);
+        sumar(p.id, v, it.q); if (enCarrito(p.id, v) > antes) agregados++; else faltan++;
+      });
+      S.cuenta = false; S.pedido = agregados > 0; pintar(false);
+      aviso(!agregados ? 'Nada de esa compra tiene stock ahora' : faltan ? 'Agregamos lo que hay en stock (' + faltan + ' sin stock)' : 'Agregamos todo a tu pedido');
+    },
+    'c-cumple': function () { var v = document.getElementById('c-cumple2').value; if (!v) return aviso('Elegí la fecha'); pasoCuenta({ accion: 'actualizar', cumple: v }, function (r) { S.usuario = r.usuario; aviso('Guardado'); }); },
+    'c-promos': function () {
+      var quiere = !S.usuario.promos;
+      api({ accion: 'actualizar', promos: quiere }).then(function (r) {
+        if (r.error) { aviso(r.error); pintar(false); return; }
+        S.usuario = r.usuario; pintar(false); aviso(quiere ? 'Vas a recibir novedades' : 'Listo, no te mandamos más novedades');
+      });
+    },
+    'c-salir': function () { pasoCuenta({ accion: 'salir' }, function () { S.usuario = null; S.cuenta = false; S.compraAbierta = null; }); },
     sabor: function (d) { sabor[d.id] = d.x; refrescar(d.id); },
     sumar: function (d) { var p = POR_ID[d.id]; sumar(d.id, saborDe(p), 1); refrescar(d.id); },
     restar: function (d) { var p = POR_ID[d.id]; sumar(d.id, saborDe(p), -1); refrescar(d.id); },
@@ -370,13 +474,18 @@
     mas: function () { S.limite += 20; pintar(false); }
   };
   document.addEventListener('click', function (e) { var el = e.target.closest('[data-a]'); if (!el || el.tagName === 'INPUT') return; var a = A[el.getAttribute('data-a')]; if (a) { e.preventDefault(); a(el.dataset); } });
+  // Las casillas avisan con «change» (el clic no pasa por A para no frenar el tilde).
+  document.addEventListener('change', function (e) { if (e.target.getAttribute && e.target.getAttribute('data-a') === 'c-promos') A['c-promos'](e.target.dataset); });
   document.addEventListener('input', function (e) {
     if (e.target.id === 'q') { S.q = e.target.value; S.limite = 20; if (S.q.length < 2 && S.vista !== 'lista') S.vista = S.vista === 'pros' ? 'pros' : 'inicio'; pintar(false); }
     if (e.target.id === 'mq') { S.menuQ = e.target.value; pintar(false); }
   });
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Enter' && e.target.id === 'q') e.target.blur();
+    if (e.key === 'Enter' && /^c-/.test(e.target.id || '')) { var f = e.target.closest('.form'), b = f && f.querySelector('.cta'); if (b) { e.preventDefault(); b.click(); } }
     if (e.key === 'Escape') { S.menu = false; S.ficha = null; S.pedido = false; pintar(false); }
   });
   pintar(false);
+  // ¿Ya entró antes en este celu? La cookie la lee el servidor.
+  api().then(function (r) { if (r && r.usuario) { S.usuario = r.usuario; pintar(false); } });
 })();
