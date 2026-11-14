@@ -19,7 +19,9 @@ import type { CobroEsperando, CobrosEsperando } from "@/lib/cobrosEsperando";
 //   - El número sale también en «Cobrar pedidos» del inicio, en el ícono de la
 //     app (donde el aparato lo permite) y en la pestaña de la compu.
 
-const CADA_MS = 5_000;
+// Cada 10 s (era 5 s): esta pantalla queda abierta todo el día en la tablet y
+// cada pregunta cuenta para el tope del plan de Vercel (pausado el 2026-11-14).
+const CADA_MS = 10_000;
 const REPETIR_CADA_MS = 15_000;
 const REPETIR_HASTA_MS = 5 * 60_000;
 

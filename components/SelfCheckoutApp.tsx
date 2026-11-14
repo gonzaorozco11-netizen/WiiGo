@@ -33,11 +33,11 @@ import { esDeNocheSegunSol } from "@/lib/clima";
 // El cielo (clima, día o noche) cambia despacio: cada 10 minutos alcanza.
 const CIELO_POLL_MS = 10 * 60 * 1000;
 
-const STOCK_POLL_MS = 8000;
-// Más espaciado que el stock: los precios cambian de vez en cuando, el stock
-// con cada venta. 15 segundos igual se siente instantáneo para quien acaba de
-// cambiar un precio y va a mirar el totem.
-const PRECIOS_POLL_MS = 15000;
+// Stock cada 30 s y precios cada minuto (eran 8 s y 15 s). Preguntar tan seguido
+// todo el día se comía el tope del plan de Vercel, que pausó el proyecto el
+// 2026-11-14. Al cobrar, el servidor vuelve a mirar stock y precio igual.
+const STOCK_POLL_MS = 30000;
+const PRECIOS_POLL_MS = 60000;
 
 type Item = {
   variante: VarianteTotem;

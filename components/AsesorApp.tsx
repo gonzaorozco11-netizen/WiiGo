@@ -56,7 +56,10 @@ const IDLE_COUNTDOWN_S = 10; // después del aviso, segundos para volver sola al
    Todo espera a que nadie esté tocando la pantalla: nunca se le mueve nada
    debajo de la mano a un cliente que está mirando un producto.
    --------------------------------------------------------------------------- */
-const CHEQUEO_MS = 3000;
+// Cada 30 s (era 3 s): preguntar cada 3 segundos todo el día eran unas 29.000
+// consultas diarias solo de esta pantalla, y el 2026-11-14 Vercel pausó el
+// proyecto por pasarse del tope del plan. Un precio nuevo tarda medio minuto más.
+const CHEQUEO_MS = 30000;
 const QUIETO_MS = 4000; // hace cuánto que nadie toca la pantalla
 // Para recargar la página entera se pide mucho más silencio: es lo único que
 // parpadea, así que tiene que pasar cuando no hay nadie adelante.

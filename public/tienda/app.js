@@ -156,9 +156,9 @@
   function aviso(t) { var d = document.createElement('div'); d.className = 'aviso'; d.setAttribute('role', 'status'); d.textContent = t; document.body.appendChild(d); setTimeout(function () { d.remove(); }, 1800); }
 
   /* la tarjeta, de a dos, como Alifrut */
-  // Las fotos pesan hasta 150 KB a 1000 px: el optimizador de Next las manda del tamaño justo.
-  // Si el optimizador no responde, onerror vuelve a la foto original.
-  function chica(url, w) { return url && url.indexOf('https://') === 0 ? '/_next/image?url=' + encodeURIComponent(url) + '&w=' + w + '&q=75' : url; }
+  // Sin el optimizador de Vercel (2026-11-14): cada foto achicada cuenta para el tope del plan, y el
+  // proyecto quedó pausado. Las fotos ya vienen a 1000 px y hasta 150 KB; el navegador las achica solo.
+  function chica(url) { return url; }
   function imagen(url, w, extra) { return '<img src="' + esc(chica(url, w)) + '" data-orig="' + esc(url) + '" onerror="if(this.dataset.orig&&this.src.indexOf(\'/_next/\')>=0)this.src=this.dataset.orig" alt="" loading="lazy" decoding="async"' + (extra || '') + '>'; }
   function foto(p, w) {
     if (p.img) return imagen(p.img, w || 384);
