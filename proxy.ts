@@ -30,7 +30,9 @@ export const config = {
   // Que sean públicos no filtra nada: son un logo y unos íconos. Los datos
   // no salen por archivos estáticos.
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|self-checkout|asesor|comprobante|opinion/|login|api|.*\\..*).*)",
+    // /tienda también: es la tienda online, para cualquiera (public/tienda; los datos
+    // salen de /api/tienda/catalogo, con lo mismo que se ve en el local).
+    "/((?!_next/static|_next/image|favicon.ico|self-checkout|asesor|comprobante|opinion/|login|api|tienda(?:/|$)|.*\\..*).*)",
   ],
 };
 

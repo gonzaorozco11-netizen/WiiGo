@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>WiiGo · Estaciones de Bienestar</title>
+<meta name="description" content="La estación de servicio de tu cuerpo: alimentación consciente, suplementación y profesionales. Pedí online y retiralo listo en 15 minutos.">
+<!-- Hasta el lanzamiento (etapa 2, parte 5) no aparece en Google. -->
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#22301f">
+<link rel="icon" href="/icon.png">
+<base href="/tienda/">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=Figtree:wght@400;500;600;700;800&display=swap">
+<style>
+/* El formato de Alifrut (práctico: buscar, ver de a dos y agregar), con los colores de la pantalla asesora:
+   crema con un toque durazno, verde bosque, naranja y los tonos de los objetivos. */
+:root{
+  --fondo:#f5efe3; --carta:#fffaf2; --linea:#ebe1cf; --bosque:#22301f; --bosque2:#2e3f29; --salvia:#b6bca2; --salvia-t:#f0f2ec;
+  --energia:#e8743b; --tinta:#1b2219; --gris:#646759; --ef:#3b7a47; --kraft:#c9a072; --sombra:0 6px 18px rgba(34,48,31,.07);
+  --display:"Bricolage Grotesque","Segoe UI",system-ui,sans-serif; --texto:"Figtree",-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:#d8d2c3;color:var(--tinta);font:15px/1.4 var(--texto);-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:3px solid var(--energia);outline-offset:2px}
+.app{max-width:440px;min-height:100vh;margin:0 auto;position:relative;padding-bottom:92px}
+/* El toque durazno de la pantalla asesora, arriba a la derecha, en toda la página */
+body{background:radial-gradient(70% 40% at 100% 0,#f6dcc6 0,rgba(246,220,198,0) 70%) no-repeat,var(--fondo)}
+
+/* Encabezado: menú, logo, cuenta, pedido; buscador; accesos */
+.cab{position:sticky;top:0;z-index:20;background:rgba(245,239,227,.9);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);padding:calc(10px + env(safe-area-inset-top,0px)) 14px 10px;box-shadow:0 1px 0 var(--linea)}
+.hola{font:800 27px/1.02 var(--display);letter-spacing:-.03em;margin:6px 2px 4px;text-wrap:balance}
+.hola em{font-style:normal;color:var(--energia)}
+.hola-sub{margin:0 2px;color:var(--gris);font-size:14px}
+/* Arriba de todo: una persona cargando energía en una estación WiiGo */
+.carga{display:grid;grid-template-columns:minmax(0,1fr) 128px;gap:6px;align-items:center;background:radial-gradient(90% 120% at 100% 100%,#3a4d35 0,rgba(58,77,53,0) 70%),var(--bosque);color:#f5efe3;border-radius:26px;padding:16px 10px 10px 18px;box-shadow:0 14px 30px rgba(34,48,31,.22);overflow:hidden}
+.carga .hola{font-size:25px;margin:0 0 6px;color:#f5efe3}
+.carga .hola-sub{color:#c9cfbd}
+.carga svg{width:128px;height:auto;display:block}
+.carga .nivel{transform-box:fill-box;transform-origin:50% 100%;animation:llenar 3.2s ease-in-out infinite}
+@keyframes llenar{0%{transform:scaleY(.12);fill:#e8743b}45%{fill:#f1c75b}70%,100%{transform:scaleY(1);fill:#7fb069}}
+.carga .flujo{stroke-dasharray:3 9;animation:flujo .7s linear infinite}
+@keyframes flujo{to{stroke-dashoffset:-24}}
+.carga .chispa{opacity:0;animation:chispa 3.2s ease-out infinite}
+.carga .chispa.b{animation-delay:.12s}.carga .chispa.c{animation-delay:.24s}
+@keyframes chispa{0%,66%{opacity:0;transform:translateY(4px)}76%{opacity:1}100%{opacity:0;transform:translateY(-6px)}}
+.carga .rayo-pantalla{animation:titila 1.6s steps(2) infinite}
+@keyframes titila{50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.carga .nivel{transform:none;fill:#7fb069}}
+.cab-fila{display:flex;align-items:center;gap:10px}
+.cab-fila .logo{height:30px;width:auto;display:block}
+.redondo{width:44px;height:44px;border-radius:50%;border:0;background:var(--carta);display:grid;place-items:center;flex-shrink:0;position:relative;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.redondo .n{position:absolute;top:-3px;right:-3px;background:var(--energia);color:#2a1406;border-radius:999px;min-width:20px;height:20px;font-size:12px;font-weight:800;display:grid;place-items:center;padding:0 5px}
+.espacio{flex:1}
+.buscar{margin-top:12px;display:flex;align-items:center;gap:10px;background:var(--carta);border:1px solid var(--linea);border-radius:16px;padding:0 14px;height:50px}
+.buscar input{flex:1;border:0;background:none;font:500 16px var(--texto);color:var(--tinta);min-width:0;outline:none}
+.buscar input::placeholder{color:#7d8478}
+.buscar .limpiar{border:0;background:none;color:var(--gris);padding:6px}
+.accesos{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin:10px -14px 0;padding:2px 14px 2px}
+.accesos::-webkit-scrollbar{display:none}
+.acceso{flex-shrink:0;border:1px solid var(--linea);background:var(--carta);border-radius:999px;padding:8px 13px;display:flex;align-items:center;gap:6px;font-weight:700;font-size:14px;position:relative}
+.acceso[aria-pressed="true"]{background:var(--bosque);color:#f5f1e8;border-color:var(--bosque)}
+.acceso .n{position:absolute;top:-7px;left:22px;background:#d6352a;color:#fff;border-radius:999px;font-size:11px;font-weight:800;padding:0 6px;line-height:18px}
+
+main{padding:14px}
+.seccion{display:flex;align-items:center;gap:10px;margin:22px 0 12px;font:800 22px/1 var(--display);letter-spacing:-.02em}
+.seccion::before{content:"";width:5px;height:22px;border-radius:4px;background:var(--energia);flex-shrink:0}
+.seccion::after{content:"";flex:1;height:1px;background:var(--linea)}
+.filtro-cab{display:flex;align-items:center;gap:10px;margin:4px 0 12px}
+.filtro-cab b{font:800 20px/1.1 var(--display);letter-spacing:-.01em}
+.filtro-cab small{display:block;color:var(--gris);font-size:13px;font-weight:600}
+
+/* Tarjeta de producto, de a dos */
+.grilla{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.carrusel{display:grid;grid-auto-flow:column;grid-auto-columns:calc(50% - 5px);gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;padding-bottom:4px}
+.carrusel::-webkit-scrollbar{display:none}
+.carrusel>.tarjeta{scroll-snap-align:start}
+.tarjeta{background:var(--carta);border:1px solid var(--linea);border-radius:22px;display:flex;flex-direction:column;overflow:hidden;box-shadow:var(--sombra)}
+/* La info nutricional, chiquita: kcal y macros cada 100 g */
+.t-nutri{display:flex;flex-wrap:wrap;gap:4px}
+.t-nutri span{background:var(--fondo);border-radius:7px;padding:2px 6px;font-size:11px;font-weight:700;color:var(--gris);white-space:nowrap}
+.t-nutri span.kcal{background:#fde3d4;color:#a8461a}
+.f-desc{margin:10px 0 0;color:var(--gris);font-size:13px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.f-desc.abierta{display:block}
+.f-nutri{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;margin-top:12px}
+.f-nutri div{background:var(--carta);border:1px solid var(--linea);border-radius:12px;padding:7px 4px;text-align:center}
+.f-nutri div.kcal{background:#fde3d4;border-color:#f6c9ad}
+.f-nutri small{display:block;font-size:10.5px;color:var(--gris);font-weight:700}
+.f-nutri b{font:800 15px var(--display)}
+.f-chico{font-size:12.5px;color:var(--gris);margin:10px 2px 0;line-height:1.4}
+/* El planeta en «Del mundo» */
+.mundo{background:radial-gradient(ellipse at 50% 40%,#0d1a2b 0%,#05080d 72%);border-radius:24px;margin-bottom:12px;overflow:hidden;position:relative}
+.mundo .globo{position:relative;aspect-ratio:1;width:100%;touch-action:pan-y;cursor:grab}
+.mundo canvas{position:absolute;inset:0;width:100%!important;height:100%!important}
+.mundo .etiquetas{position:absolute;inset:0;pointer-events:none;z-index:1}
+.mundo .pin{position:absolute;left:0;top:0;pointer-events:auto;border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:5px 11px 5px 7px;display:inline-flex;align-items:center;gap:7px;background:rgba(8,14,22,.78);color:#fff;font-size:12.5px;font-weight:800;white-space:nowrap;transition:opacity .25s}
+.mundo .pin i{width:9px;height:9px;border-radius:50%;background:var(--energia);box-shadow:0 0 0 4px rgba(232,116,59,.3)}
+.mundo .pin[aria-pressed="true"]{background:var(--energia);color:#2a1406}
+.mundo .pin[aria-pressed="true"] i{background:#fff}
+.mundo .pin.izq{flex-direction:row-reverse;padding:5px 7px 5px 11px}
+.mundo .pin.punto{font-size:0;gap:0;padding:6px;background:transparent;border-color:transparent}
+.mundo-txt{position:absolute;left:16px;right:16px;bottom:14px;color:#e8eef5;pointer-events:none}
+.mundo-txt b{font:800 22px/1.05 var(--display)}
+.mundo-txt span{display:block;font-size:12.5px;color:#b9c6d6;margin-top:3px}
+.liviano{background:url(img/tierra-liviana.jpg) 0 50%/200% 100% repeat-x;border-radius:50%;width:70%;margin:12% auto;aspect-ratio:1;box-shadow:inset -30px -16px 60px rgba(0,0,0,.7),0 0 40px rgba(120,170,255,.35);animation:plano 60s linear infinite}
+@keyframes plano{to{background-position:-200% 50%}}
+.tonos .acceso{border:0}
+.t-arriba{position:relative;padding:10px 10px 0;border-bottom:1px solid var(--linea)}
+.t-rubro{font-size:11.5px;color:var(--gris);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.t-foto{border:0;background:none;padding:0;width:100%;aspect-ratio:1;display:grid;place-items:center}
+.t-foto img{width:84%;height:84%;object-fit:contain}
+.kraft{width:76%;aspect-ratio:1;border-radius:14px;display:grid;place-items:center;background:var(--kraft);color:#fffdf8;font:800 14px/1.1 var(--display);text-align:center;padding:10px}
+.t-marca{position:absolute;left:10px;bottom:8px;background:var(--salvia-t);color:#3f5536;border:1px solid #d7dcc8;border-radius:999px;padding:1px 9px;font-size:11.5px;font-weight:800;max-width:calc(100% - 64px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.t-ver{position:absolute;right:8px;bottom:6px;width:36px;height:36px;border-radius:50%;border:1px solid var(--linea);background:var(--carta);display:grid;place-items:center;color:var(--bosque2)}
+.t-etq{position:absolute;top:28px;left:10px;font-size:11px;font-weight:800;border-radius:999px;padding:2px 8px}
+.t-etq.sin{background:#2b2b2b;color:#fff}
+.t-etq.poco{background:#fff1d6;color:#7a4a00}
+.t-cuerpo{padding:10px 10px 12px;display:flex;flex-direction:column;gap:8px;flex:1}
+.t-nombre{font-weight:800;font-size:14.5px;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:36px}
+.t-sabores{display:flex;gap:6px;flex-wrap:wrap}
+.t-sabores button{border:1px solid var(--linea);background:var(--carta);border-radius:10px;padding:6px 8px;font-size:12px;font-weight:700;flex:1 1 40%;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.t-sabores button[aria-pressed="true"]{border-color:var(--bosque);background:var(--salvia-t);box-shadow:inset 0 0 0 1px var(--bosque)}
+.t-sabores button[disabled]{opacity:.4;text-decoration:line-through}
+.t-precio{margin-top:auto}
+.t-precio b{display:block;font:800 22px/1.1 var(--display);letter-spacing:-.02em}
+.t-precio span{display:block;color:var(--ef);font-weight:800;font-size:13.5px}
+.agregar{border:0;border-radius:14px;background:var(--bosque);color:#f5f1e8;min-height:46px;font-weight:800;font-size:16px;width:100%}
+.agregar[disabled]{background:#e6e1d5;color:#8e9187}
+.paso{display:grid;grid-template-columns:46px 1fr 46px;align-items:center;background:var(--bosque);color:#f5f1e8;border-radius:14px;min-height:46px;overflow:hidden}
+.paso button{border:0;background:none;color:inherit;height:46px;font-size:22px;font-weight:800}
+.paso span{text-align:center;font-weight:800;font-size:16px}
+.ver-mas{width:100%;margin-top:14px;border:1px solid var(--linea);background:var(--carta);border-radius:14px;min-height:48px;font-weight:800}
+.vacio{text-align:center;color:var(--gris);padding:40px 10px}
+
+/* Menú de la izquierda: marcas y sus rubros */
+.fondo{position:fixed;inset:0;background:rgba(24,35,26,.45);z-index:40}
+.cajon{position:fixed;top:0;bottom:0;left:0;z-index:41;width:min(340px,86vw);background:#eef0e8;display:flex;flex-direction:column;animation:izq .25s cubic-bezier(.2,.8,.2,1)}
+@keyframes izq{from{transform:translateX(-100%)}}
+.cajon-cab{display:flex;align-items:center;justify-content:space-between;padding:calc(16px + env(safe-area-inset-top,0px)) 14px 10px}
+.cajon-cab b{display:block;font:800 22px/1 var(--display);color:var(--bosque)}
+.cajon-cab small{font-size:11.5px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--gris)}
+.cajon .buscar{margin:0 14px 8px;height:46px}
+.cajon-lista{flex:1;overflow:auto;padding:0 8px 24px}
+.cajon-lista p{margin:16px 10px 4px;font-size:11.5px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--gris)}
+.c-fila{display:flex;align-items:center;gap:10px;width:100%;border:0;border-bottom:1px solid #dfe2d6;background:none;text-align:left;padding:13px 10px;font-size:15.5px;font-weight:600}
+.c-fila img{width:30px;height:30px;border-radius:50%;object-fit:cover;background:#fff;flex-shrink:0}
+.c-fila .cant{margin-left:auto;background:#fff;border-radius:999px;padding:1px 9px;font-size:12px;font-weight:800;color:var(--bosque2)}
+.c-fila svg{flex-shrink:0;transition:transform .2s;color:var(--gris)}
+.c-fila[aria-expanded="true"] svg{transform:rotate(180deg)}
+.c-subs{background:#fff;border-radius:14px;margin:4px 0 6px}
+.c-subs .c-fila{font-size:14.5px;padding:11px 14px;border-bottom-color:#eceee6}
+
+/* Ficha y pedido: hojas que suben */
+.hoja{position:fixed;left:0;right:0;bottom:0;z-index:41;max-width:440px;margin:0 auto;background:var(--fondo);border-radius:26px 26px 0 0;max-height:92vh;display:flex;flex-direction:column;animation:sube .28s cubic-bezier(.2,.8,.2,1)}
+@keyframes sube{from{transform:translateY(100%)}}
+.hoja-cab{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:16px 16px 6px}
+.hoja-cab h2{margin:0;font:800 24px/1.1 var(--display)}
+.hoja-cuerpo{overflow:auto;padding:0 16px 16px}
+.hoja-pie{padding:12px 16px calc(14px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--linea);display:grid;gap:8px;background:var(--carta)}
+.f-foto{background:#fff;border-radius:22px;aspect-ratio:1/.8;display:grid;place-items:center;border:1px solid var(--linea)}
+.f-foto img{width:78%;height:78%;object-fit:contain}
+.f-nombre{font:800 24px/1.1 var(--display);margin:14px 0 2px;letter-spacing:-.02em}
+.f-de{color:var(--gris);font-size:13.5px;font-weight:700}
+.f-precio{margin:12px 0}
+.f-precio b{font:800 30px var(--display);letter-spacing:-.02em;display:block}
+.f-precio span{color:var(--ef);font-weight:800;font-size:16px}
+.f-texto{background:var(--carta);border:1px solid var(--linea);border-radius:16px;padding:14px;margin-top:12px;font-size:14.5px}
+.f-texto p{margin:0 0 8px}.f-texto p:last-child{margin:0}
+.f-texto h3{margin:0 0 6px;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--gris)}
+.macros{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.macros div{background:var(--fondo);border-radius:10px;padding:8px;text-align:center}
+.macros small{display:block;font-size:11px;color:var(--gris);font-weight:700}
+.macros b{font:800 16px var(--display)}
+.linea-ped{display:grid;grid-template-columns:56px minmax(0,1fr) 120px;gap:10px;align-items:center;background:var(--carta);border:1px solid var(--linea);border-radius:16px;padding:8px;margin-bottom:8px}
+.linea-ped .mini{width:56px;height:56px;display:grid;place-items:center}
+.linea-ped .mini img{width:100%;height:100%;object-fit:contain}
+.linea-ped b{font-size:13.5px;line-height:1.25;display:block}
+.linea-ped small{color:var(--gris);font-size:12px}
+.linea-ped .paso{grid-template-columns:36px 1fr 36px;min-height:38px}
+.linea-ped .paso button{height:38px;font-size:18px}
+.total{display:flex;justify-content:space-between;align-items:baseline;font-weight:700}
+.total b{font:800 22px var(--display)}
+.total.ef b{color:var(--ef);font-size:19px}
+.nota{background:#fff6dc;border:1px solid #f0dca0;border-radius:12px;padding:9px 12px;font-size:13px}
+
+/* Barra del pedido */
+.barra{position:fixed;left:0;right:0;bottom:0;z-index:30;padding:10px 12px calc(10px + env(safe-area-inset-bottom,0px));max-width:440px;margin:0 auto}
+.barra button{width:100%;border:0;border-radius:18px;background:var(--bosque);color:#f5f1e8;min-height:58px;padding:0 18px;display:flex;align-items:center;justify-content:space-between;gap:10px;font-weight:800;font-size:15.5px;box-shadow:0 14px 30px rgba(24,35,26,.3)}
+.barra button span{display:flex;align-items:center;gap:8px}
+.barra button span:last-child{color:#f1c75b}
+
+.pie{background:var(--carta);margin:28px -14px -14px;padding:22px 18px 30px;border-top:1px solid var(--linea);display:grid;gap:8px;font-size:14px;color:var(--gris)}
+.pie img{height:30px;width:auto;justify-self:start}
+.pie b{color:var(--tinta)}
+.aviso{position:fixed;left:50%;bottom:92px;transform:translateX(-50%);background:var(--tinta);color:#fff;padding:10px 16px;border-radius:14px;font-weight:700;font-size:14px;z-index:60;max-width:90vw;text-align:center}
+.oculto{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+/* En la compu: el mismo recorrido, más ancho. Va al final para ganarle a las reglas del celu. */
+@media (min-width:760px){
+  .app{max-width:1180px;padding:0 8px 100px}
+  main{padding:18px 22px}
+  .cab{padding-left:22px;padding-right:22px;background:rgba(245,239,227,.96)}
+  /* La barra de arriba llega de borde a borde aunque la página tenga ancho máximo */
+  .cab::before{content:"";position:absolute;top:0;bottom:0;left:-100vmax;right:-100vmax;background:inherit;box-shadow:0 1px 0 var(--linea);z-index:-1}
+  body{overflow-x:hidden}
+  .grilla{grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px}
+  .carrusel{grid-auto-columns:220px;gap:14px}
+  .carga{grid-template-columns:minmax(0,1fr) 210px;padding:26px 24px 16px 34px}
+  .carga .hola{font-size:42px}
+  .carga .hola-sub{font-size:16px}
+  .carga svg{width:210px}
+  .barra,.hoja{max-width:560px}
+  .cajon{left:max(0px,calc(50% - 590px))}
+  .mundo .globo{max-width:620px;margin:0 auto}
+  .pie{margin-left:-22px;margin-right:-22px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app" id="app"><p style="padding:60px 16px;text-align:center;color:#626a5e">Cargando los productos…</p></div>
+<!-- El catálogo real, armado en el servidor con lo público de cada producto (lib/tiendaCatalogo.ts). -->
+<script src="/api/tienda/catalogo"></script>
+<script src="app.js?v=2"></script>
+</body>
+</html>

@@ -15,6 +15,25 @@ const nextConfig: NextConfig = {
   // ignora en silencio (solo avisa "Unrecognized key" en el build), así que
   // el límite había vuelto a 1MB sin que nadie se enterara.
   // Ver node_modules/next/dist/docs/01-app/03-api-reference/05-config/01-next-config-js/serverActions.md
+  // La tienda online pide las fotos de productos achicadas (/_next/image) para
+  // que el celu no baje fotos de 1000 px. Solo se permite el bucket público de
+  // Supabase del proyecto. Next 16 exige la lista de calidades; la tienda usa 75.
+  // Si el optimizador falla, la tienda vuelve sola a la foto original.
+  images: {
+    remotePatterns: process.env.SUPABASE_URL
+      ? [{ protocol: "https", hostname: new URL(process.env.SUPABASE_URL).hostname, pathname: "/storage/v1/object/public/**" }]
+      : [],
+    qualities: [75],
+  },
+  // La tienda online es una página suelta en public/tienda (sale tal cual del
+  // prototipo aprobado). Next no sirve un index.html solo por la carpeta:
+  // /tienda se reescribe a ese archivo.
+  async rewrites() {
+    return [
+      { source: "/tienda", destination: "/tienda/index.html" },
+      { source: "/tienda/", destination: "/tienda/index.html" },
+    ];
+  },
   experimental: {
     serverActions: {
       bodySizeLimit: "10mb",
