@@ -122,7 +122,14 @@ body{background:radial-gradient(70% 40% at 100% 0,#f6dcc6 0,rgba(246,220,198,0) 
 .buscar input{flex:1;border:0;background:none;font:500 16px var(--texto);color:var(--tinta);min-width:0;outline:none}
 .buscar input::placeholder{color:#7d8478}
 .buscar .limpiar{border:0;background:none;color:var(--gris);padding:6px}
-.accesos{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin:10px -14px 0;padding:2px 14px 2px}
+.accesos{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin:4px -14px 0;padding:10px 14px 2px}
+/* Objetivos: los botones de colores, de a dos */
+.objetivos{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.objetivo{border:0;border-radius:20px;padding:14px;min-height:104px;display:flex;flex-direction:column;justify-content:flex-end;text-align:left;position:relative;overflow:hidden}
+.objetivo::after{content:"";position:absolute;width:90px;height:90px;border-radius:50%;right:-30px;bottom:-36px;background:rgba(255,255,255,.16)}
+.objetivo b{font:800 18px/1.05 var(--display);position:relative}
+.objetivo span{font-size:12.5px;font-weight:700;opacity:.85;position:relative;margin-top:3px}
+@media (min-width:760px){.objetivos{grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px}.objetivo{min-height:140px}.objetivo b{font-size:22px}}
 .accesos::-webkit-scrollbar{display:none}
 .acceso{flex-shrink:0;border:1px solid var(--linea);background:var(--carta);border-radius:999px;padding:8px 13px;display:flex;align-items:center;gap:6px;font-weight:700;font-size:14px;position:relative}
 .acceso[aria-pressed="true"]{background:var(--bosque);color:#f5f1e8;border-color:var(--bosque)}
@@ -146,6 +153,7 @@ main{padding:14px}
 .t-nutri{display:flex;flex-wrap:wrap;gap:4px}
 .t-nutri span{background:var(--fondo);border-radius:7px;padding:2px 6px;font-size:11px;font-weight:700;color:var(--gris);white-space:nowrap}
 .t-nutri span.kcal{background:#fde3d4;color:#a8461a}
+.t-nutri span.por{background:none;padding:2px 2px;font-weight:600;color:#8a8f82}
 .f-desc{margin:10px 0 0;color:var(--gris);font-size:13px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .f-desc.abierta{display:block}
 .f-nutri{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;margin-top:12px}
@@ -255,6 +263,11 @@ main{padding:14px}
 .barra button{width:100%;border:0;border-radius:18px;background:var(--bosque);color:#f5f1e8;min-height:58px;padding:0 18px;display:flex;align-items:center;justify-content:space-between;gap:10px;font-weight:800;font-size:15.5px;box-shadow:0 14px 30px rgba(24,35,26,.3)}
 .barra button span{display:flex;align-items:center;gap:8px}
 .barra button span:last-child{color:#f1c75b}
+/* barra naranja */
+.barra button{background:var(--energia);color:#2a1406;box-shadow:0 14px 30px rgba(232,116,59,.35)}
+.barra button span:last-child{color:#2a1406;background:#fff8ef;border-radius:999px;padding:6px 12px}
+.barra button span{white-space:nowrap}
+.barra button span:last-child{font-size:14px;padding:6px 10px}
 
 .pie{background:var(--carta);margin:28px -14px -14px;padding:22px 18px 30px;border-top:1px solid var(--linea);display:grid;gap:8px;font-size:14px;color:var(--gris)}
 .pie img{height:30px;width:auto;justify-self:start}

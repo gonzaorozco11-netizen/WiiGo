@@ -112,10 +112,17 @@
   // Info nutricional chiquita (cada 100 g): kcal y macros, sin explicación.
   // Si todo da cero (la creatina, por ejemplo) no se muestra: «0 kcal · P 0 · C 0» no le dice nada al cliente.
   function tieneNutri(p) { return [p.k, p.pr, p.ca, p.gr].some(function (v) { return v != null && Number(v) > 0; }); }
+  // La porción recomendada en gramos, de la ficha: «30 g (un puñado)» → 30. Sin gramos, null.
+  function gramosPorcion(p) { var m = /(\d+(?:[.,]\d+)?)\s*(g|gr|grs|gramos|ml|cc)\b/i.exec(p.po || ''); var g = m ? Number(m[1].replace(',', '.')) : 0; return g > 0 && g <= 1000 ? g : null; }
+  // Los valores de la ficha son cada 100 g: se pasan a la porción.
+  function nutriPorcion(p) {
+    var g = gramosPorcion(p), f = g ? g / 100 : 1, x = function (v) { return v == null ? null : Number(v) * f; };
+    return { g: g, txt: g ? 'por porción (' + coma(g) + ' g)' : 'cada 100 g', k: x(p.k), pr: x(p.pr), ca: x(p.ca), gr: x(p.gr), fi: x(p.fi) };
+  }
   function nutriChica(p) {
     if (!tieneNutri(p)) return '';
-    var m = function (l, v) { return v == null ? '' : '<span>' + l + ' ' + coma(v) + '</span>'; };
-    return '<div class="t-nutri" title="Cada 100 g">' + (p.k != null ? '<span class="kcal">' + Math.round(p.k) + ' kcal</span>' : '') + m('P', p.pr) + m('C', p.ca) + m('G', p.gr) + '</div>';
+    var n = nutriPorcion(p), m = function (l, v) { return v == null ? '' : '<span>' + l + ' ' + coma(v) + '</span>'; };
+    return '<div class="t-nutri" title="' + n.txt + '">' + (n.k != null ? '<span class="kcal">' + Math.round(n.k) + ' kcal</span>' : '') + m('P', n.pr) + m('C', n.ca) + m('G', n.gr) + '<span class="por">' + (n.g ? 'porción ' + coma(n.g) + ' g' : 'c/100 g') + '</span></div>';
   }
   var MARCAS = D.marcas, MARCA = {}; MARCAS.forEach(function (m) { MARCA[m.n] = m; });
   // Nuevos: los 20 que entraron último (con stock), no todo lo del mes.
@@ -193,7 +200,8 @@
     else if (f.mundo) l = l.filter(function (p) { return p.lugar; });
     if (S.q.length >= 2) {
       var ws = norm(S.q).split(' ').filter(Boolean);
-      return l.filter(function (p) { return ws.every(function (w) { return p.busca.indexOf(w) >= 0 || (w.length > 3 && p.busca.indexOf(w.slice(0, -1)) >= 0); }); })
+      // En TODOS los productos, aunque haya marca, rubro u objetivo elegido.
+      return PROD.filter(function (p) { return ws.every(function (w) { return p.busca.indexOf(w) >= 0 || (w.length > 3 && p.busca.indexOf(w.slice(0, -1)) >= 0); }); })
         .sort(function (a, b) { var w = norm(S.q); return (norm(b.n).indexOf(w) === 0) - (norm(a.n).indexOf(w) === 0) || (b.s > 0) - (a.s > 0) || a.t.localeCompare(b.t, 'es'); });
     }
     return f.nuevos ? l.slice().sort(function (a, b) { return a.dias - b.dias; }) : ordenar(l);
@@ -217,8 +225,14 @@
         '<div class="accesos" style="margin:0 -14px 12px"><button class="acceso" data-a="lugar" data-k="" aria-pressed="' + !f.lugar + '">Todos</button>' + CLAVES_MUNDO.map(function (k) { return '<button class="acceso" data-a="lugar" data-k="' + k + '" aria-pressed="' + (f.lugar === k) + '">' + esc(LUGARES[k].n) + ' · ' + DEL_MUNDO[k].length + '</button>'; }).join('') + '</div>';
     }
     if (f.objetivos) extra = '<div class="accesos tonos" style="margin:0 -14px 12px">' + D.objetivos.map(function (o, i) { var n = PROD.filter(function (p) { return (p.ob || []).indexOf(o) >= 0; }).length, t = TONOS[i % TONOS.length]; return n ? '<button class="acceso" data-a="obj" data-o="' + esc(o) + '" aria-pressed="' + (f.obj === o) + '" style="background:' + t[0] + ';color:' + t[1] + (f.obj === o ? ';box-shadow:0 0 0 3px var(--fondo),0 0 0 5px ' + t[0] : ';opacity:.82') + '">' + esc(o) + ' · ' + n + '</button>' : ''; }).join('') + '</div>';
-    var tit = S.q.length >= 2 && !S.f ? 'Resultados para «' + esc(S.q) + '»' : esc(f.titulo || 'Productos');
-    return '<div class="filtro-cab"><button class="redondo" data-a="inicio" aria-label="Volver al inicio">' + ic('atras') + '</button><span><b>' + tit + '</b><small>' + l.length + (l.length === 1 ? ' producto' : ' productos') + (f.sub ? ' · ' + esc(f.marca) : '') + '</small></span></div>' + extra +
+    if (S.q.length >= 2) extra = '';
+    // Objetivos sin elegir: los botones de cada uno, con sus colores (como la pantalla asesora).
+    if (f.objetivos && !f.obj && S.q.length < 2) {
+      return '<div class="filtro-cab"><button class="redondo" data-a="inicio" aria-label="Volver al inicio">' + ic('atras') + '</button><span><b>¿Cuál es tu objetivo?</b><small>Elegí uno y te mostramos lo que mejor te queda</small></span></div><div class="objetivos">' +
+        D.objetivos.map(function (o, i) { var n = PROD.filter(function (p) { return (p.ob || []).indexOf(o) >= 0; }).length, t = TONOS[i % TONOS.length]; return n ? '<button class="objetivo" data-a="obj" data-o="' + esc(o) + '" style="background:' + t[0] + ';color:' + t[1] + '"><b>' + esc(o) + '</b><span>' + n + (n === 1 ? ' producto' : ' productos') + '</span></button>' : ''; }).join('') + '</div>';
+    }
+    var tit = S.q.length >= 2 ? 'Resultados para «' + esc(S.q) + '»' : esc(f.titulo || 'Productos');
+    return '<div class="filtro-cab"><button class="redondo" data-a="inicio" aria-label="Volver al inicio">' + ic('atras') + '</button><span><b>' + tit + '</b><small>' + l.length + (l.length === 1 ? ' producto' : ' productos') + (f.sub && S.q.length < 2 ? ' · ' + esc(f.marca) : '') + '</small></span></div>' + extra +
       (l.length ? conMas(l) : '<div class="vacio"><b>No encontramos eso</b><p>Probá con otra palabra o mirá las marcas en el menú ☰.</p></div>');
   }
   function profesionales() {
@@ -250,7 +264,7 @@
       '<div class="f-foto">' + foto(p, 828) + '</div><h2 class="f-nombre">' + esc(p.t) + '</h2><span class="f-de">' + esc(p.mf || p.m) + ' · ' + esc(p.sc) + '</span>' +
       (p.s > 0 ? '<div class="f-precio"><b>' + plata(p.p) + '</b><span>' + plata(p.e || p.p) + ' efectivo</span></div>' : '<div class="f-precio"><span style="color:var(--gris)">Sin stock por ahora. Preguntá en la estación cuándo entra.</span></div>') + sabores(p) + '<div style="margin-top:10px" data-acc="' + p.id + '">' + boton(p) + '</div>' +
       // Nutrición en números, sin explicación. Después, el texto chico.
-      (nutri ? '<div class="f-nutri" title="Cada 100 g">' + [['kcal', 'Kcal', p.k, ''], ['', 'Prot.', p.pr, ' g'], ['', 'Carbos', p.ca, ' g'], ['', 'Grasas', p.gr, ' g'], ['', 'Fibra', p.fi, ' g']].map(function (x) { return '<div class="' + x[0] + '"><small>' + x[1] + '</small><b>' + (x[2] == null ? '—' : (x[0] ? Math.round(x[2]) : coma(x[2])) + x[3]) + '</b></div>'; }).join('') + '</div><p class="f-chico" style="margin-top:6px">Cada 100 g' + (p.po ? ' · porción: ' + esc(p.po) : '') + '</p>' : '') +
+      (nutri ? '<div class="f-nutri" title="' + nutriPorcion(p).txt + '">' + (function (n) { return [['kcal', 'Kcal', n.k, ''], ['', 'Prot.', n.pr, ' g'], ['', 'Carbos', n.ca, ' g'], ['', 'Grasas', n.gr, ' g'], ['', 'Fibra', n.fi, ' g']]; })(nutriPorcion(p)).map(function (x) { return '<div class="' + x[0] + '"><small>' + x[1] + '</small><b>' + (x[2] == null ? '—' : (x[0] ? Math.round(x[2]) : coma(x[2])) + x[3]) + '</b></div>'; }).join('') + '</div><p class="f-chico" style="margin-top:6px">' + (gramosPorcion(p) ? 'Por porción: ' + esc(p.po) : 'Cada 100 g' + (p.po ? ' · porción: ' + esc(p.po) : '')) + '</p>' : '') +
       (p.fl && p.fl.length ? '<p class="f-chico" style="color:#3f5536;font-weight:800">' + esc(p.fl.map(function (x) { return titulo(x.replace(/\s+/g, ' ')); }).join(' · ')) + '</p>' : '') +
       (p.de ? '<p class="f-desc' + (S.descAbierta ? ' abierta' : '') + '" data-a="desc">' + esc(p.de) + '</p>' : '') +
       (p.o ? '<p class="f-chico"><b>Origen:</b> ' + esc(p.o) + '</p>' : '') +
@@ -480,7 +494,7 @@
     mundo: function () { ver({ mundo: true, titulo: 'Productos del mundo' }); },
     lugar: function (d) { var f = S.f; f.lugar = d.k && f.lugar !== d.k ? d.k : null; f.titulo = 'Productos del mundo'; S.limite = 20; pintar(false); if (G) G.marcar(f.lugar); },
     desc: function () { S.descAbierta = !S.descAbierta; pintar(false); },
-    objetivos: function () { var o = D.objetivos.filter(function (x) { return PROD.some(function (p) { return (p.ob || []).indexOf(x) >= 0; }); })[0]; ver({ objetivos: true, obj: o, titulo: o || 'Por objetivo' }); },
+    objetivos: function () { ver({ objetivos: true, titulo: 'Por objetivo' }); },
     obj: function (d) { var f = S.f; f.obj = d.o; f.titulo = d.o; S.limite = 20; pintar(false); },
     'obj-directo': function (d) { ver({ objetivos: true, obj: d.o, titulo: d.o }); },
     pros: function () { S.vista = 'pros'; S.f = null; S.q = ''; pintar(true); },
