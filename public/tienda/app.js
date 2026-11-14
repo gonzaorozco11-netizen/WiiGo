@@ -140,8 +140,10 @@
       '<button class="t-foto" data-a="ficha" data-id="' + p.id + '" aria-label="Ver ' + esc(p.t) + '">' + foto(p) + '</button>' +
       '<span class="t-marca">' + esc(p.mf || p.m) + '</span><button class="t-ver" data-a="ficha" data-id="' + p.id + '" aria-label="Ver detalle">' + ic('ojo', 18) + '</button></div>' +
       '<div class="t-cuerpo"><span class="t-nombre">' + esc(p.t) + '</span>' + nutriChica(p) + sabores(p) +
-      '<div class="t-precio"><b>' + plata(p.p) + '</b><span>' + plata(p.e || p.p) + ' efectivo</span></div><div data-acc="' + p.id + '">' + boton(p) + '</div></div></article>';
+      precioTarjeta(p) + '<div data-acc="' + p.id + '">' + boton(p) + '</div></div></article>';
   }
+  // Sin stock se muestra el producto, pero sin precio (Gonzalo, 2026-11-14).
+  function precioTarjeta(p) { return p.s > 0 ? '<div class="t-precio"><b>' + plata(p.p) + '</b><span>' + plata(p.e || p.p) + ' efectivo</span></div>' : '<div class="t-precio"><span style="color:var(--gris)">Sin stock por ahora</span></div>'; }
   function grilla(l) { return '<div class="grilla">' + l.map(tarjeta).join('') + '</div>'; }
   function conMas(l) { return grilla(l.slice(0, S.limite)) + (l.length > S.limite ? '<button class="ver-mas" data-a="mas">Ver más productos (' + (l.length - S.limite) + ')</button>' : ''); }
 
@@ -212,7 +214,7 @@
     var nutri = tieneNutri(p);
     return '<div class="fondo" data-a="cerrar-ficha"></div><section class="hoja" role="dialog" aria-modal="true" aria-label="' + esc(p.t) + '"><div class="hoja-cab"><span></span><button class="redondo" data-a="cerrar-ficha" aria-label="Cerrar">' + ic('cruz', 20) + '</button></div><div class="hoja-cuerpo">' +
       '<div class="f-foto">' + foto(p, 828) + '</div><h2 class="f-nombre">' + esc(p.t) + '</h2><span class="f-de">' + esc(p.mf || p.m) + ' · ' + esc(p.sc) + '</span>' +
-      '<div class="f-precio"><b>' + plata(p.p) + '</b><span>' + plata(p.e || p.p) + ' efectivo</span></div>' + sabores(p) + '<div style="margin-top:10px" data-acc="' + p.id + '">' + boton(p) + '</div>' +
+      (p.s > 0 ? '<div class="f-precio"><b>' + plata(p.p) + '</b><span>' + plata(p.e || p.p) + ' efectivo</span></div>' : '<div class="f-precio"><span style="color:var(--gris)">Sin stock por ahora. Preguntá en la estación cuándo entra.</span></div>') + sabores(p) + '<div style="margin-top:10px" data-acc="' + p.id + '">' + boton(p) + '</div>' +
       // Nutrición en números, sin explicación. Después, el texto chico.
       (nutri ? '<div class="f-nutri" title="Cada 100 g">' + [['kcal', 'Kcal', p.k, ''], ['', 'Prot.', p.pr, ' g'], ['', 'Carbos', p.ca, ' g'], ['', 'Grasas', p.gr, ' g'], ['', 'Fibra', p.fi, ' g']].map(function (x) { return '<div class="' + x[0] + '"><small>' + x[1] + '</small><b>' + (x[2] == null ? '—' : (x[0] ? Math.round(x[2]) : coma(x[2])) + x[3]) + '</b></div>'; }).join('') + '</div><p class="f-chico" style="margin-top:6px">Cada 100 g' + (p.po ? ' · porción: ' + esc(p.po) : '') + '</p>' : '') +
       (p.fl && p.fl.length ? '<p class="f-chico" style="color:#3f5536;font-weight:800">' + esc(p.fl.map(function (x) { return titulo(x.replace(/\s+/g, ' ')); }).join(' · ')) + '</p>' : '') +
