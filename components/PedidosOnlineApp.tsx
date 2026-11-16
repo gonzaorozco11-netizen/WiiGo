@@ -128,7 +128,7 @@ export default function PedidosOnlineApp({
   function faltan(p: PedidoOnlineEquipo, i: ItemEquipo, hay: number | null) {
     cambiarItem(p.idPedido, i.idItem, { hay, armado: false });
     setModal((m) => (m ? { ...m, falta: null } : m));
-    marcarFaltaOnline(i.idItem, hay).then((r) => (r.error ? setAviso(r.error) : hay != null && setAviso("Anotado: el total bajó. Al marcarlo Listo queda la diferencia de stock para revisar.")));
+    marcarFaltaOnline(i.idItem, hay).then((r) => (r.error ? setAviso(r.error) : hay != null && setAviso("Anotado: el total bajó. Ese producto sale en el próximo conteo para contarlo.")));
   }
 
   // Viene a retirar: primero el DNI, después (en la ventana) la palabra secreta.

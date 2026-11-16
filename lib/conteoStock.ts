@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fechaHoraArgentina } from "@/lib/horarios";
-import { enBolsasOnline } from "@/lib/pedidosOnline";
+import { enBolsasOnline, faltasOnlineRecientes } from "@/lib/pedidosOnline";
 
 // Conteo de stock en el turno (Gonzalo, 2026-11-07). Ver sql/conteos-stock.sql.
 //
@@ -169,6 +169,13 @@ async function elegirProductos(
     .sort((a, b) => Number(b.deOtro) - Number(a.deOtro));
   const topeSeguimiento = Math.max(1, Math.ceil(cuantos / 3));
   for (const s of seguir.slice(0, topeSeguimiento)) usar(s.id, "SEGUIMIENTO", "Tuvo una diferencia: confirmá cuánto hay");
+
+  // 1b. Lo que no encontraron armando un pedido online y nadie contó después
+  // (el «Falta» no toca el stock: Gonzalo, 16/11). Va antes que lo demás.
+  for (const f of await faltasOnlineRecientes(supabase, idLocal, hace(7))) {
+    if ((ultimoConteo.get(f.idVariante) ?? "") > f.cuando) continue;
+    usar(f.idVariante, "SEGUIMIENTO", "No lo encontraron para un pedido online: contá cuánto hay");
+  }
 
   // 2 y 3 salen de las ventas del último mes.
   const ventas = await vendidasDesde(supabase, idLocal, hace(30));

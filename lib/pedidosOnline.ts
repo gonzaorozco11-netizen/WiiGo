@@ -196,6 +196,29 @@ export async function enBolsasOnline(supabase: SupabaseClient, idLocal: string, 
   return bolsas;
 }
 
+/**
+ * Lo que no encontraron armando un pedido online desde `desde` («Falta», o el
+ * pedido cancelado por «No hay nada»), con cuándo pasó. El stock no se toca:
+ * el conteo del turno lo pide para que alguien lo cuente de verdad.
+ * Si la tabla no está o falla, devuelve vacío.
+ */
+export async function faltasOnlineRecientes(supabase: SupabaseClient, idLocal: string, desde: string): Promise<{ idVariante: string; cuando: string }[]> {
+  const { data, error } = await supabase
+    .from("pedidos_online_items")
+    .select("id_variante, cantidad, hay, pedidos_online!inner(id_local, listo_at, cancelado_at, creado)")
+    .not("hay", "is", null)
+    .eq("pedidos_online.id_local", idLocal)
+    .gte("pedidos_online.creado", desde);
+  if (error) return [];
+  const faltas: { idVariante: string; cuando: string }[] = [];
+  for (const f of data ?? []) {
+    if (Number(f.hay) >= Number(f.cantidad)) continue;
+    const p = f.pedidos_online as unknown as { listo_at: string | null; cancelado_at: string | null; creado: string };
+    faltas.push({ idVariante: f.id_variante as string, cuando: p.listo_at ?? p.cancelado_at ?? p.creado });
+  }
+  return faltas;
+}
+
 /** Cuánto de cada variante está comprometido en pedidos online abiertos (todavía no salió del stock). */
 export async function reservadoPorVariante(supabase: SupabaseClient, idsVariante: string[], salvoPedido?: string): Promise<Map<string, number>> {
   const reservado = new Map<string, number>();

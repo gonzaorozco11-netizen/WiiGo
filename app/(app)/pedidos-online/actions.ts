@@ -194,43 +194,11 @@ export async function marcarFaltaOnline(idItem: string, hay: number | null): Pro
   return { error: error ? FALTA_SQL_ONLINE : null };
 }
 
-/**
- * Lo que faltó, como en el conteo del turno: el stock queda en lo que se
- * encontró y la diferencia le llega a Gonzalo en Conteos y diferencias.
- */
-async function anotarFaltas(supabase: SupabaseClient, fila: FilaPedidoOnline, items: ItemOnline[], quien: string) {
-  if (!fila.id_local) return;
-  const ahora = new Date().toISOString();
-  for (const i of items) {
-    if (i.hay == null || i.hay >= i.cantidad) continue;
-    const { data: st } = await supabase.from("stock").select("cantidad").eq("id_variante", i.idVariante).eq("id_local", fila.id_local).maybeSingle();
-    const esperado = Number(st?.cantidad ?? 0);
-    // Si el sistema ya decía menos de lo encontrado, no hay nada que corregir.
-    if (esperado <= i.hay) continue;
-    await supabase
-      .from("stock")
-      .upsert({ id_variante: i.idVariante, id_local: fila.id_local, cantidad: i.hay, fecha_actualizacion: ahora }, { onConflict: "id_variante,id_local" });
-    await supabase.from("movimientos_stock").insert({
-      id_variante: i.idVariante,
-      id_local: fila.id_local,
-      tipo: "AJUSTE",
-      cantidad: i.hay - esperado,
-      motivo: `Pedido online #${fila.numero}: se encontraron ${i.hay} de ${i.cantidad}, el sistema decía ${esperado}`,
-      id_referencia: fila.id_pedido,
-      usuario: quien,
-    });
-    await supabase.from("diferencias_stock").insert({
-      id_local: fila.id_local,
-      id_variante: i.idVariante,
-      esperado,
-      contado: i.hay,
-      diferencia: i.hay - esperado,
-      contado_por: quien,
-      contado_en: ahora,
-      nota: `Armando el pedido online #${fila.numero} (${i.nombre}${i.variante ? ` — ${i.variante}` : ""})`,
-    });
-  }
-}
+// Lo que faltó al armar NO toca el stock (Gonzalo, 16/11): si el chico no lo
+// encontró porque estaba en el depósito o mal acomodado, le borraba todo el
+// stock de un toque. Ese producto sale solo en el próximo conteo del turno
+// (lib/conteoStock.ts, «No lo encontraron para un pedido online»): si el
+// conteo confirma que no hay, ahí se ajusta y la diferencia le llega a Gonzalo.
 
 /** Paso 2 → 3. Con lo que faltó, el total nuevo y lo que hay que devolver. */
 export async function marcarListoOnline(idPedido: string): Promise<{ error: string | null }> {
@@ -252,7 +220,6 @@ export async function marcarListoOnline(idPedido: string): Promise<{ error: stri
     .select("id_pedido")
     .maybeSingle();
   if (!data) return { error: "Ese pedido ya no está armándose." };
-  await anotarFaltas(supabase, fila, items, s.nombre);
   await avisarCliente(supabase, idPedido, "LISTO");
   refrescar();
   revalidatePath("/stock/conteos");
@@ -276,8 +243,7 @@ export async function cancelarPedidoOnline(idPedido: string, motivo: string): Pr
     .select("id_pedido")
     .maybeSingle();
   if (!data) return { error: "Ese pedido ya estaba cerrado." };
-  // «No hay nada»: lo que no se encontró queda como diferencia de stock.
-  if (items.some((i) => i.hay != null)) await anotarFaltas(supabase, fila, items, s.nombre);
+  // «No hay nada»: lo que no se encontró sale en el próximo conteo del turno (no se toca el stock).
   await avisarCliente(supabase, idPedido, "CANCELADO");
   refrescar();
   return { error: null };

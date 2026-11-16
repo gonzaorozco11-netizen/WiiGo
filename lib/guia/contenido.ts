@@ -184,7 +184,7 @@ export const GUIAS: Guia[] = [
       "Tocá <b>Listo</b>: pasa a <b>3 Listos</b> (verde) y al cliente le llega el mail con su código de retiro.",
       "Cuando viene, escribí su <b>DNI</b> arriba (<b>Retira</b>) y después la <b>palabra secreta</b> que te dice (le llegó por mail). Si sale <b>✓ Palabra correcta</b>, tocá <b>Entregar</b>. Si paga al retirar, se cobra en la caja: el pedido entra solo con los productos y el DNI para sus puntos.",
     ],
-    tip: "Si ya transfirió y faltó algo, el pedido dice «Devolver $…»: devolvele esa plata por Mercado Pago antes de entregarlo. Lo que faltó queda como diferencia de stock para revisar. Si no paga, se cancela solo el día siguiente a las 21.",
+    tip: "Si ya transfirió y faltó algo, el pedido dice «Devolver $…»: devolvele esa plata por Mercado Pago antes de entregarlo. «Falta» no cambia el stock: ese producto te sale en el próximo conteo del turno para contarlo de verdad. Si no paga, se cancela solo el día siguiente a las 21.",
     rel: ["cobrar"],
   },
   {
