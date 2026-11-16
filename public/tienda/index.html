@@ -258,7 +258,22 @@ main{padding:14px}
 .marca-p{flex:none;display:flex;align-items:center;gap:8px;border:1.5px solid var(--linea);border-radius:999px;padding:4px 13px 4px 4px;font-weight:800;font-size:13.5px;background:var(--carta)}
 .marca-p img,.marca-p i{width:30px;height:30px;border-radius:50%;object-fit:contain;background:#fff;border:1px solid var(--linea);display:grid;place-items:center;font-style:normal}
 .marca-p[aria-pressed="true"]{background:var(--bosque);border-color:var(--bosque);color:#f5f1e8}
-.rubro-sec{scroll-margin-top:calc(var(--alto-cab,128px) + 48px)}
+.rubro-sec{scroll-margin-top:calc(var(--alto-cab,128px) + var(--alto-pegado,48px) + 6px)}
+/* Arriba, como la maqueta (16/11): la tarjeta del local montada sobre el borde de abajo del banner */
+.ini-top{position:relative}
+.ini-top .banner{padding-bottom:52px;min-height:206px}
+.ini-top .b-puntos{position:relative;z-index:3;margin-top:-44px;margin-bottom:18px}
+.ini-top .b-puntos button{background:rgba(255,255,255,.55)}
+.ini-top .b-puntos button[aria-current="true"]{background:#fff}
+.ini-top .local{position:relative;z-index:2;margin:0 12px}
+/* El buscador con las pestañas, abajo de los accesos y pegados arriba al bajar */
+.pegado-ini{position:sticky;top:var(--alto-cab,64px);z-index:15;margin:12px -14px 0;padding:10px 14px 0;background:rgba(245,239,227,.96);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--linea)}
+.pegado-ini .buscar{margin-top:0}
+.pegado-ini .tabs-rubros{position:static;margin:4px -14px 0;background:none;border-bottom:0;backdrop-filter:none;-webkit-backdrop-filter:none}
+/* Las categorías de la marca elegida, todas a la vista */
+.subs-marca{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.subs-marca button{border:1.5px solid var(--linea);background:var(--carta);border-radius:999px;padding:6px 11px;font-weight:700;font-size:13px;color:var(--bosque)}
+.subs-marca em{font-style:normal;color:var(--gris);font-weight:600;font-size:12px}
 .rub-cant{margin:-6px 0 0;color:var(--gris);font-size:12.5px;font-weight:600}
 .sub-rub{margin:18px 0 0;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--gris)}
 /* «Lo más elegido»: tarjetas que se deslizan, con el «+» sobre la foto */
@@ -462,6 +477,6 @@ main{padding:14px}
 <div class="app" id="app"><p style="padding:60px 16px;text-align:center;color:#626a5e">Cargando los productos…</p></div>
 <!-- El catálogo real, armado en el servidor con lo público de cada producto (lib/tiendaCatalogo.ts). -->
 <script src="/api/tienda/catalogo"></script>
-<script src="app.js?v=8"></script>
+<script src="app.js?v=9"></script>
 </body>
 </html>

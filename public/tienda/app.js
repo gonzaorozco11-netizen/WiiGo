@@ -132,7 +132,8 @@
     var n = nutriPorcion(p), m = function (l, v) { return v == null ? '' : '<span>' + l + ' ' + coma(v) + '</span>'; };
     return '<div class="t-nutri" title="' + n.txt + '">' + (n.k != null ? '<span class="kcal">' + Math.round(n.k) + ' kcal</span>' : '') + m('P', n.pr) + m('C', n.ca) + m('G', n.gr) + '<span class="por">' + (n.g ? 'porción ' + coma(n.g) + ' g' : n.unidad ? 'por ' + esc(n.unidad) : 'c/100 g') + '</span></div>';
   }
-  var MARCAS = D.marcas, MARCA = {}; MARCAS.forEach(function (m) { MARCA[m.n] = m; });
+  // WiiGo primero, después las demás por cantidad de productos (Gonzalo, 16/11).
+  var MARCAS = D.marcas.slice().sort(function (a, b) { return (b.n === 'WiiGo') - (a.n === 'WiiGo') || (b.cant || 0) - (a.cant || 0); }), MARCA = {}; MARCAS.forEach(function (m) { MARCA[m.n] = m; });
   // Nuevos: los 20 que entraron último (con stock), no todo lo del mes.
   var NUEVOS = PROD.filter(function (p) { return p.s > 0 && p.dias <= 30; }).sort(function (a, b) { return a.dias - b.dias; }).slice(0, 20);
   function ordenar(l) { return l.slice().sort(function (a, b) { return (b.s > 0) - (a.s > 0) || (b.img ? 1 : 0) - (a.img ? 1 : 0) || a.t.localeCompare(b.t, 'es'); }); }
@@ -275,17 +276,28 @@
     var porMarca = {}; PROD.forEach(function (p) { if (p.img && p.s > 0) (porMarca[p.m] = porMarca[p.m] || []).push(p); });
     var dest = [], vuelta = 0; while (dest.length < 10 && vuelta < 12) { MARCAS.forEach(function (m) { var x = porMarca[m.n]; if (x && x[vuelta] && dest.length < 10) dest.push(x[vuelta]); }); vuelta++; }
     var rub = rubrosDe(l);
-    var tabs = '<nav class="tabs-rubros" id="tabs-rubros" aria-label="Rubros">' + (S.marcaIni ? '' : '<button class="tab-r" data-a="ir-sec" data-s="s-elegido">⭐ Lo más elegido</button>') +
-      rub.map(function (r, i) { return '<button class="tab-r" data-a="ir-sec" data-s="s-r' + i + '">' + r[2] + ' ' + esc(r[1]) + '</button>'; }).join('') +
-      '<button class="tab-r" data-a="mundo">🌍 Del mundo</button></nav>';
+    // Con una marca elegida, las pestañas y las secciones son TODAS sus subcategorías (Gonzalo, 16/11:
+    // «toco WiiGo y no veo todas las subcategorías»). Sin marca, los rubros.
+    var subsMarca = null;
+    if (S.marcaIni) {
+      var cuenta = {}; l.forEach(function (p) { (cuenta[p.sc] = cuenta[p.sc] || []).push(p); });
+      subsMarca = Object.keys(cuenta).sort(function (a, b) { return a.localeCompare(b, 'es'); }).map(function (s) { return [s, cuenta[s]]; });
+    }
+    var tabs = '<nav class="tabs-rubros" id="tabs-rubros" aria-label="' + (subsMarca ? 'Categorías' : 'Rubros') + '">' + (S.marcaIni ? '' : '<button class="tab-r" data-a="ir-sec" data-s="s-elegido">⭐ Lo más elegido</button>') +
+      (subsMarca ? subsMarca.map(function (s, i) { return '<button class="tab-r" data-a="ir-sec" data-s="s-s' + i + '">' + esc(s[0]) + '</button>'; }).join('')
+        : rub.map(function (r, i) { return '<button class="tab-r" data-a="ir-sec" data-s="s-r' + i + '">' + r[2] + ' ' + esc(r[1]) + '</button>'; }).join('') + '<button class="tab-r" data-a="mundo">🌍 Del mundo</button>') + '</nav>';
     var marcas = '<div class="marcas-ini" role="group" aria-label="Marcas">' + MARCAS.map(function (m) {
       return '<button class="marca-p" data-a="marca-ini" data-m="' + esc(m.n) + '" aria-pressed="' + (S.marcaIni === m.n) + '">' + (m.logo ? imagen(m.logo, 64) : '<i>' + esc(m.n.charAt(0)) + '</i>') + esc(m.n) + '</button>';
-    }).join('') + '</div>';
+    }).join('') + '</div>' +
+      // Todas las categorías de la marca, a la vista de una: se toca una y baja hasta ahí.
+      (subsMarca ? '<div class="subs-marca" role="group" aria-label="Categorías de ' + esc(S.marcaIni) + '">' + subsMarca.map(function (s, i) { return '<button data-a="ir-sec" data-s="s-s' + i + '">' + esc(s[0]) + ' <em>' + s[1].length + '</em></button>'; }).join('') + '</div>' : '');
     var elegido = S.marcaIni ? '' : '<section class="rubro-sec" id="s-elegido"><h2 class="seccion">Lo más elegido</h2><div class="elegidos">' + dest.map(function (p) {
       return '<article class="eleg"><div class="it-ft"><button class="it-foto" data-a="ficha" data-id="' + p.id + '" aria-label="Ver ' + esc(p.t) + '">' + foto(p, 256) + '</button><div class="it-acc" data-acc="' + p.id + '" data-tipo="item">' + botonItem(p) + '</div></div>' +
         '<button class="eleg-tx" data-a="ficha" data-id="' + p.id + '"><span>' + esc(p.t) + '</span><b>' + plata(p.p) + '</b></button></article>';
     }).join('') + '</div><button class="ver-mas" data-a="nuevos">✨ Lo nuevo de la semana (' + NUEVOS.length + ')</button></section>';
-    var secciones = rub.map(function (r, i) {
+    var secciones = subsMarca ? subsMarca.map(function (s, i) {
+      return '<section class="rubro-sec" id="s-s' + i + '"><h2 class="seccion">' + esc(s[0]) + '</h2><p class="rub-cant">' + s[1].length + (s[1].length === 1 ? ' producto' : ' productos') + ' de ' + esc(S.marcaIni) + '</p>' + grilla(ordenar(s[1])) + '</section>';
+    }).join('') : rub.map(function (r, i) {
       var deR = l.filter(function (p) { return p.c === r[0]; }), subs = {};
       deR.forEach(function (p) { (subs[p.sc] = subs[p.sc] || []).push(p); });
       return '<section class="rubro-sec" id="s-r' + i + '"><h2 class="seccion">' + r[2] + ' ' + esc(r[0]) + '</h2><p class="rub-cant">' + deR.length + (deR.length === 1 ? ' producto' : ' productos') + '</p>' +
@@ -293,9 +305,11 @@
           return '<h3 class="sub-rub">' + esc(s) + ' · ' + subs[s].length + '</h3>' + grilla(ordenar(subs[s]));
         }).join('') + '</section>';
     }).join('');
-    return banners() + tarjetaLocal() +
+    // Arriba como la maqueta (Gonzalo, 16/11): el banner y la tarjeta «WiiGo · Arístides» montada encima de
+    // su borde de abajo; después los accesos y, abajo de ellos, el buscador con las pestañas (pegados al bajar).
+    return '<div class="ini-top">' + banners() + tarjetaLocal() + '</div>' +
       '<div class="accesos-ini"><button data-a="objetivos"><span>🎯</span>Objetivos</button><button data-a="mundo"><span>🌍</span>Del mundo</button><button data-a="pros"><span>🩺</span>Profesionales</button><button data-a="ir-sec" data-s="s-elegido"><span>⭐</span>Lo más elegido</button></div>' +
-      tabs + marcas + elegido + secciones + pie();
+      '<div class="pegado-ini" id="pegado-ini">' + buscador() + tabs + '</div>' + marcas + elegido + secciones + pie();
   }
   function lista() {
     var f = S.f || {}, l = filtrados(), extra = '';
@@ -511,13 +525,18 @@
   }
 
   /* pintar */
+  function buscador() {
+    return '<label class="buscar">' + ic('lupa', 20) + '<span class="oculto">Buscar producto</span><input id="q" type="search" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="Buscar en la estación" value="' + esc(S.q) + '">' + (S.q ? '<button class="limpiar" data-a="limpiar" aria-label="Borrar búsqueda">' + ic('cruz', 18) + '</button>' : '') + '</label>';
+  }
+  function esInicio() { return !(S.vista === 'checkout' && S.usuario && carrito.length) && S.vista !== 'seguir' && S.vista !== 'pros' && S.vista !== 'lista' && S.q.length < 2; }
   function pintar(arriba) {
     var t = totales();
     // Arriba, siempre: el logo, la cuenta, el pedido y el buscador (busca en todo). Las marcas y los rubros
     // ahora están en el inicio (pastillas y pestañas), así que el menú ☰ ya no va.
     var cab = '<header class="cab" id="cab"><div class="cab-fila"><button data-a="inicio" style="border:0;background:none;padding:0" aria-label="Inicio"><img class="logo" src="/wiigo-logo-negro.png" alt="WiiGo Estaciones de Bienestar"></button><span class="espacio"></span>' +
       (S.usuario ? '<button class="pts-cab" data-a="cuenta" aria-label="Mi WiiGo: ' + S.usuario.puntos + ' puntos">★ ' + S.usuario.puntos.toLocaleString('es-AR') + '</button>' : '<button class="redondo" data-a="cuenta" aria-label="Mi cuenta">' + ic('persona') + '</button>') + '<button class="redondo" data-a="abrir-pedido" aria-label="Mi pedido">' + ic('bolsa') + '<span class="n">' + t.u + '</span></button></div>' +
-      '<label class="buscar">' + ic('lupa', 20) + '<span class="oculto">Buscar producto</span><input id="q" type="search" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="Buscar en la estación" value="' + esc(S.q) + '">' + (S.q ? '<button class="limpiar" data-a="limpiar" aria-label="Borrar búsqueda">' + ic('cruz', 18) + '</button>' : '') + '</label></header>';
+      // En el inicio el buscador va abajo de los accesos (inicio()); en las otras pantallas, acá arriba.
+      (esInicio() ? '' : buscador()) + '</header>';
     var cuerpo = S.vista === 'checkout' && S.usuario && carrito.length ? checkout() : S.vista === 'seguir' ? seguimiento() : S.vista === 'pros' ? profesionales() : (S.vista === 'lista' || S.q.length >= 2) ? lista() : inicio();
     // Con un pedido en curso y el carrito vacío, la barra lleva a seguirlo.
     var enCurso = (S.pedidos || []).filter(abiertoPed)[0];
@@ -539,6 +558,10 @@
   function espiarRubros() {
     var cab = document.getElementById('cab'), alto = cab ? cab.offsetHeight : 120;
     document.documentElement.style.setProperty('--alto-cab', alto + 'px');
+    // En el inicio, lo pegado arriba es el encabezado + el buscador con las pestañas.
+    var peg = document.getElementById('pegado-ini');
+    document.documentElement.style.setProperty('--alto-pegado', (peg ? peg.offsetHeight : 48) + 'px');
+    if (peg) alto += peg.offsetHeight - 60;
     if (espia) { espia.disconnect(); espia = null; }
     var tabs = document.getElementById('tabs-rubros');
     if (!tabs || !('IntersectionObserver' in window)) return;
@@ -694,7 +717,8 @@
     // Una marca: el inicio muestra solo lo de esa marca (se vuelve a tocar y aparece todo).
     'marca-ini': function (d) {
       S.marcaIni = S.marcaIni === d.m ? null : d.m; pintar(false);
-      var t = document.getElementById('tabs-rubros'); if (t) window.scrollTo(0, t.getBoundingClientRect().top + window.scrollY - (document.getElementById('cab') || {}).offsetHeight);
+      var t = document.querySelector('.marcas-ini'), pg = document.getElementById('pegado-ini');
+      if (t) window.scrollTo(0, t.getBoundingClientRect().top + window.scrollY - ((document.getElementById('cab') || {}).offsetHeight || 0) - (pg ? pg.offsetHeight : 0) - 8);
     },
     'abrir-menu': function () { S.menu = true; S.menuMarca = (S.f && S.f.marca) || null; pintar(false); },
     'cerrar-menu': function () { S.menu = false; S.menuQ = ''; pintar(false); },
@@ -803,12 +827,18 @@
   document.addEventListener('click', function (e) { var el = e.target.closest('[data-a]'); if (!el || el.tagName === 'INPUT') return; var a = A[el.getAttribute('data-a')]; if (a) { e.preventDefault(); a(el.dataset); } });
   // Las casillas avisan con «change» (el clic no pasa por A para no frenar el tilde).
   document.addEventListener('change', function (e) { if (e.target.getAttribute && e.target.getAttribute('data-a') === 'c-promos') A['c-promos'](e.target.dataset); });
+  var tecleo = null;
   document.addEventListener('input', function (e) {
     if (e.target.id === 'q') {
       var antes = S.q.length >= 2;
       S.q = e.target.value; S.limite = 20; if (S.q.length < 2 && S.vista !== 'lista') S.vista = S.vista === 'pros' ? 'pros' : 'inicio';
-      // Al empezar a buscar (o al borrar la búsqueda), arriba de todo: si no, los resultados quedan lejos.
-      pintar(antes !== (S.q.length >= 2));
+      var ahora = S.q.length >= 2;
+      // Rápido al tipear (Gonzalo, 16/11): con menos de 2 letras no se redibuja nada (la pantalla no
+      // cambia), y mientras se escribe se espera un instante entre letras en vez de redibujar en cada una.
+      clearTimeout(tecleo);
+      if (!antes && !ahora) return;
+      if (antes !== ahora) { pintar(true); return; } // al empezar a buscar o al borrar: arriba de todo
+      tecleo = setTimeout(function () { pintar(false); }, 140);
     }
     if (e.target.id === 'mq') { S.menuQ = e.target.value; pintar(false); }
   });
