@@ -2406,8 +2406,8 @@ export default function AsesorApp({
                     onClick={() => setComboAbierto(combo.id)}
                     className="rounded-[22px] bg-white overflow-hidden shadow-sm flex flex-col border border-[#ece4d4] cursor-pointer transition-transform active:scale-[.98]"
                   >
-                    {/* La foto adentro de su recuadro, entera: antes crecía más que el recuadro y tapaba el nombre (Gonzalo, 16/11). */}
-                    <div className="relative bg-white h-[200px] [@media(max-height:820px)]:h-[140px] shrink-0 overflow-hidden">
+                    {/* Foto grande, nombre y precio; lo que incluye, recién al tocarlo (Gonzalo, 16/11: «que no se vea tanta info»). */}
+                    <div className="relative bg-white h-[340px] [@media(max-height:820px)]:h-[300px] shrink-0 overflow-hidden">
                       {combo.imagen ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={combo.imagen} alt="" className="absolute inset-0 w-full h-full object-contain px-2 pb-2 pt-11" />
@@ -2433,29 +2433,7 @@ export default function AsesorApp({
                       )}
                     </div>
                     <div className="p-3 xl:p-3.5 flex flex-col gap-2 flex-1" style={{ background: "#fffaf2" }}>
-                      <p className={`${titular.className} text-[16px] xl:text-[17px] font-extrabold leading-tight`}>{combo.nombre}</p>
-                      {/* Cada producto se toca y abre su ficha (con dónde está en la góndola). */}
-                      <div className="flex flex-col gap-1.5">
-                        {grupos.map((g, gi) =>
-                          g.productos.map((p) => (
-                            <button
-                              key={`${gi}-${p.id_producto}`}
-                              onClick={(ev) => {
-                                ev.stopPropagation();
-                                setProductoAbierto(p.id_producto);
-                              }}
-                              className="text-left text-[12.5px] font-semibold text-[#3d4436] rounded-xl px-2.5 py-1.5 flex items-center gap-2"
-                              style={{ background: "#f1f4ec" }}
-                            >
-                              <span className="shrink-0 font-extrabold" style={{ color: "#4d7635" }}>
-                                {g.cantidad > 1 ? `${g.cantidad} ×` : "1 ×"}
-                              </span>
-                              <span className="flex-1 min-w-0 line-clamp-2">{tr(p.nombre, p.nombre_en, p.nombre_pt)}</span>
-                              <span aria-hidden className="text-[#8a9180]">›</span>
-                            </button>
-                          ))
-                        )}
-                      </div>
+                      <p className={`${titular.className} text-[17px] xl:text-[18px] font-extrabold leading-tight`}>{combo.nombre}</p>
                       <div className="flex items-baseline gap-2 flex-wrap mt-auto pt-1">
                         <span className={`${titular.className} text-[22px] font-extrabold`}>{formatoPrecio(combo.precio)}</span>
                         {combo.precioEfectivo != null && combo.precioEfectivo < combo.precio && (
@@ -2465,6 +2443,9 @@ export default function AsesorApp({
                         )}
                         {suelto > combo.precio && <span className="text-[13px] text-[#a8a8a8] line-through">{formatoPrecio(suelto)}</span>}
                       </div>
+                      <span className="text-[13px] font-extrabold" style={{ color: "#4d7635" }}>
+                        {idioma === "en" ? "See what's included ›" : idioma === "pt" ? "Ver o que inclui ›" : "Ver qué incluye ›"}
+                      </span>
                     </div>
                   </div>
                 );
