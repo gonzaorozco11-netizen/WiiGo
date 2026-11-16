@@ -12,6 +12,7 @@ import {
 } from "@/app/(app)/ventas/actions";
 import { emitirFacturaDeVenta } from "@/app/(app)/facturacion/actions";
 import DevolucionPanel from "@/components/DevolucionPanel";
+import PreguntaTransferencia from "@/components/PreguntaTransferencia";
 import { etiquetaMedio } from "@/lib/formasPago";
 
 type FiltroFecha = "HOY" | "SEMANA" | "MES" | "TODO" | "RANGO";
@@ -186,6 +187,8 @@ export default function VentasApp({
   const [procesandoAnular, setProcesandoAnular] = useState(false);
   const [procesandoNota, setProcesandoNota] = useState(false);
   const [mensajeAnular, setMensajeAnular] = useState<{ tipo: "error" | "aviso"; texto: string } | null>(null);
+  // Devolución de una venta cobrada por transferencia: «¿ya le enviaste la plata?».
+  const [preguntaTransf, setPreguntaTransf] = useState<{ idDevolucion: string; monto: number } | null>(null);
 
   // La carga inicial (ventasIniciales) ya viene filtrada por "esta semana"
   // desde el servidor — solo hay que volver a pedir cuando el filtro de
@@ -269,6 +272,7 @@ export default function VentasApp({
         setAnulando(false);
         setMotivoAnular("");
         if (res.aviso) setMensajeAnular({ tipo: "aviso", texto: res.aviso });
+        if (res.pendienteTransferencia) setPreguntaTransf(res.pendienteTransferencia);
       })
       .catch((e) => setMensajeAnular({ tipo: "error", texto: e instanceof Error ? e.message : "No se pudo anular la venta" }))
       .finally(() => setProcesandoAnular(false));
@@ -335,6 +339,20 @@ export default function VentasApp({
 
   return (
     <div>
+      {preguntaTransf && (
+        <PreguntaTransferencia
+          idDevolucion={preguntaTransf.idDevolucion}
+          monto={preguntaTransf.monto}
+          onListo={(enviada) => {
+            setPreguntaTransf(null);
+            setMensajeAnular(
+              enviada
+                ? { tipo: "aviso", texto: "Listo: la transferencia quedó marcada como enviada." }
+                : { tipo: "aviso", texto: "Queda pendiente: hasta que la mandes y la marques como enviada (al cerrar la caja), la caja no se puede cerrar." }
+            );
+          }}
+        />
+      )}
       <div className="flex items-center justify-between mb-1">
         <h1 className="text-lg font-semibold text-neutral-900">Transacciones</h1>
       </div>
@@ -608,9 +626,10 @@ export default function VentasApp({
                       tieneFactura={Boolean(ventaSeleccionada.cae)}
                       yaLiquidada={Boolean(ventaSeleccionada.id_liquidacion)}
                       onCerrar={() => setDevolviendo(false)}
-                      onListo={(aviso) => {
+                      onListo={(aviso, pendiente) => {
                         setDevolviendo(false);
                         setMensajeAnular(aviso ? { tipo: "aviso", texto: aviso } : null);
+                        if (pendiente) setPreguntaTransf(pendiente);
                       }}
                     />
                   </div>

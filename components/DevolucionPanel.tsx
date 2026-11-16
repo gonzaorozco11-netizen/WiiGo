@@ -32,7 +32,8 @@ export default function DevolucionPanel({
   medioPago: string | null;
   tieneFactura: boolean;
   yaLiquidada: boolean;
-  onListo: (aviso?: string) => void;
+  /** pendienteTransferencia: si la plata hay que mandarla a mano (venta cobrada por transferencia). */
+  onListo: (aviso?: string, pendienteTransferencia?: { idDevolucion: string; monto: number }) => void;
   onCerrar: () => void;
 }) {
   const [lineas, setLineas] = useState<LineaDevolvible[] | null>(null);
@@ -84,7 +85,7 @@ export default function DevolucionPanel({
     startTransition(async () => {
       const r = await registrarDevolucion(idVenta, pedido, { motivo, destino });
       if (r.error) setError(r.error);
-      else onListo(r.aviso);
+      else onListo(r.aviso, r.pendienteTransferencia);
     });
   }
 

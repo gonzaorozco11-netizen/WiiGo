@@ -124,7 +124,7 @@ export async function registrarDevolucion(
     medio?: MedioDevolucion;
     claveAdmin?: string;
   }
-): Promise<{ error: string | null; aviso?: string }> {
+): Promise<{ error: string | null; aviso?: string; pendienteTransferencia?: { idDevolucion: string; monto: number } }> {
   const motivo = opciones.motivo.trim();
   if (!motivo) return { error: "Contá el motivo de la devolución." };
 
@@ -277,8 +277,15 @@ export async function registrarDevolucion(
     }
 
     // ===== Reintegro por Mercado Pago =====
+    // Si Mercado Pago no lo hizo solo (las cobradas por transferencia no
+    // tienen el id del pago), la plata la manda a mano el operativo: la
+    // pantalla le pregunta si ya la envió (lib/transferenciasPendientes.ts).
+    let pendienteTransferencia: { idDevolucion: string; monto: number } | undefined;
     if (medio === "MERCADO_PAGO") {
-      avisos.push(await reintegrarPorMp(supabase, venta.id_pago as string | null, calc.total, idDevolucion));
+      const aviso = await reintegrarPorMp(supabase, venta.id_pago as string | null, calc.total, idDevolucion);
+      const { data: hecho } = await supabase.from("devoluciones").select("mp_refund_id").eq("id_devolucion", idDevolucion).maybeSingle();
+      if (!hecho?.mp_refund_id && calc.total > 0) pendienteTransferencia = { idDevolucion, monto: calc.total };
+      else avisos.push(aviso);
     }
     // El posnet no está conectado: el reintegro se hace en el aparato.
     if (medio === "POSNET") {
@@ -354,10 +361,28 @@ export async function registrarDevolucion(
     revalidatePath("/stock");
     revalidatePath("/turnos");
 
-    return { error: null, aviso: avisos.length > 0 ? avisos.join(" · ") : undefined };
+    return { error: null, aviso: avisos.length > 0 ? avisos.join(" · ") : undefined, pendienteTransferencia };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo registrar la devolución" };
   }
+}
+
+/**
+ * «Sí, ya la envié»: la transferencia de una devolución ya le llegó al cliente.
+ * Hasta acá la caja del local no se puede cerrar (lib/transferenciasPendientes.ts).
+ */
+export async function marcarTransferenciaEnviada(idDevolucion: string): Promise<{ error: string | null }> {
+  const usuario = await usuarioActual();
+  if (!usuario) return { error: "Tenés que estar adentro del sistema." };
+  const { error } = await getSupabaseServerClient()
+    .from("devoluciones")
+    .update({ transferencia_enviada_en: new Date().toISOString(), transferencia_enviada_por: usuario })
+    .eq("id_devolucion", idDevolucion)
+    .is("transferencia_enviada_en", null);
+  if (error) return { error: /transferencia_enviada/.test(error.message) ? "Falta correr sql/devoluciones-transferencia.sql en Supabase." : friendlyDbError(error) };
+  revalidatePath("/turnos");
+  revalidatePath("/ventas");
+  return { error: null };
 }
 
 /** El reintegro por Mercado Pago. Nunca frena la devolución: devuelve el aviso. */
@@ -436,7 +461,7 @@ export async function anularVenta(
   idVenta: string,
   motivo: string,
   devolucion?: { medio: MedioDevolucion; monto?: number; claveAdmin?: string }
-): Promise<{ error: string | null; aviso?: string }> {
+): Promise<{ error: string | null; aviso?: string; pendienteTransferencia?: { idDevolucion: string; monto: number } }> {
   const supabase = getSupabaseServerClient();
 
   const lineas = await lineasDevolvibles(supabase, idVenta);

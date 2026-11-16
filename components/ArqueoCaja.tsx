@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { cerrarTurno, resumenTurnoAbierto } from "@/app/(app)/turnos/actions";
+import { marcarTransferenciaEnviada } from "@/app/(app)/ventas/actions";
 import PadFirma from "@/components/PadFirma";
 
 // El arqueo de cierre de caja: todo el turno, el conteo por billete, los dos
@@ -52,6 +53,7 @@ export default function ArqueoCaja({
   const [firma, setFirma] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cerrando, setCerrando] = useState(false);
+  const [enviando, setEnviando] = useState<string | null>(null);
 
   useEffect(() => {
     resumenTurnoAbierto(idTurno)
@@ -64,8 +66,9 @@ export default function ArqueoCaja({
   const diferencia = resumen ? contado - resumen.efectivoEsperado : 0;
   const cambio = Math.min(fondo, contado);
   const recaudacion = contado - cambio;
+  const pendientes = resumen?.transferenciasPendientes ?? [];
   const falta =
-    !algoContado ? "Contá la plata" : diferencia !== 0 && !observaciones.trim() ? "Escribí qué pasó con la diferencia" : exigirFotoYFirma && !foto ? "Falta la foto" : exigirFotoYFirma && !firma ? "Falta tu firma" : null;
+    pendientes.length > 0 ? "Primero mandá las transferencias pendientes" : !algoContado ? "Contá la plata" : diferencia !== 0 && !observaciones.trim() ? "Escribí qué pasó con la diferencia" : exigirFotoYFirma && !foto ? "Falta la foto" : exigirFotoYFirma && !firma ? "Falta tu firma" : null;
 
   async function elegirFoto(e: React.ChangeEvent<HTMLInputElement>) {
     const archivo = e.target.files?.[0];
@@ -97,9 +100,48 @@ export default function ArqueoCaja({
 
   if (!resumen) return <p className="text-sm text-neutral-400 text-center py-6">{error ?? "Cargando tu turno..."}</p>;
 
+  async function yaLaEnvie(idDevolucion: string) {
+    setError(null);
+    setEnviando(idDevolucion);
+    try {
+      const r = await marcarTransferenciaEnviada(idDevolucion);
+      if (r.error) setError(r.error);
+      else setResumen(await resumenTurnoAbierto(idTurno));
+    } catch {
+      setError("No se pudo guardar. Probá de nuevo.");
+    } finally {
+      setEnviando(null);
+    }
+  }
+
   const fila = "flex justify-between gap-3";
   return (
     <div className="space-y-3 text-left">
+      {/* Devoluciones por transferencia sin mandar: la caja no cierra hasta marcarlas (Gonzalo, 16/11). */}
+      {pendientes.length > 0 && (
+        <section role="alert" className="rounded-xl border-2 border-red-300 bg-red-50 p-4">
+          <p className="text-sm font-bold text-red-800">Antes de cerrar: hay que devolver plata por transferencia</p>
+          <p className="mt-0.5 text-xs text-red-700">Mandala desde la app de Mercado Pago a la cuenta del cliente y después tocá «Ya la envié».</p>
+          <ul className="mt-3 space-y-2">
+            {pendientes.map((p) => (
+              <li key={p.idDevolucion} className="flex flex-wrap items-center gap-3 rounded-lg bg-white px-3 py-2.5">
+                <span className="min-w-0 flex-1 text-sm">
+                  <b className="tabular-nums">{pesos(p.monto)}</b>
+                  {p.cliente ? ` a ${p.cliente}` : ""} <span className="text-neutral-500">· venta #{p.numeroVenta}</span>
+                </span>
+                <button
+                  type="button"
+                  disabled={enviando !== null}
+                  onClick={() => yaLaEnvie(p.idDevolucion)}
+                  className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-bold text-white disabled:opacity-50"
+                >
+                  {enviando === p.idDevolucion ? "Guardando…" : "Ya la envié"}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       <section className="border border-neutral-200 rounded-xl p-4 bg-white">
         <p className="text-sm font-bold text-neutral-900 mb-2">Tu turno</p>
         <div className="space-y-1 text-[13px] tabular-nums">

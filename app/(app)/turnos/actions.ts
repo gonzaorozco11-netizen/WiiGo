@@ -7,6 +7,9 @@ import { friendlyDbError } from "@/lib/errors";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { transferenciasPendientes } from "@/lib/transferenciasPendientes";
+
+const pesosAr = (n: number) => `$${Math.round(n).toLocaleString("es-AR")}`;
 
 async function usuarioActual() {
   const cookieStore = await cookies();
@@ -121,10 +124,19 @@ export async function abrirTurno(idLocal: string, montoInicial: number, cambioEs
 async function resumenTurno(supabase: SupabaseClient, idTurno: string) {
   const { data: ventas, error } = await supabase
     .from("ventas")
-    .select("total, total_cobrado, medio_pago, estado, id_pago")
+    .select("id_venta, total, total_cobrado, medio_pago, estado, id_pago")
     .eq("id_turno", idTurno)
     .in("estado", ["PAGADA", "ANULADA"]);
   if (error) throw new Error(friendlyDbError(error));
+
+  // Lo que se devolvió por Mercado Pago de las ventas de este turno: el renglón
+  // «Mercado Pago» es lo que entró menos lo que volvió a salir por ahí
+  // (Gonzalo, 16/11). Una venta anulada y devuelta por transferencia da $0.
+  const idsMp = (ventas ?? []).filter((v) => v.medio_pago !== "EFECTIVO" && v.medio_pago !== "POSNET").map((v) => v.id_venta as string);
+  const { data: devueltoMp } = idsMp.length
+    ? await supabase.from("devoluciones").select("monto_devuelto").in("id_venta", idsMp).eq("medio", "MERCADO_PAGO")
+    : { data: [] as { monto_devuelto: number | null }[] };
+  const totalDevueltoMp = (devueltoMp ?? []).reduce((a, d) => a + (Number(d.monto_devuelto) || 0), 0);
 
   // El posnet va aparte de Mercado Pago: se controla contra el cierre de lote
   // del aparato, separado en débito y crédito (lo que marcó la cajera).
@@ -214,7 +226,7 @@ async function resumenTurno(supabase: SupabaseClient, idTurno: string) {
 
   return {
     totalEfectivo,
-    totalMercadoPago,
+    totalMercadoPago: totalMercadoPago - totalDevueltoMp,
     totalPosnetDebito,
     totalPosnetCredito,
     cantidadPosnetDebito,
@@ -231,15 +243,20 @@ export async function resumenTurnoAbierto(idTurno: string) {
   const supabase = getSupabaseServerClient();
   const { data: turno, error } = await supabase
     .from("turnos")
-    .select("monto_inicial_efectivo")
+    .select("monto_inicial_efectivo, id_local")
     .eq("id_turno", idTurno)
     .maybeSingle();
   if (error) throw new Error(friendlyDbError(error));
   if (!turno) throw new Error("No se encontró el turno");
 
-  const resumen = await resumenTurno(supabase, idTurno);
+  const [resumen, pendientes] = await Promise.all([
+    resumenTurno(supabase, idTurno),
+    turno.id_local ? transferenciasPendientes(supabase, turno.id_local as string) : Promise.resolve([]),
+  ]);
   return {
     ...resumen,
+    // Devoluciones por transferencia sin mandar: la caja no cierra hasta marcarlas.
+    transferenciasPendientes: pendientes,
     montoInicial: turno.monto_inicial_efectivo,
     efectivoEsperado:
       turno.monto_inicial_efectivo +
@@ -290,6 +307,17 @@ export async function cerrarTurno(
       return { error: `Esta caja la abrió ${turno.usuario_apertura ?? "otra persona"}: la cierra esa persona o administración.` };
     }
     if (!admin && (!arqueo?.foto || !arqueo?.firma)) return { error: "Para cerrar la caja falta la foto de la plata contada y tu firma." };
+
+    // Una devolución por transferencia que nadie mandó traba la caja (Gonzalo, 16/11).
+    if (turno.id_local) {
+      const pendientes = await transferenciasPendientes(supabase, turno.id_local as string);
+      if (pendientes.length > 0) {
+        const p = pendientes[0];
+        return {
+          error: `Antes de cerrar la caja: falta mandarle ${pesosAr(p.monto)} por transferencia${p.cliente ? ` a ${p.cliente}` : ""} (venta #${p.numeroVenta}). Mandala desde Mercado Pago y tocá «Ya la envié».`,
+        };
+      }
+    }
 
     const resumen = await resumenTurno(supabase, idTurno);
     const efectivoEsperado =
