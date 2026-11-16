@@ -1,7 +1,7 @@
 import { createHmac } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { enviarMail, plantilla } from "@/lib/mail";
-import { baseUrlPublica } from "@/lib/urlPublica";
+import { baseUrlPublica, urlTienda } from "@/lib/urlPublica";
 import { fechaHoraArgentina } from "@/lib/horarios";
 import { leerMailsResumen, PARAMETRO_MAILS_RESUMEN } from "@/lib/resumenTurno";
 
@@ -277,7 +277,8 @@ export async function avisarCliente(supabase: SupabaseClient, idPedido: string, 
     const items = itemsDe(p);
     const t = totalesDe(items);
     const base = baseUrlPublica("https://app.wiigo.com.ar");
-    const boton = { texto: "Seguir mi pedido", url: `${base}/tienda?pedido=${encodeURIComponent(p.codigo)}` };
+    const tienda = urlTienda();
+    const boton = { texto: "Seguir mi pedido", url: `${tienda}?pedido=${encodeURIComponent(p.codigo)}` };
     const nombre = escapar(p.nombre.split(" ")[0] ?? p.nombre);
     const faltaron = items.filter((i) => i.hay != null && i.hay < i.cantidad);
     const textoFaltas = faltaron
@@ -344,7 +345,7 @@ export async function avisarCliente(supabase: SupabaseClient, idPedido: string, 
         bajada: `Retiraste tu pedido #${p.numero}.`,
         destacado: puntos > 0 ? `+${puntos} puntos` : undefined,
         detalle: puntos > 0 ? ["Ya están en tu cuenta del WiiGo Club."] : undefined,
-        boton: { texto: "Volver a la tienda", url: `${base}/tienda` },
+        boton: { texto: "Volver a la tienda", url: tienda },
         pie: PIE,
         base,
       });
@@ -357,7 +358,7 @@ export async function avisarCliente(supabase: SupabaseClient, idPedido: string, 
         tono: "ambar",
         bajada: `Pedido #${p.numero}${p.motivo_cancelacion ? ` · ${escapar(p.motivo_cancelacion)}` : ""}`,
         cuerpo: devolver > 0 ? `Ya habías transferido: te devolvemos <b>${pesos(devolver)}</b> a la misma cuenta.` : "Si querés, armalo de nuevo cuando quieras.",
-        boton: { texto: "Ir a la tienda", url: `${base}/tienda` },
+        boton: { texto: "Ir a la tienda", url: tienda },
         pie: PIE,
         base,
       });

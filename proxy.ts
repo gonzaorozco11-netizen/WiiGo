@@ -37,8 +37,27 @@ export const config = {
   ],
 };
 
+// La tienda en su propio dominio (Gonzalo, 2026-11-16: «que no diga /tienda»):
+// wiigo.com.ar muestra la tienda en «/». Cualquier otra página pedida por ese
+// dominio (el sistema interno) se manda a app.wiigo.com.ar. Lo que la tienda
+// necesita (/tienda/*, /api/tienda/*, logos) no pasa por acá: el matcher lo
+// deja pasar. El dominio sale de TIENDA_URL si está cargada en Vercel.
+function hostsTienda(): Set<string> {
+  const propia = process.env.TIENDA_URL?.trim();
+  const host = propia ? propia.replace(/^https?:\/\//, "").replace(/\/.*$/, "").toLowerCase() : "wiigo.com.ar";
+  const sinWww = host.replace(/^www\./, "");
+  return new Set([sinWww, `www.${sinWww}`]);
+}
+
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
+
+  const host = (req.headers.get("host") ?? "").toLowerCase().split(":")[0];
+  if (hostsTienda().has(host)) {
+    if (pathname === "/") return NextResponse.rewrite(new URL(`/tienda/index.html${req.nextUrl.search}`, req.url));
+    const app = (process.env.APP_URL?.trim() || "https://app.wiigo.com.ar").replace(/\/+$/, "");
+    return NextResponse.redirect(new URL(`${pathname}${req.nextUrl.search}`, app));
+  }
 
   const secret = process.env.AUTH_SECRET;
   if (!secret) {

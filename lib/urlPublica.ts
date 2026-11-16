@@ -14,6 +14,18 @@
 //      al dominio de producción (tu dominio propio si lo tenés). No hay que
 //      configurar nada.
 //   3. El origin del request, como último recurso (desarrollo local).
+/**
+ * La dirección de la tienda online para los links al cliente (mails, «Seguir mi
+ * pedido»). Con TIENDA_URL cargada en Vercel (por ejemplo https://wiigo.com.ar,
+ * Gonzalo 16/11: «que no diga /tienda»), la tienda en su dominio; si no, la de
+ * siempre, app.wiigo.com.ar/tienda. Termina en «/» o en «/tienda»: se le agrega ?pedido=…
+ */
+export function urlTienda(): string {
+  const propia = process.env.TIENDA_URL?.trim();
+  if (propia) return `${propia.replace(/\/+$/, "")}/`;
+  return `${baseUrlPublica("https://app.wiigo.com.ar")}/tienda`;
+}
+
 export function baseUrlPublica(origenDelRequest = ""): string {
   const manual = process.env.APP_URL?.trim();
   if (manual) return manual.replace(/\/+$/, "");
