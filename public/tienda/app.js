@@ -276,7 +276,7 @@
   function tarjetaLocal() {
     var m = MARCA.WiiGo, hr = horario();
     return '<section class="local"><span class="local-logo">' + (m && m.logo ? imagen(m.logo, 128) : 'W') + '</span><div><h2>WiiGo · Arístides</h2><div class="local-meta">' +
-      '<span><b class="' + (hr[0] ? 'abierto' : 'cerrado') + '">● ' + (hr[0] ? 'Abierto' : 'Cerrado') + '</b> ' + hr[1] + '</span><span>🛍️ Retirás en 15 min</span><span>📍 Arístides Villanueva 256</span></div></div>' +
+      '<span><b class="' + (hr[0] ? 'abierto' : 'cerrado') + '">● ' + (hr[0] ? 'Abierto' : 'Cerrado') + '</b> ' + hr[1] + '</span><span>🛍️ Retirás en 15 min</span><a class="dir-mapa" href="' + MAPA + '" target="_blank" rel="noopener">📍 Arístides Villanueva 256 <u>Cómo llegar</u></a></div></div>' +
       '<div class="local-datos"><span>Pagás al retirar o por transferencia</span><span>Precio especial en efectivo</span><span class="club">★ Sumás puntos WiiGo Club</span></div></section>';
   }
   // Formato de app de delivery (Gonzalo, 16/11): banners arriba, el local, los accesos de siempre, las pestañas
@@ -356,7 +356,7 @@
     return '<div class="filtro-cab"><button class="redondo" data-a="inicio" aria-label="Volver al inicio">' + ic('atras') + '</button><span><b>Profesionales</b><small>Nutricionistas que trabajan con WiiGo</small></span></div><div style="display:grid;gap:10px">' +
       D.profesionales.map(function (p) { return '<div class="tarjeta" style="flex-direction:row;gap:14px;padding:12px;align-items:center">' + (p.foto ? imagen(p.foto, 256, ' style="width:84px;height:100px;object-fit:cover;border-radius:14px"') : '') + '<span><b style="font:800 18px/1.1 var(--display)">' + esc(p.n) + '</b><small style="display:block;color:var(--gris);margin:4px 0 8px">' + esc(p.t) + '</small>' + (p.ob ? '<button class="acceso" data-a="obj-directo" data-o="' + esc(p.ob) + '">Productos para ' + esc(p.ob.toLowerCase()) + '</button>' : '') + '</span></div>'; }).join('') + '</div>';
   }
-  function pie() { return '<footer class="pie"><img src="/wiigo-logo-negro.png" alt="WiiGo"><span><b>Estación Arístides Villanueva 256</b>, Mendoza</span><span>Lunes a sábado de 9 a 13 y de 17 a 21</span><span>Retiro en la estación, listo en menos de 15 minutos · Envío a domicilio: próximamente</span><span>@wiigo.arg</span><span style="font-size:12px">NUOVO IMPERO S.A.S. · CUIT 30-71851497-1 · Defensa de las y los consumidores</span></footer>'; }
+  function pie() { return '<footer class="pie"><img src="/wiigo-logo-negro.png" alt="WiiGo"><a class="dir-mapa" href="' + MAPA + '" target="_blank" rel="noopener"><b>Estación Arístides Villanueva 256</b>, Mendoza · <u>Cómo llegar</u></a><span>Lunes a sábado de 9 a 13 y de 17 a 21</span><span>Retiro en la estación, listo en menos de 15 minutos · Envío a domicilio: próximamente</span><span>@wiigo.arg</span><span style="font-size:12px">NUOVO IMPERO S.A.S. · CUIT 30-71851497-1 · Defensa de las y los consumidores</span></footer>'; }
 
   function cajon() {
     if (!S.menu) return '';
@@ -453,7 +453,7 @@
     return '<div class="fondo" data-a="cerrar-pedido"></div><section class="hoja" role="dialog" aria-modal="true" aria-label="Mi pedido"><div class="hoja-cab"><h2>Mi pedido</h2><button class="redondo" data-a="cerrar-pedido" aria-label="Cerrar">' + ic('cruz', 20) + '</button></div><div class="hoja-cuerpo">' +
       (carrito.length ? carrito.map(function (l) { var p = POR_ID[l.id]; return '<div class="linea-ped"><span class="mini">' + foto(p) + '</span><span><b>' + esc(p.t) + (l.v ? ' — ' + esc(l.v) : '') + '</b><small>' + plata(p.p * l.q) + ' · efectivo ' + plata((p.e || p.p) * l.q) + '</small></span><div class="paso"><button data-a="p-restar" data-id="' + l.id + '" data-v="' + esc(l.v || '') + '" aria-label="Uno menos">−</button><span>' + l.q + '</span><button data-a="p-sumar" data-id="' + l.id + '" data-v="' + esc(l.v || '') + '" aria-label="Uno más">+</button></div></div>'; }).join('') : '<div class="vacio">Todavía no agregaste nada.</div>') + '</div>' +
       (carrito.length ? '<div class="hoja-pie"><div class="total"><span>Total</span><b>' + plata(t.g) + '</b></div><div class="total ef"><span>Pagando en efectivo al retirar</span><b>' + plata(t.e) + '</b></div>' +
-      '<div class="total" style="font-size:14px"><span>' + (S.usuario ? 'Sumás en WiiGo Club' : '<button data-a="cuenta" style="border:0;background:none;padding:0;color:#a8461a;font-weight:800;text-decoration:underline">Entrá con tu DNI</button> y sumás') + '</span><b style="font-size:16px;color:#a8461a">+' + t.p + ' puntos</b></div><span class="nota">Lo retirás en Arístides Villanueva 256, listo en menos de 15 minutos.</span><button class="agregar" style="background:var(--energia);color:#2a1406;min-height:52px" data-a="continuar">Continuar</button></div>' : '') + '</section>';
+      '<div class="total" style="font-size:14px"><span>' + (S.usuario ? 'Sumás en WiiGo Club' : '<button data-a="cuenta" style="border:0;background:none;padding:0;color:#a8461a;font-weight:800;text-decoration:underline">Entrá con tu DNI</button> y sumás') + '</span><b style="font-size:16px;color:#a8461a">+' + t.p + ' puntos</b></div><span class="nota">Lo retirás en <a class="dir-mapa" href="' + MAPA + '" target="_blank" rel="noopener">Arístides Villanueva 256</a>, listo en menos de 15 minutos.</span><button class="agregar" style="background:var(--energia);color:#2a1406;min-height:52px" data-a="continuar">Continuar</button></div>' : '') + '</section>';
   }
 
   /* ---------- Parte 3: comprar y seguir el pedido (maqueta aprobada, 2026-11-16) ---------- */
@@ -878,6 +878,12 @@
   // principio. Si el cliente la toca, se queda quieta 10 s. No se mueve fuera de la pantalla, con una hoja abierta
   // ni con «reducir movimiento». Solo mueve el scroll: no vuelve a dibujar nada ni consulta al servidor.
   var accesosQuieto = 0;
+  // La dirección abre el mapa (Gonzalo, 16/11). En iPhone, Apple Maps (siempre está instalado);
+  // en el resto, Google Maps (en Android abre la app). Misma búsqueda en el mail de «¡Está listo!».
+  var DIR_MAPA = 'Arístides Villanueva 256, Mendoza, Argentina';
+  var MAPA = /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent) && 'ontouchend' in document
+    ? 'https://maps.apple.com/?q=' + encodeURIComponent('WiiGo') + '&address=' + encodeURIComponent(DIR_MAPA)
+    : 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(DIR_MAPA);
   ['touchstart', 'pointerdown', 'wheel'].forEach(function (ev) {
     document.addEventListener(ev, function (e) { if (e.target && e.target.closest && e.target.closest('.accesos-ini')) accesosQuieto = Date.now() + 10000; }, { passive: true });
   });

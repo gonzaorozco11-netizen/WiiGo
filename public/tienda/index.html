@@ -247,6 +247,10 @@ main{padding:14px}
 .local-datos{grid-column:1/-1;display:flex;gap:6px;flex-wrap:wrap;border-top:1px solid var(--linea);padding-top:10px}
 .local-datos span{font-size:12px;font-weight:700;border-radius:999px;padding:4px 10px;background:var(--salvia-t);color:var(--bosque)}
 .local-datos span.club{background:#fff4d6;color:#7a5200}
+/* La dirección abre el mapa (16/11) */
+a.dir-mapa{color:inherit;text-decoration:none}
+a.dir-mapa u{text-decoration:underline;text-underline-offset:2px;color:#3f5536;font-weight:800}
+.nota a.dir-mapa{text-decoration:underline;text-underline-offset:2px;font-weight:800}
 /* Los accesos en una fila que se desliza (16/11): entran Ofertas, Combos y lo que venga */
 .accesos-ini{display:flex;gap:8px;margin:4px -14px 0;padding:8px 14px 2px;overflow-x:auto;scrollbar-width:none;scroll-snap-type:x proximity;scroll-padding:0 14px}
 .accesos-ini::-webkit-scrollbar{display:none}
@@ -504,6 +508,6 @@ main{padding:14px}
 <div class="app" id="app"><p style="padding:60px 16px;text-align:center;color:#626a5e">Cargando los productos…</p></div>
 <!-- El catálogo real, armado en el servidor con lo público de cada producto (lib/tiendaCatalogo.ts). -->
 <script src="/api/tienda/catalogo"></script>
-<script src="app.js?v=21"></script>
+<script src="app.js?v=22"></script>
 </body>
 </html>

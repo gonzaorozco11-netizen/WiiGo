@@ -263,6 +263,8 @@ export async function vencerPedidosOnline(supabase: SupabaseClient): Promise<num
 export type AvisoCliente = "RECIBIDO" | "PAGO_OK" | "ACEPTADO" | "LISTO" | "ENTREGADO" | "CANCELADO";
 
 const PIE = "WiiGo · Estaciones de Bienestar · Arístides Villanueva 256, Mendoza · Lunes a sábado de 9 a 13 y de 17 a 21";
+/** La estación en Google Maps (la misma búsqueda que usa la tienda en public/tienda/app.js). */
+const MAPA_ESTACION = "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent("Arístides Villanueva 256, Mendoza, Argentina");
 
 function escapar(s: string) {
   return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] as string);
@@ -331,7 +333,8 @@ export async function avisarCliente(supabase: SupabaseClient, idPedido: string, 
           : undefined,
         tono: faltaron.length ? "ambar" : "verde",
         boton,
-        nota: "Arístides Villanueva 256 · lunes a sábado de 9 a 13 y de 17 a 21.",
+        // La dirección abre el mapa (Gonzalo, 16/11). Google Maps: en el celu abre la app si la tiene.
+        nota: `<a href="${MAPA_ESTACION}" style="color:#3f5536;font-weight:bold">📍 Arístides Villanueva 256 · Cómo llegar</a><br>Lunes a sábado de 9 a 13 y de 17 a 21.`,
         pie: PIE,
         base,
       });
