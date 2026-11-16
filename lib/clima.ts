@@ -65,24 +65,61 @@ function solDeHoy(data: { utc_offset_seconds?: number; daily?: { sunrise?: strin
   return { amanecer, atardecer };
 }
 
+// Lo que pasa DE VERDAD afuera (Gonzalo, 2026-11-16: el tótem mostraba lluvia con
+// sol): Open-Meteo es un modelo de pronóstico y a veces «ve» tormenta con 0,1 mm.
+// El aeropuerto de Mendoza (El Plumerillo, SAME, a 7 km del centro) publica cada
+// hora la observación real (METAR): si llueve, si hay tormenta y cuánta nube hay.
+// Público y gratis (aviationweather.gov, sin clave). Se usa para locales en el
+// Gran Mendoza; si no responde o el dato es viejo, se usa el pronóstico.
+const METAR_MENDOZA = "https://aviationweather.gov/api/data/metar?ids=SAME&format=json";
+const RADIO_MENDOZA_KM = 60;
+
+function cercaDeMendoza(lat: number, lon: number) {
+  const dLat = (lat - LAT_MENDOZA) * 111, dLon = (lon - LON_MENDOZA) * 111 * Math.cos((LAT_MENDOZA * Math.PI) / 180);
+  return Math.hypot(dLat, dLon) <= RADIO_MENDOZA_KM;
+}
+
+async function climaObservadoMendoza(): Promise<Clima | null> {
+  try {
+    // Se guarda 10 minutos: el aeropuerto reporta cada hora y así los tótems no consultan de más.
+    const res = await fetch(METAR_MENDOZA, { next: { revalidate: 600 }, signal: AbortSignal.timeout(4000) });
+    if (!res.ok) return null;
+    const [m] = (await res.json()) as { obsTime?: number; wxString?: string; cover?: string; clouds?: { cover?: string }[] }[];
+    if (!m || !m.obsTime || Date.now() / 1000 - m.obsTime > 3 * 3600) return null; // dato de hace más de 3 h: no sirve
+    const wx = (m.wxString ?? "").toUpperCase();
+    if (/TS/.test(wx)) return "tormenta";
+    if (/RA|DZ|SH|GR|GS|SN|PL/.test(wx)) return "lluvia";
+    const capas = [m.cover, ...(m.clouds ?? []).map((c) => c.cover)].map((c) => (c ?? "").toUpperCase());
+    return capas.some((c) => c === "OVC" || c === "BKN") ? "nublado" : "soleado";
+  } catch {
+    return null;
+  }
+}
+
 export async function obtenerClimaActual(latitud: number | null, longitud: number | null): Promise<EstadoCielo> {
   const lat = latitud ?? LAT_MENDOZA;
   const lon = longitud ?? LON_MENDOZA;
+  const observado = cercaDeMendoza(lat, lon) ? climaObservadoMendoza() : Promise.resolve(null);
   try {
     const res = await fetch(
-      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=weather_code,is_day&daily=sunrise,sunset&timezone=auto&forecast_days=1`,
+      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=weather_code,is_day,precipitation&daily=sunrise,sunset&timezone=auto&forecast_days=1`,
       { cache: "no-store" }
     );
-    if (!res.ok) return { clima: "soleado", esDeNoche: esDeNochePorHora() };
+    const real = await observado;
+    if (!res.ok) return { clima: real ?? "soleado", esDeNoche: esDeNochePorHora() };
     const data = await res.json();
     const code = data?.current?.weather_code;
     const isDay = data?.current?.is_day;
     const sol = solDeHoy(data);
     const esDeNoche = sol ? esDeNocheSegunSol(sol.amanecer, sol.atardecer, Date.now()) : typeof isDay === "number" ? isDay === 0 : esDeNochePorHora();
     const conSol = { amanecer: sol?.amanecer ?? null, atardecer: sol?.atardecer ?? null };
+    if (real) return { clima: real, esDeNoche, ...conSol };
     if (typeof code !== "number") return { clima: "soleado", esDeNoche, ...conSol };
-    return { clima: categorizarClima(code), esDeNoche, ...conSol };
+    // Sin observación: el pronóstico, pero lluvia o tormenta solo si de verdad calcula que cae agua.
+    const pronostico = categorizarClima(code);
+    const mm = Number(data?.current?.precipitation ?? 0);
+    return { clima: (pronostico === "lluvia" || pronostico === "tormenta") && mm < 0.3 ? "nublado" : pronostico, esDeNoche, ...conSol };
   } catch {
-    return { clima: "soleado", esDeNoche: esDeNochePorHora() };
+    return { clima: (await observado) ?? "soleado", esDeNoche: esDeNochePorHora() };
   }
 }
