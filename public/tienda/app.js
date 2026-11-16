@@ -27,6 +27,7 @@
     menu: '<path d="M4 7h16M4 12h16M4 17h16"/>', persona: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
     bolsa: '<path d="M5 8h14l-1.2 11.2a2 2 0 0 1-2 1.8H8.2a2 2 0 0 1-2-1.8L5 8z"/><path d="M9 11V7a3 3 0 0 1 6 0v4"/>',
     canasta: '<path d="M3 10h18l-2 9H5z"/><path d="m8 10 3-6M16 10l-3-6"/>',
+    compartir: '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/>',
     lupa: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>', ojo: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
     cruz: '<path d="M6 6l12 12M18 6L6 18"/>', abajo: '<path d="M6 9l6 6 6-6"/>', atras: '<path d="M15 18l-6-6 6-6"/>', flecha: '<path d="M9 6l6 6-6 6"/>',
     chispa: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M6 18l2.5-2.5M15.5 8.5L18 6"/>', marcas: '<rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/>',
@@ -458,6 +459,8 @@
     return '<div class="fondo" data-a="cerrar-ficha"></div><section class="hoja" role="dialog" aria-modal="true" aria-label="' + esc(p.t) + '"><div class="hoja-cab"><span></span><button class="redondo" data-a="cerrar-ficha" aria-label="Cerrar">' + ic('cruz', 20) + '</button></div><div class="hoja-cuerpo">' +
       '<div class="f-foto">' + foto(p, 828) + '</div><h2 class="f-nombre">' + esc(p.t) + '</h2><span class="f-de">' + esc(nombreMarca(p.mf || p.m)) + ' · ' + esc(p.sc) + '</span>' +
       (p.s > 0 ? '<div class="f-precio"><b>' + plata(p.p) + '</b><span>' + plata(p.e || p.p) + ' efectivo</span></div>' : '<div class="f-precio"><span style="color:var(--gris)">Sin stock por ahora. Preguntá en la estación cuándo entra.</span></div>') + sabores(p) + '<div style="margin-top:10px" data-acc="' + p.id + '">' + boton(p) + '</div>' +
+      // Compartir con un amigo (Gonzalo, 16/11): WhatsApp o lo que tenga el celu.
+      '<button class="compartir" data-a="compartir" data-id="' + p.id + '">' + ic('compartir', 18) + 'Compartir con un amigo</button>' +
       // Nutrición en números, sin explicación. Después, el texto chico.
       (nutri ? '<div class="f-nutri" title="' + nutriPorcion(p).txt + '">' + (function (n) { return [['kcal', 'Kcal', n.k, ''], ['', 'Prot.', n.pr, ' g'], ['', 'Carbos', n.ca, ' g'], ['', 'Grasas', n.gr, ' g'], ['', 'Fibra', n.fi, ' g']]; })(nutriPorcion(p)).map(function (x) { return '<div class="' + x[0] + '"><small>' + x[1] + '</small><b>' + (x[2] == null ? '—' : (x[0] ? Math.round(x[2]) : coma(x[2])) + x[3]) + '</b></div>'; }).join('') + '</div><p class="f-chico" style="margin-top:6px">' + (gramosPorcion(p) || nutriPorcion(p).unidad ? 'Por porción: ' + esc(p.po) : 'Cada 100 g') + '</p>' : '') +
       (p.fl && p.fl.length ? '<p class="f-chico" style="color:#3f5536;font-weight:800">' + esc(p.fl.map(function (x) { return titulo(x.replace(/\s+/g, ' ')); }).join(' · ')) + '</p>' : '') +
@@ -1025,6 +1028,14 @@
     restar: function (d) { var p = POR_ID[d.id]; sumar(d.id, saborDe(p), -1); refrescar(d.id); },
     ficha: function (d) { S.ficha = d.id; S.descAbierta = false; pintar(false); },
     'cerrar-ficha': function () { S.ficha = null; pintar(false); },
+    // El link abre la ficha de este producto (wiigo.com.ar/?p=…), con la foto y el precio en la vista previa de WhatsApp.
+    // En el celu abre el menú de compartir del teléfono (WhatsApp, Instagram…); si no lo tiene, va directo a WhatsApp.
+    compartir: function (d) {
+      var p = POR_ID[d.id]; if (!p) return;
+      var url = location.origin + '/?p=' + p.id, texto = 'Mirá esto en WiiGo: ' + p.t + ' — ' + plata(p.p);
+      if (navigator.share) { navigator.share({ title: p.t + ' · WiiGo', text: texto, url: url }).catch(function () {}); return; }
+      window.open('https://wa.me/?text=' + encodeURIComponent(texto + '\n' + url), '_blank', 'noopener');
+    },
     'abrir-pedido': function () { S.pedido = true; S.ficha = null; pintar(false); },
     'cerrar-pedido': function () { S.pedido = false; pintar(false); },
     'p-sumar': function (d) { sumar(d.id, d.v || null, 1); pintar(false); },
@@ -1113,6 +1124,8 @@
   });
   // Desde el mail: /tienda?pedido=WG-XXXX abre el seguimiento de ese pedido.
   try { var codigoUrl = new URLSearchParams(location.search).get('pedido'); if (codigoUrl && /^WG-[A-Z0-9]{4}$/.test(codigoUrl)) { S.abrirCodigo = codigoUrl; S.vista = 'seguir'; } } catch (e) {}
+  // El link que mandó un amigo (?p=<producto>): abre la ficha de ese producto.
+  try { var prodUrl = new URLSearchParams(location.search).get('p'); if (prodUrl && POR_ID[prodUrl]) S.ficha = prodUrl; } catch (e) {}
   pintar(false);
   // ¿Ya entró antes en este celu? La cookie la lee el servidor.
   api().then(function (r) { if (r && r.usuario) { S.usuario = r.usuario; pintar(false); cargarPedidos(); } else if (S.abrirCodigo) { A.cuenta(); aviso('Entrá con tu DNI para ver tu pedido'); } });

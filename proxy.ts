@@ -55,6 +55,10 @@ export async function proxy(req: NextRequest) {
 
   const host = (req.headers.get("host") ?? "").toLowerCase().split(":")[0];
   if (hostsTienda().has(host)) {
+    // El link de un producto para compartir (?p=<id>) lleva la vista previa para WhatsApp (app/api/tienda/compartir).
+    if (pathname === "/" && /^[0-9a-f-]{36}$/i.test(req.nextUrl.searchParams.get("p") ?? "")) {
+      return NextResponse.rewrite(new URL(`/api/tienda/compartir${req.nextUrl.search}`, req.url));
+    }
     if (pathname === "/") return NextResponse.rewrite(new URL(`/tienda/index.html${req.nextUrl.search}`, req.url));
     return NextResponse.redirect(new URL(`/${req.nextUrl.search}`, req.url));
   }
