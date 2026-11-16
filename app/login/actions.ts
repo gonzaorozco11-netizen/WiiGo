@@ -6,6 +6,7 @@ import { SESSION_COOKIE, createSessionToken, readSessionToken } from "@/lib/sess
 import { verifyPassword } from "@/lib/auth";
 import { getSupabaseServerClient, type Usuario } from "@/lib/supabase";
 import { esRolInterno, INICIO_ROL_EXTERNO } from "@/lib/rolesInternos";
+import { estadoAparato } from "@/lib/aparatoLocalServidor";
 
 export async function login(_prevState: { error?: string } | undefined, formData: FormData) {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
@@ -104,9 +105,28 @@ export async function logout() {
   // Con la caja abierta o sin fichar la salida no se sale: se la lleva a
   // fichar, que le pide el arqueo si tiene la caja abierta. Las marcas y las
   // profesionales no abren caja ni fichan: salen siempre.
-  if (sesion && sesion.rol !== "admin" && esRolInterno(sesion.rol) && (await pendienteAntesDeSalir(sesion.sub as string, (sesion.nombre as string) ?? ""))) {
+  // Fuera de la tablet del local no se puede fichar ni cerrar caja: desde el
+  // celular se sale siempre (lo pendiente se cierra en la tablet).
+  if (
+    sesion &&
+    sesion.rol !== "admin" &&
+    esRolInterno(sesion.rol) &&
+    (await estadoAparato()).estado === "local" &&
+    (await pendienteAntesDeSalir(sesion.sub as string, (sesion.nombre as string) ?? ""))
+  ) {
     redirect("/ficha-asistencia?antes-de-salir=1");
   }
   cookieStore.delete(SESSION_COOKIE);
   redirect("/login");
+}
+
+/**
+ * Desde el cartel «solo en la tablet»: el Dueño quiere registrar ESTA tablet.
+ * Se cierra la sesión del operativo (sin pedir fichaje: todavía no es la
+ * tablet del local) y se lo lleva a entrar con su usuario a Tablets del local.
+ */
+export async function salirParaRegistrarTablet() {
+  const cookieStore = await cookies();
+  cookieStore.delete(SESSION_COOKIE);
+  redirect("/login?next=/aparatos");
 }

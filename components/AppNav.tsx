@@ -235,6 +235,7 @@ function itemActivo(pathname: string): { grupo: string | null; item: NavItem } |
     { grupo: null, item: { href: "/junta", label: "Junta" } },
     { grupo: null, item: { href: "/configuracion", label: "Configuración" } },
     { grupo: null, item: { href: "/auditoria", label: "Auditoría" } },
+    { grupo: null, item: { href: "/aparatos", label: "Tablets del local" } },
   ];
   for (const c of candidatos) {
     const coincide = pathname === c.item.href || pathname.startsWith(`${c.item.href}/`);
@@ -253,7 +254,10 @@ export default function AppNav({
   etiquetasVencidas = 0,
   pedidosNuevos = 0,
   nombre,
+  soloCelular = false,
 }: {
+  /** Operativo fuera de la tablet del local: el menú es solo lo que puede abrir ahí (lib/aparatoLocal.ts). */
+  soloCelular?: boolean;
   pantallas: string[] | null;
   esAdmin: boolean;
   puedeVerCajaAdmin: boolean;
@@ -321,6 +325,24 @@ export default function AppNav({
         </button>
       </div>
 
+      {soloCelular ? (
+        // Fuera de la tablet del local: lo único que se abre desde el celular.
+        <nav className="flex-1 overflow-y-auto px-2.5 pb-3" aria-label="Menú principal">
+          {[
+            { href: "/gondola", label: "Góndola", icono: "stock" as const },
+            { href: "/mis-recibos", label: "Mis recibos", icono: "rrhh" as const },
+            { href: "/aprender", label: "Aprender", icono: "catalogo" as const },
+          ].map((l) => (
+            <Link key={l.href} href={l.href} className={`mt-0.5 ${claseLink(pathname === l.href)}`}>
+              <Icono nombre={l.icono} className={pathname === l.href ? "text-accent" : "text-neutral-500"} />
+              {l.label}
+            </Link>
+          ))}
+          <p className="mx-2.5 mt-4 text-xs leading-relaxed text-neutral-500">
+            Fichar, la caja, las ventas y lo demás se usan solo en la tablet del local.
+          </p>
+        </nav>
+      ) : (
       <nav className="flex-1 overflow-y-auto px-2.5 pb-3" aria-label="Menú principal">
         {/* Inicio va primero y suelto: es la pantalla a la que uno vuelve. */}
         <Link href="/" className={claseLink(pathname === "/")}>
@@ -422,6 +444,7 @@ export default function AppNav({
           );
         })}
       </nav>
+      )}
 
       <div className="border-t border-neutral-200 px-2.5 py-2.5">
         {puedeEditarConfiguracion && (
@@ -436,6 +459,13 @@ export default function AppNav({
           <Link href="/auditoria" className={`mt-0.5 ${claseLink(activo?.item.href === "/auditoria")}`}>
             <Icono nombre="auditoria" className={activo?.item.href === "/auditoria" ? "text-accent" : "text-neutral-500"} />
             Auditoría
+          </Link>
+        )}
+        {/* Solo el Dueño: qué tablets son del local (ahí fichan y cobran los operativos). */}
+        {esAdmin && (
+          <Link href="/aparatos" className={`mt-0.5 ${claseLink(activo?.item.href === "/aparatos")}`}>
+            <Icono nombre="local" className={activo?.item.href === "/aparatos" ? "text-accent" : "text-neutral-500"} />
+            Tablets del local
           </Link>
         )}
         <div className="flex items-center gap-2.5 px-2.5 pt-2.5 mt-1">

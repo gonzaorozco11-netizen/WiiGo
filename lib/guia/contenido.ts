@@ -486,7 +486,7 @@ export const GUIAS: Guia[] = [
       "Al irte tocá <b>Fichar salida</b>. Si tenés la caja abierta, primero hacés el arqueo (<b>Cerrar caja y fichar salida</b>).",
       "Si hay carteles de precio pendientes, te los pide antes: marcá <b>Lo puse</b> en cada uno, o <b>No pude ponerlos</b> con el motivo.",
     ],
-    tip: "Si dice que tu usuario no está vinculado a ninguna persona, avisale a administración.",
+    tip: "Se ficha <b>solo en la tablet del local</b>: desde el celular no se puede (ahí te quedan la Góndola, Mis recibos y Aprender). Si dice que tu usuario no está vinculado a ninguna persona, avisale a administración.",
     rel: ["abrir-caja", "cerrar-caja", "carteles"],
   },
   {

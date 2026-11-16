@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
+import { COOKIE_APARATO, RENOVAR_CADA_MS, firmarAparato, leerAparato, opcionesCookieAparato, rolAtadoALaTablet, sePuedeEnElCelular } from "@/lib/aparatoLocal";
 
 // Las profesionales solo pueden estar en su espacio. Se corta acá y no en
 // cada pantalla porque también frena las server actions del sistema interno:
@@ -56,6 +57,26 @@ export async function proxy(req: NextRequest) {
 
   if (session.rol === "profesional" && !esDelEspacioProfesional(pathname)) {
     return NextResponse.redirect(new URL("/mi-espacio", req.url));
+  }
+
+  // Los operativos usan el sistema solo en la tablet del local (lib/aparatoLocal.ts).
+  // En otro aparato quedan la góndola, sus recibos y Aprender; lo demás (fichar,
+  // caja, ventas, cobros…) va a /solo-tablet. Se corta acá y no en cada pantalla
+  // por lo mismo que lo de las profesionales: también frena las server actions.
+  if (rolAtadoALaTablet(session.rol)) {
+    const aparato = await leerAparato(req.cookies.get(COOKIE_APARATO)?.value, secret);
+    if (!aparato) {
+      if (!sePuedeEnElCelular(pathname)) {
+        // Una acción (POST) no se redirige: se rechaza, así no se ejecuta en otro lado.
+        if (req.method !== "GET" && req.method !== "HEAD") return new NextResponse("Esto se usa solo en la tablet del local", { status: 403 });
+        return NextResponse.redirect(new URL("/solo-tablet", req.url));
+      }
+    } else if (Date.now() - aparato.iat > RENOVAR_CADA_MS) {
+      // La tablet se sigue usando: se le renueva la cookie para que no venza nunca.
+      const res = NextResponse.next();
+      res.cookies.set(COOKIE_APARATO, await firmarAparato(aparato, secret), opcionesCookieAparato);
+      return res;
+    }
   }
 
   return NextResponse.next();

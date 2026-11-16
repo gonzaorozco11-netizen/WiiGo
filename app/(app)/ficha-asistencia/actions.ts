@@ -9,6 +9,7 @@ import { textoLlamado, textoApercibimiento, APERCIBIMIENTO_DESDE_DEFECTO, type A
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cartelesPendientesDelLocal, postergarCarteles, type CartelesPendientes } from "@/lib/tareasEtiqueta";
 import { ponerPreciosAlDia } from "@/lib/preciosAlDia";
+import { errorSiNoEsLaTablet } from "@/lib/aparatoLocalServidor";
 
 async function personaActual() {
   const cookieStore = await cookies();
@@ -363,6 +364,9 @@ export async function fichar(
   firma?: string | null,
   motivoCarteles?: string | null
 ): Promise<ResultadoFichaje> {
+  // Se ficha en la tablet del local, no desde el celular (Gonzalo, 2026-11-16).
+  const fueraDelLocal = await errorSiNoEsLaTablet();
+  if (fueraDelLocal) return { error: fueraDelLocal };
   const persona = await personaActual();
   if (!persona) return { error: "Tu usuario no está vinculado a ninguna persona — avisale a administración." };
   if (persona.id_horario && !firmaValida(firma)) return { error: "Falta tu firma. Firmá en el recuadro y volvé a confirmar." };

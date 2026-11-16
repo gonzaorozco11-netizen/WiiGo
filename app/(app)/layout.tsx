@@ -17,6 +17,8 @@ import AvisoCartelesBanner from "@/components/AvisoCartelesBanner";
 import { contarCartelesUrgentes } from "@/lib/tareasEtiqueta";
 import GuiaWiigo from "@/components/GuiaWiigo";
 import { getSupabaseServerClient } from "@/lib/supabase";
+import { rolAtadoALaTablet } from "@/lib/aparatoLocal";
+import { estadoAparato } from "@/lib/aparatoLocalServidor";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const cookieStore = await cookies();
@@ -31,6 +33,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // pregunta por los roles internos y no por los de afuera, así un rol nuevo
   // queda afuera hasta que alguien decida lo contrario.
   if (session && !esRolInterno(session.rol)) redirect(INICIO_ROL_EXTERNO[session.rol] ?? "/login");
+  // Los operativos fuera de la tablet del local (lib/aparatoLocal.ts): el proxy
+  // ya les deja solo la góndola, sus recibos y Aprender; acá el menú se achica
+  // a eso y no se consultan los avisos (en la casa no tienen que sonar). Una
+  // tablet dada de baja no abre nada.
+  const atado = Boolean(session) && rolAtadoALaTablet(session?.rol);
+  const { estado: aparato } = atado ? await estadoAparato() : { estado: "local" as const };
+  if (atado && aparato === "baja") redirect("/solo-tablet?baja=1");
+  const soloCelular = atado && aparato !== "local";
   // Se busca fresco en la base (no en la cookie) para que un rol nuevo o
   // recién cambiado pegue al toque, sin esperar a que la persona reloguee.
   const sesionConPantallas = await obtenerSesionConPantallas();
@@ -43,20 +53,20 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // Misma regla que app/(app)/configuracion/page.tsx: si la pantalla no la
   // deja entrar, el menú no se la muestra.
   const puedeEditarConfiguracion = tienePermiso(sesionPermisos, PERMISOS.EDITAR_CONFIGURACION);
-  const avisoSalida = session ? await verificarAvisoSalida() : { debeRecordar: false, horaSalida: null };
+  const avisoSalida = session && !soloCelular ? await verificarAvisoSalida() : { debeRecordar: false, horaSalida: null };
   // Contador del menú: lo que las marcas mandaron y las etiquetas vencidas.
-  const pendientes = session ? await contarPendientes() : { solicitudes: 0, etiquetas: 0, etiquetasVencidas: 0 };
+  const pendientes = session && !soloCelular ? await contarPendientes() : { solicitudes: 0, etiquetas: 0, etiquetasVencidas: 0 };
   // Los pedidos de las profesionales que nadie armó todavía: el número rojo
   // del menú. Después lo mantiene al día AvisoPedidos, sin recargar.
-  const vePedidos = puedeVerPantalla(sesionConPantallas, "pedidos");
+  const vePedidos = !soloCelular && puedeVerPantalla(sesionConPantallas, "pedidos");
   const pedidosNuevos = vePedidos ? await contarPedidosNuevosSinSesion().catch(() => 0) : 0;
   // Un cliente del tótem esperando para pagar en efectivo: franja roja y
   // timbre a quien está trabajando (lo decide la ruta que consulta el aviso).
-  const veCobros = Boolean(session) && puedeVerPantalla(sesionConPantallas, "cobros-efectivo");
+  const veCobros = Boolean(session) && !soloCelular && puedeVerPantalla(sesionConPantallas, "cobros-efectivo");
   // Las preguntas de la Guía que esperan respuesta: las responde el Dueño, el
   // número sale en su botón "¿Alguna duda?". Sin sql/guia-preguntas.sql da 0.
   // Carteles con el precio viejo mientras la caja ya cobra el nuevo: aviso rojo arriba de todo.
-  const seAvisanCarteles = Boolean(session) && puedeVerPantalla(sesionConPantallas, "carteles");
+  const seAvisanCarteles = Boolean(session) && !soloCelular && puedeVerPantalla(sesionConPantallas, "carteles");
   const cartelesUrgentes = seAvisanCarteles ? await contarCartelesUrgentes(getSupabaseServerClient()) : 0;
   const preguntasGuia =
     session?.rol === "admin"
@@ -80,6 +90,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         etiquetasVencidas={pendientes.etiquetasVencidas}
         pedidosNuevos={pedidosNuevos}
         nombre={sesionConPantallas?.nombre ?? session?.nombre ?? null}
+        soloCelular={soloCelular}
       />
       <div className="flex-1 min-w-0">
         {/* Con un deploy nuevo, la tablet se recarga sola en un momento tranquilo. */}
