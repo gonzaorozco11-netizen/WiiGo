@@ -251,7 +251,9 @@ main{padding:14px}
 .redes{display:flex;gap:8px;flex-wrap:wrap;margin:4px 0}
 .redes .red{display:flex;align-items:center;gap:9px;background:var(--bosque);color:#f5efe3;border-radius:14px;padding:9px 14px 9px 12px;text-decoration:none;font-weight:800;font-size:14px;line-height:1.1}
 .redes .red span{display:grid}
-.redes .red small{font-weight:600;font-size:12px;color:#c9cfbd}
+.redes .red small{font-weight:600;font-size:12px;color:rgba(255,255,255,.82)}
+.redes .red-ig{background:radial-gradient(circle at 30% 107%,#fdf497 0%,#fdf497 5%,#fd5949 45%,#d6249f 60%,#285aeb 90%);color:#fff}
+.redes .red-tt{background:#010101;color:#fff}
 .legal{font-size:12px;color:var(--gris)}
 .legal summary{cursor:pointer;font-weight:700;list-style:none;text-decoration:underline;text-underline-offset:2px;width:max-content}
 .legal summary::-webkit-details-marker{display:none}
@@ -518,6 +520,6 @@ a.dir-mapa u{text-decoration:underline;text-underline-offset:2px;color:#3f5536;f
 <div class="app" id="app"><p style="padding:60px 16px;text-align:center;color:#626a5e">Cargando los productos…</p></div>
 <!-- El catálogo real, armado en el servidor con lo público de cada producto (lib/tiendaCatalogo.ts). -->
 <script src="/api/tienda/catalogo"></script>
-<script src="app.js?v=23"></script>
+<script src="app.js?v=24"></script>
 </body>
 </html>
