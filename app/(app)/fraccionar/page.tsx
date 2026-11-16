@@ -4,12 +4,13 @@ import PantallaBloqueada from "@/components/PantallaBloqueada";
 import FraccionarApp from "@/components/FraccionarApp";
 import CargarGranelDeposito from "@/components/CargarGranelDeposito";
 import { asegurarGraneles } from "@/lib/granel";
-import { datosFraccionar, localDeSesion } from "@/lib/fraccionado";
+import { datosFraccionar, fraccionadosEnCurso, localDeSesion } from "@/lib/fraccionado";
 
 export const dynamic = "force-dynamic";
 
-// Fraccionar: pasar el granel (en el depósito, en gramos) a bolsitas.
-export default async function FraccionarPage() {
+// Fraccionar: pasar el granel (en el depósito, en gramos) a bolsitas, paso a paso.
+// ?seguir=<id>: abre directo un fraccionado sin terminar (desde el Inicio o al volver de imprimir).
+export default async function FraccionarPage({ searchParams }: { searchParams: Promise<{ seguir?: string }> }) {
   const sesion = await obtenerSesionConPantallas();
   if (!sesion || !puedeVerPantalla(sesion, "fraccionar")) return <PantallaBloqueada />;
 
@@ -32,7 +33,13 @@ export default async function FraccionarPage() {
     <>
       {/* Una sola vez: el granel que ya estaba guardado antes de entrar por el sistema. */}
       <CargarGranelDeposito idLocal={idLocal} graneles={datos.graneles.map((g) => ({ idVariante: g.idVariante, nombre: g.nombre, gramos: g.gramos }))} />
-      <FraccionarApp {...datos} esAdmin={sesion.rol === "admin"} />
+      <FraccionarApp
+        {...datos}
+        esAdmin={sesion.rol === "admin"}
+        enCurso={await fraccionadosEnCurso(supabase, { idLocal })}
+        seguir={(await searchParams).seguir ?? null}
+        idUsuario={sesion.idUsuario}
+      />
     </>
   );
 }

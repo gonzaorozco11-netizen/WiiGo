@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, Fragment, useContext, useEffect, useMemo, useState, useSyncExternalStore, useTransition, type CSSProperties, type ReactNode } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import PestanasEtiquetas from "@/components/PestanasEtiquetas";
 import { esCodigoInterno, limpiarCodigoBarras, formatearCodigo } from "@/lib/codigos";
@@ -335,6 +336,7 @@ export default function CodigosApp({
   pieEtiqueta = PIE_ETIQUETA_DEFECTO,
   esAdmin = false,
   impresos = {},
+  pedido = null,
 }: {
   items: ItemCodigo[];
   entradas?: EntradaPendiente[];
@@ -343,6 +345,8 @@ export default function CodigosApp({
   esAdmin?: boolean;
   /** Lo que ya tiene sticker impreso, guardado en la base (lib/codigosImpresos.ts). */
   impresos?: Record<string, string>;
+  /** Desde el fraccionado paso a paso: solo ese producto, con la cantidad puesta (Gonzalo, 16/11). */
+  pedido?: { idVariante: string; n: number; volver: string } | null;
 }) {
   const [escaneando, setEscaneando] = useState<ItemCodigo | "libre" | null>(null);
   const [aviso, setAviso] = useState<{ texto: string; tono: "ok" | "mal" } | null>(null);
@@ -387,6 +391,7 @@ export default function CodigosApp({
         pie={pieEtiqueta}
         onEscanear={setEscaneando}
         onAviso={setAviso}
+        pedido={pedido}
       />
 
       {escaneando && (
@@ -614,6 +619,7 @@ function Imprimir({
   pie,
   onEscanear,
   onAviso,
+  pedido = null,
 }: {
   items: ItemCodigo[];
   entradas: EntradaPendiente[];
@@ -621,8 +627,10 @@ function Imprimir({
   pie: string;
   onEscanear: (i: ItemCodigo) => void;
   onAviso: (a: { texto: string; tono: "ok" | "mal" } | null) => void;
+  pedido?: { idVariante: string; n: number; volver: string } | null;
 }) {
   const esAdmin = useContext(EsAdminContext);
+  const itemPedido = pedido ? items.find((i) => i.idVariante === pedido.idVariante) ?? null : null;
   // Lo ya etiquetado: lo de la base más lo de esta tablet (que es al toque).
   const impresosLocal = useSyncExternalStore(suscribirImpresos, leerImpresos, () => SIN_IMPRESOS);
   const impresos = useMemo(() => {
@@ -670,6 +678,41 @@ function Imprimir({
   const unidades = (i: ItemCodigo) => (modo === "ahora" ? porVariante.get(i.idVariante)?.cantidad ?? 1 : 0);
   const alMarcar = (i: ItemCodigo) =>
     modo === "ahora" ? porVariante.get(i.idVariante)?.cantidad ?? 1 : Math.max(1, Math.round(i.stock ?? 0));
+
+  // Desde el fraccionado paso a paso: solo ese producto con su cantidad. El vencimiento sale en
+  // blanco («Vto: ____») para escribirlo a mano, como pidió Gonzalo (16/11).
+  if (pedido && !itemPedido) {
+    return (
+      <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+        No encontré ese producto para imprimir (¿está dado de baja?).{" "}
+        <Link href={pedido.volver} className="font-bold underline">
+          Volver al fraccionado
+        </Link>
+      </div>
+    );
+  }
+  if (pedido && itemPedido) {
+    return (
+      <>
+        <div className="print:hidden mb-4 rounded-2xl border-2 border-accent bg-accent-tint p-4 flex flex-wrap items-center gap-3">
+          <p className="mr-auto text-sm text-neutral-800">
+            <b>Etiquetas del fraccionado:</b> {pedido.n} de {itemPedido.producto}. Imprimí y, cuando salgan, volvé al paso a paso.
+          </p>
+          <Link href={pedido.volver} className="rounded-xl bg-accent px-4 py-2.5 text-sm font-extrabold text-white hover:bg-accent-dark">
+            Volver al fraccionado →
+          </Link>
+        </div>
+        <ConfigurarImpresion
+          key={`pedido-${itemPedido.idVariante}`}
+          items={[itemPedido]}
+          unidadesIniciales={() => pedido.n}
+          alMarcar={() => pedido.n}
+          pie={pie}
+          abrirTodo
+        />
+      </>
+    );
+  }
 
   return (
     <>

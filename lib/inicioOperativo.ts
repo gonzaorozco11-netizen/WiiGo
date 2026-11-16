@@ -5,6 +5,7 @@ import { localDeSesion } from "@/lib/fraccionado";
 import { contarCartelesUrgentes } from "@/lib/tareasEtiqueta";
 import { cartelesNuevosPendientes, stickersPorPegar } from "@/lib/entradas";
 import { cobrosEsperando, NADIE_ESPERANDO } from "@/lib/cobrosEsperando";
+import { fraccionadosEnCurso } from "@/lib/fraccionado";
 
 // El Inicio del operativo en la tablet del local (pedido de Gonzalo,
 // 2026-10-22): arriba un botón grande con lo que toca hacer AHORA, y abajo
@@ -199,6 +200,25 @@ export async function armarInicioOperativo(
   // ---------- Los accesos ----------
   const accesos: AccesoRapido[] = [];
   const agregar = (a: Omit<AccesoRapido, "badgeTono"> & { badgeTono?: AccesoRapido["badgeTono"] }) => accesos.push({ badgeTono: "rojo", ...a });
+  // Un fraccionado que quedó por la mitad: primero y en rojo, para que lo termine (Gonzalo, 16/11).
+  if (puede("fraccionar")) {
+    const sinTerminar = await fraccionadosEnCurso(supabase, { idUsuario: sesion.idUsuario }).catch(() => []);
+    if (sinTerminar.length > 0) {
+      const e = sinTerminar[0];
+      const { data: v } = await supabase.from("variantes_producto").select("productos(nombre)").eq("id_variante", e.idVarianteGranel).maybeSingle();
+      const nombre = String((v?.productos as unknown as { nombre: string } | null)?.nombre ?? "un producto").replace(/\s*·\s*a granel$/i, "");
+      agregar({
+        clave: "fraccionado-sin-terminar",
+        titulo: "Fraccionado sin terminar",
+        detalle: `${nombre}${e.bolsitas ? `, ${e.bolsitas} bolsitas` : ""}: tocá para seguir`,
+        href: `/fraccionar?seguir=${e.id}`,
+        icono: "⚖️",
+        badge: sinTerminar.length,
+        alerta: true,
+        deshabilitado: false,
+      });
+    }
+  }
   // Pedidos de la tienda online, primero (Gonzalo, 16/11): con uno nuevo, el
   // número late como un corazón (en vez del cartel grande en el medio).
   if (puede("pedidos-online") || puede("pedidos")) {
@@ -321,15 +341,16 @@ export async function armarInicioOperativo(
       deshabilitado: false,
     });
   }
-  // La consulta de solo lectura (stock-consulta); si no la tiene pero tiene
-  // Stock (que además permite ajustar), va a Stock.
-  if (puede("stock-consulta") || puede("stock"))
+  // «Stock y precios» (Gonzalo, 2026-11-16): en góndola (la consulta de solo
+  // lectura) y a granel (Fraccionar), con pestañas arriba. Si no tiene la
+  // consulta pero tiene Stock (que además permite ajustar), va a Stock.
+  if (puede("stock-consulta") || puede("stock") || puede("fraccionar"))
     agregar({
       clave: "stock",
-      titulo: "Precio y stock",
-      detalle: "Buscar un producto: cuánto sale y cuánto hay",
-      href: puede("stock-consulta") ? "/stock/consulta" : "/stock",
-      icono: "🔎",
+      titulo: "Stock y precios",
+      detalle: puede("fraccionar") ? "En góndola y a granel: cuánto hay y fraccionar" : "Buscar un producto: cuánto sale y cuánto hay",
+      href: puede("stock-consulta") ? "/stock/consulta" : puede("fraccionar") ? "/fraccionar" : "/stock",
+      icono: "📦",
       badge: null,
       deshabilitado: false,
     });

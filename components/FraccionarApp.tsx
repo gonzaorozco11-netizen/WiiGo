@@ -1,14 +1,16 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { GranelVista, FraccionadoVista, ResumenGranel, BolsitaDeGranel } from "@/lib/fraccionado";
-import { registrarFraccionado, cerrarGranel } from "@/app/(app)/fraccionar/actions";
+import type { GranelVista, FraccionadoVista, ResumenGranel, EnCursoVista } from "@/lib/fraccionado";
+import { cerrarGranel, descartarEnCurso } from "@/app/(app)/fraccionar/actions";
 import { textoGramos } from "@/lib/gramos";
+import FraccionarGuiado from "@/components/FraccionarGuiado";
+import PestanasStock from "@/components/PestanasStock";
 
-// Fraccionar: el granel del depósito (en gramos) pasa a bolsitas. Las bolsitas
-// se suman a la góndola y quedan listas para imprimirles el sticker.
+// Fraccionar: el granel del depósito (en gramos) pasa a bolsitas. Desde el
+// 2026-11-16 se hace con el paso a paso (FraccionarGuiado): se toca un granel y
+// arranca. Lo que quedó por la mitad aparece arriba para seguirlo.
 
 const cuando = (iso: string) =>
   new Date(iso).toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", weekday: "short", day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -18,15 +20,31 @@ export default function FraccionarApp({
   recientes,
   resumen,
   esAdmin,
+  enCurso = [],
+  seguir = null,
+  idUsuario = null,
 }: {
   graneles: GranelVista[];
   recientes: FraccionadoVista[];
   resumen: ResumenGranel[];
   esAdmin: boolean;
+  /** Los paso a paso que quedaron por la mitad en este local. */
+  enCurso?: EnCursoVista[];
+  /** ?seguir=<id>: se abre ese directamente (desde el Inicio o al volver de imprimir). */
+  seguir?: string | null;
+  idUsuario?: string | null;
 }) {
+  const router = useRouter();
   const [busqueda, setBusqueda] = useState("");
   const [abierto, setAbierto] = useState<string | null>(null);
-  const [listo, setListo] = useState<{ nombre: string; n: number } | null>(null);
+  const porId = useMemo(() => new Map(graneles.map((g) => [g.idVariante, g])), [graneles]);
+  const aSeguir = seguir ? enCurso.find((e) => e.id === seguir) : null;
+  const [guiado, setGuiado] = useState<{ granel: GranelVista; inicial: EnCursoVista | null } | null>(() =>
+    aSeguir && porId.get(aSeguir.idVarianteGranel) ? { granel: porId.get(aSeguir.idVarianteGranel)!, inicial: aSeguir } : null
+  );
+  const [descartando, startDescartar] = useTransition();
+  // Los míos primero; el Dueño ve los de todos.
+  const pendientes = enCurso.filter((e) => esAdmin || e.idUsuario === idUsuario);
 
   const visibles = useMemo(() => {
     const q = busqueda.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
@@ -36,24 +54,61 @@ export default function FraccionarApp({
     );
   }, [graneles, busqueda]);
 
+  if (guiado) {
+    return (
+      <FraccionarGuiado
+        key={guiado.inicial?.id ?? guiado.granel.idVariante}
+        granel={guiado.granel}
+        inicial={guiado.inicial}
+        onSalir={() => {
+          setGuiado(null);
+          if (seguir) router.replace("/fraccionar");
+          router.refresh();
+        }}
+      />
+    );
+  }
+
   return (
     <div className="max-w-3xl mx-auto">
-      <h1 className="text-xl font-semibold text-neutral-900">Fraccionar</h1>
+      <PestanasStock actual="granel" />
+      <h1 className="text-xl font-semibold text-neutral-900">A granel · Fraccionar</h1>
       <p className="text-sm text-neutral-500 mt-0.5 mb-4">
-        Elegí el granel, poné cuántas bolsitas armaste y se suman a la góndola. Los kilos entran acá cuando se recibe el pedido de Alifrut.
+        Tocá un producto y el sistema te guía paso a paso: cuántas bolsitas salen, etiquetas, vencimiento y sumarlas al stock. Primero los que se están terminando en la góndola.
       </p>
 
-      {listo && (
-        <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 flex flex-wrap items-center gap-3">
-          <p className="text-sm text-emerald-900 mr-auto">
-            ✓ <b>{listo.n} bolsitas</b> de {listo.nombre} sumadas a la góndola. Pegales el sticker antes de ponerlas.
-          </p>
-          <Link href="/codigos" className="rounded-lg bg-emerald-700 text-white px-3 py-2 text-sm font-semibold hover:bg-emerald-800">
-            🏷️ Imprimir los stickers
-          </Link>
-          <button type="button" onClick={() => setListo(null)} className="text-sm text-emerald-900">
-            Cerrar
-          </button>
+      {pendientes.length > 0 && (
+        <div className="mb-4 grid gap-2">
+          {pendientes.map((e) => {
+            const g = porId.get(e.idVarianteGranel);
+            return (
+              <div key={e.id} role="alert" className="rounded-2xl border-2 border-red-300 bg-red-50 p-3.5 flex flex-wrap items-center gap-3">
+                <p className="mr-auto text-sm text-red-900">
+                  <b>Fraccionado sin terminar:</b> {g?.nombre ?? "producto"}
+                  {e.bolsitas ? `, ${e.bolsitas} bolsitas` : ""} · paso {Math.min(e.paso, 7)} de 7
+                  {esAdmin && e.idUsuario !== idUsuario ? ` · ${e.quien}` : ""}
+                </p>
+                {g && (
+                  <button type="button" onClick={() => setGuiado({ granel: g, inicial: e })} className="rounded-xl bg-red-600 px-4 py-2 text-sm font-extrabold text-white">
+                    Seguir
+                  </button>
+                )}
+                <button
+                  type="button"
+                  disabled={descartando}
+                  onClick={() =>
+                    startDescartar(async () => {
+                      await descartarEnCurso(e.id);
+                      router.refresh();
+                    })
+                  }
+                  className="text-sm text-red-800 underline underline-offset-4"
+                >
+                  Descartar
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -71,19 +126,21 @@ export default function FraccionarApp({
         </p>
       ) : (
         <ul className="flex flex-col gap-2.5">
-          {visibles.map((g) => (
-            <FilaGranel
-              key={g.idVariante}
-              g={g}
-              abierto={abierto === g.idVariante}
-              onAbrir={() => setAbierto(abierto === g.idVariante ? null : g.idVariante)}
-              onListo={(nombre, n) => {
-                setAbierto(null);
-                setListo({ nombre, n });
-                window.scrollTo({ top: 0, behavior: "smooth" });
-              }}
-            />
-          ))}
+          {/* Primero lo que se está terminando en la góndola (y tiene granel para embolsar). */}
+          {[...visibles]
+            .sort((a, b) => Number(faltaEnGondola(b) && b.gramos > 0) - Number(faltaEnGondola(a) && a.gramos > 0))
+            .map((g) => (
+              <FilaGranel
+                key={g.idVariante}
+                g={g}
+                cerrando={abierto === g.idVariante}
+                onEmpezar={() => {
+                  setGuiado({ granel: g, inicial: null });
+                  window.scrollTo({ top: 0 });
+                }}
+                onCerrando={() => setAbierto(abierto === g.idVariante ? null : g.idVariante)}
+              />
+            ))}
         </ul>
       )}
 
@@ -152,69 +209,64 @@ export default function FraccionarApp({
   );
 }
 
+/** Alguna de sus bolsitas está por debajo del mínimo (o casi sin nada) en la góndola. */
+function faltaEnGondola(g: GranelVista) {
+  return g.bolsitas.some((b) => (b.minimo > 0 ? b.enGondola < b.minimo : b.enGondola <= 2));
+}
+
 function FilaGranel({
   g,
-  abierto,
-  onAbrir,
-  onListo,
+  cerrando,
+  onEmpezar,
+  onCerrando,
 }: {
   g: GranelVista;
-  abierto: boolean;
-  onAbrir: () => void;
-  onListo: (nombre: string, n: number) => void;
+  cerrando: boolean;
+  onEmpezar: () => void;
+  onCerrando: () => void;
 }) {
-  const conPoco = g.bolsitas.find((b) => b.minimo > 0 && b.enGondola < b.minimo);
   const sinGranel = g.gramos <= 0;
+  const falta = faltaEnGondola(g);
   return (
-    <li className={`rounded-2xl border bg-white ${abierto ? "border-accent" : "border-neutral-200"}`}>
-      <button type="button" onClick={onAbrir} className="w-full text-left p-3.5 flex items-start gap-3">
+    <li className={`rounded-2xl border bg-white ${sinGranel ? "opacity-60" : ""} ${cerrando ? "border-accent" : "border-neutral-200"}`}>
+      <button type="button" onClick={onEmpezar} disabled={sinGranel} className="w-full text-left p-4 flex items-start gap-3 disabled:cursor-not-allowed">
         <span className="min-w-0 flex-1">
-          <span className="block font-semibold text-neutral-900">{g.nombre}</span>
+          <span className="block text-[16px] font-bold text-neutral-900">{g.nombre}</span>
           <span className="block text-xs text-neutral-500 mt-0.5">
-            {g.bolsitas.map((b) => `${b.nombre.replace(/^.*?(\d+\s*g)$/i, "$1")}: ${b.enGondola} en góndola`).join(" · ")}
+            {g.bolsitas.map((b) => `${textoGramos(b.peso)}: ${b.enGondola} en góndola`).join(" · ")}
           </span>
           {sinGranel ? (
-            <span className="inline-block mt-1.5 text-[11px] font-semibold rounded-full px-2 py-0.5 bg-red-50 text-red-700">Sin granel · pedile a Alifrut</span>
-          ) : conPoco ? (
-            <span className="inline-block mt-1.5 text-[11px] font-semibold rounded-full px-2 py-0.5 bg-amber-50 text-amber-800">
-              Quedan {conPoco.enGondola} en góndola · conviene embolsar
-            </span>
-          ) : null}
+            <span className="inline-block mt-1.5 text-[11px] font-semibold rounded-full px-2 py-0.5 bg-neutral-100 text-neutral-600">Sin granel · hay que pedirle a Alifrut</span>
+          ) : falta ? (
+            <span className="inline-block mt-1.5 text-[11px] font-bold rounded-full px-2 py-0.5 bg-red-50 text-red-700">Faltan en góndola</span>
+          ) : (
+            <span className="inline-block mt-1.5 text-[11px] font-semibold rounded-full px-2 py-0.5 bg-emerald-50 text-emerald-700">Góndola bien</span>
+          )}
         </span>
         <span className="shrink-0 text-right">
-          <span className="block text-lg font-semibold tabular-nums text-neutral-900">{textoGramos(g.gramos)}</span>
-          <span className="block text-[11px] text-neutral-500">en depósito</span>
+          <span className="block text-xl font-black tabular-nums text-neutral-900">{textoGramos(g.gramos)}</span>
+          <span className="block text-[11px] text-neutral-500">a granel</span>
+          {!sinGranel && <span className="mt-1 inline-block rounded-lg bg-accent px-3 py-1.5 text-xs font-extrabold text-white">Fraccionar →</span>}
         </span>
       </button>
-      {abierto && <Panel g={g} onListo={onListo} />}
+      {!sinGranel && (
+        <div className="border-t border-neutral-100 px-4 py-2">
+          <button type="button" onClick={onCerrando} className="text-xs font-semibold text-neutral-500 underline underline-offset-4">
+            {cerrando ? "Cancelar" : "Se terminó el granel sin fraccionar"}
+          </button>
+        </div>
+      )}
+      {cerrando && <CerrarGranel g={g} onListo={onCerrando} />}
     </li>
   );
 }
 
-function Panel({ g, onListo }: { g: GranelVista; onListo: (nombre: string, n: number) => void }) {
+/** «Se terminó el granel» sin fraccionar: lo que falta contra lo que figuraba es merma. */
+function CerrarGranel({ g, onListo }: { g: GranelVista; onListo: () => void }) {
   const router = useRouter();
-  const [bolsa, setBolsa] = useState<BolsitaDeGranel>(g.bolsitas[0]);
-  const alcanza = Math.floor(g.gramos / bolsa.peso);
-  const [n, setN] = useState(Math.min(alcanza, Math.max(1, alcanza)));
-  const [cerrando, setCerrando] = useState(false);
   const [quedan, setQuedan] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [guardando, startTransition] = useTransition();
-
-  const usa = n * bolsa.peso;
-  const queda = g.gramos - usa;
-
-  function listo() {
-    setError(null);
-    startTransition(async () => {
-      const r = await registrarFraccionado(g.idVariante, bolsa.idVariante, n);
-      if (r.error) setError(r.error);
-      else {
-        onListo(bolsa.nombre, n);
-        router.refresh();
-      }
-    });
-  }
 
   function terminar() {
     setError(null);
@@ -223,7 +275,7 @@ function Panel({ g, onListo }: { g: GranelVista; onListo: (nombre: string, n: nu
       const r = await cerrarGranel(g.idVariante, g2);
       if (r.error) setError(r.error);
       else {
-        setCerrando(false);
+        onListo();
         router.refresh();
       }
     });
@@ -231,73 +283,7 @@ function Panel({ g, onListo }: { g: GranelVista; onListo: (nombre: string, n: nu
 
   return (
     <div className="border-t border-neutral-100 p-3.5 space-y-3">
-      {g.bolsitas.length > 1 && (
-        <div className="flex flex-wrap gap-2">
-          {g.bolsitas.map((b) => (
-            <button
-              key={b.idVariante}
-              type="button"
-              onClick={() => setBolsa(b)}
-              className={`rounded-lg border px-3 py-1.5 text-sm ${bolsa.idVariante === b.idVariante ? "border-accent bg-accent text-white" : "border-neutral-300 bg-white"}`}
-            >
-              {b.nombre}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {!cerrando ? (
-        <>
-          <p className="text-sm font-semibold text-neutral-900 text-center">¿Cuántas bolsitas de {textoGramos(bolsa.peso)} armaste?</p>
-          <div className="flex items-center justify-center gap-3">
-            <button type="button" onClick={() => setN(Math.max(0, n - 1))} className="w-12 h-12 rounded-xl border border-neutral-300 bg-white text-2xl" aria-label="Una menos">
-              −
-            </button>
-            <input
-              inputMode="numeric"
-              value={n}
-              onChange={(e) => setN(Math.max(0, Math.min(999, Number(e.target.value.replace(/\D/g, "")) || 0)))}
-              aria-label="Cuántas bolsitas"
-              className="w-20 h-12 rounded-xl border border-neutral-300 text-center text-2xl font-semibold tabular-nums"
-            />
-            <button type="button" onClick={() => setN(n + 1)} className="w-12 h-12 rounded-xl border border-neutral-300 bg-white text-2xl" aria-label="Una más">
-              +
-            </button>
-          </div>
-          <div className="grid grid-cols-3 gap-2 text-center text-xs">
-            <div className="rounded-lg bg-neutral-50 py-2">
-              <span className="block text-neutral-500">Usás</span>
-              <b className="text-sm tabular-nums">{textoGramos(usa)}</b>
-            </div>
-            <div className={`rounded-lg py-2 ${queda < 0 ? "bg-red-50" : "bg-neutral-50"}`}>
-              <span className={`block ${queda < 0 ? "text-red-700" : "text-neutral-500"}`}>Queda en el depósito</span>
-              <b className={`text-sm tabular-nums ${queda < 0 ? "text-red-700" : ""}`}>{queda < 0 ? "no alcanza" : textoGramos(queda)}</b>
-            </div>
-            <div className="rounded-lg bg-neutral-50 py-2">
-              <span className="block text-neutral-500">En góndola</span>
-              <b className="text-sm tabular-nums">
-                {bolsa.enGondola} → {bolsa.enGondola + n}
-              </b>
-            </div>
-          </div>
-          {queda >= 0 && queda > 0 && queda < bolsa.peso && (
-            <p className="text-xs text-neutral-600 bg-neutral-50 rounded-lg px-3 py-2">
-              Quedan {textoGramos(queda)}, menos que una bolsita. Si ya se terminó la bolsa grande, tocá «Se terminó el granel» después.
-            </p>
-          )}
-          <button
-            type="button"
-            onClick={listo}
-            disabled={guardando || n <= 0 || queda < 0}
-            className="w-full rounded-xl bg-accent text-white px-4 py-3 font-semibold hover:bg-accent-dark disabled:opacity-40"
-          >
-            {guardando ? "Guardando…" : `Listo: sumar ${n} y preparar los stickers`}
-          </button>
-          <button type="button" onClick={() => setCerrando(true)} className="w-full rounded-xl border border-neutral-300 bg-white px-4 py-2.5 text-sm">
-            Se terminó el granel
-          </button>
-        </>
-      ) : (
+      {(
         <>
           <p className="text-sm text-neutral-700">
             En el sistema figuran <b>{textoGramos(g.gramos)}</b>. ¿Cuánto quedó de verdad en la bolsa grande? Si no quedó nada, dejalo en 0. Lo que falte se anota como
@@ -314,7 +300,7 @@ function Panel({ g, onListo }: { g: GranelVista; onListo: (nombre: string, n: nu
             gramos
           </label>
           <div className="flex gap-2">
-            <button type="button" onClick={() => setCerrando(false)} className="flex-1 rounded-xl border border-neutral-300 bg-white px-4 py-2.5 text-sm">
+            <button type="button" onClick={onListo} className="flex-1 rounded-xl border border-neutral-300 bg-white px-4 py-2.5 text-sm">
               Volver
             </button>
             <button type="button" onClick={terminar} disabled={guardando} className="flex-1 rounded-xl bg-neutral-900 text-white px-4 py-2.5 text-sm font-semibold disabled:opacity-40">

@@ -10,9 +10,20 @@ import { cargarCodigosImpresos } from "@/lib/codigosImpresos";
 
 export const dynamic = "force-dynamic";
 
-export default async function CodigosPage() {
+export default async function CodigosPage({ searchParams }: { searchParams: Promise<{ imprimir?: string; n?: string; volver?: string }> }) {
   const sesion = await obtenerSesionConPantallas();
-  if (!puedeVerPantalla(sesion, "codigos")) return <PantallaBloqueada />;
+  // Desde el fraccionado paso a paso: ese producto con la cantidad ya puesta y «Volver al fraccionado».
+  const sp = await searchParams;
+  const pedido =
+    sp.imprimir && /^[0-9a-f-]{36}$/i.test(sp.imprimir)
+      ? {
+          idVariante: sp.imprimir,
+          n: Math.min(99, Math.max(1, Math.round(Number(sp.n) || 1))),
+          volver: sp.volver && sp.volver.startsWith("/fraccionar") ? sp.volver : "/fraccionar",
+        }
+      : null;
+  // Quien fracciona imprime las etiquetas de su tanda aunque no tenga Códigos (solo ese producto).
+  if (!puedeVerPantalla(sesion, "codigos") && !(pedido && puedeVerPantalla(sesion, "fraccionar"))) return <PantallaBloqueada />;
 
   const supabase = getSupabaseServerClient();
 
@@ -137,5 +148,5 @@ export default async function CodigosPage() {
 
   const pie = (pieRes.data?.valor as string | undefined)?.trim() || PIE_ETIQUETA_DEFECTO;
 
-  return <CodigosApp items={items} entradas={entradas} pieEtiqueta={pie} esAdmin={sesion?.rol === "admin"} impresos={impresos} />;
+  return <CodigosApp items={items} entradas={entradas} pieEtiqueta={pie} esAdmin={sesion?.rol === "admin"} impresos={impresos} pedido={pedido} />;
 }

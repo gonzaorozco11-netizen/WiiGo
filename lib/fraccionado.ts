@@ -25,6 +25,96 @@ export type GranelVista = {
 export type FraccionadoVista = { id: string; cuando: string; quien: string; granel: string; bolsa: string | null; bolsitas: number; gramos: number; tipo: "FRACCIONADO" | "CIERRE"; merma: number };
 export type ResumenGranel = { nombre: string; recibido: number; embolsado: number; merma: number; deposito: number };
 
+/** Un paso a paso que quedó por la mitad (sql/fraccionado-guiado.sql). */
+export type EnCursoVista = {
+  id: string;
+  idVarianteGranel: string;
+  idVarianteBolsa: string;
+  paso: number;
+  bolsitas: number | null;
+  seTermino: boolean | null;
+  gramosQuedan: number | null;
+  vencimiento: string | null;
+  quien: string;
+  idUsuario: string;
+  actualizado: string;
+};
+
+/** Los fraccionados sin terminar del local (o de una persona). Sin la tabla, ninguno. */
+export async function fraccionadosEnCurso(supabase: SupabaseClient, filtro: { idLocal?: string; idUsuario?: string }): Promise<EnCursoVista[]> {
+  let q = supabase.from("fraccionados_en_curso").select("*").order("actualizado", { ascending: false }).limit(20);
+  if (filtro.idLocal) q = q.eq("id_local", filtro.idLocal);
+  if (filtro.idUsuario) q = q.eq("id_usuario", filtro.idUsuario);
+  const { data, error } = await q;
+  if (error) return [];
+  return (data ?? []).map((f) => ({
+    id: f.id_en_curso as string,
+    idVarianteGranel: f.id_variante_granel as string,
+    idVarianteBolsa: f.id_variante_bolsa as string,
+    paso: Number(f.paso ?? 2),
+    bolsitas: f.bolsitas == null ? null : Number(f.bolsitas),
+    seTermino: f.se_termino == null ? null : Boolean(f.se_termino),
+    gramosQuedan: f.gramos_quedan == null ? null : Number(f.gramos_quedan),
+    vencimiento: (f.vencimiento as string | null) ?? null,
+    quien: (f.usuario as string | null) ?? "—",
+    idUsuario: f.id_usuario as string,
+    actualizado: f.actualizado as string,
+  }));
+}
+
+/** Una tanda del historial de fraccionado (Gonzalo, 16/11: «quién fraccionó y qué producto»). */
+export type TandaHistorial = {
+  id: string;
+  cuando: string;
+  quien: string;
+  idUsuario: string | null;
+  granel: string;
+  bolsa: string | null;
+  tipo: "FRACCIONADO" | "CIERRE";
+  bolsitas: number;
+  gramos: number;
+  merma: number;
+  quedaron: number | null;
+  vencimiento: string | null;
+  lote: string | null;
+  costo: number | null;
+};
+
+/** El historial de un local entre dos fechas (Argentina, AAAA-MM-DD), con los nombres ya puestos. */
+export async function historialFraccionado(supabase: SupabaseClient, idLocal: string | null, desde: string, hasta: string): Promise<TandaHistorial[]> {
+  let q = supabase
+    .from("fraccionados")
+    .select("*")
+    .gte("fecha", `${desde}T00:00:00-03:00`)
+    .lte("fecha", `${hasta}T23:59:59-03:00`)
+    .order("fecha", { ascending: false })
+    .limit(500);
+  if (idLocal) q = q.eq("id_local", idLocal);
+  const { data, error } = await q;
+  if (error || !data?.length) return [];
+  const ids = [...new Set(data.flatMap((f) => [f.id_variante_granel as string, f.id_variante_bolsa as string | null]).filter(Boolean) as string[])];
+  const { data: vars } = await supabase.from("variantes_producto").select("id_variante, productos(nombre)").in("id_variante", ids);
+  const nombre = new Map(
+    (vars ?? []).map((v) => [v.id_variante as string, String((v.productos as unknown as { nombre: string } | null)?.nombre ?? "Producto").replace(/\s*·\s*a granel$/i, "")])
+  );
+  return data.map((f) => ({
+    id: f.id_fraccionado as string,
+    cuando: f.fecha as string,
+    quien: (f.usuario as string | null) ?? "—",
+    idUsuario: (f.id_usuario as string | null) ?? null,
+    granel: nombre.get(f.id_variante_granel as string) ?? "Granel",
+    bolsa: f.id_variante_bolsa ? nombre.get(f.id_variante_bolsa as string) ?? null : null,
+    tipo: f.tipo as "FRACCIONADO" | "CIERRE",
+    bolsitas: Number(f.bolsitas ?? 0),
+    gramos: Number(f.gramos ?? 0),
+    merma: Number(f.merma_gramos ?? 0),
+    quedaron: f.gramos_quedaron == null ? null : Number(f.gramos_quedaron),
+    vencimiento: (f.vencimiento as string | null) ?? null,
+    lote: (f.lote as string | null) ?? null,
+    costo: f.costo_total == null ? null : Number(f.costo_total),
+  }));
+}
+
 export async function datosFraccionar(supabase: SupabaseClient, idLocal: string) {
   const { data: graneles, error } = await supabase.from("productos").select("id_producto, nombre, id_granel").eq("estado", ESTADO_GRANEL).range(0, 4999);
   if (error) return null; // sin sql/granel-fraccionado.sql

@@ -4,6 +4,7 @@ import { ambosPrecios } from "@/lib/precios";
 import PantallaBloqueada from "@/components/PantallaBloqueada";
 import ConsultaPrecioStock, { type FilaConsulta } from "@/components/ConsultaPrecioStock";
 import { variantesEnConteo } from "@/lib/conteoStock";
+import PestanasStock from "@/components/PestanasStock";
 
 // Precio y stock, SOLO CONSULTA: para el equipo del local (pedido de
 // Gonzalo, 2026-10-22). Buscar un producto y ver cuánto sale (lista y
@@ -75,5 +76,15 @@ export default async function ConsultaStockPage() {
   }
   filas.sort((a, b) => a.producto.localeCompare(b.producto, "es") || (a.variante ?? "").localeCompare(b.variante ?? "", "es"));
 
-  return <ConsultaPrecioStock filas={filas} locales={(locales ?? []).map((l) => ({ idLocal: l.id_local as string, nombre: l.nombre as string }))} />;
+  return (
+    <>
+      {/* «Stock y precios»: En góndola (esta) y A granel (Fraccionar), si la tiene (Gonzalo, 16/11). */}
+      {puedeVerPantalla(sesion, "fraccionar") && (
+        <div className="max-w-4xl mx-auto">
+          <PestanasStock actual="gondola" />
+        </div>
+      )}
+      <ConsultaPrecioStock filas={filas} locales={(locales ?? []).map((l) => ({ idLocal: l.id_local as string, nombre: l.nombre as string }))} />
+    </>
+  );
 }
