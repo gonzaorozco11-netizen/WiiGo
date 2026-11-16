@@ -289,8 +289,12 @@
     var marcas = '<div class="marcas-ini" role="group" aria-label="Marcas">' + MARCAS.map(function (m) {
       return '<button class="marca-p" data-a="marca-ini" data-m="' + esc(m.n) + '" aria-pressed="' + (S.marcaIni === m.n) + '">' + (m.logo ? imagen(m.logo, 64) : '<i>' + esc(m.n.charAt(0)) + '</i>') + esc(m.n) + '</button>';
     }).join('') + '</div>' +
-      // Todas las categorías de la marca, a la vista de una: se toca una y baja hasta ahí.
-      (subsMarca ? '<div class="subs-marca" role="group" aria-label="Categorías de ' + esc(S.marcaIni) + '">' + subsMarca.map(function (s, i) { return '<button data-a="ir-sec" data-s="s-s' + i + '">' + esc(s[0]) + ' <em>' + s[1].length + '</em></button>'; }).join('') + '</div>' : '');
+      // Las categorías de la marca en una fila de círculos con foto que se desliza (opción D, Gonzalo 16/11):
+      // se toca una y baja hasta sus productos.
+      (subsMarca ? '<div class="subs-circ" role="group" aria-label="Categorías de ' + esc(S.marcaIni) + '">' + subsMarca.map(function (s, i) {
+        var con = s[1].filter(function (p) { return p.img && p.s > 0; })[0] || s[1].filter(function (p) { return p.img; })[0];
+        return '<button data-a="ir-sec" data-s="s-s' + i + '"><span class="sc-foto">' + (con ? imagen(con.img, 160) : '<i>' + esc(s[0].charAt(0)) + '</i>') + '</span>' + esc(s[0]) + '</button>';
+      }).join('') + '</div>' : '');
     var elegido = S.marcaIni ? '' : '<section class="rubro-sec" id="s-elegido"><h2 class="seccion">Lo más elegido</h2><div class="elegidos">' + dest.map(function (p) {
       return '<article class="eleg"><div class="it-ft"><button class="it-foto" data-a="ficha" data-id="' + p.id + '" aria-label="Ver ' + esc(p.t) + '">' + foto(p, 256) + '</button><div class="it-acc" data-acc="' + p.id + '" data-tipo="item">' + botonItem(p) + '</div></div>' +
         '<button class="eleg-tx" data-a="ficha" data-id="' + p.id + '"><span>' + esc(p.t) + '</span><b>' + plata(p.p) + '</b></button></article>';

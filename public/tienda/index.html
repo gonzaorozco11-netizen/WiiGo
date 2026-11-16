@@ -270,10 +270,14 @@ main{padding:14px}
 .pegado-ini{position:sticky;top:var(--alto-cab,64px);z-index:15;margin:12px -14px 0;padding:10px 14px 0;background:rgba(245,239,227,.96);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--linea)}
 .pegado-ini .buscar{margin-top:0}
 .pegado-ini .tabs-rubros{position:static;margin:4px -14px 0;background:none;border-bottom:0;backdrop-filter:none;-webkit-backdrop-filter:none}
-/* Las categorías de la marca elegida, todas a la vista */
-.subs-marca{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
-.subs-marca button{border:1.5px solid var(--linea);background:var(--carta);border-radius:999px;padding:6px 11px;font-weight:700;font-size:13px;color:var(--bosque)}
-.subs-marca em{font-style:normal;color:var(--gris);font-weight:600;font-size:12px}
+/* Las categorías de la marca elegida: una fila de círculos con foto que se desliza (opción D) */
+.subs-circ{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin:12px -14px 0;padding:2px 14px 4px}
+.subs-circ::-webkit-scrollbar{display:none}
+.subs-circ button{flex:none;width:78px;border:0;background:none;padding:0;display:grid;justify-items:center;gap:5px;text-align:center;font-size:11.5px;font-weight:700;line-height:1.15;color:var(--tinta)}
+.sc-foto{width:66px;height:66px;border-radius:50%;background:#fff;border:2px solid var(--linea);display:grid;place-items:center;overflow:hidden}
+.sc-foto img{width:78%;height:78%;object-fit:contain}
+.sc-foto i{font:800 22px var(--display);font-style:normal;color:var(--bosque)}
+.subs-circ button:active .sc-foto{border-color:var(--energia)}
 .rub-cant{margin:-6px 0 0;color:var(--gris);font-size:12.5px;font-weight:600}
 .sub-rub{margin:18px 0 0;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--gris)}
 /* «Lo más elegido»: tarjetas que se deslizan, con el «+» sobre la foto */
@@ -477,6 +481,6 @@ main{padding:14px}
 <div class="app" id="app"><p style="padding:60px 16px;text-align:center;color:#626a5e">Cargando los productos…</p></div>
 <!-- El catálogo real, armado en el servidor con lo público de cada producto (lib/tiendaCatalogo.ts). -->
 <script src="/api/tienda/catalogo"></script>
-<script src="app.js?v=9"></script>
+<script src="app.js?v=10"></script>
 </body>
 </html>
