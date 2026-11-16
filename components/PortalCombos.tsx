@@ -36,7 +36,12 @@ export default function PortalCombos({
         </div>
       </div>
 
-      {soloLectura && <div className="rep-aviso">Estás mirando el portal de la marca: desde acá no se cambia nada.</div>}
+      {soloLectura && (
+        <div className="rep-aviso">
+          Estás mirando el portal de la marca: ves los mismos botones que ella, pero apagados. Desde acá no se cambia nada (para cambiar un combo
+          vos, usá <b>Combos</b> en el sistema).
+        </div>
+      )}
 
       {pedidos.length > 0 && (
         <div className="cmb-pedidos">
@@ -48,14 +53,14 @@ export default function PortalCombos({
         </div>
       )}
 
-      {!soloLectura &&
-        (nuevo ? (
-          <ComboNuevo productos={productos} cerrar={() => setNuevo(false)} />
-        ) : (
-          <button type="button" className="cmb-nuevo" onClick={() => setNuevo(true)}>
-            + Armar un combo nuevo
-          </button>
-        ))}
+      {nuevo && !soloLectura ? (
+        <ComboNuevo productos={productos} cerrar={() => setNuevo(false)} />
+      ) : (
+        // Mirando como WiiGo se ve igual que la marca, pero apagado.
+        <button type="button" className="cmb-nuevo" disabled={soloLectura} onClick={() => setNuevo(true)}>
+          + Armar un combo nuevo
+        </button>
+      )}
 
       {combos.length === 0 ? (
         <p className="vacio">Todavía no tenés combos. Armá el primero con el botón de arriba.</p>
@@ -191,14 +196,14 @@ function TarjetaCombo({ c, soloLectura }: { c: ComboGestion; soloLectura: boolea
         {ok && <p className="rep-ok">{ok}</p>}
         {error && <p className="rep-error">{error}</p>}
 
-        {!soloLectura && !cambiando && (
+        {!cambiando && (
           <div className="cmb-acc">
             {c.estado === "ACTIVO" && !c.pedido && (
-              <button type="button" className="boton-portal" onClick={() => { setOk(null); setCambiando(true); }}>
+              <button type="button" className="boton-portal" disabled={soloLectura} onClick={() => { setOk(null); setCambiando(true); }}>
                 Cambiar precio
               </button>
             )}
-            <button type="button" className="cmb-sec" disabled={pendiente} onClick={pausar}>
+            <button type="button" className="cmb-sec" disabled={pendiente || soloLectura} onClick={pausar}>
               {c.estado === "ACTIVO" ? "Pausar" : "Volver a activarlo"}
             </button>
           </div>

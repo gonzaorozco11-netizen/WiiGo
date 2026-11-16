@@ -2342,6 +2342,7 @@
 .rep-num.espera > b { color: var(--texto-3); }
 
 /* Mis combos (16/11) */
+.cmb-nuevo:disabled, .cmb-sec:disabled { opacity: .5; cursor: not-allowed; }
 .cmb-nuevo { width: 100%; border: 1.5px dashed var(--borde-fuerte); background: transparent; border-radius: 12px; padding: 12px; font-weight: 700; color: var(--salvia-honda); margin-bottom: 16px; cursor: pointer; }
 .cmb-grilla { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
 .cmb-tarjeta { background: var(--superficie); border: 1px solid var(--borde); border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; }
