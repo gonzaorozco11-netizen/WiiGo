@@ -10,6 +10,7 @@ import {
   codigoRetiro,
   datosTransferencia,
   itemsDe,
+  palabraSecreta,
   pasoCliente,
   reservadoPorVariante,
   totalesDe,
@@ -45,6 +46,8 @@ async function vistaCliente(supabase: SupabaseClient, p: FilaPedidoOnline) {
   return {
     num: p.numero,
     codigo: p.codigo,
+    // Para retirar: su DNI y esta palabra (lib/pedidosOnline.ts).
+    palabra: palabraSecreta(p.codigo),
     estado: p.estado,
     paso: pasoCliente(p.estado, items),
     pago: p.pago === "TRANSFERENCIA" ? "transf" : "retiro",

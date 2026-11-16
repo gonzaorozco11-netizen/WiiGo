@@ -182,7 +182,7 @@ export const GUIAS: Guia[] = [
       "Si paga por <b>transferencia</b>, fijate en Mercado Pago que llegó (el cliente pone «Pedido #…» en el concepto) y tocá <b>Llegó la transferencia</b>. Después, <b>Aceptar</b>: pasa a <b>2 Armando</b> (azul).",
       "Juntá los productos con el lugar que dice cada uno y tildalos. Si no está alguno, tocá <b>Falta</b> y decí cuántos encontraste: el total baja solo.",
       "Tocá <b>Listo</b>: pasa a <b>3 Listos</b> (verde) y al cliente le llega el mail con su código de retiro.",
-      "Cuando viene, pedile el código y buscalo arriba (<b>Retira WG-…</b>): con el código alcanza, no hace falta el DNI. Tocá <b>Entregar</b>. Si paga al retirar, se cobra en la caja: el pedido entra solo con los productos y el DNI para sus puntos.",
+      "Cuando viene, escribí su <b>DNI</b> arriba (<b>Retira</b>) y después la <b>palabra secreta</b> que te dice (le llegó por mail). Si sale <b>✓ Palabra correcta</b>, tocá <b>Entregar</b>. Si paga al retirar, se cobra en la caja: el pedido entra solo con los productos y el DNI para sus puntos.",
     ],
     tip: "Si ya transfirió y faltó algo, el pedido dice «Devolver $…»: devolvele esa plata por Mercado Pago antes de entregarlo. Lo que faltó queda como diferencia de stock para revisar. Si no paga, se cancela solo el día siguiente a las 21.",
     rel: ["cobrar"],

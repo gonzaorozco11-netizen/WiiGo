@@ -11,6 +11,7 @@ import {
   marcarFaltaOnline,
   marcarItemOnline,
   marcarListoOnline,
+  verificarPalabraOnline,
   type ItemEquipo,
   type PedidoOnlineEquipo,
 } from "@/app/(app)/pedidos-online/actions";
@@ -52,7 +53,17 @@ function PagoPill({ p }: { p: PedidoOnlineEquipo }) {
   return <span className={`${clase} bg-neutral-100 text-neutral-700`}>Paga al retirar</span>;
 }
 
-type Modal = { tipo: "ver" | "entregar" | "cancelar"; id: string; falta?: string | null; motivo?: string | null; devolvi?: boolean } | null;
+type Modal = {
+  tipo: "ver" | "entregar" | "cancelar";
+  id: string;
+  falta?: string | null;
+  motivo?: string | null;
+  devolvi?: boolean;
+  /** Al entregar: la palabra secreta que dice el cliente y si el servidor dijo que es correcta. */
+  palabra?: string;
+  verificada?: boolean | null;
+  intentos?: number;
+} | null;
 
 export default function PedidosOnlineApp({
   disponible,
@@ -120,13 +131,16 @@ export default function PedidosOnlineApp({
     marcarFaltaOnline(i.idItem, hay).then((r) => (r.error ? setAviso(r.error) : hay != null && setAviso("Anotado: el total bajó. Al marcarlo Listo queda la diferencia de stock para revisar.")));
   }
 
-  function buscarCodigo(e: React.FormEvent) {
+  // Viene a retirar: primero el DNI, después (en la ventana) la palabra secreta.
+  function buscarDni(e: React.FormEvent) {
     e.preventDefault();
-    const v = codigo.trim().toUpperCase().replace(/^WG(?!-)/, "WG-");
-    const p = pedidos.find((x) => x.codigo === v || x.codigo === `WG-${v}`);
-    if (!p) return setAviso("No hay ningún pedido abierto con ese código.");
-    if (p.estado !== "LISTO") return setAviso(`El pedido #${p.numero} todavía no está listo.`);
-    setModal({ tipo: "entregar", id: p.idPedido });
+    const v = codigo.replace(/\D/g, "");
+    if (v.length < 6) return setAviso("Escribí el DNI, sin puntos.");
+    const suyos = pedidos.filter((x) => x.dni.replace(/\D/g, "") === v);
+    const listo = suyos.find((x) => x.estado === "LISTO");
+    if (!listo) return setAviso(suyos.length ? `El pedido #${suyos[0].numero} todavía no está listo.` : "No hay ningún pedido abierto con ese DNI.");
+    setCodigo("");
+    setModal({ tipo: "entregar", id: listo.idPedido });
   }
 
   if (!disponible) {
@@ -154,7 +168,7 @@ export default function PedidosOnlineApp({
 
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <h1 className="text-2xl font-extrabold text-neutral-900">Pedidos online</h1>
-        <form onSubmit={buscarCodigo} className="flex items-center gap-2 rounded-2xl border border-neutral-200 bg-white py-2 pl-3.5 pr-2">
+        <form onSubmit={buscarDni} className="flex items-center gap-2 rounded-2xl border border-neutral-200 bg-white py-2 pl-3.5 pr-2">
           <label htmlFor="codigo-retiro" className="text-[13px] font-extrabold text-neutral-500">
             Retira
           </label>
@@ -162,10 +176,11 @@ export default function PedidosOnlineApp({
             id="codigo-retiro"
             value={codigo}
             onChange={(e) => setCodigo(e.target.value)}
-            placeholder="WG-…"
-            maxLength={7}
+            placeholder="DNI"
+            inputMode="numeric"
+            maxLength={11}
             autoComplete="off"
-            className="h-10 w-36 rounded-lg border border-neutral-200 px-3 font-mono text-[17px] font-bold uppercase tracking-wider"
+            className="h-10 w-36 rounded-lg border border-neutral-200 px-3 font-mono text-[17px] font-bold tracking-wider"
           />
           <button className="rounded-xl bg-neutral-900 px-4 py-2.5 text-sm font-extrabold text-white">Buscar</button>
         </form>
@@ -268,19 +283,67 @@ export default function PedidosOnlineApp({
       {abierto && modal?.tipo === "entregar" && (
         <Fondo onCerrar={() => setModal(null)}>
           <h3 className="text-[21px] font-bold">Entregar #{abierto.numero}</h3>
-          <div className="grid gap-0.5 rounded-xl border border-amber-200 bg-amber-50 p-3 text-center">
-            {/* Se retira solo con el código (Gonzalo, 16/11): sin pedir el DNI. */}
-            <small className="text-xs font-extrabold uppercase tracking-widest text-amber-800">Que te diga el código</small>
-            <b className="text-[34px] tracking-wide">{abierto.codigo}</b>
-            <span className="text-neutral-500">{abierto.nombre}</span>
-          </div>
-          {abierto.original > abierto.totalLista && (
+          {/* Como Mercado Libre (Gonzalo, 16/11): DNI y palabra secreta. La tablet no la
+              conoce: la escribe el operativo y el servidor dice si es correcta. */}
+          {modal.verificada ? (
+            <div className="grid gap-0.5 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-center">
+              <b className="text-[22px] text-emerald-700">✓ Palabra correcta</b>
+              <span className="text-neutral-600">{abierto.nombre} · DNI {abierto.dni}</span>
+            </div>
+          ) : (
+            <form
+              className="grid gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!modal.palabra?.trim()) return;
+                setOcupado(true);
+                try {
+                  const r = await verificarPalabraOnline(abierto.idPedido, modal.palabra);
+                  if (r.error) setAviso(r.error);
+                  else setModal({ ...modal, verificada: r.ok, intentos: (modal.intentos ?? 0) + 1 });
+                } finally {
+                  setOcupado(false);
+                }
+              }}
+            >
+              <label htmlFor="palabra-retiro" className="text-center text-xs font-extrabold uppercase tracking-widest text-amber-800">
+                Pedile la palabra secreta
+              </label>
+              <span className="text-center text-sm text-neutral-600">{abierto.nombre} · DNI {abierto.dni}</span>
+              <div className="flex gap-2">
+                <input
+                  id="palabra-retiro"
+                  autoFocus
+                  value={modal.palabra ?? ""}
+                  onChange={(e) => setModal({ ...modal, palabra: e.target.value, verificada: null })}
+                  autoComplete="off"
+                  autoCapitalize="characters"
+                  className="h-12 min-w-0 flex-1 rounded-lg border border-amber-300 bg-white px-3 text-center text-[20px] font-bold uppercase tracking-wider"
+                />
+                <button disabled={ocupado || !modal.palabra?.trim()} className="rounded-xl bg-neutral-900 px-4 font-extrabold text-white disabled:opacity-45">
+                  Verificar
+                </button>
+              </div>
+              {modal.verificada === false && (
+                <p role="alert" className="text-center font-bold text-red-700">
+                  ✗ No es esa palabra. {(modal.intentos ?? 0) >= 3 ? "Si no la sabe, que la busque en su mail o en «Mis pedidos» de la tienda." : "Pedile que la repita."}
+                </p>
+              )}
+            </form>
+          )}
+          {modal.verificada && abierto.original > abierto.totalLista && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm">
               Faltó algo: el total quedó en <b>{pesos(abierto.totalLista)}</b>
               {abierto.pago === "TRANSFERENCIA" ? ` (pagó ${pesos(abierto.original)})` : ""}
             </div>
           )}
-          {abierto.pago === "AL_RETIRAR" ? (
+          {!modal.verificada ? (
+            <div className="flex justify-end">
+              <button type="button" onClick={() => setModal(null)} className="rounded-xl border-[1.5px] border-neutral-200 bg-white px-4 py-2.5 font-extrabold">
+                Volver
+              </button>
+            </div>
+          ) : abierto.pago === "AL_RETIRAR" ? (
             <>
               <div className="grid grid-cols-2 gap-2 text-center">
                 <div className="rounded-xl border border-neutral-200 p-2.5">
@@ -472,7 +535,7 @@ function Ventana({
   if (p.estado === "LISTO")
     accion = (
       <button type="button" onClick={onEntregar} className={`${grande} bg-neutral-900 text-white`}>
-        Entregar · {p.codigo}
+        Entregar (DNI y palabra secreta)
       </button>
     );
 

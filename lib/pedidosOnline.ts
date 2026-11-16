@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { enviarMail, plantilla } from "@/lib/mail";
 import { baseUrlPublica } from "@/lib/urlPublica";
@@ -46,6 +47,33 @@ export function codigoRetiro() {
   const letras = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
   const n = crypto.getRandomValues(new Uint32Array(4));
   return `WG-${Array.from(n, (x) => letras[x % letras.length]).join("")}`;
+}
+
+// La palabra secreta para retirar (Gonzalo, 16/11, «como Mercado Libre»): en
+// la estación el cliente dice su DNI y una palabra fácil. Sale del código del
+// pedido con una clave que solo tiene el servidor: no hace falta guardarla, y
+// la tablet nunca la ve (solo pregunta si la que dijo el cliente es correcta).
+// Palabras cortas, sin tilde ni ñ, que se escriben sin dudar.
+const PALABRAS = [
+  "MANGO", "KIWI", "COCO", "PERA", "UVA", "MIEL", "AVENA", "CHIA", "NUEZ", "CACAO",
+  "MENTA", "CANELA", "PALTA", "BANANA", "CEREZA", "DURAZNO", "CIRUELA", "FRUTILLA", "QUINOA", "TRIGO",
+  "ARROZ", "OLIVA", "SEMILLA", "HOJA", "SOL", "LUNA", "MAR", "RIO", "NUBE", "FLOR",
+  "ROCA", "PLAYA", "MONTE", "BOSQUE", "VIENTO", "ROBLE", "PINO", "OLIVO", "TIGRE", "PUMA",
+  "ZORRO", "PANDA", "KOALA", "BALLENA", "GATO", "PERRO", "LORO", "BUHO", "OSO", "LOBO",
+  "AZUL", "VERDE", "ROJO", "NARANJA", "LILA", "CIELO", "ARENA", "LAGO", "ISLA", "VOLCAN",
+  "PIANO", "GUITARRA", "TAMBOR", "FLAUTA", "RADIO", "LIBRO", "MAPA", "BARCO", "TREN", "AVION",
+  "COMETA", "PLANETA", "ESTRELLA", "TRUENO", "LLUVIA", "NIEVE", "VERANO", "PRIMAVERA", "FUEGO", "GIRASOL",
+];
+
+export function palabraSecreta(codigo: string): string {
+  const h = createHmac("sha256", `${process.env.AUTH_SECRET ?? ""}|palabra-retiro-v1`).update(codigo).digest();
+  return PALABRAS[h.readUInt32BE(0) % PALABRAS.length];
+}
+
+/** Compara sin mayúsculas, tildes ni espacios: «mango », «Mangó» y «MANGO» valen igual. */
+export function palabraCoincide(codigo: string, dicha: string): boolean {
+  const limpia = dicha.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-zA-Z]/g, "").toUpperCase();
+  return limpia.length > 0 && limpia === palabraSecreta(codigo);
 }
 
 /** Sin pagar se guarda hasta el día siguiente a las 21 de Argentina. */
@@ -214,8 +242,8 @@ export async function avisarCliente(supabase: SupabaseClient, idPedido: string, 
       html = plantilla({
         titulo: `¡Gracias, ${nombre}!`,
         bajada: `Recibimos tu pedido #${p.numero}.`,
-        destacado: p.codigo,
-        detalle: ["Tu código de retiro: decilo en la estación y listo."],
+        destacado: palabraSecreta(p.codigo),
+        detalle: ["Tu palabra secreta para retirar. En la estación decí tu DNI y esta palabra."],
         franja: pagaAlRetirar
           ? { titulo: "Pagás al retirar", texto: `En efectivo ${pesos(t.efectivo)} · con tarjeta o QR ${pesos(t.lista)}. Te lo guardamos hasta mañana a las 21.` }
           : { titulo: `Transferí ${pesos(t.lista)}`, texto: `Alias <b>${escapar(cuenta.alias)}</b> · CVU ${cuenta.cvu} · ${cuenta.titular}.<br>En el concepto poné «Pedido #${p.numero}». Apenas la vemos, armamos tu pedido.` },
@@ -224,7 +252,7 @@ export async function avisarCliente(supabase: SupabaseClient, idPedido: string, 
         pie: PIE,
         base,
       });
-      texto = `Recibimos tu pedido #${p.numero}. Código de retiro: ${p.codigo}. ${pagaAlRetirar ? `Pagás al retirar: efectivo ${pesos(t.efectivo)} o tarjeta/QR ${pesos(t.lista)}.` : `Transferí ${pesos(t.lista)} al alias ${cuenta.alias} (CVU ${cuenta.cvu}).`} ${boton.url}`;
+      texto = `Recibimos tu pedido #${p.numero}. Para retirar: tu DNI y la palabra secreta ${palabraSecreta(p.codigo)}. ${pagaAlRetirar ? `Pagás al retirar: efectivo ${pesos(t.efectivo)} o tarjeta/QR ${pesos(t.lista)}.` : `Transferí ${pesos(t.lista)} al alias ${cuenta.alias} (CVU ${cuenta.cvu}).`} ${boton.url}`;
     } else if (tipo === "PAGO_OK") {
       asunto = `Recibimos tu transferencia · pedido #${p.numero}`;
       html = plantilla({ titulo: "¡Llegó tu transferencia!", bajada: `Pedido #${p.numero} · ${pesos(t.lista)}`, cuerpo: "Ya la vimos en la cuenta. El equipo toma tu pedido y empieza a armarlo.", boton, pie: PIE, base });
@@ -240,8 +268,8 @@ export async function avisarCliente(supabase: SupabaseClient, idPedido: string, 
         titulo: "¡Está listo!",
         emoji: "🛍️",
         bajada: `Tu pedido #${p.numero} te espera en la estación.`,
-        destacado: p.codigo,
-        detalle: ["Decí este código en la estación y te lo damos.",pagaAlRetirar ? `A pagar: efectivo ${pesos(t.efectivo)} · tarjeta o QR ${pesos(t.lista)}` : "Ya está pago."],
+        destacado: palabraSecreta(p.codigo),
+        detalle: ["En la estación decí tu DNI y esta palabra secreta.",pagaAlRetirar ? `A pagar: efectivo ${pesos(t.efectivo)} · tarjeta o QR ${pesos(t.lista)}` : "Ya está pago."],
         franja: faltaron.length
           ? {
               titulo: "No encontramos todo",
@@ -254,7 +282,7 @@ export async function avisarCliente(supabase: SupabaseClient, idPedido: string, 
         pie: PIE,
         base,
       });
-      texto = `Tu pedido #${p.numero} está listo. Código: ${p.codigo}.${faltaron.length ? ` Faltó: ${faltaron.map((i) => i.nombre).join(", ")}.` : ""} ${boton.url}`;
+      texto = `Tu pedido #${p.numero} está listo. Para retirar: tu DNI y la palabra secreta ${palabraSecreta(p.codigo)}.${faltaron.length ? ` Faltó: ${faltaron.map((i) => i.nombre).join(", ")}.` : ""} ${boton.url}`;
     } else if (tipo === "ENTREGADO") {
       const { data: venta } = p.id_venta ? await supabase.from("ventas").select("puntos_generados").eq("id_venta", p.id_venta).maybeSingle() : { data: null };
       const puntos = Number(venta?.puntos_generados ?? 0);

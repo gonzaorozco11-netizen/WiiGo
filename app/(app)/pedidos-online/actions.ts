@@ -17,6 +17,7 @@ import {
   avisarCliente,
   cuantosHay,
   itemsDe,
+  palabraCoincide,
   totalesDe,
   vencerPedidosOnline,
   type EstadoOnline,
@@ -108,6 +109,18 @@ export async function listarPedidosOnline(): Promise<{ disponible: boolean; acti
 async function traer(supabase: SupabaseClient, idPedido: string) {
   const { data, error } = await supabase.from("pedidos_online").select(COLUMNAS_PEDIDO).eq("id_pedido", idPedido).maybeSingle();
   return { fila: (data as FilaPedidoOnline | null) ?? null, error };
+}
+
+/**
+ * Al retirar: el cliente dice su DNI y su palabra secreta (como Mercado Libre).
+ * La tablet no conoce la palabra: pregunta acá si es la correcta.
+ */
+export async function verificarPalabraOnline(idPedido: string, palabra: string): Promise<{ error: string | null; ok: boolean }> {
+  const s = await sesionQueVe();
+  if (!s) return { error: SIN_PERMISO, ok: false };
+  const { fila } = await traer(getSupabaseServerClient(), idPedido);
+  if (!fila || fila.estado !== "LISTO") return { error: "Ese pedido no está listo para entregar.", ok: false };
+  return { error: null, ok: palabraCoincide(fila.codigo, palabra) };
 }
 
 function refrescar() {
