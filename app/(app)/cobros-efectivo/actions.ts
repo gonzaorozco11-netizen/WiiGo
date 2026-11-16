@@ -81,9 +81,10 @@ export async function confirmarCobro(
       return { error: "No hay un turno de caja abierto en este local — abrilo en Turnos antes de confirmar cobros." };
     }
 
+    // select("*"): `id_combo` (sql/combos.sql) puede no existir todavía y pedirla por nombre trabaría el cobro.
     const { data: detalle, error: errorDetalle } = await supabase
       .from("detalle_ventas")
-      .select("id_detalle, id_variante, id_marca, cantidad, precio_unitario, subtotal")
+      .select("*")
       .eq("id_venta", idVenta);
     if (errorDetalle) return { error: friendlyDbError(errorDetalle) };
     const lineas = detalle ?? [];
@@ -197,7 +198,8 @@ export async function confirmarCobro(
   if (!referido.error && referido.idCodigo && referido.idProfesional) {
     const resultado = await calcularBeneficioReferido(
       supabase,
-      (detalle ?? []).map((d) => ({
+      // Los renglones de un combo no suman para la profesional (lib/combos.ts).
+      (detalle ?? []).filter((d) => !d.id_combo).map((d) => ({
         idVariante: d.id_variante,
         idDetalleVenta: d.id_detalle,
         idProducto: null,

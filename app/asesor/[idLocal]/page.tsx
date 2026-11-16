@@ -22,6 +22,7 @@ import { destacadasDelMes } from "@/lib/puntosProfesionales";
 import { REDES, leerRedes, textoDeRed } from "@/lib/redesProfesional";
 import AsesorApp, { type RedEnFicha } from "@/components/AsesorApp";
 import { cargarGondola, soloLoPuesto } from "@/lib/gondola";
+import { traerCombos } from "@/lib/combosServidor";
 import type { OpinionPaciente } from "@/components/PerfilProfesional";
 import { cargarMarcasFabrica, nombresConMarca } from "@/lib/marcaFabrica";
 
@@ -261,8 +262,12 @@ export default async function AsesorPage({ params }: { params: Promise<{ idLocal
     }
   }
 
+  // Combos (lib/combos.ts): la pantalla los muestra; el descuento lo hace la caja sola.
+  const combos = await traerCombos(supabase);
+
   return (
     <AsesorApp
+      combos={combos}
       local={local as Local}
       opinionesPorProfesional={opinionesPorProfesional}
       marcas={marcasRes.marcas}

@@ -29,6 +29,7 @@ import {
 } from "@/app/self-checkout/[idLocal]/actions";
 import { esMismoCodigo } from "@/lib/codigoBarras";
 import { esDeNocheSegunSol } from "@/lib/clima";
+import { aplicarCombos, partirEnCombos, type Combo } from "@/lib/combos";
 
 // El cielo (clima, día o noche) cambia despacio: cada 10 minutos alcanza.
 const CIELO_POLL_MS = 10 * 60 * 1000;
@@ -1382,9 +1383,12 @@ export default function SelfCheckoutApp({
   esDeNoche: esDeNocheInicial,
   montoPideDni,
   version,
+  combos = [],
 }: {
   /** La versión publicada cuando se abrió esta página (ver lib/version.ts). */
   version: string;
+  /** Combos activos (lib/combos.ts): bajan solos si están sus productos. */
+  combos?: Combo[];
   local: Local;
   // Tipos recortados a propósito: esta pantalla es pública y solo recibe las
   // columnas que puede mostrar. Ver app/self-checkout/[idLocal]/page.tsx.
@@ -1856,10 +1860,37 @@ export default function SelfCheckoutApp({
   // cliente todavía no decidió nada y bajarle el total de entrada haría que
   // después "suba" si elige Mercado Pago. El de efectivo se muestra al lado,
   // como lo que es, una promesa.
-  const subtotalLista = itemsCarrito.reduce((acc, i) => acc + i.precio * i.cantidad, 0);
-  const subtotalEfvo = itemsCarrito.reduce((acc, i) => acc + i.precioEfectivo * i.cantidad, 0);
+  // Combos (lib/combos.ts): si están los productos de un combo, baja solo. La
+  // misma cuenta hace confirmarPedido en el servidor, así se cobra lo que se ve.
+  const combosLista = useMemo(
+    () =>
+      aplicarCombos(
+        itemsCarrito.map((i) => ({ clave: i.variante.id_variante, idProducto: i.producto.id_producto, cantidad: i.cantidad, precio: i.precio })),
+        combos,
+        "LISTA"
+      ),
+    [itemsCarrito, combos]
+  );
+  const combosEfvo = useMemo(
+    () =>
+      aplicarCombos(
+        itemsCarrito.map((i) => ({ clave: i.variante.id_variante, idProducto: i.producto.id_producto, cantidad: i.cantidad, precio: i.precioEfectivo })),
+        combos,
+        "EFECTIVO"
+      ),
+    [itemsCarrito, combos]
+  );
+  const combosAhora = medioPagoElegido === "EFECTIVO" ? combosEfvo : combosLista;
+  const subtotalLista = itemsCarrito.reduce((acc, i) => acc + i.precio * i.cantidad, 0) - combosLista.descuento;
+  const subtotalEfvo = itemsCarrito.reduce((acc, i) => acc + i.precioEfectivo * i.cantidad, 0) - combosEfvo.descuento;
   const ahorroEfectivo = Math.max(subtotalLista - subtotalEfvo, 0);
   const subtotalCarrito = medioPagoElegido === "EFECTIVO" ? subtotalEfvo : subtotalLista;
+  // Cada renglón partido en lo suelto y lo del combo, con lo que se cobra de cada parte.
+  const lineasCobro = partirEnCombos(
+    itemsCarrito.map((i) => ({ ...i, precioUnitario: medioPagoElegido === "EFECTIVO" ? i.precioEfectivo : i.precio })),
+    (i) => i.variante.id_variante,
+    combosAhora.porciones
+  );
 
   /** El precio de una línea según cómo se está pagando. */
   function precioSegunMedio(i: ItemCarrito) {
@@ -1871,18 +1902,15 @@ export default function SelfCheckoutApp({
   // descuento parcial (lo que haya disponible) y el resto se paga normal.
   const marcasEnCarrito = useMemo(() => {
     const subtotalPorMarca = new Map<string, number>();
-    for (const i of itemsCarrito) {
+    for (const i of lineasCobro) {
       if (!i.producto.id_marca) continue;
-      subtotalPorMarca.set(
-        i.producto.id_marca,
-        (subtotalPorMarca.get(i.producto.id_marca) ?? 0) + precioSegunMedio(i) * i.cantidad
-      );
+      subtotalPorMarca.set(i.producto.id_marca, (subtotalPorMarca.get(i.producto.id_marca) ?? 0) + i.subtotal);
     }
     if (!profesional) return [];
     return profesional.saldosPorMarca
       .filter((s) => subtotalPorMarca.has(s.idMarca))
       .map((s) => ({ ...s, subtotalCarrito: subtotalPorMarca.get(s.idMarca) ?? 0 }));
-  }, [itemsCarrito, profesional]);
+  }, [lineasCobro, profesional]);
 
   const descuentoCanje = marcasEnCarrito
     .filter((m) => marcasCanje.has(m.idMarca))
@@ -1895,24 +1923,26 @@ export default function SelfCheckoutApp({
   const [descuentoReferidoPreview, setDescuentoReferidoPreview] = useState(0);
   useEffect(() => {
     const codigoLimpio = codigoProfesional.trim();
-    if (!codigoLimpio || itemsCarrito.length === 0) {
+    // Lo que está en un combo no suma para la profesional (lib/combos.ts).
+    const sueltas = lineasCobro.filter((i) => !i.idCombo);
+    if (!codigoLimpio || sueltas.length === 0) {
       setDescuentoReferidoPreview(0);
       return;
     }
     const timeout = setTimeout(() => {
       previsualizarDescuentoReferidoAction(
         codigoLimpio,
-        itemsCarrito.map((i) => ({
+        sueltas.map((i) => ({
           idMarca: i.producto.id_marca,
           cantidad: i.cantidad,
-          precioUnitario: precioSegunMedio(i),
+          precioUnitario: i.precioUnitario,
         })),
         dni
       ).then(setDescuentoReferidoPreview);
     }, 400);
     return () => clearTimeout(timeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [codigoProfesional, itemsCarrito, dni, medioPagoElegido]);
+  }, [codigoProfesional, itemsCarrito, dni, medioPagoElegido, combos]);
 
   // Mismo orden que confirmarPedido: primero el descuento de referido,
   // después el canje con saldo propio del profesional, y recién sobre lo
@@ -1944,7 +1974,7 @@ export default function SelfCheckoutApp({
       infoCanjePuntosAction(
         dniLimpio,
         totalConCanje,
-        itemsCarrito.map((i) => ({ idMarca: i.producto.id_marca, importe: precioSegunMedio(i) * i.cantidad }))
+        lineasCobro.map((i) => ({ idMarca: i.producto.id_marca, importe: i.subtotal }))
       ).then(setInfoPuntos);
     }, 400);
     return () => clearTimeout(timeout);
@@ -2904,8 +2934,17 @@ export default function SelfCheckoutApp({
 
               <div className="sc-resumen-fila">
                 <span>Subtotal</span>
-                <span>${formatearMonto(subtotalCarrito)}</span>
+                <span>${formatearMonto(subtotalCarrito + combosAhora.descuento)}</span>
               </div>
+              {combosAhora.aplicados.map((a) => (
+                <div key={a.combo.id} className="sc-resumen-fila sc-resumen-desc-verde">
+                  <span>
+                    🎁 Combo {a.combo.nombre}
+                    {a.veces > 1 ? ` ×${a.veces}` : ""}
+                  </span>
+                  <span>-${formatearMonto(a.descuento)}</span>
+                </div>
+              ))}
               {descuentoReferidoPreview > 0 && (
                 <div className="sc-resumen-fila sc-resumen-desc-verde">
                   <span>Descuento por código de profesional</span>

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { COLUMNAS_PRODUCTO_PUBLICO, COLUMNAS_VARIANTE_PUBLICA, COLUMNAS_PROFESIONAL_PUBLICO, traerMarcasPublicas } from "@/lib/supabase";
+import { traerCombos } from "@/lib/combosServidor";
 import { fetchContenidoAsesor } from "@/lib/contenidoAsesor";
 import { cargarMarcasFabrica } from "@/lib/marcaFabrica";
 
@@ -180,10 +181,25 @@ export async function armarCatalogoTienda(supabase: SupabaseClient) {
     ob: objetivosDe.get(pr.id_profesional)?.[0] ?? null,
   }));
 
+  // Combos (lib/combos.ts): solo los que tienen todos sus productos a la venta en la tienda.
+  const enTienda = new Set(productos.map((p) => p.id as string));
+  const combos = (await traerCombos(supabase))
+    .filter((c) => c.grupos.every((g) => g.productos.some((id) => enTienda.has(id))))
+    .map((c) => ({
+      id: c.id,
+      n: c.nombre,
+      m: c.marca,
+      p: c.precio,
+      e: c.precioEfectivo,
+      img: c.imagen,
+      g: c.grupos.map((g) => ({ q: g.cantidad, ids: g.productos.filter((id) => enTienda.has(id)) })),
+    }));
+
   return {
     generado: new Date().toISOString(),
     productos,
     marcas,
+    combos,
     profesionales,
     objetivos: contenido.objetivosGlobales.map((o) => o.nombre),
     filtros: contenido.filtrosGlobales.map((f) => f.nombre),

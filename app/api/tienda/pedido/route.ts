@@ -20,6 +20,8 @@ import {
   type PagoOnline,
 } from "@/lib/pedidosOnline";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { aplicarCombos } from "@/lib/combos";
+import { traerCombos } from "@/lib/combosServidor";
 
 /**
  * Comprar en la tienda online (public/tienda/app.js). Ver lib/pedidosOnline.ts.
@@ -186,6 +188,31 @@ export async function POST(req: NextRequest) {
         409,
         { faltan }
       );
+    }
+
+    // Combos (lib/combos.ts): si el pedido tiene los productos de un combo, baja
+    // solo, con tarjeta/transferencia y en efectivo. El pedido guarda un precio por
+    // renglón, así que lo del combo queda repartido en el precio de cada uno. La
+    // caja, al cobrarlo, no lo vuelve a aplicar (venderPos con `sinCombos`).
+    const combos = await traerCombos(supabase);
+    if (combos.length > 0) {
+      const precioConCombo = (modo: "LISTA" | "EFECTIVO") => {
+        const r = aplicarCombos(
+          armadas.map((a) => ({ clave: a.idVariante, idProducto: a.idProducto, cantidad: a.linea.q, precio: modo === "LISTA" ? a.lista : a.efectivo })),
+          combos,
+          modo
+        );
+        const descuentoDe = new Map<string, number>();
+        for (const p of r.porciones) descuentoDe.set(p.clave, (descuentoDe.get(p.clave) ?? 0) + p.descuento);
+        return descuentoDe;
+      };
+      const dLista = precioConCombo("LISTA");
+      const dEfectivo = precioConCombo("EFECTIVO");
+      for (const a of armadas) {
+        const q = a.linea.q;
+        a.lista = Math.round(((a.lista * q - (dLista.get(a.idVariante) ?? 0)) / q) * 100) / 100;
+        a.efectivo = Math.round(((a.efectivo * q - (dEfectivo.get(a.idVariante) ?? 0)) / q) * 100) / 100;
+      }
     }
 
     const totalLista = armadas.reduce((t, a) => t + a.lista * a.linea.q, 0);

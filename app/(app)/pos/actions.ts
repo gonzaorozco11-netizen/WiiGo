@@ -25,8 +25,23 @@ import { confirmarCobro, cancelarPedido } from "@/app/(app)/cobros-efectivo/acti
 import { descontarStockDeVenta } from "@/lib/stockVenta";
 import { formaPagoPosnet, type MedioPagoVenta, type TarjetaPosnet } from "@/lib/formasPago";
 import { tasaComisionCobro } from "@/lib/comisionCobro";
+import { aplicarCombos, partirEnCombos } from "@/lib/combos";
+import { traerCombos, productoDeVariantes } from "@/lib/combosServidor";
 import QRCode from "qrcode";
 import type { SupabaseClient } from "@supabase/supabase-js";
+
+/** Los renglones a guardar: el `id_combo` va solo en los que entraron en un combo. */
+function filasDeVenta(idVenta: string, itemsVenta: { idVariante: string; idMarca: string | null; cantidad: number; precioUnitario: number; subtotal: number; idCombo: string | null }[]) {
+  return itemsVenta.map((i) => ({
+    id_venta: idVenta,
+    id_variante: i.idVariante,
+    id_marca: i.idMarca,
+    cantidad: i.cantidad,
+    precio_unitario: i.precioUnitario,
+    subtotal: i.subtotal,
+    ...(i.idCombo ? { id_combo: i.idCombo } : {}),
+  }));
+}
 
 async function usuarioActual() {
   const cookieStore = await cookies();
@@ -232,7 +247,10 @@ export async function venderPos(
   receptorFactura?: { tipo: "CONSUMIDOR_FINAL" | "DNI" | "CUIT"; numero: string },
   // Con el posnet (Nave): débito o crédito, lo elige la cajera; el cupón es
   // optativo, para controlar contra el cierre de lote.
-  posnet?: { tarjeta: TarjetaPosnet; cupon?: string }
+  posnet?: { tarjeta: TarjetaPosnet; cupon?: string },
+  // Al cobrar un pedido (de la tienda online o de una profesional) los precios
+  // ya vienen del pedido, con el combo adentro si lo tenía: no se vuelve a aplicar.
+  sinCombos?: boolean
 ): Promise<{ error: string | null; venta?: ResultadoVenta; pedido?: ResultadoPedidoMp }> {
   if (items.length === 0) return { error: "El carrito está vacío" };
   const esPosnet = medioPago === "POSNET";
@@ -260,8 +278,26 @@ export async function venderPos(
       idCliente = existente?.id_cliente ?? null;
     }
 
-  const subtotal = items.reduce((acc, i) => acc + i.precioUnitario * i.cantidad, 0);
-  const lineasPuntos: LineaPuntos[] = items.map((i) => ({ idMarca: i.idMarca, importe: i.precioUnitario * i.cantidad }));
+  // Combos (lib/combos.ts): si están los productos de un combo, el precio de esos
+  // renglones baja solo. Los renglones quedan partidos en lo suelto y lo del combo.
+  let itemsVenta = items.map((i) => ({ ...i, subtotal: i.precioUnitario * i.cantidad, idCombo: null as string | null }));
+  if (!sinCombos) {
+    const combos = await traerCombos(supabase);
+    if (combos.length > 0) {
+      const productoDe = await productoDeVariantes(supabase, items.map((i) => i.idVariante));
+      const r = aplicarCombos(
+        items.map((i) => ({ clave: i.idVariante, idProducto: productoDe.get(i.idVariante) ?? "", cantidad: i.cantidad, precio: i.precioUnitario })),
+        combos,
+        medioPago === "EFECTIVO" ? "EFECTIVO" : "LISTA"
+      );
+      if (r.porciones.length > 0) itemsVenta = partirEnCombos(items, (i) => i.idVariante, r.porciones);
+    }
+  }
+  // Lo que entra al descuento o la comisión de profesional: lo suelto. Con combo, no (Gonzalo, 16/11).
+  const itemsSinCombo = itemsVenta.filter((i) => !i.idCombo);
+
+  const subtotal = itemsVenta.reduce((acc, i) => acc + i.subtotal, 0);
+  const lineasPuntos: LineaPuntos[] = itemsVenta.map((i) => ({ idMarca: i.idMarca, importe: i.subtotal }));
 
   // Una profesional no puede usar el código de descuento de otra (ni el
   // suyo propio) para su propia compra — el beneficio de referido es para
@@ -276,8 +312,8 @@ export async function venderPos(
   if (referido.error) return { error: referido.error };
 
   let resultadoReferido = null as Awaited<ReturnType<typeof calcularBeneficioReferido>> | null;
-  if (referido.idCodigo) {
-    const idsVariante = items.map((i) => i.idVariante);
+  if (referido.idCodigo && itemsSinCombo.length > 0) {
+    const idsVariante = itemsSinCombo.map((i) => i.idVariante);
     const { data: variantes } = await supabase
       .from("variantes_producto")
       .select("id_variante, id_producto")
@@ -286,13 +322,13 @@ export async function venderPos(
 
     resultadoReferido = await calcularBeneficioReferido(
       supabase,
-      items.map((i) => ({
+      itemsSinCombo.map((i) => ({
         idVariante: i.idVariante,
         idProducto: productoPorVariante.get(i.idVariante) ?? null,
         idMarca: i.idMarca,
         cantidad: i.cantidad,
         precioUnitario: i.precioUnitario,
-        importe: i.precioUnitario * i.cantidad,
+        importe: i.subtotal,
       })),
       { conBeneficioCliente: referido.conBeneficioCliente }
     );
@@ -310,7 +346,7 @@ export async function venderPos(
       supabase,
       canje.idProfesional,
       canje.marcas,
-      items.map((i) => ({ idMarca: i.idMarca, importe: i.precioUnitario * i.cantidad }))
+      itemsVenta.map((i) => ({ idMarca: i.idMarca, importe: i.subtotal }))
     );
     if (resultadoCanje.error) return { error: resultadoCanje.error };
     descuentoCanje = resultadoCanje.descuentoTotal;
@@ -403,14 +439,7 @@ export async function venderPos(
       .single();
     if (errorVenta) return { error: friendlyDbError(errorVenta) };
 
-    const filasDetalle = items.map((i) => ({
-      id_venta: venta.id_venta,
-      id_variante: i.idVariante,
-      id_marca: i.idMarca,
-      cantidad: i.cantidad,
-      precio_unitario: i.precioUnitario,
-      subtotal: i.precioUnitario * i.cantidad,
-    }));
+    const filasDetalle = filasDeVenta(venta.id_venta as string, itemsVenta);
     // Con el costo del momento: las ventas hechas no cambian si después sube (lib/costoAlVender.ts).
     const { error: errorDetalle } = await insertarRenglonesVenta(supabase, filasDetalle);
     if (errorDetalle) return { error: friendlyDbError(errorDetalle) };
@@ -566,21 +595,17 @@ export async function venderPos(
 
   await supabase.from("ventas").update({ id_pago: pago.id_pago }).eq("id_venta", venta.id_venta);
 
-  const filasDetalle = items.map((i) => ({
-    id_venta: venta.id_venta,
-    id_variante: i.idVariante,
-    id_marca: i.idMarca,
-    cantidad: i.cantidad,
-    precio_unitario: i.precioUnitario,
-    subtotal: i.precioUnitario * i.cantidad,
-  }));
+  const filasDetalle = filasDeVenta(venta.id_venta as string, itemsVenta);
   // Con el costo del momento: las ventas hechas no cambian si después sube (lib/costoAlVender.ts).
   const { data: detalleInsertado, error: errorDetalle } = await insertarRenglonesVenta(supabase, filasDetalle);
   if (errorDetalle) return { error: friendlyDbError(errorDetalle) };
 
   let puntosExtra = 0;
   if (resultadoReferido && referido.idCodigo && referido.idProfesional) {
-    const mapaVarianteADetalle = new Map((detalleInsertado ?? []).map((d) => [d.id_variante, d.id_detalle]));
+    // Solo los renglones sueltos: los del combo no entran al referido. Vuelven en el orden en que se guardaron.
+    const mapaVarianteADetalle = new Map(
+      (detalleInsertado ?? []).filter((_, k) => !filasDetalle[k]?.id_combo).map((d) => [d.id_variante, d.id_detalle])
+    );
     const resultadoConDetalle = enlazarDetalleVenta(resultadoReferido, mapaVarianteADetalle);
     await registrarReferido(supabase, {
       idVenta: venta.id_venta,

@@ -12,6 +12,8 @@ import { turnoAbiertoDeLocal } from "@/app/(app)/turnos/actions";
 import { montoQuePideDni } from "@/lib/arca/config";
 import QRCode from "qrcode";
 import { obtenerClimaActual, type EstadoCielo } from "@/lib/clima";
+import { aplicarCombos, partirEnCombos } from "@/lib/combos";
+import { traerCombos } from "@/lib/combosServidor";
 
 type ItemCarrito = { idVariante: string; idMarca: string | null; cantidad: number; precioUnitario: number };
 type MedioPago = "EFECTIVO" | "MERCADO_PAGO";
@@ -286,7 +288,22 @@ export async function confirmarPedido(
       idCliente = existente?.id_cliente ?? null;
     }
 
-  const subtotal = items.reduce((acc, i) => acc + i.precioUnitario * i.cantidad, 0);
+  // Combos (lib/combos.ts): misma cuenta que la pantalla del tótem. Los renglones
+  // quedan partidos en lo suelto y lo del combo (con el descuento repartido).
+  let itemsVenta = items.map((i) => ({ ...i, subtotal: i.precioUnitario * i.cantidad, idCombo: null as string | null }));
+  const combos = await traerCombos(supabase);
+  if (combos.length > 0) {
+    const r = aplicarCombos(
+      items.map((i) => ({ clave: i.idVariante, idProducto: (varianteMap.get(i.idVariante)?.id_producto as string | undefined) ?? "", cantidad: i.cantidad, precio: i.precioUnitario })),
+      combos,
+      medioPago === "EFECTIVO" ? "EFECTIVO" : "LISTA"
+    );
+    if (r.porciones.length > 0) itemsVenta = partirEnCombos(items, (i) => i.idVariante, r.porciones);
+  }
+  // Con combo no se suma el descuento de profesional (Gonzalo, 16/11).
+  const itemsSinCombo = itemsVenta.filter((i) => !i.idCombo);
+
+  const subtotal = itemsVenta.reduce((acc, i) => acc + i.subtotal, 0);
 
   // Una profesional no puede usar el código de descuento de otra (ni el
   // suyo propio) para su propia compra — el beneficio de referido es para
@@ -306,10 +323,10 @@ export async function confirmarPedido(
   if (referido.error) return { error: referido.error };
 
   let descuentoBeneficio = 0;
-  if (referido.idCodigo) {
+  if (referido.idCodigo && itemsSinCombo.length > 0) {
     const resultado = await calcularBeneficioReferido(
       supabase,
-      items.map((i) => ({ idProducto: null, idMarca: i.idMarca, cantidad: i.cantidad, precioUnitario: i.precioUnitario, importe: i.precioUnitario * i.cantidad })),
+      itemsSinCombo.map((i) => ({ idProducto: null, idMarca: i.idMarca, cantidad: i.cantidad, precioUnitario: i.precioUnitario, importe: i.subtotal })),
       { conBeneficioCliente: referido.conBeneficioCliente }
     );
     descuentoBeneficio = resultado.descuentoTotal;
@@ -328,7 +345,7 @@ export async function confirmarPedido(
       supabase,
       canje.idProfesional,
       canje.marcas,
-      items.map((i) => ({ idMarca: i.idMarca, importe: i.precioUnitario * i.cantidad }))
+      itemsVenta.map((i) => ({ idMarca: i.idMarca, importe: i.subtotal }))
     );
     if (resultadoCanje.error) return { error: resultadoCanje.error };
     descuentoCanje = resultadoCanje.descuentoTotal;
@@ -347,7 +364,7 @@ export async function confirmarPedido(
       supabase,
       idCliente,
       montoAntesDePuntos,
-      items.map((i) => ({ idMarca: i.idMarca, importe: i.precioUnitario * i.cantidad }))
+      itemsVenta.map((i) => ({ idMarca: i.idMarca, importe: i.subtotal }))
     );
     descuentoPuntos = infoPuntos.maxDescuento;
     puntosACanjear = infoPuntos.puntosNecesarios;
@@ -416,13 +433,15 @@ export async function confirmarPedido(
     .single();
   if (errorVenta) return { error: friendlyDbError(errorVenta) };
 
-  const filasDetalle = items.map((i) => ({
+  const filasDetalle = itemsVenta.map((i) => ({
     id_venta: venta.id_venta,
     id_variante: i.idVariante,
     id_marca: i.idMarca,
     cantidad: i.cantidad,
     precio_unitario: i.precioUnitario,
-    subtotal: i.precioUnitario * i.cantidad,
+    subtotal: i.subtotal,
+    // Solo en lo que entró en un combo: así confirmarCobro lo deja fuera del referido.
+    ...(i.idCombo ? { id_combo: i.idCombo } : {}),
   }));
   // Con el costo del momento: las ventas hechas no cambian si después sube (lib/costoAlVender.ts).
   const { error: errorDetalle } = await insertarRenglonesVenta(supabase, filasDetalle);

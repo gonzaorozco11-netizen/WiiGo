@@ -19,6 +19,7 @@ import { dispararAvisosDeVenta } from "@/lib/dispararAvisos";
 import { marcarPedidoEntregado } from "@/app/(app)/pedidos/actions";
 import { entregarOnlineDesdeCaja } from "@/app/(app)/pedidos-online/actions";
 import SumarClienteClub from "@/components/SumarClienteClub";
+import { aplicarCombos, partirEnCombos, type Combo, type ModoPrecio } from "@/lib/combos";
 
 type Item = {
   variante: VarianteProducto;
@@ -141,6 +142,7 @@ export default function PosApp({
   ivaGeneralPorcentaje,
   pedido = null,
   aliasTransferencia = null,
+  combos = [],
 }: {
   locales: Local[];
   productos: Producto[];
@@ -151,6 +153,8 @@ export default function PosApp({
   pedido?: PedidoParaCobrar | null;
   /** El alias de Mercado Pago para que el cliente transfiera (Configuración). */
   aliasTransferencia?: string | null;
+  /** Combos activos: si están sus productos en el carrito, el precio baja solo (lib/combos.ts). */
+  combos?: Combo[];
 }) {
   const router = useRouter();
   const [pedidoActivo, setPedidoActivo] = useState<PedidoParaCobrar | null>(pedido);
@@ -328,7 +332,32 @@ export default function PosApp({
       .filter((i): i is ItemCarrito => i !== null);
   }, [carrito, itemPorVariante]);
 
-  const subtotal = itemsCarrito.reduce((acc, i) => acc + i.precio * i.cantidad, 0);
+  // Combos (lib/combos.ts): la misma cuenta que hace venderPos al cobrar. Con un
+  // pedido (online o de profesional) no: sus precios ya vienen del pedido.
+  const combosVigentes = useMemo(() => (pedidoActivo ? [] : combos), [pedidoActivo, combos]);
+  const combosCon = useCallback(
+    (modo: ModoPrecio) =>
+      aplicarCombos(
+        itemsCarrito.map((i) => ({
+          clave: i.variante.id_variante,
+          idProducto: i.producto.id_producto,
+          cantidad: i.cantidad,
+          precio: precioCon(i.producto, i.variante, modo === "EFECTIVO" ? "EFECTIVO" : "OTRO"),
+        })),
+        combosVigentes,
+        modo
+      ),
+    [itemsCarrito, combosVigentes, precioCon]
+  );
+  const combosAhora = useMemo(() => combosCon(medioPago === "EFECTIVO" ? "EFECTIVO" : "LISTA"), [combosCon, medioPago]);
+  // Cada renglón partido en lo suelto y lo que entró en un combo, con lo que se cobra de cada parte.
+  const lineasCobro = useMemo(
+    () => partirEnCombos(itemsCarrito.map((i) => ({ ...i, precioUnitario: i.precio })), (i) => i.variante.id_variante, combosAhora.porciones),
+    [itemsCarrito, combosAhora]
+  );
+
+  const subtotalBruto = itemsCarrito.reduce((acc, i) => acc + i.precio * i.cantidad, 0);
+  const subtotal = subtotalBruto - combosAhora.descuento;
 
   // Renglones que piden más de lo que el sistema dice que hay. No frenan la
   // venta: avisan, y la venta sale marcada para que alguien revise el stock.
@@ -337,14 +366,9 @@ export default function PosApp({
   // Los dos totales, para poder mostrarlos en los botones de medio de pago.
   // Se recalculan desde el producto y no desde `i.precio`, que ya viene con
   // el medio elegido aplicado.
-  const totalEfectivo = itemsCarrito.reduce(
-    (acc, i) => acc + precioCon(i.producto, i.variante, "EFECTIVO") * i.cantidad,
-    0
-  );
-  const totalLista = itemsCarrito.reduce(
-    (acc, i) => acc + precioCon(i.producto, i.variante, "OTRO") * i.cantidad,
-    0
-  );
+  const totalEfectivo =
+    itemsCarrito.reduce((acc, i) => acc + precioCon(i.producto, i.variante, "EFECTIVO") * i.cantidad, 0) - combosCon("EFECTIVO").descuento;
+  const totalLista = itemsCarrito.reduce((acc, i) => acc + precioCon(i.producto, i.variante, "OTRO") * i.cantidad, 0) - combosCon("LISTA").descuento;
   const hayDiferenciaDePrecio = totalEfectivo !== totalLista;
 
   // Marcas presentes en el carrito con el saldo del profesional para cada
@@ -352,15 +376,15 @@ export default function PosApp({
   // descuento parcial (lo que haya disponible) y el resto se paga normal.
   const marcasEnCarrito = useMemo(() => {
     const subtotalPorMarca = new Map<string, number>();
-    for (const i of itemsCarrito) {
+    for (const i of lineasCobro) {
       if (!i.producto.id_marca) continue;
-      subtotalPorMarca.set(i.producto.id_marca, (subtotalPorMarca.get(i.producto.id_marca) ?? 0) + i.precio * i.cantidad);
+      subtotalPorMarca.set(i.producto.id_marca, (subtotalPorMarca.get(i.producto.id_marca) ?? 0) + i.subtotal);
     }
     if (!profesional) return [];
     return profesional.saldosPorMarca
       .filter((s) => subtotalPorMarca.has(s.idMarca))
       .map((s) => ({ ...s, subtotalCarrito: subtotalPorMarca.get(s.idMarca) ?? 0 }));
-  }, [itemsCarrito, profesional]);
+  }, [lineasCobro, profesional]);
 
   const descuentoCanje = marcasEnCarrito
     .filter((m) => marcasCanje.has(m.idMarca))
@@ -368,8 +392,8 @@ export default function PosApp({
 
   // El precio de cada producto ya incluye el IVA — esto solo lo desglosa
   // para que se vea, no cambia nada de lo que paga el cliente.
-  const subtotalSinIva = ivaGeneralPorcentaje > 0 ? subtotal / (1 + ivaGeneralPorcentaje / 100) : subtotal;
-  const montoIva = subtotal - subtotalSinIva;
+  const subtotalSinIva = ivaGeneralPorcentaje > 0 ? subtotalBruto / (1 + ivaGeneralPorcentaje / 100) : subtotalBruto;
+  const montoIva = subtotalBruto - subtotalSinIva;
 
   // Vista previa en vivo del descuento que el código de profesional le da al
   // CLIENTE (si la marca eligió "Descuento en el momento") — antes no se
@@ -377,19 +401,21 @@ export default function PosApp({
   // venderPos ya lo calculara bien al cobrar.
   useEffect(() => {
     const codigoLimpio = codigoProfesional.trim();
-    if (!codigoLimpio || itemsCarrito.length === 0) {
+    // Lo que está en un combo no suma para la profesional (lib/combos.ts).
+    const sueltas = lineasCobro.filter((i) => !i.idCombo);
+    if (!codigoLimpio || sueltas.length === 0) {
       setDescuentoReferidoPreview(0);
       return;
     }
     const timeout = setTimeout(() => {
       previsualizarDescuentoReferidoAction(
         codigoLimpio,
-        itemsCarrito.map((i) => ({ idMarca: i.producto.id_marca, cantidad: i.cantidad, precioUnitario: i.precio })),
+        sueltas.map((i) => ({ idMarca: i.producto.id_marca, cantidad: i.cantidad, precioUnitario: i.precioUnitario })),
         dni
       ).then(setDescuentoReferidoPreview);
     }, 400);
     return () => clearTimeout(timeout);
-  }, [codigoProfesional, itemsCarrito, dni]);
+  }, [codigoProfesional, lineasCobro, dni]);
 
   // Mismo orden que venderPos: primero el descuento de referido, después el
   // canje con saldo propio del profesional, y recién sobre lo que queda se
@@ -413,11 +439,11 @@ export default function PosApp({
       infoCanjePuntosAction(
         dniLimpio,
         totalConCanje,
-        itemsCarrito.map((i) => ({ idMarca: i.producto.id_marca, importe: i.precio * i.cantidad }))
+        lineasCobro.map((i) => ({ idMarca: i.producto.id_marca, importe: i.subtotal }))
       ).then(setInfoPuntos);
     }, 400);
     return () => clearTimeout(timeout);
-  }, [dni, totalConCanje, itemsCarrito]);
+  }, [dni, totalConCanje, lineasCobro]);
 
   // Sin tope por stock, a propósito: si el producto está en la mano del
   // cliente, existe. El tope lo pone la realidad; el sistema avisa y marca.
@@ -500,7 +526,9 @@ export default function PosApp({
         : undefined,
       usarPuntosWiigo,
       { tipo: tipoReceptor, numero: docReceptor },
-      esPosnet && tarjetaPosnet ? { tarjeta: tarjetaPosnet, cupon: cuponPosnet } : undefined
+      esPosnet && tarjetaPosnet ? { tarjeta: tarjetaPosnet, cupon: cuponPosnet } : undefined,
+      // Con un pedido no se vuelven a aplicar los combos: sus precios ya vienen del pedido.
+      Boolean(pedidoActivo)
     )
       .then((r) => {
         if (r.error) setError(r.error);
@@ -1053,8 +1081,17 @@ export default function PosApp({
         </div>
         <div className="flex justify-between items-center text-sm mb-1">
           <span>Subtotal</span>
-          <span>${formatearMonto(subtotal)}</span>
+          <span>${formatearMonto(subtotalBruto)}</span>
         </div>
+        {combosAhora.aplicados.map((a) => (
+          <div key={a.combo.id} className="flex justify-between items-center text-sm font-semibold text-orange-700 bg-orange-50 border border-dashed border-orange-200 rounded-md px-2 py-1 mb-1">
+            <span>
+              🎁 Combo {a.combo.nombre}
+              {a.veces > 1 ? ` ×${a.veces}` : ""}
+            </span>
+            <span>-${formatearMonto(a.descuento)}</span>
+          </div>
+        ))}
         {descuentoReferidoPreview > 0 && (
           <div className="flex justify-between items-center text-sm text-emerald-600 mb-1">
             <span>Descuento por código de profesional</span>

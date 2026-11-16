@@ -9,6 +9,7 @@ import {
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import PantallaBloqueada from "@/components/PantallaBloqueada";
 import PosApp, { type PedidoParaCobrar } from "@/components/PosApp";
+import { traerCombos } from "@/lib/combosServidor";
 import { preciosVigentes } from "@/lib/pedidosProfesional";
 import { COLUMNAS_PEDIDO, cuantosHay, itemsDe, type FilaPedidoOnline } from "@/lib/pedidosOnline";
 import { cargarMarcasFabrica, nombresConMarca } from "@/lib/marcaFabrica";
@@ -85,7 +86,7 @@ export default async function PosPage({ searchParams }: { searchParams: Promise<
       ? await pedidoOnlineParaCobrar(supabase, idOnline).catch(() => null)
       : null;
 
-  const [localesRes, productosRes, variantesRes, marcasRes, stockRes, configRes, marcasFabrica] = await Promise.all([
+  const [localesRes, productosRes, variantesRes, marcasRes, stockRes, configRes, marcasFabrica, combos] = await Promise.all([
     supabase.from("locales").select("*").eq("estado", "ACTIVO").order("nombre", { ascending: true }),
     // Sin precio todavía (lo pone la marca y lo aprueba WiiGo) no se vende.
     supabase.from("productos").select("*").eq("estado", "ACTIVO").gt("precio_venta", 0),
@@ -95,6 +96,8 @@ export default async function PosPage({ searchParams }: { searchParams: Promise<
     supabase.from("configuracion").select("parametro, valor").in("parametro", ["IVA_GENERAL_PORCENTAJE", "MP_ALIAS_TRANSFERENCIA"]),
     // «(Entre Nuts)» después del nombre, igual que lo ve el cliente (lib/marcaFabrica.ts).
     cargarMarcasFabrica(supabase).catch(() => new Map<string, string>()),
+    // Los combos: se aplican solos en el carrito (lib/combos.ts).
+    traerCombos(supabase),
   ]);
 
   const config = new Map((configRes.data ?? []).map((c) => [c.parametro as string, c.valor as string | null]));
@@ -132,6 +135,7 @@ export default async function PosPage({ searchParams }: { searchParams: Promise<
       ivaGeneralPorcentaje={ivaGeneralPorcentaje}
       pedido={pedido}
       aliasTransferencia={aliasTransferencia}
+      combos={combos}
       key={pedido?.idPedido ?? "venta"}
     />
   );

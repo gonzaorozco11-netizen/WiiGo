@@ -168,7 +168,55 @@
     if (n > 0 && l.q === antes) aviso('No hay más stock de este producto');
     carrito = carrito.filter(function (x) { return x.q > 0; });
   }
-  function totales() { var t = { u: 0, g: 0, e: 0, p: 0 }; carrito.forEach(function (l) { var p = POR_ID[l.id]; t.u += l.q; t.g += p.p * l.q; t.e += (p.e || p.p) * l.q; t.p += puntosDe(p, p.p * l.q); }); return t; }
+  /* ---------- Combos (Gonzalo, 16/11) ----------
+     Un combo no es un producto: si en el pedido están sus productos, el precio baja solo.
+     Es la misma cuenta que lib/combos.ts (aplicarCombos): si se cambia allá, cambiarla acá.
+     El servidor la vuelve a hacer al guardar el pedido (/api/tienda/pedido). */
+  var COMBOS = (D.combos || []).filter(function (c) { return c && c.g && c.g.length && c.p > 0; });
+  var POR_COMBO = {}; COMBOS.forEach(function (c) { POR_COMBO[c.id] = c; });
+  function precioCombo(c, modo) { return modo === 'EFECTIVO' && c.e > 0 ? c.e : c.p; }
+  function aplicarCombos(modo) {
+    var lineas = carrito.map(function (l) { var p = POR_ID[l.id]; return { clave: l.id + '|' + (l.v || ''), id: l.id, q: l.q, precio: modo === 'EFECTIVO' ? (p.e || p.p) : p.p }; });
+    var libres = {}; lineas.forEach(function (l) { libres[l.clave] = (libres[l.clave] || 0) + l.q; });
+    // Una vez de un combo con lo que queda suelto: { prueba, d } o null si no entra.
+    function unaVez(c) {
+      var prueba = {}, k; for (k in libres) prueba[k] = libres[k];
+      var elegidas = [];
+      for (var gi = 0; gi < c.g.length; gi++) {
+        var g = c.g[gi], faltan = g.q;
+        for (var li = 0; li < lineas.length && faltan > 0; li++) {
+          var l = lineas[li]; if (g.ids.indexOf(l.id) < 0) continue;
+          var toma = Math.min(prueba[l.clave] || 0, faltan); if (toma <= 0) continue;
+          prueba[l.clave] -= toma; faltan -= toma; for (var u = 0; u < toma; u++) elegidas.push(l);
+        }
+        if (faltan > 0) return null;
+      }
+      var suma = elegidas.reduce(function (t, l) { return t + l.precio; }, 0), d = suma - precioCombo(c, modo);
+      return d > 0 ? { prueba: prueba, d: d } : null;
+    }
+    // Cada vez, el combo que más le ahorra con lo que queda (igual que lib/combos.ts).
+    var por = {}, total = 0;
+    for (var vuelta = 0; vuelta < 100; vuelta++) {
+      var mejor = null;
+      COMBOS.forEach(function (c) { var r = unaVez(c); if (r && (!mejor || r.d > mejor.r.d)) mejor = { c: c, r: r }; });
+      if (!mejor) break;
+      libres = mejor.r.prueba; total += mejor.r.d;
+      var a = por[mejor.c.id] || (por[mejor.c.id] = { c: mejor.c, veces: 0, d: 0 }); a.veces++; a.d += mejor.r.d;
+    }
+    return { aplicados: COMBOS.map(function (c) { return por[c.id]; }).filter(Boolean), d: total };
+  }
+  function totales() {
+    var t = { u: 0, g: 0, e: 0, p: 0 };
+    carrito.forEach(function (l) { var p = POR_ID[l.id]; t.u += l.q; t.g += p.p * l.q; t.e += (p.e || p.p) * l.q; });
+    var cl = aplicarCombos('LISTA'), ce = aplicarCombos('EFECTIVO');
+    t.g -= cl.d; t.e -= ce.d; t.combos = cl.aplicados; t.combosE = ce.aplicados;
+    t.p = Math.floor(5 * t.g / 1000); // 5 puntos cada $1.000 (como puntosDe)
+    return t;
+  }
+  // Las líneas «🎁 Combo …» del pedido (con el descuento con tarjeta o transferencia).
+  function filasCombos(t, estilo) {
+    return (t.combos || []).map(function (a) { return '<div class="total combo-ok"' + (estilo || '') + '><span>🎁 Combo ' + esc(a.c.n) + (a.veces > 1 ? ' ×' + a.veces : '') + '</span><b>−' + plata(a.d) + '</b></div>'; }).join('');
+  }
   function aviso(t) { var d = document.createElement('div'); d.className = 'aviso'; d.setAttribute('role', 'status'); d.textContent = t; document.body.appendChild(d); setTimeout(function () { d.remove(); }, 1800); }
 
   /* la tarjeta, de a dos, como Alifrut */
@@ -280,7 +328,7 @@
       ['objetivos', '🎯', 'Objetivos', ''],
       ['mundo', '🌍', 'Del mundo', ''],
       ['pros', '👩‍💻', 'Profesionales', ''],
-      ['combos', '🎁', 'Combos', '<em class="pronto">Pronto</em>'],
+      ['combos', '🎁', 'Combos', COMBOS.length ? '<em>' + COMBOS.length + '</em>' : '<em class="pronto">Pronto</em>'],
       ['ofertas', '🏷️', 'Ofertas', OFERTAS.length ? '<em>' + OFERTAS.length + '</em>' : '']
     ];
     return lista.map(function (b, i) { return '<button data-a="' + b[0] + '"' + extra + (copia && i === 0 ? ' data-copia' : '') + '><span>' + b[1] + '</span>' + b[2] + b[3] + '</button>'; }).join('');
@@ -477,12 +525,82 @@
       siOk(r); pintar(false);
     });
   }
+  /* ---------- Pantalla «Combos» y la hoja para elegir el sabor (maqueta aprobada, 16/11) ---------- */
+  function precioSuelto(c, modo) {
+    // Lo que sale llevar los productos sueltos (el más barato de cada grupo), para el «Ahorrás».
+    return c.g.reduce(function (t, g) {
+      var min = Infinity; g.ids.forEach(function (id) { var p = POR_ID[id]; if (p) min = Math.min(min, modo === 'EFECTIVO' ? (p.e || p.p) : p.p); });
+      return t + (min === Infinity ? 0 : min) * g.q;
+    }, 0);
+  }
+  function comboConStock(c) { return c.g.every(function (g) { return g.ids.reduce(function (t, id) { var p = POR_ID[id]; return t + (p ? p.s : 0); }, 0) >= g.q; }); }
+  function llevaCombo(c) {
+    return c.g.map(function (g) {
+      var nombres = g.ids.map(function (id) { return POR_ID[id] ? POR_ID[id].t : ''; }).filter(Boolean).join(' o ');
+      var conSabor = g.ids.some(function (id) { var p = POR_ID[id]; return p && p.v && p.v.length > 1; });
+      return '<b>' + (g.q > 1 ? g.q + ' × ' : '') + esc(nombres) + '</b>' + (conSabor ? ' (elegís el sabor)' : '');
+    }).join(' + ');
+  }
+  function fotoCombo(c) {
+    if (c.img) return imagen(c.img, 828);
+    // Sin foto del combo: las de sus productos, una al lado de la otra.
+    return '<span class="combo-fotos">' + c.g.map(function (g) { var p = POR_ID[g.ids[0]]; return p ? '<span>' + foto(p) + '</span>' : ''; }).join('') + '</span>';
+  }
+  function vistaCombos() {
+    var marcas = COMBOS.map(function (c) { return c.m; }).filter(function (m, i, a) { return m && a.indexOf(m) === i; });
+    return '<div class="filtro-cab"><button class="redondo" data-a="inicio" aria-label="Volver al inicio">' + ic('atras') + '</button><span><b>Combos</b><small>' + COMBOS.length + (COMBOS.length === 1 ? ' combo' : ' combos') + ' · precio especial llevando los productos juntos</small></span></div>' +
+      '<div class="combos">' + COMBOS.map(function (c) {
+        var suelto = precioSuelto(c, 'LISTA'), ahorro = suelto - c.p, hay = comboConStock(c);
+        return '<article class="combo-t"><div class="combo-foto">' + fotoCombo(c) + (ahorro > 0 ? '<span class="combo-ahorro">Ahorrás ' + plata(ahorro) + '</span>' : '') + (c.m ? '<span class="combo-marca">' + esc(c.m) + '</span>' : '') + '</div>' +
+          '<div class="combo-info"><h3>' + esc(c.n) + '</h3><p class="combo-lleva">Llevás ' + llevaCombo(c) + '</p>' +
+          '<div class="combo-precios"><b>' + plata(c.p) + '</b>' + (c.e > 0 && c.e < c.p ? '<span>' + plata(c.e) + ' efectivo</span>' : '') + (suelto > c.p ? '<s>' + plata(suelto) + '</s>' : '') + '</div>' +
+          (hay ? '<button class="agregar" data-a="combo-elegir" data-id="' + esc(c.id) + '">Agregar combo</button>' : '<button class="agregar" disabled>Sin stock por ahora</button>') + '</div></article>';
+      }).join('') + '</div>' + (marcas.length ? '<p class="f-chico" style="text-align:center">Combos armados por ' + esc(marcas.join(', ')) + '. El descuento se aplica solo en tu pedido.</p>' : '');
+  }
+  // Lo que eligió en cada grupo del combo: producto (si hay más de uno) y sabor (si tiene).
+  function eleccionCombo(c) {
+    var sel = S.comboSel || (S.comboSel = {});
+    return c.g.map(function (g, gi) {
+      var e = sel[gi] || (sel[gi] = {});
+      if (!e.id || g.ids.indexOf(e.id) < 0) e.id = g.ids.filter(function (id) { return POR_ID[id] && POR_ID[id].s > 0; })[0] || g.ids[0];
+      var p = POR_ID[e.id];
+      if (p && p.v && p.v.length) { if (!e.v || !p.v.some(function (x) { return x.n === e.v && x.s > 0; })) e.v = ((p.v.filter(function (x) { return x.s >= g.q; })[0]) || (p.v.filter(function (x) { return x.s > 0; })[0]) || {}).n || null; }
+      else e.v = null;
+      return e;
+    });
+  }
+  function hojaCombo() {
+    var c = S.combo && POR_COMBO[S.combo]; if (!c) return '';
+    var el = eleccionCombo(c);
+    var cuerpo = c.g.map(function (g, gi) {
+      var p = POR_ID[el[gi].id], h = '';
+      if (g.ids.length > 1) h += '<span class="combo-paso">Producto</span><div class="t-sabores">' + g.ids.map(function (id) { var q = POR_ID[id]; return q ? '<button data-a="combo-prod" data-g="' + gi + '" data-x="' + esc(id) + '" aria-pressed="' + (el[gi].id === id) + '"' + (q.s < g.q ? ' disabled' : '') + '>' + esc(q.t) + '</button>' : ''; }).join('') + '</div>';
+      if (p && p.v && p.v.length > 1) h += '<span class="combo-paso">Sabor · ' + esc(p.t) + (g.q > 1 ? ' (los ' + g.q + ')' : '') + '</span><div class="t-sabores">' + p.v.map(function (x) { return '<button data-a="combo-sabor" data-g="' + gi + '" data-x="' + esc(x.n) + '" aria-pressed="' + (el[gi].v === x.n) + '"' + (x.s < g.q ? ' disabled' : '') + '>' + esc(x.n) + '</button>'; }).join('') + '</div>';
+      if (!h && p) h = '<p class="combo-fijo">' + (g.q > 1 ? g.q + ' × ' : '') + esc(p.t) + (el[gi].v ? ' — ' + esc(el[gi].v) : '') + '</p>';
+      return h;
+    }).join('');
+    return '<div class="fondo" data-a="cerrar-combo"></div><section class="hoja" role="dialog" aria-modal="true" aria-label="' + esc(c.n) + '"><div class="hoja-cab"><h2 style="font-size:20px">' + esc(c.n) + '</h2><button class="redondo" data-a="cerrar-combo" aria-label="Cerrar">' + ic('cruz', 20) + '</button></div>' +
+      '<div class="hoja-cuerpo"><div class="combo-elegir">' + cuerpo + '</div></div><div class="hoja-pie"><button class="cta naranja" data-a="combo-agregar">Agregar · ' + plata(c.p) + '</button></div></section>';
+  }
+  // Suma al pedido lo elegido, si alcanza el stock de todo (si no, no agrega nada).
+  function agregarCombo(c) {
+    var el = eleccionCombo(c);
+    for (var gi = 0; gi < c.g.length; gi++) {
+      var p = POR_ID[el[gi].id];
+      if (!p || stockDe(p, el[gi].v) - enCarrito(p.id, el[gi].v) < c.g[gi].q) return aviso('No alcanza el stock de ' + (p ? p.t : 'un producto') + (el[gi].v ? ' — ' + el[gi].v : ''));
+    }
+    c.g.forEach(function (g, gi) { sumar(el[gi].id, el[gi].v, g.q); });
+    S.combo = null; S.comboSel = null; S.pedido = true;
+    aviso('🎁 Combo agregado: el descuento ya está en tu pedido');
+    pintar(false);
+  }
+
   function pedido() {
     if (!S.pedido) return '';
     var t = totales();
     return '<div class="fondo" data-a="cerrar-pedido"></div><section class="hoja" role="dialog" aria-modal="true" aria-label="Mi pedido"><div class="hoja-cab"><h2>Mi pedido</h2><button class="redondo" data-a="cerrar-pedido" aria-label="Cerrar">' + ic('cruz', 20) + '</button></div><div class="hoja-cuerpo">' +
       (carrito.length ? carrito.map(function (l) { var p = POR_ID[l.id]; return '<div class="linea-ped"><span class="mini">' + foto(p) + '</span><span><b>' + esc(p.t) + (l.v ? ' — ' + esc(l.v) : '') + '</b><small>' + plata(p.p * l.q) + ' · efectivo ' + plata((p.e || p.p) * l.q) + '</small></span><div class="paso"><button data-a="p-restar" data-id="' + l.id + '" data-v="' + esc(l.v || '') + '" aria-label="Uno menos">−</button><span>' + l.q + '</span><button data-a="p-sumar" data-id="' + l.id + '" data-v="' + esc(l.v || '') + '" aria-label="Uno más">+</button></div></div>'; }).join('') : '<div class="vacio">Todavía no agregaste nada.</div>') + '</div>' +
-      (carrito.length ? '<div class="hoja-pie"><div class="total"><span>Total</span><b>' + plata(t.g) + '</b></div><div class="total ef"><span>Pagando en efectivo al retirar</span><b>' + plata(t.e) + '</b></div>' +
+      (carrito.length ? '<div class="hoja-pie">' + filasCombos(t) + '<div class="total"><span>Total</span><b>' + plata(t.g) + '</b></div><div class="total ef"><span>Pagando en efectivo al retirar</span><b>' + plata(t.e) + '</b></div>' +
       '<div class="total" style="font-size:14px"><span>' + (S.usuario ? 'Sumás en WiiGo Club' : '<button data-a="cuenta" style="border:0;background:none;padding:0;color:#a8461a;font-weight:800;text-decoration:underline">Entrá con tu DNI</button> y sumás') + '</span><b style="font-size:16px;color:#a8461a">+' + t.p + ' puntos</b></div><span class="nota">Lo retirás en <a class="dir-mapa" href="' + MAPA + '" target="_blank" rel="noopener">Arístides Villanueva 256</a>, listo en menos de 15 minutos.</span><button class="agregar" style="background:var(--energia);color:#2a1406;min-height:52px" data-a="continuar">Continuar</button></div>' : '') + '</section>';
   }
 
@@ -530,6 +648,7 @@
       op('pago', 'transf', co.pago === 'transf', 'Transferencia · ' + plata(t.g), 'Al alias wiigo.bienestar, desde cualquier banco o billetera. Apenas la vemos, armamos tu pedido.') +
       op('pago', 'retiro', co.pago === 'retiro', 'Pagás al retirar', 'En efectivo ' + plata(t.e) + ' · con tarjeta o QR ' + plata(t.g) + '. Te lo guardamos hasta mañana a las 21.') + '</div>' +
       '<h3 class="sub-cuenta">Tu pedido</h3><div class="resumen">' + carrito.map(function (l) { var p = POR_ID[l.id]; return '<div class="total" style="font-size:14px;font-weight:600"><span>' + l.q + ' × ' + esc(p.t) + (l.v ? ' — ' + esc(l.v) : '') + '</span><b style="font-size:14px;font-family:var(--texto)">' + plata(p.p * l.q) + '</b></div>'; }).join('') +
+      filasCombos(t, ' style="margin-top:6px"') +
       '<div class="total" style="border-top:1px solid var(--linea);padding-top:10px;margin-top:4px"><span>Total</span><b>' + plata(t.g) + '</b></div>' +
       (co.pago === 'retiro' ? '<div class="total ef"><span>Si pagás en efectivo</span><b>' + plata(t.e) + '</b></div>' : '') +
       '<div class="total" style="font-size:14px"><span>Sumás en WiiGo Club</span><b style="font-size:16px;color:#a8461a">+' + t.p + ' puntos</b></div></div>' +
@@ -602,14 +721,14 @@
         '<button class="cab-pedido" data-a="abrir-pedido" aria-label="Mi pedido: ' + t.u + ' productos">' + ic('canasta', 20) + '<b>' + t.u + '</b></button></div>' +
       // El buscador siempre acá arriba, en el encabezado (Gonzalo, 16/11: «mejor arriba como estaba al principio»).
       buscador() + '</header>';
-    var cuerpo = S.vista === 'checkout' && S.usuario && carrito.length ? checkout() : S.vista === 'seguir' ? seguimiento() : S.vista === 'pros' ? profesionales() : (S.vista === 'lista' || S.q.length >= 2) ? lista() : inicio();
+    var cuerpo = S.vista === 'checkout' && S.usuario && carrito.length ? checkout() : S.vista === 'seguir' ? seguimiento() : S.vista === 'pros' ? profesionales() : (S.vista === 'lista' || S.q.length >= 2) ? lista() : S.vista === 'combos' ? vistaCombos() : inicio();
     // Con un pedido en curso y el carrito vacío, la barra lleva a seguirlo.
     var enCurso = (S.pedidos || []).filter(abiertoPed)[0];
     var barra = t.u && !S.pedido && !S.ficha && S.vista !== 'checkout' ? '<div class="barra"><button data-a="abrir-pedido"><span>' + ic('bolsa', 20) + t.u + (t.u === 1 ? ' producto' : ' productos') + ' · ' + plata(t.g) + '</span><span>Ver mi pedido ' + ic('flecha', 18) + '</span></button></div>'
       : !t.u && enCurso && S.vista !== 'seguir' && !S.pedido ? '<div class="barra"><button data-a="ver-pedido" data-c="' + esc(enCurso.codigo) + '"><span>' + ic('bolsa', 20) + 'Pedido #' + enCurso.num + ' · ' + (enCurso.pago === 'transf' && !enCurso.pagoOk ? 'Falta tu transferencia' : ESTADOS_PED[Math.max(0, enCurso.paso)].t) + '</span><span>Seguir ' + ic('flecha', 18) + '</span></button></div>' : '';
     var foco = document.activeElement && (document.activeElement.id === 'q' || document.activeElement.id === 'mq') ? document.activeElement.id : null;
     var pos = foco ? document.activeElement.selectionStart : 0, y = window.scrollY;
-    app.innerHTML = cab + '<main>' + cuerpo + '</main>' + (S.cuenta ? '' : barra) + cajon() + ficha() + pedido() + cuenta();
+    app.innerHTML = cab + '<main>' + cuerpo + '</main>' + (S.cuenta || S.combo ? '' : barra) + cajon() + ficha() + pedido() + hojaCombo() + cuenta();
     if (foco) { var i = document.getElementById(foco); if (i) { i.focus(); try { i.setSelectionRange(pos, pos); } catch (e) {} } }
     window.scrollTo(0, arriba ? 0 : y);
     montarGlobo();
@@ -799,7 +918,19 @@
     nuevos: function () { ver({ nuevos: true, titulo: 'Nuevos esta semana' }); },
     // Ofertas: lo que tiene descuento hoy. Combos: todavía no hay (los arma Gonzalo más adelante).
     ofertas: function () { if (!OFERTAS.length) return aviso('Hoy no hay ofertas: volvé pronto'); ver({ ofertas: true, titulo: 'Ofertas' }); },
-    combos: function () { aviso('Muy pronto: combos armados por WiiGo'); },
+    combos: function () { if (!COMBOS.length) return aviso('Muy pronto: combos con precio especial'); S.vista = 'combos'; S.q = ''; S.menu = false; pintar(true); },
+    // Un combo sin nada para elegir (un solo producto, sin sabores) se agrega directo; si no, se abre la hoja.
+    'combo-elegir': function (d) {
+      var c = POR_COMBO[d.id]; if (!c) return;
+      S.comboSel = null;
+      var hayQueElegir = c.g.some(function (g) { return g.ids.length > 1 || g.ids.some(function (id) { var p = POR_ID[id]; return p && p.v && p.v.length > 1; }); });
+      if (!hayQueElegir) return agregarCombo(c);
+      S.combo = c.id; pintar(false);
+    },
+    'combo-prod': function (d) { var e = (S.comboSel || {})[d.g]; if (e) { e.id = d.x; e.v = null; } pintar(false); },
+    'combo-sabor': function (d) { var e = (S.comboSel || {})[d.g]; if (e) e.v = d.x; pintar(false); },
+    'combo-agregar': function () { var c = POR_COMBO[S.combo]; if (c) agregarCombo(c); },
+    'cerrar-combo': function () { S.combo = null; S.comboSel = null; pintar(false); },
     mundo: function () { ver({ mundo: true, titulo: 'Productos del mundo' }); },
     lugar: function (d) { var f = S.f; f.lugar = d.k && f.lugar !== d.k ? d.k : null; f.titulo = 'Productos del mundo'; S.limite = 20; pintar(false); if (G) G.marcar(f.lugar); },
     desc: function () { S.descAbierta = !S.descAbierta; pintar(false); },

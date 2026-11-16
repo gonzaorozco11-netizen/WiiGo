@@ -27,8 +27,9 @@ import NutricionAsesor from "@/components/NutricionAsesor";
 import { CarruselProfesional, ModosAtencion, NumerosProfesional, OpinionesPacientes, PildorasRecorrido, type OpinionPaciente } from "@/components/PerfilProfesional";
 import IconoRed, { colorDeRed } from "@/components/IconoRed";
 import type { ClaveRed } from "@/lib/redesProfesional";
+import type { Combo } from "@/lib/combos";
 
-type Pantalla = "home" | "objetivo" | "resultado" | "marcas" | "ofertas" | "profesionales" | "fichaProfesional" | "conoceme" | "reservarTurno";
+type Pantalla = "home" | "objetivo" | "resultado" | "marcas" | "ofertas" | "combos" | "profesionales" | "fichaProfesional" | "conoceme" | "reservarTurno";
 
 // Una red de la profesional, lista para mostrar: el usuario y el QR en SVG
 // (se arma en el servidor; ver app/asesor/[idLocal]/page.tsx).
@@ -958,9 +959,12 @@ export default function AsesorApp({
   filtrosPorProducto,
   gondola = [],
   sinStock = [],
+  combos = [],
 }: {
   /** Los productos que en este local están en 0: la tarjeta dice «Sin stock». */
   sinStock?: string[];
+  /** Combos activos (lib/combos.ts): se muestran en «Combos»; el descuento lo hace la caja sola. */
+  combos?: Combo[];
   /** Opiniones de pacientes ya aprobadas (sql/profesionales-opiniones.sql). */
   opinionesPorProfesional?: Record<string, OpinionPaciente[]>;
   local: Local;
@@ -1281,6 +1285,20 @@ export default function AsesorApp({
     [productos]
   );
 
+  // Combos (Gonzalo, 16/11): solo los que tienen todos sus productos en esta pantalla.
+  // Con lo que sale llevarlos sueltos (el más barato de cada grupo), para el «Ahorrás».
+  const combosVisibles = useMemo(() => {
+    const porId = new Map(productos.map((p) => [p.id_producto, p]));
+    return combos
+      .map((c) => {
+        const grupos = c.grupos.map((g) => ({ cantidad: g.cantidad, productos: g.productos.map((id) => porId.get(id)).filter((p): p is ProductoPublico => Boolean(p)) }));
+        if (grupos.some((g) => g.productos.length === 0)) return null;
+        const suelto = grupos.reduce((t, g) => t + Math.min(...g.productos.map((p) => Number(p.precio_venta) || 0)) * g.cantidad, 0);
+        return { combo: c, grupos, suelto };
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null);
+  }, [combos, productos]);
+
 
   const marcasConOferta = useMemo(
     () => [...new Set(productosEnOferta.map((p) => p.id_marca))],
@@ -1433,6 +1451,10 @@ export default function AsesorApp({
 
   function irAOfertas() {
     setPantalla("ofertas");
+  }
+
+  function irACombos() {
+    setPantalla("combos");
   }
 
   function toggleMarca(id: string) {
@@ -2001,6 +2023,32 @@ export default function AsesorApp({
                   </span>
                 </button>
 
+                {/* Combos de las marcas (16/11): el descuento lo hace la caja sola al llevarlos juntos. */}
+                {combosVisibles.length > 0 && (
+                  <button
+                    onClick={irACombos}
+                    className="rounded-[24px] px-5 py-4 text-left flex items-center transition-transform active:scale-[.98]"
+                    style={{ background: "#fff1e6", color: "#7a3410", border: "1.5px dashed #f0b48d" }}
+                  >
+                    <span className="w-12 h-12 rounded-2xl grid place-items-center shrink-0 mr-4 text-[26px]" style={{ background: "#ffe0c9" }} aria-hidden>
+                      🎁
+                    </span>
+                    <span className="flex-1 min-w-0">
+                      <span className={`${titular.className} block font-extrabold text-[20px] xl:text-[23px] leading-tight`}>Combos</span>
+                      <span className="block text-[14px] font-semibold opacity-90">
+                        {idioma === "en"
+                          ? `${combosVisibles.length} bundle${combosVisibles.length === 1 ? "" : "s"} at a special price`
+                          : idioma === "pt"
+                            ? `${combosVisibles.length} combo${combosVisibles.length === 1 ? "" : "s"} com preço especial`
+                            : `${combosVisibles.length} combo${combosVisibles.length === 1 ? "" : "s"} con precio especial`}
+                      </span>
+                    </span>
+                    <span className="text-[26px] font-bold ml-3" aria-hidden>
+                      →
+                    </span>
+                  </button>
+                )}
+
                 {/* Solo cuando hay alguna oferta cargada. */}
                 {productosEnOferta.length > 0 && (
                   <button
@@ -2324,6 +2372,92 @@ export default function AsesorApp({
                   ))}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {pantalla === "combos" && (
+        <div className="flex-1 flex flex-col">
+          <Navbar onVolver={volverAInicio} onInicio={volverAInicio} idioma={idioma} />
+          <div className="flex-1 min-h-0 overflow-y-auto px-5 md:px-8 pt-5 pb-10 max-w-7xl mx-auto w-full">
+            <div className="flex items-end justify-between gap-4 mb-2">
+              <h2 className={`${titular.className} font-extrabold tracking-[-.02em] text-[clamp(23px,2.8vw,38px)] leading-tight`}>Combos</h2>
+              <span className="text-[12px] md:text-[13px] text-[#8a9180] font-semibold shrink-0">
+                {combosVisibles.length} {idioma === "en" ? (combosVisibles.length === 1 ? "bundle" : "bundles") : "combo" + (combosVisibles.length === 1 ? "" : "s")}
+              </span>
+            </div>
+            <p className="text-[14px] md:text-[15px] text-[#5d6553] mb-5">
+              {idioma === "en"
+                ? "Take the products together and the price drops by itself at the checkout. Any flavor counts."
+                : idioma === "pt"
+                  ? "Levando os produtos juntos, o preço baixa sozinho no caixa. Vale qualquer sabor."
+                  : "Llevando los productos juntos, el precio baja solo en la caja. Vale cualquier sabor."}
+            </p>
+            <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
+              {combosVisibles.map(({ combo, grupos, suelto }) => {
+                const ahorro = suelto - combo.precio;
+                return (
+                  <div key={combo.id} className="rounded-[22px] bg-white overflow-hidden shadow-sm flex flex-col border border-[#ece4d4]">
+                    <div className="relative bg-white h-[170px] xl:h-[210px] grid place-items-center">
+                      {combo.imagen ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={combo.imagen} alt="" className="w-full h-full object-contain" />
+                      ) : (
+                        <span className="flex w-full h-full gap-2 p-3">
+                          {grupos.map((g, gi) =>
+                            g.productos[0]?.imagen ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img key={gi} src={g.productos[0].imagen} alt="" className="flex-1 min-w-0 h-full object-contain" />
+                            ) : null
+                          )}
+                        </span>
+                      )}
+                      {ahorro > 0 && (
+                        <span className="absolute top-2.5 left-2.5 text-[12px] font-extrabold px-2.5 py-1 rounded-full text-white" style={{ background: "#e8743b" }}>
+                          {idioma === "en" ? "Save" : idioma === "pt" ? "Economize" : "Ahorrás"} {formatoPrecio(ahorro)}
+                        </span>
+                      )}
+                      {combo.marca && (
+                        <span className="absolute top-2.5 right-2.5 text-[11px] font-bold px-2.5 py-1 rounded-full" style={{ background: "#22301f", color: "#f5efe3" }}>
+                          {combo.marca}
+                        </span>
+                      )}
+                    </div>
+                    <div className="p-4 flex flex-col gap-2 flex-1" style={{ background: "#fffaf2" }}>
+                      <p className={`${titular.className} text-[18px] font-extrabold leading-tight`}>{combo.nombre}</p>
+                      {/* Cada producto se toca y abre su ficha (con dónde está en la góndola). */}
+                      <div className="flex flex-col gap-1.5">
+                        {grupos.map((g, gi) =>
+                          g.productos.map((p) => (
+                            <button
+                              key={`${gi}-${p.id_producto}`}
+                              onClick={() => setProductoAbierto(p.id_producto)}
+                              className="text-left text-[13.5px] font-semibold text-[#3d4436] rounded-xl px-3 py-2 flex items-center gap-2"
+                              style={{ background: "#f1f4ec" }}
+                            >
+                              <span className="shrink-0 font-extrabold" style={{ color: "#4d7635" }}>
+                                {g.cantidad > 1 ? `${g.cantidad} ×` : "1 ×"}
+                              </span>
+                              <span className="flex-1 min-w-0 line-clamp-2">{tr(p.nombre, p.nombre_en, p.nombre_pt)}</span>
+                              <span aria-hidden className="text-[#8a9180]">›</span>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                      <div className="flex items-baseline gap-2 flex-wrap mt-auto pt-1">
+                        <span className={`${titular.className} text-[24px] font-extrabold`}>{formatoPrecio(combo.precio)}</span>
+                        {combo.precioEfectivo != null && combo.precioEfectivo < combo.precio && (
+                          <span className="text-[13.5px] font-extrabold" style={{ color: "#3d6b28" }}>
+                            {formatoPrecio(combo.precioEfectivo)} {idioma === "en" ? "cash" : idioma === "pt" ? "em dinheiro" : "efectivo"}
+                          </span>
+                        )}
+                        {suelto > combo.precio && <span className="text-[13px] text-[#a8a8a8] line-through">{formatoPrecio(suelto)}</span>}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}

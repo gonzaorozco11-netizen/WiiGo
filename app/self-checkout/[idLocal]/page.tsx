@@ -13,6 +13,7 @@ import {
 import { obtenerClimaActual } from "@/lib/clima";
 import { montoQuePideDni } from "@/lib/arca/config";
 import SelfCheckoutApp from "@/components/SelfCheckoutApp";
+import { traerCombos } from "@/lib/combosServidor";
 import { versionActual } from "@/lib/version";
 import { cargarMarcasFabrica, nombresConMarca } from "@/lib/marcaFabrica";
 
@@ -37,7 +38,7 @@ export default async function SelfCheckoutPage({ params }: { params: Promise<{ i
   // de ingreso y el contacto de cada marca — las condiciones comerciales de los
   // contratos. Todo eso se quedaba en el HTML, al alcance de un cliente o de la
   // competencia.
-  const [productosRes, variantesRes, marcasRes, stockRes, marcasFabrica] = await Promise.all([
+  const [productosRes, variantesRes, marcasRes, stockRes, marcasFabrica, combos] = await Promise.all([
     // Sin precio todavía (lo pone la marca y lo aprueba WiiGo) no se muestra.
     supabase.from("productos").select(COLUMNAS_PRODUCTO_PUBLICO).eq("estado", "ACTIVO").gt("precio_venta", 0),
     supabase.from("variantes_producto").select(COLUMNAS_VARIANTE_TOTEM).eq("estado", "ACTIVO"),
@@ -45,6 +46,8 @@ export default async function SelfCheckoutPage({ params }: { params: Promise<{ i
     supabase.from("stock").select("id_variante,cantidad").eq("id_local", idLocal),
     // «(Entre Nuts)» después del nombre de lo que viene envasado de fábrica (lib/marcaFabrica.ts).
     cargarMarcasFabrica(supabase).catch(() => new Map<string, string>()),
+    // Combos: bajan solos en el carrito (lib/combos.ts). Solo nombres, precios y productos: nada interno.
+    traerCombos(supabase),
   ]);
 
   // Si esta consulta falla y no se avisa, la pantalla queda con stock vacío
@@ -81,6 +84,7 @@ export default async function SelfCheckoutPage({ params }: { params: Promise<{ i
       stock={(stockRes.data ?? []) as unknown as Pick<Stock, "id_variante" | "cantidad">[]}
       clima={cielo.clima}
       esDeNoche={cielo.esDeNoche}
+      combos={combos}
     />
   );
 }

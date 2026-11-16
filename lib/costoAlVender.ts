@@ -34,7 +34,8 @@ export function sinColumnaCosto(error: { code?: string; message?: string } | nul
   return Boolean(error && (error.code === "42703" || error.code === "PGRST204") && (error.message ?? "").includes("costo_unitario"));
 }
 
-type Renglon = { id_venta: string; id_variante: string; id_marca: string | null; cantidad: number; precio_unitario: number; subtotal: number };
+/** `id_combo`: solo en los renglones que entraron en un combo (lib/combos.ts); los demás no lo llevan. */
+type Renglon = { id_venta: string; id_variante: string; id_marca: string | null; cantidad: number; precio_unitario: number; subtotal: number; id_combo?: string };
 
 /**
  * Guarda los renglones de una venta con el costo del momento. Lo usan la caja
