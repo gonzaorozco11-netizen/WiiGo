@@ -34,6 +34,14 @@ const nextConfig: NextConfig = {
       { source: "/tienda/", destination: "/tienda/index.html" },
     ];
   },
+  // En el dominio de la tienda (wiigo.com.ar, o el de TIENDA_URL), las páginas del
+  // equipo que no pasan por proxy.ts (el ingreso, el tótem, la pantalla asesora)
+  // vuelven a la tienda: un cliente nunca termina en el sistema interno (Gonzalo, 16/11).
+  async redirects() {
+    const host = (process.env.TIENDA_URL?.trim() || "https://wiigo.com.ar").replace(/^https?:\/\//, "").replace(/\/.*$/, "").replace(/^www\./, "");
+    const delaTienda = [{ type: "host" as const, value: `(www\\.)?${host.replace(/\./g, "\\.")}` }];
+    return ["/login", "/self-checkout/:ruta*", "/asesor/:ruta*"].map((source) => ({ source, has: delaTienda, destination: "/", permanent: false }));
+  },
   experimental: {
     serverActions: {
       bodySizeLimit: "10mb",

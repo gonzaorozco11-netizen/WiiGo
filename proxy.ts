@@ -39,7 +39,8 @@ export const config = {
 
 // La tienda en su propio dominio (Gonzalo, 2026-11-16: «que no diga /tienda»):
 // wiigo.com.ar muestra la tienda en «/». Cualquier otra página pedida por ese
-// dominio (el sistema interno) se manda a app.wiigo.com.ar. Lo que la tienda
+// dominio vuelve a la tienda, NUNCA al sistema de los empleados (Gonzalo: «si un
+// cliente se equivoca, que no lo lleve a la app»). Lo que la tienda
 // necesita (/tienda/*, /api/tienda/*, logos) no pasa por acá: el matcher lo
 // deja pasar. El dominio sale de TIENDA_URL si está cargada en Vercel.
 function hostsTienda(): Set<string> {
@@ -55,8 +56,7 @@ export async function proxy(req: NextRequest) {
   const host = (req.headers.get("host") ?? "").toLowerCase().split(":")[0];
   if (hostsTienda().has(host)) {
     if (pathname === "/") return NextResponse.rewrite(new URL(`/tienda/index.html${req.nextUrl.search}`, req.url));
-    const app = (process.env.APP_URL?.trim() || "https://app.wiigo.com.ar").replace(/\/+$/, "");
-    return NextResponse.redirect(new URL(`${pathname}${req.nextUrl.search}`, app));
+    return NextResponse.redirect(new URL(`/${req.nextUrl.search}`, req.url));
   }
 
   const secret = process.env.AUTH_SECRET;
