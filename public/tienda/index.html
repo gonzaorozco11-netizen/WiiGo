@@ -269,6 +269,9 @@ main{padding:14px}
 /* El buscador con las pestañas, abajo de los accesos y pegados arriba al bajar */
 .pegado-ini{position:sticky;top:var(--alto-cab,64px);z-index:15;margin:12px -14px 0;padding:10px 14px 0;background:rgba(245,239,227,.96);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--linea)}
 .pegado-ini .buscar{margin-top:0}
+.pegado-ini .marcas-ini{margin:0 -14px 0;padding:2px 14px 2px}
+.pegado-ini .marca-p{padding:3px 12px 3px 3px;font-size:13px}
+.pegado-ini .marca-p img,.pegado-ini .marca-p i{width:26px;height:26px}
 .pegado-ini .tabs-rubros{position:static;margin:4px -14px 0;background:none;border-bottom:0;backdrop-filter:none;-webkit-backdrop-filter:none}
 /* Las categorías de la marca elegida: pastillas con fotito, pegadas arriba; tocar una muestra solo esa (16/11) */
 .tabs-rubros.pastillas{gap:6px;padding:4px 10px 8px}
@@ -481,6 +484,6 @@ main{padding:14px}
 <div class="app" id="app"><p style="padding:60px 16px;text-align:center;color:#626a5e">Cargando los productos…</p></div>
 <!-- El catálogo real, armado en el servidor con lo público de cada producto (lib/tiendaCatalogo.ts). -->
 <script src="/api/tienda/catalogo"></script>
-<script src="app.js?v=11"></script>
+<script src="app.js?v=13"></script>
 </body>
 </html>

@@ -313,7 +313,9 @@
     // su borde de abajo; después los accesos y, abajo de ellos, el buscador con las pestañas (pegados al bajar).
     return '<div class="ini-top">' + banners() + tarjetaLocal() + '</div>' +
       '<div class="accesos-ini"><button data-a="objetivos"><span>🎯</span>Objetivos</button><button data-a="mundo"><span>🌍</span>Del mundo</button><button data-a="pros"><span>🩺</span>Profesionales</button><button data-a="ir-sec" data-s="s-elegido"><span>⭐</span>Lo más elegido</button></div>' +
-      '<div class="pegado-ini" id="pegado-ini">' + buscador() + tabs + '</div>' + marcas + elegido + secciones + pie();
+      // Pegados arriba al bajar (abajo del encabezado con el buscador): las marcas y, abajo de ellas, los rubros
+      // o las categorías de la marca (Gonzalo, 16/11: «las marcas arriba y abajo las subcategorías»).
+      '<div class="pegado-ini" id="pegado-ini">' + marcas + tabs + '</div>' + elegido + secciones + pie();
   }
   function lista() {
     var f = S.f || {}, l = filtrados(), extra = '';
@@ -532,15 +534,19 @@
   function buscador() {
     return '<label class="buscar">' + ic('lupa', 20) + '<span class="oculto">Buscar producto</span><input id="q" type="search" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="Buscar en la estación" value="' + esc(S.q) + '">' + (S.q ? '<button class="limpiar" data-a="limpiar" aria-label="Borrar búsqueda">' + ic('cruz', 18) + '</button>' : '') + '</label>';
   }
-  function esInicio() { return !(S.vista === 'checkout' && S.usuario && carrito.length) && S.vista !== 'seguir' && S.vista !== 'pros' && S.vista !== 'lista' && S.q.length < 2; }
+  // Baja hasta donde el buscador, las marcas y las categorías quedan pegados arriba, con los productos justo abajo.
+  function alPegado() {
+    var acc = document.querySelector('.accesos-ini'), cab = document.getElementById('cab');
+    if (acc) window.scrollTo(0, acc.getBoundingClientRect().bottom + window.scrollY - (cab ? cab.offsetHeight : 0));
+  }
   function pintar(arriba) {
     var t = totales();
     // Arriba, siempre: el logo, la cuenta, el pedido y el buscador (busca en todo). Las marcas y los rubros
     // ahora están en el inicio (pastillas y pestañas), así que el menú ☰ ya no va.
     var cab = '<header class="cab" id="cab"><div class="cab-fila"><button data-a="inicio" style="border:0;background:none;padding:0" aria-label="Inicio"><img class="logo" src="/wiigo-logo-negro.png" alt="WiiGo Estaciones de Bienestar"></button><span class="espacio"></span>' +
       (S.usuario ? '<button class="pts-cab" data-a="cuenta" aria-label="Mi WiiGo: ' + S.usuario.puntos + ' puntos">★ ' + S.usuario.puntos.toLocaleString('es-AR') + '</button>' : '<button class="redondo" data-a="cuenta" aria-label="Mi cuenta">' + ic('persona') + '</button>') + '<button class="redondo" data-a="abrir-pedido" aria-label="Mi pedido">' + ic('bolsa') + '<span class="n">' + t.u + '</span></button></div>' +
-      // En el inicio el buscador va abajo de los accesos (inicio()); en las otras pantallas, acá arriba.
-      (esInicio() ? '' : buscador()) + '</header>';
+      // El buscador siempre acá arriba, en el encabezado (Gonzalo, 16/11: «mejor arriba como estaba al principio»).
+      buscador() + '</header>';
     var cuerpo = S.vista === 'checkout' && S.usuario && carrito.length ? checkout() : S.vista === 'seguir' ? seguimiento() : S.vista === 'pros' ? profesionales() : (S.vista === 'lista' || S.q.length >= 2) ? lista() : inicio();
     // Con un pedido en curso y el carrito vacío, la barra lleva a seguirlo.
     var enCurso = (S.pedidos || []).filter(abiertoPed)[0];
@@ -720,16 +726,13 @@
     },
     // Una categoría de la marca: solo sus productos, y la lista arranca justo abajo de lo pegado.
     'sub-ini': function (d) {
-      S.subIni = d.s || null; pintar(false);
-      var m = document.querySelector('.marcas-ini'), pg = document.getElementById('pegado-ini');
-      if (m) window.scrollTo(0, m.getBoundingClientRect().top + window.scrollY - ((document.getElementById('cab') || {}).offsetHeight || 0) - (pg ? pg.offsetHeight : 0) - 8);
+      S.subIni = d.s || null; pintar(false); alPegado();
       var t = document.querySelector('.pastilla[aria-pressed="true"]'); if (t) t.parentNode.scrollLeft = t.offsetLeft - 16;
     },
     // Una marca: el inicio muestra solo lo de esa marca (se vuelve a tocar y aparece todo).
     'marca-ini': function (d) {
-      S.marcaIni = S.marcaIni === d.m ? null : d.m; S.subIni = null; pintar(false);
-      var t = document.querySelector('.marcas-ini'), pg = document.getElementById('pegado-ini');
-      if (t) window.scrollTo(0, t.getBoundingClientRect().top + window.scrollY - ((document.getElementById('cab') || {}).offsetHeight || 0) - (pg ? pg.offsetHeight : 0) - 8);
+      S.marcaIni = S.marcaIni === d.m ? null : d.m; S.subIni = null; pintar(false); alPegado();
+      var mp = document.querySelector('.marca-p[aria-pressed="true"]'); if (mp) mp.parentNode.scrollLeft = mp.offsetLeft - 16;
     },
     'abrir-menu': function () { S.menu = true; S.menuMarca = (S.f && S.f.marca) || null; pintar(false); },
     'cerrar-menu': function () { S.menu = false; S.menuQ = ''; pintar(false); },
