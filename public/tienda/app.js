@@ -323,12 +323,13 @@
     // Arriba como la maqueta (Gonzalo, 16/11): el banner y la tarjeta «WiiGo · Arístides» montada encima de
     // su borde de abajo; después los accesos y, abajo de ellos, el buscador con las pestañas (pegados al bajar).
     return '<div class="ini-top">' + banners() + tarjetaLocal() + '</div>' +
-      // Una fila que se desliza (Gonzalo, 16/11): así entran Ofertas y Combos, y lo que se sume después.
+      // Una fila que se desliza sola (Gonzalo, 16/11; ver moverAccesos). Orden: primero Lo más elegido, último Ofertas.
       '<div class="accesos-ini" role="group" aria-label="Accesos">' +
-      '<button data-a="ofertas"><span>🏷️</span>Ofertas' + (OFERTAS.length ? '<em>' + OFERTAS.length + '</em>' : '') + '</button>' +
-      '<button data-a="combos"><span>🎁</span>Combos<em class="pronto">Pronto</em></button>' +
+      '<button data-a="ir-sec" data-s="s-elegido"><span>⭐</span>Lo más elegido</button>' +
       '<button data-a="objetivos"><span>🎯</span>Objetivos</button><button data-a="mundo"><span>🌍</span>Del mundo</button>' +
-      '<button data-a="pros"><span>👩‍💻</span>Profesionales</button><button data-a="ir-sec" data-s="s-elegido"><span>⭐</span>Lo más elegido</button></div>' +
+      '<button data-a="pros"><span>👩‍💻</span>Profesionales</button>' +
+      '<button data-a="combos"><span>🎁</span>Combos<em class="pronto">Pronto</em></button>' +
+      '<button data-a="ofertas"><span>🏷️</span>Ofertas' + (OFERTAS.length ? '<em>' + OFERTAS.length + '</em>' : '') + '</button></div>' +
       // Pegados arriba al bajar (abajo del encabezado con el buscador): las marcas y, abajo de ellas, los rubros
       // o las categorías de la marca (Gonzalo, 16/11: «las marcas arriba y abajo las subcategorías»).
       '<div class="pegado-ini" id="pegado-ini">' + marcas + tabs + '</div>' + elegido + secciones + pie();
@@ -873,6 +874,24 @@
   document.addEventListener('click', function (e) { var el = e.target.closest('[data-a]'); if (!el || el.tagName === 'INPUT') return; var a = A[el.getAttribute('data-a')]; if (a) { e.preventDefault(); a(el.dataset); } });
   // Las casillas avisan con «change» (el clic no pasa por A para no frenar el tilde).
   document.addEventListener('change', function (e) { if (e.target.getAttribute && e.target.getAttribute('data-a') === 'c-promos') A['c-promos'](e.target.dataset); });
+  // La fila de accesos se corre sola (Gonzalo, 16/11): cada 3 s avanza un botón y al llegar al final vuelve al
+  // principio. Si el cliente la toca, se queda quieta 10 s. No se mueve fuera de la pantalla, con una hoja abierta
+  // ni con «reducir movimiento». Solo mueve el scroll: no vuelve a dibujar nada ni consulta al servidor.
+  var accesosQuieto = 0;
+  ['touchstart', 'pointerdown', 'wheel'].forEach(function (ev) {
+    document.addEventListener(ev, function (e) { if (e.target && e.target.closest && e.target.closest('.accesos-ini')) accesosQuieto = Date.now() + 10000; }, { passive: true });
+  });
+  function moverAccesos() {
+    var f = document.querySelector('.accesos-ini');
+    if (!f || Date.now() < accesosQuieto || document.hidden || S.cuenta || S.pedido || S.ficha) return;
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    var r = f.getBoundingClientRect(); if (r.bottom < 0 || r.top > window.innerHeight) return;
+    var b = f.querySelector('button'); if (!b) return;
+    var paso = b.offsetWidth + 8, fin = f.scrollWidth - f.clientWidth;
+    if (fin <= 2) return;
+    f.scrollTo({ left: f.scrollLeft >= fin - 2 ? 0 : Math.min(fin, f.scrollLeft + paso), behavior: 'smooth' });
+  }
+  setInterval(moverAccesos, 3000);
   // El teclado del celu no tapa las hojas (Entrá a WiiGo, el pedido): con visualViewport se sabe cuánto
   // ocupa y la hoja se apoya arriba de él. Al tocar un campo, se lo trae a la vista (Gonzalo, 16/11).
   function ajustarTeclado() {
