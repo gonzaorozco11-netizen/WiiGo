@@ -8,6 +8,7 @@ import { fechaHoraArgentina } from "@/lib/horarios";
 import { sugerirReposicion, topeDeVariante, SEMANAS_HISTORIA } from "@/lib/reposicionSugerida";
 import { ESTADOS_ABIERTOS, RECIBIDA_PARCIAL, CANCELADA } from "@/lib/estadosOrden";
 import { leerDias, diasHastaProxima, nombrarDias, DIAS_SEMANA } from "@/lib/recepcion";
+import { vendidoParaReponer, totalParaTraer } from "@/lib/reponerVendido";
 
 // La orden de reposición, del lado de la marca.
 //
@@ -76,6 +77,27 @@ export type DatosReponer = {
   proxima: { etiqueta: string; faltanDias: number; horario: string } | null;
   /** Una orden ya mandada y todavía sin recibir. */
   yaMandado: { idOrden: string; unidades: number; estado: string; sePuedeDarDeBaja: boolean } | null;
+  /** «Se vendió uno, traé uno» (lib/reponerVendido.ts): lo vendido que todavía no trajo. */
+  vendido: {
+    renglones: RenglonVendido[];
+    /** Unidades para traer y lo que valen a precio de góndola. */
+    unidades: number;
+    valorizado: number;
+  };
+};
+
+export type RenglonVendido = {
+  idVariante: string;
+  producto: string;
+  variante: string;
+  stock: number;
+  precio: number;
+  vendidas: number;
+  /** Lo que hay que traer ahora (0 = ya lo mandó todo). */
+  traer: number;
+  /** Ya mandado en un envío que no llegó. */
+  mandadas: number;
+  dias: { dia: string; n: number }[];
 };
 
 export async function miReposicion(): Promise<DatosReponer | null> {
@@ -93,7 +115,7 @@ export async function miReposicion(): Promise<DatosReponer | null> {
   const idLocal = (locales ?? [])[0]?.id_local as string | undefined;
   if (!idLocal) return null;
 
-  const [sugerencias, { data: productos }, { data: config }] = await Promise.all([
+  const [sugerencias, { data: productos }, { data: config }, vendidoMap] = await Promise.all([
     sugerirReposicion(supabase, { idMarca: sesion.idMarca, idLocal }),
     supabase
       .from("productos")
@@ -104,6 +126,7 @@ export async function miReposicion(): Promise<DatosReponer | null> {
       .from("configuracion")
       .select("parametro, valor")
       .in("parametro", ["RECEPCION_DIAS", "RECEPCION_HORA_DESDE", "RECEPCION_HORA_HASTA"]),
+    vendidoParaReponer(supabase, sesion.idMarca, idLocal),
   ]);
 
   const idsProducto = (productos ?? []).map((p) => p.id_producto as string);
@@ -127,6 +150,7 @@ export async function miReposicion(): Promise<DatosReponer | null> {
   );
 
   const porGondola = new Map<string, RenglonReponer[]>();
+  const vendidoRenglones: RenglonVendido[] = [];
   let agotados = 0;
   let agotadosEnCamino = 0;
   let bajos = 0;
@@ -182,7 +206,29 @@ export async function miReposicion(): Promise<DatosReponer | null> {
       precio: prod.precio,
     };
     porGondola.set(prod.gondola, [...(porGondola.get(prod.gondola) ?? []), fila]);
+
+    const vend = vendidoMap.get(idVariante);
+    if (vend) {
+      vendidoRenglones.push({
+        idVariante,
+        producto: prod.nombre,
+        variante: fila.variante,
+        stock,
+        precio: prod.precio,
+        vendidas: vend.vendidas - vend.devueltas,
+        traer: vend.traer,
+        mandadas: vend.mandadas,
+        dias: vend.dias,
+      });
+    }
   }
+  // Primero lo que hay que traer (y lo que se quedó en cero), al final lo ya mandado.
+  vendidoRenglones.sort((a, b) => (b.traer > 0 ? 1 : 0) - (a.traer > 0 ? 1 : 0) || (a.stock <= 0 ? 0 : 1) - (b.stock <= 0 ? 0 : 1) || b.traer - a.traer || a.producto.localeCompare(b.producto));
+  const vendido = {
+    renglones: vendidoRenglones,
+    unidades: vendidoRenglones.reduce((t, r) => t + r.traer, 0),
+    valorizado: vendidoRenglones.reduce((t, r) => t + r.traer * r.precio, 0),
+  };
 
   // La góndola que tiene algo para mandar va primero: lo que hay que mirar
   // arriba, lo que está al día abajo.
@@ -250,7 +296,26 @@ export async function miReposicion(): Promise<DatosReponer | null> {
           sePuedeDarDeBaja: abierta.estado === PENDIENTE || abierta.estado === PROPUESTA,
         }
       : null,
+    vendido,
   };
+}
+
+/**
+ * Unidades vendidas que la marca todavía no trajo (lib/reponerVendido.ts), para
+ * el número rojo del menú. Nunca tira.
+ */
+export async function cuantoParaTraer(): Promise<number> {
+  try {
+    const sesion = await sesionDelPortal();
+    if (!sesion) return 0;
+    const supabase = getSupabaseServerClient();
+    const { data: locales } = await supabase.from("locales").select("id_local").eq("estado", "ACTIVO").limit(1);
+    const idLocal = (locales ?? [])[0]?.id_local as string | undefined;
+    if (!idLocal) return 0;
+    return totalParaTraer(await vendidoParaReponer(supabase, sesion.idMarca, idLocal));
+  } catch {
+    return 0;
+  }
 }
 
 /**

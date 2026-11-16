@@ -5,6 +5,7 @@ import { fechaHoraArgentina } from "@/lib/horarios";
 import { TOPE_DIARIO, avisoPrendido, type TipoAviso } from "@/lib/avisosMarca";
 import { avisarProfesionalPorVenta } from "@/lib/avisosProfesional";
 import { avisarVentaAlDueno } from "@/lib/resumenTurno";
+import { vendidoParaReponer, totalParaTraer } from "@/lib/reponerVendido";
 
 // Mandar los avisos.
 //
@@ -232,6 +233,19 @@ async function avisarQueVendio(
 
   const hora = fechaHoraArgentina().hora;
 
+  // «Se vendió uno, traé uno» (16/11): cuánto lleva para traer de este producto y en total.
+  let reponer = "";
+  try {
+    const vend = await vendidoParaReponer(supabase, marca.idMarca, idLocal);
+    const total = totalParaTraer(vend);
+    if (total > 0) {
+      const deEste = vend.get(suyos[0].id_variante as string)?.traer ?? 0;
+      reponer = `🔁 ${suyos.length === 1 && deEste > 0 ? `Ya van ${deEste} de este para traer · ` : ""}${total} en total para traer`;
+    }
+  } catch {
+    // Sin la línea, el aviso sale igual.
+  }
+
   // La lista solo cuando hay más de un renglón. Con uno solo repite lo que ya
   // dice el bloque de arriba, y un mail que se repite se lee como relleno.
   const lista =
@@ -281,10 +295,11 @@ async function avisarQueVendio(
       detalle: [
         `<strong style="color:#2a2f26">${suyos.length > 1 ? `${suyos.length} productos tuyos` : principal}</strong>`,
         `${unidades} ${unidades === 1 ? "unidad" : "unidades"} · hoy ${hora}`,
+        ...(reponer ? [`<strong style="color:#a34713">${reponer}</strong>`] : []),
       ],
       franja,
       cuerpo: lista,
-      boton: { texto: "Ver cómo venís este mes", url: `${base}/portal` },
+      boton: reponer ? { texto: "Ver qué reponer", url: `${base}/portal/reponer` } : { texto: "Ver cómo venís este mes", url: `${base}/portal` },
       nota: "Lo que te queda de cada venta sale en tu próxima liquidación.",
       pie: `Te escribimos porque tenés prendido «Cada vez que vendés algo». <a href="${base}/portal/avisos" style="color:#8d9587">Cambiar mis avisos</a> · WiiGo, Mendoza`,
     }),

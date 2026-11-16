@@ -2341,6 +2341,24 @@
 .rep-num.espera { border-left-color: var(--borde-fuerte); }
 .rep-num.espera > b { color: var(--texto-3); }
 
+/* «Lo que se vendió» (16/11): cada producto vendido y todavía no traído. */
+.vend-lista { list-style: none; margin: 0 0 18px; padding: 0; display: grid; gap: 8px; }
+.vend-item {
+  background: var(--superficie); border: 1px solid var(--borde); border-radius: 12px;
+  padding: 11px 14px; display: flex; align-items: center; gap: 12px;
+}
+.vend-item.cero { border-left: 3px solid var(--rojo); }
+.vend-item.ya { opacity: .65; }
+.vend-nombre { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.vend-nombre b { font-size: 14.5px; font-weight: 600; }
+.vend-nombre small { font-size: 12.5px; color: var(--texto-2); }
+.vend-rojo { color: var(--rojo); font-weight: 700; }
+.vend-dias { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 3px; }
+.vend-dias span { background: var(--ocre-tenue); color: var(--ocre); border-radius: 999px; font-size: 11.5px; font-weight: 700; padding: 1px 8px; }
+.vend-traer { display: grid; justify-items: center; gap: 3px; flex-shrink: 0; }
+.vend-traer small { font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--texto-3); }
+.vend-ya { flex-shrink: 0; font-size: 12px; font-weight: 700; color: var(--salvia-honda); background: var(--salvia-tenue); border-radius: 999px; padding: 3px 10px; }
+
 .rep-vermas { margin-top: 10px; font-size: 13px; }
 .rep-vermas a { color: var(--salvia-honda); font-weight: 600; text-decoration: none; }
 .rep-vermas a:hover { text-decoration: underline; }

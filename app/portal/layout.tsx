@@ -8,7 +8,7 @@ import PortalNav from "@/components/PortalNav";
 import PortalLocal from "@/components/PortalLocal";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { misTareas, bienvenidaPortal } from "@/app/portal/actions";
-import { cuantosFaltan } from "@/app/portal/reponer/actions";
+import { cuantosFaltan, cuantoParaTraer } from "@/app/portal/reponer/actions";
 import PortalBienvenida from "@/components/PortalBienvenida";
 import GuiaWiigo from "@/components/GuiaWiigo";
 import "./portal.css";
@@ -42,7 +42,7 @@ export default async function PortalLayout({ children }: { children: React.React
   // El contador de "Mis tareas" va en el layout porque se ve desde cualquier
   // pantalla: es lo que trae de vuelta a la marca. Si falla, el menú sale sin
   // número en vez de tirar la página entera.
-  const [{ data: locales }, tareas, bienvenida, faltan] = await Promise.all([
+  const [{ data: locales }, tareas, bienvenida, faltan, paraTraer] = await Promise.all([
     getSupabaseServerClient()
       .from("locales")
       .select("nombre, direccion")
@@ -54,6 +54,8 @@ export default async function PortalLayout({ children }: { children: React.React
     // góndola vacía que nadie mira es plata que no entra, y nadie entra a
     // mirar si no hay un número que lo reclame.
     cuantosFaltan().catch(() => 0),
+    // «Se vendió uno, traé uno» (16/11): las unidades vendidas que todavía no trajo.
+    cuantoParaTraer().catch(() => 0),
   ]);
 
   return (
@@ -90,7 +92,8 @@ export default async function PortalLayout({ children }: { children: React.React
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            <PortalNav pendientes={tareas?.pendientes ?? 0} reponer={faltan} />
+            {/* En Reponer manda lo vendido para traer; si no hay nada vendido, los agotados o bajos de siempre. */}
+            <PortalNav pendientes={tareas?.pendientes ?? 0} reponer={paraTraer > 0 ? paraTraer : faltan} />
             <PortalBienvenida datos={bienvenida} />
             <span className={`plan-chip plan-${sesion.plan}`}>
               <span className="punto" />

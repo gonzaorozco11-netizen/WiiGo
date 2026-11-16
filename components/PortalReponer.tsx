@@ -49,8 +49,13 @@ export default function PortalReponer({
   // carrito, el total y el botón: con dos pedidos separados la marca manda
   // dos cajas el mismo día al mismo local, y el local recibe dos órdenes de
   // la misma marca sin saber por qué.
-  const [solapa, setSolapa] = useState<"RECO" | "AMANO" | "ENVIOS">("RECO");
+  // «Lo que se vendió» primero (Gonzalo, 16/11: se vendió uno, traé uno); si no hay nada vendido, Recomendado como siempre.
+  const [solapa, setSolapa] = useState<"VENDIDO" | "RECO" | "AMANO" | "ENVIOS">(
+    datos.vendido.renglones.length > 0 ? "VENDIDO" : "RECO"
+  );
   const [cantidades, setCantidades] = useState<Map<string, number>>(new Map());
+  /** Lo que la marca cambió a mano en «Lo que se vendió» (si no, va lo vendido para traer). */
+  const [cantVendido, setCantVendido] = useState<Map<string, number>>(new Map());
   /**
    * El envío armado a mano, aparte del de la sugerencia.
    *
@@ -145,8 +150,22 @@ export default function PortalReponer({
     return { unidades, valorizado };
   }, [porId]);
 
+  const cantidadVendido = (id: string, traer: number) => cantVendido.get(id) ?? traer;
+  function tocarVendido(id: string, n: number) {
+    setListo(null);
+    setCantVendido((previo) => new Map(previo).set(id, Math.max(0, Math.round(n) || 0)));
+  }
+  const vendidoAMandar = useMemo(
+    () =>
+      datos.vendido.renglones
+        .map((r) => ({ idVariante: r.idVariante, cantidad: cantidadVendido(r.idVariante, r.traer) }))
+        .filter((i) => i.cantidad > 0),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [datos, cantVendido]
+  );
+
   // Se manda el borrador de la solapa en la que estás, y el botón lo dice.
-  const aMandar = solapa === "AMANO" ? manualAMandar : recoAMandar;
+  const aMandar = solapa === "AMANO" ? manualAMandar : solapa === "VENDIDO" ? vendidoAMandar : recoAMandar;
   const unidades = aMandar.reduce((a, i) => a + i.cantidad, 0);
   const valorizado = aMandar.reduce(
     (a, i) => a + i.cantidad * (porId.get(i.idVariante)?.precio ?? 0),
@@ -168,11 +187,13 @@ export default function PortalReponer({
     setError(null);
     const enviar = aMandar;
     const desdeManual = solapa === "AMANO";
+    const desdeVendido = solapa === "VENDIDO";
     empezar(async () => {
       const r = await mandarReposicion(enviar);
       if (r.error) return setError(r.error);
       setListo({ automatica: Boolean(r.automatica) });
       if (desdeManual) setManual(new Map());
+      else if (desdeVendido) setCantVendido(new Map());
       else setCantidades(new Map());
       router.refresh();
     });
@@ -183,14 +204,18 @@ export default function PortalReponer({
       <div className="rep-cab">
         <div>
           <h1 className="rep-titulo">
-            {solapa === "RECO"
-              ? "Lo que tenés que reponer"
-              : solapa === "AMANO"
-                ? "Agregar a mano"
-                : "Mis envíos"}
+            {solapa === "VENDIDO"
+              ? "Lo que se vendió"
+              : solapa === "RECO"
+                ? "Lo que tenés que reponer"
+                : solapa === "AMANO"
+                  ? "Agregar a mano"
+                  : "Mis envíos"}
           </h1>
           <p className="rep-sub">
-            {solapa === "RECO"
+            {solapa === "VENDIDO"
+              ? "Cada producto tuyo que se vende en WiiGo suma uno para traer, y se va acumulando hasta que lo traés. Así tu góndola queda como estaba."
+              : solapa === "RECO"
               ? sinHistoria
                 ? "Todavía no hay ventas tuyas registradas, así que esto no es una recomendación: es la góndola que hay que llenar. Cuando haya ventas, se arma solo con lo que de verdad se vende."
                 : "Se arma solo con lo que vas vendiendo. No hace falta que lo revises todos los días: cuando llegue el día de recepción, mandá lo que diga acá."
@@ -215,6 +240,13 @@ export default function PortalReponer({
       </div>
 
       <div className="cam-tabs">
+        <button
+          className={`cam-tab${solapa === "VENDIDO" ? " activa" : ""}`}
+          onClick={() => setSolapa("VENDIDO")}
+        >
+          Lo que se vendió
+          {datos.vendido.unidades > 0 && <span className="cam-cont rojo">{datos.vendido.unidades}</span>}
+        </button>
         <button
           className={`cam-tab${solapa === "RECO" ? " activa" : ""}`}
           onClick={() => setSolapa("RECO")}
@@ -381,6 +413,10 @@ export default function PortalReponer({
         <AMano porId={porId} manual={manual} tocarManual={tocarManual} />
       )}
 
+      {solapa === "VENDIDO" && (
+        <Vendido datos={datos.vendido} cantidad={cantidadVendido} tocar={tocarVendido} />
+      )}
+
       <div className="rep-pie">
         {listo ? (
           <p className="rep-ok">
@@ -397,7 +433,9 @@ export default function PortalReponer({
                 <p className="rep-nada">
                   {solapa === "AMANO"
                     ? "Todavía no agregaste nada."
-                    : "No hay nada para mandar. Está todo al día."}
+                    : solapa === "VENDIDO"
+                      ? "No hay nada vendido para traer. Está todo repuesto."
+                      : "No hay nada para mandar. Está todo al día."}
                 </p>
               ) : (
                 <>
@@ -450,6 +488,89 @@ export default function PortalReponer({
         </>
       )}
     </main>
+  );
+}
+
+/**
+ * «Lo que se vendió»: cada producto vendido y todavía no traído, con cuándo se
+ * vendió y cuánto queda en la góndola. La cantidad ya viene puesta (lo vendido)
+ * y se puede mover. Lo que ya va en un envío queda abajo como «Ya lo mandaste».
+ */
+function Vendido({
+  datos,
+  cantidad,
+  tocar,
+}: {
+  datos: DatosReponer["vendido"];
+  cantidad: (id: string, traer: number) => number;
+  tocar: (id: string, n: number) => void;
+}) {
+  if (datos.renglones.length === 0) {
+    return <p className="vacio">Todavía no se vendió nada tuyo para traer. Cuando se venda algo, aparece acá solo.</p>;
+  }
+  return (
+    <>
+      <div className="rep-numeros">
+        <div className={`rep-num ${datos.unidades > 0 ? "agotado" : "espera"}`}>
+          <span>Para traer</span>
+          <b>{datos.unidades} u.</b>
+          <small>{datos.unidades > 0 ? `${pesos(datos.valorizado)} a precio de venta` : "Ya mandaste todo lo vendido"}</small>
+        </div>
+      </div>
+      <ul className="vend-lista">
+        {datos.renglones.map((r) => {
+          const n = cantidad(r.idVariante, r.traer);
+          const nombre = r.variante && r.variante !== "Único" ? `${r.producto} · ${r.variante}` : r.producto;
+          if (r.traer <= 0) {
+            return (
+              <li key={r.idVariante} className="vend-item ya">
+                <span className="vend-nombre">
+                  <b>{nombre}</b>
+                  <small>Se vendieron {r.vendidas} · ya mandaste {r.mandadas}</small>
+                </span>
+                <span className="vend-ya">Ya lo mandaste</span>
+              </li>
+            );
+          }
+          return (
+            <li key={r.idVariante} className={`vend-item${r.stock <= 0 ? " cero" : ""}`}>
+              <span className="vend-nombre">
+                <b>{nombre}</b>
+                <small>
+                  En góndola {r.stock <= 0 ? <strong className="vend-rojo">quedan 0</strong> : `quedan ${r.stock}`}
+                  {r.mandadas > 0 ? ` · ya mandaste ${r.mandadas}` : ""}
+                </small>
+                <span className="vend-dias">
+                  {r.dias.map((d) => (
+                    <span key={d.dia}>
+                      {d.dia} {d.n}
+                    </span>
+                  ))}
+                </span>
+              </span>
+              <span className="vend-traer">
+                <small>Traé</small>
+                <div className={`rep-cant${n > 0 ? " puesto" : ""}`}>
+                  <button type="button" onClick={() => tocar(r.idVariante, n - 1)} aria-label="Menos">
+                    −
+                  </button>
+                  <input
+                    type="number"
+                    min="0"
+                    value={n}
+                    onChange={(e) => tocar(r.idVariante, Number(e.target.value))}
+                    aria-label={`Cuántas unidades de ${nombre}`}
+                  />
+                  <button type="button" onClick={() => tocar(r.idVariante, n + 1)} aria-label="Más">
+                    +
+                  </button>
+                </div>
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </>
   );
 }
 
