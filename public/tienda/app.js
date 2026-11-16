@@ -188,7 +188,24 @@
   }
   // Sin stock se muestra el producto, pero sin precio (Gonzalo, 2026-11-14).
   function precioTarjeta(p) { return p.s > 0 ? '<div class="t-precio"><b>' + plata(p.p) + '</b><span>' + plata(p.e || p.p) + ' efectivo</span></div>' : '<div class="t-precio"><span style="color:var(--gris)">Sin stock por ahora</span></div>'; }
-  function grilla(l) { return '<div class="grilla">' + l.map(tarjeta).join('') + '</div>'; }
+  // Los productos en fila, uno abajo del otro (Gonzalo, 16/11: «que los productos estén así en horizontal»,
+  // para no parecerse a Alifrut): foto a la izquierda, datos al medio y el «+» redondo a la derecha.
+  // El carrusel de «Recién ingresados» sigue con la tarjeta de siempre.
+  function botonFila(p) {
+    var v = saborDe(p), st = p.v && p.v.length ? (v ? stockDe(p, v) : 0) : p.s, n = enCarrito(p.id, v);
+    if (p.s <= 0) return '<span class="fl-sin">Sin stock</span>';
+    if (st <= 0) return '<button class="fl-mas" disabled aria-label="Sin stock de ese sabor">+</button>';
+    if (!n) return '<button class="fl-mas" data-a="sumar" data-id="' + p.id + '" aria-label="Agregar ' + esc(p.t) + '">+</button>';
+    return '<div class="fl-paso"><button data-a="sumar" data-id="' + p.id + '" aria-label="Uno más">+</button><span>' + n + '</span><button data-a="restar" data-id="' + p.id + '" aria-label="Uno menos">−</button></div>';
+  }
+  function fila(p) {
+    var etq = p.s > 0 && p.s <= 2 ? '<span class="fl-poco">Últimas ' + p.s + '</span>' : '';
+    return '<article class="fila' + (p.s <= 0 ? ' sin' : '') + '"><button class="fl-foto" data-a="ficha" data-id="' + p.id + '" aria-label="Ver ' + esc(p.t) + '">' + foto(p, 256) + '</button>' +
+      '<div class="fl-cuerpo"><button class="fl-texto" data-a="ficha" data-id="' + p.id + '"><span class="fl-marca">' + esc(p.mf || p.m) + ' · ' + esc(p.sc) + '</span><span class="t-nombre">' + esc(p.t) + '</span></button>' + etq +
+      nutriChica(p) + sabores(p) + precioTarjeta(p) + '</div>' +
+      '<div class="fl-acc" data-acc="' + p.id + '" data-fila="1">' + botonFila(p) + '</div></article>';
+  }
+  function grilla(l) { return '<div class="lista-filas">' + l.map(fila).join('') + '</div>'; }
   function conMas(l) { return grilla(l.slice(0, S.limite)) + (l.length > S.limite ? '<button class="ver-mas" data-a="mas">Ver más productos (' + (l.length - S.limite) + ')</button>' : ''); }
 
   /* qué productos mostrar */
@@ -216,7 +233,8 @@
     var porMarca = {}; PROD.forEach(function (p) { if (p.img && p.s > 0 && recientes.indexOf(p) < 0) (porMarca[p.m] = porMarca[p.m] || []).push(p); });
     var dest = [], vuelta = 0; while (dest.length < 8 && vuelta < 12) { MARCAS.forEach(function (m) { var l = porMarca[m.n]; if (l && l[vuelta] && dest.length < 8) dest.push(l[vuelta]); }); vuelta++; }
     return banners() +
-      '<h2 class="seccion">Recién ingresados</h2><div class="carrusel">' + recientes.map(tarjeta).join('') + '</div>' +
+      // También en filas (16/11): los 4 últimos que entraron; el resto, en «Nuevos».
+      '<h2 class="seccion">Recién ingresados</h2>' + grilla(recientes.slice(0, 4)) + '<button class="ver-mas" data-a="nuevos">Ver todos los nuevos</button>' +
       '<h2 class="seccion">Destacados</h2>' + grilla(dest) +
       '<h2 class="seccion">Todos los productos</h2>' + conMas(ordenar(PROD)) + pie();
   }
@@ -583,7 +601,7 @@
     return g;
   }
   function ver(f) { S.f = f; S.vista = 'lista'; S.q = ''; S.limite = 20; S.menu = false; pintar(true); }
-  function refrescar(id) { document.querySelectorAll('[data-acc="' + id + '"]').forEach(function (el) { el.innerHTML = boton(POR_ID[id]); }); var y = window.scrollY; pintar(false); window.scrollTo(0, y); }
+  function refrescar(id) { document.querySelectorAll('[data-acc="' + id + '"]').forEach(function (el) { el.innerHTML = el.dataset.fila ? botonFila(POR_ID[id]) : boton(POR_ID[id]); }); var y = window.scrollY; pintar(false); window.scrollTo(0, y); }
 
   var A = {
     inicio: function () { S.vista = 'inicio'; S.f = null; S.q = ''; S.limite = 20; pintar(true); },

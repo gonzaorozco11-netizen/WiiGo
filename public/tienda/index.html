@@ -202,6 +202,29 @@ main{padding:14px}
 .agregar[disabled]{background:#e6e1d5;color:#8e9187}
 .paso{display:grid;grid-template-columns:46px 1fr 46px;align-items:center;background:var(--bosque);color:#f5f1e8;border-radius:14px;min-height:46px;overflow:hidden}
 .paso button{border:0;background:none;color:inherit;height:46px;font-size:22px;font-weight:800}
+/* Productos en fila (16/11): foto a la izquierda, datos al medio y «+» redondo a la derecha */
+.lista-filas{display:grid;gap:8px}
+.fila{display:grid;grid-template-columns:84px minmax(0,1fr) auto;gap:12px;align-items:center;background:var(--carta);border:1px solid var(--linea);border-radius:20px;padding:10px;box-shadow:var(--sombra)}
+.fila.sin{opacity:.72}
+.fl-foto{border:0;background:#fff;padding:0;width:84px;height:84px;border-radius:16px;display:grid;place-items:center;overflow:hidden;border:1px solid #f1ebdf;align-self:start}
+.fl-foto img{width:88%;height:88%;object-fit:contain}
+.fl-foto .kraft{width:100%;border-radius:14px;font-size:11px;padding:6px}
+.fl-cuerpo{min-width:0;display:flex;flex-direction:column;gap:5px}
+.fl-texto{border:0;background:none;padding:0;text-align:left;color:inherit;display:grid;gap:2px}
+.fl-texto .t-nombre{min-height:0;font-size:14.5px}
+.fl-marca{font-size:11.5px;font-weight:700;color:var(--gris);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fl-poco{align-self:flex-start;font-size:11px;font-weight:800;border-radius:999px;padding:1px 8px;background:#fff1d6;color:#7a4a00}
+.fila .t-precio{margin-top:0;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.fila .t-precio b{display:inline;font-size:19px}
+.fila .t-precio span{display:inline;font-size:12.5px}
+.fila .t-sabores button{flex:0 1 auto;padding:4px 8px;font-size:11.5px}
+.fl-acc{align-self:center}
+.fl-mas{width:46px;height:46px;border-radius:50%;border:0;background:var(--bosque);color:#f5f1e8;font-size:26px;font-weight:700;line-height:1;display:grid;place-items:center;box-shadow:0 4px 10px rgba(34,48,31,.25)}
+.fl-mas[disabled]{background:#e6e1d5;color:#8e9187;box-shadow:none}
+.fl-paso{display:flex;flex-direction:column;align-items:center;background:var(--bosque);color:#f5f1e8;border-radius:999px;padding:2px}
+.fl-paso button{border:0;background:none;color:inherit;width:42px;height:36px;font-size:21px;font-weight:800}
+.fl-paso span{font-weight:800;font-size:15px}
+.fl-sin{font-size:11.5px;font-weight:700;color:var(--gris);background:#ece6da;border-radius:999px;padding:5px 9px;white-space:nowrap}
 .paso span{text-align:center;font-weight:800;font-size:16px}
 .ver-mas{width:100%;margin-top:14px;border:1px solid var(--linea);background:var(--carta);border-radius:14px;min-height:48px;font-weight:800}
 .vacio{text-align:center;color:var(--gris);padding:40px 10px}
@@ -369,6 +392,8 @@ main{padding:14px}
   .cab::before{content:"";position:absolute;top:0;bottom:0;left:-100vmax;right:-100vmax;background:inherit;box-shadow:0 1px 0 var(--linea);z-index:-1}
   body{overflow-x:hidden}
   .grilla{grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px}
+  /* En la compu, las filas de a dos o tres columnas */
+  .lista-filas{grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:12px}
   .carrusel{grid-auto-columns:220px;gap:14px}
   .carga{grid-template-columns:minmax(0,1fr) 170px;padding:22px 30px 14px 34px}
   .banner{min-height:200px;padding-left:34px;padding-right:30px}
@@ -392,6 +417,6 @@ main{padding:14px}
 <div class="app" id="app"><p style="padding:60px 16px;text-align:center;color:#626a5e">Cargando los productos…</p></div>
 <!-- El catálogo real, armado en el servidor con lo público de cada producto (lib/tiendaCatalogo.ts). -->
 <script src="/api/tienda/catalogo"></script>
-<script src="app.js?v=6"></script>
+<script src="app.js?v=7"></script>
 </body>
 </html>
