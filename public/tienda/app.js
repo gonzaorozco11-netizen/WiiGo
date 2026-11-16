@@ -49,7 +49,7 @@
     return null;
   }
   // Una persona enchufada a una estación WiiGo: la batería del pecho se llena (naranja → amarillo → verde).
-  var ILUS_CARGA = '<svg viewBox="0 0 140 160" role="img" aria-label="Una persona cargando energía en una estación WiiGo">' +
+  var ILUS_CARGA = '<svg viewBox="0 0 152 160" role="img" aria-label="Una persona cargando energía en una estación WiiGo">' +
     '<ellipse cx="74" cy="152" rx="62" ry="5" fill="rgba(0,0,0,.25)"/>' +
     // la estación (clara, sobre el cartel verde oscuro)
     '<rect x="4" y="46" width="38" height="102" rx="10" fill="#f5efe3"/><rect x="10" y="56" width="26" height="22" rx="5" fill="#22301f"/>' +
@@ -60,16 +60,21 @@
     // el cable con energía que corre
     '<path d="M47 87C66 86 58 122 78 100" fill="none" stroke="#b6bca2" stroke-width="5" stroke-linecap="round"/>' +
     '<path class="flujo" d="M47 87C66 86 58 122 78 100" fill="none" stroke="#f1c75b" stroke-width="2.6" stroke-linecap="round"/>' +
-    // la persona
+    // la persona: cuando la batería se llena, salta y saca músculo con el brazo libre (Gonzalo, 16/11)
+    '<g class="persona">' +
     '<rect x="95" y="118" width="9" height="30" rx="4.5" fill="#b6bca2"/><rect x="107" y="118" width="9" height="30" rx="4.5" fill="#b6bca2"/>' +
     '<rect x="88" y="62" width="34" height="62" rx="15" fill="#e8743b"/>' +
     '<path d="M92 72L79 97" stroke="#e8743b" stroke-width="9" stroke-linecap="round"/><circle cx="78" cy="99" r="5.5" fill="#d9a37f"/>' +
-    '<path d="M118 72l6 22" stroke="#e8743b" stroke-width="9" stroke-linecap="round"/><circle cx="124.5" cy="96" r="5" fill="#d9a37f"/>' +
+    '<g class="brazo-normal"><path d="M118 72l6 22" stroke="#e8743b" stroke-width="9" stroke-linecap="round"/><circle cx="124.5" cy="96" r="5" fill="#d9a37f"/></g>' +
+    '<g class="brazo-fuerza"><path d="M118 72L133 70" stroke="#e8743b" stroke-width="9" stroke-linecap="round"/><path d="M133 70L136 54" stroke="#e8743b" stroke-width="8.5" stroke-linecap="round"/>' +
+    '<g class="biceps"><ellipse cx="126" cy="65" rx="7" ry="6" fill="#e8743b"/><path d="M121.5 63q4.5-4 9 0" fill="none" stroke="#f6a273" stroke-width="1.8" stroke-linecap="round"/></g><circle cx="136.5" cy="50.5" r="5.5" fill="#d9a37f"/>' +
+    '<path class="fuerza" d="M130 44l-3-4M137 41v-5M143 45l3-4" stroke="#f1c75b" stroke-width="2.4" stroke-linecap="round"/></g>' +
     '<circle cx="105" cy="45" r="14" fill="#d9a37f"/><path d="M91 44c0-10 6-16 14-16s14 6 14 15c-4-6-9-8-14-8s-10 3-14 9z" fill="#3a2010"/>' +
     '<circle cx="100" cy="46" r="1.6" fill="#3a2010"/><circle cx="110" cy="46" r="1.6" fill="#3a2010"/><path d="M100 51q5 4 10 0" fill="none" stroke="#3a2010" stroke-width="1.6" stroke-linecap="round"/>' +
     // la batería en el pecho
     '<rect x="101" y="72" width="7" height="3" rx="1" fill="#fffaf2"/><rect x="96" y="75" width="17" height="32" rx="4" fill="rgba(0,0,0,.2)" stroke="#fffaf2" stroke-width="2"/>' +
     '<rect class="nivel" x="99" y="78" width="11" height="26" rx="2" fill="#f1c75b"/><path d="M106 81l-5 9h4l-2 8 6-10h-4l2-7z" fill="#fffaf2"/>' +
+    '</g>' +
     // chispas de energía cuando se llena
     '<path class="chispa" d="M88 30l-5-5" stroke="#f1c75b" stroke-width="3" stroke-linecap="round"/><path class="chispa b" d="M105 24v-7" stroke="#f1c75b" stroke-width="3" stroke-linecap="round"/><path class="chispa c" d="M122 30l5-5" stroke="#f1c75b" stroke-width="3" stroke-linecap="round"/>' +
     '</svg>';

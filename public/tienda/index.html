@@ -112,7 +112,17 @@ body{background:radial-gradient(70% 40% at 100% 0,#f6dcc6 0,rgba(246,220,198,0) 
 @keyframes chispa{0%,66%{opacity:0;transform:translateY(4px)}76%{opacity:1}100%{opacity:0;transform:translateY(-6px)}}
 .carga .rayo-pantalla{animation:titila 1.6s steps(2) infinite}
 @keyframes titila{50%{opacity:.35}}
-@media (prefers-reduced-motion:reduce){.carga .nivel{transform:none;fill:#7fb069}}
+/* Batería llena: salta y saca músculo (Gonzalo, 16/11). Mismo ciclo de 3,2 s que la batería. */
+.carga .persona{animation:salto 3.2s ease-in-out infinite}
+@keyframes salto{0%,68%,100%{transform:translateY(0)}75%{transform:translateY(-8px)}82%{transform:translateY(0)}88%{transform:translateY(-4px)}94%{transform:translateY(0)}}
+.carga .brazo-normal{animation:brazoNormal 3.2s infinite}
+.carga .brazo-fuerza{opacity:0;animation:brazoFuerza 3.2s infinite}
+@keyframes brazoNormal{0%,66%,100%{opacity:1}69%,97%{opacity:0}}
+@keyframes brazoFuerza{0%,66%,100%{opacity:0}69%,97%{opacity:1}}
+.carga .biceps{transform-box:fill-box;transform-origin:50% 80%;animation:biceps 3.2s ease-in-out infinite}
+@keyframes biceps{0%,70%,100%{transform:scale(1)}76%{transform:scale(1.4)}82%{transform:scale(1.1)}88%{transform:scale(1.35)}94%{transform:scale(1)}}
+.carga .fuerza{opacity:0;animation:chispa 3.2s ease-out infinite;animation-delay:.1s}
+@media (prefers-reduced-motion:reduce){.carga .nivel{transform:none;fill:#7fb069}.carga .brazo-fuerza{opacity:0}.carga .brazo-normal{opacity:1}}
 .cab-fila{display:flex;align-items:center;gap:10px}
 .cab-fila .logo{height:30px;width:auto;display:block}
 .redondo{width:44px;height:44px;border-radius:50%;border:0;background:var(--carta);display:grid;place-items:center;flex-shrink:0;position:relative;box-shadow:0 1px 3px rgba(0,0,0,.08)}
