@@ -132,6 +132,8 @@
     var n = nutriPorcion(p), m = function (l, v) { return v == null ? '' : '<span>' + l + ' ' + coma(v) + '</span>'; };
     return '<div class="t-nutri" title="' + n.txt + '">' + (n.k != null ? '<span class="kcal">' + Math.round(n.k) + ' kcal</span>' : '') + m('P', n.pr) + m('C', n.ca) + m('G', n.gr) + '<span class="por">' + (n.g ? 'porción ' + coma(n.g) + ' g' : n.unidad ? 'por ' + esc(n.unidad) : 'c/100 g') + '</span></div>';
   }
+  // Cómo se lee la marca propia: «WiiGo Dietética» (Gonzalo, 16/11; el dato sigue siendo «WiiGo»).
+  function nombreMarca(n) { return n === 'WiiGo' ? 'WiiGo Dietética' : n; }
   // WiiGo primero, después las demás por cantidad de productos (Gonzalo, 16/11).
   var MARCAS = D.marcas.slice().sort(function (a, b) { return (b.n === 'WiiGo') - (a.n === 'WiiGo') || (b.cant || 0) - (a.cant || 0); }), MARCA = {}; MARCAS.forEach(function (m) { MARCA[m.n] = m; });
   // Nuevos: los 20 que entraron último (con stock), no todo lo del mes.
@@ -215,7 +217,7 @@
   function item(p) {
     var sin = p.s <= 0;
     return '<article class="item' + (sin ? ' sin' : '') + '"><button class="it-tx" data-a="ficha" data-id="' + p.id + '">' +
-      '<span class="it-nom">' + esc(p.t) + '</span><span class="it-mar">' + esc(p.mf || p.m) + '</span>' +
+      '<span class="it-nom">' + esc(p.t) + '</span><span class="it-mar">' + esc(nombreMarca(p.mf || p.m)) + '</span>' +
       (p.de ? '<span class="it-des">' + esc(p.de) + '</span>' : '') + kcalItem(p) +
       (sin ? '<span class="it-sin">Sin stock por ahora</span>' : '<span class="it-pr"><b>' + plata(p.p) + '</b><span>' + plata(p.e || p.p) + ' efectivo</span></span>' + (p.s <= 2 ? '<span class="it-poco">Últimas ' + p.s + '</span>' : '')) +
       '</button><div class="it-ft"><button class="it-foto" data-a="ficha" data-id="' + p.id + '" aria-label="Ver ' + esc(p.t) + '">' + foto(p, 256) + '</button>' +
@@ -283,24 +285,22 @@
       var cuenta = {}; l.forEach(function (p) { (cuenta[p.sc] = cuenta[p.sc] || []).push(p); });
       subsMarca = Object.keys(cuenta).sort(function (a, b) { return a.localeCompare(b, 'es'); }).map(function (s) { return [s, cuenta[s]]; });
     }
-    var tabs = '<nav class="tabs-rubros" id="tabs-rubros" aria-label="' + (subsMarca ? 'Categorías' : 'Rubros') + '">' + (S.marcaIni ? '' : '<button class="tab-r" data-a="ir-sec" data-s="s-elegido">⭐ Lo más elegido</button>') +
-      (subsMarca ? subsMarca.map(function (s, i) { return '<button class="tab-r" data-a="ir-sec" data-s="s-s' + i + '">' + esc(s[0]) + '</button>'; }).join('')
+    // Con una marca: arriba, pegadas, las categorías como pastillas con una fotito; tocar una muestra SOLO esa
+    // (Gonzalo, 16/11: «toco una y después tengo que deslizar todo»). «Todo» vuelve a mostrar todas.
+    var fotoSub = function (ps) { var c = ps.filter(function (p) { return p.img && p.s > 0; })[0] || ps.filter(function (p) { return p.img; })[0]; return c ? imagen(c.img, 96) : ''; };
+    var tabs = '<nav class="tabs-rubros' + (subsMarca ? ' pastillas' : '') + '" id="tabs-rubros" aria-label="' + (subsMarca ? 'Categorías' : 'Rubros') + '">' + (S.marcaIni ? '' : '<button class="tab-r" data-a="ir-sec" data-s="s-elegido">⭐ Lo más elegido</button>') +
+      (subsMarca ? '<button class="pastilla" data-a="sub-ini" data-s="" aria-pressed="' + !S.subIni + '">Todo <em>' + l.length + '</em></button>' +
+        subsMarca.map(function (s) { return '<button class="pastilla" data-a="sub-ini" data-s="' + esc(s[0]) + '" aria-pressed="' + (S.subIni === s[0]) + '">' + fotoSub(s[1]) + esc(s[0]) + ' <em>' + s[1].length + '</em></button>'; }).join('')
         : rub.map(function (r, i) { return '<button class="tab-r" data-a="ir-sec" data-s="s-r' + i + '">' + r[2] + ' ' + esc(r[1]) + '</button>'; }).join('') + '<button class="tab-r" data-a="mundo">🌍 Del mundo</button>') + '</nav>';
     var marcas = '<div class="marcas-ini" role="group" aria-label="Marcas">' + MARCAS.map(function (m) {
-      return '<button class="marca-p" data-a="marca-ini" data-m="' + esc(m.n) + '" aria-pressed="' + (S.marcaIni === m.n) + '">' + (m.logo ? imagen(m.logo, 64) : '<i>' + esc(m.n.charAt(0)) + '</i>') + esc(m.n) + '</button>';
-    }).join('') + '</div>' +
-      // Las categorías de la marca en una fila de círculos con foto que se desliza (opción D, Gonzalo 16/11):
-      // se toca una y baja hasta sus productos.
-      (subsMarca ? '<div class="subs-circ" role="group" aria-label="Categorías de ' + esc(S.marcaIni) + '">' + subsMarca.map(function (s, i) {
-        var con = s[1].filter(function (p) { return p.img && p.s > 0; })[0] || s[1].filter(function (p) { return p.img; })[0];
-        return '<button data-a="ir-sec" data-s="s-s' + i + '"><span class="sc-foto">' + (con ? imagen(con.img, 160) : '<i>' + esc(s[0].charAt(0)) + '</i>') + '</span>' + esc(s[0]) + '</button>';
-      }).join('') + '</div>' : '');
+      return '<button class="marca-p" data-a="marca-ini" data-m="' + esc(m.n) + '" aria-pressed="' + (S.marcaIni === m.n) + '">' + (m.logo ? imagen(m.logo, 64) : '<i>' + esc(m.n.charAt(0)) + '</i>') + esc(nombreMarca(m.n)) + '</button>';
+    }).join('') + '</div>';
     var elegido = S.marcaIni ? '' : '<section class="rubro-sec" id="s-elegido"><h2 class="seccion">Lo más elegido</h2><div class="elegidos">' + dest.map(function (p) {
       return '<article class="eleg"><div class="it-ft"><button class="it-foto" data-a="ficha" data-id="' + p.id + '" aria-label="Ver ' + esc(p.t) + '">' + foto(p, 256) + '</button><div class="it-acc" data-acc="' + p.id + '" data-tipo="item">' + botonItem(p) + '</div></div>' +
         '<button class="eleg-tx" data-a="ficha" data-id="' + p.id + '"><span>' + esc(p.t) + '</span><b>' + plata(p.p) + '</b></button></article>';
     }).join('') + '</div><button class="ver-mas" data-a="nuevos">✨ Lo nuevo de la semana (' + NUEVOS.length + ')</button></section>';
-    var secciones = subsMarca ? subsMarca.map(function (s, i) {
-      return '<section class="rubro-sec" id="s-s' + i + '"><h2 class="seccion">' + esc(s[0]) + '</h2><p class="rub-cant">' + s[1].length + (s[1].length === 1 ? ' producto' : ' productos') + ' de ' + esc(S.marcaIni) + '</p>' + grilla(ordenar(s[1])) + '</section>';
+    var secciones = subsMarca ? subsMarca.filter(function (s) { return !S.subIni || s[0] === S.subIni; }).map(function (s, i) {
+      return '<section class="rubro-sec" id="s-s' + i + '"><h2 class="seccion">' + esc(s[0]) + '</h2><p class="rub-cant">' + s[1].length + (s[1].length === 1 ? ' producto' : ' productos') + ' de ' + esc(nombreMarca(S.marcaIni)) + '</p>' + grilla(ordenar(s[1])) + '</section>';
     }).join('') : rub.map(function (r, i) {
       var deR = l.filter(function (p) { return p.c === r[0]; }), subs = {};
       deR.forEach(function (p) { (subs[p.sc] = subs[p.sc] || []).push(p); });
@@ -359,7 +359,7 @@
     var p = POR_ID[S.ficha]; if (!p) return '';
     var nutri = tieneNutri(p);
     return '<div class="fondo" data-a="cerrar-ficha"></div><section class="hoja" role="dialog" aria-modal="true" aria-label="' + esc(p.t) + '"><div class="hoja-cab"><span></span><button class="redondo" data-a="cerrar-ficha" aria-label="Cerrar">' + ic('cruz', 20) + '</button></div><div class="hoja-cuerpo">' +
-      '<div class="f-foto">' + foto(p, 828) + '</div><h2 class="f-nombre">' + esc(p.t) + '</h2><span class="f-de">' + esc(p.mf || p.m) + ' · ' + esc(p.sc) + '</span>' +
+      '<div class="f-foto">' + foto(p, 828) + '</div><h2 class="f-nombre">' + esc(p.t) + '</h2><span class="f-de">' + esc(nombreMarca(p.mf || p.m)) + ' · ' + esc(p.sc) + '</span>' +
       (p.s > 0 ? '<div class="f-precio"><b>' + plata(p.p) + '</b><span>' + plata(p.e || p.p) + ' efectivo</span></div>' : '<div class="f-precio"><span style="color:var(--gris)">Sin stock por ahora. Preguntá en la estación cuándo entra.</span></div>') + sabores(p) + '<div style="margin-top:10px" data-acc="' + p.id + '">' + boton(p) + '</div>' +
       // Nutrición en números, sin explicación. Después, el texto chico.
       (nutri ? '<div class="f-nutri" title="' + nutriPorcion(p).txt + '">' + (function (n) { return [['kcal', 'Kcal', n.k, ''], ['', 'Prot.', n.pr, ' g'], ['', 'Carbos', n.ca, ' g'], ['', 'Grasas', n.gr, ' g'], ['', 'Fibra', n.fi, ' g']]; })(nutriPorcion(p)).map(function (x) { return '<div class="' + x[0] + '"><small>' + x[1] + '</small><b>' + (x[2] == null ? '—' : (x[0] ? Math.round(x[2]) : coma(x[2])) + x[3]) + '</b></div>'; }).join('') + '</div><p class="f-chico" style="margin-top:6px">' + (gramosPorcion(p) || nutriPorcion(p).unidad ? 'Por porción: ' + esc(p.po) : 'Cada 100 g') + '</p>' : '') +
@@ -718,9 +718,16 @@
       if (S.vista !== 'inicio' || S.q) { S.vista = 'inicio'; S.f = null; S.q = ''; pintar(true); }
       var s = document.getElementById(d.s); if (s) s.scrollIntoView({ behavior: menosMov ? 'auto' : 'smooth' });
     },
+    // Una categoría de la marca: solo sus productos, y la lista arranca justo abajo de lo pegado.
+    'sub-ini': function (d) {
+      S.subIni = d.s || null; pintar(false);
+      var m = document.querySelector('.marcas-ini'), pg = document.getElementById('pegado-ini');
+      if (m) window.scrollTo(0, m.getBoundingClientRect().top + window.scrollY - ((document.getElementById('cab') || {}).offsetHeight || 0) - (pg ? pg.offsetHeight : 0) - 8);
+      var t = document.querySelector('.pastilla[aria-pressed="true"]'); if (t) t.parentNode.scrollLeft = t.offsetLeft - 16;
+    },
     // Una marca: el inicio muestra solo lo de esa marca (se vuelve a tocar y aparece todo).
     'marca-ini': function (d) {
-      S.marcaIni = S.marcaIni === d.m ? null : d.m; pintar(false);
+      S.marcaIni = S.marcaIni === d.m ? null : d.m; S.subIni = null; pintar(false);
       var t = document.querySelector('.marcas-ini'), pg = document.getElementById('pegado-ini');
       if (t) window.scrollTo(0, t.getBoundingClientRect().top + window.scrollY - ((document.getElementById('cab') || {}).offsetHeight || 0) - (pg ? pg.offsetHeight : 0) - 8);
     },
