@@ -193,24 +193,34 @@
   }
   // Sin stock se muestra el producto, pero sin precio (Gonzalo, 2026-11-14).
   function precioTarjeta(p) { return p.s > 0 ? '<div class="t-precio"><b>' + plata(p.p) + '</b><span>' + plata(p.e || p.p) + ' efectivo</span></div>' : '<div class="t-precio"><span style="color:var(--gris)">Sin stock por ahora</span></div>'; }
-  // Los productos en fila, uno abajo del otro (Gonzalo, 16/11: «que los productos estén así en horizontal»,
-  // para no parecerse a Alifrut): foto a la izquierda, datos al medio y el «+» redondo a la derecha.
-  // El carrusel de «Recién ingresados» sigue con la tarjeta de siempre.
-  function botonFila(p) {
-    var v = saborDe(p), st = p.v && p.v.length ? (v ? stockDe(p, v) : 0) : p.s, n = enCarrito(p.id, v);
-    if (p.s <= 0) return '<span class="fl-sin">Sin stock</span>';
-    if (st <= 0) return '<button class="fl-mas" disabled aria-label="Sin stock de ese sabor">+</button>';
-    if (!n) return '<button class="fl-mas" data-a="sumar" data-id="' + p.id + '" aria-label="Agregar ' + esc(p.t) + '">+</button>';
-    return '<div class="fl-paso"><button data-a="sumar" data-id="' + p.id + '" aria-label="Uno más">+</button><span>' + n + '</span><button data-a="restar" data-id="' + p.id + '" aria-label="Uno menos">−</button></div>';
+  // Formato de app de delivery (Gonzalo, 16/11, maqueta aprobada): texto a la izquierda y la foto a la
+  // derecha con el «+» encima, que pasa a «− cantidad +». Con sabores, el «+» abre la ficha para elegirlo.
+  function cuantosDe(p) { return carrito.filter(function (l) { return l.id === p.id; }).reduce(function (a, l) { return a + l.q; }, 0); }
+  function botonItem(p) {
+    if (p.s <= 0) return '';
+    if (p.v && p.v.length) {
+      var t = cuantosDe(p);
+      return '<button class="it-mas' + (t ? ' con' : '') + '" data-a="ficha" data-id="' + p.id + '" aria-label="Elegir sabor de ' + esc(p.t) + '">' + (t || '+') + '</button>';
+    }
+    var n = enCarrito(p.id, null);
+    if (!n) return '<button class="it-mas" data-a="sumar" data-id="' + p.id + '" aria-label="Agregar ' + esc(p.t) + '">+</button>';
+    return '<div class="it-paso"><button data-a="restar" data-id="' + p.id + '" aria-label="Uno menos">−</button><span>' + n + '</span><button data-a="sumar" data-id="' + p.id + '" aria-label="Uno más">+</button></div>';
   }
-  function fila(p) {
-    var etq = p.s > 0 && p.s <= 2 ? '<span class="fl-poco">Últimas ' + p.s + '</span>' : '';
-    return '<article class="fila' + (p.s <= 0 ? ' sin' : '') + '"><button class="fl-foto" data-a="ficha" data-id="' + p.id + '" aria-label="Ver ' + esc(p.t) + '">' + foto(p, 256) + '</button>' +
-      '<div class="fl-cuerpo"><button class="fl-texto" data-a="ficha" data-id="' + p.id + '"><span class="fl-marca">' + esc(p.mf || p.m) + ' · ' + esc(p.sc) + '</span><span class="t-nombre">' + esc(p.t) + '</span></button>' + etq +
-      nutriChica(p) + sabores(p) + precioTarjeta(p) + '</div>' +
-      '<div class="fl-acc" data-acc="' + p.id + '" data-fila="1">' + botonFila(p) + '</div></article>';
+  function kcalItem(p) {
+    if (!tieneNutri(p)) return '';
+    var n = nutriPorcion(p);
+    return '<span class="it-kcal">' + (n.k != null ? Math.round(n.k) + ' kcal' : '') + (n.pr ? ' · ' + coma(n.pr) + ' g prot' : '') + ' ' + (n.g || n.unidad ? 'por porción' : 'c/100 g') + '</span>';
   }
-  function grilla(l) { return '<div class="lista-filas">' + l.map(fila).join('') + '</div>'; }
+  function item(p) {
+    var sin = p.s <= 0;
+    return '<article class="item' + (sin ? ' sin' : '') + '"><button class="it-tx" data-a="ficha" data-id="' + p.id + '">' +
+      '<span class="it-nom">' + esc(p.t) + '</span><span class="it-mar">' + esc(p.mf || p.m) + '</span>' +
+      (p.de ? '<span class="it-des">' + esc(p.de) + '</span>' : '') + kcalItem(p) +
+      (sin ? '<span class="it-sin">Sin stock por ahora</span>' : '<span class="it-pr"><b>' + plata(p.p) + '</b><span>' + plata(p.e || p.p) + ' efectivo</span></span>' + (p.s <= 2 ? '<span class="it-poco">Últimas ' + p.s + '</span>' : '')) +
+      '</button><div class="it-ft"><button class="it-foto" data-a="ficha" data-id="' + p.id + '" aria-label="Ver ' + esc(p.t) + '">' + foto(p, 256) + '</button>' +
+      '<div class="it-acc" data-acc="' + p.id + '" data-tipo="item">' + botonItem(p) + '</div></div></article>';
+  }
+  function grilla(l) { return '<div class="items">' + l.map(item).join('') + '</div>'; }
   function conMas(l) { return grilla(l.slice(0, S.limite)) + (l.length > S.limite ? '<button class="ver-mas" data-a="mas">Ver más productos (' + (l.length - S.limite) + ')</button>' : ''); }
 
   /* qué productos mostrar */
@@ -233,15 +243,59 @@
   }
 
   /* pantallas */
+  // Los rubros (las macro categorías del catálogo), en este orden y con su ícono.
+  var RUBROS = [['Suplementación y rendimiento', 'Suplementos', '💪'], ['Snacks y dulces', 'Snacks', '🍫'], ['Frutos secos y semillas', 'Frutos secos', '🥜'], ['Almacén consciente', 'Almacén', '🫙'],
+    ['Desayuno y cereales', 'Desayuno', '🥣'], ['Viandas saludables', 'Viandas', '🍱'], ['Bienestar natural', 'Bienestar', '🌿'], ['Cuidado personal', 'Cuidado', '🧴']];
+  function rubrosDe(l) {
+    var hay = {}; l.forEach(function (p) { hay[p.c] = (hay[p.c] || 0) + 1; });
+    var r = RUBROS.filter(function (x) { return hay[x[0]]; });
+    Object.keys(hay).forEach(function (c) { if (!RUBROS.some(function (x) { return x[0] === c; })) r.push([c, c, '🛍️']); });
+    return r;
+  }
+  // Abierto o cerrado según el horario de la estación (lunes a sábado de 9 a 13 y de 17 a 21).
+  function horario() {
+    var d = new Date(), dia = d.getDay(), h = d.getHours() + d.getMinutes() / 60;
+    if (dia === 0) return [false, 'abre el lunes a las 9'];
+    if (h < 9) return [false, 'abre a las 9'];
+    if (h < 13) return [true, 'hasta las 13'];
+    if (h < 17) return [false, 'abre a las 17'];
+    if (h < 21) return [true, 'hasta las 21'];
+    return [false, dia === 6 ? 'abre el lunes a las 9' : 'abre mañana a las 9'];
+  }
+  function tarjetaLocal() {
+    var m = MARCA.WiiGo, hr = horario();
+    return '<section class="local"><span class="local-logo">' + (m && m.logo ? imagen(m.logo, 128) : 'W') + '</span><div><h2>WiiGo · Arístides</h2><div class="local-meta">' +
+      '<span><b class="' + (hr[0] ? 'abierto' : 'cerrado') + '">● ' + (hr[0] ? 'Abierto' : 'Cerrado') + '</b> ' + hr[1] + '</span><span>🛍️ Retirás en 15 min</span><span>📍 Arístides Villanueva 256</span></div></div>' +
+      '<div class="local-datos"><span>Pagás al retirar o por transferencia</span><span>Precio especial en efectivo</span><span class="club">★ Sumás puntos WiiGo Club</span></div></section>';
+  }
+  // Formato de app de delivery (Gonzalo, 16/11): banners arriba, el local, los accesos de siempre, las pestañas
+  // de rubros pegadas abajo del buscador, las marcas para filtrar, «Lo más elegido» y cada rubro con sus categorías.
   function inicio() {
-    var recientes = PROD.filter(function (p) { return p.s > 0; }).sort(function (a, b) { return a.dias - b.dias || (b.img ? 1 : 0) - (a.img ? 1 : 0); }).slice(0, 10);
-    var porMarca = {}; PROD.forEach(function (p) { if (p.img && p.s > 0 && recientes.indexOf(p) < 0) (porMarca[p.m] = porMarca[p.m] || []).push(p); });
-    var dest = [], vuelta = 0; while (dest.length < 8 && vuelta < 12) { MARCAS.forEach(function (m) { var l = porMarca[m.n]; if (l && l[vuelta] && dest.length < 8) dest.push(l[vuelta]); }); vuelta++; }
-    return banners() +
-      // También en filas (16/11): los 4 últimos que entraron; el resto, en «Nuevos».
-      '<h2 class="seccion">Recién ingresados</h2>' + grilla(recientes.slice(0, 4)) + '<button class="ver-mas" data-a="nuevos">Ver todos los nuevos</button>' +
-      '<h2 class="seccion">Destacados</h2>' + grilla(dest) +
-      '<h2 class="seccion">Todos los productos</h2>' + conMas(ordenar(PROD)) + pie();
+    var l = S.marcaIni ? PROD.filter(function (p) { return p.m === S.marcaIni; }) : PROD;
+    var porMarca = {}; PROD.forEach(function (p) { if (p.img && p.s > 0) (porMarca[p.m] = porMarca[p.m] || []).push(p); });
+    var dest = [], vuelta = 0; while (dest.length < 10 && vuelta < 12) { MARCAS.forEach(function (m) { var x = porMarca[m.n]; if (x && x[vuelta] && dest.length < 10) dest.push(x[vuelta]); }); vuelta++; }
+    var rub = rubrosDe(l);
+    var tabs = '<nav class="tabs-rubros" id="tabs-rubros" aria-label="Rubros">' + (S.marcaIni ? '' : '<button class="tab-r" data-a="ir-sec" data-s="s-elegido">⭐ Lo más elegido</button>') +
+      rub.map(function (r, i) { return '<button class="tab-r" data-a="ir-sec" data-s="s-r' + i + '">' + r[2] + ' ' + esc(r[1]) + '</button>'; }).join('') +
+      '<button class="tab-r" data-a="mundo">🌍 Del mundo</button></nav>';
+    var marcas = '<div class="marcas-ini" role="group" aria-label="Marcas">' + MARCAS.map(function (m) {
+      return '<button class="marca-p" data-a="marca-ini" data-m="' + esc(m.n) + '" aria-pressed="' + (S.marcaIni === m.n) + '">' + (m.logo ? imagen(m.logo, 64) : '<i>' + esc(m.n.charAt(0)) + '</i>') + esc(m.n) + '</button>';
+    }).join('') + '</div>';
+    var elegido = S.marcaIni ? '' : '<section class="rubro-sec" id="s-elegido"><h2 class="seccion">Lo más elegido</h2><div class="elegidos">' + dest.map(function (p) {
+      return '<article class="eleg"><div class="it-ft"><button class="it-foto" data-a="ficha" data-id="' + p.id + '" aria-label="Ver ' + esc(p.t) + '">' + foto(p, 256) + '</button><div class="it-acc" data-acc="' + p.id + '" data-tipo="item">' + botonItem(p) + '</div></div>' +
+        '<button class="eleg-tx" data-a="ficha" data-id="' + p.id + '"><span>' + esc(p.t) + '</span><b>' + plata(p.p) + '</b></button></article>';
+    }).join('') + '</div><button class="ver-mas" data-a="nuevos">✨ Lo nuevo de la semana (' + NUEVOS.length + ')</button></section>';
+    var secciones = rub.map(function (r, i) {
+      var deR = l.filter(function (p) { return p.c === r[0]; }), subs = {};
+      deR.forEach(function (p) { (subs[p.sc] = subs[p.sc] || []).push(p); });
+      return '<section class="rubro-sec" id="s-r' + i + '"><h2 class="seccion">' + r[2] + ' ' + esc(r[0]) + '</h2><p class="rub-cant">' + deR.length + (deR.length === 1 ? ' producto' : ' productos') + '</p>' +
+        Object.keys(subs).sort(function (a, b) { return subs[b].length - subs[a].length || a.localeCompare(b, 'es'); }).map(function (s) {
+          return '<h3 class="sub-rub">' + esc(s) + ' · ' + subs[s].length + '</h3>' + grilla(ordenar(subs[s]));
+        }).join('') + '</section>';
+    }).join('');
+    return banners() + tarjetaLocal() +
+      '<div class="accesos-ini"><button data-a="objetivos"><span>🎯</span>Objetivos</button><button data-a="mundo"><span>🌍</span>Del mundo</button><button data-a="pros"><span>🩺</span>Profesionales</button><button data-a="ir-sec" data-s="s-elegido"><span>⭐</span>Lo más elegido</button></div>' +
+      tabs + marcas + elegido + secciones + pie();
   }
   function lista() {
     var f = S.f || {}, l = filtrados(), extra = '';
@@ -259,7 +313,7 @@
     }
     var tit = S.q.length >= 2 ? 'Resultados para «' + esc(S.q) + '»' : esc(f.titulo || 'Productos');
     return '<div class="filtro-cab"><button class="redondo" data-a="inicio" aria-label="Volver al inicio">' + ic('atras') + '</button><span><b>' + tit + '</b><small>' + l.length + (l.length === 1 ? ' producto' : ' productos') + (f.sub && S.q.length < 2 ? ' · ' + esc(f.marca) : '') + '</small></span></div>' + extra +
-      (l.length ? conMas(l) : '<div class="vacio"><b>No encontramos eso</b><p>Probá con otra palabra o mirá las marcas en el menú ☰.</p></div>');
+      (l.length ? conMas(l) : '<div class="vacio"><b>No encontramos eso</b><p>Probá con otra palabra o volvé al inicio y mirá por rubro o por marca.</p></div>');
   }
   function profesionales() {
     return '<div class="filtro-cab"><button class="redondo" data-a="inicio" aria-label="Volver al inicio">' + ic('atras') + '</button><span><b>Profesionales</b><small>Nutricionistas que trabajan con WiiGo</small></span></div><div style="display:grid;gap:10px">' +
@@ -458,12 +512,12 @@
 
   /* pintar */
   function pintar(arriba) {
-    var t = totales(), f = S.f || {};
-    var acc = function (a, ico, txt, on, n) { return '<button class="acceso" data-a="' + a + '" aria-pressed="' + !!on + '">' + ic(ico, 16) + txt + (n ? '<span class="n">' + n + '</span>' : '') + '</button>'; };
-    var cab = '<header class="cab"><div class="cab-fila"><button class="redondo" data-a="abrir-menu" aria-label="Marcas y rubros">' + ic('menu') + '</button><button data-a="inicio" style="border:0;background:none;padding:0" aria-label="Inicio"><img class="logo" src="/wiigo-logo-negro.png" alt="WiiGo Estaciones de Bienestar"></button><span class="espacio"></span>' +
+    var t = totales();
+    // Arriba, siempre: el logo, la cuenta, el pedido y el buscador (busca en todo). Las marcas y los rubros
+    // ahora están en el inicio (pastillas y pestañas), así que el menú ☰ ya no va.
+    var cab = '<header class="cab" id="cab"><div class="cab-fila"><button data-a="inicio" style="border:0;background:none;padding:0" aria-label="Inicio"><img class="logo" src="/wiigo-logo-negro.png" alt="WiiGo Estaciones de Bienestar"></button><span class="espacio"></span>' +
       (S.usuario ? '<button class="pts-cab" data-a="cuenta" aria-label="Mi WiiGo: ' + S.usuario.puntos + ' puntos">★ ' + S.usuario.puntos.toLocaleString('es-AR') + '</button>' : '<button class="redondo" data-a="cuenta" aria-label="Mi cuenta">' + ic('persona') + '</button>') + '<button class="redondo" data-a="abrir-pedido" aria-label="Mi pedido">' + ic('bolsa') + '<span class="n">' + t.u + '</span></button></div>' +
-      '<label class="buscar">' + ic('lupa', 20) + '<span class="oculto">Buscar producto</span><input id="q" type="search" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="Buscar producto" value="' + esc(S.q) + '">' + (S.q ? '<button class="limpiar" data-a="limpiar" aria-label="Borrar búsqueda">' + ic('cruz', 18) + '</button>' : '') + '</label>' +
-      '<div class="accesos">' + acc('nuevos', 'chispa', 'Nuevos', f.nuevos, NUEVOS.length) + acc('abrir-menu', 'marcas', 'Marcas', false) + acc('mundo', 'globo', 'Del mundo', f.mundo) + acc('objetivos', 'objetivo', 'Objetivos', f.objetivos) + acc('pros', 'salud', 'Profesionales', S.vista === 'pros') + '</div></header>';
+      '<label class="buscar">' + ic('lupa', 20) + '<span class="oculto">Buscar producto</span><input id="q" type="search" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="Buscar en la estación" value="' + esc(S.q) + '">' + (S.q ? '<button class="limpiar" data-a="limpiar" aria-label="Borrar búsqueda">' + ic('cruz', 18) + '</button>' : '') + '</label></header>';
     var cuerpo = S.vista === 'checkout' && S.usuario && carrito.length ? checkout() : S.vista === 'seguir' ? seguimiento() : S.vista === 'pros' ? profesionales() : (S.vista === 'lista' || S.q.length >= 2) ? lista() : inicio();
     // Con un pedido en curso y el carrito vacío, la barra lleva a seguirlo.
     var enCurso = (S.pedidos || []).filter(abiertoPed)[0];
@@ -476,6 +530,28 @@
     window.scrollTo(0, arriba ? 0 : y);
     montarGlobo();
     montarBanners();
+    espiarRubros();
+  }
+
+  // Las pestañas de rubros quedan pegadas justo abajo del buscador, y se marca sola la del rubro que se
+  // está mirando al bajar (como en las apps de delivery).
+  var espia = null;
+  function espiarRubros() {
+    var cab = document.getElementById('cab'), alto = cab ? cab.offsetHeight : 120;
+    document.documentElement.style.setProperty('--alto-cab', alto + 'px');
+    if (espia) { espia.disconnect(); espia = null; }
+    var tabs = document.getElementById('tabs-rubros');
+    if (!tabs || !('IntersectionObserver' in window)) return;
+    espia = new IntersectionObserver(function (es) {
+      es.forEach(function (e) {
+        if (!e.isIntersecting) return;
+        var tab = tabs.querySelector('[data-s="' + e.target.id + '"]'); if (!tab) return;
+        tabs.querySelectorAll('.tab-r').forEach(function (x) { x.removeAttribute('aria-current'); });
+        tab.setAttribute('aria-current', 'true');
+        tabs.scrollLeft = tab.offsetLeft - 16;
+      });
+    }, { rootMargin: '-' + (alto + 60) + 'px 0px -55% 0px' });
+    document.querySelectorAll('.rubro-sec[id]').forEach(function (s) { espia.observe(s); });
   }
 
   /* Los banners de arriba: se deslizan con el dedo y pasan solos cada 6 s (si nadie los tocó recién). */
@@ -606,10 +682,20 @@
     return g;
   }
   function ver(f) { S.f = f; S.vista = 'lista'; S.q = ''; S.limite = 20; S.menu = false; pintar(true); }
-  function refrescar(id) { document.querySelectorAll('[data-acc="' + id + '"]').forEach(function (el) { el.innerHTML = el.dataset.fila ? botonFila(POR_ID[id]) : boton(POR_ID[id]); }); var y = window.scrollY; pintar(false); window.scrollTo(0, y); }
+  function refrescar(id) { document.querySelectorAll('[data-acc="' + id + '"]').forEach(function (el) { el.innerHTML = el.dataset.tipo === 'item' ? botonItem(POR_ID[id]) : boton(POR_ID[id]); }); var y = window.scrollY; pintar(false); window.scrollTo(0, y); }
 
   var A = {
-    inicio: function () { S.vista = 'inicio'; S.f = null; S.q = ''; S.limite = 20; pintar(true); },
+    inicio: function () { S.vista = 'inicio'; S.f = null; S.q = ''; S.limite = 20; S.marcaIni = null; pintar(true); },
+    // Una pestaña de rubro: baja hasta esa parte (el margen deja ver el título abajo del buscador).
+    'ir-sec': function (d) {
+      if (S.vista !== 'inicio' || S.q) { S.vista = 'inicio'; S.f = null; S.q = ''; pintar(true); }
+      var s = document.getElementById(d.s); if (s) s.scrollIntoView({ behavior: menosMov ? 'auto' : 'smooth' });
+    },
+    // Una marca: el inicio muestra solo lo de esa marca (se vuelve a tocar y aparece todo).
+    'marca-ini': function (d) {
+      S.marcaIni = S.marcaIni === d.m ? null : d.m; pintar(false);
+      var t = document.getElementById('tabs-rubros'); if (t) window.scrollTo(0, t.getBoundingClientRect().top + window.scrollY - (document.getElementById('cab') || {}).offsetHeight);
+    },
     'abrir-menu': function () { S.menu = true; S.menuMarca = (S.f && S.f.marca) || null; pintar(false); },
     'cerrar-menu': function () { S.menu = false; S.menuQ = ''; pintar(false); },
     'menu-marca': function (d) { S.menuMarca = S.menuMarca === d.x ? null : d.x; pintar(false); },
@@ -718,7 +804,12 @@
   // Las casillas avisan con «change» (el clic no pasa por A para no frenar el tilde).
   document.addEventListener('change', function (e) { if (e.target.getAttribute && e.target.getAttribute('data-a') === 'c-promos') A['c-promos'](e.target.dataset); });
   document.addEventListener('input', function (e) {
-    if (e.target.id === 'q') { S.q = e.target.value; S.limite = 20; if (S.q.length < 2 && S.vista !== 'lista') S.vista = S.vista === 'pros' ? 'pros' : 'inicio'; pintar(false); }
+    if (e.target.id === 'q') {
+      var antes = S.q.length >= 2;
+      S.q = e.target.value; S.limite = 20; if (S.q.length < 2 && S.vista !== 'lista') S.vista = S.vista === 'pros' ? 'pros' : 'inicio';
+      // Al empezar a buscar (o al borrar la búsqueda), arriba de todo: si no, los resultados quedan lejos.
+      pintar(antes !== (S.q.length >= 2));
+    }
     if (e.target.id === 'mq') { S.menuQ = e.target.value; pintar(false); }
   });
   document.addEventListener('keydown', function (e) {
