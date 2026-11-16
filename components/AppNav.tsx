@@ -75,9 +75,9 @@ const GROUPS: NavGroup[] = [
       { href: "/carteles", label: "Carteles de góndola" },
       { href: "/objetivos", label: "Objetivos del asesor" },
       { href: "/catalogo-asesor", label: "Catálogo asesor" },
-      // Estudiar los productos, y aprobar lo que escribe la IA para eso.
-      { href: "/aprender", label: "Aprender" },
-      { href: "/aprender/revisar", label: "Aprender: revisar" },
+      // Estudiar los productos. Revisar lo que escribe la IA se abre desde
+      // adentro de Aprender (un solo ítem: con dos, Gonzalo veía «2 Aprender»).
+      { href: "/aprender", label: "Aprender", tambien: "aprender-revisar" },
     ],
   },
   {
