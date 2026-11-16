@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <title>WiiGo · Estaciones de Bienestar</title>
 <meta name="description" content="La estación de servicio de tu cuerpo: alimentación consciente, suplementación y profesionales. Pedí online y retiralo listo en 15 minutos.">
 <!-- Hasta el lanzamiento (etapa 2, parte 5) no aparece en Google. -->
@@ -247,8 +247,12 @@ main{padding:14px}
 .local-datos{grid-column:1/-1;display:flex;gap:6px;flex-wrap:wrap;border-top:1px solid var(--linea);padding-top:10px}
 .local-datos span{font-size:12px;font-weight:700;border-radius:999px;padding:4px 10px;background:var(--salvia-t);color:var(--bosque)}
 .local-datos span.club{background:#fff4d6;color:#7a5200}
-.accesos-ini{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:12px}
-.accesos-ini button{display:grid;justify-items:center;gap:4px;background:var(--carta);border:1px solid var(--linea);border-radius:16px;padding:10px 4px;font-size:12px;font-weight:800;color:var(--bosque);line-height:1.15;text-align:center}
+/* Los accesos en una fila que se desliza (16/11): entran Ofertas, Combos y lo que venga */
+.accesos-ini{display:flex;gap:8px;margin:4px -14px 0;padding:8px 14px 2px;overflow-x:auto;scrollbar-width:none;scroll-snap-type:x proximity;scroll-padding:0 14px}
+.accesos-ini::-webkit-scrollbar{display:none}
+.accesos-ini button{flex:none;width:78px;position:relative;scroll-snap-align:start;display:grid;justify-items:center;gap:4px;background:var(--carta);border:1px solid var(--linea);border-radius:16px;padding:10px 4px;font-size:12px;font-weight:800;color:var(--bosque);line-height:1.15;text-align:center}
+.accesos-ini em{position:absolute;top:-6px;right:-4px;font-style:normal;font-size:10.5px;font-weight:800;background:var(--energia);color:#fff;border-radius:999px;padding:1px 7px}
+.accesos-ini em.pronto{background:#d9d2c3;color:#4b5244}
 .accesos-ini span{font-size:24px}
 .tabs-rubros{position:sticky;top:var(--alto-cab,128px);z-index:15;display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;margin:14px -14px 0;padding:0 10px;background:rgba(245,239,227,.96);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--linea)}
 .tabs-rubros::-webkit-scrollbar{display:none}
@@ -318,7 +322,9 @@ main{padding:14px}
 .c-subs .c-fila{font-size:14.5px;padding:11px 14px;border-bottom-color:#eceee6}
 
 /* Ficha y pedido: hojas que suben */
-.hoja{position:fixed;left:0;right:0;bottom:0;z-index:41;max-width:440px;margin:0 auto;background:var(--fondo);border-radius:26px 26px 0 0;max-height:92vh;display:flex;flex-direction:column;animation:sube .28s cubic-bezier(.2,.8,.2,1)}
+/* Con el teclado del celu abierto, la hoja se apoya arriba del teclado y entra en lo que queda visible
+   (--teclado y --alto-visible los pone app.js con visualViewport; Gonzalo 16/11: «choca con el teclado») */
+.hoja{position:fixed;left:0;right:0;bottom:var(--teclado,0px);z-index:41;max-width:440px;margin:0 auto;background:var(--fondo);border-radius:26px 26px 0 0;max-height:calc(var(--alto-visible,100vh) * .92);display:flex;flex-direction:column;animation:sube .28s cubic-bezier(.2,.8,.2,1)}
 @keyframes sube{from{transform:translateY(100%)}}
 .hoja-cab{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:16px 16px 6px}
 .hoja-cab h2{margin:0;font:800 24px/1.1 var(--display)}
@@ -400,6 +406,8 @@ main{padding:14px}
 .compra-item .kraft{width:100%;font-size:6px;padding:2px;border-radius:8px}
 .dato{display:flex;justify-content:space-between;gap:10px;padding:12px 2px;border-bottom:1px solid var(--linea);font-size:14.5px}
 .dato span{color:var(--gris)}
+.cab-cuenta{border:0;width:52px;height:44px;border-radius:999px;background:var(--bosque);color:#f5efe3;display:grid;place-items:center;flex-shrink:0}
+.cab-pedido{border:0;height:44px;border-radius:999px;background:var(--energia);color:#fff;display:flex;align-items:center;gap:6px;padding:0 15px 0 13px;font-weight:800;font-size:15px;flex-shrink:0}
 .pts-cab{border:0;border-radius:999px;background:#f1c75b;color:#3b2f0e;font-weight:800;font-size:13px;height:44px;padding:0 12px;display:flex;align-items:center;gap:5px;flex-shrink:0}
 .aviso{position:fixed;left:50%;bottom:92px;transform:translateX(-50%);background:var(--tinta);color:#fff;padding:10px 16px;border-radius:14px;font-weight:700;font-size:14px;z-index:60;max-width:90vw;text-align:center}
 .oculto{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
@@ -489,6 +497,6 @@ main{padding:14px}
 <div class="app" id="app"><p style="padding:60px 16px;text-align:center;color:#626a5e">Cargando los productos…</p></div>
 <!-- El catálogo real, armado en el servidor con lo público de cada producto (lib/tiendaCatalogo.ts). -->
 <script src="/api/tienda/catalogo"></script>
-<script src="app.js?v=16"></script>
+<script src="app.js?v=19"></script>
 </body>
 </html>

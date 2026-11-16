@@ -26,6 +26,7 @@
   var IC = {
     menu: '<path d="M4 7h16M4 12h16M4 17h16"/>', persona: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
     bolsa: '<path d="M5 8h14l-1.2 11.2a2 2 0 0 1-2 1.8H8.2a2 2 0 0 1-2-1.8L5 8z"/><path d="M9 11V7a3 3 0 0 1 6 0v4"/>',
+    canasta: '<path d="M3 10h18l-2 9H5z"/><path d="m8 10 3-6M16 10l-3-6"/>',
     lupa: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>', ojo: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
     cruz: '<path d="M6 6l12 12M18 6L6 18"/>', abajo: '<path d="M6 9l6 6 6-6"/>', atras: '<path d="M15 18l-6-6 6-6"/>', flecha: '<path d="M9 6l6 6-6 6"/>',
     chispa: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M6 18l2.5-2.5M15.5 8.5L18 6"/>', marcas: '<rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/>',
@@ -141,12 +142,15 @@
   var MARCAS = D.marcas.slice().sort(function (a, b) { return lugarMarca(a.n) - lugarMarca(b.n) || (b.cant || 0) - (a.cant || 0); }), MARCA = {}; MARCAS.forEach(function (m) { MARCA[m.n] = m; });
   // Nuevos: los 20 que entraron último (con stock), no todo lo del mes.
   var NUEVOS = PROD.filter(function (p) { return p.s > 0 && p.dias <= 30; }).sort(function (a, b) { return a.dias - b.dias; }).slice(0, 20);
+  // Ofertas: lo que hoy tiene descuento y hay stock (el descuento viene del catálogo, `dto`).
+  var OFERTAS = PROD.filter(function (p) { return p.s > 0 && Number(p.dto) > 0; }).sort(function (a, b) { return Number(b.dto) - Number(a.dto); });
   function ordenar(l) { return l.slice().sort(function (a, b) { return (b.s > 0) - (a.s > 0) || (b.img ? 1 : 0) - (a.img ? 1 : 0) || a.t.localeCompare(b.t, 'es'); }); }
 
   /* estado */
   var S = { vista: 'inicio', f: null, q: '', limite: 20, menu: false, menuMarca: null, menuQ: '', ficha: null, pedido: false, cuenta: false, paso: 'dni', datos: {}, usuario: null, enviando: false, compraAbierta: null };
-  // Puntos WiiGo Club: 20 cada $1.000 en productos WiiGo, 5 en las demás marcas (lib/puntosWiigo.ts).
-  function puntosDe(p, importe) { return Math.floor((p.m === 'WiiGo' ? 20 : 5) * importe / 1000); }
+  // Puntos WiiGo Club: 5 cada $1.000 en todo, el 0,5 % (Gonzalo, 16/11; antes 20 en productos WiiGo).
+  // Tiene que coincidir con PUNTOS_OTORGADOS y PUNTOS_OTORGADOS_PROPIOS de Configuración (lib/puntosWiigo.ts).
+  function puntosDe(p, importe) { return Math.floor(5 * importe / 1000); }
   // La cuenta habla con /api/tienda/cuenta (app/api/tienda/cuenta/route.ts). La sesión es una cookie que la página no ve.
   function api(cuerpo) {
     return fetch('/api/tienda/cuenta', cuerpo ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo), credentials: 'same-origin' } : { credentials: 'same-origin' })
@@ -236,6 +240,7 @@
     if (f.sub) l = l.filter(function (p) { return p.sc === f.sub; });
     if (f.cat) l = l.filter(function (p) { return p.c === f.cat; });
     if (f.nuevos) l = NUEVOS;
+    if (f.ofertas) l = OFERTAS;
     if (f.obj) l = l.filter(function (p) { return (p.ob || []).indexOf(f.obj) >= 0; });
     if (f.lugar) l = l.filter(function (p) { return p.lugar === f.lugar; });
     else if (f.mundo) l = l.filter(function (p) { return p.lugar; });
@@ -279,7 +284,10 @@
   function inicio() {
     var l = S.marcaIni ? PROD.filter(function (p) { return p.m === S.marcaIni; }) : PROD;
     var porMarca = {}; PROD.forEach(function (p) { if (p.img && p.s > 0) (porMarca[p.m] = porMarca[p.m] || []).push(p); });
-    var dest = [], vuelta = 0; while (dest.length < 10 && vuelta < 12) { MARCAS.forEach(function (m) { var x = porMarca[m.n]; if (x && x[vuelta] && dest.length < 10) dest.push(x[vuelta]); }); vuelta++; }
+    // «Lo más elegido» (Gonzalo, 16/11): los más vendidos del último mes con stock, por puesto (`top`, del
+    // catálogo). Si todavía hay pocas ventas, se completa con uno de cada marca, como antes.
+    var dest = PROD.filter(function (p) { return p.top && p.s > 0; }).sort(function (a, b) { return a.top - b.top; }).slice(0, 10);
+    var vuelta = 0; while (dest.length < 10 && vuelta < 12) { MARCAS.forEach(function (m) { var x = porMarca[m.n]; if (x && x[vuelta] && dest.length < 10 && dest.indexOf(x[vuelta]) < 0) dest.push(x[vuelta]); }); vuelta++; }
     var rub = rubrosDe(l);
     // Con una marca elegida, las pestañas y las secciones son TODAS sus subcategorías (Gonzalo, 16/11:
     // «toco WiiGo y no veo todas las subcategorías»). Sin marca, los rubros.
@@ -315,7 +323,12 @@
     // Arriba como la maqueta (Gonzalo, 16/11): el banner y la tarjeta «WiiGo · Arístides» montada encima de
     // su borde de abajo; después los accesos y, abajo de ellos, el buscador con las pestañas (pegados al bajar).
     return '<div class="ini-top">' + banners() + tarjetaLocal() + '</div>' +
-      '<div class="accesos-ini"><button data-a="objetivos"><span>🎯</span>Objetivos</button><button data-a="mundo"><span>🌍</span>Del mundo</button><button data-a="pros"><span>🩺</span>Profesionales</button><button data-a="ir-sec" data-s="s-elegido"><span>⭐</span>Lo más elegido</button></div>' +
+      // Una fila que se desliza (Gonzalo, 16/11): así entran Ofertas y Combos, y lo que se sume después.
+      '<div class="accesos-ini" role="group" aria-label="Accesos">' +
+      '<button data-a="ofertas"><span>🏷️</span>Ofertas' + (OFERTAS.length ? '<em>' + OFERTAS.length + '</em>' : '') + '</button>' +
+      '<button data-a="combos"><span>🎁</span>Combos<em class="pronto">Pronto</em></button>' +
+      '<button data-a="objetivos"><span>🎯</span>Objetivos</button><button data-a="mundo"><span>🌍</span>Del mundo</button>' +
+      '<button data-a="pros"><span>👩‍💻</span>Profesionales</button><button data-a="ir-sec" data-s="s-elegido"><span>⭐</span>Lo más elegido</button></div>' +
       // Pegados arriba al bajar (abajo del encabezado con el buscador): las marcas y, abajo de ellas, los rubros
       // o las categorías de la marca (Gonzalo, 16/11: «las marcas arriba y abajo las subcategorías»).
       '<div class="pegado-ini" id="pegado-ini">' + marcas + tabs + '</div>' + elegido + secciones + pie();
@@ -408,7 +421,7 @@
     }).join('') : '<p class="texto-cuenta">Todavía no hay compras. Las que hagas acá o en la estación (dando tu DNI) aparecen solas.</p>';
     var cumple = u.cumple ? '<div class="dato"><span>Cumpleaños</span><b>' + esc(new Date(u.cumple + 'T12:00:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'long' })) + '</b></div>'
       : '<div class="dato" style="align-items:center"><span>Cumpleaños</span><span style="display:flex;gap:6px"><input id="c-cumple2" type="date" aria-label="Tu cumpleaños" style="height:40px;border:1.5px solid var(--linea);border-radius:10px;padding:0 8px;font:600 14px var(--texto);background:var(--carta)"><button class="acceso" data-a="c-cumple">Guardar</button></span></div>';
-    return '<div class="club"><small>Hola, ' + esc(u.nombre) + ' · WiiGo Club</small><b>' + u.puntos.toLocaleString('es-AR') + ' puntos</b><span>Sumás 20 puntos cada $1.000 en productos WiiGo y 5 en las demás marcas, online o en la estación.</span></div>' +
+    return '<div class="club"><small>Hola, ' + esc(u.nombre) + ' · WiiGo Club</small><b>' + u.puntos.toLocaleString('es-AR') + ' puntos</b><span>Sumás 5 puntos cada $1.000 de compra, online o en la estación. Los canjeás en productos WiiGo Dietética.</span></div>' +
       '<h3 class="sub-cuenta">Mis compras</h3>' + compras +
       '<h3 class="sub-cuenta">Mis datos</h3><div class="dato"><span>Nombre</span><b>' + esc((u.nombre + ' ' + u.apellido).trim()) + '</b></div><div class="dato"><span>DNI</span><b>' + esc(u.dni) + '</b></div><div class="dato"><span>Mail</span><b>' + esc(u.email) + '</b></div>' + cumple +
       '<label class="tilde" style="margin:14px 2px"><input type="checkbox" data-a="c-promos"' + (u.promos ? ' checked' : '') + '><span>Recibir novedades y promos por mail</span></label>' +
@@ -547,7 +560,9 @@
     // Arriba, siempre: el logo, la cuenta, el pedido y el buscador (busca en todo). Las marcas y los rubros
     // ahora están en el inicio (pastillas y pestañas), así que el menú ☰ ya no va.
     var cab = '<header class="cab" id="cab"><div class="cab-fila"><button data-a="inicio" style="border:0;background:none;padding:0" aria-label="Inicio"><img class="logo" src="/wiigo-logo-negro.png" alt="WiiGo Estaciones de Bienestar"></button><span class="espacio"></span>' +
-      (S.usuario ? '<button class="pts-cab" data-a="cuenta" aria-label="Mi WiiGo: ' + S.usuario.puntos + ' puntos">★ ' + S.usuario.puntos.toLocaleString('es-AR') + '</button>' : '<button class="redondo" data-a="cuenta" aria-label="Mi cuenta">' + ic('persona') + '</button>') + '<button class="redondo" data-a="abrir-pedido" aria-label="Mi pedido">' + ic('bolsa') + '<span class="n">' + t.u + '</span></button></div>' +
+      (S.usuario ? '<button class="pts-cab" data-a="cuenta" aria-label="Mi WiiGo: ' + S.usuario.puntos + ' puntos">★ ' + S.usuario.puntos.toLocaleString('es-AR') + '</button>' : '<button class="cab-cuenta" data-a="cuenta" aria-label="Entrar o sumarme a WiiGo">' + ic('persona', 22) + '</button>') +
+        // Arriba, distinto de Alifrut (Gonzalo, 16/11, opción B): la cuenta en verde bosque y el pedido en naranja con la cantidad.
+        '<button class="cab-pedido" data-a="abrir-pedido" aria-label="Mi pedido: ' + t.u + ' productos">' + ic('canasta', 20) + '<b>' + t.u + '</b></button></div>' +
       // El buscador siempre acá arriba, en el encabezado (Gonzalo, 16/11: «mejor arriba como estaba al principio»).
       buscador() + '</header>';
     var cuerpo = S.vista === 'checkout' && S.usuario && carrito.length ? checkout() : S.vista === 'seguir' ? seguimiento() : S.vista === 'pros' ? profesionales() : (S.vista === 'lista' || S.q.length >= 2) ? lista() : inicio();
@@ -745,6 +760,9 @@
     'ver-marca': function (d) { ver({ marca: d.m, titulo: d.m }); },
     'ver-sub': function (d) { ver({ marca: d.m, sub: d.s, titulo: d.s }); },
     nuevos: function () { ver({ nuevos: true, titulo: 'Nuevos esta semana' }); },
+    // Ofertas: lo que tiene descuento hoy. Combos: todavía no hay (los arma Gonzalo más adelante).
+    ofertas: function () { if (!OFERTAS.length) return aviso('Hoy no hay ofertas: volvé pronto'); ver({ ofertas: true, titulo: 'Ofertas' }); },
+    combos: function () { aviso('Muy pronto: combos armados por WiiGo'); },
     mundo: function () { ver({ mundo: true, titulo: 'Productos del mundo' }); },
     lugar: function (d) { var f = S.f; f.lugar = d.k && f.lugar !== d.k ? d.k : null; f.titulo = 'Productos del mundo'; S.limite = 20; pintar(false); if (G) G.marcar(f.lugar); },
     desc: function () { S.descAbierta = !S.descAbierta; pintar(false); },
@@ -845,6 +863,19 @@
   document.addEventListener('click', function (e) { var el = e.target.closest('[data-a]'); if (!el || el.tagName === 'INPUT') return; var a = A[el.getAttribute('data-a')]; if (a) { e.preventDefault(); a(el.dataset); } });
   // Las casillas avisan con «change» (el clic no pasa por A para no frenar el tilde).
   document.addEventListener('change', function (e) { if (e.target.getAttribute && e.target.getAttribute('data-a') === 'c-promos') A['c-promos'](e.target.dataset); });
+  // El teclado del celu no tapa las hojas (Entrá a WiiGo, el pedido): con visualViewport se sabe cuánto
+  // ocupa y la hoja se apoya arriba de él. Al tocar un campo, se lo trae a la vista (Gonzalo, 16/11).
+  function ajustarTeclado() {
+    var vv = window.visualViewport; if (!vv) return;
+    var tapado = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+    document.documentElement.style.setProperty('--teclado', tapado + 'px');
+    document.documentElement.style.setProperty('--alto-visible', Math.round(vv.height) + 'px');
+  }
+  if (window.visualViewport) { window.visualViewport.addEventListener('resize', ajustarTeclado); window.visualViewport.addEventListener('scroll', ajustarTeclado); ajustarTeclado(); }
+  document.addEventListener('focusin', function (e) {
+    var t = e.target;
+    if (t && t.closest && t.closest('.hoja') && /INPUT|SELECT|TEXTAREA/.test(t.tagName)) setTimeout(function () { try { t.scrollIntoView({ block: 'center' }); } catch (x) {} }, 320);
+  });
   var tecleo = null;
   document.addEventListener('input', function (e) {
     if (e.target.id === 'q') {

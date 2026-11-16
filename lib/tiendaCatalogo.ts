@@ -43,6 +43,35 @@ type FilaProducto = {
   subcategorias: { nombre: string } | null;
 };
 
+/**
+ * «Lo más elegido» de la tienda (Gonzalo, 16/11: «¿qué productos salen ahí?»): los más vendidos de verdad en
+ * los últimos 30 días, sumando las unidades de cada producto. Devuelve solo el PUESTO (1 = el más vendido) de
+ * los primeros `cuantos`: las cantidades vendidas no salen al público. Si algo falla, vacío.
+ */
+async function masVendidos(supabase: SupabaseClient, idLocal: string | null, cuantos = 12): Promise<Map<string, number>> {
+  const puesto = new Map<string, number>();
+  try {
+    const desde = new Date(Date.now() - 30 * 86400000).toISOString();
+    let q = supabase.from("ventas").select("id_venta").eq("estado", "PAGADA").gte("fecha", desde).range(0, 4999);
+    if (idLocal) q = q.eq("id_local", idLocal);
+    const { data: ventas } = await q;
+    const ids = (ventas ?? []).map((v) => v.id_venta as string);
+    const porVariante = new Map<string, number>();
+    for (let i = 0; i < ids.length; i += 200) {
+      const { data } = await supabase.from("detalle_ventas").select("id_variante, cantidad").in("id_venta", ids.slice(i, i + 200));
+      for (const d of data ?? []) porVariante.set(d.id_variante as string, (porVariante.get(d.id_variante as string) ?? 0) + Number(d.cantidad ?? 0));
+    }
+    if (!porVariante.size) return puesto;
+    const { data: vars } = await supabase.from("variantes_producto").select("id_variante, id_producto").in("id_variante", [...porVariante.keys()]);
+    const porProducto = new Map<string, number>();
+    for (const v of vars ?? []) porProducto.set(v.id_producto as string, (porProducto.get(v.id_producto as string) ?? 0) + (porVariante.get(v.id_variante as string) ?? 0));
+    [...porProducto.entries()].sort((a, b) => b[1] - a[1]).slice(0, cuantos).forEach(([id], i) => puesto.set(id, i + 1));
+  } catch {
+    // Sin ranking: la tienda arma «Lo más elegido» como antes.
+  }
+  return puesto;
+}
+
 export async function armarCatalogoTienda(supabase: SupabaseClient) {
   // La estación de la tienda. Hoy hay un solo local; cuando haya más, cada pedido
   // va a elegir el suyo y esto va a mandar el stock de cada uno.
@@ -54,7 +83,7 @@ export async function armarCatalogoTienda(supabase: SupabaseClient) {
     .limit(1)
     .maybeSingle();
 
-  const [marcasRes, productosRes, variantesRes, stockRes, contenido, marcasFabrica, profesionalesRes, profObjRes] = await Promise.all([
+  const [marcasRes, productosRes, variantesRes, stockRes, contenido, marcasFabrica, profesionalesRes, profObjRes, puestoVentas] = await Promise.all([
     traerMarcasPublicas(supabase as never),
     supabase
       .from("productos")
@@ -68,6 +97,7 @@ export async function armarCatalogoTienda(supabase: SupabaseClient) {
     cargarMarcasFabrica(supabase).catch(() => new Map<string, string>()),
     supabase.from("profesionales").select(COLUMNAS_PROFESIONAL_PUBLICO).eq("estado", "ACTIVO").eq("publicado", true).order("orden", { ascending: true }),
     supabase.from("profesional_objetivos").select("id_profesional, id_objetivo"),
+    masVendidos(supabase, (local?.id_local as string | undefined) ?? null),
   ]);
   if (productosRes.error) throw new Error(`productos: ${productosRes.error.message}`);
 
@@ -109,6 +139,8 @@ export async function armarCatalogoTienda(supabase: SupabaseClient) {
       s: variantes.reduce((a, v) => a + (stockVariante.get(v.id_variante) ?? 0), 0),
       img: p.imagen || null,
       alta: p.fecha_alta,
+      // Puesto en los más vendidos del último mes (1 = el que más), solo los primeros; null si no está.
+      top: puestoVentas.get(p.id_producto) ?? null,
       v: variantes.filter((v) => v.nombre !== "Único").map((v) => ({ n: v.nombre, s: stockVariante.get(v.id_variante) ?? 0 })),
       o: texto(f?.origen),
       po: texto(f?.porcion),

@@ -35,7 +35,6 @@ export default function SumarClienteClub({
         nombre: String(form.get("nombre") ?? ""),
         apellido: String(form.get("apellido") ?? ""),
         email: String(form.get("email") ?? ""),
-        telefono: String(form.get("telefono") ?? ""),
       });
       if (res.error || !res.cliente) {
         setError(res.error ?? "No se pudo sumar el cliente.");
@@ -104,19 +103,12 @@ export default function SumarClienteClub({
           <input id="club-apellido" name="apellido" required autoComplete="off" className={campo} />
         </div>
       </div>
-      <div className={compacto ? "grid grid-cols-2 gap-2" : "space-y-3"}>
-        <div>
-          <label className={etiqueta} htmlFor="club-email">
-            Mail <span className="font-normal text-neutral-400">(para mandarle sus puntos)</span>
-          </label>
-          <input id="club-email" name="email" type="email" inputMode="email" autoComplete="off" className={campo} />
-        </div>
-        <div>
-          <label className={etiqueta} htmlFor="club-telefono">
-            Celular <span className="font-normal text-neutral-400">(opcional)</span>
-          </label>
-          <input id="club-telefono" name="telefono" type="tel" inputMode="tel" autoComplete="off" className={campo} />
-        </div>
+      {/* Sin celular (Gonzalo, 16/11): el Club pide DNI, nombre y apellido, y el mail para mandarle sus puntos. */}
+      <div>
+        <label className={etiqueta} htmlFor="club-email">
+          Mail <span className="font-normal text-neutral-400">(para mandarle sus puntos)</span>
+        </label>
+        <input id="club-email" name="email" type="email" inputMode="email" autoComplete="off" className={campo} />
       </div>
       {error && (
         <p className="text-xs text-red-600 font-semibold" role="alert">
