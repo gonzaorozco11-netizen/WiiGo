@@ -310,6 +310,56 @@ main{padding:14px}
 .pts-cab{border:0;border-radius:999px;background:#f1c75b;color:#3b2f0e;font-weight:800;font-size:13px;height:44px;padding:0 12px;display:flex;align-items:center;gap:5px;flex-shrink:0}
 .aviso{position:fixed;left:50%;bottom:92px;transform:translateX(-50%);background:var(--tinta);color:#fff;padding:10px 16px;border-radius:14px;font-weight:700;font-size:14px;z-index:60;max-width:90vw;text-align:center}
 .oculto{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+/* Parte 3: finalizar la compra y seguir el pedido (maqueta aprobada, 2026-11-16) */
+.f-chico{font-size:12.5px;color:var(--gris);margin:10px 2px 0;line-height:1.4}
+.opciones{display:grid;gap:8px}
+.opcion{display:flex;gap:12px;align-items:flex-start;text-align:left;border:1.5px solid var(--linea);background:var(--carta);border-radius:16px;padding:14px;width:100%;color:inherit;font:inherit}
+.opcion[aria-pressed="true"]{border-color:var(--bosque);box-shadow:inset 0 0 0 1px var(--bosque)}
+.opcion[disabled]{opacity:.55}
+.opcion b{display:block;font-size:15.5px}
+.opcion small{display:block;color:var(--gris);font-size:13px;margin-top:2px}
+.radio{width:22px;height:22px;border-radius:50%;border:2px solid #b9b09c;flex-shrink:0;margin-top:1px}
+.opcion[aria-pressed="true"] .radio{border:7px solid var(--bosque)}
+.pronto{display:inline-block;background:#f1c75b;color:#3b2f0e;border-radius:999px;padding:1px 8px;font-size:11px;font-weight:800;vertical-align:middle}
+.resumen{background:var(--carta);border:1px solid var(--linea);border-radius:16px;padding:12px 14px;display:grid;gap:6px}
+.seg-codigo{background:var(--bosque);color:#f5efe3;border-radius:22px;padding:18px;text-align:center;display:grid;gap:4px}
+.seg-codigo small{color:#c9cfbd;font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}
+.seg-codigo b{font:700 38px/1.1 ui-monospace,"SF Mono",Menlo,Consolas,monospace;letter-spacing:.08em;color:#f1c75b}
+.seg-codigo span{font-size:13.5px;color:#c9cfbd}
+.seg-estado{margin:14px 0;background:var(--carta);border:1px solid var(--linea);border-radius:18px;padding:16px;display:grid;gap:4px}
+.seg-estado b{font:800 24px var(--display)}
+.seg-estado span{color:var(--gris)}
+.seg-estado em{font-style:normal;font-weight:800;color:#a8461a}
+.seg-pasos{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.seg-pasos li{display:flex;align-items:center;gap:12px;color:var(--gris);font-weight:700}
+.seg-pasos i{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:#e9e1cf;font-style:normal;font-size:13px;font-weight:800}
+.seg-pasos li.hecho{color:var(--tinta)}.seg-pasos li.hecho i{background:var(--bosque);color:#f5efe3}
+.seg-pasos li.ahora{color:var(--tinta)}.seg-pasos li.ahora i{background:var(--energia);color:#2a1406;box-shadow:0 0 0 5px rgba(232,116,59,.25)}
+.seg-falta{background:#fff6dc;border:1px solid #f0dca0;border-radius:14px;padding:10px 12px;font-size:13.5px;margin-bottom:12px;display:grid;gap:2px}
+.seg-items{background:var(--carta);border:1px solid var(--linea);border-radius:16px;padding:10px 14px;display:grid;gap:4px;margin-top:14px;font-size:14px}
+.seg-items s{color:var(--gris)}
+.transf{background:#fff6dc;border:1.5px solid #f0d58a;border-radius:20px;padding:16px;margin-bottom:12px;display:grid;gap:6px}
+.transf>small{font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#7a5c12}
+.transf>b{font:800 34px/1 var(--display);color:#2a2207}
+.dato-t{display:grid;grid-template-columns:62px minmax(0,1fr) auto;gap:8px;align-items:center;background:#fffdf6;border-radius:12px;padding:8px 10px;font-size:14px}
+.dato-t span{color:var(--gris);font-size:12.5px;font-weight:700}
+.dato-t b{overflow-wrap:anywhere}
+.dato-t .acceso{padding:5px 10px;font-size:12.5px}
+.estacion3d{background:radial-gradient(circle at 50% 35%,#2d4030,#18231a 72%);border-radius:22px;overflow:hidden;margin-bottom:12px}
+.estacion3d .tablero{position:relative;aspect-ratio:16/11}
+.estacion3d svg{position:absolute;inset:0;width:100%;height:100%}
+.esc *{transform-box:fill-box;transform-origin:center}
+@keyframes e-onda{0%{transform:scale(.6);opacity:.9}100%{transform:scale(2.6);opacity:0}}
+@keyframes e-ticket{0%{transform:translateY(0)}60%,100%{transform:translateY(-18px)}}
+@keyframes e-rebote{50%{transform:translateY(-9px)}}
+@keyframes e-paso{50%{transform:translateY(-3px)}}
+@keyframes e-caminar{0%,100%{transform:translate(0,0)}45%,55%{transform:translate(-118px,-50px)}}
+@keyframes e-saltar{0%{transform:translate(0,0);opacity:0}15%{opacity:1}100%{transform:translate(84px,30px);opacity:0}}
+@keyframes e-titila{50%{opacity:.2}}
+@keyframes e-escanear{0%,100%{transform:translateX(0)}50%{transform:translateX(26px)}}
+@keyframes e-entrega{0%{transform:translate(0,0)}100%{transform:translate(44px,22px)}}
+@keyframes e-confeti{0%{transform:translateY(-40px) rotate(0)}100%{transform:translateY(320px) rotate(400deg)}}
+@keyframes e-subePts{0%{transform:translateY(12px);opacity:0}30%{opacity:1}100%{transform:translateY(-34px);opacity:0}}
 /* En la compu: el mismo recorrido, más ancho. Va al final para ganarle a las reglas del celu. */
 @media (min-width:760px){
   .app{max-width:1180px;padding:0 8px 100px}
@@ -342,6 +392,6 @@ main{padding:14px}
 <div class="app" id="app"><p style="padding:60px 16px;text-align:center;color:#626a5e">Cargando los productos…</p></div>
 <!-- El catálogo real, armado en el servidor con lo público de cada producto (lib/tiendaCatalogo.ts). -->
 <script src="/api/tienda/catalogo"></script>
-<script src="app.js?v=3"></script>
+<script src="app.js?v=4"></script>
 </body>
 </html>

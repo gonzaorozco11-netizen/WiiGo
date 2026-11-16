@@ -17,6 +17,7 @@ import {
 import { cancelarPedido } from "@/app/(app)/cobros-efectivo/actions";
 import { dispararAvisosDeVenta } from "@/lib/dispararAvisos";
 import { marcarPedidoEntregado } from "@/app/(app)/pedidos/actions";
+import { entregarOnlineDesdeCaja } from "@/app/(app)/pedidos-online/actions";
 import SumarClienteClub from "@/components/SumarClienteClub";
 
 type Item = {
@@ -60,7 +61,15 @@ export type PedidoParaCobrar = {
   idLocal: string | null;
   preciosVigentes: boolean;
   items: { idVariante: string; cantidad: number; precioLista: number; precioEfectivo: number }[];
+  /** Un pedido de la tienda online que se paga al retirar (Pedidos online → Entregar). */
+  online?: { codigo: string };
 };
+
+// Al terminar de cobrar un pedido: el de una profesional o el de la tienda online queda entregado.
+function cerrarPedido(pedido: PedidoParaCobrar, idVenta: string) {
+  if (pedido.online) entregarOnlineDesdeCaja(pedido.idPedido, idVenta).catch(() => {});
+  else marcarPedidoEntregado(pedido.idPedido, idVenta).catch(() => {});
+}
 
 /**
  * "¿Acepta que su profesional vea lo que compra?" El cajero se lo pregunta al
@@ -500,8 +509,8 @@ export default function PosApp({
           // Los avisos a las marcas van en su propio pedido y no se esperan:
           // el cajero ve el vuelto ya mismo. Ver lib/dispararAvisos.ts.
           dispararAvisosDeVenta(r.venta.idVenta);
-          // Si era un pedido de una profesional, queda entregado.
-          if (pedidoActivo) marcarPedidoEntregado(pedidoActivo.idPedido, r.venta.idVenta).catch(() => {});
+          // Si era un pedido (de una profesional o de la tienda online), queda entregado.
+          if (pedidoActivo) cerrarPedido(pedidoActivo, r.venta.idVenta);
         } else if (r.pedido) setPedidoMp(r.pedido);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "No se pudo registrar la venta"))
@@ -527,7 +536,7 @@ export default function PosApp({
             // Acá NO se disparan los avisos: esta venta la acreditó el webhook
             // de Mercado Pago, y los manda él. Si los mandaran los dos, con
             // mala suerte de tiempos la marca recibiría el mail dos veces.
-            if (pedidoActivo) marcarPedidoEntregado(pedidoActivo.idPedido, pedidoMp.idVenta).catch(() => {});
+            if (pedidoActivo) cerrarPedido(pedidoActivo, pedidoMp.idVenta);
             setPedidoMp(null);
           } else if (r.estado === "CANCELADA") {
             setError("Este pedido se canceló.");
@@ -622,7 +631,16 @@ export default function PosApp({
     <div className="max-w-md mx-auto">
       {pedidoActivo && (
         <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-          {pedidoActivo.paraProfesional ? (
+          {pedidoActivo.online ? (
+            <>
+              <p className="font-bold">
+                Pedido online {pedidoActivo.online.codigo} de {pedidoActivo.paciente}
+              </p>
+              <p className="text-emerald-800">
+                Ya están los productos que se encontraron y su DNI. Se respeta el precio del pedido: en efectivo el de efectivo, con QR o tarjeta el de góndola.
+              </p>
+            </>
+          ) : pedidoActivo.paraProfesional ? (
             <>
               <p className="font-bold">
                 Pedido N.º {pedidoActivo.numero} de {pedidoActivo.profesional} para ella: paga con su saldo

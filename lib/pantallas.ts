@@ -75,6 +75,10 @@ export const PANTALLAS_DISPONIBLES: PantallaDisponible[] = [
   // se avisa al paciente y se cobran. Va suelto arriba en el menú, con el
   // número en rojo, como Mis Tareas.
   { clave: "pedidos", label: "Pedidos de profesionales", grupo: "Operaciones" },
+  // Los pedidos de la tienda online: se aceptan, se arman y se entregan en
+  // tres columnas. Quien tiene «Pedidos de profesionales» también la ve (es
+  // el mismo trabajo de armar y entregar); esta es para darla sola.
+  { clave: "pedidos-online", label: "Pedidos online (tienda)", grupo: "Operaciones" },
   { clave: "ficha-asistencia", label: "Ficha Asistencia", grupo: "Operaciones" },
   { clave: "ventas", label: "Ventas", grupo: "Operaciones" },
   { clave: "cobros-efectivo", label: "Cobros en efectivo", grupo: "Operaciones" },

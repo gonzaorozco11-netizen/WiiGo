@@ -3,7 +3,8 @@
    de a dos con «Agregar», marcas → rubros en el menú ☰) con los colores de la pantalla asesora, kcal en
    cada producto, el planeta en «Del mundo» y arriba la persona cargando energía.
    El catálogo viene de /api/tienda/catalogo (lib/tiendaCatalogo.ts), con el stock real del local.
-   Etapa 2, parte 1: solo para mirar. El pedido se arma en el navegador; pagar y la cuenta, «Muy pronto».
+   Etapa 2: la cuenta WiiGo Club (DNI + código por mail) y la compra: retiro en la estación, pago por
+   transferencia o al retirar, y el seguimiento del pedido con la escena del local (/api/tienda/pedido).
    Sin paso de compilación: este archivo se sirve tal cual desde public/tienda. */
 (function () {
   'use strict';
@@ -332,7 +333,104 @@
     return '<div class="fondo" data-a="cerrar-pedido"></div><section class="hoja" role="dialog" aria-modal="true" aria-label="Mi pedido"><div class="hoja-cab"><h2>Mi pedido</h2><button class="redondo" data-a="cerrar-pedido" aria-label="Cerrar">' + ic('cruz', 20) + '</button></div><div class="hoja-cuerpo">' +
       (carrito.length ? carrito.map(function (l) { var p = POR_ID[l.id]; return '<div class="linea-ped"><span class="mini">' + foto(p) + '</span><span><b>' + esc(p.t) + (l.v ? ' — ' + esc(l.v) : '') + '</b><small>' + plata(p.p * l.q) + ' · efectivo ' + plata((p.e || p.p) * l.q) + '</small></span><div class="paso"><button data-a="p-restar" data-id="' + l.id + '" data-v="' + esc(l.v || '') + '" aria-label="Uno menos">−</button><span>' + l.q + '</span><button data-a="p-sumar" data-id="' + l.id + '" data-v="' + esc(l.v || '') + '" aria-label="Uno más">+</button></div></div>'; }).join('') : '<div class="vacio">Todavía no agregaste nada.</div>') + '</div>' +
       (carrito.length ? '<div class="hoja-pie"><div class="total"><span>Total</span><b>' + plata(t.g) + '</b></div><div class="total ef"><span>Pagando en efectivo al retirar</span><b>' + plata(t.e) + '</b></div>' +
-      '<div class="total" style="font-size:14px"><span>' + (S.usuario ? 'Sumás en WiiGo Club' : '<button data-a="cuenta" style="border:0;background:none;padding:0;color:#a8461a;font-weight:800;text-decoration:underline">Entrá con tu DNI</button> y sumás') + '</span><b style="font-size:16px;color:#a8461a">+' + t.p + ' puntos</b></div><span class="nota">Lo retirás en Arístides Villanueva 256, listo en menos de 15 minutos.</span><span class="nota" style="background:var(--salvia-t);border-color:#d7dcc8"><b>Muy pronto vas a poder pagar online</b> con Mercado Pago o en efectivo al retirar. Mientras tanto, mostrá este pedido en la estación y te lo armamos.</span></div>' : '') + '</section>';
+      '<div class="total" style="font-size:14px"><span>' + (S.usuario ? 'Sumás en WiiGo Club' : '<button data-a="cuenta" style="border:0;background:none;padding:0;color:#a8461a;font-weight:800;text-decoration:underline">Entrá con tu DNI</button> y sumás') + '</span><b style="font-size:16px;color:#a8461a">+' + t.p + ' puntos</b></div><span class="nota">Lo retirás en Arístides Villanueva 256, listo en menos de 15 minutos.</span><button class="agregar" style="background:var(--energia);color:#2a1406;min-height:52px" data-a="continuar">Continuar</button></div>' : '') + '</section>';
+  }
+
+  /* ---------- Parte 3: comprar y seguir el pedido (maqueta aprobada, 2026-11-16) ---------- */
+  // El pedido lo arma el servidor (/api/tienda/pedido): acá solo va qué y cuántos.
+  // Los precios y el stock se vuelven a calcular allá.
+  var ESTADOS_PED = [
+    { t: 'Recibido', d: 'Le llegó a la estación. En instantes lo confirman.' },
+    { t: 'Aceptado', d: 'El equipo lo tomó y empieza a armarlo.' },
+    { t: 'Armando', d: 'Estamos juntando cada producto de tu pedido.' },
+    { t: 'Listo para retirar', d: 'Te espera en la estación. Decí tu código y mostrá tu DNI.' },
+    { t: 'Retirado', d: '¡Gracias! Ya sumaste tus puntos.' }
+  ];
+  function apiPedido(cuerpo) {
+    return fetch('/api/tienda/pedido', cuerpo ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo), credentials: 'same-origin' } : { credentials: 'same-origin', cache: 'no-store' })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok && !j.error) j.error = 'Algo falló. Probá de nuevo en un momento.'; return j; }); })
+      .catch(function () { return { error: 'Sin conexión. Revisá internet y probá de nuevo.' }; });
+  }
+  function abiertoPed(p) { return p.estado === 'NUEVO' || p.estado === 'ARMANDO' || p.estado === 'LISTO'; }
+  function pedidoVisto() {
+    var l = S.pedidos || [];
+    return l.filter(function (p) { return p.codigo === S.verCodigo; })[0] || l.filter(abiertoPed)[0] || l[0] || null;
+  }
+  function cargarPedidos() {
+    if (!S.usuario) return;
+    apiPedido().then(function (r) {
+      if (!r || !r.pedidos) return;
+      var antes = JSON.stringify(S.pedidos || []);
+      S.pedidos = r.pedidos;
+      // Desde el link del mail: /tienda?pedido=WG-XXXX abre el seguimiento.
+      if (S.abrirCodigo) { if (r.pedidos.some(function (p) { return p.codigo === S.abrirCodigo; })) { S.verCodigo = S.abrirCodigo; S.vista = 'seguir'; } S.abrirCodigo = null; pintar(true); return; }
+      if (JSON.stringify(r.pedidos) !== antes) pintar(false);
+    });
+  }
+  function checkout() {
+    // Sin link de Mercado Pago (comisión cara): transferencia al alias a precio de góndola, o pagás al retirar.
+    var t = totales(), co = S.co || (S.co = { pago: 'transf' });
+    var op = function (a, v, on, tit, sub, extra) { return '<button class="opcion" data-a="' + a + '" data-v="' + v + '" aria-pressed="' + on + '"' + (extra || '') + '><span class="radio"></span><span><b>' + tit + '</b><small>' + sub + '</small></span></button>'; };
+    return '<div class="filtro-cab"><button class="redondo" data-a="abrir-pedido" aria-label="Volver al pedido">' + ic('atras') + '</button><span><b>Finalizar compra</b><small>' + t.u + (t.u === 1 ? ' producto' : ' productos') + ' · ' + esc(S.usuario.nombre) + ' · DNI ' + esc(S.usuario.dni) + '</small></span></div>' +
+      '<h3 class="sub-cuenta" style="margin-top:6px">¿Cómo lo recibís?</h3><div class="opciones">' +
+      op('x', 'retiro', true, 'Retiro en la estación', 'Arístides Villanueva 256 · listo en menos de 15 minutos · gratis') +
+      op('x', 'envio', false, 'Envío a domicilio <span class="pronto">Próximamente</span>', 'Muy pronto en Mendoza', ' disabled') + '</div>' +
+      '<p class="f-chico">Abierto de lunes a sábado de 9 a 13 y de 17 a 21. Si pedís con la estación cerrada, te lo dejamos listo apenas abrimos.</p>' +
+      '<h3 class="sub-cuenta">¿Cómo pagás?</h3><div class="opciones">' +
+      op('pago', 'transf', co.pago === 'transf', 'Transferencia · ' + plata(t.g), 'Al alias wiigo.bienestar, desde cualquier banco o billetera. Apenas la vemos, armamos tu pedido.') +
+      op('pago', 'retiro', co.pago === 'retiro', 'Pagás al retirar', 'En efectivo ' + plata(t.e) + ' · con tarjeta o QR ' + plata(t.g) + '. Te lo guardamos hasta mañana a las 21.') + '</div>' +
+      '<h3 class="sub-cuenta">Tu pedido</h3><div class="resumen">' + carrito.map(function (l) { var p = POR_ID[l.id]; return '<div class="total" style="font-size:14px;font-weight:600"><span>' + l.q + ' × ' + esc(p.t) + (l.v ? ' — ' + esc(l.v) : '') + '</span><b style="font-size:14px;font-family:var(--texto)">' + plata(p.p * l.q) + '</b></div>'; }).join('') +
+      '<div class="total" style="border-top:1px solid var(--linea);padding-top:10px;margin-top:4px"><span>Total</span><b>' + plata(t.g) + '</b></div>' +
+      (co.pago === 'retiro' ? '<div class="total ef"><span>Si pagás en efectivo</span><b>' + plata(t.e) + '</b></div>' : '') +
+      '<div class="total" style="font-size:14px"><span>Sumás en WiiGo Club</span><b style="font-size:16px;color:#a8461a">+' + t.p + ' puntos</b></div></div>' +
+      '<button class="cta naranja" style="margin-top:16px" data-a="confirmar"' + (S.enviando ? ' disabled' : '') + '>' + (S.enviando ? 'Enviando…' : co.pago === 'transf' ? 'Confirmar y transferir ' + plata(t.g) : 'Confirmar pedido') + '</button>' +
+      '<p class="f-chico" style="text-align:center">Al confirmar aceptás los términos y condiciones. Tenés 10 días para arrepentirte de la compra.</p>';
+  }
+  // La escena del local en cada paso del pedido (del primer prototipo aprobado, 2026-11-11).
+  function escenaPedido(k) {
+    var base = '<polygon points="200,118 372,206 200,294 28,206" fill="#e9dcc2"/><polygon points="28,206 200,118 200,40 28,128" fill="#f6f0e4"/><polygon points="200,118 372,206 372,128 200,40" fill="#ece2cf"/>' +
+      '<polygon points="46,182 168,120 168,80 46,142" fill="#b6bd9f"/><polygon points="46,182 168,120 168,125 46,187" fill="#7d8a66"/>' +
+      '<polygon points="58,162 72,155 72,141 58,148" fill="#e8743b"/><polygon points="82,150 96,143 96,129 82,136" fill="#f1c75b"/><polygon points="106,138 120,131 120,117 106,124" fill="#d9a37f"/><polygon points="130,126 144,119 144,105 130,112" fill="#3f6b6d"/><polygon points="58,180 72,173 72,163 58,170" fill="#d9a37f"/><polygon points="94,162 108,155 108,145 94,152" fill="#e8743b"/><polygon points="130,144 144,137 144,127 130,134" fill="#f1c75b"/>' +
+      '<polygon points="214,210 284,175 336,201 266,236" fill="#3f6b6d"/><polygon points="214,210 266,236 266,262 214,236" fill="#2f5456"/><polygon points="266,236 336,201 336,227 266,262" fill="#284849"/>' +
+      '<polygon points="290,108 340,133 340,170 290,145" fill="#18231a"/><text x="315" y="142" text-anchor="middle" font-size="7" font-weight="800" fill="#b6bd9f" font-family="Figtree" transform="skewY(27)">PEDIDOS</text><polygon points="236,72 260,84 260,112 236,100" fill="#22301f"/>';
+    var persona = function (x, y, color, extra) { return '<g style="animation:e-paso .6s ease-in-out infinite"><ellipse cx="' + x + '" cy="' + (y + 40) + '" rx="13" ry="5" fill="rgba(0,0,0,.2)"/><rect x="' + (x - 11) + '" y="' + y + '" width="22" height="36" rx="10" fill="' + color + '"/><circle cx="' + x + '" cy="' + (y - 11) + '" r="11" fill="#d9a37f"/>' + (extra || '') + '</g>'; };
+    var bolsa = function (x, y, cerrada) { return '<g><polygon points="' + x + ',' + y + ' ' + (x + 24) + ',' + (y - 12) + ' ' + (x + 38) + ',' + (y - 5) + ' ' + (x + 14) + ',' + (y + 7) + '" fill="#d9a37f"/><polygon points="' + x + ',' + y + ' ' + (x + 14) + ',' + (y + 7) + ' ' + (x + 14) + ',' + (y + 32) + ' ' + x + ',' + (y + 25) + '" fill="#c48d47"/><polygon points="' + (x + 14) + ',' + (y + 7) + ' ' + (x + 38) + ',' + (y - 5) + ' ' + (x + 38) + ',' + (y + 20) + ' ' + (x + 14) + ',' + (y + 32) + '" fill="#b07a3c"/>' + (cerrada ? '<rect x="' + (x + 17) + '" y="' + (y + 10) + '" width="16" height="9" fill="#18231a" transform="skewY(-27)"/>' : '') + '</g>'; };
+    var s = '';
+    if (k === 'recibido') s = '<circle cx="262" cy="190" r="14" fill="none" stroke="#f1c75b" stroke-width="3" style="animation:e-onda 1.6s ease-out infinite"/><circle cx="262" cy="190" r="14" fill="none" stroke="#f1c75b" stroke-width="3" style="animation:e-onda 1.6s ease-out infinite .8s"/><rect x="253" y="176" width="18" height="30" rx="4" fill="#18231a" stroke="#f5f1e8" stroke-width="2"/><g style="animation:e-ticket 1.8s ease-in-out infinite"><rect x="226" y="196" width="18" height="22" rx="2" fill="#fff"/><rect x="229" y="201" width="12" height="2" fill="#8a826f"/><rect x="229" y="206" width="9" height="2" fill="#8a826f"/></g>';
+    else if (k === 'aceptado') s = persona(300, 150, '#e8743b', '<rect x="306" y="158" width="14" height="18" rx="2" fill="#18231a"/>') + '<g style="animation:e-rebote 1.4s ease-in-out infinite"><circle cx="300" cy="104" r="16" fill="#b6bd9f"/><path d="M292 104l6 6 10-11" stroke="#1b2219" stroke-width="3.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>';
+    else if (k === 'preparando') s = '<g style="animation:e-caminar 4.4s ease-in-out infinite">' + persona(250, 168, '#e8743b') + '</g>' + bolsa(272, 196, false) + ['#f1c75b', '#b6bd9f', '#e8743b'].map(function (c, i) { return '<rect x="196" y="156" width="10" height="10" rx="2" fill="' + c + '" style="animation:e-saltar 2.2s ease-in infinite ' + (i * 0.7) + 's"/>'; }).join('');
+    else if (k === 'listo') s = '<g style="animation:e-rebote 2s ease-in-out infinite">' + bolsa(298, 134, true) + '<rect x="290" y="96" width="62" height="22" rx="6" fill="#f1c75b"/><text x="321" y="111" text-anchor="middle" font-family="ui-monospace,monospace" font-size="11" font-weight="800" fill="#3b2f0e">LISTO</text></g>';
+    else if (k === 'entregado') s = persona(222, 180, '#e8743b') + persona(300, 214, '#3f6b6d') + '<g style="animation:e-entrega 2.4s ease-in-out infinite alternate">' + bolsa(232, 200, true) + '</g>' + ['#f1c75b', '#e8743b', '#b6bd9f', '#fff', '#3f6b6d'].map(function (c, i) { return '<rect x="' + (60 + i * 64) + '" y="0" width="8" height="8" fill="' + c + '" style="animation:e-confeti ' + (2.2 + i * 0.3) + 's linear infinite ' + (i * 0.35) + 's"/>'; }).join('') + '<text x="130" y="76" font-family="Bricolage Grotesque" font-size="30" font-weight="800" fill="#f1c75b" style="animation:e-subePts 2.6s ease-out infinite">+ puntos</text>';
+    else if (k === 'cancelado') s = '<rect x="0" y="0" width="400" height="300" fill="rgba(24,35,26,.55)"/><circle cx="200" cy="150" r="40" fill="#c2361f"/><path d="M184 134l32 32M216 134l-32 32" stroke="#fff" stroke-width="7" stroke-linecap="round"/>';
+    return '<svg class="esc" viewBox="0 0 400 300" aria-hidden="true">' + base + s + '</svg>';
+  }
+  function seguimiento() {
+    var p = pedidoVisto(), volver = '<button class="redondo" data-a="inicio" aria-label="Volver al inicio">' + ic('atras') + '</button>';
+    if (!p) return '<div class="filtro-cab">' + volver + '<span><b>Mis pedidos</b></span></div><div class="vacio">' + (S.usuario ? 'No tenés pedidos en curso.' : 'Entrá con tu DNI para ver tus pedidos.') + '</div>';
+    var cancelado = p.estado === 'CANCELADO', e = Math.max(0, p.paso), falta = p.pago === 'transf' && !p.pagoOk && abiertoPed(p), c = p.transferencia;
+    // Transferencia sin confirmar: arriba de todo, los datos para transferir.
+    var transf = falta && c ? '<div class="transf"><small>Transferí</small><b>' + plata(p.total) + '</b>' +
+      '<div class="dato-t"><span>Alias</span><b>' + esc(c.alias) + '</b><button class="acceso" data-a="copiar" data-x="' + esc(c.alias) + '">Copiar</button></div>' +
+      '<div class="dato-t"><span>CVU</span><b>' + esc(c.cvu) + '</b><button class="acceso" data-a="copiar" data-x="' + esc(c.cvu) + '">Copiar</button></div>' +
+      '<div class="dato-t"><span>Titular</span><b>' + esc(c.titular) + '</b></div>' +
+      '<a class="cta" style="display:grid;place-items:center;text-decoration:none;margin-top:8px;background:#009ee3;color:#fff" href="' + esc(c.link) + '" target="_blank" rel="noopener">Transferir con Mercado Pago</a>' +
+      '<span class="f-chico" style="color:#5a4510">En el concepto poné <b>Pedido #' + p.num + '</b>. Cuando la vemos, empezamos a armarlo.</span></div>' : '';
+    var faltaron = p.items.filter(function (it) { return it.hay != null && it.hay < it.q; });
+    var avisoFalta = faltaron.length && !cancelado ? '<div class="seg-falta"><b>No encontramos todo</b>' + faltaron.map(function (it) { return '<span>' + esc(titulo(it.n)) + (it.v ? ' — ' + esc(it.v) : '') + ': ' + (it.hay === 0 ? 'no había' : 'había ' + it.hay + ' de ' + it.q) + '</span>'; }).join('') +
+      '<span>' + (p.devolver > 0 ? (p.devuelto ? 'Ya te devolvimos ' + plata(p.devolver) + '.' : 'Te devolvemos <b>' + plata(p.devolver) + '</b> por transferencia.') : 'El total quedó en <b>' + plata(p.total) + '</b>.') + '</span></div>' : '';
+    var sub = cancelado ? 'Cancelado' : p.pago === 'transf' ? (falta ? 'Esperando tu transferencia' : 'Transferencia recibida ✓') : 'Pagás al retirar: efectivo ' + plata(p.efectivo) + ' o tarjeta ' + plata(p.total);
+    var estado = cancelado ? '<div class="seg-estado"><b>Pedido cancelado</b><span>' + esc(p.motivo || 'Se canceló.') + (p.devolver > 0 ? ' Te devolvemos ' + plata(p.devolver) + ' a la misma cuenta.' : '') + '</span></div>'
+      : falta ? '<div class="seg-estado"><b>Esperando tu transferencia</b><span>Apenas la vemos en la cuenta, el equipo acepta tu pedido y lo arma.</span></div>'
+      : '<div class="seg-estado"><b>' + ESTADOS_PED[e].t + '</b><span>' + ESTADOS_PED[e].d + '</span>' + (e < 3 ? '<em>Listo en unos ' + [15, 12, 6][e] + ' minutos</em>' : '') + '</div>';
+    var otros = (S.pedidos || []).filter(function (x) { return x.codigo !== p.codigo; });
+    return '<div class="filtro-cab">' + volver + '<span><b>Pedido #' + p.num + '</b><small>' + sub + '</small></span></div>' + transf + avisoFalta +
+      '<div class="estacion3d"><div class="tablero">' + escenaPedido(cancelado ? 'cancelado' : ['recibido', 'aceptado', 'preparando', 'listo', 'entregado'][e]) + '</div></div>' +
+      (cancelado ? '' : '<div class="seg-codigo"><small>Tu código de retiro</small><b>' + esc(p.codigo) + '</b><span>Decilo en la estación y mostrá tu DNI</span></div>') + estado +
+      (cancelado ? '' : '<ol class="seg-pasos">' + ESTADOS_PED.map(function (x, i) { return '<li class="' + (i < e ? 'hecho' : i === e ? 'ahora' : '') + '"><i>' + (i < e ? '✓' : i + 1) + '</i><span>' + x.t + '</span></li>'; }).join('') + '</ol>') +
+      '<div class="seg-items">' + p.items.map(function (it) { var n = it.hay == null ? it.q : it.hay; return '<div class="total" style="font-size:14px;font-weight:600"><span>' + (n === 0 ? '<s>' : '') + (n === it.q ? it.q : n + ' de ' + it.q) + ' × ' + esc(titulo(it.n)) + (it.v ? ' — ' + esc(it.v) : '') + (n === 0 ? '</s>' : '') + '</span><b style="font-size:14px;font-family:var(--texto)">' + plata(it.p * n) + '</b></div>'; }).join('') +
+      '<div class="total" style="border-top:1px solid var(--linea);padding-top:8px;margin-top:2px"><span>Total</span><b>' + plata(p.total) + '</b></div></div>' +
+      '<p class="f-chico">Te avisamos por mail en cada paso.' + (abiertoPed(p) && !p.pagoOk ? ' Te lo guardamos hasta mañana a las 21.' : '') + '</p>' +
+      (otros.length ? '<h3 class="sub-cuenta">Tus otros pedidos</h3>' + otros.map(function (x) { return '<button class="ver-mas" style="margin-top:6px" data-a="ver-pedido" data-c="' + esc(x.codigo) + '">Pedido #' + x.num + ' · ' + (x.estado === 'CANCELADO' ? 'Cancelado' : ESTADOS_PED[Math.max(0, x.paso)].t) + '</button>'; }).join('') : '');
   }
 
   /* pintar */
@@ -343,8 +441,11 @@
       (S.usuario ? '<button class="pts-cab" data-a="cuenta" aria-label="Mi WiiGo: ' + S.usuario.puntos + ' puntos">★ ' + S.usuario.puntos.toLocaleString('es-AR') + '</button>' : '<button class="redondo" data-a="cuenta" aria-label="Mi cuenta">' + ic('persona') + '</button>') + '<button class="redondo" data-a="abrir-pedido" aria-label="Mi pedido">' + ic('bolsa') + '<span class="n">' + t.u + '</span></button></div>' +
       '<label class="buscar">' + ic('lupa', 20) + '<span class="oculto">Buscar producto</span><input id="q" type="search" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="Buscar producto" value="' + esc(S.q) + '">' + (S.q ? '<button class="limpiar" data-a="limpiar" aria-label="Borrar búsqueda">' + ic('cruz', 18) + '</button>' : '') + '</label>' +
       '<div class="accesos">' + acc('nuevos', 'chispa', 'Nuevos', f.nuevos, NUEVOS.length) + acc('abrir-menu', 'marcas', 'Marcas', false) + acc('mundo', 'globo', 'Del mundo', f.mundo) + acc('objetivos', 'objetivo', 'Objetivos', f.objetivos) + acc('pros', 'salud', 'Profesionales', S.vista === 'pros') + '</div></header>';
-    var cuerpo = S.vista === 'pros' ? profesionales() : (S.vista === 'lista' || S.q.length >= 2) ? lista() : inicio();
-    var barra = t.u && !S.pedido && !S.ficha ? '<div class="barra"><button data-a="abrir-pedido"><span>' + ic('bolsa', 20) + t.u + (t.u === 1 ? ' producto' : ' productos') + ' · ' + plata(t.g) + '</span><span>Ver mi pedido ' + ic('flecha', 18) + '</span></button></div>' : '';
+    var cuerpo = S.vista === 'checkout' && S.usuario && carrito.length ? checkout() : S.vista === 'seguir' ? seguimiento() : S.vista === 'pros' ? profesionales() : (S.vista === 'lista' || S.q.length >= 2) ? lista() : inicio();
+    // Con un pedido en curso y el carrito vacío, la barra lleva a seguirlo.
+    var enCurso = (S.pedidos || []).filter(abiertoPed)[0];
+    var barra = t.u && !S.pedido && !S.ficha && S.vista !== 'checkout' ? '<div class="barra"><button data-a="abrir-pedido"><span>' + ic('bolsa', 20) + t.u + (t.u === 1 ? ' producto' : ' productos') + ' · ' + plata(t.g) + '</span><span>Ver mi pedido ' + ic('flecha', 18) + '</span></button></div>'
+      : !t.u && enCurso && S.vista !== 'seguir' && !S.pedido ? '<div class="barra"><button data-a="ver-pedido" data-c="' + esc(enCurso.codigo) + '"><span>' + ic('bolsa', 20) + 'Pedido #' + enCurso.num + ' · ' + (enCurso.pago === 'transf' && !enCurso.pagoOk ? 'Falta tu transferencia' : ESTADOS_PED[Math.max(0, enCurso.paso)].t) + '</span><span>Seguir ' + ic('flecha', 18) + '</span></button></div>' : '';
     var foco = document.activeElement && (document.activeElement.id === 'q' || document.activeElement.id === 'mq') ? document.activeElement.id : null;
     var pos = foco ? document.activeElement.selectionStart : 0, y = window.scrollY;
     app.innerHTML = cab + '<main>' + cuerpo + '</main>' + (S.cuenta ? '' : barra) + cajon() + ficha() + pedido() + cuenta();
@@ -520,7 +621,13 @@
     'c-codigo': function () {
       var codigo = (document.getElementById('c-codigo').value || '').replace(/\D/g, '');
       if (codigo.length !== 6) return aviso('El código tiene 6 números');
-      pasoCuenta({ accion: 'codigo', dni: S.datos.dni, codigo: codigo }, function (r) { S.usuario = r.usuario; S.paso = 'dni'; S.datos = {}; setTimeout(function () { aviso('¡Listo, ' + r.usuario.nombre + '! Ya estás en WiiGo Club'); }, 50); });
+      pasoCuenta({ accion: 'codigo', dni: S.datos.dni, codigo: codigo }, function (r) {
+        S.usuario = r.usuario; S.paso = 'dni'; S.datos = {}; cargarPedidos();
+        // Venía de «Continuar»: sigue derecho a finalizar la compra.
+        if (S.trasEntrar === 'checkout' && carrito.length) { S.cuenta = false; S.vista = 'checkout'; window.scrollTo(0, 0); }
+        S.trasEntrar = null;
+        setTimeout(function () { aviso('¡Listo, ' + r.usuario.nombre + '! Ya estás en WiiGo Club'); }, 50);
+      });
     },
     'c-compra': function (d) { var i = Number(d.i); S.compraAbierta = S.compraAbierta === i ? null : i; pintar(false); },
     'c-repetir': function (d) {
@@ -542,7 +649,36 @@
         S.usuario = r.usuario; pintar(false); aviso(quiere ? 'Vas a recibir novedades' : 'Listo, no te mandamos más novedades');
       });
     },
-    'c-salir': function () { pasoCuenta({ accion: 'salir' }, function () { S.usuario = null; S.cuenta = false; S.compraAbierta = null; }); },
+    'c-salir': function () { pasoCuenta({ accion: 'salir' }, function () { S.usuario = null; S.cuenta = false; S.compraAbierta = null; S.pedidos = []; if (S.vista === 'checkout' || S.vista === 'seguir') S.vista = 'inicio'; }); },
+    // Parte 3: del pedido a finalizar la compra (hay que entrar con el DNI), pagar y seguirlo.
+    continuar: function () {
+      S.pedido = false;
+      if (!S.usuario) { S.trasEntrar = 'checkout'; A.cuenta(); aviso('Entrá con tu DNI para hacer el pedido'); return; }
+      S.vista = 'checkout'; pintar(true);
+    },
+    x: function () {},
+    pago: function (d) { S.co = S.co || {}; S.co.pago = d.v; pintar(false); },
+    confirmar: function () {
+      if (S.enviando || !carrito.length) return;
+      S.enviando = true; pintar(false);
+      var pago = (S.co && S.co.pago) === 'retiro' ? 'AL_RETIRAR' : 'TRANSFERENCIA';
+      apiPedido({ pago: pago, items: carrito.map(function (l) { return { id: l.id, v: l.v, q: l.q }; }) }).then(function (r) {
+        S.enviando = false;
+        if (r.error) {
+          // Se terminó algo mientras armaba el pedido: se ajusta solo a lo que queda.
+          (r.faltan || []).forEach(function (f) { carrito.forEach(function (l) { if (l.id === f.id && (l.v || null) === (f.v || null)) l.q = f.quedan; }); });
+          carrito = carrito.filter(function (l) { return l.q > 0; });
+          if (r.faltan && r.faltan.length) { S.vista = 'inicio'; S.pedido = true; }
+          pintar(false); aviso(r.error); return;
+        }
+        carrito = []; sabor = {}; S.co = null;
+        S.pedidos = [r.pedido].concat((S.pedidos || []).filter(function (p) { return p.codigo !== r.pedido.codigo; }));
+        S.verCodigo = r.pedido.codigo; S.vista = 'seguir'; pintar(true);
+        aviso(pago === 'TRANSFERENCIA' ? '¡Pedido hecho! Ahora transferí y lo armamos' : '¡Pedido hecho! Te avisamos cuando esté listo');
+      });
+    },
+    'ver-pedido': function (d) { S.verCodigo = d.c || null; S.vista = 'seguir'; S.pedido = false; pintar(true); cargarPedidos(); },
+    copiar: function (d) { try { navigator.clipboard.writeText(d.x); aviso('Copiado: ' + d.x); } catch (e) { aviso(d.x); } },
     sabor: function (d) { sabor[d.id] = d.x; refrescar(d.id); },
     sumar: function (d) { var p = POR_ID[d.id]; sumar(d.id, saborDe(p), 1); refrescar(d.id); },
     restar: function (d) { var p = POR_ID[d.id]; sumar(d.id, saborDe(p), -1); refrescar(d.id); },
@@ -567,7 +703,14 @@
     if (e.key === 'Enter' && /^c-/.test(e.target.id || '')) { var f = e.target.closest('.form'), b = f && f.querySelector('.cta'); if (b) { e.preventDefault(); b.click(); } }
     if (e.key === 'Escape') { S.menu = false; S.ficha = null; S.pedido = false; pintar(false); }
   });
+  // Desde el mail: /tienda?pedido=WG-XXXX abre el seguimiento de ese pedido.
+  try { var codigoUrl = new URLSearchParams(location.search).get('pedido'); if (codigoUrl && /^WG-[A-Z0-9]{4}$/.test(codigoUrl)) { S.abrirCodigo = codigoUrl; S.vista = 'seguir'; } } catch (e) {}
   pintar(false);
   // ¿Ya entró antes en este celu? La cookie la lee el servidor.
-  api().then(function (r) { if (r && r.usuario) { S.usuario = r.usuario; pintar(false); } });
+  api().then(function (r) { if (r && r.usuario) { S.usuario = r.usuario; pintar(false); cargarPedidos(); } else if (S.abrirCodigo) { A.cuenta(); aviso('Entrá con tu DNI para ver tu pedido'); } });
+  // Mientras mira su pedido en curso, se actualiza solo cada 30 segundos (no menos: cada pregunta cuenta para el plan de Vercel).
+  setInterval(function () {
+    var p = S.vista === 'seguir' && pedidoVisto();
+    if (p && abiertoPed(p) && document.visibilityState === 'visible') cargarPedidos();
+  }, 30000);
 })();

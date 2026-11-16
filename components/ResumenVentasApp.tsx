@@ -18,6 +18,7 @@ function formatearFechaHora(fechaISO: string) {
 const CANAL_LABEL: Record<string, string> = {
   SELF_CHECKOUT: "Self Checkout",
   POS: "Vender (POS)",
+  ONLINE: "Tienda online",
 };
 
 function formatearMedioPago(medioPago: string | null) {

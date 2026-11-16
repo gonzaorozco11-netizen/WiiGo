@@ -10,6 +10,7 @@ import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import PantallaBloqueada from "@/components/PantallaBloqueada";
 import PosApp, { type PedidoParaCobrar } from "@/components/PosApp";
 import { preciosVigentes } from "@/lib/pedidosProfesional";
+import { COLUMNAS_PEDIDO, cuantosHay, itemsDe, type FilaPedidoOnline } from "@/lib/pedidosOnline";
 import { cargarMarcasFabrica, nombresConMarca } from "@/lib/marcaFabrica";
 import { ponerPreciosAlDia } from "@/lib/preciosAlDia";
 
@@ -46,15 +47,43 @@ async function pedidoParaCobrar(supabase: ReturnType<typeof getSupabaseServerCli
   };
 }
 
-export default async function PosPage({ searchParams }: { searchParams: Promise<{ pedido?: string }> }) {
+// Un pedido de la tienda online que se paga al retirar (Pedidos online →
+// Entregar → Cobrar en la caja): lo que se encontró, el DNI y sus precios.
+// Los precios del pedido valen hasta que vence (el día siguiente a las 21).
+async function pedidoOnlineParaCobrar(supabase: ReturnType<typeof getSupabaseServerClient>, idPedido: string): Promise<PedidoParaCobrar | null> {
+  const { data } = await supabase.from("pedidos_online").select(COLUMNAS_PEDIDO).eq("id_pedido", idPedido).eq("estado", "LISTO").maybeSingle();
+  const p = data as FilaPedidoOnline | null;
+  if (!p || p.pago !== "AL_RETIRAR") return null;
+  return {
+    idPedido: p.id_pedido,
+    numero: Number(p.numero),
+    profesional: "",
+    paciente: p.nombre,
+    paraProfesional: false,
+    dni: p.dni,
+    codigo: null,
+    idLocal: p.id_local,
+    preciosVigentes: new Date(p.vence).getTime() > Date.now(),
+    items: itemsDe(p)
+      .filter((i) => cuantosHay(i) > 0)
+      .map((i) => ({ idVariante: i.idVariante, cantidad: cuantosHay(i), precioLista: i.precioLista, precioEfectivo: i.precioEfectivo })),
+    online: { codigo: p.codigo },
+  };
+}
+
+export default async function PosPage({ searchParams }: { searchParams: Promise<{ pedido?: string; online?: string }> }) {
   const sesion = await obtenerSesionConPantallas();
   if (!puedeVerPantalla(sesion, "pos")) return <PantallaBloqueada />;
-  const { pedido: idPedido } = await searchParams;
+  const { pedido: idPedido, online: idOnline } = await searchParams;
 
   const supabase = getSupabaseServerClient();
   // Pasado el cambio de turno, la caja arranca con los precios nuevos ya aprobados.
   await ponerPreciosAlDia();
-  const pedido = idPedido ? await pedidoParaCobrar(supabase, idPedido).catch(() => null) : null;
+  const pedido = idPedido
+    ? await pedidoParaCobrar(supabase, idPedido).catch(() => null)
+    : idOnline
+      ? await pedidoOnlineParaCobrar(supabase, idOnline).catch(() => null)
+      : null;
 
   const [localesRes, productosRes, variantesRes, marcasRes, stockRes, configRes, marcasFabrica] = await Promise.all([
     supabase.from("locales").select("*").eq("estado", "ACTIVO").order("nombre", { ascending: true }),

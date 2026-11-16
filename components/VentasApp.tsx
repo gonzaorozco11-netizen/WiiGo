@@ -15,13 +15,15 @@ import DevolucionPanel from "@/components/DevolucionPanel";
 import { etiquetaMedio } from "@/lib/formasPago";
 
 type FiltroFecha = "HOY" | "SEMANA" | "MES" | "TODO" | "RANGO";
-type FiltroCanal = "TODOS" | "SELF_CHECKOUT" | "POS";
+type FiltroCanal = "TODOS" | "SELF_CHECKOUT" | "POS" | "ONLINE";
 type FiltroEstado = "TODOS" | "PENDIENTE_PAGO" | "PAGADA" | "CANCELADA" | "ANULADA";
 type FiltroFactura = "TODAS" | "PENDIENTES" | "FACTURADAS";
 
 const CANAL_LABEL: Record<string, string> = {
   SELF_CHECKOUT: "Self Checkout",
   POS: "Vender (POS)",
+  // Los pedidos de la tienda online (app.wiigo.com.ar/tienda), aparte de lo del local.
+  ONLINE: "Tienda online",
 };
 
 const ESTADO_ESTILO: Record<string, string> = {
@@ -370,6 +372,7 @@ export default function VentasApp({
           <option value="TODOS">Todos los canales</option>
           <option value="SELF_CHECKOUT">Self Checkout</option>
           <option value="POS">Vender (POS)</option>
+          <option value="ONLINE">Tienda online</option>
         </select>
 
         <select

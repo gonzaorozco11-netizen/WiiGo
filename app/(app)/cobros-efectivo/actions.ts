@@ -74,7 +74,10 @@ export async function confirmarCobro(
     if (!venta.id_local) return { error: "Este pedido no tiene local asignado" };
 
     const idTurno = await turnoAbiertoDeLocal(supabase, venta.id_local);
-    if (!idTurno) {
+    // Un pedido de la tienda online pagado por transferencia no pasa por el
+    // cajón: se puede entregar sin turno abierto (queda sin turno, como en la
+    // cuenta de Mercado Pago). Todo lo demás sigue exigiendo el turno.
+    if (!idTurno && venta.canal !== "ONLINE") {
       return { error: "No hay un turno de caja abierto en este local — abrilo en Turnos antes de confirmar cobros." };
     }
 
@@ -168,7 +171,8 @@ export async function confirmarCobro(
     numeroVenta: (venta.numero as number) ?? 0,
     idLocal: venta.id_local,
     lineas: lineas.map((l) => ({ idVariante: l.id_variante as string, cantidad: l.cantidad as number })),
-    motivo: venta.canal === "POS" ? "Venta mostrador (QR Mercado Pago)" : "Venta Self Checkout",
+    motivo:
+      venta.canal === "POS" ? "Venta mostrador (QR Mercado Pago)" : venta.canal === "ONLINE" ? "Venta tienda online (transferencia)" : "Venta Self Checkout",
     usuario,
   });
   if (stock.error) return { error: stock.error };

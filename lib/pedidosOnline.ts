@@ -1,0 +1,323 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { enviarMail, plantilla } from "@/lib/mail";
+import { baseUrlPublica } from "@/lib/urlPublica";
+import { fechaHoraArgentina } from "@/lib/horarios";
+import { leerMailsResumen, PARAMETRO_MAILS_RESUMEN } from "@/lib/resumenTurno";
+
+// Los pedidos de la tienda online (partes 3 y 4, Gonzalo 2026-11-16).
+//
+// El cliente arma el pedido en app.wiigo.com.ar/tienda, entra con su DNI y
+// elige cómo paga:
+//   - TRANSFERENCIA al alias de Mercado Pago, a precio de góndola. El equipo
+//     ve la plata y la confirma (sin link de pago: la comisión es cara).
+//   - AL_RETIRAR, en la caja: efectivo (precio de efectivo), QR o posnet.
+// El equipo lo mueve en «Pedidos online» en tres pasos: 1 Nuevos → 2 Armando
+// → 3 Listos. Al cliente le llega un mail en cada paso, y lo sigue en la tienda.
+//
+// La venta (canal ONLINE) se crea recién al entregar, con lo que se llevó de
+// verdad: si faltó algo, la venta, el stock y los puntos ya salen bien, y lo
+// que haya que devolver de una transferencia queda anotado en el pedido.
+// Tablas: sql/tienda-pedidos.sql.
+
+export const FALTA_SQL_ONLINE = "Falta correr sql/tienda-pedidos.sql en Supabase.";
+
+export type EstadoOnline = "NUEVO" | "ARMANDO" | "LISTO" | "ENTREGADO" | "CANCELADO";
+export type PagoOnline = "TRANSFERENCIA" | "AL_RETIRAR";
+export const ESTADOS_ABIERTOS: EstadoOnline[] = ["NUEVO", "ARMANDO", "LISTO"];
+
+// Lo que el cliente necesita para transferir. El alias sale de Configuración
+// (MP_ALIAS_TRANSFERENCIA, el mismo de la caja); lo demás son los datos de la
+// cuenta que pasó Gonzalo.
+export const CUENTA_TRANSFERENCIA = {
+  alias: "wiigo.bienestar",
+  cvu: "0000003100030560010001",
+  titular: "NUOVO IMPERO S.A.S.",
+  link: "https://mpago.la/2JN6J7p",
+};
+
+export async function datosTransferencia(supabase: SupabaseClient) {
+  const { data } = await supabase.from("configuracion").select("valor").eq("parametro", "MP_ALIAS_TRANSFERENCIA").maybeSingle();
+  const alias = (data?.valor as string | null)?.trim();
+  return { ...CUENTA_TRANSFERENCIA, alias: alias || CUENTA_TRANSFERENCIA.alias };
+}
+
+/** El código de retiro: WG- y cuatro letras o números que no se confunden (sin 0/O, 1/I/L). */
+export function codigoRetiro() {
+  const letras = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  const n = crypto.getRandomValues(new Uint32Array(4));
+  return `WG-${Array.from(n, (x) => letras[x % letras.length]).join("")}`;
+}
+
+/** Sin pagar se guarda hasta el día siguiente a las 21 de Argentina. */
+export function venceDe(desde = new Date()) {
+  const hoy = fechaHoraArgentina(desde).fecha;
+  return new Date(new Date(`${hoy}T21:00:00-03:00`).getTime() + 24 * 3600_000).toISOString();
+}
+
+export const pesos = (n: number) => `$${Math.round(n).toLocaleString("es-AR")}`;
+
+export type ItemOnline = {
+  idItem: string;
+  idVariante: string;
+  idProducto: string;
+  idMarca: string | null;
+  nombre: string;
+  variante: string | null;
+  cantidad: number;
+  /** null = estaban todos. */
+  hay: number | null;
+  precioLista: number;
+  precioEfectivo: number;
+  armado: boolean;
+};
+
+export type FilaPedidoOnline = {
+  id_pedido: string;
+  numero: number;
+  codigo: string;
+  id_cliente: string;
+  id_local: string | null;
+  nombre: string;
+  dni: string;
+  email: string | null;
+  pago: PagoOnline;
+  pago_ok_at: string | null;
+  estado: EstadoOnline;
+  total_lista: number;
+  total_efectivo: number;
+  devolver: number;
+  devuelto_at: string | null;
+  motivo_cancelacion: string | null;
+  creado: string;
+  aceptado_at: string | null;
+  listo_at: string | null;
+  entregado_at: string | null;
+  cancelado_at: string | null;
+  vence: string;
+  id_venta: string | null;
+  pedidos_online_items?: Record<string, unknown>[] | null;
+};
+
+export function itemsDe(fila: FilaPedidoOnline): ItemOnline[] {
+  return (fila.pedidos_online_items ?? []).map((i) => ({
+    idItem: i.id_item as string,
+    idVariante: i.id_variante as string,
+    idProducto: i.id_producto as string,
+    idMarca: (i.id_marca as string | null) ?? null,
+    nombre: i.nombre as string,
+    variante: (i.variante as string | null) ?? null,
+    cantidad: Number(i.cantidad),
+    hay: i.hay == null ? null : Number(i.hay),
+    precioLista: Number(i.precio_lista),
+    precioEfectivo: Number(i.precio_efectivo),
+    armado: Boolean(i.armado),
+  }));
+}
+
+export const cuantosHay = (i: Pick<ItemOnline, "cantidad" | "hay">) => (i.hay == null ? i.cantidad : i.hay);
+
+/** Los totales con lo que hay (si faltó algo, ya descontado). */
+export function totalesDe(items: ItemOnline[]) {
+  const lista = items.reduce((t, i) => t + cuantosHay(i) * i.precioLista, 0);
+  const efectivo = items.reduce((t, i) => t + cuantosHay(i) * i.precioEfectivo, 0);
+  const original = items.reduce((t, i) => t + i.cantidad * i.precioLista, 0);
+  return { lista, efectivo, original, falto: original - lista };
+}
+
+export const COLUMNAS_PEDIDO =
+  "*, pedidos_online_items(id_item, id_variante, id_producto, id_marca, nombre, variante, cantidad, hay, precio_lista, precio_efectivo, armado)";
+
+/**
+ * El paso que ve el cliente (0 a 4): Recibido, Aceptado, Armando, Listo, Retirado.
+ * El equipo tiene tres columnas; el cliente ve «Armando» cuando ya tildaron algo.
+ */
+export function pasoCliente(estado: EstadoOnline, items: ItemOnline[]) {
+  if (estado === "NUEVO") return 0;
+  if (estado === "ARMANDO") return items.some((i) => i.armado || i.hay != null) ? 2 : 1;
+  if (estado === "LISTO") return 3;
+  if (estado === "ENTREGADO") return 4;
+  return -1;
+}
+
+/** Cuánto de cada variante está comprometido en pedidos online abiertos (todavía no salió del stock). */
+export async function reservadoPorVariante(supabase: SupabaseClient, idsVariante: string[], salvoPedido?: string): Promise<Map<string, number>> {
+  const reservado = new Map<string, number>();
+  if (idsVariante.length === 0) return reservado;
+  const { data, error } = await supabase
+    .from("pedidos_online_items")
+    .select("id_variante, cantidad, hay, id_pedido, pedidos_online!inner(estado)")
+    .in("id_variante", idsVariante)
+    .in("pedidos_online.estado", ESTADOS_ABIERTOS);
+  if (error) return reservado;
+  for (const r of data ?? []) {
+    if (salvoPedido && r.id_pedido === salvoPedido) continue;
+    const n = r.hay == null ? Number(r.cantidad) : Number(r.hay);
+    reservado.set(r.id_variante as string, (reservado.get(r.id_variante as string) ?? 0) + n);
+  }
+  return reservado;
+}
+
+/**
+ * Los que vencieron sin pagar se cancelan solos (el día siguiente a las 21).
+ * Una transferencia ya confirmada no se cancela sola: esa plata hay que
+ * devolverla o entregar el pedido, lo decide el equipo.
+ * Lo corre el cron de las 21:05 (api/cron/aplicar-cambios) y, por las dudas,
+ * cada vez que alguien mira la lista.
+ */
+export async function vencerPedidosOnline(supabase: SupabaseClient): Promise<number> {
+  const ahora = new Date().toISOString();
+  const { data, error } = await supabase
+    .from("pedidos_online")
+    .update({ estado: "CANCELADO", cancelado_at: ahora, motivo_cancelacion: "No se retiró a tiempo (venció)" })
+    .in("estado", ESTADOS_ABIERTOS)
+    .is("pago_ok_at", null)
+    .lt("vence", ahora)
+    .select("id_pedido");
+  if (error) return 0;
+  for (const p of data ?? []) await avisarCliente(supabase, p.id_pedido as string, "CANCELADO");
+  return (data ?? []).length;
+}
+
+/* ---------------- mails ---------------- */
+
+export type AvisoCliente = "RECIBIDO" | "PAGO_OK" | "ACEPTADO" | "LISTO" | "ENTREGADO" | "CANCELADO";
+
+const PIE = "WiiGo · Estaciones de Bienestar · Arístides Villanueva 256, Mendoza · Lunes a sábado de 9 a 13 y de 17 a 21";
+
+function escapar(s: string) {
+  return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] as string);
+}
+
+/** Un mail al cliente con lo que pasó con su pedido. Nunca tira: el mail es lo accesorio. */
+export async function avisarCliente(supabase: SupabaseClient, idPedido: string, tipo: AvisoCliente): Promise<void> {
+  try {
+    const { data } = await supabase.from("pedidos_online").select(COLUMNAS_PEDIDO).eq("id_pedido", idPedido).maybeSingle();
+    const p = data as FilaPedidoOnline | null;
+    if (!p?.email) return;
+    const items = itemsDe(p);
+    const t = totalesDe(items);
+    const base = baseUrlPublica("https://app.wiigo.com.ar");
+    const boton = { texto: "Seguir mi pedido", url: `${base}/tienda?pedido=${encodeURIComponent(p.codigo)}` };
+    const nombre = escapar(p.nombre.split(" ")[0] ?? p.nombre);
+    const faltaron = items.filter((i) => i.hay != null && i.hay < i.cantidad);
+    const textoFaltas = faltaron
+      .map((i) => `${escapar(i.nombre)}${i.variante ? ` — ${escapar(i.variante)}` : ""}: ${i.hay === 0 ? "no había" : `había ${i.hay} de ${i.cantidad}`}`)
+      .join("<br>");
+    const pagaAlRetirar = p.pago === "AL_RETIRAR";
+
+    let asunto = "";
+    let html = "";
+    let texto = "";
+    if (tipo === "RECIBIDO") {
+      const cuenta = await datosTransferencia(supabase);
+      asunto = `Recibimos tu pedido #${p.numero}`;
+      html = plantilla({
+        titulo: `¡Gracias, ${nombre}!`,
+        bajada: `Recibimos tu pedido #${p.numero}.`,
+        destacado: p.codigo,
+        detalle: ["Tu código de retiro: decilo en la estación y mostrá tu DNI."],
+        franja: pagaAlRetirar
+          ? { titulo: "Pagás al retirar", texto: `En efectivo ${pesos(t.efectivo)} · con tarjeta o QR ${pesos(t.lista)}. Te lo guardamos hasta mañana a las 21.` }
+          : { titulo: `Transferí ${pesos(t.lista)}`, texto: `Alias <b>${escapar(cuenta.alias)}</b> · CVU ${cuenta.cvu} · ${cuenta.titular}.<br>En el concepto poné «Pedido #${p.numero}». Apenas la vemos, armamos tu pedido.` },
+        boton,
+        tono: pagaAlRetirar ? "verde" : "ambar",
+        pie: PIE,
+        base,
+      });
+      texto = `Recibimos tu pedido #${p.numero}. Código de retiro: ${p.codigo}. ${pagaAlRetirar ? `Pagás al retirar: efectivo ${pesos(t.efectivo)} o tarjeta/QR ${pesos(t.lista)}.` : `Transferí ${pesos(t.lista)} al alias ${cuenta.alias} (CVU ${cuenta.cvu}).`} ${boton.url}`;
+    } else if (tipo === "PAGO_OK") {
+      asunto = `Recibimos tu transferencia · pedido #${p.numero}`;
+      html = plantilla({ titulo: "¡Llegó tu transferencia!", bajada: `Pedido #${p.numero} · ${pesos(t.lista)}`, cuerpo: "Ya la vimos en la cuenta. El equipo toma tu pedido y empieza a armarlo.", boton, pie: PIE, base });
+      texto = `Recibimos tu transferencia del pedido #${p.numero}. ${boton.url}`;
+    } else if (tipo === "ACEPTADO") {
+      asunto = `Estamos armando tu pedido #${p.numero}`;
+      html = plantilla({ titulo: "¡Manos a la obra!", bajada: `El equipo aceptó tu pedido #${p.numero} y lo está armando.`, cuerpo: "Te avisamos apenas esté listo para retirar.", boton, pie: PIE, base });
+      texto = `Estamos armando tu pedido #${p.numero}. ${boton.url}`;
+    } else if (tipo === "LISTO") {
+      asunto = `Tu pedido #${p.numero} está listo para retirar`;
+      const devolver = Number(p.devolver) || 0;
+      html = plantilla({
+        titulo: "¡Está listo!",
+        emoji: "🛍️",
+        bajada: `Tu pedido #${p.numero} te espera en la estación.`,
+        destacado: p.codigo,
+        detalle: ["Decí este código en la estación y mostrá tu DNI.", pagaAlRetirar ? `A pagar: efectivo ${pesos(t.efectivo)} · tarjeta o QR ${pesos(t.lista)}` : "Ya está pago."],
+        franja: faltaron.length
+          ? {
+              titulo: "No encontramos todo",
+              texto: `${textoFaltas}<br>${devolver > 0 ? `Te devolvemos <b>${pesos(devolver)}</b> por transferencia.` : `El total quedó en <b>${pesos(t.lista)}</b>.`}`,
+            }
+          : undefined,
+        tono: faltaron.length ? "ambar" : "verde",
+        boton,
+        nota: "Arístides Villanueva 256 · lunes a sábado de 9 a 13 y de 17 a 21.",
+        pie: PIE,
+        base,
+      });
+      texto = `Tu pedido #${p.numero} está listo. Código: ${p.codigo}.${faltaron.length ? ` Faltó: ${faltaron.map((i) => i.nombre).join(", ")}.` : ""} ${boton.url}`;
+    } else if (tipo === "ENTREGADO") {
+      const { data: venta } = p.id_venta ? await supabase.from("ventas").select("puntos_generados").eq("id_venta", p.id_venta).maybeSingle() : { data: null };
+      const puntos = Number(venta?.puntos_generados ?? 0);
+      asunto = `¡Gracias por tu compra en WiiGo!`;
+      html = plantilla({
+        titulo: `¡Gracias, ${nombre}!`,
+        bajada: `Retiraste tu pedido #${p.numero}.`,
+        destacado: puntos > 0 ? `+${puntos} puntos` : undefined,
+        detalle: puntos > 0 ? ["Ya están en tu cuenta del WiiGo Club."] : undefined,
+        boton: { texto: "Volver a la tienda", url: `${base}/tienda` },
+        pie: PIE,
+        base,
+      });
+      texto = `Retiraste tu pedido #${p.numero}.${puntos > 0 ? ` Sumaste ${puntos} puntos en el WiiGo Club.` : ""}`;
+    } else {
+      const devolver = Number(p.devolver) || 0;
+      asunto = `Se canceló tu pedido #${p.numero}`;
+      html = plantilla({
+        titulo: "Tu pedido se canceló",
+        tono: "ambar",
+        bajada: `Pedido #${p.numero}${p.motivo_cancelacion ? ` · ${escapar(p.motivo_cancelacion)}` : ""}`,
+        cuerpo: devolver > 0 ? `Ya habías transferido: te devolvemos <b>${pesos(devolver)}</b> a la misma cuenta.` : "Si querés, armalo de nuevo cuando quieras.",
+        boton: { texto: "Ir a la tienda", url: `${base}/tienda` },
+        pie: PIE,
+        base,
+      });
+      texto = `Se canceló tu pedido #${p.numero}.${devolver > 0 ? ` Te devolvemos ${pesos(devolver)}.` : ""}`;
+    }
+    const r = await enviarMail({ para: [p.email], asunto, html, texto });
+    if (!r.ok) console.error(`[pedidos-online] no salió el mail ${tipo} del pedido ${p.numero}:`, r.error);
+  } catch (e) {
+    console.error("[pedidos-online] mail al cliente:", e);
+  }
+}
+
+/** Un pedido nuevo: mail a los mails del Dueño (Configuración → Resumen por mail). */
+export async function avisarPedidoNuevoAlDueno(supabase: SupabaseClient, idPedido: string): Promise<void> {
+  try {
+    const [{ data: cfg }, { data }] = await Promise.all([
+      supabase.from("configuracion").select("valor").eq("parametro", PARAMETRO_MAILS_RESUMEN).maybeSingle(),
+      supabase.from("pedidos_online").select(COLUMNAS_PEDIDO).eq("id_pedido", idPedido).maybeSingle(),
+    ]);
+    const mails = leerMailsResumen(cfg?.valor as string | null);
+    const p = data as FilaPedidoOnline | null;
+    if (!p || mails.length === 0) return;
+    const items = itemsDe(p);
+    const t = totalesDe(items);
+    const base = baseUrlPublica("https://app.wiigo.com.ar");
+    const asunto = `🛒 Pedido online #${p.numero} · ${pesos(t.lista)}`;
+    await enviarMail({
+      para: mails,
+      asunto,
+      html: plantilla({
+        titulo: `Pedido online #${p.numero}`,
+        bajada: `${escapar(p.nombre)} · ${p.pago === "TRANSFERENCIA" ? "paga por transferencia" : "paga al retirar"}`,
+        destacado: pesos(t.lista),
+        detalle: items.map((i) => `${i.cantidad} × ${escapar(i.nombre)}${i.variante ? ` — ${escapar(i.variante)}` : ""}`),
+        boton: base ? { texto: "Ver pedidos online", url: `${base}/pedidos-online` } : undefined,
+        base,
+      }),
+      texto: `Pedido online #${p.numero} de ${p.nombre}: ${pesos(t.lista)}. ${base}/pedidos-online`,
+    });
+  } catch (e) {
+    console.error("[pedidos-online] mail al dueño:", e);
+  }
+}

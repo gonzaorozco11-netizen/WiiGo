@@ -6,6 +6,7 @@ import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import { contarPedidosNuevosSinSesion } from "@/lib/pedidosNuevos";
 import AvisoPedidos from "@/components/AvisoPedidos";
 import AvisoCobros from "@/components/AvisoCobros";
+import AvisoPedidosOnline from "@/components/AvisoPedidosOnline";
 import ActualizarSolo from "@/components/ActualizarSolo";
 import { versionActual } from "@/lib/version";
 import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos";
@@ -63,6 +64,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // Un cliente del tótem esperando para pagar en efectivo: franja roja y
   // timbre a quien está trabajando (lo decide la ruta que consulta el aviso).
   const veCobros = Boolean(session) && !soloCelular && puedeVerPantalla(sesionConPantallas, "cobros-efectivo");
+  // Un pedido de la tienda online sin atender: cartel rojo con timbre (cada 30 s).
+  const vePedidosOnline =
+    Boolean(session) && !soloCelular && (puedeVerPantalla(sesionConPantallas, "pedidos-online") || puedeVerPantalla(sesionConPantallas, "pedidos"));
   // Las preguntas de la Guía que esperan respuesta: las responde el Dueño, el
   // número sale en su botón "¿Alguna duda?". Sin sql/guia-preguntas.sql da 0.
   // Carteles con el precio viejo mientras la caja ya cobra el nuevo: aviso rojo arriba de todo.
@@ -97,6 +101,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <ActualizarSolo version={versionActual()} />
         {veCobros && <AvisoCobros />}
         {vePedidos && <AvisoPedidos inicial={pedidosNuevos} />}
+        {vePedidosOnline && <AvisoPedidosOnline />}
         {seAvisanCarteles && <AvisoCartelesBanner inicial={cartelesUrgentes} />}
         {/* Con la entrada abierta en un turno, el aviso decide solo cuándo
             aparecer (15 min antes del fin) y se actualiza sin recargar. */}

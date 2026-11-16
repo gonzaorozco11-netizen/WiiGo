@@ -236,6 +236,7 @@ function itemActivo(pathname: string): { grupo: string | null; item: NavItem } |
     { grupo: null, item: { href: "/configuracion", label: "Configuración" } },
     { grupo: null, item: { href: "/auditoria", label: "Auditoría" } },
     { grupo: null, item: { href: "/aparatos", label: "Tablets del local" } },
+    { grupo: null, item: { href: "/pedidos-online", label: "Pedidos online" } },
   ];
   for (const c of candidatos) {
     const coincide = pathname === c.item.href || pathname.startsWith(`${c.item.href}/`);
@@ -382,6 +383,14 @@ export default function AppNav({
             {pedidosNuevos > 0 && (
               <span className="ml-auto text-[10.5px] font-bold px-1.5 py-0.5 rounded-full bg-red-600 text-white">{pedidosNuevos}</span>
             )}
+          </Link>
+        )}
+        {/* Los pedidos de la tienda online, al lado: el mismo trabajo de armar
+            y entregar. Quien tiene «Pedidos» también los ve. */}
+        {(puedeVer("/pedidos-online") || puedeVer("/pedidos")) && (
+          <Link href="/pedidos-online" className={`mt-0.5 ${claseLink(pathname === "/pedidos-online")}`}>
+            <Icono nombre="compras" className={pathname === "/pedidos-online" ? "text-accent" : "text-neutral-500"} />
+            Pedidos online
           </Link>
         )}
         {/* Solo el Dueño: los seis encargados con IA ven todos los números. */}
