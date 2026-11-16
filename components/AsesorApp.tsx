@@ -168,6 +168,23 @@ function traducir(idioma: Idioma, base: string, en: string | null | undefined, p
   return base;
 }
 
+// Los alérgenos se cargan en castellano en el producto (un solo campo, sin _en/_pt).
+// Las palabras de siempre se traducen acá; lo que no está en la lista queda como vino.
+const ALERGENOS_TRAD: Record<string, { en: string; pt: string }> = {
+  "frutos secos": { en: "tree nuts", pt: "castanhas" },
+  "maní": { en: "peanuts", pt: "amendoim" },
+  "sésamo": { en: "sesame", pt: "gergelim" },
+  "leche": { en: "milk", pt: "leite" },
+  "soja": { en: "soy", pt: "soja" },
+  "huevo": { en: "egg", pt: "ovo" },
+  "gluten": { en: "gluten", pt: "glúten" },
+  "y": { en: "and", pt: "e" },
+};
+function traducirAlergenos(texto: string, idioma: "en" | "pt"): string {
+  const t = texto.replace(/frutos secos|maní|sésamo|leche|soja|huevo|gluten|\by\b/gi, (m) => ALERGENOS_TRAD[m.toLowerCase()]?.[idioma] ?? m);
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
 function contarProductos(n: number, idioma: Idioma, sufijo?: "descuento" | "disponibles"): string {
   if (idioma === "en") {
     const base = `${n} product${n === 1 ? "" : "s"}`;
@@ -3737,6 +3754,12 @@ function ProductoDetalleModal({
                   <p className="text-[13px] leading-relaxed text-[#3d3d3d] pb-3.5">
                     {traducir(idioma, ficha.ingredientes, ficha.ingredientes_en, ficha.ingredientes_pt)}
                   </p>
+                  {producto.alergenos && (
+                    <p className="text-[13px] leading-relaxed text-[#3d3d3d] pb-3.5 -mt-1.5">
+                      <b>{idioma === "en" ? "Allergens" : idioma === "pt" ? "Alergênicos" : "Alérgenos"}:</b>{" "}
+                      {idioma === "es" ? producto.alergenos : traducirAlergenos(producto.alergenos, idioma)}
+                    </p>
+                  )}
                 </div>
               </div>
             )}

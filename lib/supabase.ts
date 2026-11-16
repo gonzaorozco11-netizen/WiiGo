@@ -241,7 +241,7 @@ export type ProductoPublico = Pick<
   | "precio_venta"
   | "precio_efectivo"
   | "descuento_porcentaje"
->;
+> & { alergenos?: string | null };
 
 export const COLUMNAS_PRODUCTO_PUBLICO =
   "id_producto,id_marca,id_subcategoria,nombre,nombre_en,nombre_pt,imagen,precio_venta,precio_efectivo,descuento_porcentaje";
