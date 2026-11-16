@@ -8,14 +8,15 @@ import type { CobroEsperando, CobrosEsperando } from "@/lib/cobrosEsperando";
 
 // La alarma de «hay un cliente esperando para pagar» (Gonzalo, 2026-11-12):
 // cuando alguien elige pagar en efectivo en el tótem, al equipo que está
-// trabajando le SALTA un cartel grande en el medio de la pantalla, esté en la
-// pantalla que esté, con timbre (y vibración donde se puede). Nadie tiene que
-// recargar nada: mira sola cada 5 segundos.
+// trabajando le aparece una franja roja arriba con el número latiendo como un
+// corazón, esté en la pantalla que esté, con timbre (y vibración donde se
+// puede). Desde el 16/11 ya no hay cartel grande en el medio (Gonzalo).
+// Nadie tiene que recargar nada: mira sola cada 10 segundos.
 //
 //   - «Cobrar ahora» lleva a Cobros en efectivo.
-//   - «Ya voy» cierra el cartel y queda una franja roja arriba hasta que se cobra.
-//   - Mientras el cartel está abierto, el timbre se repite cada 15 segundos
-//     durante los primeros 5 minutos.
+//   - «Ya voy» corta el timbre; la franja queda hasta que se cobra.
+//   - Hasta que alguien toca «Ya voy» o entra a Cobros, el timbre se repite
+//     cada 15 segundos durante los primeros 5 minutos.
 //   - El número sale también en «Cobrar pedidos» del inicio, en el ícono de la
 //     app (donde el aparato lo permite) y en la pestaña de la compu.
 
@@ -50,7 +51,6 @@ function sonarAlarma() {
 }
 
 const formatearPedido = (numero: number) => `VTA-${String(numero).padStart(4, "0")}`;
-const pesos = (n: number) => `$${Math.round(n).toLocaleString("es-AR")}`;
 
 export default function AvisoCobros() {
   const router = useRouter();
@@ -138,41 +138,17 @@ export default function AvisoCobros() {
 
   if (pathname === "/cobros-efectivo") return null;
 
+  // Sin cartel grande en el medio (Gonzalo, 16/11): la franja roja arriba con
+  // el número latiendo como un corazón, el timbre, y en el Inicio el acceso
+  // «Cobrar pedidos» late igual. «Ya voy» corta el timbre que se repite.
   return (
     <>
-      {cartel && (
-        <div className="fixed inset-0 z-[70] bg-black/55 grid place-items-center p-4 print:hidden" role="alertdialog" aria-modal="true" aria-labelledby="aviso-cobro-titulo">
-          <div className="w-full max-w-md rounded-3xl bg-red-600 text-white text-center shadow-2xl px-6 py-8">
-            <div className="text-6xl animate-bounce motion-reduce:animate-none" aria-hidden="true">
-              🔔
-            </div>
-            <p id="aviso-cobro-titulo" className="text-2xl font-extrabold mt-3 leading-tight">
-              Un cliente está esperando para pagar en efectivo
-            </p>
-            <p className="text-lg mt-2 opacity-95">
-              Pedido {formatearPedido(cartel.numero)} · <b className="tabular-nums">{pesos(cartel.total)}</b>
-            </p>
-            {estado.n > 1 && <p className="text-sm mt-1 opacity-90">Hay {estado.n} pedidos esperando en total.</p>}
-            <Link
-              href="/cobros-efectivo"
-              onClick={atender}
-              className="mt-6 block w-full rounded-2xl bg-white text-red-700 text-xl font-extrabold py-4 hover:bg-red-50"
-            >
-              Cobrar ahora →
-            </Link>
-            <button type="button" onClick={atender} className="mt-3 text-sm font-semibold text-white/90 underline underline-offset-4">
-              Ya voy
-            </button>
-          </div>
-        </div>
-      )}
-      {!cartel && estado.n > 0 && (
+      {estado.n > 0 && (
         <div className="bg-red-600 text-white print:hidden" role="alert">
           <div className="max-w-6xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
             <p className="text-[15px] font-bold flex flex-wrap items-center gap-x-2 gap-y-0.5">
-              <span className="relative flex w-3 h-3" aria-hidden="true">
-                <span className="absolute inline-flex h-full w-full rounded-full bg-white opacity-75 animate-ping motion-reduce:hidden" />
-                <span className="relative inline-flex w-3 h-3 rounded-full bg-white" />
+              <span className="late-corazon relative grid h-8 min-w-8 place-items-center px-1.5 text-base font-black tabular-nums ring-2 ring-white rounded-full" aria-hidden="true">
+                <span className="relative">{estado.n}</span>
               </span>
               {estado.n === 1 ? "Hay un cliente esperando para pagar en efectivo" : `Hay ${estado.n} clientes esperando para pagar en efectivo`}
               {estado.numero !== null && (
@@ -182,9 +158,16 @@ export default function AvisoCobros() {
                 </span>
               )}
             </p>
-            <Link href="/cobros-efectivo" className="bg-white text-red-700 text-sm font-extrabold rounded-lg px-4 py-2 whitespace-nowrap hover:bg-red-50">
-              Cobrar ahora →
-            </Link>
+            <span className="flex items-center gap-3">
+              {cartel && (
+                <button type="button" onClick={atender} className="text-sm font-semibold text-white/90 underline underline-offset-4">
+                  Ya voy
+                </button>
+              )}
+              <Link href="/cobros-efectivo" onClick={atender} className="bg-white text-red-700 text-sm font-extrabold rounded-lg px-4 py-2 whitespace-nowrap hover:bg-red-50">
+                Cobrar ahora →
+              </Link>
+            </span>
           </div>
         </div>
       )}

@@ -67,6 +67,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // Un pedido de la tienda online sin atender: cartel rojo con timbre (cada 30 s).
   const vePedidosOnline =
     Boolean(session) && !soloCelular && (puedeVerPantalla(sesionConPantallas, "pedidos-online") || puedeVerPantalla(sesionConPantallas, "pedidos"));
+  // Cuántos hay en «1 · Nuevos»: el número que late en el menú (sin la tabla, 0).
+  const pedidosOnlineNuevos = vePedidosOnline
+    ? ((await getSupabaseServerClient().from("pedidos_online").select("id_pedido", { count: "exact", head: true }).eq("estado", "NUEVO")).count ?? 0)
+    : 0;
   // Las preguntas de la Guía que esperan respuesta: las responde el Dueño, el
   // número sale en su botón "¿Alguna duda?". Sin sql/guia-preguntas.sql da 0.
   // Carteles con el precio viejo mientras la caja ya cobra el nuevo: aviso rojo arriba de todo.
@@ -95,6 +99,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         pedidosNuevos={pedidosNuevos}
         nombre={sesionConPantallas?.nombre ?? session?.nombre ?? null}
         soloCelular={soloCelular}
+        pedidosOnlineNuevos={pedidosOnlineNuevos}
       />
       <div className="flex-1 min-w-0">
         {/* Con un deploy nuevo, la tablet se recarga sola en un momento tranquilo. */}

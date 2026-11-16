@@ -89,7 +89,7 @@ export async function armarInicioOperativo(
 
   const { data: usuario } = await supabase.from("usuarios").select("id_persona").eq("id_usuario", sesion.idUsuario).maybeSingle();
   const idPersona = (usuario?.id_persona as string | null) ?? null;
-  const [personaRes, fichajesRes, ventasRes, pedidosRes, cartelesRes] = await Promise.all([
+  const [personaRes, fichajesRes, ventasRes, pedidosRes, cartelesRes, onlineRes] = await Promise.all([
     idPersona ? supabase.from("personas").select("id_local, id_horario").eq("id_persona", idPersona).maybeSingle() : Promise.resolve({ data: null }),
     idPersona
       ? supabase.from("fichajes").select("tipo, fecha_hora, id_horario").eq("id_persona", idPersona).gte("fecha_hora", inicioDeHoy).order("fecha_hora", { ascending: true })
@@ -109,7 +109,13 @@ export async function armarInicioOperativo(
           .in("estado", ["PENDIENTE", "VENCIDA"])
           .eq("productos.estado", "ACTIVO")
       : Promise.resolve({ count: 0 }),
+    // Los pedidos de la tienda online sin entregar (sin la tabla, ninguno).
+    puede("pedidos-online") || puede("pedidos")
+      ? supabase.from("pedidos_online").select("numero, nombre, estado").in("estado", ["NUEVO", "ARMANDO", "LISTO"]).order("creado", { ascending: false })
+      : Promise.resolve({ data: [] as { numero: number; nombre: string; estado: string }[] }),
   ]);
+  const online = ((onlineRes.data ?? []) as { numero: number; nombre: string; estado: string }[]);
+  const onlineNuevos = online.filter((p) => p.estado === "NUEVO");
   const cartelesPorCambiar = Math.max(("count" in cartelesRes ? cartelesRes.count ?? 0 : 0), pendientes.etiquetas);
   const persona = personaRes.data as { id_local: string | null; id_horario: string | null } | null;
   const fichajes = (fichajesRes.data ?? []) as { tipo: string; fecha_hora: string; id_horario: string | null }[];
@@ -193,6 +199,33 @@ export async function armarInicioOperativo(
   // ---------- Los accesos ----------
   const accesos: AccesoRapido[] = [];
   const agregar = (a: Omit<AccesoRapido, "badgeTono"> & { badgeTono?: AccesoRapido["badgeTono"] }) => accesos.push({ badgeTono: "rojo", ...a });
+  // Pedidos de la tienda online, primero (Gonzalo, 16/11): con uno nuevo, el
+  // número late como un corazón (en vez del cartel grande en el medio).
+  if (puede("pedidos-online") || puede("pedidos")) {
+    const nuevo = onlineNuevos[0];
+    const corto = (n: string) => {
+      const p = n.trim().split(/\s+/);
+      return p[0] + (p[1] ? ` ${p[1].charAt(0)}.` : "");
+    };
+    agregar({
+      clave: "pedidos-online",
+      titulo: "Pedidos online",
+      detalle:
+        onlineNuevos.length === 1
+          ? `Llegó el #${nuevo.numero} · ${corto(nuevo.nombre)}`
+          : onlineNuevos.length > 1
+            ? `Llegaron ${onlineNuevos.length} pedidos nuevos`
+            : online.length > 0
+              ? `${online.length} en preparación o para entregar`
+              : "Los pedidos de la tienda: armarlos y entregarlos",
+      href: "/pedidos-online",
+      icono: "🛍️",
+      badge: onlineNuevos.length || online.length || null,
+      badgeTono: onlineNuevos.length ? "rojo" : "ambar",
+      alerta: onlineNuevos.length > 0,
+      deshabilitado: false,
+    });
+  }
   if (puede("cobros-efectivo"))
     agregar({
       clave: "cobrar",

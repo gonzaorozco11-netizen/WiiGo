@@ -178,7 +178,7 @@ export const GUIAS: Guia[] = [
     donde: "Pedidos online (las tres columnas)",
     rutas: ["/pedidos-online"],
     pasos: [
-      "Cuando entra uno, salta un cartel rojo con timbre. Todo pedido nuevo cae en la columna <b>1 Nuevos</b> (naranja). Tocalo y se abre la ventana con todo.",
+      "Cuando entra uno suena el timbre, arriba aparece una franja roja y en el Inicio el acceso <b>Pedidos online</b> tiene un número que late. Todo pedido nuevo cae en la columna <b>1 Nuevos</b> (naranja). Tocalo y se abre la ventana con todo.",
       "Si paga por <b>transferencia</b>, fijate en Mercado Pago que llegó (el cliente pone «Pedido #…» en el concepto) y tocá <b>Llegó la transferencia</b>. Después, <b>Aceptar</b>: pasa a <b>2 Armando</b> (azul).",
       "Juntá los productos con el lugar que dice cada uno y tildalos. Si no está alguno, tocá <b>Falta</b> y decí cuántos encontraste: el total baja solo.",
       "Tocá <b>Listo</b>: pasa a <b>3 Listos</b> (verde) y al cliente le llega el mail con su código de retiro.",
@@ -517,7 +517,7 @@ export const GUIAS: Guia[] = [
     donde: "Cobros en efectivo (o «Cobrar pedidos» en el inicio)",
     rutas: ["/cobros-efectivo"],
     pasos: [
-      "Cuando un cliente elige pagar en efectivo en el tótem, te <b>salta un cartel rojo grande</b> con timbre, en cualquier pantalla. Tocá <b>Cobrar ahora</b>. Si tocás <b>Ya voy</b>, queda una franja roja arriba hasta que lo cobres. (Solo si fichaste la entrada o tenés la caja abierta.)",
+      "Cuando un cliente elige pagar en efectivo en el tótem, suena el timbre y arriba aparece una <b>franja roja con el número latiendo</b>, en cualquier pantalla (en el Inicio, el acceso <b>Cobrar pedidos</b> late igual). Tocá <b>Cobrar ahora</b>. <b>Ya voy</b> corta el timbre; la franja queda hasta que lo cobres. (Solo si fichaste la entrada o tenés la caja abierta.)",
       "Entrá a <b>Cobros en efectivo</b> y elegí el local arriba a la derecha. La lista <b>Pendientes</b> se actualiza sola.",
       "Tocá el pedido y fijate los productos y el <b>A cobrar</b>.",
       "Si paga en efectivo, cargá <b>Pagó con</b> y te dice el vuelto. Si paga con Mercado Pago, elegí cómo pagó.",

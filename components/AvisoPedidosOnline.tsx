@@ -32,7 +32,6 @@ export default function AvisoPedidosOnline() {
   const router = useRouter();
   const pathname = usePathname();
   const [estado, setEstado] = useState<Estado>({ n: 0, numero: null, total: 0, de: null });
-  const [cartel, setCartel] = useState(false);
   const ultimoVisto = useRef<number | null>(null);
   const ultimoN = useRef<number | null>(null);
   const enLaPantalla = pathname === "/pedidos-online";
@@ -44,13 +43,11 @@ export default function AvisoPedidosOnline() {
         .then((r) => (r.ok ? r.json() : null))
         .then((d: Estado | null) => {
           if (!vivo || !d) return;
-          // Uno nuevo (número más alto que el último que sonó): timbre y cartel.
+          // Uno nuevo (número distinto del último que sonó): timbre.
           if (d.n > 0 && d.numero && d.numero !== ultimoVisto.current) {
             if (ultimoVisto.current !== null || ultimoN.current === null) sonarAlarma();
             ultimoVisto.current = d.numero;
-            setCartel(true);
           }
-          if (d.n === 0) setCartel(false);
           if (ultimoN.current !== null && d.n !== ultimoN.current) router.refresh();
           ultimoN.current = d.n;
           setEstado(d);
@@ -66,40 +63,18 @@ export default function AvisoPedidosOnline() {
     };
   }, [router]);
 
-  if (estado.n === 0) return null;
-
-  // En la misma pantalla de pedidos no hace falta el cartel: ya está la franja roja de ahí.
-  if (cartel && !enLaPantalla) {
-    return (
-      <div className="fixed inset-0 z-[70] grid place-items-center bg-black/55 p-4 print:hidden" role="alertdialog" aria-modal="true" aria-labelledby="aviso-online-titulo">
-        <div className="w-full max-w-md rounded-3xl bg-red-600 px-6 py-8 text-center text-white shadow-2xl">
-          <div className="text-6xl animate-bounce motion-reduce:animate-none" aria-hidden="true">
-            🛒
-          </div>
-          <p id="aviso-online-titulo" className="mt-3 text-2xl font-extrabold leading-tight">
-            Llegó un pedido online
-          </p>
-          <p className="mt-2 text-lg opacity-95">
-            #{estado.numero}
-            {estado.de ? ` · ${estado.de}` : ""} · <b className="tabular-nums">{pesos(estado.total)}</b>
-          </p>
-          {estado.n > 1 && <p className="mt-1 text-sm opacity-90">Hay {estado.n} pedidos online sin atender.</p>}
-          <Link href="/pedidos-online" onClick={() => setCartel(false)} className="mt-6 block w-full rounded-2xl bg-white py-4 text-xl font-extrabold text-red-700 hover:bg-red-50">
-            Ver el pedido →
-          </Link>
-          <button type="button" onClick={() => setCartel(false)} className="mt-3 text-sm font-semibold text-white/90 underline underline-offset-4">
-            Ya voy
-          </button>
-        </div>
-      </div>
-    );
-  }
-  if (enLaPantalla) return null;
+  // Sin cartel grande en el medio (Gonzalo, 16/11): timbre y una franja roja
+  // con el número latiendo; en el Inicio, el acceso «Pedidos online» late igual.
+  if (estado.n === 0 || enLaPantalla) return null;
   return (
     <div className="bg-red-600 text-white print:hidden" role="alert">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3">
-        <p className="text-[15px] font-bold">
-          🛒 {estado.n === 1 ? "Hay un pedido online sin atender" : `Hay ${estado.n} pedidos online sin atender`}
+        <p className="flex flex-wrap items-center gap-x-2 text-[15px] font-bold">
+          <span className="late-corazon relative grid h-8 min-w-8 place-items-center rounded-full px-1.5 text-base font-black tabular-nums ring-2 ring-white" aria-hidden="true">
+            <span className="relative">{estado.n}</span>
+          </span>
+          🛍️ {estado.n === 1 ? `Llegó un pedido online${estado.numero ? ` · #${estado.numero}` : ""}${estado.de ? ` · ${estado.de}` : ""}` : `Hay ${estado.n} pedidos online sin atender`}
+          {estado.n === 1 && estado.total > 0 && <span className="font-medium opacity-90">· {pesos(estado.total)}</span>}
         </p>
         <Link href="/pedidos-online" className="whitespace-nowrap rounded-lg bg-white px-4 py-2 text-sm font-extrabold text-red-700 hover:bg-red-50">
           Atender →

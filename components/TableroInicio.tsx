@@ -165,17 +165,23 @@ function InicioLocal({ tablero }: { tablero: Tablero }) {
           {o.accesos.map((a) => {
             const contenido = (
               <>
-                {a.badge !== null && (
-                  <span
-                    className={`absolute top-2.5 right-2.5 font-extrabold rounded-full ${
-                      a.alerta
-                        ? "min-w-7 h-7 px-2 grid place-items-center text-sm bg-red-600 text-white animate-pulse motion-reduce:animate-none"
-                        : `text-[11px] px-2 py-0.5 ${a.badgeTono === "rojo" ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700"}`
-                    }`}
-                  >
-                    {a.badge}
-                  </span>
-                )}
+                {a.badge !== null &&
+                  (a.alerta ? (
+                    // Llegó algo (pedido online, cliente para cobrar): el número late
+                    // como un corazón, en vez del cartel grande (Gonzalo, 16/11).
+                    <span className="late-corazon absolute -top-3 -right-2.5 z-10 grid h-10 min-w-10 place-items-center px-2 text-lg font-black text-white tabular-nums" aria-label={`${a.badge} sin atender`}>
+                      <i className="late-onda" aria-hidden="true" />
+                      <span className="relative">{a.badge}</span>
+                    </span>
+                  ) : (
+                    <span
+                      className={`absolute top-2.5 right-2.5 font-extrabold rounded-full text-[11px] px-2 py-0.5 ${
+                        a.badgeTono === "rojo" ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700"
+                      }`}
+                    >
+                      {a.badge}
+                    </span>
+                  ))}
                 <span className="text-2xl" aria-hidden="true">
                   {a.icono}
                 </span>

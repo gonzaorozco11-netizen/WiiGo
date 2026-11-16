@@ -256,7 +256,10 @@ export default function AppNav({
   pedidosNuevos = 0,
   nombre,
   soloCelular = false,
+  pedidosOnlineNuevos = 0,
 }: {
+  /** Pedidos de la tienda online en «1 · Nuevos»: el número late en el menú. */
+  pedidosOnlineNuevos?: number;
   /** Operativo fuera de la tablet del local: el menú es solo lo que puede abrir ahí (lib/aparatoLocal.ts). */
   soloCelular?: boolean;
   pantallas: string[] | null;
@@ -391,6 +394,12 @@ export default function AppNav({
           <Link href="/pedidos-online" className={`mt-0.5 ${claseLink(pathname === "/pedidos-online")}`}>
             <Icono nombre="compras" className={pathname === "/pedidos-online" ? "text-accent" : "text-neutral-500"} />
             Pedidos online
+            {/* Uno nuevo: el número late como un corazón (Gonzalo, 16/11). */}
+            {pedidosOnlineNuevos > 0 && (
+              <span className="late-corazon relative ml-auto grid h-6 min-w-6 place-items-center px-1 text-[11px] font-black text-white tabular-nums">
+                <span className="relative">{pedidosOnlineNuevos}</span>
+              </span>
+            )}
           </Link>
         )}
         {/* Solo el Dueño: los seis encargados con IA ven todos los números. */}
