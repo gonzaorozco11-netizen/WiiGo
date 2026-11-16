@@ -285,12 +285,12 @@
       var cuenta = {}; l.forEach(function (p) { (cuenta[p.sc] = cuenta[p.sc] || []).push(p); });
       subsMarca = Object.keys(cuenta).sort(function (a, b) { return a.localeCompare(b, 'es'); }).map(function (s) { return [s, cuenta[s]]; });
     }
-    // Con una marca: arriba, pegadas, las categorías como pastillas con una fotito; tocar una muestra SOLO esa
-    // (Gonzalo, 16/11: «toco una y después tengo que deslizar todo»). «Todo» vuelve a mostrar todas.
+    // Con una marca: arriba, pegadas, las categorías como pastillas con una fotito. Tocar una lleva hasta ella,
+    // pero se puede seguir subiendo y bajando: la pastilla marcada cambia sola a la categoría que se está
+    // mirando (Gonzalo, 16/11, «como a la siguiente subcategoría automático»).
     var fotoSub = function (ps) { var c = ps.filter(function (p) { return p.img && p.s > 0; })[0] || ps.filter(function (p) { return p.img; })[0]; return c ? imagen(c.img, 96) : ''; };
     var tabs = '<nav class="tabs-rubros' + (subsMarca ? ' pastillas' : '') + '" id="tabs-rubros" aria-label="' + (subsMarca ? 'Categorías' : 'Rubros') + '">' + (S.marcaIni ? '' : '<button class="tab-r" data-a="ir-sec" data-s="s-elegido">⭐ Lo más elegido</button>') +
-      (subsMarca ? '<button class="pastilla" data-a="sub-ini" data-s="" aria-pressed="' + !S.subIni + '">Todo <em>' + l.length + '</em></button>' +
-        subsMarca.map(function (s) { return '<button class="pastilla" data-a="sub-ini" data-s="' + esc(s[0]) + '" aria-pressed="' + (S.subIni === s[0]) + '">' + fotoSub(s[1]) + esc(s[0]) + ' <em>' + s[1].length + '</em></button>'; }).join('')
+      (subsMarca ? subsMarca.map(function (s, i) { return '<button class="pastilla" data-a="ir-sec" data-s="s-s' + i + '">' + fotoSub(s[1]) + esc(s[0]) + ' <em>' + s[1].length + '</em></button>'; }).join('')
         : rub.map(function (r, i) { return '<button class="tab-r" data-a="ir-sec" data-s="s-r' + i + '">' + r[2] + ' ' + esc(r[1]) + '</button>'; }).join('') + '<button class="tab-r" data-a="mundo">🌍 Del mundo</button>') + '</nav>';
     var marcas = '<div class="marcas-ini" role="group" aria-label="Marcas">' + MARCAS.map(function (m) {
       return '<button class="marca-p" data-a="marca-ini" data-m="' + esc(m.n) + '" aria-pressed="' + (S.marcaIni === m.n) + '">' + (m.logo ? imagen(m.logo, 64) : '<i>' + esc(m.n.charAt(0)) + '</i>') + esc(nombreMarca(m.n)) + '</button>';
@@ -299,7 +299,7 @@
       return '<article class="eleg"><div class="it-ft"><button class="it-foto" data-a="ficha" data-id="' + p.id + '" aria-label="Ver ' + esc(p.t) + '">' + foto(p, 256) + '</button><div class="it-acc" data-acc="' + p.id + '" data-tipo="item">' + botonItem(p) + '</div></div>' +
         '<button class="eleg-tx" data-a="ficha" data-id="' + p.id + '"><span>' + esc(p.t) + '</span><b>' + plata(p.p) + '</b></button></article>';
     }).join('') + '</div><button class="ver-mas" data-a="nuevos">✨ Lo nuevo de la semana (' + NUEVOS.length + ')</button></section>';
-    var secciones = subsMarca ? subsMarca.filter(function (s) { return !S.subIni || s[0] === S.subIni; }).map(function (s, i) {
+    var secciones = subsMarca ? subsMarca.map(function (s, i) {
       return '<section class="rubro-sec" id="s-s' + i + '"><h2 class="seccion">' + esc(s[0]) + '</h2><p class="rub-cant">' + s[1].length + (s[1].length === 1 ? ' producto' : ' productos') + ' de ' + esc(nombreMarca(S.marcaIni)) + '</p>' + grilla(ordenar(s[1])) + '</section>';
     }).join('') : rub.map(function (r, i) {
       var deR = l.filter(function (p) { return p.c === r[0]; }), subs = {};
@@ -579,7 +579,7 @@
       es.forEach(function (e) {
         if (!e.isIntersecting) return;
         var tab = tabs.querySelector('[data-s="' + e.target.id + '"]'); if (!tab) return;
-        tabs.querySelectorAll('.tab-r').forEach(function (x) { x.removeAttribute('aria-current'); });
+        tabs.querySelectorAll('[data-s]').forEach(function (x) { x.removeAttribute('aria-current'); });
         tab.setAttribute('aria-current', 'true');
         tabs.scrollLeft = tab.offsetLeft - 16;
       });
@@ -722,16 +722,17 @@
     // Una pestaña de rubro: baja hasta esa parte (el margen deja ver el título abajo del buscador).
     'ir-sec': function (d) {
       if (S.vista !== 'inicio' || S.q) { S.vista = 'inicio'; S.f = null; S.q = ''; pintar(true); }
-      var s = document.getElementById(d.s); if (s) s.scrollIntoView({ behavior: menosMov ? 'auto' : 'smooth' });
-    },
-    // Una categoría de la marca: solo sus productos, y la lista arranca justo abajo de lo pegado.
-    'sub-ini': function (d) {
-      S.subIni = d.s || null; pintar(false); alPegado();
-      var t = document.querySelector('.pastilla[aria-pressed="true"]'); if (t) t.parentNode.scrollLeft = t.offsetLeft - 16;
+      // La cuenta a mano (no scrollIntoView): que el título quede justo abajo de lo pegado arriba.
+      var s = document.getElementById(d.s), cab = document.getElementById('cab'), pg = document.getElementById('pegado-ini');
+      if (s) {
+        var destino = s.getBoundingClientRect().top + window.scrollY - (cab ? cab.offsetHeight : 0) - (pg ? pg.offsetHeight : 0) - 4;
+        // Lejos, salta directo (la animación tarda más de un segundo); cerca, baja suave.
+        window.scrollTo({ top: destino, behavior: menosMov || Math.abs(destino - window.scrollY) > 1400 ? 'auto' : 'smooth' });
+      }
     },
     // Una marca: el inicio muestra solo lo de esa marca (se vuelve a tocar y aparece todo).
     'marca-ini': function (d) {
-      S.marcaIni = S.marcaIni === d.m ? null : d.m; S.subIni = null; pintar(false); alPegado();
+      S.marcaIni = S.marcaIni === d.m ? null : d.m; pintar(false); alPegado();
       var mp = document.querySelector('.marca-p[aria-pressed="true"]'); if (mp) mp.parentNode.scrollLeft = mp.offsetLeft - 16;
     },
     'abrir-menu': function () { S.menu = true; S.menuMarca = (S.f && S.f.marca) || null; pintar(false); },

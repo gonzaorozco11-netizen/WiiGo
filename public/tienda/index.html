@@ -238,8 +238,9 @@ main{padding:14px}
 .it-paso span{font-weight:800;font-size:15px;min-width:14px;text-align:center}
 /* El local, los accesos, las pestañas de rubros y las marcas */
 .local{margin-top:14px;background:var(--carta);border:1px solid var(--linea);border-radius:20px;box-shadow:var(--sombra);padding:14px 16px 12px;display:grid;grid-template-columns:56px minmax(0,1fr);gap:12px}
-.local-logo{width:56px;height:56px;border-radius:16px;background:#fff;border:1px solid var(--linea);display:grid;place-items:center;overflow:hidden;font:800 26px var(--display);color:var(--bosque)}
-.local-logo img{width:86%;height:86%;object-fit:contain}
+.local-logo{width:56px;height:56px;border-radius:16px;background:#fff;display:grid;place-items:center;overflow:hidden;font:800 26px var(--display);color:var(--bosque);box-shadow:0 2px 8px rgba(34,48,31,.12)}
+/* El logo ocupa todo el cuadro (Gonzalo, 16/11: «que no se vea como un cuadrado adentro de otro») */
+.local-logo img{width:100%;height:100%;object-fit:cover}
 .local h2{margin:0;font:800 20px/1.1 var(--display);color:var(--bosque)}
 .local-meta{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:5px;font-size:12.5px;color:var(--gris);font-weight:600}
 .local-meta .abierto{color:var(--ef)}.local-meta .cerrado{color:#b54a2b}
@@ -276,11 +277,10 @@ main{padding:14px}
 /* Las categorías de la marca elegida: pastillas con fotito, pegadas arriba; tocar una muestra solo esa (16/11) */
 .tabs-rubros.pastillas{gap:6px;padding:4px 10px 8px}
 .pastilla{flex:none;display:flex;align-items:center;gap:6px;border:1.5px solid var(--linea);background:var(--carta);border-radius:999px;padding:3px 11px 3px 3px;font-weight:700;font-size:13px;white-space:nowrap;color:var(--bosque)}
-.pastilla[data-s=""]{padding-left:12px}
 .pastilla img{width:28px;height:28px;border-radius:50%;object-fit:contain;background:#fff;border:1px solid var(--linea)}
 .pastilla em{font-style:normal;color:var(--gris);font-size:12px;font-weight:600}
-.pastilla[aria-pressed="true"]{background:var(--bosque);border-color:var(--bosque);color:#f5f1e8}
-.pastilla[aria-pressed="true"] em{color:#c9cfbd}
+.pastilla[aria-current="true"]{background:var(--bosque);border-color:var(--bosque);color:#f5f1e8}
+.pastilla[aria-current="true"] em{color:#c9cfbd}
 .rub-cant{margin:-6px 0 0;color:var(--gris);font-size:12.5px;font-weight:600}
 .sub-rub{margin:18px 0 0;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--gris)}
 /* «Lo más elegido»: tarjetas que se deslizan, con el «+» sobre la foto */
@@ -484,6 +484,6 @@ main{padding:14px}
 <div class="app" id="app"><p style="padding:60px 16px;text-align:center;color:#626a5e">Cargando los productos…</p></div>
 <!-- El catálogo real, armado en el servidor con lo público de cada producto (lib/tiendaCatalogo.ts). -->
 <script src="/api/tienda/catalogo"></script>
-<script src="app.js?v=13"></script>
+<script src="app.js?v=15"></script>
 </body>
 </html>
