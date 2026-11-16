@@ -343,7 +343,7 @@
     { t: 'Recibido', d: 'Le llegó a la estación. En instantes lo confirman.' },
     { t: 'Aceptado', d: 'El equipo lo tomó y empieza a armarlo.' },
     { t: 'Armando', d: 'Estamos juntando cada producto de tu pedido.' },
-    { t: 'Listo para retirar', d: 'Te espera en la estación. Decí tu código y mostrá tu DNI.' },
+    { t: 'Listo para retirar', d: 'Te espera en la estación. Decí tu código y listo.' },
     { t: 'Retirado', d: '¡Gracias! Ya sumaste tus puntos.' }
   ];
   function apiPedido(cuerpo) {
@@ -425,7 +425,7 @@
     var otros = (S.pedidos || []).filter(function (x) { return x.codigo !== p.codigo; });
     return '<div class="filtro-cab">' + volver + '<span><b>Pedido #' + p.num + '</b><small>' + sub + '</small></span></div>' + transf + avisoFalta +
       '<div class="estacion3d"><div class="tablero">' + escenaPedido(cancelado ? 'cancelado' : ['recibido', 'aceptado', 'preparando', 'listo', 'entregado'][e]) + '</div></div>' +
-      (cancelado ? '' : '<div class="seg-codigo"><small>Tu código de retiro</small><b>' + esc(p.codigo) + '</b><span>Decilo en la estación y mostrá tu DNI</span></div>') + estado +
+      (cancelado ? '' : '<div class="seg-codigo"><small>Tu código de retiro</small><b>' + esc(p.codigo) + '</b><span>Decilo en la estación y te lo damos</span></div>') + estado +
       (cancelado ? '' : '<ol class="seg-pasos">' + ESTADOS_PED.map(function (x, i) { return '<li class="' + (i < e ? 'hecho' : i === e ? 'ahora' : '') + '"><i>' + (i < e ? '✓' : i + 1) + '</i><span>' + x.t + '</span></li>'; }).join('') + '</ol>') +
       '<div class="seg-items">' + p.items.map(function (it) { var n = it.hay == null ? it.q : it.hay; return '<div class="total" style="font-size:14px;font-weight:600"><span>' + (n === 0 ? '<s>' : '') + (n === it.q ? it.q : n + ' de ' + it.q) + ' × ' + esc(titulo(it.n)) + (it.v ? ' — ' + esc(it.v) : '') + (n === 0 ? '</s>' : '') + '</span><b style="font-size:14px;font-family:var(--texto)">' + plata(it.p * n) + '</b></div>'; }).join('') +
       '<div class="total" style="border-top:1px solid var(--linea);padding-top:8px;margin-top:2px"><span>Total</span><b>' + plata(p.total) + '</b></div></div>' +

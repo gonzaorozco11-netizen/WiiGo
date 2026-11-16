@@ -215,7 +215,7 @@ export async function avisarCliente(supabase: SupabaseClient, idPedido: string, 
         titulo: `¡Gracias, ${nombre}!`,
         bajada: `Recibimos tu pedido #${p.numero}.`,
         destacado: p.codigo,
-        detalle: ["Tu código de retiro: decilo en la estación y mostrá tu DNI."],
+        detalle: ["Tu código de retiro: decilo en la estación y listo."],
         franja: pagaAlRetirar
           ? { titulo: "Pagás al retirar", texto: `En efectivo ${pesos(t.efectivo)} · con tarjeta o QR ${pesos(t.lista)}. Te lo guardamos hasta mañana a las 21.` }
           : { titulo: `Transferí ${pesos(t.lista)}`, texto: `Alias <b>${escapar(cuenta.alias)}</b> · CVU ${cuenta.cvu} · ${cuenta.titular}.<br>En el concepto poné «Pedido #${p.numero}». Apenas la vemos, armamos tu pedido.` },
@@ -241,7 +241,7 @@ export async function avisarCliente(supabase: SupabaseClient, idPedido: string, 
         emoji: "🛍️",
         bajada: `Tu pedido #${p.numero} te espera en la estación.`,
         destacado: p.codigo,
-        detalle: ["Decí este código en la estación y mostrá tu DNI.", pagaAlRetirar ? `A pagar: efectivo ${pesos(t.efectivo)} · tarjeta o QR ${pesos(t.lista)}` : "Ya está pago."],
+        detalle: ["Decí este código en la estación y te lo damos.",pagaAlRetirar ? `A pagar: efectivo ${pesos(t.efectivo)} · tarjeta o QR ${pesos(t.lista)}` : "Ya está pago."],
         franja: faltaron.length
           ? {
               titulo: "No encontramos todo",

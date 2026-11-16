@@ -269,8 +269,9 @@ export default function PedidosOnlineApp({
         <Fondo onCerrar={() => setModal(null)}>
           <h3 className="text-[21px] font-bold">Entregar #{abierto.numero}</h3>
           <div className="grid gap-0.5 rounded-xl border border-amber-200 bg-amber-50 p-3 text-center">
-            <small className="text-xs font-extrabold uppercase tracking-widest text-amber-800">Pedile el DNI</small>
-            <b className="text-[34px] tracking-wide">{abierto.dni}</b>
+            {/* Se retira solo con el código (Gonzalo, 16/11): sin pedir el DNI. */}
+            <small className="text-xs font-extrabold uppercase tracking-widest text-amber-800">Que te diga el código</small>
+            <b className="text-[34px] tracking-wide">{abierto.codigo}</b>
             <span className="text-neutral-500">{abierto.nombre}</span>
           </div>
           {abierto.original > abierto.totalLista && (
