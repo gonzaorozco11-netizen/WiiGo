@@ -392,9 +392,11 @@
     var d = S.datos, cuerpo = '', espera = S.enviando ? ' disabled' : '';
     var t2 = function (t) { return '<h2 class="f-nombre" style="margin-top:0">' + t + '</h2>'; };
     if (S.usuario) cuerpo = miWiigo();
-    else if (S.paso === 'dni') cuerpo = t2('Entrá a WiiGo Club') +
-      '<p class="texto-cuenta">Una sola cuenta para comprar online y sumar puntos en cualquier estación. Sin contraseña: te mandamos un código a tu mail.</p>' +
-      '<div class="form"><label class="campo">Tu DNI<input id="c-dni" inputmode="numeric" autocomplete="off" placeholder="Sin puntos" value="' + esc(d.dni || '') + '"></label><button class="cta" data-a="c-dni"' + espera + '>' + (S.enviando ? 'Un momento…' : 'Seguir') + '</button></div>';
+    // Primero cómo registrarse (Gonzalo, 16/11): sin cuenta no se compra online. Es gratis y sin contraseña.
+    else if (S.paso === 'dni') cuerpo = t2('Creá tu cuenta o entrá') +
+      '<p class="texto-cuenta">Para comprar online necesitás tu cuenta WiiGo. Es gratis, sin contraseña, y es la misma del WiiGo Club.</p>' +
+      '<ol class="pasos-cuenta"><li><b>Poné tu DNI.</b> Si ya compraste en la estación, te reconocemos.</li><li><b>Si es tu primera vez,</b> completás nombre, apellido y mail.</li><li><b>Te llega un código</b> de 6 números al mail y listo.</li></ol>' +
+      '<div class="form"><label class="campo">Tu DNI<input id="c-dni" inputmode="numeric" autocomplete="off" placeholder="Solo números, sin puntos" value="' + esc(d.dni || '') + '"></label><button class="cta" data-a="c-dni"' + espera + '>' + (S.enviando ? 'Un momento…' : 'Seguir') + '</button></div>';
     // Con un DNI del Club sin mail no se muestra nada de esa persona hasta que confirme su apellido.
     else if (S.paso === 'datos') cuerpo = t2(d.encontrado ? 'Este DNI ya es del Club' : 'Creá tu cuenta') +
       '<p class="texto-cuenta">' + (d.encontrado ? 'Confirmá tu apellido y sumá tu mail para entrar desde el celu.' : 'Es la misma cuenta del WiiGo Club: tus puntos se suman online y en la estación.') + '</p><div class="form">' +
@@ -421,7 +423,11 @@
     }).join('') : '<p class="texto-cuenta">Todavía no hay compras. Las que hagas acá o en la estación (dando tu DNI) aparecen solas.</p>';
     var cumple = u.cumple ? '<div class="dato"><span>Cumpleaños</span><b>' + esc(new Date(u.cumple + 'T12:00:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'long' })) + '</b></div>'
       : '<div class="dato" style="align-items:center"><span>Cumpleaños</span><span style="display:flex;gap:6px"><input id="c-cumple2" type="date" aria-label="Tu cumpleaños" style="height:40px;border:1.5px solid var(--linea);border-radius:10px;padding:0 8px;font:600 14px var(--texto);background:var(--carta)"><button class="acceso" data-a="c-cumple">Guardar</button></span></div>';
-    return '<div class="club"><small>Hola, ' + esc(u.nombre) + ' · WiiGo Club</small><b>' + u.puntos.toLocaleString('es-AR') + ' puntos</b><span>Sumás 5 puntos cada $1.000 de compra, online o en la estación. Los canjeás en productos WiiGo Dietética.</span></div>' +
+    // Recién registrado: la bienvenida al Club con cómo funciona, una sola vez (Gonzalo, 16/11).
+    var bienv = S.bienvenida ? '<div class="bienvenida"><b>¡Bienvenido/a a WiiGo Club, ' + esc(u.nombre) + '!</b>' +
+      '<ul><li>Sumás <b>5 puntos cada $1.000</b> que comprás, acá o en la estación (dando tu DNI).</li><li>Cada punto vale <b>$1</b> para pagar productos WiiGo Dietética, hasta el 10 % de la compra.</li><li>Ves tus puntos y tus compras acá, en tu cuenta.</li></ul>' +
+      '<button class="cta" data-a="c-bienv">Empezar a comprar</button></div>' : '';
+    return bienv + '<div class="club"><small>Hola, ' + esc(u.nombre) + ' · WiiGo Club</small><b>' + u.puntos.toLocaleString('es-AR') + ' puntos</b><span>Sumás 5 puntos cada $1.000 de compra, online o en la estación. Los canjeás en productos WiiGo Dietética.</span></div>' +
       '<h3 class="sub-cuenta">Mis compras</h3>' + compras +
       '<h3 class="sub-cuenta">Mis datos</h3><div class="dato"><span>Nombre</span><b>' + esc((u.nombre + ' ' + u.apellido).trim()) + '</b></div><div class="dato"><span>DNI</span><b>' + esc(u.dni) + '</b></div><div class="dato"><span>Mail</span><b>' + esc(u.email) + '</b></div>' + cumple +
       '<label class="tilde" style="margin:14px 2px"><input type="checkbox" data-a="c-promos"' + (u.promos ? ' checked' : '') + '><span>Recibir novedades y promos por mail</span></label>' +
@@ -787,13 +793,17 @@
       pasoCuenta({ accion: 'datos', dni: d.dni, nombre: v('c-nombre'), apellido: v('c-apellido'), apellidoConf: v('c-apellido-conf'), email: v('c-mail'), cumple: v('c-cumple'), promos: document.getElementById('c-promos').checked },
         function (r) { S.datos.mail = r.mail; S.paso = 'codigo'; });
     },
+    'c-bienv': function () { S.bienvenida = false; S.cuenta = false; pintar(false); },
     'c-codigo': function () {
       var codigo = (document.getElementById('c-codigo').value || '').replace(/\D/g, '');
       if (codigo.length !== 6) return aviso('El código tiene 6 números');
       pasoCuenta({ accion: 'codigo', dni: S.datos.dni, codigo: codigo }, function (r) {
+        // Pasó por «Creá tu cuenta» (no solo entró de nuevo): es el momento de contarle cómo funciona el Club (16/11).
+        var recien = S.datos.encontrado !== undefined;
         S.usuario = r.usuario; S.paso = 'dni'; S.datos = {}; cargarPedidos();
-        // Venía de «Continuar»: sigue derecho a finalizar la compra.
-        if (S.trasEntrar === 'checkout' && carrito.length) { S.cuenta = false; S.vista = 'checkout'; window.scrollTo(0, 0); }
+        S.bienvenida = recien;
+        // Venía de «Continuar»: sigue derecho a finalizar la compra (la bienvenida queda para cuando abra su cuenta).
+        if (S.trasEntrar === 'checkout' && carrito.length) { S.cuenta = false; S.vista = 'checkout'; window.scrollTo(0, 0); if (recien) aviso('¡Listo! Ya sos WiiGo Club: esta compra suma puntos'); }
         S.trasEntrar = null;
         setTimeout(function () { aviso('¡Listo, ' + r.usuario.nombre + '! Ya estás en WiiGo Club'); }, 50);
       });
