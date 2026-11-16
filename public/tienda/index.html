@@ -271,8 +271,13 @@ main{padding:14px}
 .pegado-ini{position:sticky;top:var(--alto-cab,64px);z-index:15;margin:12px -14px 0;padding:10px 14px 0;background:rgba(245,239,227,.96);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--linea)}
 .pegado-ini .buscar{margin-top:0}
 .pegado-ini .marcas-ini{margin:0 -14px 0;padding:2px 14px 2px}
-.pegado-ini .marca-p{padding:3px 12px 3px 3px;font-size:13px}
-.pegado-ini .marca-p img,.pegado-ini .marca-p i{width:26px;height:26px}
+/* Las marcas, un poco más grandes en el celu (Gonzalo, 16/11) */
+.pegado-ini .marca-p{padding:5px 16px 5px 5px;font-size:15px;gap:9px}
+.pegado-ini .marca-p img,.pegado-ini .marca-p i{width:36px;height:36px}
+.mp-tx{display:grid;line-height:1.1;text-align:left}
+.mp-tx b{font-weight:800}
+.mp-tx small{font-size:11px;font-weight:700;color:var(--gris)}
+.marca-p[aria-pressed="true"] .mp-tx small{color:#c9cfbd}
 .pegado-ini .tabs-rubros{position:static;margin:4px -14px 0;background:none;border-bottom:0;backdrop-filter:none;-webkit-backdrop-filter:none}
 /* Las categorías de la marca elegida: pastillas con fotito, pegadas arriba; tocar una muestra solo esa (16/11) */
 .tabs-rubros.pastillas{gap:6px;padding:4px 10px 8px}
@@ -484,6 +489,6 @@ main{padding:14px}
 <div class="app" id="app"><p style="padding:60px 16px;text-align:center;color:#626a5e">Cargando los productos…</p></div>
 <!-- El catálogo real, armado en el servidor con lo público de cada producto (lib/tiendaCatalogo.ts). -->
 <script src="/api/tienda/catalogo"></script>
-<script src="app.js?v=15"></script>
+<script src="app.js?v=16"></script>
 </body>
 </html>

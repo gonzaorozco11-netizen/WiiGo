@@ -134,8 +134,11 @@
   }
   // Cómo se lee la marca propia: «WiiGo Dietética» (Gonzalo, 16/11; el dato sigue siendo «WiiGo»).
   function nombreMarca(n) { return n === 'WiiGo' ? 'WiiGo Dietética' : n; }
-  // WiiGo primero, después las demás por cantidad de productos (Gonzalo, 16/11).
-  var MARCAS = D.marcas.slice().sort(function (a, b) { return (b.n === 'WiiGo') - (a.n === 'WiiGo') || (b.cant || 0) - (a.cant || 0); }), MARCA = {}; MARCAS.forEach(function (m) { MARCA[m.n] = m; });
+  // El orden de las marcas y su rubro chiquito abajo del nombre (Gonzalo, 16/11). Una marca nueva va al final.
+  var ORDEN_MARCAS = ['WiiGo', 'Animalfit', 'Alta', 'Crislo', 'Fruppi'];
+  var RUBRO_MARCA = { WiiGo: 'Dietética', Animalfit: 'Suplementos', Alta: 'Viandas', Crislo: 'Cosmética', Fruppi: 'Snacks' };
+  var lugarMarca = function (n) { var i = ORDEN_MARCAS.indexOf(n); return i < 0 ? 99 : i; };
+  var MARCAS = D.marcas.slice().sort(function (a, b) { return lugarMarca(a.n) - lugarMarca(b.n) || (b.cant || 0) - (a.cant || 0); }), MARCA = {}; MARCAS.forEach(function (m) { MARCA[m.n] = m; });
   // Nuevos: los 20 que entraron último (con stock), no todo lo del mes.
   var NUEVOS = PROD.filter(function (p) { return p.s > 0 && p.dias <= 30; }).sort(function (a, b) { return a.dias - b.dias; }).slice(0, 20);
   function ordenar(l) { return l.slice().sort(function (a, b) { return (b.s > 0) - (a.s > 0) || (b.img ? 1 : 0) - (a.img ? 1 : 0) || a.t.localeCompare(b.t, 'es'); }); }
@@ -293,7 +296,7 @@
       (subsMarca ? subsMarca.map(function (s, i) { return '<button class="pastilla" data-a="ir-sec" data-s="s-s' + i + '">' + fotoSub(s[1]) + esc(s[0]) + ' <em>' + s[1].length + '</em></button>'; }).join('')
         : rub.map(function (r, i) { return '<button class="tab-r" data-a="ir-sec" data-s="s-r' + i + '">' + r[2] + ' ' + esc(r[1]) + '</button>'; }).join('') + '<button class="tab-r" data-a="mundo">🌍 Del mundo</button>') + '</nav>';
     var marcas = '<div class="marcas-ini" role="group" aria-label="Marcas">' + MARCAS.map(function (m) {
-      return '<button class="marca-p" data-a="marca-ini" data-m="' + esc(m.n) + '" aria-pressed="' + (S.marcaIni === m.n) + '">' + (m.logo ? imagen(m.logo, 64) : '<i>' + esc(m.n.charAt(0)) + '</i>') + esc(nombreMarca(m.n)) + '</button>';
+      return '<button class="marca-p" data-a="marca-ini" data-m="' + esc(m.n) + '" aria-pressed="' + (S.marcaIni === m.n) + '">' + (m.logo ? imagen(m.logo, 64) : '<i>' + esc(m.n.charAt(0)) + '</i>') + '<span class="mp-tx"><b>' + esc(m.n) + '</b>' + (RUBRO_MARCA[m.n] ? '<small>' + RUBRO_MARCA[m.n] + '</small>' : '') + '</span></button>';
     }).join('') + '</div>';
     var elegido = S.marcaIni ? '' : '<section class="rubro-sec" id="s-elegido"><h2 class="seccion">Lo más elegido</h2><div class="elegidos">' + dest.map(function (p) {
       return '<article class="eleg"><div class="it-ft"><button class="it-foto" data-a="ficha" data-id="' + p.id + '" aria-label="Ver ' + esc(p.t) + '">' + foto(p, 256) + '</button><div class="it-acc" data-acc="' + p.id + '" data-tipo="item">' + botonItem(p) + '</div></div>' +
