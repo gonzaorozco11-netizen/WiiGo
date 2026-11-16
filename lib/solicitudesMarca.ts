@@ -30,7 +30,11 @@ export type TipoSolicitud =
   // WiiGo como cualquier otra solicitud.
   | "PLAN"
   | "DESCUENTO"
-  | "IMPORTACION";
+  | "IMPORTACION"
+  // Combos (16/11): la marca pide cambiar el precio de un combo suyo o armar
+  // uno nuevo (lib/combosGestion.ts). Pausar no pasa por acá: lo hace sola.
+  | "COMBO_PRECIO"
+  | "COMBO_NUEVO";
 
 export type EstadoSolicitud = "PENDIENTE" | "APROBADA" | "RECHAZADA" | "APLICADA" | "CANCELADA";
 
@@ -89,6 +93,8 @@ export const ETIQUETA_TIPO: Record<TipoSolicitud, string> = {
   PLAN: "Cambio de plan",
   DESCUENTO: "Descuento",
   IMPORTACION: "Lista de precios",
+  COMBO_PRECIO: "Precio de combo",
+  COMBO_NUEVO: "Combo nuevo",
 };
 
 // Las solicitudes se agrupan por el tipo de decisión que hay que tomar, no
@@ -117,6 +123,8 @@ export const GRUPO_DE_TIPO: Record<TipoSolicitud, GrupoBandeja> = {
   // El costo no pasa por aprobación (es dato privado de la marca), pero el
   // tipo existe para poder registrarlo en el historial.
   COSTO: "CONTENIDO",
+  COMBO_PRECIO: "PRECIOS",
+  COMBO_NUEVO: "PRODUCTOS",
 };
 
 export const ETIQUETA_GRUPO: Record<GrupoBandeja, string> = {

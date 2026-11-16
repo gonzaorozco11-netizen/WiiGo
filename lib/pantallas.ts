@@ -99,6 +99,9 @@ export const PANTALLAS_DISPONIBLES: PantallaDisponible[] = [
   // producto: es con quién trabajás. La clave no cambia, así que nadie pierde
   // el acceso — solo cambia bajo qué título se lista.
   { clave: "marcas", label: "Marcas", grupo: "Marcas y Proveedores" },
+  // Los combos de las marcas (16/11): precio, pausar, armar nuevos. Cambia
+  // precios de venta, así que es para quien maneja la relación con las marcas.
+  { clave: "combos", label: "Combos", grupo: "Marcas y Proveedores" },
   { clave: "situacion-marca", label: "Situación de marca", grupo: "Marcas y Proveedores" },
   { clave: "liquidaciones", label: "Liquidaciones", grupo: "Marcas y Proveedores" },
   { clave: "dashboard", label: "Dashboard", grupo: "Finanzas" },

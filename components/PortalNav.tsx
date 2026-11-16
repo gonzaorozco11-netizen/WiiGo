@@ -27,6 +27,8 @@ const ITEMS = [
   // contador en el menú reclama sola — el número rojo se ve desde cualquier
   // pantalla y es lo que hace que la góndola no quede vacía.
   { href: "/portal/reponer", texto: "Reponer" },
+  // Sus combos (16/11): los ve, los pausa y pide precio nuevo o uno nuevo.
+  { href: "/portal/combos", texto: "Combos" },
   // "Cambios y altas" y no "Pedir un cambio": acá adentro también se da de
   // alta un producto nuevo, se sube una lista de precios entera y se pide
   // cambio de plan. Una marca que va a lanzar algo nuevo no piensa "voy a

@@ -193,6 +193,53 @@ function TarjetaSolicitud({
         </div>
       )}
 
+      {/* Combos (16/11): el antes y el después del precio, y cuánto ahorra el cliente contra los sueltos. */}
+      {s.tipo === "COMBO_PRECIO" && (
+        <div className="sol-comparacion" style={{ flexWrap: "wrap" }}>
+          <span className="sol-valor">
+            <span className="et">Combo ahora</span>
+            <span className="v mono">
+              {pesos(s.datosAnteriores.precio as number)}
+              {s.datosAnteriores.precio_efectivo != null ? ` · ef. ${pesos(s.datosAnteriores.precio_efectivo as number)}` : ""}
+            </span>
+          </span>
+          <span className="sol-flecha">→</span>
+          <span className="sol-valor nuevo">
+            <span className="et">Pasa a</span>
+            <span className="v mono">
+              {pesos(s.datos.precio as number)}
+              {s.datos.precio_efectivo != null ? ` · ef. ${pesos(s.datos.precio_efectivo as number)}` : ""}
+            </span>
+          </span>
+          {typeof s.datos.suelto === "number" && (s.datos.suelto as number) > 0 && (
+            <span className="sol-variacion">
+              ahorra {Math.round((1 - (s.datos.precio as number) / (s.datos.suelto as number)) * 100)}% contra sueltos ({pesos(s.datos.suelto as number)})
+            </span>
+          )}
+        </div>
+      )}
+      {s.tipo === "COMBO_NUEVO" && (
+        <div className="sol-comparacion" style={{ flexWrap: "wrap", alignItems: "flex-start" }}>
+          {typeof s.datos.imagen === "string" && s.datos.imagen && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={s.datos.imagen as string} alt="" style={{ width: 96, height: 96, objectFit: "contain", borderRadius: 10, background: "#fff" }} />
+          )}
+          <span className="sol-valor nuevo">
+            <span className="et">{String(s.datos.nombre ?? "Combo nuevo")}</span>
+            <span className="v">{String(s.datos.lleva ?? "")}</span>
+            <span className="v mono">
+              {pesos(s.datos.precio as number)}
+              {s.datos.precio_efectivo != null ? ` · ef. ${pesos(s.datos.precio_efectivo as number)}` : ""}
+            </span>
+          </span>
+          {typeof s.datos.suelto === "number" && (s.datos.suelto as number) > 0 && (
+            <span className="sol-variacion">
+              sueltos {pesos(s.datos.suelto as number)} · ahorra {Math.round((1 - (s.datos.precio as number) / (s.datos.suelto as number)) * 100)}%
+            </span>
+          )}
+        </div>
+      )}
+
       {s.tipo === "FOTO" && (
         // Aprobar una foto sin verla no es aprobar nada.
         <div className="sol-fotos">

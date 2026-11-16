@@ -13,6 +13,7 @@ import { aplicarPreciosDeCarteles, aplicarPreciosPropiosDelTurno, insertarTareas
 import { generarSkuVariante, generarCodigoBarrasVariante } from "@/lib/codigosVariante";
 import { PLANES, type PlanMarca } from "@/lib/planesMarca";
 import { guardarCosto } from "@/lib/costosMarca";
+import { aplicarSolicitudCombo } from "@/lib/combosGestion";
 import {
   obtenerPolitica,
   proximaVigencia,
@@ -169,6 +170,21 @@ export async function aprobarSolicitud(
     .eq("estado", "PENDIENTE");
 
   if (error) return { error: friendlyDbError(error) };
+
+  // Combos (16/11): no tienen cartel de góndola, así que entran en el momento.
+  if (solicitud.tipo === "COMBO_PRECIO" || solicitud.tipo === "COMBO_NUEVO") {
+    try {
+      await aplicarSolicitudCombo(supabase, { tipo: solicitud.tipo as string, id_marca: solicitud.id_marca as string, datos });
+      await supabase.from("solicitudes_marca").update({ estado: "APLICADA", aplicada_el: new Date().toISOString() }).eq("id_solicitud", idSolicitud);
+    } catch (e) {
+      // Queda APROBADA: el cron la vuelve a intentar (aplicarCambiosProgramados).
+      console.error("[combo]", e);
+    }
+    revalidatePath("/aprobaciones");
+    revalidatePath("/combos");
+    await avisarSolicitudResuelta(idSolicitud);
+    return { error: null };
+  }
 
   await generarTareasEtiqueta(supabase, {
     tipo: solicitud.tipo as TipoSolicitud,
@@ -569,6 +585,9 @@ export async function aplicarCambiosProgramados(): Promise<{ aplicadas: number; 
           .from("productos")
           .update({ estado: "INACTIVO", fecha_actualizacion: ahoraIso })
           .eq("id_producto", idProducto as string);
+      } else if (s.tipo === "COMBO_PRECIO" || s.tipo === "COMBO_NUEVO") {
+        // Normalmente ya entró al aprobar; esto es el reintento si aquella vez falló.
+        await aplicarSolicitudCombo(supabase, { tipo: s.tipo as string, id_marca: s.id_marca as string, datos });
       } else if (s.tipo === "PLAN") {
         // El plan nuevo. Solo cambia qué ve la marca en su portal: el royalty
         // y el abono no se tocan acá, se acuerdan aparte. Aprobar esto no es

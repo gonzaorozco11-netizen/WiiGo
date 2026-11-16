@@ -863,6 +863,22 @@ export const GUIAS: Guia[] = [
     tip: "En la pestaña Etiquetas están los carteles por cambiar: tocá «Ya la cambié» cuando esté.",
   },
   {
+    id: "combos",
+    audiencias: [...I],
+    pantalla: "combos",
+    tema: "Marcas",
+    titulo: "Combos de las marcas",
+    donde: "Marcas y Proveedores → Combos",
+    rutas: ["/combos"],
+    pasos: [
+      "Un combo no es un producto ni tiene stock: si el cliente lleva sus productos juntos (cualquier sabor), el precio baja solo en la caja, el tótem y la tienda online.",
+      "En <b>Combos</b> cambiás el precio, lo pausás o lo activás, le cambiás la foto o lo borrás. Todo entra al instante.",
+      "<b>+ Armar un combo nuevo</b>: elegís la marca, los productos y cuántos de cada uno, y los dos precios. Tiene que salir más barato que los sueltos.",
+      "Las marcas ven sus combos en su portal: los pausan solas y piden precio nuevo o combos nuevos, que te llegan a <b>Aprobaciones</b>.",
+    ],
+    tip: "Si los productos bajan de precio, fijate que el combo siga ahorrando: la tarjeta te avisa en rojo si ya no ahorra nada.",
+  },
+  {
     id: "marca-nueva",
     audiencias: [...I],
     pantalla: "marcas",
