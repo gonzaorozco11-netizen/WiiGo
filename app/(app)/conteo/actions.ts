@@ -5,6 +5,7 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import { personaDeUsuario } from "@/lib/conteoStock";
+import { enBolsasOnline } from "@/lib/pedidosOnline";
 
 // Las acciones del conteo de stock en el turno (lib/conteoStock.ts). Devuelven
 // { error } como dato y no throw: Next 16 esconde el mensaje en producción.
@@ -54,8 +55,16 @@ export async function registrarConteo(idItem: string, cantidad: number): Promise
   if (item.contado_en) return { error: "Ese producto ya está contado." };
 
   const idVariante = item.id_variante as string;
-  const { data: st } = await supabase.from("stock").select("cantidad").eq("id_variante", idVariante).eq("id_local", conteo.id_local).maybeSingle();
-  const esperado = Number(st?.cantidad ?? 0);
+  const [{ data: st }, bolsas] = await Promise.all([
+    supabase.from("stock").select("cantidad").eq("id_variante", idVariante).eq("id_local", conteo.id_local).maybeSingle(),
+    enBolsasOnline(supabase, conteo.id_local, [idVariante]),
+  ]);
+  const enStock = Number(st?.cantidad ?? 0);
+  // Lo que ya está en la bolsa de un pedido online sigue en el stock hasta la
+  // entrega, pero no en la góndola: se compara contra lo que tiene que haber
+  // en la góndola, y si se ajusta, el stock queda en lo contado + lo embolsado.
+  const embolsado = Math.min(bolsas.get(idVariante)?.n ?? 0, Math.max(enStock, 0));
+  const esperado = enStock - embolsado;
   const ahora = new Date().toISOString();
   const quien = conteo.nombre ?? "Equipo";
 
@@ -87,7 +96,7 @@ export async function registrarConteo(idItem: string, cantidad: number): Promise
       if (error) return { error: friendlyDbError(error) };
       await supabase
         .from("stock")
-        .upsert({ id_variante: idVariante, id_local: conteo.id_local, cantidad: n, fecha_actualizacion: ahora }, { onConflict: "id_variante,id_local" });
+        .upsert({ id_variante: idVariante, id_local: conteo.id_local, cantidad: n + embolsado, fecha_actualizacion: ahora }, { onConflict: "id_variante,id_local" });
       await supabase.from("movimientos_stock").insert({
         id_variante: idVariante,
         id_local: conteo.id_local,
@@ -134,14 +143,14 @@ export async function registrarConteo(idItem: string, cantidad: number): Promise
 
   const { error: e2 } = await supabase
     .from("stock")
-    .upsert({ id_variante: idVariante, id_local: conteo.id_local, cantidad: n, fecha_actualizacion: ahora }, { onConflict: "id_variante,id_local" });
+    .upsert({ id_variante: idVariante, id_local: conteo.id_local, cantidad: n + embolsado, fecha_actualizacion: ahora }, { onConflict: "id_variante,id_local" });
   if (e2) return { error: friendlyDbError(e2) };
   await supabase.from("movimientos_stock").insert({
     id_variante: idVariante,
     id_local: conteo.id_local,
     tipo: "AJUSTE",
     cantidad: n - esperado,
-    motivo: `Conteo del turno: ${quien} contó ${n}, el sistema decía ${esperado}`,
+    motivo: `Conteo del turno: ${quien} contó ${n}, el sistema decía ${esperado}${embolsado ? ` (más ${embolsado} en pedidos online armados)` : ""}`,
     usuario: quien,
   });
 

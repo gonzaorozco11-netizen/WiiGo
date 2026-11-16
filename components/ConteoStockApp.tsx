@@ -221,6 +221,13 @@ function FilaConteo({ item, resaltado }: { item: ItemConteo; resaltado: boolean 
           {item.detalleMotivo && (
             <span className={`inline-block mt-1.5 text-[11px] font-semibold rounded-full px-2 py-0.5 ${CHIP[item.motivo]}`}>{item.detalleMotivo}</span>
           )}
+          {/* Lo que ya está en la bolsa de un pedido online no se cuenta (el sistema ya lo descuenta). */}
+          {item.enPedidos && !item.contadoEn && (
+            <p className="mt-1.5 rounded-lg bg-orange-50 px-2 py-1 text-xs font-semibold text-orange-800">
+              🛍️ {item.enPedidos.n === 1 ? "1 está" : `${item.enPedidos.n} están`} en {item.enPedidos.pedidos.length === 1 ? "el pedido online" : "los pedidos online"}{" "}
+              {item.enPedidos.pedidos.map((n) => `#${n}`).join(", ")}: contá solo lo de la góndola.
+            </p>
+          )}
         </div>
         {hecho && (
           <span className="shrink-0 text-right">
