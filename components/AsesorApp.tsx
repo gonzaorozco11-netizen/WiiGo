@@ -215,7 +215,7 @@ const HOME_I18N = {
     verTodoDesc: "por marca y por rubro",
     nuestrasMarcas: "Nuestras marcas",
     ofertasHoy: "Ofertas de hoy",
-    profesionalesWiigo: "Profesionales de WiiGo",
+    profesionalesWiigo: "Profesionales WiiGo",
     conocerla: "Ver su ficha y reservar turno",
     conocelos: "Conocelos y reservá turno",
     objetivoTitulo: "¿Cuál es tu objetivo hoy?",
@@ -235,7 +235,7 @@ const HOME_I18N = {
     railSin: "Preferencias",
     railObjetivo: "Objetivo",
     otros: "Otros",
-    profesionalesTitulo: "Nuestros profesionales",
+    profesionalesTitulo: "Profesionales WiiGo",
     profesionalesSub: "Conocelos y pedí tu turno presencial o por videollamada",
     profesionalesVacio: "Todavía no hay profesionales cargados acá.",
     verFicha: "Ver más",
@@ -283,7 +283,7 @@ const HOME_I18N = {
     railSin: "Preferences",
     railObjetivo: "Goal",
     otros: "Other",
-    profesionalesTitulo: "Our professionals",
+    profesionalesTitulo: "WiiGo professionals",
     profesionalesSub: "Meet them and book in person or by video call",
     profesionalesVacio: "No professionals loaded here yet.",
     verFicha: "See more",
@@ -311,7 +311,7 @@ const HOME_I18N = {
     verTodoDesc: "por marca e categoria",
     nuestrasMarcas: "Nossas marcas",
     ofertasHoy: "Ofertas de hoje",
-    profesionalesWiigo: "Profissionais da WiiGo",
+    profesionalesWiigo: "Profissionais WiiGo",
     conocerla: "Ver perfil e agendar",
     conocelos: "Conheça e agende",
     objetivoTitulo: "Qual é o seu objetivo hoje?",
@@ -331,7 +331,7 @@ const HOME_I18N = {
     railSin: "Preferências",
     railObjetivo: "Objetivo",
     otros: "Outros",
-    profesionalesTitulo: "Nossos profissionais",
+    profesionalesTitulo: "Profissionais WiiGo",
     profesionalesSub: "Conheça-os e marque presencial ou por videochamada",
     profesionalesVacio: "Ainda não há profissionais cadastrados aqui.",
     verFicha: "Ver mais",
@@ -2262,7 +2262,7 @@ export default function AsesorApp({
       {/* Agrupadas por marca, no todo mezclado: así se entiende de quién es
           cada promo. */}
       {pantalla === "ofertas" && (
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col min-h-0">
           <Navbar onVolver={volverAInicio} onInicio={volverAInicio} idioma={idioma} />
           <div className="flex-1 min-h-0 overflow-y-auto px-5 md:px-8 pt-5 pb-10 max-w-7xl mx-auto w-full">
             <div className="flex items-end justify-between gap-4 mb-5">
@@ -2377,9 +2377,10 @@ export default function AsesorApp({
       )}
 
       {pantalla === "combos" && (
-        <div className="flex-1 flex flex-col">
+        // min-h-0: sin esto la lista no deslizaba y los de abajo quedaban cortados (Gonzalo, 16/11).
+        <div className="flex-1 flex flex-col min-h-0">
           <Navbar onVolver={volverAInicio} onInicio={volverAInicio} idioma={idioma} />
-          <div className="flex-1 min-h-0 overflow-y-auto px-5 md:px-8 pt-5 pb-10 max-w-7xl mx-auto w-full">
+          <div className="flex-1 min-h-0 overflow-y-auto px-5 md:px-8 pt-5 pb-10 max-w-[1600px] mx-auto w-full">
             <div className="flex items-end justify-between gap-4 mb-2">
               <h2 className={`${titular.className} font-extrabold tracking-[-.02em] text-[clamp(23px,2.8vw,38px)] leading-tight`}>Combos</h2>
               <span className="text-[12px] md:text-[13px] text-[#8a9180] font-semibold shrink-0">
@@ -2393,12 +2394,13 @@ export default function AsesorApp({
                   ? "Levando os produtos juntos, o preço baixa sozinho no caixa. Vale qualquer sabor."
                   : "Llevando los productos juntos, el precio baja solo en la caja. Vale cualquier sabor."}
             </p>
-            <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
+            {/* Todos a la vista en la pantalla de la Joog (1280 × 720): hasta 5 por fila en pantalla ancha. */}
+            <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 xl:gap-4">
               {combosVisibles.map(({ combo, grupos, suelto }) => {
                 const ahorro = suelto - combo.precio;
                 return (
                   <div key={combo.id} className="rounded-[22px] bg-white overflow-hidden shadow-sm flex flex-col border border-[#ece4d4]">
-                    <div className="relative bg-white h-[170px] xl:h-[210px] grid place-items-center">
+                    <div className="relative bg-white h-[150px] [@media(max-height:820px)]:h-[130px] grid place-items-center">
                       {combo.imagen ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={combo.imagen} alt="" className="w-full h-full object-contain" />
@@ -2423,8 +2425,8 @@ export default function AsesorApp({
                         </span>
                       )}
                     </div>
-                    <div className="p-4 flex flex-col gap-2 flex-1" style={{ background: "#fffaf2" }}>
-                      <p className={`${titular.className} text-[18px] font-extrabold leading-tight`}>{combo.nombre}</p>
+                    <div className="p-3 xl:p-3.5 flex flex-col gap-2 flex-1" style={{ background: "#fffaf2" }}>
+                      <p className={`${titular.className} text-[16px] xl:text-[17px] font-extrabold leading-tight`}>{combo.nombre}</p>
                       {/* Cada producto se toca y abre su ficha (con dónde está en la góndola). */}
                       <div className="flex flex-col gap-1.5">
                         {grupos.map((g, gi) =>
@@ -2432,7 +2434,7 @@ export default function AsesorApp({
                             <button
                               key={`${gi}-${p.id_producto}`}
                               onClick={() => setProductoAbierto(p.id_producto)}
-                              className="text-left text-[13.5px] font-semibold text-[#3d4436] rounded-xl px-3 py-2 flex items-center gap-2"
+                              className="text-left text-[12.5px] font-semibold text-[#3d4436] rounded-xl px-2.5 py-1.5 flex items-center gap-2"
                               style={{ background: "#f1f4ec" }}
                             >
                               <span className="shrink-0 font-extrabold" style={{ color: "#4d7635" }}>
@@ -2445,7 +2447,7 @@ export default function AsesorApp({
                         )}
                       </div>
                       <div className="flex items-baseline gap-2 flex-wrap mt-auto pt-1">
-                        <span className={`${titular.className} text-[24px] font-extrabold`}>{formatoPrecio(combo.precio)}</span>
+                        <span className={`${titular.className} text-[22px] font-extrabold`}>{formatoPrecio(combo.precio)}</span>
                         {combo.precioEfectivo != null && combo.precioEfectivo < combo.precio && (
                           <span className="text-[13.5px] font-extrabold" style={{ color: "#3d6b28" }}>
                             {formatoPrecio(combo.precioEfectivo)} {idioma === "en" ? "cash" : idioma === "pt" ? "em dinheiro" : "efectivo"}
