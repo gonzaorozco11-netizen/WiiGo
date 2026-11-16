@@ -264,9 +264,11 @@ a.dir-mapa{color:inherit;text-decoration:none}
 a.dir-mapa u{text-decoration:underline;text-underline-offset:2px;color:#3f5536;font-weight:800}
 .nota a.dir-mapa{text-decoration:underline;text-underline-offset:2px;font-weight:800}
 /* Los accesos en una fila que se desliza (16/11): entran Ofertas, Combos y lo que venga */
-.accesos-ini{display:flex;gap:8px;margin:4px -14px 0;padding:8px 14px 2px;overflow-x:auto;scrollbar-width:none;scroll-snap-type:x proximity;scroll-padding:0 14px}
+/* Sin «snap»: la fila da vueltas sola y el snap la frenaría a cada botón. Cada botón del ancho de su palabra
+   (min. 78 px): «Profesionales» no entraba en 78 y se salía del cuadrito (16/11). */
+.accesos-ini{display:flex;gap:8px;margin:4px -14px 0;padding:8px 14px 2px;overflow-x:auto;scrollbar-width:none}
 .accesos-ini::-webkit-scrollbar{display:none}
-.accesos-ini button{flex:none;width:78px;position:relative;scroll-snap-align:start;display:grid;justify-items:center;gap:4px;background:var(--carta);border:1px solid var(--linea);border-radius:16px;padding:10px 4px;font-size:12px;font-weight:800;color:var(--bosque);line-height:1.15;text-align:center}
+.accesos-ini button{flex:none;min-width:78px;padding-left:10px !important;padding-right:10px !important;white-space:nowrap;position:relative;display:grid;justify-items:center;gap:4px;background:var(--carta);border:1px solid var(--linea);border-radius:16px;padding:10px 4px;font-size:12px;font-weight:800;color:var(--bosque);line-height:1.15;text-align:center}
 .accesos-ini em{position:absolute;top:-6px;right:-4px;font-style:normal;font-size:10.5px;font-weight:800;background:var(--energia);color:#fff;border-radius:999px;padding:1px 7px}
 .accesos-ini em.pronto{background:#d9d2c3;color:#4b5244}
 .accesos-ini span{font-size:24px}
@@ -520,6 +522,6 @@ a.dir-mapa u{text-decoration:underline;text-underline-offset:2px;color:#3f5536;f
 <div class="app" id="app"><p style="padding:60px 16px;text-align:center;color:#626a5e">Cargando los productos…</p></div>
 <!-- El catálogo real, armado en el servidor con lo público de cada producto (lib/tiendaCatalogo.ts). -->
 <script src="/api/tienda/catalogo"></script>
-<script src="app.js?v=24"></script>
+<script src="app.js?v=25"></script>
 </body>
 </html>

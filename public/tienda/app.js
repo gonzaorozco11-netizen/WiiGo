@@ -273,6 +273,18 @@
     if (h < 21) return [true, 'hasta las 21'];
     return [false, dia === 6 ? 'abre el lunes a las 9' : 'abre mañana a las 9'];
   }
+  function botonesAccesos(copia) {
+    var extra = copia ? ' aria-hidden="true" tabindex="-1"' : '';
+    var lista = [
+      ['ir-sec" data-s="s-elegido', '⭐', 'Lo más elegido', ''],
+      ['objetivos', '🎯', 'Objetivos', ''],
+      ['mundo', '🌍', 'Del mundo', ''],
+      ['pros', '👩‍💻', 'Profesionales', ''],
+      ['combos', '🎁', 'Combos', '<em class="pronto">Pronto</em>'],
+      ['ofertas', '🏷️', 'Ofertas', OFERTAS.length ? '<em>' + OFERTAS.length + '</em>' : '']
+    ];
+    return lista.map(function (b, i) { return '<button data-a="' + b[0] + '"' + extra + (copia && i === 0 ? ' data-copia' : '') + '><span>' + b[1] + '</span>' + b[2] + b[3] + '</button>'; }).join('');
+  }
   function tarjetaLocal() {
     var m = MARCA.WiiGo, hr = horario();
     return '<section class="local"><span class="local-logo">' + (m && m.logo ? imagen(m.logo, 128) : 'W') + '</span><div><h2>WiiGo · Arístides</h2><div class="local-meta">' +
@@ -323,13 +335,9 @@
     // Arriba como la maqueta (Gonzalo, 16/11): el banner y la tarjeta «WiiGo · Arístides» montada encima de
     // su borde de abajo; después los accesos y, abajo de ellos, el buscador con las pestañas (pegados al bajar).
     return '<div class="ini-top">' + banners() + tarjetaLocal() + '</div>' +
-      // Una fila que se desliza sola (Gonzalo, 16/11; ver moverAccesos). Orden: primero Lo más elegido, último Ofertas.
-      '<div class="accesos-ini" role="group" aria-label="Accesos">' +
-      '<button data-a="ir-sec" data-s="s-elegido"><span>⭐</span>Lo más elegido</button>' +
-      '<button data-a="objetivos"><span>🎯</span>Objetivos</button><button data-a="mundo"><span>🌍</span>Del mundo</button>' +
-      '<button data-a="pros"><span>👩‍💻</span>Profesionales</button>' +
-      '<button data-a="combos"><span>🎁</span>Combos<em class="pronto">Pronto</em></button>' +
-      '<button data-a="ofertas"><span>🏷️</span>Ofertas' + (OFERTAS.length ? '<em>' + OFERTAS.length + '</em>' : '') + '</button></div>' +
+      // Una fila que da vueltas sola (Gonzalo, 16/11; ver moverAccesos). Orden: primero Lo más elegido, último
+      // Ofertas. Va dos veces para que la vuelta no se note; la copia no la lee el lector de pantalla.
+      '<div class="accesos-ini" role="group" aria-label="Accesos">' + botonesAccesos(false) + botonesAccesos(true) + '</div>' +
       // Pegados arriba al bajar (abajo del encabezado con el buscador): las marcas y, abajo de ellas, los rubros
       // o las categorías de la marca (Gonzalo, 16/11: «las marcas arriba y abajo las subcategorías»).
       '<div class="pegado-ini" id="pegado-ini">' + marcas + tabs + '</div>' + elegido + secciones + pie();
@@ -896,30 +904,49 @@
   document.addEventListener('click', function (e) { var el = e.target.closest('[data-a]'); if (!el || el.tagName === 'INPUT') return; var a = A[el.getAttribute('data-a')]; if (a) { e.preventDefault(); a(el.dataset); } });
   // Las casillas avisan con «change» (el clic no pasa por A para no frenar el tilde).
   document.addEventListener('change', function (e) { if (e.target.getAttribute && e.target.getAttribute('data-a') === 'c-promos') A['c-promos'](e.target.dataset); });
-  // La fila de accesos se corre sola (Gonzalo, 16/11): cada 3 s avanza un botón y al llegar al final vuelve al
-  // principio. Si el cliente la toca, se queda quieta 10 s. No se mueve fuera de la pantalla, con una hoja abierta
-  // ni con «reducir movimiento». Solo mueve el scroll: no vuelve a dibujar nada ni consulta al servidor.
-  var accesosQuieto = 0;
   // La dirección abre el mapa (Gonzalo, 16/11). En iPhone, Apple Maps (siempre está instalado);
   // en el resto, Google Maps (en Android abre la app). Misma búsqueda en el mail de «¡Está listo!».
   var DIR_MAPA = 'Arístides Villanueva 256, Mendoza, Argentina';
   var MAPA = /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent) && 'ontouchend' in document
     ? 'https://maps.apple.com/?q=' + encodeURIComponent('WiiGo') + '&address=' + encodeURIComponent(DIR_MAPA)
     : 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(DIR_MAPA);
-  ['touchstart', 'pointerdown', 'wheel'].forEach(function (ev) {
-    document.addEventListener(ev, function (e) { if (e.target && e.target.closest && e.target.closest('.accesos-ini')) accesosQuieto = Date.now() + 10000; }, { passive: true });
+  // La fila de accesos da vueltas sola, sin fin (Gonzalo, 16/11: «que se vayan deslizando siempre hasta que la
+  // toques y luego vuelve»). Los botones van dos veces seguidas: cuando la primera tanda terminó de pasar, se salta
+  // atrás exactamente esa distancia y no se nota. Al tocarla se frena y el cliente la desliza a mano (también da la
+  // vuelta); 3 s después de soltarla sigue sola. Quieta fuera de la pantalla, con una hoja abierta o con «reducir
+  // movimiento». Solo mueve el scroll: no redibuja ni consulta al servidor.
+  var accesosQuieto = 0, accesosTocando = false, accesosPos = -1, accesosFila = null;
+  document.addEventListener('touchstart', function (e) { if (e.target.closest && e.target.closest('.accesos-ini')) { accesosTocando = true; accesosPos = -1; } }, { passive: true });
+  document.addEventListener('touchend', function () { if (accesosTocando) { accesosTocando = false; accesosQuieto = Date.now() + 3000; } }, { passive: true });
+  ['pointerdown', 'wheel'].forEach(function (ev) {
+    document.addEventListener(ev, function (e) { if (e.target.closest && e.target.closest('.accesos-ini')) { accesosQuieto = Date.now() + 3000; accesosPos = -1; } }, { passive: true });
   });
-  function moverAccesos() {
-    var f = document.querySelector('.accesos-ini');
-    if (!f || Date.now() < accesosQuieto || document.hidden || S.cuenta || S.pedido || S.ficha) return;
-    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    var r = f.getBoundingClientRect(); if (r.bottom < 0 || r.top > window.innerHeight) return;
-    var b = f.querySelector('button'); if (!b) return;
-    var paso = b.offsetWidth + 8, fin = f.scrollWidth - f.clientWidth;
-    if (fin <= 2) return;
-    f.scrollTo({ left: f.scrollLeft >= fin - 2 ? 0 : Math.min(fin, f.scrollLeft + paso), behavior: 'smooth' });
+  var sinMovimiento = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function vueltaAccesos(f) {
+    // Ancho de una tanda = donde empieza la copia (el primer botón repetido).
+    var copia = f.querySelector('[data-copia]'); if (!copia) return 0;
+    return copia.offsetLeft - f.firstElementChild.offsetLeft;
   }
-  setInterval(moverAccesos, 3000);
+  var accesosAntes = 0;
+  function moverAccesos(ahora) {
+    requestAnimationFrame(moverAccesos);
+    // Por tiempo, no por cuadro: igual de rápido en un celu de 60 Hz que en un iPhone de 120 Hz.
+    var dt = accesosAntes ? Math.min(100, ahora - accesosAntes) : 0; accesosAntes = ahora;
+    var f = document.querySelector('.accesos-ini');
+    if (!f) return;
+    if (f !== accesosFila) { accesosFila = f; accesosPos = -1; }
+    var tanda = vueltaAccesos(f); if (tanda <= 0) return;
+    // A mano también da la vuelta, para los dos lados.
+    if (f.scrollLeft >= tanda) { f.scrollLeft -= tanda; accesosPos = -1; }
+    else if (f.scrollLeft <= 0 && accesosTocando === false && Date.now() < accesosQuieto) { f.scrollLeft += tanda; accesosPos = -1; }
+    if (sinMovimiento || accesosTocando || Date.now() < accesosQuieto || document.hidden || S.cuenta || S.pedido || S.ficha) return;
+    var r = f.getBoundingClientRect(); if (r.bottom < 0 || r.top > window.innerHeight) return;
+    if (accesosPos < 0) accesosPos = f.scrollLeft;
+    accesosPos += dt * 0.025; // 25 px por segundo: se lee mientras pasa
+    if (accesosPos >= tanda) accesosPos -= tanda;
+    f.scrollLeft = accesosPos;
+  }
+  requestAnimationFrame(moverAccesos);
   // El teclado del celu no tapa las hojas (Entrá a WiiGo, el pedido): con visualViewport se sabe cuánto
   // ocupa y la hoja se apoya arriba de él. Al tocar un campo, se lo trae a la vista (Gonzalo, 16/11).
   function ajustarTeclado() {
