@@ -1000,6 +1000,8 @@ export default function AsesorApp({
   const [mostrarComoAyuda, setMostrarComoAyuda] = useState(false);
   const [modalidadTurno, setModalidadTurno] = useState<"presencial" | "online" | null>(null);
   const [productoAbierto, setProductoAbierto] = useState<string | null>(null);
+  // El combo tocado en Combos: abre su ficha (16/11). La del producto se abre encima.
+  const [comboAbierto, setComboAbierto] = useState<string | null>(null);
   const [idioma, setIdioma] = useState<Idioma>("es");
   const agotados = useMemo(() => new Set(sinStock), [sinStock]);
   const textoSinStock = idioma === "en" ? "Out of stock" : idioma === "pt" ? "Sem estoque" : "Sin stock";
@@ -2399,13 +2401,18 @@ export default function AsesorApp({
               {combosVisibles.map(({ combo, grupos, suelto }) => {
                 const ahorro = suelto - combo.precio;
                 return (
-                  <div key={combo.id} className="rounded-[22px] bg-white overflow-hidden shadow-sm flex flex-col border border-[#ece4d4]">
-                    <div className="relative bg-white h-[150px] [@media(max-height:820px)]:h-[130px] grid place-items-center">
+                  <div
+                    key={combo.id}
+                    onClick={() => setComboAbierto(combo.id)}
+                    className="rounded-[22px] bg-white overflow-hidden shadow-sm flex flex-col border border-[#ece4d4] cursor-pointer transition-transform active:scale-[.98]"
+                  >
+                    {/* La foto adentro de su recuadro, entera: antes crecía más que el recuadro y tapaba el nombre (Gonzalo, 16/11). */}
+                    <div className="relative bg-white h-[200px] [@media(max-height:820px)]:h-[140px] shrink-0 overflow-hidden">
                       {combo.imagen ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={combo.imagen} alt="" className="w-full h-full object-contain" />
+                        <img src={combo.imagen} alt="" className="absolute inset-0 w-full h-full object-contain px-2 pb-2 pt-11" />
                       ) : (
-                        <span className="flex w-full h-full gap-2 p-3">
+                        <span className="absolute inset-0 flex gap-2 px-3 pb-3 pt-11">
                           {grupos.map((g, gi) =>
                             g.productos[0]?.imagen ? (
                               // eslint-disable-next-line @next/next/no-img-element
@@ -2433,7 +2440,10 @@ export default function AsesorApp({
                           g.productos.map((p) => (
                             <button
                               key={`${gi}-${p.id_producto}`}
-                              onClick={() => setProductoAbierto(p.id_producto)}
+                              onClick={(ev) => {
+                                ev.stopPropagation();
+                                setProductoAbierto(p.id_producto);
+                              }}
                               className="text-left text-[12.5px] font-semibold text-[#3d4436] rounded-xl px-2.5 py-1.5 flex items-center gap-2"
                               style={{ background: "#f1f4ec" }}
                             >
@@ -2461,6 +2471,106 @@ export default function AsesorApp({
               })}
             </div>
           </div>
+
+          {/* La ficha del combo: foto grande, precios, cuánto ahorra y sus productos (cada uno abre su ficha encima). */}
+          {(() => {
+            const abierto = combosVisibles.find((x) => x.combo.id === comboAbierto);
+            if (!abierto) return null;
+            const { combo, grupos, suelto } = abierto;
+            const ahorro = suelto - combo.precio;
+            return (
+              <div className="fixed inset-0 z-30 flex items-center justify-center p-4 md:p-8" style={{ background: "rgba(31,38,28,.55)" }} onClick={() => setComboAbierto(null)}>
+                <div
+                  className="relative w-full max-w-[980px] max-h-full overflow-y-auto rounded-[28px] bg-[#fffaf2] shadow-2xl grid md:grid-cols-[1.1fr_1fr]"
+                  onClick={(ev) => ev.stopPropagation()}
+                >
+                  <button
+                    onClick={() => setComboAbierto(null)}
+                    className="absolute top-3 right-3 z-10 w-11 h-11 rounded-full bg-white shadow grid place-items-center text-[22px] font-bold text-[#3d4436]"
+                    aria-label={idioma === "en" ? "Close" : idioma === "pt" ? "Fechar" : "Cerrar"}
+                  >
+                    ✕
+                  </button>
+                  <div className="relative bg-white h-[300px] md:h-auto md:min-h-[460px] overflow-hidden">
+                    {combo.imagen ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={combo.imagen} alt="" className="absolute inset-0 w-full h-full object-contain p-6 pt-16" />
+                    ) : (
+                      <span className="absolute inset-0 flex gap-3 p-6 pt-16">
+                        {grupos.map((g, gi) =>
+                          g.productos[0]?.imagen ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img key={gi} src={g.productos[0].imagen} alt="" className="flex-1 min-w-0 h-full object-contain" />
+                          ) : null
+                        )}
+                      </span>
+                    )}
+                    {ahorro > 0 && (
+                      <span className="absolute top-4 left-4 text-[15px] font-extrabold px-3.5 py-1.5 rounded-full text-white" style={{ background: "#e8743b" }}>
+                        {idioma === "en" ? "Save" : idioma === "pt" ? "Economize" : "Ahorrás"} {formatoPrecio(ahorro)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="p-6 md:p-8 flex flex-col gap-4">
+                    {combo.marca && (
+                      <span className="self-start text-[12px] font-bold px-3 py-1 rounded-full" style={{ background: "#22301f", color: "#f5efe3" }}>
+                        {combo.marca}
+                      </span>
+                    )}
+                    <h3 className={`${titular.className} text-[28px] md:text-[32px] font-extrabold leading-[1.05] tracking-[-.02em] text-[#1f261c]`}>{combo.nombre}</h3>
+                    <div className="flex items-baseline gap-3 flex-wrap">
+                      <span className={`${titular.className} text-[36px] font-extrabold text-[#1f261c]`}>{formatoPrecio(combo.precio)}</span>
+                      {suelto > combo.precio && <span className="text-[17px] text-[#a8a8a8] line-through">{formatoPrecio(suelto)}</span>}
+                    </div>
+                    {combo.precioEfectivo != null && combo.precioEfectivo < combo.precio && (
+                      <span className="self-start rounded-xl px-3 py-2 text-[16px] font-extrabold" style={{ background: "#eaf3dc", color: "#3d6b28" }}>
+                        {formatoPrecio(combo.precioEfectivo)} {idioma === "en" ? "paying cash" : idioma === "pt" ? "pagando em dinheiro" : "pagando en efectivo"}
+                      </span>
+                    )}
+                    <p className="text-[15px] text-[#5d6553] leading-snug">
+                      {idioma === "en"
+                        ? "Take these products together and the price drops by itself at the checkout. Any flavor counts."
+                        : idioma === "pt"
+                          ? "Leve estes produtos juntos e o preço baixa sozinho no caixa. Vale qualquer sabor."
+                          : "Llevá estos productos juntos y el precio baja solo en la caja. Vale cualquier sabor."}
+                    </p>
+                    <div className="flex flex-col gap-2">
+                      <span className="text-[12px] font-extrabold uppercase tracking-[.12em] text-[#8a9180]">
+                        {idioma === "en" ? "What's included" : idioma === "pt" ? "O que inclui" : "Qué lleva"}
+                      </span>
+                      {grupos.map((g, gi) =>
+                        g.productos.map((p) => (
+                          <button
+                            key={`${gi}-${p.id_producto}`}
+                            onClick={() => setProductoAbierto(p.id_producto)}
+                            className="text-left rounded-2xl px-3 py-2.5 flex items-center gap-3 bg-white border border-[#ece4d4] active:scale-[.99]"
+                          >
+                            <span className="w-14 h-14 shrink-0 rounded-xl overflow-hidden grid place-items-center bg-white">
+                              {p.imagen ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={p.imagen} alt="" className="w-full h-full object-contain" />
+                              ) : null}
+                            </span>
+                            <span className="flex-1 min-w-0">
+                              <span className="block text-[14.5px] font-bold text-[#1f261c] leading-tight">
+                                {g.cantidad} × {tr(p.nombre, p.nombre_en, p.nombre_pt)}
+                              </span>
+                              <span className="block text-[12.5px] text-[#8a9180]">
+                                {idioma === "en" ? "Alone" : idioma === "pt" ? "Avulso" : "Suelto"} {formatoPrecio(Number(p.precio_venta) || 0)}
+                              </span>
+                            </span>
+                            <span className="text-[13px] font-extrabold shrink-0" style={{ color: "#4d7635" }}>
+                              {idioma === "en" ? "See ›" : idioma === "pt" ? "Ver ›" : "Ver ›"}
+                            </span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
 
