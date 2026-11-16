@@ -30,7 +30,28 @@ export type ProductoAprender = {
   precio: number | null;
   ficha: FichaProducto;
   repasado: boolean;
+  /** Para la ficha corta: la porción y lo que trae por porción (como la tienda: sin gramos, va tal cual). */
+  porcion: string | null;
+  kcal: number | null;
+  proteina: number | null;
+  sabores: string[];
+  /** «Leer todo el texto»: la descripción y los ingredientes cargados. */
+  descripcion: string | null;
+  ingredientes: string | null;
 };
+
+/** Gramos de una porción («30 g (1 medida)» → 30); null si no dice gramos. */
+function gramosDe(porcion: string | null) {
+  const m = (porcion ?? "").match(/(\d+(?:[.,]\d+)?)\s*(g|gr|grs|gramos|ml|cc)\b/i);
+  return m ? Number(m[1].replace(",", ".")) : null;
+}
+function porPorcion(valor100: unknown, porcion: string | null) {
+  if (valor100 == null || valor100 === "") return null;
+  const v = Number(valor100);
+  if (!Number.isFinite(v)) return null;
+  const g = gramosDe(porcion);
+  return Math.round(g ? (v * g) / 100 : v);
+}
 export type TemaAprender = { clave: string; nombre: string; ficha: FichaTema | null; productos: ProductoAprender[] };
 export type DatosAprender = { temas: TemaAprender[]; marcas: string[]; total: number; repasados: number; faltaSql: boolean };
 
@@ -45,14 +66,26 @@ export async function obtenerAprender(): Promise<DatosAprender> {
     throw new Error(error.message);
   }
   const idsProducto = (fichas ?? []).filter((f) => f.tipo === "PRODUCTO").map((f) => f.id_producto as string);
-  const [{ data: prods }, { data: subs }, { data: marcas }, { data: progreso }] = await Promise.all([
+  const [{ data: prods }, { data: subs }, { data: marcas }, { data: progreso }, { data: fichasProd }, { data: vars }] = await Promise.all([
     idsProducto.length
-      ? supabase.from("productos").select("id_producto, nombre, id_marca, id_subcategoria, imagen, precio_venta, estado").in("id_producto", idsProducto)
+      ? supabase.from("productos").select("id_producto, nombre, id_marca, id_subcategoria, imagen, precio_venta, estado, descripcion").in("id_producto", idsProducto)
       : Promise.resolve({ data: [] as Record<string, unknown>[] }),
     supabase.from("subcategorias").select("id_subcategoria, nombre"),
     supabase.from("marcas").select("id_marca, nombre"),
     supabase.from("aprender_progreso").select("id_producto").eq("id_usuario", sesion.idUsuario),
+    idsProducto.length
+      ? supabase.from("ficha_producto").select("id_producto, porcion, kcal_100g, proteinas, descripcion_publica, ingredientes").in("id_producto", idsProducto)
+      : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+    idsProducto.length
+      ? supabase.from("variantes_producto").select("id_producto, nombre, orden").eq("estado", "ACTIVO").in("id_producto", idsProducto)
+      : Promise.resolve({ data: [] as Record<string, unknown>[] }),
   ]);
+  const fichaProd = new Map((fichasProd ?? []).map((f) => [f.id_producto as string, f]));
+  const saboresDe = new Map<string, string[]>();
+  for (const v of [...(vars ?? [])].sort((a, b) => (Number(a.orden) || 9999) - (Number(b.orden) || 9999))) {
+    const n = String(v.nombre ?? "").trim();
+    if (n && n !== "Único") saboresDe.set(v.id_producto as string, [...(saboresDe.get(v.id_producto as string) ?? []), n]);
+  }
   const fichaProducto = new Map((fichas ?? []).filter((f) => f.tipo === "PRODUCTO").map((f) => [f.id_producto as string, f.aprobado as FichaProducto]));
   const fichaTema = new Map((fichas ?? []).filter((f) => f.tipo === "TEMA").map((f) => [f.id_subcategoria as string, f.aprobado as FichaTema]));
   const nombreSub = new Map((subs ?? []).map((s) => [s.id_subcategoria as string, s.nombre as string]));
@@ -64,7 +97,16 @@ export async function obtenerAprender(): Promise<DatosAprender> {
     if (p.estado !== "ACTIVO") continue;
     const clave = (p.id_subcategoria as string | null) ?? "otros";
     const tema = temas.get(clave) ?? { clave, nombre: nombreSub.get(clave) ?? "Otros productos", ficha: fichaTema.get(clave) ?? null, productos: [] };
+    const fp = fichaProd.get(p.id_producto as string);
+    const porcion = ((fp?.porcion as string | null) ?? "").trim() || null;
+    const texto = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
     tema.productos.push({
+      porcion,
+      kcal: porPorcion(fp?.kcal_100g, porcion),
+      proteina: porPorcion(fp?.proteinas, porcion),
+      sabores: saboresDe.get(p.id_producto as string) ?? [],
+      descripcion: texto(fp?.descripcion_publica) ?? texto(p.descripcion),
+      ingredientes: texto(fp?.ingredientes),
       idProducto: p.id_producto as string,
       nombre: p.nombre as string,
       marca: nombreMarca.get(p.id_marca as string) ?? "",

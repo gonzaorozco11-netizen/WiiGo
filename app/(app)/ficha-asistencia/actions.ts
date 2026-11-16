@@ -10,6 +10,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { cartelesPendientesDelLocal, postergarCarteles, type CartelesPendientes } from "@/lib/tareasEtiqueta";
 import { ponerPreciosAlDia } from "@/lib/preciosAlDia";
 import { errorSiNoEsLaTablet } from "@/lib/aparatoLocalServidor";
+import { faltanLasDeHoy } from "@/lib/aprenderRondas";
+import { obtenerSesionConPantallas } from "@/lib/roles";
 
 async function personaActual() {
   const cookieStore = await cookies();
@@ -231,6 +233,8 @@ export type ResultadoFichaje = {
   cajaPendiente?: boolean;
   /** Si no pudo fichar la salida porque quedan carteles de precio sin poner. */
   cartelesPendientes?: CartelesPendientes;
+  /** Si no pudo fichar la salida porque le faltan «Las 5 de hoy» de Aprender. */
+  faltaAprender?: boolean;
 };
 
 const ANTES_IDEAL = 5;
@@ -373,6 +377,12 @@ export async function fichar(
 
   const supabase = getSupabaseServerClient();
   const ahora = new Date();
+
+  // Antes de irse, «Las 5 de hoy» de Aprender (Gonzalo, 2026-11-16). Falla
+  // abierto: sin tabla, sin datos para armarlas o para el Dueño, no frena.
+  if (tipo === "SALIDA" && (await faltanLasDeHoy(supabase, await obtenerSesionConPantallas()))) {
+    return { error: "Antes de irte hacé las 5 preguntas de hoy en Aprender.", faltaAprender: true };
+  }
 
   // Antes de irse, los carteles de precio puestos (o el motivo de por qué no).
   if (tipo === "SALIDA") {

@@ -1,0 +1,24 @@
+/* Aprender (2026-11-16): las animaciones de la maqueta aprobada. El resto va con Tailwind. */
+.ap-llama { display: inline-block; animation: ap-late 1.6s ease-in-out infinite; }
+@keyframes ap-late { 50% { transform: scale(1.15) rotate(-6deg); } }
+
+.ap-reloj { transform-origin: left; animation-name: ap-achica; animation-timing-function: linear; animation-fill-mode: forwards; }
+@keyframes ap-achica { to { transform: scaleX(0); } }
+
+.ap-sube { animation: ap-sube 0.25s ease-out; }
+@keyframes ap-sube { from { transform: translateY(20px); opacity: 0; } }
+
+.ap-pop { animation: ap-pop 0.5s cubic-bezier(0.2, 1.6, 0.4, 1); }
+@keyframes ap-pop { from { transform: scale(0.3); } }
+
+.ap-lluvia { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 50; }
+.ap-lluvia i { position: absolute; top: -12px; width: 9px; height: 14px; border-radius: 2px; animation: ap-cae 1.8s ease-in forwards; }
+@keyframes ap-cae { to { transform: translateY(105vh) rotate(540deg); } }
+
+.ap-op { border-bottom-width: 4px; transition: transform 0.08s; }
+.ap-op:active { transform: translateY(2px); }
+
+@media (prefers-reduced-motion: reduce) {
+  .ap-llama, .ap-sube, .ap-pop, .ap-lluvia i { animation: none !important; }
+  .ap-lluvia { display: none; }
+}

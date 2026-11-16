@@ -3,6 +3,8 @@ import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import PantallaBloqueada from "@/components/PantallaBloqueada";
 import AprenderApp from "@/components/AprenderApp";
 import { obtenerAprender } from "./actions";
+import { resumenAprender } from "./rondas";
+import "./aprender.css";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +13,7 @@ export const dynamic = "force-dynamic";
 export default async function AprenderPage() {
   const sesion = await obtenerSesionConPantallas();
   if (!puedeVerPantalla(sesion, "aprender") && !puedeVerPantalla(sesion, "aprender-revisar")) return <PantallaBloqueada />;
-  const datos = await obtenerAprender();
+  const [datos, resumen] = await Promise.all([obtenerAprender(), resumenAprender()]);
   // Quien aprueba los textos entra a revisarlos desde acá (ya no es otro ítem del menú).
   const revisa = sesion?.rol === "admin" || puedeVerPantalla(sesion, "aprender-revisar");
   return (
@@ -23,7 +25,7 @@ export default async function AprenderPage() {
           </Link>
         </div>
       )}
-      <AprenderApp datos={datos} />
+      <AprenderApp datos={datos} resumen={resumen} />
     </>
   );
 }

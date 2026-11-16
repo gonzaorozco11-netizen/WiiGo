@@ -249,7 +249,19 @@ export default function FichaAsistenciaApp({ antesDeSalir = false }: { antesDeSa
           )}
         </p>
       )}
-      {resultado?.error && <p className="text-sm text-red-600 mb-4">{resultado.error}</p>}
+      {resultado?.error && (
+        <p className="text-sm text-red-600 mb-4">
+          {resultado.error}
+          {resultado.faltaAprender && (
+            <>
+              {" "}
+              <a href="/aprender" className="font-bold underline underline-offset-2">
+                Ir a Aprender →
+              </a>
+            </>
+          )}
+        </p>
+      )}
       <p className="text-sm text-neutral-400 mb-1 capitalize">
         {new Date().toLocaleString("es-AR", { weekday: "long", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
       </p>
