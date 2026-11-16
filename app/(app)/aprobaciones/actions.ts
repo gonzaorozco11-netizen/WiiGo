@@ -238,6 +238,13 @@ async function generarTareasEtiqueta(
   const idsLocal = (locales ?? []).map((l) => l.id_local as string);
   if (idsLocal.length === 0) return;
 
+  // «Lo pongo y entra» también para las marcas (Gonzalo, 16/11): si el operativo
+  // tiene tiempo, pone el cartel y el precio entra en ese momento; si no, entra
+  // igual al final del turno (vence_el). Solo el cambio de precio, no las promos.
+  const efectivoNuevo =
+    typeof s.datos.precio_efectivo === "number" ? (s.datos.precio_efectivo as number) : efectivoAnterior;
+  const alPoner = s.tipo === "PRECIO" && precioNuevo != null;
+
   const filas: FilaTareaEtiqueta[] = idsLocal.map((idLocal) => ({
     id_solicitud: s.idSolicitud,
     id_producto: s.idProducto,
@@ -248,6 +255,7 @@ async function generarTareasEtiqueta(
     efectivo_anterior: efectivoAnterior,
     precio_nuevo: precioNuevo,
     vence_el: s.vigencia.toISOString(),
+    ...(alPoner ? { efectivo_nuevo: efectivoNuevo, aplicar_al_poner_si_nueva: true } : {}),
   }));
 
   // Fin de promo: vuelve el precio de lista el día que termina.
@@ -498,6 +506,14 @@ export async function aplicarCambiosProgramados(): Promise<{ aplicadas: number; 
           cambiado_por: s.resuelta_por,
           motivo: s.motivo,
         });
+
+        // Ya entró: su cartel deja de esperar («lo pongo y entra») y queda por
+        // cambiar, en rojo, como cualquier cartel de marca con precio viejo.
+        await supabase
+          .from("tareas_etiqueta")
+          .update({ aplicar_al_poner: false })
+          .eq("id_solicitud", s.id_solicitud as string)
+          .in("estado", ["PENDIENTE", "VENCIDA"]);
       } else if (s.tipo === "PRECIO_EFECTIVO") {
         // El precio de efectivo no va al historial de precios: ese historial es
         // del precio de lista, que es contra el que se mide la liquidación.

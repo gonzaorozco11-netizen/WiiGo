@@ -342,7 +342,7 @@ export async function armarTablero(): Promise<Tablero | null> {
     seguimiento.push({
       color: "azul",
       titulo: `${plural(n(precioEstaNoche), "cambio de precio programado", "cambios de precio programados")}`,
-      detalle: "Entran solos en el próximo cambio de turno; en Carteles se ven como «imprimilo después»",
+      detalle: "Entran al poner el cartel («Lo puse» en Carteles) o, si nadie lo pone, solos en el próximo cambio de turno",
       valor: String(n(precioEstaNoche)),
       href: "/carteles",
     });

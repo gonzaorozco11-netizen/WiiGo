@@ -35,12 +35,17 @@ export async function insertarTareasEtiqueta(supabase: SupabaseClient, filas: Fi
   }
 
   const nuevas: FilaTareaEtiqueta[] = [];
-  for (const f of filas) {
+  for (const original of filas) {
+    // `aplicar_al_poner_si_nueva` (precios de marca, 16/11): «lo pongo y entra» solo
+    // si la tarea es nueva. Si ya había un cartel de esa marca por cambiar, su
+    // precio anterior ya entró y el cartel viejo tiene que seguir en rojo: no se toca.
+    const { aplicar_al_poner_si_nueva: siNueva, ...f } = original as FilaTareaEtiqueta & { aplicar_al_poner_si_nueva?: boolean };
     const id = f.tipo === "CAMBIO_PRECIO" ? abiertas.get(`${f.id_producto}:${f.id_local}`) : undefined;
     if (!id) {
-      nuevas.push(f);
+      nuevas.push(siNueva ? { ...f, aplicar_al_poner: true } : f);
       continue;
     }
+    if (siNueva) delete (f as Record<string, unknown>).efectivo_nuevo;
     const cambio: Record<string, unknown> = { precio_nuevo: f.precio_nuevo };
     if ("efectivo_nuevo" in f) cambio.efectivo_nuevo = f.efectivo_nuevo;
     if ("aplicar_al_poner" in f) cambio.aplicar_al_poner = f.aplicar_al_poner;
@@ -76,7 +81,7 @@ export async function aplicarPreciosDeCarteles(supabase: SupabaseClient, idsTare
   if (idsTarea.length === 0) return 0;
   const { data: hechas, error } = await supabase
     .from("tareas_etiqueta")
-    .select("id_producto, precio_nuevo, efectivo_nuevo, hecha_el")
+    .select("id_producto, precio_nuevo, efectivo_nuevo, hecha_el, id_solicitud")
     .in("id_tarea", idsTarea)
     .eq("aplicar_al_poner", true);
   if (error || !hechas?.length) return 0;
@@ -109,11 +114,26 @@ export async function aplicarPreciosDeCarteles(supabase: SupabaseClient, idsTare
         precio_anterior: hoy.get(id) ?? null,
         precio_nuevo: lista,
         cambiado_por: idUsuario,
-        motivo: "Módulo Precios · cartel puesto",
+        motivo: "Cartel puesto",
       });
     }
+    await marcarSolicitudesAplicadas(supabase, hechas.filter((h) => h.id_producto === id).map((h) => h.id_solicitud as string | null));
   }
   return aplicados;
+}
+
+/**
+ * El precio de una marca entró al poner el cartel (o al cierre del turno): su
+ * solicitud queda APLICADA, así a la hora de vigencia no se vuelve a aplicar.
+ */
+async function marcarSolicitudesAplicadas(supabase: SupabaseClient, ids: (string | null)[]) {
+  const limpios = [...new Set(ids.filter((x): x is string => Boolean(x)))];
+  if (!limpios.length) return;
+  await supabase
+    .from("solicitudes_marca")
+    .update({ estado: "APLICADA", aplicada_el: new Date().toISOString() })
+    .in("id_solicitud", limpios)
+    .eq("estado", "APROBADA");
 }
 
 /** Un producto con el cartel sin poner: se marca puesto de a uno, con todas sus tareas de ese local. */
@@ -188,7 +208,7 @@ export async function aplicarPreciosPropiosDelTurno(supabase: SupabaseClient): P
   const ahora = new Date().toISOString();
   const { data: tareas, error } = await supabase
     .from("tareas_etiqueta")
-    .select("id_tarea, id_producto, precio_nuevo, efectivo_nuevo, creada_el")
+    .select("id_tarea, id_producto, precio_nuevo, efectivo_nuevo, creada_el, id_solicitud")
     .eq("tipo", "CAMBIO_PRECIO")
     .eq("aplicar_al_poner", true)
     .in("estado", ["PENDIENTE", "VENCIDA"])
@@ -228,6 +248,7 @@ export async function aplicarPreciosPropiosDelTurno(supabase: SupabaseClient): P
     .from("tareas_etiqueta")
     .update({ aplicar_al_poner: false })
     .in("id_tarea", tareas.map((t) => t.id_tarea as string));
+  await marcarSolicitudesAplicadas(supabase, tareas.map((t) => t.id_solicitud as string | null));
   return aplicados;
 }
 
