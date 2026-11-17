@@ -189,6 +189,19 @@
 .vg-sub { display: block; margin-top: 4px; font-size: 16px; font-weight: 700; color: #4d5545; }
 .vg-indic button { flex: none; border: 0; background: #22301f; color: #fff; border-radius: 14px; padding: 14px 18px; font-weight: 800; font-size: 16px; margin-left: 14px; }
 
+/* ===== Pantalla del local (modo liviano): el mueble de frente, plano, sin 3D =====
+   (17/11) La placa dibujaba el 3D encima de los carteles. Sin gap ni inset. */
+.vg-plano { position: absolute; top: 96px; bottom: 128px; left: 0; right: 0; z-index: 1; display: flex; align-items: center; justify-content: center; }
+.vg-plano-mueble { width: 760px; max-width: 72%; max-height: 100%; background: #f4f1ea; border: 10px solid #7fa07a; border-top-width: 0; border-radius: 6px; padding: 0 16px 10px; display: flex; flex-direction: column; box-shadow: 0 30px 60px -30px rgba(0, 0, 0, .5); }
+.vg-plano-cartel { margin: 0 -26px 6px; background: #fff; border: 10px solid #7fa07a; border-bottom-width: 4px; border-radius: 6px 6px 0 0; text-align: center; padding: 8px 10px; }
+.vg-plano-cartel b { display: block; font-size: 24px; font-weight: 800; line-height: 1.1; }
+.vg-plano-cartel span { display: block; font-size: 15px; font-weight: 600; color: #5d6553; margin-top: 2px; }
+.vg-plano-fila { display: flex; justify-content: space-around; align-items: flex-end; padding: 8px 0 6px; border-bottom: 4px solid #d6cdb8; }
+.vg-plano-lugar { position: relative; width: 50px; height: 58px; border-radius: 5px 5px 8px 8px; background: #c9a57a; }
+.vg-plano-lugar i { position: absolute; left: 9px; right: 9px; top: 22px; height: 14px; border-radius: 3px; }
+.vg-plano-lugar.vacio { background: transparent; border: 2px dashed #cfc6b3; }
+.vg-plano-lugar.es { box-shadow: 0 0 0 4px #e8743b, 0 10px 18px -8px rgba(0, 0, 0, .55); transform: scale(1.18); z-index: 2; }
+
 /* El mapita del local */
 .vg-planta { position: absolute; right: 20px; bottom: 24px; z-index: 21; transform: translate3d(0, 0, 0); width: 150px; background: rgba(255, 250, 242, .96); border: 1px solid #e8dfcd; border-radius: 16px; padding: 10px; }
 .vg-planta b { display: block; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: #857f6f; margin-bottom: 6px; }

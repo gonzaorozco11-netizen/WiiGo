@@ -344,6 +344,7 @@ export default function ViajeGondola({
   }, []);
 
   if (!montado) return null;
+  const liviano = esPlacaLiviana();
   const camara = paso === 2 ? destino.cam : entrada;
   const nombreViaje = `vg-viaje-${vuelta}`;
   const oculto = (g: string) => (paso === 2 && destino.ocultar.includes(g) ? " oculto" : "");
@@ -511,6 +512,34 @@ export default function ViajeGondola({
         </button>
       </div>
 
+      {/* En la pantalla del local (Raspberry, modo liviano) no hay 3D: la placa lo
+          dibujaba encima de los carteles y la pantalla quedaba trabada (Fruppi,
+          17/11). Va el mueble de frente, plano, con el lugar marcado. */}
+      {liviano && (
+        <div className="vg-plano">
+          <div className="vg-plano-mueble">
+            <div className="vg-plano-cartel">
+              <b>{zona.titulo}</b>
+              {zona.subtitulo && <span>{zona.subtitulo}</span>}
+            </div>
+            {zona.filas.map((f, r) => (
+              <div key={r} className="vg-plano-fila">
+                {Array.from({ length: Math.max(1, f.lugares) }, (_, c) => {
+                  const lugar = zona.lugares.find((l) => l.fila === r && l.columna === c);
+                  const es = r === fila && c === columna;
+                  return (
+                    <div key={c} ref={es ? objetivo : undefined} className={`vg-plano-lugar${es ? " es" : ""}${lugar || es ? "" : " vacio"}`}>
+                      {(lugar || es) && <i style={{ background: colorDeProducto(es ? nombre : lugar?.nombre ?? "") }} />}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!liviano && (
       <div className="vg-camara">
         {animando && <style>{recorrido(nombreViaje, entrada, caminando, destino.cam)}</style>}
         <div
@@ -657,6 +686,7 @@ export default function ViajeGondola({
           </div>
         </div>
       </div>
+      )}
 
       {/* El foco de luz, el anillo y el cartel: por encima de la escena */}
       <div className="vg-foco" aria-hidden="true" />
