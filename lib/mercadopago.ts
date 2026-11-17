@@ -119,10 +119,19 @@ export async function configurarLiberacionesMp(columnas: string[]) {
   const tiene = new Set((actual.columns ?? []).map((c) => c.key));
   const faltan = columnas.filter((c) => !tiene.has(c));
   if (faltan.length === 0) return actual;
-  return mpFetch("/v1/account/release_report/config", {
-    method: "PUT",
-    body: JSON.stringify({ ...actual, columns: [...(actual.columns ?? []), ...faltan.map((key) => ({ key }))] }),
-  });
+  // Se reenvía solo lo que Mercado Pago acepta y con valor válido: devolver la
+  // configuración tal cual la leyó (con campos vacíos o de solo lectura) la
+  // rechaza con «Invalid execute_after_withdrawal» (17/11).
+  const a = actual as Record<string, unknown>;
+  const cuerpo: Record<string, unknown> = { columns: [...(actual.columns ?? []), ...faltan.map((key) => ({ key }))] };
+  for (const k of ["file_name_prefix", "display_timezone", "report_translation", "separator"]) if (typeof a[k] === "string" && a[k]) cuerpo[k] = a[k];
+  for (const k of ["include_withdrawal_at_end", "execute_after_withdrawal", "check_available_balance", "compensate_detail"]) if (typeof a[k] === "boolean") cuerpo[k] = a[k];
+  if (a.frequency && typeof a.frequency === "object") cuerpo.frequency = a.frequency;
+  if (Array.isArray(a.notification_email_list) && a.notification_email_list.length) cuerpo.notification_email_list = a.notification_email_list;
+  if (a.sftp_info && typeof a.sftp_info === "object" && Object.keys(a.sftp_info).length) cuerpo.sftp_info = a.sftp_info;
+  if (!cuerpo.file_name_prefix) cuerpo.file_name_prefix = "wiigo-cobros";
+  if (!cuerpo.frequency) cuerpo.frequency = { hour: 3, type: "daily", value: 1 };
+  return mpFetch("/v1/account/release_report/config", { method: "PUT", body: JSON.stringify(cuerpo) });
 }
 
 /** Pide el reporte de un rango de fechas. Mercado Pago lo arma en unos minutos. */
