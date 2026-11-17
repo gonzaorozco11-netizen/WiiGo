@@ -209,7 +209,7 @@ export default function PortalDetalleLiquidacion({ idLiquidacion, onCerrar }: { 
                         {conDebitos && <th>Imp. déb.</th>}
                         {conProfesionales && <th>Prog. prof.</th>}
                         <th>Te queda</th>
-                        <th>%</th>
+                        <th>Te queda %</th>
                       </tr>
                     </thead>
                     <tbody>
