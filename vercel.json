@@ -46,7 +46,7 @@
       "schedule": "0 9 * * *"
     },
     {
-      "path": "/api/cron/cobros-digitales?pedir=0",
+      "path": "/api/cron/cobros-digitales-leer",
       "schedule": "40 9 * * *"
     }
   ]

@@ -1,6 +1,6 @@
 // Cobros digitales (17/11): cada noche lee los reportes de Mercado Pago que ya
 // estén listos y pide el de los últimos 3 días, que llega en unos minutos y lo
-// lee la corrida de las 6:40 (o «Actualizar ahora»). 6:00 de Argentina = 9:00 UTC: ver vercel.json.
+// lee la corrida de las 6:40 (app/api/cron/cobros-digitales-leer) o «Actualizar ahora». 6:00 de Argentina = 9:00 UTC: ver vercel.json.
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { sincronizarMp } from "@/lib/cobrosDigitales";
 
@@ -14,9 +14,7 @@ export async function GET(req: Request) {
   const secret = process.env.CRON_SECRET;
   if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) return responder({ error: "No autorizado" }, 401);
   try {
-    // La corrida de las 6:40 (?pedir=0) solo lee el reporte que pidió la de las 6:00.
-    const pedir = new URL(req.url).searchParams.get("pedir") !== "0";
-    const r = await sincronizarMp(getSupabaseServerClient(), { pedir, dias: 3 });
+    const r = await sincronizarMp(getSupabaseServerClient(), { pedir: true, dias: 3 });
     console.log("Cron cobros digitales:", r);
     return responder({ ok: true, ...r });
   } catch (e) {
