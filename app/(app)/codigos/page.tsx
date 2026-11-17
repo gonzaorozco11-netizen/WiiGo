@@ -10,18 +10,24 @@ import { cargarCodigosImpresos } from "@/lib/codigosImpresos";
 
 export const dynamic = "force-dynamic";
 
-export default async function CodigosPage({ searchParams }: { searchParams: Promise<{ imprimir?: string; n?: string; volver?: string }> }) {
+export default async function CodigosPage({ searchParams }: { searchParams: Promise<{ imprimir?: string; n?: string; lote?: string; volver?: string }> }) {
   const sesion = await obtenerSesionConPantallas();
-  // Desde el fraccionado paso a paso: ese producto con la cantidad ya puesta y «Volver al fraccionado».
+  // Desde el fraccionado: las etiquetas de toda la tanda juntas (?lote=id:n,id:n — 17/11, para
+  // gastar menos hojas) o de un producto solo (?imprimir=id&n=), con «Volver al fraccionado».
   const sp = await searchParams;
+  const UUID = /^[0-9a-f-]{36}$/i;
+  const cant = (t: unknown) => Math.min(999, Math.max(1, Math.round(Number(t) || 1)));
+  const lineas = sp.lote
+    ? sp.lote
+        .split(",")
+        .map((par) => par.split(":"))
+        .filter(([id]) => UUID.test(id ?? ""))
+        .map(([id, n]) => ({ idVariante: id, n: cant(n) }))
+    : sp.imprimir && UUID.test(sp.imprimir)
+      ? [{ idVariante: sp.imprimir, n: cant(sp.n) }]
+      : [];
   const pedido =
-    sp.imprimir && /^[0-9a-f-]{36}$/i.test(sp.imprimir)
-      ? {
-          idVariante: sp.imprimir,
-          n: Math.min(99, Math.max(1, Math.round(Number(sp.n) || 1))),
-          volver: sp.volver && sp.volver.startsWith("/fraccionar") ? sp.volver : "/fraccionar",
-        }
-      : null;
+    lineas.length > 0 ? { lineas, volver: sp.volver && sp.volver.startsWith("/fraccionar") ? sp.volver : "/fraccionar" } : null;
   // Quien fracciona imprime las etiquetas de su tanda aunque no tenga Códigos (solo ese producto).
   if (!puedeVerPantalla(sesion, "codigos") && !(pedido && puedeVerPantalla(sesion, "fraccionar"))) return <PantallaBloqueada />;
 

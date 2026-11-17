@@ -6,7 +6,7 @@ import { contarCartelesUrgentes } from "@/lib/tareasEtiqueta";
 import { cartelesNuevosPendientes, stickersPorPegar } from "@/lib/entradas";
 import { cobrosEsperando, NADIE_ESPERANDO } from "@/lib/cobrosEsperando";
 import { datosFraccionar, fraccionadosEnCurso } from "@/lib/fraccionado";
-import { paraFraccionar } from "@/lib/fraccionarSugerido";
+import { PASO_PARA_ETIQUETAR, conLoYaFraccionado, paraEtiquetar, paraFraccionar } from "@/lib/fraccionarSugerido";
 
 // El Inicio del operativo en la tablet del local (pedido de Gonzalo,
 // 2026-10-22): arriba un botón grande con lo que toca hacer AHORA, y abajo
@@ -203,7 +203,23 @@ export async function armarInicioOperativo(
   const agregar = (a: Omit<AccesoRapido, "badgeTono"> & { badgeTono?: AccesoRapido["badgeTono"] }) => accesos.push({ badgeTono: "rojo", ...a });
   // Un fraccionado que quedó por la mitad: primero y en rojo, para que lo termine (Gonzalo, 16/11).
   if (puede("fraccionar")) {
-    const sinTerminar = await fraccionadosEnCurso(supabase, { idUsuario: sesion.idUsuario }).catch(() => []);
+    const delLocal = persona?.id_local ? await fraccionadosEnCurso(supabase, { idLocal: persona.id_local }).catch(() => []) : [];
+    const sinTerminar = (await fraccionadosEnCurso(supabase, { idUsuario: sesion.idUsuario }).catch(() => [])).filter((e) => e.paso < PASO_PARA_ETIQUETAR);
+    // Lo fraccionado que espera la etiqueta (de cualquiera del local): hay que imprimir, pegar y sumar al stock.
+    const aEtiquetar = paraEtiquetar(delLocal);
+    if (aEtiquetar.length > 0) {
+      const n = aEtiquetar.reduce((a, e) => a + (e.bolsitas ?? 0), 0);
+      agregar({
+        clave: "fraccionado-para-etiquetar",
+        titulo: `Etiquetar ${n} ${n === 1 ? "bolsita fraccionada" : "bolsitas fraccionadas"}`,
+        detalle: "Ya están hechas: falta imprimir, pegar y sumarlas al stock",
+        href: "/fraccionar?tanda=1",
+        icono: "🏷️",
+        badge: n,
+        alerta: true,
+        deshabilitado: false,
+      });
+    }
     if (sinTerminar.length > 0) {
       const e = sinTerminar[0];
       const { data: v } = await supabase.from("variantes_producto").select("productos(nombre)").eq("id_variante", e.idVarianteGranel).maybeSingle();
@@ -226,7 +242,7 @@ export async function armarInicioOperativo(
     const ultimaHora = adentro && salidaMin !== null && ahora.minutosDelDia >= salidaMin - 60;
     if (ultimaHora && persona?.id_local) {
       const datos = await datosFraccionar(supabase, persona.id_local).catch(() => null);
-      const lista = datos ? paraFraccionar(datos.graneles).filter((s) => !s.sinGranel) : [];
+      const lista = datos ? paraFraccionar(conLoYaFraccionado(datos.graneles, aEtiquetar)).filter((s) => !s.sinGranel) : [];
       const bolsitas = lista.reduce((a, s) => a + s.hacer, 0);
       if (bolsitas > 0) {
         agregar({

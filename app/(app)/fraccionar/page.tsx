@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 // Fraccionar: pasar el granel (en el depósito, en gramos) a bolsitas, paso a paso.
 // ?seguir=<id>: abre directo un fraccionado sin terminar (desde el Inicio o al volver de imprimir).
-export default async function FraccionarPage({ searchParams }: { searchParams: Promise<{ seguir?: string }> }) {
+export default async function FraccionarPage({ searchParams }: { searchParams: Promise<{ seguir?: string; tanda?: string }> }) {
   const sesion = await obtenerSesionConPantallas();
   if (!sesion || !puedeVerPantalla(sesion, "fraccionar")) return <PantallaBloqueada />;
 
@@ -29,6 +29,7 @@ export default async function FraccionarPage({ searchParams }: { searchParams: P
       </div>
     );
   }
+  const sp = await searchParams;
   return (
     <>
       {/* Una sola vez: el granel que ya estaba guardado antes de entrar por el sistema. */}
@@ -37,7 +38,8 @@ export default async function FraccionarPage({ searchParams }: { searchParams: P
         {...datos}
         esAdmin={sesion.rol === "admin"}
         enCurso={await fraccionadosEnCurso(supabase, { idLocal })}
-        seguir={(await searchParams).seguir ?? null}
+        seguir={sp.seguir ?? null}
+        tanda={sp.tanda ? Math.min(3, Math.max(1, Number(sp.tanda) || 1)) : null}
         idUsuario={sesion.idUsuario}
       />
     </>

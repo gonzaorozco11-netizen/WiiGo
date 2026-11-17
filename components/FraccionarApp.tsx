@@ -7,7 +7,8 @@ import { cerrarGranel, descartarEnCurso } from "@/app/(app)/fraccionar/actions";
 import { textoGramos } from "@/lib/gramos";
 import FraccionarGuiado from "@/components/FraccionarGuiado";
 import PestanasStock from "@/components/PestanasStock";
-import { paraFraccionar } from "@/lib/fraccionarSugerido";
+import { PASO_PARA_ETIQUETAR, conLoYaFraccionado, paraEtiquetar, paraFraccionar } from "@/lib/fraccionarSugerido";
+import FraccionarTanda from "@/components/FraccionarTanda";
 
 // Fraccionar: el granel del depósito (en gramos) pasa a bolsitas. Desde el
 // 2026-11-16 se hace con el paso a paso (FraccionarGuiado): se toca un granel y
@@ -17,12 +18,13 @@ const cuando = (iso: string) =>
   new Date(iso).toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", weekday: "short", day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" });
 
 export default function FraccionarApp({
-  graneles,
+  graneles: granelesDelStock,
   recientes,
   resumen,
   esAdmin,
   enCurso = [],
   seguir = null,
+  tanda: tandaInicial = null,
   idUsuario = null,
 }: {
   graneles: GranelVista[];
@@ -31,25 +33,34 @@ export default function FraccionarApp({
   esAdmin: boolean;
   /** Los paso a paso que quedaron por la mitad en este local. */
   enCurso?: EnCursoVista[];
-  /** ?seguir=<id>: se abre ese directamente (desde el Inicio o al volver de imprimir). */
+  /** ?seguir=<id>: se abre ese directamente (desde el Inicio). */
   seguir?: string | null;
+  /** ?tanda=<paso>: las etiquetas de la tanda (al volver de imprimir, paso 2). */
+  tanda?: number | null;
   idUsuario?: string | null;
 }) {
   const router = useRouter();
   const [busqueda, setBusqueda] = useState("");
   const [abierto, setAbierto] = useState<string | null>(null);
+  // Lo ya fraccionado que espera la etiqueta (de todo el local): no vuelve a pedirse y su granel ya se usó.
+  const paraEtiq = useMemo(() => paraEtiquetar(enCurso), [enCurso]);
+  const graneles = useMemo(() => conLoYaFraccionado(granelesDelStock, paraEtiq), [granelesDelStock, paraEtiq]);
+  const bolsitasParaEtiquetar = paraEtiq.reduce((a, e) => a + (e.bolsitas ?? 0), 0);
   const porId = useMemo(() => new Map(graneles.map((g) => [g.idVariante, g])), [graneles]);
   const aSeguir = seguir ? enCurso.find((e) => e.id === seguir) : null;
+  const [tanda, setTanda] = useState<number | null>(() =>
+    tandaInicial ? tandaInicial : aSeguir && aSeguir.paso >= PASO_PARA_ETIQUETAR ? 1 : null
+  );
   const [guiado, setGuiado] = useState<{ granel: GranelVista; inicial: EnCursoVista | null; idBolsa?: string } | null>(() =>
-    aSeguir && porId.get(aSeguir.idVarianteGranel) ? { granel: porId.get(aSeguir.idVarianteGranel)!, inicial: aSeguir } : null
+    aSeguir && aSeguir.paso < PASO_PARA_ETIQUETAR && porId.get(aSeguir.idVarianteGranel) ? { granel: porId.get(aSeguir.idVarianteGranel)!, inicial: aSeguir } : null
   );
   // «Para fraccionar antes de cerrar el turno»: lo que falta para llegar a 5 + 3 (17/11).
   const sugeridos = useMemo(() => paraFraccionar(graneles), [graneles]);
   const conGranel = sugeridos.filter((s) => !s.sinGranel);
   const totalBolsitas = conGranel.reduce((a, s) => a + s.hacer, 0);
   const [descartando, startDescartar] = useTransition();
-  // Los míos primero; el Dueño ve los de todos.
-  const pendientes = enCurso.filter((e) => esAdmin || e.idUsuario === idUsuario);
+  // Los míos primero; el Dueño ve los de todos. Lo que espera la etiqueta va aparte.
+  const pendientes = enCurso.filter((e) => e.paso < PASO_PARA_ETIQUETAR && (esAdmin || e.idUsuario === idUsuario));
 
   const visibles = useMemo(() => {
     const q = busqueda.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
@@ -58,6 +69,25 @@ export default function FraccionarApp({
       [g.nombre, ...g.bolsitas.map((b) => b.nombre)].some((t) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().includes(q))
     );
   }, [graneles, busqueda]);
+
+  const limpiarUrl = () => {
+    if (seguir || tandaInicial) router.replace("/fraccionar");
+  };
+
+  if (tanda) {
+    return (
+      <FraccionarTanda
+        pendientes={paraEtiq}
+        graneles={granelesDelStock}
+        pasoInicial={tanda}
+        onSalir={() => {
+          setTanda(null);
+          limpiarUrl();
+          router.refresh();
+        }}
+      />
+    );
+  }
 
   if (guiado) {
     return (
@@ -68,7 +98,13 @@ export default function FraccionarApp({
         idBolsa={guiado.idBolsa}
         onSalir={() => {
           setGuiado(null);
-          if (seguir) router.replace("/fraccionar");
+          limpiarUrl();
+          router.refresh();
+        }}
+        onEtiquetar={() => {
+          setGuiado(null);
+          setTanda(1);
+          limpiarUrl();
           router.refresh();
         }}
       />
@@ -82,6 +118,41 @@ export default function FraccionarApp({
       <p className="text-sm text-neutral-500 mt-0.5 mb-4">
         Cada bolsita tiene que quedar con 5 en el blistero y 3 abajo, en el cajón. Lo que se vendió, se fracciona al final del turno.
       </p>
+
+      {/* Lo ya fraccionado que espera la etiqueta: se imprime todo junto, al final (17/11). */}
+      {paraEtiq.length > 0 && (
+        <section aria-label="Fraccionado, falta la etiqueta" className="mb-5 rounded-2xl border-2 border-emerald-600 bg-white p-4">
+          <h2 className="mb-2 text-lg font-extrabold text-neutral-900">Fraccionado · falta la etiqueta</h2>
+          <ul className="mb-3 grid gap-1.5">
+            {paraEtiq.map((e) => {
+              const b = graneles.flatMap((g) => g.bolsitas).find((x) => x.idVariante === e.idVarianteBolsa);
+              return (
+                <li key={e.id} className="flex flex-wrap justify-between gap-x-3 text-sm">
+                  <span>
+                    <span className="text-emerald-700">✓</span> {b?.nombre ?? "Bolsita"}
+                    {e.vencimiento && <span className="text-neutral-500"> · vence {e.vencimiento.split("-").reverse().join("/")}</span>}
+                    {esAdmin && <span className="text-neutral-400"> · {e.quien}</span>}
+                  </span>
+                  <b className="tabular-nums">{e.bolsitas}</b>
+                </li>
+              );
+            })}
+          </ul>
+          <button
+            type="button"
+            onClick={() => {
+              setTanda(1);
+              window.scrollTo({ top: 0 });
+            }}
+            className="flex w-full flex-wrap items-center justify-between gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-left text-white"
+          >
+            <b>
+              {bolsitasParaEtiquetar} {bolsitasParaEtiquetar === 1 ? "bolsita lista" : "bolsitas listas"} para etiquetar
+            </b>
+            <span className="rounded-lg bg-white px-3 py-1.5 text-sm font-extrabold text-emerald-700">Imprimir las etiquetas →</span>
+          </button>
+        </section>
+      )}
 
       {sugeridos.length > 0 && (
         <section aria-label="Para fraccionar antes de cerrar el turno" className="mb-5 rounded-2xl border-2 border-accent bg-white p-4">
@@ -147,7 +218,7 @@ export default function FraccionarApp({
               <div key={e.id} role="alert" className="rounded-2xl border-2 border-red-300 bg-red-50 p-3.5 flex flex-wrap items-center gap-3">
                 <p className="mr-auto text-sm text-red-900">
                   <b>Fraccionado sin terminar:</b> {g?.nombre ?? "producto"}
-                  {e.bolsitas ? `, ${e.bolsitas} bolsitas` : ""} · paso {Math.min(e.paso, 7)} de 7
+                  {e.bolsitas ? `, ${e.bolsitas} bolsitas` : ""} · paso {Math.min(e.paso, 4)} de 4
                   {esAdmin && e.idUsuario !== idUsuario ? ` · ${e.quien}` : ""}
                 </p>
                 {g && (
