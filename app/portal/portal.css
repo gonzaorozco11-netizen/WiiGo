@@ -1862,7 +1862,8 @@
 .av-caja.pronto-caja { background: var(--superficie-2); border-style: dashed; }
 
 .av-fila {
-  display: grid; grid-template-columns: 1fr 46px; gap: 18px; align-items: center;
+  /* auto y no 46px: la columna era para un interruptor; «Siempre activo» es más ancho y se salía de la caja. */
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px; align-items: center;
   padding: 14px 0; border-top: 1px solid #eef1e9;
 }
 .av-fila .t {
