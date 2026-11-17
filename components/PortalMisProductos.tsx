@@ -28,6 +28,9 @@ import { elPeorMedio } from "@/lib/margenMarca";
 function enteros(v: number) {
   return Math.round(v).toLocaleString("es-AR");
 }
+function pesosDec(v: number) {
+  return v.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 function hoyISO() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -134,12 +137,15 @@ export default function PortalMisProductos({ datos }: { datos: MisCostosPortal }
           <div>
             <h2>Mis productos</h2>
             <p className="desc">
-              Los que WiiGo tiene a la venta, con lo que te cuesta a vos cada uno. Tu costo solo lo
-              vemos WiiGo y vos.
+              {datos.pideCosto
+                ? "Los que WiiGo tiene a la venta, con lo que te cuesta a vos cada uno. Tu costo solo lo vemos WiiGo y vos."
+                : "Los que WiiGo tiene a la venta, con lo que te queda de cada venta."}
             </p>
           </div>
           <div className="enc-der">
-            {total > 0 && (
+            {/* La marca que no informa su costo (MARCAS_SIN_COSTO, Animalfit)
+                no ve nada del costo: ni el avance, ni la columna, ni el filtro. */}
+            {total > 0 && datos.pideCosto && (
               <div className="progreso">
                 <div className="cifras">
                   <span>Costos cargados</span>
@@ -200,9 +206,11 @@ export default function PortalMisProductos({ datos }: { datos: MisCostosPortal }
                 <Pestana activa={filtro} valor="sinstock" onClick={setFiltro} n={datos.sinStock}>
                   Sin stock
                 </Pestana>
-                <Pestana activa={filtro} valor="hechos" onClick={setFiltro} n={hechos}>
-                  Ya cargados
-                </Pestana>
+                {datos.pideCosto && (
+                  <Pestana activa={filtro} valor="hechos" onClick={setFiltro} n={hechos}>
+                    Ya cargados
+                  </Pestana>
+                )}
                 <Pestana activa={filtro} valor="todos" onClick={setFiltro} n={total}>
                   Todos
                 </Pestana>
@@ -226,7 +234,7 @@ export default function PortalMisProductos({ datos }: { datos: MisCostosPortal }
                       <th>Producto</th>
                       <th className="num">En góndola</th>
                       <th className="num">Precio al público</th>
-                      <th className="num">Mi costo</th>
+                      {datos.pideCosto && <th className="num">Mi costo</th>}
                       <th className="num">Te queda por venta</th>
                     </tr>
                   </thead>
@@ -235,6 +243,7 @@ export default function PortalMisProductos({ datos }: { datos: MisCostosPortal }
                       <Fila
                         key={p.idProducto}
                         p={p}
+                        conCosto={datos.pideCosto}
                         prueba={datos.soloLectura}
                         conSubcategoria
                         abierta={abierta === p.idProducto}
@@ -260,7 +269,7 @@ export default function PortalMisProductos({ datos }: { datos: MisCostosPortal }
                       <span className="cuantos">
                         {g.items.length} de {todosEn.length}
                       </span>
-                      {faltan > 0 ? (
+                      {!datos.pideCosto ? null : faltan > 0 ? (
                         <span className="pill-faltan">faltan {faltan}</span>
                       ) : (
                         <span className="pill-listo">completa</span>
@@ -274,7 +283,7 @@ export default function PortalMisProductos({ datos }: { datos: MisCostosPortal }
                               <th>Producto</th>
                               <th className="num">En góndola</th>
                               <th className="num">Precio al público</th>
-                              <th className="num">Mi costo</th>
+                              {datos.pideCosto && <th className="num">Mi costo</th>}
                               <th className="num">Te queda por venta</th>
                             </tr>
                           </thead>
@@ -283,6 +292,7 @@ export default function PortalMisProductos({ datos }: { datos: MisCostosPortal }
                               <Fila
                                 key={p.idProducto}
                                 p={p}
+                                conCosto={datos.pideCosto}
                                 prueba={datos.soloLectura}
                                 abierta={abierta === p.idProducto}
                                 onAbrir={() =>
@@ -301,7 +311,9 @@ export default function PortalMisProductos({ datos }: { datos: MisCostosPortal }
 
             <div className="pie-prod">
               <span>
-                {plano ? (
+                {!datos.pideCosto ? (
+                  plano ? null : <>Tocá una subcategoría para abrirla.</>
+                ) : plano ? (
                   <>
                     Escribí el costo y apretá <kbd>Enter</kbd> para saltar al siguiente.
                   </>
@@ -386,10 +398,13 @@ function Fila({
   onAbrir,
   conSubcategoria,
   prueba = false,
+  conCosto = true,
 }: {
   p: ProductoConMargen;
   abierta: boolean;
   onAbrir: () => void;
+  /** false: la marca no informa su costo. Sin columna de costo, y «te queda» es lo que le transferimos. */
+  conCosto?: boolean;
   /** En la lista plana, porque no hay encabezado que lo diga. */
   conSubcategoria?: boolean;
   /**
@@ -422,7 +437,7 @@ function Fila({
   // El peor caso: la forma de pago con la que menos le queda (hoy la prepaga),
   // así la columna nunca le promete de más.
   const peor = elPeorMedio(p.porMedio) ?? p.porMedio[0];
-  const queda = p.costo != null && peor ? peor.leQueda ?? 0 : null;
+  const queda = !conCosto ? (peor ? peor.leTransferimos : null) : p.costo != null && peor ? peor.leQueda ?? 0 : null;
 
   function guardar() {
     // Mirando: no se guarda nada, solo se ve.
@@ -486,8 +501,8 @@ function Fila({
               {/* Sin los encabezados de subcategoría arriba, el renglón tiene
                   que decir de qué cajón es. Agrupada no hace falta: ya lo dice
                   el encabezado. */}
-              {conSubcategoria && p.costo == null && <small>{p.subcategoria}</small>}
-              {p.costo != null && (
+              {conSubcategoria && (p.costo == null || !conCosto) && <small>{p.subcategoria}</small>}
+              {conCosto && p.costo != null && (
                 <small>
                   costo desde {fechaCorta(p.vigenteDesde)} · lo cargó{" "}
                   {p.cargadoPor === "MARCA" ? "tu equipo" : p.nombreQuienCargo ?? "WiiGo"}
@@ -503,6 +518,7 @@ function Fila({
           <Stock p={p} />
         </td>
         <td data-et="al público" className="num mono tenue">${enteros(p.precio)}</td>
+        {conCosto && (
         <td data-et="mi costo" className="num costo">
           <input
             className={`inp-costo${p.costo != null ? " cargado" : ""}`}
@@ -521,6 +537,7 @@ function Fila({
           {prueba && costoPrueba > 0 && costoPrueba !== original.costo && <span className="guardado">prueba · no se guarda</span>}
           {error && <span className="err-costo">{error}</span>}
         </td>
+        )}
         <td data-et="te queda" className="num">
           {queda != null ? (
             // Solo los pesos. El "% de la venta" leído solo, sin el desglose
@@ -535,8 +552,8 @@ function Fila({
       </tr>
       {abierta && (
         <tr className="detalle">
-          <td colSpan={5}>
-            <Reparto p={p} />
+          <td colSpan={conCosto ? 5 : 4}>
+            <Reparto p={p} conCosto={conCosto} />
           </td>
         </tr>
       )}
@@ -554,14 +571,26 @@ function Fila({
  * WiiGo discuten un precio, discuten mirando lo mismo. Por eso el panel vive
  * en components/PanelReparto.tsx y no acá.
  */
-function Reparto({ p }: { p: ProductoConMargen }) {
+function Reparto({ p, conCosto = true }: { p: ProductoConMargen; conCosto?: boolean }) {
   const credito = elPeorMedio(p.porMedio);
   const efectivo = p.porMedio.find((m) => m.medio === "EFECTIVO");
   if (!credito || !efectivo) return null;
 
   return (
     <div className="caja-det">
-      {p.costo == null ? (
+      {!conCosto ? (
+        // La marca que no informa su costo: solo lo que le transferimos, sin pedirle el costo.
+        <div className="panel-rep">
+          <p className="panel-tit">Lo que te queda de cada venta</p>
+          <div className="panel-vacio">
+            <p>
+              Por cada unidad vendida te transferimos <b className="mono">${pesosDec(efectivo.leTransferimos)}</b> si
+              la pagan en efectivo y <b className="mono">${pesosDec(credito.leTransferimos)}</b> si la pagan con
+              Mercado Pago (lo que más le descuenta), después de la comisión de WiiGo y los impuestos.
+            </p>
+          </div>
+        </div>
+      ) : p.costo == null ? (
         <PanelSinCosto credito={credito} efectivo={efectivo} donde="la columna «Mi costo» de arriba" />
       ) : (
         <PanelReparto credito={credito} efectivo={efectivo} costo={p.costo} />

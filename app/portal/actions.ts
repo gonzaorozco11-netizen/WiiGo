@@ -1813,9 +1813,15 @@ export async function misTareas(): Promise<TareasPortal | null> {
     !conFicha.has(p.id_producto as string) && !noLlevaFichaNutricional(p.nombre as string, subDe(p));
   const conFichaPedida = lista.filter((p) => !noLlevaFichaNutricional(p.nombre as string, subDe(p))).length;
   const sinFicha = lista.filter(faltaFicha).length;
-  const incompletos = lista.filter(
-    (p) => !p.imagen || !((p.descripcion as string | null) ?? "").trim() || faltaFicha(p)
-  ).length;
+  // La descripción y la información nutricional las carga WiiGo (Gonzalo,
+  // 17/11: «esto ya se los hice yo a las marcas»), así que no se le piden a la
+  // marca. Además se miraba solo productos.descripcion, y la que se carga es la
+  // de la ficha (descripcion_publica): figuraban 83 sin descripción que la
+  // tenían. Las cuentas quedan por si se vuelven a pedir.
+  void conFichaPedida;
+  void sinFicha;
+  void sinDescripcion;
+  const incompletos = lista.filter((p) => !p.imagen).length;
   const agotados = lista.filter((p) => (stockPorProducto.get(p.id_producto as string) ?? 0) === 0).length;
   const noAprobadas = (rechazadas ?? []).length;
   // Sin precio no se venden: no salen en el local y la caja no los cobra.
@@ -1861,20 +1867,14 @@ export async function misTareas(): Promise<TareasPortal | null> {
     });
   }
   if (incompletos > 0) {
-    const falta = [
-      sinFoto > 0 ? `${sinFoto} sin foto` : null,
-      sinDescripcion > 0 ? `${sinDescripcion} sin descripción` : null,
-      sinFicha > 0 ? `${sinFicha} sin información nutricional` : null,
-    ].filter(Boolean);
     tareas.push({
       id: "fichas",
       grupo: "VENDER",
       cuantas: incompletos,
-      titulo: "Fichas incompletas",
-      porque: `${falta.join(", ")}. Se venden igual, pero sin foto ni descripción se muestran últimos en el tótem y no aparecen en el Asesor.`,
-      accion: "Completarlas",
-      // Directo a los que les falta algo, no a todos los productos.
-      href: "/portal/cambios?ver=incompletas",
+      titulo: incompletos === 1 ? "Un producto sin foto" : "Productos sin foto",
+      porque: "Se venden igual, pero sin foto se muestran últimos en el tótem y no aparecen en el Asesor.",
+      accion: "Subir fotos",
+      href: "/portal/cambios?ver=sin-foto",
     });
   }
   if (agotados > 0) {
@@ -1914,7 +1914,7 @@ export async function misTareas(): Promise<TareasPortal | null> {
   const alDia: string[] = [];
   if (total > 0 && sinPrecio === 0) alDia.push("Todos tus productos tienen precio");
   if (total > 0 && sinCosto === 0 && !sinCostoPedido) alDia.push("Todos tus productos tienen el costo cargado");
-  if (total > 0 && incompletos === 0) alDia.push("Todas tus fichas están completas");
+  if (total > 0 && incompletos === 0) alDia.push("Todos tus productos tienen foto");
   if (total > 0 && agotados === 0) alDia.push("No tenés ningún producto agotado");
   if (noAprobadas === 0) alDia.push("No tenés solicitudes rechazadas por corregir");
   const ultima = (liquidaciones ?? [])[0];
@@ -1952,20 +1952,8 @@ export async function misTareas(): Promise<TareasPortal | null> {
       href: "/portal/cambios?ver=sin-foto",
       falta: falta(sinFoto, total),
     },
-    {
-      id: "descripcion",
-      texto: "Escribí la descripción de cada producto",
-      hecho: total > 0 && sinDescripcion === 0,
-      href: "/portal/cambios?ver=sin-descripcion",
-      falta: falta(sinDescripcion, total),
-    },
-    {
-      id: "ficha",
-      texto: "Completá la información nutricional",
-      hecho: total > 0 && sinFicha === 0,
-      href: "/portal/cambios?ver=sin-ficha",
-      falta: falta(sinFicha, conFichaPedida),
-    },
+    // «Escribí la descripción» y «Completá la información nutricional» ya no
+    // son pasos de la marca: las carga WiiGo (17/11).
   ];
 
   return {

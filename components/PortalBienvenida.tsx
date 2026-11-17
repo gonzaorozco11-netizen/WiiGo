@@ -292,12 +292,7 @@ function Cuatro({ datos }: { datos: BienvenidaPortal }) {
       texto:
         "Cuadradas y sobre fondo blanco. Te las revisamos al subirlas. Sin foto el producto no sale en las pantallas del local.",
     },
-    {
-      n: datos.sinFicha,
-      clase: "ocre",
-      titulo: "La información nutricional",
-      texto: "Lo que está impreso en el envase. Es lo que el cliente lee antes de decidir.",
-    },
+    // La información nutricional ya no se le pide a la marca: la carga WiiGo (17/11).
   ].filter((i) => i.n > 0);
 
   return (
