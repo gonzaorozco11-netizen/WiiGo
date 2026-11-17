@@ -38,7 +38,9 @@ export default function CobrosDigitalesApp() {
   const [ultimo, setUltimo] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [mensaje, setMensaje] = useState<string | null>(null);
+  // El resultado de «Actualizar ahora» va aparte de `error`: la recarga de datos
+  // que viene después limpiaba `error` y el aviso desaparecía al instante (17/11).
+  const [mensaje, setMensaje] = useState<{ texto: string; malo: boolean } | null>(null);
   const [actualizando, setActualizando] = useState(false);
   const [mostrar, setMostrar] = useState(30);
 
@@ -64,10 +66,13 @@ export default function CobrosDigitalesApp() {
     setActualizando(true);
     setMensaje(null);
     const dias = periodo === "MES" ? 31 : periodo === "SEMANA" ? 8 : 3;
-    const r = await actualizarCobros(dias);
+    try {
+      const r = await actualizarCobros(dias);
+      setMensaje(r.error ? { texto: r.error, malo: true } : { texto: r.mensaje, malo: false });
+    } catch (e) {
+      setMensaje({ texto: `No se pudo hablar con el servidor: ${(e as Error).message}`, malo: true });
+    }
     setActualizando(false);
-    if (r.error) setError(r.error);
-    else setMensaje(r.mensaje);
     cargar();
   }
 
@@ -141,7 +146,9 @@ export default function CobrosDigitalesApp() {
         </div>
       </div>
 
-      {mensaje && <p className="text-sm bg-accent-tint text-neutral-700 rounded-lg px-3 py-2 mb-4">{mensaje}</p>}
+      {mensaje && (
+        <p className={`text-sm rounded-lg px-3 py-2 mb-4 break-words ${mensaje.malo ? "bg-red-50 text-red-700" : "bg-accent-tint text-neutral-700"}`}>{mensaje.texto}</p>
+      )}
       {error && <p className="text-sm bg-red-50 text-red-700 rounded-lg px-3 py-2 mb-4">{error}</p>}
 
       {cargando ? (
