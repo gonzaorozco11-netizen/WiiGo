@@ -5,6 +5,11 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionMarca, sesionDelPortal, motivoSinSesionMarca } from "@/lib/marcaSesion";
 import { calcularRendicion, detalleLiquidacion } from "@/app/(app)/liquidaciones/actions";
 import { fechaHoraArgentina } from "@/lib/horarios";
+
+/** El día (AAAA-MM-DD) de un momento guardado, en hora argentina. Cortar el texto guardado da el día en UTC: lo vendido después de las 21:00 caía al día siguiente. */
+function diaArgentina(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
+}
 import { costosVigentes, guardarCosto, borrarCosto, marcaNoInformaCosto, SIN_SUBCATEGORIA, type CostoDeMarca } from "@/lib/costosMarca";
 import { noLlevaFichaNutricional } from "@/lib/fichaNutricional";
 import { rechazadasSinCorregir } from "@/lib/rechazadasMarca";
@@ -179,10 +184,11 @@ export async function resumenPortal(): Promise<ResumenPortal | null> {
     ventasMes.add(r.idVenta);
     porMedio.set(r.medio, (porMedio.get(r.medio) ?? 0) + r.monto);
 
-    const dia = Number(r.fecha.slice(8, 10));
+    const diaAr = diaArgentina(r.fecha);
+    const dia = Number(diaAr.slice(8, 10));
     if (dia >= 1 && dia <= diasDelMes) serieMes[dia - 1] += r.monto;
 
-    if (r.fecha.slice(0, 10) === hoyISO) {
+    if (diaAr === hoyISO) {
       brutoHoy += r.monto;
       unidadesHoy += r.cantidad;
       ventasHoy.add(r.idVenta);
@@ -888,7 +894,9 @@ function mapearLineasParaPortal(lineas: Awaited<ReturnType<typeof calcularRendic
     .slice()
     .sort((a, b) => b.fecha.localeCompare(a.fecha))
     .map((l) => ({
-      fecha: l.fecha.slice(0, 10),
+      // El día en hora argentina, igual que la hora: cortar el texto guardado
+      // (UTC) pasaba al día siguiente toda venta después de las 21:00.
+      fecha: diaArgentina(l.fecha),
       hora: new Date(l.fecha).toLocaleTimeString("es-AR", {
         timeZone: "America/Argentina/Buenos_Aires",
         hour: "2-digit",
@@ -1116,7 +1124,7 @@ export async function analisisPortal(): Promise<AnalisisPortal | null> {
   const unidadesMes = new Map<string, number>();
 
   for (const r of renglones) {
-    const dia = r.fecha.slice(0, 10);
+    const dia = diaArgentina(r.fecha);
     if (dia >= hace28) unidades28.set(r.idVariante, (unidades28.get(r.idVariante) ?? 0) + r.cantidad);
     const previa = ultimaVenta.get(r.idVariante);
     if (!previa || dia > previa) ultimaVenta.set(r.idVariante, dia);
