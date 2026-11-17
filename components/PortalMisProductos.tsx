@@ -139,7 +139,7 @@ export default function PortalMisProductos({ datos }: { datos: MisCostosPortal }
             <p className="desc">
               {datos.pideCosto
                 ? "Los que WiiGo tiene a la venta, con lo que te cuesta a vos cada uno. Tu costo solo lo vemos WiiGo y vos."
-                : "Los que WiiGo tiene a la venta, con lo que te queda de cada venta."}
+                : "Los que WiiGo tiene a la venta. Tocá uno para cambiarle el precio."}
             </p>
           </div>
           <div className="enc-der">
@@ -197,6 +197,8 @@ export default function PortalMisProductos({ datos }: { datos: MisCostosPortal }
                   aria-label="Buscar un producto"
                 />
               </div>
+              {/* La marca sin costo (Animalfit, 17/11): solo el buscador. */}
+              {datos.pideCosto && (
               <div className="pestanas" role="group" aria-label="Filtrar">
                 {datos.pideCosto && (
                   <Pestana activa={filtro} valor="falta" onClick={setFiltro} n={datos.sinCosto}>
@@ -215,6 +217,7 @@ export default function PortalMisProductos({ datos }: { datos: MisCostosPortal }
                   Todos
                 </Pestana>
               </div>
+              )}
             </div>
 
             {/* Los chips de subcategoría que había acá eran la misma lista que
@@ -230,16 +233,10 @@ export default function PortalMisProductos({ datos }: { datos: MisCostosPortal }
               <div className="grupo-cuerpo plano">
                 <table className="tabla-prod">
                   <thead>
-                    <tr>
-                      <th>Producto</th>
-                      <th className="num">En góndola</th>
-                      <th className="num">Precio al público</th>
-                      {datos.pideCosto && <th className="num">Mi costo</th>}
-                      <th className="num">Te queda por venta</th>
-                    </tr>
+                    <Encabezado simple={!datos.pideCosto} />
                   </thead>
                   <tbody>
-                    {visibles.map((p) => (
+                    {visibles.map((p) => !datos.pideCosto ? <FilaSimple key={p.idProducto} p={p} /> : (
                       <Fila
                         key={p.idProducto}
                         p={p}
@@ -279,16 +276,10 @@ export default function PortalMisProductos({ datos }: { datos: MisCostosPortal }
                       <div className="grupo-cuerpo">
                         <table className="tabla-prod">
                           <thead>
-                            <tr>
-                              <th>Producto</th>
-                              <th className="num">En góndola</th>
-                              <th className="num">Precio al público</th>
-                              {datos.pideCosto && <th className="num">Mi costo</th>}
-                              <th className="num">Te queda por venta</th>
-                            </tr>
+                            <Encabezado simple={!datos.pideCosto} />
                           </thead>
                           <tbody>
-                            {g.items.map((p) => (
+                            {g.items.map((p) => !datos.pideCosto ? <FilaSimple key={p.idProducto} p={p} /> : (
                               <Fila
                                 key={p.idProducto}
                                 p={p}
@@ -312,17 +303,21 @@ export default function PortalMisProductos({ datos }: { datos: MisCostosPortal }
             <div className="pie-prod">
               <span>
                 {!datos.pideCosto ? (
-                  plano ? null : <>Tocá una subcategoría para abrirla.</>
+                  <>
+                    {plano ? "" : "Tocá una subcategoría para abrirla. "}Tocá un producto para cambiarle el precio. Góndola es
+                    el precio con tarjeta o QR.
+                  </>
                 ) : plano ? (
                   <>
-                    Escribí el costo y apretá <kbd>Enter</kbd> para saltar al siguiente.
+                    Escribí el costo y apretá <kbd>Enter</kbd> para saltar al siguiente.{" "}
+                    Tocá el nombre de un producto para ver la cuenta completa.
                   </>
                 ) : (
                   <>
-                    Tocá una subcategoría para abrirla. Escribí el costo y apretá <kbd>Enter</kbd>.
+                    Tocá una subcategoría para abrirla. Escribí el costo y apretá <kbd>Enter</kbd>.{" "}
+                    Tocá el nombre de un producto para ver la cuenta completa.
                   </>
-                )}{" "}
-                Tocá el nombre de un producto para ver la cuenta completa.
+                )}
               </span>
               {datos.pideCosto && <span>{datos.sinCosto > 0 ? `Te faltan ${datos.sinCosto}` : "¡Están todos!"}</span>}
             </div>
@@ -337,12 +332,62 @@ export default function PortalMisProductos({ datos }: { datos: MisCostosPortal }
         )}
       </section>
 
-      <p className="nota-pie">
-        La cuenta que se abre en cada producto es por <b>una unidad</b>. La del mes entero está en el{" "}
-        <Link href="/portal">Tablero</Link>, en «Lo que te queda este mes».
-      </p>
+      {datos.pideCosto && (
+        <p className="nota-pie">
+          La cuenta que se abre en cada producto es por <b>una unidad</b>. La del mes entero está en el{" "}
+          <Link href="/portal">Tablero</Link>, en «Lo que te queda este mes».
+        </p>
+      )}
 
     </main>
+  );
+}
+
+function Encabezado({ simple }: { simple: boolean }) {
+  // Sin costo (Animalfit, 17/11): producto, stock, góndola y efectivo. Nada más.
+  if (simple)
+    return (
+      <tr>
+        <th>Producto</th>
+        <th className="num">En el local</th>
+        <th className="num">Precio de góndola</th>
+        <th className="num">Precio en efectivo</th>
+      </tr>
+    );
+  return (
+    <tr>
+      <th>Producto</th>
+      <th className="num">En góndola</th>
+      <th className="num">Precio al público</th>
+      <th className="num">Mi costo</th>
+      <th className="num">Te queda por venta</th>
+    </tr>
+  );
+}
+
+/** El renglón de la marca sin costo: tocarlo lleva a cambiarle el precio. */
+function FilaSimple({ p }: { p: ProductoConMargen }) {
+  const router = useRouter();
+  const ir = () => router.push(`/portal/cambios?producto=${p.idProducto}`);
+  return (
+    <tr
+      className="prod prod-simple"
+      tabIndex={0}
+      role="link"
+      onClick={ir}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") ir();
+      }}
+    >
+      <td className="nom">
+        <span>{p.nombre}</span>
+      </td>
+      <td data-et="en el local" className="num">
+        <Stock p={p} />
+      </td>
+      <td data-et="góndola" className="num mono">${pesosDec(p.precio)}</td>
+      <td data-et="efectivo" className="num mono">{p.precioEfectivo != null ? `$${pesosDec(p.precioEfectivo)}` : "—"}</td>
+    </tr>
   );
 }
 

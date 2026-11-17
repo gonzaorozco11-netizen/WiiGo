@@ -556,6 +556,8 @@ export type ProductoConMargen = {
   idProducto: string;
   nombre: string;
   precio: number;
+  /** El precio en efectivo, si tiene. */
+  precioEfectivo: number | null;
   costo: number | null;
   vigenteDesde: string | null;
   cargadoPor: "MARCA" | "WIIGO" | null;
@@ -594,7 +596,7 @@ export async function misCostosPortal(): Promise<MisCostosPortal | null> {
   const [{ data: productos }, { data: subcats }, costos, marca, tasas] = await Promise.all([
     supabase
       .from("productos")
-      .select("id_producto, nombre, precio_venta, id_subcategoria")
+      .select("id_producto, nombre, precio_venta, precio_efectivo, id_subcategoria")
       .eq("id_marca", sesion.idMarca)
       .eq("estado", "ACTIVO")
       .order("nombre", { ascending: true }),
@@ -652,6 +654,7 @@ export async function misCostosPortal(): Promise<MisCostosPortal | null> {
       idProducto: id,
       nombre: (p.nombre as string) ?? "Producto",
       precio,
+      precioEfectivo: (p.precio_efectivo as number | null) ?? null,
       costo: c?.costo ?? null,
       vigenteDesde: c?.vigenteDesde ?? null,
       cargadoPor: c?.cargadoPor ?? null,

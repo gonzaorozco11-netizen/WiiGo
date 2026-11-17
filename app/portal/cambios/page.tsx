@@ -4,6 +4,7 @@ import { obtenerPolitica } from "@/lib/solicitudesMarca";
 import { misProductos, misSolicitudes } from "@/app/portal/cambios/actions";
 import { condicionesDeMarca, tasasGeneralesParaSimular } from "@/lib/margenMarca";
 import PortalCambios from "@/components/PortalCambios";
+import { marcaNoInformaCosto } from "@/lib/costosMarca";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,7 @@ export default async function PortalCambiosPage() {
   // La política se le muestra a la marca antes de que pida nada: si sabe de
   // entrada hasta dónde puede llegar un descuento, no manda uno que va a
   // volver rechazado.
-  const [productos, solicitudes, politica, { data: subcategorias }, condiciones, tasas, { data: cfg }] =
+  const [productos, solicitudes, politica, { data: subcategorias }, condiciones, tasas, { data: cfg }, simple] =
     await Promise.all([
       misProductos(),
       misSolicitudes(),
@@ -33,6 +34,8 @@ export default async function PortalCambiosPage() {
       // lado de WiiGo: la marca calculaba un precio y le quedaba con
       // centavos, que en un cartel de góndola no existe.
       supabase.from("configuracion").select("valor").eq("parametro", "REDONDEO_PRECIO").maybeSingle(),
+      // La marca que no informa su costo (Animalfit) ve los precios simples (17/11).
+      marcaNoInformaCosto(supabase, sesion.idMarca).catch(() => false),
     ]);
 
   if (!condiciones) return <p className="vacio">No se pudo cargar la pantalla. Probá recargar.</p>;
@@ -49,6 +52,7 @@ export default async function PortalCambiosPage() {
       tasas={tasas}
       condiciones={condiciones}
       redondeo={Number(cfg?.valor ?? 0) || 0}
+      simple={simple}
     />
   );
 }

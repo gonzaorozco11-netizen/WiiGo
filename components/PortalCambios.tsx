@@ -97,7 +97,10 @@ export default function PortalCambios({
   tasas,
   condiciones,
   redondeo,
+  simple = false,
 }: {
+  /** La marca no informa su costo (MARCAS_SIN_COSTO): precios simples. */
+  simple?: boolean;
   productos: ProductoPropio[];
   solicitudes: SolicitudPropia[];
   politica: PoliticaDescuentos;
@@ -119,6 +122,8 @@ export default function PortalCambios({
   const [gondolaAbierta, setGondolaAbierta] = useState<Set<string>>(new Set());
   // «Lo que te falta»: sin foto, sin descripción, sin ficha o sin precio.
   const [falta, setFalta] = useState<Falta | null>(null);
+  // El producto que tocó en Mis productos (?producto=…): se abre en Precios.
+  const [desdeProductos, setDesdeProductos] = useState<string | null>(null);
 
   // El alta se abre llegando con ?nuevo=1 desde "Añadir nuevo producto", que
   // vive en Mis productos. Se lee acá y no con useSearchParams para no
@@ -146,6 +151,17 @@ export default function PortalCambios({
       setFalta(v as Falta);
       window.history.replaceState(null, "", window.location.pathname);
     }
+    // Desde Mis productos, tocando un producto: abierto y en Precios.
+    const idProd = ver.get("producto");
+    const prod = idProd ? productos.find((x) => x.idProducto === idProd) : undefined;
+    if (prod) {
+      setDesdeProductos(prod.idProducto);
+      setAbierto(prod.idProducto);
+      setGondolaAbierta(new Set([prod.subcategoria ?? SIN_GONDOLA]));
+      window.history.replaceState(null, "", window.location.pathname);
+      window.setTimeout(() => document.getElementById(`prod-${prod.idProducto}`)?.scrollIntoView({ block: "start" }), 50);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const faltaDe = useMemo(() => {
@@ -346,6 +362,8 @@ export default function PortalCambios({
                   abierto={abierto === p.idProducto}
                   onAbrir={() => setAbierto(abierto === p.idProducto ? null : p.idProducto)}
                   onListo={() => { setAbierto(null); router.refresh(); }}
+                  simple={simple}
+                  conPrecioAbierto={desdeProductos === p.idProducto}
                 />
               ))}
             </ul>
@@ -485,6 +503,8 @@ function FilaProducto({
   abierto,
   onAbrir,
   onListo,
+  simple = false,
+  conPrecioAbierto = false,
 }: {
   p: ProductoPropio;
   politica: PoliticaDescuentos;
@@ -496,15 +516,19 @@ function FilaProducto({
   abierto: boolean;
   onAbrir: () => void;
   onListo: () => void;
+  /** Marca que no informa su costo: precios simples y sin info nutricional ni descripción (las carga WiiGo). */
+  simple?: boolean;
+  /** Llegó desde Mis productos tocando este producto: se abre directo en Precios. */
+  conPrecioAbierto?: boolean;
 }) {
-  const [form, setForm] = useState<Formulario>(null);
+  const [form, setForm] = useState<Formulario>(conPrecioAbierto ? "PRECIO" : null);
 
   function esperando(tipo: TipoSolicitud) {
     return p.esperando.includes(tipo);
   }
 
   return (
-    <li className={`cam-prod${abierto ? " abierto" : ""}${rechazo ? " rechazado" : ""}`}>
+    <li id={`prod-${p.idProducto}`} className={`cam-prod${abierto ? " abierto" : ""}${rechazo ? " rechazado" : ""}`}>
       <button className="cam-prod-cab" onClick={onAbrir}>
         <span className="cam-prod-nom">
           {p.nombre}
@@ -540,15 +564,19 @@ function FilaProducto({
             <Opcion activa={form === "FOTO"} bloqueada={esperando("FOTO")} onClick={() => setForm(form === "FOTO" ? null : "FOTO")}>
               Foto
             </Opcion>
-            <Opcion activa={form === "FICHA"} bloqueada={esperando("FICHA")} onClick={() => setForm(form === "FICHA" ? null : "FICHA")}>
-              Info nutricional
-            </Opcion>
+            {!simple && (
+              <Opcion activa={form === "FICHA"} bloqueada={esperando("FICHA")} onClick={() => setForm(form === "FICHA" ? null : "FICHA")}>
+                Info nutricional
+              </Opcion>
+            )}
             <Opcion activa={form === "DESCUENTO"} bloqueada={esperando("DESCUENTO")} onClick={() => setForm(form === "DESCUENTO" ? null : "DESCUENTO")}>
               Proponer promo
             </Opcion>
-            <Opcion activa={form === "DESCRIPCION"} bloqueada={esperando("DESCRIPCION")} onClick={() => setForm(form === "DESCRIPCION" ? null : "DESCRIPCION")}>
-              Descripción
-            </Opcion>
+            {!simple && (
+              <Opcion activa={form === "DESCRIPCION"} bloqueada={esperando("DESCRIPCION")} onClick={() => setForm(form === "DESCRIPCION" ? null : "DESCRIPCION")}>
+                Descripción
+              </Opcion>
+            )}
             <Opcion activa={form === "NOMBRE"} bloqueada={esperando("NOMBRE")} onClick={() => setForm(form === "NOMBRE" ? null : "NOMBRE")}>
               Nombre
             </Opcion>
@@ -564,7 +592,17 @@ function FilaProducto({
             </p>
           )}
 
-          {form === "PRECIO" && (
+          {form === "PRECIO" && simple && (
+            <FormPreciosSimple
+              p={p}
+              politica={politica}
+              condiciones={condiciones}
+              tasas={tasas}
+              redondeo={redondeo}
+              onListo={onListo}
+            />
+          )}
+          {form === "PRECIO" && !simple && (
             <FormPrecios
               p={p}
               politica={politica}
@@ -1082,6 +1120,133 @@ function FormPrecios({
             mismo. Un aviso sin ese número avisa de un problema sin decir
             dónde está el límite, y además así el dato llega también a Mis
             productos y al alta, que usan el mismo panel. */}
+      </div>
+    </Envio>
+  );
+}
+
+/**
+ * Precios, versión simple (Gonzalo, 17/11, maqueta aprobada): para las marcas
+ * que no informan su costo (MARCAS_SIN_COSTO, hoy Animalfit). Hoy → nuevo para
+ * góndola y efectivo, y lo que le queda por unidad, dicho como estimación: lo
+ * real, con lo que Mercado Pago descontó en cada venta, está en la liquidación.
+ */
+function FormPreciosSimple({
+  p,
+  politica,
+  condiciones,
+  tasas,
+  redondeo,
+  onListo,
+}: {
+  p: ProductoPropio;
+  politica: PoliticaDescuentos;
+  condiciones: CondicionesMarca;
+  tasas: TasasGenerales;
+  redondeo: number;
+  onListo: () => void;
+}) {
+  const offDeHoy = p.precio && p.precioEfectivo !== null ? (p.precio - p.precioEfectivo) / p.precio : null;
+  const [gondola, setGondola] = useState(p.precio ? String(p.precio) : "");
+  const [efectivo, setEfectivo] = useState(p.precioEfectivo !== null ? String(p.precioEfectivo) : "");
+  const [mismoDescuento, setMismoDescuento] = useState(offDeHoy !== null);
+
+  const nGondola = Number(gondola);
+  const nEfectivo = Number(efectivo);
+  const gondolaValida = Number.isFinite(nGondola) && nGondola > 0;
+  const usaEfectivo = efectivo.trim() !== "";
+  const efectivoMalo = usaEfectivo && (!Number.isFinite(nEfectivo) || nEfectivo <= 0 || nEfectivo > nGondola);
+  const sinCambio =
+    gondolaValida && nGondola === p.precio && ((!usaEfectivo && p.precioEfectivo === null) || nEfectivo === p.precioEfectivo);
+
+  function tocarGondola(v: string) {
+    setGondola(v);
+    const n = Number(v);
+    // Mantener el mismo descuento: el efectivo se mueve con la góndola.
+    if (mismoDescuento && offDeHoy !== null && Number.isFinite(n) && n > 0) {
+      setEfectivo(String(redondearPrecio(n * (1 - offDeHoy), redondeo)));
+    }
+  }
+
+  const conTarjeta = gondolaValida ? elPeorMedio(simularMargen({ precio: nGondola, costo: null, marca: condiciones, tasas })) : null;
+  const conEfectivo =
+    usaEfectivo && nEfectivo > 0 && nEfectivo <= nGondola
+      ? simularMargen({ precio: nEfectivo, costo: null, marca: condiciones, tasas }).find((m) => m.medio === "EFECTIVO")
+      : null;
+  const offNuevo = gondolaValida && usaEfectivo && nEfectivo > 0 && nEfectivo <= nGondola ? ((nGondola - nEfectivo) / nGondola) * 100 : null;
+
+  return (
+    <Envio
+      texto="Mandar a WiiGo para aprobar"
+      deshabilitado={!gondolaValida || efectivoMalo || sinCambio}
+      onEnviar={async () => {
+        const r = await pedirCambioPrecios(p.idProducto, nGondola, usaEfectivo && nEfectivo > 0 ? nEfectivo : null);
+        if (!r.error) onListo();
+        return r;
+      }}
+      pie={<p className="cam-nota">Cuando lo aprobamos, entra en el próximo cambio de carteles ({politica.horaAplicacion}).</p>}
+    >
+      <div className="cam-simple">
+        <div className="cam-simple-fila">
+          <div className="cam-simple-que">
+            <b>Precio de góndola</b>
+            <small>Con tarjeta o QR</small>
+          </div>
+          <div className="cam-simple-hoy">
+            <small>Hoy</small>
+            <span className="mono">{pesos(p.precio)}</span>
+          </div>
+          <label className="cam-campo">
+            <span>Nuevo</span>
+            <span className="cam-conunidad">
+              <input type="number" step="0.01" value={gondola} onChange={(e) => tocarGondola(e.target.value)} placeholder="0,00" autoFocus />
+              <u>$</u>
+            </span>
+          </label>
+        </div>
+        <div className="cam-simple-fila">
+          <div className="cam-simple-que">
+            <b>Precio en efectivo</b>
+            <small>{offNuevo !== null ? `${offNuevo.toFixed(1).replace(".", ",")} % menos que la góndola` : "Opcional"}</small>
+          </div>
+          <div className="cam-simple-hoy">
+            <small>Hoy</small>
+            <span className="mono">{p.precioEfectivo !== null ? pesos(p.precioEfectivo) : "sin cargar"}</span>
+          </div>
+          <label className="cam-campo">
+            <span>Nuevo</span>
+            <span className="cam-conunidad">
+              <input type="number" step="0.01" value={efectivo} onChange={(e) => setEfectivo(e.target.value)} placeholder="0,00" />
+              <u>$</u>
+            </span>
+          </label>
+        </div>
+        {offDeHoy !== null && (
+          <label className="cam-simple-mismo">
+            <input type="checkbox" checked={mismoDescuento} onChange={(e) => setMismoDescuento(e.target.checked)} /> Si cambio la góndola, mantener el
+            mismo descuento en efectivo
+          </label>
+        )}
+        {efectivoMalo && <p className="cam-var fuerte">El efectivo no puede ser más caro que el precio de góndola.</p>}
+
+        {conTarjeta && (
+          <div className="cam-simple-queda">
+            <div>
+              <small>Te queda por unidad con tarjeta o QR</small>
+              <b className="mono">≈ {pesos(conTarjeta.leTransferimos)}</b>
+            </div>
+            {conEfectivo && (
+              <div>
+                <small>Te queda por unidad en efectivo</small>
+                <b className="mono">≈ {pesos(conEfectivo.leTransferimos)}</b>
+              </div>
+            )}
+            <p>
+              <b>Es una estimación.</b> Lo real, con lo que descontó Mercado Pago en cada venta, figura en tus{" "}
+              <Link href="/portal">liquidaciones</Link>.
+            </p>
+          </div>
+        )}
       </div>
     </Envio>
   );
