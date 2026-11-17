@@ -217,7 +217,7 @@ async function cruzarSinReferencia(supabase: SupabaseClient) {
   }
 }
 
-export type ResultadoSincronizar = { leidos: number; filas: number; pedido: boolean; esperando: number; avisos: string[] };
+export type ResultadoSincronizar = { leidos: number; filas: number; pedido: boolean; esperando: number; avisos: string[]; enMercadoPago: string[]; respuestaPedido: string };
 
 /**
  * Lo que hace el cron cada noche y el botón «Actualizar ahora»:
@@ -238,7 +238,11 @@ export async function sincronizarMp(supabase: SupabaseClient, opciones: { pedir:
   const reportes = await listarReportesLiberacionesMp();
   const { data: leidos } = await supabase.from("cobros_digitales_reportes").select("nombre").eq("proveedor", "MERCADO_PAGO");
   const yaLeidos = new Set((leidos ?? []).map((r) => r.nombre as string));
-  const listos = reportes.filter((r) => r.file_name && /\.csv$/i.test(r.file_name) && !yaLeidos.has(r.file_name) && !/deleted|error|pending|processing/i.test(r.status ?? ""));
+  // Para el mensaje: qué reportes tiene Mercado Pago y en qué estado (los últimos 5).
+  const enMercadoPago = reportes
+    .slice(-5)
+    .map((r) => `${r.file_name ?? "sin archivo"} (${r.status ?? "sin estado"}${r.begin_date ? `, ${r.begin_date.slice(0, 10)} a ${(r.end_date ?? "").slice(0, 10)}` : ""})`);
+  const listos = reportes.filter((r) => r.file_name && /\.(csv|txt)$/i.test(r.file_name) && !yaLeidos.has(r.file_name) && !/deleted|error|pending|processing/i.test(r.status ?? ""));
   const esperando = reportes.filter((r) => /pending|processing/i.test(r.status ?? "")).length;
 
   let filas = 0, nLeidos = 0;
@@ -252,13 +256,15 @@ export async function sincronizarMp(supabase: SupabaseClient, opciones: { pedir:
   }
 
   let pedido = false;
+  let respuestaPedido = "";
   if (opciones.pedir) {
     const hasta = new Date();
     const desde = new Date(hasta.getTime() - (opciones.dias ?? 3) * 86400e3);
-    await pedirReporteLiberacionesMp(desde, hasta);
+    const r = await pedirReporteLiberacionesMp(desde, hasta);
+    respuestaPedido = JSON.stringify(r ?? null).slice(0, 300);
     pedido = true;
   }
-  return { leidos: nLeidos, filas, pedido, esperando, avisos };
+  return { leidos: nLeidos, filas, pedido, esperando, avisos, enMercadoPago, respuestaPedido };
 }
 
 // ---------------------------------------------------------------- la cuenta de cada cobro

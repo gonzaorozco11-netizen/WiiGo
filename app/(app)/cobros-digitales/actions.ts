@@ -41,6 +41,9 @@ export async function actualizarCobros(dias: number): Promise<{ error: string | 
       r.leidos ? `Se leyeron ${r.leidos} reporte${r.leidos === 1 ? "" : "s"} (${r.filas} movimientos).` : "No había reportes nuevos para leer.",
       r.pedido ? "Le pedí a Mercado Pago el reporte de los últimos días: lo arma en unos minutos. Volvé a tocar «Actualizar ahora» en un rato para traerlo." : "",
       ...r.avisos,
+      // Diagnóstico mientras se pone a punto (17/11): qué contestó Mercado Pago.
+      `Reportes en Mercado Pago: ${r.enMercadoPago.length ? r.enMercadoPago.join(" · ") : "ninguno"}.`,
+      r.respuestaPedido ? `Respuesta al pedido: ${r.respuestaPedido}` : "",
     ].filter(Boolean);
     return { error: null, mensaje: partes.join(" ") };
   } catch (e) {

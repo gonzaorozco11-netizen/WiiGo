@@ -138,7 +138,10 @@ export type ReporteMp = { file_name?: string; status?: string; begin_date?: stri
 
 export async function listarReportesLiberacionesMp(): Promise<ReporteMp[]> {
   const data = await mpFetch("/v1/account/release_report/list", {}, true);
-  return Array.isArray(data) ? data : [];
+  if (Array.isArray(data)) return data;
+  // Por si la respuesta viene envuelta ({ results: [...] } o similar).
+  for (const k of ["results", "reports", "data", "items"]) if (Array.isArray(data?.[k])) return data[k];
+  return [];
 }
 
 /** Baja el archivo (CSV) de un reporte ya generado. */
