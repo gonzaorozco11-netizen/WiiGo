@@ -26,7 +26,7 @@ function resumir(texto: string) {
 export async function GET() {
   const supabase = getSupabaseServerClient();
 
-  const [ultimo, productos, marcas, subcategorias, profesionales, galeria, consultorios, miembros, opiniones] = await Promise.all([
+  const [ultimo, productos, marcas, subcategorias, profesionales, galeria, consultorios, miembros, opiniones, combos] = await Promise.all([
     supabase
       .from("productos")
       .select("fecha_actualizacion")
@@ -54,6 +54,9 @@ export async function GET() {
     supabase.from("profesionales").select("id_profesional,id_consultorio").not("id_consultorio", "is", null).order("id_profesional"),
     // Al aprobar opiniones se borran y se vuelven a cargar: cambian los id.
     supabase.from("opiniones_profesional").select("id_opinion,publico").order("id_opinion"),
+    // Los combos (17/11): un precio nuevo aprobado se cobra al instante, pero el
+    // tótem y el Asesor seguían mostrando el viejo hasta recargar. Son 5 filas.
+    supabase.from("combos").select("id_combo,nombre,precio,precio_efectivo,estado,imagen,grupos").order("id_combo"),
   ]);
 
   const huella = [
@@ -68,6 +71,7 @@ export async function GET() {
         consultorios.error ? [] : consultorios.data,
         miembros.error ? [] : miembros.data,
         opiniones.error ? [] : opiniones.data,
+        combos.error ? [] : combos.data,
       ])
     ),
   ].join("|");

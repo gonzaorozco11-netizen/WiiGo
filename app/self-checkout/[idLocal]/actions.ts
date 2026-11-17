@@ -81,13 +81,17 @@ export async function obtenerStockLocal(idLocal: string): Promise<{ idVariante: 
 export async function obtenerPreciosLocal(): Promise<{
   variantes: { idVariante: string; precio: number | null; precioEfectivo: number | null }[];
   productos: { idProducto: string; precio: number | null; precioEfectivo: number | null }[];
+  /** Los combos activos: un precio nuevo aprobado se muestra sin recargar el tótem (17/11). */
+  combos: Awaited<ReturnType<typeof traerCombos>> | null;
 }> {
   const supabase = getSupabaseServerClient();
-  const [v, p] = await Promise.all([
+  const [v, p, combos] = await Promise.all([
     supabase.from("variantes_producto").select("id_variante, precio_venta, precio_efectivo").eq("estado", "ACTIVO"),
     supabase.from("productos").select("id_producto, precio_venta, precio_efectivo").eq("estado", "ACTIVO"),
+    traerCombos(supabase).catch(() => null),
   ]);
   return {
+    combos,
     variantes: (v.data ?? []).map((r) => ({
       idVariante: r.id_variante as string,
       precio: (r.precio_venta as number | null) ?? null,

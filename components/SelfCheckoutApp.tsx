@@ -1383,7 +1383,7 @@ export default function SelfCheckoutApp({
   esDeNoche: esDeNocheInicial,
   montoPideDni,
   version,
-  combos = [],
+  combos: combosIniciales = [],
 }: {
   /** La versión publicada cuando se abrió esta página (ver lib/version.ts). */
   version: string;
@@ -1516,6 +1516,8 @@ export default function SelfCheckoutApp({
   // Se prende cuando aparece o desaparece un producto. Eso sí necesita
   // rearmar la página, y es lo único que la necesita.
   const [hayCatalogoNuevo, setHayCatalogoNuevo] = useState(false);
+  // Los combos se refrescan con los precios (obtenerPreciosLocal), sin recargar.
+  const [combos, setCombos] = useState<Combo[]>(combosIniciales);
   const idsCargados = useMemo(() => new Set(variantes.map((v) => v.id_variante)), [variantes]);
   const productosCargados = useMemo(() => new Set(productos.map((p) => p.id_producto)), [productos]);
 
@@ -1538,6 +1540,11 @@ export default function SelfCheckoutApp({
           p.variantes.some((v) => !idsCargados.has(v.idVariante)) ||
           p.productos.some((x) => (x.precio ?? 0) > 0 && !productosCargados.has(x.idProducto));
         if (distinto) setHayCatalogoNuevo(true);
+        // Los combos, con la misma consulta: si cambió un precio, se ve sin recargar (17/11).
+        if (p.combos) {
+          const nuevos = p.combos;
+          setCombos((prev) => (JSON.stringify(prev) === JSON.stringify(nuevos) ? prev : nuevos));
+        }
 
         setPreciosEnVivo((prev) => {
           // Si no cambió ningún precio no se toca el estado. En la placa del
