@@ -22,6 +22,7 @@ import {
   listaCrudaLiberacionesMp,
   listarReportesLiberacionesMp,
   pedirReporteLiberacionesMp,
+  tareaLiberacionesMp,
 } from "@/lib/mercadopago";
 
 // ---------------------------------------------------------------- lectura del CSV
@@ -255,14 +256,37 @@ export async function sincronizarMp(supabase: SupabaseClient, opciones: { pedir:
       avisos.push(`Lista cruda: ${(e as Error).message}`);
     }
   }
+  // Los pedidos hechos antes se consultan uno por uno: al terminar, traen el
+  // nombre del archivo (la lista de Mercado Pago no lo trae, 17/11).
+  const tareas = await leerTareasPendientes(supabase);
+  const siguenPendientes: { id: number; pedido: string }[] = [];
+  for (const t of tareas) {
+    try {
+      const estado = await tareaLiberacionesMp(t.id);
+      if (estado?.file_name) reportes.push(estado);
+      else if (estado && !/deleted|error|failed/i.test(estado.status ?? "") && Date.now() - new Date(t.pedido).getTime() < 3 * 86400e3) {
+        siguenPendientes.push(t);
+        reportes.push(estado);
+      }
+    } catch (e) {
+      avisos.push(`Pedido ${t.id}: ${(e as Error).message}.`);
+      siguenPendientes.push(t);
+    }
+  }
+
   const { data: leidos } = await supabase.from("cobros_digitales_reportes").select("nombre").eq("proveedor", "MERCADO_PAGO");
   const yaLeidos = new Set((leidos ?? []).map((r) => r.nombre as string));
   // Para el mensaje: qué reportes tiene Mercado Pago y en qué estado (los últimos 5).
   const enMercadoPago = reportes
     .slice(-5)
-    .map((r) => `${r.file_name ?? "sin archivo"} (${r.status ?? "sin estado"}${r.begin_date ? `, ${r.begin_date.slice(0, 10)} a ${(r.end_date ?? "").slice(0, 10)}` : ""})`);
-  const listos = reportes.filter((r) => r.file_name && /\.(csv|txt)$/i.test(r.file_name) && !yaLeidos.has(r.file_name) && !/deleted|error|pending|processing/i.test(r.status ?? ""));
-  const esperando = reportes.filter((r) => /pending|processing/i.test(r.status ?? "")).length;
+    .map((r) => `${r.file_name ?? `pedido ${r.id ?? "?"} sin archivo todavía`} (${r.status ?? "sin estado"}${r.begin_date ? `, ${r.begin_date.slice(0, 10)} a ${(r.end_date ?? "").slice(0, 10)}` : ""})`);
+  const nombres = new Set<string>();
+  const listos = reportes.filter((r) => {
+    if (!r.file_name || yaLeidos.has(r.file_name) || nombres.has(r.file_name) || /deleted|error|failed/i.test(r.status ?? "")) return false;
+    nombres.add(r.file_name);
+    return true;
+  });
+  const esperando = siguenPendientes.length;
 
   let filas = 0, nLeidos = 0;
   for (const r of listos.slice(0, 10)) {
@@ -286,11 +310,33 @@ export async function sincronizarMp(supabase: SupabaseClient, opciones: { pedir:
       void _im;
       respuestaPedido = JSON.stringify(visible).slice(0, 500);
       pedido = true;
+      const id = Number((r as { id?: unknown } | null)?.id);
+      if (id && !siguenPendientes.some((t) => t.id === id)) siguenPendientes.push({ id, pedido: new Date().toISOString() });
     } catch (e) {
       avisos.push(`Pedir el reporte: ${(e as Error).message}.`);
     }
   }
+  await guardarTareasPendientes(supabase, siguenPendientes);
   return { leidos: nLeidos, filas, pedido, esperando, avisos, enMercadoPago, respuestaPedido };
+}
+
+// Los pedidos de reporte que todavía no se leyeron, en `configuracion` (texto JSON).
+const CLAVE_TAREAS = "MP_REPORTES_PEDIDOS";
+
+async function leerTareasPendientes(supabase: SupabaseClient): Promise<{ id: number; pedido: string }[]> {
+  const { data } = await supabase.from("configuracion").select("valor").eq("parametro", CLAVE_TAREAS).maybeSingle();
+  try {
+    const lista = JSON.parse(String(data?.valor ?? "[]"));
+    return Array.isArray(lista) ? lista.filter((t) => t && Number(t.id)).map((t) => ({ id: Number(t.id), pedido: String(t.pedido ?? new Date().toISOString()) })) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function guardarTareasPendientes(supabase: SupabaseClient, tareas: { id: number; pedido: string }[]) {
+  await supabase
+    .from("configuracion")
+    .upsert({ parametro: CLAVE_TAREAS, valor: JSON.stringify(tareas.slice(-20)), fecha_actualizacion: new Date().toISOString() }, { onConflict: "parametro" });
 }
 
 // ---------------------------------------------------------------- la cuenta de cada cobro

@@ -152,19 +152,28 @@ export async function pedirReporteLiberacionesMp(desde: Date, hasta: Date) {
   });
 }
 
-export type ReporteMp = { file_name?: string; status?: string; begin_date?: string; end_date?: string; date_created?: string };
+export type ReporteMp = { id?: number; file_name?: string | null; status?: string; begin_date?: string; end_date?: string; date_created?: string };
 
+/**
+ * Los reportes de la cuenta. Se usa la búsqueda (`/search`, trae `file_name`);
+ * la lista (`/list`) vuelve vacía o sin nombre de archivo (17/11).
+ */
 export async function listarReportesLiberacionesMp(): Promise<ReporteMp[]> {
-  const data = await mpFetch("/v1/account/release_report/list", {}, true);
+  const data = await mpFetch("/v1/account/release_report/search?limit=50", {}, true);
+  if (Array.isArray(data?.results)) return data.results;
   if (Array.isArray(data)) return data;
-  // Por si la respuesta viene envuelta ({ results: [...] } o similar).
-  for (const k of ["results", "reports", "data", "items"]) if (Array.isArray(data?.[k])) return data[k];
-  return [];
+  const lista = await mpFetch("/v1/account/release_report/list", {}, true);
+  return Array.isArray(lista) ? lista : [];
+}
+
+/** Un pedido de reporte por su número (el `id` que devolvió el pedido): dice su estado y, al terminar, el archivo. */
+export async function tareaLiberacionesMp(id: number | string): Promise<ReporteMp | null> {
+  return mpFetch(`/v1/account/release_report/task/${encodeURIComponent(String(id))}`, {}, true);
 }
 
 /** Diagnóstico (17/11): la respuesta cruda de la lista de reportes, para ver su forma. */
 export async function listaCrudaLiberacionesMp(): Promise<string> {
-  const res = await fetch(`${MP_API}/v1/account/release_report/list`, {
+  const res = await fetch(`${MP_API}/v1/account/release_report/search?limit=5`, {
     headers: { Authorization: `Bearer ${accessToken()}` },
     cache: "no-store",
   });
