@@ -737,15 +737,18 @@
   padding: 14px 16px; border: 1px solid var(--borde); border-radius: 12px; background: var(--superficie-2, #fafbf7);
 }
 .cam-simple-que b { display: block; font-size: 15px; }
-.cam-simple-que small, .cam-simple-hoy small { font-size: 12.5px; color: var(--texto-3); }
+.cam-simple-que small { font-size: 12.5px; color: var(--texto-3); }
+/* «Hoy» con el mismo rótulo que «Nuevo» (.cam-campo span). */
+.cam-simple-hoy small { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--texto-3); }
 .cam-simple-hoy { display: grid; gap: 4px; }
 .cam-simple-hoy .mono { font-size: 16px; color: var(--texto-2); padding: 9px 0; }
 .cam-simple-mismo { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--texto-2); }
 .cam-simple-queda { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .cam-simple-queda > div { border-radius: 12px; padding: 11px 14px; background: var(--salvia-tenue); }
 .cam-simple-queda small { display: block; font-size: 12.5px; color: var(--texto-2); }
-.cam-simple-queda b { font-size: 19px; color: var(--salvia-honda); }
+.cam-simple-queda > div b { font-size: 19px; color: var(--salvia-honda); }
 .cam-simple-queda p { grid-column: 1 / -1; margin: 0; font-size: 13px; color: var(--texto-2); }
+.cam-simple-queda p b { font-size: inherit; color: var(--texto); }
 @media (max-width: 620px) {
   .cam-simple-fila { grid-template-columns: 1fr 1fr; }
   .cam-simple-que { grid-column: 1 / -1; }
