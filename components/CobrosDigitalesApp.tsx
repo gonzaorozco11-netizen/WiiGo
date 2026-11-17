@@ -11,7 +11,9 @@ import type { Cobro } from "@/lib/cobrosDigitales";
 
 type Periodo = "HOY" | "AYER" | "SEMANA" | "MES";
 
-const pesos = (v: number) => `${v < 0 ? "−" : ""}$${Math.abs(Math.round(v)).toLocaleString("es-AR")}`;
+// Tal cual lo informa Mercado Pago, con centavos (Gonzalo, 17/11).
+const pesos = (v: number) =>
+  `${v < 0 ? "−" : ""}$${Math.abs(Math.round(v * 100) / 100).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 /** Medianoche de Argentina (UTC−3) de hace `dias` días, en ISO. */
 function medianocheAr(dias: number) {

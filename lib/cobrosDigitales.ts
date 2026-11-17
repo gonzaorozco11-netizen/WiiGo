@@ -182,12 +182,14 @@ export async function importarReporteMp(supabase: SupabaseClient, nombre: string
 }
 
 /**
- * Las transferencias al alias (Vender → Transferencia) no traen el id de la venta:
- * se cruzan con una venta por Mercado Pago del mismo monto, cobrada hasta 3 horas
- * antes o después, que todavía no tenga su cobro. Si hay dos candidatas, no se
- * elige ninguna: queda «sin venta» para revisar a mano.
+ * Los cobros que no traen el id de la venta (transferencias al alias, o algo
+ * cobrado por fuera del QR y cargado después en la caja) se cruzan con una venta
+ * por Mercado Pago del mismo monto exacto, de hasta 2 días antes o después, que
+ * todavía no tenga su cobro. Si hay más de una candidata, no se elige ninguna:
+ * queda «sin venta» para revisar a mano. (17/11: las ventas #25 y #26 se cargaron
+ * a la mañana siguiente de cobrarse, y con 3 horas no se encontraban.)
  */
-async function cruzarSinReferencia(supabase: SupabaseClient) {
+export async function cruzarSinReferencia(supabase: SupabaseClient) {
   const { data: sueltos } = await supabase
     .from("cobros_digitales")
     .select("id_cobro, bruto, fecha_operacion, fecha")
@@ -199,8 +201,8 @@ async function cruzarSinReferencia(supabase: SupabaseClient) {
     .limit(200);
   for (const c of sueltos ?? []) {
     const cuando = new Date((c.fecha_operacion as string) ?? (c.fecha as string));
-    const desde = new Date(cuando.getTime() - 3 * 3600e3).toISOString();
-    const hasta = new Date(cuando.getTime() + 3 * 3600e3).toISOString();
+    const desde = new Date(cuando.getTime() - 48 * 3600e3).toISOString();
+    const hasta = new Date(cuando.getTime() + 48 * 3600e3).toISOString();
     const { data: candidatas } = await supabase
       .from("ventas")
       .select("id_venta")
@@ -297,6 +299,12 @@ export async function sincronizarMp(supabase: SupabaseClient, opciones: { pedir:
       avisos.push(`${r.file_name}: ${(e as Error).message}`);
     }
   }
+  // Cada vez, no solo al leer un reporte: una venta cargada tarde puede encontrar ahora su cobro.
+  try {
+    await cruzarSinReferencia(supabase);
+  } catch (e) {
+    avisos.push(`Cruzar por monto: ${(e as Error).message}`);
+  }
 
   let pedido = false;
   let respuestaPedido = "";
@@ -387,7 +395,7 @@ const MEDIOS: Record<string, string> = {
 
 type Fila = {
   id_externo: string; proveedor: string; tipo: string; fecha: string; fecha_operacion: string | null;
-  id_venta: string | null; medio: string | null; medio_tipo: string | null; billetera: string | null;
+  id_venta: string | null; referencia: string | null; medio: string | null; medio_tipo: string | null; billetera: string | null;
   bruto: number; comision: number; financiacion: number; impuestos: number;
   detalle_impuestos: { nombre: string; monto: number }[] | null; credito: number; debito: number; crudo: unknown;
 };
@@ -440,6 +448,9 @@ function armarCobro(filas: Fila[]): Omit<Cobro, "reparto" | "paraVos" | "deMarca
   const tipoMedio = pago.medio_tipo ?? "";
   const medio = MEDIOS[tipoMedio] ?? (pago.medio ? pago.medio.replace(/_/g, " ") : "Mercado Pago");
   if (tipoMedio === "prepaid_card") avisos.push("Pagó con tarjeta prepaga: es la que más comisión cobra.");
+  if (!pago.referencia && filas.some((f) => f.id_venta)) {
+    avisos.push("Unido con la venta por el monto y la fecha: Mercado Pago no mandó la referencia (se cobró por fuera del QR de la caja).");
+  }
   return {
     idExterno: pago.id_externo,
     proveedor: pago.proveedor,
@@ -462,7 +473,7 @@ function armarCobro(filas: Fila[]): Omit<Cobro, "reparto" | "paraVos" | "deMarca
 export async function cobrosDelPeriodo(supabase: SupabaseClient, desde: string, hasta: string): Promise<{ cobros: Cobro[]; ventasSinCobro: { idVenta: string; numero: number; total: number; fecha: string }[] }> {
   const { data, error } = await supabase
     .from("cobros_digitales")
-    .select("id_externo, proveedor, tipo, fecha, fecha_operacion, id_venta, medio, medio_tipo, billetera, bruto, comision, financiacion, impuestos, detalle_impuestos, credito, debito, crudo")
+    .select("id_externo, proveedor, tipo, fecha, fecha_operacion, id_venta, referencia, medio, medio_tipo, billetera, bruto, comision, financiacion, impuestos, detalle_impuestos, credito, debito, crudo")
     .or(`and(fecha_operacion.gte.${desde},fecha_operacion.lt.${hasta}),and(fecha_operacion.is.null,fecha.gte.${desde},fecha.lt.${hasta})`)
     .order("fecha", { ascending: true })
     .range(0, 9999);
@@ -474,7 +485,7 @@ export async function cobrosDelPeriodo(supabase: SupabaseClient, desde: string, 
   for (let i = 0; i < ids.length; i += 200) {
     const { data: mas } = await supabase
       .from("cobros_digitales")
-      .select("id_externo, proveedor, tipo, fecha, fecha_operacion, id_venta, medio, medio_tipo, billetera, bruto, comision, financiacion, impuestos, detalle_impuestos, credito, debito, crudo")
+      .select("id_externo, proveedor, tipo, fecha, fecha_operacion, id_venta, referencia, medio, medio_tipo, billetera, bruto, comision, financiacion, impuestos, detalle_impuestos, credito, debito, crudo")
       .in("id_externo", ids.slice(i, i + 200));
     extra.push(...((mas ?? []) as Fila[]));
   }
