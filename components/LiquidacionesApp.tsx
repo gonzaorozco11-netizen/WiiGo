@@ -270,6 +270,17 @@ export default function LiquidacionesApp({ marcas }: { marcas: Marca[] }) {
                         <td className="p-3">{l.cantidad}</td>
                         <td className="p-3 text-neutral-500 whitespace-nowrap">
                           {formatearMedioPago(l.medioPago, l.formaPagoMp)}
+                          {/* De dónde salen los descuentos de cobro (17/11): lo real de Mercado Pago o la estimación. */}
+                          {l.dato === "REAL" && (
+                            <span className="ml-1.5 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-green-50 text-green-700" title="Lo que descontó Mercado Pago en ese cobro">
+                              real
+                            </span>
+                          )}
+                          {l.dato === "ESTIMADO" && (
+                            <span className="ml-1.5 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700" title="Con las tasas de Configuración: Mercado Pago todavía no lo liberó, o es del posnet">
+                              estimado
+                            </span>
+                          )}
                         </td>
                         <td className="p-3 text-right tabular-nums">${formatearMonto(l.ventaBruta)}</td>
                         <td className="p-3 text-right tabular-nums text-red-600">-${formatearMonto(l.comisionWiigo)}</td>

@@ -2937,6 +2937,14 @@
 .liq-chip.ef { color: var(--verde-ok); background: var(--verde-tenue); }
 .liq-chip.qr { color: #0b6c9f; background: #e8f4fb; }
 .liq-chip.pn { color: #a5491a; background: #fcefe7; }
+/* Descuentos reales de Mercado Pago (17/11): de dónde sale cada número. */
+.liq-dato { display: inline-flex; font-size: 10.5px; font-weight: 800; letter-spacing: .03em; text-transform: uppercase; border-radius: 999px; padding: 2px 7px; white-space: nowrap; }
+.liq-dato.real { color: var(--verde-ok); background: var(--verde-tenue); }
+.liq-dato.est { color: var(--ocre-texto, #8a6424); background: var(--ocre-tenue); }
+.liq-dato.sin { color: var(--texto-3); background: var(--superficie-2, #fafbf7); border: 1px solid var(--borde); }
+.liq-det-real { font-size: 13px; color: var(--texto-2); background: var(--verde-tenue); border-radius: 10px; padding: 9px 12px; margin: 0 0 14px; }
+.liq-det-real b { color: var(--texto); }
+.liq-det-final { font-size: 15px; margin: 14px 0 0; padding: 12px 14px; border-radius: 12px; background: var(--salvia-tenue, #edf1e7); }
 .liq-det .tabla-scroll { max-height: none; overflow-x: auto; overflow-y: visible; margin: 0; border: 0; padding: 0; }
 .liq-det-tabla tfoot td { font-weight: 700; border-top: 1px solid var(--borde-fuerte); border-bottom: 0; padding-top: 10px; }
 .liq-det-tabla td:first-child { font-weight: 500; }

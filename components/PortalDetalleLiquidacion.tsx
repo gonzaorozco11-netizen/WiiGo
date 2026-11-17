@@ -9,9 +9,16 @@ import { ETIQUETA_RETENCION, ETIQUETA_RETENCION_CORTA } from "@/lib/margenMarca"
 // 2026-11-04; vista previa aprobada: https://claude.ai/artifact/Qn5ev2hjdp8wvHQsgV4YSk).
 // «Descargar PDF» imprime solo esta ventana.
 
-const pesos = (v: number) => `$${Math.round(v).toLocaleString("es-AR")}`;
+// Con centavos, tal cual lo que se descontó (Gonzalo, 17/11).
+const pesos = (v: number) => `$${(Math.round(v * 100) / 100).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const menos = (v: number) => (v > 0 ? `-${pesos(v)}` : "—");
-const pct = (neto: number, bruto: number) => (bruto > 0 ? `${Math.round((neto / bruto) * 100)}%` : "—");
+const pct = (neto: number, bruto: number) =>
+  bruto > 0 ? `${((neto / bruto) * 100).toLocaleString("es-AR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%` : "—";
+const DATO = {
+  REAL: { et: "Real", clase: "real", titulo: "Lo que descontó Mercado Pago en ese cobro" },
+  ESTIMADO: { et: "Estimado", clase: "est", titulo: "Mercado Pago todavía no lo liberó (o es del posnet): se corrige solo cuando llega el dato real" },
+  SIN_COSTO: { et: "Sin costo", clase: "sin", titulo: "Efectivo: sin costo de cobro ni impuestos" },
+} as const;
 
 function fechaCorta(iso: string | null) {
   if (!iso) return "";
@@ -64,6 +71,8 @@ export default function PortalDetalleLiquidacion({ idLiquidacion, onCerrar }: { 
   const conDebitos = (r?.impDebitos ?? 0) > 0;
   const conProfesionales = (r?.programaProfesionales ?? 0) > 0;
   const diferenciaTransferido = detalle && detalle.transferido != null && r ? Math.round(detalle.transferido - r.neto) : 0;
+  const conCobro = detalle ? detalle.lineas.filter((l) => l.dato !== "SIN_COSTO") : [];
+  const reales = conCobro.filter((l) => l.dato === "REAL").length;
 
   return (
     <div className="modal-fondo liq-det-fondo" role="dialog" aria-modal="true" aria-labelledby="liq-det-titulo" onClick={onCerrar}>
@@ -119,6 +128,14 @@ export default function PortalDetalleLiquidacion({ idLiquidacion, onCerrar }: { 
                     <b className="mono">{pesos(r.neto)}</b>
                   </div>
                 </div>
+                {conCobro.length > 0 && (
+                  <p className="liq-det-real">
+                    <b>
+                      {reales} de {conCobro.length} {conCobro.length === 1 ? "venta" : "ventas"} con tarjeta o QR ya tienen el descuento real de Mercado Pago.
+                    </b>{" "}
+                    {reales < conCobro.length ? "Las que dicen «Estimado» se corrigen solas cuando Mercado Pago las libera." : "Todo lo que se te descontó es lo que cobró Mercado Pago, al centavo."}
+                  </p>
+                )}
                 {detalle.transferido != null && Math.abs(diferenciaTransferido) >= 1 && (
                   <p className="liq-det-nota">
                     Te transferimos <b className="mono">{pesos(detalle.transferido)}</b>: la diferencia de {pesos(Math.abs(diferenciaTransferido))} son ajustes de
@@ -182,6 +199,7 @@ export default function PortalDetalleLiquidacion({ idLiquidacion, onCerrar }: { 
                         <th>Producto</th>
                         <th>Cant.</th>
                         <th>Cómo pagó</th>
+                        <th>Dato</th>
                         <th>Venta</th>
                         <th>Comisión WiiGo</th>
                         <th>IVA comisión</th>
@@ -205,6 +223,11 @@ export default function PortalDetalleLiquidacion({ idLiquidacion, onCerrar }: { 
                           <td>
                             <span className={`liq-chip ${claseMedio(l.medioPago)}`}>{l.medioPago}</span>
                           </td>
+                          <td>
+                            <span className={`liq-dato ${DATO[l.dato ?? "ESTIMADO"].clase}`} title={DATO[l.dato ?? "ESTIMADO"].titulo}>
+                              {DATO[l.dato ?? "ESTIMADO"].et}
+                            </span>
+                          </td>
                           <td className="mono">{pesos(l.bruto)}</td>
                           <td className="mono resta">{menos(l.comisionWiigo)}</td>
                           <td className="mono resta">{menos(l.ivaComision)}</td>
@@ -224,7 +247,7 @@ export default function PortalDetalleLiquidacion({ idLiquidacion, onCerrar }: { 
                     </tbody>
                     <tfoot>
                       <tr>
-                        <td colSpan={4}>Total</td>
+                        <td colSpan={5}>Total</td>
                         <td className="mono">{pesos(r.bruto)}</td>
                         <td className="mono resta">{menos(r.comisionWiigo)}</td>
                         <td className="mono resta">{menos(r.ivaComision)}</td>
@@ -243,6 +266,14 @@ export default function PortalDetalleLiquidacion({ idLiquidacion, onCerrar }: { 
                     </tfoot>
                   </table>
                 </div>
+                <p className="liq-det-tenue liq-det-chico">
+                  <span className="liq-dato real">Real</span> lo que descontó Mercado Pago · <span className="liq-dato est">Estimado</span> todavía no lo
+                  liberó (se corrige solo) · <span className="liq-dato sin">Sin costo</span> efectivo
+                </p>
+                <p className="liq-det-final">
+                  {detalle.estado === "EN_CURSO" ? "Por ahora ganaste" : "Ganaste"} el <b className="mono">{pct(r.neto, r.bruto)}</b> de lo que vendiste:{" "}
+                  <b className="mono">{pesos(r.neto)}</b> de <span className="mono">{pesos(r.bruto)}</span>.
+                </p>
               </>
             )}
           </>

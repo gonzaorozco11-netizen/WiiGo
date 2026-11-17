@@ -10,6 +10,7 @@ import { obtenerSesionMarca, exigirLecturaDeMarca, exigirGestionInterna } from "
 import { registrarMovimientoComercial } from "@/lib/cuentaComercialMarca";
 import { devueltoPorDetalle, netearRenglon, type Devuelto } from "@/lib/devueltoPorDetalle";
 import { CLAVE_COMISION_COBRO, POSNET_POR_DEFECTO, entraPorCuenta } from "@/lib/formasPago";
+import { descuentosRealesPorVenta, type DescuentoReal } from "@/lib/cobrosDigitales";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 async function usuarioActual() {
@@ -83,6 +84,13 @@ export type LineaRendicion = {
    */
   programaProfesionales: number;
   netoARendir: number;
+  /**
+   * De dónde salen el costo de cobro, el impuesto a los créditos y las
+   * retenciones (17/11): REAL = lo que informó Mercado Pago para esa venta (la
+   * parte de esta marca); ESTIMADO = con las tasas de Configuración (posnet, o
+   * Mercado Pago todavía no lo liberó); SIN_COSTO = efectivo.
+   */
+  dato: "REAL" | "ESTIMADO" | "SIN_COSTO";
 };
 
 function vacioResumen() {
@@ -191,6 +199,13 @@ export async function construirLineas(
     .in("id_pago", idsPago.length > 0 ? idsPago : ["00000000-0000-0000-0000-000000000000"]);
   const formaPagoPorIdPago = new Map((pagos ?? []).map((p) => [p.id_pago, p.forma_pago_cliente]));
 
+  // Lo que Mercado Pago descontó de verdad en cada venta (Cobros digitales,
+  // 17/11). La venta que todavía no está en un reporte sigue con la estimación.
+  const descuentosReales = await descuentosRealesPorVenta(
+    supabase,
+    ventasFiltradas.filter((v) => v.medio_pago === "MERCADO_PAGO").map((v) => v.id_venta)
+  ).catch(() => new Map<string, DescuentoReal>());
+
   // El programa de profesionales de cada renglón vendido con código o a un
   // paciente: beneficio del paciente + lo que sumó la profesional. Las ventas
   // anuladas no cuentan (su referido queda ANULADO).
@@ -241,8 +256,16 @@ export async function construirLineas(
     // respeta el casillero "Impuesto a los créditos" de la ficha de la
     // marca — hoy todas lo tienen tildado (comportamiento sin cambios),
     // pero queda disponible por si alguna vez hace falta una excepción.
+    // Real de Mercado Pago: esta marca paga su parte de lo que se descontó en el
+    // cobro, según lo que vendió en él (si en la venta hubo otras marcas).
+    const real = esEfectivo ? undefined : descuentosReales.get(venta.id_venta);
+    const parteDelCobro = real && real.pagoCliente > 0 ? ventaBruta / real.pagoCliente : 0;
     const impCreditosLinea =
-      esEfectivo || !marca.trasladar_imp_creditos ? 0 : redondear2(ventaBruta * (tasas.impCreditos / 100));
+      esEfectivo || !marca.trasladar_imp_creditos
+        ? 0
+        : real
+          ? redondear2(real.impCreditos * parteDelCobro)
+          : redondear2(ventaBruta * (tasas.impCreditos / 100));
     // La comisión de Mercado Pago se cobra + IVA (ej. débito 1,39% + 21%
     // de IVA sobre esa comisión) — la tasa cargada en Configuración es la
     // base, sin IVA, así que el IVA se suma acá, no al cargar la tasa.
@@ -251,7 +274,9 @@ export async function construirLineas(
     // Mercado Pago o posnet: el costo de cobro de esa forma de pago exacta.
     const feeMp =
       !esEfectivo && marca.trasladar_comision_cobro && entraPorCuenta(venta.medio_pago)
-        ? redondear2(ventaBruta * (tasaMpConIva / 100))
+        ? real
+          ? redondear2(real.comision * parteDelCobro)
+          : redondear2(ventaBruta * (tasaMpConIva / 100))
         : 0;
     // SIRCREB solo se retiene preventivamente si la marca tiene tildado
     // "trasladar SIRCREB" en su ficha — si no, WiiGo lo sigue absorbiendo
@@ -261,9 +286,13 @@ export async function construirLineas(
     // un tercero: ver movimientos_retencion_marca, esto NUNCA es ganancia
     // de WiiGo, queda pendiente de compensar/devolver.
     // Lo del posnet entra a la cuenta del banco: también le retienen.
+    // Con el dato real, solo lo que Mercado Pago retuvo de verdad en ese cobro
+    // (casi siempre nada): la estimación lo cobraba siempre.
     const sircrebLinea =
       !esEfectivo && marca.trasladar_sircreb && entraPorCuenta(venta.medio_pago)
-        ? redondear2(ventaBruta * (tasas.sircreb / 100))
+        ? real
+          ? redondear2(real.retenciones * parteDelCobro)
+          : redondear2(ventaBruta * (tasas.sircreb / 100))
         : 0;
     // Impuesto a los Débitos: al revés de los demás, hoy WiiGo lo absorbe
     // siempre (ninguna marca lo tiene tildado) — misma tasa general que el
@@ -295,6 +324,7 @@ export async function construirLineas(
       impDebitos: impDebitosLinea,
       programaProfesionales: programaLinea,
       netoARendir,
+      dato: esEfectivo ? "SIN_COSTO" : real ? "REAL" : "ESTIMADO",
     });
   }
 

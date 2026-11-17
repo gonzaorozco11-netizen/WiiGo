@@ -860,6 +860,8 @@ export type LineaVentaMarca = {
   impDebitos: number;
   programaProfesionales: number;
   neto: number;
+  /** REAL: descuentos que informó Mercado Pago; ESTIMADO: con tasas; SIN_COSTO: efectivo (17/11). */
+  dato: "REAL" | "ESTIMADO" | "SIN_COSTO";
 };
 
 export type DetalleMesPortal = {
@@ -905,6 +907,7 @@ function mapearLineasParaPortal(lineas: Awaited<ReturnType<typeof calcularRendic
       impDebitos: l.impDebitos,
       programaProfesionales: l.programaProfesionales,
       neto: l.netoARendir,
+      dato: l.dato,
     }));
 }
 

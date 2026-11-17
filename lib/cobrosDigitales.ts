@@ -488,6 +488,65 @@ function armarCobro(filas: Fila[]): Omit<Cobro, "reparto" | "paraVos" | "deMarca
   };
 }
 
+export type DescuentoReal = {
+  /** Lo que pagó el cliente en ese cobro (para repartir por marca). */
+  pagoCliente: number;
+  /** Comisión de Mercado Pago con su IVA (y la de cuotas, si hubo). */
+  comision: number;
+  /** Impuesto a los débitos y créditos. */
+  impCreditos: number;
+  /** Retenciones de Ingresos Brutos (SIRCREB), solo si Mercado Pago las hizo. */
+  retenciones: number;
+};
+
+/**
+ * Lo que Mercado Pago descontó de verdad en el cobro de cada venta, para las
+ * liquidaciones a las marcas (Gonzalo, 17/11: «que les figure el real de lo que
+ * se les descontó»). Solo las ventas que ya tienen su cobro en un reporte; las
+ * demás siguen con la estimación. Si falta la tabla, devuelve vacío.
+ */
+export async function descuentosRealesPorVenta(supabase: SupabaseClient, idsVenta: string[]): Promise<Map<string, DescuentoReal>> {
+  const salida = new Map<string, DescuentoReal>();
+  if (idsVenta.length === 0) return salida;
+  const filas: Fila[] = [];
+  for (let i = 0; i < idsVenta.length; i += 200) {
+    const { data, error } = await supabase
+      .from("cobros_digitales")
+      .select("id_externo, proveedor, tipo, fecha, fecha_operacion, id_venta, referencia, medio, medio_tipo, billetera, bruto, comision, financiacion, impuestos, detalle_impuestos, credito, debito, crudo")
+      .in("id_venta", idsVenta.slice(i, i + 200));
+    if (error) return salida;
+    filas.push(...((data ?? []) as Fila[]));
+  }
+  // Las filas sueltas del mismo movimiento (impuestos informados aparte) no traen la venta.
+  const ids = [...new Set(filas.map((f) => f.id_externo))];
+  if (ids.length) {
+    const { data: mas } = await supabase
+      .from("cobros_digitales")
+      .select("id_externo, proveedor, tipo, fecha, fecha_operacion, id_venta, referencia, medio, medio_tipo, billetera, bruto, comision, financiacion, impuestos, detalle_impuestos, credito, debito, crudo")
+      .in("id_externo", ids)
+      .is("id_venta", null);
+    filas.push(...((mas ?? []) as Fila[]));
+  }
+  const porMovimiento = new Map<string, Fila[]>();
+  for (const f of filas) {
+    const k = `${f.proveedor}|${f.id_externo}`;
+    porMovimiento.set(k, [...(porMovimiento.get(k) ?? []), f]);
+  }
+  for (const fs of porMovimiento.values()) {
+    if (!fs.some((f) => f.tipo === "payment")) continue;
+    const c = armarCobro(fs);
+    if (!c.idVenta || c.pagoCliente <= 0) continue;
+    const previo = salida.get(c.idVenta);
+    salida.set(c.idVenta, {
+      pagoCliente: r2((previo?.pagoCliente ?? 0) + c.pagoCliente),
+      comision: r2((previo?.comision ?? 0) + c.componentes.comision),
+      impCreditos: r2((previo?.impCreditos ?? 0) + c.componentes.impCred),
+      retenciones: r2((previo?.retenciones ?? 0) + c.componentes.iibb),
+    });
+  }
+  return salida;
+}
+
 /** Los cobros de un rango de fechas (por cuándo pagó el cliente), con su reparto por marca. */
 export async function cobrosDelPeriodo(supabase: SupabaseClient, desde: string, hasta: string): Promise<{ cobros: Cobro[]; ventasSinCobro: { idVenta: string; numero: number; total: number; fecha: string }[] }> {
   const { data, error } = await supabase
