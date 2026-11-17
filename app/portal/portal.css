@@ -2948,6 +2948,10 @@
 .liq-det .tabla-scroll { max-height: none; overflow-x: auto; overflow-y: visible; margin: 0; border: 0; padding: 0; }
 .liq-det-tabla tfoot td { font-weight: 700; border-top: 1px solid var(--borde-fuerte); border-bottom: 0; padding-top: 10px; }
 .liq-det-tabla td:first-child { font-weight: 500; }
+/* Las filas de las tablas del portal aparecen con una animación al entrar en
+   pantalla (.en-vista), pero el detalle se abre en una ventana encima y esa
+   marca nunca le llega: las filas quedaban invisibles. Acá se ven siempre. */
+.js-anim .liq-det .tabla-producto tbody tr { opacity: 1; transform: none; }
 /* «Descargar PDF»: se imprime solo la ventana del detalle. */
 @media print {
   body * { visibility: hidden !important; }
