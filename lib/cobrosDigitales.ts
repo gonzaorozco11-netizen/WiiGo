@@ -507,12 +507,28 @@ export async function cobrosDelPeriodo(supabase: SupabaseClient, desde: string, 
   });
 
   // Ventas cobradas por Mercado Pago en el período que no aparecen en ningún reporte.
+  // Solo desde el primer cobro guardado: antes de eso no se leyó nada y no se puede
+  // decir que falte (Gonzalo, 17/11: sin reportes aparecían todas las ventas).
+  const { data: primero } = await supabase
+    .from("cobros_digitales")
+    .select("fecha_operacion")
+    .eq("proveedor", "MERCADO_PAGO")
+    .eq("tipo", "payment")
+    .not("fecha_operacion", "is", null)
+    .order("fecha_operacion", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (!primero?.fecha_operacion) {
+    cobros.sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
+    return { cobros, ventasSinCobro: [] };
+  }
+  const desdeCubierto = (primero.fecha_operacion as string) > desde ? (primero.fecha_operacion as string) : desde;
   const { data: ventasMp } = await supabase
     .from("ventas")
     .select("id_venta, numero, total, fecha")
     .eq("medio_pago", "MERCADO_PAGO")
     .eq("estado", "PAGADA")
-    .gte("fecha", desde)
+    .gte("fecha", desdeCubierto)
     .lt("fecha", hasta)
     .range(0, 4999);
   const conCobro = new Set(cobros.map((c) => c.idVenta).filter(Boolean));
