@@ -75,6 +75,82 @@ export async function reintegrarPagoMp(params: {
   return { id: String(data?.id ?? ""), monto: Number(data?.amount ?? params.monto ?? 0) };
 }
 
+// ---- Reporte de liberaciones (Cobros digitales, 2026-11-17) ----
+// Cada movimiento de la cuenta con lo que Mercado Pago descontó de verdad:
+// comisión (con IVA), impuestos y retenciones, neto. Documentación:
+// https://www.mercadopago.com.ar/developers/es/docs/reports/released-money/api
+
+/** Las columnas que lee lib/cobrosDigitales.ts. Las primeras son las indispensables. */
+export const COLUMNAS_LIBERACIONES_BASE = [
+  "DATE", "SOURCE_ID", "EXTERNAL_REFERENCE", "RECORD_TYPE", "DESCRIPTION",
+  "NET_CREDIT_AMOUNT", "NET_DEBIT_AMOUNT", "GROSS_AMOUNT", "MP_FEE_AMOUNT",
+  "FINANCING_FEE_AMOUNT", "SHIPPING_FEE_AMOUNT", "TAXES_AMOUNT", "COUPON_AMOUNT",
+  "INSTALLMENTS", "PAYMENT_METHOD", "PAYMENT_METHOD_TYPE", "TRANSACTION_DATE", "TRANSACTION_APPROVAL_DATE",
+];
+export const COLUMNAS_LIBERACIONES_EXTRA = [
+  "TAX_DETAIL", "TAXES_DISAGGREGATED", "ORDER_MP", "POS_NAME", "EXTERNAL_POS_ID",
+  "POI_WALLET_NAME", "POI_BANK_NAME", "OPERATION_TAGS", "METADATA", "BALANCE_AMOUNT",
+];
+
+export async function leerConfigLiberacionesMp(): Promise<{ columns?: { key: string }[] } | null> {
+  return mpFetch("/v1/account/release_report/config", {}, true);
+}
+
+/**
+ * Deja configurado el reporte con nuestras columnas. Si la cuenta ya tenía una
+ * configuración (por ejemplo, la que usa el contador), se le SUMAN las nuestras
+ * y se respeta el resto. No activa la generación automática: el sistema lo pide
+ * solo cada noche (app/api/cron/cobros-digitales).
+ */
+export async function configurarLiberacionesMp(columnas: string[]) {
+  const actual = await leerConfigLiberacionesMp();
+  if (!actual) {
+    return mpFetch("/v1/account/release_report/config", {
+      method: "POST",
+      body: JSON.stringify({
+        columns: columnas.map((key) => ({ key })),
+        file_name_prefix: "wiigo-cobros",
+        frequency: { hour: 3, type: "daily", value: 1 },
+        display_timezone: "GMT-03",
+        report_translation: "en",
+      }),
+    });
+  }
+  const tiene = new Set((actual.columns ?? []).map((c) => c.key));
+  const faltan = columnas.filter((c) => !tiene.has(c));
+  if (faltan.length === 0) return actual;
+  return mpFetch("/v1/account/release_report/config", {
+    method: "PUT",
+    body: JSON.stringify({ ...actual, columns: [...(actual.columns ?? []), ...faltan.map((key) => ({ key }))] }),
+  });
+}
+
+/** Pide el reporte de un rango de fechas. Mercado Pago lo arma en unos minutos. */
+export async function pedirReporteLiberacionesMp(desde: Date, hasta: Date) {
+  const iso = (d: Date) => d.toISOString().slice(0, 19) + "Z";
+  return mpFetch("/v1/account/release_report", {
+    method: "POST",
+    body: JSON.stringify({ begin_date: iso(desde), end_date: iso(hasta) }),
+  });
+}
+
+export type ReporteMp = { file_name?: string; status?: string; begin_date?: string; end_date?: string; date_created?: string };
+
+export async function listarReportesLiberacionesMp(): Promise<ReporteMp[]> {
+  const data = await mpFetch("/v1/account/release_report/list", {}, true);
+  return Array.isArray(data) ? data : [];
+}
+
+/** Baja el archivo (CSV) de un reporte ya generado. */
+export async function bajarReporteLiberacionesMp(nombre: string): Promise<string> {
+  const res = await fetch(`${MP_API}/v1/account/release_report/${encodeURIComponent(nombre)}`, {
+    headers: { Authorization: `Bearer ${accessToken()}` },
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`Mercado Pago no entregó el reporte ${nombre} (${res.status})`);
+  return res.text();
+}
+
 export async function obtenerUsuarioMp(): Promise<{ id: number; nickname?: string }> {
   return mpFetch("/users/me");
 }

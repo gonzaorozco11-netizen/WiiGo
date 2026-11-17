@@ -108,6 +108,8 @@ export const PANTALLAS_DISPONIBLES: PantallaDisponible[] = [
   { clave: "resumen-ventas", label: "Resumen de ventas", grupo: "Finanzas" },
   { clave: "resultado-mes", label: "Estado de Resultados", grupo: "Finanzas" },
   { clave: "rentabilidad", label: "Rentabilidad", grupo: "Finanzas" },
+  // Cada pago sin efectivo con lo que el medio de pago descontó de verdad (17/11).
+  { clave: "cobros-digitales", label: "Cobros digitales", grupo: "Finanzas" },
   { clave: "iva-a-pagar", label: "IVA a pagar", grupo: "Contabilidad" },
   { clave: "locales", label: "Locales", grupo: "Local" },
   { clave: "pantallas", label: "Pantallas", grupo: "Local" },

@@ -318,6 +318,24 @@ export const GUIAS: Guia[] = [
     ],
     rel: ["prog-prof-admin"],
   },
+  {
+    id: "cobros-digitales",
+    audiencias: [...I],
+    pantalla: "cobros-digitales",
+    tema: "Marcas",
+    titulo: "Ver lo que te descontó Mercado Pago en cada cobro",
+    donde: "Finanzas → Cobros digitales",
+    rutas: ["/cobros-digitales"],
+    nueva: "2026-11-17",
+    pasos: [
+      "Entrá a <b>Cobros digitales</b> y elegí el período.",
+      "Arriba ves lo que pagaron los clientes, lo que sacó Mercado Pago y lo que <b>entró de verdad</b>, y cuánto es tuyo y cuánto de cada marca.",
+      "Tocá un pago para ver su cuenta real: comisión (con IVA), impuesto a los débitos y créditos, retenciones impositivas cuando las hubo, y lo que quedó.",
+      "Se actualiza solo cada mañana. Mercado Pago informa cada pago cuando lo libera: el débito, a los 2 días. Si querés lo último, tocá <b>Actualizar ahora</b> y volvé en unos minutos.",
+      "En <b>Para revisar</b> aparecen los cobros sin venta en el sistema y las ventas cobradas por Mercado Pago que no figuran en sus reportes.",
+    ],
+    rel: ["liquidar"],
+  },
 
   // ===================== EQUIPO: PROFESIONALES =====================
   {

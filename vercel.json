@@ -40,6 +40,14 @@
     {
       "path": "/api/cron/resumen-turno-21",
       "schedule": "15 0 * * *"
+    },
+    {
+      "path": "/api/cron/cobros-digitales",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/cobros-digitales?pedir=0",
+      "schedule": "40 9 * * *"
     }
   ]
 }

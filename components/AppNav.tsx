@@ -147,6 +147,7 @@ const GROUPS: NavGroup[] = [
       { href: "/resumen-ventas", label: "Resumen de ventas" },
       { href: "/resultado-mes", label: "Estado de Resultados" },
       { href: "/rentabilidad", label: "Rentabilidad" },
+      { href: "/cobros-digitales", label: "Cobros digitales" },
     ],
   },
   {
