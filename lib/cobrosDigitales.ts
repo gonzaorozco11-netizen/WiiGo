@@ -104,9 +104,25 @@ export function nombreDescuento(crudo: string): string {
 export function impuestosSeparados(json: string | undefined): { nombre: string; monto: number }[] {
   if (!json) return [];
   let dato: unknown;
-  try { dato = JSON.parse(json); } catch { return []; }
+  try {
+    dato = JSON.parse(json);
+  } catch {
+    // Mercado Pago lo manda sin comillas (17/11):
+    // [{amount:-64.20,detail:tax_withholding_collector,financial_entity:debitos_creditos}]
+    const objetos = [...json.matchAll(/\{([^{}]*)\}/g)].map((m) =>
+      Object.fromEntries(
+        m[1].split(",").map((par) => {
+          const i = par.indexOf(":");
+          return [par.slice(0, i).trim().replace(/^["']|["']$/g, ""), par.slice(i + 1).trim().replace(/^["']|["']$/g, "")];
+        })
+      )
+    );
+    if (!objetos.length) return [];
+    dato = objetos;
+  }
   const salida: { nombre: string; monto: number }[] = [];
-  const NOMBRES = ["detail", "type", "name", "tax_type", "description", "financial_entity", "concept", "tax"];
+  // financial_entity primero: dice qué impuesto es (debitos_creditos, iibb_mendoza...).
+  const NOMBRES = ["financial_entity", "detail", "type", "name", "tax_type", "description", "concept", "tax"];
   const MONTOS = ["amount", "value", "total", "tax_amount"];
   const recorrer = (x: unknown) => {
     if (Array.isArray(x)) { x.forEach(recorrer); return; }
@@ -422,7 +438,10 @@ function armarCobro(filas: Fila[]): Omit<Cobro, "reparto" | "paraVos" | "deMarca
       sumar("Comisión de Mercado Pago", Number(f.comision), "IVA incluido");
       sumar("Comisión por cuotas", Number(f.financiacion));
       const imp = Number(f.impuestos) || 0;
-      const det = (f.detalle_impuestos ?? []).filter((d) => d.monto > 0);
+      // Se relee de lo que informó Mercado Pago: así los guardados antes de leer bien
+      // el formato sin comillas también salen separados (17/11).
+      const releido = impuestosSeparados((f.crudo as Record<string, string> | null)?.TAXES_DISAGGREGATED);
+      const det = (releido.length ? releido : f.detalle_impuestos ?? []).filter((d) => d.monto > 0);
       const sumaDet = det.reduce((s, d) => s + d.monto, 0);
       if (det.length && Math.abs(sumaDet - imp) < 1) det.forEach((d) => sumar(nombreDescuento(d.nombre), d.monto));
       else if (imp) sumar(det.length === 1 ? nombreDescuento(det[0].nombre) : "Impuestos y retenciones", imp);
