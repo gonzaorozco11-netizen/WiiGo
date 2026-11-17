@@ -110,7 +110,10 @@ export async function configurarLiberacionesMp(columnas: string[]) {
       body: JSON.stringify({
         columns: columnas.map((key) => ({ key })),
         file_name_prefix: "wiigo-cobros",
-        frequency: { hour: 3, type: "daily", value: 1 },
+        // Igual que el ejemplo de la documentación: con «daily» respondía
+        // «Invalid frequency». No se activa la generación automática, así que
+        // da igual cuál sea: el sistema pide el reporte cada mañana (17/11).
+        frequency: { hour: 0, type: "monthly", value: 1 },
         display_timezone: "GMT-03",
         report_translation: "en",
         // Mercado Pago los exige aunque no se usen: sin ellos responde
@@ -136,7 +139,7 @@ export async function configurarLiberacionesMp(columnas: string[]) {
   if (Array.isArray(a.notification_email_list) && a.notification_email_list.length) cuerpo.notification_email_list = a.notification_email_list;
   if (a.sftp_info && typeof a.sftp_info === "object" && Object.keys(a.sftp_info).length) cuerpo.sftp_info = a.sftp_info;
   if (!cuerpo.file_name_prefix) cuerpo.file_name_prefix = "wiigo-cobros";
-  if (!cuerpo.frequency) cuerpo.frequency = { hour: 3, type: "daily", value: 1 };
+  if (!cuerpo.frequency) cuerpo.frequency = { hour: 0, type: "monthly", value: 1 };
   return mpFetch("/v1/account/release_report/config", { method: "PUT", body: JSON.stringify(cuerpo) });
 }
 
