@@ -23,8 +23,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ESTADOS_ABIERTOS } from "@/lib/estadosOrden";
 
-/** Desde cuándo se cuenta: el día que se prendió (16/11/2026, 00:00 de Mendoza). Lo de antes no se pide. */
-export const CONTAR_DESDE = "2026-11-16T03:00:00.000Z";
+/**
+ * Desde cuándo se cuenta: 01/11/2026, 00:00 de Mendoza. Se prendió el 16/11
+ * contando desde ese día, pero Gonzalo lo pasó al 1/11 (17/11): «todavía no
+ * ha repuesto nada», así que todo lo vendido en el mes es para traer. Lo de
+ * antes no se pide.
+ */
+export const CONTAR_DESDE = "2026-11-01T03:00:00.000Z";
 
 export type VendidoVariante = {
   idVariante: string;
