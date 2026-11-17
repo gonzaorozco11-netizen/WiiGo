@@ -332,8 +332,12 @@ export default function ViajeGondola({
     viajar();
     const alTeclear = (e: KeyboardEvent) => e.key === "Escape" && onVolver();
     window.addEventListener("keydown", alTeclear);
+    // Salida de seguridad en la pantalla del local (17/11): si la placa dibuja mal
+    // y no se ve el botón, a los 45 s vuelve sola al producto.
+    const vuelta = esPlacaLiviana() ? window.setTimeout(onVolver, 45000) : null;
     return () => {
       tiempos.current.forEach((id) => window.clearTimeout(id));
+      if (vuelta) window.clearTimeout(vuelta);
       window.removeEventListener("keydown", alTeclear);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -491,7 +495,12 @@ export default function ViajeGondola({
       role="dialog"
       aria-modal="true"
       aria-label={`${t.llevamos} ${nombre}`}
-      onClick={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        e.stopPropagation();
+        // En la pantalla del local, tocar en cualquier lado (que no sea un botón)
+        // vuelve al producto: así nunca queda trabada aunque no se vea «Volver» (17/11).
+        if (esPlacaLiviana() && !(e.target as HTMLElement).closest("button")) onVolver();
+      }}
     >
       <div className="vg-arriba">
         <b>

@@ -9,14 +9,20 @@
 }
 .vg button { font: inherit; cursor: pointer; }
 
+/* Todo lo que va encima de la escena (barra, foco, cartel, tarjeta, mapita) lleva
+   su propia capa (translate3d(0,0,0)) y un z-index alto, y la cámara queda en su
+   capa con z-index 0. En la Raspberry de la pantalla asesora la escena 3D se
+   dibujaba POR ENCIMA de estas capas planas: no se veía «Volver al producto» y la
+   pantalla quedaba trabada (Fruppi, 2026-11-17). */
 .vg-arriba {
-  position: absolute; top: 0; left: 0; right: 0; z-index: 5; display: flex; justify-content: space-between; align-items: center;
+  position: absolute; top: 0; left: 0; right: 0; z-index: 20; display: flex; justify-content: space-between; align-items: center;
+  transform: translate3d(0, 0, 0);
   padding: 16px 24px 26px; background: linear-gradient(#efe9dc 0%, #efe9dc 72%, rgba(239, 233, 220, 0) 100%);
 }
 .vg-arriba b { font-size: 24px; font-weight: 800; letter-spacing: -.01em; }
 .vg-arriba button { border: 0; background: #22301f; color: #fff; border-radius: 999px; height: 54px; padding: 0 24px; font-weight: 800; font-size: 17px; margin-left: 12px; box-shadow: 0 10px 20px -12px rgba(0, 0, 0, .6); }
 
-.vg-camara { position: absolute; top: 0; right: 0; bottom: 0; left: 0; perspective: 760px; perspective-origin: 50% 48%; }
+.vg-camara { position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 0; perspective: 760px; perspective-origin: 50% 48%; }
 /* La cámara se mueve con una animación de un solo tramo (ViajeGondola: recorrido()), sin transición. */
 .vg-escena { position: absolute; left: 50%; top: 55%; width: 0; height: 0; transform-style: preserve-3d; }
 .vg-c, .vg-p, .vg-fila { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
@@ -141,12 +147,13 @@
    Una capa plana y quieta por encima de la escena: no cuesta nada. El cartel y
    el anillo también van acá arriba, así ningún caño ni estante los tapa. */
 .vg-foco {
-  position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 4; pointer-events: none; opacity: 0; transition: opacity .5s;
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 10; pointer-events: none; opacity: 0; transition: opacity .5s;
+  transform: translate3d(0, 0, 0);
   background: radial-gradient(circle var(--r, 150px) at var(--x, 50%) var(--y, 50%), rgba(14, 18, 12, 0) 0, rgba(14, 18, 12, 0) 55%, rgba(14, 18, 12, .42) 100%);
 }
 .vg.foco-on .vg-foco { opacity: 1; }
 .vg-pin2d {
-  position: absolute; z-index: 4; left: var(--x, 50%); top: var(--pin-y, 40%); transform: translate(-50%, -100%);
+  position: absolute; z-index: 11; left: var(--x, 50%); top: var(--pin-y, 40%); transform: translate3d(-50%, -100%, 0);
   background: #e8743b; color: #fff; font-weight: 800; font-size: 22px; padding: 7px 14px; border-radius: 10px; white-space: nowrap;
   opacity: 0; transition: opacity .3s; box-shadow: 0 10px 20px -10px rgba(0, 0, 0, .55); pointer-events: none;
 }
@@ -157,10 +164,10 @@
 .vg-pin-foto { display: block; position: relative; width: 132px; height: 132px; margin: 0 auto 6px; border-radius: 10px; overflow: hidden; background: #fff; }
 .vg-pin-foto img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: contain; }
 .vg-pin2d.con-foto .vg-pin-txt { display: block; background: #e8743b; color: #fff; border-radius: 8px; padding: 5px 12px; }
-.vg-pin2d.abajo { transform: translate(-50%, 0); }
+.vg-pin2d.abajo { transform: translate3d(-50%, 0, 0); }
 .vg-pin2d.abajo::after { bottom: auto; top: -10px; border: 7px solid transparent; border-top: 0; border-bottom-color: #e8743b; }
 .vg-anillo2d {
-  position: absolute; z-index: 4; left: var(--x, 50%); top: var(--y, 50%); width: var(--d, 100px); height: var(--d, 100px);
+  position: absolute; z-index: 11; left: var(--x, 50%); top: var(--y, 50%); width: var(--d, 100px); height: var(--d, 100px);
   margin: calc(var(--d, 100px) / -2) 0 0 calc(var(--d, 100px) / -2); border-radius: 50%; border: 4px solid #e8743b; opacity: 0; pointer-events: none;
 }
 .vg.foco-on .vg-pin2d { opacity: 1; }
@@ -169,12 +176,12 @@
 
 /* ===== El cartel de abajo con los pasos ===== */
 .vg-indic {
-  position: absolute; left: 50%; bottom: 26px; width: 760px; max-width: calc(100% - 210px); margin-left: -380px; z-index: 5;
+  position: absolute; left: 50%; bottom: 26px; width: 760px; max-width: calc(100% - 210px); margin-left: -380px; z-index: 20;
   background: #fff; color: #1f261c; border: 1px solid #e8dfcd; border-radius: 24px; padding: 16px 18px; display: flex; align-items: center;
-  box-shadow: 0 30px 60px -30px rgba(0, 0, 0, .6); opacity: 0; transform: translateY(20px); transition: opacity .3s .8s, transform .3s .8s;
+  box-shadow: 0 30px 60px -30px rgba(0, 0, 0, .6); opacity: 0; transform: translate3d(0, 20px, 0); transition: opacity .3s .8s, transform .3s .8s;
 }
 @media (max-width: 980px) { .vg-indic { left: 16px; margin-left: 0; max-width: calc(100% - 32px); } }
-.vg.listo .vg-indic { opacity: 1; transform: none; }
+.vg.listo .vg-indic { opacity: 1; transform: translate3d(0, 0, 0); }
 .vg-n { flex: none; width: 56px; height: 56px; border-radius: 16px; background: #e8743b; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 24px; margin-right: 14px; }
 .vg-texto { flex: 1; min-width: 0; }
 .vg-texto b { font-size: 22px; font-weight: 800; display: block; line-height: 1.15; }
@@ -183,7 +190,7 @@
 .vg-indic button { flex: none; border: 0; background: #22301f; color: #fff; border-radius: 14px; padding: 14px 18px; font-weight: 800; font-size: 16px; margin-left: 14px; }
 
 /* El mapita del local */
-.vg-planta { position: absolute; right: 20px; bottom: 24px; z-index: 6; width: 150px; background: rgba(255, 250, 242, .96); border: 1px solid #e8dfcd; border-radius: 16px; padding: 10px; }
+.vg-planta { position: absolute; right: 20px; bottom: 24px; z-index: 21; transform: translate3d(0, 0, 0); width: 150px; background: rgba(255, 250, 242, .96); border: 1px solid #e8dfcd; border-radius: 16px; padding: 10px; }
 .vg-planta b { display: block; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: #857f6f; margin-bottom: 6px; }
 .vg-planta svg { display: block; width: 100%; height: auto; }
 @media (max-width: 980px) { .vg-planta { display: none; } }
