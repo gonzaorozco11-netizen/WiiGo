@@ -44,7 +44,7 @@ export const AVISOS: {
   {
     tipo: "solicitud",
     titulo: "Te respondimos una solicitud",
-    detalle: "Aprobada o no. Si la rechazamos, el motivo va en el mismo mail.",
+    detalle: "Aprobada o no, todo junto en un solo mail. Si algo no lo aprobamos, el motivo va en el mismo mail.",
     porDefecto: true,
   },
   {
@@ -78,7 +78,8 @@ export const AVISOS: {
  * de mandar ese tipo hasta el día siguiente.
  */
 export const TOPE_DIARIO: Record<TipoAviso, number> = {
-  venta: 12,
+  // Las ventas, todas (Gonzalo, 17/11): «que sí lleguen las ventas que se hagan, todas».
+  venta: Number.POSITIVE_INFINITY,
   agotado: 4,
   solicitud: 10,
   liquidacion: 3,

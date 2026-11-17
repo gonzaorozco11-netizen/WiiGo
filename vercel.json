@@ -48,6 +48,10 @@
     {
       "path": "/api/cron/cobros-digitales-leer",
       "schedule": "40 9 * * *"
+    },
+    {
+      "path": "/api/cron/avisos-solicitudes",
+      "schedule": "*/10 * * * *"
     }
   ]
 }

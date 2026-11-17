@@ -177,9 +177,9 @@ export default function PortalAvisos({ datos }: { datos: AvisosPortal }) {
       </div>
 
       <div className="av-tope">
-        <b>Nunca más de un mail por día por cada cosa.</b> Si se agotan cuatro productos el mismo
-        día, te llega uno solo con los cuatro. El aviso que cansa se manda a spam, y ahí perdemos
-        también los que importan.
+        <b>Cada venta te llega en el momento, todas.</b> Lo demás va junto: si te respondemos varias
+        solicitudes seguidas, te llega un solo mail con todas. El aviso que cansa se manda a spam, y
+        ahí perdemos también los que importan.
       </div>
     </main>
   );

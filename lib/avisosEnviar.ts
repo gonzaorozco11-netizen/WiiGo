@@ -398,8 +398,9 @@ async function loDeHoy(
     .eq("id_marca", idMarca)
     .eq("ventas.estado", "PAGADA")
     .eq("ventas.id_local", idLocal)
-    .gte("ventas.fecha", `${hoy}T00:00:00`)
-    .lte("ventas.fecha", `${hoy}T23:59:59`);
+    // El día de Argentina: de las 03:00 UTC a las 03:00 UTC del día siguiente.
+    .gte("ventas.fecha", `${hoy}T03:00:00Z`)
+    .lt("ventas.fecha", new Date(Date.parse(`${hoy}T03:00:00Z`) + 86400000).toISOString());
 
   const renglones = data ?? [];
   return {
@@ -437,55 +438,159 @@ async function nombresDeVariante(
  * mandar lo mismo.
  */
 export async function avisarSolicitudResuelta(idSolicitud: string): Promise<void> {
-  try {
-    const supabase = getSupabaseServerClient();
+  // Ya no manda un mail por cada solicitud (17/11): el 16/11 Gonzalo aprobó 16
+  // de Animalfit en un minuto, salieron 10 mails y 6 se frenaron por el tope.
+  // Ahora las respuestas salen juntas, en un solo mail por marca, desde el cron
+  // /api/cron/avisos-solicitudes (avisarSolicitudesAgrupadas). Queda la función
+  // para no tocar a quienes la llaman.
+  void idSolicitud;
+}
 
-    const { data: s } = await supabase
-      .from("solicitudes_marca")
-      .select("id_solicitud, id_marca, tipo, estado, motivo")
-      .eq("id_solicitud", idSolicitud)
-      .maybeSingle();
-    if (!s) return;
+/** Cuánto se espera después de la última respuesta antes de mandar el mail: así un lote de aprobaciones sale junto. */
+const ESPERA_LOTE_MS = 3 * 60 * 1000;
+const PREFIJO_LOTE = "lote-hasta:";
 
-    const marcas = await marcasPara(supabase, [s.id_marca as string]);
-    const marca = marcas.get(s.id_marca as string);
-    if (!marca || marca.mails.length === 0) return;
-    if (!avisoPrendido(marca.avisos, "solicitud")) return;
-    if (!(await sePuedeMandar(supabase, marca.idMarca, "solicitud", idSolicitud))) return;
+const NOMBRE_TIPO: Record<string, string> = {
+  PRECIO: "Precio",
+  PRODUCTO_NUEVO: "Producto nuevo",
+  DESCRIPCION: "Descripción",
+  FICHA: "Información nutricional",
+  NOMBRE: "Nombre",
+  FOTO: "Foto",
+  COMBO_PRECIO: "Precio de combo",
+  COMBO_NUEVO: "Combo nuevo",
+  BAJA: "Baja",
+};
 
-    const aprobada = s.estado === "APROBADA" || s.estado === "APLICADA";
-    const base = baseUrlPublica();
-    const asunto = aprobada ? "Te aprobamos lo que mandaste" : "No pudimos aprobar lo que mandaste";
+function escaparHtml(t: string) {
+  return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
 
-    // El motivo del rechazo entra en el bloque de arriba, no en una franja de
-    // color: es lo único que la marca necesita leer, y leerlo acá le ahorra
-    // entrar al portal a buscarlo.
-    const cuerpo = aprobada
-      ? ""
-      : `<p style="margin:0 0 12px;padding:12px 14px;background:#f9ebe8;border:1px solid #e8c4bd;border-radius:10px;color:#8e392d">${s.motivo ?? "Escribinos y lo vemos."}</p>
-         <p style="margin:0;color:#5e6659;font-size:14px">Corregí eso y volvé a mandarlo: no hace falta que cargues todo de nuevo.</p>`;
+/**
+ * Las respuestas a solicitudes, juntas: un mail por marca con todo lo que se
+ * aprobó o no desde el último mail. Lo llama el cron cada 10 minutos. Espera a
+ * que pasen 3 minutos de la última respuesta, para no partir un lote al medio.
+ *
+ * Hasta dónde se avisó queda en la `referencia` del último mail mandado
+ * («lote-hasta:<fecha>»): el próximo arranca desde ahí y no se pierde ni se
+ * repite ninguna.
+ */
+export async function avisarSolicitudesAgrupadas(): Promise<{ marcas: number; solicitudes: number }> {
+  const supabase = getSupabaseServerClient();
+  const ahora = Date.now();
+  const corte = new Date(ahora - ESPERA_LOTE_MS).toISOString();
+  // La primera vez (sin mails de lote todavía) se mira solo el último día: lo
+  // de antes ya se avisó con el sistema viejo.
+  const piso = new Date(ahora - 24 * 3600 * 1000).toISOString();
 
-    await mandar(
-      supabase,
-      marca,
-      "solicitud",
-      idSolicitud,
-      asunto,
-      plantilla({
-        base,
-        tono: aprobada ? "verde" : "ambar",
-        emoji: aprobada ? "✅" : "📝",
-        titulo: aprobada ? "¡Listo! Te lo aprobamos" : "No pudimos aprobarlo",
-        bajada: aprobada
-          ? "Lo que mandaste ya está activo en la góndola."
-          : "Esta vez no se pudo, y acá abajo está el motivo.",
-        cuerpo,
-        boton: { texto: "Ver mis solicitudes", url: `${base}/portal/cambios` },
-        pie: `Te escribimos porque tenés prendido «Te respondimos una solicitud». <a href="${base}/portal/avisos" style="color:#8d9587">Cambiar mis avisos</a> · WiiGo, Mendoza`,
-      }),
-      `${asunto}. ${aprobada ? "" : s.motivo ?? ""} Entrá a ${base}/portal/cambios`
-    );
-  } catch {
-    // La solicitud ya quedó resuelta; el mail es lo accesorio.
+  const { data: resueltas } = await supabase
+    .from("solicitudes_marca")
+    .select("id_solicitud, id_marca, id_producto, tipo, estado, motivo, datos, resuelta_el")
+    .in("estado", ["APROBADA", "APLICADA", "RECHAZADA"])
+    .gt("resuelta_el", piso)
+    .order("resuelta_el");
+  const porMarca = new Map<string, NonNullable<typeof resueltas>>();
+  for (const s of resueltas ?? []) {
+    const id = s.id_marca as string;
+    porMarca.set(id, [...(porMarca.get(id) ?? []), s]);
   }
+
+  let marcasAvisadas = 0;
+  let total = 0;
+  const marcas = await marcasPara(supabase, [...porMarca.keys()]);
+  for (const [idMarca, lista] of porMarca) {
+    try {
+      // Si la última respuesta es de hace menos de 3 minutos, todavía puede
+      // estar aprobando: se espera al próximo cron.
+      const ultima = lista[lista.length - 1].resuelta_el as string;
+      if (ultima > corte) continue;
+
+      const { data: previo } = await supabase
+        .from("avisos_enviados")
+        .select("referencia")
+        .eq("id_marca", idMarca)
+        .eq("tipo", "solicitud")
+        .eq("ok", true) // si el mail falló, el próximo cron lo vuelve a intentar
+        .like("referencia", `${PREFIJO_LOTE}%`)
+        .order("enviado_el", { ascending: false })
+        .limit(1);
+      const desde = (previo?.[0]?.referencia as string | undefined)?.slice(PREFIJO_LOTE.length) ?? piso;
+      const nuevas = lista.filter((s) => (s.resuelta_el as string) > desde);
+      if (nuevas.length === 0) continue;
+      const referencia = `${PREFIJO_LOTE}${ultima}`;
+
+      const marca = marcas.get(idMarca);
+      // Sin mail o con el aviso apagado: se anota igual el lote, para no
+      // mandarlo de golpe el día que lo prenda.
+      if (!marca || marca.mails.length === 0 || !avisoPrendido(marca.avisos, "solicitud")) {
+        await registrar(supabase, { idMarca, tipo: "solicitud", referencia, asunto: "Sin mandar: aviso apagado o sin mail", destinatarios: [], ok: true, error: null });
+        continue;
+      }
+      if (!(await sePuedeMandar(supabase, idMarca, "solicitud", referencia))) continue;
+
+      const idsProd = [...new Set(nuevas.map((s) => s.id_producto as string | null).filter((x): x is string => Boolean(x)))];
+      const { data: prods } = idsProd.length
+        ? await supabase.from("productos").select("id_producto, nombre").in("id_producto", idsProd)
+        : { data: [] };
+      const nombreProd = new Map((prods ?? []).map((p) => [p.id_producto as string, p.nombre as string]));
+      const deQue = (s: (typeof nuevas)[number]) => {
+        const datos = (s.datos as Record<string, unknown> | null) ?? {};
+        const nombre = nombreProd.get(s.id_producto as string) ?? (datos.nombre as string | undefined) ?? "";
+        return `${NOMBRE_TIPO[s.tipo as string] ?? "Solicitud"}${nombre ? ` · ${nombre}` : ""}`;
+      };
+      const aprobadas = nuevas.filter((s) => s.estado !== "RECHAZADA");
+      const rechazadas = nuevas.filter((s) => s.estado === "RECHAZADA");
+
+      const base = baseUrlPublica();
+      const asunto =
+        rechazadas.length === 0
+          ? aprobadas.length === 1
+            ? "Te aprobamos lo que mandaste"
+            : `Te aprobamos ${aprobadas.length} cosas que mandaste`
+          : aprobadas.length === 0
+            ? rechazadas.length === 1
+              ? "No pudimos aprobar lo que mandaste"
+              : `No pudimos aprobar ${rechazadas.length} cosas que mandaste`
+            : `Te respondimos ${nuevas.length} cosas: ${aprobadas.length} aprobadas, ${rechazadas.length} sin aprobar`;
+
+      const renglon = (texto: string, color: string) =>
+        `<li style="margin:0 0 6px;color:${color}">${escaparHtml(texto)}</li>`;
+      // El motivo de cada rechazo va adentro del mail: si la marca tiene que
+      // entrar a buscarlo, no entra, y la semana que viene manda lo mismo.
+      const cuerpo = [
+        aprobadas.length
+          ? `<p style="margin:0 0 6px;font-weight:700;color:#2f4a26">✅ Aprobado (${aprobadas.length})</p><ul style="margin:0 0 14px;padding-left:18px">${aprobadas.map((s) => renglon(deQue(s), "#2f3a2b")).join("")}</ul>`
+          : "",
+        rechazadas.length
+          ? `<p style="margin:0 0 6px;font-weight:700;color:#8e392d">📝 No se pudo aprobar (${rechazadas.length})</p><ul style="margin:0 0 10px;padding-left:18px">${rechazadas
+              .map((s) => `<li style="margin:0 0 8px;color:#2f3a2b">${escaparHtml(deQue(s))}<br><span style="color:#8e392d">${escaparHtml((s.motivo as string | null) ?? "Escribinos y lo vemos.")}</span></li>`)
+              .join("")}</ul><p style="margin:0;color:#5e6659;font-size:14px">Corregí eso y volvé a mandarlo: no hace falta que cargues todo de nuevo.</p>`
+          : "",
+      ].join("");
+
+      await mandar(
+        supabase,
+        marca,
+        "solicitud",
+        referencia,
+        asunto,
+        plantilla({
+          base,
+          tono: rechazadas.length ? "ambar" : "verde",
+          emoji: rechazadas.length ? "📝" : "✅",
+          titulo: rechazadas.length ? "Te respondimos lo que mandaste" : "¡Listo! Te lo aprobamos",
+          bajada: aprobadas.length ? "Lo aprobado ya está activo en la góndola (los precios, en el próximo cambio de carteles)." : "Esta vez no se pudo: acá abajo está el motivo de cada uno.",
+          cuerpo,
+          boton: { texto: "Ver mis solicitudes", url: `${base}/portal/cambios` },
+          pie: `Te escribimos porque tenés prendido «Te respondimos una solicitud». <a href="${base}/portal/avisos" style="color:#8d9587">Cambiar mis avisos</a> · WiiGo, Mendoza`,
+        }),
+        `${asunto}. ${aprobadas.map(deQue).join(", ")}${rechazadas.length ? `. Sin aprobar: ${rechazadas.map((s) => `${deQue(s)} (${(s.motivo as string | null) ?? ""})`).join(", ")}` : ""}. Entrá a ${base}/portal/cambios`
+      );
+      marcasAvisadas++;
+      total += nuevas.length;
+    } catch {
+      // Una marca que falla no frena a las demás; el próximo cron la reintenta.
+    }
+  }
+  return { marcas: marcasAvisadas, solicitudes: total };
 }
