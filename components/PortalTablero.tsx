@@ -67,8 +67,10 @@ function FinalCorto({
   return <span className="pill aviso">Sobraron {l.diferencia}</span>;
 }
 
+// Con centavos en todo el Tablero (Gonzalo, 17/11): la marca ve lo mismo, al
+// centavo, que en el detalle de la liquidación.
 function pesos(v: number) {
-  return v.toLocaleString("es-AR", { maximumFractionDigits: 0 });
+  return v.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function pesosOGuion(v: number) {
@@ -573,7 +575,7 @@ export default function PortalTablero({
           )}
           {gold?.proyeccion ? (
             <p className="pie">
-              Al ritmo actual cerrás el mes en <b>${pesos(gold.proyeccion)}</b>.
+              Al ritmo actual cerrás el mes en <b>${pesos(Math.round(gold.proyeccion))}</b>.
             </p>
           ) : null}
           <p className="pie" style={{ color: "var(--texto-3)" }}>
