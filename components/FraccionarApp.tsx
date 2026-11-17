@@ -7,6 +7,7 @@ import { cerrarGranel, descartarEnCurso } from "@/app/(app)/fraccionar/actions";
 import { textoGramos } from "@/lib/gramos";
 import FraccionarGuiado from "@/components/FraccionarGuiado";
 import PestanasStock from "@/components/PestanasStock";
+import { paraFraccionar } from "@/lib/fraccionarSugerido";
 
 // Fraccionar: el granel del depósito (en gramos) pasa a bolsitas. Desde el
 // 2026-11-16 se hace con el paso a paso (FraccionarGuiado): se toca un granel y
@@ -39,9 +40,13 @@ export default function FraccionarApp({
   const [abierto, setAbierto] = useState<string | null>(null);
   const porId = useMemo(() => new Map(graneles.map((g) => [g.idVariante, g])), [graneles]);
   const aSeguir = seguir ? enCurso.find((e) => e.id === seguir) : null;
-  const [guiado, setGuiado] = useState<{ granel: GranelVista; inicial: EnCursoVista | null } | null>(() =>
+  const [guiado, setGuiado] = useState<{ granel: GranelVista; inicial: EnCursoVista | null; idBolsa?: string } | null>(() =>
     aSeguir && porId.get(aSeguir.idVarianteGranel) ? { granel: porId.get(aSeguir.idVarianteGranel)!, inicial: aSeguir } : null
   );
+  // «Para fraccionar antes de cerrar el turno»: lo que falta para llegar a 5 + 3 (17/11).
+  const sugeridos = useMemo(() => paraFraccionar(graneles), [graneles]);
+  const conGranel = sugeridos.filter((s) => !s.sinGranel);
+  const totalBolsitas = conGranel.reduce((a, s) => a + s.hacer, 0);
   const [descartando, startDescartar] = useTransition();
   // Los míos primero; el Dueño ve los de todos.
   const pendientes = enCurso.filter((e) => esAdmin || e.idUsuario === idUsuario);
@@ -60,6 +65,7 @@ export default function FraccionarApp({
         key={guiado.inicial?.id ?? guiado.granel.idVariante}
         granel={guiado.granel}
         inicial={guiado.inicial}
+        idBolsa={guiado.idBolsa}
         onSalir={() => {
           setGuiado(null);
           if (seguir) router.replace("/fraccionar");
@@ -74,8 +80,64 @@ export default function FraccionarApp({
       <PestanasStock actual="granel" />
       <h1 className="text-xl font-semibold text-neutral-900">A granel · Fraccionar</h1>
       <p className="text-sm text-neutral-500 mt-0.5 mb-4">
-        Tocá un producto y el sistema te guía paso a paso: cuántas bolsitas salen, etiquetas, vencimiento y sumarlas al stock. Primero los que se están terminando en la góndola.
+        Cada bolsita tiene que quedar con 5 en el blistero y 3 abajo, en el cajón. Lo que se vendió, se fracciona al final del turno.
       </p>
+
+      {sugeridos.length > 0 && (
+        <section aria-label="Para fraccionar antes de cerrar el turno" className="mb-5 rounded-2xl border-2 border-accent bg-white p-4">
+          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+            <h2 className="text-lg font-extrabold text-neutral-900">Para fraccionar antes de cerrar el turno</h2>
+            {totalBolsitas > 0 && (
+              <span className="text-sm text-neutral-500">
+                {conGranel.length} {conGranel.length === 1 ? "producto" : "productos"} · <b className="tabular-nums text-neutral-900">{totalBolsitas} bolsitas</b>
+              </span>
+            )}
+          </div>
+          <ul className="flex flex-col gap-2">
+            {sugeridos.map((s) => (
+              <li
+                key={s.bolsita.idVariante}
+                className={`grid grid-cols-[1fr_auto] items-center gap-3 rounded-xl border p-3 ${s.urgente && !s.sinGranel ? "border-red-300 bg-red-50" : "border-neutral-200"}`}
+              >
+                <span className="min-w-0">
+                  <b className="block text-[15px] text-neutral-900">{s.bolsita.nombre}</b>
+                  <span className="block text-xs text-neutral-600 mt-0.5">
+                    Hay <b className="text-neutral-900">{s.bolsita.enGondola}</b> de <b className="text-neutral-900">{s.bolsita.objetivo}</b>
+                    {s.bolsita.vendidasSemana > 0 && ` · ${s.bolsita.vendidasSemana === 1 ? "se vendió 1" : `se vendieron ${s.bolsita.vendidasSemana}`} esta semana`}
+                    {!s.sinGranel && ` · granel ${textoGramos(s.granel.gramos)}`}
+                  </span>
+                  {s.sinGranel ? (
+                    <span className="inline-block mt-1.5 text-[11px] font-bold rounded-full px-2 py-0.5 bg-amber-50 text-amber-800">No hay granel en el depósito · Gonzalo ya está avisado</span>
+                  ) : s.urgente ? (
+                    <span className="inline-block mt-1.5 text-[11px] font-bold rounded-full px-2 py-0.5 bg-red-600 text-white">El blistero no llega a {s.bolsita.minimo || 3}</span>
+                  ) : null}
+                </span>
+                {s.sinGranel ? (
+                  <span className="text-sm font-bold text-neutral-400">—</span>
+                ) : (
+                  <span className="text-right">
+                    <span className="block text-2xl font-black tabular-nums leading-none text-neutral-900">
+                      {s.hacer} <small className="text-xs font-bold text-neutral-500">{s.hacer === 1 ? "bolsita" : "bolsitas"}</small>
+                    </span>
+                    <span className="block text-[11px] text-neutral-500 mt-0.5 mb-1.5">{textoGramos(s.hacer * s.bolsita.peso)} de granel</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGuiado({ granel: s.granel, inicial: null, idBolsa: s.bolsita.idVariante });
+                        window.scrollTo({ top: 0 });
+                      }}
+                      className="rounded-lg bg-accent px-3 py-1.5 text-xs font-extrabold text-white"
+                    >
+                      Fraccionar →
+                    </button>
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-xs text-neutral-500">Los que tienen sus {sugeridos[0]?.bolsita.objetivo ?? 8} completos no aparecen: no hace falta fraccionarlos.</p>
+        </section>
+      )}
 
       {pendientes.length > 0 && (
         <div className="mb-4 grid gap-2">
@@ -122,7 +184,7 @@ export default function FraccionarApp({
 
       {visibles.length === 0 ? (
         <p className="text-sm text-neutral-500 py-10 text-center">
-          {graneles.length === 0 ? "Todavía no hay graneles: aparecen cuando un producto de Alifrut tiene una bolsita WiiGo." : "Ningún producto coincide."}
+          {graneles.length === 0 ? "Todavía no hay graneles: aparecen cuando un producto a granel tiene una bolsita WiiGo." : "Ningún producto coincide."}
         </p>
       ) : (
         <ul className="flex flex-col gap-2.5">
@@ -236,7 +298,7 @@ function FilaGranel({
             {g.bolsitas.map((b) => `${textoGramos(b.peso)}: ${b.enGondola} en góndola`).join(" · ")}
           </span>
           {sinGranel ? (
-            <span className="inline-block mt-1.5 text-[11px] font-semibold rounded-full px-2 py-0.5 bg-neutral-100 text-neutral-600">Sin granel · hay que pedirle a Alifrut</span>
+            <span className="inline-block mt-1.5 text-[11px] font-semibold rounded-full px-2 py-0.5 bg-neutral-100 text-neutral-600">No hay granel en el depósito</span>
           ) : falta ? (
             <span className="inline-block mt-1.5 text-[11px] font-bold rounded-full px-2 py-0.5 bg-red-50 text-red-700">Faltan en góndola</span>
           ) : (

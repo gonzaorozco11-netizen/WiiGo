@@ -60,7 +60,7 @@ export default function CargarGranelDeposito({ idLocal, graneles }: { idLocal: s
       {abierto && vacios.length > 0 && (
         <div className="px-4 pb-4">
           <p className="text-xs text-amber-900 mb-2">
-            Entra como una entrega de Alifrut con el precio de hoy: es de ellos y se les paga cuando se vende. Anotá solo lo que pesaste;
+            Pesá cada bolsa y anotá los kilos. Anotá solo lo que pesaste;
             lo que dejes vacío no se carga.
           </p>
           <input

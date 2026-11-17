@@ -15,11 +15,24 @@ export async function localDeSesion(supabase: SupabaseClient, idUsuario: string)
   return (locales ?? []).length === 1 ? (locales![0].id_local as string) : null;
 }
 
-export type BolsitaDeGranel = { idVariante: string; nombre: string; peso: number; enGondola: number; minimo: number };
+export type BolsitaDeGranel = {
+  idVariante: string;
+  nombre: string;
+  peso: number;
+  /** Lo que hay en el local: el blistero más el cajón de abajo. */
+  enGondola: number;
+  minimo: number;
+  /** Hasta cuánto se llena: 5 en el blistero + 3 en el cajón = 8 (el máximo del producto). */
+  objetivo: number;
+  /** Vendidas en los últimos 7 días. */
+  vendidasSemana: number;
+};
 export type GranelVista = {
   idVariante: string;
   nombre: string;
   gramos: number;
+  /** Lo que trae una bolsa cerrada: los cereales vienen por bolsa (2, 3, 4 kg); el resto por kilo. */
+  gramosBolsa: number;
   bolsitas: BolsitaDeGranel[];
 };
 export type FraccionadoVista = { id: string; cuando: string; quien: string; granel: string; bolsa: string | null; bolsitas: number; gramos: number; tipo: "FRACCIONADO" | "CIERRE"; merma: number };
@@ -115,6 +128,28 @@ export async function historialFraccionado(supabase: SupabaseClient, idLocal: st
   }));
 }
 
+/** Unidades vendidas en los últimos 7 días, por variante, en este local. Si algo falla, vacío. */
+async function vendidasUltimos7Dias(supabase: SupabaseClient, idLocal: string, idsVariante: string[]): Promise<Map<string, number>> {
+  const salida = new Map<string, number>();
+  if (idsVariante.length === 0) return salida;
+  try {
+    const desde = new Date(Date.now() - 7 * 86400000).toISOString();
+    const { data: ventas } = await supabase.from("ventas").select("id_venta").eq("estado", "PAGADA").eq("id_local", idLocal).gte("fecha", desde).range(0, 9999);
+    const ids = (ventas ?? []).map((v) => v.id_venta as string);
+    const quiero = new Set(idsVariante);
+    for (let i = 0; i < ids.length; i += 200) {
+      const { data } = await supabase.from("detalle_ventas").select("id_variante, cantidad").in("id_venta", ids.slice(i, i + 200));
+      for (const d of data ?? []) {
+        const id = d.id_variante as string;
+        if (quiero.has(id)) salida.set(id, (salida.get(id) ?? 0) + (Number(d.cantidad) || 0));
+      }
+    }
+  } catch {
+    /* sin el dato, la lista sale igual */
+  }
+  return salida;
+}
+
 export async function datosFraccionar(supabase: SupabaseClient, idLocal: string) {
   const { data: graneles, error } = await supabase.from("productos").select("id_producto, nombre, id_granel").eq("estado", ESTADO_GRANEL).range(0, 4999);
   if (error) return null; // sin sql/granel-fraccionado.sql
@@ -127,9 +162,19 @@ export async function datosFraccionar(supabase: SupabaseClient, idLocal: string)
       ? supabase.from("productos").select("id_producto, nombre, id_granel, peso_neto_g").eq("estado", "ACTIVO").not("id_envase", "is", null).gt("peso_neto_g", 0).in("id_granel", idsGranel)
       : Promise.resolve({ data: [] as { id_producto: string; nombre: string; id_granel: string; peso_neto_g: number }[] }),
   ]);
-  const { data: varsHijas } = hijas?.length
-    ? await supabase.from("variantes_producto").select("id_variante, id_producto, stock_minimo").eq("estado", "ACTIVO").in("id_producto", hijas.map((h) => h.id_producto as string))
-    : { data: [] as { id_variante: string; id_producto: string; stock_minimo: number | null }[] };
+  const [{ data: varsHijas }, { data: costosGranel }] = await Promise.all([
+    hijas?.length
+      ? supabase.from("variantes_producto").select("id_variante, id_producto, stock_minimo, stock_objetivo").eq("estado", "ACTIVO").in("id_producto", hijas.map((h) => h.id_producto as string))
+      : Promise.resolve({ data: [] as { id_variante: string; id_producto: string; stock_minimo: number | null; stock_objetivo: number | null }[] }),
+    idsGranel.length
+      ? supabase.from("costos_granel").select("id_granel, unidad, kg_bulto").in("id_granel", idsGranel)
+      : Promise.resolve({ data: [] as { id_granel: string; unidad: string | null; kg_bulto: number | null }[] }),
+  ]);
+  // Una bolsa cerrada: los que se compran por bulto traen sus kilos; el resto viene por kilo.
+  const gramosBolsaDe = new Map(
+    (costosGranel ?? []).map((c) => [c.id_granel as string, c.unidad === "BULTO" && Number(c.kg_bulto) > 0 ? Number(c.kg_bulto) * 1000 : 1000])
+  );
+  const vendidas = await vendidasUltimos7Dias(supabase, idLocal, (varsHijas ?? []).map((v) => v.id_variante as string));
 
   const idsVariante = [...(varsGranel ?? []).map((v) => v.id_variante as string), ...(varsHijas ?? []).map((v) => v.id_variante as string)];
   const { data: stock } = idsVariante.length
@@ -154,11 +199,19 @@ export async function datosFraccionar(supabase: SupabaseClient, idLocal: string)
             peso: Number(h.peso_neto_g),
             enGondola: hay.get(v.id_variante as string) ?? 0,
             minimo: Number(v.stock_minimo ?? 0),
+            objetivo: Math.max(Number(v.stock_objetivo ?? 0), Number(v.stock_minimo ?? 0)),
+            vendidasSemana: vendidas.get(v.id_variante as string) ?? 0,
           }))
       )
       .sort((a, b) => a.peso - b.peso);
     if (bolsitas.length === 0) continue;
-    lista.push({ idVariante: idVar, nombre: String(g.nombre).replace(/\s*·\s*a granel$/i, ""), gramos: hay.get(idVar) ?? 0, bolsitas });
+    lista.push({
+      idVariante: idVar,
+      nombre: String(g.nombre).replace(/\s*·\s*a granel$/i, ""),
+      gramos: hay.get(idVar) ?? 0,
+      gramosBolsa: gramosBolsaDe.get(g.id_granel as string) ?? 1000,
+      bolsitas,
+    });
   }
   // Primero lo que tiene granel para embolsar, y dentro de eso lo que queda poco en la góndola.
   lista.sort((a, b) => Number(b.gramos > 0) - Number(a.gramos > 0) || a.nombre.localeCompare(b.nombre, "es"));

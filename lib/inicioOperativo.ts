@@ -5,7 +5,8 @@ import { localDeSesion } from "@/lib/fraccionado";
 import { contarCartelesUrgentes } from "@/lib/tareasEtiqueta";
 import { cartelesNuevosPendientes, stickersPorPegar } from "@/lib/entradas";
 import { cobrosEsperando, NADIE_ESPERANDO } from "@/lib/cobrosEsperando";
-import { fraccionadosEnCurso } from "@/lib/fraccionado";
+import { datosFraccionar, fraccionadosEnCurso } from "@/lib/fraccionado";
+import { paraFraccionar } from "@/lib/fraccionarSugerido";
 
 // El Inicio del operativo en la tablet del local (pedido de Gonzalo,
 // 2026-10-22): arriba un botón grande con lo que toca hacer AHORA, y abajo
@@ -217,6 +218,28 @@ export async function armarInicioOperativo(
         alerta: true,
         deshabilitado: false,
       });
+    }
+    // La última hora del turno: «Antes de cerrar: fraccionar N bolsitas» (Gonzalo, 17/11).
+    // Lo vendido se fracciona al final del turno, para que cada bolsita vuelva a 5 + 3.
+    // Solo en esa hora: la cuenta pide varias consultas y el resto del día no hace falta.
+    const salidaMin = horaSalida ? minutosDeHora(horaSalida) : null;
+    const ultimaHora = adentro && salidaMin !== null && ahora.minutosDelDia >= salidaMin - 60;
+    if (ultimaHora && persona?.id_local) {
+      const datos = await datosFraccionar(supabase, persona.id_local).catch(() => null);
+      const lista = datos ? paraFraccionar(datos.graneles).filter((s) => !s.sinGranel) : [];
+      const bolsitas = lista.reduce((a, s) => a + s.hacer, 0);
+      if (bolsitas > 0) {
+        agregar({
+          clave: "fraccionar-antes-de-cerrar",
+          titulo: `Antes de cerrar: fraccionar ${bolsitas} ${bolsitas === 1 ? "bolsita" : "bolsitas"}`,
+          detalle: `${lista.length} ${lista.length === 1 ? "producto" : "productos"}: lo que se vendió y hay que reponer en el cajón`,
+          href: "/fraccionar",
+          icono: "⚖️",
+          badge: bolsitas,
+          alerta: true,
+          deshabilitado: false,
+        });
+      }
     }
   }
   // Pedidos de la tienda online, primero (Gonzalo, 16/11): con uno nuevo, el

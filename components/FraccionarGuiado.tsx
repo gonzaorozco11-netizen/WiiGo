@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { BolsitaDeGranel, EnCursoVista, GranelVista } from "@/lib/fraccionado";
+import { cuantasLoQueFalta, cuantasTodaLaBolsa } from "@/lib/fraccionarSugerido";
 import { descartarEnCurso, guardarEnCurso, terminarFraccionado } from "@/app/(app)/fraccionar/actions";
 import { textoGramos } from "@/lib/gramos";
 
@@ -19,16 +20,41 @@ const hoyIso = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
-export default function FraccionarGuiado({ granel, inicial, onSalir }: { granel: GranelVista; inicial?: EnCursoVista | null; onSalir: () => void }) {
+/** Cuántas hacer al elegir una bolsita: lo que falta para llegar a 5 + 3; si ya está completa, toda la bolsa. */
+function cuantasDeEntrada(granel: GranelVista, b: BolsitaDeGranel) {
+  const falta = cuantasLoQueFalta(granel, b);
+  return falta > 0 ? falta : cuantasTodaLaBolsa(granel, b).bolsitas;
+}
+
+export default function FraccionarGuiado({
+  granel,
+  inicial,
+  idBolsa,
+  onSalir,
+}: {
+  granel: GranelVista;
+  inicial?: EnCursoVista | null;
+  /** Desde «Para fraccionar antes de cerrar el turno»: esa bolsita ya elegida. */
+  idBolsa?: string;
+  onSalir: () => void;
+}) {
   const router = useRouter();
-  const bolsaInicial = inicial ? granel.bolsitas.find((b) => b.idVariante === inicial.idVarianteBolsa) ?? null : null;
+  const bolsaInicial = inicial
+    ? granel.bolsitas.find((b) => b.idVariante === inicial.idVarianteBolsa) ?? null
+    : idBolsa
+      ? granel.bolsitas.find((b) => b.idVariante === idBolsa) ?? null
+      : null;
   const [paso, setPaso] = useState(inicial ? Math.min(6, Math.max(1, inicial.paso)) : 1);
   const [idEnCurso, setIdEnCurso] = useState<string | null>(inicial?.id ?? null);
   const [sinTabla, setSinTabla] = useState(false);
   const [bolsa, setBolsa] = useState<BolsitaDeGranel | null>(bolsaInicial ?? (granel.bolsitas.length === 1 ? granel.bolsitas[0] : null));
   const [checks, setChecks] = useState<Record<string, boolean>>(inicial && inicial.paso > 2 ? { guantes: true, balanza: true, peso: true } : {});
   const maximo = bolsa ? Math.floor(granel.gramos / bolsa.peso) : 0;
-  const [hechas, setHechas] = useState<number>(inicial?.bolsitas ?? 0);
+  const [hechas, setHechas] = useState<number>(() => {
+    if (inicial?.bolsitas) return inicial.bolsitas;
+    const b = bolsaInicial ?? (granel.bolsitas.length === 1 ? granel.bolsitas[0] : null);
+    return b ? cuantasDeEntrada(granel, b) : 0;
+  });
   const [queda, setQueda] = useState<"si" | "no" | null>(inicial?.seTermino == null ? null : inicial.seTermino ? "no" : "si");
   const [quedan, setQuedan] = useState<string>(inicial?.gramosQuedan == null ? "" : String(inicial.gramosQuedan));
   // Al volver de Códigos (se retoma en el paso 4) las etiquetas ya se mandaron a imprimir.
@@ -179,7 +205,7 @@ export default function FraccionarGuiado({ granel, inicial, onSalir }: { granel:
               type="button"
               onClick={() => {
                 setBolsa(b);
-                setHechas(0);
+                setHechas(cuantasDeEntrada(granel, b));
               }}
               aria-pressed={bolsa?.idVariante === b.idVariante}
               disabled={salen <= 0}
@@ -196,7 +222,43 @@ export default function FraccionarGuiado({ granel, inicial, onSalir }: { granel:
             </button>
           );
         })}
-        <button type="button" disabled={!bolsa || maximo <= 0 || guardando} onClick={() => ir(2)} className={`${azul} mt-3`}>
+        {/* ¿Cuánto? Lo que falta para llegar a 5 + 3, o cerrar la bolsa entera (17/11). */}
+        {bolsa && maximo > 0 && (() => {
+          const falta = cuantasLoQueFalta(granel, bolsa);
+          const toda = cuantasTodaLaBolsa(granel, bolsa);
+          const opcion = (clave: string, titulo: string, cuantas: number, detalle: string) => (
+            <button
+              key={clave}
+              type="button"
+              onClick={() => setHechas(cuantas)}
+              aria-pressed={hechas === cuantas}
+              className={`grid gap-0.5 rounded-2xl border-2 bg-white p-4 text-left ${hechas === cuantas ? "border-accent bg-accent-tint" : "border-neutral-200"}`}
+            >
+              <span className="text-sm font-extrabold text-neutral-600">{titulo}</span>
+              <span className="text-3xl font-black tabular-nums">{cuantas}</span>
+              <span className="text-xs text-neutral-500">{detalle}</span>
+            </button>
+          );
+          return (
+            <>
+              <p className="mb-2 mt-4 font-extrabold text-neutral-900">¿Cuánto vas a fraccionar?</p>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {falta > 0 &&
+                  opcion("falta", "Lo que falta", falta, `${textoGramos(falta * bolsa.peso)} · quedan ${bolsa.enGondola + falta} en el local`)}
+                {/* Solo si cerrar la bolsa da más que lo que falta: una bolsa de 1 kg puede no alcanzar. */}
+                {toda.bolsitas > falta &&
+                  opcion(
+                    "toda",
+                    toda.gramos >= granel.gramosBolsa ? "Toda la bolsa" : "Todo lo que queda",
+                    toda.bolsitas,
+                    `${textoGramos(toda.gramos)} · quedan ${bolsa.enGondola + toda.bolsitas} en el local`
+                  )}
+              </div>
+              {falta <= 0 && <p className="mt-2 text-sm text-neutral-500">Ya tiene sus {bolsa.objetivo} en el local: solo hace falta si querés cerrar la bolsa.</p>}
+            </>
+          );
+        })()}
+        <button type="button" disabled={!bolsa || maximo <= 0 || hechas <= 0 || guardando} onClick={() => ir(2)} className={`${azul} mt-3`}>
           Seguir
         </button>
       </>
@@ -207,7 +269,7 @@ export default function FraccionarGuiado({ granel, inicial, onSalir }: { granel:
       <>
         <h2 className="text-2xl font-black">A fraccionar</h2>
         <p className="mb-4 text-neutral-500">
-          Tenés para <b className="text-neutral-900">{maximo} bolsitas de {textoGramos(bolsa.peso)}</b>. Tildá antes de empezar:
+          Vas a hacer <b className="text-neutral-900">{n} bolsitas de {textoGramos(bolsa.peso)}</b> ({textoGramos(n * bolsa.peso)}). Tildá antes de empezar:
         </p>
         <div className={tarjeta}>
           {check("guantes", "Guantes y cofia puestos", "Manos limpias, mesada limpia.")}
