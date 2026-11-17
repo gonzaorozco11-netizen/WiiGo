@@ -45,6 +45,8 @@ export async function actualizarCobros(dias: number): Promise<{ error: string | 
       `Reportes en Mercado Pago: ${r.enMercadoPago.length ? r.enMercadoPago.join(" · ") : "ninguno"}.`,
       r.respuestaPedido ? `Respuesta al pedido: ${r.respuestaPedido}` : "",
     ].filter(Boolean);
+    // Si no se pudo ni pedir ni leer nada, va en rojo.
+    if (!r.pedido && !r.leidos && r.avisos.length) return { error: partes.join(" "), mensaje: "" };
     return { error: null, mensaje: partes.join(" ") };
   } catch (e) {
     return { error: `Mercado Pago respondió: ${(e as Error).message}`, mensaje: "" };

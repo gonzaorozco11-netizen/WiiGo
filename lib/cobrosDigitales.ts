@@ -231,11 +231,21 @@ export async function sincronizarMp(supabase: SupabaseClient, opciones: { pedir:
     await configurarLiberacionesMp([...COLUMNAS_LIBERACIONES_BASE, ...COLUMNAS_LIBERACIONES_EXTRA]);
   } catch (e) {
     // Si alguna columna extra no existe en la cuenta, alcanza con las indispensables.
-    avisos.push(`Configuración con columnas extra rechazada: ${(e as Error).message}`);
-    await configurarLiberacionesMp(COLUMNAS_LIBERACIONES_BASE);
+    try {
+      await configurarLiberacionesMp(COLUMNAS_LIBERACIONES_BASE);
+      avisos.push(`Columnas extra rechazadas (${(e as Error).message}); se usan las indispensables.`);
+    } catch (e2) {
+      // Sin poder configurar, se sigue igual: el reporte sale con las columnas que ya tenga la cuenta.
+      avisos.push(`Configurar el reporte: ${(e2 as Error).message}.`);
+    }
   }
 
-  const reportes = await listarReportesLiberacionesMp();
+  let reportes: Awaited<ReturnType<typeof listarReportesLiberacionesMp>> = [];
+  try {
+    reportes = await listarReportesLiberacionesMp();
+  } catch (e) {
+    avisos.push(`Listar reportes: ${(e as Error).message}.`);
+  }
   const { data: leidos } = await supabase.from("cobros_digitales_reportes").select("nombre").eq("proveedor", "MERCADO_PAGO");
   const yaLeidos = new Set((leidos ?? []).map((r) => r.nombre as string));
   // Para el mensaje: qué reportes tiene Mercado Pago y en qué estado (los últimos 5).
@@ -260,9 +270,13 @@ export async function sincronizarMp(supabase: SupabaseClient, opciones: { pedir:
   if (opciones.pedir) {
     const hasta = new Date();
     const desde = new Date(hasta.getTime() - (opciones.dias ?? 3) * 86400e3);
-    const r = await pedirReporteLiberacionesMp(desde, hasta);
-    respuestaPedido = JSON.stringify(r ?? null).slice(0, 300);
-    pedido = true;
+    try {
+      const r = await pedirReporteLiberacionesMp(desde, hasta);
+      respuestaPedido = JSON.stringify(r ?? null).slice(0, 300);
+      pedido = true;
+    } catch (e) {
+      avisos.push(`Pedir el reporte: ${(e as Error).message}.`);
+    }
   }
   return { leidos: nLeidos, filas, pedido, esperando, avisos, enMercadoPago, respuestaPedido };
 }

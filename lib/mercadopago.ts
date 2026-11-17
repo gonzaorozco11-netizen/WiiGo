@@ -113,6 +113,12 @@ export async function configurarLiberacionesMp(columnas: string[]) {
         frequency: { hour: 3, type: "daily", value: 1 },
         display_timezone: "GMT-03",
         report_translation: "en",
+        // Mercado Pago los exige aunque no se usen: sin ellos responde
+        // «Invalid execute_after_withdrawal» (17/11).
+        include_withdrawal_at_end: false,
+        execute_after_withdrawal: false,
+        check_available_balance: false,
+        compensate_detail: false,
       }),
     });
   }
@@ -125,7 +131,7 @@ export async function configurarLiberacionesMp(columnas: string[]) {
   const a = actual as Record<string, unknown>;
   const cuerpo: Record<string, unknown> = { columns: [...(actual.columns ?? []), ...faltan.map((key) => ({ key }))] };
   for (const k of ["file_name_prefix", "display_timezone", "report_translation", "separator"]) if (typeof a[k] === "string" && a[k]) cuerpo[k] = a[k];
-  for (const k of ["include_withdrawal_at_end", "execute_after_withdrawal", "check_available_balance", "compensate_detail"]) if (typeof a[k] === "boolean") cuerpo[k] = a[k];
+  for (const k of ["include_withdrawal_at_end", "execute_after_withdrawal", "check_available_balance", "compensate_detail"]) cuerpo[k] = typeof a[k] === "boolean" ? a[k] : false;
   if (a.frequency && typeof a.frequency === "object") cuerpo.frequency = a.frequency;
   if (Array.isArray(a.notification_email_list) && a.notification_email_list.length) cuerpo.notification_email_list = a.notification_email_list;
   if (a.sftp_info && typeof a.sftp_info === "object" && Object.keys(a.sftp_info).length) cuerpo.sftp_info = a.sftp_info;
