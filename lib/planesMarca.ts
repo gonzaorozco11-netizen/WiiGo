@@ -95,7 +95,7 @@ export const SUMA_EL_PLAN: Record<PlanMarca, string[]> = {
     "Proponer tus propios eventos en el local",
     "Entrar primero en los eventos de WiiGo",
     "Qué día y a qué hora se vende lo tuyo",
-    "Cómo rendís frente al resto de las marcas",
+    // «Cómo rendís frente al resto de las marcas» se sacó del Tablero el 17/11 (Gonzalo).
     "Ideas para vender más, con el dato que las respalda",
   ],
 };

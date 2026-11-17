@@ -157,7 +157,7 @@ export default function MarcaFormModal({
                   {ETIQUETA_PLAN.METAL} — además, ranking de productos y alertas de stock
                 </option>
                 <option value="GOLD">
-                  {ETIQUETA_PLAN.GOLD} — además, comparativas, proyección y benchmark
+                  {ETIQUETA_PLAN.GOLD} — además, comparativas, proyección, horarios e ideas
                 </option>
               </select>
               <p className="text-xs text-neutral-400 mt-1">

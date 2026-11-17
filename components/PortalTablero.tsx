@@ -174,17 +174,6 @@ function GraficoMes({ serie, serieAnterior }: { serie: number[]; serieAnterior: 
   );
 }
 
-/**
- * Dónde cae la marca en la escala del benchmark. El promedio está en el
- * medio: rendir el doble te pone cerca del extremo, la mitad cerca del otro.
- */
-function posicionEnEscala(rotacion: number, promedio: number) {
-  if (promedio <= 0) return 50;
-  const relacion = rotacion / promedio;
-  // Escala logarítmica: 0,5× cae en 25%, 1× en 50%, 2× en 75%.
-  const p = 50 + (Math.log2(Math.max(0.25, Math.min(4, relacion))) / 2) * 50;
-  return Math.max(4, Math.min(96, p));
-}
 
 /** Barras de unidades por hora. La hora pico va en ocre. */
 function GraficoHoras({ datos, pico }: { datos: { hora: number; unidades: number }[]; pico: number | null }) {
@@ -737,57 +726,9 @@ export default function PortalTablero({
         )}
       </section>
 
-      {/* ===== BENCHMARK (Gold) ===== */}
-      {conGold && gold?.benchmark && (
-        <section className="modulo bench">
-          <div className="modulo-cab">
-            <h2>Cómo rendís frente al resto</h2>
-            <p className="desc">
-              Rotación: unidades vendidas en 30 días sobre lo que tenés en góndola. Comparación anónima y agregada.
-            </p>
-          </div>
-          <div className="bench-grid">
-            <div>
-              <div className="bench-cifra">
-                <span className="n mono">
-                  {gold.benchmark.promedio > 0
-                    ? `${(gold.benchmark.rotacion / gold.benchmark.promedio).toFixed(1)}×`
-                    : "—"}
-                </span>
-                <span className="t">
-                  {gold.benchmark.rotacion >= gold.benchmark.promedio
-                    ? "Tus productos rotan más rápido que el promedio de las marcas de WiiGo."
-                    : "Tus productos rotan más lento que el promedio de las marcas de WiiGo."}
-                </span>
-              </div>
-              <div className="bench-track">
-                <span className="bench-prom" style={{ left: "50%" }} />
-                <span
-                  className="bench-marca"
-                  style={
-                    {
-                      left: `${posicionEnEscala(gold.benchmark.rotacion, gold.benchmark.promedio)}%`,
-                      "--pos": `${posicionEnEscala(gold.benchmark.rotacion, gold.benchmark.promedio)}%`,
-                    } as React.CSSProperties
-                  }
-                />
-              </div>
-              <div className="bench-ejes">
-                <span>Más lento</span>
-                <span>Promedio</span>
-                <span>Más rápido</span>
-              </div>
-              <p className="bench-nota">
-                Calculado sobre {gold.benchmark.marcas} marcas. Ninguna marca ve los datos de otra.
-              </p>
-            </div>
-            <div className="posicion">
-              <p className="n mono">{gold.benchmark.posicion}º</p>
-              <p className="t">de {gold.benchmark.marcas} marcas, por rotación</p>
-            </div>
-          </div>
-        </section>
-      )}
+      {/* «Cómo rendís frente al resto» (comparación con las otras marcas) se
+          sacó del Tablero el 17/11: lo pidió Gonzalo. El cálculo sigue en
+          gold.benchmark por si se quiere volver a mostrar. */}
 
       {/* ===== POR HORA + POR DÍA (Gold) =====
           Juntos y no en pantallas distintas: son la misma pregunta partida en
