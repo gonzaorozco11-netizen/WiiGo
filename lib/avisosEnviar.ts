@@ -84,7 +84,9 @@ async function sePuedeMandar(
     .eq("id_marca", idMarca)
     .eq("tipo", tipo)
     .eq("ok", true)
-    .gte("enviado_el", `${hoy}T00:00:00`);
+    // Las 00:00 de Argentina son las 03:00 UTC. Sin la zona, la base lo leía en
+    // UTC y el «día» del tope arrancaba a las 21:00 del día anterior.
+    .gte("enviado_el", `${hoy}T03:00:00Z`);
   if (error) return false;
 
   const mandados = data ?? [];
