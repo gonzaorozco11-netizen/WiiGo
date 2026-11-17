@@ -162,6 +162,16 @@ export async function listarReportesLiberacionesMp(): Promise<ReporteMp[]> {
   return [];
 }
 
+/** Diagnóstico (17/11): la respuesta cruda de la lista de reportes, para ver su forma. */
+export async function listaCrudaLiberacionesMp(): Promise<string> {
+  const res = await fetch(`${MP_API}/v1/account/release_report/list`, {
+    headers: { Authorization: `Bearer ${accessToken()}` },
+    cache: "no-store",
+  });
+  const texto = await res.text();
+  return `${res.status} ${texto.slice(0, 600)}`;
+}
+
 /** Baja el archivo (CSV) de un reporte ya generado. */
 export async function bajarReporteLiberacionesMp(nombre: string): Promise<string> {
   const res = await fetch(`${MP_API}/v1/account/release_report/${encodeURIComponent(nombre)}`, {

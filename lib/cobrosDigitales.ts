@@ -19,6 +19,7 @@ import {
   COLUMNAS_LIBERACIONES_EXTRA,
   bajarReporteLiberacionesMp,
   configurarLiberacionesMp,
+  listaCrudaLiberacionesMp,
   listarReportesLiberacionesMp,
   pedirReporteLiberacionesMp,
 } from "@/lib/mercadopago";
@@ -246,6 +247,14 @@ export async function sincronizarMp(supabase: SupabaseClient, opciones: { pedir:
   } catch (e) {
     avisos.push(`Listar reportes: ${(e as Error).message}.`);
   }
+  // Si la lista vino vacía, se muestra la respuesta cruda para ver por qué (17/11).
+  if (reportes.length === 0) {
+    try {
+      avisos.push(`Lista cruda: ${await listaCrudaLiberacionesMp()}`);
+    } catch (e) {
+      avisos.push(`Lista cruda: ${(e as Error).message}`);
+    }
+  }
   const { data: leidos } = await supabase.from("cobros_digitales_reportes").select("nombre").eq("proveedor", "MERCADO_PAGO");
   const yaLeidos = new Set((leidos ?? []).map((r) => r.nombre as string));
   // Para el mensaje: qué reportes tiene Mercado Pago y en qué estado (los últimos 5).
@@ -272,7 +281,10 @@ export async function sincronizarMp(supabase: SupabaseClient, opciones: { pedir:
     const desde = new Date(hasta.getTime() - (opciones.dias ?? 3) * 86400e3);
     try {
       const r = await pedirReporteLiberacionesMp(desde, hasta);
-      respuestaPedido = JSON.stringify(r ?? null).slice(0, 300);
+      // Sin internal_management, que es largo y no dice nada útil.
+      const { internal_management: _im, ...visible } = (r ?? {}) as Record<string, unknown>;
+      void _im;
+      respuestaPedido = JSON.stringify(visible).slice(0, 500);
       pedido = true;
     } catch (e) {
       avisos.push(`Pedir el reporte: ${(e as Error).message}.`);
