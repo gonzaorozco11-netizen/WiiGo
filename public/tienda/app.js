@@ -54,22 +54,23 @@
   var ILUS_CARGA = '<svg viewBox="0 0 152 160" role="img" aria-label="Una persona cargando energía en una estación WiiGo">' +
     '<ellipse cx="74" cy="152" rx="62" ry="5" fill="rgba(0,0,0,.25)"/>' +
     // la estación (clara, sobre el cartel verde oscuro)
-    '<rect x="4" y="46" width="38" height="102" rx="10" fill="#f5efe3"/><rect x="10" y="56" width="26" height="22" rx="5" fill="#22301f"/>' +
+    // Colores del local (18/11): surtidor blanco, pantalla gris oscuro, madera clara.
+    '<rect x="4" y="46" width="38" height="102" rx="10" fill="#ffffff"/><rect x="10" y="56" width="26" height="22" rx="5" fill="#2d2d2d"/>' +
     '<path class="rayo-pantalla" d="M25 59l-6 9h5l-3 7 7-10h-5l2-6z" fill="#f1c75b"/>' +
-    '<text x="23" y="100" text-anchor="middle" font-family="Bricolage Grotesque,sans-serif" font-weight="800" font-size="11" fill="#22301f">WiiGo</text>' +
-    '<rect x="10" y="108" width="26" height="4" rx="2" fill="#e8743b"/><rect x="10" y="116" width="18" height="4" rx="2" fill="#b6bca2"/>' +
-    '<rect x="41" y="80" width="7" height="14" rx="3" fill="#b6bca2"/><rect x="0" y="144" width="46" height="7" rx="3.5" fill="#b6bca2"/>' +
+    '<text x="23" y="100" text-anchor="middle" font-family="Bricolage Grotesque,sans-serif" font-weight="800" font-size="11" fill="#2d2d2d">WiiGo</text>' +
+    '<rect x="10" y="108" width="26" height="4" rx="2" fill="#8d9880"/><rect x="10" y="116" width="18" height="4" rx="2" fill="#e6d8c0"/>' +
+    '<rect x="41" y="80" width="7" height="14" rx="3" fill="#e6d8c0"/><rect x="0" y="144" width="46" height="7" rx="3.5" fill="#e6d8c0"/>' +
     // el cable con energía que corre
-    '<path d="M47 87C66 86 58 122 78 100" fill="none" stroke="#b6bca2" stroke-width="5" stroke-linecap="round"/>' +
+    '<path d="M47 87C66 86 58 122 78 100" fill="none" stroke="#2d2d2d" stroke-width="5" stroke-linecap="round"/>' +
     '<path class="flujo" d="M47 87C66 86 58 122 78 100" fill="none" stroke="#f1c75b" stroke-width="2.6" stroke-linecap="round"/>' +
     // la persona: cuando la batería se llena, salta y saca músculo con el brazo libre (Gonzalo, 16/11)
     '<g class="persona">' +
-    '<rect x="95" y="118" width="9" height="30" rx="4.5" fill="#b6bca2"/><rect x="107" y="118" width="9" height="30" rx="4.5" fill="#b6bca2"/>' +
-    '<rect x="88" y="62" width="34" height="62" rx="15" fill="#e8743b"/>' +
-    '<path d="M92 72L79 97" stroke="#e8743b" stroke-width="9" stroke-linecap="round"/><circle cx="78" cy="99" r="5.5" fill="#d9a37f"/>' +
-    '<g class="brazo-normal"><path d="M118 72l6 22" stroke="#e8743b" stroke-width="9" stroke-linecap="round"/><circle cx="124.5" cy="96" r="5" fill="#d9a37f"/></g>' +
-    '<g class="brazo-fuerza"><path d="M118 72L133 70" stroke="#e8743b" stroke-width="9" stroke-linecap="round"/><path d="M133 70L136 54" stroke="#e8743b" stroke-width="8.5" stroke-linecap="round"/>' +
-    '<g class="biceps"><ellipse cx="126" cy="65" rx="7" ry="6" fill="#e8743b"/><path d="M121.5 63q4.5-4 9 0" fill="none" stroke="#f6a273" stroke-width="1.8" stroke-linecap="round"/></g><circle cx="136.5" cy="50.5" r="5.5" fill="#d9a37f"/>' +
+    '<rect x="95" y="118" width="9" height="30" rx="4.5" fill="#e6d8c0"/><rect x="107" y="118" width="9" height="30" rx="4.5" fill="#e6d8c0"/>' +
+    '<rect x="88" y="62" width="34" height="62" rx="15" fill="#2d2d2d"/>' +
+    '<path d="M92 72L79 97" stroke="#2d2d2d" stroke-width="9" stroke-linecap="round"/><circle cx="78" cy="99" r="5.5" fill="#d9a37f"/>' +
+    '<g class="brazo-normal"><path d="M118 72l6 22" stroke="#2d2d2d" stroke-width="9" stroke-linecap="round"/><circle cx="124.5" cy="96" r="5" fill="#d9a37f"/></g>' +
+    '<g class="brazo-fuerza"><path d="M118 72L133 70" stroke="#2d2d2d" stroke-width="9" stroke-linecap="round"/><path d="M133 70L136 54" stroke="#2d2d2d" stroke-width="8.5" stroke-linecap="round"/>' +
+    '<g class="biceps"><ellipse cx="126" cy="65" rx="7" ry="6" fill="#2d2d2d"/><path d="M121.5 63q4.5-4 9 0" fill="none" stroke="#6a6a6a" stroke-width="1.8" stroke-linecap="round"/></g><circle cx="136.5" cy="50.5" r="5.5" fill="#d9a37f"/>' +
     '<path class="fuerza" d="M130 44l-3-4M137 41v-5M143 45l3-4" stroke="#f1c75b" stroke-width="2.4" stroke-linecap="round"/></g>' +
     '<circle cx="105" cy="45" r="14" fill="#d9a37f"/><path d="M91 44c0-10 6-16 14-16s14 6 14 15c-4-6-9-8-14-8s-10 3-14 9z" fill="#3a2010"/>' +
     '<circle cx="100" cy="46" r="1.6" fill="#3a2010"/><circle cx="110" cy="46" r="1.6" fill="#3a2010"/><path d="M100 51q5 4 10 0" fill="none" stroke="#3a2010" stroke-width="1.6" stroke-linecap="round"/>' +
@@ -615,7 +616,7 @@
     return '<div class="fondo" data-a="cerrar-pedido"></div><section class="hoja" role="dialog" aria-modal="true" aria-label="Mi pedido"><div class="hoja-cab"><h2>Mi pedido</h2><button class="redondo" data-a="cerrar-pedido" aria-label="Cerrar">' + ic('cruz', 20) + '</button></div><div class="hoja-cuerpo">' +
       (carrito.length ? carrito.map(function (l) { var p = POR_ID[l.id]; return '<div class="linea-ped"><span class="mini">' + foto(p) + '</span><span><b>' + esc(p.t) + (l.v ? ' — ' + esc(l.v) : '') + '</b><small>' + plata(p.p * l.q) + ' · efectivo ' + plata((p.e || p.p) * l.q) + '</small></span><div class="paso"><button data-a="p-restar" data-id="' + l.id + '" data-v="' + esc(l.v || '') + '" aria-label="Uno menos">−</button><span>' + l.q + '</span><button data-a="p-sumar" data-id="' + l.id + '" data-v="' + esc(l.v || '') + '" aria-label="Uno más">+</button></div></div>'; }).join('') : '<div class="vacio">Todavía no agregaste nada.</div>') + '</div>' +
       (carrito.length ? '<div class="hoja-pie">' + filasCombos(t) + '<div class="total"><span>Total</span><b>' + plata(t.g) + '</b></div><div class="total ef"><span>Pagando en efectivo al retirar</span><b>' + plata(t.e) + '</b></div>' +
-      '<div class="total" style="font-size:14px"><span>' + (S.usuario ? 'Sumás en WiiGo Club' : '<button data-a="cuenta" style="border:0;background:none;padding:0;color:#a8461a;font-weight:800;text-decoration:underline">Entrá con tu DNI</button> y sumás') + '</span><b style="font-size:16px;color:#a8461a">+' + t.p + ' puntos</b></div><span class="nota">Lo retirás en <a class="dir-mapa" href="' + MAPA + '" target="_blank" rel="noopener">Arístides Villanueva 256</a>, listo en menos de 15 minutos.</span><button class="agregar" style="background:var(--energia);color:#2a1406;min-height:52px" data-a="continuar">Continuar</button></div>' : '') + '</section>';
+      '<div class="total" style="font-size:14px"><span>' + (S.usuario ? 'Sumás en WiiGo Club' : '<button data-a="cuenta" style="border:0;background:none;padding:0;color:var(--energia);font-weight:800;text-decoration:underline">Entrá con tu DNI</button> y sumás') + '</span><b style="font-size:16px;color:var(--energia)">+' + t.p + ' puntos</b></div><span class="nota">Lo retirás en <a class="dir-mapa" href="' + MAPA + '" target="_blank" rel="noopener">Arístides Villanueva 256</a>, listo en menos de 15 minutos.</span><button class="agregar" style="min-height:52px" data-a="continuar">Continuar</button></div>' : '') + '</section>';
   }
 
   /* ---------- Parte 3: comprar y seguir el pedido (maqueta aprobada, 2026-11-16) ---------- */
@@ -653,21 +654,23 @@
     // Sin link de Mercado Pago (comisión cara): transferencia al alias a precio de góndola, o pagás al retirar.
     var t = totales(), co = S.co || (S.co = { pago: 'transf' });
     var op = function (a, v, on, tit, sub, extra) { return '<button class="opcion" data-a="' + a + '" data-v="' + v + '" aria-pressed="' + on + '"' + (extra || '') + '><span class="radio"></span><span><b>' + tit + '</b><small>' + sub + '</small></span></button>'; };
-    return '<div class="filtro-cab"><button class="redondo" data-a="abrir-pedido" aria-label="Volver al pedido">' + ic('atras') + '</button><span><b>Finalizar compra</b><small>' + t.u + (t.u === 1 ? ' producto' : ' productos') + ' · ' + esc(S.usuario.nombre) + ' · DNI ' + esc(S.usuario.dni) + '</small></span></div>' +
-      '<h3 class="sub-cuenta" style="margin-top:6px">¿Cómo lo recibís?</h3><div class="opciones">' +
-      op('x', 'retiro', true, 'Retiro en la estación', 'Arístides Villanueva 256 · listo en menos de 15 minutos · gratis') +
-      op('x', 'envio', false, 'Envío a domicilio <span class="pronto">Próximamente</span>', 'Muy pronto en Mendoza', ' disabled') + '</div>' +
-      '<p class="f-chico">Abierto de lunes a sábado de 9 a 13 y de 17 a 21. Si pedís con la estación cerrada, te lo dejamos listo apenas abrimos.</p>' +
-      '<h3 class="sub-cuenta">¿Cómo pagás?</h3><div class="opciones">' +
-      op('pago', 'transf', co.pago === 'transf', 'Transferencia · ' + plata(t.g), 'Al alias wiigo.bienestar, desde cualquier banco o billetera. Apenas la vemos, armamos tu pedido.') +
-      op('pago', 'retiro', co.pago === 'retiro', 'Pagás al retirar', 'En efectivo ' + plata(t.e) + ' · con tarjeta o QR ' + plata(t.g) + '. Te lo guardamos hasta mañana a las 21.') + '</div>' +
-      '<h3 class="sub-cuenta">Tu pedido</h3><div class="resumen">' + carrito.map(function (l) { var p = POR_ID[l.id]; return '<div class="total" style="font-size:14px;font-weight:600"><span>' + l.q + ' × ' + esc(p.t) + (l.v ? ' — ' + esc(l.v) : '') + '</span><b style="font-size:14px;font-family:var(--texto)">' + plata(p.p * l.q) + '</b></div>'; }).join('') +
-      filasCombos(t, ' style="margin-top:6px"') +
-      '<div class="total" style="border-top:1px solid var(--linea);padding-top:10px;margin-top:4px"><span>Total</span><b>' + plata(t.g) + '</b></div>' +
-      (co.pago === 'retiro' ? '<div class="total ef"><span>Si pagás en efectivo</span><b>' + plata(t.e) + '</b></div>' : '') +
-      '<div class="total" style="font-size:14px"><span>Sumás en WiiGo Club</span><b style="font-size:16px;color:#a8461a">+' + t.p + ' puntos</b></div></div>' +
-      '<button class="cta naranja" style="margin-top:16px" data-a="confirmar"' + (S.enviando ? ' disabled' : '') + '>' + (S.enviando ? 'Enviando…' : co.pago === 'transf' ? 'Confirmar y transferir ' + plata(t.g) : 'Confirmar pedido') + '</button>' +
-      '<p class="f-chico" style="text-align:center">Al confirmar aceptás los términos y condiciones. Tenés 10 días para arrepentirte de la compra.</p>';
+    // Más simple (Gonzalo, 18/11, maqueta «La tienda, como el local»): dónde retirás, cómo pagás con el monto
+    // al lado, el total, los puntos y un botón. El alias aparece después de confirmar, en el seguimiento.
+    var hr = horario();
+    return '<div class="filtro-cab"><button class="redondo" data-a="abrir-pedido" aria-label="Volver al pedido">' + ic('atras') + '</button><span><b>Finalizar compra</b></span></div>' +
+      '<div class="fc-caja"><p class="fc-t">Retirás en</p><div class="fc-retiro"><span>📍</span><span><b>Arístides Villanueva 256</b><small>Listo en 15 min · gratis' + (hr[0] ? '' : ' · ' + hr[1]) + '</small></span></div></div>' +
+      '<div class="fc-caja"><p class="fc-t">¿Cómo pagás?</p><div class="opciones">' +
+      op('pago', 'transf', co.pago === 'transf', 'Transferencia', '<span class="fc-monto">' + plata(t.g) + '</span>') +
+      op('pago', 'retiro', co.pago === 'retiro', 'Al retirar', 'Efectivo <span class="fc-monto">' + plata(t.e) + '</span> · tarjeta o QR ' + plata(t.g)) + '</div></div>' +
+      '<div class="fc-caja"><p class="fc-t">Tu pedido</p>' +
+      '<details class="fc-det"><summary>' + t.u + (t.u === 1 ? ' producto' : ' productos') + ' <span>Ver detalle</span></summary>' +
+      carrito.map(function (l) { var p = POR_ID[l.id]; return '<div class="total" style="font-size:14px;font-weight:600"><span>' + l.q + ' × ' + esc(p.t) + (l.v ? ' — ' + esc(l.v) : '') + '</span><b style="font-size:14px;font-family:var(--texto)">' + plata(p.p * l.q) + '</b></div>'; }).join('') +
+      filasCombos(t, ' style="margin-top:6px"') + '</details>' +
+      '<div class="total" style="border-top:1px solid var(--linea);padding-top:10px;margin-top:6px"><span>Total</span><b>' + plata(co.pago === 'retiro' ? t.e : t.g) + '</b></div>' +
+      (co.pago === 'retiro' ? '<p class="f-chico" style="margin:0">En efectivo. Con tarjeta o QR: ' + plata(t.g) + '.</p>' : '') +
+      '<div class="total" style="font-size:14px"><span>Sumás en WiiGo Club</span><b style="font-size:16px;color:var(--energia)">+' + t.p + ' puntos</b></div></div>' +
+      '<button class="cta naranja" style="margin-top:14px" data-a="confirmar"' + (S.enviando ? ' disabled' : '') + '>' + (S.enviando ? 'Enviando…' : co.pago === 'transf' ? 'Confirmar y transferir ' + plata(t.g) : 'Confirmar pedido') + '</button>' +
+      '<p class="f-chico" style="text-align:center">Al confirmar aceptás los términos · 10 días para arrepentirte</p>';
   }
   // La escena del local en cada paso del pedido (del primer prototipo aprobado, 2026-11-11).
   function escenaPedido(k) {
