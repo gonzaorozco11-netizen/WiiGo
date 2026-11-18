@@ -9,8 +9,14 @@ import { armarCatalogoTienda } from "@/lib/tiendaCatalogo";
  * Es público (está bajo /api, que no pide login) y solo lleva lo que el cliente
  * ve en el local: ver lib/tiendaCatalogo.ts.
  *
- * Vercel lo guarda 2 minutos: con mucha gente mirando, la base recibe un pedido
- * cada 2 minutos y no uno por visita. Un precio o un stock nuevo tarda eso en verse.
+ * Vercel lo guarda 1 minuto: con mucha gente mirando, la base recibe un pedido
+ * por minuto y no uno por visita. Un precio, un stock o un producto dado de baja
+ * tarda eso en verse (como mucho 2 minutos).
+ *
+ * Antes eran 2 minutos más 10 de «stale-while-revalidate»: con poca gente
+ * entrando, el primero que llegaba veía el catálogo de hace 12 minutos — un
+ * producto inactivado seguía apareciendo (Gonzalo, 18/11). Pedirlo igual no se
+ * podía: /api/tienda/pedido rechaza lo que no está ACTIVO.
  */
 export const dynamic = "force-dynamic";
 
@@ -22,7 +28,7 @@ export async function GET() {
     return new Response(js, {
       headers: {
         "Content-Type": "application/javascript; charset=utf-8",
-        "Cache-Control": "public, s-maxage=120, stale-while-revalidate=600",
+        "Cache-Control": "public, s-maxage=60, stale-while-revalidate=60",
       },
     });
   } catch (e) {
