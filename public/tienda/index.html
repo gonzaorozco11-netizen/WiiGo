@@ -360,8 +360,9 @@ a.dir-mapa u{text-decoration:underline;text-underline-offset:2px;color:#3f5536;f
 .local-linea a u{color:var(--bosque);font-weight:800}
 .accesos-4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:14px}
 .accesos-4 button{border:0;background:none;padding:0;display:grid;justify-items:center;gap:5px;font-size:12px;font-weight:800;color:var(--bosque);text-align:center}
-.accesos-4 span{width:54px;height:54px;border-radius:50%;background:var(--carta);border:1px solid var(--linea);display:grid;place-items:center;font-size:24px;position:relative}
-.accesos-4 em{position:absolute;top:-4px;right:-6px;font-style:normal;font-size:10.5px;font-weight:800;background:var(--energia);color:#fff;border-radius:999px;padding:1px 6px}
+/* Solo el ícono, sin el círculo blanco (Gonzalo, 18/11) */
+.accesos-4 span{width:54px;height:46px;display:grid;place-items:center;font-size:38px;line-height:1;position:relative}
+.accesos-4 em{position:absolute;top:-4px;right:-4px;font-style:normal;font-size:10.5px;font-weight:800;background:var(--energia);color:#fff;border-radius:999px;padding:1px 6px}
 .sec-cab{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
 .sec-cab button{border:0;background:none;padding:4px 0;font-weight:800;font-size:13.5px;color:var(--energia);white-space:nowrap}
 .marca-p.todo{padding:0 16px;font-weight:800}
@@ -608,6 +609,6 @@ a.dir-mapa u{text-decoration:underline;text-underline-offset:2px;color:#3f5536;f
 <div class="app" id="app"><p style="padding:60px 16px;text-align:center;color:#626a5e">Cargando los productos…</p></div>
 <!-- El catálogo real, armado en el servidor con lo público de cada producto (lib/tiendaCatalogo.ts). -->
 <script src="/api/tienda/catalogo"></script>
-<script src="app.js?v=30"></script>
+<script src="app.js?v=31"></script>
 </body>
 </html>
