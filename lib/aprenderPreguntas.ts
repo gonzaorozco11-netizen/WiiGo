@@ -5,7 +5,7 @@ import type { FichaProducto as FichaAprender } from "@/lib/aprender";
 
 // Aprender (Gonzalo, 2026-11-16): «Las 5 de hoy» y la evaluación de la semana.
 // Las preguntas salen SOLAS de los datos reales del local, sin la IA:
-//   (a) cuántas marcas de un tema hay,       (b) en qué variedades viene,
+//   (a) [SACADA el 18/11, ver abajo],        (b) en qué variedades viene,
 //   (c) qué producto es (con la foto),       (d) las preguntas aprobadas de la ficha,
 //   (e) verdadero o falso (sin TACC / sin lactosa / sin azúcar),
 //   (f) en qué mueble va en la góndola.
@@ -199,31 +199,12 @@ const conMarcaTexto = (p: ProductoBanco) => (p.marca && !plano(p.nombre).include
 const unirY = (l: string[]) => (l.length <= 1 ? l.join("") : `${l.slice(0, -1).join(", ")} y ${l[l.length - 1]}`);
 const NO_SON_SABORES = /\b(\d+\s*(ml|g|gr|kg|lb|lbs|cc|un|u)\b|talle|gris|negro|blanco|azul|rojo|verde|rosa|color)\b/i;
 
-/** (a) ¿Cuántas marcas de {tema} tenemos? Solo si TODAS las marcas del tema son seguras. */
-function marcasPorTema(b: Banco, r: () => number): PreguntaRonda[] {
-  const temas = new Map<string, ProductoBanco[]>();
-  for (const p of b.productos) if (p.tema) temas.set(p.tema, [...(temas.get(p.tema) ?? []), p]);
-  const out: PreguntaRonda[] = [];
-  for (const [tema, ps] of temas) {
-    if (ps.some((p) => !p.marca)) continue;
-    const marcas = [...new Set(ps.map((p) => p.marca as string))].sort((x, y) => x.localeCompare(y, "es"));
-    const n = marcas.length;
-    if (n < 2 || n > 9) continue;
-    const opciones = mezclar([n - 1, n + 1, n + 2, n - 2].filter((x) => x >= 1), r).slice(0, 3).concat(n).sort((x, y) => x - y);
-    out.push({
-      tipo: "num",
-      etiqueta: "Contá",
-      pregunta: `¿Cuántas marcas de ${tema.toLowerCase()} tenemos en el local?`,
-      opciones: opciones.map(String),
-      correctas: [opciones.indexOf(n)],
-      explicacion: `Son ${n}: ${unirY(marcas)}.`,
-      idProducto: null,
-      producto: null,
-      imagen: null,
-    });
-  }
-  return out;
-}
+// (a) «¿Cuántas marcas de {tema} tenemos?» se SACÓ el 18/11: Gonzalo vio que
+// daba mal en el local. El «tema» es la subcategoría, y las subcategorías son de
+// cada marca: las barritas de WiiGo (Muecas, Entre Nuts, Vancouver) están en
+// «Barritas» y las de Animalfit (Gentech, Crudda, Ena) en «Barras proteicas»,
+// así que «marcas de barritas» decía 3 cuando en el local hay más. Además deja
+// afuera lo que está sin stock. No hay forma segura de saberlo: regla de oro.
 
 /** (b) ¿En qué variedades viene X? Las suyas, más otras del mismo tema que no tiene. */
 function variedades(b: Banco, r: () => number): PreguntaRonda[] {
@@ -361,7 +342,7 @@ function dondeVa(b: Banco, r: () => number): PreguntaRonda[] {
 export function armarPreguntas(b: Banco, semilla: string, cuantas: number): PreguntaRonda[] {
   const r = azarCon(semilla);
   const pozos = mezclar(
-    [marcasPorTema(b, r), variedades(b, r), queProducto(b, r), deLaFicha(b, r), verdaderoFalso(b), dondeVa(b, r)].map((l) => mezclar(l, r)).filter((l) => l.length > 0),
+    [variedades(b, r), queProducto(b, r), deLaFicha(b, r), verdaderoFalso(b), dondeVa(b, r)].map((l) => mezclar(l, r)).filter((l) => l.length > 0),
     r
   );
   const elegidas: PreguntaRonda[] = [];
