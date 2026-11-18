@@ -31,7 +31,7 @@ async function itemPropio(idItem: string) {
   return { supabase, item, conteo } as const;
 }
 
-export type ResultadoConteo = { error?: string; resultado?: "OK" | "RECONTAR" | "DIFERENCIA" };
+export type ResultadoConteo = { error?: string; resultado?: "OK" | "RECONTAR" | "CONFIRMAR" | "DIFERENCIA" };
 
 /**
  * Guarda lo que contó de un producto, con la hora exacta.
@@ -43,10 +43,12 @@ export type ResultadoConteo = { error?: string; resultado?: "OK" | "RECONTAR" | 
  *
  *   coincide            → OK
  *   no coincide, 1.ª vez → RECONTAR (no se le dice cuánto esperaba)
- *   no coincide, 2.ª vez → DIFERENCIA: el stock queda en lo contado y la
+ *   no coincide, 2.ª vez → CONFIRMAR: no se guarda nada; la tablet pregunta
+ *                          «¿Estás seguro de que hay N unidades?» (Gonzalo, 18/11)
+ *   confirmado            → DIFERENCIA: el stock queda en lo contado y la
  *                          diferencia le llega a Gonzalo
  */
-export async function registrarConteo(idItem: string, cantidad: number): Promise<ResultadoConteo> {
+export async function registrarConteo(idItem: string, cantidad: number, confirmado = false): Promise<ResultadoConteo> {
   const n = Math.round(Number(cantidad));
   if (!Number.isFinite(n) || n < 0 || n > 9999) return { error: "Poné cuántas unidades hay (0 si no hay ninguna)." };
   const r = await itemPropio(idItem);
@@ -134,7 +136,10 @@ export async function registrarConteo(idItem: string, cantidad: number): Promise
     return { resultado: "RECONTAR" };
   }
 
-  // Segunda vez distinto: el stock queda en lo que contó, ya.
+  // Segunda vez distinto: antes de tocar el stock, que confirme su número (sin decirle el del sistema).
+  if (!confirmado) return { resultado: "CONFIRMAR" };
+
+  // Confirmado: el stock queda en lo que contó, ya.
   const { error: e1 } = await supabase
     .from("conteos_stock_items")
     .update({ contado: n, esperado, contado_en: ahora, resultado: "DIFERENCIA" })

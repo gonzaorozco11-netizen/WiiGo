@@ -188,17 +188,30 @@ function FilaConteo({ item, resaltado }: { item: ItemConteo; resaltado: boolean 
     setValor(String(Math.max(0, (n ?? 0) + delta)));
   }
 
-  function listo() {
-    if (n == null || !Number.isFinite(n)) return;
+  // Contó dos veces y sigue sin coincidir: «¿Estás seguro de que hay N unidades?» (Gonzalo, 18/11).
+  const [aConfirmar, setAConfirmar] = useState<number | null>(null);
+
+  function listo(confirmado = false) {
+    const cant = confirmado ? aConfirmar : n;
+    if (cant == null || !Number.isFinite(cant)) return;
     setError(null);
     startTransition(async () => {
-      const r = await registrarConteo(item.idItem, n);
+      const r = await registrarConteo(item.idItem, cant, confirmado);
       if (r.error) setError(r.error);
       else if (r.resultado === "RECONTAR") {
         setEstado("RECONTAR");
         setValor("");
-      } else router.refresh();
+      } else if (r.resultado === "CONFIRMAR") setAConfirmar(cant);
+      else {
+        setAConfirmar(null);
+        router.refresh();
+      }
     });
+  }
+
+  function contarOtraVez() {
+    setAConfirmar(null);
+    setValor("");
   }
 
   const hecho = Boolean(item.contadoEn);
@@ -275,7 +288,7 @@ function FilaConteo({ item, resaltado }: { item: ItemConteo; resaltado: boolean 
             </button>
             <button
               type="button"
-              onClick={listo}
+              onClick={() => listo()}
               disabled={n == null || guardando}
               className="ml-auto rounded-xl bg-neutral-900 text-white px-4 h-11 text-sm font-semibold disabled:opacity-35"
             >
@@ -288,6 +301,46 @@ function FilaConteo({ item, resaltado }: { item: ItemConteo; resaltado: boolean 
             </p>
           )}
         </>
+      )}
+      {aConfirmar != null && !hecho && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4">
+          <div role="alertdialog" aria-modal="true" aria-labelledby={`conf-${item.idItem}`} className="w-full max-w-sm rounded-3xl bg-white p-5 shadow-2xl">
+            <div className="mb-3 grid h-12 w-12 place-items-center rounded-full bg-amber-100 text-2xl text-amber-700" aria-hidden="true">
+              ⚠
+            </div>
+            <h2 id={`conf-${item.idItem}`} className="text-xl font-extrabold leading-tight text-neutral-900">
+              ¿Estás seguro de que hay {aConfirmar} {aConfirmar === 1 ? "unidad" : "unidades"}?
+            </h2>
+            <p className="mt-1 text-sm text-neutral-600">{item.producto}</p>
+            <p className="mt-3 text-[15px] text-neutral-800">Contaste dos veces y no coincide con lo que tiene el sistema.</p>
+            <p className="mt-2 text-[15px] text-neutral-800">
+              Si seguís, este producto <b>queda con {aConfirmar} {aConfirmar === 1 ? "unidad" : "unidades"}</b> en:
+            </p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {["Tótems", "Pantalla asesora", "Tienda online", "Caja"].map((l) => (
+                <span key={l} className="rounded-full bg-neutral-100 px-2.5 py-1 text-xs font-bold text-neutral-700">
+                  {l}
+                </span>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => listo(true)}
+              disabled={guardando}
+              className="mt-4 h-12 w-full rounded-2xl bg-neutral-900 text-base font-bold text-white disabled:opacity-40"
+            >
+              {guardando ? "Guardando…" : `Sí, hay ${aConfirmar} ${aConfirmar === 1 ? "unidad" : "unidades"}`}
+            </button>
+            <button
+              type="button"
+              onClick={contarOtraVez}
+              disabled={guardando}
+              className="mt-2 h-12 w-full rounded-2xl border border-neutral-300 bg-white text-base font-bold text-neutral-900 disabled:opacity-40"
+            >
+              No, lo cuento otra vez
+            </button>
+          </div>
+        </div>
       )}
     </li>
   );

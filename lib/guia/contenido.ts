@@ -721,7 +721,7 @@ export const GUIAS: Guia[] = [
     pasos: [
       "Cada turno te tocan unos productos para contar (10 entre los que estén; si son dos, 5 cada uno). Aparecen en el Inicio y en Mis tareas.",
       "Entrá a <b>Contar stock</b>. Contá lo que hay en la góndola <b>y en el depósito</b>, escribí el número y tocá <b>Listo</b>. Para encontrar uno, podés escanearlo.",
-      "Si no coincide te pide contar otra vez. Si sigue sin coincidir queda anotado con lo que contaste: no pasa nada, lo revisa Gonzalo.",
+      "Si no coincide te pide contar otra vez. Si sigue sin coincidir te pregunta <b>«¿Estás seguro de que hay N unidades?»</b>: si tocás <b>Sí</b>, el stock cambia a ese número en todos lados (tótems, pantalla asesora, tienda online y caja) y lo revisa Gonzalo. Si dudás, tocá <b>No, lo cuento otra vez</b>.",
       "Podés hacerlos de a uno: si entra un cliente, atendelo y después seguís. Lo que contaste queda guardado.",
       "Cuando terminás todos, <b>firmás</b> con el dedo.",
     ],
@@ -829,6 +829,7 @@ export const GUIAS: Guia[] = [
       "Cuando un conteo no coincide (dos veces), el stock ya queda en lo que contaron y la diferencia aparece acá, con quién y cuándo.",
       "El producto vuelve a salir en el próximo conteo, mejor para otra persona. Si da lo mismo, dice <b>Se confirmó</b>.",
       "Elegí qué pasó: <b>Contaron mal</b>, <b>Faltante</b> (rotura, robo o vencido) o <b>La recepción se cargó mal</b>. Podés dejar una nota.",
+      "Con <b>Contaron mal</b> elegís: <b>Volver el stock a N y cerrar</b> (deshace lo que cambió el conteo; si hubo ventas después, se respetan) o <b>Cerrar y dejar</b> el número de hoy.",
       "Abajo están los conteos de las últimas dos semanas con la firma de cada uno.",
     ],
     tip: "Si fue un error de conteo, corregí el número en Stock como cualquier ajuste.",

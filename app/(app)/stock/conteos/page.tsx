@@ -64,6 +64,9 @@ export default async function ConteosPage() {
   );
   const nombreLocal = new Map((locales.data ?? []).map((l) => [l.id_local as string, l.nombre as string]));
   const variosLocales = (locales.data ?? []).length > 1;
+  // El stock de hoy de cada uno, para «Volver el stock» (18/11).
+  const { data: stocks } = ids.length ? await supabase.from("stock").select("id_variante, id_local, cantidad").in("id_variante", ids) : { data: [] };
+  const stockDe = new Map((stocks ?? []).map((s) => [`${s.id_variante}|${s.id_local}`, Number(s.cantidad ?? 0)]));
 
   const diferencias: DiferenciaVista[] = listaDifs.map((d) => ({
     id: d.id_diferencia as string,
@@ -78,6 +81,7 @@ export default async function ConteosPage() {
     recuento: d.recuento == null ? null : Number(d.recuento),
     recontadoPor: (d.recontado_por as string | null) ?? null,
     recontadoEn: (d.recontado_en as string | null) ?? null,
+    stockHoy: stockDe.get(`${d.id_variante}|${d.id_local}`) ?? 0,
   }));
 
   const semana = listaConteos.filter((c) => c.creado_en >= haceDias(7));

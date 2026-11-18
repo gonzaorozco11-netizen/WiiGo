@@ -21,6 +21,8 @@ export type DiferenciaVista = {
   recuento: number | null;
   recontadoPor: string | null;
   recontadoEn: string | null;
+  /** El stock de hoy (puede haber ventas después del conteo). */
+  stockHoy: number;
 };
 
 export type ConteoFirmadoVista = {
@@ -177,11 +179,15 @@ function Diferencia({ d }: { d: DiferenciaVista }) {
   const [guardando, startTransition] = useTransition();
   const faltan = d.diferencia < 0;
   const confirmada = d.estado === "CONFIRMADA";
+  // «Contaron mal» (18/11): se elige si el stock vuelve a lo de antes o queda en lo contado.
+  const [contaronMal, setContaronMal] = useState(false);
+  // Deshacer el ajuste del conteo sobre el stock de hoy (si hubo ventas después, se respetan).
+  const volverA = Math.max(0, d.stockHoy - d.diferencia);
 
-  function resolver(causa: CausaDiferencia) {
+  function resolver(causa: CausaDiferencia, volverStock = false) {
     setError(null);
     startTransition(async () => {
-      const r = await resolverDiferencia(d.id, causa, nota);
+      const r = await resolverDiferencia(d.id, causa, nota, volverStock);
       if (r.error) setError(r.error);
       else router.refresh();
     });
@@ -244,13 +250,46 @@ function Diferencia({ d }: { d: DiferenciaVista }) {
             key={c.id}
             type="button"
             disabled={guardando}
-            onClick={() => resolver(c.id)}
-            className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-semibold hover:bg-neutral-50 disabled:opacity-40"
+            onClick={() => (c.id === "CONTARON_MAL" ? setContaronMal(true) : resolver(c.id))}
+            aria-pressed={c.id === "CONTARON_MAL" ? contaronMal : undefined}
+            className={`rounded-lg border px-3 py-1.5 text-xs font-semibold disabled:opacity-40 ${
+              c.id === "CONTARON_MAL" && contaronMal ? "border-neutral-900 bg-neutral-900 text-white" : "border-neutral-300 bg-white hover:bg-neutral-50"
+            }`}
           >
             {c.texto}
           </button>
         ))}
       </div>
+      {contaronMal && (
+        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+          <p className="text-sm text-neutral-800">
+            Si contaron mal, el stock tiene que volver a lo que había. Hoy está en <b className="tabular-nums">{d.stockHoy}</b>.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {volverA !== d.stockHoy && (
+              <button
+                type="button"
+                disabled={guardando}
+                onClick={() => resolver("CONTARON_MAL", true)}
+                className="rounded-lg bg-neutral-900 px-3 py-2 text-sm font-semibold text-white disabled:opacity-40"
+              >
+                Volver el stock a {volverA} y cerrar
+              </button>
+            )}
+            <button
+              type="button"
+              disabled={guardando}
+              onClick={() => resolver("CONTARON_MAL", false)}
+              className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm font-semibold disabled:opacity-40"
+            >
+              Cerrar y dejar {d.stockHoy}
+            </button>
+            <button type="button" disabled={guardando} onClick={() => setContaronMal(false)} className="px-2 text-sm text-neutral-500 underline">
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
       {error && (
         <p className="mt-2 text-sm text-red-600" role="alert">
           {error}
