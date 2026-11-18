@@ -236,24 +236,28 @@ export async function armarInicioOperativo(
         deshabilitado: false,
       });
     }
-    // La última hora del turno: «Antes de cerrar: fraccionar N bolsitas» (Gonzalo, 17/11).
-    // Lo vendido se fracciona al final del turno, para que cada bolsita vuelva a 5 + 3.
-    // Solo en esa hora: la cuenta pide varias consultas y el resto del día no hace falta.
+    // «Para fraccionar»: TODO el turno, mientras esté fichado (Gonzalo, 18/11: «no les figura»; antes
+    // salía solo en la última hora y no lo veían). Se sigue haciendo al final del turno: en la
+    // última hora se pone en rojo, «Antes de cerrar», para que no se vayan sin hacerlo.
     const salidaMin = horaSalida ? minutosDeHora(horaSalida) : null;
     const ultimaHora = adentro && salidaMin !== null && ahora.minutosDelDia >= salidaMin - 60;
-    if (ultimaHora && persona?.id_local) {
+    if (adentro && persona?.id_local) {
       const datos = await datosFraccionar(supabase, persona.id_local).catch(() => null);
       const lista = datos ? paraFraccionar(conLoYaFraccionado(datos.graneles, aEtiquetar)).filter((s) => !s.sinGranel) : [];
       const bolsitas = lista.reduce((a, s) => a + s.hacer, 0);
       if (bolsitas > 0) {
+        const cuantas = `${bolsitas} ${bolsitas === 1 ? "bolsita" : "bolsitas"}`;
         agregar({
           clave: "fraccionar-antes-de-cerrar",
-          titulo: `Antes de cerrar: fraccionar ${bolsitas} ${bolsitas === 1 ? "bolsita" : "bolsitas"}`,
-          detalle: `${lista.length} ${lista.length === 1 ? "producto" : "productos"}: lo que se vendió y hay que reponer en el cajón`,
+          titulo: ultimaHora ? `Antes de cerrar: fraccionar ${cuantas}` : `Para fraccionar: ${cuantas}`,
+          detalle: ultimaHora
+            ? `${lista.length} ${lista.length === 1 ? "producto" : "productos"}: lo que se vendió y hay que reponer en el cajón`
+            : `${lista.length} ${lista.length === 1 ? "producto" : "productos"} · se hace al final del turno`,
           href: "/fraccionar",
           icono: "⚖️",
           badge: bolsitas,
-          alerta: true,
+          alerta: ultimaHora,
+          badgeTono: ultimaHora ? "rojo" : "ambar",
           deshabilitado: false,
         });
       }
