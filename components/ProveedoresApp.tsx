@@ -509,6 +509,47 @@ export default function ProveedoresApp({
                       </p>
                     </div>
 
+                    {/* El primer pedido (17/11): cuánto fue y cuánto falta
+                        liquidarle. Cada liquidación se resta sola. */}
+                    {seleccionado.primerPedido && (() => {
+                      const pp = seleccionado.primerPedido;
+                      const conIva = (v: number) => Math.round(v * (1 + pp.ivaPorcentaje / 100) * 100) / 100;
+                      const liquidado = Math.max(0, Math.round((pp.neto - pp.pendienteNeto) * 100) / 100);
+                      const fila = "grid grid-cols-[1fr_auto_auto] gap-x-4 py-1.5 border-b border-neutral-200 last:border-0 tabular-nums";
+                      return (
+                        <div className="rounded-xl p-4 mb-4 bg-white border border-neutral-200">
+                          <p className="text-[11px] font-bold uppercase tracking-wide mb-2 text-neutral-500">
+                            Primer pedido ({pp.fecha.split("-").reverse().slice(0, 2).join("/")})
+                          </p>
+                          <div className="text-sm">
+                            <div className={`${fila} text-[11px] font-semibold uppercase tracking-wide text-neutral-400`}>
+                              <span />
+                              <span className="text-right">Sin IVA</span>
+                              <span className="text-right">Con IVA</span>
+                            </div>
+                            <div className={fila}>
+                              <span>Total del pedido</span>
+                              <span className="text-right">${formatearMonto(pp.neto)}</span>
+                              <span className="text-right">${formatearMonto(conIva(pp.neto))}</span>
+                            </div>
+                            <div className={fila}>
+                              <span>Ya liquidado</span>
+                              <span className="text-right">${formatearMonto(liquidado)}</span>
+                              <span className="text-right">${formatearMonto(conIva(liquidado))}</span>
+                            </div>
+                            <div className={`${fila} font-extrabold text-red-700`}>
+                              <span>Te falta pagarle</span>
+                              <span className="text-right">${formatearMonto(pp.pendienteNeto)}</span>
+                              <span className="text-right">${formatearMonto(conIva(pp.pendienteNeto))}</span>
+                            </div>
+                          </div>
+                          <p className="text-[11px] text-neutral-500 mt-2">
+                            Con los costos de ese pedido. Cada liquidación que generes se resta sola. No se suma al saldo: el saldo es lo liquidado sin pagar.
+                          </p>
+                        </div>
+                      );
+                    })()}
+
                     {/* Lo que se viene. Con liquidación por venta el saldo de
                         arriba es $0 hasta que se liquida — este es el número
                         que dice cuánto se le va a deber. */}

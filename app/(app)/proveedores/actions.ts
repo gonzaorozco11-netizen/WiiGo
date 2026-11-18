@@ -20,6 +20,7 @@ import { consumirFifo } from "@/lib/fifoProveedor";
 import { costoDelDiaPorGramo } from "@/lib/granel";
 import { estaAbierta, estadoSegunRecibido } from "@/lib/estadosOrden";
 import { guardarRemito } from "@/lib/remitoRecepcion";
+import { primerPedidoDe, type PrimerPedido } from "@/lib/primerPedidoProveedor";
 import { turnoAbiertoDeLocal } from "@/app/(app)/turnos/actions";
 
 function redondear2(valor: number) {
@@ -87,6 +88,8 @@ export type ProveedorConSaldo = {
    */
   vendidoSinLiquidar: number;
   unidadesSinLiquidar: number;
+  /** El primer pedido a Alifrut y cuánto falta liquidarle (lib/primerPedidoProveedor.ts). */
+  primerPedido?: PrimerPedido | null;
 };
 
 /**
@@ -170,12 +173,21 @@ export async function listarProveedores(): Promise<ProveedorConSaldo[]> {
     proveedores.filter((p) => p.modo_facturacion === "LIQUIDACION_VENTA").map((p) => p.id_proveedor)
   );
 
+  const primeros = new Map(
+    await Promise.all(
+      proveedores
+        .filter((p) => p.modo_facturacion === "LIQUIDACION_VENTA")
+        .map(async (p) => [p.id_proveedor as string, await primerPedidoDe(supabase, p.id_proveedor as string)] as const)
+    )
+  );
+
   return proveedores.map((p) => ({
     ...p,
     saldo: saldos.get(p.id_proveedor) ?? 0,
     pendientesFacturar: pendientesPorProveedor.get(p.id_proveedor) ?? 0,
     vendidoSinLiquidar: acumulado.get(p.id_proveedor)?.monto ?? 0,
     unidadesSinLiquidar: acumulado.get(p.id_proveedor)?.unidades ?? 0,
+    primerPedido: primeros.get(p.id_proveedor) ?? null,
   }));
 }
 
