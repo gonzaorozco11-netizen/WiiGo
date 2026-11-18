@@ -285,6 +285,8 @@
     return '<article class="item' + (sin ? ' sin' : '') + '"><button class="it-foto" data-a="ficha" data-id="' + p.id + '" aria-label="Ver ' + esc(p.t) + '">' + foto(p, 128) + '</button>' +
       '<button class="it-tx" data-a="ficha" data-id="' + p.id + '">' +
       '<span class="it-nom">' + esc(nm.nom) + '</span><span class="it-mar">' + esc(nm.mar) + '</span>' +
+      // Las estrellas de los clientes (18/11), si tiene opiniones.
+      (p.rc ? '<span class="it-est">' + estrellas(p.r) + ' ' + coma(p.r) + ' <small>(' + p.rc + ')</small></span>' : '') +
       (sin ? '<span class="it-sin">Sin stock por ahora</span>' : '<span class="it-pr"><b>' + plata(p.p) + '</b><span>' + plata(p.e || p.p) + ' efectivo</span></span>' + (p.s <= 2 ? '<span class="it-poco">Últimas ' + p.s + '</span>' : '')) +
       '</button><div class="it-acc" data-acc="' + p.id + '" data-tipo="item">' + botonItem(p) + '</div></article>';
   }
@@ -350,6 +352,29 @@
     var hr = horario();
     return '<p class="local-linea"><b class="' + (hr[0] ? 'abierto' : 'cerrado') + '">● ' + (hr[0] ? 'Abierto' : 'Cerrado') + ' · ' + hr[1] + '</b><span>Retirás en 15 min</span><a class="dir-mapa" href="' + MAPA + '" target="_blank" rel="noopener"><u>Arístides 256</u></a></p>';
   }
+  // «Para vos» (Gonzalo, 18/11, como «Relacionado con tus pedidos»): con la cuenta adentro, lo que más
+  // compra (online y en la estación con su DNI) y lo que suele ir con eso: misma subcategoría, lo mejor
+  // calificado y lo más vendido primero. Siempre dice por qué se lo mostramos.
+  function tarjetaChica(p, abajo) {
+    return '<article class="eleg"><div class="it-ft"><button class="it-foto" data-a="ficha" data-id="' + p.id + '" aria-label="Ver ' + esc(p.t) + '">' + foto(p, 256) + '</button><div class="it-acc" data-acc="' + p.id + '" data-tipo="item">' + botonItem(p) + '</div></div>' +
+      '<button class="eleg-tx" data-a="ficha" data-id="' + p.id + '"><span>' + esc(partirNombre(p).nom) + '</span><b>' + plata(p.p) + '</b>' + (abajo ? '<small class="eleg-por">' + abajo + '</small>' : '') + '</button></article>';
+  }
+  function paraVos() {
+    var u = S.usuario; if (!u || !u.compras || !u.compras.length) return '';
+    var veces = {}, ultima = {}, deSub = {};
+    u.compras.forEach(function (c) { productosDe(c).forEach(function (it) { veces[it.id] = (veces[it.id] || 0) + 1; if (!ultima[it.id]) ultima[it.id] = c.fecha; }); });
+    Object.keys(veces).forEach(function (id) { var p = POR_ID[id]; if (p) deSub[p.sc] = (deSub[p.sc] || 0) + veces[id]; });
+    var volver = Object.keys(veces).map(function (id) { return POR_ID[id]; }).filter(function (p) { return p && p.s > 0; })
+      .sort(function (a, b) { return veces[b.id] - veces[a.id] || (ultima[b.id] > ultima[a.id] ? 1 : -1); }).slice(0, 10);
+    var gustar = PROD.filter(function (p) { return p.s > 0 && !veces[p.id] && deSub[p.sc]; })
+      .sort(function (a, b) { return deSub[b.sc] - deSub[a.sc] || (b.r || 0) - (a.r || 0) || (a.top || 999) - (b.top || 999); }).slice(0, 10);
+    var subMas = Object.keys(deSub).sort(function (a, b) { return deSub[b] - deSub[a]; })[0];
+    var fila = function (l, extra) { return '<div class="elegidos">' + l.map(function (p) { return tarjetaChica(p, extra(p)); }).join('') + '</div>'; };
+    return (volver.length ? '<section class="rubro-sec" id="s-volver"><h2 class="seccion">Volver a pedir</h2><p class="rub-cant">Lo que más comprás, online y en la estación</p>' +
+        fila(volver, function (p) { return veces[p.id] > 1 ? 'Lo compraste ' + veces[p.id] + ' veces' : 'Última vez: ' + esc(new Date(ultima[p.id]).toLocaleDateString('es-AR', { day: 'numeric', month: 'short', timeZone: 'America/Argentina/Buenos_Aires' })); }) + '</section>' : '') +
+      (gustar.length ? '<section class="rubro-sec" id="s-gustar"><h2 class="seccion">Te puede gustar</h2><p class="rub-cant">Porque llevás ' + esc(String(subMas || '').toLowerCase()) + '</p>' +
+        fila(gustar, function (p) { return p.rc ? estrellas(p.r) + ' (' + p.rc + ')' : ''; }) + '</section>' : '');
+  }
   // Cuatro accesos redondos, quietos (18/11). «Lo más elegido» y «Ofertas» son secciones de la página.
   function accesos4() {
     var l = [['objetivos', '🎯', 'Objetivos', ''], ['mundo', '🌍', 'Del mundo', ''], ['combos', '🎁', 'Combos', COMBOS.length ? '<em>' + COMBOS.length + '</em>' : ''], ['pros', '👩‍💻', 'Profesionales', '']];
@@ -401,7 +426,7 @@
     // Más limpia (18/11): el banner, el local en una línea y 4 accesos; abajo, pegadas al bajar, las marcas
     // y —con una marca elegida— sus subcategorías.
     return '<div class="ini-top">' + banners() + '</div>' + tarjetaLocal() + accesos4() +
-      '<div class="pegado-ini" id="pegado-ini">' + marcas + tabs + '</div>' + elegido + secciones + pie();
+      '<div class="pegado-ini" id="pegado-ini">' + marcas + tabs + '</div>' + (S.marcaIni ? '' : paraVos()) + elegido + secciones + pie();
   }
   function lista() {
     var f = S.f || {}, l = filtrados(), extra = '';
@@ -470,6 +495,7 @@
     var nutri = tieneNutri(p);
     return '<div class="fondo" data-a="cerrar-ficha"></div><section class="hoja" role="dialog" aria-modal="true" aria-label="' + esc(p.t) + '"><div class="hoja-cab"><span></span><button class="redondo" data-a="cerrar-ficha" aria-label="Cerrar">' + ic('cruz', 20) + '</button></div><div class="hoja-cuerpo">' +
       '<div class="f-foto">' + foto(p, 828) + '</div><h2 class="f-nombre">' + esc(p.t) + '</h2><span class="f-de">' + esc(nombreMarca(p.mf || p.m)) + ' · ' + esc(p.sc) + '</span>' +
+      (p.rc ? '<div class="f-est">' + estrellas(p.r) + ' <b>' + coma(p.r) + '</b> · ' + p.rc + (p.rc === 1 ? ' opinión' : ' opiniones') + '</div>' : '') +
       (p.s > 0 ? '<div class="f-precio"><b>' + plata(p.p) + '</b><span>' + plata(p.e || p.p) + ' efectivo</span></div>' : '<div class="f-precio"><span style="color:var(--gris)">Sin stock por ahora. Preguntá en la estación cuándo entra.</span></div>') + sabores(p) + '<div style="margin-top:10px" data-acc="' + p.id + '">' + boton(p) + '</div>' +
       // Compartir con un amigo (Gonzalo, 16/11): WhatsApp o lo que tenga el celu.
       '<button class="compartir" data-a="compartir" data-id="' + p.id + '">' + ic('compartir', 18) + 'Compartir con un amigo</button>' +
@@ -478,7 +504,11 @@
       (p.fl && p.fl.length ? '<p class="f-chico" style="color:#3f5536;font-weight:800">' + esc(p.fl.map(function (x) { return titulo(x.replace(/\s+/g, ' ')); }).join(' · ')) + '</p>' : '') +
       (p.de ? '<p class="f-desc' + (S.descAbierta ? ' abierta' : '') + '" data-a="desc">' + esc(p.de) + '</p>' : '') +
       (p.o ? '<p class="f-chico"><b>Origen:</b> ' + esc(p.o) + '</p>' : '') +
-      (p.in ? '<p class="f-chico"><b>Ingredientes:</b> ' + esc(p.in) + (p.al ? ' · <b>Alérgenos:</b> ' + esc(p.al) : '') + '</p>' : '') + '</div></section>';
+      (p.in ? '<p class="f-chico"><b>Ingredientes:</b> ' + esc(p.in) + (p.al ? ' · <b>Alérgenos:</b> ' + esc(p.al) : '') + '</p>' : '') +
+      // Lo que dicen los que lo compraron (18/11): los comentarios ya aprobados.
+      (p.op && p.op.length ? '<h3 class="sub-cuenta">Lo que dicen los que lo compraron</h3>' + p.op.map(function (o) {
+        return '<div class="f-rese"><div><b>' + esc(o.n) + '</b>' + estrellas(o.e) + '</div><p>' + esc(o.c) + '</p><small>✓ Compra verificada · ' + esc(new Date(o.f + 'T12:00:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })) + '</small></div>';
+      }).join('') : '') + '</div></section>';
   }
   /* ---------- Cuenta WiiGo Club: DNI → (datos) → código al mail → Mi WiiGo ---------- */
   function cuenta() {
@@ -507,13 +537,39 @@
     return '<div class="fondo" data-a="cerrar-cuenta"></div><section class="hoja" role="dialog" aria-modal="true" aria-label="Mi WiiGo"><div class="hoja-cab"><span></span><button class="redondo" data-a="cerrar-cuenta" aria-label="Cerrar">' + ic('cruz', 20) + '</button></div><div class="hoja-cuerpo">' + cuerpo + '</div></section>';
   }
   function fechaCorta(iso) { return new Date(iso).toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'America/Argentina/Buenos_Aires' }); }
+  // Estrellas en texto: ★★★★☆
+  function estrellas(n) { var r = Math.round(n); return '<span class="estrellas" aria-label="' + coma(n) + ' de 5 estrellas">' + '★★★★★'.slice(0, r) + '<i>' + '★★★★★'.slice(r) + '</i></span>'; }
+  // Los productos distintos de una compra (para opinar): uno por producto, con su foto.
+  function productosDe(c) { var vistos = {}; return c.items.filter(function (it) { if (!it.id || vistos[it.id]) return false; vistos[it.id] = 1; return true; }); }
+  // Opinar sobre una compra (Gonzalo, 18/11): estrellas por producto y un comentario opcional.
+  function hojaOpinar() {
+    var c = S.usuario.compras[S.opinar]; if (!c) return '';
+    var ya = Object.keys(c.opino || {}).length > 0;
+    return '<h2 class="f-nombre" style="margin-top:0">¿Qué te pareció?</h2><p class="texto-cuenta">Tocá las estrellas de cada producto. El comentario es opcional: lo publicamos después de revisarlo.</p>' +
+      productosDe(c).map(function (it) {
+        var e = S.opEst[it.id] || (c.opino || {})[it.id] || 0;
+        return '<div class="op-item"><span class="mini">' + (it.img ? imagen(it.img, 96) : '') + '</span><div><b>' + esc(titulo(it.n)) + '</b><div class="op-est" role="group" aria-label="Estrellas para ' + esc(titulo(it.n)) + '">' +
+          [1, 2, 3, 4, 5].map(function (k) { return '<button data-a="op-est" data-id="' + it.id + '" data-e="' + k + '" aria-label="' + k + ' estrellas" aria-pressed="' + (k <= e) + '">★</button>'; }).join('') + '</div></div>' +
+          '<textarea data-op="' + it.id + '" maxlength="500" placeholder="Contanos qué te pareció (opcional)">' + esc(S.opCom[it.id] || '') + '</textarea></div>';
+      }).join('') +
+      (ya ? '' : '<p class="op-premio">★ Sumás 10 puntos por opinar</p>') +
+      '<button class="cta" data-a="op-enviar">' + (S.enviando ? 'Enviando…' : 'Enviar opinión') + '</button><button class="ver-mas" style="margin-top:8px" data-a="op-cerrar">Ahora no</button>';
+  }
   function miWiigo() {
     var u = S.usuario;
+    if (S.opinar != null) return hojaOpinar();
+    // «Mis pedidos» (18/11): online y en la estación juntos, con fotos, «Opinar» y «Repetir».
     var compras = u.compras.length ? u.compras.map(function (c, i) {
-      var abierta = S.compraAbierta === i, n = c.items.reduce(function (a, it) { return a + it.q; }, 0);
+      var abierta = S.compraAbierta === i, n = c.items.reduce(function (a, it) { return a + it.q; }, 0), prods = productosDe(c);
+      var opinados = prods.filter(function (it) { return (c.opino || {})[it.id]; });
+      var prom = opinados.length ? opinados.reduce(function (a, it) { return a + c.opino[it.id]; }, 0) / opinados.length : 0;
+      var fotos = '<div class="ped-fotos">' + prods.slice(0, 4).map(function (it) { return '<span class="mini">' + (it.img ? imagen(it.img, 96) : '') + '</span>'; }).join('') + (prods.length > 4 ? '<span class="mini mas-n">+' + (prods.length - 4) + '</span>' : '') + '</div>';
+      var acciones = opinados.length === prods.length && prods.length
+        ? '<div class="ped-ya">' + estrellas(prom) + ' Ya opinaste · gracias</div><div class="ped-acc uno"><button data-a="c-repetir" data-i="' + i + '">↻ Repetir</button></div>'
+        : '<div class="ped-acc">' + (c.opinable && prods.length ? '<button class="op" data-a="c-opinar" data-i="' + i + '">☆ Opinar</button>' : '') + '<button data-a="c-repetir" data-i="' + i + '">↻ Repetir</button></div>';
       return '<div class="compra"><button class="compra-cab" data-a="c-compra" data-i="' + i + '" aria-expanded="' + abierta + '"><span><b>' + plata(c.total) + '</b><small>' + esc(fechaCorta(c.fecha)) + ' · ' + esc(c.donde) + '</small><small>' + n + (n === 1 ? ' producto' : ' productos') + (c.pago ? ' · ' + esc(c.pago) : '') + '</small></span><span class="pts">+' + c.puntos + '<span>puntos</span></span>' + ic('abajo', 18) + '</button>' +
-        (abierta ? '<div class="compra-items">' + c.items.map(function (it) { return '<div class="compra-item"><span class="mini">' + (it.img ? imagen(it.img, 96) : '') + '</span><span>' + (it.q > 1 ? it.q + ' × ' : '') + esc(titulo(it.n)) + (it.v ? ' — ' + esc(it.v) : '') + '</span><b>' + plata(it.imp) + '</b></div>'; }).join('') +
-          '<button class="ver-mas" style="margin-top:6px" data-a="c-repetir" data-i="' + i + '">Volver a pedir todo</button></div>' : '') + '</div>';
+        fotos + acciones +
+        (abierta ? '<div class="compra-items">' + c.items.map(function (it) { return '<div class="compra-item"><span class="mini">' + (it.img ? imagen(it.img, 96) : '') + '</span><span>' + (it.q > 1 ? it.q + ' × ' : '') + esc(titulo(it.n)) + (it.v ? ' — ' + esc(it.v) : '') + '</span><b>' + plata(it.imp) + '</b></div>'; }).join('') + '</div>' : '') + '</div>';
     }).join('') : '<p class="texto-cuenta">Todavía no hay compras. Las que hagas acá o en la estación (dando tu DNI) aparecen solas.</p>';
     var cumple = u.cumple ? '<div class="dato"><span>Cumpleaños</span><b>' + esc(new Date(u.cumple + 'T12:00:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'long' })) + '</b></div>'
       : '<div class="dato" style="align-items:center"><span>Cumpleaños</span><span style="display:flex;gap:6px"><input id="c-cumple2" type="date" aria-label="Tu cumpleaños" style="height:40px;border:1.5px solid var(--linea);border-radius:10px;padding:0 8px;font:600 14px var(--texto);background:var(--carta)"><button class="acceso" data-a="c-cumple">Guardar</button></span></div>';
@@ -522,7 +578,7 @@
       '<ul><li>Sumás <b>5 puntos cada $1.000</b> que comprás, acá o en la estación (dando tu DNI).</li><li>Cada punto vale <b>$1</b> para pagar productos WiiGo Dietética, hasta el 10 % de la compra.</li><li>Ves tus puntos y tus compras acá, en tu cuenta.</li></ul>' +
       '<button class="cta" data-a="c-bienv">Empezar a comprar</button></div>' : '';
     return bienv + '<div class="club"><small>Hola, ' + esc(u.nombre) + ' · WiiGo Club</small><b>' + u.puntos.toLocaleString('es-AR') + ' puntos</b><span>Sumás 5 puntos cada $1.000 de compra, online o en la estación. Los canjeás en productos WiiGo Dietética.</span></div>' +
-      '<h3 class="sub-cuenta">Mis compras</h3>' + compras +
+      '<h3 class="sub-cuenta">Mis pedidos</h3>' + compras +
       '<h3 class="sub-cuenta">Mis datos</h3><div class="dato"><span>Nombre</span><b>' + esc((u.nombre + ' ' + u.apellido).trim()) + '</b></div><div class="dato"><span>DNI</span><b>' + esc(u.dni) + '</b></div><div class="dato"><span>Mail</span><b>' + esc(u.email) + '</b></div>' + cumple +
       '<label class="tilde" style="margin:14px 2px"><input type="checkbox" data-a="c-promos"' + (u.promos ? ' checked' : '') + '><span>Recibir novedades y promos por mail</span></label>' +
       '<button class="ver-mas" data-a="c-salir">Salir de mi cuenta</button>';
@@ -957,7 +1013,7 @@
     'obj-directo': function (d) { ver({ objetivos: true, obj: d.o, titulo: d.o }); },
     pros: function () { S.vista = 'pros'; S.f = null; S.q = ''; pintar(true); },
     cuenta: function () { S.cuenta = true; S.pedido = false; S.ficha = null; S.menu = false; if (!S.usuario && S.paso !== 'codigo') { S.paso = 'dni'; } pintar(false); var i = document.getElementById('c-dni'); if (i) i.focus(); },
-    'cerrar-cuenta': function () { S.cuenta = false; pintar(false); },
+    'cerrar-cuenta': function () { S.cuenta = false; S.opinar = null; pintar(false); },
     'c-volver': function () { S.paso = 'dni'; S.datos = {}; pintar(false); },
     'c-dni': function () {
       var dni = (document.getElementById('c-dni').value || '').replace(/\D/g, '');
@@ -989,6 +1045,19 @@
       });
     },
     'c-compra': function (d) { var i = Number(d.i); S.compraAbierta = S.compraAbierta === i ? null : i; pintar(false); },
+    // Opinar (18/11): estrellas por producto, comentario opcional y 10 puntos la primera vez.
+    'c-opinar': function (d) { S.opinar = Number(d.i); S.opEst = {}; S.opCom = {}; pintar(false); var h = document.querySelector('.hoja-cuerpo'); if (h) h.scrollTop = 0; },
+    'op-cerrar': function () { S.opinar = null; pintar(false); },
+    'op-est': function (d) { S.opEst[d.id] = Number(d.e); pintar(false); },
+    'op-enviar': function () {
+      var c = S.usuario.compras[S.opinar]; if (!c) return;
+      var ops = productosDe(c).map(function (it) { return { id: it.id, e: S.opEst[it.id] || (c.opino || {})[it.id] || 0, c: S.opCom[it.id] || '' }; }).filter(function (o) { return o.e > 0; });
+      if (!ops.length) { aviso('Tocá las estrellas de al menos un producto'); return; }
+      pasoCuenta({ accion: 'opinar', venta: c.id, opiniones: ops }, function (r) {
+        S.usuario = r.usuario || S.usuario; S.opinar = null;
+        aviso(r.puntos ? '¡Gracias! Sumaste ' + r.puntos + ' puntos' : '¡Gracias por tu opinión!');
+      });
+    },
     'c-repetir': function (d) {
       var c = S.usuario.compras[Number(d.i)], agregados = 0, faltan = 0;
       c.items.forEach(function (it) {
@@ -1131,6 +1200,8 @@
       tecleo = setTimeout(function () { pintar(false); }, 140);
     }
     if (e.target.id === 'mq') { S.menuQ = e.target.value; pintar(false); }
+    // El comentario de Opinar se guarda mientras escribe (tocar una estrella redibuja la hoja).
+    if (e.target.dataset && e.target.dataset.op) { S.opCom = S.opCom || {}; S.opCom[e.target.dataset.op] = e.target.value; }
   });
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Enter' && e.target.id === 'q') e.target.blur();
