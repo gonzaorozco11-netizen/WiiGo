@@ -754,7 +754,7 @@ export const GUIAS: Guia[] = [
     rutas: ["/fraccionar", "/fraccionar/historial"],
     pasos: [
       "Lo que llega a granel se recibe en <b>Compras → Recepción</b>, en kilos. Esos kilos quedan en el depósito.",
-      "Cada bolsita tiene que quedar con <b>5 en el blistero y 3 abajo, en el cajón</b>: se vendió una, se fracciona una. Se hace <b>al final del turno</b>; en la última hora el Inicio avisa «Antes de cerrar: fraccionar N bolsitas».",
+      "Cada bolsita tiene que quedar con <b>5 en el blistero y 3 abajo, en el cajón</b>: se vendió una, se fracciona una. Se hace <b>al final del turno</b>. Desde que fichás, el Inicio muestra «Para fraccionar: N bolsitas», y en la última hora se pone en rojo: «Antes de cerrar: fraccionar N bolsitas».",
       "Entrá a <b>📦 Stock y precios → A granel</b>. Arriba está <b>Para fraccionar antes de cerrar el turno</b>, con cuántas bolsitas hacer de cada uno (primero en rojo lo que ya no llena el blistero). Tocá <b>Fraccionar →</b>.",
       "Elegí cuánto: <b>Lo que falta</b> (para llegar a 8) o <b>Toda la bolsa</b>, si conviene cerrarla entera. Si queda con más de 8, no vuelve a aparecer hasta que baje.",
       "Tildá guantes y cofia, balanza en cero y el peso de cada bolsita: <b>exacto</b>. De 1 kg salen justo 4 de 250 g: si te pasás en una, la última sale corta y se anota como merma. Fraccioná y tocá <b>Terminé de fraccionar</b>.",
