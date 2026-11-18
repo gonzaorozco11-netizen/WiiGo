@@ -17,12 +17,13 @@ export default async function CodigosPage({ searchParams }: { searchParams: Prom
   const sp = await searchParams;
   const UUID = /^[0-9a-f-]{36}$/i;
   const cant = (t: unknown) => Math.min(999, Math.max(1, Math.round(Number(t) || 1)));
+  // ?lote=id:n:AAAA-MM-DD — el tercero es el vencimiento que cargaron al fraccionar (18/11): sale impreso.
   const lineas = sp.lote
     ? sp.lote
         .split(",")
         .map((par) => par.split(":"))
         .filter(([id]) => UUID.test(id ?? ""))
-        .map(([id, n]) => ({ idVariante: id, n: cant(n) }))
+        .map(([id, n, vence]) => ({ idVariante: id, n: cant(n), ...(vence && /^\d{4}-\d{2}-\d{2}$/.test(vence) ? { vence } : {}) }))
     : sp.imprimir && UUID.test(sp.imprimir)
       ? [{ idVariante: sp.imprimir, n: cant(sp.n) }]
       : [];

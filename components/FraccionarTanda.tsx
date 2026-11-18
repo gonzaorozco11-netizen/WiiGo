@@ -52,8 +52,13 @@ export default function FraccionarTanda({
   const total = lineas.reduce((a, l) => a + (l.bolsitas ?? 0), 0);
   const fecha = (iso: string) => iso.split("-").reverse().join("/");
 
+  // El vencimiento que cargaron sale impreso (Gonzalo, 18/11). Si el mismo producto tiene dos
+  // fechas distintas (dos bolsas), no se puede imprimir una sola: esas se escriben a mano.
+  const impreso = (p: { vtos: Set<string> }) => p.vtos.size === 1;
+  const aMano = [...porProducto.values()].filter((p) => !impreso(p));
+
   function imprimir() {
-    const lote = [...porProducto].map(([id, p]) => `${id}:${p.n}`).join(",");
+    const lote = [...porProducto].map(([id, p]) => `${id}:${p.n}${impreso(p) ? `:${[...p.vtos][0]}` : ""}`).join(",");
     router.push(`/codigos?lote=${lote}&volver=${encodeURIComponent("/fraccionar?tanda=2")}`);
   }
 
@@ -124,8 +129,10 @@ export default function FraccionarTanda({
       <>
         <h2 className="text-2xl font-black">Imprimí todas juntas</h2>
         <p className="mb-4 text-neutral-500">
-          <b className="text-neutral-900">{total} etiquetas</b> de {porProducto.size} {porProducto.size === 1 ? "producto" : "productos"}, en una sola impresión. El vencimiento sale en
-          blanco: lo escribís a mano en el paso que sigue.
+          <b className="text-neutral-900">{total} etiquetas</b> de {porProducto.size} {porProducto.size === 1 ? "producto" : "productos"}, en una sola impresión.{" "}
+          {aMano.length === 0
+            ? "El vencimiento que cargaste sale impreso en cada etiqueta."
+            : "El vencimiento sale impreso; el de los que tienen dos fechas distintas sale en blanco y lo escribís a mano."}
         </p>
         <ul className={`${tarjeta} grid gap-1.5`}>
           {[...porProducto.values()].map((p) => (
@@ -146,14 +153,20 @@ export default function FraccionarTanda({
   } else if (paso === 2) {
     cuerpo = (
       <>
-        <h2 className="text-2xl font-black">Pegalas y escribí el vencimiento</h2>
-        <p className="mb-4 text-neutral-500">En cada etiqueta, a mano y con birome, la fecha de su producto:</p>
+        <h2 className="text-2xl font-black">{aMano.length === 0 ? "Pegalas" : "Pegalas y escribí el vencimiento"}</h2>
+        <p className="mb-4 text-neutral-500">
+          {aMano.length === 0
+            ? "Fijate que cada etiqueta tenga el vencimiento de su producto:"
+            : "Las que dicen «a mano» salieron con el vencimiento en blanco: escribilo con birome."}
+        </p>
         <ul className="grid gap-2">
           {[...porProducto.values()].map((p) => (
             <li key={p.nombre} className={`${tarjeta} flex flex-wrap items-center justify-between gap-2`}>
               <span>
                 <b className="block">{p.nombre}</b>
-                <small className="text-neutral-500">{p.n} etiquetas</small>
+                <small className="text-neutral-500">
+                  {p.n} etiquetas · {impreso(p) ? "✓ sale impreso" : "✍ a mano"}
+                </small>
               </span>
               <b className="text-xl tabular-nums">{[...p.vtos].map(fecha).join(" y ") || "—"}</b>
             </li>
@@ -162,7 +175,7 @@ export default function FraccionarTanda({
         <button type="button" onClick={() => setPegadas(!pegadas)} aria-pressed={pegadas} className={`${tarjeta} mt-3 flex w-full items-start gap-3 text-left`}>
           <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg border-2 text-white font-black ${pegadas ? "border-emerald-600 bg-emerald-600" : "border-neutral-300"}`}>{pegadas ? "✓" : ""}</span>
           <span>
-            <b className="block text-[16px]">Escribí los vencimientos y pegué las {total} etiquetas</b>
+            <b className="block text-[16px]">{aMano.length === 0 ? `Pegué las ${total} etiquetas` : `Escribí los vencimientos y pegué las ${total} etiquetas`}</b>
             <small className="text-[13px] text-neutral-500">En el frente, sin tapar el producto. Si sobró alguna, tirala.</small>
           </span>
         </button>

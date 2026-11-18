@@ -20,7 +20,8 @@ import EscanerCodigo from "@/components/EscanerCodigo";
 import CodigoDeBarras from "@/components/CodigoDeBarras";
 
 /** Las etiquetas que pide el fraccionado: uno o varios productos, cada uno con su cantidad. */
-export type PedidoFraccionado = { lineas: { idVariante: string; n: number }[]; volver: string };
+/** `vence`: el vencimiento que cargaron al fraccionar (AAAA-MM-DD); si viene, sale impreso (Gonzalo, 18/11). */
+export type PedidoFraccionado = { lineas: { idVariante: string; n: number; vence?: string }[]; volver: string };
 
 export type ItemCodigo = {
   idVariante: string;
@@ -67,8 +68,10 @@ export type RotuloItem = {
  * conVencimiento: si va la fecha impresa o «Vto: ____» para escribirla a mano
  * (Gonzalo, 2026-11-06: «como no tengo la fecha de venc. de momento, que no salga»).
  */
-type DatosTanda = { pie: string; envasado: string; venceBolsa: string | null; conVencimiento: boolean };
-const TandaContext = createContext<DatosTanda>({ pie: PIE_ETIQUETA_DEFECTO, envasado: hoyIso(), venceBolsa: null, conVencimiento: false });
+// vencimientosFijos: el vencimiento que cargaron al fraccionar, por variante. Ese sale impreso
+// siempre, aunque «Imprimir la fecha de vencimiento» esté apagado (Gonzalo, 18/11).
+type DatosTanda = { pie: string; envasado: string; venceBolsa: string | null; conVencimiento: boolean; vencimientosFijos: Record<string, string> };
+const TandaContext = createContext<DatosTanda>({ pie: PIE_ETIQUETA_DEFECTO, envasado: hoyIso(), venceBolsa: null, conVencimiento: false, vencimientosFijos: {} });
 
 function hoyIso() {
   const d = new Date();
@@ -684,8 +687,9 @@ function Imprimir({
   const alMarcar = (i: ItemCodigo) =>
     modo === "ahora" ? porVariante.get(i.idVariante)?.cantidad ?? 1 : Math.max(1, Math.round(i.stock ?? 0));
 
-  // Desde el fraccionado paso a paso: solo ese producto con su cantidad. El vencimiento sale en
-  // blanco («Vto: ____») para escribirlo a mano, como pidió Gonzalo (16/11).
+  // Desde el fraccionado: esos productos con su cantidad. El vencimiento que cargaron al
+  // fraccionar sale impreso (Gonzalo, 18/11); si no lo cargaron, en blanco para escribirlo a mano.
+  const vencimientosFijos = Object.fromEntries((pedido?.lineas ?? []).filter((l) => l.vence).map((l) => [l.idVariante, l.vence as string]));
   if (pedido && itemsPedido.length === 0) {
     return (
       <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
@@ -718,6 +722,7 @@ function Imprimir({
           alMarcar={(i) => cantPedida.get(i.idVariante) ?? 1}
           pie={pie}
           abrirTodo
+          vencimientosFijos={vencimientosFijos}
         />
       </>
     );
@@ -947,8 +952,11 @@ function ConfigurarImpresion({
   extraFila,
   cabeceraMarca,
   abrirTodo = false,
+  vencimientosFijos = {},
 }: {
   items: ItemCodigo[];
+  /** Los vencimientos que cargaron al fraccionar, por variante: salen impresos. */
+  vencimientosFijos?: Record<string, string>;
   unidadesIniciales: (i: ItemCodigo) => number;
   /** Cuántos al marcarlo: lo que entró o lo que hay en stock. */
   alMarcar?: (i: ItemCodigo) => number;
@@ -1084,7 +1092,7 @@ function ConfigurarImpresion({
   const sinDias = fraccionados.filter((i) => i.rotulo?.dias == null);
   const sinPeso = fraccionados.filter((i) => i.rotulo?.pesoG == null);
   const conAlergenos = fraccionados.filter((i) => i.rotulo?.alergenos || i.rotulo?.trazas);
-  const tanda: DatosTanda = { pie, envasado: envasado || hoyIso(), venceBolsa: venceBolsa || null, conVencimiento };
+  const tanda: DatosTanda = { pie, envasado: envasado || hoyIso(), venceBolsa: venceBolsa || null, conVencimiento, vencimientosFijos };
 
   return (
     <TandaContext.Provider value={tanda}>
@@ -2008,10 +2016,11 @@ function LineaParaEscribir({ ancho }: { ancho: number }) {
  * Los alérgenos no entran con letra legible: para eso está la de 70 × 35.
  */
 function EtiquetaChicaPropia({ item, rotulo, medida }: { item: ItemCodigo; rotulo: RotuloItem; medida: { ancho: number; alto: number } }) {
-  const { envasado, venceBolsa, conVencimiento } = useContext(TandaContext);
+  const { envasado, venceBolsa, conVencimiento, vencimientosFijos } = useContext(TandaContext);
   const completo = nombreParaEtiqueta(item) + (item.variante ? ` ${item.variante}` : "");
   const nombre = rotulo.pesoG != null ? nombreBase(completo) : completo;
-  const vence = calcularVencimiento(envasado, rotulo.dias ?? duracionSugerida(item.producto).dias, venceBolsa);
+  const fijo = vencimientosFijos[item.idVariante];
+  const vence = fijo || (conVencimiento ? calcularVencimiento(envasado, rotulo.dias ?? duracionSugerida(item.producto).dias, venceBolsa) : null);
   // De 22 mm de alto para arriba (50 × 25, 40 × 30) hay lugar para letra más grande.
   const media = medida.alto >= 22;
   const altoCodigo = media ? 7 : 4.8;
@@ -2053,7 +2062,7 @@ function EtiquetaChicaPropia({ item, rotulo, medida }: { item: ItemCodigo; rotul
           </span>
         )}
         <span>
-          Vto: {conVencimiento ? <b>{fechaCorta(vence)}</b> : <LineaParaEscribir ancho={media ? 13 : 9} />}
+          Vto: {vence ? <b>{fechaCorta(vence)}</b> : <LineaParaEscribir ancho={media ? 13 : 9} />}
         </span>
       </div>
       <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", alignItems: "center", gap: `${separacionNumeros}mm` }}>
@@ -2075,11 +2084,12 @@ function EtiquetaChicaPropia({ item, rotulo, medida }: { item: ItemCodigo; rotul
  * más grande sobra aire, en una más chica no se usa (ver entraRotulo).
  */
 function EtiquetaRotulada({ item, rotulo }: { item: ItemCodigo; rotulo: RotuloItem }) {
-  const { pie, envasado, venceBolsa, conVencimiento } = useContext(TandaContext);
+  const { pie, envasado, venceBolsa, conVencimiento, vencimientosFijos } = useContext(TandaContext);
   const nombre = nombreParaEtiqueta(item) + (item.variante ? ` ${item.variante}` : "");
   const textoNombre = rotulo.pesoG != null ? nombreBase(nombre) : nombre;
   const dias = rotulo.dias ?? duracionSugerida(item.producto).dias;
-  const vence = calcularVencimiento(envasado, dias, venceBolsa);
+  const fijo = vencimientosFijos[item.idVariante];
+  const vence = fijo || (conVencimiento ? calcularVencimiento(envasado, dias, venceBolsa) : null);
   const alergenos = [
     rotulo.alergenos && `Contiene ${rotulo.alergenos.replace(/\.$/, "")}.`,
     rotulo.trazas && `Puede contener trazas de ${rotulo.trazas.replace(/\.$/, "")}.`,
@@ -2130,7 +2140,7 @@ function EtiquetaRotulada({ item, rotulo }: { item: ItemCodigo; rotulo: RotuloIt
           Envasado: <b>{fechaCorta(envasado)}</b>
         </span>
         <span>
-          Vto: {conVencimiento ? <b>{fechaCorta(vence)}</b> : <LineaParaEscribir ancho={13} />}
+          Vto: {vence ? <b>{fechaCorta(vence)}</b> : <LineaParaEscribir ancho={13} />}
         </span>
       </div>
 
