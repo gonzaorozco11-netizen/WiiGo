@@ -9,6 +9,7 @@ import { cargarPreciosPrestados } from "@/lib/preciosPrestados";
 import { cuantosParaPedir, pedidosEsperando, proveedorDelPedido } from "@/lib/pedidoProveedor";
 import { localDeSesion } from "@/lib/fraccionado";
 import { equipoDeHoy, type EquipoHoy } from "@/lib/equipoHoy";
+import { ventasDelDia, type VentasDelDia } from "@/lib/ventasDelDia";
 import { recibosSinFirmar } from "@/lib/misRecibos";
 
 // Tablero de inicio.
@@ -49,6 +50,8 @@ export type Tablero = {
   /** El negocio de un vistazo. Solo para el Dueño; null para el resto. */
   dueno: InicioDueno | null;
   errorDueno: string | null;
+  /** «Ventas de hoy» con sus descuentos, abajo del Inicio del Dueño (18/11). null si falló. */
+  ventasHoy: VentasDelDia | null;
   /** Quién está trabajando ahora y quién trabajó hoy. Solo para el Dueño. */
   equipo: EquipoHoy | null;
   /** El inicio del local (botón grande + accesos rápidos). Para el equipo, no para el Dueño. */
@@ -571,9 +574,17 @@ export async function armarTablero(): Promise<Tablero | null> {
   let dueno: InicioDueno | null = null;
   let errorDueno: string | null = null;
   let equipo: EquipoHoy | null = null;
+  let ventasDelDiaDueno: VentasDelDia | null = null;
   if (esAdmin) {
     try {
-      [dueno, equipo] = await Promise.all([armarInicioDueno(supabase), equipoDeHoy(supabase).catch(() => null)]);
+      [dueno, equipo, ventasDelDiaDueno] = await Promise.all([
+        armarInicioDueno(supabase),
+        equipoDeHoy(supabase).catch(() => null),
+        ventasDelDia(supabase).catch((e) => {
+          console.error("Ventas de hoy:", e);
+          return null;
+        }),
+      ]);
     } catch (e) {
       errorDueno = e instanceof Error ? e.message : "No se pudieron calcular las ventas.";
     }
@@ -596,6 +607,7 @@ export async function armarTablero(): Promise<Tablero | null> {
   return {
     dueno,
     errorDueno,
+    ventasHoy: ventasDelDiaDueno,
     equipo,
     operativo,
     nombre: sesion.nombre,

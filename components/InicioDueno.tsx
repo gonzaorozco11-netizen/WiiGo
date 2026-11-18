@@ -2,6 +2,8 @@ import Link from "next/link";
 import type { InicioDueno as Datos } from "@/lib/inicioDueno";
 import type { KpiTablero } from "@/lib/tablero";
 import type { EquipoHoy } from "@/lib/equipoHoy";
+import type { VentasDelDia } from "@/lib/ventasDelDia";
+import VentasDeHoy from "@/components/VentasDeHoy";
 
 // El negocio de un vistazo en el inicio del Dueño. Misma lectura que el
 // portal de cada marca, pero del local entero: el mes con su proyección, los
@@ -78,7 +80,17 @@ function TurnoCaja({ turno, equipo }: { turno: KpiTablero; equipo: EquipoHoy | n
   );
 }
 
-export default function InicioDueno({ datos, turno, equipo }: { datos: Datos; turno: KpiTablero | undefined; equipo: EquipoHoy | null }) {
+export default function InicioDueno({
+  datos,
+  turno,
+  equipo,
+  ventasHoy,
+}: {
+  datos: Datos;
+  turno: KpiTablero | undefined;
+  equipo: EquipoHoy | null;
+  ventasHoy?: VentasDelDia | null;
+}) {
   const colorDe = new Map(datos.marcas.map((m, i) => [m.idMarca, COLORES[i % COLORES.length]]));
   const variacionMes =
     datos.vendidoMesAnteriorTramo > 0 ? Math.round((datos.vendidoMes / datos.vendidoMesAnteriorTramo - 1) * 100) : null;
@@ -130,7 +142,12 @@ export default function InicioDueno({ datos, turno, equipo }: { datos: Datos; tu
 
       {/* ---------- Números ---------- */}
       <section className="grid grid-cols-2 md:grid-cols-3 gap-2.5">
-        <Kpi etiqueta="Vendido hoy" valor={pesos(datos.hoy.vendido)} pie={`${datos.hoy.tickets} ${datos.hoy.tickets === 1 ? "ticket" : "tickets"} hasta ahora`} />
+        <Kpi
+          etiqueta="Vendido hoy"
+          valor={pesos(datos.hoy.vendido)}
+          pie={`${datos.hoy.tickets} ${datos.hoy.tickets === 1 ? "ticket" : "tickets"} · ver cada venta ↓`}
+          href={ventasHoy ? "#ventas-de-hoy" : undefined}
+        />
         <Kpi etiqueta="Ticket promedio" valor={datos.ticketsMes ? pesos(datos.ticketPromedio) : "—"} pie={`en ${datos.mesNombre}`} />
         <Kpi etiqueta="Unidades" valor={datos.unidadesMes.toLocaleString("es-AR")} pie={`vendidas en ${datos.mesNombre}`} />
         <Kpi etiqueta="Comisión de marcas" valor={pesos(datos.comisionMarcas)} pie="lo que gana WiiGo en el mes" />
@@ -343,6 +360,9 @@ export default function InicioDueno({ datos, turno, equipo }: { datos: Datos; tu
           </ol>
         )}
       </section>
+
+      {/* ---------- Ventas de hoy, cada una con sus descuentos (18/11) ---------- */}
+      {ventasHoy && <VentasDeHoy datos={ventasHoy} />}
     </div>
   );
 }
@@ -356,9 +376,9 @@ function nombreCompleto(etiqueta: string) {
   return i >= 0 ? NOMBRE_DIA[i + 1] : etiqueta;
 }
 
-function Kpi({ etiqueta, valor, pie, tono }: { etiqueta: string; valor: string; pie: string; tono?: "rojo" | "verde" }) {
-  return (
-    <div className={`${tarjeta} p-3.5`}>
+function Kpi({ etiqueta, valor, pie, tono, href }: { etiqueta: string; valor: string; pie: string; tono?: "rojo" | "verde"; href?: string }) {
+  const adentro = (
+    <>
       <p className={eyebrow}>{etiqueta}</p>
       <p
         className={`text-xl font-bold mt-0.5 tabular-nums ${
@@ -368,7 +388,15 @@ function Kpi({ etiqueta, valor, pie, tono }: { etiqueta: string; valor: string; 
         {valor}
       </p>
       <p className="text-[11.5px] text-neutral-400">{pie}</p>
-    </div>
+    </>
+  );
+  // Con destino (Vendido hoy → la tabla de abajo): toda la tarjeta se toca.
+  return href ? (
+    <a href={href} className={`${tarjeta} p-3.5 block hover:border-neutral-300`}>
+      {adentro}
+    </a>
+  ) : (
+    <div className={`${tarjeta} p-3.5`}>{adentro}</div>
   );
 }
 
