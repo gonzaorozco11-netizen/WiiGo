@@ -13,6 +13,7 @@ import {
   perfilCliente,
   verificarCodigo,
 } from "@/lib/tiendaCuenta";
+import { guardarOpiniones } from "@/lib/opinionesProducto";
 
 /**
  * La cuenta WiiGo Club de la tienda online (public/tienda/app.js).
@@ -166,6 +167,18 @@ export async function POST(req: NextRequest) {
       }
       if (Object.keys(cambios).length) await supabase.from("clientes").update(cambios).eq("id_cliente", id);
       return NextResponse.json({ usuario: await perfilCliente(supabase, id) }, { headers: sinCache });
+    }
+
+    /* 5. Opinar sobre una compra (18/11): estrellas por producto y comentario opcional */
+    if (accion === "opinar") {
+      const id = await leerCliente(req.cookies.get(COOKIE_CLIENTE)?.value);
+      if (!id) return mal("Tu sesión venció. Entrá de nuevo.", 401);
+      const items = Array.isArray(b.opiniones)
+        ? (b.opiniones as Record<string, unknown>[]).slice(0, 50).map((o) => ({ idProducto: String(o.id ?? ""), estrellas: Number(o.e), comentario: o.c == null ? null : String(o.c) }))
+        : [];
+      const r = await guardarOpiniones(supabase, id, String(b.venta ?? ""), items);
+      if (r.error) return mal(r.error);
+      return NextResponse.json({ ok: true, puntos: r.puntos ?? 0, usuario: await perfilCliente(supabase, id) }, { headers: sinCache });
     }
 
     if (accion === "salir") {

@@ -79,6 +79,9 @@ export const PANTALLAS_DISPONIBLES: PantallaDisponible[] = [
   // tres columnas. Quien tiene «Pedidos de profesionales» también la ve (es
   // el mismo trabajo de armar y entregar); esta es para darla sola.
   { clave: "pedidos-online", label: "Pedidos online (tienda)", grupo: "Operaciones" },
+  // Lo que escriben los clientes sobre lo que compraron: se publica cuando un
+  // operativo lo aprueba (Gonzalo, 18/11). Borrar, solo el Dueño.
+  { clave: "comentarios", label: "Comentarios de clientes", grupo: "Operaciones" },
   { clave: "ficha-asistencia", label: "Ficha Asistencia", grupo: "Operaciones" },
   { clave: "ventas", label: "Ventas", grupo: "Operaciones" },
   { clave: "cobros-efectivo", label: "Cobros en efectivo", grupo: "Operaciones" },

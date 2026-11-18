@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { toHex, fromHex, bytesToBase64Url, base64UrlToBytes } from "@/lib/crypto";
 import { enviarMail, plantilla } from "@/lib/mail";
 import { baseUrlPublica } from "@/lib/urlPublica";
+import { DIAS_PARA_OPINAR, opinionesDelCliente } from "@/lib/opinionesProducto";
 
 // La cuenta WiiGo Club de la tienda online (etapa 2, parte 2).
 //
@@ -208,6 +209,10 @@ export async function perfilCliente(supabase: SupabaseClient, idCliente: string)
     itemsDe.set(d.id_venta, lista);
   }
 
+  // Lo que ya opinó (18/11): por compra y producto, sus estrellas.
+  const opino = await opinionesDelCliente(supabase, idCliente);
+  const limiteOpinar = Date.now() - DIAS_PARA_OPINAR * 86400000;
+
   return {
     nombre: c.nombre as string,
     apellido: (c.apellido as string | null) ?? "",
@@ -217,6 +222,12 @@ export async function perfilCliente(supabase: SupabaseClient, idCliente: string)
     promos: !!c.acepta_novedades,
     puntos: Number(c.puntos ?? 0),
     compras: validas.map((v) => ({
+      id: v.id_venta as string,
+      canal: String(v.canal ?? ""),
+      /** Se puede opinar hasta 30 días después. */
+      opinable: new Date(v.fecha as string).getTime() >= limiteOpinar,
+      /** id_producto → estrellas que ya le puso. */
+      opino: Object.fromEntries(opino.get(v.id_venta as string) ?? new Map<string, number>()),
       fecha: v.fecha as string,
       donde: DONDE[String(v.canal)] ?? "En la estación",
       pago: MEDIOS[String(v.medio_pago ?? "").toUpperCase()] ?? (v.medio_pago ? String(v.medio_pago) : ""),

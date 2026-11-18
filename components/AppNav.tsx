@@ -239,6 +239,7 @@ function itemActivo(pathname: string): { grupo: string | null; item: NavItem } |
     { grupo: null, item: { href: "/auditoria", label: "Auditoría" } },
     { grupo: null, item: { href: "/aparatos", label: "Tablets del local" } },
     { grupo: null, item: { href: "/pedidos-online", label: "Pedidos online" } },
+    { grupo: null, item: { href: "/comentarios", label: "Comentarios" } },
   ];
   for (const c of candidatos) {
     const coincide = pathname === c.item.href || pathname.startsWith(`${c.item.href}/`);
@@ -402,6 +403,13 @@ export default function AppNav({
                 <span className="relative">{pedidosOnlineNuevos}</span>
               </span>
             )}
+          </Link>
+        )}
+        {/* Lo que escriben los clientes sobre lo que compraron (18/11). */}
+        {puedeVer("/comentarios") && (
+          <Link href="/comentarios" className={`mt-0.5 ${claseLink(pathname === "/comentarios")}`}>
+            <Icono nombre="operaciones" className={pathname === "/comentarios" ? "text-accent" : "text-neutral-500"} />
+            Comentarios
           </Link>
         )}
         {/* Solo el Dueño: los seis encargados con IA ven todos los números. */}

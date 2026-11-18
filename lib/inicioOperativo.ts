@@ -7,6 +7,7 @@ import { cartelesNuevosPendientes, stickersPorPegar } from "@/lib/entradas";
 import { cobrosEsperando, NADIE_ESPERANDO } from "@/lib/cobrosEsperando";
 import { datosFraccionar, fraccionadosEnCurso } from "@/lib/fraccionado";
 import { PASO_PARA_ETIQUETAR, conLoYaFraccionado, paraEtiquetar, paraFraccionar } from "@/lib/fraccionarSugerido";
+import { comentariosPendientes } from "@/lib/opinionesProducto";
 
 // El Inicio del operativo en la tablet del local (pedido de Gonzalo,
 // 2026-10-22): arriba un botón grande con lo que toca hacer AHORA, y abajo
@@ -284,6 +285,21 @@ export async function armarInicioOperativo(
       alerta: onlineNuevos.length > 0,
       deshabilitado: false,
     });
+  }
+  // Comentarios de clientes esperando que alguien los publique u oculte (18/11).
+  if (puede("comentarios")) {
+    const n = await comentariosPendientes(supabase);
+    if (n > 0)
+      agregar({
+        clave: "comentarios",
+        titulo: "Comentarios de clientes",
+        detalle: n === 1 ? "Hay uno para revisar: publicalo u ocultalo" : `Hay ${n} para revisar: publicalos u ocultalos`,
+        href: "/comentarios",
+        icono: "💬",
+        badge: n,
+        badgeTono: "ambar",
+        deshabilitado: false,
+      });
   }
   if (puede("cobros-efectivo"))
     agregar({

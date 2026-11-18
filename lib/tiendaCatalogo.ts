@@ -3,6 +3,7 @@ import { COLUMNAS_PRODUCTO_PUBLICO, COLUMNAS_VARIANTE_PUBLICA, COLUMNAS_PROFESIO
 import { traerCombos } from "@/lib/combosServidor";
 import { fetchContenidoAsesor } from "@/lib/contenidoAsesor";
 import { cargarMarcasFabrica } from "@/lib/marcaFabrica";
+import { calificaciones } from "@/lib/opinionesProducto";
 
 // El catálogo de la tienda online (public/tienda), con los nombres cortos que usa
 // su app.js (viene del prototipo aprobado el 2026-11-12, que leía este mismo
@@ -84,7 +85,7 @@ export async function armarCatalogoTienda(supabase: SupabaseClient) {
     .limit(1)
     .maybeSingle();
 
-  const [marcasRes, productosRes, variantesRes, stockRes, contenido, marcasFabrica, profesionalesRes, profObjRes, puestoVentas] = await Promise.all([
+  const [marcasRes, productosRes, variantesRes, stockRes, contenido, marcasFabrica, profesionalesRes, profObjRes, puestoVentas, califs] = await Promise.all([
     traerMarcasPublicas(supabase as never),
     supabase
       .from("productos")
@@ -99,6 +100,8 @@ export async function armarCatalogoTienda(supabase: SupabaseClient) {
     supabase.from("profesionales").select(COLUMNAS_PROFESIONAL_PUBLICO).eq("estado", "ACTIVO").eq("publicado", true).order("orden", { ascending: true }),
     supabase.from("profesional_objetivos").select("id_profesional, id_objetivo"),
     masVendidos(supabase, (local?.id_local as string | undefined) ?? null),
+    // Las estrellas de los clientes y sus últimos comentarios publicados (18/11).
+    calificaciones(supabase),
   ]);
   if (productosRes.error) throw new Error(`productos: ${productosRes.error.message}`);
 
@@ -158,6 +161,8 @@ export async function armarCatalogoTienda(supabase: SupabaseClient) {
       ob: (contenido.objetivosPorProducto[p.id_producto] ?? []).map((id) => objetivoNombre.get(id)).filter(Boolean),
       fl: (contenido.filtrosPorProducto[p.id_producto] ?? []).map((id) => filtroNombre.get(id)).filter(Boolean),
       al: texto(p.alergenos),
+      // Estrellas: promedio, cuántas opiniones y hasta 3 comentarios publicados. Sin opiniones, no van.
+      ...(califs.get(p.id_producto) ? { r: califs.get(p.id_producto)!.prom, rc: califs.get(p.id_producto)!.cant, op: califs.get(p.id_producto)!.ultimas } : {}),
     });
   }
 
