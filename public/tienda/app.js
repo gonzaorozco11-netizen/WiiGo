@@ -850,7 +850,7 @@
   }
   setInterval(function () {
     var p = document.getElementById('b-pista');
-    if (!p || window.matchMedia('(prefers-reduced-motion: reduce)').matches || S.ficha || S.pedido || S.cuenta || S.menu) return;
+    if (!p || window.matchMedia('(prefers-reduced-motion: reduce)').matches || S.ficha || S.pedido || S.cuenta || S.menu || S.cartelIni) return;
     if (Date.now() - (S.bannerQuieto || 0) < 9000) return;
     var r = p.getBoundingClientRect(); if (r.bottom < 0 || r.top > window.innerHeight) return;
     S.banner = ((S.banner || 0) + 1) % p.children.length;
@@ -1218,11 +1218,38 @@
     if (e.key === 'Enter' && /^c-/.test(e.target.id || '')) { var f = e.target.closest('.form'), b = f && f.querySelector('.cta'); if (b) { e.preventDefault(); b.click(); } }
     if (e.key === 'Escape') { S.menu = false; S.ficha = null; S.pedido = false; pintar(false); }
   });
+  // Cartel «WiiGo llegó a Mendoza» (Gonzalo, 18/11, maqueta aprobada): una sola vez por celular, la
+  // primera vez que entra. No sale si viene de un link de producto o de su pedido. El logo se prende
+  // como el cartel de la fachada. Va aparte de pintar() para que no se borre al redibujar.
+  function cartelBienvenida(desdeLink) {
+    var CLAVE = 'wiigo-bienvenida-mza';
+    try { if (localStorage.getItem(CLAVE)) return; } catch (e) { return; }
+    if (desdeLink) { try { localStorage.setItem(CLAVE, '1'); } catch (e) {} return; }
+    S.cartelIni = true;
+    var d = document.createElement('div');
+    d.className = 'bv';
+    d.innerHTML = '<div class="bv-velo" data-bv></div><section class="bv-cartel" role="dialog" aria-modal="true" aria-labelledby="bv-t">' +
+      '<div class="bv-arriba"><button class="bv-x" type="button" aria-label="Cerrar" data-bv>' + ic('cruz', 18) + '</button>' +
+      '<img class="bv-logo" src="/wiigo-logo-negro.png" alt="WiiGo Estaciones de Bienestar"><span class="bv-pin">📍 Arístides Villanueva 256</span></div>' +
+      '<div class="bv-abajo"><h2 id="bv-t">WiiGo llegó a <em>Mendoza</em>.</h2><p>La primera Estación de Bienestar. Pedí online y retirá en 15 minutos.</p>' +
+      '<button class="bv-entrar" type="button" data-bv>Entrar a la tienda</button></div></section>';
+    document.body.appendChild(d);
+    var cerrar = function () {
+      try { localStorage.setItem(CLAVE, '1'); } catch (e) {}
+      S.cartelIni = false; d.classList.remove('abierto'); document.removeEventListener('keydown', esc_);
+      setTimeout(function () { d.remove(); }, 450);
+    };
+    var esc_ = function (e) { if (e.key === 'Escape') cerrar(); };
+    d.querySelectorAll('[data-bv]').forEach(function (b) { b.addEventListener('click', cerrar); });
+    document.addEventListener('keydown', esc_);
+    setTimeout(function () { d.classList.add('abierto'); var b = d.querySelector('.bv-entrar'); if (b) b.focus({ preventScroll: true }); }, 350);
+  }
   // Desde el mail: /tienda?pedido=WG-XXXX abre el seguimiento de ese pedido.
   try { var codigoUrl = new URLSearchParams(location.search).get('pedido'); if (codigoUrl && /^WG-[A-Z0-9]{4}$/.test(codigoUrl)) { S.abrirCodigo = codigoUrl; S.vista = 'seguir'; } } catch (e) {}
   // El link que mandó un amigo (?p=<producto>): abre la ficha de ese producto.
   try { var prodUrl = new URLSearchParams(location.search).get('p'); if (prodUrl && POR_ID[prodUrl]) S.ficha = prodUrl; } catch (e) {}
   pintar(false);
+  cartelBienvenida(!!(S.abrirCodigo || S.ficha));
   // ¿Ya entró antes en este celu? La cookie la lee el servidor.
   api().then(function (r) { if (r && r.usuario) { S.usuario = r.usuario; pintar(false); cargarPedidos(); } else if (S.abrirCodigo) { A.cuenta(); aviso('Entrá con tu DNI para ver tu pedido'); } });
   // Mientras mira su pedido en curso, se actualiza solo cada 30 segundos (no menos: cada pregunta cuenta para el plan de Vercel).
