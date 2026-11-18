@@ -103,7 +103,11 @@
     var b = [
       '<div class="banner carga" data-a="ver-todo" role="button" tabindex="0"><div><h1 class="hola">La estación de servicio de <em>tu cuerpo</em>.</h1><p class="hola-sub">Cargá energía: pedí online y retiralo listo en 15 minutos.</p></div>' + ILUS_CARGA + '</div>',
       '<div class="banner b-15" data-a="ver-todo" role="button" tabindex="0"><div><h2 class="hola">Pedí y retirá en <em>15 minutos</em>.</h2>' + BANNER_15 + '</div></div>',
-      '<div class="banner b-club" data-a="cuenta" role="button" tabindex="0"><div><h2 class="hola">Unite a <em>WiiGo Club</em>.</h2><p class="hola-sub">Sumá puntos en cada compra, online o en la estación.</p><span class="b-chip">' + (S.usuario ? '★ Tenés ' + S.usuario.puntos.toLocaleString('es-AR') + ' puntos' : 'Gratis · con tu DNI') + '</span></div>' + TARJETA_CLUB + '</div>'
+      // 18/11: que se entienda que tocando te registrás. Sin cuenta, un botón «Registrate gratis →» que
+      // late; con cuenta, «Sos de WiiGo Club» y sus puntos.
+      (S.usuario
+        ? '<div class="banner b-club" data-a="cuenta" role="button" tabindex="0" aria-label="Ver mis puntos de WiiGo Club"><div><h2 class="hola">Sos de <em>WiiGo Club</em>.</h2><p class="hola-sub">Sumás 5 puntos cada $1.000, online o en la estación.</p><span class="b-chip b-chip-cta">★ Tenés ' + S.usuario.puntos.toLocaleString('es-AR') + ' puntos <i>→</i></span></div>' + TARJETA_CLUB + '</div>'
+        : '<div class="banner b-club" data-a="cuenta" role="button" tabindex="0" aria-label="Registrate gratis en WiiGo Club"><div><h2 class="hola">Unite a <em>WiiGo Club</em>.</h2><p class="hola-sub">Sumá puntos en cada compra. Gratis, solo con tu DNI.</p><span class="b-chip b-chip-cta">Registrate gratis <i>→</i></span></div>' + TARJETA_CLUB + '</div>')
     ];
     return '<section class="banners" aria-roledescription="carrusel" aria-label="Novedades de WiiGo"><div class="b-pista" id="b-pista">' + b.join('') + '</div><div class="b-puntos">' + b.map(function (_, i) { return '<button data-a="banner" data-i="' + i + '" aria-label="Banner ' + (i + 1) + '"' + (i === 0 ? ' aria-current="true"' : '') + '></button>'; }).join('') + '</div></section>';
   }

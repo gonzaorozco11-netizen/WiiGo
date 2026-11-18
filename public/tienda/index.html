@@ -49,6 +49,11 @@ body{background:var(--fondo)}
 .b-club .hola{color:#2d2d2d}.b-club .hola em{font-style:normal;color:#2d2d2d;background:linear-gradient(transparent 62%,rgba(141,152,128,.6) 62%);padding:0 2px}
 .b-club .hola-sub{color:#5a4c33}
 .b-chip{display:inline-block;margin-top:8px;background:#2d2d2d;color:#c9cfb8;border-radius:999px;padding:5px 11px;font-size:12px;font-weight:800}
+/* Que se vea que es para tocar (18/11): más grande, blanco sobre gris oscuro, la flecha empuja y un pulso suave */
+.b-chip-cta{display:inline-flex;align-items:center;gap:7px;margin-top:10px;padding:9px 15px;font-size:14px;color:#fff;box-shadow:0 6px 14px rgba(45,45,45,.25);animation:b-latido 2.4s ease-in-out infinite}
+.b-chip-cta i{font-style:normal;display:inline-block;animation:b-empuja 1.2s ease-in-out infinite}
+@keyframes b-empuja{0%,100%{transform:none}50%{transform:translateX(4px)}}
+@keyframes b-latido{0%,100%{box-shadow:0 6px 14px rgba(45,45,45,.25),0 0 0 0 rgba(45,45,45,.35)}60%{box-shadow:0 6px 14px rgba(45,45,45,.25),0 0 0 9px rgba(45,45,45,0)}}
 .b-tarjeta{position:relative;width:132px;height:120px}
 .tc{position:absolute;left:8px;top:26px;width:116px;height:74px;border-radius:12px;background:linear-gradient(135deg,#2d2d2d,#4a4a4a);border:2px solid #c9cfb8;box-shadow:0 10px 22px rgba(59,47,14,.35);transform:rotate(-9deg);overflow:hidden;animation:flotar 4s ease-in-out infinite;color:#f5efe3;padding:8px 10px}
 @keyframes flotar{0%,100%{transform:rotate(-9deg) translateY(0)}50%{transform:rotate(-6deg) translateY(-5px)}}
@@ -632,6 +637,6 @@ a.dir-mapa u{text-decoration:underline;text-underline-offset:2px;color:#3f5536;f
 <div class="app" id="app"><p style="padding:60px 16px;text-align:center;color:#626a5e">Cargando los productos…</p></div>
 <!-- El catálogo real, armado en el servidor con lo público de cada producto (lib/tiendaCatalogo.ts). -->
 <script src="/api/tienda/catalogo"></script>
-<script src="app.js?v=33"></script>
+<script src="app.js?v=34"></script>
 </body>
 </html>
