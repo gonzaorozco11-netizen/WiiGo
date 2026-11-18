@@ -842,7 +842,12 @@
     p.onpointerdown = p.ontouchstart = function () { S.bannerQuieto = Date.now(); };
     marcarPuntos(); pasos15();
   }
-  function marcarPuntos() { document.querySelectorAll('.b-puntos button').forEach(function (b, i) { if (i === (S.banner || 0)) b.setAttribute('aria-current', 'true'); else b.removeAttribute('aria-current'); }); }
+  function marcarPuntos() {
+    document.querySelectorAll('.b-puntos button').forEach(function (b, i) { if (i === (S.banner || 0)) b.setAttribute('aria-current', 'true'); else b.removeAttribute('aria-current'); });
+    // El de los 15 minutos arranca de cero cada vez que aparece (Gonzalo, 18/11).
+    var p = document.getElementById('b-pista'), b15 = p && p.children[S.banner || 0];
+    if (b15 && b15.classList.contains('b-15')) { if (!visto15) arrancar15(); visto15 = true; } else visto15 = false;
+  }
   setInterval(function () {
     var p = document.getElementById('b-pista');
     if (!p || window.matchMedia('(prefers-reduced-motion: reduce)').matches || S.ficha || S.pedido || S.cuenta || S.menu) return;
@@ -851,9 +856,15 @@
     S.banner = ((S.banner || 0) + 1) % p.children.length;
     p.scrollTo({ left: S.banner * p.clientWidth, behavior: 'smooth' });
   }, 6000);
-  // El banner de los 15 minutos: cada 1,3 s se prende el paso siguiente, la barra avanza y el cronómetro
-  // corre hasta el minuto de ese paso. Al final: 14:30, «¡Listo!», y vuelve a empezar.
-  var paso15 = 0, segs15 = 0;
+  // El banner de los 15 minutos: apenas aparece se prende «Pedís» y cada 0,9 s el paso siguiente; la barra
+  // avanza y el cronómetro corre hasta el minuto de ese paso. Termina en 14:30 «¡Listo!» y queda ahí
+  // hasta que pasa al banner siguiente. Solo corre mientras se ve (18/11: antes corría siempre y al
+  // aparecer ya estaba por la mitad o terminado).
+  var paso15 = 0, segs15 = 0, reloj15 = null, visto15 = false;
+  function arrancar15() {
+    clearTimeout(reloj15); paso15 = 0; segs15 = 0; pasos15();
+    (function sig() { reloj15 = setTimeout(function () { if (!visto15 || paso15 >= 4) return; paso15++; pasos15(); sig(); }, paso15 === 0 ? 200 : 900); })();
+  }
   function mmss(s) { return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(Math.floor(s % 60)).padStart(2, '0'); }
   function pasos15() {
     var ps = document.querySelectorAll('.b-paso'); if (!ps.length) return;
@@ -870,7 +881,6 @@
       if (k < 1) requestAnimationFrame(correr);
     })(ini);
   }
-  setInterval(function () { paso15 = (paso15 + 1) % 7; pasos15(); }, 1300);
 
   /* El planeta (three.js, el mismo de la tienda). Se crea una vez y se vuelve a enganchar en cada pintada. */
   var G = null, menosMov = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
