@@ -44,6 +44,55 @@
     eeuu: { n: 'Estados Unidos', lat: 39, lon: -98 }, iran: { n: 'Irán', lat: 32, lon: 53 }, turquia: { n: 'Turquía', lat: 39, lon: 35 },
     misiones: { n: 'Misiones, Argentina', lat: -27, lon: -54.6 }, mendoza: { n: 'Mendoza, Argentina', lat: -33.5, lon: -68.8 }, argentina: { n: 'Argentina', lat: -37, lon: -62 }
   };
+  // «Del mundo» con la foto de cada lugar (Gonzalo, 18/11): de día o de noche según la hora real de allá,
+  // con el clima de ahora (app/api/tienda/clima) y una frase de cómo nace el producto. Las fotos están en
+  // public/tienda/mundo/<lugar>-dia.webp y -noche.webp (hechas con Higgsfield, sin derechos de nadie).
+  // Un lugar nuevo sin foto (Perú, Chile…) se ve como antes, solo con el planeta.
+  var POSTAL = {
+    egipto: { tz: 'Africa/Cairo', c: 'Los <b>dátiles</b> crecen en las palmeras de los oasis, al lado del desierto.' },
+    argelia: { tz: 'Africa/Algiers', c: 'Los <b>dátiles</b> de Argelia crecen en los oasis del Sahara, en palmeras que aguantan el calor del desierto.' },
+    pakistan: { tz: 'Asia/Karachi', c: 'La <b>sal rosa</b> sale de la roca, al pie de las montañas del Himalaya. El rosado viene de los minerales que tiene.' },
+    bolivia: { tz: 'America/La_Paz', c: 'Del <b>altiplano boliviano</b>, a más de 3.600 metros y cerca del salar de Uyuni, viene la quinoa real.' },
+    vietnam: { tz: 'Asia/Ho_Chi_Minh', c: 'Las <b>castañas de cajú</b> nacen de un fruto tropical. Vietnam es uno de los lugares que más cajú produce en el mundo.' },
+    brasil: { tz: 'America/Fortaleza', c: 'El <b>cajú</b> es del nordeste de Brasil: la castaña crece colgada debajo de un fruto rojo y amarillo.' },
+    china: { tz: 'Asia/Shanghai', c: 'Las <b>semillas de zapallo</b> peladas vienen de los campos del norte de China.' },
+    eeuu: { tz: 'America/New_York', c: 'Los <b>arándanos rojos</b> crecen en campos que se inundan para cosecharlos: las frutas flotan y se juntan del agua.' },
+    misiones: { tz: 'America/Argentina/Buenos_Aires', c: 'La <b>yerba</b> crece en la tierra colorada de Misiones, al lado de la selva.' },
+    mendoza: { tz: 'America/Argentina/Mendoza', c: 'Nuestros <b>mix</b> se arman acá, en Mendoza, al pie de los Andes.' },
+    argentina: { tz: 'America/Argentina/Buenos_Aires', c: 'Hechos y cosechados en <b>Argentina</b>, de punta a punta del país.' }
+  };
+  function horaDe(tz) {
+    try {
+      var p = new Intl.DateTimeFormat('es-AR', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date());
+      var h = Number(p.filter(function (x) { return x.type === 'hour'; })[0].value) % 24, m = p.filter(function (x) { return x.type === 'minute'; })[0].value;
+      return { h: h, txt: String(h).padStart(2, '0') + ':' + m };
+    } catch (e) { return { h: 12, txt: '' }; }
+  }
+  function pedirClima(k) {
+    S.clima = S.clima || {};
+    if (k in S.clima) return;
+    S.clima[k] = null; // pidiendo
+    fetch('/api/tienda/clima?k=' + encodeURIComponent(k)).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; }).then(function (j) {
+      S.clima[k] = j && !j.error ? j : false; // false: sin clima, se ve solo la hora (y no se vuelve a pedir)
+      // Si todavía está el avioncito, espera a que termine para no cortarlo.
+      setTimeout(function () { if (S.f && S.f.lugar === k) pintar(false); }, Math.max(0, (S.viajeHasta || 0) - Date.now()));
+    });
+  }
+  function postal(k) {
+    var p = POSTAL[k]; if (!p) return '';
+    pedirClima(k);
+    var c = S.clima[k] || null, h = horaDe(p.tz);
+    var dia = c && c.dia != null ? c.dia : h.h >= 6 && h.h < 21, tarde = dia && (h.h < 8 || h.h >= 18);
+    var gotas = '';
+    if (c && c.efecto) for (var i = 0; i < (c.efecto === 'nieve' ? 40 : 55); i++) gotas += '<i style="left:' + Math.round(Math.random() * 110 - 5) + '%;animation-duration:' + (c.efecto === 'nieve' ? 5 + Math.random() * 5 : .6 + Math.random() * .5).toFixed(2) + 's;animation-delay:-' + (Math.random() * 8).toFixed(2) + 's"></i>';
+    var viaje = S.viajar === k ? '<div class="pos-viaje" aria-hidden="true"><span><i>✈</i> Viajando a ' + esc(LUGARES[k].n) + '…</span></div>' : '';
+    S.viajar = null;
+    return '<div class="postal' + (tarde ? ' tarde' : '') + '"><img class="pos-foto" src="/tienda/mundo/' + k + '-' + (dia ? 'dia' : 'noche') + '.webp" alt="' + esc(LUGARES[k].n) + (dia ? ', de día' : ', de noche') + '" decoding="async">' +
+      '<div class="pos-tono"></div>' + (gotas ? '<div class="pos-' + c.efecto + '" aria-hidden="true">' + gotas + '</div>' : '') +
+      '<div class="pos-ahora"><div class="pos-l"><small>Ahora en</small><b>' + esc(LUGARES[k].n) + '</b></div>' +
+      '<div class="pos-r"><b>' + (c ? c.ic + ' ' + c.t + '°' : h.txt) + '</b><small>' + (c ? h.txt + ' · ' + esc(c.cond) : 'hora de allá') + '</small></div></div>' + viaje + '</div>' +
+      '<p class="pos-cuento">' + p.c + '</p><span class="pos-sello">✓ Lo tenés en la estación · Arístides Villanueva 256</span>';
+  }
   function lugarClave(txt) {
     var t = norm(txt);
     var tabla = [['misiones', 'misiones'], ['mendoza', 'mendoza'], ['pakistan', 'pakistan'], ['himalaya', 'pakistan'], ['egipto', 'egipto'], ['argelia', 'argelia'], ['vietnam', 'vietnam'], ['brasil', 'brasil'], ['bolivia', 'bolivia'], ['peru', 'peru'], ['chile', 'chile'], ['china', 'china'], ['eeuu', 'eeuu'], ['estados unidos', 'eeuu'], ['iran', 'iran'], ['turqu', 'turquia'], ['argentin', 'argentina']];
@@ -437,7 +486,8 @@
     if (f.mundo) {
       var total = CLAVES_MUNDO.reduce(function (a, k) { return a + DEL_MUNDO[k].length; }, 0);
       extra = '<div class="mundo"><div class="globo" id="globo"></div><div class="mundo-txt"><b>' + (f.lugar ? 'Desde ' + esc(LUGARES[f.lugar].n) : 'De cada rincón, a tu estación') + '</b><span>' + (f.lugar ? DEL_MUNDO[f.lugar].length + ' productos · tocá otro lugar en el planeta' : total + ' productos con su origen en ' + CLAVES_MUNDO.length + ' lugares · girá el planeta y tocá uno') + '</span></div></div>' +
-        '<div class="accesos" style="margin:0 -14px 12px"><button class="acceso" data-a="lugar" data-k="" aria-pressed="' + !f.lugar + '">Todos</button>' + CLAVES_MUNDO.map(function (k) { return '<button class="acceso" data-a="lugar" data-k="' + k + '" aria-pressed="' + (f.lugar === k) + '">' + esc(LUGARES[k].n) + ' · ' + DEL_MUNDO[k].length + '</button>'; }).join('') + '</div>';
+        '<div class="accesos" style="margin:0 -14px 12px"><button class="acceso" data-a="lugar" data-k="" aria-pressed="' + !f.lugar + '">Todos</button>' + CLAVES_MUNDO.map(function (k) { return '<button class="acceso" data-a="lugar" data-k="' + k + '" aria-pressed="' + (f.lugar === k) + '">' + esc(LUGARES[k].n) + ' · ' + DEL_MUNDO[k].length + '</button>'; }).join('') + '</div>' +
+        (f.lugar && S.q.length < 2 ? postal(f.lugar) : '');
     }
     if (f.objetivos) extra = '<div class="accesos tonos" style="margin:0 -14px 12px">' + D.objetivos.map(function (o, i) { var n = PROD.filter(function (p) { return (p.ob || []).indexOf(o) >= 0; }).length, t = TONOS[i % TONOS.length]; return n ? '<button class="acceso" data-a="obj" data-o="' + esc(o) + '" aria-pressed="' + (f.obj === o) + '" style="background:' + t[0] + ';color:' + t[1] + (f.obj === o ? ';box-shadow:0 0 0 3px var(--fondo),0 0 0 5px ' + t[0] : ';opacity:.82') + '">' + esc(o) + ' · ' + n + '</button>' : ''; }).join('') + '</div>';
     if (S.q.length >= 2) extra = '';
@@ -1020,7 +1070,11 @@
     'combo-agregar': function () { var c = POR_COMBO[S.combo]; if (c) agregarCombo(c); },
     'cerrar-combo': function () { S.combo = null; S.comboSel = null; pintar(false); },
     mundo: function () { ver({ mundo: true, titulo: 'Productos del mundo' }); },
-    lugar: function (d) { var f = S.f; f.lugar = d.k && f.lugar !== d.k ? d.k : null; f.titulo = 'Productos del mundo'; S.limite = 20; pintar(false); if (G) G.marcar(f.lugar); },
+    lugar: function (d) {
+      var f = S.f; f.lugar = d.k && f.lugar !== d.k ? d.k : null; f.titulo = 'Productos del mundo'; S.limite = 20;
+      if (f.lugar && POSTAL[f.lugar]) { S.viajar = f.lugar; S.viajeHasta = Date.now() + 900; }
+      pintar(false); if (G) G.marcar(f.lugar);
+    },
     desc: function () { S.descAbierta = !S.descAbierta; pintar(false); },
     objetivos: function () { ver({ objetivos: true, titulo: 'Por objetivo' }); },
     obj: function (d) { var f = S.f; f.obj = d.o; f.titulo = d.o; S.limite = 20; pintar(false); },

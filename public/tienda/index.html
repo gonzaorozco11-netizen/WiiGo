@@ -199,6 +199,33 @@ main{padding:14px}
 .mundo-txt{position:absolute;left:16px;right:16px;bottom:14px;color:#e8eef5;pointer-events:none}
 .mundo-txt b{font:800 22px/1.05 var(--display)}
 .mundo-txt span{display:block;font-size:12.5px;color:#b9c6d6;margin-top:3px}
+/* La foto del lugar (18/11): se acerca despacio; de día o de noche con la hora de allá; lluvia o nieve si hay */
+.postal{position:relative;border-radius:24px;overflow:hidden;aspect-ratio:4/3;background:#2d2d2d;margin-bottom:10px}
+.pos-foto{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;animation:pos-acercar 22s ease-in-out infinite alternate}
+@keyframes pos-acercar{from{transform:scale(1.02)}to{transform:scale(1.12) translateX(-3%)}}
+.pos-tono{position:absolute;inset:0;pointer-events:none}
+.postal.tarde .pos-tono{background:linear-gradient(180deg,rgba(233,120,60,.38),rgba(246,190,120,.16) 55%,rgba(60,30,20,.12))}
+.pos-lluvia,.pos-nieve{position:absolute;inset:0;overflow:hidden;pointer-events:none}
+.pos-lluvia i{position:absolute;top:-30px;width:1.5px;height:22px;background:rgba(220,232,245,.6);transform:rotate(12deg);animation:pos-llueve linear infinite}
+@keyframes pos-llueve{to{transform:translate(-60px,110vw) rotate(12deg)}}
+.pos-nieve i{position:absolute;top:-10px;width:5px;height:5px;border-radius:50%;background:rgba(255,255,255,.9);animation:pos-nieva linear infinite}
+@keyframes pos-nieva{to{transform:translate(24px,90vw)}}
+.pos-ahora{position:absolute;top:10px;left:10px;right:10px;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;pointer-events:none}
+.pos-l{background:rgba(255,255,255,.88);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border-radius:14px;padding:7px 11px;min-width:0}
+.pos-l small{display:block;font-size:10.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--gris)}
+.pos-l b{display:block;font:800 17px/1.15 var(--display);color:var(--tinta)}
+.pos-r{background:rgba(45,45,45,.8);color:#fff;border-radius:14px;padding:7px 11px;text-align:right;font-variant-numeric:tabular-nums;flex-shrink:0}
+.pos-r b{display:block;font:800 20px/1 var(--display)}
+.pos-r small{display:block;font-size:11.5px;margin-top:3px;color:#e6e6e6}
+.pos-viaje{position:absolute;inset:0;display:grid;place-items:center;background:var(--fachada);animation:pos-llegar .9s ease-in forwards;pointer-events:none}
+.pos-viaje span{font:800 17px var(--display);color:var(--tinta);display:flex;align-items:center;gap:8px}
+.pos-viaje i{font-style:normal;display:inline-block;animation:pos-volar .45s ease-in-out infinite alternate}
+@keyframes pos-llegar{0%,70%{opacity:1}100%{opacity:0;visibility:hidden}}
+@keyframes pos-volar{from{transform:translate(-10px,3px) rotate(6deg)}to{transform:translate(10px,-3px) rotate(-6deg)}}
+.pos-cuento{margin:0 2px 8px;font-size:14.5px;line-height:1.45;color:#3d3d3d}
+.pos-cuento b{color:var(--tinta)}
+.pos-sello{display:inline-flex;align-items:center;gap:6px;margin:0 0 14px;background:var(--carta);border:1px solid var(--linea);border-radius:999px;padding:5px 11px;font-size:12px;font-weight:800;color:var(--energia)}
+@media (prefers-reduced-motion:reduce){.pos-viaje,.pos-lluvia,.pos-nieve{display:none}}
 .liviano{background:url(img/tierra-liviana.jpg) 0 50%/200% 100% repeat-x;border-radius:50%;width:70%;margin:12% auto;aspect-ratio:1;box-shadow:inset -30px -16px 60px rgba(0,0,0,.7),0 0 40px rgba(120,170,255,.35);animation:plano 60s linear infinite}
 @keyframes plano{to{background-position:-200% 50%}}
 .tonos .acceso{border:0}
@@ -637,6 +664,6 @@ a.dir-mapa u{text-decoration:underline;text-underline-offset:2px;color:#3f5536;f
 <div class="app" id="app"><p style="padding:60px 16px;text-align:center;color:#626a5e">Cargando los productos…</p></div>
 <!-- El catálogo real, armado en el servidor con lo público de cada producto (lib/tiendaCatalogo.ts). -->
 <script src="/api/tienda/catalogo"></script>
-<script src="app.js?v=34"></script>
+<script src="app.js?v=35"></script>
 </body>
 </html>
