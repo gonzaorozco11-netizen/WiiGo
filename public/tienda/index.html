@@ -214,7 +214,13 @@ main{padding:14px}
 .paso button{border:0;background:none;color:inherit;height:46px;font-size:22px;font-weight:800}
 /* Formato de app de delivery (16/11): texto a la izquierda, foto a la derecha con el «+» encima */
 .items{display:grid;column-gap:22px}
-.item{display:grid;grid-template-columns:minmax(0,1fr) 104px;gap:14px;padding:14px 0;border-bottom:1px solid var(--linea);align-items:start}
+/* Renglón corto (18/11): foto chica a la izquierda, nombre, marca y precios, y el «+» a la derecha */
+.item{display:grid;grid-template-columns:64px minmax(0,1fr) auto;gap:12px;padding:10px 0;border-bottom:1px solid var(--linea);align-items:center}
+.item .it-foto{width:64px;height:64px;border-radius:12px}
+.item .it-nom{font-size:14.5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.item .it-pr b{font-size:16px}
+.item .it-acc{position:static}
+.item .it-mas{width:36px;height:36px;font-size:22px;box-shadow:none;background:var(--bosque);color:#f5f1e8;border-color:var(--bosque)}
 .it-tx{border:0;background:none;padding:0;text-align:left;color:inherit;display:grid;gap:3px;justify-items:start;min-width:0}
 .it-nom{font-weight:800;font-size:15px;line-height:1.25}
 .it-mar{font-size:12px;font-weight:700;color:var(--gris)}
@@ -308,18 +314,16 @@ a.dir-mapa u{text-decoration:underline;text-underline-offset:2px;color:#3f5536;f
 .rubro-sec{scroll-margin-top:calc(var(--alto-cab,128px) + var(--alto-pegado,48px) + 6px)}
 /* Arriba, como la maqueta (16/11): la tarjeta del local montada sobre el borde de abajo del banner */
 .ini-top{position:relative}
-.ini-top .banner{padding-bottom:52px;min-height:206px}
-.ini-top .b-puntos{position:relative;z-index:3;margin-top:-44px;margin-bottom:18px}
-.ini-top .b-puntos button{background:rgba(255,255,255,.55)}
-.ini-top .b-puntos button[aria-current="true"]{background:#fff}
-.ini-top .local{position:relative;z-index:2;margin:0 12px}
+/* El banner más bajo (18/11): ya no lleva la tarjeta del local encima */
+.ini-top .banner{min-height:150px}
 /* El buscador con las pestañas, abajo de los accesos y pegados arriba al bajar */
 .pegado-ini{position:sticky;top:var(--alto-cab,64px);z-index:15;margin:12px -14px 0;padding:10px 14px 0;background:rgba(245,239,227,.96);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--linea)}
 .pegado-ini .buscar{margin-top:0}
 .pegado-ini .marcas-ini{margin:0 -14px 0;padding:2px 14px 2px}
 /* Las marcas, un poco más grandes en el celu (Gonzalo, 16/11) */
-.pegado-ini .marca-p{padding:5px 16px 5px 5px;font-size:15px;gap:9px}
-.pegado-ini .marca-p img,.pegado-ini .marca-p i{width:36px;height:36px}
+.pegado-ini .marca-p{padding:4px 14px 4px 4px;font-size:14px;gap:8px}
+.pegado-ini .marca-p img,.pegado-ini .marca-p i{width:32px;height:32px}
+.pegado-ini{padding-bottom:8px}
 .mp-tx{display:grid;line-height:1.1;text-align:left}
 .mp-tx b{font-weight:800}
 .mp-tx small{font-size:11px;font-weight:700;color:var(--gris)}
@@ -338,6 +342,19 @@ a.dir-mapa u{text-decoration:underline;text-underline-offset:2px;color:#3f5536;f
 .elegidos{display:grid;grid-auto-flow:column;grid-auto-columns:148px;gap:12px;overflow-x:auto;scrollbar-width:none;padding:2px 2px 10px}
 .elegidos::-webkit-scrollbar{display:none}
 .eleg .it-ft,.eleg .it-foto{width:148px;height:148px}
+.eleg .it-ft{position:relative}
+/* Más limpia (18/11): el local en una línea, 4 accesos redondos y el título de cada marca con «Ver todo» */
+.local-linea{display:flex;flex-wrap:wrap;gap:3px 10px;align-items:center;margin:10px 2px 0;font-size:13px;color:var(--gris);font-weight:600}
+.local-linea .abierto{color:var(--ef)}.local-linea .cerrado{color:#b54a2b}
+.local-linea a u{color:var(--bosque);font-weight:800}
+.accesos-4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:14px}
+.accesos-4 button{border:0;background:none;padding:0;display:grid;justify-items:center;gap:5px;font-size:12px;font-weight:800;color:var(--bosque);text-align:center}
+.accesos-4 span{width:54px;height:54px;border-radius:50%;background:var(--carta);border:1px solid var(--linea);display:grid;place-items:center;font-size:24px;position:relative}
+.accesos-4 em{position:absolute;top:-4px;right:-6px;font-style:normal;font-size:10.5px;font-weight:800;background:var(--energia);color:#fff;border-radius:999px;padding:1px 6px}
+.sec-cab{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.sec-cab button{border:0;background:none;padding:4px 0;font-weight:800;font-size:13.5px;color:var(--energia);white-space:nowrap}
+.marca-p.todo{padding:0 16px;font-weight:800}
+.pegado-ini .marca-p.todo{min-height:48px}
 .eleg-tx{border:0;background:none;padding:0;text-align:left;color:inherit;display:grid;gap:2px;margin-top:10px;width:100%}
 .eleg-tx span{font-weight:700;font-size:13px;line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .eleg-tx b{font:800 16px var(--display)}
@@ -548,6 +565,6 @@ a.dir-mapa u{text-decoration:underline;text-underline-offset:2px;color:#3f5536;f
 <div class="app" id="app"><p style="padding:60px 16px;text-align:center;color:#626a5e">Cargando los productos…</p></div>
 <!-- El catálogo real, armado en el servidor con lo público de cada producto (lib/tiendaCatalogo.ts). -->
 <script src="/api/tienda/catalogo"></script>
-<script src="app.js?v=27"></script>
+<script src="app.js?v=28"></script>
 </body>
 </html>

@@ -270,15 +270,24 @@
     var n = nutriPorcion(p);
     return '<span class="it-kcal">' + (n.k != null ? Math.round(n.k) + ' kcal' : '') + (n.pr ? ' · ' + coma(n.pr) + ' g prot' : '') + ' ' + (n.g || n.unidad ? 'por porción' : 'c/100 g') + '</span>';
   }
-  function item(p) {
-    var sin = p.s <= 0;
-    return '<article class="item' + (sin ? ' sin' : '') + '"><button class="it-tx" data-a="ficha" data-id="' + p.id + '">' +
-      '<span class="it-nom">' + esc(p.t) + '</span><span class="it-mar">' + esc(nombreMarca(p.mf || p.m)) + '</span>' +
-      (p.de ? '<span class="it-des">' + esc(p.de) + '</span>' : '') + kcalItem(p) +
-      (sin ? '<span class="it-sin">Sin stock por ahora</span>' : '<span class="it-pr"><b>' + plata(p.p) + '</b><span>' + plata(p.e || p.p) + ' efectivo</span></span>' + (p.s <= 2 ? '<span class="it-poco">Últimas ' + p.s + '</span>' : '')) +
-      '</button><div class="it-ft"><button class="it-foto" data-a="ficha" data-id="' + p.id + '" aria-label="Ver ' + esc(p.t) + '">' + foto(p, 256) + '</button>' +
-      '<div class="it-acc" data-acc="' + p.id + '" data-tipo="item">' + botonItem(p) + '</div></div></article>';
+  // El nombre sin la marca de fábrica repetida al final: «Iso Gold Protein 2lbs - Gold Nutrition» → la
+  // marca va abajo, en gris (18/11). Solo Animalfit, que revende varias marcas y las escribe así (Star
+  // Nutrition, Gold Nutrition, Granger…); en WiiGo «Fideos De Arroz - Spaghetti» es el tipo, no la marca.
+  function partirNombre(p) {
+    var m = p.m === 'Animalfit' ? /^(.*\S)\s+-\s+([A-Za-zÀ-ÿ&'.]+(?:\s+[A-Za-zÀ-ÿ&'.]+){0,2})(\s+—\s+.*)?$/.exec(p.t) : null;
+    return m ? { nom: m[1] + (m[3] || ''), mar: m[2] } : { nom: p.t, mar: nombreMarca(p.mf || p.m) };
   }
+  // Renglón corto (Gonzalo, 18/11, maqueta aprobada): foto chica, nombre, marca, los dos precios y el «+».
+  // La descripción y las calorías se ven al tocarlo, en la ficha.
+  function item(p) {
+    var sin = p.s <= 0, nm = partirNombre(p);
+    return '<article class="item' + (sin ? ' sin' : '') + '"><button class="it-foto" data-a="ficha" data-id="' + p.id + '" aria-label="Ver ' + esc(p.t) + '">' + foto(p, 128) + '</button>' +
+      '<button class="it-tx" data-a="ficha" data-id="' + p.id + '">' +
+      '<span class="it-nom">' + esc(nm.nom) + '</span><span class="it-mar">' + esc(nm.mar) + '</span>' +
+      (sin ? '<span class="it-sin">Sin stock por ahora</span>' : '<span class="it-pr"><b>' + plata(p.p) + '</b><span>' + plata(p.e || p.p) + ' efectivo</span></span>' + (p.s <= 2 ? '<span class="it-poco">Últimas ' + p.s + '</span>' : '')) +
+      '</button><div class="it-acc" data-acc="' + p.id + '" data-tipo="item">' + botonItem(p) + '</div></article>';
+  }
+  void kcalItem;
   function grilla(l) { return '<div class="items">' + l.map(item).join('') + '</div>'; }
   function conMas(l) { return grilla(l.slice(0, S.limite)) + (l.length > S.limite ? '<button class="ver-mas" data-a="mas">Ver más productos (' + (l.length - S.limite) + ')</button>' : ''); }
 
@@ -334,11 +343,16 @@
     ];
     return lista.map(function (b, i) { return '<button data-a="' + b[0] + '"' + extra + (copia && i === 0 ? ' data-copia' : '') + '><span>' + b[1] + '</span>' + b[2] + b[3] + '</button>'; }).join('');
   }
+  // Más limpia (Gonzalo, 18/11, maqueta aprobada): el local en una sola línea en vez de la tarjeta grande.
+  // Cómo se paga y los puntos quedaron en el pie.
   function tarjetaLocal() {
-    var m = MARCA.WiiGo, hr = horario();
-    return '<section class="local"><span class="local-logo">' + (m && m.logo ? imagen(m.logo, 128) : 'W') + '</span><div><h2>WiiGo · Arístides</h2><div class="local-meta">' +
-      '<span><b class="' + (hr[0] ? 'abierto' : 'cerrado') + '">● ' + (hr[0] ? 'Abierto' : 'Cerrado') + '</b> ' + hr[1] + '</span><span>🛍️ Retirás en 15 min</span><a class="dir-mapa" href="' + MAPA + '" target="_blank" rel="noopener">📍 Arístides Villanueva 256 <u>Cómo llegar</u></a></div></div>' +
-      '<div class="local-datos"><span>Pagás al retirar o por transferencia</span><span>Precio especial en efectivo</span><span class="club">★ Sumás puntos WiiGo Club</span></div></section>';
+    var hr = horario();
+    return '<p class="local-linea"><b class="' + (hr[0] ? 'abierto' : 'cerrado') + '">● ' + (hr[0] ? 'Abierto' : 'Cerrado') + ' · ' + hr[1] + '</b><span>Retirás en 15 min</span><a class="dir-mapa" href="' + MAPA + '" target="_blank" rel="noopener"><u>Arístides 256</u></a></p>';
+  }
+  // Cuatro accesos redondos, quietos (18/11). «Lo más elegido» y «Ofertas» son secciones de la página.
+  function accesos4() {
+    var l = [['objetivos', '🎯', 'Objetivos', ''], ['mundo', '🌍', 'Del mundo', ''], ['combos', '🎁', 'Combos', COMBOS.length ? '<em>' + COMBOS.length + '</em>' : ''], ['pros', '👩‍💻', 'Profesionales', '']];
+    return '<div class="accesos-4" role="group" aria-label="Accesos">' + l.map(function (b) { return '<button data-a="' + b[0] + '"><span>' + b[1] + b[3] + '</span>' + b[2] + '</button>'; }).join('') + '</div>';
   }
   // Formato de app de delivery (Gonzalo, 16/11): banners arriba, el local, los accesos de siempre, las pestañas
   // de rubros pegadas abajo del buscador, las marcas para filtrar, «Lo más elegido» y cada rubro con sus categorías.
@@ -361,34 +375,31 @@
     // pero se puede seguir subiendo y bajando: la pastilla marcada cambia sola a la categoría que se está
     // mirando (Gonzalo, 16/11, «como a la siguiente subcategoría automático»).
     var fotoSub = function (ps) { var c = ps.filter(function (p) { return p.img && p.s > 0; })[0] || ps.filter(function (p) { return p.img; })[0]; return c ? imagen(c.img, 96) : ''; };
-    var tabs = '<nav class="tabs-rubros' + (subsMarca ? ' pastillas' : '') + '" id="tabs-rubros" aria-label="' + (subsMarca ? 'Categorías' : 'Rubros') + '">' + (S.marcaIni ? '' : '<button class="tab-r" data-a="ir-sec" data-s="s-elegido">⭐ Lo más elegido</button>') +
-      (subsMarca ? subsMarca.map(function (s, i) { return '<button class="pastilla" data-a="ir-sec" data-s="s-s' + i + '">' + fotoSub(s[1]) + esc(s[0]) + ' <em>' + s[1].length + '</em></button>'; }).join('')
-        : rub.map(function (r, i) { return '<button class="tab-r" data-a="ir-sec" data-s="s-r' + i + '">' + r[2] + ' ' + esc(r[1]) + '</button>'; }).join('') + '<button class="tab-r" data-a="mundo">🌍 Del mundo</button>') + '</nav>';
-    var marcas = '<div class="marcas-ini" role="group" aria-label="Marcas">' + MARCAS.map(function (m) {
+    // Sin rubros (Gonzalo, 18/11: «no los pongas si luego cuando ponen las marcas ahí figuran las
+    // subcategorías»): las pestañas son solo las subcategorías de la marca elegida, con su fotito.
+    var tabs = subsMarca ? '<nav class="tabs-rubros pastillas" id="tabs-rubros" aria-label="Categorías">' +
+      subsMarca.map(function (s, i) { return '<button class="pastilla" data-a="ir-sec" data-s="s-s' + i + '">' + fotoSub(s[1]) + esc(s[0]) + ' <em>' + s[1].length + '</em></button>'; }).join('') + '</nav>' : '';
+    var marcas = '<div class="marcas-ini" role="group" aria-label="Marcas"><button class="marca-p todo" data-a="marca-ini" data-m="" aria-pressed="' + !S.marcaIni + '">Todo</button>' + MARCAS.map(function (m) {
       return '<button class="marca-p" data-a="marca-ini" data-m="' + esc(m.n) + '" aria-pressed="' + (S.marcaIni === m.n) + '">' + (m.logo ? imagen(m.logo, 64) : '<i>' + esc(m.n.charAt(0)) + '</i>') + '<span class="mp-tx"><b>' + esc(m.n) + '</b>' + (RUBRO_MARCA[m.n] ? '<small>' + RUBRO_MARCA[m.n] + '</small>' : '') + '</span></button>';
     }).join('') + '</div>';
     var elegido = S.marcaIni ? '' : '<section class="rubro-sec" id="s-elegido"><h2 class="seccion">Lo más elegido</h2><div class="elegidos">' + dest.map(function (p) {
       return '<article class="eleg"><div class="it-ft"><button class="it-foto" data-a="ficha" data-id="' + p.id + '" aria-label="Ver ' + esc(p.t) + '">' + foto(p, 256) + '</button><div class="it-acc" data-acc="' + p.id + '" data-tipo="item">' + botonItem(p) + '</div></div>' +
         '<button class="eleg-tx" data-a="ficha" data-id="' + p.id + '"><span>' + esc(p.t) + '</span><b>' + plata(p.p) + '</b></button></article>';
-    }).join('') + '</div><button class="ver-mas" data-a="nuevos">✨ Lo nuevo de la semana (' + NUEVOS.length + ')</button></section>';
+    }).join('') + '</div><button class="ver-mas" data-a="nuevos">✨ Lo nuevo de la semana (' + NUEVOS.length + ')</button>' +
+      (OFERTAS.length ? '<button class="ver-mas" data-a="ofertas">🏷️ Ofertas (' + OFERTAS.length + ')</button>' : '') + '</section>';
     var secciones = subsMarca ? subsMarca.map(function (s, i) {
       return '<section class="rubro-sec" id="s-s' + i + '"><h2 class="seccion">' + esc(s[0]) + '</h2><p class="rub-cant">' + s[1].length + (s[1].length === 1 ? ' producto' : ' productos') + ' de ' + esc(nombreMarca(S.marcaIni)) + '</p>' + grilla(ordenar(s[1])) + '</section>';
-    }).join('') : rub.map(function (r, i) {
-      var deR = l.filter(function (p) { return p.c === r[0]; }), subs = {};
-      deR.forEach(function (p) { (subs[p.sc] = subs[p.sc] || []).push(p); });
-      return '<section class="rubro-sec" id="s-r' + i + '"><h2 class="seccion">' + r[2] + ' ' + esc(r[0]) + '</h2><p class="rub-cant">' + deR.length + (deR.length === 1 ? ' producto' : ' productos') + '</p>' +
-        Object.keys(subs).sort(function (a, b) { return subs[b].length - subs[a].length || a.localeCompare(b, 'es'); }).map(function (s) {
-          return '<h3 class="sub-rub">' + esc(s) + ' · ' + subs[s].length + '</h3>' + grilla(ordenar(subs[s]));
-        }).join('') + '</section>';
+    }).join('') : MARCAS.map(function (m, i) {
+      // Sin marca elegida: cada marca con 4 productos y «Ver todo», que la elige (18/11). Antes eran
+      // todos los productos uno abajo del otro, por rubro: la página era larguísima.
+      var deM = ordenar(PROD.filter(function (p) { return p.m === m.n; }));
+      if (!deM.length) return '';
+      return '<section class="rubro-sec" id="s-m' + i + '"><div class="sec-cab"><h2 class="seccion">' + esc(nombreMarca(m.n)) + '</h2><button data-a="marca-ini" data-m="' + esc(m.n) + '">Ver todo (' + deM.length + ') ›</button></div>' + grilla(deM.slice(0, 4)) + '</section>';
     }).join('');
-    // Arriba como la maqueta (Gonzalo, 16/11): el banner y la tarjeta «WiiGo · Arístides» montada encima de
-    // su borde de abajo; después los accesos y, abajo de ellos, el buscador con las pestañas (pegados al bajar).
-    return '<div class="ini-top">' + banners() + tarjetaLocal() + '</div>' +
-      // Una fila que da vueltas sola (Gonzalo, 16/11; ver moverAccesos). Orden: primero Lo más elegido, último
-      // Ofertas. Va dos veces para que la vuelta no se note; la copia no la lee el lector de pantalla.
-      '<div class="accesos-ini" role="group" aria-label="Accesos">' + botonesAccesos(false) + botonesAccesos(true) + '</div>' +
-      // Pegados arriba al bajar (abajo del encabezado con el buscador): las marcas y, abajo de ellas, los rubros
-      // o las categorías de la marca (Gonzalo, 16/11: «las marcas arriba y abajo las subcategorías»).
+    void rub;
+    // Más limpia (18/11): el banner, el local en una línea y 4 accesos; abajo, pegadas al bajar, las marcas
+    // y —con una marca elegida— sus subcategorías.
+    return '<div class="ini-top">' + banners() + '</div>' + tarjetaLocal() + accesos4() +
       '<div class="pegado-ini" id="pegado-ini">' + marcas + tabs + '</div>' + elegido + secciones + pie();
   }
   function lista() {
@@ -413,7 +424,7 @@
     return '<div class="filtro-cab"><button class="redondo" data-a="inicio" aria-label="Volver al inicio">' + ic('atras') + '</button><span><b>Profesionales</b><small>Nutricionistas que trabajan con WiiGo</small></span></div><div style="display:grid;gap:10px">' +
       D.profesionales.map(function (p) { return '<div class="tarjeta" style="flex-direction:row;gap:14px;padding:12px;align-items:center">' + (p.foto ? imagen(p.foto, 256, ' style="width:84px;height:100px;object-fit:cover;border-radius:14px"') : '') + '<span><b style="font:800 18px/1.1 var(--display)">' + esc(p.n) + '</b><small style="display:block;color:var(--gris);margin:4px 0 8px">' + esc(p.t) + '</small>' + (p.ob ? '<button class="acceso" data-a="obj-directo" data-o="' + esc(p.ob) + '">Productos para ' + esc(p.ob.toLowerCase()) + '</button>' : '') + '</span></div>'; }).join('') + '</div>';
   }
-  function pie() { return '<footer class="pie"><img src="/wiigo-logo-negro.png" alt="WiiGo"><a class="dir-mapa" href="' + MAPA + '" target="_blank" rel="noopener"><b>Estación Arístides Villanueva 256</b>, Mendoza · <u>Cómo llegar</u></a><span>Lunes a sábado de 9 a 13 y de 17 a 21</span><span>Retiro en la estación, listo en menos de 15 minutos · Envío a domicilio: próximamente</span>' + redesPie() +
+  function pie() { return '<footer class="pie"><img src="/wiigo-logo-negro.png" alt="WiiGo"><a class="dir-mapa" href="' + MAPA + '" target="_blank" rel="noopener"><b>Estación Arístides Villanueva 256</b>, Mendoza · <u>Cómo llegar</u></a><span>Lunes a sábado de 9 a 13 y de 17 a 21</span><span>Retiro en la estación, listo en menos de 15 minutos · Envío a domicilio: próximamente</span><span>Pagás al retirar o por transferencia · Precio especial en efectivo · Sumás puntos WiiGo Club</span>' + redesPie() +
       // Gonzalo (16/11): que no se vea la sociedad. La ley de comercio electrónico pide que estén razón social,
       // CUIT y el link de Defensa del Consumidor, así que quedan guardados en «Información legal», que se abre al tocar.
       '<details class="legal"><summary>Información legal</summary><span>NUOVO IMPERO S.A.S. · CUIT 30-71851497-1 · Arístides Villanueva 256, Mendoza</span>' +
@@ -711,7 +722,7 @@
   }
   // Baja hasta donde el buscador, las marcas y las categorías quedan pegados arriba, con los productos justo abajo.
   function alPegado() {
-    var acc = document.querySelector('.accesos-ini'), cab = document.getElementById('cab');
+    var acc = document.querySelector('.accesos-4'), cab = document.getElementById('cab');
     if (acc) window.scrollTo(0, acc.getBoundingClientRect().bottom + window.scrollY - (cab ? cab.offsetHeight : 0));
   }
   function pintar(arriba) {
@@ -909,7 +920,8 @@
     },
     // Una marca: el inicio muestra solo lo de esa marca (se vuelve a tocar y aparece todo).
     'marca-ini': function (d) {
-      S.marcaIni = S.marcaIni === d.m ? null : d.m; pintar(false); alPegado();
+      // «Todo» (data-m vacío) vuelve a todas las marcas; desde «Ver todo» de una sección, elige esa marca.
+      S.marcaIni = !d.m || S.marcaIni === d.m ? null : d.m; pintar(false); alPegado();
       var mp = document.querySelector('.marca-p[aria-pressed="true"]'); if (mp) mp.parentNode.scrollLeft = mp.offsetLeft - 16;
     },
     'abrir-menu': function () { S.menu = true; S.menuMarca = (S.f && S.f.marca) || null; pintar(false); },
