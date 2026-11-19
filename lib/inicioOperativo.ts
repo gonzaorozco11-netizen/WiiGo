@@ -6,7 +6,7 @@ import { contarCartelesUrgentes } from "@/lib/tareasEtiqueta";
 import { cartelesNuevosPendientes, stickersPorPegar } from "@/lib/entradas";
 import { cobrosEsperando, NADIE_ESPERANDO } from "@/lib/cobrosEsperando";
 import { datosFraccionar, fraccionadosEnCurso } from "@/lib/fraccionado";
-import { PASO_PARA_ETIQUETAR, conLoYaFraccionado, paraEtiquetar, paraFraccionar } from "@/lib/fraccionarSugerido";
+import { PASO_IMPRESAS, PASO_PARA_ETIQUETAR, conLoYaFraccionado, paraEtiquetar, paraFraccionar } from "@/lib/fraccionarSugerido";
 import { comentariosPendientes } from "@/lib/opinionesProducto";
 
 // El Inicio del operativo en la tablet del local (pedido de Gonzalo,
@@ -210,10 +210,14 @@ export async function armarInicioOperativo(
     const aEtiquetar = paraEtiquetar(delLocal);
     if (aEtiquetar.length > 0) {
       const n = aEtiquetar.reduce((a, e) => a + (e.bolsitas ?? 0), 0);
+      // Si las etiquetas ya se imprimieron (19/11), lo que falta es pegarlas y sumarlas.
+      const impresas = aEtiquetar.every((e) => e.paso >= PASO_IMPRESAS);
       agregar({
         clave: "fraccionado-para-etiquetar",
-        titulo: `Etiquetar ${n} ${n === 1 ? "bolsita fraccionada" : "bolsitas fraccionadas"}`,
-        detalle: "Ya están hechas: falta imprimir, pegar y sumarlas al stock",
+        titulo: impresas
+          ? `Sumar al stock ${n} ${n === 1 ? "bolsita fraccionada" : "bolsitas fraccionadas"}`
+          : `Etiquetar ${n} ${n === 1 ? "bolsita fraccionada" : "bolsitas fraccionadas"}`,
+        detalle: impresas ? "Las etiquetas ya están impresas: falta pegarlas y tocar «Sumar al stock»" : "Ya están hechas: falta imprimir, pegar y sumarlas al stock",
         href: "/fraccionar?tanda=1",
         icono: "🏷️",
         badge: n,

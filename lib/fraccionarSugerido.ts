@@ -18,6 +18,13 @@ import type { BolsitaDeGranel, EnCursoVista, GranelVista } from "@/lib/fracciona
  */
 export const PASO_PARA_ETIQUETAR = 5;
 
+/**
+ * Las etiquetas ya se imprimieron; falta pegarlas y sumarlas al stock (19/11:
+ * Florencia imprimió a la mañana, no sumó, y Tomás a la tarde volvió a imprimir
+ * todo porque el sistema no sabía que ya estaban). Una vez impresas no se piden de nuevo.
+ */
+export const PASO_IMPRESAS = 6;
+
 /** Lo de la tanda que ya está fraccionado y espera la etiqueta. */
 export function paraEtiquetar(enCurso: EnCursoVista[]): EnCursoVista[] {
   return enCurso.filter((e) => e.paso >= PASO_PARA_ETIQUETAR && (e.bolsitas ?? 0) > 0);

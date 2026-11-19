@@ -11,6 +11,7 @@ import { localDeSesion } from "@/lib/fraccionado";
 import { cargarGondola, nombreCortoZona, ubicacionDe } from "@/lib/gondola";
 import { PARAMETRO_CODIGOS_IMPRESOS, cargarCodigosImpresos } from "@/lib/codigosImpresos";
 import { fechaHoraArgentina } from "@/lib/horarios";
+import { PASO_IMPRESAS, PASO_PARA_ETIQUETAR } from "@/lib/fraccionarSugerido";
 
 // Registrar lo que se embolsó (lib/granel.ts, sql/granel-fraccionado.sql).
 // Devuelven { error } como dato: Next 16 esconde el mensaje de un throw.
@@ -292,6 +293,29 @@ export async function descartarEnCurso(idEnCurso: string): Promise<{ error?: str
   return {};
 }
 
+/**
+ * Las etiquetas de estos fraccionados ya se imprimieron (19/11): quedan en
+ * PASO_IMPRESAS y no se vuelven a pedir, aunque la tanda la termine otra persona.
+ */
+export async function marcarEtiquetasImpresas(ids: string[]): Promise<{ error?: string }> {
+  const sesion = await obtenerSesionConPantallas();
+  if (!sesion || !puedeVerPantalla(sesion, "fraccionar")) return { error: "No tenés habilitado Fraccionar." };
+  const limpios = ids.filter((id) => /^[0-9a-f-]{36}$/i.test(id)).slice(0, 200);
+  if (!limpios.length) return {};
+  const supabase = getSupabaseServerClient();
+  const idLocal = await localDeSesion(supabase, sesion.idUsuario);
+  if (!idLocal) return { error: "Tu usuario no tiene un local asignado." };
+  const { error } = await supabase
+    .from("fraccionados_en_curso")
+    .update({ paso: PASO_IMPRESAS, actualizado: new Date().toISOString() })
+    .in("id_en_curso", limpios)
+    .eq("id_local", idLocal)
+    .eq("paso", PASO_PARA_ETIQUETAR);
+  if (error && !/fraccionados_en_curso|schema cache/i.test(error.message)) return { error: friendlyDbError(error) };
+  revalidatePath("/");
+  return {};
+}
+
 /** El lote de la tanda: F + día y mes + el número de tanda del día en el local (F1611-2). */
 async function loteDelDia(supabase: Supa, idLocal: string): Promise<string> {
   const hoy = fechaHoraArgentina().fecha;
@@ -361,7 +385,15 @@ export async function terminarFraccionado(d: {
     // Si no se pudo anotar, solo vuelve a figurar en «Para imprimir ahora».
   }
 
-  if (d.idEnCurso) await supabase.from("fraccionados_en_curso").delete().eq("id_en_curso", d.idEnCurso);
+  if (d.idEnCurso) {
+    // Quién fraccionó es quien lo embolsó, no quien terminó la tanda (19/11: Tomás
+    // sumó al stock lo que había embolsado Florencia a la mañana).
+    const { data: ec } = await supabase.from("fraccionados_en_curso").select("usuario, id_usuario").eq("id_en_curso", d.idEnCurso).maybeSingle();
+    if (ec?.id_usuario && ec.id_usuario !== sesion.idUsuario) {
+      await supabase.from("fraccionados").update({ usuario: ec.usuario, id_usuario: ec.id_usuario }).eq("id_fraccionado", r.idFraccionado);
+    }
+    await supabase.from("fraccionados_en_curso").delete().eq("id_en_curso", d.idEnCurso);
+  }
 
   // Dónde van en la góndola (paso 7).
   let ubicacion: string | null = null;

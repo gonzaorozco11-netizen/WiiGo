@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { EnCursoVista, GranelVista } from "@/lib/fraccionado";
-import { terminarFraccionado } from "@/app/(app)/fraccionar/actions";
+import { marcarEtiquetasImpresas, terminarFraccionado } from "@/app/(app)/fraccionar/actions";
+import { PASO_IMPRESAS } from "@/lib/fraccionarSugerido";
 import { textoGramos } from "@/lib/gramos";
 import type { RecibidoSinCodigo } from "@/lib/entradas";
 
@@ -36,7 +37,9 @@ export default function FraccionarTanda({
   onSalir: () => void;
 }) {
   const router = useRouter();
-  const [paso, setPaso] = useState(Math.min(PASOS, Math.max(1, pasoInicial)));
+  // Si todo ya tiene la etiqueta impresa (otra persona la imprimió y no sumó), se arranca en «Pegalas».
+  const todasImpresas = pendientes.length > 0 && pendientes.every((e) => e.paso >= PASO_IMPRESAS);
+  const [paso, setPaso] = useState(Math.min(PASOS, Math.max(todasImpresas && recibidos.length === 0 ? 2 : 1, pasoInicial)));
   const [pegadas, setPegadas] = useState(false);
   const [hechos, setHechos] = useState<{ nombre: string; bolsitas: number; ubicacion: string | null; merma: number }[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -49,14 +52,26 @@ export default function FraccionarTanda({
     .sort((a, b) => a.actualizado.localeCompare(b.actualizado))
     .map((e) => ({ ...e, nombre: bolsa.get(e.idVarianteBolsa)?.nombre ?? "Bolsita", peso: bolsa.get(e.idVarianteBolsa)?.peso ?? 0 }));
   // Las etiquetas, juntas por producto (dos tandas del mismo van en un renglón).
+  // Lo que ya se imprimió (PASO_IMPRESAS) no se vuelve a imprimir: va en `yaImpresas`.
   const porProducto = new Map<string, { nombre: string; n: number; vtos: Set<string> }>();
+  const yaImpresas = new Map<string, { nombre: string; n: number; vtos: Set<string> }>();
   for (const l of lineas) {
-    const p = porProducto.get(l.idVarianteBolsa) ?? { nombre: l.nombre, n: 0, vtos: new Set<string>() };
+    const destino = l.paso >= PASO_IMPRESAS ? yaImpresas : porProducto;
+    const p = destino.get(l.idVarianteBolsa) ?? { nombre: l.nombre, n: 0, vtos: new Set<string>() };
     p.n += l.bolsitas ?? 0;
     if (l.vencimiento) p.vtos.add(l.vencimiento);
-    porProducto.set(l.idVarianteBolsa, p);
+    destino.set(l.idVarianteBolsa, p);
   }
   const total = lineas.reduce((a, l) => a + (l.bolsitas ?? 0), 0);
+  const totalYaImpresas = [...yaImpresas.values()].reduce((a, p) => a + p.n, 0);
+  const idsSinImprimir = lineas.filter((l) => l.paso < PASO_IMPRESAS).map((l) => l.id);
+  // Al pasar a «Pegalas» (volvió de imprimir o tocó «Ya las imprimí»), quedan anotadas como impresas.
+  useEffect(() => {
+    if (paso >= 2 && idsSinImprimir.length > 0) {
+      marcarEtiquetasImpresas(idsSinImprimir).catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paso]);
   const fecha = (iso: string) => iso.split("-").reverse().join("/");
 
   // El vencimiento que cargaron sale impreso (Gonzalo, 18/11). Si el mismo producto tiene dos
@@ -67,7 +82,10 @@ export default function FraccionarTanda({
   // Lo recibido sin código: entra marcado; se puede sacar si no se quiere imprimir ahora.
   const [sinSumar, setSinSumar] = useState<Set<string>>(new Set());
   const recibidosElegidos = recibidos.filter((r) => !sinSumar.has(r.idVariante) && !porProducto.has(r.idVariante));
-  const etiquetas = total + recibidosElegidos.reduce((a, r) => a + r.n, 0);
+  // Lo que sale en esta impresión: lo fraccionado sin imprimir + lo recibido sin código.
+  const etiquetas = total - totalYaImpresas + recibidosElegidos.reduce((a, r) => a + r.n, 0);
+  // Lo que hay que pegar: todo lo de la tanda (también lo impreso antes) + lo recibido.
+  const aPegar = total + recibidosElegidos.reduce((a, r) => a + r.n, 0);
   const alternar = (id: string) =>
     setSinSumar((prev) => {
       const s = new Set(prev);
@@ -157,14 +175,22 @@ export default function FraccionarTanda({
             ? "El vencimiento que cargaste sale impreso en cada etiqueta."
             : "El vencimiento sale impreso; el de los que tienen dos fechas distintas sale en blanco y lo escribís a mano."}
         </p>
-        <ul className={`${tarjeta} grid gap-1.5`}>
-          {[...porProducto.values()].map((p) => (
-            <li key={p.nombre} className="flex justify-between gap-3 text-sm">
-              <span>{p.nombre}</span>
-              <b className="tabular-nums">{p.n}</b>
-            </li>
-          ))}
-        </ul>
+        {porProducto.size > 0 && (
+          <ul className={`${tarjeta} grid gap-1.5`}>
+            {[...porProducto.values()].map((p) => (
+              <li key={p.nombre} className="flex justify-between gap-3 text-sm">
+                <span>{p.nombre}</span>
+                <b className="tabular-nums">{p.n}</b>
+              </li>
+            ))}
+          </ul>
+        )}
+        {totalYaImpresas > 0 && (
+          <p className="mt-3 rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+            ✓ {totalYaImpresas} {totalYaImpresas === 1 ? "etiqueta ya está impresa" : "etiquetas ya están impresas"} (
+            {[...yaImpresas.values()].map((p) => p.nombre).join(", ")}): esas no se vuelven a imprimir.
+          </p>
+        )}
         {recibidos.length > 0 && (
           <div className="mt-4">
             <h3 className="text-sm font-extrabold text-neutral-900">También llegaron sin código</h3>
@@ -194,7 +220,7 @@ export default function FraccionarTanda({
             </ul>
           </div>
         )}
-        <button type="button" onClick={imprimir} className={`${azul} mt-4`}>
+        <button type="button" onClick={imprimir} disabled={etiquetas === 0} className={`${azul} mt-4`}>
           🖨️ Imprimir {etiquetas} etiquetas
         </button>
         <button type="button" onClick={() => setPaso(2)} className="mx-auto mt-3 block text-sm font-semibold text-neutral-500 underline underline-offset-4">
@@ -212,8 +238,8 @@ export default function FraccionarTanda({
             : "Las que dicen «a mano» salieron con el vencimiento en blanco: escribilo con birome."}
         </p>
         <ul className="grid gap-2">
-          {[...porProducto.values()].map((p) => (
-            <li key={p.nombre} className={`${tarjeta} flex flex-wrap items-center justify-between gap-2`}>
+          {[...porProducto.values(), ...yaImpresas.values()].map((p, i) => (
+            <li key={`${p.nombre}-${i}`} className={`${tarjeta} flex flex-wrap items-center justify-between gap-2`}>
               <span>
                 <b className="block">{p.nombre}</b>
                 <small className="text-neutral-500">
@@ -235,7 +261,7 @@ export default function FraccionarTanda({
         <button type="button" onClick={() => setPegadas(!pegadas)} aria-pressed={pegadas} className={`${tarjeta} mt-3 flex w-full items-start gap-3 text-left`}>
           <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg border-2 text-white font-black ${pegadas ? "border-emerald-600 bg-emerald-600" : "border-neutral-300"}`}>{pegadas ? "✓" : ""}</span>
           <span>
-            <b className="block text-[16px]">{aMano.length === 0 ? `Pegué las ${etiquetas} etiquetas` : `Escribí los vencimientos y pegué las ${etiquetas} etiquetas`}</b>
+            <b className="block text-[16px]">{aMano.length === 0 ? `Pegué las ${aPegar} etiquetas` : `Escribí los vencimientos y pegué las ${aPegar} etiquetas`}</b>
             <small className="text-[13px] text-neutral-500">En el frente, sin tapar el producto. Si sobró alguna, tirala.</small>
           </span>
         </button>
