@@ -18,7 +18,7 @@ export default async function HistorialPedidosPage({ searchParams }: { searchPar
   const { ver } = await searchParams;
   try {
     const datos = await historialProveedor(supabase, proveedor.id);
-    return <HistorialProveedorApp datos={datos} vista={ver === "cuenta" ? "cuenta" : "historial"} puedePagar={sesion.rol === "admin"} />;
+    return <HistorialProveedorApp datos={datos} vista={ver === "cuenta" ? "cuenta" : ver === "costos" ? "costos" : "historial"} puedePagar={sesion.rol === "admin"} />;
   } catch (e) {
     return (
       <p className="max-w-md mx-auto text-center py-12 text-red-700">

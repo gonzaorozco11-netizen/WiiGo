@@ -126,12 +126,20 @@ export async function guardarUnidadItem(idItem: string, unidad: UnidadLista, can
   return { error: null };
 }
 
-async function recalcularHijos(supabase: Supa, g: Granel, ahora: string) {
-  const { data: hijos } = await supabase.from("productos").select("id_producto, peso_neto_g").eq("id_granel", g.id);
+async function recalcularHijos(supabase: Supa, g: Granel, ahora: string, quien?: string | null) {
+  const { data: hijos } = await supabase.from("productos").select("id_producto, nombre, peso_neto_g, costo_informado").eq("id_granel", g.id);
+  const historial: Record<string, unknown>[] = [];
   for (const h of hijos ?? []) {
     const merc = mercaderiaDe(g, Number(h.peso_neto_g ?? 0) || null);
-    if (merc != null) await supabase.from("productos").update({ costo_informado: Math.round(merc * 100) / 100, costo_actualizado_el: ahora }).eq("id_producto", h.id_producto);
+    if (merc == null) continue;
+    const nuevo = Math.round(merc * 100) / 100;
+    await supabase.from("productos").update({ costo_informado: nuevo, costo_actualizado_el: ahora }).eq("id_producto", h.id_producto);
+    const antes = h.costo_informado == null ? null : Number(h.costo_informado);
+    if (antes == null || Math.abs(antes - nuevo) >= 0.01)
+      historial.push({ id_producto: h.id_producto, id_granel: g.id, nombre: h.nombre, costo_anterior: antes, costo_nuevo: nuevo, origen: "LISTA_PROVEEDOR", cambiado_por: quien ?? null, cambiado_el: ahora });
   }
+  // Historial de costos (19/11, sql/historial-costos.sql). Sin la tabla, no traba nada.
+  if (historial.length) await supabase.from("historial_costos").insert(historial).then(() => null, () => null);
 }
 
 /** El costo que usa WiiGo para ese producto de Alifrut; si todavía no existe, se crea con el de la lista. */
@@ -249,12 +257,13 @@ export async function desvincularProducto(idProducto: string): Promise<{ error: 
  * todos los tamaños y los pasa a la venta (precio, historial y carteles).
  */
 export async function aplicarCambiosAlifrut(idsGranel: string[]): Promise<{ error: string | null; costos?: number; precios?: number; esperan?: number }> {
-  if (!(await sesionDePrecios())) return { error: "No tenés permiso para Precios." };
+  const sesion = await sesionDePrecios();
+  if (!sesion) return { error: "No tenés permiso para Precios." };
   if (!Array.isArray(idsGranel) || !idsGranel.length) return { error: "No elegiste ningún cambio." };
   const supabase = getSupabaseServerClient();
   const { data: graneles, error } = await supabase
     .from("costos_granel")
-    .select("id_granel, costo_neto, id_item, catalogo_proveedor(id_item, nombre, costo_neto, unidad, cantidad)")
+    .select("id_granel, nombre, unidad, costo_neto, id_item, catalogo_proveedor(id_item, nombre, costo_neto, unidad, cantidad)")
     .in("id_granel", idsGranel);
   if (error) return { error: FALTA_SQL };
   const ahora = new Date().toISOString();
@@ -269,7 +278,12 @@ export async function aplicarCambiosAlifrut(idsGranel: string[]): Promise<{ erro
       .from("costos_granel")
       .update({ costo_neto: nuevo.costo, unidad: nuevo.unidad, kg_bulto: nuevo.kgBulto, costo_anterior: Number(g.costo_neto), costo_actualizado_el: ahora })
       .eq("id_granel", g.id_granel);
-    await recalcularHijos(supabase, { ...nuevo, id: g.id_granel as string }, ahora);
+    // El costo de la lista (por kilo, bolsa o caja) en el historial de costos (19/11).
+    await supabase
+      .from("historial_costos")
+      .insert({ id_granel: g.id_granel, nombre: (g.nombre as string) ?? item.nombre, unidad: nuevo.unidad, costo_anterior: Number(g.costo_neto), costo_nuevo: nuevo.costo, origen: "LISTA_PROVEEDOR", cambiado_por: sesion.nombre, cambiado_el: ahora })
+      .then(() => null, () => null);
+    await recalcularHijos(supabase, { ...nuevo, id: g.id_granel as string }, ahora, sesion.nombre);
     costos++;
     // Los que todavía están "Sin precio" no se pasan solos: los revisa Gonzalo la primera vez.
     const { data: hijos } = await supabase.from("productos").select("id_producto").eq("id_granel", g.id_granel).eq("estado", "ACTIVO").gt("precio_venta", 0);

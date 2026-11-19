@@ -137,6 +137,8 @@ export type MermaPendiente = {
   cantidad: number;
   motivo: string;
   fecha: string;
+  /** El costo del día en que se perdió, si quedó guardado. */
+  costoUnitario: number | null;
 };
 
 /**
@@ -154,7 +156,7 @@ export async function mermasSinLiquidar(
   if (varianteIds.length === 0) return [];
   const { data } = await supabase
     .from("mermas")
-    .select("id_merma, id_variante, cantidad, motivo, fecha")
+    .select("id_merma, id_variante, cantidad, motivo, fecha, costo_unitario")
     .in("id_variante", varianteIds)
     .is("id_liquidacion_proveedor", null)
     .gte("fecha", `${fechaDesde}T00:00:00`)
@@ -167,6 +169,7 @@ export async function mermasSinLiquidar(
     cantidad: (m.cantidad as number) ?? 0,
     motivo: (m.motivo as string) ?? "OTRO",
     fecha: m.fecha as string,
+    costoUnitario: m.costo_unitario == null ? null : Number(m.costo_unitario),
   }));
 }
 
@@ -253,38 +256,44 @@ export async function calcularLiquidacionProveedor(
   }
 
   const cantidadPorVariante = new Map<string, number>();
-  // Si no aparece la compra de la que salió (lote), se paga el costo que tenía
-  // al venderse, no el de hoy (lib/costoAlVender.ts). Promedio de sus renglones.
-  const guardado = new Map<string, { costo: number; unidades: number }>();
+  // A Alifrut se le paga el costo del DÍA DE LA VENTA (Gonzalo, 19/11): el que
+  // quedó guardado en cada renglón (lib/costoAlVender.ts). Si la lista sube o
+  // baja, lo que se vende desde ese día va con el costo nuevo; lo ya vendido
+  // no cambia. Los lotes se siguen gastando por FIFO, pero solo para saber de
+  // qué pedido salió cada cosa y cuánto queda sin vender: no ponen la plata.
+  // Lo viejo sin costo guardado usa el de hoy.
+  const montoPorVariante = new Map<string, number>();
   for (const d of detalle ?? []) {
     const cantidad = netearRenglon(d.cantidad, 0, devueltos.get(d.id_detalle as string)).cantidad;
+    if (cantidad <= 0) continue;
     cantidadPorVariante.set(d.id_variante, (cantidadPorVariante.get(d.id_variante) ?? 0) + cantidad);
-    if (d.costo_unitario != null && cantidad > 0) {
-      const g = guardado.get(d.id_variante) ?? { costo: 0, unidades: 0 };
-      guardado.set(d.id_variante, { costo: g.costo + Number(d.costo_unitario) * cantidad, unidades: g.unidades + cantidad });
-    }
+    const costo = d.costo_unitario != null ? Number(d.costo_unitario) : costoReservaPorVariante.get(d.id_variante) ?? 0;
+    montoPorVariante.set(d.id_variante, (montoPorVariante.get(d.id_variante) ?? 0) + costo * cantidad);
   }
-  for (const [idVariante, g] of guardado) if (g.unidades > 0) costoReservaPorVariante.set(idVariante, g.costo / g.unidades);
-  // Las unidades de merma se suman a las vendidas: para el FIFO son lo mismo,
-  // mercadería que salió del lote y hay que pagar.
+  // La merma también: al costo que tenía el día que se perdió (si quedó guardado), si no el de hoy.
   for (const m of mermas) {
     cantidadPorVariante.set(m.idVariante, (cantidadPorVariante.get(m.idVariante) ?? 0) + m.cantidad);
+    const costo = m.costoUnitario != null ? m.costoUnitario : costoReservaPorVariante.get(m.idVariante) ?? 0;
+    montoPorVariante.set(m.idVariante, (montoPorVariante.get(m.idVariante) ?? 0) + costo * m.cantidad);
   }
 
   const lineas: LineaLiquidacionProveedor[] = [];
   let total = 0;
   for (const [idVariante, cantidad] of cantidadPorVariante) {
     if (cantidad <= 0) continue;
-    const resultado = await simularConsumoFifo(supabase, idProveedor, idVariante, cantidad, costoReservaPorVariante.get(idVariante) ?? null);
-    const subtotal = Math.round(resultado.costoTotal);
+    const monto = montoPorVariante.get(idVariante) ?? 0;
+    const unitario = monto / cantidad;
+    const resultado = await simularConsumoFifo(supabase, idProveedor, idVariante, cantidad, unitario);
+    const subtotal = Math.round(monto);
     lineas.push({
       idVariante,
       nombreProducto: nombrePorVariante.get(idVariante) ?? "Producto",
       cantidadVendida: cantidad,
-      costoUnitario: Math.round(resultado.costoTotal / cantidad),
+      costoUnitario: Math.round(unitario),
       subtotal,
-      lotes: resultado.consumos,
-      estimado: resultado.estimado,
+      // Cada lote dice de qué pedido salió; la plata es la del costo al vender.
+      lotes: resultado.consumos.map((c) => ({ ...c, costoUnitario: unitario })),
+      estimado: false,
     });
     total += subtotal;
   }
@@ -417,7 +426,7 @@ export async function detalleLiquidacionProveedor(
       medio: "MERMA" as MedioLiquidacion,
       subtotalVenta: 0,
       medioPrecios: "efectivo" as Medio,
-      costoAlVender: null,
+      costoAlVender: m.costoUnitario,
     })),
   ].sort((a, b) => a.fecha.localeCompare(b.fecha));
 
@@ -429,7 +438,8 @@ export async function detalleLiquidacionProveedor(
 
   // Clave: medio + variante. Adentro se acumulan los lotes por recepción.
   const acumulado = new Map<string, LineaDetalle & { _lotes: Map<string, LoteDeLinea> }>();
-  let estimado = false;
+  // Ya no se estima nada: la plata es siempre el costo al vender (19/11).
+  const estimado = false;
 
   for (const ev of eventos) {
     const cantidad = ev.cantidad;
@@ -441,14 +451,11 @@ export async function detalleLiquidacionProveedor(
     if (!v || !p) continue;
 
     const medio = ev.medio;
+    // Lo que se le paga: el costo del día de la venta (o de la merma); si es viejo y no quedó, el de hoy (19/11).
+    const costoEvento = ev.costoAlVender ?? Number((p.costo_informado as number | null) ?? 0);
 
-    const r = consumirEnMemoria(
-      lotesPorVariante.get(idVariante) ?? [],
-      cantidad,
-      // Sin lote: el costo que tenía al venderse; si es viejo, el de hoy.
-      ev.costoAlVender ?? (p.costo_informado as number | null) ?? 0
-    );
-    if (r.estimado) estimado = true;
+    // El lote solo dice de qué pedido salió; la plata es costoEvento.
+    const r = consumirEnMemoria(lotesPorVariante.get(idVariante) ?? [], cantidad, costoEvento);
 
     const clave = `${medio}|${idVariante}`;
     let linea = acumulado.get(clave);
@@ -495,16 +502,19 @@ export async function detalleLiquidacionProveedor(
     for (const c of r.consumos) {
       const k = c.idDetalleRecepcion;
       const ya = linea._lotes.get(k);
-      if (ya) ya.cantidad += c.cantidad;
-      else
+      if (ya) {
+        // Promedio ponderado del costo al vender de lo que salió de ese lote.
+        ya.costoUnitario = (ya.costoUnitario * ya.cantidad + costoEvento * c.cantidad) / (ya.cantidad + c.cantidad);
+        ya.cantidad += c.cantidad;
+      } else
         linea._lotes.set(k, {
           idDetalleRecepcion: k,
           fechaRecepcion: c.fechaRecepcion,
           cantidad: c.cantidad,
-          costoUnitario: c.costoUnitario,
+          costoUnitario: costoEvento,
         });
-      linea.costoNeto = redondear2(linea.costoNeto + c.cantidad * c.costoUnitario);
     }
+    linea.costoNeto = redondear2(linea.costoNeto + cantidad * costoEvento);
   }
 
   // Los motivos de merma, agrupados por producto, para poder mostrar

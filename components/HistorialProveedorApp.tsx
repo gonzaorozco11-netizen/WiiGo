@@ -22,8 +22,8 @@ const ESTADO: Record<PedidoHistorial["estado"], { t: string; c: string }> = {
 };
 const MEDIO: Record<string, string> = { TRANSFERENCIA: "Transferencia", EFECTIVO_ADMIN: "Efectivo (Caja Administración)", EFECTIVO_TURNO: "Efectivo del turno" };
 
-export default function HistorialProveedorApp({ datos, vista, puedePagar }: { datos: HistorialProveedor; vista: "historial" | "cuenta"; puedePagar: boolean }) {
-  const [ver, setVer] = useState(vista);
+export default function HistorialProveedorApp({ datos, vista, puedePagar }: { datos: HistorialProveedor; vista: "historial" | "cuenta" | "costos"; puedePagar: boolean }) {
+  const [ver, setVer] = useState<"historial" | "cuenta" | "costos">(vista);
   const [abiertos, setAbiertos] = useState<Set<string>>(new Set());
   const t = datos.totales;
   const conIva = (n: number) => n * (1 + datos.ivaPorcentaje / 100);
@@ -46,6 +46,9 @@ export default function HistorialProveedorApp({ datos, vista, puedePagar }: { da
           </button>
           <button type="button" className={boton("cuenta")} aria-pressed={ver === "cuenta"} onClick={() => setVer("cuenta")}>
             Cuenta corriente
+          </button>
+          <button type="button" className={boton("costos")} aria-pressed={ver === "costos"} onClick={() => setVer("costos")}>
+            Variaciones de costo
           </button>
         </div>
       </div>
@@ -157,14 +160,82 @@ export default function HistorialProveedorApp({ datos, vista, puedePagar }: { da
             </table>
           </div>
           <p className="text-[12px] text-neutral-500">
-            <b>Le debés</b> = lo vendido de ese pedido que todavía no le pagaste, al costo de ese pedido. <b>Sin vender</b> = lo que sigue en el local o el depósito: se paga
-            recién cuando se vende. Lo vendido sale primero del pedido más viejo. Con IVA al {datos.ivaPorcentaje} %.
+            <b>Le debés</b> = lo vendido de ese pedido que todavía no le pagaste, al costo del día en que se vendió cada cosa. <b>Sin vender</b> = lo que sigue en el
+            local o el depósito, al costo de hoy: se paga recién cuando se vende, con el costo de ese día. Lo vendido sale primero del pedido más viejo. Con IVA al{" "}
+            {datos.ivaPorcentaje} %.
           </p>
         </section>
-      ) : (
+      ) : ver === "cuenta" ? (
         <Cuenta datos={datos} puedePagar={puedePagar} />
+      ) : (
+        <Variaciones datos={datos} />
       )}
     </div>
+  );
+}
+
+/** Cada cambio del costo de la lista (19/11): lo vendido antes queda con su costo; desde ese día, el nuevo. */
+function Variaciones({ datos }: { datos: HistorialProveedor }) {
+  const [buscar, setBuscar] = useState("");
+  if (datos.variaciones === null)
+    return <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Falta correr sql/historial-costos.sql en Supabase para guardar las variaciones de costo.</p>;
+  const plano = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const lista = datos.variaciones.filter((v) => !buscar || plano(v.nombre).includes(plano(buscar)));
+  const unidad = (u: string | null) => (u === "BULTO" ? "la bolsa" : u === "CAJA" ? "la caja" : u === "UNIDAD" ? "la unidad" : "el kilo");
+  return (
+    <section aria-label="Variaciones de costo" className="space-y-2">
+      <input
+        value={buscar}
+        onChange={(e) => setBuscar(e.target.value)}
+        placeholder="Buscar un producto"
+        className="w-full max-w-sm rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm"
+      />
+      <div className="overflow-x-auto rounded-xl border border-neutral-200 bg-white">
+        <table className="w-full min-w-[640px] border-collapse text-[13px]">
+          <thead>
+            <tr className="border-b border-neutral-200 text-[11px] font-bold uppercase tracking-wide text-neutral-400">
+              <th className="px-3 py-2.5 text-left">Fecha</th>
+              <th className="px-3 py-2.5 text-left">Producto de la lista</th>
+              <th className="px-3 py-2.5 text-right">Antes</th>
+              <th className="px-3 py-2.5 text-right">Ahora</th>
+              <th className="px-3 py-2.5 text-right">Cambio</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lista.length === 0 && (
+              <tr>
+                <td colSpan={5} className="px-3 py-6 text-center text-neutral-500">
+                  {datos.variaciones.length === 0 ? "Todavía no hubo cambios de costo desde que se empezó a guardar el historial." : "No hay cambios de ese producto."}
+                </td>
+              </tr>
+            )}
+            {lista.map((v, i) => {
+              const pct = v.anterior ? ((v.nuevo - v.anterior) / v.anterior) * 100 : null;
+              return (
+                <tr key={i} className="border-b border-neutral-100">
+                  <td className="whitespace-nowrap px-3 py-2.5 text-neutral-700">
+                    {fecha(v.fecha)}
+                    {v.quien && <span className="block text-[11px] text-neutral-400">{v.quien}</span>}
+                  </td>
+                  <td className="px-3 py-2.5 font-semibold text-neutral-900">
+                    {v.nombre}
+                    <span className="block text-[11px] font-normal text-neutral-400">por {unidad(v.unidad)}, sin IVA</span>
+                  </td>
+                  <td className="px-3 py-2.5 text-right tabular-nums text-neutral-500">{v.anterior == null ? "—" : plata(v.anterior)}</td>
+                  <td className="px-3 py-2.5 text-right font-semibold tabular-nums">{plata(v.nuevo)}</td>
+                  <td className={`px-3 py-2.5 text-right font-bold tabular-nums ${pct == null ? "text-neutral-400" : pct > 0 ? "text-red-700" : "text-emerald-700"}`}>
+                    {pct == null ? "—" : `${pct > 0 ? "+" : ""}${pct.toLocaleString("es-AR", { maximumFractionDigits: 1 })} %`}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-[12px] text-neutral-500">
+        Lo que se vendió antes de cada cambio se le paga a {datos.proveedor.nombre} con el costo de ese día; lo que se vende desde el cambio, con el costo nuevo.
+      </p>
+    </section>
   );
 }
 

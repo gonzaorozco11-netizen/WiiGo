@@ -47,11 +47,16 @@ export type MovimientoCuenta = {
   medio: string | null;
 };
 
+/** Un cambio del costo de la lista del proveedor (sql/historial-costos.sql). */
+export type VariacionCosto = { nombre: string; unidad: string | null; anterior: number | null; nuevo: number; fecha: string; quien: string | null };
+
 export type HistorialProveedor = {
   proveedor: { id: string; nombre: string };
   ivaPorcentaje: number;
   pedidos: PedidoHistorial[];
   movimientos: MovimientoCuenta[];
+  /** null si falta correr el SQL del historial de costos. */
+  variaciones: VariacionCosto[] | null;
   totales: { debeHoy: number; sinVender: number; pagado: number; totalPedido: number; sinLiquidar: number };
 };
 
@@ -82,13 +87,13 @@ export async function historialProveedor(supabase: SupabaseClient, idProveedor: 
   // Lotes de cada recepción → su pedido.
   const ordenDeRecepcion = new Map((recepciones ?? []).map((r) => [r.id_recepcion as string, r.id_orden as string]));
   const idsRecepcion = [...ordenDeRecepcion.keys()];
-  type Lote = { id_detalle: string; id_recepcion: string; cantidad_recibida: number | null; costo_unitario: number | null; cantidad_disponible_fifo: number | null };
+  type Lote = { id_detalle: string; id_recepcion: string; id_variante: string; cantidad_recibida: number | null; costo_unitario: number | null; cantidad_disponible_fifo: number | null };
   const lotes: Lote[] = [];
   for (let i = 0; i < idsRecepcion.length; i += 50) {
     const tanda = idsRecepcion.slice(i, i + 50);
     lotes.push(
       ...(await todos<Lote>((a, b) =>
-        supabase.from("detalle_recepcion_proveedor").select("id_detalle, id_recepcion, cantidad_recibida, costo_unitario, cantidad_disponible_fifo").in("id_recepcion", tanda).range(a, b)
+        supabase.from("detalle_recepcion_proveedor").select("id_detalle, id_recepcion, id_variante, cantidad_recibida, costo_unitario, cantidad_disponible_fifo").in("id_recepcion", tanda).range(a, b)
       ))
     );
   }
@@ -142,15 +147,37 @@ export async function historialProveedor(supabase: SupabaseClient, idProveedor: 
   const manana = fechaHoraArgentina(new Date(Date.now() + 86400000)).fecha;
   const pendiente = await calcularLiquidacionProveedor(supabase, idProveedor, "2020-01-01", manana).catch(() => ({ lineas: [], total: 0 }));
   let sinLiquidarSinPedido = 0;
+  // Lo que ya salió de cada lote (vendido, sin liquidar todavía): para saber cuánto queda de verdad.
+  const yaSalio = new Map<string, number>();
   for (const linea of pendiente.lineas) {
     for (const c of linea.lotes) {
       const id = ordenDeLote.get(c.idDetalleRecepcion);
       const monto = c.cantidad * c.costoUnitario;
       if (id) de(id).sinLiquidar += monto;
       else sinLiquidarSinPedido += monto;
+      yaSalio.set(c.idDetalleRecepcion, (yaSalio.get(c.idDetalleRecepcion) ?? 0) + c.cantidad);
     }
   }
   const totalSinLiquidar = r2(pendiente.total);
+
+  // Lo que sigue sin vender, al costo de HOY (19/11): es lo que se le va a pagar a Alifrut
+  // cuando se venda, porque se le paga el costo del día de la venta.
+  const idsVarLote = [...new Set(lotes.map((l) => l.id_variante).filter(Boolean))];
+  const porGramoHoy = await costoDelDiaPorGramo(supabase, idsVarLote).catch(() => new Map<string, number>());
+  const costoHoyDe = new Map<string, number>(porGramoHoy);
+  const faltan = idsVarLote.filter((id) => !costoHoyDe.has(id));
+  for (let i = 0; i < faltan.length; i += 200) {
+    const { data: vs } = await supabase.from("variantes_producto").select("id_variante, productos(costo_informado)").in("id_variante", faltan.slice(i, i + 200));
+    for (const v of vs ?? []) costoHoyDe.set(v.id_variante as string, Number((v.productos as unknown as { costo_informado: number | null } | null)?.costo_informado ?? 0));
+  }
+  const sinVenderDe = new Map<string, number>();
+  for (const l of lotes) {
+    const id = ordenDeLote.get(l.id_detalle);
+    if (!id) continue;
+    const quedan = Math.max(0, Number(l.cantidad_disponible_fifo ?? 0) - (yaSalio.get(l.id_detalle) ?? 0));
+    if (quedan > 0) sinVenderDe.set(id, (sinVenderDe.get(id) ?? 0) + quedan * (costoHoyDe.get(l.id_variante) ?? Number(l.costo_unitario ?? 0)));
+  }
+  if (extras && extras.neto > 0) sinVenderDe.set(extras.idOrden, (sinVenderDe.get(extras.idOrden) ?? 0) + extras.neto);
 
   // Lo pagado, repartido entre los pedidos en orden (primero lo liquidado de los más viejos).
   const movs = await todos<Record<string, unknown>>((a, b) =>
@@ -203,7 +230,7 @@ export async function historialProveedor(supabase: SupabaseClient, idProveedor: 
         vendidoSinLiquidar: sinLiq,
         pagado,
         debe: r2(Math.max(0, liquidado - pagado) + sinLiq),
-        sinVender: recibido ? r2(Math.max(0, total - liquidado - sinLiq)) : 0,
+        sinVender: recibido ? r2(sinVenderDe.get(id) ?? 0) : 0,
         nota: (o.observaciones as string | null) ?? null,
       };
     })
@@ -265,12 +292,31 @@ export async function historialProveedor(supabase: SupabaseClient, idProveedor: 
     });
   }
 
+  // Las variaciones del costo de la lista (lo de cada producto de WiiGo sale de ahí).
+  const { data: varData, error: varError } = await supabase
+    .from("historial_costos")
+    .select("nombre, unidad, costo_anterior, costo_nuevo, cambiado_el, cambiado_por, id_granel")
+    .is("id_producto", null)
+    .order("cambiado_el", { ascending: false })
+    .limit(400);
+  const variaciones: VariacionCosto[] | null = varError
+    ? null
+    : (varData ?? []).map((v) => ({
+        nombre: v.nombre as string,
+        unidad: (v.unidad as string | null) ?? null,
+        anterior: v.costo_anterior == null ? null : Number(v.costo_anterior),
+        nuevo: Number(v.costo_nuevo),
+        fecha: v.cambiado_el as string,
+        quien: (v.cambiado_por as string | null) ?? null,
+      }));
+
   const recibidos = pedidos.filter((p) => p.estado === "RECIBIDO");
   return {
     proveedor: { id: idProveedor, nombre: (prov?.nombre as string) ?? "Proveedor" },
     ivaPorcentaje,
     pedidos,
     movimientos: movimientos.reverse(),
+    variaciones,
     totales: {
       debeHoy: saldo,
       sinVender: r2(recibidos.reduce((a, p) => a + p.sinVender, 0)),
