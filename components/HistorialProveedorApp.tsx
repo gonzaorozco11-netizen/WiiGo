@@ -342,7 +342,8 @@ function Cuenta({ datos, puedePagar }: { datos: HistorialProveedor; puedePagar: 
         </table>
       </div>
       <p className="text-[12px] text-neutral-500">
-        Cada liquidación suma lo vendido (al costo de cada pedido) y cada pago lo resta. La primera fila suma lo vendido que todavía no entró en una liquidación. El{" "}
+        Cada liquidación suma lo vendido (al costo del día en que se vendió cada cosa) y cada pago lo resta. Cuando actualizás la lista, lo ya vendido no cambia: el costo
+        nuevo cuenta para lo que se venda desde ese día. La primera fila suma lo vendido que todavía no entró en una liquidación. El{" "}
         <b>saldo</b> es lo que le debés hoy. Lo que sigue sin vender <b>no entra</b>: todavía no es deuda. Los pagos también se ven en Proveedores.
       </p>
     </section>
