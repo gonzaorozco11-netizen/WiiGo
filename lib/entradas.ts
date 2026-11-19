@@ -2,6 +2,13 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { esCodigoInterno } from "@/lib/codigos";
 import { cargarMarcasSinCodigo, cargarProductosSinCodigo } from "@/lib/marcasSinCodigo";
 import { PARAMETRO_CARTELES_IMPRESOS, cargarCodigosImpresos, cargarImpresos } from "@/lib/codigosImpresos";
+import { ESTADO_GRANEL } from "@/lib/granel";
+
+// Lo que entra al local: lo que manda una marca (RECEPCION), lo que se le compra a
+// un proveedor como Alifrut (COMPRA_PROVEEDOR; Gonzalo 19/11: las Granola Cream
+// recibidas no pedían su sticker) y lo embolsado en el local (FRACCIONADO).
+// El granel del depósito (en gramos) entra igual, pero no lleva sticker ni cartel.
+const TIPOS_ENTRADA = ["RECEPCION", "COMPRA_PROVEEDOR", "FRACCIONADO"];
 
 /**
  * Los productos que entraron en los últimos días (recepción o fraccionado),
@@ -15,14 +22,18 @@ export async function productosQueEntraron(dias = 7): Promise<Map<string, string
   const { data: movs } = await supabase
     .from("movimientos_stock")
     .select("id_variante, fecha")
-    .in("tipo", ["RECEPCION", "FRACCIONADO"])
+    .in("tipo", TIPOS_ENTRADA)
     .gt("cantidad", 0)
     .gte("fecha", desde.toISOString())
     .range(0, 4999);
   const filas = (movs ?? []) as { id_variante: string; fecha: string }[];
   if (!filas.length) return new Map();
-  const { data: vars } = await supabase.from("variantes_producto").select("id_variante, id_producto").in("id_variante", [...new Set(filas.map((m) => m.id_variante))]);
-  const productoDe = new Map((vars ?? []).map((v) => [v.id_variante as string, v.id_producto as string]));
+  const { data: vars } = await supabase.from("variantes_producto").select("id_variante, id_producto, productos(estado)").in("id_variante", [...new Set(filas.map((m) => m.id_variante))]);
+  const productoDe = new Map(
+    (vars ?? [])
+      .filter((v) => (v.productos as unknown as { estado: string } | null)?.estado !== ESTADO_GRANEL)
+      .map((v) => [v.id_variante as string, v.id_producto as string])
+  );
   const ultima = new Map<string, string>();
   for (const m of filas) {
     const id = productoDe.get(m.id_variante);
@@ -115,7 +126,7 @@ export async function entradasQueNecesitanCodigo(dias = 7): Promise<EntradaPendi
     .select("id_variante,cantidad,fecha")
     // También lo que se embolsó en el local (Fraccionar): son bolsitas que
     // necesitan su sticker igual que lo que llega embolsado.
-    .in("tipo", ["RECEPCION", "FRACCIONADO"])
+    .in("tipo", TIPOS_ENTRADA)
     .gt("cantidad", 0)
     .gte("fecha", desde.toISOString());
 
@@ -126,12 +137,13 @@ export async function entradasQueNecesitanCodigo(dias = 7): Promise<EntradaPendi
   // suyo, no hay nada que pegarle.
   const { data: variantes } = await supabase
     .from("variantes_producto")
-    .select("id_variante,codigo_barras")
+    .select("id_variante,codigo_barras,productos(estado)")
     .in("id_variante", [...new Set(filas.map((m) => m.id_variante))])
     .eq("estado", "ACTIVO");
 
   const necesitan = new Set(
-    ((variantes ?? []) as { id_variante: string; codigo_barras: string | null }[])
+    ((variantes ?? []) as unknown as { id_variante: string; codigo_barras: string | null; productos: { estado: string } | null }[])
+      .filter((v) => v.productos?.estado !== ESTADO_GRANEL)
       .filter((v) => !v.codigo_barras || esCodigoInterno(v.codigo_barras))
       .map((v) => v.id_variante)
   );
