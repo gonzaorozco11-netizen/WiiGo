@@ -2,11 +2,12 @@
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { SESSION_COOKIE, createSessionToken, readSessionToken } from "@/lib/session";
+import { DURACION_SESION_S, SESSION_COOKIE, createSessionToken, readSessionToken } from "@/lib/session";
 import { verifyPassword } from "@/lib/auth";
 import { getSupabaseServerClient, type Usuario } from "@/lib/supabase";
 import { esRolInterno, INICIO_ROL_EXTERNO } from "@/lib/rolesInternos";
 import { estadoAparato } from "@/lib/aparatoLocalServidor";
+import { BLOQUEO_MIN, anotarFallido, bloqueadoHasta, limpiarFallidos, mensajeBloqueado } from "@/lib/seguridadLogin";
 
 export async function login(_prevState: { error?: string } | undefined, formData: FormData) {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
@@ -37,10 +38,17 @@ export async function login(_prevState: { error?: string } | undefined, formData
     return { error: "Email o contraseña incorrectos." };
   }
 
+  // 5 intentos mal seguidos: ese usuario queda bloqueado 15 minutos (lib/seguridadLogin.ts).
+  const bloqueo = await bloqueadoHasta(supabase, usuario.id_usuario);
+  if (bloqueo) return { error: mensajeBloqueado(bloqueo) };
+
   const valid = await verifyPassword(password, usuario.password_hash);
   if (!valid) {
+    const quedo = await anotarFallido(supabase, { id_usuario: usuario.id_usuario, nombre: usuario.nombre, rol: usuario.rol, email });
+    if (quedo) return { error: mensajeBloqueado(new Date(Date.now() + BLOQUEO_MIN * 60_000)) };
     return { error: "Email o contraseña incorrectos." };
   }
+  await limpiarFallidos(supabase, usuario.id_usuario);
 
   const token = await createSessionToken(
     { sub: usuario.id_usuario, nombre: usuario.nombre, rol: usuario.rol ?? "" },
@@ -53,7 +61,7 @@ export async function login(_prevState: { error?: string } | undefined, formData
     secure: true,
     sameSite: "lax",
     path: "/",
-    maxAge: 60 * 60 * 24 * 30, // 30 días
+    maxAge: DURACION_SESION_S, // 30 días; además el token mismo vence (lib/session.ts)
   });
 
   // Cuándo entró por última vez: lo mira Gonzalo en la ficha de cada

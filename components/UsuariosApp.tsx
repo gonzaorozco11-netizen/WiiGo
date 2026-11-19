@@ -13,6 +13,9 @@ import {
   actualizarAreasAccesoUsuario,
   actualizarPersonaUsuario,
   listarMarcasParaUsuarios,
+  usuariosBloqueados,
+  desbloquearUsuario,
+  cerrarSesionesUsuario,
 } from "@/app/(app)/usuarios/actions";
 
 type UsuarioSinHash = Omit<Usuario, "password_hash">;
@@ -47,6 +50,13 @@ export default function UsuariosApp({
     listarMarcasParaUsuarios()
       .then(setMarcas)
       .catch(() => setMarcas([]));
+  }, []);
+  // Los bloqueados por 5 contraseñas mal (seguridad, 19/11).
+  const [bloqueados, setBloqueados] = useState<Record<string, string>>({});
+  useEffect(() => {
+    usuariosBloqueados()
+      .then(setBloqueados)
+      .catch(() => setBloqueados({}));
   }, []);
   const [modalOpen, setModalOpen] = useState(false);
   const [editando, setEditando] = useState<UsuarioSinHash | null>(null);
@@ -114,6 +124,12 @@ export default function UsuariosApp({
                       >
                         {u.estado}
                       </span>
+                      {bloqueados[u.id_usuario] && (
+                        <span className="mt-1 block w-fit text-xs rounded-full px-2 py-0.5 bg-red-50 text-red-700">
+                          🔒 Bloqueado hasta las{" "}
+                          {new Date(bloqueados[u.id_usuario]).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      )}
                     </td>
                     <td className="p-3 text-neutral-400">{formatearFecha(u.fecha_alta)}</td>
                     {/* En dos renglones y adentro de la celda: en una sola línea se
@@ -130,7 +146,12 @@ export default function UsuariosApp({
                         <button onClick={() => setEditando(u)} className="text-sm text-accent hover:underline whitespace-nowrap">
                           Editar
                         </button>
-                        <FilaAcciones usuario={u} onCambiarPassword={() => setCambiandoPassword(u)} />
+                        <FilaAcciones
+                          usuario={u}
+                          bloqueado={Boolean(bloqueados[u.id_usuario])}
+                          onDesbloqueado={() => setBloqueados((b) => Object.fromEntries(Object.entries(b).filter(([k]) => k !== u.id_usuario)))}
+                          onCambiarPassword={() => setCambiandoPassword(u)}
+                        />
                       </div>
                     </td>
                   </tr>
@@ -157,8 +178,41 @@ export default function UsuariosApp({
   );
 }
 
-function FilaAcciones({ usuario, onCambiarPassword }: { usuario: UsuarioSinHash; onCambiarPassword: () => void }) {
+function FilaAcciones({
+  usuario,
+  bloqueado,
+  onDesbloqueado,
+  onCambiarPassword,
+}: {
+  usuario: UsuarioSinHash;
+  bloqueado: boolean;
+  onDesbloqueado: () => void;
+  onCambiarPassword: () => void;
+}) {
   const [isPending, startTransition] = useTransition();
+  // Dos toques para cerrar todas sus sesiones: el primero pregunta.
+  const [confirmarCierre, setConfirmarCierre] = useState(false);
+  const [aviso, setAviso] = useState<string | null>(null);
+
+  function desbloquear() {
+    startTransition(async () => {
+      const r = await desbloquearUsuario(usuario.id_usuario);
+      if (r.error) setAviso(r.error);
+      else onDesbloqueado();
+    });
+  }
+
+  function cerrarSesiones() {
+    if (!confirmarCierre) {
+      setConfirmarCierre(true);
+      return;
+    }
+    startTransition(async () => {
+      const r = await cerrarSesionesUsuario(usuario.id_usuario);
+      setConfirmarCierre(false);
+      setAviso(r.error ?? "✓ Sesiones cerradas. Tiene que volver a entrar con su contraseña.");
+    });
+  }
 
   function toggleEstado() {
     const nuevoEstado = usuario.estado === "ACTIVO" ? "INACTIVO" : "ACTIVO";
@@ -180,6 +234,23 @@ function FilaAcciones({ usuario, onCambiarPassword }: { usuario: UsuarioSinHash;
       <button onClick={toggleEstado} disabled={isPending} className="text-sm text-red-500 hover:text-red-700 disabled:opacity-50 whitespace-nowrap">
         {usuario.estado === "ACTIVO" ? "Desactivar" : "Activar"}
       </button>
+      {bloqueado && (
+        <button onClick={desbloquear} disabled={isPending} className="text-sm font-semibold text-red-700 hover:underline disabled:opacity-50 whitespace-nowrap">
+          🔓 Desbloquear
+        </button>
+      )}
+      <button
+        onClick={cerrarSesiones}
+        disabled={isPending}
+        className={`text-sm whitespace-nowrap disabled:opacity-50 ${confirmarCierre ? "font-semibold text-red-700" : "text-neutral-600 hover:text-neutral-900 hover:underline"}`}
+      >
+        {confirmarCierre
+          ? usuario.rol === "admin"
+            ? "¿Seguro? Se cierra en los otros aparatos — tocá de nuevo"
+            : "¿Seguro? Tocá de nuevo para cerrar"
+          : "Cerrar sesión en todos los aparatos"}
+      </button>
+      {aviso && <span className="basis-full text-right text-xs text-neutral-500">{aviso}</span>}
     </>
   );
 }

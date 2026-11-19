@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
+import { sesionVigente } from "@/lib/sesionVigente";
 import { COOKIE_APARATO, RENOVAR_CADA_MS, firmarAparato, leerAparato, opcionesCookieAparato, rolAtadoALaTablet, sePuedeEnElCelular } from "@/lib/aparatoLocal";
 
 // Las profesionales solo pueden estar en su espacio. Se corta acá y no en
@@ -72,10 +73,20 @@ export async function proxy(req: NextRequest) {
   const token = req.cookies.get(SESSION_COOKIE)?.value;
   const session = await readSessionToken(token, secret);
 
-  if (!session) {
+  // Firmada pero desactivada o cortada con «Cerrar sesión en todos los aparatos» (lib/sesionVigente.ts).
+  const vigente = session ? await sesionVigente(session) : false;
+
+  if (!session || !vigente) {
+    if (session && req.method !== "GET" && req.method !== "HEAD") {
+      const res = new NextResponse("Tu sesión se cerró. Volvé a entrar.", { status: 401 });
+      res.cookies.delete(SESSION_COOKIE);
+      return res;
+    }
     const loginUrl = new URL("/login", req.url);
     loginUrl.searchParams.set("next", pathname);
-    return NextResponse.redirect(loginUrl);
+    const res = NextResponse.redirect(loginUrl);
+    if (session) res.cookies.delete(SESSION_COOKIE);
+    return res;
   }
 
   if (session.rol === "profesional" && !esDelEspacioProfesional(pathname)) {

@@ -42,6 +42,23 @@ const nextConfig: NextConfig = {
     const delaTienda = [{ type: "host" as const, value: `(www\\.)?${host.replace(/\./g, "\\.")}` }];
     return ["/login", "/self-checkout/:ruta*", "/asesor/:ruta*"].map((source) => ({ source, has: delaTienda, destination: "/", permanent: false }));
   },
+  // Protecciones del navegador (seguridad, 19/11): ninguna página de afuera puede
+  // meter el sistema adentro suyo para engañar a alguien a tocar botones
+  // (X-Frame-Options), el navegador no adivina tipos de archivo, no se manda la
+  // dirección completa a otros sitios, y siempre por https.
+  async headers() {
+    return [
+      {
+        source: "/:ruta*",
+        headers: [
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
+        ],
+      },
+    ];
+  },
   experimental: {
     serverActions: {
       bodySizeLimit: "10mb",

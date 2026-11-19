@@ -5,7 +5,8 @@ import { cookies } from "next/headers";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { hashPassword } from "@/lib/auth";
-import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
+import { DURACION_SESION_S, SESSION_COOKIE, createSessionToken, readSessionToken } from "@/lib/session";
+import { olvidarSesion } from "@/lib/sesionVigente";
 import { obtenerSesionConPermisos, tienePermiso, PERMISOS, PERMISOS_DISPONIBLES } from "@/lib/permisos";
 
 function text(formData: FormData, name: string) {
@@ -116,11 +117,57 @@ export async function cambiarEstadoUsuario(id: string, estado: string): Promise<
     const supabase = getSupabaseServerClient();
     const { error } = await supabase.from("usuarios").update({ estado }).eq("id_usuario", id);
     if (error) return { error: friendlyDbError(error) };
+    olvidarSesion(id);
     revalidatePath("/organizacion");
     return { error: null };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo cambiar el estado del usuario" };
   }
+}
+
+/** Los usuarios bloqueados ahora por intentos fallidos: id → hasta cuándo (ISO). */
+export async function usuariosBloqueados(): Promise<Record<string, string>> {
+  if (await requireAdmin()) return {};
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase.from("usuarios").select("id_usuario, bloqueado_hasta").gt("bloqueado_hasta", new Date().toISOString());
+  if (error) return {};
+  return Object.fromEntries((data ?? []).map((u) => [u.id_usuario as string, u.bloqueado_hasta as string]));
+}
+
+/** Gonzalo destraba a alguien que puso mal la contraseña 5 veces (seguridad, 19/11). */
+export async function desbloquearUsuario(id: string): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  const supabase = getSupabaseServerClient();
+  const { error } = await supabase.from("usuarios").update({ bloqueado_hasta: null, login_fallidos: 0 }).eq("id_usuario", id);
+  if (error) return { error: "Falta correr sql/seguridad-login.sql en Supabase." };
+  revalidatePath("/organizacion");
+  return { error: null };
+}
+
+/**
+ * «Cerrar sesión en todos los aparatos» (por si se pierde un celular o alguien
+ * vio una contraseña). Toda sesión abierta antes de ahora deja de servir. Si es
+ * el propio Dueño, en ESTE aparato sigue adentro: se le da una sesión nueva.
+ */
+export async function cerrarSesionesUsuario(id: string): Promise<{ error: string | null }> {
+  const permisoError = await requireAdmin();
+  if (permisoError) return { error: permisoError };
+  const supabase = getSupabaseServerClient();
+  const ahora = new Date();
+  const { error } = await supabase.from("usuarios").update({ sesiones_desde: ahora.toISOString() }).eq("id_usuario", id);
+  if (error) return { error: "Falta correr sql/seguridad-login.sql en Supabase." };
+  olvidarSesion(id);
+  const cookieStore = await cookies();
+  const propia = await readSessionToken(cookieStore.get(SESSION_COOKIE)?.value, process.env.AUTH_SECRET ?? "");
+  if (propia?.sub === id) {
+    const token = await createSessionToken(
+      { sub: propia.sub, nombre: propia.nombre, rol: propia.rol, iat: Math.ceil(ahora.getTime() / 1000) + 1 },
+      process.env.AUTH_SECRET ?? ""
+    );
+    cookieStore.set(SESSION_COOKIE, token, { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: DURACION_SESION_S });
+  }
+  return { error: null };
 }
 
 export async function cambiarPasswordUsuario(id: string, password: string): Promise<{ error: string | null }> {
