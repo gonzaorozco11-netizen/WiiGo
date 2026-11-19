@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { COLUMNAS_PEDIDO, ESTADOS_ABIERTOS, avisarCliente, cuantosHay, itemsDe, totalesDe, type FilaPedidoOnline } from "@/lib/pedidosOnline";
-import { consultarPagoNave, consultarPedidoNave, crearPagoNave, naveConfigurado, secretoAviso } from "@/lib/nave";
+import { consultarPagoNave, consultarPedidoNave, crearPagoNave, naveConfigurado, referenciasDelPago, secretoAviso } from "@/lib/nave";
 import { baseUrlPublica, urlTienda } from "@/lib/urlPublica";
 
 // El pago con tarjeta de un pedido de la tienda (Gonzalo, 18/11). Ver lib/nave.ts.
@@ -41,8 +41,13 @@ export async function linkDePagoTarjeta(supabase: SupabaseClient, idPedido: stri
 }
 
 /** Nave dice que hubo un pago: se le pregunta a Nave por él antes de creerle. */
-export async function registrarPagoTarjeta(supabase: SupabaseClient, idPedido: string, idPagoNave: string): Promise<{ estado: string }> {
-  const pago = await consultarPagoNave(idPagoNave);
+export async function registrarPagoTarjeta(
+  supabase: SupabaseClient,
+  idPedido: string,
+  idPagoNave: string,
+  yaConsultado?: Awaited<ReturnType<typeof consultarPagoNave>>
+): Promise<{ estado: string }> {
+  const pago = yaConsultado ?? (await consultarPagoNave(idPagoNave));
   if (pago.estado !== "APROBADO") {
     console.log(`[nave] pago ${idPagoNave} del pedido ${idPedido}: ${pago.crudo}`);
     return { estado: pago.crudo };
@@ -58,6 +63,34 @@ export async function registrarPagoTarjeta(supabase: SupabaseClient, idPedido: s
   // Solo el primero que lo marca manda el mail (Nave puede avisar dos veces).
   if (data) await avisarCliente(supabase, idPedido, "PAGO_OK");
   return { estado: pago.crudo };
+}
+
+/**
+ * Aviso que llega a la dirección fija que se le dio a Nave en el alta (sin ?pedido):
+ * se le pregunta a Nave por el pago y el pedido sale de lo que Nave dice del pago
+ * (nuestro código o el id de la intención), nunca del aviso.
+ */
+export async function registrarPagoTarjetaSinPedido(supabase: SupabaseClient, idPagoNave: string): Promise<{ estado: string; idPedido: string | null }> {
+  const pago = await consultarPagoNave(idPagoNave);
+  const refs = referenciasDelPago(pago.datos);
+  if (!refs.length) {
+    console.error(`[nave] pago ${idPagoNave} sin referencia de pedido`, JSON.stringify(pago.datos).slice(0, 500));
+    return { estado: pago.crudo, idPedido: null };
+  }
+  const lista = refs.join(",");
+  const { data } = await supabase
+    .from("pedidos_online")
+    .select("id_pedido")
+    .eq("pago", "TARJETA")
+    .or(`codigo.in.(${lista}),nave_pedido_id.in.(${lista})`)
+    .limit(2);
+  const filas = (data ?? []) as { id_pedido: string }[];
+  if (filas.length !== 1) {
+    console.error(`[nave] pago ${idPagoNave}: ${filas.length} pedidos para ${lista}`);
+    return { estado: pago.crudo, idPedido: null };
+  }
+  const r = await registrarPagoTarjeta(supabase, filas[0].id_pedido, idPagoNave, pago);
+  return { estado: r.estado, idPedido: filas[0].id_pedido };
 }
 
 /**

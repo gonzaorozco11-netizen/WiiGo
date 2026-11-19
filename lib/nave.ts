@@ -141,6 +141,26 @@ export async function consultarPagoNave(idPago: string): Promise<{ estado: Estad
   return { estado, crudo, forma, datos: d };
 }
 
+/**
+ * A qué pedido nuestro pertenece un pago, según lo que Nave devuelve de él: el
+ * external_payment_id (nuestro código de pedido) o el id de la intención de pago.
+ * Nave no documenta dónde viene, así que se busca en todo el objeto.
+ */
+export function referenciasDelPago(datos: Record<string, unknown>): string[] {
+  const refs = new Set<string>();
+  const ver = (v: unknown, prof: number) => {
+    if (!v || typeof v !== "object" || prof > 6) return;
+    for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
+      const clave = k.toLowerCase();
+      if ((typeof x === "string" || typeof x === "number") && /^(external_payment_id|external_id|external_reference|payment_request_id)$/.test(clave)) refs.add(String(x).trim());
+      if (clave === "payment_request" && x && typeof x === "object" && (x as { id?: unknown }).id) refs.add(String((x as { id: unknown }).id).trim());
+      if (x && typeof x === "object") ver(x, prof + 1);
+    }
+  };
+  ver(datos, 0);
+  return [...refs].filter((r) => /^[\w-]{1,100}$/.test(r));
+}
+
 /** La intención de pago (por si el aviso no llegó): SUCCESS_PROCESSED = pagada. */
 export async function consultarPedidoNave(idPedidoNave: string): Promise<{ estado: string; idPago: string | null }> {
   const d = await pedir<Record<string, unknown>>(`${entorno().api}/payment_requests/${encodeURIComponent(idPedidoNave)}`, { method: "GET" });
