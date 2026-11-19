@@ -241,6 +241,13 @@ function FilaConteo({ item, resaltado }: { item: ItemConteo; resaltado: boolean 
               {item.enPedidos.pedidos.map((n) => `#${n}`).join(", ")}: contá solo lo de la góndola.
             </p>
           )}
+          {/* Fraccionadas esperando la etiqueta: todavía no están en el stock (se suman al terminar la tanda). */}
+          {item.sinEtiquetar > 0 && !item.contadoEn && (
+            <p className="mt-1.5 rounded-lg bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800">
+              🏷️ Hay {item.sinEtiquetar === 1 ? "1 bolsita recién fraccionada" : `${item.sinEtiquetar} bolsitas recién fraccionadas`} sin etiqueta: esas no
+              las cuentes, todavía no están en el stock.
+            </p>
+          )}
         </div>
         {hecho && (
           <span className="shrink-0 text-right">

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fechaHoraArgentina } from "@/lib/horarios";
 import { enBolsasOnline, faltasOnlineRecientes } from "@/lib/pedidosOnline";
+import { sinEtiquetarPorVariante } from "@/lib/fraccionado";
 
 // Conteo de stock en el turno (Gonzalo, 2026-11-07). Ver sql/conteos-stock.sql.
 //
@@ -38,6 +39,8 @@ export type ItemConteo = {
   contadoEn: string | null;
   /** Unidades que ya están en la bolsa de un pedido online (no se cuentan: no están en la góndola). */
   enPedidos: { n: number; pedidos: number[] } | null;
+  /** Bolsitas embolsadas que esperan la etiqueta: todavía no están en el stock, no se cuentan (19/11). */
+  sinEtiquetar: number;
 };
 
 export type ConteoVista = {
@@ -380,7 +383,11 @@ export async function verConteo(
   if (!c) return null;
   const { data: items } = await supabase.from("conteos_stock_items").select("*").eq("id_conteo", idConteo).order("orden", { ascending: true });
   const idsVar = (items ?? []).map((i) => i.id_variante as string);
-  const [nombres, bolsas] = await Promise.all([nombresDeVariantes(supabase, idsVar), enBolsasOnline(supabase, c.id_local as string, idsVar)]);
+  const [nombres, bolsas, sinEtiq] = await Promise.all([
+    nombresDeVariantes(supabase, idsVar),
+    enBolsasOnline(supabase, c.id_local as string, idsVar),
+    sinEtiquetarPorVariante(supabase, c.id_local as string, idsVar),
+  ]);
 
   // Con quién se repartió: los otros conteos del mismo día y local.
   const { data: otros } = await supabase
@@ -414,6 +421,7 @@ export async function verConteo(
         resultado: (i.resultado as "OK" | "DIFERENCIA" | null) ?? null,
         contadoEn: (i.contado_en as string | null) ?? null,
         enPedidos: bolsas.get(i.id_variante as string) ?? null,
+        sinEtiquetar: sinEtiq.get(i.id_variante as string) ?? 0,
       };
     }),
   };

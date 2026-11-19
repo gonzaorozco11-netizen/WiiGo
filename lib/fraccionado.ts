@@ -75,6 +75,30 @@ export async function fraccionadosEnCurso(supabase: SupabaseClient, filtro: { id
   }));
 }
 
+/**
+ * Bolsitas ya embolsadas que todavía NO están en el stock: esperan la etiqueta
+ * (el stock se suma recién en «Sumar al stock» de la tanda). Están en el local,
+ * así que el conteo del turno tiene que saberlo: el 19/11 Tomás contó 8
+ * almohaditas de limón (3 + 5 sin etiquetar), el conteo las ajustó y después la
+ * tanda volvió a sumar las 5. Por variante de bolsita; sin la tabla, ninguna.
+ */
+export async function sinEtiquetarPorVariante(supabase: SupabaseClient, idLocal: string, idsVariante: string[]): Promise<Map<string, number>> {
+  const salida = new Map<string, number>();
+  if (!idsVariante.length) return salida;
+  const { data, error } = await supabase
+    .from("fraccionados_en_curso")
+    .select("id_variante_bolsa, bolsitas")
+    .eq("id_local", idLocal)
+    .in("id_variante_bolsa", idsVariante)
+    .not("bolsitas", "is", null);
+  if (error) return salida;
+  for (const f of data ?? []) {
+    const n = Number(f.bolsitas ?? 0);
+    if (n > 0) salida.set(f.id_variante_bolsa as string, (salida.get(f.id_variante_bolsa as string) ?? 0) + n);
+  }
+  return salida;
+}
+
 /** Una tanda del historial de fraccionado (Gonzalo, 16/11: «quién fraccionó y qué producto»). */
 export type TandaHistorial = {
   id: string;

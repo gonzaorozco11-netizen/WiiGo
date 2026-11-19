@@ -6,6 +6,7 @@ import { friendlyDbError } from "@/lib/errors";
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import { personaDeUsuario } from "@/lib/conteoStock";
 import { enBolsasOnline } from "@/lib/pedidosOnline";
+import { sinEtiquetarPorVariante } from "@/lib/fraccionado";
 
 // Las acciones del conteo de stock en el turno (lib/conteoStock.ts). Devuelven
 // { error } como dato y no throw: Next 16 esconde el mensaje en producción.
@@ -57,10 +58,15 @@ export async function registrarConteo(idItem: string, cantidad: number, confirma
   if (item.contado_en) return { error: "Ese producto ya está contado." };
 
   const idVariante = item.id_variante as string;
-  const [{ data: st }, bolsas] = await Promise.all([
+  const [{ data: st }, bolsas, sinEtiq] = await Promise.all([
     supabase.from("stock").select("cantidad").eq("id_variante", idVariante).eq("id_local", conteo.id_local).maybeSingle(),
     enBolsasOnline(supabase, conteo.id_local, [idVariante]),
+    sinEtiquetarPorVariante(supabase, conteo.id_local, [idVariante]),
   ]);
+  // Bolsitas embolsadas que esperan la etiqueta: están en el local pero todavía
+  // no en el stock (se suman al terminar la tanda). La pantalla pide no
+  // contarlas; si igual las contó, el número es el mismo que esperaba (19/11).
+  const sinEtiquetar = sinEtiq.get(idVariante) ?? 0;
   const enStock = Number(st?.cantidad ?? 0);
   // Lo que ya está en la bolsa de un pedido online sigue en el stock hasta la
   // entrega, pero no en la góndola: se compara contra lo que tiene que haber
@@ -113,10 +119,10 @@ export async function registrarConteo(idItem: string, cantidad: number, confirma
     }
   }
 
-  if (n === esperado) {
+  if (n === esperado || (sinEtiquetar > 0 && n === esperado + sinEtiquetar)) {
     const { error } = await supabase
       .from("conteos_stock_items")
-      .update({ contado: n, esperado, contado_en: ahora, resultado: "OK" })
+      .update({ contado: n === esperado ? n : esperado, esperado, contado_en: ahora, resultado: "OK" })
       .eq("id_item", idItem);
     if (error) return { error: friendlyDbError(error) };
     // Otra persona contó lo mismo que quedó después de la diferencia: se confirmó.
