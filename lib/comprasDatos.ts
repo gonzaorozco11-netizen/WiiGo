@@ -162,6 +162,31 @@ async function entregasDe(
   return { data: (await traer(base)).data };
 }
 
+/**
+ * Lo de los proveedores que se pagan por lo vendido (Alifrut) es solo del Dueño
+ * (Gonzalo, 19/11: «que no les figure a los operativos los pedidos que hago a
+ * Alifrut, solo la parte de fraccionar»). Para quien no maneja Compras, Recepción
+ * no muestra esos pedidos ni sus entregas: el granel lo carga Gonzalo.
+ */
+export function sinLoDelDueno(d: DatosCompras): DatosCompras {
+  const ocultos = new Set(d.proveedores.filter((p) => p.modo_facturacion === "LIQUIDACION_VENTA").map((p) => p.id_proveedor));
+  if (!ocultos.size) return d;
+  const ordenes = d.ordenesProveedor.filter((o) => !ocultos.has(o.id_proveedor));
+  const idsOrden = new Set(ordenes.map((o) => o.id_orden));
+  const entregas = d.entregas.filter((e) => !(e.origen === "PROVEEDOR" && ocultos.has(e.idContraparte)));
+  const idsEntrega = new Set(entregas.map((e) => e.idRecepcion));
+  return {
+    ...d,
+    proveedores: d.proveedores.filter((p) => !ocultos.has(p.id_proveedor)),
+    ordenesProveedor: ordenes,
+    detalleProveedor: d.detalleProveedor.filter((x) => idsOrden.has(x.id_orden)),
+    recepcionesSinCostear: d.recepcionesSinCostear.filter((r) => !ocultos.has(r.id_proveedor)),
+    recepcionesCosteadas: d.recepcionesCosteadas.filter((r) => !ocultos.has(r.id_proveedor)),
+    entregas,
+    lineasEntrega: d.lineasEntrega.filter((l) => idsEntrega.has(l.idRecepcion)),
+  };
+}
+
 export async function datosCompras(): Promise<DatosCompras> {
   const supabase = getSupabaseServerClient();
 

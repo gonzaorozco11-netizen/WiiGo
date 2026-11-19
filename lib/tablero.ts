@@ -175,12 +175,16 @@ export async function armarTablero(): Promise<Tablero | null> {
     puede("compras-recepcion")
       ? supabase.from("ordenes_reposicion").select("id_orden", { count: "exact", head: true }).in("estado", ESTADOS_ABIERTOS)
       : CERO,
-    puede("compras-recepcion") || puede("proveedores")
-      ? supabase
-          .from("ordenes_compra_proveedor")
-          .select("id_orden", { count: "exact", head: true })
-          .in("estado", ESTADOS_ABIERTOS)
-      : CERO,
+    // Los pedidos a Alifrut solo los cuenta quien maneja Compras (Gonzalo, 19/11).
+    puede("compras")
+      ? supabase.from("ordenes_compra_proveedor").select("id_orden", { count: "exact", head: true }).in("estado", ESTADOS_ABIERTOS)
+      : puede("compras-recepcion") || puede("proveedores")
+        ? supabase
+            .from("ordenes_compra_proveedor")
+            .select("id_orden, proveedores!inner(modo_facturacion)", { count: "exact", head: true })
+            .in("estado", ESTADOS_ABIERTOS)
+            .neq("proveedores.modo_facturacion", "LIQUIDACION_VENTA")
+        : CERO,
     puede("compras-costeo") || puede("proveedores")
       ? supabase.from("recepciones_proveedor").select("id_recepcion", { count: "exact", head: true }).eq("facturada", false)
       : CERO,
