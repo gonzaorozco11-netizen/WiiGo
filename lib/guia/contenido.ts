@@ -760,7 +760,7 @@ export const GUIAS: Guia[] = [
       "Tildá guantes y cofia, balanza en cero y el peso de cada bolsita: <b>exacto</b>. De 1 kg salen justo 4 de 250 g: si te pasás en una, la última sale corta y se anota como merma. Fraccioná y tocá <b>Terminé de fraccionar</b>.",
       "Poné cuántas armaste <b>de verdad</b> (aunque sean menos) y si <b>queda granel</b>: si queda, pesá la bolsa grande y poné los gramos. Si el sistema ve que queda granel y tocás «se terminó», te pide confirmarlo: eso se anota como merma con tu nombre.",
       "Anotá el <b>vencimiento de la bolsa grande</b> y dejá las bolsitas juntas, aparte. Tocá <b>Fraccionar el siguiente</b> y seguí con el próximo producto.",
-      "Cuando terminaste todos, tocá <b>Imprimir las etiquetas</b>: salen <b>todas juntas</b> en una sola impresión, para gastar menos hojas.",
+      "Cuando terminaste todos, tocá <b>Imprimir las etiquetas</b>: salen <b>todas juntas</b> en una sola impresión, para gastar menos hojas. Si llegó mercadería cerrada sin código (por ejemplo las granolas de 1 kg), aparece en «También llegaron sin código» y sale en la misma hoja.",
       "Pegalas y escribí a mano en cada una el vencimiento que te muestra la lista. Tocá <b>Sumar al stock</b>: recién ahí entran a la venta. Llevalas a la góndola, <b>atrás las nuevas, adelante las viejas</b>.",
       "Si tenés que dejarlo por la mitad, tocá <b>Seguir después</b>: en el Inicio aparece en rojo para retomarlo. Lo fraccionado sin etiqueta aparece como «Etiquetar N bolsitas». Si no lo hiciste, <b>Descartar</b> no toca el stock.",
     ],
