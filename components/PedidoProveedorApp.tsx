@@ -107,7 +107,20 @@ export default function PedidoProveedorApp({
 
   return (
     <div className="max-w-2xl mx-auto pb-28">
-      <h1 className="text-xl font-semibold text-neutral-900">Pedido a {proveedor.nombre}</h1>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-xl font-semibold text-neutral-900">Pedido a {proveedor.nombre}</h1>
+        {/* Historial y cuenta corriente (Gonzalo, 19/11): solo quien lleva las compras. */}
+        {puedeCargar && (
+          <div className="flex gap-2">
+            <Link href="/compras/pedir/historial" className="rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm font-semibold text-neutral-800 hover:bg-neutral-50">
+              Historial de pedidos
+            </Link>
+            <Link href="/compras/pedir/historial?ver=cuenta" className="rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm font-semibold text-neutral-800 hover:bg-neutral-50">
+              Cuenta corriente
+            </Link>
+          </div>
+        )}
+      </div>
       <p className="text-sm text-neutral-500 mt-0.5 mb-4">
         Lo que llegó al mínimo, para llenarlo hasta el máximo. Sacá lo que no quieras pedir o cambiá la cantidad.
       </p>
