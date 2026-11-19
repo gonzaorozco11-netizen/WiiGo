@@ -16,8 +16,7 @@ function diasDesde(iso: string) {
   return Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86400000));
 }
 
-/** `sinLoDelDueno`: no cuenta los pedidos a proveedores que se pagan por lo vendido (Alifrut), que solo ve el Dueño. */
-export async function contadoresCompras(sinLoDelDueno = false): Promise<{
+export async function contadoresCompras(): Promise<{
   ordenesAbiertas: number;
   esperandoRecepcion: number;
   sinCostear: number;
@@ -56,18 +55,11 @@ export async function contadoresCompras(sinLoDelDueno = false): Promise<{
       .select("id_orden", { count: "exact", head: true })
       .in("estado", ESTADOS_ABIERTOS)
       .not("enviada_el", "is", null),
-    sinLoDelDueno
-      ? supabase
-          .from("ordenes_compra_proveedor")
-          .select("id_orden, proveedores!inner(modo_facturacion)", { count: "exact", head: true })
-          .in("estado", ESTADOS_ABIERTOS)
-          .not("enviada_el", "is", null)
-          .neq("proveedores.modo_facturacion", "LIQUIDACION_VENTA")
-      : supabase
-          .from("ordenes_compra_proveedor")
-          .select("id_orden", { count: "exact", head: true })
-          .in("estado", ESTADOS_ABIERTOS)
-          .not("enviada_el", "is", null),
+    supabase
+      .from("ordenes_compra_proveedor")
+      .select("id_orden", { count: "exact", head: true })
+      .in("estado", ESTADOS_ABIERTOS)
+      .not("enviada_el", "is", null),
     supabase.from("recepciones_proveedor").select("id_recepcion, fecha").eq("facturada", false).limit(100),
     supabase
       .from("ordenes_reposicion")

@@ -1,7 +1,7 @@
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import PantallaBloqueada from "@/components/PantallaBloqueada";
 import { contadoresCompras } from "@/lib/compras";
-import { datosCompras, sinLoDelDueno } from "@/lib/comprasDatos";
+import { datosCompras } from "@/lib/comprasDatos";
 import { mercaderiaParaDevolverAMarca } from "@/app/(app)/reposicion/actions";
 import ComprasEtapas from "@/components/ComprasEtapas";
 import ComprasTrabajo from "@/components/ComprasTrabajo";
@@ -15,14 +15,11 @@ export default async function RecepcionPage() {
   const sesion = await obtenerSesionConPantallas();
   if (!puedeVerPantalla(sesion, "compras-recepcion")) return <PantallaBloqueada />;
 
-  // Los pedidos a Alifrut los ve solo quien maneja Compras (Gonzalo, 19/11).
-  const veTodo = puedeVerPantalla(sesion, "compras");
-  const [todo, contadores, aDevolver] = await Promise.all([
+  const [datos, contadores, aDevolver] = await Promise.all([
     datosCompras(),
-    contadoresCompras(!veTodo),
+    contadoresCompras(),
     mercaderiaParaDevolverAMarca(),
   ]);
-  const datos = veTodo ? todo : sinLoDelDueno(todo);
 
   return (
     <div className="max-w-4xl mx-auto">
