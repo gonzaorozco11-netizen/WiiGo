@@ -22,7 +22,8 @@ export async function productosQueEntraron(dias = 7): Promise<Map<string, string
   const { data: movs } = await supabase
     .from("movimientos_stock")
     .select("id_variante, fecha")
-    .in("tipo", TIPOS_ENTRADA)
+    // Los carteles siguen como antes (sin lo de proveedores): no se pidió cambiarlos.
+    .in("tipo", ["RECEPCION", "FRACCIONADO"])
     .gt("cantidad", 0)
     .gte("fecha", desde.toISOString())
     .range(0, 4999);
