@@ -25,6 +25,16 @@ export const PASO_PARA_ETIQUETAR = 5;
  */
 export const PASO_IMPRESAS = 6;
 
+/** Las etiquetas ya están pegadas: falta solo «Sumar al stock» (19/11). */
+export const PASO_PEGADAS = 7;
+
+/** Qué le falta a lo de la tanda, por el paso más atrasado (para el aviso del Inicio). */
+export function loQueFalta(pendientes: EnCursoVista[]): "IMPRIMIR" | "PEGAR" | "SUMAR" | null {
+  if (pendientes.length === 0) return null;
+  const min = Math.min(...pendientes.map((e) => e.paso));
+  return min < PASO_IMPRESAS ? "IMPRIMIR" : min < PASO_PEGADAS ? "PEGAR" : "SUMAR";
+}
+
 /** Lo de la tanda que ya está fraccionado y espera la etiqueta. */
 export function paraEtiquetar(enCurso: EnCursoVista[]): EnCursoVista[] {
   return enCurso.filter((e) => e.paso >= PASO_PARA_ETIQUETAR && (e.bolsitas ?? 0) > 0);

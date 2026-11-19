@@ -11,7 +11,7 @@ import { localDeSesion } from "@/lib/fraccionado";
 import { cargarGondola, nombreCortoZona, ubicacionDe } from "@/lib/gondola";
 import { PARAMETRO_CODIGOS_IMPRESOS, cargarCodigosImpresos } from "@/lib/codigosImpresos";
 import { fechaHoraArgentina } from "@/lib/horarios";
-import { PASO_IMPRESAS, PASO_PARA_ETIQUETAR } from "@/lib/fraccionarSugerido";
+import { PASO_IMPRESAS, PASO_PARA_ETIQUETAR, PASO_PEGADAS } from "@/lib/fraccionarSugerido";
 
 // Registrar lo que se embolsó (lib/granel.ts, sql/granel-fraccionado.sql).
 // Devuelven { error } como dato: Next 16 esconde el mensaje de un throw.
@@ -298,6 +298,16 @@ export async function descartarEnCurso(idEnCurso: string): Promise<{ error?: str
  * PASO_IMPRESAS y no se vuelven a pedir, aunque la tanda la termine otra persona.
  */
 export async function marcarEtiquetasImpresas(ids: string[]): Promise<{ error?: string }> {
+  return avanzarTanda(ids, PASO_PARA_ETIQUETAR, PASO_IMPRESAS, "impresas");
+}
+
+/** «Pegué las etiquetas»: falta solo sumar al stock (19/11). */
+export async function marcarEtiquetasPegadas(ids: string[]): Promise<{ error?: string }> {
+  return avanzarTanda(ids, PASO_IMPRESAS, PASO_PEGADAS, "pegadas");
+}
+
+/** Pasa lo de la tanda que esté en un paso anterior a `hasta`, anotando quién y cuándo. */
+async function avanzarTanda(ids: string[], desde: number, hasta: number, que: "impresas" | "pegadas"): Promise<{ error?: string }> {
   const sesion = await obtenerSesionConPantallas();
   if (!sesion || !puedeVerPantalla(sesion, "fraccionar")) return { error: "No tenés habilitado Fraccionar." };
   const limpios = ids.filter((id) => /^[0-9a-f-]{36}$/i.test(id)).slice(0, 200);
@@ -305,12 +315,14 @@ export async function marcarEtiquetasImpresas(ids: string[]): Promise<{ error?: 
   const supabase = getSupabaseServerClient();
   const idLocal = await localDeSesion(supabase, sesion.idUsuario);
   if (!idLocal) return { error: "Tu usuario no tiene un local asignado." };
-  const { error } = await supabase
-    .from("fraccionados_en_curso")
-    .update({ paso: PASO_IMPRESAS, actualizado: new Date().toISOString() })
-    .in("id_en_curso", limpios)
-    .eq("id_local", idLocal)
-    .eq("paso", PASO_PARA_ETIQUETAR);
+  const ahora = new Date().toISOString();
+  const base = { paso: hasta, actualizado: ahora };
+  const conQuien = { ...base, [`${que}_por`]: sesion.nombre ?? null, [`${que}_en`]: ahora };
+  const correr = (fila: Record<string, unknown>) =>
+    supabase.from("fraccionados_en_curso").update(fila).in("id_en_curso", limpios).eq("id_local", idLocal).gte("paso", desde).lt("paso", hasta);
+  let { error } = await correr(conQuien);
+  // Sin sql/tanda-pasos.sql no están las columnas de quién y cuándo: se avanza igual.
+  if (error && /impresas_|pegadas_/.test(error.message)) ({ error } = await correr(base));
   if (error && !/fraccionados_en_curso|schema cache/i.test(error.message)) return { error: friendlyDbError(error) };
   revalidatePath("/");
   return {};

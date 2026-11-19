@@ -3,8 +3,8 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { EnCursoVista, GranelVista } from "@/lib/fraccionado";
-import { marcarEtiquetasImpresas, terminarFraccionado } from "@/app/(app)/fraccionar/actions";
-import { PASO_IMPRESAS } from "@/lib/fraccionarSugerido";
+import { marcarEtiquetasImpresas, marcarEtiquetasPegadas, terminarFraccionado } from "@/app/(app)/fraccionar/actions";
+import { PASO_IMPRESAS, PASO_PEGADAS } from "@/lib/fraccionarSugerido";
 import { textoGramos } from "@/lib/gramos";
 import type { RecibidoSinCodigo } from "@/lib/entradas";
 
@@ -39,7 +39,10 @@ export default function FraccionarTanda({
   const router = useRouter();
   // Si todo ya tiene la etiqueta impresa (otra persona la imprimió y no sumó), se arranca en «Pegalas».
   const todasImpresas = pendientes.length > 0 && pendientes.every((e) => e.paso >= PASO_IMPRESAS);
-  const [paso, setPaso] = useState(Math.min(PASOS, Math.max(todasImpresas && recibidos.length === 0 ? 2 : 1, pasoInicial)));
+  // Ya pegadas (19/11): directo a «Sumalas al stock».
+  const todasPegadas = pendientes.length > 0 && pendientes.every((e) => e.paso >= PASO_PEGADAS);
+  const pasoGuardado = todasPegadas ? 3 : todasImpresas && recibidos.length === 0 ? 2 : 1;
+  const [paso, setPaso] = useState(Math.min(PASOS, Math.max(pasoGuardado, pasoInicial)));
   const [pegadas, setPegadas] = useState(false);
   const [hechos, setHechos] = useState<{ nombre: string; bolsitas: number; ubicacion: string | null; merma: number }[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -66,12 +69,29 @@ export default function FraccionarTanda({
   const totalYaImpresas = [...yaImpresas.values()].reduce((a, p) => a + p.n, 0);
   const idsSinImprimir = lineas.filter((l) => l.paso < PASO_IMPRESAS).map((l) => l.id);
   // Al pasar a «Pegalas» (volvió de imprimir o tocó «Ya las imprimí»), quedan anotadas como impresas.
+  // Y al pasar a «Sumalas al stock», como pegadas: si se van sin sumar, el siguiente
+  // turno ve que solo falta eso (19/11).
+  const idsSinPegar = lineas.filter((l) => l.paso < PASO_PEGADAS).map((l) => l.id);
   useEffect(() => {
     if (paso >= 2 && idsSinImprimir.length > 0) {
-      marcarEtiquetasImpresas(idsSinImprimir).catch(() => {});
+      marcarEtiquetasImpresas(idsSinImprimir)
+        .then(() => (paso >= 3 && idsSinPegar.length > 0 ? marcarEtiquetasPegadas(idsSinPegar) : undefined))
+        .catch(() => {});
+    } else if (paso >= 3 && idsSinPegar.length > 0) {
+      marcarEtiquetasPegadas(idsSinPegar).catch(() => {});
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paso]);
+
+  // Cómo viene la tanda: quién hizo cada paso (sql/tanda-pasos.sql). Para el que la sigue.
+  const hora = (iso: string | null) =>
+    iso ? new Date(iso).toLocaleTimeString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", hour: "2-digit", minute: "2-digit" }) : null;
+  const primero = (f: (e: Linea) => string | null) => lineas.map(f).find((x) => x) ?? null;
+  const estadoTanda = [
+    { hecho: true, texto: "Fraccionaron", quien: primero((e) => e.quien), cuando: null as string | null },
+    { hecho: lineas.every((e) => e.paso >= PASO_IMPRESAS) || paso >= 2, texto: "Imprimieron las etiquetas", quien: primero((e) => e.impresasPor), cuando: hora(primero((e) => e.impresasEn)) },
+    { hecho: lineas.every((e) => e.paso >= PASO_PEGADAS) || paso >= 3, texto: "Pegaron las etiquetas", quien: primero((e) => e.pegadasPor), cuando: hora(primero((e) => e.pegadasEn)) },
+  ];
   const fecha = (iso: string) => iso.split("-").reverse().join("/");
 
   // El vencimiento que cargaron sale impreso (Gonzalo, 18/11). Si el mismo producto tiene dos
@@ -314,6 +334,27 @@ export default function FraccionarTanda({
       <p className="mb-1 text-xs font-extrabold uppercase tracking-widest text-accent">
         Paso {paso} de {PASOS}
       </p>
+      {/* Lo ya hecho de la tanda (puede ser de otra persona u otro turno). */}
+      <ul className="mb-3 grid gap-1 text-[13px]">
+        {estadoTanda.map((s) => (
+          <li key={s.texto} className={`flex items-center gap-2 ${s.hecho ? "text-emerald-700" : "text-neutral-400"}`}>
+            <span aria-hidden="true">{s.hecho ? "✓" : "○"}</span>
+            <span>
+              {s.texto}
+              {s.hecho && (s.quien || s.cuando) && (
+                <span className="text-neutral-500">
+                  {" "}
+                  · {[s.quien, s.cuando].filter(Boolean).join(", ")}
+                </span>
+              )}
+            </span>
+          </li>
+        ))}
+        <li className="flex items-center gap-2 text-neutral-400">
+          <span aria-hidden="true">○</span>
+          <span>Sumar al stock: recién ahí se pueden vender</span>
+        </li>
+      </ul>
       {cuerpo}
       {error && (
         <p role="alert" className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">

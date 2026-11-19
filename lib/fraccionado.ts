@@ -51,6 +51,11 @@ export type EnCursoVista = {
   quien: string;
   idUsuario: string;
   actualizado: string;
+  /** Quién imprimió / pegó las etiquetas y cuándo (sql/tanda-pasos.sql; sin él, null). */
+  impresasPor: string | null;
+  impresasEn: string | null;
+  pegadasPor: string | null;
+  pegadasEn: string | null;
 };
 
 /** Los fraccionados sin terminar del local (o de una persona). Sin la tabla, ninguno. */
@@ -72,6 +77,10 @@ export async function fraccionadosEnCurso(supabase: SupabaseClient, filtro: { id
     quien: (f.usuario as string | null) ?? "—",
     idUsuario: f.id_usuario as string,
     actualizado: f.actualizado as string,
+    impresasPor: (f.impresas_por as string | null) ?? null,
+    impresasEn: (f.impresas_en as string | null) ?? null,
+    pegadasPor: (f.pegadas_por as string | null) ?? null,
+    pegadasEn: (f.pegadas_en as string | null) ?? null,
   }));
 }
 
