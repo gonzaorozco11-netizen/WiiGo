@@ -97,6 +97,32 @@ export async function entradasSinSticker(): Promise<EntradaPendiente[]> {
 }
 
 /**
+ * Lo mismo que entradasSinSticker, con el nombre: para sumarlo a la hoja de las
+ * etiquetas de la tanda de Fraccionar (Gonzalo, 19/11: «así aprovecho toda la plancha»).
+ * Sin lo embolsado en el local: eso ya va en la tanda por su lado.
+ */
+export type RecibidoSinCodigo = { idVariante: string; nombre: string; n: number };
+
+export async function recibidosSinCodigo(): Promise<RecibidoSinCodigo[]> {
+  const supabase = getSupabaseServerClient();
+  const faltan = await entradasSinSticker();
+  if (!faltan.length) return [];
+  const { data } = await supabase
+    .from("variantes_producto")
+    .select("id_variante, nombre, productos(nombre, id_envase)")
+    .in("id_variante", faltan.map((e) => e.idVariante));
+  const info = new Map(
+    ((data ?? []) as unknown as { id_variante: string; nombre: string; productos: { nombre: string; id_envase: string | null } | null }[]).map((v) => [v.id_variante, v])
+  );
+  return faltan
+    .filter((e) => info.get(e.idVariante)?.productos && !info.get(e.idVariante)!.productos!.id_envase)
+    .map((e) => {
+      const v = info.get(e.idVariante)!;
+      return { idVariante: e.idVariante, nombre: `${v.productos!.nombre}${v.nombre && v.nombre !== "Único" ? ` — ${v.nombre}` : ""}`, n: e.cantidad };
+    });
+}
+
+/**
  * Lo que entró por recepción y todavía necesita que le impriman el código.
  *
  * Nace de una cosa concreta de la operativa: los frutos secos vienen

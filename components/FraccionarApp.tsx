@@ -9,6 +9,7 @@ import FraccionarGuiado from "@/components/FraccionarGuiado";
 import PestanasStock from "@/components/PestanasStock";
 import { PASO_PARA_ETIQUETAR, conLoYaFraccionado, paraEtiquetar, paraFraccionar } from "@/lib/fraccionarSugerido";
 import FraccionarTanda from "@/components/FraccionarTanda";
+import type { RecibidoSinCodigo } from "@/lib/entradas";
 
 // Fraccionar: el granel del depósito (en gramos) pasa a bolsitas. Desde el
 // 2026-11-16 se hace con el paso a paso (FraccionarGuiado): se toca un granel y
@@ -26,6 +27,7 @@ export default function FraccionarApp({
   seguir = null,
   tanda: tandaInicial = null,
   idUsuario = null,
+  recibidos = [],
 }: {
   graneles: GranelVista[];
   recientes: FraccionadoVista[];
@@ -38,6 +40,8 @@ export default function FraccionarApp({
   /** ?tanda=<paso>: las etiquetas de la tanda (al volver de imprimir, paso 2). */
   tanda?: number | null;
   idUsuario?: string | null;
+  /** Lo recibido sin código de fábrica (granolas…): se suma a la hoja de la tanda. */
+  recibidos?: RecibidoSinCodigo[];
 }) {
   const router = useRouter();
   const [busqueda, setBusqueda] = useState("");
@@ -79,6 +83,7 @@ export default function FraccionarApp({
       <FraccionarTanda
         pendientes={paraEtiq}
         graneles={granelesDelStock}
+        recibidos={recibidos}
         pasoInicial={tanda}
         onSalir={() => {
           setTanda(null);

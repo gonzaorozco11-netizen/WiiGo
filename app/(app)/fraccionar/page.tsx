@@ -5,6 +5,7 @@ import FraccionarApp from "@/components/FraccionarApp";
 import CargarGranelDeposito from "@/components/CargarGranelDeposito";
 import { asegurarGraneles } from "@/lib/granel";
 import { datosFraccionar, fraccionadosEnCurso, localDeSesion } from "@/lib/fraccionado";
+import { recibidosSinCodigo } from "@/lib/entradas";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +42,7 @@ export default async function FraccionarPage({ searchParams }: { searchParams: P
         seguir={sp.seguir ?? null}
         tanda={sp.tanda ? Math.min(3, Math.max(1, Number(sp.tanda) || 1)) : null}
         idUsuario={sesion.idUsuario}
+        recibidos={await recibidosSinCodigo().catch(() => [])}
       />
     </>
   );

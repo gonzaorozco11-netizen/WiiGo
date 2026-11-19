@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { EnCursoVista, GranelVista } from "@/lib/fraccionado";
 import { terminarFraccionado } from "@/app/(app)/fraccionar/actions";
 import { textoGramos } from "@/lib/gramos";
+import type { RecibidoSinCodigo } from "@/lib/entradas";
 
 // Las etiquetas de toda la tanda, juntas (Gonzalo, 17/11: «para ahorrar hojas
 // de impresión»). Se fracciona producto por producto (FraccionarGuiado, pasos
@@ -18,12 +19,18 @@ type Linea = EnCursoVista & { nombre: string; peso: number };
 export default function FraccionarTanda({
   pendientes,
   graneles,
+  recibidos = [],
   pasoInicial = 1,
   onSalir,
 }: {
   /** Lo fraccionado que espera la etiqueta (paso 5 de fraccionados_en_curso). */
   pendientes: EnCursoVista[];
   graneles: GranelVista[];
+  /**
+   * Lo que llegó cerrado sin código (granolas de 1 kg…) y espera su sticker: va en la
+   * misma hoja, para aprovechar la plancha (Gonzalo, 19/11). Ya está en el stock.
+   */
+  recibidos?: RecibidoSinCodigo[];
   /** 2 al volver de imprimir en Códigos. */
   pasoInicial?: number;
   onSalir: () => void;
@@ -57,8 +64,23 @@ export default function FraccionarTanda({
   const impreso = (p: { vtos: Set<string> }) => p.vtos.size === 1;
   const aMano = [...porProducto.values()].filter((p) => !impreso(p));
 
+  // Lo recibido sin código: entra marcado; se puede sacar si no se quiere imprimir ahora.
+  const [sinSumar, setSinSumar] = useState<Set<string>>(new Set());
+  const recibidosElegidos = recibidos.filter((r) => !sinSumar.has(r.idVariante) && !porProducto.has(r.idVariante));
+  const etiquetas = total + recibidosElegidos.reduce((a, r) => a + r.n, 0);
+  const alternar = (id: string) =>
+    setSinSumar((prev) => {
+      const s = new Set(prev);
+      if (s.has(id)) s.delete(id);
+      else s.add(id);
+      return s;
+    });
+
   function imprimir() {
-    const lote = [...porProducto].map(([id, p]) => `${id}:${p.n}${impreso(p) ? `:${[...p.vtos][0]}` : ""}`).join(",");
+    const lote = [
+      ...[...porProducto].map(([id, p]) => `${id}:${p.n}${impreso(p) ? `:${[...p.vtos][0]}` : ""}`),
+      ...recibidosElegidos.map((r) => `${r.idVariante}:${r.n}`),
+    ].join(",");
     router.push(`/codigos?lote=${lote}&volver=${encodeURIComponent("/fraccionar?tanda=2")}`);
   }
 
@@ -129,7 +151,8 @@ export default function FraccionarTanda({
       <>
         <h2 className="text-2xl font-black">Imprimí todas juntas</h2>
         <p className="mb-4 text-neutral-500">
-          <b className="text-neutral-900">{total} etiquetas</b> de {porProducto.size} {porProducto.size === 1 ? "producto" : "productos"}, en una sola impresión.{" "}
+          <b className="text-neutral-900">{etiquetas} etiquetas</b> de {porProducto.size + recibidosElegidos.length}{" "}
+          {porProducto.size + recibidosElegidos.length === 1 ? "producto" : "productos"}, en una sola impresión.{" "}
           {aMano.length === 0
             ? "El vencimiento que cargaste sale impreso en cada etiqueta."
             : "El vencimiento sale impreso; el de los que tienen dos fechas distintas sale en blanco y lo escribís a mano."}
@@ -142,8 +165,37 @@ export default function FraccionarTanda({
             </li>
           ))}
         </ul>
+        {recibidos.length > 0 && (
+          <div className="mt-4">
+            <h3 className="text-sm font-extrabold text-neutral-900">También llegaron sin código</h3>
+            <p className="mb-2 text-xs text-neutral-500">Ya están en el stock: aprovechá la hoja y pegales el sticker. Destildá lo que no quieras imprimir ahora.</p>
+            <ul className="grid gap-1.5">
+              {recibidos
+                .filter((r) => !porProducto.has(r.idVariante))
+                .map((r) => {
+                  const va = !sinSumar.has(r.idVariante);
+                  return (
+                    <li key={r.idVariante}>
+                      <button
+                        type="button"
+                        onClick={() => alternar(r.idVariante)}
+                        aria-pressed={va}
+                        className={`flex w-full items-center gap-3 rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-left text-sm ${va ? "" : "opacity-60"}`}
+                      >
+                        <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-md border-2 text-xs font-black text-white ${va ? "border-emerald-600 bg-emerald-600" : "border-neutral-300"}`}>
+                          {va ? "✓" : ""}
+                        </span>
+                        <span className="min-w-0 flex-1">{r.nombre}</span>
+                        <b className="tabular-nums">{r.n}</b>
+                      </button>
+                    </li>
+                  );
+                })}
+            </ul>
+          </div>
+        )}
         <button type="button" onClick={imprimir} className={`${azul} mt-4`}>
-          🖨️ Imprimir {total} etiquetas
+          🖨️ Imprimir {etiquetas} etiquetas
         </button>
         <button type="button" onClick={() => setPaso(2)} className="mx-auto mt-3 block text-sm font-semibold text-neutral-500 underline underline-offset-4">
           Ya las imprimí
@@ -171,11 +223,19 @@ export default function FraccionarTanda({
               <b className="text-xl tabular-nums">{[...p.vtos].map(fecha).join(" y ") || "—"}</b>
             </li>
           ))}
+          {recibidosElegidos.map((r) => (
+            <li key={r.idVariante} className={`${tarjeta} flex flex-wrap items-center justify-between gap-2`}>
+              <span>
+                <b className="block">{r.nombre}</b>
+                <small className="text-neutral-500">{r.n} etiquetas · llegó cerrado, solo el código</small>
+              </span>
+            </li>
+          ))}
         </ul>
         <button type="button" onClick={() => setPegadas(!pegadas)} aria-pressed={pegadas} className={`${tarjeta} mt-3 flex w-full items-start gap-3 text-left`}>
           <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg border-2 text-white font-black ${pegadas ? "border-emerald-600 bg-emerald-600" : "border-neutral-300"}`}>{pegadas ? "✓" : ""}</span>
           <span>
-            <b className="block text-[16px]">{aMano.length === 0 ? `Pegué las ${total} etiquetas` : `Escribí los vencimientos y pegué las ${total} etiquetas`}</b>
+            <b className="block text-[16px]">{aMano.length === 0 ? `Pegué las ${etiquetas} etiquetas` : `Escribí los vencimientos y pegué las ${etiquetas} etiquetas`}</b>
             <small className="text-[13px] text-neutral-500">En el frente, sin tapar el producto. Si sobró alguna, tirala.</small>
           </span>
         </button>
