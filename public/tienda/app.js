@@ -9,6 +9,8 @@
 (function () {
   'use strict';
   var D = window.WIIGO, app = document.getElementById('app');
+  // Pago con tarjeta por Nave: solo si el servidor tiene las credenciales (18/11).
+  var TARJETA_ONLINE = Boolean(D && D.pagos && D.pagos.tarjeta);
   if (!D) { app.innerHTML = '<p style="padding:60px 16px;text-align:center">No se pudieron cargar los productos.</p>'; return; }
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -770,6 +772,8 @@
     return '<div class="filtro-cab"><button class="redondo" data-a="abrir-pedido" aria-label="Volver al pedido">' + ic('atras') + '</button><span><b>Finalizar compra</b></span></div>' +
       '<div class="fc-caja"><p class="fc-t">Retirás en</p><div class="fc-retiro"><span>📍</span><span><b>Arístides Villanueva 256</b><small>Listo en 15 min · gratis' + (hr[0] ? '' : ' · ' + hr[1]) + '</small></span></div></div>' +
       '<div class="fc-caja"><p class="fc-t">¿Cómo pagás?</p><div class="opciones">' +
+      // Tarjeta por Nave (18/11): solo si las credenciales están cargadas (D.pagos.tarjeta).
+      (TARJETA_ONLINE ? op('pago', 'tarjeta', co.pago === 'tarjeta', 'Tarjeta de débito o crédito', '<span class="fc-monto">' + plata(t.g) + '</span> · también en cuotas') : '') +
       op('pago', 'transf', co.pago === 'transf', 'Transferencia', '<span class="fc-monto">' + plata(t.g) + '</span>') +
       op('pago', 'retiro', co.pago === 'retiro', 'Al retirar', 'Efectivo <span class="fc-monto">' + plata(t.e) + '</span> · tarjeta o QR ' + plata(t.g)) + '</div></div>' +
       '<div class="fc-caja"><p class="fc-t">Tu pedido</p>' +
@@ -779,7 +783,7 @@
       '<div class="total" style="border-top:1px solid var(--linea);padding-top:10px;margin-top:6px"><span>Total</span><b>' + plata(co.pago === 'retiro' ? t.e : t.g) + '</b></div>' +
       (co.pago === 'retiro' ? '<p class="f-chico" style="margin:0">En efectivo. Con tarjeta o QR: ' + plata(t.g) + '.</p>' : '') +
       '<div class="total" style="font-size:14px"><span>Sumás en WiiGo Club</span><b style="font-size:16px;color:var(--energia)">+' + t.p + ' puntos</b></div></div>' +
-      '<button class="cta naranja" style="margin-top:14px" data-a="confirmar"' + (S.enviando ? ' disabled' : '') + '>' + (S.enviando ? 'Enviando…' : co.pago === 'transf' ? 'Confirmar y transferir ' + plata(t.g) : 'Confirmar pedido') + '</button>' +
+      '<button class="cta naranja" style="margin-top:14px" data-a="confirmar"' + (S.enviando ? ' disabled' : '') + '>' + (S.enviando ? 'Enviando…' : co.pago === 'transf' ? 'Confirmar y transferir ' + plata(t.g) : co.pago === 'tarjeta' ? 'Confirmar y pagar ' + plata(t.g) : 'Confirmar pedido') + '</button>' +
       '<p class="f-chico" style="text-align:center">Al confirmar aceptás los términos · 10 días para arrepentirte</p>';
   }
   // La escena del local en cada paso del pedido (del primer prototipo aprobado, 2026-11-11).
@@ -804,6 +808,11 @@
     var p = pedidoVisto(), volver = '<button class="redondo" data-a="inicio" aria-label="Volver al inicio">' + ic('atras') + '</button>';
     if (!p) return '<div class="filtro-cab">' + volver + '<span><b>Mis pedidos</b></span></div><div class="vacio">' + (S.usuario ? 'No tenés pedidos en curso.' : 'Entrá con tu DNI para ver tus pedidos.') + '</div>';
     var cancelado = p.estado === 'CANCELADO', e = Math.max(0, p.paso), falta = p.pago === 'transf' && !p.pagoOk && abiertoPed(p), c = p.transferencia;
+    // Con tarjeta y sin pagar (18/11): el botón para pagar (o reintentar) en Nave.
+    var faltaTarjeta = p.pago === 'tarjeta' && !p.pagoOk && abiertoPed(p);
+    var tarj = faltaTarjeta ? '<div class="transf"><small>Pagá con tarjeta</small><b>' + plata(p.total) + '</b>' +
+      '<button class="cta" style="margin-top:8px" data-a="pagar-tarjeta" data-c="' + esc(p.codigo) + '"' + (S.enviando ? ' disabled' : '') + '>' + (S.enviando ? 'Abriendo…' : 'Pagar con tarjeta') + '</button>' +
+      '<span class="f-chico">Débito, crédito o dinero en cuenta, por Nave. Si ya pagaste, en unos segundos se actualiza solo.</span></div>' : '';
     // Transferencia sin confirmar: arriba de todo, los datos para transferir.
     var transf = falta && c ? '<div class="transf"><small>Transferí</small><b>' + plata(p.total) + '</b>' +
       '<div class="dato-t"><span>Alias</span><b>' + esc(c.alias) + '</b><button class="acceso" data-a="copiar" data-x="' + esc(c.alias) + '">Copiar</button></div>' +
@@ -813,13 +822,17 @@
       '<span class="f-chico" style="color:#5a4510">En el concepto poné <b>Pedido #' + p.num + '</b>. Cuando la vemos, empezamos a armarlo.</span></div>' : '';
     var faltaron = p.items.filter(function (it) { return it.hay != null && it.hay < it.q; });
     var avisoFalta = faltaron.length && !cancelado ? '<div class="seg-falta"><b>No encontramos todo</b>' + faltaron.map(function (it) { return '<span>' + esc(titulo(it.n)) + (it.v ? ' — ' + esc(it.v) : '') + ': ' + (it.hay === 0 ? 'no había' : 'había ' + it.hay + ' de ' + it.q) + '</span>'; }).join('') +
-      '<span>' + (p.devolver > 0 ? (p.devuelto ? 'Ya te devolvimos ' + plata(p.devolver) + '.' : 'Te devolvemos <b>' + plata(p.devolver) + '</b> por transferencia.') : 'El total quedó en <b>' + plata(p.total) + '</b>.') + '</span></div>' : '';
-    var sub = cancelado ? 'Cancelado' : p.pago === 'transf' ? (falta ? 'Esperando tu transferencia' : 'Transferencia recibida ✓') : 'Pagás al retirar: efectivo ' + plata(p.efectivo) + ' o tarjeta ' + plata(p.total);
-    var estado = cancelado ? '<div class="seg-estado"><b>Pedido cancelado</b><span>' + esc(p.motivo || 'Se canceló.') + (p.devolver > 0 ? ' Te devolvemos ' + plata(p.devolver) + ' a la misma cuenta.' : '') + '</span></div>'
+      '<span>' + (p.devolver > 0 ? (p.devuelto ? 'Ya te devolvimos ' + plata(p.devolver) + '.' : 'Te devolvemos <b>' + plata(p.devolver) + '</b> ' + (p.pago === 'tarjeta' ? 'a tu tarjeta.' : 'por transferencia.')) : 'El total quedó en <b>' + plata(p.total) + '</b>.') + '</span></div>' : '';
+    var sub = cancelado ? 'Cancelado'
+      : p.pago === 'transf' ? (falta ? 'Esperando tu transferencia' : 'Transferencia recibida ✓')
+      : p.pago === 'tarjeta' ? (faltaTarjeta ? 'Falta el pago con tarjeta' : 'Pagado con tarjeta ✓')
+      : 'Pagás al retirar: efectivo ' + plata(p.efectivo) + ' o tarjeta ' + plata(p.total);
+    var estado = cancelado ? '<div class="seg-estado"><b>Pedido cancelado</b><span>' + esc(p.motivo || 'Se canceló.') + (p.devolver > 0 ? ' Te devolvemos ' + plata(p.devolver) + (p.pago === 'tarjeta' ? ' a tu tarjeta.' : ' a la misma cuenta.') : '') + '</span></div>'
       : falta ? '<div class="seg-estado"><b>Esperando tu transferencia</b><span>Apenas la vemos en la cuenta, el equipo acepta tu pedido y lo arma.</span></div>'
+      : faltaTarjeta ? '<div class="seg-estado"><b>Falta el pago con tarjeta</b><span>Apenas entra, el equipo acepta tu pedido y lo arma.</span></div>'
       : '<div class="seg-estado"><b>' + ESTADOS_PED[e].t + '</b><span>' + ESTADOS_PED[e].d + '</span>' + (e < 3 ? '<em>Listo en unos ' + [15, 12, 6][e] + ' minutos</em>' : '') + '</div>';
     var otros = (S.pedidos || []).filter(function (x) { return x.codigo !== p.codigo; });
-    return '<div class="filtro-cab">' + volver + '<span><b>Pedido #' + p.num + '</b><small>' + sub + '</small></span></div>' + transf + avisoFalta +
+    return '<div class="filtro-cab">' + volver + '<span><b>Pedido #' + p.num + '</b><small>' + sub + '</small></span></div>' + transf + tarj + avisoFalta +
       '<div class="estacion3d"><div class="tablero">' + escenaPedido(cancelado ? 'cancelado' : ['recibido', 'aceptado', 'preparando', 'listo', 'entregado'][e]) + '</div></div>' +
       (cancelado ? '' : '<div class="seg-codigo"><small>Tu palabra secreta</small><b>' + esc(p.palabra || p.codigo) + '</b><span>Para retirar decí tu DNI y esta palabra</span></div>') + estado +
       (cancelado ? '' : '<ol class="seg-pasos">' + ESTADOS_PED.map(function (x, i) { return '<li class="' + (i < e ? 'hecho' : i === e ? 'ahora' : '') + '"><i>' + (i < e ? '✓' : i + 1) + '</i><span>' + x.t + '</span></li>'; }).join('') + '</ol>') +
@@ -852,7 +865,7 @@
     // Con un pedido en curso y el carrito vacío, la barra lleva a seguirlo.
     var enCurso = (S.pedidos || []).filter(abiertoPed)[0];
     var barra = t.u && !S.pedido && !S.ficha && S.vista !== 'checkout' ? '<div class="barra"><button data-a="abrir-pedido"><span>' + ic('bolsa', 20) + t.u + (t.u === 1 ? ' producto' : ' productos') + ' · ' + plata(t.g) + '</span><span>Ver mi pedido ' + ic('flecha', 18) + '</span></button></div>'
-      : !t.u && enCurso && S.vista !== 'seguir' && !S.pedido ? '<div class="barra"><button data-a="ver-pedido" data-c="' + esc(enCurso.codigo) + '"><span>' + ic('bolsa', 20) + 'Pedido #' + enCurso.num + ' · ' + (enCurso.pago === 'transf' && !enCurso.pagoOk ? 'Falta tu transferencia' : ESTADOS_PED[Math.max(0, enCurso.paso)].t) + '</span><span>Seguir ' + ic('flecha', 18) + '</span></button></div>' : '';
+      : !t.u && enCurso && S.vista !== 'seguir' && !S.pedido ? '<div class="barra"><button data-a="ver-pedido" data-c="' + esc(enCurso.codigo) + '"><span>' + ic('bolsa', 20) + 'Pedido #' + enCurso.num + ' · ' + (enCurso.pago === 'transf' && !enCurso.pagoOk ? 'Falta tu transferencia' : enCurso.pago === 'tarjeta' && !enCurso.pagoOk ? 'Falta el pago' : ESTADOS_PED[Math.max(0, enCurso.paso)].t) + '</span><span>Seguir ' + ic('flecha', 18) + '</span></button></div>' : '';
     var foco = document.activeElement && (document.activeElement.id === 'q' || document.activeElement.id === 'mq') ? document.activeElement.id : null;
     var pos = foco ? document.activeElement.selectionStart : 0, y = window.scrollY;
     app.innerHTML = cab + '<main>' + cuerpo + '</main>' + (S.cuenta || S.combo ? '' : barra) + cajon() + ficha() + pedido() + hojaCombo() + cuenta();
@@ -1157,7 +1170,8 @@
     confirmar: function () {
       if (S.enviando || !carrito.length) return;
       S.enviando = true; pintar(false);
-      var pago = (S.co && S.co.pago) === 'retiro' ? 'AL_RETIRAR' : 'TRANSFERENCIA';
+      var elegido = S.co && S.co.pago;
+      var pago = elegido === 'retiro' ? 'AL_RETIRAR' : elegido === 'tarjeta' && TARJETA_ONLINE ? 'TARJETA' : 'TRANSFERENCIA';
       apiPedido({ pago: pago, items: carrito.map(function (l) { return { id: l.id, v: l.v, q: l.q }; }) }).then(function (r) {
         S.enviando = false;
         if (r.error) {
@@ -1170,10 +1184,22 @@
         carrito = []; sabor = {}; S.co = null;
         S.pedidos = [r.pedido].concat((S.pedidos || []).filter(function (p) { return p.codigo !== r.pedido.codigo; }));
         S.verCodigo = r.pedido.codigo; S.vista = 'seguir'; pintar(true);
-        aviso(pago === 'TRANSFERENCIA' ? '¡Pedido hecho! Ahora transferí y lo armamos' : '¡Pedido hecho! Te avisamos cuando esté listo');
+        // Con tarjeta: directo a pagar en Nave; al terminar vuelve al seguimiento del pedido.
+        if (pago === 'TARJETA' && r.pagar) { aviso('Te llevamos a pagar con tarjeta…'); window.location.href = r.pagar; return; }
+        aviso(pago === 'TRANSFERENCIA' ? '¡Pedido hecho! Ahora transferí y lo armamos' : pago === 'TARJETA' ? 'Pedido hecho. Tocá «Pagar con tarjeta» para pagarlo' : '¡Pedido hecho! Te avisamos cuando esté listo');
       });
     },
     'ver-pedido': function (d) { S.verCodigo = d.c || null; S.vista = 'seguir'; S.pedido = false; pintar(true); cargarPedidos(); },
+    // Pagar con tarjeta un pedido ya hecho: el link de Nave dura un rato, se pide uno nuevo.
+    'pagar-tarjeta': function (d) {
+      if (S.enviando) return;
+      S.enviando = true; pintar(false);
+      apiPedido({ accion: 'pagar', codigo: d.c }).then(function (r) {
+        S.enviando = false;
+        if (r.pagar) { window.location.href = r.pagar; return; }
+        pintar(false); aviso(r.error || 'No pudimos abrir el pago. Probá de nuevo.');
+      });
+    },
     copiar: function (d) { try { navigator.clipboard.writeText(d.x); aviso('Copiado: ' + d.x); } catch (e) { aviso(d.x); } },
     sabor: function (d) { sabor[d.id] = d.x; refrescar(d.id); },
     sumar: function (d) { var p = POR_ID[d.id]; sumar(d.id, saborDe(p), 1); refrescar(d.id); },

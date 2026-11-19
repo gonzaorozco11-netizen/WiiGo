@@ -23,7 +23,10 @@ import { leerMailsResumen, PARAMETRO_MAILS_RESUMEN } from "@/lib/resumenTurno";
 export const FALTA_SQL_ONLINE = "Falta correr sql/tienda-pedidos.sql en Supabase.";
 
 export type EstadoOnline = "NUEVO" | "ARMANDO" | "LISTO" | "ENTREGADO" | "CANCELADO";
-export type PagoOnline = "TRANSFERENCIA" | "AL_RETIRAR";
+/** TARJETA (18/11): débito, crédito o dinero en cuenta por Nave (lib/nave.ts, sql/tienda-pago-tarjeta.sql). */
+export type PagoOnline = "TRANSFERENCIA" | "AL_RETIRAR" | "TARJETA";
+/** Se paga antes de armarlo (transferencia o tarjeta): si falta algo o se cancela, hay que devolver. */
+export const pagaAntes = (pago: PagoOnline) => pago === "TRANSFERENCIA" || pago === "TARJETA";
 export const ESTADOS_ABIERTOS: EstadoOnline[] = ["NUEVO", "ARMANDO", "LISTO"];
 
 // Lo que el cliente necesita para transferir. El alias sale de Configuración
@@ -123,6 +126,10 @@ export type FilaPedidoOnline = {
   cancelado_at: string | null;
   vence: string;
   id_venta: string | null;
+  /** Pago con tarjeta por Nave (sql/tienda-pago-tarjeta.sql; sin correrlo no vienen). */
+  nave_pedido_id?: string | null;
+  nave_pago_id?: string | null;
+  nave_forma?: string | null;
   pedidos_online_items?: Record<string, unknown>[] | null;
 };
 
@@ -287,6 +294,7 @@ export async function avisarCliente(supabase: SupabaseClient, idPedido: string, 
       .map((i) => `${escapar(i.nombre)}${i.variante ? ` — ${escapar(i.variante)}` : ""}: ${i.hay === 0 ? "no había" : `había ${i.hay} de ${i.cantidad}`}`)
       .join("<br>");
     const pagaAlRetirar = p.pago === "AL_RETIRAR";
+    const conTarjeta = p.pago === "TARJETA";
 
     let asunto = "";
     let html = "";
@@ -301,17 +309,26 @@ export async function avisarCliente(supabase: SupabaseClient, idPedido: string, 
         detalle: ["Tu palabra secreta para retirar. En la estación decí tu DNI y esta palabra."],
         franja: pagaAlRetirar
           ? { titulo: "Pagás al retirar", texto: `En efectivo ${pesos(t.efectivo)} · con tarjeta o QR ${pesos(t.lista)}. Te lo guardamos hasta mañana a las 21.` }
-          : { titulo: `Transferí ${pesos(t.lista)}`, texto: `Alias <b>${escapar(cuenta.alias)}</b> · CVU ${cuenta.cvu} · ${cuenta.titular}.<br>En el concepto poné «Pedido #${p.numero}». Apenas la vemos, armamos tu pedido.` },
+          : conTarjeta
+            ? { titulo: `Pagá ${pesos(t.lista)} con tarjeta`, texto: `Si no terminaste el pago, tocá «Seguir mi pedido» y después «Pagar con tarjeta». Apenas entra, armamos tu pedido.` }
+            : { titulo: `Transferí ${pesos(t.lista)}`, texto: `Alias <b>${escapar(cuenta.alias)}</b> · CVU ${cuenta.cvu} · ${cuenta.titular}.<br>En el concepto poné «Pedido #${p.numero}». Apenas la vemos, armamos tu pedido.` },
         boton,
         tono: pagaAlRetirar ? "verde" : "ambar",
         pie: PIE,
         base,
       });
-      texto = `Recibimos tu pedido #${p.numero}. Para retirar: tu DNI y la palabra secreta ${palabraSecreta(p.codigo)}. ${pagaAlRetirar ? `Pagás al retirar: efectivo ${pesos(t.efectivo)} o tarjeta/QR ${pesos(t.lista)}.` : `Transferí ${pesos(t.lista)} al alias ${cuenta.alias} (CVU ${cuenta.cvu}).`} ${boton.url}`;
+      texto = `Recibimos tu pedido #${p.numero}. Para retirar: tu DNI y la palabra secreta ${palabraSecreta(p.codigo)}. ${pagaAlRetirar ? `Pagás al retirar: efectivo ${pesos(t.efectivo)} o tarjeta/QR ${pesos(t.lista)}.` : conTarjeta ? `Pagá ${pesos(t.lista)} con tarjeta desde «Seguir mi pedido».` : `Transferí ${pesos(t.lista)} al alias ${cuenta.alias} (CVU ${cuenta.cvu}).`} ${boton.url}`;
     } else if (tipo === "PAGO_OK") {
-      asunto = `Recibimos tu transferencia · pedido #${p.numero}`;
-      html = plantilla({ titulo: "¡Llegó tu transferencia!", bajada: `Pedido #${p.numero} · ${pesos(t.lista)}`, cuerpo: "Ya la vimos en la cuenta. El equipo toma tu pedido y empieza a armarlo.", boton, pie: PIE, base });
-      texto = `Recibimos tu transferencia del pedido #${p.numero}. ${boton.url}`;
+      asunto = conTarjeta ? `Recibimos tu pago · pedido #${p.numero}` : `Recibimos tu transferencia · pedido #${p.numero}`;
+      html = plantilla({
+        titulo: conTarjeta ? "¡Listo el pago!" : "¡Llegó tu transferencia!",
+        bajada: `Pedido #${p.numero} · ${pesos(t.lista)}`,
+        cuerpo: conTarjeta ? "Tu pago con tarjeta entró. El equipo toma tu pedido y empieza a armarlo." : "Ya la vimos en la cuenta. El equipo toma tu pedido y empieza a armarlo.",
+        boton,
+        pie: PIE,
+        base,
+      });
+      texto = `${conTarjeta ? "Recibimos tu pago con tarjeta" : "Recibimos tu transferencia"} del pedido #${p.numero}. ${boton.url}`;
     } else if (tipo === "ACEPTADO") {
       asunto = `Estamos armando tu pedido #${p.numero}`;
       html = plantilla({ titulo: "¡Manos a la obra!", bajada: `El equipo aceptó tu pedido #${p.numero} y lo está armando.`, cuerpo: "Te avisamos apenas esté listo para retirar.", boton, pie: PIE, base });
@@ -328,7 +345,7 @@ export async function avisarCliente(supabase: SupabaseClient, idPedido: string, 
         franja: faltaron.length
           ? {
               titulo: "No encontramos todo",
-              texto: `${textoFaltas}<br>${devolver > 0 ? `Te devolvemos <b>${pesos(devolver)}</b> por transferencia.` : `El total quedó en <b>${pesos(t.lista)}</b>.`}`,
+              texto: `${textoFaltas}<br>${devolver > 0 ? `Te devolvemos <b>${pesos(devolver)}</b> ${conTarjeta ? "a la misma tarjeta" : "por transferencia"}.` : `El total quedó en <b>${pesos(t.lista)}</b>.`}`,
             }
           : undefined,
         tono: faltaron.length ? "ambar" : "verde",
@@ -360,7 +377,12 @@ export async function avisarCliente(supabase: SupabaseClient, idPedido: string, 
         titulo: "Tu pedido se canceló",
         tono: "ambar",
         bajada: `Pedido #${p.numero}${p.motivo_cancelacion ? ` · ${escapar(p.motivo_cancelacion)}` : ""}`,
-        cuerpo: devolver > 0 ? `Ya habías transferido: te devolvemos <b>${pesos(devolver)}</b> a la misma cuenta.` : "Si querés, armalo de nuevo cuando quieras.",
+        cuerpo:
+          devolver > 0
+            ? conTarjeta
+              ? `Ya habías pagado: te devolvemos <b>${pesos(devolver)}</b> a la misma tarjeta (puede tardar unos días en verse).`
+              : `Ya habías transferido: te devolvemos <b>${pesos(devolver)}</b> a la misma cuenta.`
+            : "Si querés, armalo de nuevo cuando quieras.",
         boton: { texto: "Ir a la tienda", url: tienda },
         pie: PIE,
         base,
@@ -393,7 +415,7 @@ export async function avisarPedidoNuevoAlDueno(supabase: SupabaseClient, idPedid
       asunto,
       html: plantilla({
         titulo: `Pedido online #${p.numero}`,
-        bajada: `${escapar(p.nombre)} · ${p.pago === "TRANSFERENCIA" ? "paga por transferencia" : "paga al retirar"}`,
+        bajada: `${escapar(p.nombre)} · ${p.pago === "TRANSFERENCIA" ? "paga por transferencia" : p.pago === "TARJETA" ? "paga con tarjeta (Nave)" : "paga al retirar"}`,
         destacado: pesos(t.lista),
         detalle: items.map((i) => `${i.cantidad} × ${escapar(i.nombre)}${i.variante ? ` — ${escapar(i.variante)}` : ""}`),
         boton: base ? { texto: "Ver pedidos online", url: `${base}/pedidos-online` } : undefined,

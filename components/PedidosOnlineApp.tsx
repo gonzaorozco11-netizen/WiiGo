@@ -44,11 +44,11 @@ const MOTIVOS = ["Sin stock", "El cliente lo pidió", "No llegó la transferenci
 function PagoPill({ p }: { p: PedidoOnlineEquipo }) {
   const clase = "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold whitespace-nowrap";
   if (p.devolver > 0 && !p.devuelto) return <span className={`${clase} bg-amber-50 text-amber-800 border border-amber-200`}>Devolver {pesos(p.devolver)}</span>;
-  if (p.pago === "TRANSFERENCIA")
+  if (p.pago === "TRANSFERENCIA" || p.pago === "TARJETA")
     return p.pagoOk ? (
-      <span className={`${clase} bg-emerald-50 text-emerald-700`}>✓ Pagado</span>
+      <span className={`${clase} bg-emerald-50 text-emerald-700`}>✓ Pagado{p.pago === "TARJETA" ? " con tarjeta" : ""}</span>
     ) : (
-      <span className={`${clase} bg-amber-50 text-amber-800 border border-amber-200`}>Falta la transferencia</span>
+      <span className={`${clase} bg-amber-50 text-amber-800 border border-amber-200`}>{p.pago === "TARJETA" ? "Falta el pago con tarjeta" : "Falta la transferencia"}</span>
     );
   return <span className={`${clase} bg-neutral-100 text-neutral-700`}>Paga al retirar</span>;
 }
@@ -334,7 +334,7 @@ export default function PedidosOnlineApp({
           {modal.verificada && abierto.original > abierto.totalLista && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm">
               Faltó algo: el total quedó en <b>{pesos(abierto.totalLista)}</b>
-              {abierto.pago === "TRANSFERENCIA" ? ` (pagó ${pesos(abierto.original)})` : ""}
+              {abierto.pago !== "AL_RETIRAR" ? ` (pagó ${pesos(abierto.original)})` : ""}
             </div>
           )}
           {!modal.verificada ? (
@@ -378,7 +378,7 @@ export default function PedidosOnlineApp({
                   onClick={() => setModal({ ...modal, devolvi: !modal.devolvi })}
                   className={`w-full rounded-xl border-[1.5px] p-2.5 text-center font-bold ${modal.devolvi ? "border-neutral-900 shadow-[inset_0_0_0_1px_#171717]" : "border-neutral-200"}`}
                 >
-                  {modal.devolvi ? "✓ " : ""}Ya le devolví {pesos(abierto.devolver)} por transferencia
+                  {modal.devolvi ? "✓ " : ""}Ya le devolví {pesos(abierto.devolver)} {abierto.pago === "TARJETA" ? "desde Nave, a su tarjeta" : "por transferencia"}
                 </button>
               ) : (
                 <span className="justify-self-start rounded-full bg-emerald-50 px-3 py-1 text-sm font-bold text-emerald-700">✓ Pagado</span>
@@ -418,9 +418,10 @@ export default function PedidosOnlineApp({
       {abierto && modal?.tipo === "cancelar" && (
         <Fondo onCerrar={() => setModal(null)}>
           <h3 className="text-[21px] font-bold">Cancelar #{abierto.numero}</h3>
-          {abierto.pago === "TRANSFERENCIA" && abierto.pagoOk && (
+          {(abierto.pago === "TRANSFERENCIA" || abierto.pago === "TARJETA") && abierto.pagoOk && (
             <span className="justify-self-start rounded-xl border border-amber-200 bg-amber-50 px-3 py-1.5 text-sm font-bold text-amber-800">
               Ya pagó: hay que devolverle {pesos(abierto.original)}
+              {abierto.pago === "TARJETA" ? " desde Nave (a su tarjeta)" : ""}
             </span>
           )}
           {MOTIVOS.map((m) => (
@@ -507,7 +508,7 @@ function Ventana({
   const dif = original - total;
   const nada = p.items.every((i) => i.hay === 0);
   const faltanTildar = p.items.filter((i) => !i.armado && i.hay == null).length;
-  const devolver = p.pago === "TRANSFERENCIA" && p.pagoOk ? dif : 0;
+  const devolver = (p.pago === "TRANSFERENCIA" || p.pago === "TARJETA") && p.pagoOk ? dif : 0;
 
   let accion: React.ReactNode = null;
   const grande = "w-full rounded-xl px-4 py-3.5 text-base font-extrabold disabled:opacity-45";
@@ -517,6 +518,9 @@ function Ventana({
         <button type="button" disabled={ocupado} onClick={onTransferencia} className={`${grande} bg-amber-500 text-[#2a1406]`}>
           Llegó la transferencia
         </button>
+      ) : p.pago === "TARJETA" && !p.pagoOk ? (
+        // Con tarjeta no se confirma a mano: Nave avisa solo cuando el pago entra.
+        <p className="w-full rounded-xl bg-amber-50 px-4 py-3 text-center text-sm font-bold text-amber-800">Esperando el pago con tarjeta: se confirma solo</p>
       ) : (
         <button type="button" disabled={ocupado} onClick={onAceptar} className={`${grande} bg-orange-600 text-white`}>
           Aceptar
@@ -638,7 +642,7 @@ function Ventana({
                 <div className="font-bold text-emerald-700">✓ Ya se le devolvieron {pesos(devolver)}</div>
               ) : (
                 <div>
-                  Ya pagó: hay que <b>devolverle {pesos(devolver)}</b> por transferencia
+                  Ya pagó: hay que <b>devolverle {pesos(devolver)}</b> {p.pago === "TARJETA" ? "desde Nave, a su tarjeta" : "por transferencia"}
                 </div>
               )
             ) : (

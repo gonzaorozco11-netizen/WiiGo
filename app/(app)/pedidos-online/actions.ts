@@ -19,6 +19,7 @@ import {
   itemsDe,
   palabraCoincide,
   totalesDe,
+  pagaAntes,
   vencerPedidosOnline,
   type EstadoOnline,
   type FilaPedidoOnline,
@@ -155,6 +156,7 @@ export async function aceptarPedidoOnline(idPedido: string): Promise<{ error: st
   const { fila } = await traer(supabase, idPedido);
   if (!fila || fila.estado !== "NUEVO") return { error: "Ese pedido ya no está en Nuevos." };
   if (fila.pago === "TRANSFERENCIA" && !fila.pago_ok_at) return { error: "Primero tiene que llegar la transferencia." };
+  if (fila.pago === "TARJETA" && !fila.pago_ok_at) return { error: "Todavía no entró el pago con tarjeta." };
   const { data } = await supabase
     .from("pedidos_online")
     .update({ estado: "ARMANDO", aceptado_at: new Date().toISOString() })
@@ -211,7 +213,7 @@ export async function marcarListoOnline(idPedido: string): Promise<{ error: stri
   if (items.some((i) => !i.armado && i.hay == null)) return { error: "Tildá cada producto o marcá lo que falta." };
   if (items.every((i) => i.hay === 0)) return { error: "No hay nada de este pedido: cancelalo." };
   const t = totalesDe(items);
-  const devolver = fila.pago === "TRANSFERENCIA" && fila.pago_ok_at ? Math.max(0, t.falto) : 0;
+  const devolver = pagaAntes(fila.pago) && fila.pago_ok_at ? Math.max(0, t.falto) : 0;
   const { data } = await supabase
     .from("pedidos_online")
     .update({ estado: "LISTO", listo_at: new Date().toISOString(), devolver })
@@ -233,8 +235,8 @@ export async function cancelarPedidoOnline(idPedido: string, motivo: string): Pr
   const { fila } = await traer(supabase, idPedido);
   if (!fila || !ESTADOS_ABIERTOS.includes(fila.estado)) return { error: "Ese pedido ya estaba cerrado." };
   const items = itemsDe(fila);
-  // Ya transfirió: se le devuelve todo.
-  const devolver = fila.pago === "TRANSFERENCIA" && fila.pago_ok_at ? totalesDe(items).original : 0;
+  // Ya transfirió o pagó con tarjeta: se le devuelve todo.
+  const devolver = pagaAntes(fila.pago) && fila.pago_ok_at ? totalesDe(items).original : 0;
   const { data } = await supabase
     .from("pedidos_online")
     .update({ estado: "CANCELADO", cancelado_at: new Date().toISOString(), motivo_cancelacion: (motivo || "Cancelado por el equipo").slice(0, 200), devolver })
@@ -271,10 +273,12 @@ export async function entregarPedidoOnline(idPedido: string, yaDevolvi: boolean)
   const supabase = getSupabaseServerClient();
   const { fila } = await traer(supabase, idPedido);
   if (!fila || fila.estado !== "LISTO") return { error: "Ese pedido no está listo para entregar." };
-  if (fila.pago !== "TRANSFERENCIA" || !fila.pago_ok_at) return { error: "Este pedido se cobra en la caja." };
+  if (!pagaAntes(fila.pago) || !fila.pago_ok_at) return { error: "Este pedido se cobra en la caja." };
   if (!fila.id_local) return { error: "El pedido no tiene local." };
+  const conTarjeta = fila.pago === "TARJETA";
   const devolver = Number(fila.devolver) || 0;
-  if (devolver > 0 && !fila.devuelto_at && !yaDevolvi) return { error: `Antes de entregarlo, devolvele ${"$" + Math.round(devolver).toLocaleString("es-AR")}.` };
+  if (devolver > 0 && !fila.devuelto_at && !yaDevolvi)
+    return { error: `Antes de entregarlo, devolvele ${"$" + Math.round(devolver).toLocaleString("es-AR")}${conTarjeta ? " desde Nave (Cobros → esa venta → Devolver)" : ""}.` };
 
   const lineas = renglones(itemsDe(fila), "lista");
   const total = lineas.reduce((t, l) => t + l.subtotal, 0);
@@ -292,7 +296,8 @@ export async function entregarPedidoOnline(idPedido: string, yaDevolvi: boolean)
       puntos_canjeados: 0,
       total,
       estado: "PENDIENTE_PAGO",
-      medio_pago: "MERCADO_PAGO",
+      // Con tarjeta entró por Nave (el mismo que el posnet): así lleva su comisión (18/11).
+      medio_pago: conTarjeta ? "POSNET" : "MERCADO_PAGO",
       usuario: s.nombre,
       terminal: "ONLINE",
       factura_doc_tipo: 96,
@@ -309,7 +314,12 @@ export async function entregarPedidoOnline(idPedido: string, yaDevolvi: boolean)
     await cancelarPedido(venta.id_venta as string, "No se pudo armar la venta del pedido online").catch(() => null);
     return { error: friendlyDbError(errorDetalle) };
   }
-  const cobro = await confirmarCobro(venta.id_venta as string, total, "TRANSFERENCIA", s.nombre);
+  const cobro = await confirmarCobro(
+    venta.id_venta as string,
+    total,
+    conTarjeta ? (fila.nave_forma === "POSNET_DEBITO" ? "POSNET_DEBITO" : "POSNET_CREDITO") : "TRANSFERENCIA",
+    s.nombre
+  );
   if (cobro.error) {
     await cancelarPedido(venta.id_venta as string, "No se pudo confirmar el cobro del pedido online").catch(() => null);
     return { error: cobro.error };

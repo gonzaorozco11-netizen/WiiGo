@@ -17,7 +17,7 @@ import { registrarCanje, esProfesionalActivo } from "@/lib/canjesProfesionales";
 import { calcularCanjePuntos, aplicarCanjePuntos, calcularPuntosGanados } from "@/lib/puntosWiigo";
 import { facturarAlAcreditarse } from "@/lib/arca/config";
 import { descontarStockDeVenta } from "@/lib/stockVenta";
-import { CLAVE_COMISION_COBRO } from "@/lib/formasPago";
+import { CLAVE_COMISION_COBRO, POSNET_POR_DEFECTO } from "@/lib/formasPago";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 async function usuarioActual() {
@@ -102,9 +102,36 @@ export async function confirmarCobro(
     // marcada a revisar (ver lib/stockVenta.ts).
     const usuario = usuarioOverride ?? (await usuarioActual());
     const esMercadoPago = venta.medio_pago === "MERCADO_PAGO";
+    // Tienda online pagada con tarjeta por Nave (18/11): el mismo Nave del posnet, con su
+    // comisión de débito o crédito. No pasa por el aparato del local: va sin turno, así no
+    // se mezcla con el cierre de lote del posnet.
+    const esNaveOnline = venta.medio_pago === "POSNET" && venta.canal === "ONLINE";
 
   let pagoInsert: Record<string, unknown>;
-  if (esMercadoPago) {
+  if (esNaveOnline) {
+    const forma = formaPagoMp === "POSNET_DEBITO" ? "POSNET_DEBITO" : "POSNET_CREDITO";
+    const { data: cfg } = await supabase.from("configuracion").select("parametro, valor").in("parametro", [CLAVE_COMISION_COBRO[forma], "IVA_GENERAL_PORCENTAJE"]);
+    const valores = Object.fromEntries((cfg ?? []).map((r) => [r.parametro, Number(r.valor ?? 0)]));
+    const tasa = valores[CLAVE_COMISION_COBRO[forma]] ?? (forma === "POSNET_DEBITO" ? POSNET_POR_DEFECTO.debito : POSNET_POR_DEFECTO.credito);
+    const comisionImporte = Math.round(total * (tasa / 100));
+    const ivaComisionImporte = Math.round(comisionImporte * ((valores.IVA_GENERAL_PORCENTAJE ?? 21) / 100));
+    pagoInsert = {
+      id_venta: idVenta,
+      medio: "POSNET",
+      proveedor_pago: "NAVE",
+      forma_pago_cliente: forma,
+      importe_bruto: total,
+      comision_porcentaje: tasa,
+      comision_importe: comisionImporte,
+      iva_comision: ivaComisionImporte,
+      neto_acreditado: total - comisionImporte - ivaComisionImporte,
+      fecha_pago: new Date().toISOString(),
+      fecha_acreditacion: new Date().toISOString(),
+      estado: "ACREDITADO",
+      estado_conciliacion: "CONCILIADO",
+      observaciones: `Tienda online · tarjeta por Nave (${forma === "POSNET_DEBITO" ? "débito" : "crédito"}) · comisión ${tasa}% + IVA · entregó ${usuario ?? "personal"}`,
+    };
+  } else if (esMercadoPago) {
     if (!formaPagoMp || !FORMAS_PAGO_MP[formaPagoMp]) return { error: "Elegí cómo pagó el cliente por Mercado Pago" };
     const { base: tasa, ivaGeneral } = await tasaComisionMp(supabase, formaPagoMp);
     // Mercado Pago cobra la comisión + IVA sobre esa comisión (ej. débito
@@ -154,7 +181,7 @@ export async function confirmarCobro(
   // "PAGADA" después de haber sido cancelada (o viceversa).
   const { data: ventaActualizada, error: errorVentaUpdate } = await supabase
     .from("ventas")
-    .update({ estado: "PAGADA", id_pago: pago.id_pago, total_cobrado: montoRecibido, id_turno: idTurno })
+    .update({ estado: "PAGADA", id_pago: pago.id_pago, total_cobrado: montoRecibido, id_turno: esNaveOnline ? null : idTurno })
     .eq("id_venta", idVenta)
     .eq("estado", "PENDIENTE_PAGO")
     .select("id_venta")
@@ -173,7 +200,13 @@ export async function confirmarCobro(
     idLocal: venta.id_local,
     lineas: lineas.map((l) => ({ idVariante: l.id_variante as string, cantidad: l.cantidad as number })),
     motivo:
-      venta.canal === "POS" ? "Venta mostrador (QR Mercado Pago)" : venta.canal === "ONLINE" ? "Venta tienda online (transferencia)" : "Venta Self Checkout",
+      venta.canal === "POS"
+        ? "Venta mostrador (QR Mercado Pago)"
+        : venta.canal === "ONLINE"
+          ? esNaveOnline
+            ? "Venta tienda online (tarjeta)"
+            : "Venta tienda online (transferencia)"
+          : "Venta Self Checkout",
     usuario,
   });
   if (stock.error) return { error: stock.error };
