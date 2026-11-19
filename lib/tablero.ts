@@ -172,14 +172,18 @@ export async function armarTablero(): Promise<Tablero | null> {
       : CERO,
     // Abiertas = sin llegar + llegadas a medias. Un pedido a medias todavía
     // tiene mercadería en la calle, así que sigue contando como pendiente.
+    // Solo las ya enviadas, igual que la pantalla de Recepción (lib/compras.ts):
+    // un pedido armado y sin confirmar no llegó a nadie (Gonzalo, 19/11: el
+    // Inicio decía 2 y en Recepción había 1).
     puede("compras-recepcion")
-      ? supabase.from("ordenes_reposicion").select("id_orden", { count: "exact", head: true }).in("estado", ESTADOS_ABIERTOS)
+      ? supabase.from("ordenes_reposicion").select("id_orden", { count: "exact", head: true }).in("estado", ESTADOS_ABIERTOS).not("enviada_el", "is", null)
       : CERO,
     puede("compras-recepcion") || puede("proveedores")
       ? supabase
           .from("ordenes_compra_proveedor")
           .select("id_orden", { count: "exact", head: true })
           .in("estado", ESTADOS_ABIERTOS)
+          .not("enviada_el", "is", null)
       : CERO,
     puede("compras-costeo") || puede("proveedores")
       ? supabase.from("recepciones_proveedor").select("id_recepcion", { count: "exact", head: true }).eq("facturada", false)
