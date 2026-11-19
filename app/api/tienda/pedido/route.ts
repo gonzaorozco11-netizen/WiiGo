@@ -22,7 +22,7 @@ import {
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { aplicarCombos } from "@/lib/combos";
 import { traerCombos } from "@/lib/combosServidor";
-import { naveConfigurado } from "@/lib/nave";
+import { naveConfigurado, naveParaClientes } from "@/lib/nave";
 import { linkDePagoTarjeta, revisarPagoTarjeta } from "@/lib/pagoTarjetaOnline";
 
 /**
@@ -120,8 +120,11 @@ export async function POST(req: NextRequest) {
     return r.url ? NextResponse.json({ pagar: r.url }, { headers: sinCache }) : mal(r.error ?? "No pudimos abrir el pago.", 409);
   }
 
+  // Tarjeta: para todos con las credenciales de producción; en las pruebas (sandbox),
+  // solo desde la tienda abierta con ?probar=tarjeta (19/11).
+  const tarjetaHabilitada = naveParaClientes() || (naveConfigurado() && b.probarTarjeta === true);
   const pago: PagoOnline | null =
-    b.pago === "TRANSFERENCIA" ? "TRANSFERENCIA" : b.pago === "AL_RETIRAR" ? "AL_RETIRAR" : b.pago === "TARJETA" && naveConfigurado() ? "TARJETA" : null;
+    b.pago === "TRANSFERENCIA" ? "TRANSFERENCIA" : b.pago === "AL_RETIRAR" ? "AL_RETIRAR" : b.pago === "TARJETA" && tarjetaHabilitada ? "TARJETA" : null;
   if (!pago) return mal("Elegí cómo pagás.");
 
   // Solo qué y cuántos. Las líneas repetidas (mismo producto y sabor) se suman.

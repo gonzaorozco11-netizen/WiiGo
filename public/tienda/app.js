@@ -10,7 +10,14 @@
   'use strict';
   var D = window.WIIGO, app = document.getElementById('app');
   // Pago con tarjeta por Nave: solo si el servidor tiene las credenciales (18/11).
-  var TARJETA_ONLINE = Boolean(D && D.pagos && D.pagos.tarjeta);
+  // Mientras se prueba con las de sandbox (19/11) no la ven los clientes: aparece solo
+  // abriendo la tienda con ?probar=tarjeta (queda recordado en esta pestaña).
+  var PROBAR_TARJETA = false;
+  try {
+    if (/[?&]probar=tarjeta\b/.test(location.search)) sessionStorage.setItem('wiigo-probar-tarjeta', '1');
+    PROBAR_TARJETA = Boolean(D && D.pagos && D.pagos.prueba) && sessionStorage.getItem('wiigo-probar-tarjeta') === '1';
+  } catch (e) { PROBAR_TARJETA = false; }
+  var TARJETA_ONLINE = Boolean(D && D.pagos && (D.pagos.tarjeta || PROBAR_TARJETA));
   if (!D) { app.innerHTML = '<p style="padding:60px 16px;text-align:center">No se pudieron cargar los productos.</p>'; return; }
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -1172,7 +1179,7 @@
       S.enviando = true; pintar(false);
       var elegido = S.co && S.co.pago;
       var pago = elegido === 'retiro' ? 'AL_RETIRAR' : elegido === 'tarjeta' && TARJETA_ONLINE ? 'TARJETA' : 'TRANSFERENCIA';
-      apiPedido({ pago: pago, items: carrito.map(function (l) { return { id: l.id, v: l.v, q: l.q }; }) }).then(function (r) {
+      apiPedido({ pago: pago, probarTarjeta: PROBAR_TARJETA, items: carrito.map(function (l) { return { id: l.id, v: l.v, q: l.q }; }) }).then(function (r) {
         S.enviando = false;
         if (r.error) {
           // Se terminó algo mientras armaba el pedido: se ajusta solo a lo que queda.

@@ -27,10 +27,20 @@ const URLS = {
     pagos: "https://punku.ranty.io/payments-ms/payments",
   },
 } as const;
-const AUDIENCE = "https://naranja.com/ranty/merchants/api";
+// El que usa el plugin oficial; si Nave manda otro con las credenciales, va en NAVE_AUDIENCE.
+const AUDIENCE = () => process.env.NAVE_AUDIENCE?.trim() || "https://naranja.com/ranty/merchants/api";
 
 export function naveConfigurado(): boolean {
   return Boolean(process.env.NAVE_CLIENT_ID && process.env.NAVE_CLIENT_SECRET && process.env.NAVE_POS_ID);
+}
+
+/**
+ * ¿Los clientes ven «Tarjeta» en la tienda? Solo con las credenciales de
+ * producción (19/11: mientras se prueba en sandbox, la opción queda oculta). Para
+ * probar, la tienda se abre con ?probar=tarjeta (ver public/tienda/app.js).
+ */
+export function naveParaClientes(): boolean {
+  return naveConfigurado() && process.env.NAVE_ENTORNO === "produccion";
 }
 function entorno() {
   return process.env.NAVE_ENTORNO === "produccion" ? URLS.produccion : URLS.sandbox;
@@ -44,7 +54,7 @@ async function token(renovar = false): Promise<string> {
   const r = await fetch(entorno().token, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ client_id: process.env.NAVE_CLIENT_ID, client_secret: process.env.NAVE_CLIENT_SECRET, audience: AUDIENCE }),
+    body: JSON.stringify({ client_id: process.env.NAVE_CLIENT_ID, client_secret: process.env.NAVE_CLIENT_SECRET, audience: AUDIENCE() }),
     signal: AbortSignal.timeout(10000),
   });
   const j = (await r.json().catch(() => ({}))) as { access_token?: string; expires_in?: number };

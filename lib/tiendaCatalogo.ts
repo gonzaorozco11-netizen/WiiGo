@@ -4,7 +4,7 @@ import { traerCombos } from "@/lib/combosServidor";
 import { fetchContenidoAsesor } from "@/lib/contenidoAsesor";
 import { cargarMarcasFabrica } from "@/lib/marcaFabrica";
 import { calificaciones } from "@/lib/opinionesProducto";
-import { naveConfigurado } from "@/lib/nave";
+import { naveConfigurado, naveParaClientes } from "@/lib/nave";
 
 // El catálogo de la tienda online (public/tienda), con los nombres cortos que usa
 // su app.js (viene del prototipo aprobado el 2026-11-12, que leía este mismo
@@ -209,7 +209,8 @@ export async function armarCatalogoTienda(supabase: SupabaseClient) {
     profesionales,
     objetivos: contenido.objetivosGlobales.map((o) => o.nombre),
     filtros: contenido.filtrosGlobales.map((f) => f.nombre),
-    // «Tarjeta» en Finalizar compra solo con las credenciales de Nave cargadas (18/11, lib/nave.ts).
-    pagos: { tarjeta: naveConfigurado() },
+    // «Tarjeta» en Finalizar compra: para todos solo con las credenciales de producción
+    // (19/11). Con las de prueba, `prueba` deja que ?probar=tarjeta la muestre.
+    pagos: { tarjeta: naveParaClientes(), prueba: naveConfigurado() && !naveParaClientes() },
   };
 }
