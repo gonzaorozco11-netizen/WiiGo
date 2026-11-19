@@ -20,6 +20,94 @@ import {
 import { devueltoPorDetalle, netearRenglon } from "./devueltoPorDetalle";
 import { leerConfigPrecios } from "./configPrecios";
 import { costosSobreTotal, type Medio } from "./calculoPrecio";
+import { cobroDeVentas } from "./cobroDeVentas";
+import { cobradaAl, type Cobro } from "./fechaCobro";
+
+// ===================== SOLO LO COBRADO (19/11) =====================
+//
+// A Alifrut se le paga por lo vendido, pero solo lo que ya le entró a WiiGo al
+// corte (Gonzalo, 19/11: «que ese vendido ya lo tenga conmigo»). Lo vendido con
+// la plata en camino (crédito, QR sin liberar) pasa al mes siguiente. No hay
+// «desde» para las ventas: una de octubre que entró en noviembre va en noviembre.
+// La merma no depende de ningún cobro: va hasta el corte.
+
+type RenglonProveedor = {
+  id_detalle: string;
+  id_venta: string;
+  id_variante: string;
+  cantidad: number;
+  costo_unitario: number | null;
+  precio_unitario: number | null;
+  subtotal: number | null;
+};
+type VentaProveedor = { id_venta: string; fecha: string; medio_pago: string | null; id_pago: string | null };
+
+const finDelDia = (dia: string) => `${dia}T23:59:59.999-03:00`;
+/** La merma sin liquidar va entera hasta el corte, sin «desde». */
+const DESDE_SIEMPRE = "2000-01-01";
+
+/** Los renglones sin liquidar de esas variantes, vendidos hasta el corte, separados por si la plata ya entró. */
+async function renglonesHastaElCorte(
+  supabase: SupabaseClient,
+  varianteIds: string[],
+  corte: string
+): Promise<{ cobrados: RenglonProveedor[]; enCamino: RenglonProveedor[]; ventaPorId: Map<string, VentaProveedor>; cobro: Map<string, Cobro> }> {
+  const renglones: RenglonProveedor[] = [];
+  for (let i = 0; i < varianteIds.length; i += 150) {
+    const { data } = await supabase
+      .from("detalle_ventas")
+      .select("id_detalle, id_venta, id_variante, cantidad, costo_unitario, precio_unitario, subtotal")
+      .in("id_variante", varianteIds.slice(i, i + 150))
+      .is("id_liquidacion_proveedor", null)
+      .range(0, 49999);
+    renglones.push(...((data ?? []) as RenglonProveedor[]));
+  }
+  const idsVenta = [...new Set(renglones.map((r) => r.id_venta))];
+  const ventaPorId = new Map<string, VentaProveedor>();
+  for (let i = 0; i < idsVenta.length; i += 200) {
+    const { data } = await supabase
+      .from("ventas")
+      .select("id_venta, fecha, medio_pago, id_pago")
+      .in("id_venta", idsVenta.slice(i, i + 200))
+      .eq("estado", "PAGADA")
+      .lte("fecha", finDelDia(corte));
+    for (const v of data ?? []) ventaPorId.set(v.id_venta as string, v as VentaProveedor);
+  }
+  const cobro = await cobroDeVentas(supabase, [...ventaPorId.values()]);
+  const cobrados: RenglonProveedor[] = [];
+  const enCamino: RenglonProveedor[] = [];
+  for (const r of renglones) {
+    if (!ventaPorId.has(r.id_venta)) continue; // anulada o vendida después del corte
+    const c = cobro.get(r.id_venta);
+    (c && cobradaAl(c, corte) ? cobrados : enCamino).push(r);
+  }
+  return { cobrados, enCamino, ventaPorId, cobro };
+}
+
+/** Lo vendido de este proveedor con la plata en camino al corte: va en la próxima liquidación. */
+export async function enCaminoProveedor(
+  supabase: SupabaseClient,
+  idProveedor: string,
+  corte: string
+): Promise<{ monto: number; unidades: number; ventas: number }> {
+  const { data: productos } = await supabase.from("productos").select("id_producto, costo_informado").eq("id_proveedor_liquidacion", idProveedor);
+  const costoProducto = new Map((productos ?? []).map((p) => [p.id_producto as string, Number(p.costo_informado ?? 0)]));
+  if (!costoProducto.size) return { monto: 0, unidades: 0, ventas: 0 };
+  const { data: variantes } = await supabase.from("variantes_producto").select("id_variante, id_producto").in("id_producto", [...costoProducto.keys()]);
+  const productoDe = new Map((variantes ?? []).map((v) => [v.id_variante as string, v.id_producto as string]));
+  const { enCamino } = await renglonesHastaElCorte(supabase, [...productoDe.keys()], corte);
+  const devueltos = await devueltoPorDetalle(supabase, enCamino.map((d) => d.id_detalle));
+  let monto = 0;
+  let unidades = 0;
+  for (const r of enCamino) {
+    const cantidad = netearRenglon(r.cantidad, 0, devueltos.get(r.id_detalle)).cantidad;
+    if (cantidad <= 0) continue;
+    const costo = r.costo_unitario != null ? Number(r.costo_unitario) : costoProducto.get(productoDe.get(r.id_variante) ?? "") ?? 0;
+    monto += costo * cantidad;
+    unidades += cantidad;
+  }
+  return { monto: Math.round(monto), unidades, ventas: new Set(enCamino.map((r) => r.id_venta)).size };
+}
 
 // ===================== DETALLE PARA PANTALLA =====================
 //
@@ -201,46 +289,37 @@ export async function calcularLiquidacionProveedor(
   supabase: SupabaseClient,
   idProveedor: string,
   fechaDesde: string,
-  fechaHasta: string
-): Promise<{ lineas: LineaLiquidacionProveedor[]; total: number }> {
+  fechaHasta: string,
+  opciones: { incluirEnCamino?: boolean } = {}
+): Promise<{ lineas: LineaLiquidacionProveedor[]; total: number; idsDetalle: string[]; idsMerma: string[] }> {
+  void fechaDesde; // desde el 19/11 las ventas no tienen «desde»: todo lo cobrado al corte (ver arriba)
+  const vacio = { lineas: [] as LineaLiquidacionProveedor[], total: 0, idsDetalle: [] as string[], idsMerma: [] as string[] };
   const { data: productos } = await supabase
     .from("productos")
     .select("id_producto, nombre, costo_informado")
     .eq("id_proveedor_liquidacion", idProveedor);
   const productoPorId = new Map((productos ?? []).map((p) => [p.id_producto as string, p]));
   const productoIds = [...productoPorId.keys()];
-  if (productoIds.length === 0) return { lineas: [], total: 0 };
+  if (productoIds.length === 0) return vacio;
 
   const { data: variantes } = await supabase
     .from("variantes_producto")
     .select("id_variante, id_producto, nombre")
     .in("id_producto", productoIds);
   const varianteIds = (variantes ?? []).map((v) => v.id_variante as string);
-  if (varianteIds.length === 0) return { lineas: [], total: 0 };
-
-  const { data: ventasDelPeriodo } = await supabase
-    .from("ventas")
-    .select("id_venta")
-    .eq("estado", "PAGADA")
-    .gte("fecha", `${fechaDesde}T00:00:00`)
-    .lte("fecha", `${fechaHasta}T23:59:59`);
-  const idsVenta = (ventasDelPeriodo ?? []).map((v) => v.id_venta as string);
+  if (varianteIds.length === 0) return vacio;
 
   // La merma se paga igual que lo vendido, así que entra al mismo cálculo.
   // Se lee antes del corte por "no hay ventas": un mes sin una sola venta
   // pero con mercadería rota le debe plata a Alifrut lo mismo.
-  const mermas = await mermasSinLiquidar(supabase, varianteIds, fechaDesde, fechaHasta);
+  const mermas = await mermasSinLiquidar(supabase, varianteIds, DESDE_SIEMPRE, fechaHasta);
 
-  const { data: detalle } = idsVenta.length
-    ? await supabase
-        .from("detalle_ventas")
-        .select("id_detalle, id_variante, cantidad, costo_unitario")
-        .in("id_venta", idsVenta)
-        .in("id_variante", varianteIds)
-        .is("id_liquidacion_proveedor", null)
-    : { data: [] as { id_detalle: string; id_variante: string; cantidad: number; costo_unitario: number | null }[] };
+  // Solo lo vendido cuya plata ya entró al corte (19/11). El historial pide todo
+  // lo vendido (también lo en camino): para él salió del lote igual.
+  const hastaCorte = await renglonesHastaElCorte(supabase, varianteIds, fechaHasta);
+  const detalle = opciones.incluirEnCamino ? [...hastaCorte.cobrados, ...hastaCorte.enCamino] : hastaCorte.cobrados;
 
-  if ((detalle ?? []).length === 0 && mermas.length === 0) return { lineas: [], total: 0 };
+  if (detalle.length === 0 && mermas.length === 0) return vacio;
 
   // Lo que el cliente devolvió no se le paga: esa unidad volvió al stock y se
   // va a pagar cuando se venda de nuevo. Sin esto se pagaba dos veces.
@@ -298,7 +377,7 @@ export async function calcularLiquidacionProveedor(
     total += subtotal;
   }
 
-  return { lineas, total };
+  return { lineas, total, idsDetalle: detalle.map((d) => d.id_detalle), idsMerma: mermas.map((m) => m.idMerma) };
 }
 
 /**
@@ -350,15 +429,11 @@ export async function detalleLiquidacionProveedor(
   if (!variantes || variantes.length === 0) return vacio;
   const variantePorId = new Map(variantes.map((v) => [v.id_variante as string, v]));
 
-  // Las ventas en orden: es lo que define qué lote le toca a cada una.
-  const { data: ventas } = await supabase
-    .from("ventas")
-    .select("id_venta, medio_pago, fecha, id_pago")
-    .eq("estado", "PAGADA")
-    .gte("fecha", `${fechaDesde}T00:00:00`)
-    .lte("fecha", `${fechaHasta}T23:59:59`)
-    .order("fecha", { ascending: true });
-  const ventaPorId = new Map((ventas ?? []).map((v) => [v.id_venta as string, v]));
+  // Solo lo vendido cuya plata ya entró al corte (19/11), sin «desde».
+  void fechaDesde;
+  const corte = await renglonesHastaElCorte(supabase, [...variantePorId.keys()], fechaHasta);
+  const ventaPorId = corte.ventaPorId;
+  const ventas = [...ventaPorId.values()];
 
   // Cómo pagó cada venta electrónica (QR, débito, crédito): en Precios cada
   // una descuenta cosas distintas.
@@ -373,18 +448,11 @@ export async function detalleLiquidacionProveedor(
     return MEDIO_PRECIOS[formaPorPago.get(v.id_pago as string) ?? ""] ?? cfg.escenario;
   };
 
-  const mermas = await mermasSinLiquidar(supabase, [...variantePorId.keys()], fechaDesde, fechaHasta);
+  const mermas = await mermasSinLiquidar(supabase, [...variantePorId.keys()], DESDE_SIEMPRE, fechaHasta);
 
-  const { data: detalle } = ventaPorId.size
-    ? await supabase
-        .from("detalle_ventas")
-        .select("id_venta, id_variante, cantidad, precio_unitario, subtotal, costo_unitario")
-        .in("id_venta", [...ventaPorId.keys()])
-        .in("id_variante", [...variantePorId.keys()])
-        .is("id_liquidacion_proveedor", null)
-    : { data: [] as Record<string, unknown>[] };
+  const detalle = corte.cobrados as unknown as Record<string, unknown>[];
 
-  if ((detalle ?? []).length === 0 && mermas.length === 0) return vacio;
+  if (detalle.length === 0 && mermas.length === 0) return vacio;
 
   // Ventas y mermas en una sola línea de tiempo.
   //
@@ -781,35 +849,24 @@ export async function generarLiquidacionProveedor(
     await aplicarConsumoLotes(supabase, linea.lotes);
   }
 
-  // Marcar por línea las ventas ya cubiertas por esta liquidación, para no
-  // volver a contarlas el mes que viene.
-  const varianteIds = fresco.lineas.map((l) => l.idVariante);
-  if (varianteIds.length > 0) {
-    const { data: ventasDelPeriodo } = await supabase
-      .from("ventas")
-      .select("id_venta")
-      .eq("estado", "PAGADA")
-      .gte("fecha", `${params.fechaDesde}T00:00:00`)
-      .lte("fecha", `${params.fechaHasta}T23:59:59`);
-    const idsVenta = (ventasDelPeriodo ?? []).map((v) => v.id_venta as string);
-    if (idsVenta.length > 0) {
-      await supabase
-        .from("detalle_ventas")
-        .update({ id_liquidacion_proveedor: liquidacion.id_liquidacion })
-        .in("id_venta", idsVenta)
-        .in("id_variante", varianteIds)
-        .is("id_liquidacion_proveedor", null);
-    }
-
-    // Lo mismo con la merma. Sin esto, la mercadería rota se le pagaría a
-    // Alifrut todos los meses hasta el fin de los tiempos.
+  // Marcar por línea exactamente lo que entró en esta liquidación (lo vendido y
+  // ya cobrado, 19/11), para no volver a contarlo el mes que viene. Lo que está
+  // en camino queda sin marcar y entra cuando llegue la plata.
+  for (let i = 0; i < fresco.idsDetalle.length; i += 200) {
+    await supabase
+      .from("detalle_ventas")
+      .update({ id_liquidacion_proveedor: liquidacion.id_liquidacion })
+      .in("id_detalle", fresco.idsDetalle.slice(i, i + 200))
+      .is("id_liquidacion_proveedor", null);
+  }
+  // Lo mismo con la merma. Sin esto, la mercadería rota se le pagaría a
+  // Alifrut todos los meses hasta el fin de los tiempos.
+  for (let i = 0; i < fresco.idsMerma.length; i += 200) {
     await supabase
       .from("mermas")
       .update({ id_liquidacion_proveedor: liquidacion.id_liquidacion })
-      .in("id_variante", varianteIds)
-      .is("id_liquidacion_proveedor", null)
-      .gte("fecha", `${params.fechaDesde}T00:00:00`)
-      .lte("fecha", `${params.fechaHasta}T23:59:59`);
+      .in("id_merma", fresco.idsMerma.slice(i, i + 200))
+      .is("id_liquidacion_proveedor", null);
   }
 
   return liquidacion.id_liquidacion as string;

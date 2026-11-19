@@ -1189,6 +1189,37 @@ export default function PortalTablero({
             </span>
             <span className="m mono" style={{ color: "var(--ocre)" }}>${pesos(resumen.mes.neto)}</span>
           </li>
+          {/* Se liquida lo cobrado (19/11): lo ya entrado va en la próxima; lo en camino, cuando entre. */}
+          {resumen.porLiquidar && (
+            <li>
+              <span className="dot pend" />
+              <span>
+                <span className="t">Para tu próxima liquidación</span>
+                <span className="d">Lo vendido que ya cobramos: se liquida a fin de mes</span>
+              </span>
+              <span className="m mono">${pesos(resumen.porLiquidar.cobrado)}</span>
+            </li>
+          )}
+          {resumen.porLiquidar && resumen.porLiquidar.enCamino > 0 && (
+            <li>
+              <span className="dot pend" />
+              <span>
+                <span className="t">En camino</span>
+                <span className="d">
+                  Ventas con tarjeta de crédito o que Mercado Pago todavía no liberó: entran en la liquidación del mes en que nos llega la plata.
+                </span>
+                <span className="d" style={{ display: "block", marginTop: 4 }}>
+                  {resumen.porLiquidar.enCaminoDetalle.slice(0, 6).map((e, i) => (
+                    <span key={i} style={{ display: "block" }}>
+                      {fechaCorta(e.dia)} · {e.medio} · {e.entra ? `entra el ${fechaCorta(e.entra)}` : "esperando"} · ${pesos(e.bruto)}
+                    </span>
+                  ))}
+                  {resumen.porLiquidar.enCaminoDetalle.length > 6 && <span style={{ display: "block" }}>y {resumen.porLiquidar.enCaminoDetalle.length - 6} más</span>}
+                </span>
+              </span>
+              <span className="m mono">${pesos(resumen.porLiquidar.enCamino)}</span>
+            </li>
+          )}
           {liquidaciones.map((l, i) => (
             <li key={i}>
               <span className={`dot ${l.estado === "PAGADA" ? "ok" : "pend"}`} />

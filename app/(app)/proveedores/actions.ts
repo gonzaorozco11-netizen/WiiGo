@@ -15,6 +15,7 @@ import {
   calcularLiquidacionProveedor,
   generarLiquidacionProveedor,
   detalleLiquidacionProveedor,
+  enCaminoProveedor,
 } from "@/lib/liquidacionesProveedor";
 import { consumirFifo } from "@/lib/fifoProveedor";
 import { costoDelDiaPorGramo } from "@/lib/granel";
@@ -1563,6 +1564,12 @@ export async function cargarFacturaCompra(params: {
 export async function calcularLiquidacionProveedorAction(idProveedor: string, fechaDesde: string, fechaHasta: string) {
   const supabase = getSupabaseServerClient();
   return calcularLiquidacionProveedor(supabase, idProveedor, fechaDesde, fechaHasta);
+}
+
+/** Lo vendido con la plata en camino al corte: va en la próxima liquidación (19/11). */
+export async function enCaminoProveedorAction(idProveedor: string, corte: string) {
+  if (await requireAdmin()) return null;
+  return enCaminoProveedor(getSupabaseServerClient(), idProveedor, corte);
 }
 
 /** El detalle para la pantalla: por medio de pago, por producto y por lote. */

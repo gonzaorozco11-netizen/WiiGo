@@ -293,7 +293,15 @@ export async function registrarDevolucion(
     }
 
     // ===== Contracargo a la marca, si ya estaba liquidada =====
-    if (venta.id_liquidacion) {
+    // Desde el 19/11 se liquida por renglón (detalle_ventas.id_liquidacion_marca):
+    // basta con que lo de una marca ya esté liquidado. Sin la columna, error → no.
+    const { data: renglonLiquidado } = await supabase
+      .from("detalle_ventas")
+      .select("id_detalle")
+      .eq("id_venta", idVenta)
+      .not("id_liquidacion_marca", "is", null)
+      .limit(1);
+    if (venta.id_liquidacion || (renglonLiquidado ?? []).length > 0) {
       const factor = new Map<string, number>();
       for (const l of lineas) {
         if (!l.idMarca) continue;

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { Marca, Liquidacion } from "@/lib/supabase";
 import { etiquetaPago } from "@/lib/formasPago";
 import {
-  calcularRendicion,
+  rendicionAlCorte,
   marcarComoLiquidada,
   historialLiquidaciones,
   subirComprobante,
@@ -43,23 +43,31 @@ function formatearFecha(fechaISO: string) {
 // "Efectivo", "QR · Débito", "Posnet · Crédito" (lib/formasPago.ts).
 const formatearMedioPago = (medioPago: string | null, formaPagoMp: string | null) => etiquetaPago(medioPago, formaPagoMp);
 
-function inicioDeMes() {
-  const d = new Date();
-  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
+// El corte: se liquida una vez por mes, a fin de mes o los primeros días del
+// siguiente (Gonzalo, 19/11). Hasta el 10, el último día del mes pasado; después, hoy.
+function corteSugerido() {
+  const ahora = new Date(Date.now() - 3 * 3600 * 1000); // Argentina
+  if (ahora.getUTCDate() <= 10) return new Date(Date.UTC(ahora.getUTCFullYear(), ahora.getUTCMonth(), 0)).toISOString().slice(0, 10);
+  return ahora.toISOString().slice(0, 10);
 }
 
-function hoyISO() {
-  return new Date().toISOString().slice(0, 10);
-}
+const fechaCorta = (dia: string | null | undefined) => (dia ? dia.slice(8, 10) + "/" + dia.slice(5, 7) : "—");
+
+type Resultado = {
+  marca: string;
+  lineas: LineaRendicion[];
+  resumen: Resumen;
+  corte: string;
+  enCamino: { lineas: LineaRendicion[]; resumen: Resumen };
+};
 
 export default function LiquidacionesApp({ marcas }: { marcas: Marca[] }) {
   const [idMarca, setIdMarca] = useState(marcas[0]?.id_marca ?? "");
-  const [desde, setDesde] = useState(inicioDeMes());
-  const [hasta, setHasta] = useState(hoyISO());
+  const [corte, setCorte] = useState(corteSugerido());
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [errorCierre, setErrorCierre] = useState<string | null>(null);
-  const [resultado, setResultado] = useState<{ lineas: LineaRendicion[]; resumen: Resumen } | null>(null);
+  const [resultado, setResultado] = useState<Resultado | null>(null);
   const [cerrando, setCerrando] = useState(false);
   const [historial, setHistorial] = useState<Liquidacion[]>([]);
   const [verHistorial, setVerHistorial] = useState(false);
@@ -87,7 +95,7 @@ export default function LiquidacionesApp({ marcas }: { marcas: Marca[] }) {
   function handleCalcular() {
     setError(null);
     setCargando(true);
-    calcularRendicion(idMarca, desde, hasta)
+    rendicionAlCorte(idMarca, corte)
       .then((r) => setResultado(r))
       .catch((e) => setError(e instanceof Error ? e.message : "No se pudo calcular la rendición"))
       .finally(() => setCargando(false));
@@ -98,7 +106,7 @@ export default function LiquidacionesApp({ marcas }: { marcas: Marca[] }) {
     if (!confirm(`¿Marcar como liquidado? Se van a cerrar ${resultado.lineas.length} líneas por un neto de $${formatearMonto(resultado.resumen.netoARendir)}.`)) return;
     setErrorCierre(null);
     setCerrando(true);
-    marcarComoLiquidada(idMarca, desde, hasta, resultado.resumen)
+    marcarComoLiquidada(idMarca, resultado.corte, resultado.resumen.netoARendir)
       .then((res) => {
         if (res.error) setErrorCierre(res.error);
         else setResultado(null);
@@ -117,7 +125,9 @@ export default function LiquidacionesApp({ marcas }: { marcas: Marca[] }) {
   return (
     <div>
       <h1 className="text-lg font-semibold text-neutral-900 mb-1">Liquidaciones</h1>
-      <p className="text-sm text-neutral-500 mb-4">Rendición de ventas a marcas en consignación, línea por línea.</p>
+      <p className="text-sm text-neutral-500 mb-4">
+        Se liquida lo vendido cuya plata ya entró al corte. Lo que está en camino (crédito, QR sin liberar) pasa solo a la próxima.
+      </p>
 
       <div className="flex flex-wrap gap-2 items-end mb-5">
         <div>
@@ -135,20 +145,14 @@ export default function LiquidacionesApp({ marcas }: { marcas: Marca[] }) {
           </select>
         </div>
         <div>
-          <label className="block text-xs font-medium text-neutral-500 mb-1">Desde</label>
+          <label className="block text-xs font-medium text-neutral-500 mb-1">Corte (cobrado hasta)</label>
           <input
             type="date"
-            value={desde}
-            onChange={(e) => setDesde(e.target.value)}
-            className="border border-neutral-300 rounded-lg px-3 py-2 text-sm"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-neutral-500 mb-1">Hasta</label>
-          <input
-            type="date"
-            value={hasta}
-            onChange={(e) => setHasta(e.target.value)}
+            value={corte}
+            onChange={(e) => {
+              setCorte(e.target.value);
+              setResultado(null);
+            }}
             className="border border-neutral-300 rounded-lg px-3 py-2 text-sm"
           />
         </div>
@@ -210,10 +214,27 @@ export default function LiquidacionesApp({ marcas }: { marcas: Marca[] }) {
       )}
 
       {resultado && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+          <div className="bg-white border border-neutral-200 border-l-4 border-l-emerald-600 rounded-xl p-4">
+            <p className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Ya cobrado · se liquida</p>
+            <p className="text-2xl font-extrabold text-neutral-900 tabular-nums">${formatearMonto(resultado.resumen.ventaBruta)}</p>
+            <p className="text-xs text-neutral-500 mt-0.5">
+              Neto a la marca <b className="text-neutral-800">${formatearMonto(resultado.resumen.netoARendir)}</b> · cobrado hasta el {formatearFecha(resultado.corte)}
+            </p>
+          </div>
+          <div className="bg-white border border-neutral-200 border-l-4 border-l-amber-500 rounded-xl p-4">
+            <p className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Vendido, en camino</p>
+            <p className="text-2xl font-extrabold text-neutral-900 tabular-nums">${formatearMonto(resultado.enCamino.resumen.ventaBruta)}</p>
+            <p className="text-xs text-neutral-500 mt-0.5">La plata todavía no entró: pasa sola a la próxima liquidación.</p>
+          </div>
+        </div>
+      )}
+
+      {resultado && (
         <div className="bg-white border border-neutral-200 rounded-xl overflow-hidden">
           {resultado.lineas.length === 0 ? (
             <p className="text-sm text-neutral-400 text-center py-12">
-              No hay ventas pendientes de rendir para {resultado.marca} en ese rango de fechas.
+              No hay nada cobrado para liquidarle a {resultado.marca} al {formatearFecha(resultado.corte)}.
             </p>
           ) : (
             <>
@@ -247,6 +268,7 @@ export default function LiquidacionesApp({ marcas }: { marcas: Marca[] }) {
                       <th className="p-3">Producto</th>
                       <th className="p-3">Cant.</th>
                       <th className="p-3">Pago</th>
+                      <th className="p-3">Te entró</th>
                       <th className="p-3 text-right">Venta bruta</th>
                       <th className="p-3 text-right">Comisión WiiGo</th>
                       <th className="p-3 text-right">IVA s/comisión</th>
@@ -281,6 +303,9 @@ export default function LiquidacionesApp({ marcas }: { marcas: Marca[] }) {
                               estimado
                             </span>
                           )}
+                        </td>
+                        <td className="p-3 whitespace-nowrap text-neutral-500">
+                          <CuandoEntro l={l} />
                         </td>
                         <td className="p-3 text-right tabular-nums">${formatearMonto(l.ventaBruta)}</td>
                         <td className="p-3 text-right tabular-nums text-red-600">-${formatearMonto(l.comisionWiigo)}</td>
@@ -365,14 +390,68 @@ export default function LiquidacionesApp({ marcas }: { marcas: Marca[] }) {
                   {cerrando ? "Cerrando..." : "Marcar como liquidado"}
                 </button>
                 <p className="text-xs text-neutral-400 mt-2">
-                  Esto cierra el período: estas ventas dejan de contarse en la próxima rendición.
+                  Se marca como liquidado cada producto de esta marca, uno por uno: lo de otra marca en la misma venta queda para la suya, y lo que
+                  está en camino, para la próxima.
                 </p>
               </div>
             </>
           )}
         </div>
       )}
+
+      {resultado && resultado.enCamino.lineas.length > 0 && (
+        <div className="bg-white border border-neutral-200 rounded-xl overflow-hidden mt-4">
+          <p className="px-4 pt-3 text-sm font-semibold text-neutral-900">En camino: pasa a la próxima liquidación</p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-neutral-200 text-left text-xs text-neutral-500">
+                  <th className="p-3">Fecha / Venta</th>
+                  <th className="p-3">Producto</th>
+                  <th className="p-3">Pago</th>
+                  <th className="p-3">Te entra</th>
+                  <th className="p-3 text-right">Venta bruta</th>
+                  <th className="p-3 text-right">Neto</th>
+                </tr>
+              </thead>
+              <tbody>
+                {resultado.enCamino.lineas.map((l) => (
+                  <tr key={l.idDetalle} className="border-b border-neutral-100 last:border-0">
+                    <td className="p-3 whitespace-nowrap text-neutral-500">
+                      {formatearFecha(l.fecha)} · #{String(l.numeroVenta).padStart(4, "0")}
+                    </td>
+                    <td className="p-3">{l.producto}</td>
+                    <td className="p-3 text-neutral-500 whitespace-nowrap">{formatearMedioPago(l.medioPago, l.formaPagoMp)}</td>
+                    <td className="p-3 whitespace-nowrap text-neutral-500">
+                      <CuandoEntro l={l} />
+                    </td>
+                    <td className="p-3 text-right tabular-nums">${formatearMonto(l.ventaBruta)}</td>
+                    <td className="p-3 text-right tabular-nums">${formatearMonto(l.netoARendir)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+// Cuándo entró la plata de esa venta: real (Mercado Pago, efectivo), calculado (posnet) o esperando.
+function CuandoEntro({ l }: { l: LineaRendicion }) {
+  if (l.datoCobro === "ESPERANDO" || !l.cobro) {
+    return <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700">esperando</span>;
+  }
+  return (
+    <>
+      {fechaCorta(l.cobro)}
+      {l.datoCobro === "CALCULADO" && (
+        <span className="ml-1.5 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700" title="Con los plazos de acreditación: todavía no hay dato real">
+          calculado
+        </span>
+      )}
+    </>
   );
 }
 

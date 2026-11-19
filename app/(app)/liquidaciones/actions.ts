@@ -12,6 +12,8 @@ import { devueltoPorDetalle, netearRenglon, type Devuelto } from "@/lib/devuelto
 import { CLAVE_COMISION_COBRO, POSNET_POR_DEFECTO, entraPorCuenta } from "@/lib/formasPago";
 import { descuentosRealesPorVenta, type DescuentoReal } from "@/lib/cobrosDigitales";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { cobradaAl, type Cobro, type DatoCobro } from "@/lib/fechaCobro";
+import { cobroDeVentas } from "@/lib/cobroDeVentas";
 
 async function usuarioActual() {
   const cookieStore = await cookies();
@@ -27,6 +29,33 @@ async function usuarioActual() {
 // el proveedor o la marca.
 function redondear2(valor: number) {
   return Math.round(valor * 100) / 100;
+}
+
+type Renglon = { id_detalle: string; id_venta: string; cantidad: number; subtotal: number | null; precio_unitario: number; id_variante: string };
+
+/** Los renglones de una marca en esas ventas, filtrados por liquidación (ver FiltroRenglones). */
+async function renglonesDeMarca(
+  supabase: SupabaseClient,
+  idMarca: string,
+  idsVenta: string[],
+  filtro?: FiltroRenglones
+): Promise<Renglon[]> {
+  const salida: Renglon[] = [];
+  for (let i = 0; i < idsVenta.length; i += 200) {
+    const tanda = idsVenta.slice(i, i + 200);
+    const base = () =>
+      supabase.from("detalle_ventas").select("id_detalle, id_venta, cantidad, subtotal, precio_unitario, id_variante").eq("id_marca", idMarca).in("id_venta", tanda);
+    let q = base();
+    if (filtro === "SIN_LIQUIDAR") q = q.is("id_liquidacion_marca", null);
+    else if (filtro === "LIQUIDADOS") q = q.not("id_liquidacion_marca", "is", null);
+    else if (filtro) q = q.eq("id_liquidacion_marca", filtro.liquidacion);
+    let { data, error } = await q;
+    // Sin la columna (SQL sin correr): todos los renglones, como antes del 19/11.
+    if (error && filtro && /id_liquidacion_marca/.test(error.message)) ({ data, error } = await base());
+    if (error) throw new Error(friendlyDbError(error));
+    salida.push(...((data ?? []) as Renglon[]));
+  }
+  return salida;
 }
 
 // Coincide con `pagos.forma_pago_cliente` y con las tasas cargadas en
@@ -91,6 +120,12 @@ export type LineaRendicion = {
    * Mercado Pago todavía no lo liberó); SIN_COSTO = efectivo.
    */
   dato: "REAL" | "ESTIMADO" | "SIN_COSTO";
+  /**
+   * Cuándo entró (o entra) la plata de esa venta (lib/fechaCobro.ts, 19/11). Solo
+   * viene en la liquidación por lo cobrado (rendicionAlCorte); en el resto, null.
+   */
+  cobro?: string | null;
+  datoCobro?: DatoCobro;
 };
 
 function vacioResumen() {
@@ -115,7 +150,21 @@ type VentaMinima = {
   fecha: string;
   medio_pago: string | null;
   id_pago: string | null;
+  /** Cuándo entró la plata (solo en la liquidación por lo cobrado). */
+  cobro?: Cobro;
 };
+
+/**
+ * Qué renglones de la marca tomar (19/11). La marca liquidada se marca por
+ * RENGLÓN (detalle_ventas.id_liquidacion_marca), no en toda la venta: en una venta
+ * con productos de dos marcas, liquidar a una dejaba afuera a la otra.
+ *   - SIN_LIQUIDAR: los que no entraron en ninguna liquidación.
+ *   - LIQUIDADOS: los que ya entraron en alguna (para el contracargo).
+ *   - { liquidacion }: los de esa liquidación (el comprobante).
+ * Sin sql/liquidar-lo-cobrado.sql corrido la columna no existe: se toman todos,
+ * como antes.
+ */
+type FiltroRenglones = "SIN_LIQUIDAR" | "LIQUIDADOS" | { liquidacion: string };
 
 // Motor de cálculo compartido: dada una marca y un conjunto ya filtrado de
 // ventas (pendientes de rendir, o las de una liquidación ya cerrada),
@@ -139,6 +188,8 @@ export async function construirLineas(
      * veces).
      */
     netearDevoluciones?: boolean;
+    /** Sin esto, todos los renglones de la marca en esas ventas (lo de siempre). */
+    renglones?: FiltroRenglones;
   } = {}
 ) {
   const { data: marca, error: errorMarca } = await supabase
@@ -163,12 +214,7 @@ export async function construirLineas(
   const ivaRoyaltyEnEfectivo = marca.trasladar_iva_comision_efectivo ?? true;
   const ventaPorId = new Map(ventasFiltradas.map((v) => [v.id_venta, v]));
 
-  const { data: detalle, error: errorDetalle } = await supabase
-    .from("detalle_ventas")
-    .select("id_detalle, id_venta, cantidad, subtotal, precio_unitario, id_variante")
-    .eq("id_marca", idMarca)
-    .in("id_venta", ventasFiltradas.map((v) => v.id_venta));
-  if (errorDetalle) throw new Error(friendlyDbError(errorDetalle));
+  const detalle = await renglonesDeMarca(supabase, idMarca, ventasFiltradas.map((v) => v.id_venta), opciones.renglones);
 
   const devueltos: Map<string, Devuelto> =
     opciones.netearDevoluciones === false
@@ -325,6 +371,8 @@ export async function construirLineas(
       programaProfesionales: programaLinea,
       netoARendir,
       dato: esEfectivo ? "SIN_COSTO" : real ? "REAL" : "ESTIMADO",
+      cobro: venta.cobro?.fecha ?? null,
+      datoCobro: venta.cobro?.dato,
     });
   }
 
@@ -407,8 +455,11 @@ export async function contracargoPorAnulacion(
   for (const idMarca of idsMarca) {
     // Sobre la venta original entera: el factor de abajo ya dice qué parte
     // se devolvió. Si acá además se restara lo devuelto, se contaría dos veces.
+    // Solo lo de esta marca que ya se le liquidó (19/11: se marca por renglón). Si
+    // la venta se liquidó con la marca vieja (toda la venta), cuentan todos.
     const { marca, resumen } = await construirLineas(supabase, idMarca, [ventaParaCalculo], {
       netearDevoluciones: false,
+      renglones: venta.id_liquidacion ? undefined : "LIQUIDADOS",
     });
     const factor = factorPorMarca ? factorPorMarca.get(idMarca) ?? 0 : 1;
     const importe = Math.round(resumen.netoARendir * factor * 100) / 100;
@@ -467,7 +518,59 @@ export async function calcularRendicion(idMarca: string, desde: string, hasta: s
     .lte("fecha", `${hasta}T23:59:59`);
   if (errorVentas) throw new Error(friendlyDbError(errorVentas));
 
-  return construirLineas(supabase, idMarca, ventas ?? []);
+  // Lo vendido sin liquidar (por renglón desde el 19/11). Para LIQUIDAR se usa
+  // rendicionAlCorte, que además mira si la plata ya entró.
+  return construirLineas(supabase, idMarca, ventas ?? [], { renglones: "SIN_LIQUIDAR" });
+}
+
+/** El último momento de un día de Argentina, para comparar con ventas.fecha. */
+const finDelDia = (dia: string) => `${dia}T23:59:59.999-03:00`;
+
+/**
+ * La liquidación por lo cobrado (Gonzalo, 19/11): todo lo vendido hasta el
+ * `corte` (AAAA-MM-DD) que todavía no se liquidó y cuya plata YA entró al corte.
+ * Lo vendido con la plata en camino (crédito del posnet, QR que Mercado Pago
+ * todavía no liberó) queda en `enCamino` y pasa solo a la liquidación siguiente.
+ * No hay «desde»: una venta de octubre que entró en noviembre va en noviembre.
+ */
+export async function rendicionAlCorte(idMarca: string, corte: string) {
+  const sesionMarca = await obtenerSesionMarca();
+  if (sesionMarca && sesionMarca.idMarca !== idMarca) throw new Error("No tenés acceso a los datos de esa marca");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(corte)) throw new Error("Elegí la fecha de corte");
+
+  const supabase = getSupabaseServerClient();
+  const ventas = await ventasSinLiquidarHasta(supabase, idMarca, corte);
+  const cobro = await cobroDeVentas(supabase, ventas);
+  const conCobro = ventas.map((v) => ({ ...v, cobro: cobro.get(v.id_venta) }));
+  const cobradas = conCobro.filter((v) => v.cobro && cobradaAl(v.cobro, corte));
+  const enCamino = conCobro.filter((v) => !v.cobro || !cobradaAl(v.cobro, corte));
+
+  const [ahora, despues] = await Promise.all([
+    construirLineas(supabase, idMarca, cobradas, { renglones: "SIN_LIQUIDAR" }),
+    construirLineas(supabase, idMarca, enCamino, { renglones: "SIN_LIQUIDAR" }),
+  ]);
+  return { ...ahora, corte, enCamino: { lineas: despues.lineas, resumen: despues.resumen } };
+}
+
+/** Las ventas pagadas hasta el corte con algún renglón de la marca sin liquidar. */
+async function ventasSinLiquidarHasta(supabase: SupabaseClient, idMarca: string, corte: string): Promise<VentaMinima[]> {
+  let { data: renglones, error } = await supabase.from("detalle_ventas").select("id_venta").eq("id_marca", idMarca).is("id_liquidacion_marca", null).range(0, 49999);
+  if (error && /id_liquidacion_marca/.test(error.message)) ({ data: renglones, error } = await supabase.from("detalle_ventas").select("id_venta").eq("id_marca", idMarca).range(0, 49999));
+  if (error) throw new Error(friendlyDbError(error));
+  const ids = [...new Set((renglones ?? []).map((d) => d.id_venta as string))];
+  const salida: VentaMinima[] = [];
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data, error: e } = await supabase
+      .from("ventas")
+      .select("id_venta, numero, fecha, medio_pago, id_pago")
+      .in("id_venta", ids.slice(i, i + 200))
+      .eq("estado", "PAGADA")
+      .is("id_liquidacion", null)
+      .lte("fecha", finDelDia(corte));
+    if (e) throw new Error(friendlyDbError(e));
+    salida.push(...((data ?? []) as VentaMinima[]));
+  }
+  return salida;
 }
 
 // Reconstruye el detalle línea por línea de una liquidación YA CERRADA,
@@ -486,18 +589,32 @@ export async function detalleLiquidacion(idLiquidacion: string) {
   // Es un endpoint: una marca solo puede pedir las suyas (ahora la ve en su portal).
   await exigirLecturaDeMarca(liquidacion.id_marca as string);
 
-  const { data: ventas, error: errorVentas } = await supabase
+  // Desde el 19/11 la liquidación queda en cada renglón; las de antes, en la venta.
+  const { data: viejas, error: errorVentas } = await supabase
     .from("ventas")
     .select("id_venta, numero, fecha, medio_pago, id_pago")
     .eq("id_liquidacion", idLiquidacion);
   if (errorVentas) throw new Error(friendlyDbError(errorVentas));
+  const { data: renglones } = await supabase.from("detalle_ventas").select("id_venta").eq("id_liquidacion_marca", idLiquidacion);
+  const idsNuevas = [...new Set((renglones ?? []).map((r) => r.id_venta as string))];
+  const { data: nuevas } = idsNuevas.length
+    ? await supabase.from("ventas").select("id_venta, numero, fecha, medio_pago, id_pago").in("id_venta", idsNuevas)
+    : { data: [] as VentaMinima[] };
+  const ventas = (viejas ?? []).length ? viejas : nuevas;
+  const cobro = await cobroDeVentas(supabase, (ventas ?? []) as VentaMinima[]);
 
   // Tal como se rindió: una devolución posterior no cambia un comprobante
   // ya cerrado — eso se resuelve con el contracargo, en la liquidación que
   // sigue.
-  const { marca, lineas, resumen } = await construirLineas(supabase, liquidacion.id_marca, ventas ?? [], {
-    netearDevoluciones: false,
-  });
+  const { marca, lineas, resumen } = await construirLineas(
+    supabase,
+    liquidacion.id_marca,
+    ((ventas ?? []) as VentaMinima[]).map((v) => ({ ...v, cobro: cobro.get(v.id_venta) })),
+    {
+      netearDevoluciones: false,
+      renglones: (viejas ?? []).length ? undefined : { liquidacion: idLiquidacion },
+    }
+  );
 
   return { liquidacion, marca, lineas, resumen };
 }
@@ -505,27 +622,32 @@ export async function detalleLiquidacion(idLiquidacion: string) {
 // Next.js redacta en producción el mensaje de cualquier Error que se lance
 // desde una Server Action (queda solo un digest genérico en el navegador) —
 // por eso esta función devuelve { error } como dato en vez de tirar throw.
+//
+// Desde el 19/11 cierra por lo COBRADO al corte (rendicionAlCorte) y se vuelve a
+// calcular acá: no se le cree al número que mandó la pantalla. Si en el medio
+// entró o se anuló algo, avisa para volver a calcular.
 export async function marcarComoLiquidada(
   idMarca: string,
-  desde: string,
-  hasta: string,
-  resumen: {
-    ventaBruta: number;
-    comisionWiigo: number;
-    ivaComision: number;
-    impCreditos: number;
-    feeMp: number;
-    sircreb: number;
-    impDebitos: number;
-    programaProfesionales?: number;
-    netoARendir: number;
-    netoEfectivo: number;
-    netoTransferencia: number;
-  }
+  corte: string,
+  netoEsperado: number
 ): Promise<{ error: string | null }> {
   try {
+    await exigirGestionInterna();
     const supabase = getSupabaseServerClient();
     const usuario = await usuarioActual();
+
+    // Sin la columna por renglón no se puede cerrar bien (volvería a pasar lo de las dos marcas).
+    const { error: sinColumna } = await supabase.from("detalle_ventas").select("id_liquidacion_marca").limit(1);
+    if (sinColumna) return { error: "Falta correr sql/liquidar-lo-cobrado.sql en Supabase antes de cerrar liquidaciones." };
+
+    const fresco = await rendicionAlCorte(idMarca, corte);
+    const resumen = fresco.resumen;
+    if (fresco.lineas.length === 0) return { error: "No hay nada cobrado para liquidar a ese corte." };
+    if (Math.abs(resumen.netoARendir - netoEsperado) > 1) {
+      return { error: "Cambió algo desde que calculaste (entró o se anuló una venta). Volvé a tocar «Calcular» y revisalo." };
+    }
+    const desde = fresco.lineas.reduce((min, l) => (l.fecha < min ? l.fecha : min), fresco.lineas[0].fecha).slice(0, 10);
+    const hasta = corte;
 
     const programa = resumen.programaProfesionales ?? 0;
     const totalComisiones = redondear2(resumen.comisionWiigo + resumen.ivaComision + resumen.feeMp);
@@ -572,19 +694,16 @@ export async function marcarComoLiquidada(
       });
     }
 
-    // Estampa todas las ventas del período que ya se rindieron, para que no
-    // se vuelvan a contar en la próxima liquidación.
-    const { data: detalle } = await supabase.from("detalle_ventas").select("id_venta").eq("id_marca", idMarca);
-    const idsVenta = [...new Set((detalle ?? []).map((d) => d.id_venta))];
-    if (idsVenta.length > 0) {
+    // Marca como liquidado cada RENGLÓN de esta marca que entró (19/11), no la
+    // venta entera: lo de otra marca en la misma venta queda para la suya, y lo
+    // que está en camino, para la próxima.
+    const ids = fresco.lineas.map((l) => l.idDetalle);
+    for (let i = 0; i < ids.length; i += 200) {
       const { error: errorUpdate } = await supabase
-        .from("ventas")
-        .update({ id_liquidacion: liquidacion.id_liquidacion })
-        .in("id_venta", idsVenta)
-        .eq("estado", "PAGADA")
-        .is("id_liquidacion", null)
-        .gte("fecha", `${desde}T00:00:00`)
-        .lte("fecha", `${hasta}T23:59:59`);
+        .from("detalle_ventas")
+        .update({ id_liquidacion_marca: liquidacion.id_liquidacion })
+        .in("id_detalle", ids.slice(i, i + 200))
+        .is("id_liquidacion_marca", null);
       if (errorUpdate) return { error: friendlyDbError(errorUpdate) };
     }
 

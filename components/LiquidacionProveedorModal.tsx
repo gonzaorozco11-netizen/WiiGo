@@ -6,6 +6,7 @@ import type { ProveedorConSaldo } from "@/app/(app)/proveedores/actions";
 import type { DetalleLiquidacion, MedioLiquidacion, LoteDeLinea } from "@/lib/liquidacionesProveedor";
 import {
   detalleLiquidacionProveedorAction,
+  enCaminoProveedorAction,
   generarLiquidacionProveedorAction,
   corregirCostoLote,
 } from "@/app/(app)/proveedores/actions";
@@ -151,14 +152,15 @@ function etiquetaIva(v: number) {
   return v === 10.5 ? "10,5%" : `${v}%`;
 }
 
-function primerDiaDelMes() {
-  const hoy = new Date();
-  return new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString().slice(0, 10);
+// Una liquidación por mes, con lo que ya se cobró (Gonzalo, 19/11). Hasta el 10,
+// el corte sugerido es el último día del mes pasado; después, hoy.
+function corteSugerido() {
+  const ahora = new Date(Date.now() - 3 * 3600 * 1000); // Argentina
+  if (ahora.getUTCDate() <= 10) return new Date(Date.UTC(ahora.getUTCFullYear(), ahora.getUTCMonth(), 0)).toISOString().slice(0, 10);
+  return ahora.toISOString().slice(0, 10);
 }
-
-function hoyISO() {
-  return new Date().toISOString().slice(0, 10);
-}
+/** Lo que queda guardado como «desde» en la liquidación: el 1.º del mes del corte. */
+const primeroDelMes = (dia: string) => `${dia.slice(0, 7)}-01`;
 
 export default function LiquidacionProveedorModal({
   proveedor,
@@ -170,8 +172,9 @@ export default function LiquidacionProveedorModal({
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [buscando, setBuscando] = useState(false);
-  const [fechaDesde, setFechaDesde] = useState(primerDiaDelMes());
-  const [fechaHasta, setFechaHasta] = useState(hoyISO());
+  const [fechaHasta, setFechaHasta] = useState(corteSugerido());
+  const fechaDesde = primeroDelMes(fechaHasta || corteSugerido());
+  const [enCamino, setEnCamino] = useState<{ monto: number; unidades: number; ventas: number } | null>(null);
   const [detalle, setDetalle] = useState<DetalleLiquidacion | null>(null);
   const [montoFinal, setMontoFinal] = useState("");
   const [observaciones, setObservaciones] = useState("");
@@ -197,9 +200,18 @@ export default function LiquidacionProveedorModal({
   useEffect(() => {
     if (!fechaDesde || !fechaHasta) return;
     setBuscando(true);
+    // Si cambian la fecha antes de que llegue la respuesta, la vieja se descarta.
+    let vigente = true;
+    setEnCamino(null);
     detalleLiquidacionProveedorAction(proveedor.id_proveedor, fechaDesde, fechaHasta)
-      .then(setDetalle)
-      .finally(() => setBuscando(false));
+      .then((d) => vigente && setDetalle(d))
+      .finally(() => vigente && setBuscando(false));
+    enCaminoProveedorAction(proveedor.id_proveedor, fechaHasta)
+      .then((e) => vigente && setEnCamino(e))
+      .catch(() => vigente && setEnCamino(null));
+    return () => {
+      vigente = false;
+    };
   }, [proveedor.id_proveedor, fechaDesde, fechaHasta, version]);
 
   // Lo que hay que pagarle es el total CON IVA: es lo que va a decir su
@@ -243,26 +255,28 @@ export default function LiquidacionProveedorModal({
         </div>
 
         <div className="px-6 py-5 space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-neutral-500 uppercase mb-1">Desde</label>
-              <input
-                type="date"
-                value={fechaDesde}
-                onChange={(e) => setFechaDesde(e.target.value)}
-                className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-neutral-500 uppercase mb-1">Hasta</label>
-              <input
-                type="date"
-                value={fechaHasta}
-                onChange={(e) => setFechaHasta(e.target.value)}
-                className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-              />
-            </div>
+          <div>
+            <label className="block text-xs font-semibold text-neutral-500 uppercase mb-1">Corte (cobrado hasta)</label>
+            <input
+              type="date"
+              value={fechaHasta}
+              onChange={(e) => setFechaHasta(e.target.value)}
+              className="w-full sm:w-56 rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+            <p className="text-xs text-neutral-500 mt-1">
+              Se le paga lo vendido cuya plata ya entró hasta ese día, y la merma hasta ese día. Lo que todavía está en camino pasa a la próxima.
+            </p>
           </div>
+          {enCamino && enCamino.monto > 0 && (
+            <div className="rounded-xl border border-neutral-200 border-l-4 border-l-amber-500 px-4 py-3">
+              <p className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Vendido, en camino</p>
+              <p className="text-lg font-extrabold text-neutral-900 tabular-nums">${enCamino.monto.toLocaleString("es-AR")}</p>
+              <p className="text-xs text-neutral-500">
+                Costo de {enCamino.unidades} {enCamino.unidades === 1 ? "unidad" : "unidades"} en {enCamino.ventas}{" "}
+                {enCamino.ventas === 1 ? "venta" : "ventas"} con la plata todavía en camino (sin IVA): entra en la próxima liquidación.
+              </p>
+            </div>
+          )}
 
           {buscando ? (
             <p className="text-sm text-neutral-400 text-center py-6">Calculando...</p>

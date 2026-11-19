@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionMarca, sesionDelPortal, motivoSinSesionMarca } from "@/lib/marcaSesion";
-import { calcularRendicion, detalleLiquidacion } from "@/app/(app)/liquidaciones/actions";
+import { calcularRendicion, detalleLiquidacion, rendicionAlCorte } from "@/app/(app)/liquidaciones/actions";
 import { fechaHoraArgentina } from "@/lib/horarios";
 
 /** El día (AAAA-MM-DD) de un momento guardado, en hora argentina. Cortar el texto guardado da el día en UTC: lo vendido después de las 21:00 caía al día siguiente. */
@@ -148,6 +148,16 @@ export type ResumenPortal = {
   saldoComercial: number;
   desdeISO: string;
   hastaISO: string;
+  /**
+   * Lo que todavía no se le liquidó (19/11: se liquida lo cobrado): lo que ya
+   * entró y va en la próxima liquidación, y lo vendido con la plata en camino.
+   * null si no se pudo calcular.
+   */
+  porLiquidar: {
+    cobrado: number;
+    enCamino: number;
+    enCaminoDetalle: { dia: string; medio: string; entra: string | null; bruto: number }[];
+  } | null;
 };
 
 export async function resumenPortal(): Promise<ResumenPortal | null> {
@@ -218,6 +228,25 @@ export async function resumenPortal(): Promise<ResumenPortal | null> {
     // Antes de mostrar un número inventado, se muestra el bruto y nada más.
   }
 
+  let porLiquidar: ResumenPortal["porLiquidar"] = null;
+  try {
+    const r = await rendicionAlCorte(sesion.idMarca, hoyISO);
+    // En camino, una fila por venta: cuándo se vendió, cómo pagó y cuándo entra.
+    const porVenta = new Map<number, { dia: string; medio: string; entra: string | null; bruto: number }>();
+    for (const l of r.enCamino.lineas) {
+      const ya = porVenta.get(l.numeroVenta);
+      if (ya) ya.bruto += l.ventaBruta;
+      else porVenta.set(l.numeroVenta, { dia: diaArgentina(l.fecha), medio: etiquetaPago(l.medioPago, l.formaPagoMp), entra: l.cobro ?? null, bruto: l.ventaBruta });
+    }
+    porLiquidar = {
+      cobrado: r.resumen.netoARendir,
+      enCamino: r.enCamino.resumen.netoARendir,
+      enCaminoDetalle: [...porVenta.values()].sort((a, b) => a.dia.localeCompare(b.dia)),
+    };
+  } catch {
+    // Sin el número, el portal muestra lo de siempre.
+  }
+
   const { data: liquidaciones } = await supabase
     .from("liquidaciones")
     .select("neto_a_transferir, estado")
@@ -254,6 +283,7 @@ export async function resumenPortal(): Promise<ResumenPortal | null> {
     saldoComercial,
     desdeISO: desde,
     hastaISO: hoyISO,
+    porLiquidar,
   };
 }
 

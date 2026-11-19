@@ -145,7 +145,8 @@ export async function historialProveedor(supabase: SupabaseClient, idProveedor: 
 
   // Lo vendido que todavía no se liquidó: el mismo FIFO de la liquidación.
   const manana = fechaHoraArgentina(new Date(Date.now() + 86400000)).fecha;
-  const pendiente = await calcularLiquidacionProveedor(supabase, idProveedor, "2020-01-01", manana).catch(() => ({ lineas: [], total: 0 }));
+  // Con lo vendido que todavía no cobramos (19/11): salió del lote igual.
+  const pendiente = await calcularLiquidacionProveedor(supabase, idProveedor, "2020-01-01", manana, { incluirEnCamino: true }).catch(() => ({ lineas: [], total: 0 }));
   let sinLiquidarSinPedido = 0;
   // Lo que ya salió de cada lote (vendido, sin liquidar todavía): para saber cuánto queda de verdad.
   const yaSalio = new Map<string, number>();
