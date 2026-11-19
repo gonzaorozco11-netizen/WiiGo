@@ -72,6 +72,8 @@ export async function pedidosEsperando(supabase: SupabaseClient): Promise<Pedido
 export type LineaParaCargar = {
   idDetalle: string;
   nombreProveedor: string;
+  /** La marca de fábrica, según la lista del proveedor. */
+  marca: string | null;
   rubro: string;
   /** Lo que dice nuestro sistema, por si el nombre del proveedor no alcanza. */
   nombreNuestro: string;
@@ -113,7 +115,7 @@ export async function pedidoParaCargar(
   const costoDe = new Map((costos ?? []).map((c) => [c.id_granel as string, c]));
   const idsItem = (costos ?? []).map((c) => c.id_item as string | null).filter((x): x is string => Boolean(x));
   const { data: items } = idsItem.length
-    ? await supabase.from("catalogo_proveedor").select("id_item, nombre, categoria").in("id_item", idsItem)
+    ? await supabase.from("catalogo_proveedor").select("id_item, nombre, categoria, marca").in("id_item", idsItem)
     : { data: [] as Record<string, unknown>[] };
   const itemDe = new Map((items ?? []).map((i) => [i.id_item as string, i]));
 
@@ -129,6 +131,7 @@ export async function pedidoParaCargar(
     return {
       idDetalle: f.id_detalle,
       nombreProveedor: ((it?.nombre as string | undefined) ?? (c?.nombre as string | undefined) ?? nombreNuestro).replace(/\s+-\s+\(.*\)$/, ""),
+      marca: ((it?.marca as string | undefined) ?? "").trim() || null,
       rubro: (it?.categoria as string | undefined) ?? "Otros",
       nombreNuestro,
       esGranel,
@@ -179,6 +182,8 @@ export type LineaGranel = {
   /** La variante del granel interno: es lo que va en la orden, en gramos. */
   idVarianteGranel: string;
   nombreProveedor: string;
+  /** La marca de fábrica, según la lista del proveedor. */
+  marca: string | null;
   rubro: string;
   unidad: "KG" | "BULTO";
   /** Kilos por bolsa, si el proveedor vende en bolsa. */
@@ -195,6 +200,8 @@ export type LineaEnvasado = {
   idVariante: string;
   nombre: string;
   nombreProveedor: string;
+  /** La marca de fábrica, según la lista del proveedor. */
+  marca: string | null;
   rubro: string;
   hay: number;
   minimo: number;
@@ -274,13 +281,14 @@ export async function sugerirPedidoProveedor(
   const costoDe = new Map(costos.map((c) => [c.id_granel, c]));
   const idsItem = costos.map((c) => c.id_item).filter((x): x is string => Boolean(x));
   const { data: items } = idsItem.length
-    ? await supabase.from("catalogo_proveedor").select("id_item, nombre, categoria").in("id_item", idsItem)
+    ? await supabase.from("catalogo_proveedor").select("id_item, nombre, categoria, marca").in("id_item", idsItem)
     : { data: [] as Record<string, unknown>[] };
-  const itemDe = new Map((items ?? []).map((i) => [i.id_item as string, i as { nombre: string; categoria: string | null }]));
+  const itemDe = new Map((items ?? []).map((i) => [i.id_item as string, i as { nombre: string; categoria: string | null; marca: string | null }]));
   const datosProveedor = (idGranel: string | null) => {
     const c = idGranel ? costoDe.get(idGranel) : undefined;
     const it = c?.id_item ? itemDe.get(c.id_item) : undefined;
-    return { nombre: it?.nombre ?? c?.nombre ?? null, rubro: it?.categoria ?? "Otros", costo: c };
+    // La marca de fábrica de la lista del proveedor (Gonzalo, 19/11: «que figuren entre paréntesis las marcas»).
+    return { nombre: it?.nombre ?? c?.nombre ?? null, rubro: it?.categoria ?? "Otros", costo: c, marca: it?.marca?.trim() || null };
   };
 
   const variantesDe = new Map<string, typeof vars>();
@@ -321,6 +329,7 @@ export async function sugerirPedidoProveedor(
             idGranel: p.id_granel,
             idVarianteGranel: idVarGranel,
             nombreProveedor: prov.nombre ?? p.nombre,
+            marca: prov.marca,
             rubro: prov.rubro,
             unidad,
             kgBulto: unidad === "BULTO" ? Math.max(1, Number(prov.costo?.kg_bulto ?? 1)) : 1,
@@ -344,6 +353,7 @@ export async function sugerirPedidoProveedor(
         idVariante: v.id_variante,
         nombre: nombreDe(p, v),
         nombreProveedor: prov.nombre ?? p.nombre,
+        marca: prov.marca,
         rubro: prov.rubro,
         hay: stock,
         minimo,

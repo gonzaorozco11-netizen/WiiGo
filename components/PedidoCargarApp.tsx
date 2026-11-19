@@ -73,7 +73,7 @@ export default function PedidoCargarApp({
     const texto = porRubro
       .map(([rubro, ls]) => {
         const suyas = ls.filter((l) => !noTienen.has(l.idDetalle));
-        return suyas.length ? `${rubro}\n${suyas.map((l) => `- ${l.nombreProveedor}: ${textoCantidad(l, cant[l.idDetalle] ?? 0)}`).join("\n")}` : "";
+        return suyas.length ? `${rubro}\n${suyas.map((l) => `- ${l.nombreProveedor}${l.marca ? ` (${l.marca})` : ""}: ${textoCantidad(l, cant[l.idDetalle] ?? 0)}`).join("\n")}` : "";
       })
       .filter(Boolean)
       .join("\n\n");
@@ -155,7 +155,10 @@ export default function PedidoCargarApp({
                 <li key={l.idDetalle} className={`rounded-xl border border-neutral-200 px-3 py-2.5 ${falta ? "bg-neutral-50" : "bg-white"}`}>
                   <div className="flex items-start justify-between gap-3">
                     <span className="min-w-0">
-                      <span className={`block text-sm font-semibold ${falta ? "line-through text-neutral-400" : "text-neutral-900"}`}>{l.nombreProveedor}</span>
+                      <span className={`block text-sm font-semibold ${falta ? "line-through text-neutral-400" : "text-neutral-900"}`}>
+                        {l.nombreProveedor}
+                        {l.marca && <span className="font-normal text-neutral-500"> ({l.marca})</span>}
+                      </span>
                       {l.nombreProveedor !== l.nombreNuestro && <span className="block text-xs text-neutral-400">En el sistema: {l.nombreNuestro}</span>}
                     </span>
                     <div className="inline-flex rounded-lg border border-neutral-300 overflow-hidden shrink-0 text-xs font-semibold">

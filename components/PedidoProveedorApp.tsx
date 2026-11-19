@@ -204,7 +204,10 @@ export default function PedidoProveedorApp({
                 <li key={id} className={`rounded-xl border border-neutral-200 bg-white px-3 py-2.5 flex items-center gap-3 ${afuera ? "opacity-50" : ""}`}>
                   <input type="checkbox" checked={!afuera} onChange={() => alternar(id)} aria-label={`Pedir ${g.nombreProveedor}`} className="w-[18px] h-[18px] accent-accent shrink-0" />
                   <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-semibold text-neutral-900">{g.nombreProveedor}</span>
+                    <span className="block text-sm font-semibold text-neutral-900">
+                      {g.nombreProveedor}
+                      {g.marca && <span className="font-normal text-neutral-500"> ({g.marca})</span>}
+                    </span>
                     {g.bolsitas
                       .filter((b) => b.faltan > b.delDeposito)
                       .map((b) => (
@@ -249,7 +252,10 @@ export default function PedidoProveedorApp({
                 <li key={id} className={`rounded-xl border border-neutral-200 bg-white px-3 py-2.5 flex items-center gap-3 ${afuera ? "opacity-50" : ""}`}>
                   <input type="checkbox" checked={!afuera} onChange={() => alternar(id)} aria-label={`Pedir ${e.nombre}`} className="w-[18px] h-[18px] accent-accent shrink-0" />
                   <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-semibold text-neutral-900">{e.nombre}</span>
+                    <span className="block text-sm font-semibold text-neutral-900">
+                      {e.nombre}
+                      {e.marca && <span className="font-normal text-neutral-500"> ({e.marca})</span>}
+                    </span>
                     <span className="block text-xs text-neutral-500">
                       Quedan {e.hay} · se llena hasta {e.maximo}
                       {e.enCamino > 0 && ` · vienen ${e.enCamino} en camino`}
