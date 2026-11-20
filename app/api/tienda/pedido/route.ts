@@ -124,7 +124,8 @@ export async function POST(req: NextRequest) {
   // solo desde la tienda abierta con ?probar=tarjeta (19/11).
   const tarjetaHabilitada = naveParaClientes() || (naveConfigurado() && b.probarTarjeta === true);
   const pago: PagoOnline | null =
-    b.pago === "TRANSFERENCIA" ? "TRANSFERENCIA" : b.pago === "AL_RETIRAR" ? "AL_RETIRAR" : b.pago === "TARJETA" && tarjetaHabilitada ? "TARJETA" : null;
+    // Con Nave en producción ya no se ofrece la transferencia (20/11).
+    b.pago === "TRANSFERENCIA" && !naveParaClientes() ? "TRANSFERENCIA" : b.pago === "AL_RETIRAR" ? "AL_RETIRAR" : b.pago === "TARJETA" && tarjetaHabilitada ? "TARJETA" : null;
   if (!pago) return mal("Elegí cómo pagás.");
 
   // Solo qué y cuántos. Las líneas repetidas (mismo producto y sabor) se suman.

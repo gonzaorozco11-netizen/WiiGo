@@ -211,6 +211,7 @@ export async function armarCatalogoTienda(supabase: SupabaseClient) {
     filtros: contenido.filtrosGlobales.map((f) => f.nombre),
     // «Tarjeta» en Finalizar compra: para todos solo con las credenciales de producción
     // (19/11). Con las de prueba, `prueba` deja que ?probar=tarjeta la muestre.
-    pagos: { tarjeta: naveParaClientes(), prueba: naveConfigurado() && !naveParaClientes() },
+    // Con Nave en producción se apaga la transferencia (Gonzalo, 20/11): quedan Nave y Al retirar.
+    pagos: { tarjeta: naveParaClientes(), prueba: naveConfigurado() && !naveParaClientes(), transferencia: !naveParaClientes() },
   };
 }

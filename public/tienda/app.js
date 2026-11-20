@@ -771,7 +771,9 @@
   }
   function checkout() {
     // Sin link de Mercado Pago (comisión cara): transferencia al alias a precio de góndola, o pagás al retirar.
-    var t = totales(), co = S.co || (S.co = { pago: 'transf' });
+    // Con Nave en producción no hay transferencia (20/11): arranca en tarjeta.
+    var conTransf = !(D.pagos && D.pagos.transferencia === false);
+    var t = totales(), co = S.co || (S.co = { pago: conTransf ? 'transf' : TARJETA_ONLINE ? 'tarjeta' : 'retiro' });
     var op = function (a, v, on, tit, sub, extra) { return '<button class="opcion" data-a="' + a + '" data-v="' + v + '" aria-pressed="' + on + '"' + (extra || '') + '><span class="radio"></span><span><b>' + tit + '</b><small>' + sub + '</small></span></button>'; };
     // Más simple (Gonzalo, 18/11, maqueta «La tienda, como el local»): dónde retirás, cómo pagás con el monto
     // al lado, el total, los puntos y un botón. El alias aparece después de confirmar, en el seguimiento.
@@ -781,7 +783,7 @@
       '<div class="fc-caja"><p class="fc-t">¿Cómo pagás?</p><div class="opciones">' +
       // Tarjeta por Nave (18/11): solo si las credenciales están cargadas (D.pagos.tarjeta).
       (TARJETA_ONLINE ? op('pago', 'tarjeta', co.pago === 'tarjeta', 'Tarjeta de débito o crédito', '<span class="fc-monto">' + plata(t.g) + '</span> · también en cuotas') : '') +
-      op('pago', 'transf', co.pago === 'transf', 'Transferencia', '<span class="fc-monto">' + plata(t.g) + '</span>') +
+      (conTransf ? op('pago', 'transf', co.pago === 'transf', 'Transferencia', '<span class="fc-monto">' + plata(t.g) + '</span>') : '') +
       op('pago', 'retiro', co.pago === 'retiro', 'Al retirar', 'Efectivo <span class="fc-monto">' + plata(t.e) + '</span> · tarjeta o QR ' + plata(t.g)) + '</div></div>' +
       '<div class="fc-caja"><p class="fc-t">Tu pedido</p>' +
       '<details class="fc-det"><summary>' + t.u + (t.u === 1 ? ' producto' : ' productos') + ' <span>Ver detalle</span></summary>' +
