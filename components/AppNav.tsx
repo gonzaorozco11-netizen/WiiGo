@@ -385,7 +385,8 @@ export default function AppNav({
         {puedeVer("/pedidos") && (
           <Link href="/pedidos" className={`mt-0.5 ${claseLink(pathname === "/pedidos")}`}>
             <Icono nombre="operaciones" className={pathname === "/pedidos" ? "text-accent" : "text-neutral-500"} />
-            Pedidos
+            {/* «Pedidos» a secas parecía repetido con «Pedidos online» (Gonzalo, 19/11). */}
+            Pedidos profesionales
             {pedidosNuevos > 0 && (
               <span className="ml-auto text-[10.5px] font-bold px-1.5 py-0.5 rounded-full bg-red-600 text-white">{pedidosNuevos}</span>
             )}
