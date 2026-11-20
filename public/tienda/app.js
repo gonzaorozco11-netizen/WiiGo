@@ -795,6 +795,41 @@
       '<button class="cta naranja" style="margin-top:14px" data-a="confirmar"' + (S.enviando ? ' disabled' : '') + '>' + (S.enviando ? 'Enviando…' : co.pago === 'transf' ? 'Confirmar y transferir ' + plata(t.g) : co.pago === 'tarjeta' ? 'Confirmar y pagar ' + plata(t.g) : 'Confirmar pedido') + '</button>' +
       '<p class="f-chico" style="text-align:center">Al confirmar aceptás los términos · 10 días para arrepentirte</p>';
   }
+  // Los pasos del pedido con movimiento (Gonzalo, 20/11, maqueta aprobada): la línea verde avanza,
+  // el paso que se completa rebota con ✓, el de ahora late con su ícono y una frase, y al quedar
+  // listo o retirado sale papel picado. Se anima solo cuando el estado cambió desde la última vez.
+  var ICONOS_PED = ['🧾', '👍', '🛍', '🏪', '🎉'];
+  var FRASES_PED = ['Lo recibimos y lo estamos mirando', 'Ya es tuyo: lo empezamos a armar', 'Estamos poniendo todo en tu bolsa', 'Pasá cuando quieras, te esperamos', '¡Que lo disfrutes!'];
+  var pasoVisto = {};
+  function pasosAnimados(codigo, e) {
+    var antes = pasoVisto[codigo];
+    var cambio = antes != null && antes < e;
+    pasoVisto[codigo] = e;
+    var pct = function (n) { return Math.round((n / (ESTADOS_PED.length - 1)) * 100); };
+    if (cambio && (e === 3 || e === 4)) setTimeout(papelPicado, 350);
+    return '<ol class="seg-pasos anim" style="--de:' + pct(cambio ? antes : e) + '%;--a:' + pct(e) + '%">' +
+      '<span class="seg-riel" aria-hidden="true"><b></b></span>' +
+      ESTADOS_PED.map(function (x, i) {
+        var clase = i < e ? 'hecho' : i === e ? 'ahora' : '';
+        if (cambio && i === e - 1) clase += ' pop';
+        return '<li class="' + clase + '"><i>' + (i < e ? '✓' : ICONOS_PED[i]) + '</i><span>' + x.t + (i === e ? '<small>' + FRASES_PED[i] + '</small>' : '') + '</span></li>';
+      }).join('') + '</ol>';
+  }
+  function papelPicado() {
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    var colores = ['#e8743b', '#2f5d46', '#f1c75b', '#a58bff'];
+    for (var k = 0; k < 28; k++) {
+      var d = document.createElement('span');
+      d.className = 'picado';
+      d.style.background = colores[k % 4];
+      d.style.left = (40 + Math.random() * 20) + '%';
+      d.style.setProperty('--x', (Math.random() * 320 - 160) + 'px');
+      d.style.setProperty('--y', (Math.random() * 300 + 80) + 'px');
+      document.body.appendChild(d);
+      setTimeout(function (x) { return function () { x.remove(); }; }(d), 1600);
+    }
+  }
+
   // La escena del local en cada paso del pedido (del primer prototipo aprobado, 2026-11-11).
   function escenaPedido(k) {
     var base = '<polygon points="200,118 372,206 200,294 28,206" fill="#e9dcc2"/><polygon points="28,206 200,118 200,40 28,128" fill="#f6f0e4"/><polygon points="200,118 372,206 372,128 200,40" fill="#ece2cf"/>' +
@@ -844,7 +879,7 @@
     // Sin la escena del local en 3D (Gonzalo, 20/11: «sacalo, solo que vean los estados»): es pesada y lenta.
     return '<div class="filtro-cab">' + volver + '<span><b>Pedido #' + p.num + '</b><small>' + sub + '</small></span></div>' + transf + tarj + avisoFalta +
       (cancelado ? '' : '<div class="seg-codigo"><small>Tu palabra secreta</small><b>' + esc(p.palabra || p.codigo) + '</b><span>Para retirar decí tu DNI y esta palabra</span></div>') + estado +
-      (cancelado ? '' : '<ol class="seg-pasos">' + ESTADOS_PED.map(function (x, i) { return '<li class="' + (i < e ? 'hecho' : i === e ? 'ahora' : '') + '"><i>' + (i < e ? '✓' : i + 1) + '</i><span>' + x.t + '</span></li>'; }).join('') + '</ol>') +
+      (cancelado ? '' : pasosAnimados(p.codigo, e)) +
       '<div class="seg-items">' + p.items.map(function (it) { var n = it.hay == null ? it.q : it.hay; return '<div class="total" style="font-size:14px;font-weight:600"><span>' + (n === 0 ? '<s>' : '') + (n === it.q ? it.q : n + ' de ' + it.q) + ' × ' + esc(titulo(it.n)) + (it.v ? ' — ' + esc(it.v) : '') + (n === 0 ? '</s>' : '') + '</span><b style="font-size:14px;font-family:var(--texto)">' + plata(it.p * n) + '</b></div>'; }).join('') +
       '<div class="total" style="border-top:1px solid var(--linea);padding-top:8px;margin-top:2px"><span>Total</span><b>' + plata(p.total) + '</b></div></div>' +
       '<p class="f-chico">Te avisamos por mail en cada paso.' + (abiertoPed(p) && !p.pagoOk ? ' Te lo guardamos hasta mañana a las 21.' : '') + '</p>' +
