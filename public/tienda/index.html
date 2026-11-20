@@ -580,6 +580,21 @@ a.dir-mapa u{text-decoration:underline;text-underline-offset:2px;color:#3f5536;f
 .seg-pasos i{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:#e9e1cf;font-style:normal;font-size:13px;font-weight:800}
 .seg-pasos li.hecho{color:var(--tinta)}.seg-pasos li.hecho i{background:var(--bosque);color:#f5efe3}
 .seg-pasos li.ahora{color:var(--tinta)}.seg-pasos li.ahora i{background:var(--energia);color:#2a1406;box-shadow:0 0 0 5px rgba(232,116,59,.25)}
+/* Pasos con movimiento (20/11) */
+.seg-pasos.anim{position:relative}
+.seg-riel{position:absolute;left:13px;top:15px;bottom:15px;width:4px;border-radius:9px;background:#e9e1cf;z-index:0}
+.seg-riel b{display:block;width:100%;border-radius:9px;background:var(--bosque);height:var(--a);animation:riel .9s cubic-bezier(.3,.8,.3,1)}
+@keyframes riel{from{height:var(--de)}to{height:var(--a)}}
+.seg-pasos.anim li{position:relative;z-index:1}
+.seg-pasos.anim i{font-size:15px}
+.seg-pasos.anim li span small{display:block;font-weight:600;font-size:12.5px;color:var(--gris)}
+.seg-pasos.anim li.ahora i{animation:late 1.4s infinite}
+.seg-pasos.anim li.pop i{animation:pop .6s}
+@keyframes late{0%{box-shadow:0 0 0 0 rgba(232,116,59,.45)}100%{box-shadow:0 0 0 14px rgba(232,116,59,0)}}
+@keyframes pop{0%{transform:scale(.6)}60%{transform:scale(1.25)}100%{transform:scale(1)}}
+.picado{position:fixed;top:35%;width:8px;height:12px;border-radius:2px;z-index:99;pointer-events:none;animation:picado 1.5s ease-out forwards}
+@keyframes picado{to{transform:translate(var(--x),var(--y)) rotate(540deg);opacity:0}}
+@media (prefers-reduced-motion:reduce){.seg-riel b,.seg-pasos.anim li i{animation:none!important}}
 .seg-falta{background:#fff6dc;border:1px solid #f0dca0;border-radius:14px;padding:10px 12px;font-size:13.5px;margin-bottom:12px;display:grid;gap:2px}
 .seg-items{background:var(--carta);border:1px solid var(--linea);border-radius:16px;padding:10px 14px;display:grid;gap:4px;margin-top:14px;font-size:14px}
 .seg-items s{color:var(--gris)}
