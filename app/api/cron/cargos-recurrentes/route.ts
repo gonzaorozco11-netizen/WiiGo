@@ -10,6 +10,8 @@
 // solo, sin que nadie lo mire primero.
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { registrarMovimientoComercial, type TipoCargoComercial } from "@/lib/cuentaComercialMarca";
+import { abonoDelPeriodo, avisarCanon } from "@/lib/abonoMarcas";
+import { fechaHoraArgentina } from "@/lib/horarios";
 
 function redondear2(valor: number) {
   return Math.round(valor * 100) / 100;
@@ -27,11 +29,12 @@ export async function GET(req: Request) {
   }
 
   const supabase = getSupabaseServerClient();
-  const hoy = new Date();
-  const diaHoy = hoy.getDate();
-  const mesHoy = hoy.getMonth() + 1;
-  const periodoMensual = hoy.toISOString().slice(0, 7);
-  const periodoAnual = String(hoy.getFullYear());
+  // La fecha de Argentina (corre a las 9 UTC, las 6 de acá: el mismo día, pero así no depende de eso).
+  const hoyISO = fechaHoraArgentina().fecha;
+  const diaHoy = Number(hoyISO.slice(8, 10));
+  const mesHoy = Number(hoyISO.slice(5, 7));
+  const periodoMensual = hoyISO.slice(0, 7);
+  const periodoAnual = hoyISO.slice(0, 4);
 
   const generados: string[] = [];
   const errores: string[] = [];
@@ -47,7 +50,12 @@ export async function GET(req: Request) {
     if (!corresponde) continue;
 
     try {
-      const neto = r.monto_estimado as number;
+      // El canon (20/11): el primer mes es proporcional desde `desde` (sql/abono-marcas.sql);
+      // antes de `desde`, nada. El concepto dice de qué mes es: «Canon de noviembre (del 15 al 30…)».
+      const desde = (r.desde as string | null | undefined) ?? null;
+      const canon = r.recurrencia === "MENSUAL" ? abonoDelPeriodo(Number(r.monto_estimado), periodo, desde) : null;
+      if (r.recurrencia === "MENSUAL" && !canon) continue;
+      const neto = canon ? canon.neto : (r.monto_estimado as number);
       const iva = r.lleva_iva ? redondear2(neto * (ivaGeneral / 100)) : 0;
       const importe = redondear2(neto + iva);
       await registrarMovimientoComercial(supabase, {
@@ -60,7 +68,7 @@ export async function GET(req: Request) {
         idCategoria: r.id_categoria as string,
         idSubcategoria: r.id_subcategoria as string | null,
         usuario: "Automático (cron mensual)",
-        observaciones: r.descripcion as string,
+        observaciones: canon && desde ? canon.concepto : (r.descripcion as string),
       });
       await supabase.from("cargos_recurrentes_marca").update({ ultimo_periodo_cargado: periodo }).eq("id_recurrente", r.id_recurrente);
       generados.push(`Cargo recurrente: ${r.descripcion}`);
@@ -69,6 +77,9 @@ export async function GET(req: Request) {
     }
   }
 
-  console.log("Cron cargos recurrentes:", { generados, errores });
-  return responder({ ok: true, generados, errores });
+  // Los mails del canon: el 1.º («ya se puede pagar») y el día antes de que venza.
+  const mails = await avisarCanon(supabase, hoyISO);
+
+  console.log("Cron cargos recurrentes:", { generados, errores, mails });
+  return responder({ ok: true, generados, errores, mails });
 }

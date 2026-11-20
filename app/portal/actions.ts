@@ -18,6 +18,7 @@ import { diasHasta } from "@/lib/eventos";
 import { sugerirReposicion, topeDeVariante } from "@/lib/reposicionSugerida";
 import { BUCKET_COMPROBANTES } from "@/lib/remitoRecepcion";
 import { etiquetaPago } from "@/lib/formasPago";
+import { cuentaDeMarca, fechaLarga, type EstadoCargo } from "@/lib/abonoMarcas";
 import {
   condicionesDeMarca,
   tasasGeneralesParaSimular,
@@ -537,42 +538,63 @@ export async function reposicionPortal(): Promise<OrdenPortal[]> {
   });
 }
 
-export type PagoPortal = { fecha: string | null; concepto: string; importe: number; vencido: boolean };
+export type PagoPortal = {
+  /** El último día para pagarlo (el canon: el 5 del mes siguiente). */
+  fecha: string | null;
+  concepto: string;
+  importe: number;
+  vencido: boolean;
+  estado: EstadoCargo;
+  /** «$400.000 + IVA $84.000». */
+  detalle: string | null;
+};
+
+/** El canon que tiene que pagar ahora, para el aviso de arriba del Tablero (20/11). */
+export type CanonPendiente = { concepto: string; debe: number; desde: string; vence: string; vencido: boolean; texto: string };
 
 /**
- * Lo que la marca le debe a WiiGo: fee de ingreso, abono del plan y cargos.
+ * Lo que la marca le debe a WiiGo: fee de ingreso, canon mensual y cargos.
  * Sale de la cuenta comercial, que es la misma fuente que usa Situación de
- * marca — un solo lugar donde vive la verdad.
+ * marca — un solo lugar donde vive la verdad. Los pagos que registra Gonzalo
+ * cubren los cargos más viejos primero (lib/abonoMarcas.ts).
  */
-export async function pagosPortal(): Promise<{ pagos: PagoPortal[]; total: number }> {
+export async function pagosPortal(): Promise<{ pagos: PagoPortal[]; total: number; canon: CanonPendiente | null }> {
   const sesion = await sesionDelPortal();
-  if (!sesion) return { pagos: [], total: 0 };
+  if (!sesion) return { pagos: [], total: 0, canon: null };
 
   const supabase = getSupabaseServerClient();
-  const { data } = await supabase
-    .from("movimientos_cuenta_comercial_marca")
-    .select("tipo_cargo, importe, periodo, fecha, observaciones")
-    .eq("id_marca", sesion.idMarca)
-    .gt("importe", 0)
-    .order("fecha", { ascending: false })
-    .limit(12);
-
   const hoyISO = fechaHoraArgentina().fecha;
-  const ETIQUETA: Record<string, string> = {
-    FEE_INGRESO: "Fee de ingreso",
-    GASTO_FIJO_MENSUAL: "Gasto fijo mensual",
-    CARGO_RECURRENTE: "Cargo mensual",
-    OTRO_CARGO: "Otro cargo",
-  };
+  const { cargos, pendiente } = await cuentaDeMarca(supabase, sesion.idMarca, hoyISO);
+  const pesosAr = (v: number) => `$${Math.round(v).toLocaleString("es-AR")}`;
 
-  const pagos = (data ?? []).map((m) => ({
-    fecha: (m.fecha as string) ?? null,
-    concepto: (m.observaciones as string) || ETIQUETA[m.tipo_cargo as string] || "Cargo",
-    importe: (m.importe as number) ?? 0,
-    vencido: Boolean(m.fecha && (m.fecha as string).slice(0, 10) < hoyISO),
+  // Lo que debe primero; lo pagado, los últimos tres, para que vea que se registró.
+  const debe = cargos.filter((c) => c.estado !== "PAGADO");
+  const pagados = cargos.filter((c) => c.estado === "PAGADO").slice(-3).reverse();
+  const pagos: PagoPortal[] = [...debe, ...pagados].map((c) => ({
+    fecha: c.vence,
+    concepto: c.concepto,
+    importe: c.estado === "PAGADO" ? c.importe : c.importe - c.pagado,
+    vencido: c.estado === "VENCIDO",
+    estado: c.estado,
+    detalle: c.neto != null && c.iva ? `${pesosAr(c.neto)} + IVA ${pesosAr(c.iva)}` : null,
   }));
 
-  return { pagos, total: pagos.reduce((acc, p) => acc + p.importe, 0) };
+  const c = debe.find((x) => x.esAbono) ?? null;
+  const canon: CanonPendiente | null = c
+    ? {
+        concepto: c.concepto,
+        debe: c.importe - c.pagado,
+        desde: `${c.vence.slice(0, 8)}01`,
+        vence: c.vence,
+        vencido: c.estado === "VENCIDO",
+        texto:
+          c.estado === "VENCIDO"
+            ? `Venció el ${fechaLarga(c.vence)}.`
+            : `Se paga del 1 al ${fechaLarga(c.vence)}.`,
+      }
+    : null;
+
+  return { pagos, total: pendiente, canon };
 }
 
 // ===================== MIS COSTOS Y MI MARGEN =====================
@@ -1944,7 +1966,27 @@ export async function misTareas(): Promise<TareasPortal | null> {
     });
   }
 
+  // El canon del mes (20/11): primera en la lista hasta que Gonzalo registra el pago.
+  const { cargos: cargosCuenta } = await cuentaDeMarca(supabase, sesion.idMarca, fechaHoraArgentina().fecha).catch(() => ({ cargos: [] as Awaited<ReturnType<typeof cuentaDeMarca>>["cargos"] }));
+  const canon = cargosCuenta.find((c) => c.esAbono && c.estado !== "PAGADO");
+  if (canon) {
+    const debe = canon.importe - canon.pagado;
+    tareas.unshift({
+      id: "canon",
+      grupo: "FRENA",
+      cuantas: 1,
+      titulo: `Pagar el ${canon.concepto.replace(/ \(.*\)$/, "").replace(/^Canon/, "canon")}: $${Math.round(debe).toLocaleString("es-AR")}`,
+      porque:
+        canon.estado === "VENCIDO"
+          ? `Venció el ${fechaLarga(canon.vence)}. Pedile a Gonzalo los datos para transferir.`
+          : `Se paga del 1 al ${fechaLarga(canon.vence)}. Pedile a Gonzalo los datos para transferir. Cuando nos llega, se tilda sola.`,
+      accion: "Ver el detalle",
+      href: "/portal",
+    });
+  }
+
   const alDia: string[] = [];
+  if (!canon && cargosCuenta.some((c) => c.esAbono)) alDia.push("Tu canon está pagado");
   if (total > 0 && sinPrecio === 0) alDia.push("Todos tus productos tienen precio");
   if (total > 0 && sinCosto === 0 && !sinCostoPedido) alDia.push("Todos tus productos tienen el costo cargado");
   if (total > 0 && incompletos === 0) alDia.push("Todos tus productos tienen foto");

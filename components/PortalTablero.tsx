@@ -19,6 +19,7 @@ import {
   type VentaDelDia,
   type OrdenPortal,
   type PagoPortal,
+  type CanonPendiente,
   type LiquidacionPortal,
   type AnalisisPortal,
   type GoldPortal,
@@ -327,7 +328,7 @@ export default function PortalTablero({
   resumen: ResumenPortal;
   ventasHoy: VentaDelDia[];
   ordenes: OrdenPortal[];
-  pagos: { pagos: PagoPortal[]; total: number };
+  pagos: { pagos: PagoPortal[]; total: number; canon: CanonPendiente | null };
   liquidaciones: LiquidacionPortal[];
   ganancia: GananciaRealPortal | null;
   /** Solo llega con plan Metal o superior; en Bronce viene vacío. */
@@ -559,6 +560,21 @@ export default function PortalTablero({
             <span className="d">
               {avisoVenta.detalle} — <span className="m mono">${pesos(avisoVenta.monto)}</span>
             </span>
+          </span>
+        </div>
+      )}
+
+      {/* ===== EL CANON A PAGAR (20/11) =====
+          Desde que se carga (el 25) hasta que Gonzalo registra el pago. Lo de
+          noviembre se paga del 1 al 5 de diciembre, lo de diciembre en enero… */}
+      {pagos.canon && (
+        <div className={`aviso-canon${pagos.canon.vencido ? " vencido" : ""}`} role="status">
+          <span className="ico" aria-hidden="true">🗓️</span>
+          <span>
+            <span className="t">
+              {pagos.canon.concepto.replace(/ \(.*\)$/, "")}: <span className="mono">${pesos(pagos.canon.debe)}</span> (IVA incluido)
+            </span>
+            <span className="d">{pagos.canon.texto} Pedile a Gonzalo los datos para transferir.</span>
           </span>
         </div>
       )}
@@ -1059,7 +1075,7 @@ export default function PortalTablero({
         <section className="modulo">
           <div className="modulo-cab">
             <h2>Tus pagos a WiiGo</h2>
-            <p className="desc">Fees, abonos y cargos de tu cuenta</p>
+            <p className="desc">Tu canon mensual y otros cargos · se pagan aparte de la liquidación</p>
           </div>
           {pagos.pagos.length === 0 ? (
             <p className="vacio">No tenés pagos pendientes.</p>
@@ -1067,21 +1083,24 @@ export default function PortalTablero({
             <>
               <ul className="pagos">
                 {pagos.pagos.map((p, i) => (
-                  <li key={i} className={`pago${p.vencido ? " vencido" : ""}`}>
+                  <li key={i} className={`pago${p.vencido ? " vencido" : ""}${p.estado === "PAGADO" ? " pagado" : ""}`}>
                     <span className="fecha">
                       <span className="d">{p.fecha ? p.fecha.slice(8, 10) : "—"}</span>
                       <span className="m">{p.fecha ? nombreMes(p.fecha) : ""}</span>
                     </span>
                     <span>
                       <span className="t">{p.concepto}</span>
-                      <span className="d2">{p.vencido ? "Vencido" : "A vencer"}</span>
+                      <span className="d2">
+                        {p.estado === "PAGADO" ? "✓ Pagado" : p.vencido ? "Vencido" : "A pagar hasta esta fecha"}
+                        {p.detalle ? ` · ${p.detalle}` : ""}
+                      </span>
                     </span>
                     <span className="imp mono">${pesos(p.importe)}</span>
                   </li>
                 ))}
               </ul>
               <div className="total-pagos">
-                <span className="l">Total</span>
+                <span className="l">{pagos.total > 0 ? "Total a pagar" : "Estás al día"}</span>
                 <span className="v mono">${pesos(pagos.total)}</span>
               </div>
             </>
