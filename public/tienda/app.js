@@ -738,6 +738,57 @@
       '<div class="total" style="font-size:14px"><span>' + (S.usuario ? 'Sumás en WiiGo Club' : '<button data-a="cuenta" style="border:0;background:none;padding:0;color:var(--energia);font-weight:800;text-decoration:underline">Entrá con tu DNI</button> y sumás') + '</span><b style="font-size:16px;color:var(--energia)">+' + t.p + ' puntos</b></div><span class="nota">Lo retirás en <a class="dir-mapa" href="' + MAPA + '" target="_blank" rel="noopener">Arístides Villanueva 256</a>, listo en menos de 15 minutos.</span><button class="agregar" style="min-height:52px" data-a="continuar">Continuar</button></div>' : '') + '</section>';
   }
 
+  /* ---------- «Personas con gustos parecidos también llevaron» (Gonzalo, 20/11, maqueta aprobada) ----------
+     Al tocar «Continuar», una sola vez por compra, antes de elegir cómo paga. Primero lo que más se
+     compra junto con lo del carrito (p.jt, de las ventas reales); si no alcanza, lo más vendido de los
+     mismos rubros. Solo con stock y nunca lo que ya lleva. Lo agregado se queda aunque lo deje. */
+  function recomendados() {
+    var enPedido = {}; carrito.forEach(function (l) { enPedido[l.id] = true; });
+    var puntos = {}, deJuntos = {};
+    carrito.forEach(function (l) {
+      var p = POR_ID[l.id];
+      (p && p.jt || []).forEach(function (id, i) { if (!enPedido[id]) { puntos[id] = (puntos[id] || 0) + (8 - i) * l.q; deJuntos[id] = true; } });
+    });
+    var sirve = function (p) { return p && !enPedido[p.id] && p.s > 0 && p.p > 0; };
+    var lista = Object.keys(puntos).map(function (id) { return POR_ID[id]; }).filter(sirve)
+      .sort(function (a, b) { return puntos[b.id] - puntos[a.id] || (a.top || 999) - (b.top || 999); });
+    if (lista.length < 4) {
+      var rubros = {}; carrito.forEach(function (l) { var p = POR_ID[l.id]; if (p) { rubros[p.sc] = true; rubros[p.c] = true; } });
+      var ya = {}; lista.forEach(function (p) { ya[p.id] = true; });
+      lista = lista.concat(PROD.filter(function (p) { return sirve(p) && !ya[p.id] && (rubros[p.sc] || rubros[p.c]); })
+        .sort(function (a, b) { return (rubros[b.sc] ? 1 : 0) - (rubros[a.sc] ? 1 : 0) || (a.top || 999) - (b.top || 999); }));
+    }
+    return { lista: lista.slice(0, 4), deJuntos: lista.slice(0, 4).some(function (p) { return deJuntos[p.id]; }) };
+  }
+  function hojaReco() {
+    if (!S.reco) return '';
+    var r = S.reco;
+    var nombre = S.usuario && S.usuario.nombre ? titulo(S.usuario.nombre).split(' ')[0] : '';
+    var tit = (nombre ? esc(nombre) + ', personas' : 'Personas') + ' con gustos parecidos a los tuyos también llevaron 💚';
+    var lleva = carrito.map(function (l) { return POR_ID[l.id] ? partirNombre(POR_ID[l.id]).nom.toLowerCase() : ''; }).filter(Boolean);
+    var sub = r.deJuntos && lleva.length ? 'Elegidos por clientes que compran ' + esc(lleva.slice(0, 2).join(' y ')) + (lleva.length > 2 ? ' y más' : '') + '.' : 'Elegidos según lo que llevás.';
+    var tarjetas = r.ids.map(function (id) {
+      var p = POR_ID[id]; if (!p) return '';
+      var v = saborDe(p), q = enCarrito(id, v);
+      var boton = q > 0
+        ? '<div class="paso reco-paso"><button data-a="reco-restar" data-id="' + esc(id) + '" aria-label="Uno menos">−</button><span>' + q + '</span><button data-a="reco-sumar" data-id="' + esc(id) + '" aria-label="Uno más">+</button></div>'
+        : '<button class="reco-mas" data-a="reco-sumar" data-id="' + esc(id) + '">+ Agregar</button>';
+      return '<div class="reco"><span class="reco-foto">' + foto(p) + '</span><b>' + esc(partirNombre(p).nom) + '</b>' + (v ? '<small>' + esc(v) + '</small>' : '') + '<small class="reco-precio">' + plata(p.p) + '</small>' + boton + '</div>';
+    }).join('');
+    return '<div class="fondo" data-a="reco-seguir"></div><section class="hoja" role="dialog" aria-modal="true" aria-label="Te recomendamos"><div class="hoja-cab"><h2 style="font-size:19px;text-wrap:balance">' + tit + '</h2><button class="redondo" data-a="reco-seguir" aria-label="Cerrar">' + ic('cruz', 20) + '</button></div>' +
+      '<div class="hoja-cuerpo"><p class="reco-sub">' + sub + '</p><div class="recos">' + tarjetas + '</div></div>' +
+      '<div class="hoja-pie"><button class="agregar" style="min-height:52px" data-a="reco-seguir">Seguir con mi compra</button><button class="reco-no" data-a="reco-seguir">No, gracias</button></div></section>';
+  }
+  // Pasa a finalizar la compra; la primera vez de esta compra, antes muestra el cartel (si hay qué recomendar).
+  function irAlCheckout() {
+    S.vista = 'checkout';
+    if (!S.recoVisto && carrito.length) {
+      S.recoVisto = true;
+      var r = recomendados();
+      if (r.lista.length >= 2) S.reco = { ids: r.lista.map(function (p) { return p.id; }), deJuntos: r.deJuntos };
+    }
+  }
+
   /* ---------- Parte 3: comprar y seguir el pedido (maqueta aprobada, 2026-11-16) ---------- */
   // El pedido lo arma el servidor (/api/tienda/pedido): acá solo va qué y cuántos.
   // Los precios y el stock se vuelven a calcular allá.
@@ -912,7 +963,7 @@
       : !t.u && enCurso && S.vista !== 'seguir' && !S.pedido ? '<div class="barra"><button data-a="ver-pedido" data-c="' + esc(enCurso.codigo) + '"><span>' + ic('bolsa', 20) + 'Pedido #' + enCurso.num + ' · ' + (enCurso.pago === 'transf' && !enCurso.pagoOk ? 'Falta tu transferencia' : enCurso.pago === 'tarjeta' && !enCurso.pagoOk ? 'Falta el pago' : ESTADOS_PED[Math.max(0, enCurso.paso)].t) + '</span><span>Seguir ' + ic('flecha', 18) + '</span></button></div>' : '';
     var foco = document.activeElement && (document.activeElement.id === 'q' || document.activeElement.id === 'mq') ? document.activeElement.id : null;
     var pos = foco ? document.activeElement.selectionStart : 0, y = window.scrollY;
-    app.innerHTML = cab + '<main>' + cuerpo + '</main>' + (S.cuenta || S.combo ? '' : barra) + cajon() + ficha() + pedido() + hojaCombo() + cuenta();
+    app.innerHTML = cab + '<main>' + cuerpo + '</main>' + (S.cuenta || S.combo || S.reco ? '' : barra) + cajon() + ficha() + pedido() + hojaCombo() + hojaReco() + cuenta();
     if (foco) { var i = document.getElementById(foco); if (i) { i.focus(); try { i.setSelectionRange(pos, pos); } catch (e) {} } }
     window.scrollTo(0, arriba ? 0 : y);
     montarGlobo();
@@ -961,7 +1012,7 @@
   }
   setInterval(function () {
     var p = document.getElementById('b-pista');
-    if (!p || window.matchMedia('(prefers-reduced-motion: reduce)').matches || S.ficha || S.pedido || S.cuenta || S.menu || S.cartelIni) return;
+    if (!p || window.matchMedia('(prefers-reduced-motion: reduce)').matches || S.ficha || S.pedido || S.reco || S.cuenta || S.menu || S.cartelIni) return;
     if (Date.now() - (S.bannerQuieto || 0) < 9000) return;
     var r = p.getBoundingClientRect(); if (r.bottom < 0 || r.top > window.innerHeight) return;
     S.banner = ((S.banner || 0) + 1) % p.children.length;
@@ -1164,7 +1215,7 @@
         S.usuario = r.usuario; S.paso = 'dni'; S.datos = {}; cargarPedidos();
         S.bienvenida = recien;
         // Venía de «Continuar»: sigue derecho a finalizar la compra (la bienvenida queda para cuando abra su cuenta).
-        if (S.trasEntrar === 'checkout' && carrito.length) { S.cuenta = false; S.vista = 'checkout'; window.scrollTo(0, 0); if (recien) aviso('¡Listo! Ya sos WiiGo Club: esta compra suma puntos'); }
+        if (S.trasEntrar === 'checkout' && carrito.length) { S.cuenta = false; irAlCheckout(); window.scrollTo(0, 0); if (recien) aviso('¡Listo! Ya sos WiiGo Club: esta compra suma puntos'); }
         S.trasEntrar = null;
         setTimeout(function () { aviso('¡Listo, ' + r.usuario.nombre + '! Ya estás en WiiGo Club'); }, 50);
       });
@@ -1207,8 +1258,11 @@
     continuar: function () {
       S.pedido = false;
       if (!S.usuario) { S.trasEntrar = 'checkout'; A.cuenta(); aviso('Entrá con tu DNI para hacer el pedido'); return; }
-      S.vista = 'checkout'; pintar(true);
+      irAlCheckout(); pintar(true);
     },
+    'reco-sumar': function (d) { var p = POR_ID[d.id]; if (!p) return; sumar(d.id, saborDe(p), 1); pintar(false); },
+    'reco-restar': function (d) { var p = POR_ID[d.id]; if (!p) return; sumar(d.id, saborDe(p), -1); pintar(false); },
+    'reco-seguir': function () { S.reco = null; window.scrollTo(0, 0); pintar(false); },
     x: function () {},
     pago: function (d) { S.co = S.co || {}; S.co.pago = d.v; pintar(false); },
     confirmar: function () {
@@ -1225,7 +1279,7 @@
           if (r.faltan && r.faltan.length) { S.vista = 'inicio'; S.pedido = true; }
           pintar(false); aviso(r.error); return;
         }
-        carrito = []; sabor = {}; S.co = null;
+        carrito = []; sabor = {}; S.co = null; S.recoVisto = false;
         S.pedidos = [r.pedido].concat((S.pedidos || []).filter(function (p) { return p.codigo !== r.pedido.codigo; }));
         S.verCodigo = r.pedido.codigo; S.vista = 'seguir'; pintar(true);
         // Con tarjeta: directo a pagar en Nave; al terminar vuelve al seguimiento del pedido.
@@ -1303,7 +1357,7 @@
     // A mano también da la vuelta, para los dos lados.
     if (f.scrollLeft >= tanda) { f.scrollLeft -= tanda; accesosPos = -1; }
     else if (f.scrollLeft <= 0 && accesosTocando === false && Date.now() < accesosQuieto) { f.scrollLeft += tanda; accesosPos = -1; }
-    if (sinMovimiento || accesosTocando || Date.now() < accesosQuieto || document.hidden || S.cuenta || S.pedido || S.ficha) return;
+    if (sinMovimiento || accesosTocando || Date.now() < accesosQuieto || document.hidden || S.cuenta || S.pedido || S.reco || S.ficha) return;
     var r = f.getBoundingClientRect(); if (r.bottom < 0 || r.top > window.innerHeight) return;
     if (accesosPos < 0) accesosPos = f.scrollLeft;
     accesosPos += dt * 0.025; // 25 px por segundo: se lee mientras pasa

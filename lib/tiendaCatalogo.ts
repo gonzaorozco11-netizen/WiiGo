@@ -75,6 +75,43 @@ async function masVendidos(supabase: SupabaseClient, idLocal: string | null, cua
   return puesto;
 }
 
+/**
+ * Lo que se compra junto (20/11, cartel «personas con gustos parecidos también llevaron»):
+ * por producto, los que más veces aparecieron en la misma venta en los últimos 120 días.
+ */
+async function compradosJuntos(supabase: SupabaseClient, productoDeVariante: Map<string, string>): Promise<Map<string, string[]>> {
+  const desde = new Date(Date.now() - 120 * 86400_000).toISOString();
+  const { data, error } = await supabase
+    .from("detalle_ventas")
+    .select("id_venta, id_variante, ventas!inner(fecha, estado)")
+    .eq("ventas.estado", "PAGADA")
+    .gte("ventas.fecha", desde)
+    .range(0, 19999);
+  const salida = new Map<string, string[]>();
+  if (error) return salida;
+  const porVenta = new Map<string, Set<string>>();
+  for (const d of (data ?? []) as { id_venta: string; id_variante: string }[]) {
+    const prod = productoDeVariante.get(d.id_variante);
+    if (!prod) continue;
+    const s = porVenta.get(d.id_venta) ?? new Set<string>();
+    s.add(prod);
+    porVenta.set(d.id_venta, s);
+  }
+  const pares = new Map<string, Map<string, number>>();
+  for (const s of porVenta.values()) {
+    if (s.size < 2) continue;
+    const lista = [...s];
+    for (const a of lista) for (const b of lista) {
+      if (a === b) continue;
+      const m = pares.get(a) ?? new Map<string, number>();
+      m.set(b, (m.get(b) ?? 0) + 1);
+      pares.set(a, m);
+    }
+  }
+  for (const [a, m] of pares) salida.set(a, [...m.entries()].sort((x, y) => y[1] - x[1]).slice(0, 8).map(([b]) => b));
+  return salida;
+}
+
 export async function armarCatalogoTienda(supabase: SupabaseClient) {
   // La estación de la tienda. Hoy hay un solo local; cuando haya más, cada pedido
   // va a elegir el suyo y esto va a mandar el stock de cada uno.
@@ -121,6 +158,10 @@ export async function armarCatalogoTienda(supabase: SupabaseClient) {
     variantesDe.set(v.id_producto, lista);
   }
 
+  const productoDeVariante = new Map<string, string>();
+  for (const [idProd, vs] of variantesDe) for (const v of vs) productoDeVariante.set(v.id_variante, idProd);
+  const juntos = await compradosJuntos(supabase, productoDeVariante).catch(() => new Map<string, string[]>());
+
   const productos: { m: string; [campo: string]: unknown }[] = [];
   for (const p of (productosRes.data ?? []) as unknown as FilaProducto[]) {
     const marca = marcaPorId.get(p.id_marca);
@@ -146,6 +187,8 @@ export async function armarCatalogoTienda(supabase: SupabaseClient) {
       alta: p.fecha_alta,
       // Puesto en los más vendidos del último mes (1 = el que más), solo los primeros; null si no está.
       top: puestoVentas.get(p.id_producto) ?? null,
+      // Lo que más se compra junto con este (cartel de recomendados antes de pagar, 20/11).
+      jt: juntos.get(p.id_producto) ?? [],
       v: variantes.filter((v) => v.nombre !== "Único").map((v) => ({ n: v.nombre, s: stockVariante.get(v.id_variante) ?? 0 })),
       o: texto(f?.origen),
       po: texto(f?.porcion),

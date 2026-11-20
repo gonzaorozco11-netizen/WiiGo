@@ -582,6 +582,22 @@ a.dir-mapa u{text-decoration:underline;text-underline-offset:2px;color:#3f5536;f
 .seg-pasos li.ahora{color:var(--tinta)}.seg-pasos li.ahora i{background:var(--energia);color:#2a1406;box-shadow:0 0 0 5px rgba(232,116,59,.25)}
 /* Pasos con movimiento (20/11) */
 .seg-pasos.anim{position:relative}
+/* «Personas con gustos parecidos también llevaron» (20/11) */
+.reco-sub{margin:0 0 12px;color:var(--gris);font-size:13.5px}
+.recos{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.reco{background:var(--carta);border:1px solid var(--linea);border-radius:16px;padding:9px;display:flex;flex-direction:column;gap:2px;animation:sube .35s cubic-bezier(.2,.8,.2,1) both}
+.reco:nth-child(2){animation-delay:.06s}.reco:nth-child(3){animation-delay:.12s}.reco:nth-child(4){animation-delay:.18s}
+.reco-foto{height:96px;display:grid;place-items:center;margin-bottom:4px}
+.reco-foto img{max-width:100%;max-height:100%;object-fit:contain}
+.reco-foto .kraft{width:100%;height:100%;font-size:9px;border-radius:10px}
+.reco b{font-size:13px;line-height:1.25}
+.reco small{color:var(--gris);font-size:12px}
+.reco .reco-precio{color:var(--tinta);font-weight:800;font-size:14px;margin-top:auto}
+.reco-mas{margin-top:6px;min-height:38px;border:1.5px solid var(--tinta);background:transparent;color:var(--tinta);border-radius:12px;font-weight:800;font-size:14px}
+.reco .reco-paso{margin-top:6px;grid-template-columns:36px 1fr 36px;min-height:38px}
+.reco .reco-paso button{height:38px;font-size:18px}
+.reco-no{border:0;background:none;color:var(--gris);font-weight:700;font-size:14px;text-decoration:underline;min-height:36px}
+@media (prefers-reduced-motion:reduce){.reco{animation:none}}
 .seg-riel{position:absolute;left:13px;top:15px;bottom:15px;width:4px;border-radius:9px;background:#e9e1cf;z-index:0}
 .seg-riel b{display:block;width:100%;border-radius:9px;background:var(--bosque);height:var(--a);animation:riel .9s cubic-bezier(.3,.8,.3,1)}
 @keyframes riel{from{height:var(--de)}to{height:var(--a)}}
