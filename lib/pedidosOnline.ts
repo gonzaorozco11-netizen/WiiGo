@@ -261,9 +261,23 @@ export async function vencerPedidosOnline(supabase: SupabaseClient): Promise<num
     .lt("vence", ahora)
     .select("id_pedido");
   if (error) return 0;
-  for (const p of data ?? []) await avisarCliente(supabase, p.id_pedido as string, "CANCELADO");
-  return (data ?? []).length;
+  // Con tarjeta y sin pagar (19/11): el link de Nave dura 30 min; a los 40 se cancela
+  // y la mercadería vuelve a estar disponible (no esperar al día siguiente).
+  const { data: tarjeta } = await supabase
+    .from("pedidos_online")
+    .update({ estado: "CANCELADO", cancelado_at: ahora, motivo_cancelacion: MOTIVO_TARJETA_SIN_PAGAR })
+    .eq("estado", "NUEVO")
+    .eq("pago", "TARJETA")
+    .is("pago_ok_at", null)
+    .lt("creado", new Date(Date.now() - 40 * 60_000).toISOString())
+    .select("id_pedido");
+  const todos = [...(data ?? []), ...(tarjeta ?? [])];
+  for (const p of todos) await avisarCliente(supabase, p.id_pedido as string, "CANCELADO");
+  return todos.length;
 }
+
+/** El motivo con que se cancela solo un pedido con tarjeta que no se pagó (ver arriba). */
+export const MOTIVO_TARJETA_SIN_PAGAR = "No se pagó con tarjeta a tiempo";
 
 /* ---------------- mails ---------------- */
 

@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { COLUMNAS_PEDIDO, ESTADOS_ABIERTOS, avisarCliente, cuantosHay, itemsDe, totalesDe, type FilaPedidoOnline } from "@/lib/pedidosOnline";
+import { COLUMNAS_PEDIDO, ESTADOS_ABIERTOS, MOTIVO_TARJETA_SIN_PAGAR, avisarCliente, cuantosHay, itemsDe, totalesDe, type FilaPedidoOnline } from "@/lib/pedidosOnline";
 import { consultarPagoNave, consultarPedidoNave, crearPagoNave, naveConfigurado, referenciasDelPago, secretoAviso } from "@/lib/nave";
 import { baseUrlPublica, urlTienda } from "@/lib/urlPublica";
 
@@ -60,6 +60,16 @@ export async function registrarPagoTarjeta(
     .is("pago_ok_at", null)
     .select("id_pedido")
     .maybeSingle();
+  // Si se canceló solo por no pagar a tiempo y el pago entró igual (pagó en el último
+  // minuto del link), vuelve a «Nuevos» pagado: el equipo lo arma o lo cancela devolviendo.
+  if (data) {
+    await supabase
+      .from("pedidos_online")
+      .update({ estado: "NUEVO", cancelado_at: null, motivo_cancelacion: null })
+      .eq("id_pedido", idPedido)
+      .eq("estado", "CANCELADO")
+      .eq("motivo_cancelacion", MOTIVO_TARJETA_SIN_PAGAR);
+  }
   // Solo el primero que lo marca manda el mail (Nave puede avisar dos veces).
   if (data) await avisarCliente(supabase, idPedido, "PAGO_OK");
   return { estado: pago.crudo };
