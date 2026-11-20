@@ -5,7 +5,7 @@ import type { Marca, Local, OrdenReposicion, DetalleReposicion } from "@/lib/sup
 import { recepcionarOrden } from "@/app/(app)/reposicion/actions";
 import { ESTADO_ESTILO } from "@/components/ReposicionApp";
 import { estaAbierta, etiquetaEstado, RECIBIDA_PARCIAL } from "@/lib/estadosOrden";
-import { CampoRemito } from "@/components/RemitoRecepcion";
+import { FotosRecepcion } from "@/components/RemitoRecepcion";
 import { MOTIVOS_FALTANTE } from "@/lib/recepcionDiferencias";
 import { subirFotoDiferencia } from "@/app/(app)/reposicion/actions";
 
@@ -87,6 +87,7 @@ export default function RecepcionModal({
   const [error, setError] = useState<string | null>(null);
   const [observaciones, setObservaciones] = useState("");
   const [remito, setRemito] = useState<File | null>(null);
+  const [fotoMercaderia, setFotoMercaderia] = useState<File | null>(null);
 
   const abierta = estaAbierta(orden.estado);
   const esSegundaVuelta = orden.estado === RECIBIDA_PARCIAL;
@@ -166,7 +167,8 @@ export default function RecepcionModal({
             fotoPath: fotos[d.id_detalle] || null,
           })),
           observaciones,
-          remito
+          remito,
+          fotoMercaderia
         );
         if (res.error) setError(res.error);
         else {
@@ -408,7 +410,7 @@ export default function RecepcionModal({
 
               {/* Acá el remito es el único comprobante que va a existir: un
                   pedido a una marca no pasa por Costeo. */}
-              <CampoRemito archivo={remito} onElegir={setRemito} />
+              <FotosRecepcion mercaderia={fotoMercaderia} onMercaderia={setFotoMercaderia} remito={remito} onRemito={setRemito} />
 
               {/* Un renglón sin tocar no es cero: es uno que nadie contó.
                   Confirmar así cerraría el pedido con productos que nadie

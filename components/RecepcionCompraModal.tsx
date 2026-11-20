@@ -6,7 +6,7 @@ import type { ProveedorConSaldo } from "@/app/(app)/proveedores/actions";
 import { recepcionarOrdenCompra } from "@/app/(app)/proveedores/actions";
 import { ESTADO_ESTILO_COMPRA } from "@/components/ProveedoresApp";
 import { estaAbierta, etiquetaEstado, RECIBIDA_PARCIAL } from "@/lib/estadosOrden";
-import { CampoRemito } from "@/components/RemitoRecepcion";
+import { FotosRecepcion } from "@/components/RemitoRecepcion";
 import { kgAGramos, textoGramos } from "@/lib/gramos";
 
 // Recibir mercadería, una entrega por vez.
@@ -43,6 +43,7 @@ export default function RecepcionCompraModal({
   const [error, setError] = useState<string | null>(null);
   const [observaciones, setObservaciones] = useState("");
   const [remito, setRemito] = useState<File | null>(null);
+  const [fotoMercaderia, setFotoMercaderia] = useState<File | null>(null);
 
   const abierta = estaAbierta(orden.estado);
   const esSegundaVuelta = orden.estado === RECIBIDA_PARCIAL;
@@ -95,7 +96,8 @@ export default function RecepcionCompraModal({
             cantidadRecibida: cantidadDe(d.id_detalle),
           })),
           observaciones,
-          remito
+          remito,
+          fotoMercaderia
         );
         if (res.error) setError(res.error);
         else {
@@ -274,7 +276,7 @@ export default function RecepcionCompraModal({
                 />
               </div>
 
-              <CampoRemito archivo={remito} onElegir={setRemito} />
+              <FotosRecepcion mercaderia={fotoMercaderia} onMercaderia={setFotoMercaderia} remito={remito} onRemito={setRemito} />
 
               {/* Un renglón sin tocar no es cero: es uno que nadie contó.
                   Y acá lo que se cierra mal después se costea y se factura. */}

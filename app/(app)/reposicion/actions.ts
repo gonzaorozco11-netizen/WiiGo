@@ -1000,7 +1000,9 @@ export async function recepcionarOrden(
   }[],
   observaciones: string,
   /** El remito que trajo la marca. Opcional. */
-  comprobante?: File | null
+  comprobante?: File | null,
+  /** La foto de la mercadería que llegó (19/11). Opcional. */
+  fotoMercaderia?: File | null
 ): Promise<{ error: string | null; aviso?: string }> {
   try {
     const supabase = getSupabaseServerClient();
@@ -1161,7 +1163,9 @@ export async function recepcionarOrden(
     // Al final y sin frenar nada, igual que en la recepción a proveedor: acá
     // el remito es además el ÚNICO comprobante que va a existir, porque un
     // pedido a una marca no pasa por Costeo.
-    const aviso = await guardarRemito(supabase, "recepciones", recepcion.id_recepcion, comprobante);
+    const avisoRemito = await guardarRemito(supabase, "recepciones", recepcion.id_recepcion, comprobante);
+    const avisoFoto = await guardarRemito(supabase, "recepciones", recepcion.id_recepcion, fotoMercaderia, "MERCADERIA");
+    const aviso = [avisoRemito, avisoFoto].filter(Boolean).join(" ") || undefined;
 
     // Estas acciones se llaman desde Compras: /reposicion ya solo redirige.
     revalidatePath("/compras");

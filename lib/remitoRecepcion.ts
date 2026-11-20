@@ -22,19 +22,29 @@ const DESTINOS = {
   recepciones: {
     id: "id_recepcion",
     path: "comprobante_recepcion_path",
+    foto: "foto_mercaderia_path",
     sql: "sql/remito-recepcion.sql",
   },
   recepciones_proveedor: {
     id: "id_recepcion",
     path: "comprobante_recepcion_path",
+    foto: "foto_mercaderia_path",
     sql: "sql/remito-recepcion.sql",
   },
   ordenes_reposicion: {
     id: "id_orden",
     path: "remito_path",
+    foto: null,
     sql: "sql/reposicion-remito-cobertura.sql",
   },
 } as const;
+
+/**
+ * Qué foto es (19/11, Gonzalo: «una foto de la mercadería que llegó y otra del
+ * remito con el detalle»). La de la mercadería va en foto_mercaderia_path
+ * (sql/foto-mercaderia-recepcion.sql).
+ */
+export type TipoFotoRecepcion = "REMITO" | "MERCADERIA";
 
 export type TablaRecepcion = keyof typeof DESTINOS;
 
@@ -54,28 +64,32 @@ export async function guardarRemito(
   supabase: SupabaseClient,
   tabla: TablaRecepcion,
   idRecepcion: string,
-  archivo: File | null | undefined
+  archivo: File | null | undefined,
+  tipo: TipoFotoRecepcion = "REMITO"
 ): Promise<string | undefined> {
   if (!archivo || archivo.size === 0) return undefined;
+  const destino = DESTINOS[tabla];
+  const columna = tipo === "MERCADERIA" ? destino.foto : destino.path;
+  if (!columna) return undefined;
 
   const extension = archivo.name.split(".").pop()?.toLowerCase() ?? "jpg";
-  const path = `remito-${idRecepcion}.${extension}`;
+  const path = `${tipo === "MERCADERIA" ? "mercaderia" : "remito"}-${idRecepcion}.${extension}`;
 
   const { error: errorUpload } = await supabase.storage
     .from(BUCKET_COMPROBANTES)
     .upload(path, archivo, { upsert: true, contentType: archivo.type || undefined });
   if (errorUpload) {
-    return `La mercadería quedó cargada, pero el comprobante no se pudo subir (${errorUpload.message}). Adjuntalo de nuevo desde el historial de entregas.`;
+    return `La mercadería quedó cargada, pero la foto ${tipo === "MERCADERIA" ? "de lo que llegó" : "del remito"} no se pudo subir (${errorUpload.message}). Adjuntala de nuevo desde el historial de entregas.`;
   }
 
-  const destino = DESTINOS[tabla];
   const { error } = await supabase
     .from(tabla)
-    .update({ [destino.path]: path })
+    .update({ [columna]: path })
     .eq(destino.id, idRecepcion);
   if (error) {
     // Columna sin crear: el archivo quedó subido, solo falta dónde anotarlo.
-    return `La mercadería quedó cargada, pero el comprobante no se pudo enganchar: falta correr ${destino.sql} en Supabase.`;
+    const sql = tipo === "MERCADERIA" ? "sql/foto-mercaderia-recepcion.sql" : destino.sql;
+    return `La mercadería quedó cargada, pero la foto no se pudo enganchar: falta correr ${sql} en Supabase.`;
   }
   return undefined;
 }

@@ -651,6 +651,7 @@ export const GUIAS: Guia[] = [
     pasos: [
       "Entrá a <b>Recepción de mercadería</b> y tocá <b>Recepcionar →</b> en el pedido que llegó.",
       "Contá lo que hay en la caja y cargá <b>eso</b> en «Recibo ahora», no lo que dice el remito.",
+      "Sacá las dos fotos: <b>📦 lo que llegó</b> (la mercadería sobre el mostrador) y <b>📄 el remito</b>. Se abre la cámara de la tablet.",
       "Tocá <b>Confirmar recepción</b>. Si falta algo, el reclamo queda hecho solo.",
       "Si llegó una parte, después podés <b>Recibir el resto →</b> o <b>Cerrar pedido como está</b>.",
     ],

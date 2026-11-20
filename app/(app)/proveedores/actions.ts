@@ -402,7 +402,9 @@ export async function recepcionarOrdenCompra(
   items: { idDetalle: string; idVariante: string; cantidadSolicitada: number; cantidadRecibida: number }[],
   observaciones: string,
   /** El remito o la factura que trajo el camión. Opcional. */
-  comprobante?: File | null
+  comprobante?: File | null,
+  /** La foto de la mercadería que llegó (19/11). Opcional. */
+  fotoMercaderia?: File | null
 ): Promise<{ error: string | null; aviso?: string }> {
   try {
     const supabase = getSupabaseServerClient();
@@ -565,7 +567,9 @@ export async function recepcionarOrdenCompra(
     // tablet y un camión esperando. Si la foto no sube —señal mala, archivo
     // grande—, la mercadería igual tiene que quedar contada y en el stock. Se
     // avisa y se puede volver a adjuntar desde la misma pantalla.
-    const aviso = await guardarRemito(supabase, "recepciones_proveedor", recepcion.id_recepcion, comprobante);
+    const avisoRemito = await guardarRemito(supabase, "recepciones_proveedor", recepcion.id_recepcion, comprobante);
+    const avisoFoto = await guardarRemito(supabase, "recepciones_proveedor", recepcion.id_recepcion, fotoMercaderia, "MERCADERIA");
+    const aviso = [avisoRemito, avisoFoto].filter(Boolean).join(" ") || undefined;
 
     revalidatePath("/proveedores");
     revalidatePath("/compras/recepcion");

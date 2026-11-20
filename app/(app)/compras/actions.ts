@@ -6,7 +6,7 @@ import { getSupabaseServerClient } from "@/lib/supabase";
 import { friendlyDbError } from "@/lib/errors";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 import { RECIBIDA_PARCIAL, CERRADA_INCOMPLETA, PENDIENTE, CANCELADA } from "@/lib/estadosOrden";
-import { guardarRemito, BUCKET_COMPROBANTES } from "@/lib/remitoRecepcion";
+import { guardarRemito, BUCKET_COMPROBANTES, type TipoFotoRecepcion } from "@/lib/remitoRecepcion";
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 
 // Compras funciona como una cinta: un pedido está en una sola etapa a la vez.
@@ -83,7 +83,9 @@ export async function urlRemitoRecepcion(path: string): Promise<{ url: string | 
 export async function adjuntarRemitoRecepcion(
   origen: OrigenOrden,
   idRecepcion: string,
-  formData: FormData
+  formData: FormData,
+  /** REMITO (lo de siempre) o MERCADERIA: la foto de lo que llegó (19/11). */
+  tipo: TipoFotoRecepcion = "REMITO"
 ): Promise<{ error: string | null }> {
   const sinPermiso = await requierePantalla("compras", "compras-recepcion", "compras-costeo");
   if (sinPermiso) return { error: sinPermiso };
@@ -94,7 +96,7 @@ export async function adjuntarRemitoRecepcion(
   try {
     const supabase = getSupabaseServerClient();
     const tabla = origen === "MARCA" ? "recepciones" : "recepciones_proveedor";
-    const aviso = await guardarRemito(supabase, tabla, idRecepcion, archivo);
+    const aviso = await guardarRemito(supabase, tabla, idRecepcion, archivo, tipo === "MERCADERIA" ? "MERCADERIA" : "REMITO");
     if (aviso) return { error: aviso };
 
     revalidatePath("/compras/recepcion");

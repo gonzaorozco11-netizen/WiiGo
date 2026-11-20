@@ -964,6 +964,9 @@ function CosteoEtapa({
                     compacto
                   />
                 )}
+                {r.entrega?.fotoMercaderia && (
+                  <VerRemito origen="PROVEEDOR" idRecepcion={r.id_recepcion} path={r.entrega.fotoMercaderia} compacto tipo="MERCADERIA" />
+                )}
                 <BotonPrincipal onClick={() => r.entrega && onCostear(r.entrega)}>Costear →</BotonPrincipal>
               </TarjetaTrabajo>
             );
@@ -1351,7 +1354,9 @@ function HistorialEntregas({
                           {/* El papel que trajo el camión. Acá y no en una
                               columna de la tabla: se busca cuando se busca,
                               no se mira en cada fila. */}
-                          <div className="flex justify-end pb-1.5">
+                          <div className="flex justify-end gap-4 pb-1.5">
+                            {/* La foto de lo que llegó (19/11), al lado del remito. */}
+                            <VerRemito origen={e.origen} idRecepcion={e.idRecepcion} path={e.fotoMercaderia} compacto tipo="MERCADERIA" />
                             <VerRemito
                               origen={e.origen}
                               idRecepcion={e.idRecepcion}
