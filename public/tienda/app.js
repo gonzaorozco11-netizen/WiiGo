@@ -841,8 +841,8 @@
       : faltaTarjeta ? '<div class="seg-estado"><b>Falta el pago con tarjeta</b><span>Apenas entra, el equipo acepta tu pedido y lo arma.</span></div>'
       : '<div class="seg-estado"><b>' + ESTADOS_PED[e].t + '</b><span>' + ESTADOS_PED[e].d + '</span>' + (e < 3 ? '<em>Listo en unos ' + [15, 12, 6][e] + ' minutos</em>' : '') + '</div>';
     var otros = (S.pedidos || []).filter(function (x) { return x.codigo !== p.codigo; });
+    // Sin la escena del local en 3D (Gonzalo, 20/11: «sacalo, solo que vean los estados»): es pesada y lenta.
     return '<div class="filtro-cab">' + volver + '<span><b>Pedido #' + p.num + '</b><small>' + sub + '</small></span></div>' + transf + tarj + avisoFalta +
-      '<div class="estacion3d"><div class="tablero">' + escenaPedido(cancelado ? 'cancelado' : ['recibido', 'aceptado', 'preparando', 'listo', 'entregado'][e]) + '</div></div>' +
       (cancelado ? '' : '<div class="seg-codigo"><small>Tu palabra secreta</small><b>' + esc(p.palabra || p.codigo) + '</b><span>Para retirar decí tu DNI y esta palabra</span></div>') + estado +
       (cancelado ? '' : '<ol class="seg-pasos">' + ESTADOS_PED.map(function (x, i) { return '<li class="' + (i < e ? 'hecho' : i === e ? 'ahora' : '') + '"><i>' + (i < e ? '✓' : i + 1) + '</i><span>' + x.t + '</span></li>'; }).join('') + '</ol>') +
       '<div class="seg-items">' + p.items.map(function (it) { var n = it.hay == null ? it.q : it.hay; return '<div class="total" style="font-size:14px;font-weight:600"><span>' + (n === 0 ? '<s>' : '') + (n === it.q ? it.q : n + ' de ' + it.q) + ' × ' + esc(titulo(it.n)) + (it.v ? ' — ' + esc(it.v) : '') + (n === 0 ? '</s>' : '') + '</span><b style="font-size:14px;font-family:var(--texto)">' + plata(it.p * n) + '</b></div>'; }).join('') +
