@@ -567,6 +567,16 @@ export async function recepcionarOrdenCompra(
     // tablet y un camión esperando. Si la foto no sube —señal mala, archivo
     // grande—, la mercadería igual tiene que quedar contada y en el stock. Se
     // avisa y se puede volver a adjuntar desde la misma pantalla.
+    // Alifrut (19/11): el costo ya quedó puesto con la lista del día y se le paga
+    // por lo vendido, así que no hay nada que costear. Si a todo lo que llegó le
+    // encontró costo, la entrega no pasa por Costeo. Si a algo le faltó, sí.
+    if (prov?.modo_facturacion === "LIQUIDACION_VENTA") {
+      const llegaron = items.filter((i) => i.cantidadRecibida > 0);
+      if (llegaron.length > 0 && llegaron.every((i) => costoDelDia.has(i.idVariante))) {
+        await supabase.from("recepciones_proveedor").update({ facturada: true }).eq("id_recepcion", recepcion.id_recepcion);
+      }
+    }
+
     const avisoRemito = await guardarRemito(supabase, "recepciones_proveedor", recepcion.id_recepcion, comprobante);
     const avisoFoto = await guardarRemito(supabase, "recepciones_proveedor", recepcion.id_recepcion, fotoMercaderia, "MERCADERIA");
     const aviso = [avisoRemito, avisoFoto].filter(Boolean).join(" ") || undefined;
