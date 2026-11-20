@@ -261,15 +261,15 @@ export async function vencerPedidosOnline(supabase: SupabaseClient): Promise<num
     .lt("vence", ahora)
     .select("id_pedido");
   if (error) return 0;
-  // Con tarjeta y sin pagar (19/11): el link de Nave dura 30 min; a los 40 se cancela
-  // y la mercadería vuelve a estar disponible (no esperar al día siguiente).
+  // Con tarjeta y sin pagar (20/11, Gonzalo: a los 20 min): el link de Nave dura 15
+  // (lib/pagoTarjetaOnline.ts); a los 20 se cancela y la mercadería vuelve a estar disponible.
   const { data: tarjeta } = await supabase
     .from("pedidos_online")
     .update({ estado: "CANCELADO", cancelado_at: ahora, motivo_cancelacion: MOTIVO_TARJETA_SIN_PAGAR })
     .eq("estado", "NUEVO")
     .eq("pago", "TARJETA")
     .is("pago_ok_at", null)
-    .lt("creado", new Date(Date.now() - 40 * 60_000).toISOString())
+    .lt("creado", new Date(Date.now() - 20 * 60_000).toISOString())
     .select("id_pedido");
   const todos = [...(data ?? []), ...(tarjeta ?? [])];
   for (const p of todos) await avisarCliente(supabase, p.id_pedido as string, "CANCELADO");

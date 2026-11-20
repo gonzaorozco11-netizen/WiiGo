@@ -31,6 +31,8 @@ export async function linkDePagoTarjeta(supabase: SupabaseClient, idPedido: stri
       comprador: { id: p.id_cliente, nombre: p.nombre, email: p.email ?? "", dni: p.dni },
       volverA: `${tienda}?pedido=${encodeURIComponent(p.codigo)}`,
       avisarA: `${base}/api/tienda/nave/aviso?pedido=${encodeURIComponent(p.id_pedido)}&s=${secretoAviso(p.id_pedido)}`,
+      // 15 min: el pedido sin pagar se cancela a los 20 (lib/pedidosOnline.ts, 20/11).
+      segundos: 900,
     });
     await supabase.from("pedidos_online").update({ nave_pedido_id: r.id }).eq("id_pedido", idPedido);
     return { url: r.checkoutUrl };
