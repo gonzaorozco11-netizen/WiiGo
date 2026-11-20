@@ -5,30 +5,31 @@ import { createHmac, timingSafeEqual } from "crypto";
 // Nave no publica la documentación de su API: los pasos salen del plugin oficial
 // «Nave for WooCommerce» (código abierto, WordPress.org), que hace lo mismo:
 //   1. Token: POST al servicio de seguridad con client_id, client_secret y audience.
-//   2. Intención de pago: POST {api}/payment_request/ecommerce → { id, checkout_url }.
+//   2. Intención de pago: POST {api}/payment_requests/ecommerce → { id, checkout_url }.
 //      El cliente paga en checkout_url y vuelve a callback_url.
 //   3. Aviso: Nave hace POST a notification_url con { payment_id, payment_check_url }.
 //      No viene firmado: se valida con un secreto en la URL y se vuelve a consultar el
-//      pago a Nave (GET {pagos}/{payment_id}/internal) antes de creerle.
+//      pago a Nave (GET {api}/payments/{payment_id}) antes de creerle.
 //
 // Credenciales (las pide Gonzalo a integraciones@navenegocios.com y las carga en Vercel):
 //   NAVE_CLIENT_ID, NAVE_CLIENT_SECRET, NAVE_POS_ID y NAVE_ENTORNO («produccion» o «sandbox»).
 // Sin las tres primeras, la opción «Tarjeta» no aparece en la tienda.
 
+// Las del portal de desarrolladores de Nave (20/11, Cobros online → Checkout): las
+// credenciales nuevas usan la API «integrations». Las del plugin de WooCommerce
+// (api-sandbox.ranty.io/api, punku…) devuelven 403 con estas credenciales.
 const URLS = {
   sandbox: {
     token: "https://homoservices.apinaranja.com/security-ms/api/security/auth0/b2b/m2ms",
-    api: "https://api-sandbox.ranty.io/api",
-    pagos: "https://punku-sandbox.ranty.io/payments-ms/payments",
+    api: "https://api-sandbox.ranty.io/integrations",
   },
   produccion: {
     token: "https://services.apinaranja.com/security-ms/api/security/auth0/b2b/m2msPrivate",
-    api: "https://api.ranty.io/api",
-    pagos: "https://punku.ranty.io/payments-ms/payments",
+    api: "https://api.ranty.io/integrations",
   },
 } as const;
-// El que usa el plugin oficial; si Nave manda otro con las credenciales, va en NAVE_AUDIENCE.
-const AUDIENCE = () => process.env.NAVE_AUDIENCE?.trim() || "https://naranja.com/ranty/merchants/api";
+// El que vino con las credenciales de Nave (20/11); si cambia, va en NAVE_AUDIENCE.
+const AUDIENCE = () => process.env.NAVE_AUDIENCE?.trim() || "https://api.ranty.io/integrations";
 
 export function naveConfigurado(): boolean {
   return Boolean(process.env.NAVE_CLIENT_ID && process.env.NAVE_CLIENT_SECRET && process.env.NAVE_POS_ID);
@@ -95,7 +96,7 @@ export async function crearPagoNave(p: {
   /** Cuánto dura el link de pago (Nave usa 15 min por defecto). */
   segundos?: number;
 }): Promise<{ id: string; checkoutUrl: string }> {
-  const r = await pedir<{ id?: string; checkout_url?: string }>(`${entorno().api}/payment_request/ecommerce`, {
+  const r = await pedir<{ id?: string; checkout_url?: string }>(`${entorno().api}/payment_requests/ecommerce`, {
     method: "POST",
     body: {
       external_payment_id: p.referencia,
@@ -131,7 +132,7 @@ export type EstadoPagoNave = "APROBADO" | "RECHAZADO" | "PENDIENTE" | "CANCELADO
 
 /** El pago, consultado a Nave (nunca se le cree al aviso sin esto). */
 export async function consultarPagoNave(idPago: string): Promise<{ estado: EstadoPagoNave; crudo: string; forma: "POSNET_DEBITO" | "POSNET_CREDITO" | null; datos: Record<string, unknown> }> {
-  const d = await pedir<Record<string, unknown>>(`${entorno().pagos}/${encodeURIComponent(idPago)}/internal`, { method: "GET" });
+  const d = await pedir<Record<string, unknown>>(`${entorno().api}/payments/${encodeURIComponent(idPago)}`, { method: "GET" });
   const crudo = String((d.status as { name?: string } | undefined)?.name ?? "").toUpperCase();
   const estado: EstadoPagoNave =
     crudo === "APPROVED" ? "APROBADO"
