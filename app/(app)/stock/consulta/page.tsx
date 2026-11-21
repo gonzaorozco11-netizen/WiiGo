@@ -5,6 +5,7 @@ import PantallaBloqueada from "@/components/PantallaBloqueada";
 import ConsultaPrecioStock, { type FilaConsulta } from "@/components/ConsultaPrecioStock";
 import { variantesEnConteo } from "@/lib/conteoStock";
 import PestanasStock from "@/components/PestanasStock";
+import { cargarMarcasFabrica } from "@/lib/marcaFabrica";
 
 // Precio y stock, SOLO CONSULTA: para el equipo del local (pedido de
 // Gonzalo, 2026-10-22). Buscar un producto y ver cuánto sale (lista y
@@ -46,6 +47,9 @@ export default async function ConsultaStockPage() {
     // Lo que alguien tiene que contar hoy: sin número hasta que lo cuente.
     variantesEnConteo(supabase).catch(() => new Set<string>()),
   ]);
+  // La marca de fábrica (Entre Nuts, Molinos Ala…), la misma que usa Stock: con dos
+  // mieles iguales de WiiGo Dietética no se sabía cuál era cuál (Gonzalo, 21/11).
+  const marcasFabrica = await cargarMarcasFabrica(supabase).catch(() => new Map<string, string>());
 
   const productoPor = new Map(productos.map((p) => [p.id_producto, p]));
   const marcaPor = new Map((marcas ?? []).map((m) => [m.id_marca as string, m.nombre as string]));
@@ -65,7 +69,7 @@ export default async function ConsultaStockPage() {
       idVariante: v.id_variante,
       producto: p.nombre,
       variante: v.nombre && v.nombre !== "Único" ? v.nombre : null,
-      marca: marcaPor.get(p.id_marca) ?? "",
+      marca: [marcasFabrica.get(p.id_producto), marcaPor.get(p.id_marca)].filter(Boolean).join(" · "),
       codigo: v.codigo_barras ?? v.sku ?? null,
       lista: precios.lista,
       efectivo: precios.efectivo,
