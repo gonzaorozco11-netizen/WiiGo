@@ -63,7 +63,33 @@ export type InicioDueno = {
     variacion: number | null;
   }[];
   productos: { nombre: string; marca: string; idMarca: string; vendido: number; unidades: number }[];
+  /**
+   * Las ventas de hoy por turno del local (9 a 13 y 17 a 21; el corte, a las 15) y
+   * la tienda online aparte, a cualquier hora (Gonzalo, 21/11). Online = lo que vino
+   * de un pedido de la web, aunque se haya cobrado en la caja al retirar.
+   */
+  turnosHoy: {
+    manana: TurnoDelDia;
+    tarde: TurnoDelDia;
+    online: { vendido: number; tickets: number };
+  };
+  /** El mes, local contra tienda online: dónde hacer fuerza. */
+  mesLocal: number;
+  mesOnline: number;
+  /** Los que se sumaron al Club, por dónde (21/11). `conOrigen` en false: falta sql/clientes-origen.sql. */
+  clientesNuevos: {
+    hoy: { nombre: string; origen: "LOCAL" | "ONLINE" | null }[];
+    mesLocal: number;
+    mesOnline: number;
+    mesTotal: number;
+    conOrigen: boolean;
+  };
 };
+
+export type TurnoDelDia = { vendido: number; tickets: number; quien: string[]; enCurso: boolean };
+
+/** Hasta esta hora es la mañana del local; desde esta, la tarde. */
+const CORTE_TURNO = 15;
 
 const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 const DIAS_SEMANA = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
@@ -101,10 +127,10 @@ export async function armarInicioDueno(supabase: SupabaseClient): Promise<Inicio
   const hace56 = fechaHoraArgentina(new Date(Date.now() - 56 * 86400000)).fecha;
   const desde = hace56 < inicioMesAnt ? hace56 : inicioMesAnt;
 
-  const ventas = await todas<{ id_venta: string; fecha: string; total: number | null; medio_pago: string | null }>((a, b) =>
+  const ventas = await todas<{ id_venta: string; fecha: string; total: number | null; medio_pago: string | null; canal: string | null }>((a, b) =>
     supabase
       .from("ventas")
-      .select("id_venta, fecha, total, medio_pago")
+      .select("id_venta, fecha, total, medio_pago, canal")
       .eq("estado", "PAGADA")
       .gte("fecha", `${desde}T00:00:00-03:00`)
       .order("fecha", { ascending: true })
@@ -140,6 +166,17 @@ export async function armarInicioDueno(supabase: SupabaseClient): Promise<Inicio
   const marcas = marcasRes.data ?? [];
   const marcaPorId = new Map(marcas.map((m) => [m.id_marca as string, m]));
   const conProductos = new Set((productosActivosRes.data ?? []).map((p) => p.id_marca as string));
+
+  // Las ventas que vinieron de la tienda online: canal ONLINE, o las de un pedido de la
+  // web que se cobró en la caja al retirar (pedidos_online.id_venta).
+  const { data: deLaWeb } = await supabase
+    .from("pedidos_online")
+    .select("id_venta")
+    .not("id_venta", "is", null)
+    .gte("creado", `${inicioMesAnt}T00:00:00-03:00`)
+    .range(0, 4999);
+  const ventaOnline = new Set((deLaWeb ?? []).map((p) => p.id_venta as string));
+  for (const v of ventas) if (v.canal === "ONLINE") ventaOnline.add(v.id_venta);
 
   // ---------- Lo que suma la venta entera ----------
   type VentaAR = { id: string; fecha: string; dia: number; mesDe: "actual" | "anterior" | "otro"; hora: number; diaSemana: number; neto: number; efectivo: boolean };
@@ -294,7 +331,60 @@ export async function armarInicioDueno(supabase: SupabaseClient): Promise<Inicio
     });
   }
 
+  // ---------- Turnos de hoy y local contra online (21/11) ----------
+  const turno = (filtro: (v: VentaAR) => boolean) => {
+    const vs = deHoy.filter((v) => !ventaOnline.has(v.id) && filtro(v));
+    return { vendido: Math.round(vs.reduce((a, v) => a + v.neto, 0)), tickets: vs.length };
+  };
+  const online = deHoy.filter((v) => ventaOnline.has(v.id));
+  const horaAhora = Number(ahora.hora.slice(0, 2));
+  // Quién estuvo en cada turno: los que ficharon entrada antes o después del corte.
+  const { data: fichajes } = await supabase
+    .from("fichajes")
+    .select("fecha_hora, tipo, personas(nombre)")
+    .eq("tipo", "ENTRADA")
+    .gte("fecha_hora", `${hoyISO}T00:00:00-03:00`);
+  const quienes = { manana: new Set<string>(), tarde: new Set<string>() };
+  for (const f of fichajes ?? []) {
+    const p = f.personas as unknown as { nombre: string | null } | { nombre: string | null }[] | null;
+    const nombre = ((Array.isArray(p) ? p[0] : p)?.nombre ?? "").trim();
+    if (!nombre) continue;
+    (Number(fechaHoraArgentina(f.fecha_hora as string).hora.slice(0, 2)) < CORTE_TURNO ? quienes.manana : quienes.tarde).add(nombre);
+  }
+  const turnosHoy = {
+    manana: { ...turno((v) => v.hora < CORTE_TURNO), quien: [...quienes.manana], enCurso: horaAhora < CORTE_TURNO },
+    tarde: { ...turno((v) => v.hora >= CORTE_TURNO), quien: [...quienes.tarde], enCurso: horaAhora >= CORTE_TURNO },
+    online: { vendido: Math.round(online.reduce((a, v) => a + v.neto, 0)), tickets: online.length },
+  };
+  const mesOnline = Math.round(delMes.filter((v) => ventaOnline.has(v.id)).reduce((a, v) => a + v.neto, 0));
+
+  // ---------- Clientes nuevos del Club (21/11) ----------
+  // origen_alta lo agrega sql/clientes-origen.sql: sin él, se cuentan igual pero sin separar.
+  type FilaCliente = { nombre: string | null; apellido: string | null; fecha_alta: string; origen_alta?: string | null };
+  let clientes: FilaCliente[] = [];
+  let conOrigen = true;
+  const conCol = await supabase.from("clientes").select("nombre, apellido, fecha_alta, origen_alta").gte("fecha_alta", inicioMes).range(0, 4999);
+  if (conCol.error) {
+    conOrigen = false;
+    const sinCol = await supabase.from("clientes").select("nombre, apellido, fecha_alta").gte("fecha_alta", inicioMes).range(0, 4999);
+    clientes = (sinCol.data ?? []) as FilaCliente[];
+  } else clientes = (conCol.data ?? []) as FilaCliente[];
+  const origenDe = (c: FilaCliente) => (conOrigen ? (c.origen_alta === "ONLINE" ? "ONLINE" : "LOCAL") : null);
+  const clientesNuevos = {
+    hoy: clientes
+      .filter((c) => String(c.fecha_alta).slice(0, 10) === hoyISO)
+      .map((c) => ({ nombre: [c.nombre, c.apellido].filter(Boolean).join(" ").trim() || "Sin nombre", origen: origenDe(c) as "LOCAL" | "ONLINE" | null })),
+    mesLocal: clientes.filter((c) => origenDe(c) === "LOCAL").length,
+    mesOnline: clientes.filter((c) => origenDe(c) === "ONLINE").length,
+    mesTotal: clientes.length,
+    conOrigen,
+  };
+
   return {
+    turnosHoy,
+    mesLocal: Math.round(vendidoMes) - mesOnline,
+    mesOnline,
+    clientesNuevos,
     mesNombre: MESES[mes - 1],
     mesAnteriorNombre: MESES[mesAnt - 1],
     diaDeHoy,

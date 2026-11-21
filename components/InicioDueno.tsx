@@ -169,6 +169,9 @@ export default function InicioDueno({
         ) : (
           <Kpi etiqueta="Tickets" valor={String(datos.ticketsMes)} pie={`en ${datos.mesNombre}`} />
         )}
+        {/* Clientes nuevos y ventas por turno (Gonzalo, 21/11, maqueta aprobada). */}
+        <ClientesNuevos datos={datos} />
+        <VentasPorTurno datos={datos} />
       </section>
 
       {/* ---------- Ventas por día ---------- */}
@@ -363,6 +366,100 @@ export default function InicioDueno({
 
       {/* ---------- Ventas de hoy, cada una con sus descuentos (18/11) ---------- */}
       {ventasHoy && <VentasDeHoy datos={ventasHoy} />}
+    </div>
+  );
+}
+
+/** Los que se sumaron al Club hoy y en el mes, local contra tienda online. */
+function ClientesNuevos({ datos }: { datos: Datos }) {
+  const c = datos.clientesNuevos;
+  const hoyLocal = c.hoy.filter((x) => x.origen !== "ONLINE");
+  const hoyOnline = c.hoy.filter((x) => x.origen === "ONLINE");
+  return (
+    <div className={`${tarjeta} p-3.5`}>
+      <p className={eyebrow}>Clientes nuevos</p>
+      <p className="text-xl font-bold mt-0.5 tabular-nums text-neutral-900">
+        {c.hoy.length} <span className="text-sm font-semibold text-neutral-500">hoy</span>
+      </p>
+      <p className="text-[11.5px] text-neutral-400">se sumaron al Club WiiGo</p>
+      <div className="mt-2 text-[13px] divide-y divide-neutral-100">
+        {c.conOrigen && (
+          <>
+            <p className="flex justify-between py-1">
+              <span className="text-neutral-500">🏪 En el local</span>
+              <b className="tabular-nums">{hoyLocal.length}</b>
+            </p>
+            <p className="flex justify-between py-1">
+              <span className="text-neutral-500">💻 Tienda online</span>
+              <b className="tabular-nums">{hoyOnline.length}</b>
+            </p>
+          </>
+        )}
+        <p className="flex justify-between py-1">
+          <span className="text-neutral-500">En {datos.mesNombre}</span>
+          <b className="tabular-nums">
+            {c.mesTotal}
+            {c.conOrigen && (
+              <span className="font-medium text-neutral-500">
+                {" "}
+                ({c.mesLocal} local · {c.mesOnline} online)
+              </span>
+            )}
+          </b>
+        </p>
+      </div>
+      {c.hoy.length > 0 && (
+        <p className="text-[12px] text-neutral-500 mt-1.5">
+          Hoy: {hoyLocal.map((x) => x.nombre).join(", ")}
+          {hoyOnline.length > 0 && `${hoyLocal.length ? " · " : ""}online: ${hoyOnline.map((x) => x.nombre).join(", ")}`}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Lo vendido hoy en cada turno del local y en la tienda online, y el mes local contra online. */
+function VentasPorTurno({ datos }: { datos: Datos }) {
+  const t = datos.turnosHoy;
+  const total = t.manana.vendido + t.tarde.vendido + t.online.vendido;
+  const pct = (n: number) => (total > 0 ? Math.round((n / total) * 100) : 0);
+  const totalMes = datos.mesLocal + datos.mesOnline;
+  const pctMes = (n: number) => (totalMes > 0 ? Math.round((n / totalMes) * 100) : 0);
+  const caja = (titulo: string, vendido: number, pie: string, enCurso?: boolean) => (
+    <div className="rounded-lg bg-neutral-50 px-3 py-2">
+      <p className="text-[12px] font-bold text-neutral-500">{titulo}</p>
+      <p className="text-lg font-bold tabular-nums text-neutral-900">{pesos(vendido)}</p>
+      <p className="text-[11.5px] text-neutral-400">
+        {pie}
+        {enCurso && <span className="ml-1 rounded-full bg-emerald-50 text-emerald-700 px-1.5 font-bold">ahora</span>}
+      </p>
+    </div>
+  );
+  const quien = (q: string[]) => (q.length ? ` · ${q.join(", ")}` : "");
+  return (
+    <div className={`${tarjeta} p-3.5 col-span-2`}>
+      <p className={eyebrow}>Ventas por turno · hoy</p>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2">
+        {caja("☀️ Local · 9 a 13", t.manana.vendido, `${t.manana.tickets} tickets${quien(t.manana.quien)}`, t.manana.enCurso)}
+        {caja("🌙 Local · 17 a 21", t.tarde.vendido, `${t.tarde.tickets} tickets${quien(t.tarde.quien)}`, t.tarde.enCurso)}
+        {caja("💻 Tienda online", t.online.vendido, `${t.online.tickets} ${t.online.tickets === 1 ? "pedido" : "pedidos"} · a cualquier hora`)}
+      </div>
+      {total > 0 && (
+        <>
+          <div className="flex h-2 rounded-full overflow-hidden mt-2.5 bg-neutral-100" aria-hidden="true">
+            <span style={{ width: `${pct(t.manana.vendido)}%`, background: "#e0a13a" }} />
+            <span style={{ width: `${pct(t.tarde.vendido)}%`, background: AZUL }} />
+            <span style={{ width: `${pct(t.online.vendido)}%`, background: "#8b5cf6" }} />
+          </div>
+          <p className="text-[11.5px] text-neutral-500 mt-1">
+            Mañana {pct(t.manana.vendido)} % · tarde {pct(t.tarde.vendido)} % · online {pct(t.online.vendido)} %
+          </p>
+        </>
+      )}
+      <p className="text-[12px] text-neutral-500 mt-1.5">
+        En {datos.mesNombre}: local <b className="text-neutral-900 tabular-nums">{pesos(datos.mesLocal)}</b> ({pctMes(datos.mesLocal)} %) · tienda online{" "}
+        <b className="text-neutral-900 tabular-nums">{pesos(datos.mesOnline)}</b> ({pctMes(datos.mesOnline)} %)
+      </p>
     </div>
   );
 }

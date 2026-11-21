@@ -121,22 +121,24 @@ export async function POST(req: NextRequest) {
         await supabase.from("clientes").update(cambios).eq("id_cliente", idCliente);
       } else {
         if (!d?.nuevo || !d.nombre || !d.apellido) return mal("El código venció. Pedí uno nuevo.");
-        const { data: nuevo, error } = await supabase
-          .from("clientes")
-          .insert({
-            nombre: d.nombre,
-            apellido: d.apellido,
-            dni,
-            email: v.fila.email,
-            fecha_nacimiento: d.cumple ?? null,
-            puntos: 0,
-            estado: "ACTIVO",
-            email_verificado_en: ahora,
-            acepta_novedades: !!d.promos,
-            acepta_novedades_en: d.promos ? ahora : null,
-          })
-          .select("id_cliente")
-          .single();
+        const fila = {
+          nombre: d.nombre,
+          apellido: d.apellido,
+          dni,
+          email: v.fila.email,
+          fecha_nacimiento: d.cumple ?? null,
+          puntos: 0,
+          estado: "ACTIVO",
+          email_verificado_en: ahora,
+          acepta_novedades: !!d.promos,
+          acepta_novedades_en: d.promos ? ahora : null,
+        };
+        // Se sumó por la web (21/11, ficha «Clientes nuevos» del Inicio). Si todavía no se
+        // corrió sql/clientes-origen.sql, la columna no existe: se crea igual, sin ese dato.
+        let { data: nuevo, error } = await supabase.from("clientes").insert({ ...fila, origen_alta: "ONLINE" }).select("id_cliente").single();
+        if (error && /origen_alta/.test(error.message)) {
+          ({ data: nuevo, error } = await supabase.from("clientes").insert(fila).select("id_cliente").single());
+        }
         if (error || !nuevo) {
           // Lo sumaron en la caja justo ahora: es el mismo cliente.
           const { data: otra } = await supabase.from("clientes").select("id_cliente").eq("dni", dni).maybeSingle();
