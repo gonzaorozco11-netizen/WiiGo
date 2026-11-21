@@ -205,7 +205,8 @@
   var lugarMarca = function (n) { var i = ORDEN_MARCAS.indexOf(n); return i < 0 ? 99 : i; };
   var MARCAS = D.marcas.slice().sort(function (a, b) { return lugarMarca(a.n) - lugarMarca(b.n) || (b.cant || 0) - (a.cant || 0); }), MARCA = {}; MARCAS.forEach(function (m) { MARCA[m.n] = m; });
   // Nuevos: los 20 que entraron último (con stock), no todo lo del mes.
-  var NUEVOS = PROD.filter(function (p) { return p.s > 0 && p.dias <= 30; }).sort(function (a, b) { return a.dias - b.dias; }).slice(0, 20);
+  // 21/11: 15 días (con 30 entraba casi todo el catálogo, que se cargó a fines de octubre).
+  var NUEVOS = PROD.filter(function (p) { return p.s > 0 && p.dias <= 15; }).sort(function (a, b) { return a.dias - b.dias; }).slice(0, 20);
   // Ofertas: lo que hoy tiene descuento y hay stock (el descuento viene del catálogo, `dto`).
   var OFERTAS = PROD.filter(function (p) { return p.s > 0 && Number(p.dto) > 0; }).sort(function (a, b) { return Number(b.dto) - Number(a.dto); });
   function ordenar(l) { return l.slice().sort(function (a, b) { return (b.s > 0) - (a.s > 0) || (b.img ? 1 : 0) - (a.img ? 1 : 0) || a.t.localeCompare(b.t, 'es'); }); }
@@ -473,8 +474,16 @@
     var elegido = S.marcaIni ? '' : '<section class="rubro-sec" id="s-elegido"><h2 class="seccion">Lo más elegido</h2><div class="elegidos">' + dest.map(function (p) {
       return '<article class="eleg"><div class="it-ft"><button class="it-foto" data-a="ficha" data-id="' + p.id + '" aria-label="Ver ' + esc(p.t) + '">' + foto(p, 256) + '</button><div class="it-acc" data-acc="' + p.id + '" data-tipo="item">' + botonItem(p) + '</div></div>' +
         '<button class="eleg-tx" data-a="ficha" data-id="' + p.id + '"><span>' + esc(p.t) + '</span><b>' + plata(p.p) + '</b></button></article>';
-    }).join('') + '</div><button class="ver-mas" data-a="nuevos">✨ Lo nuevo de la semana (' + NUEVOS.length + ')</button>' +
-      (OFERTAS.length ? '<button class="ver-mas" data-a="ofertas">🏷️ Ofertas (' + OFERTAS.length + ')</button>' : '') + '</section>';
+    }).join('') + '</div>' +
+      (OFERTAS.length ? '<button class="ver-mas" data-a="ofertas">🏷️ Ofertas (' + OFERTAS.length + ')</button>' : '') + '</section>' +
+      // «Productos nuevos» (Gonzalo, 21/11): lo último que se sumó al sistema, con stock, el más nuevo primero.
+      // Mismas tarjetas que «Lo más elegido»; «Ver todos» abre la lista completa.
+      (NUEVOS.length ? '<section class="rubro-sec" id="s-nuevos"><div class="sec-cab"><h2 class="seccion">✨ Productos nuevos</h2>' +
+        (NUEVOS.length > 10 ? '<button data-a="nuevos">Ver todos (' + NUEVOS.length + ') ›</button>' : '') + '</div><div class="elegidos">' +
+        NUEVOS.slice(0, 10).map(function (p) {
+          return '<article class="eleg"><div class="it-ft"><span class="eleg-nuevo">Nuevo</span><button class="it-foto" data-a="ficha" data-id="' + p.id + '" aria-label="Ver ' + esc(p.t) + '">' + foto(p, 256) + '</button><div class="it-acc" data-acc="' + p.id + '" data-tipo="item">' + botonItem(p) + '</div></div>' +
+            '<button class="eleg-tx" data-a="ficha" data-id="' + p.id + '"><span>' + esc(p.t) + '</span><b>' + plata(p.p) + '</b></button></article>';
+        }).join('') + '</div></section>' : '');
     var secciones = subsMarca ? subsMarca.map(function (s, i) {
       return '<section class="rubro-sec" id="s-s' + i + '"><h2 class="seccion">' + esc(s[0]) + '</h2><p class="rub-cant">' + s[1].length + (s[1].length === 1 ? ' producto' : ' productos') + ' de ' + esc(nombreMarca(S.marcaIni)) + '</p>' + grilla(ordenar(s[1])) + '</section>';
     }).join('') : MARCAS.map(function (m, i) {
