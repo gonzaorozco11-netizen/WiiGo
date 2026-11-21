@@ -363,8 +363,15 @@ export default function PortalTablero({
   // pide `cache: "no-store"` en cada consulta (ver lib/supabase.ts). Sin
   // eso, Next servía la respuesta cacheada y el refresco devolvía siempre
   // lo mismo.
+  // 21/11: era cada 3 segundos, también con la pestaña escondida. Con una marca con
+  // el portal abierto todo el día eran más de mil recargas por hora de la página
+  // entera, y la base pasó su tope de datos del mes en dos días (Supabase avisó que
+  // corta el 13/12). Ahora cada 60 s y solo si la pestaña está a la vista; al volver
+  // a la pestaña, se refresca en el momento.
   useEffect(() => {
-    const intervalo = setInterval(() => router.refresh(), 3000);
+    const intervalo = setInterval(() => {
+      if (document.visibilityState === "visible") router.refresh();
+    }, 60_000);
     function alVolver() {
       if (document.visibilityState === "visible") router.refresh();
     }
@@ -464,10 +471,12 @@ export default function PortalTablero({
     const esElValorInicial = preset === "MES" && desdeVentas === inicioMesISO(hoyISO) && hastaVentas === hoyISO;
     if (!esElValorInicial) pedir(true);
 
-    // Se actualiza sola cada 3 segundos, para el período que esté elegido
-    // en ese momento — sin mostrar "Cargando..." para no interrumpir a
-    // quien está mirando la tabla.
-    const intervalo = setInterval(() => pedir(false), 3000);
+    // Se actualiza sola cada 60 segundos (era 3: ver arriba, 21/11), para el
+    // período que esté elegido y solo con la pestaña a la vista — sin mostrar
+    // "Cargando..." para no interrumpir a quien está mirando la tabla.
+    const intervalo = setInterval(() => {
+      if (document.visibilityState === "visible") pedir(false);
+    }, 60_000);
     return () => clearInterval(intervalo);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [desdeVentas, hastaVentas]);
