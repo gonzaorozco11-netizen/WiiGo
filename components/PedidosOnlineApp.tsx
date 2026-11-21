@@ -12,6 +12,7 @@ import {
   marcarItemOnline,
   marcarListoOnline,
   verificarPalabraOnline,
+  autorizarSinPalabra,
   type ItemEquipo,
   type PedidoOnlineEquipo,
 } from "@/app/(app)/pedidos-online/actions";
@@ -70,11 +71,14 @@ export default function PedidosOnlineApp({
   activos,
   cerradosHoy,
   puedeCobrar,
+  esDueno = false,
 }: {
   disponible: boolean;
   activos: PedidoOnlineEquipo[];
   cerradosHoy: PedidoOnlineEquipo[];
   puedeCobrar: boolean;
+  /** El Dueño puede entregar sin la palabra secreta (21/11). */
+  esDueno?: boolean;
 }) {
   const router = useRouter();
   const [pedidos, setPedidos] = useState(activos);
@@ -328,6 +332,25 @@ export default function PedidosOnlineApp({
                 <p role="alert" className="text-center font-bold text-red-700">
                   ✗ No es esa palabra. {(modal.intentos ?? 0) >= 3 ? "Si no la sabe, que la busque en su mail o en «Mis pedidos» de la tienda." : "Pedile que la repita."}
                 </p>
+              )}
+              {esDueno && (
+                <button
+                  type="button"
+                  disabled={ocupado}
+                  onClick={async () => {
+                    setOcupado(true);
+                    try {
+                      const r = await autorizarSinPalabra(abierto.idPedido);
+                      if (r.error) setAviso(r.error);
+                      else setModal({ ...modal, verificada: r.ok });
+                    } finally {
+                      setOcupado(false);
+                    }
+                  }}
+                  className="text-sm font-semibold text-amber-900 underline disabled:opacity-45"
+                >
+                  Entregar sin la palabra (lo autorizo yo, Dueño)
+                </button>
               )}
             </form>
           )}

@@ -124,6 +124,19 @@ export async function verificarPalabraOnline(idPedido: string, palabra: string):
   return { error: null, ok: palabraCoincide(fila.codigo, palabra) };
 }
 
+/**
+ * El Dueño entrega sin la palabra (21/11: el #1010 lo retiraron y nadie lo marcó;
+ * al día siguiente el cliente ya no estaba para decirla). Solo admin: el equipo
+ * sigue necesitando la palabra.
+ */
+export async function autorizarSinPalabra(idPedido: string): Promise<{ error: string | null; ok: boolean }> {
+  const s = await sesionQueVe();
+  if (!s || s.rol !== "admin") return { error: "Solo el Dueño puede entregar sin la palabra.", ok: false };
+  const { fila } = await traer(getSupabaseServerClient(), idPedido);
+  if (!fila || fila.estado !== "LISTO") return { error: "Ese pedido no está listo para entregar.", ok: false };
+  return { error: null, ok: true };
+}
+
 function refrescar() {
   revalidatePath("/pedidos-online");
 }
