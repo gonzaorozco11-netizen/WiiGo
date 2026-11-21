@@ -14,7 +14,16 @@ import { kgAGramos } from "@/lib/gramos";
  * Agrega el renglón al mismo pedido (app/(app)/compras/pedir/actions.ts) y refresca:
  * la lista de arriba ya lo muestra para cargarlo o contarlo.
  */
-export default function AgregarAlPedido({ idOrden, modo }: { idOrden: string; modo: "pediste" | "llego" }) {
+export default function AgregarAlPedido({
+  idOrden,
+  modo,
+  onAgregado,
+}: {
+  idOrden: string;
+  modo: "pediste" | "llego";
+  /** En Recepción: para dejar la cantidad ya escrita en la lista (21/11: se cargaba dos veces). */
+  onAgregado?: (idVariante: string, cantidad: number, esGranel: boolean) => void;
+}) {
   const router = useRouter();
   const [abierto, setAbierto] = useState(false);
   const [productos, setProductos] = useState<ProductoParaAgregar[] | null>(null);
@@ -51,6 +60,7 @@ export default function AgregarAlPedido({ idOrden, modo }: { idOrden: string; mo
     start(async () => {
       const r = await agregarRenglonPedido(idOrden, elegido.idVariante, n);
       if (r.error) return setError(r.error);
+      onAgregado?.(elegido.idVariante, n, elegido.esGranel);
       setAviso(`Listo: ${elegido.nombre} quedó en el pedido.`);
       setElegido(null);
       setBusqueda("");
@@ -145,7 +155,7 @@ export default function AgregarAlPedido({ idOrden, modo }: { idOrden: string; mo
         </div>
       )}
       {modo === "llego" && elegido && (
-        <p className="text-xs text-neutral-500 mt-2">Queda en la lista de arriba: después poné ahí cuántos llegaron, como con lo demás.</p>
+        <p className="text-xs text-neutral-500 mt-2">Queda en la lista de arriba con esa cantidad ya puesta: revisala y confirmá.</p>
       )}
       {error && <p className="text-sm text-red-600 mt-2">{error}</p>}
     </div>

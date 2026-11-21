@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import type { Local, OrdenCompraProveedor, DetalleOrdenCompra } from "@/lib/supabase";
 import type { ProveedorConSaldo } from "@/app/(app)/proveedores/actions";
 import { recepcionarOrdenCompra } from "@/app/(app)/proveedores/actions";
@@ -64,6 +64,29 @@ export default function RecepcionCompraModal({
    * cero es «conté y no llegó ninguna».
    */
   const [recibidos, setRecibidos] = useState<Record<string, string>>({});
+  // Lo sumado con «Llegó algo que no estaba» (21/11): cuando el renglón aparece en la
+  // lista (después del refresco), queda con la cantidad ya escrita.
+  const [porPoner, setPorPoner] = useState<Record<string, { n: number; esGranel: boolean }>>({});
+  useEffect(() => {
+    const ids = Object.keys(porPoner);
+    if (!ids.length) return;
+    const nuevos: Record<string, string> = {};
+    const nuevosKg: Record<string, string> = {};
+    const quedan = { ...porPoner };
+    for (const d of detalle) {
+      const p = porPoner[d.id_variante];
+      if (!p) continue;
+      delete quedan[d.id_variante];
+      const falta = Math.max(0, (d.cantidad_solicitada ?? 0) - (d.cantidad_recibida ?? 0));
+      const n = Math.min(p.n, falta || p.n);
+      nuevos[d.id_detalle] = String(n);
+      if (p.esGranel) nuevosKg[d.id_detalle] = String(n / 1000).replace(".", ",");
+    }
+    if (Object.keys(nuevos).length === 0) return;
+    setRecibidos((prev) => ({ ...prev, ...nuevos }));
+    setTextoKg((prev) => ({ ...prev, ...nuevosKg }));
+    setPorPoner(quedan);
+  }, [detalle, porPoner]);
   const cantidadDe = (id: string) => {
     const n = Number(recibidos[id]);
     return recibidos[id] !== undefined && recibidos[id] !== "" && Number.isFinite(n) ? n : 0;
@@ -267,7 +290,11 @@ export default function RecepcionCompraModal({
           {abierta ? (
             <>
               {/* Llegó algo que no estaba en el pedido (20/11): se suma al pedido y se cuenta arriba. */}
-              <AgregarAlPedido idOrden={orden.id_orden} modo="llego" />
+              <AgregarAlPedido
+                idOrden={orden.id_orden}
+                modo="llego"
+                onAgregado={(idVariante, n, esGranel) => setPorPoner((prev) => ({ ...prev, [idVariante]: { n, esGranel } }))}
+              />
               <div>
                 <label className="block text-xs font-semibold text-neutral-500 uppercase mb-1">Observaciones</label>
                 <textarea
