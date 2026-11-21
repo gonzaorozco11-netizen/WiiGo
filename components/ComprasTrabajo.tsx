@@ -628,7 +628,7 @@ export default function ComprasTrabajo({
                         proveedor, que son las que tienen factura. */}
                     {puedeCerrarPedidos && (
                       <BotonSuave
-                        onClick={() => cerrarPedidoDesdeRecepcion(f, faltan)}
+                        onClick={() => cerrarPedidoDesdeRecepcion(f, faltanteDePedido(f))}
                         disabled={enviando === `${f.origen}-${f.idOrden}`}
                       >
                         Cerrar pedido como está
