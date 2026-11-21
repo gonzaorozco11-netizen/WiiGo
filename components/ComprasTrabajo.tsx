@@ -152,6 +152,25 @@ export default function ComprasTrabajo({
     );
 
   /**
+   * Lo que falta, para leer: el granel va en kilos y lo envasado en unidades
+   * («Faltan 3 unidades y 4 kg a granel»). Antes sumaba los gramos como
+   * unidades y salía «Faltan 7000 unidades» (20/11).
+   */
+  const textoFaltante = (f: Fila) => {
+    let unidades = 0;
+    let gramos = 0;
+    for (const d of f.origen === "MARCA" ? detalleMarcaDe(f.idOrden) : detalleProveedorDe(f.idOrden)) {
+      const n = Math.max(0, (d.cantidad_solicitada ?? 0) - (d.cantidad_recibida ?? 0));
+      if (enGramos.has(d.id_variante)) gramos += n;
+      else unidades += n;
+    }
+    const partes: string[] = [];
+    if (unidades > 0) partes.push(`${unidades} ${unidades === 1 ? "unidad" : "unidades"}`);
+    if (gramos > 0) partes.push(`${(gramos / 1000).toLocaleString("es-AR", { maximumFractionDigits: 2 })} kg a granel`);
+    return partes.join(" y ");
+  };
+
+  /**
    * Dar por cerrado un pedido a medias, desde Recepción.
    *
    * Es la misma decisión que la de Costeo y usa el mismo diálogo — lo que
@@ -579,7 +598,7 @@ export default function ComprasTrabajo({
               {/* Llegó una parte y falta el resto. Va primero y en ámbar:
                   es lo que tiene mercadería en la calle hace más tiempo. */}
               {aMedias.map((f) => {
-                const faltan = faltanteDePedido(f);
+                const faltan = textoFaltante(f);
                 return (
                   <TarjetaTrabajo
                     key={`${f.origen}-${f.idOrden}`}
@@ -588,7 +607,7 @@ export default function ComprasTrabajo({
                     titulo={f.contraparte}
                     detalle={
                       <>
-                        {faltan > 0 ? `Faltan ${faltan} unidades` : "Llegó a medias"} · mandada{" "}
+                        {faltan ? `Faltan ${faltan}` : "Llegó a medias"} · mandada{" "}
                         {haceCuanto(dias(f.enviadaEl ?? f.fecha))} · {f.local}
                       </>
                     }
