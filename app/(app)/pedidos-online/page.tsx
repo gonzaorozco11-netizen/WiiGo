@@ -10,5 +10,5 @@ export default async function PedidosOnlinePage() {
   const sesion = await obtenerSesionConPantallas();
   if (!puedeVerPantalla(sesion, "pedidos-online") && !puedeVerPantalla(sesion, "pedidos")) return <PantallaBloqueada />;
   const datos = await listarPedidosOnline();
-  return <PedidosOnlineApp {...datos} puedeCobrar={puedeVerPantalla(sesion, "pos")} />;
+  return <PedidosOnlineApp {...datos} puedeCobrar={puedeVerPantalla(sesion, "pos")} esDueno={sesion?.rol === "admin"} />;
 }
