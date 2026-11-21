@@ -19,6 +19,8 @@ import { useEffect, useState } from "react";
 // link no protege nada.
 const ITEMS = [
   { href: "/portal", texto: "Tablero" },
+  // Lo vendido y lo que tiene que pagar (su canon), desde el primer día del mes (21/11).
+  { href: "/portal/situacion", texto: "Mi situación" },
   { href: "/portal/tareas", texto: "Mis tareas" },
   { href: "/portal/calendario", texto: "Calendario" },
   { href: "/portal/productos", texto: "Mis productos" },

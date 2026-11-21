@@ -18,7 +18,7 @@ import { diasHasta } from "@/lib/eventos";
 import { sugerirReposicion, topeDeVariante } from "@/lib/reposicionSugerida";
 import { BUCKET_COMPROBANTES } from "@/lib/remitoRecepcion";
 import { etiquetaPago } from "@/lib/formasPago";
-import { cuentaDeMarca, fechaLarga, type EstadoCargo } from "@/lib/abonoMarcas";
+import { abonoDelPeriodo, cuentaDeMarca, diasDelMes, fechaLarga, venceAbono, type EstadoCargo } from "@/lib/abonoMarcas";
 import {
   condicionesDeMarca,
   tasasGeneralesParaSimular,
@@ -536,6 +536,91 @@ export async function reposicionPortal(): Promise<OrdenPortal[]> {
       hayDiferencias: lineas.some((l) => l.diferencia !== 0),
     };
   });
+}
+
+/* ===================== MI SITUACIÓN: lo que tiene que pagar (21/11) =====================
+   Gonzalo: «que lo vayan viendo de antemano». El canon del mes se calcula desde el
+   primer día con la configuración (cargos_recurrentes_marca), sin esperar al 25 en que
+   se carga: «va corriendo». Cuando ya se cargó, sale el cargo de verdad con su estado. */
+
+export type RenglonCanon = {
+  concepto: string;
+  neto: number;
+  iva: number;
+  total: number;
+  /** CORRIENDO: el mes en curso, todavía sin cargar. PROXIMO: el mes que viene. */
+  estado: "CORRIENDO" | "A_PAGAR" | "VENCIDO" | "PROXIMO";
+  /** «Se paga del 1 al 5 de diciembre». */
+  cuando: string;
+};
+
+export type CanonPortal = {
+  renglones: RenglonCanon[];
+  /** Lo que hay que pagar ahora o el que va corriendo: el número grande. */
+  principal: RenglonCanon | null;
+  /** Los días del mes que ya corrieron del canon en curso. */
+  corriendo: { dias: number; de: number } | null;
+};
+
+export async function canonPortal(): Promise<CanonPortal | null> {
+  const sesion = await sesionDelPortal();
+  if (!sesion) return null;
+  const supabase = getSupabaseServerClient();
+  const hoy = fechaHoraArgentina().fecha;
+  const periodo = hoy.slice(0, 7);
+  const [a, m] = periodo.split("-").map(Number);
+  const siguiente = m === 12 ? `${a + 1}-01` : `${a}-${String(m + 1).padStart(2, "0")}`;
+
+  const [{ data: recs }, { data: cfgIva }, cuenta] = await Promise.all([
+    supabase.from("cargos_recurrentes_marca").select("monto_estimado, lleva_iva, desde").eq("id_marca", sesion.idMarca).eq("activo", true).eq("recurrencia", "MENSUAL"),
+    supabase.from("configuracion").select("valor").eq("parametro", "IVA_GENERAL_PORCENTAJE").maybeSingle(),
+    cuentaDeMarca(supabase, sesion.idMarca, hoy),
+  ]);
+  const ivaPct = Number(cfgIva?.valor ?? 21) / 100;
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+
+  const renglones: RenglonCanon[] = [];
+  // 1. Lo ya cargado y sin pagar (meses anteriores o el de este mes, después del 25).
+  for (const c of cuenta.cargos.filter((x) => x.esAbono && x.estado !== "PAGADO")) {
+    renglones.push({
+      concepto: c.concepto,
+      neto: c.neto ?? c.importe,
+      iva: c.iva ?? 0,
+      total: r2(c.importe - c.pagado),
+      estado: c.estado === "VENCIDO" ? "VENCIDO" : "A_PAGAR",
+      cuando: c.estado === "VENCIDO" ? `Venció el ${fechaLarga(c.vence)}` : `Se paga del 1 al ${fechaLarga(c.vence)}`,
+    });
+  }
+  // 2 y 3. El de este mes (si todavía no se cargó) y el del mes que viene, calculados.
+  const yaCargado = (p: string) => cuenta.cargos.some((c) => c.esAbono && c.periodo === p);
+  const calcular = (p: string, estado: "CORRIENDO" | "PROXIMO") => {
+    let neto = 0;
+    let iva = 0;
+    let concepto = "";
+    for (const r of (recs ?? []) as { monto_estimado: number; lleva_iva: boolean; desde: string | null }[]) {
+      const ab = abonoDelPeriodo(Number(r.monto_estimado), p, r.desde ?? null);
+      if (!ab) continue;
+      neto += ab.neto;
+      iva += r.lleva_iva ? ab.neto * ivaPct : 0;
+      concepto = ab.concepto;
+    }
+    if (neto <= 0) return;
+    renglones.push({ concepto, neto: r2(neto), iva: r2(iva), total: r2(neto + iva), estado, cuando: `Se paga del 1 al ${fechaLarga(venceAbono(p))}` });
+  };
+  if (!yaCargado(periodo)) calcular(periodo, "CORRIENDO");
+  calcular(siguiente, "PROXIMO");
+
+  // Los días que van corriendo del canon de este mes (desde el día que arrancó, si fue este mes).
+  let corriendo: CanonPortal["corriendo"] = null;
+  if (renglones.some((r) => r.estado === "CORRIENDO")) {
+    const desdes = ((recs ?? []) as { desde: string | null }[]).map((r) => r.desde).filter((d): d is string => Boolean(d && d.slice(0, 7) === periodo));
+    const inicio = desdes.length ? Math.min(...desdes.map((d) => Number(d.slice(8, 10)))) : 1;
+    const total = diasDelMes(periodo) - inicio + 1;
+    corriendo = { dias: Math.min(total, Math.max(0, Number(hoy.slice(8, 10)) - inicio + 1)), de: total };
+  }
+
+  const principal = renglones.find((r) => r.estado === "VENCIDO" || r.estado === "A_PAGAR") ?? renglones.find((r) => r.estado === "CORRIENDO") ?? null;
+  return { renglones, principal, corriendo };
 }
 
 export type PagoPortal = {
