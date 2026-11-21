@@ -394,6 +394,7 @@
 .situ-pagar { background: #fbf1dd; border-color: #ecdcbb; }
 .situ-pagar .cifra-xl { color: #8a6418; }
 .situ-pagar .cifra-xl.situ-vencido { color: #a8461a; }
+.situ-explica { font-size: 13px; color: #6b5420; background: var(--superficie); border-radius: 10px; padding: 9px 12px; margin-top: 10px; line-height: 1.45; }
 .situ-prog { height: 8px; border-radius: 9px; background: rgba(138, 100, 24, .15); overflow: hidden; margin-top: 12px; }
 .situ-prog i { display: block; height: 100%; background: #8a6418; border-radius: 9px; }
 .situ-renglones { list-style: none; margin-top: 14px; }

@@ -56,8 +56,14 @@ export default async function PortalSituacionPage() {
           </div>
           <div className="situ-eje">
             <span>1</span>
-            <span>hoy, {dia}</span>
-            <span>{resumen.serieMes.length}</span>
+            {resumen.serieMes.length > dia ? (
+              <>
+                <span>hoy, {dia}</span>
+                <span>{resumen.serieMes.length}</span>
+              </>
+            ) : (
+              <span>hoy, {dia}</span>
+            )}
           </div>
         </section>
 
@@ -73,9 +79,19 @@ export default async function PortalSituacionPage() {
             <>
               <p className={`cifra-xl mono ${p.estado === "VENCIDO" ? "situ-vencido" : ""}`}>{pesos(p.total)}</p>
               <p className="situ-pie">
-                {p.concepto}
+                {p.concepto.replace(/ \(.*\)$/, "")}
                 {p.iva > 0 && ` · ${pesos(p.neto)} + IVA ${pesos(p.iva)}`}
               </p>
+              {/* El primer mes es proporcional: se dice con todas las letras (Gonzalo, 21/11). */}
+              {(() => {
+                const m = /^Canon de (\S+) \(del (\d+) al (\d+): (\d+) de (\d+) días\)$/.exec(p.concepto);
+                return m ? (
+                  <p className="situ-explica">
+                    El canon de {m[1]} se cobra <b>del {m[2]} al {m[3]} de {m[1]}</b>: son {m[4]} de los {m[5]} días del mes, porque arrancaste en la
+                    estación el {m[2]}. Desde el mes que viene se cobra el mes completo.
+                  </p>
+                ) : null;
+              })()}
               {p.estado === "CORRIENDO" && canon.corriendo && (
                 <>
                   <div className="situ-prog" aria-hidden="true">
