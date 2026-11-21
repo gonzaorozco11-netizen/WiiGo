@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import { friendlyDbError } from "@/lib/errors";
-import { PENDIENTE, CANCELADA } from "@/lib/estadosOrden";
+import { PENDIENTE, CANCELADA, ESTADOS_ABIERTOS } from "@/lib/estadosOrden";
 import { ESTADO_GRANEL } from "@/lib/granel";
 import { PARAMETRO_NO_TENIA, cargarNoTenia, MARCA_ARMADO_EN_LOCAL } from "@/lib/pedidoProveedor";
 import { avisarPedidoArmado } from "@/lib/avisoPedidoProveedor";
@@ -14,6 +14,82 @@ import { recepcionarOrdenCompra } from "@/app/(app)/proveedores/actions";
 // y no throw: Next 16 esconde el mensaje en producción.
 
 type Linea = { idVariante: string; cantidad: number };
+
+/* ---------- Sumar al pedido algo que no estaba en la lista (Gonzalo, 20/11) ----------
+   Pasó con el 3.er pedido: en la web de Alifrut se pidieron 4 cosas de más y no
+   entraron al stock. Ahora se suman al mismo pedido: al cargarlo («+ Agregar algo
+   que pediste») o al recibirlo («+ Llegó algo que no estaba en el pedido»). Es el
+   mismo renglón de siempre, así Recepción, el costo del día y la liquidación andan igual. */
+
+export type ProductoParaAgregar = { idVariante: string; nombre: string; esGranel: boolean };
+
+/** Los productos del proveedor del pedido, para elegir qué sumar. */
+export async function productosParaAgregar(idOrden: string): Promise<{ error: string | null; productos: ProductoParaAgregar[] }> {
+  const sesion = await obtenerSesionConPantallas();
+  if (!sesion) return { error: "Volvé a entrar.", productos: [] };
+  const supabase = getSupabaseServerClient();
+  const { data: orden } = await supabase.from("ordenes_compra_proveedor").select("id_proveedor").eq("id_orden", idOrden).maybeSingle();
+  if (!orden) return { error: "Ese pedido no existe.", productos: [] };
+  const { data } = await supabase
+    .from("variantes_producto")
+    .select("id_variante, nombre, estado, productos!inner(nombre, estado, id_proveedor_liquidacion)")
+    .eq("productos.id_proveedor_liquidacion", orden.id_proveedor as string)
+    .in("productos.estado", ["ACTIVO", ESTADO_GRANEL])
+    .eq("estado", "ACTIVO")
+    .range(0, 1999);
+  type F = { id_variante: string; nombre: string | null; productos: { nombre: string; estado: string } };
+  const productos = ((data ?? []) as unknown as F[])
+    .map((v) => ({
+      idVariante: v.id_variante,
+      nombre: `${v.productos.nombre}${v.nombre && v.nombre !== "Único" ? ` — ${v.nombre}` : ""}`,
+      esGranel: v.productos.estado === ESTADO_GRANEL,
+    }))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+  return { error: null, productos };
+}
+
+/**
+ * Suma un renglón al pedido (o le suma cantidad si ya estaba). `cantidad`: gramos si
+ * es granel, unidades si no. Solo productos del proveedor del pedido y con el pedido
+ * abierto. Lo puede hacer quien carga el pedido y quien recibe (Recepción es de todos).
+ */
+export async function agregarRenglonPedido(idOrden: string, idVariante: string, cantidad: number): Promise<{ error: string | null }> {
+  const sesion = await obtenerSesionConPantallas();
+  if (!sesion) return { error: "Volvé a entrar." };
+  if (!Number.isInteger(cantidad) || cantidad <= 0) return { error: "Poné cuánto." };
+  const supabase = getSupabaseServerClient();
+  const { data: orden } = await supabase.from("ordenes_compra_proveedor").select("id_proveedor, estado, total_unidades").eq("id_orden", idOrden).maybeSingle();
+  if (!orden) return { error: "Ese pedido no existe." };
+  if (!ESTADOS_ABIERTOS.includes(orden.estado as string)) return { error: "Ese pedido ya está cerrado." };
+  const { data: v } = await supabase
+    .from("variantes_producto")
+    .select("id_variante, productos!inner(id_proveedor_liquidacion)")
+    .eq("id_variante", idVariante)
+    .maybeSingle();
+  if (!v || (v.productos as unknown as { id_proveedor_liquidacion: string | null }).id_proveedor_liquidacion !== orden.id_proveedor) {
+    return { error: "Ese producto no está vinculado con este proveedor. Vinculalo primero en Productos." };
+  }
+  const { data: ya } = await supabase
+    .from("detalle_orden_compra")
+    .select("id_detalle, cantidad_solicitada")
+    .eq("id_orden", idOrden)
+    .eq("id_variante", idVariante)
+    .maybeSingle();
+  const { error } = ya
+    ? await supabase
+        .from("detalle_orden_compra")
+        .update({ cantidad_solicitada: Number(ya.cantidad_solicitada ?? 0) + cantidad })
+        .eq("id_detalle", ya.id_detalle as string)
+    : await supabase.from("detalle_orden_compra").insert({ id_orden: idOrden, id_variante: idVariante, cantidad_solicitada: cantidad, cantidad_recibida: 0 });
+  if (error) return { error: friendlyDbError(error) };
+  await supabase
+    .from("ordenes_compra_proveedor")
+    .update({ total_unidades: Number(orden.total_unidades ?? 0) + cantidad })
+    .eq("id_orden", idOrden);
+  revalidatePath("/compras");
+  revalidatePath(`/compras/pedir/${idOrden}`);
+  return { error: null };
+}
 
 /** Los chicos arman el pedido: queda como orden de compra sin enviar, esperando a Gonzalo. */
 export async function armarPedidoProveedor(

@@ -118,8 +118,8 @@ export default function FraccionarApp({
 
   return (
     <div className="max-w-3xl mx-auto">
-      <PestanasStock actual="granel" />
-      <h1 className="text-xl font-semibold text-neutral-900">A granel · Fraccionar</h1>
+      <PestanasStock actual="granel" gondola={esAdmin ? "/stock" : undefined} />
+      <h1 className="text-xl font-semibold text-neutral-900">Depósito · Fraccionar</h1>
       <p className="text-sm text-neutral-500 mt-0.5 mb-4">
         Cada bolsita tiene que quedar con 5 en el blistero y 3 abajo, en el cajón. Lo que se vendió, se fracciona al final del turno.
       </p>

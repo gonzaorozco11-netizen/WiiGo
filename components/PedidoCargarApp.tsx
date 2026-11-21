@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import type { LineaParaCargar } from "@/lib/pedidoProveedor";
 import { confirmarPedidoHecho } from "@/app/(app)/compras/pedir/actions";
+import AgregarAlPedido from "@/components/AgregarAlPedido";
 
 // Cargar en la web del proveedor el pedido que armó el equipo (paso 2 de 3 de
 // la vista previa aprobada el 2026-11-12). Por rubro y con los nombres del
@@ -58,7 +59,7 @@ export default function PedidoCargarApp({
   }, [lineas]);
 
   const pedidos = lineas.filter((l) => !noTienen.has(l.idDetalle));
-  const kilos = pedidos.filter((l) => l.esGranel).reduce((a, l) => a + (cant[l.idDetalle] ?? 0), 0) / 1000;
+  const kilos = pedidos.filter((l) => l.esGranel).reduce((a, l) => a + (cant[l.idDetalle] ?? l.cantidad), 0) / 1000;
 
   function marcar(id: string, falta: boolean) {
     setNoTienen((prev) => {
@@ -73,7 +74,7 @@ export default function PedidoCargarApp({
     const texto = porRubro
       .map(([rubro, ls]) => {
         const suyas = ls.filter((l) => !noTienen.has(l.idDetalle));
-        return suyas.length ? `${rubro}\n${suyas.map((l) => `- ${l.nombreProveedor}${l.marca ? ` (${l.marca})` : ""}: ${textoCantidad(l, cant[l.idDetalle] ?? 0)}`).join("\n")}` : "";
+        return suyas.length ? `${rubro}\n${suyas.map((l) => `- ${l.nombreProveedor}${l.marca ? ` (${l.marca})` : ""}: ${textoCantidad(l, cant[l.idDetalle] ?? l.cantidad)}`).join("\n")}` : "";
       })
       .filter(Boolean)
       .join("\n\n");
@@ -91,7 +92,7 @@ export default function PedidoCargarApp({
     startGuardar(async () => {
       const r = await confirmarPedidoHecho(
         idOrden,
-        lineas.map((l) => ({ idDetalle: l.idDetalle, cantidad: cant[l.idDetalle] ?? 0, noTienen: noTienen.has(l.idDetalle) }))
+        lineas.map((l) => ({ idDetalle: l.idDetalle, cantidad: cant[l.idDetalle] ?? l.cantidad, noTienen: noTienen.has(l.idDetalle) }))
       );
       if (r.error) setError(r.error);
       else setHecho({ pedidos: r.pedidos ?? 0, noTenian: r.noTenian ?? 0 });
@@ -150,7 +151,7 @@ export default function PedidoCargarApp({
           <ul className="flex flex-col gap-2">
             {ls.map((l) => {
               const falta = noTienen.has(l.idDetalle);
-              const valor = cant[l.idDetalle] ?? 0;
+              const valor = cant[l.idDetalle] ?? l.cantidad;
               return (
                 <li key={l.idDetalle} className={`rounded-xl border border-neutral-200 px-3 py-2.5 ${falta ? "bg-neutral-50" : "bg-white"}`}>
                   <div className="flex items-start justify-between gap-3">
@@ -207,6 +208,9 @@ export default function PedidoCargarApp({
           </ul>
         </section>
       ))}
+
+      {/* Lo que se pide de más en la web del proveedor entra al mismo pedido (20/11). */}
+      <AgregarAlPedido idOrden={idOrden} modo="pediste" />
 
       <div className="fixed bottom-0 left-0 right-0 lg:left-60 bg-white border-t border-neutral-200 px-4 py-3 print:hidden">
         <div className="max-w-2xl mx-auto">

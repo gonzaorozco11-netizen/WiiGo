@@ -11,6 +11,7 @@ import {
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import PantallaBloqueada from "@/components/PantallaBloqueada";
 import StockApp from "@/components/StockApp";
+import PestanasStock from "@/components/PestanasStock";
 import { calcularCobertura, DIAS_MINIMOS, type Cobertura } from "@/lib/cobertura";
 import { cargarMarcasFabrica, nombresConMarca } from "@/lib/marcaFabrica";
 
@@ -73,6 +74,11 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
   const cobertura = await calcularCobertura(supabase, filasStock);
 
   return (
+    <>
+    {/* Góndola / Depósito arriba de todo (Gonzalo, 20/11): el depósito es Fraccionar. */}
+    <div className="max-w-6xl mx-auto">
+      <PestanasStock actual="gondola" gondola="/stock" />
+    </div>
     <StockApp
       soloEnCeroInicial={ver === "cero"}
       cobertura={Object.fromEntries(cobertura.porVarianteLocal) as Record<string, Cobertura>}
@@ -93,5 +99,6 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
         puedeVerPantalla(sesion, "compras-costeo") || puedeVerPantalla(sesion, "proveedores")
       }
     />
+    </>
   );
 }

@@ -161,32 +161,19 @@ export default function PedidoProveedorApp({
         </div>
       )}
 
+      {/* Lo que se embolsa con el granel del depósito no se pide (Gonzalo, 20/11: el pedido,
+          solo con lo que se compra). Queda un renglón que lleva al Depósito, donde está la lista. */}
       {aFraccionar.length > 0 && (
-        <section className="mb-5">
-          <div className="flex items-baseline justify-between mb-2">
-            <h2 className="text-xs font-bold uppercase tracking-wide text-neutral-500">Fraccionar primero</h2>
-            <Link href="/fraccionar" className="text-sm font-semibold text-accent hover:underline">
-              Ir a Fraccionar →
-            </Link>
-          </div>
-          <p className="text-xs text-neutral-500 mb-2">Hay granel en el depósito para estas: no se piden, se embolsan.</p>
-          <ul className="flex flex-col gap-2">
-            {aFraccionar.map((b) => (
-              <li key={b.idVariante} className="rounded-xl border border-neutral-200 bg-white px-3 py-2.5 flex items-center justify-between gap-3">
-                <span className="min-w-0">
-                  <span className="block text-sm font-semibold text-neutral-900">{b.nombre}</span>
-                  <span className="block text-xs text-neutral-500">
-                    Quedan {b.hay} de {b.maximo} · en el depósito hay {kg(b.deposito)}
-                  </span>
-                </span>
-                <span className="text-right font-semibold tabular-nums shrink-0">
-                  {b.delDeposito}
-                  <span className="block text-[10.5px] font-normal text-neutral-500">bolsitas</span>
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
+        <Link
+          href="/fraccionar"
+          className="mb-5 flex items-center justify-between gap-3 rounded-xl bg-sky-50 border border-sky-100 px-4 py-3 text-sm text-sky-900 hover:bg-sky-100"
+        >
+          <span>
+            📦 <b>{aFraccionar.length} {aFraccionar.length === 1 ? "producto no se pide" : "productos no se piden"}</b>: hay granel en el depósito para
+            embolsarlos.
+          </span>
+          <span className="font-semibold shrink-0">Ver en Depósito →</span>
+        </Link>
       )}
 
       {aPedir.length > 0 && (

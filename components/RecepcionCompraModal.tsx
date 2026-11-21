@@ -7,6 +7,7 @@ import { recepcionarOrdenCompra } from "@/app/(app)/proveedores/actions";
 import { ESTADO_ESTILO_COMPRA } from "@/components/ProveedoresApp";
 import { estaAbierta, etiquetaEstado, RECIBIDA_PARCIAL } from "@/lib/estadosOrden";
 import { FotosRecepcion } from "@/components/RemitoRecepcion";
+import AgregarAlPedido from "@/components/AgregarAlPedido";
 import { kgAGramos, textoGramos } from "@/lib/gramos";
 
 // Recibir mercadería, una entrega por vez.
@@ -265,6 +266,8 @@ export default function RecepcionCompraModal({
 
           {abierta ? (
             <>
+              {/* Llegó algo que no estaba en el pedido (20/11): se suma al pedido y se cuenta arriba. */}
+              <AgregarAlPedido idOrden={orden.id_orden} modo="llego" />
               <div>
                 <label className="block text-xs font-semibold text-neutral-500 uppercase mb-1">Observaciones</label>
                 <textarea
