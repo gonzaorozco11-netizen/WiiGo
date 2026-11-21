@@ -17,6 +17,13 @@ import { sinEtiquetarPorVariante } from "@/lib/fraccionado";
 //     terminó sigue en el próximo turno de esa persona.
 
 export const POR_TURNO = 10;
+/**
+ * Lo que se cuenta TODOS los días, aparte de los 10 (Gonzalo, 20/11: faltó una
+ * Gentech Brownie y las barritas son lo más fácil de llevarse). Cada turno se
+ * lleva la mitad de las que todavía no se contaron hoy, así entre la mañana y la
+ * tarde pasan todas. Solo las que tienen stock. Para sacarlo, vaciar la lista.
+ */
+const SUBCATEGORIAS_DIARIAS = ["Barras proteicas", "Barritas"];
 /** No se vuelve a pedir lo que se contó hace menos de esto (salvo seguimiento). */
 const DIAS_SIN_REPETIR = 4;
 /** Sin ventas en esta cantidad de días, con stock, es «quieto». */
@@ -127,7 +134,7 @@ async function elegirProductos(
   const hace = (dias: number) => new Date(ahora.getTime() - dias * 86400000).toISOString();
 
   const [{ data: productos }, { data: variantes }, { data: stock }, { data: contados }, { data: abiertas }, { data: enCurso }] = await Promise.all([
-    supabase.from("productos").select("id_producto").eq("estado", "ACTIVO").range(0, 4999),
+    supabase.from("productos").select("id_producto, subcategorias(nombre)").eq("estado", "ACTIVO").range(0, 4999),
     supabase.from("variantes_producto").select("id_variante, id_producto").eq("estado", "ACTIVO").range(0, 9999),
     supabase.from("stock").select("id_variante, cantidad").eq("id_local", idLocal).range(0, 9999),
     // El último conteo de cada variante en este local.
@@ -222,6 +229,27 @@ async function elegirProductos(
     if (elegidas.length >= cuantos) break;
     usar(id, "NUNCA", ultimoConteo.has(id) ? "Hace mucho que no se cuenta" : "Nunca se contó");
   }
+
+  // 5. Las de todos los días (barritas, 20/11), aparte de los 10: las que hoy todavía
+  // nadie contó ni tiene asignadas; la mitad por turno, así entre los dos pasan todas.
+  const diariasProd = new Set(
+    (productos ?? [])
+      .filter((p) => {
+        const s = p.subcategorias as unknown as { nombre: string | null } | { nombre: string | null }[] | null;
+        const nombre = (Array.isArray(s) ? s[0] : s)?.nombre ?? "";
+        return SUBCATEGORIAS_DIARIAS.includes(nombre);
+      })
+      .map((p) => p.id_producto as string)
+  );
+  const hoyDesde = inicioDelDia(fechaHoraArgentina().fecha);
+  const delDia = (variantes ?? [])
+    .filter((v) => diariasProd.has(v.id_producto as string) && (hay.get(v.id_variante as string) ?? 0) > 0)
+    .map((v) => v.id_variante as string);
+  const faltanHoy = delDia.filter(
+    (id) => !ocupadas.has(id) && !elegidas.some((e) => e.idVariante === id) && (ultimoConteo.get(id) ?? "") < new Date(hoyDesde).toISOString()
+  );
+  const porTurno = Math.ceil(delDia.length / 2);
+  for (const id of faltanHoy.slice(0, porTurno)) elegidas.push({ idVariante: id, motivo: "ROTA", detalle: "Barritas: se cuentan todos los días" });
   return elegidas;
 }
 
