@@ -351,7 +351,7 @@ export async function armarInicioOperativo(
     });
   // Sumar a alguien a WiiGo Club en 20 segundos: con su DNI ya suma puntos (Gonzalo, 2026-11-12).
   if (puede("club-sumar") || puede("pos") || puede("clientes"))
-    agregar({ clave: "club", titulo: "Sumar cliente al Club", detalle: "Con su DNI suma puntos desde la primera compra", href: "/club/sumar", icono: "⭐", badge: null, deshabilitado: false });
+    agregar({ clave: "club", titulo: "Club WiiGo", detalle: "Buscá los puntos de un cliente por DNI o sumá uno nuevo", href: "/club/sumar", icono: "⭐", badge: null, deshabilitado: false });
   if (puede("compras-recepcion"))
     agregar({ clave: "recibir", titulo: "Recibir mercadería", detalle: "Cuando llega un pedido de una marca", href: "/compras/recepcion", icono: "📥", badge: pendientes.recibir || null, badgeTono: "ambar", deshabilitado: false });
   // El pedido a Alifrut con lo que llegó al mínimo (Gonzalo, 2026-11-12).

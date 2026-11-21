@@ -29,6 +29,43 @@ function conMayuscula(s: string) {
     .replace(/(^|[\s'-])(\p{L})/gu, (_, sep: string, letra: string) => sep + letra.toUpperCase());
 }
 
+/**
+ * Buscar a alguien del Club por DNI (Gonzalo, 21/11): nombre, desde cuándo está y
+ * cuántos puntos tiene. Sin mail ni teléfono: el operativo no los necesita para esto.
+ */
+export type FichaClub = { dni: string; nombre: string; apellido: string | null; puntos: number; desde: string | null; ultimaCompra: string | null; compras: number };
+
+export async function consultarClienteClub(dniTexto: string): Promise<{ error: string | null; cliente: FichaClub | null }> {
+  const sesion = await obtenerSesionConPantallas();
+  if (!sesion || !(puedeVerPantalla(sesion, "club-sumar") || puedeVerPantalla(sesion, "pos") || puedeVerPantalla(sesion, "clientes"))) {
+    return { error: "No tenés permiso para ver clientes.", cliente: null };
+  }
+  const dni = (dniTexto ?? "").replace(/\D/g, "");
+  if (!/^\d{7,9}$/.test(dni)) return { error: "El DNI tiene que tener 7 u 8 números (sin puntos).", cliente: null };
+  const supabase = getSupabaseServerClient();
+  const { data: c } = await supabase.from("clientes").select("id_cliente, dni, nombre, apellido, puntos, fecha_alta").eq("dni", dni).maybeSingle();
+  if (!c) return { error: null, cliente: null };
+  const { data: ventas, count } = await supabase
+    .from("ventas")
+    .select("fecha", { count: "exact" })
+    .eq("id_cliente", c.id_cliente as string)
+    .eq("estado", "PAGADA")
+    .order("fecha", { ascending: false })
+    .limit(1);
+  return {
+    error: null,
+    cliente: {
+      dni,
+      nombre: c.nombre as string,
+      apellido: (c.apellido as string | null) ?? null,
+      puntos: Number(c.puntos ?? 0),
+      desde: (c.fecha_alta as string | null) ?? null,
+      ultimaCompra: (ventas?.[0]?.fecha as string | undefined) ?? null,
+      compras: count ?? 0,
+    },
+  };
+}
+
 export async function sumarClienteAlClub(datos: {
   dni: string;
   nombre: string;

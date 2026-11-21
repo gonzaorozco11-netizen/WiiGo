@@ -860,11 +860,11 @@ export const GUIAS: Guia[] = [
     pantalla: "clientes",
     tema: "Administración",
     titulo: "Sumar un cliente a WiiGo Club",
-    donde: "Vender → ¿Cliente WiiGo? · Inicio → Sumar cliente al Club",
+    donde: "Vender → ¿Cliente WiiGo? · Inicio → Club WiiGo",
     rutas: ["/pos", "/club/sumar", "/clientes"],
     pasos: [
       "<b>Mientras vendés:</b> escribí su DNI en <b>¿Cliente WiiGo?</b>. Si no está, tocá <b>+ Sumarlo ahora</b>, poné nombre, apellido y su mail, y tocá <b>Sumar y seguir con la venta</b>. Esa misma compra ya suma puntos.",
-      "<b>Sin estar vendiendo:</b> en el Inicio tocá <b>Sumar cliente al Club</b>, cargá DNI, nombre y apellido, y listo.",
+      "<b>Sin estar vendiendo:</b> en el Inicio tocá <b>Club WiiGo</b>. Arriba buscás por DNI: ves su nombre, desde cuándo está y cuántos puntos tiene. Si no está, abajo lo sumás con DNI, nombre y apellido.",
       "Pedile el mail: es para mandarle sus puntos. Si no lo quiere dar, igual suma con el DNI.",
       "Para corregir datos o cargar el cumpleaños: <b>Clientes</b>, tocando el cliente.",
     ],

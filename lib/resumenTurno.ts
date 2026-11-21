@@ -72,6 +72,11 @@ function canalDe(canal: string | null): string {
 
 type Fila = { etiqueta: string; ventas: number; monto: number };
 
+/** El nombre del cliente lo escribió una persona: que no rompa el mail. */
+function escaparHtml(s: string): string {
+  return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] as string);
+}
+
 function tabla(titulo: string, filas: { izquierda: string; derecha: string }[]): string {
   if (filas.length === 0) return "";
   return `<p style="margin:18px 0 6px;font-size:13px;font-weight:bold;color:#5e6659;text-transform:uppercase;letter-spacing:0.5px">${titulo}</p>
@@ -328,7 +333,7 @@ export async function avisarVentaAlDueno(idVenta: string): Promise<void> {
 
     const [{ data: config }, { data: venta }, { data: renglones }, { data: delDia }] = await Promise.all([
       supabase.from("configuracion").select("parametro, valor").in("parametro", [PARAMETRO_MAILS_RESUMEN, PARAMETRO_CADA_VENTA]),
-      supabase.from("ventas").select("id_venta, fecha, total, medio_pago, canal, estado, numero, id_pago").eq("id_venta", idVenta).maybeSingle(),
+      supabase.from("ventas").select("id_venta, fecha, total, medio_pago, canal, estado, numero, id_pago, id_cliente").eq("id_venta", idVenta).maybeSingle(),
       supabase.from("detalle_ventas").select("cantidad, subtotal, variantes_producto(nombre, productos(nombre))").eq("id_venta", idVenta),
       supabase.from("ventas").select("total").eq("estado", "PAGADA").gte("fecha", inicioDelDia),
     ]);
@@ -342,6 +347,22 @@ export async function avisarVentaAlDueno(idVenta: string): Promise<void> {
     if (venta.id_pago) {
       const { data: pago } = await supabase.from("pagos").select("forma_pago_cliente").eq("id_pago", venta.id_pago as string).maybeSingle();
       forma = (pago?.forma_pago_cliente as string | null) ?? null;
+    }
+
+    // Quién compró (Gonzalo, 21/11: «así sé quién compró»): con su DNI, el nombre;
+    // si es su primera compra, «¡Nuevo cliente!». Sin DNI, no se dice nada.
+    let cliente: { nombre: string; nuevo: boolean } | null = null;
+    if (venta.id_cliente) {
+      const [{ data: c }, { count: antes }] = await Promise.all([
+        supabase.from("clientes").select("nombre, apellido").eq("id_cliente", venta.id_cliente as string).maybeSingle(),
+        supabase
+          .from("ventas")
+          .select("id_venta", { count: "exact", head: true })
+          .eq("id_cliente", venta.id_cliente as string)
+          .eq("estado", "PAGADA")
+          .lt("fecha", venta.fecha as string),
+      ]);
+      if (c) cliente = { nombre: [c.nombre, c.apellido].filter(Boolean).join(" ").trim(), nuevo: (antes ?? 0) === 0 };
     }
 
     type Renglon = { cantidad: number | null; subtotal: number | null; variantes_producto: { nombre?: string | null; productos?: { nombre?: string | null } | null } | null };
@@ -358,15 +379,21 @@ export async function avisarVentaAlDueno(idVenta: string): Promise<void> {
     const ventasHoy = (delDia ?? []).length;
     const totalHoy = (delDia ?? []).reduce((a, v) => a + Number(v.total ?? 0), 0);
 
-    const asunto = `🛒 Venta de ${pesos(total)} · ${donde} · ${pago}`;
+    const quien = cliente ? `${cliente.nuevo ? "⭐ ¡Nuevo cliente! " : ""}${cliente.nombre}` : null;
+    const asunto = `🛒 Venta de ${pesos(total)}${quien ? ` · ${quien}` : ""} · ${donde} · ${pago}`;
     const base = baseUrlPublica();
     const html = plantilla({
       base,
       tono: "verde",
-      titulo: "Nueva venta",
+      titulo: cliente?.nuevo ? "¡Nuevo cliente!" : "Nueva venta",
       bajada: `${hora} · ${donde} · ${pago}${venta.numero ? ` · N.º ${venta.numero}` : ""}`,
       destacado: pesos(total),
-      detalle: [`<strong style="color:#2a2f26">${unidades} ${unidades === 1 ? "producto" : "productos"}</strong>`],
+      detalle: [
+        ...(cliente
+          ? [`<strong style="color:#2a2f26">${cliente.nuevo ? "⭐ Primera compra de " : "Compró "}${escaparHtml(cliente.nombre)}</strong>`]
+          : []),
+        `<strong style="color:#2a2f26">${unidades} ${unidades === 1 ? "producto" : "productos"}</strong>`,
+      ],
       franja: { titulo: `Hoy van ${ventasHoy} ${ventasHoy === 1 ? "venta" : "ventas"}`, texto: `Suman <strong>${pesos(totalHoy)}</strong>.` },
       cuerpo: tabla(
         "Qué se llevó",
@@ -375,7 +402,7 @@ export async function avisarVentaAlDueno(idVenta: string): Promise<void> {
       boton: { texto: "Ver las ventas", url: `${base}/ventas` },
       pie: `Te llega porque está prendido «Un mail por cada venta» en Configuración → Ventas por mail. WiiGo, Mendoza`,
     });
-    const texto = `Nueva venta de ${pesos(total)} a las ${hora} (${donde}, ${pago}): ${lineas.map((l) => `${l.cantidad} × ${l.nombre}`).join(", ")}. Hoy van ${ventasHoy} ventas, ${pesos(totalHoy)}.`;
+    const texto = `${quien ? `${quien}. ` : ""}Nueva venta de ${pesos(total)} a las ${hora} (${donde}, ${pago}): ${lineas.map((l) => `${l.cantidad} × ${l.nombre}`).join(", ")}. Hoy van ${ventasHoy} ventas, ${pesos(totalHoy)}.`;
     const r = await enviarMail({ para: mails, asunto, html, texto });
     if (!r.ok) console.error("No salió el mail de la venta al dueño:", r.error);
   } catch (e) {
