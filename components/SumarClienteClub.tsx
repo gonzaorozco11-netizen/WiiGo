@@ -16,10 +16,7 @@ export default function SumarClienteClub({
   compacto = false,
   onListo,
   onCancelar,
-  sinAutoFoco = false,
 }: {
-  /** Debajo del buscador por DNI (21/11): el foco queda en el buscador. */
-  sinAutoFoco?: boolean;
   dniInicial?: string;
   compacto?: boolean;
   onListo?: (cliente: ClienteClub, yaEstaba: boolean) => void;
@@ -89,7 +86,7 @@ export default function SumarClienteClub({
           <label className={etiqueta} htmlFor="club-dni">
             DNI
           </label>
-          <input id="club-dni" name="dni" defaultValue={dniInicial} required inputMode="numeric" autoFocus={!sinAutoFoco} placeholder="Sin puntos" className={campo} />
+          <input id="club-dni" name="dni" defaultValue={dniInicial} required inputMode="numeric" autoFocus placeholder="Sin puntos" className={campo} />
         </div>
       )}
       <div className="grid grid-cols-2 gap-2">

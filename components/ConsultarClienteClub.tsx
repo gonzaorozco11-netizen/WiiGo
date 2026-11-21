@@ -4,9 +4,9 @@ import { useState, useTransition } from "react";
 import { consultarClienteClub, type FichaClub } from "@/app/(app)/club/actions";
 import SumarClienteClub from "@/components/SumarClienteClub";
 
-// WiiGo Club en una sola hoja (Gonzalo, 21/11): arriba se busca por DNI (nombre,
-// desde cuándo está, puntos); si no está, ahí mismo se lo suma con el mismo
-// formulario de siempre (SumarClienteClub), con el DNI ya puesto.
+// WiiGo Club en una sola hoja (Gonzalo, 21/11): arriba se suma un cliente (el
+// formulario de siempre, SumarClienteClub) y abajo se busca por DNI (nombre, desde
+// cuándo está, puntos). Si el buscado no está, el DNI pasa solo al formulario de arriba.
 
 const fecha = (iso: string) =>
   new Date(iso.length === 10 ? `${iso}T12:00:00` : iso).toLocaleDateString("es-AR", { day: "numeric", month: "long", year: "numeric", timeZone: "America/Argentina/Buenos_Aires" });
@@ -32,6 +32,12 @@ export default function ConsultarClienteClub() {
 
   return (
     <div className="space-y-4">
+      {/* Arriba sumar, abajo buscar (Gonzalo, 21/11). */}
+      <div className="bg-white border border-neutral-200 rounded-xl p-4">
+        <p className="text-sm font-bold text-neutral-900 mb-2">⭐ Sumar un cliente</p>
+        <SumarClienteClub key={res && !res.cliente ? res.dni : "vacio"} dniInicial={res && !res.cliente ? res.dni : ""} />
+      </div>
+
       <div className="bg-white border border-neutral-200 rounded-xl p-4">
         <p className="text-sm font-bold text-neutral-900 mb-2">🔎 Buscar un cliente</p>
         <form onSubmit={buscar} className="flex gap-2">
@@ -39,7 +45,6 @@ export default function ConsultarClienteClub() {
             value={dni}
             onChange={(e) => setDni(e.target.value)}
             inputMode="numeric"
-            autoFocus
             placeholder="DNI, sin puntos"
             aria-label="DNI"
             className="flex-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
@@ -76,14 +81,9 @@ export default function ConsultarClienteClub() {
 
         {res && !res.cliente && (
           <p className="mt-3 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900">
-            El DNI {res.dni} <b>no está en WiiGo Club</b>. Sumalo acá abajo: el DNI ya está puesto.
+            El DNI {res.dni} <b>no está en WiiGo Club</b>. Sumalo arriba: el DNI ya quedó puesto.
           </p>
         )}
-      </div>
-
-      <div className="bg-white border border-neutral-200 rounded-xl p-4">
-        <p className="text-sm font-bold text-neutral-900 mb-2">⭐ Sumar un cliente</p>
-        <SumarClienteClub key={res && !res.cliente ? res.dni : "vacio"} dniInicial={res && !res.cliente ? res.dni : ""} sinAutoFoco />
       </div>
     </div>
   );
