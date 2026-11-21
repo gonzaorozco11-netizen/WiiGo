@@ -9,6 +9,7 @@
 // server-only. Los componentes de cliente que solo necesitan la lista de
 // permisos y sus etiquetas deben importar de "./permisos-constantes".
 
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
@@ -26,7 +27,10 @@ export type SesionConPermisos = {
 
 // Lectura fresca desde la base — no confiar en lo que diga la cookie para
 // nada que dé acceso a algo sensible.
-export async function obtenerSesionConPermisos(): Promise<SesionConPermisos | null> {
+// Una sola lectura por pedido (20/11): layout y página la pedían por separado.
+export const obtenerSesionConPermisos = cache(leerSesionConPermisos);
+
+async function leerSesionConPermisos(): Promise<SesionConPermisos | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
   const sesion = await readSessionToken(token, process.env.AUTH_SECRET ?? "");

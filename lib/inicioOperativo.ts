@@ -200,12 +200,30 @@ export async function armarInicioOperativo(
   if (puede("turnos")) estado.push(cajaAbierta ? { texto: cajaMia ? "💵 Tu caja abierta" : `💵 Caja abierta por ${caja!.usuario_apertura ?? "otra persona"}`, tono: "ok" } : { texto: "💵 Caja cerrada", tono: "ojo" });
 
   // ---------- Los accesos ----------
+  // Todo lo que consultan los accesos sale a la par, de entrada (20/11, «está medio
+  // lento»): eran unas 12 consultas una atrás de la otra. Abajo solo se espera cada
+  // resultado donde se usa. Si una falla, ese acceso sale sin número (como antes los .catch).
+  const idLocalPersona = persona?.id_local ?? null;
+  const pFraccLocal = puede("fraccionar") && idLocalPersona ? fraccionadosEnCurso(supabase, { idLocal: idLocalPersona }).catch(() => []) : Promise.resolve([]);
+  const pFraccMios = puede("fraccionar") ? fraccionadosEnCurso(supabase, { idUsuario: sesion.idUsuario }).catch(() => []) : Promise.resolve([]);
+  const pDatosFracc = puede("fraccionar") && adentro && idLocalPersona ? datosFraccionar(supabase, idLocalPersona).catch(() => null) : Promise.resolve(null);
+  const pComentarios = puede("comentarios") ? comentariosPendientes(supabase).catch(() => 0) : Promise.resolve(0);
+  const pStickers = puede("codigos") ? stickersPorPegar().catch(() => ({ productos: 0, unidades: 0 })) : Promise.resolve({ productos: 0, unidades: 0 });
+  const pUrgentes = puede("carteles") ? contarCartelesUrgentes(supabase).catch(() => 0) : Promise.resolve(0);
+  const pCartelesNuevos = puede("carteles") ? cartelesNuevosPendientes().catch(() => 0) : Promise.resolve(0);
+  const pLocalInventario =
+    puede("conteo") || puede("inventario") ? (idLocalPersona ? Promise.resolve(idLocalPersona) : localDeSesion(supabase, sesion.idUsuario).catch(() => null)) : Promise.resolve(null);
+  const pInventario = pLocalInventario.then((idL) =>
+    idL ? supabase.from("inventarios").select("id_inventario").eq("id_local", idL).eq("estado", "ABIERTO").limit(1).then((r) => !r.error && (r.data?.length ?? 0) > 0) : false
+  );
+  const pFaltan = puede("conteo") ? faltanContar(supabase, sesion.idUsuario).catch(() => 0) : Promise.resolve(0);
+
   const accesos: AccesoRapido[] = [];
   const agregar = (a: Omit<AccesoRapido, "badgeTono"> & { badgeTono?: AccesoRapido["badgeTono"] }) => accesos.push({ badgeTono: "rojo", ...a });
   // Un fraccionado que quedó por la mitad: primero y en rojo, para que lo termine (Gonzalo, 16/11).
   if (puede("fraccionar")) {
-    const delLocal = persona?.id_local ? await fraccionadosEnCurso(supabase, { idLocal: persona.id_local }).catch(() => []) : [];
-    const sinTerminar = (await fraccionadosEnCurso(supabase, { idUsuario: sesion.idUsuario }).catch(() => [])).filter((e) => e.paso < PASO_PARA_ETIQUETAR);
+    const delLocal = await pFraccLocal;
+    const sinTerminar = (await pFraccMios).filter((e) => e.paso < PASO_PARA_ETIQUETAR);
     // Lo fraccionado que espera la etiqueta (de cualquiera del local): hay que imprimir, pegar y sumar al stock.
     const aEtiquetar = paraEtiquetar(delLocal);
     if (aEtiquetar.length > 0) {
@@ -254,7 +272,7 @@ export async function armarInicioOperativo(
     const salidaMin = horaSalida ? minutosDeHora(horaSalida) : null;
     const ultimaHora = adentro && salidaMin !== null && ahora.minutosDelDia >= salidaMin - 60;
     if (adentro && persona?.id_local) {
-      const datos = await datosFraccionar(supabase, persona.id_local).catch(() => null);
+      const datos = await pDatosFracc;
       const lista = datos ? paraFraccionar(conLoYaFraccionado(datos.graneles, aEtiquetar)).filter((s) => !s.sinGranel) : [];
       const bolsitas = lista.reduce((a, s) => a + s.hacer, 0);
       if (bolsitas > 0) {
@@ -304,7 +322,7 @@ export async function armarInicioOperativo(
   }
   // Comentarios de clientes esperando que alguien los publique u oculte (18/11).
   if (puede("comentarios")) {
-    const n = await comentariosPendientes(supabase);
+    const n = await pComentarios;
     if (n > 0)
       agregar({
         clave: "comentarios",
@@ -345,7 +363,7 @@ export async function armarInicioOperativo(
   if (puede("codigos")) {
     // Lo que entró y lleva sticker (granolas, lo embolsado, Alta, Fruppi,
     // Crislo): en rojo hasta que se imprime, para que no vaya a la góndola sin código.
-    const stickers = await stickersPorPegar().catch(() => ({ productos: 0, unidades: 0 }));
+    const stickers = await pStickers;
     agregar({
       clave: "codigos",
       titulo: "Códigos de barras",
@@ -361,9 +379,9 @@ export async function armarInicioOperativo(
   }
   if (puede("carteles")) {
     // En rojo si alguno quedó con el precio viejo y la caja ya cobra el nuevo.
-    const urgentes = await contarCartelesUrgentes(supabase);
+    const urgentes = await pUrgentes;
     // Lo que entró nuevo sin su cartel (Gonzalo, 2026-11-11), como los stickers.
-    const nuevos = urgentes ? 0 : await cartelesNuevosPendientes().catch(() => 0);
+    const nuevos = urgentes ? 0 : await pCartelesNuevos;
     agregar({
       clave: "carteles",
       titulo: "Carteles de precios",
@@ -382,10 +400,8 @@ export async function armarInicioOperativo(
   // El inventario general, mientras Gonzalo lo tenga abierto: arriba de todo.
   // Sin ficha de empleado todavía (le pasó a Tomás), el local sale igual que
   // en inventario/page.tsx: si hay un solo local, es ese.
-  const localInventario = puede("conteo") || puede("inventario") ? persona?.id_local ?? (await localDeSesion(supabase, sesion.idUsuario)) : null;
-  if (localInventario) {
-    const { data: inv, error: eInv } = await supabase.from("inventarios").select("id_inventario").eq("id_local", localInventario).eq("estado", "ABIERTO").limit(1);
-    if (!eInv && inv?.length) {
+  if (await pInventario) {
+    {
       agregar({
         clave: "inventario",
         titulo: "Inventario del local",
@@ -400,7 +416,7 @@ export async function armarInicioOperativo(
   }
   // El conteo de stock del turno, con cuántos le faltan contar.
   if (puede("conteo")) {
-    const faltan = await faltanContar(supabase, sesion.idUsuario);
+    const faltan = await pFaltan;
     agregar({
       clave: "conteo",
       titulo: "Contar stock",

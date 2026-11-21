@@ -44,42 +44,47 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const soloCelular = atado && aparato !== "local";
   // Se busca fresco en la base (no en la cookie) para que un rol nuevo o
   // recién cambiado pegue al toque, sin esperar a que la persona reloguee.
-  const sesionConPantallas = await obtenerSesionConPantallas();
   // Tesorería y RR.HH. no son "pantallas" del catálogo general — se
   // muestran según los mismos permisos puntuales que ya controlaban estas
   // pestañas dentro de Gastos (ver project-wiigo-permisos).
-  const sesionPermisos = await obtenerSesionConPermisos();
+  // Las dos a la par (20/11, «está medio lento»): antes iba una atrás de la otra.
+  const [sesionConPantallas, sesionPermisos] = await Promise.all([obtenerSesionConPantallas(), obtenerSesionConPermisos()]);
   const puedeVerCajaAdmin = tienePermiso(sesionPermisos, PERMISOS.VER_CAJA_ADMIN);
   const puedeGestionarNomina = tienePermiso(sesionPermisos, PERMISOS.GESTIONAR_NOMINA);
   // Misma regla que app/(app)/configuracion/page.tsx: si la pantalla no la
   // deja entrar, el menú no se la muestra.
   const puedeEditarConfiguracion = tienePermiso(sesionPermisos, PERMISOS.EDITAR_CONFIGURACION);
-  const avisoSalida = session && !soloCelular ? await verificarAvisoSalida() : { debeRecordar: false, horaSalida: null };
-  // Contador del menú: lo que las marcas mandaron y las etiquetas vencidas.
-  const pendientes = session && !soloCelular ? await contarPendientes() : { solicitudes: 0, etiquetas: 0, etiquetasVencidas: 0 };
   // Los pedidos de las profesionales que nadie armó todavía: el número rojo
   // del menú. Después lo mantiene al día AvisoPedidos, sin recargar.
   const vePedidos = !soloCelular && puedeVerPantalla(sesionConPantallas, "pedidos");
-  const pedidosNuevos = vePedidos ? await contarPedidosNuevosSinSesion().catch(() => 0) : 0;
   // Un cliente del tótem esperando para pagar en efectivo: franja roja y
   // timbre a quien está trabajando (lo decide la ruta que consulta el aviso).
   const veCobros = Boolean(session) && !soloCelular && puedeVerPantalla(sesionConPantallas, "cobros-efectivo");
   // Un pedido de la tienda online sin atender: cartel rojo con timbre (cada 30 s).
   const vePedidosOnline =
     Boolean(session) && !soloCelular && (puedeVerPantalla(sesionConPantallas, "pedidos-online") || puedeVerPantalla(sesionConPantallas, "pedidos"));
-  // Cuántos hay en «1 · Nuevos»: el número que late en el menú (sin la tabla, 0).
-  const pedidosOnlineNuevos = vePedidosOnline
-    ? ((await getSupabaseServerClient().from("pedidos_online").select("id_pedido", { count: "exact", head: true }).eq("estado", "NUEVO")).count ?? 0)
-    : 0;
-  // Las preguntas de la Guía que esperan respuesta: las responde el Dueño, el
-  // número sale en su botón "¿Alguna duda?". Sin sql/guia-preguntas.sql da 0.
   // Carteles con el precio viejo mientras la caja ya cobra el nuevo: aviso rojo arriba de todo.
   const seAvisanCarteles = Boolean(session) && !soloCelular && puedeVerPantalla(sesionConPantallas, "carteles");
-  const cartelesUrgentes = seAvisanCarteles ? await contarCartelesUrgentes(getSupabaseServerClient()) : 0;
-  const preguntasGuia =
+  const supabase = getSupabaseServerClient();
+
+  // Los avisos y contadores del menú, todos a la par (20/11): eran 6 consultas en fila
+  // en cada pantalla que se abría. Cada uno sigue cayendo a su valor «nada» si no corresponde.
+  const [avisoSalida, pendientes, pedidosNuevos, pedidosOnlineNuevos, cartelesUrgentes, preguntasGuia] = await Promise.all([
+    session && !soloCelular ? verificarAvisoSalida() : Promise.resolve({ debeRecordar: false, horaSalida: null }),
+    // Contador del menú: lo que las marcas mandaron y las etiquetas vencidas.
+    session && !soloCelular ? contarPendientes() : Promise.resolve({ solicitudes: 0, etiquetas: 0, etiquetasVencidas: 0 }),
+    vePedidos ? contarPedidosNuevosSinSesion().catch(() => 0) : Promise.resolve(0),
+    // Cuántos hay en «1 · Nuevos»: el número que late en el menú (sin la tabla, 0).
+    vePedidosOnline
+      ? Promise.resolve(supabase.from("pedidos_online").select("id_pedido", { count: "exact", head: true }).eq("estado", "NUEVO")).then((r) => r.count ?? 0)
+      : Promise.resolve(0),
+    seAvisanCarteles ? contarCartelesUrgentes(supabase) : Promise.resolve(0),
+    // Las preguntas de la Guía que esperan respuesta: las responde el Dueño, el
+    // número sale en su botón "¿Alguna duda?". Sin sql/guia-preguntas.sql da 0.
     session?.rol === "admin"
-      ? ((await getSupabaseServerClient().from("preguntas_guia").select("id_pregunta", { count: "exact", head: true }).eq("estado", "PENDIENTE")).count ?? 0)
-      : 0;
+      ? Promise.resolve(supabase.from("preguntas_guia").select("id_pregunta", { count: "exact", head: true }).eq("estado", "PENDIENTE")).then((r) => r.count ?? 0)
+      : Promise.resolve(0),
+  ]);
 
   return (
     // Menú a la izquierda y la pantalla a la derecha (en la computadora; en

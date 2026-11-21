@@ -12,6 +12,7 @@
 //
 // Se chequea siempre fresco contra la base (mismo criterio que
 // lib/permisos.ts) — nunca contra la cookie, que puede tener hasta 30 días.
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
@@ -33,7 +34,14 @@ async function pantallasDeAreas(supabase: ReturnType<typeof getSupabaseServerCli
   return [...pantallas];
 }
 
-export async function obtenerSesionConPantallas(): Promise<SesionConPantallas | null> {
+/**
+ * Una sola lectura por pedido (20/11, «está medio lento»): el layout, la página y
+ * sus componentes la pedían cada uno por su lado. Sigue siendo fresca en cada
+ * pantalla que se abre; solo no se repite dentro de la misma.
+ */
+export const obtenerSesionConPantallas = cache(leerSesionConPantallas);
+
+async function leerSesionConPantallas(): Promise<SesionConPantallas | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
   const sesion = await readSessionToken(token, process.env.AUTH_SECRET ?? "");
