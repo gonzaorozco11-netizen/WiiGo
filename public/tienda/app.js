@@ -455,19 +455,17 @@
     var rub = rubrosDe(l);
     // Con una marca elegida, las pestañas y las secciones son TODAS sus subcategorías (Gonzalo, 16/11:
     // «toco WiiGo y no veo todas las subcategorías»). Sin marca, los rubros.
-    var subsMarca = null;
-    if (S.marcaIni) {
-      var cuenta = {}; l.forEach(function (p) { (cuenta[p.sc] = cuenta[p.sc] || []).push(p); });
-      subsMarca = Object.keys(cuenta).sort(function (a, b) { return a.localeCompare(b, 'es'); }).map(function (s) { return [s, cuenta[s]]; });
-    }
+    var subsMarca = S.marcaIni ? subcatsDeMarca(S.marcaIni) : null;
     // Con una marca: arriba, pegadas, las categorías como pastillas con una fotito. Tocar una lleva hasta ella,
     // pero se puede seguir subiendo y bajando: la pastilla marcada cambia sola a la categoría que se está
     // mirando (Gonzalo, 16/11, «como a la siguiente subcategoría automático»).
-    var fotoSub = function (ps) { var c = ps.filter(function (p) { return p.img && p.s > 0; })[0] || ps.filter(function (p) { return p.img; })[0]; return c ? imagen(c.img, 96) : ''; };
     // Sin rubros (Gonzalo, 18/11: «no los pongas si luego cuando ponen las marcas ahí figuran las
     // subcategorías»): las pestañas son solo las subcategorías de la marca elegida, con su fotito.
-    var tabs = subsMarca ? '<nav class="tabs-rubros pastillas" id="tabs-rubros" aria-label="Categorías">' +
-      subsMarca.map(function (s, i) { return '<button class="pastilla" data-a="ir-sec" data-s="s-s' + i + '">' + fotoSub(s[1]) + esc(s[0]) + ' <em>' + s[1].length + '</em></button>'; }).join('') + '</nav>' : '';
+    // «Todas» (22/11): al final de la fila, en su propio lugar (no tapa ninguna pastilla); abre la ventanita
+    // con todas las categorías en círculos, para no tener que deslizar hasta la que se busca.
+    var tabs = subsMarca ? '<div class="tabs-fila"><nav class="tabs-rubros pastillas" id="tabs-rubros" aria-label="Categorías">' +
+      subsMarca.map(function (s, i) { return '<button class="pastilla" data-a="ir-sec" data-s="s-s' + i + '">' + fotoSub(s[1], 96) + esc(s[0]) + ' <em>' + s[1].length + '</em></button>'; }).join('') + '</nav>' +
+      (subsMarca.length > 4 ? '<button class="ver-cats" data-a="ver-cats" aria-haspopup="dialog" aria-label="Ver todas las categorías"><i aria-hidden="true">▦</i>Todas</button>' : '') + '</div>' : '';
     var marcas = '<div class="marcas-ini" role="group" aria-label="Marcas"><button class="marca-p todo" data-a="marca-ini" data-m="" aria-pressed="' + !S.marcaIni + '">Todo</button>' + MARCAS.map(function (m) {
       return '<button class="marca-p" data-a="marca-ini" data-m="' + esc(m.n) + '" aria-pressed="' + (S.marcaIni === m.n) + '">' + (m.logo ? imagen(m.logo, 64) : '<i>' + esc(m.n.charAt(0)) + '</i>') + '<span class="mp-tx"><b>' + esc(m.n) + '</b>' + (RUBRO_MARCA[m.n] ? '<small>' + RUBRO_MARCA[m.n] + '</small>' : '') + '</span></button>';
     }).join('') + '</div>';
@@ -769,6 +767,27 @@
     }
     return { lista: lista.slice(0, 4), deJuntos: lista.slice(0, 4).some(function (p) { return deJuntos[p.id]; }) };
   }
+  // Las subcategorías de una marca, en orden alfabético, con sus productos: [[nombre, productos], ...].
+  // Las usan las pastillas del inicio y la ventanita «Todas»; el número de cada una (s-s0, s-s1…) es el mismo.
+  function subcatsDeMarca(m) {
+    var cuenta = {}; PROD.forEach(function (p) { if (p.m === m) (cuenta[p.sc] = cuenta[p.sc] || []).push(p); });
+    return Object.keys(cuenta).sort(function (a, b) { return a.localeCompare(b, 'es'); }).map(function (s) { return [s, cuenta[s]]; });
+  }
+  // La foto que representa a una categoría: la de un producto con stock (o cualquiera con foto).
+  function fotoSub(ps, w) { var c = ps.filter(function (p) { return p.img && p.s > 0; })[0] || ps.filter(function (p) { return p.img; })[0]; return c ? imagen(c.img, w) : ''; }
+  // «Todas las categorías» (Gonzalo, 22/11): ventanita desde abajo con cada categoría en un círculo con foto.
+  // Tocar una cierra la ventanita y baja hasta esa categoría, igual que la pastilla.
+  function hojaCats() {
+    if (!S.cats || !S.marcaIni) return '';
+    var subs = subcatsDeMarca(S.marcaIni);
+    var actual = document.querySelector('#tabs-rubros [aria-current="true"]');
+    var marcada = actual ? actual.getAttribute('data-s') : '';
+    var circ = subs.map(function (s, i) {
+      return '<button class="cat-c" data-a="cat-ir" data-s="s-s' + i + '"' + (marcada === 's-s' + i ? ' aria-current="true"' : '') + '><span class="cat-f">' + fotoSub(s[1], 160) + '</span><span class="cat-n">' + esc(s[0]) + '</span><em>' + s[1].length + (s[1].length === 1 ? ' producto' : ' productos') + '</em></button>';
+    }).join('');
+    return '<div class="fondo" data-a="cerrar-cats"></div><section class="hoja" role="dialog" aria-modal="true" aria-label="Categorías"><div class="hoja-cab"><h2 style="font-size:21px">Categorías<small class="cats-sub">' + subs.length + ' de ' + esc(nombreMarca(S.marcaIni)) + '</small></h2><button class="redondo" data-a="cerrar-cats" aria-label="Cerrar">' + ic('cruz', 20) + '</button></div>' +
+      '<div class="hoja-cuerpo"><div class="cats-grilla">' + circ + '</div></div></section>';
+  }
   function hojaReco() {
     if (!S.reco) return '';
     var r = S.reco;
@@ -972,7 +991,7 @@
       : !t.u && enCurso && S.vista !== 'seguir' && !S.pedido ? '<div class="barra"><button data-a="ver-pedido" data-c="' + esc(enCurso.codigo) + '"><span>' + ic('bolsa', 20) + 'Pedido #' + enCurso.num + ' · ' + (enCurso.pago === 'transf' && !enCurso.pagoOk ? 'Falta tu transferencia' : enCurso.pago === 'tarjeta' && !enCurso.pagoOk ? 'Falta el pago' : ESTADOS_PED[Math.max(0, enCurso.paso)].t) + '</span><span>Seguir ' + ic('flecha', 18) + '</span></button></div>' : '';
     var foco = document.activeElement && (document.activeElement.id === 'q' || document.activeElement.id === 'mq') ? document.activeElement.id : null;
     var pos = foco ? document.activeElement.selectionStart : 0, y = window.scrollY;
-    app.innerHTML = cab + '<main>' + cuerpo + '</main>' + (S.cuenta || S.combo || S.reco ? '' : barra) + cajon() + ficha() + pedido() + hojaCombo() + hojaReco() + cuenta();
+    app.innerHTML = cab + '<main>' + cuerpo + '</main>' + (S.cuenta || S.combo || S.reco || S.cats ? '' : barra) + cajon() + ficha() + pedido() + hojaCombo() + hojaReco() + hojaCats() + cuenta();
     if (foco) { var i = document.getElementById(foco); if (i) { i.focus(); try { i.setSelectionRange(pos, pos); } catch (e) {} } }
     window.scrollTo(0, arriba ? 0 : y);
     montarGlobo();
@@ -1021,7 +1040,7 @@
   }
   setInterval(function () {
     var p = document.getElementById('b-pista');
-    if (!p || window.matchMedia('(prefers-reduced-motion: reduce)').matches || S.ficha || S.pedido || S.reco || S.cuenta || S.menu || S.cartelIni) return;
+    if (!p || window.matchMedia('(prefers-reduced-motion: reduce)').matches || S.ficha || S.pedido || S.reco || S.cuenta || S.menu || S.cartelIni || S.cats) return;
     if (Date.now() - (S.bannerQuieto || 0) < 9000) return;
     var r = p.getBoundingClientRect(); if (r.bottom < 0 || r.top > window.innerHeight) return;
     S.banner = ((S.banner || 0) + 1) % p.children.length;
@@ -1186,6 +1205,9 @@
     'combo-sabor': function (d) { var e = (S.comboSel || {})[d.g]; if (e) e.v = d.x; pintar(false); },
     'combo-agregar': function () { var c = POR_COMBO[S.combo]; if (c) agregarCombo(c); },
     'cerrar-combo': function () { S.combo = null; S.comboSel = null; pintar(false); },
+    'ver-cats': function () { S.cats = true; pintar(false); },
+    'cerrar-cats': function () { S.cats = false; pintar(false); },
+    'cat-ir': function (d) { S.cats = false; pintar(false); requestAnimationFrame(function () { A['ir-sec'](d); }); },
     mundo: function () { ver({ mundo: true, titulo: 'Productos del mundo' }); },
     lugar: function (d) {
       var f = S.f; f.lugar = d.k && f.lugar !== d.k ? d.k : null; f.titulo = 'Productos del mundo'; S.limite = 20;

@@ -379,6 +379,20 @@ a.dir-mapa u{text-decoration:underline;text-underline-offset:2px;color:#3f5536;f
 .pastilla em{font-style:normal;color:var(--gris);font-size:12px;font-weight:600}
 .pastilla[aria-current="true"]{background:var(--bosque);border-color:var(--bosque);color:#f5f1e8}
 .pastilla[aria-current="true"] em{color:#c9cfbd}
+/* «Todas» (22/11): al final de la fila, en su propio lugar; abre la ventanita con las categorías en círculos */
+.tabs-fila{display:flex;align-items:center;margin:4px -14px 0}
+.pegado-ini .tabs-fila .tabs-rubros{flex:1;min-width:0;margin:0}
+.ver-cats{flex:none;display:flex;flex-direction:column;align-items:center;gap:2px;border:0;border-left:1px solid var(--linea);background:none;color:var(--bosque);font:800 10.5px/1 var(--texto,inherit);padding:2px 12px 8px 8px;cursor:pointer}
+.ver-cats i{font-style:normal;display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:var(--bosque);color:#f5f1e8;font-size:15px}
+.cats-sub{display:block;font:600 13px/1.3 var(--texto,inherit);color:var(--gris);margin-top:2px}
+.cats-grilla{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px 8px;padding:6px 0 18px}
+.cat-c{border:0;background:none;display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;color:var(--bosque);text-align:center;padding:0;font:700 12.5px/1.2 var(--texto,inherit)}
+.cat-f{width:80px;height:80px;border-radius:50%;background:#fff;border:2px solid var(--linea);display:grid;place-items:center;overflow:hidden;transition:transform .15s}
+.cat-f img{width:84%;height:84%;object-fit:contain}
+.cat-c:active .cat-f{transform:scale(.94)}
+.cat-c[aria-current="true"] .cat-f{border-color:var(--bosque);box-shadow:0 0 0 3px rgba(47,74,58,.18)}
+.cat-c em{font-style:normal;color:var(--gris);font-weight:600;font-size:11.5px}
+@media (prefers-reduced-motion:reduce){.cat-f{transition:none}}
 .rub-cant{margin:-6px 0 0;color:var(--gris);font-size:12.5px;font-weight:600}
 .sub-rub{margin:18px 0 0;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--gris)}
 /* «Lo más elegido»: tarjetas que se deslizan, con el «+» sobre la foto */
@@ -658,6 +672,8 @@ a.dir-mapa u{text-decoration:underline;text-underline-offset:2px;color:#3f5536;f
   .items{grid-template-columns:repeat(2,minmax(0,1fr))}
   .accesos-ini{max-width:640px}
   .tabs-rubros{margin-left:-22px;margin-right:-22px;padding:0 18px}
+  .tabs-fila{margin-left:-22px;margin-right:-22px}
+  .cats-grilla{grid-template-columns:repeat(4,minmax(0,1fr))}
   .carrusel{grid-auto-columns:220px;gap:14px}
   .carga{grid-template-columns:minmax(0,1fr) 170px;padding:22px 30px 14px 34px}
   .banner{min-height:200px;padding-left:34px;padding-right:30px}
@@ -704,6 +720,6 @@ a.dir-mapa u{text-decoration:underline;text-underline-offset:2px;color:#3f5536;f
 <div class="app" id="app"><p style="padding:60px 16px;text-align:center;color:#626a5e">Cargando los productos…</p></div>
 <!-- El catálogo real, armado en el servidor con lo público de cada producto (lib/tiendaCatalogo.ts). -->
 <script src="/api/tienda/catalogo"></script>
-<script src="app.js?v=36"></script>
+<script src="app.js?v=37"></script>
 </body>
 </html>
