@@ -223,6 +223,24 @@
       .catch(function () { return { error: 'Sin conexión. Revisá internet y probá de nuevo.' }; });
   }
   var carrito = [], sabor = {};
+  // El carrito queda guardado en este celular (Gonzalo, 24/11: «cuando actualizo la página se me sale
+  // lo seleccionado»). Dura 3 días; al volver se descarta lo que ya no está o no tiene stock.
+  var CLAVE_CARRITO = 'wiigo-carrito';
+  function guardarCarrito() {
+    try { if (carrito.length) localStorage.setItem(CLAVE_CARRITO, JSON.stringify({ c: carrito, s: sabor, t: Date.now() })); else localStorage.removeItem(CLAVE_CARRITO); } catch (e) {}
+  }
+  try {
+    var guardado = JSON.parse(localStorage.getItem(CLAVE_CARRITO) || 'null');
+    if (guardado && Date.now() - guardado.t < 3 * 864e5 && Array.isArray(guardado.c)) {
+      sabor = guardado.s && typeof guardado.s === 'object' ? guardado.s : {};
+      carrito = guardado.c.map(function (l) {
+        var p = l && POR_ID[l.id]; if (!p) return null;
+        var hay = l.v ? (((p.v || []).filter(function (y) { return y.n === l.v; })[0]) || {}).s || 0 : p.s;
+        var q = Math.min(Math.floor(Number(l.q) || 0), hay);
+        return q > 0 ? { id: l.id, v: l.v || null, q: q } : null;
+      }).filter(Boolean);
+    }
+  } catch (e) { carrito = []; sabor = {}; }
   function stockDe(p, v) { if (v) { var x = (p.v || []).filter(function (y) { return y.n === v; })[0]; return x ? x.s : 0; } return p.s; }
   function saborDe(p) { if (!p.v || !p.v.length) return null; if (sabor[p.id] === undefined) sabor[p.id] = ((p.v.filter(function (v) { return v.s > 0; })[0]) || {}).n || null; return sabor[p.id]; }
   function enCarrito(id, v) { var l = carrito.filter(function (x) { return x.id === id && x.v === (v || null); })[0]; return l ? l.q : 0; }
@@ -232,6 +250,7 @@
     var antes = l.q; l.q = Math.max(0, Math.min(stockDe(p, v), l.q + n));
     if (n > 0 && l.q === antes) aviso('No hay más stock de este producto');
     carrito = carrito.filter(function (x) { return x.q > 0; });
+    guardarCarrito();
   }
   /* ---------- Combos (Gonzalo, 16/11) ----------
      Un combo no es un producto: si en el pedido están sus productos, el precio baja solo.
@@ -1067,6 +1086,7 @@
     if (acc) window.scrollTo(0, acc.getBoundingClientRect().bottom + window.scrollY - (cab ? cab.offsetHeight : 0));
   }
   function pintar(arriba) {
+    guardarCarrito();
     var t = totales();
     // Arriba, siempre: el logo, la cuenta, el pedido y el buscador (busca en todo). Las marcas y los rubros
     // ahora están en el inicio (pastillas y pestañas), así que el menú ☰ ya no va.
