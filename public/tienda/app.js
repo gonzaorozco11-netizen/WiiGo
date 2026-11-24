@@ -943,6 +943,8 @@
     // Con Nave en producción no hay transferencia (20/11): arranca en tarjeta.
     var conTransf = !(D.pagos && D.pagos.transferencia === false);
     var t = totales(), co = S.co || (S.co = { pago: conTransf ? 'transf' : TARJETA_ONLINE ? 'tarjeta' : 'retiro' });
+    // Con «Tarjeta» elegida, el módulo de Nave (~9 MB) se empieza a bajar ya, mientras revisa el pedido (24/11).
+    if (co.pago === 'tarjeta' && TARJETA_ONLINE) setTimeout(function () { cargarSdkNave().catch(function () {}); }, 0);
     var op = function (a, v, on, tit, sub, extra) { return '<button class="opcion" data-a="' + a + '" data-v="' + v + '" aria-pressed="' + on + '"' + (extra || '') + '><span class="radio"></span><span><b>' + tit + '</b><small>' + sub + '</small></span></button>'; };
     // Más simple (Gonzalo, 18/11, maqueta «La tienda, como el local»): dónde retirás, cómo pagás con el monto
     // al lado, el total, los puntos y un botón. El alias aparece después de confirmar, en el seguimiento.
