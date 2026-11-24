@@ -28,6 +28,7 @@ import { tasaComisionCobro } from "@/lib/comisionCobro";
 import { aplicarCombos, partirEnCombos } from "@/lib/combos";
 import { traerCombos, productoDeVariantes } from "@/lib/combosServidor";
 import QRCode from "qrcode";
+import { mandarAlPosnet, revisarCobroPosnet, cancelarCobroPosnetDeVenta, type EstadoCobroPosnet } from "@/lib/navePosnet";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /** Los renglones a guardar: el `id_combo` va solo en los que entraron en un combo. */
@@ -206,7 +207,34 @@ type ResultadoVenta = {
   /** Algo que el cajero tiene que saber aunque la venta haya salido bien. */
   aviso?: string;
 };
-type ResultadoPedidoMp = { idVenta: string; numero: number; total: number; qrImagen?: string };
+// `posnet`: el cobro se mandó al posnet conectado con ese número (lib/navePosnet.ts).
+type ResultadoPedidoMp = { idVenta: string; numero: number; total: number; qrImagen?: string; posnet?: number };
+
+// ===== Posnet conectado (24/11) =====
+// La caja, mientras espera, pregunta cómo va el cobro. Si lo cerró ella (y no el aviso de
+// Nave), la pantalla manda los avisos a las marcas.
+export async function estadoCobroPosnet(idVenta: string): Promise<EstadoCobroPosnet> {
+  return revisarCobroPosnet(getSupabaseServerClient(), idVenta);
+}
+
+/** «Mandar de nuevo» / «Probar otra tarjeta»: el mismo total, otra vez al posnet (puede ser el otro). */
+export async function reenviarCobroPosnet(
+  idVenta: string,
+  numeroPosnet: number
+): Promise<{ error: string | null; pagado?: { detalle: string | null; confirmadoAhora: boolean } }> {
+  const supabase = getSupabaseServerClient();
+  // Antes de mandar otro, por las dudas: si el cliente justo pagó, no se le cobra dos veces.
+  const estado = await revisarCobroPosnet(supabase, idVenta);
+  if (estado.estado === "PAGADO") return { error: null, pagado: { detalle: estado.detalle, confirmadoAhora: estado.confirmadoAhora } };
+  if (estado.estado === "CANCELADO") return { error: "Esta venta ya se canceló." };
+  if (estado.estado === "ERROR" && /cobró/.test(estado.motivo)) return { error: estado.motivo };
+  return mandarAlPosnet(supabase, idVenta, numeroPosnet);
+}
+
+/** «Cancelar cobro» / «Cambiar medio de pago»: sale del posnet y la venta se cancela (salvo que ya haya pagado). */
+export async function cancelarCobroPosnet(idVenta: string): Promise<EstadoCobroPosnet> {
+  return cancelarCobroPosnetDeVenta(getSupabaseServerClient(), idVenta, "Cobro con posnet cancelado desde la caja");
+}
 
 // Para que el POS sepa cuándo el cliente ya pagó el QR y pasar solo a la
 // pantalla de éxito, sin que el empleado tenga que estar preguntando.
@@ -245,16 +273,19 @@ export async function venderPos(
   // A nombre de quién va la factura. Lo elige la persona que cobra, que es la
   // única que puede preguntarle al cliente. Sin esto: consumidor final.
   receptorFactura?: { tipo: "CONSUMIDOR_FINAL" | "DNI" | "CUIT"; numero: string },
-  // Con el posnet (Nave): débito o crédito, lo elige la cajera; el cupón es
-  // optativo, para controlar contra el cierre de lote.
-  posnet?: { tarjeta: TarjetaPosnet; cupon?: string },
+  // Con el posnet (Nave) marcado a mano: débito o crédito, lo elige la cajera; el
+  // cupón es optativo, para controlar contra el cierre de lote. Con el posnet
+  // conectado (24/11): a cuál se manda el cobro, y el resto lo dice Nave.
+  posnet?: { tarjeta: TarjetaPosnet; cupon?: string } | { conectado: number },
   // Al cobrar un pedido (de la tienda online o de una profesional) los precios
   // ya vienen del pedido, con el combo adentro si lo tenía: no se vuelve a aplicar.
   sinCombos?: boolean
 ): Promise<{ error: string | null; venta?: ResultadoVenta; pedido?: ResultadoPedidoMp }> {
   if (items.length === 0) return { error: "El carrito está vacío" };
   const esPosnet = medioPago === "POSNET";
-  if (esPosnet && posnet?.tarjeta !== "DEBITO" && posnet?.tarjeta !== "CREDITO") {
+  const posnetConectado = esPosnet && posnet && "conectado" in posnet ? posnet.conectado : null;
+  const posnetManual = esPosnet && posnet && "tarjeta" in posnet ? posnet : null;
+  if (esPosnet && !posnetConectado && posnetManual?.tarjeta !== "DEBITO" && posnetManual?.tarjeta !== "CREDITO") {
     return { error: "Elegí si la tarjeta del posnet es de débito o de crédito." };
   }
   // Un producto recién cargado puede no tener precio todavía: no se vende a $0.
@@ -396,7 +427,9 @@ export async function venderPos(
 
   const datosFactura = { factura_doc_tipo: tipoDocFacturacion, factura_doc_nro: documentoFacturacion };
 
-  if (medioPago === "MERCADO_PAGO" || medioPago === "TRANSFERENCIA") {
+  // El posnet conectado espera el pago igual que el QR: la venta queda pendiente hasta que Nave lo aprueba.
+  if (posnetConectado && total <= 0) return { error: "No hay nada para cobrar con tarjeta: está todo cubierto." };
+  if (medioPago === "MERCADO_PAGO" || medioPago === "TRANSFERENCIA" || posnetConectado) {
     // Con Mercado Pago la plata se mueve apenas el cliente escanea el QR —
     // si no hay turno abierto en ese momento, la confirmación automática
     // del webhook se rechaza (confirmarCobro la exige) y la venta queda
@@ -425,7 +458,7 @@ export async function venderPos(
         puntos_canjeados: puntosACanjear,
         total,
         estado: "PENDIENTE_PAGO",
-        medio_pago: "MERCADO_PAGO",
+        medio_pago: posnetConectado ? "POSNET" : "MERCADO_PAGO",
         usuario,
         terminal: "POS",
         // Solo si alguien dijo el código. Si suma por ser su paciente, lo
@@ -488,6 +521,15 @@ export async function venderPos(
           aviso: hecha?.a_revisar ? `Ojo: ${hecha.a_revisar}` : undefined,
         },
       };
+    }
+
+    if (posnetConectado) {
+      const enviado = await mandarAlPosnet(supabase, venta.id_venta as string, posnetConectado);
+      if (enviado.error) {
+        await cancelarPedido(venta.id_venta, "No se pudo mandar el cobro al posnet desde Vender (POS)").catch(() => null);
+        return { error: enviado.error };
+      }
+      return { error: null, pedido: { idVenta: venta.id_venta as string, numero: venta.numero as number, total, posnet: posnetConectado } };
     }
 
     try {
@@ -564,7 +606,8 @@ export async function venderPos(
     estado_conciliacion: "CONCILIADO",
     observaciones: `Venta mostrador · ${usuario ?? "personal"} · Pagó con $${montoFinal} · Vuelto $${vuelto}`,
   };
-  if (esPosnet && posnet) {
+  if (esPosnet && posnetManual) {
+    const posnet = posnetManual;
     // El posnet cobra su comisión + IVA (la tasa cargada es sin IVA, como la
     // muestra Nave). Queda "a conciliar": se controla con el cierre de lote.
     const forma = formaPagoPosnet(posnet.tarjeta);

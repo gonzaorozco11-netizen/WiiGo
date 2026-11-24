@@ -67,31 +67,82 @@ export function datosPagoEmbebido(): { clave: string; env: "production" | "sandb
   return { clave, env: process.env.NAVE_ENTORNO === "produccion" ? "production" : "sandbox" };
 }
 
+/**
+ * Con qué credenciales y contra qué servidor se habla. La tienda online usa las de
+ * NAVE_CLIENT_ID; el posnet (Nave Point, 24/11) puede tener las suyas (ver cuentaPosnet).
+ */
+export type CuentaNave = { clave: string; tokens: readonly string[]; api: string; id: string; secreto: string; tokenFijo?: string };
+
+function cuentaOnline(): CuentaNave {
+  const e = entorno();
+  return {
+    clave: "online",
+    tokens: e.token,
+    api: e.api,
+    id: limpio(process.env.NAVE_CLIENT_ID),
+    secreto: limpio(process.env.NAVE_CLIENT_SECRET),
+    tokenFijo: process.env.NAVE_TOKEN_URL?.trim() || undefined,
+  };
+}
+
+// El posnet (Nave Point): la guía de Nave da otro servidor de pruebas (e3-api) que el de la tienda.
+const URLS_POSNET = {
+  sandbox: {
+    token: [
+      "https://homoservices.apinaranja.com/security-ms/api/security/auth0/b2b/m2msPrivate",
+      "https://homoservices.apinaranja.com/security-ms/api/security/auth0/b2b/m2ms",
+    ],
+    api: "https://e3-api.ranty.io/integrations",
+  },
+  produccion: {
+    token: ["https://services.apinaranja.com/security-ms/api/security/auth0/b2b/m2msPrivate"],
+    api: "https://api.ranty.io/integrations",
+  },
+} as const;
+
+export type EntornoNave = "produccion" | "sandbox";
+
+/**
+ * Las credenciales del posnet: NAVE_POSNET_CLIENT_ID / NAVE_POSNET_CLIENT_SECRET (producción) o
+ * NAVE_POSNET_SANDBOX_CLIENT_ID / NAVE_POSNET_SANDBOX_CLIENT_SECRET (pruebas). Si no están, las
+ * de la tienda online cuando son del mismo entorno (Nave puede usar las mismas para los dos).
+ */
+export function cuentaPosnet(e: EntornoNave): CuentaNave | null {
+  const pre = e === "sandbox" ? "NAVE_POSNET_SANDBOX" : "NAVE_POSNET";
+  const mismasQueOnline = (process.env.NAVE_ENTORNO === "produccion" ? "produccion" : "sandbox") === e;
+  const id = limpio(process.env[`${pre}_CLIENT_ID`]) || (mismasQueOnline ? limpio(process.env.NAVE_CLIENT_ID) : "");
+  const secreto = limpio(process.env[`${pre}_CLIENT_SECRET`]) || (mismasQueOnline ? limpio(process.env.NAVE_CLIENT_SECRET) : "");
+  if (!id || !secreto) return null;
+  return { clave: `posnet-${e}`, tokens: URLS_POSNET[e].token, api: URLS_POSNET[e].api, id, secreto };
+}
+
 // El token dura ~1 h: se guarda en memoria mientras viva la función (si no, se pide otro).
-let tokenGuardado: { valor: string; vence: number } | null = null;
+const tokensGuardados = new Map<string, { valor: string; vence: number }>();
 
 // La dirección del token que funcionó (se prueba esa primero la próxima vez).
-let tokenUrlBuena: string | null = null;
+const tokenUrlBuena = new Map<string, string>();
 
-async function token(renovar = false): Promise<string> {
-  if (!renovar && tokenGuardado && tokenGuardado.vence > Date.now()) return tokenGuardado.valor;
-  const fija = process.env.NAVE_TOKEN_URL?.trim();
-  const candidatas = fija ? [fija] : [...new Set([tokenUrlBuena, ...entorno().token].filter((u): u is string => Boolean(u)))];
+async function token(cuenta: CuentaNave, renovar = false): Promise<string> {
+  const guardado = tokensGuardados.get(cuenta.clave);
+  if (!renovar && guardado && guardado.vence > Date.now()) return guardado.valor;
+  const candidatas = cuenta.tokenFijo
+    ? [cuenta.tokenFijo]
+    : [...new Set([tokenUrlBuena.get(cuenta.clave), ...cuenta.tokens].filter((u): u is string => Boolean(u)))];
   const fallas: string[] = [];
   for (const url of candidatas) {
     const r = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ client_id: limpio(process.env.NAVE_CLIENT_ID), client_secret: limpio(process.env.NAVE_CLIENT_SECRET), audience: AUDIENCE() }),
+      body: JSON.stringify({ client_id: cuenta.id, client_secret: cuenta.secreto, audience: AUDIENCE() }),
       signal: AbortSignal.timeout(10000),
     });
     const texto = await r.text();
     let j: { access_token?: string; expires_in?: number } = {};
     try { j = JSON.parse(texto); } catch { /* respuesta no JSON */ }
     if (r.ok && j.access_token) {
-      tokenUrlBuena = url;
+      tokenUrlBuena.set(cuenta.clave, url);
       const segundos = Math.max(Number(j.expires_in ?? 3600) - 60, 60);
-      tokenGuardado = { valor: j.access_token, vence: Date.now() + segundos * 1000 };
+      tokensGuardados.set(cuenta.clave, { valor: j.access_token, vence: Date.now() + segundos * 1000 });
       return j.access_token;
     }
     // Lo que contestó Nave (sin datos secretos: es su mensaje de error) para poder diagnosticar.
@@ -100,11 +151,11 @@ async function token(renovar = false): Promise<string> {
   throw new Error(`Nave no dio el token: ${fallas.join(" | ")}`);
 }
 
-async function pedir<T>(url: string, init: { method: "GET" | "POST"; body?: unknown }): Promise<T> {
+async function pedir<T>(url: string, init: { method: "GET" | "POST" | "DELETE"; body?: unknown }, cuenta: CuentaNave = cuentaOnline()): Promise<T> {
   for (let intento = 0; intento < 2; intento++) {
     const r = await fetch(url, {
       method: init.method,
-      headers: { Authorization: `Bearer ${await token(intento > 0)}`, "Content-Type": "application/json", Accept: "application/json" },
+      headers: { Authorization: `Bearer ${await token(cuenta, intento > 0)}`, "Content-Type": "application/json", Accept: "application/json" },
       body: init.body ? JSON.stringify(init.body) : undefined,
       signal: AbortSignal.timeout(15000),
     });
@@ -166,8 +217,11 @@ export async function crearPagoNave(p: {
 export type EstadoPagoNave = "APROBADO" | "RECHAZADO" | "PENDIENTE" | "CANCELADO" | "DEVUELTO" | "OTRO";
 
 /** El pago, consultado a Nave (nunca se le cree al aviso sin esto). */
-export async function consultarPagoNave(idPago: string): Promise<{ estado: EstadoPagoNave; crudo: string; forma: "POSNET_DEBITO" | "POSNET_CREDITO" | null; datos: Record<string, unknown> }> {
-  const d = await pedir<Record<string, unknown>>(`${entorno().api}/payments/${encodeURIComponent(idPago)}`, { method: "GET" });
+export async function consultarPagoNave(
+  idPago: string,
+  cuenta: CuentaNave = cuentaOnline()
+): Promise<{ estado: EstadoPagoNave; crudo: string; forma: "POSNET_DEBITO" | "POSNET_CREDITO" | null; datos: Record<string, unknown> }> {
+  const d = await pedir<Record<string, unknown>>(`${cuenta.api}/payments/${encodeURIComponent(idPago)}`, { method: "GET" }, cuenta);
   const crudo = String((d.status as { name?: string } | undefined)?.name ?? "").toUpperCase();
   const estado: EstadoPagoNave =
     crudo === "APPROVED" ? "APROBADO"
@@ -208,13 +262,93 @@ export function referenciasDelPago(datos: Record<string, unknown>): string[] {
 }
 
 /** La intención de pago (por si el aviso no llegó): SUCCESS_PROCESSED = pagada. */
-export async function consultarPedidoNave(idPedidoNave: string): Promise<{ estado: string; idPago: string | null }> {
-  const d = await pedir<Record<string, unknown>>(`${entorno().api}/payment_requests/${encodeURIComponent(idPedidoNave)}`, { method: "GET" });
+export async function consultarPedidoNave(
+  idPedidoNave: string,
+  cuenta: CuentaNave = cuentaOnline()
+): Promise<{ estado: string; idPago: string | null; ultimoIntento: string | null }> {
+  const d = await pedir<Record<string, unknown>>(`${cuenta.api}/payment_requests/${encodeURIComponent(idPedidoNave)}`, { method: "GET" }, cuenta);
   const estado = String((d.status as { name?: string } | undefined)?.name ?? "").toUpperCase();
-  // El id del pago puede venir en distintos lugares; se busca el primero que aparezca.
+  // El id del pago puede venir en distintos lugares. La guía del posnet (24/11) lo pone en
+  // payment_attempts.payments: ahí puede haber varios intentos; vale el último.
+  const intentos = (d.payment_attempts as { payments?: { payment_id?: string; status?: string }[] } | undefined)?.payments ?? [];
+  const ultimo = intentos[intentos.length - 1];
   const pagos = (d.payments ?? (d.transactions as { payments?: unknown }[] | undefined)?.[0]?.payments) as { id?: string; payment_id?: string }[] | undefined;
-  const idPago = (d.payment_id as string | undefined) ?? pagos?.[0]?.payment_id ?? pagos?.[0]?.id ?? null;
-  return { estado, idPago };
+  const idPago = (d.payment_id as string | undefined) ?? ultimo?.payment_id ?? pagos?.[0]?.payment_id ?? pagos?.[0]?.id ?? null;
+  return { estado, idPago, ultimoIntento: ultimo?.status ? String(ultimo.status).toUpperCase() : null };
+}
+
+// ===== Posnet (Nave Point) conectado a la caja (24/11) =====
+// La caja manda el monto al posnet (POST /payment_requests/smart_pos), el cliente paga en el
+// aparato y Nave avisa a /api/nave/posnet/aviso. La caja además pregunta cada pocos segundos
+// mientras espera. Nunca se le cree al aviso: se consulta el pago (ver lib/navePosnet.ts).
+
+/** Manda el cobro al posnet. Devuelve el id de la intención de pago. */
+export async function crearCobroPosnet(
+  cuenta: CuentaNave,
+  p: { posId: string; referencia: string; total: number; descripcion: string; segundos: number }
+): Promise<string> {
+  const r = await pedir<{ id?: string }>(
+    `${cuenta.api}/payment_requests/smart_pos`,
+    {
+      method: "POST",
+      body: {
+        external_payment_id: p.referencia.slice(0, 36),
+        seller: { pos_id: p.posId },
+        // Un solo renglón por el total: con descuentos, puntos o combos la suma de los
+        // productos no da el total, y el posnet cobra lo que dice «amount».
+        transactions: [
+          {
+            amount: { currency: "ARS", value: plata(p.total) },
+            products: [{ name: p.descripcion.slice(0, 120), description: p.descripcion.slice(0, 120), quantity: 1, unit_price: { currency: "ARS", value: plata(p.total) } }],
+          },
+        ],
+        duration_time: p.segundos,
+      },
+    },
+    cuenta
+  );
+  if (!r.id) throw new Error("Nave no devolvió el cobro del posnet");
+  return r.id;
+}
+
+/** Saca el cobro del posnet (si el cliente se arrepiente o se cambia de medio). */
+export async function cancelarCobroPosnet(cuenta: CuentaNave, idCobro: string): Promise<void> {
+  await pedir(
+    `${cuenta.api}/payment_requests/${encodeURIComponent(idCobro)}`,
+    { method: "DELETE", body: { reason: { code: "disabled_from_saas", description: "Cancelado desde la caja de WiiGo" } } },
+    cuenta
+  );
+}
+
+const MOTIVOS_RECHAZO: [RegExp, string][] = [
+  [/no_amount_available|error_of_debit/, "La tarjeta no tiene fondos suficientes."],
+  [/expired|expiry/, "La tarjeta está vencida."],
+  [/exceeds_amount_limit/, "El monto supera el límite de la tarjeta."],
+  [/invalid_card_type/, "Ese tipo de tarjeta no se acepta acá."],
+  [/blocked_by_cardholder|restricted_card/, "La tarjeta está bloqueada o tiene restricciones."],
+  [/cvv/, "El código de seguridad de la tarjeta es incorrecto."],
+  [/fraud|risky|security/, "El banco la rechazó por seguridad."],
+  [/gateway|not_available|alert_sent|service/, "Nave no pudo hablar con el banco. Probá de nuevo."],
+];
+
+/** El motivo de un rechazo, en castellano (los códigos son los de la guía de Nave). */
+export function motivoRechazoNave(datos: Record<string, unknown>): string {
+  const codigo = String((datos.status as { reason_code?: string } | undefined)?.reason_code ?? "").toLowerCase();
+  return MOTIVOS_RECHAZO.find(([re]) => re.test(codigo))?.[1] ?? "El banco rechazó la tarjeta.";
+}
+
+/** Lo que se anota del pago: «Visa débito ···0011 · 1 cuota · cupón 11 · lote 168». */
+export function detallePagoPosnet(datos: Record<string, unknown>): { texto: string; cupon: string | null } {
+  const m = (datos.payment_method ?? {}) as { card_brand?: string; card_type?: string; card_last4?: string; installment_plan?: { installments?: number } };
+  const ticket = ((datos.transactions as { auth_data?: { ticket?: { number?: string; batch?: string } } }[] | undefined)?.[0]?.auth_data?.ticket) ?? {};
+  const marca = m.card_brand ? m.card_brand.charAt(0) + m.card_brand.slice(1).toLowerCase() : "Tarjeta";
+  const tipo = /DEBIT/i.test(m.card_type ?? "") ? " débito" : /CREDIT/i.test(m.card_type ?? "") ? " crédito" : "";
+  const cuotas = Number(m.installment_plan?.installments ?? 0);
+  const partes = [`${marca}${tipo}${m.card_last4 ? ` ···${m.card_last4}` : ""}`];
+  if (cuotas > 1) partes.push(`${cuotas} cuotas`);
+  const cupon = ticket.number ? String(ticket.number) : null;
+  if (cupon) partes.push(`cupón ${cupon}${ticket.batch ? ` · lote ${ticket.batch}` : ""}`);
+  return { texto: partes.join(" · "), cupon };
 }
 
 /** El secreto que va en la URL del aviso: derivado del pedido, no hace falta guardarlo. */

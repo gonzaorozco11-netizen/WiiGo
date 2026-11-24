@@ -14,6 +14,7 @@ import { preciosVigentes } from "@/lib/pedidosProfesional";
 import { COLUMNAS_PEDIDO, cuantosHay, itemsDe, type FilaPedidoOnline } from "@/lib/pedidosOnline";
 import { cargarMarcasFabrica, nombresConMarca } from "@/lib/marcaFabrica";
 import { ponerPreciosAlDia } from "@/lib/preciosAlDia";
+import { CLAVES_POSNET, leerPosnets } from "@/lib/navePosnet";
 
 export const dynamic = "force-dynamic";
 
@@ -93,7 +94,7 @@ export default async function PosPage({ searchParams }: { searchParams: Promise<
     supabase.from("variantes_producto").select("*").eq("estado", "ACTIVO"),
     supabase.from("marcas").select("*").eq("estado", "ACTIVA"),
     supabase.from("stock").select("*"),
-    supabase.from("configuracion").select("parametro, valor").in("parametro", ["IVA_GENERAL_PORCENTAJE", "MP_ALIAS_TRANSFERENCIA"]),
+    supabase.from("configuracion").select("parametro, valor").in("parametro", ["IVA_GENERAL_PORCENTAJE", "MP_ALIAS_TRANSFERENCIA", ...CLAVES_POSNET]),
     // «(Entre Nuts)» después del nombre, igual que lo ve el cliente (lib/marcaFabrica.ts).
     cargarMarcasFabrica(supabase).catch(() => new Map<string, string>()),
     // Los combos: se aplican solos en el carrito (lib/combos.ts).
@@ -104,6 +105,8 @@ export default async function PosPage({ searchParams }: { searchParams: Promise<
   const ivaGeneralPorcentaje = Number(config.get("IVA_GENERAL_PORCENTAJE") ?? 21);
   // El alias de Mercado Pago para cobrar por transferencia (Configuración).
   const aliasTransferencia = config.get("MP_ALIAS_TRANSFERENCIA")?.trim() || null;
+  // Los posnets de Nave conectados a la caja (lib/navePosnet.ts). Sin ninguno, se marca a mano.
+  const posnets = leerPosnets(config).map((p) => ({ numero: p.numero, prueba: p.entorno === "sandbox" }));
 
   const error = localesRes.error || productosRes.error || variantesRes.error || marcasRes.error || stockRes.error;
   if (error) {
@@ -136,6 +139,7 @@ export default async function PosPage({ searchParams }: { searchParams: Promise<
       pedido={pedido}
       aliasTransferencia={aliasTransferencia}
       combos={combos}
+      posnets={posnets}
       key={pedido?.idPedido ?? "venta"}
     />
   );

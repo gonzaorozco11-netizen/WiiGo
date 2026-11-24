@@ -13,6 +13,9 @@ import {
   previsualizarDescuentoReferidoAction,
   infoCanjePuntosAction,
   permisoComprasCajaAction,
+  estadoCobroPosnet,
+  reenviarCobroPosnet,
+  cancelarCobroPosnet,
 } from "@/app/(app)/pos/actions";
 import { cancelarPedido } from "@/app/(app)/cobros-efectivo/actions";
 import { dispararAvisosDeVenta } from "@/lib/dispararAvisos";
@@ -43,6 +46,24 @@ function formatearPedido(numero: number) {
 type MedioPago = "EFECTIVO" | "MERCADO_PAGO" | "POSNET" | "TRANSFERENCIA";
 
 const POLL_MS = 3000;
+
+// Posnet conectado (24/11): cada cuánto pregunta la caja mientras espera, y hasta cuándo
+// (el cobro vence en el posnet a los 3 minutos; pasado eso deja de preguntar sola).
+const POLL_POSNET_MS = 4000;
+const ESPERA_MAX_POSNET_MS = 4 * 60 * 1000;
+// En qué posnet cobra esta tablet: se recuerda en el aparato.
+const CLAVE_POSNET = "wiigo-posnet";
+
+type CobroPosnet = {
+  idVenta: string;
+  numero: number;
+  total: number;
+  posnet: number;
+  // «error»: algo raro (por ej. el posnet cobró y no se pudo registrar): no se ofrece mandar de nuevo.
+  fase: "esperando" | "rechazado" | "terminado" | "error";
+  motivo?: string;
+  desde: number;
+};
 
 /**
  * Un pedido que armó una profesional para su paciente (módulo Pedidos). Entra
@@ -143,6 +164,7 @@ export default function PosApp({
   pedido = null,
   aliasTransferencia = null,
   combos = [],
+  posnets = [],
 }: {
   locales: Local[];
   productos: Producto[];
@@ -155,6 +177,8 @@ export default function PosApp({
   aliasTransferencia?: string | null;
   /** Combos activos: si están sus productos en el carrito, el precio baja solo (lib/combos.ts). */
   combos?: Combo[];
+  /** Los posnets de Nave conectados a la caja (Configuración). Sin ninguno, se marca a mano. */
+  posnets?: { numero: number; prueba: boolean }[];
 }) {
   const router = useRouter();
   const [pedidoActivo, setPedidoActivo] = useState<PedidoParaCobrar | null>(pedido);
@@ -177,6 +201,11 @@ export default function PosApp({
   // Con el posnet: débito o crédito (cada uno tiene su comisión) y el cupón, optativo.
   const [tarjetaPosnet, setTarjetaPosnet] = useState<"DEBITO" | "CREDITO" | null>(null);
   const [cuponPosnet, setCuponPosnet] = useState("");
+  // Con el posnet conectado: a cuál se manda, si hoy se marca a mano (no anda) y el cobro en curso.
+  const [posnetElegido, setPosnetElegido] = useState<number | null>(posnets[0]?.numero ?? null);
+  const [posnetAMano, setPosnetAMano] = useState(false);
+  const [cobroPosnet, setCobroPosnet] = useState<CobroPosnet | null>(null);
+  const [ocupadoPosnet, setOcupadoPosnet] = useState(false);
   // Con transferencia: la cajera tilda que ya vio la plata en Mercado Pago.
   const [vioLaPlata, setVioLaPlata] = useState(false);
   const [enviando, setEnviando] = useState(false);
@@ -187,6 +216,8 @@ export default function PosApp({
     vuelto: number;
     puntosGenerados: number;
     aviso?: string;
+    /** Lo que informó el posnet: «Visa débito ···0011 · cupón 11 · lote 168». */
+    detallePago?: string | null;
   } | null>(null);
   const [pedidoMp, setPedidoMp] = useState<{ idVenta: string; numero: number; total: number; qrImagen?: string } | null>(null);
   const [cancelandoMp, setCancelandoMp] = useState(false);
@@ -479,6 +510,8 @@ export default function PosApp({
     setMedioPago("EFECTIVO");
     setTarjetaPosnet(null);
     setCuponPosnet("");
+    setPosnetAMano(false);
+    setCobroPosnet(null);
     setVioLaPlata(false);
     setTipoReceptor("CONSUMIDOR_FINAL");
     setDocReceptor("");
@@ -496,6 +529,27 @@ export default function PosApp({
   const esMercadoPago = medioPago === "MERCADO_PAGO";
   const esPosnet = medioPago === "POSNET";
   const esTransferencia = medioPago === "TRANSFERENCIA";
+  // El monto va solo al posnet (Nave lo dice todo). «Lo marco a mano» vuelve a la forma de antes.
+  const posnetConectado = esPosnet && posnets.length > 0 && !posnetAMano;
+
+  // La tablet recuerda en qué posnet cobra: se lee al tocar «Tarjeta (posnet)».
+  function usarPosnet() {
+    setMedioPago("POSNET");
+    try {
+      const guardado = Number(localStorage.getItem(CLAVE_POSNET));
+      if (posnets.some((p) => p.numero === guardado)) setPosnetElegido(guardado);
+    } catch {
+      /* sin memoria del aparato: queda el primero */
+    }
+  }
+  function elegirPosnet(numero: number) {
+    setPosnetElegido(numero);
+    try {
+      localStorage.setItem(CLAVE_POSNET, String(numero));
+    } catch {
+      /* no pasa nada */
+    }
+  }
 
   function toggleMarcaCanje(idMarca: string) {
     setMarcasCanje((prev) => {
@@ -526,7 +580,11 @@ export default function PosApp({
         : undefined,
       usarPuntosWiigo,
       { tipo: tipoReceptor, numero: docReceptor },
-      esPosnet && tarjetaPosnet ? { tarjeta: tarjetaPosnet, cupon: cuponPosnet } : undefined,
+      posnetConectado && posnetElegido
+        ? { conectado: posnetElegido }
+        : esPosnet && tarjetaPosnet
+          ? { tarjeta: tarjetaPosnet, cupon: cuponPosnet }
+          : undefined,
       // Con un pedido no se vuelven a aplicar los combos: sus precios ya vienen del pedido.
       Boolean(pedidoActivo)
     )
@@ -539,6 +597,9 @@ export default function PosApp({
           dispararAvisosDeVenta(r.venta.idVenta);
           // Si era un pedido (de una profesional o de la tienda online), queda entregado.
           if (pedidoActivo) cerrarPedido(pedidoActivo, r.venta.idVenta);
+        } else if (r.pedido?.posnet) {
+          const { idVenta, numero, total, posnet } = r.pedido;
+          setCobroPosnet({ idVenta, numero, total, posnet, fase: "esperando", desde: Date.now() });
         } else if (r.pedido) setPedidoMp(r.pedido);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "No se pudo registrar la venta"))
@@ -588,6 +649,148 @@ export default function PosApp({
       .finally(() => setCancelandoMp(false));
   }
 
+  // ===== Posnet conectado: esperando que el cliente pague en el aparato =====
+  const posnetPagado = useCallback(
+    (c: CobroPosnet, detalle: string | null, confirmadoAhora: boolean) => {
+      setResultado({ numero: c.numero, total: c.total, vuelto: 0, puntosGenerados: 0, detallePago: detalle });
+      // Si la cerró el aviso de Nave, los avisos a las marcas ya salieron de ahí.
+      if (confirmadoAhora) dispararAvisosDeVenta(c.idVenta);
+      if (pedidoActivo) cerrarPedido(pedidoActivo, c.idVenta);
+      setCobroPosnet(null);
+    },
+    [pedidoActivo]
+  );
+
+  const esperandoPosnet = cobroPosnet?.fase === "esperando" ? cobroPosnet : null;
+  useEffect(() => {
+    if (!esperandoPosnet) return;
+    const c = esperandoPosnet;
+    let vivo = true;
+    let reloj: ReturnType<typeof setTimeout> | undefined;
+    const otraVez = () => {
+      if (vivo) reloj = setTimeout(preguntar, POLL_POSNET_MS);
+    };
+    function preguntar() {
+      estadoCobroPosnet(c.idVenta)
+        .then((r) => {
+          if (!vivo) return;
+          if (r.estado === "PAGADO") return posnetPagado(c, r.detalle, r.confirmadoAhora);
+          if (r.estado === "RECHAZADO") return setCobroPosnet({ ...c, fase: "rechazado", motivo: r.motivo });
+          if (r.estado === "TERMINADO") return setCobroPosnet({ ...c, fase: "terminado", motivo: r.motivo });
+          if (r.estado === "ERROR") return setCobroPosnet({ ...c, fase: "error", motivo: r.motivo });
+          if (r.estado === "CANCELADO") {
+            setCobroPosnet(null);
+            setError("Este cobro se canceló.");
+            return;
+          }
+          if (Date.now() - c.desde > ESPERA_MAX_POSNET_MS) return setCobroPosnet({ ...c, fase: "terminado", motivo: "Pasó el tiempo y el posnet no cobró." });
+          otraVez();
+        })
+        .catch(otraVez);
+    }
+    otraVez();
+    return () => {
+      vivo = false;
+      clearTimeout(reloj);
+    };
+  }, [esperandoPosnet, posnetPagado]);
+
+  function mandarDeNuevoPosnet() {
+    if (!cobroPosnet) return;
+    const c = cobroPosnet;
+    setOcupadoPosnet(true);
+    setError(null);
+    reenviarCobroPosnet(c.idVenta, c.posnet)
+      .then((r) => {
+        if (r.pagado) posnetPagado(c, r.pagado.detalle, r.pagado.confirmadoAhora);
+        else if (r.error) setCobroPosnet({ ...c, fase: "terminado", motivo: r.error });
+        else setCobroPosnet({ ...c, fase: "esperando", motivo: undefined, desde: Date.now() });
+      })
+      .catch(() => setCobroPosnet({ ...c, fase: "terminado", motivo: "No se pudo mandar el cobro al posnet. Probá de nuevo." }))
+      .finally(() => setOcupadoPosnet(false));
+  }
+
+  // Cancelar el cobro o cambiar de medio: sale del posnet y vuelve al carrito, que sigue armado.
+  function salirDelPosnet() {
+    if (!cobroPosnet) return;
+    const c = cobroPosnet;
+    setOcupadoPosnet(true);
+    setError(null);
+    cancelarCobroPosnet(c.idVenta)
+      .then((r) => {
+        if (r.estado === "PAGADO") posnetPagado(c, r.detalle, r.confirmadoAhora);
+        else if (r.estado === "ERROR") setCobroPosnet({ ...c, fase: "error", motivo: r.motivo });
+        else setCobroPosnet(null);
+      })
+      .catch(() => setError("No se pudo cancelar el cobro. Probá de nuevo."))
+      .finally(() => setOcupadoPosnet(false));
+  }
+
+  if (cobroPosnet) {
+    const c = cobroPosnet;
+    const botonSec = "border-2 border-neutral-200 bg-white text-neutral-800 font-bold rounded-xl py-3 px-3 disabled:opacity-50";
+    return (
+      <div className="max-w-md mx-auto text-center py-14 px-6">
+        {c.fase === "esperando" ? (
+          <>
+            <div className="relative w-20 h-20 mx-auto mb-4 rounded-full bg-orange-50 border-[3px] border-orange-200 grid place-items-center text-3xl">
+              <span aria-hidden="true">💳</span>
+              <span className="absolute -inset-1.5 rounded-full border-[3px] border-transparent border-t-orange-500 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+            </div>
+            <h1 className="text-xl font-extrabold text-neutral-900 mb-1">Esperando el pago</h1>
+            <p className="text-3xl font-extrabold text-neutral-900 tabular-nums mb-2">${formatearMonto(c.total)}</p>
+            <p className="text-sm text-neutral-600">
+              Ya aparece en el <b>posnet {c.posnet}</b>.
+            </p>
+            <p className="text-sm text-neutral-500 mb-6">El cliente apoya, inserta la tarjeta o escanea el QR del posnet.</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={salirDelPosnet} disabled={ocupadoPosnet} className={botonSec}>
+                Cancelar cobro
+              </button>
+              <button onClick={mandarDeNuevoPosnet} disabled={ocupadoPosnet} className={botonSec}>
+                Mandar de nuevo
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-red-50 text-red-600 grid place-items-center text-4xl" aria-hidden="true">
+              {c.fase === "error" ? "!" : "✕"}
+            </div>
+            <h1 className="text-xl font-extrabold text-neutral-900 mb-1">
+              {c.fase === "rechazado" ? "El pago fue rechazado" : c.fase === "error" ? "Hay que revisar este cobro" : "El posnet no cobró"}
+            </h1>
+            <p className="text-sm font-bold text-neutral-800 mb-1">{c.motivo}</p>
+            {c.fase === "error" ? (
+              <p className="text-sm text-neutral-500 mb-6">No vuelvas a cobrar: fijate en el posnet si salió aprobado y avisale al encargado. Venta #{formatearPedido(c.numero)}.</p>
+            ) : (
+              <p className="text-sm text-neutral-500 mb-6">No se cobró nada.</p>
+            )}
+            {c.fase === "error" ? (
+              <button onClick={() => setCobroPosnet({ ...c, fase: "esperando", desde: Date.now() })} className={`${botonSec} w-full`}>
+                Volver a fijarme
+              </button>
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                <button onClick={mandarDeNuevoPosnet} disabled={ocupadoPosnet} className={botonSec}>
+                  {c.fase === "rechazado" ? "Probar otra tarjeta" : "Mandar de nuevo"}
+                </button>
+                <button onClick={salirDelPosnet} disabled={ocupadoPosnet} className={botonSec}>
+                  Cambiar medio de pago
+                </button>
+              </div>
+            )}
+          </>
+        )}
+        {error && (
+          <p className="text-sm text-red-600 mt-3" role="alert">
+            {error}
+          </p>
+        )}
+      </div>
+    );
+  }
+
   if (pedidoMp) {
     return (
       <div className="max-w-md mx-auto text-center py-16 px-6">
@@ -633,6 +836,9 @@ export default function PosApp({
         <p className="text-sm text-neutral-500 mb-1">Pedido #{formatearPedido(resultado.numero)}</p>
         <p className="text-2xl font-extrabold text-neutral-900 mb-1">${formatearMonto(resultado.total)}</p>
         <div className="mb-6">
+          {resultado.detallePago && (
+            <p className="text-sm text-neutral-700 bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2 my-2">💳 {resultado.detallePago}</p>
+          )}
           {resultado.vuelto > 0 && (
             <p className="text-sm text-emerald-600 font-semibold">Vuelto: ${formatearMonto(resultado.vuelto)}</p>
           )}
@@ -965,11 +1171,11 @@ export default function PosApp({
             </span>
           )}
         </button>
-        {/* El posnet de Nave no está conectado al sistema: la cajera marca el
-            monto en el aparato y acá dice con qué tarjeta pagó. Cobra el
-            precio de lista, como el QR. */}
+        {/* El posnet de Nave: si está conectado (Configuración, 24/11), el monto
+            va solo al aparato; si no, la cajera lo marca a mano y acá dice con
+            qué tarjeta pagó. Cobra el precio de lista, como el QR. */}
         <button
-          onClick={() => setMedioPago("POSNET")}
+          onClick={usarPosnet}
           className={`flex flex-col items-center gap-0.5 py-3 rounded-xl border-2 ${
             esPosnet ? "border-accent bg-accent-tint" : "border-neutral-200 bg-white"
           }`}
@@ -1026,8 +1232,40 @@ export default function PosApp({
         </div>
       )}
 
-      {esPosnet && (
+      {posnetConectado && (
         <div className="border border-orange-200 bg-orange-50 rounded-xl p-4 mb-4">
+          <p className="text-sm font-semibold text-neutral-800 mb-2">¿En qué posnet cobrás?</p>
+          <div className="grid grid-cols-2 gap-2 mb-2" role="group" aria-label="Posnet">
+            {posnets.map((p) => (
+              <button
+                key={p.numero}
+                onClick={() => elegirPosnet(p.numero)}
+                aria-pressed={posnetElegido === p.numero}
+                className={`py-2.5 px-3 rounded-lg border-2 font-bold text-sm bg-white text-left ${
+                  posnetElegido === p.numero ? "border-orange-600 text-orange-800" : "border-orange-100 text-neutral-700"
+                }`}
+              >
+                Posnet {p.numero}
+                {p.prueba && <span className="block text-xs font-semibold text-amber-700">De prueba</span>}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-orange-950">
+            El monto aparece solo en el posnet. Débito, crédito, cuotas y cupón los informa Nave.
+          </p>
+          <button type="button" onClick={() => setPosnetAMano(true)} className="block mt-2 text-xs font-semibold text-neutral-500 underline">
+            El posnet no anda: lo marco a mano
+          </button>
+        </div>
+      )}
+
+      {esPosnet && !posnetConectado && (
+        <div className="border border-orange-200 bg-orange-50 rounded-xl p-4 mb-4">
+          {posnets.length > 0 && (
+            <button type="button" onClick={() => setPosnetAMano(false)} className="block mb-2 text-xs font-semibold text-neutral-500 underline">
+              ← Volver a cobrar con el posnet conectado
+            </button>
+          )}
           <p className="text-sm font-semibold text-neutral-800 mb-2">¿Con qué tarjeta paga?</p>
           <div className="grid grid-cols-2 gap-2 mb-3" role="group" aria-label="Tipo de tarjeta">
             {(
@@ -1221,7 +1459,8 @@ export default function PosApp({
           itemsCarrito.length === 0 ||
           (marcasCanje.size > 0 && pinCanje.length < 4) ||
           (!esMercadoPago && !esPosnet && !esTransferencia && montoNum < totalFinal) ||
-          (esPosnet && !tarjetaPosnet) ||
+          (esPosnet && !posnetConectado && !tarjetaPosnet) ||
+          (posnetConectado && !posnetElegido) ||
           (esTransferencia && !vioLaPlata) ||
           // Documento incompleto: mejor frenar acá que emitir mal la factura.
           (tipoReceptor === "CUIT" && docReceptor.length !== 11) ||
@@ -1233,6 +1472,8 @@ export default function PosApp({
           ? "Generando..."
           : esMercadoPago
             ? `Generar QR · $${formatearMonto(totalFinal)}`
+            : posnetConectado
+              ? `Cobrar $${formatearMonto(totalFinal)} en el posnet ${posnetElegido ?? ""}`
             : esPosnet
               ? tarjetaPosnet
                 ? `Ya salió aprobado · Cobrar $${formatearMonto(totalFinal)}`

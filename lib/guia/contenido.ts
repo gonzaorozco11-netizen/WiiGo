@@ -108,11 +108,11 @@ export const GUIAS: Guia[] = [
     rutas: ["/pos"],
     nueva: "2026-11-04",
     pasos: [
-      "Tocá <b>Tarjeta (posnet)</b> y elegí <b>Débito</b> o <b>Crédito</b>, según la tarjeta del cliente.",
-      "Marcá el total en el <b>posnet de Nave</b>. El cliente apoya o inserta la tarjeta.",
-      "Cuando el posnet diga <b>aprobado</b>, tocá <b>Ya salió aprobado · Cobrar</b>. Si querés, anotá el número de cupón.",
+      "Tocá <b>Tarjeta (posnet)</b>.",
+      "Si la caja pregunta <b>«¿En qué posnet cobrás?»</b>, el posnet está conectado: elegí el tuyo (la tablet se acuerda) y tocá <b>Cobrar en el posnet</b>. El monto aparece solo en el aparato; el cliente apoya, inserta la tarjeta o escanea el QR, y la venta se cierra sola cuando sale aprobado. Si lo rechazan, la caja dice por qué: <b>Probar otra tarjeta</b> o <b>Cambiar medio de pago</b>.",
+      "Si no pregunta, o tocaste <b>El posnet no anda: lo marco a mano</b>: elegí <b>Débito</b> o <b>Crédito</b>, marcá el total en el posnet y, cuando diga <b>aprobado</b>, tocá <b>Ya salió aprobado · Cobrar</b>. Si querés, anotá el número de cupón.",
     ],
-    tip: "Fijate bien si es débito o crédito: cada uno tiene su comisión y eso es lo que se le descuenta a la marca. Al cerrar la caja se compara con el cierre de lote del posnet.",
+    tip: "Con el posnet conectado no hace falta elegir débito o crédito: lo dice Nave. Marcándolo a mano, fijate bien: cada uno tiene su comisión y eso es lo que se le descuenta a la marca. Al cerrar la caja se compara con el cierre de lote del posnet.",
     rel: ["cobrar", "cerrar-caja"],
   },
   {

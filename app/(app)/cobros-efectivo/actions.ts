@@ -53,7 +53,9 @@ export async function confirmarCobro(
   idVenta: string,
   montoRecibido: number,
   formaPagoMp?: string,
-  usuarioOverride?: string
+  usuarioOverride?: string,
+  // El posnet conectado a la caja (24/11): lo que informó Nave del pago (tarjeta, cuotas, cupón).
+  nave?: { cupon?: string | null; detalle?: string | null }
 ): Promise<{ error: string | null }> {
   try {
     const supabase = getSupabaseServerClient();
@@ -105,10 +107,13 @@ export async function confirmarCobro(
     // Tienda online pagada con tarjeta por Nave (18/11): el mismo Nave del posnet, con su
     // comisión de débito o crédito. No pasa por el aparato del local: va sin turno, así no
     // se mezcla con el cierre de lote del posnet.
-    const esNaveOnline = venta.medio_pago === "POSNET" && venta.canal === "ONLINE";
+    // El posnet conectado a la caja (24/11) también llega acá: la venta queda pendiente hasta
+    // que Nave dice que el pago se aprobó (lib/navePosnet.ts). Ese sí va al turno.
+    const esNave = venta.medio_pago === "POSNET";
+    const esNaveOnline = esNave && venta.canal === "ONLINE";
 
   let pagoInsert: Record<string, unknown>;
-  if (esNaveOnline) {
+  if (esNave) {
     const forma = formaPagoMp === "POSNET_DEBITO" ? "POSNET_DEBITO" : "POSNET_CREDITO";
     const { data: cfg } = await supabase.from("configuracion").select("parametro, valor").in("parametro", [CLAVE_COMISION_COBRO[forma], "IVA_GENERAL_PORCENTAJE"]);
     const valores = Object.fromEntries((cfg ?? []).map((r) => [r.parametro, Number(r.valor ?? 0)]));
@@ -126,10 +131,19 @@ export async function confirmarCobro(
       iva_comision: ivaComisionImporte,
       neto_acreditado: total - comisionImporte - ivaComisionImporte,
       fecha_pago: new Date().toISOString(),
-      fecha_acreditacion: new Date().toISOString(),
       estado: "ACREDITADO",
-      estado_conciliacion: "CONCILIADO",
-      observaciones: `Tienda online · tarjeta por Nave (${forma === "POSNET_DEBITO" ? "débito" : "crédito"}) · comisión ${tasa}% + IVA · entregó ${usuario ?? "personal"}`,
+      ...(esNaveOnline
+        ? {
+            fecha_acreditacion: new Date().toISOString(),
+            estado_conciliacion: "CONCILIADO",
+            observaciones: `Tienda online · tarjeta por Nave (${forma === "POSNET_DEBITO" ? "débito" : "crédito"}) · comisión ${tasa}% + IVA · entregó ${usuario ?? "personal"}`,
+          }
+        : {
+            // Como el posnet marcado a mano: se controla con el cierre de lote.
+            id_operacion_externa: nave?.cupon ?? null,
+            estado_conciliacion: "PENDIENTE",
+            observaciones: `Venta mostrador · ${usuario ?? "personal"} · Posnet conectado · ${nave?.detalle ?? (forma === "POSNET_DEBITO" ? "débito" : "crédito")} · comisión ${tasa}% + IVA`,
+          }),
     };
   } else if (esMercadoPago) {
     if (!formaPagoMp || !FORMAS_PAGO_MP[formaPagoMp]) return { error: "Elegí cómo pagó el cliente por Mercado Pago" };
@@ -201,7 +215,9 @@ export async function confirmarCobro(
     lineas: lineas.map((l) => ({ idVariante: l.id_variante as string, cantidad: l.cantidad as number })),
     motivo:
       venta.canal === "POS"
-        ? "Venta mostrador (QR Mercado Pago)"
+        ? esNave
+          ? "Venta mostrador (posnet)"
+          : "Venta mostrador (QR Mercado Pago)"
         : venta.canal === "ONLINE"
           ? esNaveOnline
             ? "Venta tienda online (tarjeta)"
