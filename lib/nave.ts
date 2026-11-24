@@ -18,9 +18,8 @@ import { createHmac, timingSafeEqual } from "crypto";
 // Las del portal de desarrolladores de Nave (20/11, Cobros online → Checkout): las
 // credenciales nuevas usan la API «integrations». Las del plugin de WooCommerce
 // (api-sandbox.ranty.io/api, punku…) devuelven 403 con estas credenciales.
-// 24/11: con las credenciales de producción, «m2msPrivate» (la del plugin viejo) dio 401. El
-// portal solo documenta la de sandbox («m2ms»): en producción se prueba primero la misma ruta
-// en services.apinaranja.com y, si no, la del plugin. NAVE_TOKEN_URL la fija a mano si hiciera falta.
+// 24/11: Nave confirmó (SI-357) que en producción el token es «m2msPrivate». El 401 que dio
+// era por las credenciales mal pegadas. Queda «m2ms» de respaldo; NAVE_TOKEN_URL la fija a mano.
 const URLS = {
   sandbox: {
     token: ["https://homoservices.apinaranja.com/security-ms/api/security/auth0/b2b/m2ms"],
@@ -28,8 +27,8 @@ const URLS = {
   },
   produccion: {
     token: [
-      "https://services.apinaranja.com/security-ms/api/security/auth0/b2b/m2ms",
       "https://services.apinaranja.com/security-ms/api/security/auth0/b2b/m2msPrivate",
+      "https://services.apinaranja.com/security-ms/api/security/auth0/b2b/m2ms",
     ],
     api: "https://api.ranty.io/integrations",
   },
