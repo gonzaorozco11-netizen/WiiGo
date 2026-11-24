@@ -15,6 +15,10 @@ const TOKEN = {
   sandbox_m2ms: "https://homoservices.apinaranja.com/security-ms/api/security/auth0/b2b/m2ms",
 };
 
+// Caracteres raros que suelen meter los programas al copiar: comillas curvas, guiones largos,
+// espacio duro, espacio invisible y saltos de línea especiales.
+const RAROS = [0x201c, 0x201d, 0x2018, 0x2019, 0x2013, 0x2014, 0x00a0, 0x200b, 0x2028, 0x2029];
+
 function huella(v: string | undefined) {
   if (!v) return { cargada: false };
   const limpio = v.trim();
@@ -22,8 +26,7 @@ function huella(v: string | undefined) {
     cargada: true,
     largo: limpio.length,
     espaciosAfuera: v.length !== limpio.length,
-    // Caracteres raros que suelen meter los programas al copiar (comillas curvas, guiones largos, espacios invisibles).
-    raros: /[“”‘’–— ​  ]/.test(v),
+    raros: [...v].some((c) => RAROS.includes(c.codePointAt(0) ?? 0)),
     hash: createHash("sha256").update(limpio).digest("hex").slice(0, 6),
   };
 }
