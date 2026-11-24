@@ -18,13 +18,19 @@ import { createHmac, timingSafeEqual } from "crypto";
 // Las del portal de desarrolladores de Nave (20/11, Cobros online → Checkout): las
 // credenciales nuevas usan la API «integrations». Las del plugin de WooCommerce
 // (api-sandbox.ranty.io/api, punku…) devuelven 403 con estas credenciales.
+// 24/11: con las credenciales de producción, «m2msPrivate» (la del plugin viejo) dio 401. El
+// portal solo documenta la de sandbox («m2ms»): en producción se prueba primero la misma ruta
+// en services.apinaranja.com y, si no, la del plugin. NAVE_TOKEN_URL la fija a mano si hiciera falta.
 const URLS = {
   sandbox: {
-    token: "https://homoservices.apinaranja.com/security-ms/api/security/auth0/b2b/m2ms",
+    token: ["https://homoservices.apinaranja.com/security-ms/api/security/auth0/b2b/m2ms"],
     api: "https://api-sandbox.ranty.io/integrations",
   },
   produccion: {
-    token: "https://services.apinaranja.com/security-ms/api/security/auth0/b2b/m2msPrivate",
+    token: [
+      "https://services.apinaranja.com/security-ms/api/security/auth0/b2b/m2ms",
+      "https://services.apinaranja.com/security-ms/api/security/auth0/b2b/m2msPrivate",
+    ],
     api: "https://api.ranty.io/integrations",
   },
 } as const;
@@ -62,19 +68,34 @@ export function datosPagoEmbebido(): { clave: string; env: "production" | "sandb
 // El token dura ~1 h: se guarda en memoria mientras viva la función (si no, se pide otro).
 let tokenGuardado: { valor: string; vence: number } | null = null;
 
+// La dirección del token que funcionó (se prueba esa primero la próxima vez).
+let tokenUrlBuena: string | null = null;
+
 async function token(renovar = false): Promise<string> {
   if (!renovar && tokenGuardado && tokenGuardado.vence > Date.now()) return tokenGuardado.valor;
-  const r = await fetch(entorno().token, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ client_id: process.env.NAVE_CLIENT_ID, client_secret: process.env.NAVE_CLIENT_SECRET, audience: AUDIENCE() }),
-    signal: AbortSignal.timeout(10000),
-  });
-  const j = (await r.json().catch(() => ({}))) as { access_token?: string; expires_in?: number };
-  if (!r.ok || !j.access_token) throw new Error(`Nave no dio el token (${r.status})`);
-  const segundos = Math.max(Number(j.expires_in ?? 3600) - 60, 60);
-  tokenGuardado = { valor: j.access_token, vence: Date.now() + segundos * 1000 };
-  return j.access_token;
+  const fija = process.env.NAVE_TOKEN_URL?.trim();
+  const candidatas = fija ? [fija] : [...new Set([tokenUrlBuena, ...entorno().token].filter((u): u is string => Boolean(u)))];
+  const fallas: string[] = [];
+  for (const url of candidatas) {
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ client_id: process.env.NAVE_CLIENT_ID?.trim(), client_secret: process.env.NAVE_CLIENT_SECRET?.trim(), audience: AUDIENCE() }),
+      signal: AbortSignal.timeout(10000),
+    });
+    const texto = await r.text();
+    let j: { access_token?: string; expires_in?: number } = {};
+    try { j = JSON.parse(texto); } catch { /* respuesta no JSON */ }
+    if (r.ok && j.access_token) {
+      tokenUrlBuena = url;
+      const segundos = Math.max(Number(j.expires_in ?? 3600) - 60, 60);
+      tokenGuardado = { valor: j.access_token, vence: Date.now() + segundos * 1000 };
+      return j.access_token;
+    }
+    // Lo que contestó Nave (sin datos secretos: es su mensaje de error) para poder diagnosticar.
+    fallas.push(`${url.split("/").pop()} ${r.status} ${texto.slice(0, 160)}`);
+  }
+  throw new Error(`Nave no dio el token: ${fallas.join(" | ")}`);
 }
 
 async function pedir<T>(url: string, init: { method: "GET" | "POST"; body?: unknown }): Promise<T> {
