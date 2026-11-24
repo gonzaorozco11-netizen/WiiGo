@@ -424,6 +424,22 @@ a.dir-mapa u{text-decoration:underline;text-underline-offset:2px;color:#3f5536;f
 
 /* Menú de la izquierda: marcas y sus rubros */
 .fondo{position:fixed;inset:0;background:rgba(24,35,26,.45);z-index:40}
+/* Pagar con tarjeta adentro de la tienda (24/11): la hoja de Nave, encima de todo y alta (el módulo la necesita) */
+#pago-nave .fondo{z-index:60}
+#pago-nave .pn-hoja{z-index:61;height:calc(var(--alto-visible,100vh) * .94 + var(--teclado,0px));max-height:none}
+html.pn-abierto,html.pn-abierto body{overflow:hidden}
+.pn-sub{display:block;margin-top:2px;color:var(--gris);font-size:13px;font-weight:600}
+.pn-sub b{color:var(--tinta)}
+.pn-cuerpo{flex:1;min-height:0;padding:0 6px 12px;background:#f4f4f4}
+.pn-cuerpo payfac-sdk{display:block;min-height:100%}
+.pn-carga{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;min-height:260px;color:var(--gris);font-weight:700;font-size:14px}
+.pn-rueda{width:34px;height:34px;border-radius:50%;border:3px solid var(--linea);border-top-color:var(--bosque);animation:pn-gira .9s linear infinite}
+@keyframes pn-gira{to{transform:rotate(360deg)}}
+.pn-msj{margin:0 16px 8px;padding:10px 12px;border-radius:12px;font-size:13.5px;line-height:1.35;background:var(--carta);border:1px solid var(--linea)}
+.pn-msj.bien{background:#eef6ea;border-color:#c9dfbf;color:#2f4a2a}
+.pn-msj.mal{background:#fdf1ea;border-color:#f1cdb8;color:#7a3414}
+.pn-link{border:0;background:none;padding:0;font:inherit;font-weight:800;text-decoration:underline;color:inherit;cursor:pointer}
+@media (prefers-reduced-motion:reduce){.pn-rueda{animation-duration:2.5s}}
 .cajon{position:fixed;top:0;bottom:0;left:0;z-index:41;width:min(340px,86vw);background:#eef0e8;display:flex;flex-direction:column;animation:izq .25s cubic-bezier(.2,.8,.2,1)}
 @keyframes izq{from{transform:translateX(-100%)}}
 .cajon-cab{display:flex;align-items:center;justify-content:space-between;padding:calc(16px + env(safe-area-inset-top,0px)) 14px 10px}
@@ -720,6 +736,6 @@ a.dir-mapa u{text-decoration:underline;text-underline-offset:2px;color:#3f5536;f
 <div class="app" id="app"><p style="padding:60px 16px;text-align:center;color:#626a5e">Cargando los productos…</p></div>
 <!-- El catálogo real, armado en el servidor con lo público de cada producto (lib/tiendaCatalogo.ts). -->
 <script src="/api/tienda/catalogo"></script>
-<script src="app.js?v=37"></script>
+<script src="app.js?v=38"></script>
 </body>
 </html>

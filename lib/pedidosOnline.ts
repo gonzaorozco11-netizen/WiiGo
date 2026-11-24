@@ -22,7 +22,14 @@ import { leerMailsResumen, PARAMETRO_MAILS_RESUMEN } from "@/lib/resumenTurno";
 
 export const FALTA_SQL_ONLINE = "Falta correr sql/tienda-pedidos.sql en Supabase.";
 
-export type EstadoOnline = "NUEVO" | "ARMANDO" | "LISTO" | "ENTREGADO" | "CANCELADO";
+/**
+ * PAGANDO (24/11, Gonzalo: «que el pedido figure solo cuando está pago»): con tarjeta, el
+ * pedido nace así mientras el cliente paga dentro de «Finalizar compra». No lo ve nadie
+ * (ni el cliente en su seguimiento ni el equipo), no reserva stock y no manda mails. Al
+ * aprobarse el pago pasa a NUEVO; si no se paga, se cancela solo y en silencio
+ * (MOTIVO_PAGO_INCOMPLETO). Ver lib/pagoTarjetaOnline.ts y sql/tienda-pago-embebido.sql.
+ */
+export type EstadoOnline = "PAGANDO" | "NUEVO" | "ARMANDO" | "LISTO" | "ENTREGADO" | "CANCELADO";
 /** TARJETA (18/11): débito, crédito o dinero en cuenta por Nave (lib/nave.ts, sql/tienda-pago-tarjeta.sql). */
 export type PagoOnline = "TRANSFERENCIA" | "AL_RETIRAR" | "TARJETA";
 /** Se paga antes de armarlo (transferencia o tarjeta): si falta algo o se cancela, hay que devolver. */
@@ -167,7 +174,7 @@ export const COLUMNAS_PEDIDO =
  * El equipo tiene tres columnas; el cliente ve «Armando» cuando ya tildaron algo.
  */
 export function pasoCliente(estado: EstadoOnline, items: ItemOnline[]) {
-  if (estado === "NUEVO") return 0;
+  if (estado === "NUEVO" || estado === "PAGANDO") return 0;
   if (estado === "ARMANDO") return items.some((i) => i.armado || i.hay != null) ? 2 : 1;
   if (estado === "LISTO") return 3;
   if (estado === "ENTREGADO") return 4;
@@ -273,11 +280,25 @@ export async function vencerPedidosOnline(supabase: SupabaseClient): Promise<num
     .select("id_pedido");
   const todos = [...(data ?? []), ...(tarjeta ?? [])];
   for (const p of todos) await avisarCliente(supabase, p.id_pedido as string, "CANCELADO");
-  return todos.length;
+  // Los que quedaron pagando (24/11): el cliente nunca los vio como pedido, así que se
+  // cancelan sin mail. Si el pago entra igual más tarde, vuelven solos (registrarPagoTarjeta).
+  const { data: pagando } = await supabase
+    .from("pedidos_online")
+    .update({ estado: "CANCELADO", cancelado_at: ahora, motivo_cancelacion: MOTIVO_PAGO_INCOMPLETO })
+    .eq("estado", "PAGANDO")
+    .is("pago_ok_at", null)
+    .lt("creado", new Date(Date.now() - 20 * 60_000).toISOString())
+    .select("id_pedido");
+  return todos.length + (pagando?.length ?? 0);
 }
 
 /** El motivo con que se cancela solo un pedido con tarjeta que no se pagó (ver arriba). */
 export const MOTIVO_TARJETA_SIN_PAGAR = "No se pagó con tarjeta a tiempo";
+/** Un pago con tarjeta que se empezó y no se terminó (PAGANDO): no se muestra en ningún lado. */
+export const MOTIVO_PAGO_INCOMPLETO = "Pago con tarjeta sin completar";
+/** ¿Es un pedido que nunca existió para el cliente ni para el equipo (pago empezado y no terminado)? */
+export const esPagoIncompleto = (p: Pick<FilaPedidoOnline, "estado" | "motivo_cancelacion">) =>
+  p.estado === "PAGANDO" || (p.estado === "CANCELADO" && p.motivo_cancelacion === MOTIVO_PAGO_INCOMPLETO);
 
 /* ---------------- mails ---------------- */
 
@@ -323,15 +344,17 @@ export async function avisarCliente(supabase: SupabaseClient, idPedido: string, 
         detalle: ["Tu palabra secreta para retirar. En la estación decí tu DNI y esta palabra."],
         franja: pagaAlRetirar
           ? { titulo: "Pagás al retirar", texto: `En efectivo ${pesos(t.efectivo)} · con tarjeta o QR ${pesos(t.lista)}. Te lo guardamos hasta mañana a las 21.` }
-          : conTarjeta
+          : conTarjeta && p.pago_ok_at
+            ? { titulo: `Pagaste ${pesos(t.lista)} con tarjeta ✓`, texto: "Ya está pago. Te avisamos apenas esté listo para retirar." }
+            : conTarjeta
             ? { titulo: `Pagá ${pesos(t.lista)} con tarjeta`, texto: `Si no terminaste el pago, tocá «Seguir mi pedido» y después «Pagar con tarjeta». Apenas entra, armamos tu pedido.` }
             : { titulo: `Transferí ${pesos(t.lista)}`, texto: `Alias <b>${escapar(cuenta.alias)}</b> · CVU ${cuenta.cvu} · ${cuenta.titular}.<br>En el concepto poné «Pedido #${p.numero}». Apenas la vemos, armamos tu pedido.` },
         boton,
-        tono: pagaAlRetirar ? "verde" : "ambar",
+        tono: pagaAlRetirar || (conTarjeta && p.pago_ok_at) ? "verde" : "ambar",
         pie: PIE,
         base,
       });
-      texto = `Recibimos tu pedido #${p.numero}. Para retirar: tu DNI y la palabra secreta ${palabraSecreta(p.codigo)}. ${pagaAlRetirar ? `Pagás al retirar: efectivo ${pesos(t.efectivo)} o tarjeta/QR ${pesos(t.lista)}.` : conTarjeta ? `Pagá ${pesos(t.lista)} con tarjeta desde «Seguir mi pedido».` : `Transferí ${pesos(t.lista)} al alias ${cuenta.alias} (CVU ${cuenta.cvu}).`} ${boton.url}`;
+      texto = `Recibimos tu pedido #${p.numero}. Para retirar: tu DNI y la palabra secreta ${palabraSecreta(p.codigo)}. ${pagaAlRetirar ? `Pagás al retirar: efectivo ${pesos(t.efectivo)} o tarjeta/QR ${pesos(t.lista)}.` : conTarjeta && p.pago_ok_at ? `Pagaste ${pesos(t.lista)} con tarjeta: ya está pago.` : conTarjeta ? `Pagá ${pesos(t.lista)} con tarjeta desde «Seguir mi pedido».` : `Transferí ${pesos(t.lista)} al alias ${cuenta.alias} (CVU ${cuenta.cvu}).`} ${boton.url}`;
     } else if (tipo === "PAGO_OK") {
       asunto = conTarjeta ? `Recibimos tu pago · pedido #${p.numero}` : `Recibimos tu transferencia · pedido #${p.numero}`;
       html = plantilla({

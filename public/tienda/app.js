@@ -832,6 +832,96 @@
       .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok && !j.error) j.error = 'Algo falló. Probá de nuevo en un momento.'; return j; }); })
       .catch(function () { return { error: 'Sin conexión. Revisá internet y probá de nuevo.' }; });
   }
+  /* ---------- Pagar con tarjeta DENTRO de la tienda (Gonzalo, 24/11) ----------
+     El módulo de Nave (<payfac-sdk>, @ranty/ranty-sdk) se muestra en una hoja propia, afuera
+     de #app, así pintar() no la borra. Pesa ~9 MB: se baja recién cuando se va a pagar.
+     El pedido nace PAGANDO en el servidor y no existe para nadie hasta que el pago se aprueba:
+     el carrito no se vacía hasta entonces. Que Nave diga «aprobado» en el navegador no alcanza:
+     el servidor se lo vuelve a preguntar a Nave (accion confirmar-pago). */
+  var SDK_NAVE = 'https://cdn.jsdelivr.net/npm/@ranty/ranty-sdk@4.0.10/dist/index.js';
+  var sdkNave = null;
+  function cargarSdkNave() {
+    // import() armado con Function: así un navegador muy viejo no rompe todo app.js al leerlo.
+    if (!sdkNave) { try { sdkNave = new Function('u', 'return import(u)')(SDK_NAVE); } catch (e) { sdkNave = Promise.reject(e); } sdkNave = sdkNave.catch(function (e) { sdkNave = null; throw e; }); }
+    return sdkNave;
+  }
+  function pnEl(id) { return document.getElementById(id); }
+  function pnMensaje(html, tono) {
+    var m = pnEl('pn-msj'); if (!m) return;
+    m.className = 'pn-msj' + (tono ? ' ' + tono : ''); m.innerHTML = html; m.hidden = !html;
+  }
+  function abrirPagoNave(info) {
+    cerrarPagoNave(false);
+    S.pagoNave = { codigo: info.codigo, total: info.total, url: info.pagar, confirmando: false, listo: false };
+    var caja = document.createElement('div');
+    caja.id = 'pago-nave';
+    caja.innerHTML = '<div class="fondo" data-pn="cerrar"></div><section class="hoja pn-hoja" role="dialog" aria-modal="true" aria-label="Pagar con tarjeta">' +
+      '<div class="hoja-cab"><div><h2 style="font-size:21px">Pagá con tarjeta</h2><small class="pn-sub">Total <b>' + plata(info.total) + '</b> · pago seguro por Nave</small></div>' +
+      '<button class="redondo" data-pn="cerrar" aria-label="Cerrar sin pagar">' + ic('cruz', 20) + '</button></div>' +
+      '<div class="pn-msj" id="pn-msj" role="status" aria-live="polite" hidden></div>' +
+      '<div class="hoja-cuerpo pn-cuerpo" id="pn-cuerpo"><div class="pn-carga" id="pn-carga"><span class="pn-rueda" aria-hidden="true"></span>Cargando el pago seguro…</div></div></section>';
+    document.body.appendChild(caja);
+    document.documentElement.classList.add('pn-abierto');
+    caja.addEventListener('click', function (e) {
+      var t = e.target.closest('[data-pn]'); if (!t) return;
+      if (t.getAttribute('data-pn') === 'cerrar') cerrarPagoNave(true);
+      else if (t.getAttribute('data-pn') === 'afuera' && S.pagoNave && S.pagoNave.url) window.location.href = S.pagoNave.url;
+      else if (t.getAttribute('data-pn') === 'reintentar') A['pagar-tarjeta']({ c: S.pagoNave && S.pagoNave.codigo });
+    });
+    var nave = info.nave;
+    cargarSdkNave().then(function () {
+      if (!S.pagoNave || S.pagoNave.codigo !== info.codigo) return;
+      var el = document.createElement('payfac-sdk');
+      // El README de Nave lo escribe como atributos; se ponen también como propiedades por las dudas.
+      el.setAttribute('paymentRequestId', nave.id); el.setAttribute('publicKey', nave.clave); el.setAttribute('env', nave.env);
+      try { el.paymentRequestId = nave.id; el.publicKey = nave.clave; el.env = nave.env; el.settings = { enable_auto_redirect: false, show_title: false }; } catch (e) {}
+      var c = pnEl('pn-cuerpo'); if (!c) return;
+      var carga = pnEl('pn-carga'); if (carga) carga.remove();
+      c.appendChild(el);
+    }).catch(function () {
+      var carga = pnEl('pn-carga'); if (carga) carga.remove();
+      pnMensaje('No pudimos cargar el pago acá.' + (S.pagoNave && S.pagoNave.url ? ' <button class="pn-link" data-pn="afuera">Pagar en la página de Nave</button>' : ''), 'mal');
+    });
+  }
+  function cerrarPagoNave(abandonar) {
+    var caja = pnEl('pago-nave'); if (caja) caja.remove();
+    document.documentElement.classList.remove('pn-abierto');
+    var p = S.pagoNave; S.pagoNave = null;
+    if (abandonar && p && !p.listo) {
+      // Si justo se estaba confirmando, no se abandona: el servidor decide con lo que diga Nave.
+      if (!p.confirmando) apiPedido({ accion: 'abandonar', codigo: p.codigo });
+      aviso(p.confirmando ? 'Estamos confirmando tu pago. Si se aprobó, te llega un mail.' : 'No se cobró nada. Tu pedido sigue acá para cuando quieras.');
+    }
+  }
+  function confirmarPagoNave(intento) {
+    var p = S.pagoNave; if (!p || p.listo) return;
+    p.confirmando = true;
+    pnMensaje('<b>¡Pago aprobado!</b> Estamos confirmando tu pedido…', 'bien');
+    apiPedido({ accion: 'confirmar-pago', codigo: p.codigo }).then(function (r) {
+      if (S.pagoNave !== p) return;
+      if (r && r.pagado && r.pedido) {
+        p.listo = true;
+        cerrarPagoNave(false);
+        carrito = []; sabor = {}; S.co = null; S.recoVisto = false;
+        S.pedidos = [r.pedido].concat((S.pedidos || []).filter(function (x) { return x.codigo !== r.pedido.codigo; }));
+        S.verCodigo = r.pedido.codigo; S.vista = 'seguir'; pintar(true);
+        aviso('¡Pago aprobado! Ya estamos con tu pedido');
+        return;
+      }
+      // El banco a veces tarda unos segundos en confirmarlo: se vuelve a preguntar.
+      if ((intento || 0) < 8) { setTimeout(function () { confirmarPagoNave((intento || 0) + 1); }, 2500); return; }
+      pnMensaje('Tu pago se está confirmando con el banco. <b>No vuelvas a pagar.</b> Apenas entre, te llega un mail y el pedido aparece en «Mis pedidos».', 'bien');
+    });
+  }
+  // Lo que avisa el módulo de Nave (README: SUCCESS_PROCESSED = aprobado, FAILURE_PROCESSED = rechazado).
+  window.addEventListener('message', function (e) {
+    var d = e && e.data; if (!S.pagoNave || !d || typeof d.type !== 'string') return;
+    if (d.type === 'SUCCESS_PROCESSED') confirmarPagoNave(0);
+    else if (d.type === 'FAILURE_PROCESSED') pnMensaje('<b>La tarjeta fue rechazada.</b> No se cobró nada. Probá con otra tarjeta.', 'mal');
+    else if (d.type === 'BLOCKED') pnMensaje('<b>Este pago quedó bloqueado.</b> Probá con otra tarjeta o pagá al retirar.', 'mal');
+    else if (/_ERROR$/.test(d.type)) pnMensaje('Hubo un problema con el pago. <button class="pn-link" data-pn="reintentar">Volver a intentar</button>' + (S.pagoNave.url ? ' · <button class="pn-link" data-pn="afuera">Pagar en la página de Nave</button>' : ''), 'mal');
+  });
+
   function abiertoPed(p) { return p.estado === 'NUEVO' || p.estado === 'ARMANDO' || p.estado === 'LISTO'; }
   function pedidoVisto() {
     var l = S.pedidos || [];
@@ -1310,10 +1400,18 @@
           if (r.faltan && r.faltan.length) { S.vista = 'inicio'; S.pedido = true; }
           pintar(false); aviso(r.error); return;
         }
+        // Con tarjeta (24/11): se paga acá mismo. El carrito queda hasta que el pago se aprueba.
+        if (pago === 'TARJETA' && r.pagando) {
+          pintar(false);
+          if (r.nave) { abrirPagoNave(r); return; }
+          if (r.pagar) { aviso('Te llevamos a pagar con tarjeta…'); window.location.href = r.pagar; return; }
+          aviso('No pudimos abrir el pago con tarjeta. Probá de nuevo.'); return;
+        }
         carrito = []; sabor = {}; S.co = null; S.recoVisto = false;
         S.pedidos = [r.pedido].concat((S.pedidos || []).filter(function (p) { return p.codigo !== r.pedido.codigo; }));
         S.verCodigo = r.pedido.codigo; S.vista = 'seguir'; pintar(true);
-        // Con tarjeta: directo a pagar en Nave; al terminar vuelve al seguimiento del pedido.
+        // Con tarjeta sin PAGANDO (base sin sql/tienda-pago-embebido.sql): como antes, el pedido ya existe.
+        if (pago === 'TARJETA' && r.nave) { abrirPagoNave({ codigo: r.pedido.codigo, total: r.total, nave: r.nave, pagar: r.pagar }); return; }
         if (pago === 'TARJETA' && r.pagar) { aviso('Te llevamos a pagar con tarjeta…'); window.location.href = r.pagar; return; }
         aviso(pago === 'TRANSFERENCIA' ? '¡Pedido hecho! Ahora transferí y lo armamos' : pago === 'TARJETA' ? 'Pedido hecho. Tocá «Pagar con tarjeta» para pagarlo' : '¡Pedido hecho! Te avisamos cuando esté listo');
       });
@@ -1325,6 +1423,7 @@
       S.enviando = true; pintar(false);
       apiPedido({ accion: 'pagar', codigo: d.c }).then(function (r) {
         S.enviando = false;
+        if (r.nave) { pintar(false); abrirPagoNave(r); return; }
         if (r.pagar) { window.location.href = r.pagar; return; }
         pintar(false); aviso(r.error || 'No pudimos abrir el pago. Probá de nuevo.');
       });

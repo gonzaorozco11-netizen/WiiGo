@@ -16,6 +16,7 @@ import {
   FALTA_SQL_ONLINE,
   avisarCliente,
   cuantosHay,
+  esPagoIncompleto,
   itemsDe,
   palabraCoincide,
   totalesDe,
@@ -103,7 +104,8 @@ export async function listarPedidosOnline(): Promise<{ disponible: boolean; acti
     const u = ubicacionDe(gondola, idProducto);
     return u ? `${nombreCortoZona(gondola, u.modulo)} · fila ${u.fila} · lugar ${u.columna}` : null;
   };
-  const cerrados = ((cerradosRes.data ?? []) as FilaPedidoOnline[]).filter((c) => (c.entregado_at ?? c.cancelado_at ?? "") >= inicioHoy);
+  // Un pago con tarjeta que se empezó y no se terminó nunca fue un pedido: no se muestra (24/11).
+  const cerrados = ((cerradosRes.data ?? []) as FilaPedidoOnline[]).filter((c) => !esPagoIncompleto(c) && (c.entregado_at ?? c.cancelado_at ?? "") >= inicioHoy);
   return { disponible: true, activos: activos.map((a) => armar(a, ubicacion)), cerradosHoy: cerrados.map((c) => armar(c, () => null)) };
 }
 

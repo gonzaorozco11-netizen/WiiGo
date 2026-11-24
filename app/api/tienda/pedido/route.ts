@@ -9,6 +9,7 @@ import {
   avisarPedidoNuevoAlDueno,
   codigoRetiro,
   datosTransferencia,
+  esPagoIncompleto,
   itemsDe,
   palabraSecreta,
   pasoCliente,
@@ -23,7 +24,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { aplicarCombos } from "@/lib/combos";
 import { traerCombos } from "@/lib/combosServidor";
 import { naveConfigurado, naveParaClientes } from "@/lib/nave";
-import { linkDePagoTarjeta, revisarPagoTarjeta } from "@/lib/pagoTarjetaOnline";
+import { abandonarPagoTarjeta, linkDePagoTarjeta, revisarPagoTarjeta } from "@/lib/pagoTarjetaOnline";
 
 /**
  * Comprar en la tienda online (public/tienda/app.js). Ver lib/pedidosOnline.ts.
@@ -31,7 +32,13 @@ import { linkDePagoTarjeta, revisarPagoTarjeta } from "@/lib/pagoTarjetaOnline";
  * GET  → los pedidos del cliente que está adentro: los abiertos y los que se
  *        cerraron en los últimos dos días (para el seguimiento).
  * POST → { items: [{ id, v, q }], pago: "TRANSFERENCIA" | "AL_RETIRAR" | "TARJETA" }: arma el pedido
- *        (con TARJETA devuelve además `pagar`, el link de Nave). { accion: "pagar", codigo } → otro link.
+ *        (con TARJETA devuelve además `nave`, para pagar dentro de la tienda, y `pagar`, el link
+ *        de Nave por si el módulo no carga). Con tarjeta el pedido nace PAGANDO: no existe para
+ *        nadie hasta que el pago se aprueba (24/11).
+ *        { accion: "pagar", codigo } → otro intento de pago.
+ *        { accion: "confirmar-pago", codigo } → la tienda avisa que Nave dijo «aprobado»: se le
+ *        pregunta a Nave y, si es cierto, el pedido pasa a Nuevos.
+ *        { accion: "abandonar", codigo } → cerró el pago sin pagar: se cancela en silencio.
  *
  * Pública (vive bajo /api), pero todo pide la cookie del cliente
  * (lib/tiendaCuenta.ts): sin entrar con el DNI y el código no se compra.
@@ -84,15 +91,20 @@ export async function GET(req: NextRequest) {
     .order("creado", { ascending: false })
     .limit(10);
   if (error) return NextResponse.json({ pedidos: [] }, { headers: sinCache });
-  const filas = ((data ?? []) as FilaPedidoOnline[]).filter(
-    (p) => ESTADOS_ABIERTOS.includes(p.estado) || (p.entregado_at ?? p.cancelado_at ?? p.creado) >= hace2Dias
-  );
+  const todas = (data ?? []) as FilaPedidoOnline[];
   // Con tarjeta y sin pagar: por si el aviso de Nave no llegó, se pregunta a Nave (18/11).
-  for (const p of filas) {
-    if (p.pago === "TARJETA" && !p.pago_ok_at && ESTADOS_ABIERTOS.includes(p.estado) && (await revisarPagoTarjeta(supabase, p))) {
+  // También los que están pagando (24/11): si el pago ya entró, el pedido aparece.
+  for (const p of todas) {
+    if (p.pago !== "TARJETA" || p.pago_ok_at || !(ESTADOS_ABIERTOS.includes(p.estado) || p.estado === "PAGANDO")) continue;
+    if (await revisarPagoTarjeta(supabase, p)) {
       p.pago_ok_at = new Date().toISOString();
+      if (p.estado === "PAGANDO") p.estado = "NUEVO";
     }
   }
+  // Lo que se empezó a pagar y no se pagó no existe para el cliente.
+  const filas = todas.filter(
+    (p) => !esPagoIncompleto(p) && (ESTADOS_ABIERTOS.includes(p.estado) || (p.entregado_at ?? p.cancelado_at ?? p.creado) >= hace2Dias)
+  );
   const pedidos = await Promise.all(filas.slice(0, 5).map((p) => vistaCliente(supabase, p)));
   return NextResponse.json({ pedidos }, { headers: sinCache });
 }
@@ -109,15 +121,29 @@ export async function POST(req: NextRequest) {
   } catch {
     return mal("Pedido inválido.");
   }
-  // «Pagar con tarjeta» de un pedido ya hecho (el link de Nave dura un rato: se arma uno nuevo cada vez).
-  if (b.accion === "pagar") {
+  // Lo que se hace sobre un pedido que ya existe (siempre del cliente que está adentro).
+  if (b.accion === "pagar" || b.accion === "confirmar-pago" || b.accion === "abandonar") {
     const codigo = typeof b.codigo === "string" ? b.codigo.trim().toUpperCase() : "";
     if (!/^WG-[A-Z0-9]{4}$/.test(codigo)) return mal("Pedido inválido.");
     const supabase = getSupabaseServerClient();
-    const { data: ped } = await supabase.from("pedidos_online").select("id_pedido").eq("codigo", codigo).eq("id_cliente", idCliente).maybeSingle();
+    const { data: ped } = await supabase.from("pedidos_online").select(COLUMNAS_PEDIDO).eq("codigo", codigo).eq("id_cliente", idCliente).maybeSingle();
     if (!ped) return mal("No encontramos ese pedido.", 404);
-    const r = await linkDePagoTarjeta(supabase, ped.id_pedido as string);
-    return r.url ? NextResponse.json({ pagar: r.url }, { headers: sinCache }) : mal(r.error ?? "No pudimos abrir el pago.", 409);
+    const fila = ped as FilaPedidoOnline;
+    // «Pagar con tarjeta» otra vez (el link de Nave dura un rato: se arma uno nuevo cada vez).
+    if (b.accion === "pagar") {
+      const r = await linkDePagoTarjeta(supabase, fila.id_pedido);
+      return r.url ? NextResponse.json({ pagar: r.url, nave: r.nave ?? null, codigo, total: totalesDe(itemsDe(fila)).lista }, { headers: sinCache }) : mal(r.error ?? "No pudimos abrir el pago.", 409);
+    }
+    // El módulo de Nave dijo «aprobado»: no se le cree al navegador, se le pregunta a Nave.
+    if (b.accion === "confirmar-pago") {
+      if (!fila.pago_ok_at && (await revisarPagoTarjeta(supabase, fila))) fila.pago_ok_at = new Date().toISOString();
+      if (!fila.pago_ok_at) return NextResponse.json({ pagado: false }, { headers: sinCache });
+      const { data: ahora } = await supabase.from("pedidos_online").select(COLUMNAS_PEDIDO).eq("id_pedido", fila.id_pedido).single();
+      return NextResponse.json({ pagado: true, pedido: await vistaCliente(supabase, ahora as FilaPedidoOnline) }, { headers: sinCache });
+    }
+    // Cerró el pago sin pagar.
+    await abandonarPagoTarjeta(supabase, fila.id_pedido);
+    return NextResponse.json({ ok: true }, { headers: sinCache });
   }
 
   // Tarjeta: para todos con las credenciales de producción; en las pruebas (sandbox),
@@ -244,9 +270,18 @@ export async function POST(req: NextRequest) {
     const totalEfectivo = armadas.reduce((t, a) => t + a.efectivo * a.linea.q, 0);
     const nombre = [cliente.nombre, cliente.apellido].filter(Boolean).join(" ");
 
+    // Con tarjeta el pedido nace PAGANDO (24/11): no existe para nadie hasta que se paga.
+    // Si quedó otro a medio pagar de este cliente (cerró y volvió a confirmar), ese se cancela.
+    // Sin sql/tienda-pago-embebido.sql la base no acepta PAGANDO: nace NUEVO, como antes.
+    let pagando = pago === "TARJETA";
+    if (pagando) {
+      const { data: viejos } = await supabase.from("pedidos_online").select("id_pedido").eq("id_cliente", idCliente).eq("estado", "PAGANDO").is("pago_ok_at", null);
+      for (const v of viejos ?? []) await abandonarPagoTarjeta(supabase, v.id_pedido as string);
+    }
+
     // El código es único: si justo sale uno repetido, se prueba otro.
     let fila: { id_pedido: string } | null = null;
-    for (let intento = 0; intento < 5 && !fila; intento++) {
+    for (let intento = 0; intento < 6 && !fila; intento++) {
       const { data, error } = await supabase
         .from("pedidos_online")
         .insert({
@@ -260,9 +295,15 @@ export async function POST(req: NextRequest) {
           total_lista: totalLista,
           total_efectivo: totalEfectivo,
           vence: venceDe(),
+          ...(pagando ? { estado: "PAGANDO" } : {}),
         })
         .select("id_pedido")
         .single();
+      // 23514: la base todavía no conoce PAGANDO → se guarda como antes.
+      if (error?.code === "23514" && pagando) {
+        pagando = false;
+        continue;
+      }
       if (error && error.code !== "23505") return mal(/pedidos_online|schema cache/i.test(error.message) ? "La compra online todavía no está habilitada." : "No pudimos guardar el pedido. Probá de nuevo.", 503);
       fila = data as { id_pedido: string } | null;
     }
@@ -286,14 +327,23 @@ export async function POST(req: NextRequest) {
       return mal("No pudimos guardar el pedido. Probá de nuevo.", 503);
     }
 
-    // Los dos mails a la par: al cliente (con el código y cómo pagar) y al Dueño.
-    await Promise.all([avisarCliente(supabase, fila.id_pedido, "RECIBIDO"), avisarPedidoNuevoAlDueno(supabase, fila.id_pedido)]);
+    // Los dos mails a la par: al cliente (con el código y cómo pagar) y al Dueño. Pagando con
+    // tarjeta todavía no: salen cuando el pago se aprueba (registrarPagoTarjeta).
+    if (!pagando) await Promise.all([avisarCliente(supabase, fila.id_pedido, "RECIBIDO"), avisarPedidoNuevoAlDueno(supabase, fila.id_pedido)]);
 
     const { data: creado } = await supabase.from("pedidos_online").select(COLUMNAS_PEDIDO).eq("id_pedido", fila.id_pedido).single();
-    // Con tarjeta: el link de Nave para ir a pagar. Si Nave falla, el pedido queda hecho y se
-    // paga después desde el seguimiento («Pagar con tarjeta»).
-    const pagar = pago === "TARJETA" ? (await linkDePagoTarjeta(supabase, fila.id_pedido)).url ?? null : null;
-    return NextResponse.json({ pedido: await vistaCliente(supabase, creado as FilaPedidoOnline), pagar }, { headers: sinCache });
+    if (pago !== "TARJETA") return NextResponse.json({ pedido: await vistaCliente(supabase, creado as FilaPedidoOnline) }, { headers: sinCache });
+    // Con tarjeta: el pago de Nave (adentro de la tienda con `nave`, o la página de Nave con `pagar`).
+    const r = await linkDePagoTarjeta(supabase, fila.id_pedido);
+    if (pagando && !r.url) {
+      // Nave no respondió: como el pedido no existe hasta pagarse, no queda nada colgado.
+      await abandonarPagoTarjeta(supabase, fila.id_pedido);
+      return mal(r.error ?? "No pudimos abrir el pago con tarjeta. Probá de nuevo en un momento.", 502);
+    }
+    return NextResponse.json(
+      { pedido: pagando ? null : await vistaCliente(supabase, creado as FilaPedidoOnline), pagando, codigo: (creado as FilaPedidoOnline).codigo, total: totalLista, nave: r.nave ?? null, pagar: r.url ?? null },
+      { headers: sinCache }
+    );
   } catch (e) {
     console.error("[tienda/pedido]", e);
     return mal("Algo falló. Probá de nuevo en un momento.", 500);

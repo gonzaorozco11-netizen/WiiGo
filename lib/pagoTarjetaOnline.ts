@@ -1,6 +1,17 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { COLUMNAS_PEDIDO, ESTADOS_ABIERTOS, MOTIVO_TARJETA_SIN_PAGAR, avisarCliente, cuantosHay, itemsDe, totalesDe, type FilaPedidoOnline } from "@/lib/pedidosOnline";
-import { consultarPagoNave, consultarPedidoNave, crearPagoNave, naveConfigurado, referenciasDelPago, secretoAviso } from "@/lib/nave";
+import {
+  COLUMNAS_PEDIDO,
+  ESTADOS_ABIERTOS,
+  MOTIVO_PAGO_INCOMPLETO,
+  MOTIVO_TARJETA_SIN_PAGAR,
+  avisarCliente,
+  avisarPedidoNuevoAlDueno,
+  cuantosHay,
+  itemsDe,
+  totalesDe,
+  type FilaPedidoOnline,
+} from "@/lib/pedidosOnline";
+import { consultarPagoNave, consultarPedidoNave, crearPagoNave, datosPagoEmbebido, naveConfigurado, referenciasDelPago, secretoAviso } from "@/lib/nave";
 import { baseUrlPublica, urlTienda } from "@/lib/urlPublica";
 
 // El pago con tarjeta de un pedido de la tienda (Gonzalo, 18/11). Ver lib/nave.ts.
@@ -10,13 +21,16 @@ import { baseUrlPublica, urlTienda } from "@/lib/urlPublica";
 // El pedido queda pagado igual que con una transferencia confirmada: el equipo lo ve
 // en «Nuevos» listo para aceptar, sin tocar nada.
 
-export async function linkDePagoTarjeta(supabase: SupabaseClient, idPedido: string): Promise<{ url?: string; error?: string }> {
+/** Lo que necesita la tienda para mostrar el pago de Nave adentro de «Finalizar compra». */
+export type PagoEmbebido = { id: string; clave: string; env: "production" | "sandbox" };
+
+export async function linkDePagoTarjeta(supabase: SupabaseClient, idPedido: string): Promise<{ url?: string; nave?: PagoEmbebido; error?: string }> {
   if (!naveConfigurado()) return { error: "El pago con tarjeta todavía no está habilitado." };
   const { data } = await supabase.from("pedidos_online").select(COLUMNAS_PEDIDO).eq("id_pedido", idPedido).maybeSingle();
   const p = data as FilaPedidoOnline | null;
   if (!p || p.pago !== "TARJETA") return { error: "Ese pedido no se paga con tarjeta." };
   if (p.pago_ok_at) return { error: "Ese pedido ya está pago." };
-  if (!ESTADOS_ABIERTOS.includes(p.estado)) return { error: "Ese pedido ya está cerrado." };
+  if (!ESTADOS_ABIERTOS.includes(p.estado) && p.estado !== "PAGANDO") return { error: "Ese pedido ya está cerrado." };
   const items = itemsDe(p).filter((i) => cuantosHay(i) > 0);
   const total = totalesDe(items).lista;
   if (!(total > 0)) return { error: "Ese pedido no tiene nada para cobrar." };
@@ -35,7 +49,9 @@ export async function linkDePagoTarjeta(supabase: SupabaseClient, idPedido: stri
       segundos: 900,
     });
     await supabase.from("pedidos_online").update({ nave_pedido_id: r.id }).eq("id_pedido", idPedido);
-    return { url: r.checkoutUrl };
+    // Con la clave pública cargada, la tienda muestra el pago adentro; si no, usa la página de Nave.
+    const sdk = datosPagoEmbebido();
+    return { url: r.checkoutUrl, nave: sdk ? { id: r.id, ...sdk } : undefined };
   } catch (e) {
     console.error("[nave] link de pago", p.numero, e);
     return { error: "No pudimos abrir el pago con tarjeta. Probá de nuevo en un momento." };
@@ -62,19 +78,47 @@ export async function registrarPagoTarjeta(
     .is("pago_ok_at", null)
     .select("id_pedido")
     .maybeSingle();
+  // Solo el primero que lo marca sigue (Nave puede avisar dos veces).
+  if (!data) return { estado: pago.crudo };
+  // Pagó dentro de la tienda (PAGANDO, 24/11): recién ahora el pedido existe para todos.
+  // Pasa a «Nuevos», le llega al cliente el mail con su palabra secreta (ya pago) y al Dueño
+  // el aviso de pedido nuevo, igual que cualquier otro pedido.
+  const { data: nacio } = await supabase
+    .from("pedidos_online")
+    .update({ estado: "NUEVO" })
+    .eq("id_pedido", idPedido)
+    .eq("estado", "PAGANDO")
+    .select("id_pedido")
+    .maybeSingle();
   // Si se canceló solo por no pagar a tiempo y el pago entró igual (pagó en el último
-  // minuto del link), vuelve a «Nuevos» pagado: el equipo lo arma o lo cancela devolviendo.
-  if (data) {
-    await supabase
-      .from("pedidos_online")
-      .update({ estado: "NUEVO", cancelado_at: null, motivo_cancelacion: null })
-      .eq("id_pedido", idPedido)
-      .eq("estado", "CANCELADO")
-      .eq("motivo_cancelacion", MOTIVO_TARJETA_SIN_PAGAR);
+  // minuto), vuelve a «Nuevos» pagado: el equipo lo arma o lo cancela devolviendo.
+  const { data: revivio } = await supabase
+    .from("pedidos_online")
+    .update({ estado: "NUEVO", cancelado_at: null, motivo_cancelacion: null })
+    .eq("id_pedido", idPedido)
+    .eq("estado", "CANCELADO")
+    .in("motivo_cancelacion", [MOTIVO_TARJETA_SIN_PAGAR, MOTIVO_PAGO_INCOMPLETO])
+    .select("id_pedido, motivo_cancelacion")
+    .maybeSingle();
+  if (nacio || (revivio && (revivio as { motivo_cancelacion?: string | null }).motivo_cancelacion === MOTIVO_PAGO_INCOMPLETO)) {
+    await Promise.all([avisarCliente(supabase, idPedido, "RECIBIDO"), avisarPedidoNuevoAlDueno(supabase, idPedido)]);
+  } else {
+    await avisarCliente(supabase, idPedido, "PAGO_OK");
   }
-  // Solo el primero que lo marca manda el mail (Nave puede avisar dos veces).
-  if (data) await avisarCliente(supabase, idPedido, "PAGO_OK");
   return { estado: pago.crudo };
+}
+
+/**
+ * El cliente cerró el pago sin terminarlo: el pedido que estaba pagando se cancela en
+ * silencio (nunca se mostró). Si el pago entra igual, registrarPagoTarjeta lo revive.
+ */
+export async function abandonarPagoTarjeta(supabase: SupabaseClient, idPedido: string): Promise<void> {
+  await supabase
+    .from("pedidos_online")
+    .update({ estado: "CANCELADO", cancelado_at: new Date().toISOString(), motivo_cancelacion: MOTIVO_PAGO_INCOMPLETO })
+    .eq("id_pedido", idPedido)
+    .eq("estado", "PAGANDO")
+    .is("pago_ok_at", null);
 }
 
 /**

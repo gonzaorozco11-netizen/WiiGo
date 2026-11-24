@@ -47,6 +47,18 @@ function entorno() {
   return process.env.NAVE_ENTORNO === "produccion" ? URLS.produccion : URLS.sandbox;
 }
 
+/**
+ * Para pagar DENTRO de la tienda (24/11): el módulo de Nave (@ranty/ranty-sdk, el
+ * elemento <payfac-sdk>) necesita la clave pública y el entorno. Nave confirmó (SI-357)
+ * que en pruebas el entorno es «sandbox». La clave pública no es secreta (va al
+ * navegador). Sin NAVE_PUBLIC_KEY se usa la página de pago de Nave, como antes.
+ */
+export function datosPagoEmbebido(): { clave: string; env: "production" | "sandbox" } | null {
+  const clave = process.env.NAVE_PUBLIC_KEY?.trim();
+  if (!clave || !naveConfigurado()) return null;
+  return { clave, env: process.env.NAVE_ENTORNO === "produccion" ? "production" : "sandbox" };
+}
+
 // El token dura ~1 h: se guarda en memoria mientras viva la función (si no, se pide otro).
 let tokenGuardado: { valor: string; vence: number } | null = null;
 
