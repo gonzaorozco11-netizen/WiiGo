@@ -34,7 +34,7 @@ function huella(v: string | undefined) {
 export async function GET() {
   const id = process.env.NAVE_CLIENT_ID?.trim();
   const secret = process.env.NAVE_CLIENT_SECRET?.trim();
-  const audience = process.env.NAVE_AUDIENCE?.trim() || "https://api.ranty.io/integrations";
+  const audience = (process.env.NAVE_AUDIENCE ?? "").trim().replace(/^["'“”‘’]+|["'“”‘’]+$/g, "").trim() || "https://api.ranty.io/integrations";
   const resultados: Record<string, string> = {};
   for (const [nombre, url] of Object.entries(TOKEN)) {
     try {

@@ -34,7 +34,10 @@ const URLS = {
   },
 } as const;
 // El que vino con las credenciales de Nave (20/11); si cambia, va en NAVE_AUDIENCE.
-const AUDIENCE = () => process.env.NAVE_AUDIENCE?.trim() || "https://api.ranty.io/integrations";
+// Sin espacios ni comillas alrededor: al copiar de la nota de Nave se pegó el audience entre
+// comillas ("https://…") y Nave rechazaba todo con 401 (24/11).
+const limpio = (v: string | undefined) => (v ?? "").trim().replace(/^["'“”‘’]+|["'“”‘’]+$/g, "").trim();
+const AUDIENCE = () => limpio(process.env.NAVE_AUDIENCE) || "https://api.ranty.io/integrations";
 
 export function naveConfigurado(): boolean {
   return Boolean(process.env.NAVE_CLIENT_ID && process.env.NAVE_CLIENT_SECRET && process.env.NAVE_POS_ID);
@@ -59,7 +62,7 @@ function entorno() {
  * navegador). Sin NAVE_PUBLIC_KEY se usa la página de pago de Nave, como antes.
  */
 export function datosPagoEmbebido(): { clave: string; env: "production" | "sandbox" } | null {
-  const clave = process.env.NAVE_PUBLIC_KEY?.trim();
+  const clave = limpio(process.env.NAVE_PUBLIC_KEY);
   if (!clave || !naveConfigurado()) return null;
   return { clave, env: process.env.NAVE_ENTORNO === "produccion" ? "production" : "sandbox" };
 }
@@ -79,7 +82,7 @@ async function token(renovar = false): Promise<string> {
     const r = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ client_id: process.env.NAVE_CLIENT_ID?.trim(), client_secret: process.env.NAVE_CLIENT_SECRET?.trim(), audience: AUDIENCE() }),
+      body: JSON.stringify({ client_id: limpio(process.env.NAVE_CLIENT_ID), client_secret: limpio(process.env.NAVE_CLIENT_SECRET), audience: AUDIENCE() }),
       signal: AbortSignal.timeout(10000),
     });
     const texto = await r.text();
@@ -132,7 +135,7 @@ export async function crearPagoNave(p: {
     method: "POST",
     body: {
       external_payment_id: p.referencia,
-      seller: { pos_id: process.env.NAVE_POS_ID },
+      seller: { pos_id: limpio(process.env.NAVE_POS_ID) },
       transactions: [
         {
           amount: { currency: "ARS", value: plata(p.total) },
