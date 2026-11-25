@@ -6,6 +6,7 @@ import type { BolsitaDeGranel, EnCursoVista, GranelVista } from "@/lib/fracciona
 import { PASO_PARA_ETIQUETAR, cuantasLoQueFalta, cuantasTodaLaBolsa } from "@/lib/fraccionarSugerido";
 import { descartarEnCurso, guardarEnCurso } from "@/app/(app)/fraccionar/actions";
 import { textoGramos } from "@/lib/gramos";
+import { calcularVencimiento, duracionSugerida, fechaCorta } from "@/lib/rotulado";
 
 // Fraccionar paso a paso (Gonzalo, 16/11; maqueta «Fraccionar paso a paso»).
 // Para la tablet: letra y botones grandes, un paso por pantalla.
@@ -67,6 +68,15 @@ export default function FraccionarGuiado({
   const [confirmarFin, setConfirmarFin] = useState(false);
   const [quedan, setQuedan] = useState<string>(inicial?.gramosQuedan == null ? "" : String(inicial.gramosQuedan));
   const [vto, setVto] = useState(inicial?.vencimiento ?? "");
+  // La bolsa grande sin vencimiento (Gonzalo, 25/11): se calcula con lo que dura el producto
+  // desde hoy (lib/rotulado.ts, lo mismo que usa la etiqueta) y sale impreso como cualquier otro.
+  const [sinFecha, setSinFecha] = useState(false);
+  const duracion = bolsa ? (bolsa.dias ? { dias: bolsa.dias, tipo: "lo cargado en el producto" } : duracionSugerida(bolsa.nombre)) : null;
+  function bolsaSinFecha() {
+    if (!duracion) return;
+    setVto(calcularVencimiento(hoyIso(), duracion.dias, null));
+    setSinFecha(true);
+  }
   const [error, setError] = useState<string | null>(null);
   const [guardando, startTransition] = useTransition();
 
@@ -398,7 +408,26 @@ export default function FraccionarGuiado({
           <label htmlFor="vto" className="font-extrabold">
             Vencimiento de la bolsa grande
           </label>
-          <input id="vto" type="date" min={hoyIso()} value={vto} onChange={(e) => setVto(e.target.value)} className="mt-2 block w-full rounded-xl border-2 border-neutral-200 px-3 py-2.5 text-xl font-extrabold" />
+          <input
+            id="vto"
+            type="date"
+            min={hoyIso()}
+            value={vto}
+            onChange={(e) => {
+              setVto(e.target.value);
+              setSinFecha(false);
+            }}
+            className="mt-2 block w-full rounded-xl border-2 border-neutral-200 px-3 py-2.5 text-xl font-extrabold"
+          />
+          {sinFecha && vto && duracion ? (
+            <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              La bolsa no tiene fecha: le pongo <b>{fechaCorta(vto)}</b>, {duracion.dias} días desde hoy ({duracion.tipo === "lo cargado en el producto" ? duracion.tipo : `lo que suele durar: ${duracion.tipo}`}). Sale impreso en la etiqueta.
+            </p>
+          ) : (
+            <button type="button" onClick={bolsaSinFecha} className="mt-3 text-sm font-semibold text-neutral-600 underline underline-offset-4">
+              La bolsa grande no tiene vencimiento
+            </button>
+          )}
         </div>
         <div className={`${tarjeta} mt-2 text-sm text-neutral-600`}>
           Dejá las <b>{n} bolsitas</b> juntas y aparte: las etiquetas se imprimen todas juntas al final, para gastar menos hojas.

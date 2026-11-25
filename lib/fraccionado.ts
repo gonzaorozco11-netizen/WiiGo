@@ -26,6 +26,8 @@ export type BolsitaDeGranel = {
   objetivo: number;
   /** Vendidas en los últimos 7 días. */
   vendidasSemana: number;
+  /** Los días que dura, si están cargados en el producto (si no, se usa la duración sugerida por nombre). */
+  dias: number | null;
 };
 export type GranelVista = {
   idVariante: string;
@@ -192,8 +194,8 @@ export async function datosFraccionar(supabase: SupabaseClient, idLocal: string)
       ? supabase.from("variantes_producto").select("id_variante, id_producto").in("id_producto", graneles.map((g) => g.id_producto as string))
       : Promise.resolve({ data: [] as { id_variante: string; id_producto: string }[] }),
     idsGranel.length
-      ? supabase.from("productos").select("id_producto, nombre, id_granel, peso_neto_g").eq("estado", "ACTIVO").not("id_envase", "is", null).gt("peso_neto_g", 0).in("id_granel", idsGranel)
-      : Promise.resolve({ data: [] as { id_producto: string; nombre: string; id_granel: string; peso_neto_g: number }[] }),
+      ? supabase.from("productos").select("id_producto, nombre, id_granel, peso_neto_g, dias_vida_util").eq("estado", "ACTIVO").not("id_envase", "is", null).gt("peso_neto_g", 0).in("id_granel", idsGranel)
+      : Promise.resolve({ data: [] as { id_producto: string; nombre: string; id_granel: string; peso_neto_g: number; dias_vida_util: number | null }[] }),
   ]);
   const [{ data: varsHijas }, { data: costosGranel }] = await Promise.all([
     hijas?.length
@@ -234,6 +236,7 @@ export async function datosFraccionar(supabase: SupabaseClient, idLocal: string)
             minimo: Number(v.stock_minimo ?? 0),
             objetivo: Math.max(Number(v.stock_objetivo ?? 0), Number(v.stock_minimo ?? 0)),
             vendidasSemana: vendidas.get(v.id_variante as string) ?? 0,
+            dias: Number(h.dias_vida_util) > 0 ? Number(h.dias_vida_util) : null,
           }))
       )
       .sort((a, b) => a.peso - b.peso);
