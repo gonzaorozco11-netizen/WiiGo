@@ -354,7 +354,9 @@ export async function terminarFraccionado(d: {
   gramosQuedan: number | null;
   vencimiento: string;
 }): Promise<{ error?: string; ok?: true; lote?: string; merma?: number; ubicacion?: string | null }> {
-  if (!FECHA_OK.test(d.vencimiento ?? "")) return { error: "Poné el vencimiento que escribiste en las etiquetas." };
+  // Sin vencimiento se puede (Gonzalo, 25/11: hay bolsas grandes sin fecha); si viene, tiene que ser una fecha.
+  const vencimiento = d.vencimiento?.trim() ? d.vencimiento.trim() : null;
+  if (vencimiento && !FECHA_OK.test(vencimiento)) return { error: "El vencimiento no es una fecha válida." };
   const sesion = await obtenerSesionConPantallas();
   if (!sesion || !puedeVerPantalla(sesion, "fraccionar")) return { error: "No tenés habilitado Fraccionar." };
   const supabase = getSupabaseServerClient();
@@ -364,7 +366,7 @@ export async function terminarFraccionado(d: {
   if (!granel) return { error: "Ese granel no existe." };
 
   const lote = await loteDelDia(supabase, idLocal);
-  const r = await registrarFraccionado(d.idVarianteGranel, d.idVarianteBolsa, d.bolsitas, { lote, vencimiento: d.vencimiento });
+  const r = await registrarFraccionado(d.idVarianteGranel, d.idVarianteBolsa, d.bolsitas, { lote, vencimiento });
   if (r.error || !r.idFraccionado) return { error: r.error ?? "No se pudo guardar." };
 
   // Lo que quedó a granel: 0 si se terminó la bolsa; si no, lo que pesaron. Sin pesar, queda lo que figura.

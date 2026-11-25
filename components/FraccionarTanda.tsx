@@ -56,13 +56,15 @@ export default function FraccionarTanda({
     .map((e) => ({ ...e, nombre: bolsa.get(e.idVarianteBolsa)?.nombre ?? "Bolsita", peso: bolsa.get(e.idVarianteBolsa)?.peso ?? 0 }));
   // Las etiquetas, juntas por producto (dos tandas del mismo van en un renglón).
   // Lo que ya se imprimió (PASO_IMPRESAS) no se vuelve a imprimir: va en `yaImpresas`.
-  const porProducto = new Map<string, { nombre: string; n: number; vtos: Set<string> }>();
-  const yaImpresas = new Map<string, { nombre: string; n: number; vtos: Set<string> }>();
+  // `sinFecha`: tandas que eligieron no ponerle vencimiento (25/11).
+  const porProducto = new Map<string, { nombre: string; n: number; vtos: Set<string>; sinFecha: number }>();
+  const yaImpresas = new Map<string, { nombre: string; n: number; vtos: Set<string>; sinFecha: number }>();
   for (const l of lineas) {
     const destino = l.paso >= PASO_IMPRESAS ? yaImpresas : porProducto;
-    const p = destino.get(l.idVarianteBolsa) ?? { nombre: l.nombre, n: 0, vtos: new Set<string>() };
+    const p = destino.get(l.idVarianteBolsa) ?? { nombre: l.nombre, n: 0, vtos: new Set<string>(), sinFecha: 0 };
     p.n += l.bolsitas ?? 0;
     if (l.vencimiento) p.vtos.add(l.vencimiento);
+    else p.sinFecha++;
     destino.set(l.idVarianteBolsa, p);
   }
   const total = lineas.reduce((a, l) => a + (l.bolsitas ?? 0), 0);
@@ -96,8 +98,10 @@ export default function FraccionarTanda({
 
   // El vencimiento que cargaron sale impreso (Gonzalo, 18/11). Si el mismo producto tiene dos
   // fechas distintas (dos bolsas), no se puede imprimir una sola: esas se escriben a mano.
-  const impreso = (p: { vtos: Set<string> }) => p.vtos.size === 1;
-  const aMano = [...porProducto.values()].filter((p) => !impreso(p));
+  // Sin ninguna fecha: sale «Vto: ____» en blanco y no se pide escribirla.
+  const impreso = (p: { vtos: Set<string>; sinFecha: number }) => p.vtos.size === 1 && p.sinFecha === 0;
+  const sinVencimiento = (p: { vtos: Set<string> }) => p.vtos.size === 0;
+  const aMano = [...porProducto.values()].filter((p) => !impreso(p) && !sinVencimiento(p));
 
   // Lo recibido sin código: entra marcado; se puede sacar si no se quiere imprimir ahora.
   const [sinSumar, setSinSumar] = useState<Set<string>>(new Set());
@@ -263,7 +267,7 @@ export default function FraccionarTanda({
               <span>
                 <b className="block">{p.nombre}</b>
                 <small className="text-neutral-500">
-                  {p.n} etiquetas · {impreso(p) ? "✓ sale impreso" : "✍ a mano"}
+                  {p.n} etiquetas · {impreso(p) ? "✓ sale impreso" : sinVencimiento(p) ? "sin vencimiento" : "✍ a mano"}
                 </small>
               </span>
               <b className="text-xl tabular-nums">{[...p.vtos].map(fecha).join(" y ") || "—"}</b>

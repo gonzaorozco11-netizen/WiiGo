@@ -89,7 +89,7 @@ export default function FraccionarGuiado({
   const alcanzaParaMas = bolsa ? esperado >= bolsa.peso : false;
 
   // Guarda por dónde va, para retomarlo si sale.
-  async function guardar(nuevoPaso: number) {
+  async function guardar(nuevoPaso: number, vencimiento: string | null = vto || null) {
     if (!bolsa || sinTabla) return idEnCurso;
     const r = await guardarEnCurso({
       idEnCurso,
@@ -99,7 +99,7 @@ export default function FraccionarGuiado({
       bolsitas: n,
       seTermino: queda == null ? null : queda === "no",
       gramosQuedan: queda === "si" && quedan.trim() !== "" ? quedanG : null,
-      vencimiento: vto || null,
+      vencimiento,
     });
     if (r.sinTabla) setSinTabla(true);
     if (r.error) setError(r.error);
@@ -116,11 +116,12 @@ export default function FraccionarGuiado({
     });
   }
 
-  /** Paso 4 → queda «fraccionado, falta la etiqueta». */
-  function terminarEste() {
+  /** Paso 4 → queda «fraccionado, falta la etiqueta». `sinVencimiento`: sin ninguna fecha (Gonzalo, 25/11). */
+  function terminarEste(sinVencimiento = false) {
     setError(null);
+    if (sinVencimiento) setVto("");
     startTransition(async () => {
-      const id = await guardar(PASO_PARA_ETIQUETAR);
+      const id = await guardar(PASO_PARA_ETIQUETAR, sinVencimiento ? null : vto || null);
       if (!id) {
         setError(sinTabla ? "Falta correr sql/fraccionado-guiado.sql: sin eso no se puede guardar para etiquetar después." : "No se pudo guardar. Probá de nuevo.");
         return;
@@ -432,9 +433,14 @@ export default function FraccionarGuiado({
         <div className={`${tarjeta} mt-2 text-sm text-neutral-600`}>
           Dejá las <b>{n} bolsitas</b> juntas y aparte: las etiquetas se imprimen todas juntas al final, para gastar menos hojas.
         </div>
-        <button type="button" disabled={!vto || guardando} onClick={terminarEste} className={`${verde} mt-4`}>
+        <button type="button" disabled={!vto || guardando} onClick={() => terminarEste()} className={`${verde} mt-4`}>
           {guardando ? "Guardando…" : "Listo"}
         </button>
+        {sinFecha && (
+          <button type="button" disabled={guardando} onClick={() => terminarEste(true)} className={`${claro} mt-2`}>
+            Seguir sin fecha: la etiqueta sale con el vencimiento en blanco
+          </button>
+        )}
       </>
     );
   } else if (paso === PASO_PARA_ETIQUETAR) {
