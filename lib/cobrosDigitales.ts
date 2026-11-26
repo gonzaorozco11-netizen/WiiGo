@@ -84,6 +84,9 @@ const PROVINCIAS = ["buenos_aires", "caba", "catamarca", "chaco", "chubut", "cor
 /** Cómo se llama en pantalla cada impuesto o movimiento que informa Mercado Pago. */
 export function nombreDescuento(crudo: string): string {
   const s = crudo.toLowerCase();
+  // Las retenciones que informa Nave (lib/naveCobros.ts).
+  if (s === "retencion_iva") return "Retención de IVA";
+  if (s === "retencion_ganancias") return "Retención de Ganancias";
   if (/credit_debit|withholding_(payer|collector|payout|shipping)|debitos|creditos|ley_25413/.test(s)) return "Impuesto a los débitos y créditos";
   const prov = PROVINCIAS.find((p) => s.includes(p));
   if (/iibb|ibcf|ibex|sircreb|gross_income|ingresos_brutos|withdholding/.test(s) || prov) {
@@ -433,9 +436,11 @@ function armarCobro(filas: Fila[]): Omit<Cobro, "reparto" | "paraVos" | "deMarca
   };
 
   const pagoCliente = r2(Number(pago.bruto) || 0);
+  const esNave = pago.proveedor === "NAVE";
+  const quien = esNave ? "Nave" : "Mercado Pago";
   for (const f of filas) {
     if (f.tipo === "payment") {
-      sumar("Comisión de Mercado Pago", Number(f.comision), "IVA incluido");
+      sumar(`Comisión de ${quien}`, Number(f.comision), "IVA incluido");
       sumar("Comisión por cuotas", Number(f.financiacion));
       const imp = Number(f.impuestos) || 0;
       // Se relee de lo que informó Mercado Pago: así los guardados antes de leer bien
@@ -460,12 +465,12 @@ function armarCobro(filas: Fila[]): Omit<Cobro, "reparto" | "paraVos" | "deMarca
   const avisos: string[] = [];
   if (Math.abs(calculado - entro) >= 1 && pagoCliente > 0) {
     const dif = r2(entro - calculado);
-    lineas.push({ nombre: "Otros ajustes", monto: dif, nota: "diferencia informada por Mercado Pago" });
+    lineas.push({ nombre: "Otros ajustes", monto: dif, nota: `diferencia informada por ${quien}` });
     if (dif < 0) comp.otros += -dif;
   }
   const sacoMedio = r2(Math.max(0, pagoCliente - entro));
   const tipoMedio = pago.medio_tipo ?? "";
-  const medio = MEDIOS[tipoMedio] ?? (pago.medio ? pago.medio.replace(/_/g, " ") : "Mercado Pago");
+  const medio = MEDIOS[tipoMedio] ?? (pago.medio ? pago.medio.replace(/_/g, " ") : quien);
   if (tipoMedio === "prepaid_card") avisos.push("Pagó con tarjeta prepaga: es la que más comisión cobra.");
   if (!pago.referencia && filas.some((f) => f.id_venta)) {
     avisos.push("Unido con la venta por el monto y la fecha: Mercado Pago no mandó la referencia (se cobró por fuera del QR de la caja).");
@@ -493,8 +498,8 @@ export type DescuentoReal = {
   pagoCliente: number;
   /** Comisión de Mercado Pago con su IVA (y la de cuotas, si hubo). */
   comision: number;
-  /** Impuesto a los débitos y créditos. */
-  impCreditos: number;
+  /** Impuesto a los débitos y créditos. null: el medio no lo informa (Nave: lo cobra el banco aparte) y sigue estimado. */
+  impCreditos: number | null;
   /** Retenciones de Ingresos Brutos (SIRCREB), solo si Mercado Pago las hizo. */
   retenciones: number;
 };
@@ -537,10 +542,11 @@ export async function descuentosRealesPorVenta(supabase: SupabaseClient, idsVent
     const c = armarCobro(fs);
     if (!c.idVenta || c.pagoCliente <= 0) continue;
     const previo = salida.get(c.idVenta);
+    const deNave = c.proveedor === "NAVE";
     salida.set(c.idVenta, {
       pagoCliente: r2((previo?.pagoCliente ?? 0) + c.pagoCliente),
       comision: r2((previo?.comision ?? 0) + c.componentes.comision),
-      impCreditos: r2((previo?.impCreditos ?? 0) + c.componentes.impCred),
+      impCreditos: deNave ? null : r2((previo?.impCreditos ?? 0) + c.componentes.impCred),
       retenciones: r2((previo?.retenciones ?? 0) + c.componentes.iibb),
     });
   }

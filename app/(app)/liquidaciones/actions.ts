@@ -245,11 +245,11 @@ export async function construirLineas(
     .in("id_pago", idsPago.length > 0 ? idsPago : ["00000000-0000-0000-0000-000000000000"]);
   const formaPagoPorIdPago = new Map((pagos ?? []).map((p) => [p.id_pago, p.forma_pago_cliente]));
 
-  // Lo que Mercado Pago descontó de verdad en cada venta (Cobros digitales,
-  // 17/11). La venta que todavía no está en un reporte sigue con la estimación.
+  // Lo que Mercado Pago (17/11) y Nave (26/11) descontaron de verdad en cada venta
+  // (Cobros digitales). La que todavía no tiene su dato sigue con la estimación.
   const descuentosReales = await descuentosRealesPorVenta(
     supabase,
-    ventasFiltradas.filter((v) => v.medio_pago === "MERCADO_PAGO").map((v) => v.id_venta)
+    ventasFiltradas.filter((v) => v.medio_pago === "MERCADO_PAGO" || v.medio_pago === "POSNET").map((v) => v.id_venta)
   ).catch(() => new Map<string, DescuentoReal>());
 
   // El programa de profesionales de cada renglón vendido con código o a un
@@ -309,7 +309,7 @@ export async function construirLineas(
     const impCreditosLinea =
       esEfectivo || !marca.trasladar_imp_creditos
         ? 0
-        : real
+        : real && real.impCreditos != null
           ? redondear2(real.impCreditos * parteDelCobro)
           : redondear2(ventaBruta * (tasas.impCreditos / 100));
     // La comisión de Mercado Pago se cobra + IVA (ej. débito 1,39% + 21%

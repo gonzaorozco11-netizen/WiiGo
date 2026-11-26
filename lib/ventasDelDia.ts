@@ -97,10 +97,10 @@ export async function ventasDelDia(supabase: SupabaseClient, fecha = fechaHoraAr
       // Si una marca no se puede calcular, sus renglones quedan sin descuentos (no rompe el Inicio).
     }
   }
-  // Marca propia: lo real de Mercado Pago, si ya llegó.
+  // Marca propia: lo real de Mercado Pago o Nave, si ya llegó.
   const reales = await descuentosRealesPorVenta(
     supabase,
-    lista.filter((v) => v.medio_pago === "MERCADO_PAGO").map((v) => v.id_venta as string)
+    lista.filter((v) => v.medio_pago === "MERCADO_PAGO" || v.medio_pago === "POSNET").map((v) => v.id_venta as string)
   ).catch(() => new Map());
 
   const filas: FilaVentaDia[] = lista.map((v) => {
@@ -144,7 +144,8 @@ export async function ventasDelDia(supabase: SupabaseClient, fecha = fechaHoraAr
       if (real && real.pagoCliente > 0) {
         const parte = bruto / real.pagoCliente;
         f.cobro += real.comision * parte;
-        f.creditos += real.impCreditos * parte;
+        // Nave no informa el impuesto a los créditos (lo cobra el banco): ese sigue estimado.
+        f.creditos += real.impCreditos != null ? real.impCreditos * parte : reglas.impCreditos ? bruto * (tasas.impCreditos / 100) : 0;
         f.retenciones += real.retenciones * parte;
       } else {
         if (!efectivo) todoReal = false;

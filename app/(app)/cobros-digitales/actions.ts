@@ -3,6 +3,7 @@
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { obtenerSesionConPantallas, puedeVerPantalla } from "@/lib/roles";
 import { cobrosDelPeriodo, sincronizarMp, type Cobro } from "@/lib/cobrosDigitales";
+import { sincronizarNave } from "@/lib/naveCobros";
 
 // Cobros digitales (Gonzalo, 17/11). Ver lib/cobrosDigitales.ts.
 
@@ -36,8 +37,17 @@ export async function cargarCobros(
 export async function actualizarCobros(dias: number): Promise<{ error: string | null; mensaje: string }> {
   if (!(await puede())) return { error: "No tenés permiso.", mensaje: "" };
   try {
-    const r = await sincronizarMp(getSupabaseServerClient(), { pedir: true, dias: Math.min(Math.max(dias, 1), 60) });
+    const supabase = getSupabaseServerClient();
+    // Nave primero: contesta pago por pago al instante (26/11). Si falla, Mercado Pago sigue igual.
+    const nave = await sincronizarNave(supabase).catch((e) => ({ guardados: 0, esperando: 0, errores: [(e as Error).message] }));
+    const textoNave = [
+      nave.guardados ? `Nave: ${nave.guardados} cobro${nave.guardados === 1 ? "" : "s"} con lo descontado real.` : "",
+      nave.esperando ? `Nave: ${nave.esperando} cobro${nave.esperando === 1 ? "" : "s"} todavía sin acreditar.` : "",
+      nave.errores.length ? `Nave no contestó: ${nave.errores[0]}` : "",
+    ];
+    const r = await sincronizarMp(supabase, { pedir: true, dias: Math.min(Math.max(dias, 1), 60) });
     const partes = [
+      ...textoNave,
       r.leidos ? `Se leyeron ${r.leidos} reporte${r.leidos === 1 ? "" : "s"} (${r.filas} movimientos).` : "No había reportes nuevos para leer.",
       r.pedido ? "Le pedí a Mercado Pago el reporte de los últimos días: lo arma en unos minutos. Volvé a tocar «Actualizar ahora» en un rato para traerlo." : "",
       ...r.avisos,
