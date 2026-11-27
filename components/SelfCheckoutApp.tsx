@@ -496,6 +496,37 @@ html, body { margin: 0; padding: 0; height: 100%; background: #fafafa; }
   color: #a9b498;
   line-height: 1;
 }
+/* Black Friday (27 al 30/11, opción D que eligió Gonzalo): toda la pantalla de
+   inicio en negro con un resplandor naranja en vez del cielo, y BLACK FRIDAY
+   grande. Solo texto y colores (en el tótem las imágenes no cargan). Sin gap
+   en flex: separaciones con margin. */
+.sc-reposo.sc-modo-bf {
+  background: radial-gradient(70% 45% at 50% 58%, rgba(255,122,26,.38), rgba(255,122,26,0) 70%), #0c0c0c !important;
+}
+.sc-modo-bf .sc-clima-foto, .sc-modo-bf .sc-sol, .sc-modo-bf .sc-luna, .sc-modo-bf .sc-estrella,
+.sc-modo-bf .sc-nubes, .sc-modo-bf .sc-gota, .sc-modo-bf .sc-niebla, .sc-modo-bf .sc-relampago { display: none !important; }
+.sc-modo-bf .sc-placa { background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.18); }
+.sc-bf {
+  position: relative;
+  z-index: 10;
+  margin-top: 34px;
+  text-align: center;
+}
+.sc-root .sc-bf p { margin: 0; }
+.sc-bf .sc-bf-sup { font-size: 22px; font-weight: 800; color: #f5efe3; letter-spacing: .02em; }
+.sc-bf .sc-bf-titulo { font-size: 104px; font-weight: 900; line-height: .88; letter-spacing: -0.03em; color: #ffffff; margin-top: 8px; }
+.sc-bf .sc-bf-titulo span { color: #ff7a1a; }
+.sc-bf .sc-bf-sub { font-size: 22px; font-weight: 700; color: #cfcfcf; margin-top: 16px; }
+.sc-bf .sc-bf-chip {
+  display: inline-block;
+  margin-top: 18px;
+  padding: 9px 22px;
+  border-radius: 999px;
+  background: #ff7a1a;
+  color: #111111;
+  font-size: 20px;
+  font-weight: 800;
+}
 .sc-titulo {
   font-size: 26px;
   font-weight: 800;
@@ -1518,6 +1549,14 @@ export default function SelfCheckoutApp({
   const [hayCatalogoNuevo, setHayCatalogoNuevo] = useState(false);
   // Los combos se refrescan con los precios (obtenerPreciosLocal), sin recargar.
   const [combos, setCombos] = useState<Combo[]>(combosIniciales);
+  // Black Friday (Gonzalo, 27/11): cartel en la pantalla de inicio hasta el lunes 30. Se apaga
+  // solo el martes 1/12 a las 0 h (el tótem queda prendido días: se revisa cada 10 minutos).
+  const [blackFriday, setBlackFriday] = useState(() => Date.now() < Date.parse("2026-12-01T03:00:00Z"));
+  useEffect(() => {
+    if (!blackFriday) return;
+    const t = setInterval(() => setBlackFriday(Date.now() < Date.parse("2026-12-01T03:00:00Z")), 10 * 60 * 1000);
+    return () => clearInterval(t);
+  }, [blackFriday]);
   const idsCargados = useMemo(() => new Set(variantes.map((v) => v.id_variante)), [variantes]);
   const productosCargados = useMemo(() => new Set(productos.map((p) => p.id_producto)), [productos]);
 
@@ -2469,7 +2508,7 @@ export default function SelfCheckoutApp({
       )}
 
       {paso === "reposo" && (
-        <div onClick={() => setPaso("escaneo")} className={`sc-reposo sc-cielo-${clima}${esDeNoche ? " sc-noche" : ""}`}>
+        <div onClick={() => setPaso("escaneo")} className={`sc-reposo sc-cielo-${clima}${esDeNoche ? " sc-noche" : ""}${blackFriday ? " sc-modo-bf" : ""}`}>
           {/* Las fotos de clima son todas de día — de noche no van, queda el
               degradé nocturno con la luna y las estrellas. */}
           {!fotoClimaFallo && !esDeNoche && (
@@ -2566,6 +2605,19 @@ export default function SelfCheckoutApp({
           </div>
 
           <h1 className="sc-titulo">Tu compra, a tu ritmo</h1>
+
+          {blackFriday && (
+            <div className="sc-bf">
+              <p className="sc-bf-sup">WiiGo se une al</p>
+              <p className="sc-bf-titulo">
+                BLACK
+                <br />
+                <span>FRIDAY</span>
+              </p>
+              <p className="sc-bf-sub">Llevá los combos y el precio baja solo</p>
+              <p className="sc-bf-chip">Hasta el lunes 30</p>
+            </div>
+          )}
 
           <div className="sc-tap-hint">👆</div>
           <p className="sc-tap-text">Tocá la pantalla para empezar</p>
