@@ -324,6 +324,25 @@ main{padding:14px}
 .combo-logo{width:44px;height:44px;border-radius:50%;overflow:hidden;background:#fff;border:2px solid var(--linea);display:grid;place-items:center;flex-shrink:0}
 .combo-logo img{width:100%;height:100%;object-fit:cover}
 .combo-logo b{font:800 18px var(--display);color:var(--bosque)}
+.combo-t{cursor:pointer}
+.combo-ver{font-size:12px;font-weight:800;color:var(--ef)}
+/* La ficha del combo: qué trae, producto por producto (27/11) */
+.cv-foto-grande{position:relative;background:#fff;border-radius:18px;aspect-ratio:4/3;overflow:hidden}
+.cv-foto-grande img{position:absolute;inset:8px;width:calc(100% - 16px);height:calc(100% - 16px);object-fit:contain!important}
+.cv-titulo{margin:14px 0 6px;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--gris)}
+.cv-lista{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.cv-item{display:grid;grid-template-columns:56px minmax(0,1fr);gap:10px;align-items:center;background:var(--carta);border:1px solid var(--linea);border-radius:14px;padding:8px 10px}
+.cv-foto{width:56px;height:56px;display:grid;place-items:center;overflow:hidden}
+.cv-foto img{max-width:100%;max-height:100%;object-fit:contain}
+.cv-txt{display:grid;gap:2px;min-width:0}
+.cv-txt b{font-size:14.5px;line-height:1.2}
+.cv-txt small{font-size:12px;color:var(--gris)}
+.combo-logos{display:flex;gap:14px;overflow-x:auto;margin:0 0 14px;padding:2px 2px 4px}
+.combo-logos button{background:none;border:0;display:flex;flex-direction:column;align-items:center;gap:4px;font-weight:700;font-size:12.5px;color:var(--gris);min-width:74px;cursor:pointer}
+.combo-logos small{font-size:11px;font-weight:600;opacity:.75}
+.combo-logos .combo-logo{width:62px;height:62px;border:3px solid var(--linea)}
+.combo-logos button[aria-pressed="true"]{color:var(--tinta);font-weight:800}
+.combo-logos button[aria-pressed="true"] .combo-logo{border-color:var(--bosque);box-shadow:0 6px 14px -8px rgba(0,0,0,.5)}
 /* Black Friday (27 al 30/11): se apaga sola el 1/12 (BLACK_FRIDAY en app.js) */
 .bf-banner{background:#111;color:#fff;border-radius:18px;padding:14px 16px;margin:0 0 12px;display:flex;justify-content:space-between;align-items:center;gap:10px}
 .bf-banner b{display:block;font:900 22px/1 var(--display);letter-spacing:.01em}
@@ -757,6 +776,6 @@ html.pn-abierto,html.pn-abierto body{overflow:hidden}
 <div class="app" id="app"><p style="padding:60px 16px;text-align:center;color:#626a5e">Cargando los productos…</p></div>
 <!-- El catálogo real, armado en el servidor con lo público de cada producto (lib/tiendaCatalogo.ts). -->
 <script src="/api/tienda/catalogo"></script>
-<script src="app.js?v=41"></script>
+<script src="app.js?v=42"></script>
 </body>
 </html>

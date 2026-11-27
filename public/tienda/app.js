@@ -741,8 +741,9 @@
     var muestraAhorro = ahorro >= 2000;
     // La etiqueta del fabricante (Star Nutrition dentro de Animalfit); no la que repite la sección.
     var etiqueta = c.m && marcaSeccion && c.m.toLowerCase().indexOf(marcaSeccion.toLowerCase()) !== 0 ? c.m : '';
-    return '<article class="combo-t' + (BLACK_FRIDAY ? ' bf' : '') + '"><div class="combo-foto">' + fotoCombo(c) + (muestraAhorro ? '<span class="combo-ahorro">Ahorrás ' + plata(ahorro) + '</span>' : '') + (etiqueta ? '<span class="combo-marca">' + esc(etiqueta) + '</span>' : '') + '</div>' +
-      '<div class="combo-info"><h3>' + esc(c.n) + '</h3><p class="combo-lleva">Llevás ' + llevaCombo(c) + '</p>' +
+    // Toda la tarjeta abre la ficha con lo que trae; «Agregar combo» agrega directo.
+    return '<article class="combo-t' + (BLACK_FRIDAY ? ' bf' : '') + '" data-a="combo-ver" data-id="' + esc(c.id) + '"><div class="combo-foto">' + fotoCombo(c) + (muestraAhorro ? '<span class="combo-ahorro">Ahorrás ' + plata(ahorro) + '</span>' : '') + (etiqueta ? '<span class="combo-marca">' + esc(etiqueta) + '</span>' : '') + '</div>' +
+      '<div class="combo-info"><h3>' + esc(c.n) + '</h3><p class="combo-lleva">Llevás ' + llevaCombo(c) + '</p><span class="combo-ver">Ver qué trae ›</span>' +
       '<div class="combo-precios"><b>' + plata(c.p) + '</b>' + (c.e > 0 && c.e < c.p ? '<span>' + plata(c.e) + ' efectivo</span>' : '') + (muestraAhorro ? '<s>' + plata(suelto) + '</s>' : '') + '</div>' +
       (hay ? '<button class="agregar" data-a="combo-elegir" data-id="' + esc(c.id) + '">Agregar combo</button>' : '<button class="agregar" disabled>Sin stock por ahora</button>') + '</div></article>';
   }
@@ -756,7 +757,14 @@
     });
     return '<div class="filtro-cab"><button class="redondo" data-a="inicio" aria-label="Volver al inicio">' + ic('atras') + '</button><span><b>Combos</b><small>' + COMBOS.length + (COMBOS.length === 1 ? ' combo' : ' combos') + ' · precio especial llevando los productos juntos</small></span></div>' +
       (BLACK_FRIDAY ? '<div class="bf-banner"><div><b>BLACK <i>FRIDAY</i></b><small>Combos WiiGo con precio especial</small></div><span class="bf-hasta">Hasta el lunes 30</span></div>' : '') +
-      secciones.map(function (s) {
+      // Los logos en fila arriba (Gonzalo, 27/11: «el logo al lado del otro, no abajo»): tocás uno y quedan sus combos.
+      (secciones.length > 1 ? '<div class="combo-logos" role="group" aria-label="Marcas">' +
+        '<button data-a="combo-marca" data-m="" aria-pressed="' + !S.comboMarca + '"><span class="combo-logo"><b>T</b></span>Todos<small>' + COMBOS.length + '</small></button>' +
+        secciones.map(function (s) {
+          var marca = (D.marcas || []).filter(function (x) { return x.n === s.m; })[0];
+          return '<button data-a="combo-marca" data-m="' + esc(s.m) + '" aria-pressed="' + (S.comboMarca === s.m) + '"><span class="combo-logo">' + (marca && marca.logo ? '<img src="' + esc(marca.logo) + '" alt="">' : '<b>' + esc(s.m.charAt(0)) + '</b>') + '</span>' + esc(s.m) + '<small>' + s.items.length + '</small></button>';
+        }).join('') + '</div>' : '') +
+      secciones.filter(function (s) { return !S.comboMarca || s.m === S.comboMarca; }).map(function (s) {
         var marca = (D.marcas || []).filter(function (x) { return x.n === s.m; })[0];
         var cab = s.m ? '<div class="combo-sec"><span class="combo-logo">' + (marca && marca.logo ? '<img src="' + esc(marca.logo) + '" alt="" loading="lazy">' : '<b>' + esc(s.m.charAt(0)) + '</b>') + '</span><b>' + esc(s.m) + '</b><small>' + s.items.length + (s.items.length === 1 ? ' combo' : ' combos') + '</small></div>' : '';
         return '<section class="combo-grupo">' + cab + '<div class="combos">' + s.items.map(function (c) { return tarjetaCombo(c, s.m); }).join('') + '</div></section>';
@@ -788,6 +796,28 @@
       '<div class="hoja-cuerpo"><div class="combo-elegir">' + cuerpo + '</div></div><div class="hoja-pie"><button class="cta naranja" data-a="combo-agregar">Agregar · ' + plata(c.p) + '</button></div></section>';
   }
   // Suma al pedido lo elegido, si alcanza el stock de todo (si no, no agrega nada).
+  // La ficha del combo (Gonzalo, 27/11): al tocar la tarjeta se ve en detalle qué trae,
+  // producto por producto con su foto; desde ahí también se agrega.
+  function hojaComboVer() {
+    var c = S.comboVer && POR_COMBO[S.comboVer]; if (!c) return '';
+    var suelto = precioSuelto(c, 'LISTA'), hay = comboConStock(c);
+    var filas = c.g.map(function (g) {
+      var ps = g.ids.map(function (id) { return POR_ID[id]; }).filter(Boolean); if (!ps.length) return '';
+      var p = ps[0], nombres = ps.map(function (x) { return x.t; });
+      var comun = ps.length > 1 ? nombreComun(nombres) : '';
+      var opciones = ps.length > 1 ? nombres.map(function (n) { var r = (comun && n.toLowerCase().indexOf(comun.toLowerCase()) === 0 ? n.slice(comun.length) : n).trim(); return r || n; }) : [];
+      var conSabor = ps.some(function (x) { return x.v && x.v.length > 1; });
+      return '<li class="cv-item"><span class="cv-foto">' + foto(p) + '</span><span class="cv-txt"><b>' + (g.q > 1 ? g.q + ' × ' : '') + esc(ps.length > 1 ? (comun || p.t) : p.t) + '</b>' +
+        (opciones.length ? '<small>A elección: ' + esc(opciones.join(' · ')) + '</small>' : conSabor ? '<small>Elegís el sabor</small>' : '') +
+        '<small>Suelto ' + plata(Math.min.apply(null, ps.map(function (x) { return x.p; }))) + '</small></span></li>';
+    }).join('');
+    return '<div class="fondo" data-a="cerrar-combo-ver"></div><section class="hoja" role="dialog" aria-modal="true" aria-label="' + esc(c.n) + '">' +
+      '<div class="hoja-cab"><h2 style="font-size:21px">' + esc(c.n) + '</h2><button class="redondo" data-a="cerrar-combo-ver" aria-label="Cerrar">' + ic('cruz', 20) + '</button></div>' +
+      '<div class="hoja-cuerpo"><div class="cv-foto-grande">' + fotoCombo(c) + '</div>' +
+      '<div class="combo-precios" style="margin:10px 0 4px"><b>' + plata(c.p) + '</b>' + (c.e > 0 && c.e < c.p ? '<span>' + plata(c.e) + ' efectivo</span>' : '') + (suelto - c.p >= 2000 ? '<s>' + plata(suelto) + '</s>' : '') + '</div>' +
+      '<p class="cv-titulo">Qué trae</p><ul class="cv-lista">' + filas + '</ul></div>' +
+      '<div class="hoja-pie">' + (hay ? '<button class="cta naranja" data-a="combo-elegir" data-id="' + esc(c.id) + '">Agregar combo · ' + plata(c.p) + '</button>' : '<button class="cta" disabled>Sin stock por ahora</button>') + '</div></section>';
+  }
   function agregarCombo(c) {
     var el = eleccionCombo(c);
     for (var gi = 0; gi < c.g.length; gi++) {
@@ -1148,7 +1178,7 @@
       : !t.u && enCurso && S.vista !== 'seguir' && !S.pedido ? '<div class="barra"><button data-a="ver-pedido" data-c="' + esc(enCurso.codigo) + '"><span>' + ic('bolsa', 20) + 'Pedido #' + enCurso.num + ' · ' + (enCurso.pago === 'transf' && !enCurso.pagoOk ? 'Falta tu transferencia' : enCurso.pago === 'tarjeta' && !enCurso.pagoOk ? 'Falta el pago' : ESTADOS_PED[Math.max(0, enCurso.paso)].t) + '</span><span>Seguir ' + ic('flecha', 18) + '</span></button></div>' : '';
     var foco = document.activeElement && (document.activeElement.id === 'q' || document.activeElement.id === 'mq') ? document.activeElement.id : null;
     var pos = foco ? document.activeElement.selectionStart : 0, y = window.scrollY;
-    app.innerHTML = cab + '<main>' + cuerpo + '</main>' + (S.cuenta || S.combo || S.reco || S.cats ? '' : barra) + cajon() + ficha() + pedido() + hojaCombo() + hojaReco() + hojaCats() + cuenta();
+    app.innerHTML = cab + '<main>' + cuerpo + '</main>' + (S.cuenta || S.combo || S.comboVer || S.reco || S.cats ? '' : barra) + cajon() + ficha() + pedido() + hojaComboVer() + hojaCombo() + hojaReco() + hojaCats() + cuenta();
     if (foco) { var i = document.getElementById(foco); if (i) { i.focus(); try { i.setSelectionRange(pos, pos); } catch (e) {} } }
     window.scrollTo(0, arriba ? 0 : y);
     montarGlobo();
@@ -1349,11 +1379,14 @@
     nuevos: function () { ver({ nuevos: true, titulo: 'Nuevos esta semana' }); },
     // Ofertas: lo que tiene descuento hoy. Combos: todavía no hay (los arma Gonzalo más adelante).
     ofertas: function () { if (!OFERTAS.length) return aviso('Hoy no hay ofertas: volvé pronto'); ver({ ofertas: true, titulo: 'Ofertas' }); },
-    combos: function () { if (!COMBOS.length) return aviso('Muy pronto: combos con precio especial'); S.vista = 'combos'; S.q = ''; S.menu = false; pintar(true); },
+    combos: function () { if (!COMBOS.length) return aviso('Muy pronto: combos con precio especial'); S.vista = 'combos'; S.q = ''; S.menu = false; S.comboMarca = null; pintar(true); },
+    'combo-marca': function (d) { S.comboMarca = d.m && S.comboMarca !== d.m ? d.m : null; pintar(false); },
     // Un combo sin nada para elegir (un solo producto, sin sabores) se agrega directo; si no, se abre la hoja.
+    'combo-ver': function (d) { if (POR_COMBO[d.id]) { S.comboVer = d.id; pintar(false); } },
+    'cerrar-combo-ver': function () { S.comboVer = null; pintar(false); },
     'combo-elegir': function (d) {
       var c = POR_COMBO[d.id]; if (!c) return;
-      S.comboSel = null;
+      S.comboSel = null; S.comboVer = null;
       var hayQueElegir = c.g.some(function (g) { return g.ids.length > 1 || g.ids.some(function (id) { var p = POR_ID[id]; return p && p.v && p.v.length > 1; }); });
       if (!hayQueElegir) return agregarCombo(c);
       S.combo = c.id; pintar(false);
