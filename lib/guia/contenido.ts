@@ -450,7 +450,7 @@ export const GUIAS: Guia[] = [
     pasos: [
       "Entrá a <b>Configuración</b>, sección <b>Ventas por mail</b>.",
       "Escribí el mail (hasta 3, separados con coma).",
-      "Tildá lo que quieras recibir: <b>un mail por cada venta</b>, apenas se confirma el pago, y/o <b>un resumen al cierre de cada turno</b> (entre las 13 y las 14, y entre las 21 y las 22). Tocá <b>Guardar</b>.",
+      "Tildá lo que quieras recibir: <b>un mail por cada venta</b>, apenas se confirma el pago, y/o <b>un resumen al cierre de cada turno</b> (sale cuando cierran la caja; si nadie la cierra, a las 14:30 y a las 22:30). Tocá <b>Guardar</b>.",
       "Con <b>Mandarme un resumen de prueba</b> ves cómo llega el resumen, con lo vendido hoy.",
     ],
     tip: "Si borrás los mails y guardás, no llega ninguno. Abajo del campo dice cuándo salió el último resumen y si salió bien.",

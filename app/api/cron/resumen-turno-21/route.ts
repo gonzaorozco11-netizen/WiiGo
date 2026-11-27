@@ -1,6 +1,6 @@
-// El resumen de ventas del turno tarde, con el total del día, por mail al
-// dueño. Pedido para las 21:15 de Argentina (00:15 UTC, ver vercel.json; en
-// el plan gratis corre en algún momento de esa hora). Va en
+// Respaldo del resumen del turno tarde (con el total del día) por mail al dueño:
+// 22:30 de Argentina (01:30 UTC, ver vercel.json). Desde el 27/11 sale al cerrar
+// la caja (cerrarTurno); este solo manda si ese día nadie la cerró. Va en
 // una ruta aparte de la del mediodía porque en el plan gratis de Vercel cada
 // proceso automático corre una sola vez por día.
 import { rutaResumenDeTurno } from "@/lib/resumenTurno";

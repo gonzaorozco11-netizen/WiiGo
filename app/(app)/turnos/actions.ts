@@ -8,6 +8,8 @@ import { SESSION_COOKIE, readSessionToken } from "@/lib/session";
 import { obtenerSesionConPermisos, tienePermiso, PERMISOS } from "@/lib/permisos";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { transferenciasPendientes } from "@/lib/transferenciasPendientes";
+import { after } from "next/server";
+import { mandarResumenDeTurno, turnoDeCierre } from "@/lib/resumenTurno";
 
 const pesosAr = (n: number) => `$${Math.round(n).toLocaleString("es-AR")}`;
 
@@ -384,6 +386,14 @@ export async function cerrarTurno(
       usuario,
     });
     if (errorMov) console.error("No se pudo registrar el cierre en la Caja Administración:", errorMov.message);
+
+    // El resumen del turno por mail al dueño sale ahora, con todas las ventas hasta el
+    // cierre (Gonzalo, 27/11). Después de responder: el mail nunca demora el cierre.
+    const cierre = new Date();
+    after(async () => {
+      const r = await mandarResumenDeTurno(turnoDeCierre(cierre)).catch((e) => ({ motivo: (e as Error).message }));
+      console.log("Resumen al cerrar la caja:", r.motivo);
+    });
 
     revalidatePath("/turnos");
     revalidatePath("/gastos-ingresos");

@@ -10,7 +10,9 @@ import { etiquetaMedio, etiquetaPago } from "@/lib/formasPago";
 //
 //   - Uno por cada venta, apenas se confirma el pago (avisarVentaAlDueno). Lo
 //     pidió así: «en el momento que se confirmó el pago».
-//   - Un resumen al cierre de cada turno, 13 y 21 (mandarResumenDeTurno).
+//   - Un resumen al cierre de cada turno (mandarResumenDeTurno): sale cuando se
+//     cierra la caja (cerrarTurno). El proceso automático de las 14:30 y 22:30 es
+//     solo el respaldo, por si nadie la cerró (27/11).
 //
 // Lo que cubre cada mail: desde donde terminó el anterior hasta ahora
 // (RESUMEN_TURNO_HASTA), así no se pierde la venta de las 21:30 ni se cuenta
@@ -113,7 +115,7 @@ type Venta = { id_venta: string; fecha: string; total: number | null; medio_pago
  */
 export async function mandarResumenDeTurno(
   turno: TurnoResumen,
-  opciones: { soloArmar?: boolean; prueba?: boolean; ahora?: Date } = {}
+  opciones: { soloArmar?: boolean; prueba?: boolean; ahora?: Date; respaldo?: boolean } = {}
 ): Promise<{ ok: boolean; motivo: string; asunto?: string; html?: string }> {
   const supabase = getSupabaseServerClient();
   const ahora = opciones.ahora ?? new Date();
@@ -123,13 +125,22 @@ export async function mandarResumenDeTurno(
     const { data: config } = await supabase
       .from("configuracion")
       .select("parametro, valor")
-      .in("parametro", [PARAMETRO_MAILS_RESUMEN, PARAMETRO_HASTA, PARAMETRO_RESUMEN_ACTIVO]);
+      .in("parametro", [PARAMETRO_MAILS_RESUMEN, PARAMETRO_HASTA, PARAMETRO_RESUMEN_ACTIVO, PARAMETRO_ULTIMO_RESUMEN]);
     const valores = new Map((config ?? []).map((c) => [c.parametro as string, c.valor as string]));
     const mails = leerMailsResumen(valores.get(PARAMETRO_MAILS_RESUMEN));
     if (mails.length === 0 && !opciones.soloArmar) return { ok: false, motivo: "No hay ningún mail cargado." };
     if (valores.get(PARAMETRO_RESUMEN_ACTIVO) === "false" && !sinMarca) return { ok: true, motivo: "El resumen por turno está apagado." };
 
     const hoy = fechaHoraArgentina(ahora);
+
+    // El proceso automático es solo el respaldo (27/11): si al cerrar la caja ya salió
+    // el resumen de este turno hoy, no manda otro.
+    if (opciones.respaldo) {
+      const ultimo = leerUltimoResumen(valores.get(PARAMETRO_ULTIMO_RESUMEN));
+      if (ultimo?.ok && ultimo.turno === turno && fechaHoraArgentina(new Date(ultimo.fecha)).fecha === hoy.fecha) {
+        return { ok: true, motivo: "Ya salió al cerrar la caja." };
+      }
+    }
     const inicioDelDia = new Date(`${hoy.fecha}T00:00:00-03:00`);
 
     // Desde dónde: donde terminó el último mail que salió bien. Sin ninguno
@@ -411,13 +422,22 @@ export async function avisarVentaAlDueno(idVenta: string): Promise<void> {
 }
 
 /** El GET de las dos rutas del proceso automático (13 y 21), con la clave de Vercel. */
+/**
+ * De qué turno es un cierre de caja: antes de las 17 h de Argentina, el de la mañana.
+ * El resumen sale al cerrar la caja (Gonzalo, 27/11: le llegaba «cierre del turno» a las
+ * 13:15 y la caja la cerraban 13:24, con una venta de 13:18 en el medio).
+ */
+export function turnoDeCierre(fecha: Date = new Date()): TurnoResumen {
+  return Number(fechaHoraArgentina(fecha).hora.slice(0, 2)) < 17 ? "manana" : "tarde";
+}
+
 export function rutaResumenDeTurno(turno: TurnoResumen) {
   return async function GET(req: Request) {
     const secret = process.env.CRON_SECRET;
     if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) {
       return new Response(JSON.stringify({ error: "No autorizado" }), { status: 401, headers: { "content-type": "application/json" } });
     }
-    const resultado = await mandarResumenDeTurno(turno);
+    const resultado = await mandarResumenDeTurno(turno, { respaldo: true });
     console.log(`Cron resumen del ${NOMBRE_TURNO[turno]}:`, resultado.motivo);
     return new Response(JSON.stringify({ ok: resultado.ok, motivo: resultado.motivo }), { headers: { "content-type": "application/json" } });
   };

@@ -1019,7 +1019,7 @@ export default function ConfiguracionApp({
           <label className="flex items-start gap-2.5 cursor-pointer">
             <input type="checkbox" name="resumen_turno_activo" defaultChecked={resumenTurnoActivo} className="mt-0.5 w-4 h-4 accent-accent" />
             <span className="text-sm text-neutral-700">
-              <b className="font-medium">Un resumen al cierre de cada turno</b> (entre las 13 y las 14, y entre las 21 y las 22): el
+              <b className="font-medium">Un resumen al cierre de cada turno</b> (sale cuando cierran la caja; si nadie la cierra, a las 14:30 y a las 22:30): el
               total, cómo pagaron y lo más vendido. El de la noche trae el total del día.
             </span>
           </label>
