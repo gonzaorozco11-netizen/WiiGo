@@ -717,7 +717,17 @@
       var conSabor = g.ids.some(function (id) { var p = POR_ID[id]; return p && p.v && p.v.length > 1; });
       var comun = nombres.length > 1 ? nombreComun(nombres) : '';
       var texto = nombres.length > 1 ? (comun || nombres[0]) : nombres.join('');
-      return '<b>' + (g.q > 1 ? g.q + ' × ' : '') + esc(texto) + '</b>' + (nombres.length > 1 ? ' (a elección)' : conSabor ? ' (elegís el sabor)' : '');
+      // Cuáles entran (27/11: «a elección» parecía cualquier producto de ese tipo).
+      var opciones = nombres.map(function (n) {
+        var base = (comun && n.toLowerCase().indexOf(comun.toLowerCase()) === 0 ? n.slice(comun.length) : n).trim();
+        var sinMarca = base.replace(/\s*\([^)]*\)$/, '').trim(); // la marca, salvo que sea lo único (el sabor)
+        if (sinMarca) base = sinMarca;
+        var r = (' ' + base).replace(/\s+x?\s?\d+([.,]\d+)?\s?(g|gr|kg|ml|cc|lt|l)\b\.?.*$/i, '').trim()
+          .replace(/^(de|y|sabor)\s+/i, '').replace(/^\((.*)\)$/, '$1').trim();
+        return r || 'Original';
+      });
+      var lista = opciones.length > 1 ? opciones.slice(0, -1).join(', ') + ' o ' + opciones[opciones.length - 1] : '';
+      return '<b>' + (g.q > 1 ? g.q + ' × ' : '') + esc(texto) + '</b>' + (nombres.length > 1 ? ' (' + esc(lista) + ')' : conSabor ? ' (elegís el sabor)' : '');
     }).join(' + ');
   }
   function fotoCombo(c) {
@@ -725,19 +735,32 @@
     // Sin foto del combo: las de sus productos, una al lado de la otra.
     return '<span class="combo-fotos">' + c.g.map(function (g) { var p = POR_ID[g.ids[0]]; return p ? '<span>' + foto(p) + '</span>' : ''; }).join('') + '</span>';
   }
+  function tarjetaCombo(c, marcaSeccion) {
+    var suelto = precioSuelto(c, 'LISTA'), ahorro = suelto - c.p, hay = comboConStock(c);
+    // «Ahorrás $500» queda pobre (Gonzalo, 27/11): el ahorro y el tachado, solo desde $2.000.
+    var muestraAhorro = ahorro >= 2000;
+    // La etiqueta del fabricante (Star Nutrition dentro de Animalfit); no la que repite la sección.
+    var etiqueta = c.m && marcaSeccion && c.m.toLowerCase().indexOf(marcaSeccion.toLowerCase()) !== 0 ? c.m : '';
+    return '<article class="combo-t' + (BLACK_FRIDAY ? ' bf' : '') + '"><div class="combo-foto">' + fotoCombo(c) + (muestraAhorro ? '<span class="combo-ahorro">Ahorrás ' + plata(ahorro) + '</span>' : '') + (etiqueta ? '<span class="combo-marca">' + esc(etiqueta) + '</span>' : '') + '</div>' +
+      '<div class="combo-info"><h3>' + esc(c.n) + '</h3><p class="combo-lleva">Llevás ' + llevaCombo(c) + '</p>' +
+      '<div class="combo-precios"><b>' + plata(c.p) + '</b>' + (c.e > 0 && c.e < c.p ? '<span>' + plata(c.e) + ' efectivo</span>' : '') + (muestraAhorro ? '<s>' + plata(suelto) + '</s>' : '') + '</div>' +
+      (hay ? '<button class="agregar" data-a="combo-elegir" data-id="' + esc(c.id) + '">Agregar combo</button>' : '<button class="agregar" disabled>Sin stock por ahora</button>') + '</div></article>';
+  }
+  // Separados por marca, con su logo (Gonzalo, 27/11): la marca es la de los productos del combo.
   function vistaCombos() {
-    var marcas = COMBOS.map(function (c) { return c.m; }).filter(function (m, i, a) { return m && a.indexOf(m) === i; });
+    var secciones = [];
+    COMBOS.forEach(function (c) {
+      var p = POR_ID[c.g[0].ids[0]], m = (p && p.m) || '';
+      var s = secciones.filter(function (x) { return x.m === m; })[0];
+      if (s) s.items.push(c); else secciones.push({ m: m, items: [c] });
+    });
     return '<div class="filtro-cab"><button class="redondo" data-a="inicio" aria-label="Volver al inicio">' + ic('atras') + '</button><span><b>Combos</b><small>' + COMBOS.length + (COMBOS.length === 1 ? ' combo' : ' combos') + ' · precio especial llevando los productos juntos</small></span></div>' +
       (BLACK_FRIDAY ? '<div class="bf-banner"><div><b>BLACK <i>FRIDAY</i></b><small>Combos WiiGo con precio especial</small></div><span class="bf-hasta">Hasta el lunes 30</span></div>' : '') +
-      '<div class="combos">' + COMBOS.map(function (c) {
-        var suelto = precioSuelto(c, 'LISTA'), ahorro = suelto - c.p, hay = comboConStock(c);
-        // «Ahorrás $500» queda pobre (Gonzalo, 27/11): el ahorro y el tachado, solo desde $2.000.
-        var muestraAhorro = ahorro >= 2000;
-        return '<article class="combo-t' + (BLACK_FRIDAY ? ' bf' : '') + '"><div class="combo-foto">' + fotoCombo(c) + (muestraAhorro ? '<span class="combo-ahorro">Ahorrás ' + plata(ahorro) + '</span>' : '') + (c.m ? '<span class="combo-marca">' + esc(c.m) + '</span>' : '') + '</div>' +
-          '<div class="combo-info"><h3>' + esc(c.n) + '</h3><p class="combo-lleva">Llevás ' + llevaCombo(c) + '</p>' +
-          '<div class="combo-precios"><b>' + plata(c.p) + '</b>' + (c.e > 0 && c.e < c.p ? '<span>' + plata(c.e) + ' efectivo</span>' : '') + (muestraAhorro ? '<s>' + plata(suelto) + '</s>' : '') + '</div>' +
-          (hay ? '<button class="agregar" data-a="combo-elegir" data-id="' + esc(c.id) + '">Agregar combo</button>' : '<button class="agregar" disabled>Sin stock por ahora</button>') + '</div></article>';
-      }).join('') + '</div>' + (marcas.length ? '<p class="f-chico" style="text-align:center">Combos armados por ' + esc(marcas.join(', ')) + '. El descuento se aplica solo en tu pedido.</p>' : '');
+      secciones.map(function (s) {
+        var marca = (D.marcas || []).filter(function (x) { return x.n === s.m; })[0];
+        var cab = s.m ? '<div class="combo-sec"><span class="combo-logo">' + (marca && marca.logo ? '<img src="' + esc(marca.logo) + '" alt="" loading="lazy">' : '<b>' + esc(s.m.charAt(0)) + '</b>') + '</span><b>' + esc(s.m) + '</b><small>' + s.items.length + (s.items.length === 1 ? ' combo' : ' combos') + '</small></div>' : '';
+        return '<section class="combo-grupo">' + cab + '<div class="combos">' + s.items.map(function (c) { return tarjetaCombo(c, s.m); }).join('') + '</div></section>';
+      }).join('') + '<p class="f-chico" style="text-align:center">El descuento se aplica solo en tu pedido.</p>';
   }
   // Lo que eligió en cada grupo del combo: producto (si hay más de uno) y sabor (si tiene).
   function eleccionCombo(c) {

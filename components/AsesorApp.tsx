@@ -45,6 +45,25 @@ function nombreEnComun(nombres: string[]): string {
   while (comun.length && /^(de|con|y|sabor|x\d.*)$/i.test(comun[comun.length - 1])) comun.pop();
   return comun.join(" ");
 }
+/** Lo que distingue cada opción: «Mermelada Con Semillas Frutilla x400gr (Cuarto Creciente)» → «Frutilla». */
+function opcionCorta(nombre: string, comun: string): string {
+  let base = (comun && nombre.toLowerCase().startsWith(comun.toLowerCase()) ? nombre.slice(comun.length) : nombre).trim();
+  // La marca entre paréntesis al final, salvo que sea lo único («(chocolate y avellanas)» es el sabor).
+  const sinMarca = base.replace(/\s*\([^)]*\)$/, "").trim();
+  if (sinMarca) base = sinMarca;
+  const resto = (" " + base)
+    .replace(/\s+x?\s?\d+([.,]\d+)?\s?(g|gr|kg|ml|cc|lt|l)\b\.?.*$/i, "") // el peso
+    .trim()
+    .replace(/^(de|y|sabor)\s+/i, "")
+    .replace(/^\((.*)\)$/, "$1")
+    .trim();
+  // Sin nada que lo distinga («Jugo de Arandanos x1,5 L» frente a «… con chia»): es el común.
+  return resto || "Original";
+}
+/** «Frutilla, Ciruela o Arandanos» (en inglés/portugués, con su «or»/«ou»). */
+function listaOpciones(opciones: string[], o: string): string {
+  return opciones.length < 2 ? opciones.join("") : `${opciones.slice(0, -1).join(", ")} ${o} ${opciones[opciones.length - 1]}`;
+}
 
 type Pantalla = "home" | "objetivo" | "resultado" | "marcas" | "ofertas" | "combos" | "profesionales" | "fichaProfesional" | "conoceme" | "reservarTurno";
 
@@ -2628,8 +2647,16 @@ export default function AsesorApp({
                                 <img src={p.imagen} alt="" className="w-full h-full object-contain" />
                               ) : null}
                             </span>
-                            <span className="flex-1 min-w-0 text-[13.5px] font-bold text-[#1f261c] leading-tight truncate">
-                              {g.cantidad} × {varios ? `${comun || nombres[0]} ${aEleccion}` : nombres[0]}
+                            {/* Con opciones, cuáles entran (27/11: «a elección» parecía cualquier granola). */}
+                            <span className="flex-1 min-w-0">
+                              <span className="block text-[13.5px] font-bold text-[#1f261c] leading-tight truncate">
+                                {g.cantidad} × {varios ? `${comun || nombres[0]} ${aEleccion}` : nombres[0]}
+                              </span>
+                              {varios && (
+                                <span className="block text-[11.5px] text-[#6d7562] leading-tight truncate">
+                                  {listaOpciones(nombres.map((n) => opcionCorta(n, comun)), idioma === "en" ? "or" : idioma === "pt" ? "ou" : "o")}
+                                </span>
+                              )}
                             </span>
                             <span className="text-[12px] text-[#8a9180] shrink-0">
                               {varios ? (idioma === "en" ? "from " : idioma === "pt" ? "a partir de " : "desde ") : ""}
