@@ -275,6 +275,19 @@ export async function guardarEnCurso(d: DatosEnCurso): Promise<{ error?: string;
     ? await supabase.from("fraccionados_en_curso").update(fila).eq("id_en_curso", d.idEnCurso).eq("id_usuario", sesion.idUsuario).select("id_en_curso").maybeSingle()
     : await supabase.from("fraccionados_en_curso").insert(fila).select("id_en_curso").single();
   if (r.error) return /fraccionados_en_curso|schema cache|does not exist/i.test(r.error.message) ? { sinTabla: true } : { error: friendlyDbError(r.error) };
+  // Si arrancaron de nuevo el mismo producto, el intento anterior que quedó antes de la
+  // etiqueta ya no vale: se borra, para que el Inicio no lo muestre «sin terminar» para
+  // siempre (27/11: tres intentos del 25/11 seguían en rojo con todo ya en el stock).
+  if (!d.idEnCurso && r.data?.id_en_curso) {
+    await supabase
+      .from("fraccionados_en_curso")
+      .delete()
+      .eq("id_local", idLocal)
+      .eq("id_variante_granel", d.idVarianteGranel)
+      .eq("id_variante_bolsa", d.idVarianteBolsa)
+      .lt("paso", PASO_PARA_ETIQUETAR)
+      .neq("id_en_curso", r.data.id_en_curso as string);
+  }
   return { id: (r.data?.id_en_curso as string | undefined) ?? d.idEnCurso ?? undefined };
 }
 
@@ -407,6 +420,16 @@ export async function terminarFraccionado(d: {
       await supabase.from("fraccionados").update({ usuario: ec.usuario, id_usuario: ec.id_usuario }).eq("id_fraccionado", r.idFraccionado);
     }
     await supabase.from("fraccionados_en_curso").delete().eq("id_en_curso", d.idEnCurso);
+  }
+  // Si la bolsa grande se terminó, no puede quedar otro fraccionado de ella a medio hacer:
+  // es un intento viejo o repetido (27/11: Mix Semillas figuraba para sumar otra vez).
+  if (d.seTermino) {
+    await supabase
+      .from("fraccionados_en_curso")
+      .delete()
+      .eq("id_local", idLocal)
+      .eq("id_variante_granel", d.idVarianteGranel)
+      .lt("paso", PASO_PARA_ETIQUETAR);
   }
 
   // Dónde van en la góndola (paso 7).
