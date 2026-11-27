@@ -1041,6 +1041,8 @@ export default function AsesorApp({
   // Black Friday (Gonzalo, 27/11): banner en Combos hasta el lunes 30; se apaga solo el martes 1/12
   // a las 0 h. La pantalla queda prendida días: se revisa cada 10 minutos.
   const [blackFriday, setBlackFriday] = useState(() => Date.now() < FIN_BLACK_FRIDAY);
+  // Combos: los logos de las marcas en fila arriba; tocar uno muestra solo los suyos (Gonzalo, 27/11).
+  const [marcaCombos, setMarcaCombos] = useState<string | null>(null);
   useEffect(() => {
     if (!blackFriday) return;
     const t = setInterval(() => setBlackFriday(Date.now() < FIN_BLACK_FRIDAY), 10 * 60 * 1000);
@@ -1344,6 +1346,17 @@ export default function AsesorApp({
       })
       .filter((x): x is NonNullable<typeof x> => x !== null);
   }, [combos, productos]);
+  // Los combos por marca (la de sus productos), en el orden de los combos.
+  const seccionesCombos = useMemo(() => {
+    const secciones: { idMarca: string; items: typeof combosVisibles }[] = [];
+    for (const x of combosVisibles) {
+      const idMarca = x.grupos[0]?.productos[0]?.id_marca ?? "";
+      const s = secciones.find((y) => y.idMarca === idMarca);
+      if (s) s.items.push(x);
+      else secciones.push({ idMarca, items: [x] });
+    }
+    return secciones;
+  }, [combosVisibles]);
   // «Ahorrás $500» queda pobre (Gonzalo, 27/11): el ahorro y el precio tachado, solo desde $2.000.
   const ahorroVisible = (ahorro: number) => ahorro >= AHORRO_COMBO_VISIBLE;
 
@@ -1502,6 +1515,7 @@ export default function AsesorApp({
   }
 
   function irACombos() {
+    setMarcaCombos(null);
     setPantalla("combos");
   }
 
@@ -2464,18 +2478,30 @@ export default function AsesorApp({
                 </span>
               </div>
             )}
-            {/* Separados por marca, con su logo (Gonzalo, 27/11: «que se vea qué ofrece cada marca»).
-                La marca del combo es la de sus productos; las secciones salen en el orden de los combos. */}
-            {(() => {
-              const secciones: { idMarca: string; items: typeof combosVisibles }[] = [];
-              for (const x of combosVisibles) {
-                const idMarca = x.grupos[0]?.productos[0]?.id_marca ?? "";
-                const s = secciones.find((y) => y.idMarca === idMarca);
-                if (s) s.items.push(x);
-                else secciones.push({ idMarca, items: [x] });
-              }
-              return secciones;
-            })().map(({ idMarca, items }) => {
+            {/* Los logos de las marcas, uno al lado del otro: tocás uno y quedan solo sus combos (27/11). */}
+            {seccionesCombos.length > 1 && (
+              <div className="flex gap-2 md:gap-4 overflow-x-auto mb-5 pb-1">
+                <DiscoMarca
+                  nombre={idioma === "en" ? "All" : idioma === "pt" ? "Todos" : "Todos"}
+                  logo={null}
+                  cantidad={combosVisibles.length}
+                  activo={marcaCombos === null}
+                  onClick={() => setMarcaCombos(null)}
+                />
+                {seccionesCombos.map((s) => (
+                  <DiscoMarca
+                    key={s.idMarca}
+                    nombre={marcaPorId[s.idMarca]?.nombre ?? "—"}
+                    logo={marcaPorId[s.idMarca]?.logo ?? null}
+                    cantidad={s.items.length}
+                    activo={marcaCombos === s.idMarca}
+                    onClick={() => setMarcaCombos(marcaCombos === s.idMarca ? null : s.idMarca)}
+                  />
+                ))}
+              </div>
+            )}
+            {/* Separados por marca, con su logo (Gonzalo, 27/11: «que se vea qué ofrece cada marca»). */}
+            {seccionesCombos.filter((s) => !marcaCombos || s.idMarca === marcaCombos).map(({ idMarca, items }) => {
               const marca = marcaPorId[idMarca];
               return (
                 <section key={idMarca || "sin-marca"} className="mb-7">
