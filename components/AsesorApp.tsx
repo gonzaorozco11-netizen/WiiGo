@@ -29,6 +29,8 @@ import IconoRed, { colorDeRed } from "@/components/IconoRed";
 import type { ClaveRed } from "@/lib/redesProfesional";
 import type { Combo } from "@/lib/combos";
 
+/** Black Friday de los combos: hasta el lunes 30/11 inclusive (martes 1/12, 0 h de Argentina). */
+const FIN_BLACK_FRIDAY = Date.parse("2026-12-01T03:00:00Z");
 /** Combos: el «Ahorrás» y el precio tachado, solo desde este ahorro (Gonzalo, 27/11). */
 const AHORRO_COMBO_VISIBLE = 2000;
 /** Lo que tienen en común varios nombres («Mermelada Con Semillas»), sin cerrar en «de», «con», «x400gr»… */
@@ -1017,6 +1019,14 @@ export default function AsesorApp({
   const [productoAbierto, setProductoAbierto] = useState<string | null>(null);
   // El combo tocado en Combos: abre su ficha (16/11). La del producto se abre encima.
   const [comboAbierto, setComboAbierto] = useState<string | null>(null);
+  // Black Friday (Gonzalo, 27/11): banner en Combos hasta el lunes 30; se apaga solo el martes 1/12
+  // a las 0 h. La pantalla queda prendida días: se revisa cada 10 minutos.
+  const [blackFriday, setBlackFriday] = useState(() => Date.now() < FIN_BLACK_FRIDAY);
+  useEffect(() => {
+    if (!blackFriday) return;
+    const t = setInterval(() => setBlackFriday(Date.now() < FIN_BLACK_FRIDAY), 10 * 60 * 1000);
+    return () => clearInterval(t);
+  }, [blackFriday]);
   const [idioma, setIdioma] = useState<Idioma>("es");
   const agotados = useMemo(() => new Set(sinStock), [sinStock]);
   const textoSinStock = idioma === "en" ? "Out of stock" : idioma === "pt" ? "Sem estoque" : "Sin stock";
@@ -2053,7 +2063,14 @@ export default function AsesorApp({
                       🎁
                     </span>
                     <span className="flex-1 min-w-0">
-                      <span className={`${titular.className} block font-extrabold text-[20px] xl:text-[23px] leading-tight`}>Combos</span>
+                      <span className={`${titular.className} block font-extrabold text-[20px] xl:text-[23px] leading-tight`}>
+                        Combos
+                        {blackFriday && (
+                          <span className="ml-2 align-middle rounded-full px-2.5 py-0.5 text-[12px] font-extrabold tracking-[.04em]" style={{ background: "#111", color: "#ff9a4d" }}>
+                            BLACK FRIDAY
+                          </span>
+                        )}
+                      </span>
                       <span className="block text-[14px] font-semibold opacity-90">
                         {idioma === "en"
                           ? `${combosVisibles.length} bundle${combosVisibles.length === 1 ? "" : "s"} at a special price`
@@ -2413,6 +2430,21 @@ export default function AsesorApp({
                   ? "Levando os produtos juntos, o preço baixa sozinho no caixa. Vale qualquer sabor."
                   : "Llevando los productos juntos, el precio baja solo en la caja. Vale cualquier sabor."}
             </p>
+            {blackFriday && (
+              <div className="rounded-[22px] px-6 py-4 mb-6 flex items-center justify-between gap-4 flex-wrap" style={{ background: "#111" }}>
+                <div>
+                  <span className={`${titular.className} block font-extrabold text-[30px] md:text-[38px] leading-none tracking-[-.01em] text-white`}>
+                    BLACK <span style={{ color: "#ff7a1a" }}>FRIDAY</span>
+                  </span>
+                  <span className="block mt-1.5 text-[14px] md:text-[15px] font-semibold text-[#cfcfcf]">
+                    {idioma === "en" ? "WiiGo bundles at a special price" : idioma === "pt" ? "Combos WiiGo com preço especial" : "Combos WiiGo con precio especial"}
+                  </span>
+                </div>
+                <span className="rounded-full px-4 py-2 text-[14px] md:text-[16px] font-extrabold" style={{ background: "#ff7a1a", color: "#111" }}>
+                  {idioma === "en" ? "Until Monday 30" : idioma === "pt" ? "Até segunda 30" : "Hasta el lunes 30"}
+                </span>
+              </div>
+            )}
             {/* Separados por marca, con su logo (Gonzalo, 27/11: «que se vea qué ofrece cada marca»).
                 La marca del combo es la de sus productos; las secciones salen en el orden de los combos. */}
             {(() => {
