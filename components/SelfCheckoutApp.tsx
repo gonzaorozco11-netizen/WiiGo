@@ -8,6 +8,7 @@ type StockTotem = Pick<Stock, "id_variante" | "cantidad">;
 import { precioDe, type MedioDePago } from "@/lib/precios";
 import type { Clima } from "@/lib/clima";
 import { WIIGO_LOGO_DATA_URI, WIIGO_ISOTIPO_DATA_URI } from "@/lib/wiigo-logo-data";
+import { FUENTES_BLACK_FRIDAY, WIIGO_PALABRA_BLANCO_DATA_URI } from "@/lib/totemBlackFriday";
 import {
   construirTicketEscPos,
   construirTextoTicket,
@@ -497,11 +498,11 @@ html, body { margin: 0; padding: 0; height: 100%; background: #fafafa; }
   line-height: 1;
 }
 /* Black Friday (27 al 30/11, opción D que eligió Gonzalo): toda la pantalla de
-   inicio en negro con un resplandor naranja en vez del cielo, y BLACK FRIDAY
-   grande. Solo texto y colores (en el tótem las imágenes no cargan). Sin gap
-   en flex: separaciones con margin. */
+   inicio en negro con textura en vez del cielo, con las letras de la historia de
+   la community (lib/totemBlackFriday.ts, incrustadas) y el acento naranja. Sin
+   gap en flex: separaciones con margin. */
 .sc-reposo.sc-modo-bf {
-  background: radial-gradient(70% 45% at 50% 58%, rgba(255,122,26,.38), rgba(255,122,26,0) 70%), #0c0c0c !important;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .08 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"), radial-gradient(60% 40% at 50% 60%, rgba(255,122,26,.14), rgba(255,122,26,0) 70%), #141414 !important;
 }
 .sc-modo-bf .sc-clima-foto, .sc-modo-bf .sc-sol, .sc-modo-bf .sc-luna, .sc-modo-bf .sc-estrella,
 .sc-modo-bf .sc-nubes, .sc-modo-bf .sc-gota, .sc-modo-bf .sc-niebla, .sc-modo-bf .sc-relampago { display: none !important; }
@@ -513,19 +514,27 @@ html, body { margin: 0; padding: 0; height: 100%; background: #fafafa; }
   text-align: center;
 }
 .sc-root .sc-bf p { margin: 0; }
-.sc-bf .sc-bf-sup { font-size: 22px; font-weight: 800; color: #f5efe3; letter-spacing: .02em; }
-.sc-bf .sc-bf-titulo { font-size: 104px; font-weight: 900; line-height: .88; letter-spacing: -0.03em; color: #ffffff; margin-top: 8px; }
-.sc-bf .sc-bf-titulo span { color: #ff7a1a; }
-.sc-bf .sc-bf-sub { font-size: 22px; font-weight: 700; color: #cfcfcf; margin-top: 16px; }
+.sc-bf .sc-bf-sup {
+  display: inline-block;
+  border: 3px solid #ececec;
+  border-radius: 999px;
+  padding: 9px 28px 10px;
+  font: 700 32px/1 "BF Condensada", "Arial Narrow", sans-serif;
+  color: #f6f3e8;
+}
+.sc-bf .sc-bf-sup img { height: 28px; width: auto; margin-right: 10px; vertical-align: -3px; }
+.sc-bf .sc-bf-titulo { margin-top: 10px; }
+.sc-bf .sc-bf-black { display: block; font: italic 400 124px/1.05 "BF Caslon", Georgia, serif; color: #f6f3e8; letter-spacing: -0.01em; }
+.sc-bf .sc-bf-friday { display: block; font: 500 168px/.86 "BF Condensada", "Arial Narrow", sans-serif; color: #ff7a1a; }
+.sc-bf .sc-bf-sub { font: 500 25px/1.2 "BF Condensada", "Arial Narrow", sans-serif; color: #d6d6d6; margin-top: 20px; }
 .sc-bf .sc-bf-chip {
   display: inline-block;
-  margin-top: 18px;
-  padding: 9px 22px;
+  margin-top: 16px;
+  padding: 10px 28px;
   border-radius: 999px;
   background: #ff7a1a;
-  color: #111111;
-  font-size: 20px;
-  font-weight: 800;
+  color: #141414;
+  font: 700 29px/1 "BF Condensada", "Arial Narrow", sans-serif;
 }
 .sc-titulo {
   font-size: 26px;
@@ -2608,11 +2617,15 @@ export default function SelfCheckoutApp({
 
           {blackFriday && (
             <div className="sc-bf">
-              <p className="sc-bf-sup">WiiGo se une al</p>
+              <style>{FUENTES_BLACK_FRIDAY}</style>
+              <p className="sc-bf-sup">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={WIIGO_PALABRA_BLANCO_DATA_URI} alt="WiiGo" />
+                se une al
+              </p>
               <p className="sc-bf-titulo">
-                BLACK
-                <br />
-                <span>FRIDAY</span>
+                <span className="sc-bf-black">black</span>
+                <span className="sc-bf-friday">FRIDAY</span>
               </p>
               <p className="sc-bf-sub">Llevá los combos y el precio baja solo</p>
               <p className="sc-bf-chip">Hasta el lunes 30</p>

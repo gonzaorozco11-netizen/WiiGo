@@ -160,7 +160,7 @@
     // Compactos y sin botones: se toca el banner entero.
     var b = [
       // Black Friday (27/11): primero del carrusel hasta el lunes 30; lleva a Combos.
-      BLACK_FRIDAY ? '<div class="banner b-bf" data-a="combos" role="button" tabindex="0" aria-label="Black Friday: ver los combos"><div><p class="bf-sup">WiiGo se une al</p><h2 class="hola">BLACK <em>FRIDAY</em></h2><p class="hola-sub">Combos con precio especial · hasta el lunes 30</p><span class="b-chip b-chip-cta">Ver combos <i>→</i></span></div><img class="b-bf-img" src="https://rvzmwoudhijnuxujmbqy.supabase.co/storage/v1/object/public/fotos-productos/banner-black-friday-v3.webp" alt=""></div>' : '',
+      BLACK_FRIDAY ? '<div class="banner b-bf" data-a="combos" role="button" tabindex="0" aria-label="Black Friday: ver los combos"><div><p class="bf-sup"><img class="bf-logo" src="/wiigo-palabra-blanco.png" alt="WiiGo"> se une al</p><h2 class="hola"><span class="bf-black">black</span><span class="bf-friday">FRIDAY</span></h2><p class="hola-sub">Combos con precio especial · hasta el lunes 30</p><span class="b-chip b-chip-cta">Ver combos <i>→</i></span></div><img class="b-bf-img" src="https://rvzmwoudhijnuxujmbqy.supabase.co/storage/v1/object/public/fotos-productos/banner-black-friday-v3.webp" alt=""></div>' : '',
       '<div class="banner carga" data-a="ver-todo" role="button" tabindex="0"><div><h1 class="hola">La estación de servicio de <em>tu cuerpo</em>.</h1><p class="hola-sub">Cargá energía: pedí online y retiralo listo en 15 minutos.</p></div>' + ILUS_CARGA + '</div>',
       '<div class="banner b-15" data-a="ver-todo" role="button" tabindex="0"><div><h2 class="hola">Pedí y retirá en <em>15 minutos</em>.</h2>' + BANNER_15 + '</div></div>',
       // 18/11: que se entienda que tocando te registrás. Sin cuenta, un botón «Registrate gratis →» que
@@ -758,7 +758,7 @@
       if (s) s.items.push(c); else secciones.push({ m: m, items: [c] });
     });
     return '<div class="filtro-cab"><button class="redondo" data-a="inicio" aria-label="Volver al inicio">' + ic('atras') + '</button><span><b>Combos</b><small>' + COMBOS.length + (COMBOS.length === 1 ? ' combo' : ' combos') + ' · precio especial llevando los productos juntos</small></span></div>' +
-      (BLACK_FRIDAY ? '<div class="bf-banner"><div><b>BLACK <i>FRIDAY</i></b><small>Combos WiiGo con precio especial</small></div><span class="bf-hasta">Hasta el lunes 30</span></div>' : '') +
+      (BLACK_FRIDAY ? '<div class="bf-banner"><div><b><span class="bf-black">black</span><span class="bf-friday">FRIDAY</span></b><small>Combos WiiGo con precio especial</small></div><span class="bf-hasta">Hasta el lunes 30</span></div>' : '') +
       // Los logos en fila arriba (Gonzalo, 27/11: «el logo al lado del otro, no abajo»): tocás uno y quedan sus combos.
       (secciones.length > 1 ? '<div class="combo-logos" role="group" aria-label="Marcas">' +
         '<button data-a="combo-marca" data-m="" aria-pressed="' + !S.comboMarca + '"><span class="combo-logo"><b>T</b></span>Todos<small>' + COMBOS.length + '</small></button>' +
