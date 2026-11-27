@@ -176,7 +176,9 @@ function escapar(s: string) {
 
 /* ---------- lo que ve el cliente en «Mi WiiGo» ---------- */
 
-const MEDIOS: Record<string, string> = { EFECTIVO: "Efectivo", TARJETA: "Tarjeta", DEBITO: "Débito", CREDITO: "Crédito", QR: "QR Mercado Pago", MERCADO_PAGO: "Mercado Pago", MERCADOPAGO: "Mercado Pago", TRANSFERENCIA: "Transferencia" };
+// POSNET es como se guarda por dentro todo lo cobrado por Nave (la tarjeta online y el posnet
+// del local): el cliente lee «Tarjeta» (Gonzalo, 27/11).
+const MEDIOS: Record<string, string> = { EFECTIVO: "Efectivo", TARJETA: "Tarjeta", POSNET: "Tarjeta", DEBITO: "Débito", CREDITO: "Crédito", QR: "QR Mercado Pago", MERCADO_PAGO: "Mercado Pago", MERCADOPAGO: "Mercado Pago", TRANSFERENCIA: "Transferencia" };
 const DONDE: Record<string, string> = { POS: "En la estación", SELF_CHECKOUT: "En el tótem de la estación", ONLINE: "Online · retiro en la estación" };
 
 export async function perfilCliente(supabase: SupabaseClient, idCliente: string) {
