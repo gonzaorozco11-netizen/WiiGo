@@ -43,17 +43,6 @@ function nombreEnComun(nombres: string[]): string {
   while (comun.length && /^(de|con|y|sabor|x\d.*)$/i.test(comun[comun.length - 1])) comun.pop();
   return comun.join(" ");
 }
-/** «Mermelada Con Semillas Frutilla x400gr (Cuarto Creciente)» → «Frutilla x400gr (Cuarto Creciente)». */
-function sinPrefijo(nombre: string, prefijo: string): string {
-  if (!prefijo || !nombre.toLowerCase().startsWith(prefijo.toLowerCase())) return nombre;
-  const resto = nombre
-    .slice(prefijo.length)
-    .replace(/\s*\([^)]*\)\s*$/, "") // la marca entre paréntesis
-    .replace(/\s+x?\s?\d+([.,]\d+)?\s?(g|gr|kg|ml|cc|lt|l)\b\.?.*$/i, "") // el peso: «x400gr», «1 kg»
-    .replace(/^\s*(de|con|y|sabor)?\s+/i, "")
-    .trim();
-  return resto || nombre;
-}
 
 type Pantalla = "home" | "objetivo" | "resultado" | "marcas" | "ofertas" | "combos" | "profesionales" | "fichaProfesional" | "conoceme" | "reservarTurno";
 
@@ -2500,7 +2489,9 @@ export default function AsesorApp({
                   >
                     ✕
                   </button>
-                  <div className="relative bg-white h-[300px] md:h-auto md:min-h-[460px] overflow-hidden">
+                  {/* Alto fijo y arriba (27/11): con la lista larga la foto quedaba en el medio de un
+                      recuadro altísimo y se veía cortada abajo. */}
+                  <div className="relative bg-white h-[300px] md:h-[520px] md:self-start md:sticky md:top-0 overflow-hidden">
                     {combo.imagen ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={combo.imagen} alt="" className="absolute inset-0 w-full h-full object-contain p-6 pt-16" />
@@ -2549,7 +2540,7 @@ export default function AsesorApp({
                       </span>
                       {/* Un renglón por grupo (27/11: el Desayuno listaba las 3 mermeladas y
                           parecía que llevaba todo). Con varias opciones: el nombre en común
-                          «a elección» y cada opción como botón para ver su ficha. */}
+                          «a elección», sin listarlas (Gonzalo: «que no salgan todas las opciones»). */}
                       {grupos.map((g, gi) => {
                         const p = g.productos[0];
                         const varios = g.productos.length > 1;
@@ -2579,19 +2570,6 @@ export default function AsesorApp({
                                 {idioma === "en" ? "See ›" : idioma === "pt" ? "Ver ›" : "Ver ›"}
                               </span>
                             </button>
-                            {varios && (
-                              <span className="flex flex-wrap gap-1.5 pl-[68px]">
-                                {g.productos.map((x, xi) => (
-                                  <button
-                                    key={x.id_producto}
-                                    onClick={() => setProductoAbierto(x.id_producto)}
-                                    className="rounded-full border border-[#e3dccb] bg-[#fffaf2] px-2.5 py-1 text-[12px] font-bold text-[#3d4436] active:scale-[.97]"
-                                  >
-                                    {sinPrefijo(nombres[xi], comun)}
-                                  </button>
-                                ))}
-                              </span>
-                            )}
                           </div>
                         );
                       })}
