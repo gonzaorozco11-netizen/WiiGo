@@ -2413,9 +2413,40 @@ export default function AsesorApp({
                   ? "Levando os produtos juntos, o preço baixa sozinho no caixa. Vale qualquer sabor."
                   : "Llevando los productos juntos, el precio baja solo en la caja. Vale cualquier sabor."}
             </p>
+            {/* Separados por marca, con su logo (Gonzalo, 27/11: «que se vea qué ofrece cada marca»).
+                La marca del combo es la de sus productos; las secciones salen en el orden de los combos. */}
+            {(() => {
+              const secciones: { idMarca: string; items: typeof combosVisibles }[] = [];
+              for (const x of combosVisibles) {
+                const idMarca = x.grupos[0]?.productos[0]?.id_marca ?? "";
+                const s = secciones.find((y) => y.idMarca === idMarca);
+                if (s) s.items.push(x);
+                else secciones.push({ idMarca, items: [x] });
+              }
+              return secciones;
+            })().map(({ idMarca, items }) => {
+              const marca = marcaPorId[idMarca];
+              return (
+                <section key={idMarca || "sin-marca"} className="mb-7">
+                  {marca && (
+                    <div className="flex items-center gap-3 mb-3">
+                      <span className="rounded-full overflow-hidden grid place-items-center w-14 h-14 md:w-16 md:h-16 border-[3px] bg-white shrink-0" style={{ borderColor: "rgba(0,0,0,.08)" }}>
+                        {marca.logo ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={marca.logo} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="font-extrabold text-[22px]" style={{ color: "#4d7635" }}>{marca.nombre.charAt(0).toUpperCase()}</span>
+                        )}
+                      </span>
+                      <span className={`${titular.className} font-extrabold text-[21px] md:text-[24px] leading-tight text-[#1f261c]`}>{marca.nombre}</span>
+                      <span className="text-[12px] md:text-[13px] font-semibold text-[#8a9180]">
+                        {items.length} {idioma === "en" ? (items.length === 1 ? "bundle" : "bundles") : "combo" + (items.length === 1 ? "" : "s")}
+                      </span>
+                    </div>
+                  )}
             {/* Todos a la vista en la pantalla de la Joog (1280 × 720): hasta 5 por fila en pantalla ancha. */}
             <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 xl:gap-4">
-              {combosVisibles.map(({ combo, grupos, suelto }) => {
+              {items.map(({ combo, grupos, suelto }) => {
                 const ahorro = suelto - combo.precio;
                 return (
                   <div
@@ -2443,7 +2474,8 @@ export default function AsesorApp({
                           {idioma === "en" ? "Save" : idioma === "pt" ? "Economize" : "Ahorrás"} {formatoPrecio(ahorro)}
                         </span>
                       )}
-                      {combo.marca && (
+                      {/* La etiqueta de la marca, solo si dice algo más que el título de la sección (Star Nutrition dentro de Animalfit). */}
+                      {combo.marca && combo.marca !== marca?.nombre && (
                         <span className="absolute top-2.5 right-2.5 text-[11px] font-bold px-2.5 py-1 rounded-full" style={{ background: "#22301f", color: "#f5efe3" }}>
                           {combo.marca}
                         </span>
@@ -2468,6 +2500,9 @@ export default function AsesorApp({
                 );
               })}
             </div>
+                </section>
+              );
+            })}
           </div>
 
           {/* La ficha del combo: foto grande, precios, cuánto ahorra y sus productos (cada uno abre su ficha encima). */}
