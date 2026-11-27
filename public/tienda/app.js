@@ -836,7 +836,7 @@
     if (!S.pedido) return '';
     var t = totales();
     return '<div class="fondo" data-a="cerrar-pedido"></div><section class="hoja" role="dialog" aria-modal="true" aria-label="Mi pedido"><div class="hoja-cab"><h2>Mi pedido</h2><button class="redondo" data-a="cerrar-pedido" aria-label="Cerrar">' + ic('cruz', 20) + '</button></div><div class="hoja-cuerpo">' +
-      (carrito.length ? carrito.map(function (l) { var p = POR_ID[l.id]; return '<div class="linea-ped"><span class="mini">' + foto(p) + '</span><span><b>' + esc(p.t) + (l.v ? ' — ' + esc(l.v) : '') + '</b><small>' + plata(p.p * l.q) + ' · efectivo ' + plata((p.e || p.p) * l.q) + '</small></span><div class="paso"><button data-a="p-restar" data-id="' + l.id + '" data-v="' + esc(l.v || '') + '" aria-label="Uno menos">−</button><span>' + l.q + '</span><button data-a="p-sumar" data-id="' + l.id + '" data-v="' + esc(l.v || '') + '" aria-label="Uno más">+</button></div></div>'; }).join('') : '<div class="vacio">Todavía no agregaste nada.</div>') + '</div>' +
+      (carrito.length ? carrito.map(function (l) { var p = POR_ID[l.id]; return '<div class="linea-ped" data-k="' + esc(l.id + '|' + (l.v || '')) + '"><span class="mini">' + foto(p) + '</span><span><b>' + esc(p.t) + (l.v ? ' — ' + esc(l.v) : '') + '</b><small>' + plata(p.p * l.q) + ' · efectivo ' + plata((p.e || p.p) * l.q) + '</small></span><div class="paso"><button data-a="p-restar" data-id="' + l.id + '" data-v="' + esc(l.v || '') + '" aria-label="Uno menos">−</button><span>' + l.q + '</span><button data-a="p-sumar" data-id="' + l.id + '" data-v="' + esc(l.v || '') + '" aria-label="Uno más">+</button></div></div>'; }).join('') : '<div class="vacio">Todavía no agregaste nada.</div>') + '</div>' +
       (carrito.length ? '<div class="hoja-pie">' + filasCombos(t) + '<div class="total"><span>Total</span><b>' + plata(t.g) + '</b></div><div class="total ef"><span>Pagando en efectivo al retirar</span><b>' + plata(t.e) + '</b></div>' +
       '<div class="total" style="font-size:14px"><span>' + (S.usuario ? 'Sumás en WiiGo Club' : '<button data-a="cuenta" style="border:0;background:none;padding:0;color:var(--energia);font-weight:800;text-decoration:underline">Entrá con tu DNI</button> y sumás') + '</span><b style="font-size:16px;color:var(--energia)">+' + t.p + ' puntos</b></div><span class="nota">Lo retirás en <a class="dir-mapa" href="' + MAPA + '" target="_blank" rel="noopener">Arístides Villanueva 256</a>, listo en menos de 15 minutos.</span><button class="agregar" style="min-height:52px" data-a="continuar">Continuar</button></div>' : '') + '</section>';
   }
@@ -1380,6 +1380,30 @@
     return g;
   }
   function ver(f) { S.f = f; S.vista = 'lista'; S.q = ''; S.limite = 20; S.menu = false; pintar(true); }
+  // + y − dentro de «Mi pedido» (27/11: «cuando agrego o saco unidades es como que se vuelve a cargar»):
+  // cambian solo ese renglón (o se va si llegó a cero) y los totales de abajo; las fotos no se tocan.
+  function actualizarPedido(id, v) {
+    var hoja = app.querySelector('section.hoja[aria-label="Mi pedido"]');
+    if (!hoja || !carrito.length) { pintar(false); return; }
+    guardarCarrito();
+    var k = id + '|' + (v || ''), fila = null;
+    hoja.querySelectorAll('.linea-ped').forEach(function (el) { if (el.getAttribute('data-k') === k) fila = el; });
+    var l = carrito.filter(function (x) { return x.id === id && (x.v || '') === (v || ''); })[0], p = POR_ID[id];
+    if (fila) {
+      if (!l) fila.remove();
+      else {
+        var q = fila.querySelector('.paso span'); if (q) q.textContent = l.q;
+        var sm = fila.querySelector('small'); if (sm) sm.textContent = plata(p.p * l.q) + ' · efectivo ' + plata((p.e || p.p) * l.q);
+      }
+    }
+    // El pie (totales, combos, puntos) se arma de nuevo: no tiene fotos.
+    var tmp = document.createElement('div'); tmp.innerHTML = pedido();
+    var pieNuevo = tmp.querySelector('.hoja-pie'), pieViejo = hoja.querySelector('.hoja-pie');
+    if (pieNuevo && pieViejo) pieViejo.replaceWith(pieNuevo);
+    var t = totales(), cp = app.querySelector('.cab-pedido');
+    if (cp) { var b = cp.querySelector('b'); if (b) b.textContent = t.u; cp.setAttribute('aria-label', 'Mi pedido: ' + t.u + ' productos'); }
+    document.querySelectorAll('[data-acc="' + id + '"]').forEach(function (el) { el.innerHTML = el.dataset.tipo === 'item' ? botonItem(p) : boton(p); });
+  }
   // Después de sumar o restar desde la lista: cambian ese botón, el número del pedido y la barra de
   // abajo, sin redibujar toda la tienda (27/11). Con una ventana abierta (el pedido) sí se redibuja,
   // pero sin la animación de abrir (ver pintar).
@@ -1588,8 +1612,8 @@
     },
     'abrir-pedido': function () { S.pedido = true; S.ficha = null; pintar(false); },
     'cerrar-pedido': function () { S.pedido = false; pintar(false); },
-    'p-sumar': function (d) { sumar(d.id, d.v || null, 1); pintar(false); },
-    'p-restar': function (d) { sumar(d.id, d.v || null, -1); pintar(false); },
+    'p-sumar': function (d) { sumar(d.id, d.v || null, 1); actualizarPedido(d.id, d.v || null); },
+    'p-restar': function (d) { sumar(d.id, d.v || null, -1); actualizarPedido(d.id, d.v || null); },
     limpiar: function () { S.q = ''; pintar(false); var i = document.getElementById('q'); if (i) i.focus(); },
     mas: function () { S.limite += 20; pintar(false); }
   };
