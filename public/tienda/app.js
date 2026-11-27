@@ -159,6 +159,8 @@
   function banners() {
     // Compactos y sin botones: se toca el banner entero.
     var b = [
+      // Black Friday (27/11): primero del carrusel hasta el lunes 30; lleva a Combos.
+      BLACK_FRIDAY ? '<div class="banner b-bf" data-a="combos" role="button" tabindex="0" aria-label="Black Friday: ver los combos"><div><p class="bf-sup">WiiGo se une al</p><h2 class="hola">BLACK <em>FRIDAY</em></h2><p class="hola-sub">Combos con precio especial · hasta el lunes 30</p><span class="b-chip b-chip-cta">Ver combos <i>→</i></span></div><img class="b-bf-img" src="https://rvzmwoudhijnuxujmbqy.supabase.co/storage/v1/object/public/fotos-productos/banner-black-friday-v3.webp" alt=""></div>' : '',
       '<div class="banner carga" data-a="ver-todo" role="button" tabindex="0"><div><h1 class="hola">La estación de servicio de <em>tu cuerpo</em>.</h1><p class="hola-sub">Cargá energía: pedí online y retiralo listo en 15 minutos.</p></div>' + ILUS_CARGA + '</div>',
       '<div class="banner b-15" data-a="ver-todo" role="button" tabindex="0"><div><h2 class="hola">Pedí y retirá en <em>15 minutos</em>.</h2>' + BANNER_15 + '</div></div>',
       // 18/11: que se entienda que tocando te registrás. Sin cuenta, un botón «Registrate gratis →» que
@@ -166,7 +168,7 @@
       (S.usuario
         ? '<div class="banner b-club" data-a="cuenta" role="button" tabindex="0" aria-label="Ver mis puntos de WiiGo Club"><div><h2 class="hola">Sos de <em>WiiGo Club</em>.</h2><p class="hola-sub">Sumás 5 puntos cada $1.000, online o en la estación.</p><span class="b-chip b-chip-cta">★ Tenés ' + S.usuario.puntos.toLocaleString('es-AR') + ' puntos <i>→</i></span></div>' + TARJETA_CLUB + '</div>'
         : '<div class="banner b-club" data-a="cuenta" role="button" tabindex="0" aria-label="Registrate gratis en WiiGo Club"><div><h2 class="hola">Unite a <em>WiiGo Club</em>.</h2><p class="hola-sub">Sumá puntos en cada compra. Gratis, solo con tu DNI.</p><span class="b-chip b-chip-cta">Registrate gratis <i>→</i></span></div>' + TARJETA_CLUB + '</div>')
-    ];
+    ].filter(Boolean);
     return '<section class="banners" aria-roledescription="carrusel" aria-label="Novedades de WiiGo"><div class="b-pista" id="b-pista">' + b.join('') + '</div><div class="b-puntos">' + b.map(function (_, i) { return '<button data-a="banner" data-i="' + i + '" aria-label="Banner ' + (i + 1) + '"' + (i === 0 ? ' aria-current="true"' : '') + '></button>'; }).join('') + '</div></section>';
   }
   var TONOS = [['#e8743b', '#2a1406'], ['#2e3f29', '#f5efe3'], ['#f1c75b', '#3b2f0e'], ['#a8c08a', '#1f2b17'], ['#d9a37f', '#3a2010'], ['#3f6b6d', '#eef5f2']];
@@ -1171,16 +1173,45 @@
         '<button class="cab-pedido" data-a="abrir-pedido" aria-label="Mi pedido: ' + t.u + ' productos">' + ic('canasta', 20) + '<b>' + t.u + '</b></button></div>' +
       // El buscador siempre acá arriba, en el encabezado (Gonzalo, 16/11: «mejor arriba como estaba al principio»).
       buscador() + '</header>';
-    var cuerpo = S.vista === 'checkout' && S.usuario && carrito.length ? checkout() : S.vista === 'seguir' ? seguimiento() : S.vista === 'pros' ? profesionales() : (S.vista === 'lista' || S.q.length >= 2) ? lista() : S.vista === 'combos' ? vistaCombos() : inicio();
-    // Con un pedido en curso y el carrito vacío, la barra lleva a seguirlo.
-    var enCurso = (S.pedidos || []).filter(abiertoPed)[0];
-    var barra = t.u && !S.pedido && !S.ficha && S.vista !== 'checkout' ? '<div class="barra"><button data-a="abrir-pedido"><span>' + ic('bolsa', 20) + t.u + (t.u === 1 ? ' producto' : ' productos') + ' · ' + plata(t.g) + '</span><span>Ver mi pedido ' + ic('flecha', 18) + '</span></button></div>'
-      : !t.u && enCurso && S.vista !== 'seguir' && !S.pedido ? '<div class="barra"><button data-a="ver-pedido" data-c="' + esc(enCurso.codigo) + '"><span>' + ic('bolsa', 20) + 'Pedido #' + enCurso.num + ' · ' + (enCurso.pago === 'transf' && !enCurso.pagoOk ? 'Falta tu transferencia' : enCurso.pago === 'tarjeta' && !enCurso.pagoOk ? 'Falta el pago' : ESTADOS_PED[Math.max(0, enCurso.paso)].t) + '</span><span>Seguir ' + ic('flecha', 18) + '</span></button></div>' : '';
+    var cuerpo = cuerpoActual();
+    var barra = barraActual(t);
     var foco = document.activeElement && (document.activeElement.id === 'q' || document.activeElement.id === 'mq') ? document.activeElement.id : null;
     var pos = foco ? document.activeElement.selectionStart : 0, y = window.scrollY;
+    // La ventana que ya estaba abierta (el pedido, una ficha…) no vuelve a subir desde abajo ni pierde
+    // por dónde iba al redibujar (27/11: al sacar un producto del pedido parecía que se recargaba todo).
+    var abiertas = {};
+    document.querySelectorAll('.hoja[aria-label]').forEach(function (h) { var c = h.querySelector('.hoja-cuerpo'); abiertas[h.getAttribute('aria-label')] = c ? c.scrollTop : 0; });
     app.innerHTML = cab + '<main>' + cuerpo + '</main>' + (S.cuenta || S.combo || S.comboVer || S.reco || S.cats ? '' : barra) + cajon() + ficha() + pedido() + hojaComboVer() + hojaCombo() + hojaReco() + hojaCats() + cuenta();
+    document.querySelectorAll('.hoja[aria-label]').forEach(function (h) {
+      var k = h.getAttribute('aria-label'); if (!(k in abiertas)) return;
+      h.classList.add('quieta');
+      var c = h.querySelector('.hoja-cuerpo'); if (c) c.scrollTop = abiertas[k];
+    });
     if (foco) { var i = document.getElementById(foco); if (i) { i.focus(); try { i.setSelectionRange(pos, pos); } catch (e) {} } }
     window.scrollTo(0, arriba ? 0 : y);
+    montarGlobo();
+    montarBanners();
+    espiarRubros();
+  }
+  // La barra de abajo: lo que lleva en el pedido; con un pedido en curso y el carrito vacío, lleva a seguirlo.
+  function barraActual(t) {
+    var enCurso = (S.pedidos || []).filter(abiertoPed)[0];
+    return t.u && !S.pedido && !S.ficha && S.vista !== 'checkout' ? '<div class="barra"><button data-a="abrir-pedido"><span>' + ic('bolsa', 20) + t.u + (t.u === 1 ? ' producto' : ' productos') + ' · ' + plata(t.g) + '</span><span>Ver mi pedido ' + ic('flecha', 18) + '</span></button></div>'
+      : !t.u && enCurso && S.vista !== 'seguir' && !S.pedido ? '<div class="barra"><button data-a="ver-pedido" data-c="' + esc(enCurso.codigo) + '"><span>' + ic('bolsa', 20) + 'Pedido #' + enCurso.num + ' · ' + (enCurso.pago === 'transf' && !enCurso.pagoOk ? 'Falta tu transferencia' : enCurso.pago === 'tarjeta' && !enCurso.pagoOk ? 'Falta el pago' : ESTADOS_PED[Math.max(0, enCurso.paso)].t) + '</span><span>Seguir ' + ic('flecha', 18) + '</span></button></div>' : '';
+  }
+  function cuerpoActual() {
+    return S.vista === 'checkout' && S.usuario && carrito.length ? checkout() : S.vista === 'seguir' ? seguimiento() : S.vista === 'pros' ? profesionales() : (S.vista === 'lista' || S.q.length >= 2) ? lista() : S.vista === 'combos' ? vistaCombos() : inicio();
+  }
+  // Mientras se escribe en el buscador se cambia solo lo de abajo: el encabezado (con el buscador y el
+  // teclado) queda quieto (27/11: «cada vez que borro una letra es como que se vuelve a cargar la tienda»).
+  function pintarCuerpo(arriba) {
+    var main = app.querySelector('main');
+    if (!main || S.ficha || S.pedido || S.cuenta || S.combo || S.comboVer || S.reco || S.cats || S.vista === 'checkout') { pintar(arriba); return; }
+    main.innerHTML = cuerpoActual();
+    var lbl = app.querySelector('.buscar'), x = lbl && lbl.querySelector('.limpiar');
+    if (lbl && S.q && !x) lbl.insertAdjacentHTML('beforeend', '<button class="limpiar" data-a="limpiar" aria-label="Borrar búsqueda">' + ic('cruz', 18) + '</button>');
+    if (x && !S.q) x.remove();
+    if (arriba) window.scrollTo(0, 0);
     montarGlobo();
     montarBanners();
     espiarRubros();
@@ -1349,7 +1380,20 @@
     return g;
   }
   function ver(f) { S.f = f; S.vista = 'lista'; S.q = ''; S.limite = 20; S.menu = false; pintar(true); }
-  function refrescar(id) { document.querySelectorAll('[data-acc="' + id + '"]').forEach(function (el) { el.innerHTML = el.dataset.tipo === 'item' ? botonItem(POR_ID[id]) : boton(POR_ID[id]); }); var y = window.scrollY; pintar(false); window.scrollTo(0, y); }
+  // Después de sumar o restar desde la lista: cambian ese botón, el número del pedido y la barra de
+  // abajo, sin redibujar toda la tienda (27/11). Con una ventana abierta (el pedido) sí se redibuja,
+  // pero sin la animación de abrir (ver pintar).
+  function refrescar(id) {
+    document.querySelectorAll('[data-acc="' + id + '"]').forEach(function (el) { el.innerHTML = el.dataset.tipo === 'item' ? botonItem(POR_ID[id]) : boton(POR_ID[id]); });
+    var y = window.scrollY;
+    if (S.pedido || S.ficha || S.cuenta || S.combo || S.comboVer || S.reco || S.cats || S.vista === 'checkout') { pintar(false); window.scrollTo(0, y); return; }
+    guardarCarrito();
+    var t = totales(), cp = app.querySelector('.cab-pedido');
+    if (cp) { var b = cp.querySelector('b'); if (b) b.textContent = t.u; cp.setAttribute('aria-label', 'Mi pedido: ' + t.u + ' productos'); }
+    var vieja = app.querySelector('.barra'), nueva = barraActual(t);
+    if (vieja) { if (nueva) vieja.outerHTML = nueva; else vieja.remove(); }
+    else if (nueva) { var m = app.querySelector('main'); if (m) m.insertAdjacentHTML('afterend', nueva); }
+  }
 
   var A = {
     inicio: function () { S.vista = 'inicio'; S.f = null; S.q = ''; S.limite = 20; S.marcaIni = null; pintar(true); },
@@ -1618,8 +1662,8 @@
       // cambia), y mientras se escribe se espera un instante entre letras en vez de redibujar en cada una.
       clearTimeout(tecleo);
       if (!antes && !ahora) return;
-      if (antes !== ahora) { pintar(true); return; } // al empezar a buscar o al borrar: arriba de todo
-      tecleo = setTimeout(function () { pintar(false); }, 140);
+      if (antes !== ahora) { pintarCuerpo(true); return; } // al empezar a buscar o al borrar: arriba de todo
+      tecleo = setTimeout(function () { pintarCuerpo(false); }, 140);
     }
     if (e.target.id === 'mq') { S.menuQ = e.target.value; pintar(false); }
     // El comentario de Opinar se guarda mientras escribe (tocar una estrella redibuja la hoja).

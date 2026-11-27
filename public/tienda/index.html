@@ -43,6 +43,13 @@ body{background:var(--fondo)}
 .b-pista{display:grid;grid-auto-flow:column;grid-auto-columns:100%;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;border-radius:26px;box-shadow:0 14px 30px rgba(34,48,31,.22)}
 .b-pista::-webkit-scrollbar{display:none}
 .banner{scroll-snap-align:start;scroll-snap-stop:always;display:grid;grid-template-columns:minmax(0,1fr) 128px;gap:6px;align-items:center;padding:16px 10px 12px 18px;min-height:172px;overflow:hidden;position:relative;cursor:pointer}
+/* Black Friday (27 al 30/11): negro y naranja, con los combos recortados a la derecha */
+.b-bf{background:radial-gradient(80% 100% at 85% 55%,rgba(255,122,26,.42) 0,rgba(255,122,26,0) 62%),#111;color:#fff;grid-template-columns:minmax(0,1fr) 150px}
+.b-bf .bf-sup{margin:0 2px;font-weight:800;font-size:13px;color:#f5efe3;letter-spacing:.02em}
+.b-bf .hola{color:#fff;font-size:30px;line-height:.95;margin:2px 0 6px}.b-bf .hola em{font-style:normal;color:#ff7a1a}
+.b-bf .hola-sub{color:#cfcfcf}
+.b-bf .b-chip-cta{background:#ff7a1a;color:#111}
+.b-bf-img{width:170px;max-width:none;margin-left:-14px;filter:drop-shadow(0 10px 14px rgba(0,0,0,.55))}
 /* 3: Unite a WiiGo Club (dorado, con la tarjeta) */
 /* 18/11: madera clara del local, con la tarjeta gris oscuro */
 .b-club{background:radial-gradient(70% 90% at 85% 35%,#f4ecdd 0,rgba(244,236,221,0) 70%),linear-gradient(135deg,#e6d8c0,#d3bf9a);color:#2d2d2d;grid-template-columns:minmax(0,1fr) 132px}
@@ -507,6 +514,8 @@ html.pn-abierto,html.pn-abierto body{overflow:hidden}
 .bienvenida>b{font:800 20px/1.15 var(--display)}
 .bienvenida ul{margin:0;padding-left:18px;display:grid;gap:5px;font-size:14px}
 @keyframes sube{from{transform:translateY(100%)}}
+/* Redibujada con la ventana ya abierta: no vuelve a subir (27/11) */
+.hoja.quieta,.hoja.quieta .reco{animation:none}
 .hoja-cab{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:16px 16px 6px}
 .hoja-cab h2{margin:0;font:800 24px/1.1 var(--display)}
 .hoja-cuerpo{overflow:auto;padding:0 16px 16px}
@@ -740,6 +749,7 @@ html.pn-abierto,html.pn-abierto body{overflow:hidden}
   .b-15 .hola{padding-right:0}
   .b-15 .b-crono{right:-250px;top:50%;transform:translateY(-50%) scale(1.45);transform-origin:center right}
   .b-club{grid-template-columns:minmax(0,1fr) 170px}
+  .b-bf{grid-template-columns:minmax(0,1fr) 260px}.b-bf .hola{font-size:46px}.b-bf-img{width:270px;margin-left:0}
   .b-tarjeta{transform:scale(1.15);transform-origin:center}
   .barra,.hoja{max-width:560px}
   .cajon{left:max(0px,calc(50% - 590px))}
@@ -776,6 +786,6 @@ html.pn-abierto,html.pn-abierto body{overflow:hidden}
 <div class="app" id="app"><p style="padding:60px 16px;text-align:center;color:#626a5e">Cargando los productos…</p></div>
 <!-- El catálogo real, armado en el servidor con lo público de cada producto (lib/tiendaCatalogo.ts). -->
 <script src="/api/tienda/catalogo"></script>
-<script src="app.js?v=42"></script>
+<script src="app.js?v=43"></script>
 </body>
 </html>
