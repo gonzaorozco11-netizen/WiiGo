@@ -2479,7 +2479,7 @@ export default function AsesorApp({
             return (
               <div className="fixed inset-0 z-30 flex items-center justify-center p-4 md:p-8" style={{ background: "rgba(31,38,28,.55)" }} onClick={() => setComboAbierto(null)}>
                 <div
-                  className="relative w-full max-w-[980px] max-h-full overflow-y-auto rounded-[28px] bg-[#fffaf2] shadow-2xl grid md:grid-cols-[1.1fr_1fr]"
+                  className="relative w-full max-w-[980px] max-h-full overflow-y-auto md:overflow-hidden rounded-[28px] bg-[#fffaf2] shadow-2xl grid md:grid-cols-[1.1fr_1fr]"
                   onClick={(ev) => ev.stopPropagation()}
                 >
                   <button
@@ -2489,9 +2489,9 @@ export default function AsesorApp({
                   >
                     ✕
                   </button>
-                  {/* Alto fijo y arriba (27/11): con la lista larga la foto quedaba en el medio de un
-                      recuadro altísimo y se veía cortada abajo. */}
-                  <div className="relative bg-white h-[300px] md:h-[520px] md:self-start md:sticky md:top-0 overflow-hidden">
+                  {/* 27/11: la lista de la derecha es corta y entra entera (sin deslizar), así la foto
+                      ocupa todo el alto de la ficha y queda centrada. */}
+                  <div className="relative bg-white h-[300px] md:h-auto md:min-h-[480px] overflow-hidden">
                     {combo.imagen ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={combo.imagen} alt="" className="absolute inset-0 w-full h-full object-contain p-6 pt-16" />
@@ -2511,15 +2511,15 @@ export default function AsesorApp({
                       </span>
                     )}
                   </div>
-                  <div className="p-6 md:p-8 flex flex-col gap-4">
+                  <div className="p-6 md:p-7 flex flex-col gap-3">
                     {combo.marca && (
                       <span className="self-start text-[12px] font-bold px-3 py-1 rounded-full" style={{ background: "#22301f", color: "#f5efe3" }}>
                         {combo.marca}
                       </span>
                     )}
-                    <h3 className={`${titular.className} text-[28px] md:text-[32px] font-extrabold leading-[1.05] tracking-[-.02em] text-[#1f261c]`}>{combo.nombre}</h3>
+                    <h3 className={`${titular.className} text-[26px] md:text-[30px] font-extrabold leading-[1.05] tracking-[-.02em] text-[#1f261c]`}>{combo.nombre}</h3>
                     <div className="flex items-baseline gap-3 flex-wrap">
-                      <span className={`${titular.className} text-[36px] font-extrabold text-[#1f261c]`}>{formatoPrecio(combo.precio)}</span>
+                      <span className={`${titular.className} text-[34px] font-extrabold text-[#1f261c]`}>{formatoPrecio(combo.precio)}</span>
                       {ahorroVisible(ahorro) && <span className="text-[17px] text-[#a8a8a8] line-through">{formatoPrecio(suelto)}</span>}
                     </div>
                     {combo.precioEfectivo != null && combo.precioEfectivo < combo.precio && (
@@ -2534,7 +2534,7 @@ export default function AsesorApp({
                           ? "Leve estes produtos juntos e o preço baixa sozinho no caixa. Vale qualquer sabor."
                           : "Llevá estos productos juntos y el precio baja solo en la caja. Vale cualquier sabor."}
                     </p>
-                    <div className="flex flex-col gap-2">
+                    <div className="flex flex-col gap-1.5">
                       <span className="text-[12px] font-extrabold uppercase tracking-[.12em] text-[#8a9180]">
                         {idioma === "en" ? "What's included" : idioma === "pt" ? "O que inclui" : "Qué lleva"}
                       </span>
@@ -2549,28 +2549,29 @@ export default function AsesorApp({
                         const desde = Math.min(...g.productos.map((x) => Number(x.precio_venta) || 0));
                         const aEleccion = idioma === "en" ? "(your choice)" : idioma === "pt" ? "(à escolha)" : "(a elección)";
                         return (
-                          <div key={gi} className="rounded-2xl px-3 py-2.5 flex flex-col gap-2 bg-white border border-[#ece4d4]">
-                            <button onClick={() => setProductoAbierto(p.id_producto)} className="text-left flex items-center gap-3 active:scale-[.99]">
-                              <span className="w-14 h-14 shrink-0 rounded-xl overflow-hidden grid place-items-center bg-white">
-                                {p.imagen ? (
-                                  // eslint-disable-next-line @next/next/no-img-element
-                                  <img src={p.imagen} alt="" className="w-full h-full object-contain" />
-                                ) : null}
-                              </span>
-                              <span className="flex-1 min-w-0">
-                                <span className="block text-[14.5px] font-bold text-[#1f261c] leading-tight">
-                                  {g.cantidad} × {varios ? `${comun || nombres[0]} ${aEleccion}` : nombres[0]}
-                                </span>
-                                <span className="block text-[12.5px] text-[#8a9180]">
-                                  {idioma === "en" ? "Alone" : idioma === "pt" ? "Avulso" : "Suelto"} {varios ? (idioma === "en" ? "from " : idioma === "pt" ? "a partir de " : "desde ") : ""}
-                                  {formatoPrecio(desde)}
-                                </span>
-                              </span>
-                              <span className="text-[13px] font-extrabold shrink-0" style={{ color: "#4d7635" }}>
-                                {idioma === "en" ? "See ›" : idioma === "pt" ? "Ver ›" : "Ver ›"}
-                              </span>
-                            </button>
-                          </div>
+                          // Renglones chicos, de una línea (27/11): entra todo sin deslizar.
+                          <button
+                            key={gi}
+                            onClick={() => setProductoAbierto(p.id_producto)}
+                            className="text-left rounded-xl px-2.5 py-1.5 flex items-center gap-2.5 bg-white border border-[#ece4d4] active:scale-[.99]"
+                          >
+                            <span className="w-10 h-10 shrink-0 rounded-lg overflow-hidden grid place-items-center bg-white">
+                              {p.imagen ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={p.imagen} alt="" className="w-full h-full object-contain" />
+                              ) : null}
+                            </span>
+                            <span className="flex-1 min-w-0 text-[13.5px] font-bold text-[#1f261c] leading-tight truncate">
+                              {g.cantidad} × {varios ? `${comun || nombres[0]} ${aEleccion}` : nombres[0]}
+                            </span>
+                            <span className="text-[12px] text-[#8a9180] shrink-0">
+                              {varios ? (idioma === "en" ? "from " : idioma === "pt" ? "a partir de " : "desde ") : ""}
+                              {formatoPrecio(desde)}
+                            </span>
+                            <span className="text-[12.5px] font-extrabold shrink-0" style={{ color: "#4d7635" }}>
+                              {idioma === "en" ? "See ›" : idioma === "pt" ? "Ver ›" : "Ver ›"}
+                            </span>
+                          </button>
                         );
                       })}
                     </div>
