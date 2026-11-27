@@ -257,6 +257,10 @@
      Es la misma cuenta que lib/combos.ts (aplicarCombos): si se cambia allá, cambiarla acá.
      El servidor la vuelve a hacer al guardar el pedido (/api/tienda/pedido). */
   var COMBOS = (D.combos || []).filter(function (c) { return c && c.g && c.g.length && c.p > 0; });
+  // Black Friday WiiGo (Gonzalo, 27/11): los combos se muestran como Black Friday del viernes 27
+  // al lunes 30. Se apaga sola el martes 1/12 a las 0 h de Argentina.
+  var BLACK_FRIDAY = Date.now() < Date.parse('2026-12-01T03:00:00Z');
+  var emCombos = COMBOS.length ? '<em' + (BLACK_FRIDAY ? ' class="bf"' : '') + '>' + COMBOS.length + '</em>' : '';
   var POR_COMBO = {}; COMBOS.forEach(function (c) { POR_COMBO[c.id] = c; });
   function precioCombo(c, modo) { return modo === 'EFECTIVO' && c.e > 0 ? c.e : c.p; }
   function aplicarCombos(modo) {
@@ -423,7 +427,7 @@
       ['objetivos', '🎯', 'Objetivos', ''],
       ['mundo', '🌍', 'Del mundo', ''],
       ['pros', '👩‍💻', 'Profesionales', ''],
-      ['combos', '🎁', 'Combos', COMBOS.length ? '<em>' + COMBOS.length + '</em>' : '<em class="pronto">Pronto</em>'],
+      ['combos', '🎁', 'Combos', emCombos || '<em class="pronto">Pronto</em>'],
       ['ofertas', '🏷️', 'Ofertas', OFERTAS.length ? '<em>' + OFERTAS.length + '</em>' : '']
     ];
     return lista.map(function (b, i) { return '<button data-a="' + b[0] + '"' + extra + (copia && i === 0 ? ' data-copia' : '') + '><span>' + b[1] + '</span>' + b[2] + b[3] + '</button>'; }).join('');
@@ -459,7 +463,7 @@
   }
   // Cuatro accesos redondos, quietos (18/11). «Lo más elegido» y «Ofertas» son secciones de la página.
   function accesos4() {
-    var l = [['objetivos', '🎯', 'Objetivos', ''], ['mundo', '🌍', 'Del mundo', ''], ['combos', '🎁', 'Combos', COMBOS.length ? '<em>' + COMBOS.length + '</em>' : ''], ['pros', '👩‍💻', 'Profesionales', '']];
+    var l = [['objetivos', '🎯', 'Objetivos', ''], ['mundo', '🌍', 'Del mundo', ''], ['combos', '🎁', 'Combos', emCombos], ['pros', '👩‍💻', 'Profesionales', '']];
     return '<div class="accesos-4" role="group" aria-label="Accesos">' + l.map(function (b) { return '<button data-a="' + b[0] + '"><span>' + b[1] + b[3] + '</span>' + b[2] + '</button>'; }).join('') + '</div>';
   }
   // Formato de app de delivery (Gonzalo, 16/11): banners arriba, el local, los accesos de siempre, las pestañas
@@ -694,11 +698,26 @@
     }, 0);
   }
   function comboConStock(c) { return c.g.every(function (g) { return g.ids.reduce(function (t, id) { var p = POR_ID[id]; return t + (p ? p.s : 0); }, 0) >= g.q; }); }
+  // Con varias opciones en un grupo, el nombre en común («Mermelada Con Semillas», «Barritas
+  // Proteicas») y «a elección»: la lista entera no entra en la tarjeta (27/11).
+  function nombreComun(nombres) {
+    var palabras = nombres.map(function (n) { return n.split(/\s+/); });
+    var comun = [];
+    for (var i = 0; i < palabras[0].length; i++) {
+      var w = palabras[0][i];
+      if (!palabras.every(function (p) { return p[i] && p[i].toLowerCase() === w.toLowerCase(); })) break;
+      comun.push(w);
+    }
+    while (comun.length && /^(de|con|y|sabor|x\d.*)$/i.test(comun[comun.length - 1])) comun.pop();
+    return comun.join(' ');
+  }
   function llevaCombo(c) {
     return c.g.map(function (g) {
-      var nombres = g.ids.map(function (id) { return POR_ID[id] ? POR_ID[id].t : ''; }).filter(Boolean).join(' o ');
+      var nombres = g.ids.map(function (id) { return POR_ID[id] ? POR_ID[id].t : ''; }).filter(Boolean);
       var conSabor = g.ids.some(function (id) { var p = POR_ID[id]; return p && p.v && p.v.length > 1; });
-      return '<b>' + (g.q > 1 ? g.q + ' × ' : '') + esc(nombres) + '</b>' + (conSabor ? ' (elegís el sabor)' : '');
+      var comun = nombres.length > 1 ? nombreComun(nombres) : '';
+      var texto = nombres.length > 1 ? (comun || nombres[0]) : nombres.join('');
+      return '<b>' + (g.q > 1 ? g.q + ' × ' : '') + esc(texto) + '</b>' + (nombres.length > 1 ? ' (a elección)' : conSabor ? ' (elegís el sabor)' : '');
     }).join(' + ');
   }
   function fotoCombo(c) {
@@ -709,11 +728,14 @@
   function vistaCombos() {
     var marcas = COMBOS.map(function (c) { return c.m; }).filter(function (m, i, a) { return m && a.indexOf(m) === i; });
     return '<div class="filtro-cab"><button class="redondo" data-a="inicio" aria-label="Volver al inicio">' + ic('atras') + '</button><span><b>Combos</b><small>' + COMBOS.length + (COMBOS.length === 1 ? ' combo' : ' combos') + ' · precio especial llevando los productos juntos</small></span></div>' +
+      (BLACK_FRIDAY ? '<div class="bf-banner"><div><b>BLACK <i>FRIDAY</i></b><small>Combos WiiGo con precio especial</small></div><span class="bf-hasta">Hasta el lunes 30</span></div>' : '') +
       '<div class="combos">' + COMBOS.map(function (c) {
         var suelto = precioSuelto(c, 'LISTA'), ahorro = suelto - c.p, hay = comboConStock(c);
-        return '<article class="combo-t"><div class="combo-foto">' + fotoCombo(c) + (ahorro > 0 ? '<span class="combo-ahorro">Ahorrás ' + plata(ahorro) + '</span>' : '') + (c.m ? '<span class="combo-marca">' + esc(c.m) + '</span>' : '') + '</div>' +
+        // «Ahorrás $500» queda pobre (Gonzalo, 27/11): el ahorro y el tachado, solo desde $2.000.
+        var muestraAhorro = ahorro >= 2000;
+        return '<article class="combo-t' + (BLACK_FRIDAY ? ' bf' : '') + '"><div class="combo-foto">' + fotoCombo(c) + (muestraAhorro ? '<span class="combo-ahorro">Ahorrás ' + plata(ahorro) + '</span>' : '') + (c.m ? '<span class="combo-marca">' + esc(c.m) + '</span>' : '') + '</div>' +
           '<div class="combo-info"><h3>' + esc(c.n) + '</h3><p class="combo-lleva">Llevás ' + llevaCombo(c) + '</p>' +
-          '<div class="combo-precios"><b>' + plata(c.p) + '</b>' + (c.e > 0 && c.e < c.p ? '<span>' + plata(c.e) + ' efectivo</span>' : '') + (suelto > c.p ? '<s>' + plata(suelto) + '</s>' : '') + '</div>' +
+          '<div class="combo-precios"><b>' + plata(c.p) + '</b>' + (c.e > 0 && c.e < c.p ? '<span>' + plata(c.e) + ' efectivo</span>' : '') + (muestraAhorro ? '<s>' + plata(suelto) + '</s>' : '') + '</div>' +
           (hay ? '<button class="agregar" data-a="combo-elegir" data-id="' + esc(c.id) + '">Agregar combo</button>' : '<button class="agregar" disabled>Sin stock por ahora</button>') + '</div></article>';
       }).join('') + '</div>' + (marcas.length ? '<p class="f-chico" style="text-align:center">Combos armados por ' + esc(marcas.join(', ')) + '. El descuento se aplica solo en tu pedido.</p>' : '');
   }

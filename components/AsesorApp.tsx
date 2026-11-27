@@ -29,6 +29,32 @@ import IconoRed, { colorDeRed } from "@/components/IconoRed";
 import type { ClaveRed } from "@/lib/redesProfesional";
 import type { Combo } from "@/lib/combos";
 
+/** Combos: el «Ahorrás» y el precio tachado, solo desde este ahorro (Gonzalo, 27/11). */
+const AHORRO_COMBO_VISIBLE = 2000;
+/** Lo que tienen en común varios nombres («Mermelada Con Semillas»), sin cerrar en «de», «con», «x400gr»… */
+function nombreEnComun(nombres: string[]): string {
+  const palabras = nombres.map((n) => n.split(/\s+/));
+  const comun: string[] = [];
+  for (let i = 0; i < palabras[0].length; i++) {
+    const w = palabras[0][i];
+    if (!palabras.every((p) => p[i] && p[i].toLowerCase() === w.toLowerCase())) break;
+    comun.push(w);
+  }
+  while (comun.length && /^(de|con|y|sabor|x\d.*)$/i.test(comun[comun.length - 1])) comun.pop();
+  return comun.join(" ");
+}
+/** «Mermelada Con Semillas Frutilla x400gr (Cuarto Creciente)» → «Frutilla x400gr (Cuarto Creciente)». */
+function sinPrefijo(nombre: string, prefijo: string): string {
+  if (!prefijo || !nombre.toLowerCase().startsWith(prefijo.toLowerCase())) return nombre;
+  const resto = nombre
+    .slice(prefijo.length)
+    .replace(/\s*\([^)]*\)\s*$/, "") // la marca entre paréntesis
+    .replace(/\s+x?\s?\d+([.,]\d+)?\s?(g|gr|kg|ml|cc|lt|l)\b\.?.*$/i, "") // el peso: «x400gr», «1 kg»
+    .replace(/^\s*(de|con|y|sabor)?\s+/i, "")
+    .trim();
+  return resto || nombre;
+}
+
 type Pantalla = "home" | "objetivo" | "resultado" | "marcas" | "ofertas" | "combos" | "profesionales" | "fichaProfesional" | "conoceme" | "reservarTurno";
 
 // Una red de la profesional, lista para mostrar: el usuario y el QR en SVG
@@ -1300,6 +1326,8 @@ export default function AsesorApp({
       })
       .filter((x): x is NonNullable<typeof x> => x !== null);
   }, [combos, productos]);
+  // «Ahorrás $500» queda pobre (Gonzalo, 27/11): el ahorro y el precio tachado, solo desde $2.000.
+  const ahorroVisible = (ahorro: number) => ahorro >= AHORRO_COMBO_VISIBLE;
 
 
   const marcasConOferta = useMemo(
@@ -2421,7 +2449,7 @@ export default function AsesorApp({
                           )}
                         </span>
                       )}
-                      {ahorro > 0 && (
+                      {ahorroVisible(ahorro) && (
                         <span className="absolute top-2.5 left-2.5 text-[12px] font-extrabold px-2.5 py-1 rounded-full text-white" style={{ background: "#e8743b" }}>
                           {idioma === "en" ? "Save" : idioma === "pt" ? "Economize" : "Ahorrás"} {formatoPrecio(ahorro)}
                         </span>
@@ -2441,7 +2469,7 @@ export default function AsesorApp({
                             {formatoPrecio(combo.precioEfectivo)} {idioma === "en" ? "cash" : idioma === "pt" ? "em dinheiro" : "efectivo"}
                           </span>
                         )}
-                        {suelto > combo.precio && <span className="text-[13px] text-[#a8a8a8] line-through">{formatoPrecio(suelto)}</span>}
+                        {ahorroVisible(ahorro) && <span className="text-[13px] text-[#a8a8a8] line-through">{formatoPrecio(suelto)}</span>}
                       </div>
                       <span className="text-[13px] font-extrabold" style={{ color: "#4d7635" }}>
                         {idioma === "en" ? "See what's included ›" : idioma === "pt" ? "Ver o que inclui ›" : "Ver qué incluye ›"}
@@ -2486,7 +2514,7 @@ export default function AsesorApp({
                         )}
                       </span>
                     )}
-                    {ahorro > 0 && (
+                    {ahorroVisible(ahorro) && (
                       <span className="absolute top-4 left-4 text-[15px] font-extrabold px-3.5 py-1.5 rounded-full text-white" style={{ background: "#e8743b" }}>
                         {idioma === "en" ? "Save" : idioma === "pt" ? "Economize" : "Ahorrás"} {formatoPrecio(ahorro)}
                       </span>
@@ -2501,7 +2529,7 @@ export default function AsesorApp({
                     <h3 className={`${titular.className} text-[28px] md:text-[32px] font-extrabold leading-[1.05] tracking-[-.02em] text-[#1f261c]`}>{combo.nombre}</h3>
                     <div className="flex items-baseline gap-3 flex-wrap">
                       <span className={`${titular.className} text-[36px] font-extrabold text-[#1f261c]`}>{formatoPrecio(combo.precio)}</span>
-                      {suelto > combo.precio && <span className="text-[17px] text-[#a8a8a8] line-through">{formatoPrecio(suelto)}</span>}
+                      {ahorroVisible(ahorro) && <span className="text-[17px] text-[#a8a8a8] line-through">{formatoPrecio(suelto)}</span>}
                     </div>
                     {combo.precioEfectivo != null && combo.precioEfectivo < combo.precio && (
                       <span className="self-start rounded-xl px-3 py-2 text-[16px] font-extrabold" style={{ background: "#eaf3dc", color: "#3d6b28" }}>
@@ -2519,33 +2547,54 @@ export default function AsesorApp({
                       <span className="text-[12px] font-extrabold uppercase tracking-[.12em] text-[#8a9180]">
                         {idioma === "en" ? "What's included" : idioma === "pt" ? "O que inclui" : "Qué lleva"}
                       </span>
-                      {grupos.map((g, gi) =>
-                        g.productos.map((p) => (
-                          <button
-                            key={`${gi}-${p.id_producto}`}
-                            onClick={() => setProductoAbierto(p.id_producto)}
-                            className="text-left rounded-2xl px-3 py-2.5 flex items-center gap-3 bg-white border border-[#ece4d4] active:scale-[.99]"
-                          >
-                            <span className="w-14 h-14 shrink-0 rounded-xl overflow-hidden grid place-items-center bg-white">
-                              {p.imagen ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img src={p.imagen} alt="" className="w-full h-full object-contain" />
-                              ) : null}
-                            </span>
-                            <span className="flex-1 min-w-0">
-                              <span className="block text-[14.5px] font-bold text-[#1f261c] leading-tight">
-                                {g.cantidad} × {tr(p.nombre, p.nombre_en, p.nombre_pt)}
+                      {/* Un renglón por grupo (27/11: el Desayuno listaba las 3 mermeladas y
+                          parecía que llevaba todo). Con varias opciones: el nombre en común
+                          «a elección» y cada opción como botón para ver su ficha. */}
+                      {grupos.map((g, gi) => {
+                        const p = g.productos[0];
+                        const varios = g.productos.length > 1;
+                        const nombres = g.productos.map((x) => tr(x.nombre, x.nombre_en, x.nombre_pt));
+                        const comun = varios ? nombreEnComun(nombres) : "";
+                        const desde = Math.min(...g.productos.map((x) => Number(x.precio_venta) || 0));
+                        const aEleccion = idioma === "en" ? "(your choice)" : idioma === "pt" ? "(à escolha)" : "(a elección)";
+                        return (
+                          <div key={gi} className="rounded-2xl px-3 py-2.5 flex flex-col gap-2 bg-white border border-[#ece4d4]">
+                            <button onClick={() => setProductoAbierto(p.id_producto)} className="text-left flex items-center gap-3 active:scale-[.99]">
+                              <span className="w-14 h-14 shrink-0 rounded-xl overflow-hidden grid place-items-center bg-white">
+                                {p.imagen ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img src={p.imagen} alt="" className="w-full h-full object-contain" />
+                                ) : null}
                               </span>
-                              <span className="block text-[12.5px] text-[#8a9180]">
-                                {idioma === "en" ? "Alone" : idioma === "pt" ? "Avulso" : "Suelto"} {formatoPrecio(Number(p.precio_venta) || 0)}
+                              <span className="flex-1 min-w-0">
+                                <span className="block text-[14.5px] font-bold text-[#1f261c] leading-tight">
+                                  {g.cantidad} × {varios ? `${comun || nombres[0]} ${aEleccion}` : nombres[0]}
+                                </span>
+                                <span className="block text-[12.5px] text-[#8a9180]">
+                                  {idioma === "en" ? "Alone" : idioma === "pt" ? "Avulso" : "Suelto"} {varios ? (idioma === "en" ? "from " : idioma === "pt" ? "a partir de " : "desde ") : ""}
+                                  {formatoPrecio(desde)}
+                                </span>
                               </span>
-                            </span>
-                            <span className="text-[13px] font-extrabold shrink-0" style={{ color: "#4d7635" }}>
-                              {idioma === "en" ? "See ›" : idioma === "pt" ? "Ver ›" : "Ver ›"}
-                            </span>
-                          </button>
-                        ))
-                      )}
+                              <span className="text-[13px] font-extrabold shrink-0" style={{ color: "#4d7635" }}>
+                                {idioma === "en" ? "See ›" : idioma === "pt" ? "Ver ›" : "Ver ›"}
+                              </span>
+                            </button>
+                            {varios && (
+                              <span className="flex flex-wrap gap-1.5 pl-[68px]">
+                                {g.productos.map((x, xi) => (
+                                  <button
+                                    key={x.id_producto}
+                                    onClick={() => setProductoAbierto(x.id_producto)}
+                                    className="rounded-full border border-[#e3dccb] bg-[#fffaf2] px-2.5 py-1 text-[12px] font-bold text-[#3d4436] active:scale-[.97]"
+                                  >
+                                    {sinPrefijo(nombres[xi], comun)}
+                                  </button>
+                                ))}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
